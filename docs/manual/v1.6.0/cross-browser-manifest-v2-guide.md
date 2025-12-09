@@ -1,8 +1,11 @@
 # Cross-Browser Compatibility Guide: Firefox & Chromium (Manifest v2)
 
-**Goal:** Make your copy-URL-on-hover extension work on both Firefox and Chromium-based browsers (Chrome, Edge, Brave, Opera, Comet) while remaining in Manifest v2.
+**Goal:** Make your copy-URL-on-hover extension work on both Firefox and
+Chromium-based browsers (Chrome, Edge, Brave, Opera, Comet) while remaining in
+Manifest v2.
 
-**Strategy:** Use Mozilla's WebExtension Polyfill to bridge API differences while maintaining a single codebase.
+**Strategy:** Use Mozilla's WebExtension Polyfill to bridge API differences
+while maintaining a single codebase.
 
 ---
 
@@ -26,7 +29,8 @@ Your extension currently uses Firefox-specific patterns:
 
 ```javascript
 // Firefox uses the 'browser' namespace with Promises
-browser.storage.sync.get({ key: 'defaultValue' })
+browser.storage.sync
+  .get({ key: 'defaultValue' })
   .then(result => console.log(result));
 
 // Chrome uses 'chrome' namespace with callbacks
@@ -36,6 +40,7 @@ chrome.storage.sync.get({ key: 'defaultValue' }, result => {
 ```
 
 **Additional Firefox-specific features in your extension:**
+
 - `browser.contextualIdentities` (Firefox Containers - no Chrome equivalent)
 - `browser_specific_settings.gecko` in manifest
 - Different manifest key requirements
@@ -44,9 +49,11 @@ chrome.storage.sync.get({ key: 'defaultValue' }, result => {
 
 According to MDN documentation[1]:
 
-> "Firefox and Safari support both callbacks and Promises in Manifest V2. Chrome in Manifest V2 uses callbacks exclusively."
+> "Firefox and Safari support both callbacks and Promises in Manifest V2. Chrome
+> in Manifest V2 uses callbacks exclusively."
 
 **Key advantages of staying in Manifest v2:**
+
 - ✅ Still fully supported by Firefox (and will be for the foreseeable future)
 - ✅ Supported by Chrome/Chromium (though deprecated)
 - ✅ Easier to implement cross-browser support than v3
@@ -54,9 +61,12 @@ According to MDN documentation[1]:
 - ✅ Simpler background script model (persistent background pages)
 
 **Trade-offs:**
+
 - ⚠️ Chrome Web Store may show "Manifest v2 is deprecated" warning
-- ⚠️ Chrome will eventually phase out v2 (timeline keeps extending, currently 2024+)
-- ⚠️ New submissions to Chrome Web Store require v3 (existing extensions can update)
+- ⚠️ Chrome will eventually phase out v2 (timeline keeps extending, currently
+  2024+)
+- ⚠️ New submissions to Chrome Web Store require v3 (existing extensions can
+  update)
 
 ---
 
@@ -64,32 +74,36 @@ According to MDN documentation[1]:
 
 Mozilla's `webextension-polyfill` solves the cross-browser problem by:
 
-1. **Unified API namespace:** Use `browser.*` everywhere (works on both Firefox and Chrome)
-2. **Promise support:** Converts Chrome's callback-based APIs to Promises automatically
+1. **Unified API namespace:** Use `browser.*` everywhere (works on both Firefox
+   and Chrome)
+2. **Promise support:** Converts Chrome's callback-based APIs to Promises
+   automatically
 3. **Zero overhead on Firefox:** Acts as a no-op on Firefox (direct passthrough)
 4. **Minimal bundle size:** ~10KB minified
 
 From the official documentation[2]:
 
-> "This library allows extensions that use the Promise-based WebExtension/BrowserExt API being standardized by the W3 Browser Extensions group to run on Google Chrome with minimal or no changes."
+> "This library allows extensions that use the Promise-based
+> WebExtension/BrowserExt API being standardized by the W3 Browser Extensions
+> group to run on Google Chrome with minimal or no changes."
 
 ### What the Polyfill Does
 
 **Before (Firefox-only code):**
+
 ```javascript
-browser.storage.sync.get({ copyUrlKey: 'Y' })
-  .then(settings => {
-    console.log('Copy URL key:', settings.copyUrlKey);
-  });
+browser.storage.sync.get({ copyUrlKey: 'Y' }).then(settings => {
+  console.log('Copy URL key:', settings.copyUrlKey);
+});
 ```
 
 **After (works on both Firefox and Chrome):**
+
 ```javascript
 // Same code works everywhere!
-browser.storage.sync.get({ copyUrlKey: 'Y' })
-  .then(settings => {
-    console.log('Copy URL key:', settings.copyUrlKey);
-  });
+browser.storage.sync.get({ copyUrlKey: 'Y' }).then(settings => {
+  console.log('Copy URL key:', settings.copyUrlKey);
+});
 ```
 
 On Firefox: Polyfill detects native `browser` API and does nothing.  
@@ -110,7 +124,8 @@ This installs the polyfill library (~10KB).
 
 ### Step 2: Create a Universal Manifest
 
-Your current `manifest.json` is Firefox-specific. We need to make it work on both browsers.
+Your current `manifest.json` is Firefox-specific. We need to make it work on
+both browsers.
 
 **Create a new `manifest.json` (replaces your current one):**
 
@@ -152,19 +167,13 @@ Your current `manifest.json` is Firefox-specific. We need to make it work on bot
   },
 
   "background": {
-    "scripts": [
-      "dist/browser-polyfill.min.js",
-      "dist/background.js"
-    ]
+    "scripts": ["dist/browser-polyfill.min.js", "dist/background.js"]
   },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": [
-        "dist/browser-polyfill.min.js",
-        "dist/content.js"
-      ],
+      "js": ["dist/browser-polyfill.min.js", "dist/content.js"],
       "run_at": "document_end",
       "all_frames": true
     }
@@ -258,11 +267,13 @@ cp node_modules/webextension-polyfill/dist/browser-polyfill.min.js dist/
 
 ### Step 4: Update Your Code (Minimal Changes Needed)
 
-**Good news:** If your code already uses `browser.*` API (which it does), you need minimal changes!
+**Good news:** If your code already uses `browser.*` API (which it does), you
+need minimal changes!
 
 **A. Background Script (`background.js`)**
 
-Your current code likely already uses `browser.*` throughout. No changes needed to API calls!
+Your current code likely already uses `browser.*` throughout. No changes needed
+to API calls!
 
 However, you need to handle browser detection for Firefox Container features:
 
@@ -273,9 +284,12 @@ However, you need to handle browser detection for Firefox Container features:
  * Browser detection and feature support
  */
 const BROWSER_INFO = {
-  isFirefox: typeof browser !== 'undefined' && typeof browser.runtime !== 'undefined' && 
-             browser.runtime.getBrowserInfo !== undefined,
-  isChrome: typeof chrome !== 'undefined' && typeof chrome.runtime !== 'undefined',
+  isFirefox:
+    typeof browser !== 'undefined' &&
+    typeof browser.runtime !== 'undefined' &&
+    browser.runtime.getBrowserInfo !== undefined,
+  isChrome:
+    typeof chrome !== 'undefined' && typeof chrome.runtime !== 'undefined',
   supportsContainers: false
 };
 
@@ -289,7 +303,8 @@ console.log('[Extension] Browser info:', BROWSER_INFO);
 
 **B. Content Script (`src/content.js` or wherever it's built from)**
 
-Same as background - no changes to `browser.*` API calls needed. The polyfill handles everything.
+Same as background - no changes to `browser.*` API calls needed. The polyfill
+handles everything.
 
 **C. Popup Script (`popup.js`)**
 
@@ -301,11 +316,13 @@ No changes needed.
 
 **E. State Manager (`state-manager.js`)**
 
-If this uses `browser.*` API, no changes needed. If it's just a plain JS module, no changes needed.
+If this uses `browser.*` API, no changes needed. If it's just a plain JS module,
+no changes needed.
 
 ### Step 5: Handle Firefox Containers (Browser-Specific Feature)
 
-Your extension heavily uses Firefox Containers. Chrome has **no equivalent**. Here's how to handle this:
+Your extension heavily uses Firefox Containers. Chrome has **no equivalent**.
+Here's how to handle this:
 
 **Create `src/shims/container-shim.js`:**
 
@@ -330,7 +347,7 @@ export class ContainerShim {
 
   /**
    * Get container by ID
-   * @param {string} cookieStoreId 
+   * @param {string} cookieStoreId
    * @returns {Promise<object>}
    */
   async get(cookieStoreId) {
@@ -368,7 +385,7 @@ export function getContainerAPI() {
       isSupported: () => true
     };
   }
-  
+
   // Return shim for Chrome/Edge/etc.
   return new ContainerShim();
 }
@@ -394,7 +411,7 @@ async function getTabContainer(tab) {
       color: 'blue'
     };
   }
-  
+
   // Firefox - get real container
   try {
     return await containerAPI.get(tab.cookieStoreId);
@@ -406,6 +423,7 @@ async function getTabContainer(tab) {
 ```
 
 **Key strategy:**
+
 - Firefox: Use native `browser.contextualIdentities` API
 - Chrome: Use shim that returns a default container
 - Feature works on Firefox (isolated containers)
@@ -413,7 +431,8 @@ async function getTabContainer(tab) {
 
 ### Step 6: Update Rollup Configuration
 
-Your extension uses Rollup for bundling. Update `rollup.config.js` to handle the polyfill:
+Your extension uses Rollup for bundling. Update `rollup.config.js` to handle the
+polyfill:
 
 ```javascript
 import resolve from '@rollup/plugin-node-resolve';
@@ -438,7 +457,7 @@ export default [
       process.env.NODE_ENV === 'production' && terser()
     ]
   },
-  
+
   // Content script
   {
     input: 'src/content/index.js', // or wherever your entry point is
@@ -459,7 +478,8 @@ export default [
 ];
 ```
 
-**Note:** The polyfill is loaded separately via manifest, so we don't bundle it into your scripts.
+**Note:** The polyfill is loaded separately via manifest, so we don't bundle it
+into your scripts.
 
 ### Step 7: Build and Test
 
@@ -482,7 +502,8 @@ ls -la dist/
 
 ## Handling Browser-Specific Features
 
-Your extension has features that exist only in Firefox. Here's how to handle them:
+Your extension has features that exist only in Firefox. Here's how to handle
+them:
 
 ### Feature 1: Firefox Containers (Critical Feature)
 
@@ -494,7 +515,7 @@ Your extension has features that exist only in Firefox. Here's how to handle the
 // In your Quick Tabs logic
 async function createQuickTab(url, tabId) {
   const tab = await browser.tabs.get(tabId);
-  
+
   if (containerAPI.isSupported()) {
     // Firefox: Respect container isolation
     const container = await containerAPI.get(tab.cookieStoreId);
@@ -509,6 +530,7 @@ async function createQuickTab(url, tabId) {
 ```
 
 **User experience:**
+
 - **Firefox:** Full container isolation, Solo/Mute per container
 - **Chrome:** Solo/Mute works globally (no per-container isolation)
 
@@ -526,19 +548,23 @@ async function createQuickTab(url, tabId) {
 
 **Status:** This works on Firefox, ignored by Chrome.
 
-**Chrome alternative:** Chrome Web Store handles updates automatically (if published there).
+**Chrome alternative:** Chrome Web Store handles updates automatically (if
+published there).
 
 **Strategy for self-hosted:**
+
 ```javascript
 // Optional: Manual update check for Chrome users
 async function checkForUpdates() {
   if (BROWSER_INFO.isChrome) {
     // Chrome doesn't support update_url
     // Could implement manual update notification
-    const response = await fetch('https://api.github.com/repos/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases/latest');
+    const response = await fetch(
+      'https://api.github.com/repos/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases/latest'
+    );
     const latest = await response.json();
     const currentVersion = browser.runtime.getManifest().version;
-    
+
     if (latest.tag_name !== `v${currentVersion}`) {
       console.log('Update available:', latest.tag_name);
       // Show notification to user
@@ -553,11 +579,14 @@ async function checkForUpdates() {
 
 **Future concern:** Chrome Manifest v3 removes `webRequestBlocking`.
 
-**Current solution:** Keep using Manifest v2. When Chrome fully deprecates it, you'll need to:
+**Current solution:** Keep using Manifest v2. When Chrome fully deprecates it,
+you'll need to:
+
 1. Migrate to `declarativeNetRequest` API (v3), OR
 2. Accept that some sites won't work in Quick Tabs on Chrome
 
-**For now:** No changes needed. Your current `webRequestBlocking` implementation works on both browsers.
+**For now:** No changes needed. Your current `webRequestBlocking` implementation
+works on both browsers.
 
 ---
 
@@ -615,12 +644,13 @@ const excludes = [
   '.github/*',
   'package*.json',
   '*.md'
-].map(pattern => `--exclude=${pattern}`).join(' ');
+]
+  .map(pattern => `--exclude=${pattern}`)
+  .join(' ');
 
-execSync(
-  `zip -r -FS firefox-extension.xpi ${files.join(' ')} ${excludes}`,
-  { stdio: 'inherit' }
-);
+execSync(`zip -r -FS firefox-extension.xpi ${files.join(' ')} ${excludes}`, {
+  stdio: 'inherit'
+});
 
 console.log('✅ Firefox package created: firefox-extension.xpi');
 console.log('📝 Install: about:addons → Install Add-on From File');
@@ -658,15 +688,18 @@ const excludes = [
   '.github/*',
   'package*.json',
   '*.md'
-].map(pattern => `--exclude=${pattern}`).join(' ');
+]
+  .map(pattern => `--exclude=${pattern}`)
+  .join(' ');
 
-execSync(
-  `zip -r -FS chrome-extension.zip ${files.join(' ')} ${excludes}`,
-  { stdio: 'inherit' }
-);
+execSync(`zip -r -FS chrome-extension.zip ${files.join(' ')} ${excludes}`, {
+  stdio: 'inherit'
+});
 
 console.log('✅ Chrome package created: chrome-extension.zip');
-console.log('📝 Install: chrome://extensions/ → Developer Mode → Load unpacked');
+console.log(
+  '📝 Install: chrome://extensions/ → Developer Mode → Load unpacked'
+);
 console.log('📝 Or upload chrome-extension.zip to Chrome Web Store');
 ```
 
@@ -677,7 +710,7 @@ console.log('📝 Or upload chrome-extension.zip to Chrome Web Store');
 npm run package:firefox
 # → Creates firefox-extension.xpi
 
-# Build Chrome package  
+# Build Chrome package
 npm run package:chrome
 # → Creates chrome-extension.zip
 ```
@@ -689,6 +722,7 @@ npm run package:chrome
 ### Testing on Firefox
 
 1. **Build the extension:**
+
    ```bash
    npm run build
    ```
@@ -716,6 +750,7 @@ npm run package:chrome
 ### Testing on Chrome/Chromium
 
 1. **Build the extension:**
+
    ```bash
    npm run build
    ```
@@ -753,6 +788,7 @@ Since Comet is Chromium-based, follow the Chrome testing steps:
 5. Test all features
 
 **Expected behavior in Comet:**
+
 - ✅ All basic features work (copy URL, copy text, Quick Tabs)
 - ⚠️ No Firefox Container isolation (Chrome limitation)
 - ✅ Solo/Mute works globally
@@ -783,7 +819,7 @@ describe('Browser API', () => {
 
   test('storage API works with polyfill', async () => {
     browser.storage.sync.get.mockResolvedValue({ copyUrlKey: 'Y' });
-    
+
     const result = await browser.storage.sync.get({ copyUrlKey: 'Y' });
     expect(result.copyUrlKey).toBe('Y');
   });
@@ -810,28 +846,33 @@ describe('Browser API', () => {
 ### Firefox-Only Features
 
 🦊 **Firefox Containers:**
+
 - Container isolation for Quick Tabs
 - Solo/Mute per container
 - Container-aware state management
 - **Chrome:** Falls back to single "default" container
 
 🦊 **Auto-updates from GitHub:**
+
 - Firefox supports `update_url` in manifest
 - **Chrome:** Requires Chrome Web Store for auto-updates, or manual updates
 
 ### Chrome/Chromium Limitations
 
 ⚠️ **No Firefox Container Support:**
+
 - Chrome has no equivalent to Firefox Containers
 - Solo/Mute works globally instead of per-container
 - `browser.contextualIdentities` API doesn't exist
 
 ⚠️ **Storage Quota Differences:**
+
 - Firefox: `storage.sync` quota is 100KB
 - Chrome: `storage.sync` quota is ~100KB (similar but slightly different limits)
 - Both have per-item size limits (~8KB)
 
 ⚠️ **Manifest v2 Deprecation:**
+
 - Chrome shows "Manifest v2 is deprecated" warning
 - Still works, but Chrome may eventually remove support
 - Timeline keeps extending (currently 2024+)
@@ -843,6 +884,7 @@ describe('Browser API', () => {
 When Chrome fully removes Manifest v2 support, you'll need to:
 
 1. **Migrate background to service worker:**
+
    ```json
    "background": {
      "service_worker": "dist/background.js"
@@ -858,7 +900,9 @@ When Chrome fully removes Manifest v2 support, you'll need to:
    - Use Manifest v3 compatible version
    - Handle service worker limitations
 
-**Recommendation:** Stay on Manifest v2 as long as possible. Firefox has committed to long-term v2 support, and Chrome keeps extending the deprecation timeline.
+**Recommendation:** Stay on Manifest v2 as long as possible. Firefox has
+committed to long-term v2 support, and Chrome keeps extending the deprecation
+timeline.
 
 ---
 
@@ -869,6 +913,7 @@ When Chrome fully removes Manifest v2 support, you'll need to:
 **Cause:** Polyfill not loaded before your scripts.
 
 **Solution:** Check manifest order:
+
 ```json
 "background": {
   "scripts": [
@@ -883,6 +928,7 @@ When Chrome fully removes Manifest v2 support, you'll need to:
 **Cause:** Permission still in manifest for Chrome.
 
 **Solution:** Remove from manifest (Chrome doesn't support it):
+
 ```json
 "permissions": [
   "storage",
@@ -905,6 +951,7 @@ When Chrome fully removes Manifest v2 support, you'll need to:
 **Cause:** Build script didn't copy polyfill.
 
 **Solution:**
+
 ```bash
 # Manual copy
 cp node_modules/webextension-polyfill/dist/browser-polyfill.min.js dist/
@@ -945,12 +992,13 @@ Since you're maintaining one codebase for both browsers:
 
 1. **Always test on both browsers** after making changes
 2. **Use feature detection, not browser detection:**
+
    ```javascript
    // Good
    if (containerAPI.isSupported()) {
      // Use containers
    }
-   
+
    // Bad
    if (BROWSER_INFO.isFirefox) {
      // This works but is fragile
@@ -958,6 +1006,7 @@ Since you're maintaining one codebase for both browsers:
    ```
 
 3. **Document browser differences** in code comments:
+
    ```javascript
    /**
     * Get container for tab
@@ -975,7 +1024,7 @@ Since you're maintaining one codebase for both browsers:
    jobs:
      test-firefox:
        # ... test in Firefox
-     
+
      test-chrome:
        # ... test in Chrome
    ```
@@ -1000,7 +1049,7 @@ Keep the same version number for both Firefox and Chrome packages:
 
 ```json
 {
-  "version": "1.6.1.1"  // Same for both browsers
+  "version": "1.6.1.1" // Same for both browsers
 }
 ```
 
@@ -1044,13 +1093,17 @@ This makes it clear to users they're using the same codebase.
 
 ## References
 
-[1] MDN: "Build a cross-browser extension" - https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Build_a_cross_browser_extension
+[1] MDN: "Build a cross-browser extension" -
+https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Build_a_cross_browser_extension
 
-[2] Mozilla: "webextension-polyfill" - https://github.com/mozilla/webextension-polyfill
+[2] Mozilla: "webextension-polyfill" -
+https://github.com/mozilla/webextension-polyfill
 
-[3] MDN: "Chrome incompatibilities" - https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities
+[3] MDN: "Chrome incompatibilities" -
+https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities
 
-[4] Akos Komuves: "Building a Cross Browser Extension in 2022" - https://akoskm.com/building-a-cross-browser-extension/
+[4] Akos Komuves: "Building a Cross Browser Extension in 2022" -
+https://akoskm.com/building-a-cross-browser-extension/
 
 ---
 

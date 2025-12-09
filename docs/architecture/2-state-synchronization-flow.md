@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document explains how Quick Tab state is synchronized across multiple execution contexts (content scripts, background script, browser storage) and browser tabs in real-time.
+This document explains how Quick Tab state is synchronized across multiple
+execution contexts (content scripts, background script, browser storage) and
+browser tabs in real-time.
 
 ## Quick Tab Lifecycle
 
@@ -53,9 +55,11 @@ sequenceDiagram
 
 ### Pattern 1: Direct Local Creation (v1.5.9.11+)
 
-**Problem Solved**: Quick Tabs created in Tab 1 didn't appear immediately in Tab 1 (race condition)
+**Problem Solved**: Quick Tabs created in Tab 1 didn't appear immediately in Tab
+1 (race condition)
 
-**Solution**: Content script creates and renders immediately, THEN notifies background for persistence
+**Solution**: Content script creates and renders immediately, THEN notifies
+background for persistence
 
 ```mermaid
 graph TD
@@ -131,7 +135,8 @@ sequenceDiagram
 
 ### Pattern 4: Storage Race Condition Prevention
 
-**Problem**: Multiple tabs saving simultaneously could overwrite each other's changes
+**Problem**: Multiple tabs saving simultaneously could overwrite each other's
+changes
 
 **Solution**: SaveId tracking + debouncing
 
@@ -192,7 +197,8 @@ graph TB
     style C2_BC fill:#c8e6c9
 ```
 
-**Key**: Each container uses a different channel name, providing automatic message isolation
+**Key**: Each container uses a different channel name, providing automatic
+message isolation
 
 ### Container-Filtered Storage
 
@@ -244,13 +250,15 @@ graph LR
 
 ### Scenario 2: Solo Quick Tab on Tab 1
 
-**Starting State**: Quick Tab visible in Tab 1, Tab 2, Tab 3 (all same container)
+**Starting State**: Quick Tab visible in Tab 1, Tab 2, Tab 3 (all same
+container)
 
 **Actions**:
 
 1. User clicks Solo button in Tab 1
 2. VisibilityHandler calls `quickTab.solo(Tab1.id)`
-3. Domain logic: `visibility.soloedOnTabs = [Tab1.id]`, `visibility.mutedOnTabs = []`
+3. Domain logic: `visibility.soloedOnTabs = [Tab1.id]`,
+   `visibility.mutedOnTabs = []`
 4. StateManager updates entity
 5. StorageManager persists new visibility state
 6. BroadcastManager sends `SOLO_QUICK_TAB` message
@@ -353,7 +361,8 @@ graph TD
 
 **Handling**:
 
-1. Content script requests tab info from background: `browser.runtime.sendMessage({ action: 'GET_TAB_INFO' })`
+1. Content script requests tab info from background:
+   `browser.runtime.sendMessage({ action: 'GET_TAB_INFO' })`
 2. Background responds with `sender.tab.cookieStoreId`
 3. Content script caches container ID for session
 4. Fallback: Use 'firefox-default' if detection fails

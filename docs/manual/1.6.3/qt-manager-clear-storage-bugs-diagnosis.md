@@ -9,23 +9,32 @@
 
 ## Executive Summary
 
-The Quick Tabs Manager Panel and the "Clear Quick Tabs Storage" button have **multiple critical bugs** that render them essentially non-functional. Based on log analysis and codebase review, there are **4 primary bugs** affecting user-facing functionality:
+The Quick Tabs Manager Panel and the "Clear Quick Tabs Storage" button have
+**multiple critical bugs** that render them essentially non-functional. Based on
+log analysis and codebase review, there are **4 primary bugs** affecting
+user-facing functionality:
 
-1. **Clear Quick Tabs Storage Button** - Calls non-existent method `closeQuickTab()` 
+1. **Clear Quick Tabs Storage Button** - Calls non-existent method
+   `closeQuickTab()`
 2. **Manager Panel "Close" Icons** - No event handlers wired up
-3. **Manager Panel "Minimize" Icons** - No event handlers wired up  
-4. **Manager Panel "Close All" Button** - Clears UI but doesn't close actual Quick Tabs
+3. **Manager Panel "Minimize" Icons** - No event handlers wired up
+4. **Manager Panel "Close All" Button** - Clears UI but doesn't close actual
+   Quick Tabs
 
-All issues stem from **incomplete message passing** between the Manager Panel and the Quick Tabs system.
+All issues stem from **incomplete message passing** between the Manager Panel
+and the Quick Tabs system.
 
 ---
 
 ## 🔴 BUG #1: Clear Quick Tabs Storage Button Completely Broken
 
 ### Observed Symptom
-User clicks "Clear Quick Tabs Storage" button in the popup → Nothing happens, no Quick Tabs are closed.
+
+User clicks "Clear Quick Tabs Storage" button in the popup → Nothing happens, no
+Quick Tabs are closed.
 
 ### Error Log Evidence
+
 ```
 [2025-11-28T04:28:04.876Z] [ERROR] [Content] Error clearing Quick Tabs:
 TypeError: ze.closeQuickTab is not a function
@@ -34,20 +43,24 @@ TypeError: ze.closeQuickTab is not a function
 
 ### Root Cause Analysis
 
-**Location:** `src/content.js` - `_handleClearAllQuickTabs()` helper function (around line 690-720)
+**Location:** `src/content.js` - `_handleClearAllQuickTabs()` helper function
+(around line 690-720)
 
-**Problem:** The handler attempts to call `quickTabsManager.closeQuickTab(id)` but this method **does not exist** in the QuickTabsManager class.
+**Problem:** The handler attempts to call `quickTabsManager.closeQuickTab(id)`
+but this method **does not exist** in the QuickTabsManager class.
 
-**Current Broken Implementation:**
-The handler receives the `CLEAR_ALL_QUICK_TABS` message and attempts:
+**Current Broken Implementation:** The handler receives the
+`CLEAR_ALL_QUICK_TABS` message and attempts:
+
 ```javascript
 const tabIds = Array.from(quickTabsManager.tabs.keys());
 for (const id of tabIds) {
-  quickTabsManager.closeQuickTab(id);  // ← METHOD DOES NOT EXIST
+  quickTabsManager.closeQuickTab(id); // ← METHOD DOES NOT EXIST
 }
 ```
 
 **Actual Available Methods in QuickTabsManager:**
+
 - ✅ `closeById(id)` - Instance method that calls `destroyHandler.closeById(id)`
 - ✅ `closeAll()` - Instance method that calls `destroyHandler.closeAll()`
 - ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
@@ -57,37 +70,47 @@ for (const id of tabIds) {
 **File:** `src/content.js`  
 **Function:** `_handleClearAllQuickTabs()` (around line 707)
 
-**Change Required:**
-Replace the non-existent method call with the correct method name. The loop iteration must be modified to call `closeById(id)` instead of `closeQuickTab(id)`.
+**Change Required:** Replace the non-existent method call with the correct
+method name. The loop iteration must be modified to call `closeById(id)` instead
+of `closeQuickTab(id)`.
 
-**Alternative Approach:**
-Since the QuickTabsManager has a `closeAll()` method that calls `destroyHandler.closeAll()`, the entire loop could be replaced with a single call to this method, which would be more efficient and cleaner.
+**Alternative Approach:** Since the QuickTabsManager has a `closeAll()` method
+that calls `destroyHandler.closeAll()`, the entire loop could be replaced with a
+single call to this method, which would be more efficient and cleaner.
 
 ---
 
 ## 🔴 BUG #2: Manager Panel "Close" Icons Don't Work
 
-### Observed Symptom  
-User clicks the "✕" close icon next to a Quick Tab in the Manager Panel → Nothing happens, tab remains visible on screen.
+### Observed Symptom
+
+User clicks the "✕" close icon next to a Quick Tab in the Manager Panel →
+Nothing happens, tab remains visible on screen.
 
 ### Log Evidence
-**NO LOGS AT ALL** when clicking the close icon - indicates event handler is not attached.
+
+**NO LOGS AT ALL** when clicking the close icon - indicates event handler is not
+attached.
 
 **Expected logs (when working):**
+
 ```javascript
 [LOG] [DestroyHandler] Handling destroy for: qt-XXXX
 [LOG] [QuickTabWindow] Destroyed: qt-XXXX
 ```
 
-**Actual logs:** *(crickets)* 🦗
+**Actual logs:** _(crickets)_ 🦗
 
 ### Root Cause Analysis
 
-**Location:** `src/features/quick-tabs/panel/PanelContentManager.js` (not directly examined but inferred from architecture)
+**Location:** `src/features/quick-tabs/panel/PanelContentManager.js` (not
+directly examined but inferred from architecture)
 
-**Problem:** The close icons rendered in the Manager Panel are **not wired up to send messages** to the content script to actually close the Quick Tabs.
+**Problem:** The close icons rendered in the Manager Panel are **not wired up to
+send messages** to the content script to actually close the Quick Tabs.
 
 **Expected Event Flow:**
+
 ```
 User clicks Close icon
   ↓
@@ -105,6 +128,7 @@ DestroyHandler.closeById(id) removes Quick Tab from DOM
 ```
 
 **Actual Flow:**
+
 ```
 User clicks Close icon
   ↓
@@ -119,42 +143,59 @@ User clicks Close icon
 
 **Changes Required:**
 
-1. **Add event listener for close icon clicks** - The event listener must be added using event delegation on the panel content container since the icons are dynamically rendered. Use a data attribute or CSS class to identify close buttons.
+1. **Add event listener for close icon clicks** - The event listener must be
+   added using event delegation on the panel content container since the icons
+   are dynamically rendered. Use a data attribute or CSS class to identify close
+   buttons.
 
-2. **Extract Quick Tab ID from clicked element** - When a close icon is clicked, the handler must extract the Quick Tab ID from the element's data attributes or closest parent element.
+2. **Extract Quick Tab ID from clicked element** - When a close icon is clicked,
+   the handler must extract the Quick Tab ID from the element's data attributes
+   or closest parent element.
 
-3. **Send message to content script** - The handler must send a `browser.runtime.sendMessage()` call with action type and the Quick Tab ID.
+3. **Send message to content script** - The handler must send a
+   `browser.runtime.sendMessage()` call with action type and the Quick Tab ID.
 
-4. **Add message handler in content.js** - A new case must be added to the message listener in `content.js` to handle the close request and call `quickTabsManager.closeById(id)`.
+4. **Add message handler in content.js** - A new case must be added to the
+   message listener in `content.js` to handle the close request and call
+   `quickTabsManager.closeById(id)`.
 
-**Implementation Pattern:**
-The close icon click handler should follow the same pattern as other panel actions: extract the ID from the clicked element, then send a runtime message to the content script with the action type and ID, allowing the content script's message handler to delegate to the appropriate QuickTabsManager method.
+**Implementation Pattern:** The close icon click handler should follow the same
+pattern as other panel actions: extract the ID from the clicked element, then
+send a runtime message to the content script with the action type and ID,
+allowing the content script's message handler to delegate to the appropriate
+QuickTabsManager method.
 
 ---
 
 ## 🔴 BUG #3: Manager Panel "Minimize" Icons Don't Work
 
 ### Observed Symptom
-User clicks the minimize icon (usually "_" or similar) in the Manager Panel → Nothing happens, Quick Tab remains visible.
+
+User clicks the minimize icon (usually "\_" or similar) in the Manager Panel →
+Nothing happens, Quick Tab remains visible.
 
 ### Log Evidence
+
 **NO LOGS AT ALL** - same as close icons.
 
 **Expected logs (when working):**
+
 ```javascript
 [LOG] [VisibilityHandler] Handling minimize for: qt-XXXX
 [LOG] [MinimizedManager] Added minimized tab: qt-XXXX
 ```
 
-**Actual logs:** *(crickets)* 🦗
+**Actual logs:** _(crickets)_ 🦗
 
 ### Root Cause Analysis
 
 **Location:** `src/features/quick-tabs/panel/PanelContentManager.js`
 
-**Problem:** Identical issue to Bug #2 - the minimize icons are **not wired up** to trigger any action.
+**Problem:** Identical issue to Bug #2 - the minimize icons are **not wired up**
+to trigger any action.
 
 **Expected Flow:**
+
 ```
 User clicks Minimize icon
   ↓
@@ -170,6 +211,7 @@ VisibilityHandler.handleMinimize(id) hides Quick Tab
 ```
 
 **Actual Flow:**
+
 ```
 User clicks Minimize icon
   ↓
@@ -182,30 +224,39 @@ User clicks Minimize icon
 
 **Changes Required:**
 
-1. **Add event listener for minimize icon clicks** - Same delegation pattern as close icons.
+1. **Add event listener for minimize icon clicks** - Same delegation pattern as
+   close icons.
 
 2. **Extract Quick Tab ID** - From the clicked element's data attributes.
 
-3. **Send minimize message** - Use `browser.runtime.sendMessage()` with appropriate action type.
+3. **Send minimize message** - Use `browser.runtime.sendMessage()` with
+   appropriate action type.
 
-4. **Add content script handler** - Add a new message case in `content.js` to call `quickTabsManager.minimizeById(id)`.
+4. **Add content script handler** - Add a new message case in `content.js` to
+   call `quickTabsManager.minimizeById(id)`.
 
-**Note:** The QuickTabsManager already has `minimizeById()` method that delegates to `handleMinimize()`, so the backend logic exists - only the UI wiring is missing.
+**Note:** The QuickTabsManager already has `minimizeById()` method that
+delegates to `handleMinimize()`, so the backend logic exists - only the UI
+wiring is missing.
 
 ---
 
 ## 🔴 BUG #4: "Close All" Button Visual/Storage Desync
 
 ### Observed Symptom
+
 User clicks "Close All" button in Manager Panel:
+
 1. ✅ Manager Panel list clears (UI updates)
 2. ❌ Quick Tabs on screen remain visible
 3. ❌ When user creates a new Quick Tab, the "closed" tabs reappear in the list
 
 ### Log Evidence
+
 **NO LOGS AT ALL** when "Close All" is clicked.
 
 **Expected logs:**
+
 ```javascript
 [LOG] [Manager] Close All button clicked
 [LOG] [Content] Closing all minimized Quick Tabs
@@ -220,20 +271,26 @@ User clicks "Close All" button in Manager Panel:
 
 **Location:** `src/features/quick-tabs/panel/PanelContentManager.js`
 
-**Problem:** The "Close All" button clears the **panel's local UI state** but does **not send a message** to actually close the Quick Tabs.
+**Problem:** The "Close All" button clears the **panel's local UI state** but
+does **not send a message** to actually close the Quick Tabs.
 
 **What's Happening:**
 
 1. **Button click handler** likely has code that clears the panel's DOM:
+
    ```javascript
-   quickTabsList.innerHTML = '';  // ← Clears UI only
+   quickTabsList.innerHTML = ''; // ← Clears UI only
    ```
 
-2. **Missing:** No message sent to content script to actually destroy the Quick Tabs.
+2. **Missing:** No message sent to content script to actually destroy the Quick
+   Tabs.
 
-3. **Why tabs reappear:** When a new Quick Tab is created, it triggers a storage sync event. The panel re-reads storage and sees the "closed" tabs are still there, so it repopulates the list.
+3. **Why tabs reappear:** When a new Quick Tab is created, it triggers a storage
+   sync event. The panel re-reads storage and sees the "closed" tabs are still
+   there, so it repopulates the list.
 
 **Expected Flow:**
+
 ```
 User clicks "Close All"
   ↓
@@ -249,6 +306,7 @@ Panel UI updates via event listeners (not manual clear)
 ```
 
 **Actual Flow:**
+
 ```
 User clicks "Close All"
   ↓
@@ -267,27 +325,35 @@ Next update repopulates list from storage
 
 **Changes Required:**
 
-1. **Modify "Close All" button handler** - Remove manual DOM manipulation of the quick tabs list. The UI should be updated **automatically** via event listeners, not manually cleared.
+1. **Modify "Close All" button handler** - Remove manual DOM manipulation of the
+   quick tabs list. The UI should be updated **automatically** via event
+   listeners, not manually cleared.
 
-2. **Send close all message** - Add `browser.runtime.sendMessage()` call with action type indicating close all minimized tabs.
+2. **Send close all message** - Add `browser.runtime.sendMessage()` call with
+   action type indicating close all minimized tabs.
 
-3. **Add content script handler** - Add message case in `content.js` to iterate through minimized tabs and close each one using the DestroyHandler.
+3. **Add content script handler** - Add message case in `content.js` to iterate
+   through minimized tabs and close each one using the DestroyHandler.
 
-4. **Let events update UI** - The panel should listen to Quick Tab destruction events and update its UI accordingly, rather than preemptively clearing it.
+4. **Let events update UI** - The panel should listen to Quick Tab destruction
+   events and update its UI accordingly, rather than preemptively clearing it.
 
-**Implementation Pattern:**
-The "Close All" button should send a message to the content script requesting closure of all minimized tabs. The content script should iterate through the minimized tabs collection and call the destroy method for each one. As each tab is destroyed, events will fire that the panel listens to, causing it to remove that tab from its display naturally.
+**Implementation Pattern:** The "Close All" button should send a message to the
+content script requesting closure of all minimized tabs. The content script
+should iterate through the minimized tabs collection and call the destroy method
+for each one. As each tab is destroyed, events will fire that the panel listens
+to, causing it to remove that tab from its display naturally.
 
 ---
 
 ## 📊 Bug Summary Table
 
-| Bug # | Component | Issue | Severity | Impact | Root Cause |
-|-------|-----------|-------|----------|--------|------------|
-| #1 | Clear Storage Button | Calls non-existent method | 🔴 CRITICAL | Feature completely broken | Wrong method name in content.js |
-| #2 | Manager Close Icons | No event handler | 🔴 CRITICAL | Can't close from manager | Missing event delegation in PanelContentManager |
-| #3 | Manager Minimize Icons | No event handler | 🔴 CRITICAL | Can't minimize from manager | Missing event delegation in PanelContentManager |
-| #4 | Close All Button | Doesn't send message | 🔴 CRITICAL | Visual desync, tabs persist | Missing message passing in PanelContentManager |
+| Bug # | Component              | Issue                     | Severity    | Impact                      | Root Cause                                      |
+| ----- | ---------------------- | ------------------------- | ----------- | --------------------------- | ----------------------------------------------- |
+| #1    | Clear Storage Button   | Calls non-existent method | 🔴 CRITICAL | Feature completely broken   | Wrong method name in content.js                 |
+| #2    | Manager Close Icons    | No event handler          | 🔴 CRITICAL | Can't close from manager    | Missing event delegation in PanelContentManager |
+| #3    | Manager Minimize Icons | No event handler          | 🔴 CRITICAL | Can't minimize from manager | Missing event delegation in PanelContentManager |
+| #4    | Close All Button       | Doesn't send message      | 🔴 CRITICAL | Visual desync, tabs persist | Missing message passing in PanelContentManager  |
 
 ---
 
@@ -295,11 +361,13 @@ The "Close All" button should send a message to the content script requesting cl
 
 ### The Core Problem
 
-**The Manager Panel is a VIEW-ONLY component** - it can display Quick Tabs but cannot control them.
+**The Manager Panel is a VIEW-ONLY component** - it can display Quick Tabs but
+cannot control them.
 
 **Why This Happened:**
 
 The panel was refactored into a facade pattern with separate components:
+
 - `PanelUIBuilder` - Creates DOM elements ✅
 - `PanelContentManager` - **Should** wire up events ❌ **Incomplete**
 - `PanelStateManager` - Manages panel state ✅
@@ -308,13 +376,16 @@ The panel was refactored into a facade pattern with separate components:
 
 **The Gap:**
 
-During refactoring, the **action button event handlers** in `PanelContentManager` were either:
+During refactoring, the **action button event handlers** in
+`PanelContentManager` were either:
+
 1. Not implemented at all, or
 2. Implemented to update UI only without sending messages to content script
 
 ### Evidence from Codebase
 
 **From `panel.js` (PanelManager facade):**
+
 ```javascript
 minimizeTab(id) {
   if (this.contentManager) {
@@ -330,6 +401,7 @@ restoreTab(id) {
 ```
 
 **These methods exist in PanelManager** but are **never called** because:
+
 - The UI buttons don't trigger these methods
 - There's no event delegation connecting clicks to these handlers
 
@@ -343,23 +415,26 @@ restoreTab(id) {
 **Function:** `_handleClearAllQuickTabs()` (around line 690-720)
 
 **Current Broken Code Pattern:**
+
 ```javascript
 function _handleClearAllQuickTabs(sendResponse) {
   const tabIds = Array.from(quickTabsManager.tabs.keys());
   for (const id of tabIds) {
-    quickTabsManager.closeQuickTab(id);  // ← WRONG METHOD NAME
+    quickTabsManager.closeQuickTab(id); // ← WRONG METHOD NAME
   }
 }
 ```
 
-**Fix Option A - Use Correct Method:**
-Replace the loop to call `closeById(id)` instead of `closeQuickTab(id)`.
+**Fix Option A - Use Correct Method:** Replace the loop to call `closeById(id)`
+instead of `closeQuickTab(id)`.
 
-**Fix Option B - Use CloseAll Method:**
-Replace the entire loop with a single call to `quickTabsManager.closeAll()` which internally calls `destroyHandler.closeAll()`. This is the cleaner approach.
+**Fix Option B - Use CloseAll Method:** Replace the entire loop with a single
+call to `quickTabsManager.closeAll()` which internally calls
+`destroyHandler.closeAll()`. This is the cleaner approach.
 
-**Verification:**
-After fix, clicking "Clear Quick Tabs Storage" should produce logs:
+**Verification:** After fix, clicking "Clear Quick Tabs Storage" should produce
+logs:
+
 ```
 [Content] Received CLEAR_ALL_QUICK_TABS request
 [Content] Clearing N Quick Tabs
@@ -377,23 +452,29 @@ After fix, clicking "Clear Quick Tabs Storage" should produce logs:
 
 #### Step 1: Add Event Delegation in setupEventListeners()
 
-The `setupEventListeners()` method must add a delegated click listener to the panel content container that handles clicks on dynamically-rendered Quick Tab action buttons.
+The `setupEventListeners()` method must add a delegated click listener to the
+panel content container that handles clicks on dynamically-rendered Quick Tab
+action buttons.
 
 **Pattern:**
+
 ```javascript
 // Listen for clicks on the panel content
-panel.addEventListener('click', (event) => {
+panel.addEventListener('click', event => {
   const target = event.target;
-  
+
   // Check if clicked element is a close button
   if (target.matches('.qt-close-btn') || target.closest('.qt-close-btn')) {
     const quickTabId = extractIdFromElement(target);
     handleCloseTab(quickTabId);
     event.stopPropagation();
   }
-  
+
   // Check if clicked element is a minimize button
-  if (target.matches('.qt-minimize-btn') || target.closest('.qt-minimize-btn')) {
+  if (
+    target.matches('.qt-minimize-btn') ||
+    target.closest('.qt-minimize-btn')
+  ) {
     const quickTabId = extractIdFromElement(target);
     handleMinimizeTab(quickTabId);
     event.stopPropagation();
@@ -403,31 +484,36 @@ panel.addEventListener('click', (event) => {
 
 #### Step 2: Implement ID Extraction Helper
 
-A helper method must be added to extract the Quick Tab ID from the clicked element. This should check data attributes on the button itself or its parent Quick Tab row element.
+A helper method must be added to extract the Quick Tab ID from the clicked
+element. This should check data attributes on the button itself or its parent
+Quick Tab row element.
 
 **Pattern:**
+
 ```javascript
 function extractIdFromElement(element) {
   // Try button's data-id attribute
   if (element.dataset.id) return element.dataset.id;
-  
+
   // Try parent row's data-id attribute
   const row = element.closest('[data-quick-tab-id]');
   if (row) return row.dataset.quickTabId;
-  
+
   return null;
 }
 ```
 
 #### Step 3: Implement Message Sending Handlers
 
-The `handleCloseTab()` and `handleMinimizeTab()` methods must send messages to the content script rather than manipulating UI directly.
+The `handleCloseTab()` and `handleMinimizeTab()` methods must send messages to
+the content script rather than manipulating UI directly.
 
 **Close Handler Pattern:**
+
 ```javascript
 handleCloseTab(id) {
   if (!id) return;
-  
+
   browser.runtime.sendMessage({
     action: 'CLOSE_QUICK_TAB',
     id: id
@@ -438,10 +524,11 @@ handleCloseTab(id) {
 ```
 
 **Minimize Handler Pattern:**
+
 ```javascript
 handleMinimizeTab(id) {
   if (!id) return;
-  
+
   browser.runtime.sendMessage({
     action: 'MINIMIZE_QUICK_TAB',
     id: id
@@ -459,16 +546,17 @@ handleMinimizeTab(id) {
 **Add two new message cases:**
 
 **Case for CLOSE_QUICK_TAB:**
+
 ```javascript
 if (message.action === 'CLOSE_QUICK_TAB') {
   try {
     if (!quickTabsManager) {
       throw new Error('QuickTabsManager not initialized');
     }
-    
+
     const { id } = message;
     quickTabsManager.closeById(id);
-    
+
     sendResponse({ success: true, id: id });
   } catch (error) {
     console.error('[Content] Error closing Quick Tab:', error);
@@ -479,16 +567,17 @@ if (message.action === 'CLOSE_QUICK_TAB') {
 ```
 
 **Case for MINIMIZE_QUICK_TAB:**
+
 ```javascript
 if (message.action === 'MINIMIZE_QUICK_TAB') {
   try {
     if (!quickTabsManager) {
       throw new Error('QuickTabsManager not initialized');
     }
-    
+
     const { id } = message;
     quickTabsManager.minimizeById(id);
-    
+
     sendResponse({ success: true, id: id });
   } catch (error) {
     console.error('[Content] Error minimizing Quick Tab:', error);
@@ -508,9 +597,11 @@ if (message.action === 'MINIMIZE_QUICK_TAB') {
 
 #### Step 1: Add "Close All" Button Event Listener
 
-In `setupEventListeners()`, add a listener for the "Close All" button. The button should have a specific ID or class for identification.
+In `setupEventListeners()`, add a listener for the "Close All" button. The
+button should have a specific ID or class for identification.
 
 **Pattern:**
+
 ```javascript
 const closeAllBtn = panel.querySelector('#close-all-minimized-btn');
 if (closeAllBtn) {
@@ -525,6 +616,7 @@ if (closeAllBtn) {
 This method should **only send a message**, not manipulate the UI.
 
 **Pattern:**
+
 ```javascript
 handleCloseAllMinimized() {
   browser.runtime.sendMessage({
@@ -544,20 +636,21 @@ handleCloseAllMinimized() {
 **File:** `src/content.js`
 
 **Add new message case:**
+
 ```javascript
 if (message.action === 'CLOSE_ALL_MINIMIZED') {
   try {
     if (!quickTabsManager || !quickTabsManager.minimizedManager) {
       throw new Error('QuickTabsManager or MinimizedManager not initialized');
     }
-    
+
     const minimizedTabs = quickTabsManager.minimizedManager.getAll();
     const count = minimizedTabs.length;
-    
+
     for (const tab of minimizedTabs) {
       quickTabsManager.closeById(tab.id);
     }
-    
+
     sendResponse({ success: true, count: count });
   } catch (error) {
     console.error('[Content] Error closing all minimized tabs:', error);
@@ -569,14 +662,18 @@ if (message.action === 'CLOSE_ALL_MINIMIZED') {
 
 #### Step 4: Remove Manual UI Clearing
 
-**Critical:** Remove any code in the "Close All" handler that manually clears the panel's Quick Tab list DOM. The UI should update **automatically** via event listeners when tabs are actually destroyed.
+**Critical:** Remove any code in the "Close All" handler that manually clears
+the panel's Quick Tab list DOM. The UI should update **automatically** via event
+listeners when tabs are actually destroyed.
 
 If there's code like this:
+
 ```javascript
-quickTabsList.innerHTML = '';  // ← REMOVE THIS
+quickTabsList.innerHTML = ''; // ← REMOVE THIS
 ```
 
-It must be removed. The panel should listen to destruction events and update its display accordingly.
+It must be removed. The panel should listen to destruction events and update its
+display accordingly.
 
 ---
 
@@ -585,27 +682,32 @@ It must be removed. The panel should listen to destruction events and update its
 ### Issue #5: Variable Name Obfuscation
 
 **Evidence:**
+
 ```javascript
 TypeError: ze.closeQuickTab is not a function
 ```
 
-**Problem:** The variable `ze` is a minified/obfuscated name, suggesting the extension is using a **production build** during development.
+**Problem:** The variable `ze` is a minified/obfuscated name, suggesting the
+extension is using a **production build** during development.
 
-**Impact:** Makes debugging extremely difficult since variable names are meaningless.
+**Impact:** Makes debugging extremely difficult since variable names are
+meaningless.
 
 **Recommendation:**  
-When developing or testing, use development builds with readable variable names. The rollup config should have a development mode that doesn't minify code.
+When developing or testing, use development builds with readable variable names.
+The rollup config should have a development mode that doesn't minify code.
 
 **File:** `rollup.config.js` or build scripts
 
-**Required Change:**
-Ensure development builds preserve variable names and don't apply minification. Only production builds for release should be minified.
+**Required Change:** Ensure development builds preserve variable names and don't
+apply minification. Only production builds for release should be minified.
 
 ---
 
 ### Issue #6: Emergency Save Frequency
 
 **Evidence:**
+
 ```javascript
 [2025-11-28T04:27:59.536Z] [LOG] [EventManager] Tab hidden - triggering emergency save
 ```
@@ -615,14 +717,17 @@ Ensure development builds preserve variable names and don't apply minification. 
 **Current Behavior:** Working as designed (prevents data loss on tab switch).
 
 **Potential Issue:** Could cause performance problems if:
+
 - User has many Quick Tabs open
 - User switches tabs frequently
 - Storage writes are expensive
 
-**Severity:** 🟢 **LOW** - Working correctly, but may need optimization in the future.
+**Severity:** 🟢 **LOW** - Working correctly, but may need optimization in the
+future.
 
 **Recommendation:**  
-Consider adding a debounce or throttle mechanism to reduce save frequency if performance issues arise. Current implementation is safe but possibly excessive.
+Consider adding a debounce or throttle mechanism to reduce save frequency if
+performance issues arise. Current implementation is safe but possibly excessive.
 
 ---
 
@@ -631,12 +736,14 @@ Consider adding a debounce or throttle mechanism to reduce save frequency if per
 After implementing fixes, verify each bug is resolved:
 
 ### Bug #1 - Clear Storage Button
+
 - [ ] Click "Clear Quick Tabs Storage" in popup
 - [ ] Verify all Quick Tabs are removed from screen
 - [ ] Verify console shows destroy logs for each tab
 - [ ] Verify no `TypeError: closeQuickTab is not a function` error
 
 ### Bug #2 - Manager Close Icons
+
 - [ ] Open Manager Panel
 - [ ] Click close icon ("✕") next to a Quick Tab
 - [ ] Verify Quick Tab is removed from screen
@@ -644,6 +751,7 @@ After implementing fixes, verify each bug is resolved:
 - [ ] Verify Manager Panel list updates to remove the tab
 
 ### Bug #3 - Manager Minimize Icons
+
 - [ ] Open Manager Panel
 - [ ] Click minimize icon next to a Quick Tab
 - [ ] Verify Quick Tab disappears from screen
@@ -651,6 +759,7 @@ After implementing fixes, verify each bug is resolved:
 - [ ] Verify tab appears in "Minimized" section of panel
 
 ### Bug #4 - Close All Button
+
 - [ ] Minimize several Quick Tabs
 - [ ] Open Manager Panel
 - [ ] Click "Close All" button
@@ -666,16 +775,20 @@ After implementing fixes, verify each bug is resolved:
 ### Why These Bugs Occurred
 
 1. **Incomplete Refactoring**  
-   The facade pattern refactoring split responsibilities but didn't complete the wiring between UI and business logic.
+   The facade pattern refactoring split responsibilities but didn't complete the
+   wiring between UI and business logic.
 
 2. **Missing Integration Testing**  
-   Unit tests for individual components may pass, but integration testing would have caught these message passing failures.
+   Unit tests for individual components may pass, but integration testing would
+   have caught these message passing failures.
 
 3. **API Name Inconsistency**  
-   The method `closeQuickTab()` doesn't exist but `closeById()` does. This naming inconsistency led to the wrong method being called.
+   The method `closeQuickTab()` doesn't exist but `closeById()` does. This
+   naming inconsistency led to the wrong method being called.
 
 4. **Documentation Gap**  
-   No documentation specifying which methods are public API vs internal, leading to incorrect usage.
+   No documentation specifying which methods are public API vs internal, leading
+   to incorrect usage.
 
 ### Prevention Strategies
 
@@ -686,7 +799,8 @@ After implementing fixes, verify each bug is resolved:
    Add tests that verify message passing between panel and content script.
 
 3. **Type Checking**  
-   Consider using TypeScript or JSDoc with type checking to catch method name errors at build time.
+   Consider using TypeScript or JSDoc with type checking to catch method name
+   errors at build time.
 
 4. **Logging Standards**  
    Ensure all user-facing actions produce console logs for debugging.
@@ -698,14 +812,19 @@ After implementing fixes, verify each bug is resolved:
 **Files Modified for Fixes:**
 
 1. `src/content.js` - Fix Bug #1, add message handlers for Bugs #2-4
-2. `src/features/quick-tabs/panel/PanelContentManager.js` - Fix Bugs #2-4 (event wiring)
-3. `src/features/quick-tabs/index.js` - Reference for correct method names (no changes needed)
+2. `src/features/quick-tabs/panel/PanelContentManager.js` - Fix Bugs #2-4 (event
+   wiring)
+3. `src/features/quick-tabs/index.js` - Reference for correct method names (no
+   changes needed)
 
 **Files for Context:**
 
-- `src/features/quick-tabs/panel.js` - PanelManager facade (shows delegation pattern)
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy logic implementation
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Minimize logic implementation
+- `src/features/quick-tabs/panel.js` - PanelManager facade (shows delegation
+  pattern)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Destroy logic
+  implementation
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Minimize logic
+  implementation
 
 ---
 
@@ -743,7 +862,8 @@ After implementing fixes, verify each bug is resolved:
 **User Experience Restored:**
 
 - Manager Panel becomes a **fully functional** control interface
-- Users can manage Quick Tabs from the panel without using individual window controls
+- Users can manage Quick Tabs from the panel without using individual window
+  controls
 - "Clear Quick Tabs Storage" provides a quick way to reset state
 - All features work as originally intended
 
@@ -753,16 +873,24 @@ After implementing fixes, verify each bug is resolved:
 
 Before starting implementation, clarify:
 
-1. **Button Selectors** - What are the exact CSS selectors for the close/minimize/close-all buttons in the Manager Panel?
+1. **Button Selectors** - What are the exact CSS selectors for the
+   close/minimize/close-all buttons in the Manager Panel?
 
-2. **Data Attributes** - How are Quick Tab IDs stored in the panel DOM? (data-id, data-quick-tab-id, etc.)
+2. **Data Attributes** - How are Quick Tab IDs stored in the panel DOM?
+   (data-id, data-quick-tab-id, etc.)
 
-3. **Testing Environment** - Is there a development build without minification for testing?
+3. **Testing Environment** - Is there a development build without minification
+   for testing?
 
-4. **Priority** - Should all bugs be fixed together, or is there a specific order of importance?
+4. **Priority** - Should all bugs be fixed together, or is there a specific
+   order of importance?
 
 ---
 
 **End of Diagnosis Document**
 
-**Next Steps:** Review this diagnosis with the development team, then proceed with implementing fixes according to the detailed patterns provided above. Each fix includes exact locations, clear explanations of what needs to change, and specific technical patterns to follow - but no explicit code implementations as requested.
+**Next Steps:** Review this diagnosis with the development team, then proceed
+with implementing fixes according to the detailed patterns provided above. Each
+fix includes exact locations, clear explanations of what needs to change, and
+specific technical patterns to follow - but no explicit code implementations as
+requested.

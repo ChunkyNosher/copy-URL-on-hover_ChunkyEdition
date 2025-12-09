@@ -4,19 +4,25 @@
 **Last Updated:** November 22, 2025  
 **Target Audience:** GitHub Copilot Coding Agent  
 **Repository:** copy-URL-on-hover_ChunkyEdition  
-**Current Status:** Phase 1 Complete (~50% coverage), Remaining tasks for Phase 2-4
+**Current Status:** Phase 1 Complete (~50% coverage), Remaining tasks for Phase
+2-4
 
 ---
 
 ## Executive Summary
 
-This document details the **specific remaining implementation tasks** required to achieve full autonomous testing capability for all 20 Issue #47 scenarios using GitHub Copilot Coding Agent + Playwright MCP.
+This document details the **specific remaining implementation tasks** required
+to achieve full autonomous testing capability for all 20 Issue #47 scenarios
+using GitHub Copilot Coding Agent + Playwright MCP.
 
-**Current State:** Test bridge infrastructure is complete with 10 basic scenario tests implemented. The foundation is solid but incomplete.
+**Current State:** Test bridge infrastructure is complete with 10 basic scenario
+tests implemented. The foundation is solid but incomplete.
 
-**Target State:** All 20 Issue #47 scenarios automated with agent-driven execution, iteration, and self-healing capabilities.
+**Target State:** All 20 Issue #47 scenarios automated with agent-driven
+execution, iteration, and self-healing capabilities.
 
-**Gap:** 10 additional scenarios + infrastructure enhancements + CI/CD integration + result logging system.
+**Gap:** 10 additional scenarios + infrastructure enhancements + CI/CD
+integration + result logging system.
 
 ---
 
@@ -55,30 +61,33 @@ This document details the **specific remaining implementation tasks** required t
 
 ### Category A: Missing Scenario Tests (10 scenarios)
 
-**Based on revised Issue #47 (20 total scenarios), the following are NOT YET automated:**
+**Based on revised Issue #47 (20 total scenarios), the following are NOT YET
+automated:**
 
-| Scenario | Title | Complexity | Estimated Effort |
-|----------|-------|------------|------------------|
-| **Scenario 5** | Manager Panel with YouTube Embed Playback | Medium | 2-3 hours |
-| **Scenario 10** | Quick Tab Limit Enforcement & Error UI | Low | 1-2 hours |
-| **Scenario 11** | Emergency Save on Tab Switch | Medium | 2-3 hours |
-| **Scenario 12** | Close All Minimized via Manager | Low | 1-2 hours |
-| **Scenario 13** | Solo/Mute Mutual Exclusion | Medium | 2-3 hours |
-| **Scenario 14** | State Persistence Across Browser Restart | High | 3-4 hours |
-| **Scenario 15** | Manager Panel Position/Size Persistence | Low | 1-2 hours |
-| **Scenario 16** | Debug Mode Slot Numbering Validation | Low | 1-2 hours |
-| **Scenario 17** | Multi-Direction Resize Behavior | Medium | 2-3 hours |
-| **Scenario 18** | Z-Index Management (Focus/Blur) | Medium | 2-3 hours |
-| **Scenario 19** | Container Isolation Enforcement | High | 3-4 hours |
-| **Scenario 20** | Container Cleanup on Last Tab Close | High | 3-4 hours |
+| Scenario        | Title                                     | Complexity | Estimated Effort |
+| --------------- | ----------------------------------------- | ---------- | ---------------- |
+| **Scenario 5**  | Manager Panel with YouTube Embed Playback | Medium     | 2-3 hours        |
+| **Scenario 10** | Quick Tab Limit Enforcement & Error UI    | Low        | 1-2 hours        |
+| **Scenario 11** | Emergency Save on Tab Switch              | Medium     | 2-3 hours        |
+| **Scenario 12** | Close All Minimized via Manager           | Low        | 1-2 hours        |
+| **Scenario 13** | Solo/Mute Mutual Exclusion                | Medium     | 2-3 hours        |
+| **Scenario 14** | State Persistence Across Browser Restart  | High       | 3-4 hours        |
+| **Scenario 15** | Manager Panel Position/Size Persistence   | Low        | 1-2 hours        |
+| **Scenario 16** | Debug Mode Slot Numbering Validation      | Low        | 1-2 hours        |
+| **Scenario 17** | Multi-Direction Resize Behavior           | Medium     | 2-3 hours        |
+| **Scenario 18** | Z-Index Management (Focus/Blur)           | Medium     | 2-3 hours        |
+| **Scenario 19** | Container Isolation Enforcement           | High       | 3-4 hours        |
+| **Scenario 20** | Container Cleanup on Last Tab Close       | High       | 3-4 hours        |
 
 **Total Estimated Effort:** 24-35 hours of agent-assisted development
 
 #### Implementation Pattern for Each Scenario
 
-**Reference:** Use existing `tests/extension/issue-47-scenarios.spec.js` as template.
+**Reference:** Use existing `tests/extension/issue-47-scenarios.spec.js` as
+template.
 
 **Standard Test Structure:**
+
 ```javascript
 test.describe('Scenario [N]: [Title]', () => {
   test('should [behavior description]', async ({ context }) => {
@@ -88,13 +97,13 @@ test.describe('Scenario [N]: [Title]', () => {
     const helper1 = new ExtensionTestHelper(page1);
     await helper1.waitForTestBridge(15000);
     await helper1.clearAllQuickTabs();
-    
+
     // Execute scenario steps
     // ... (use Test Bridge API for all actions)
-    
+
     // Assertions
     // ... (verify expected behavior)
-    
+
     // Cleanup
     await helper1.clearAllQuickTabs();
     await page1.close();
@@ -103,6 +112,7 @@ test.describe('Scenario [N]: [Title]', () => {
 ```
 
 **Key Requirements:**
+
 - Use `ExtensionTestHelper` for all extension interactions
 - Use `context.newPage()` for multi-tab scenarios
 - Include `waitForQuickTabCount()` polling for sync verification
@@ -122,11 +132,12 @@ test.describe('Scenario [N]: [Title]', () => {
 **Current Gap:** Test bridge has no methods for solo/mute operations.
 
 **Required Methods:**
+
 ```javascript
 // In src/test-bridge.js
 TestBridge = {
   // ... existing methods ...
-  
+
   /**
    * Toggle solo mode for a Quick Tab
    * @param {string} id - Quick Tab ID
@@ -138,7 +149,7 @@ TestBridge = {
     // Should activate solo mode (hide all other QTs on this tab)
     // Return: {success: boolean, mode: 'solo'|'normal'}
   },
-  
+
   /**
    * Toggle mute mode for a Quick Tab
    * @param {string} id - Quick Tab ID
@@ -150,22 +161,26 @@ TestBridge = {
     // Should activate mute mode (hide on this tab only)
     // Return: {success: boolean, mode: 'mute'|'normal'}
   },
-  
+
   /**
    * Get visibility state for all Quick Tabs on a specific tab
    * @param {number} tabId - Browser tab ID
    */
-  getVisibilityState: async (tabId) => {
+  getVisibilityState: async tabId => {
     // Return: {tabId, visibleQTs: [...], hiddenQTs: [...], soloMode: boolean, mutedQTs: [...]}
   }
 };
 ```
 
 **Verification Pattern:**
-- "According to Mozilla WebExtensions documentation on message passing, `browser.tabs.sendMessage()` supports async responses for state queries."
-- Source: <https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/sendMessage>
+
+- "According to Mozilla WebExtensions documentation on message passing,
+  `browser.tabs.sendMessage()` supports async responses for state queries."
+- Source:
+  <https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/sendMessage>
 
 **Content Script Handlers Needed:**
+
 ```javascript
 // In src/content.js
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -191,10 +206,11 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 **Current Gap:** No methods to query or control Manager Panel state.
 
 **Required Methods:**
+
 ```javascript
 TestBridge = {
   // ... existing methods ...
-  
+
   /**
    * Get Manager Panel state
    */
@@ -207,7 +223,7 @@ TestBridge = {
     //   minimizedTabs: [{id, url, title}, ...]
     // }
   },
-  
+
   /**
    * Set Manager Panel position (for persistence testing)
    * @param {number} x - X coordinate
@@ -217,7 +233,7 @@ TestBridge = {
     // Set explicit position for testing position persistence
     // Return: {success: boolean, position: {x, y}}
   },
-  
+
   /**
    * Set Manager Panel size
    * @param {number} width - Width in pixels
@@ -227,7 +243,7 @@ TestBridge = {
     // Set explicit size for testing size persistence
     // Return: {success: boolean, size: {width, height}}
   },
-  
+
   /**
    * Close all minimized Quick Tabs via Manager
    */
@@ -238,7 +254,9 @@ TestBridge = {
 };
 ```
 
-**Implementation Note:** Manager Panel state is stored in `browser.storage.local` with key `managerPanelState`. Query this storage key to retrieve position/size.
+**Implementation Note:** Manager Panel state is stored in
+`browser.storage.local` with key `managerPanelState`. Query this storage key to
+retrieve position/size.
 
 ---
 
@@ -247,10 +265,11 @@ TestBridge = {
 **Current Gap:** No methods to query or manipulate container context.
 
 **Required Methods:**
+
 ```javascript
 TestBridge = {
   // ... existing methods ...
-  
+
   /**
    * Get container information for all Quick Tabs
    */
@@ -267,7 +286,7 @@ TestBridge = {
     //   ]
     // }
   },
-  
+
   /**
    * Create Quick Tab in specific container
    * @param {string} url - URL to load
@@ -277,7 +296,7 @@ TestBridge = {
     // Create QT in specified container context
     // Return: {success: boolean, id, cookieStoreId}
   },
-  
+
   /**
    * Verify container isolation
    * @param {string} id1 - First Quick Tab ID
@@ -291,12 +310,16 @@ TestBridge = {
 ```
 
 **Container Testing Requirements:**
+
 - Firefox profile with predefined containers (Personal, Work, Shopping, etc.)
 - Launch Playwright with `--profile` flag pointing to test profile
-- "According to Firefox Multi-Account Containers documentation, `cookieStoreId` is the unique identifier for each container context."
-- Source: <https://addons.mozilla.org/en-US/firefox/addon/multi-account-containers/>
+- "According to Firefox Multi-Account Containers documentation, `cookieStoreId`
+  is the unique identifier for each container context."
+- Source:
+  <https://addons.mozilla.org/en-US/firefox/addon/multi-account-containers/>
 
 **Playwright Config Extension:**
+
 ```javascript
 // playwright.config.firefox.js
 use: {
@@ -317,10 +340,11 @@ use: {
 **Current Gap:** No methods to access debug mode state or slot assignments.
 
 **Required Methods:**
+
 ```javascript
 TestBridge = {
   // ... existing methods ...
-  
+
   /**
    * Get slot numbering information (debug mode)
    */
@@ -334,12 +358,12 @@ TestBridge = {
     //   ]
     // }
   },
-  
+
   /**
    * Enable/disable debug mode
    * @param {boolean} enabled - Debug mode state
    */
-  setDebugMode: async (enabled) => {
+  setDebugMode: async enabled => {
     // Toggle debug mode for testing slot numbering
     // Return: {success: boolean, debugMode: boolean}
   }
@@ -350,18 +374,20 @@ TestBridge = {
 
 #### B.5 Resize & Position Validation (Scenarios 17, 18)
 
-**Current Gap:** Test bridge can set position/size but cannot retrieve current values for validation.
+**Current Gap:** Test bridge can set position/size but cannot retrieve current
+values for validation.
 
 **Required Methods:**
+
 ```javascript
 TestBridge = {
   // ... existing methods ...
-  
+
   /**
    * Get Quick Tab position and size
    * @param {string} id - Quick Tab ID
    */
-  getQuickTabGeometry: async (id) => {
+  getQuickTabGeometry: async id => {
     // Return: {
     //   id,
     //   position: {x, y},
@@ -369,12 +395,12 @@ TestBridge = {
     //   zIndex: number
     // }
   },
-  
+
   /**
    * Verify z-index order for focus management
    * @param {string[]} ids - Array of Quick Tab IDs in expected order
    */
-  verifyZIndexOrder: async (ids) => {
+  verifyZIndexOrder: async ids => {
     // Check if QTs are stacked in expected order
     // Return: {valid: boolean, actualOrder: [...]}
   }
@@ -385,7 +411,8 @@ TestBridge = {
 
 ### Category C: Cross-Tab Synchronization Reliability
 
-**Current State:** Basic polling with `waitForQuickTabCount()` works but is not robust for all scenarios.
+**Current State:** Basic polling with `waitForQuickTabCount()` works but is not
+robust for all scenarios.
 
 **Improvements Needed:**
 
@@ -396,7 +423,7 @@ TestBridge = {
 ```javascript
 class ExtensionTestHelper {
   // ... existing methods ...
-  
+
   /**
    * Wait for specific Quick Tab to appear across all pages in context
    * @param {string} id - Quick Tab ID to wait for
@@ -413,7 +440,7 @@ class ExtensionTestHelper {
     }
     throw new Error(`Quick Tab ${id} did not sync within ${timeout}ms`);
   }
-  
+
   /**
    * Wait for Quick Tab state to match expected state
    * @param {string} id - Quick Tab ID
@@ -429,16 +456,18 @@ class ExtensionTestHelper {
       }
       await this.page.waitForTimeout(100);
     }
-    throw new Error(`Quick Tab ${id} did not reach expected state within ${timeout}ms`);
+    throw new Error(
+      `Quick Tab ${id} did not reach expected state within ${timeout}ms`
+    );
   }
-  
+
   /**
    * Helper to check if state matches expected properties
    */
   stateMatches(actual, expected) {
     return Object.keys(expected).every(key => actual[key] === expected[key]);
   }
-  
+
   /**
    * Wait for BroadcastChannel message propagation
    * Uses exponential backoff for reliability
@@ -447,7 +476,7 @@ class ExtensionTestHelper {
     let delay = 50;
     const maxDelay = 500;
     const endTime = Date.now() + timeout;
-    
+
     while (Date.now() < endTime) {
       await this.page.waitForTimeout(delay);
       delay = Math.min(delay * 1.5, maxDelay);
@@ -457,10 +486,15 @@ class ExtensionTestHelper {
 ```
 
 **Rationale:**
-- "According to BroadcastChannel API documentation, message delivery is asynchronous but typically completes within 10-100ms on modern browsers."
-- Source: <https://developer.mozilla.org/en-US/blog/exploring-the-broadcast-channel-api-for-cross-tab-communication/>
-- "Exponential backoff polling is recommended for cross-tab sync testing to handle varying network/CPU loads."
-- Source: <https://dsheiko.com/weblog/optimizing-end-to-end-testing-with-playwright/>
+
+- "According to BroadcastChannel API documentation, message delivery is
+  asynchronous but typically completes within 10-100ms on modern browsers."
+- Source:
+  <https://developer.mozilla.org/en-US/blog/exploring-the-broadcast-channel-api-for-cross-tab-communication/>
+- "Exponential backoff polling is recommended for cross-tab sync testing to
+  handle varying network/CPU loads."
+- Source:
+  <https://dsheiko.com/weblog/optimizing-end-to-end-testing-with-playwright/>
 
 ---
 
@@ -477,6 +511,7 @@ class ExtensionTestHelper {
 **Files to Create:**
 
 1. **`containers.json`** - Define test containers:
+
 ```json
 {
   "version": 4,
@@ -515,13 +550,15 @@ class ExtensionTestHelper {
 ```
 
 2. **`prefs.js`** - Firefox preferences:
+
 ```javascript
-user_pref("privacy.userContext.enabled", true);
-user_pref("privacy.userContext.ui.enabled", true);
-user_pref("privacy.userContext.extension", "@testcontainers-ext");
+user_pref('privacy.userContext.enabled', true);
+user_pref('privacy.userContext.ui.enabled', true);
+user_pref('privacy.userContext.extension', '@testcontainers-ext');
 ```
 
 **Playwright Config Update:**
+
 ```javascript
 // playwright.config.firefox.js
 use: {
@@ -529,33 +566,40 @@ use: {
     args: [
       '--profile',
       path.join(__dirname, 'test-profiles/firefox-containers')
-    ]
+    ];
   }
 }
 ```
 
 **Test Pattern for Container Scenarios:**
+
 ```javascript
 test('should isolate Quick Tabs by container', async ({ context }) => {
   const page1 = await context.newPage();
   await page1.goto('https://example.com');
-  
+
   const helper1 = new ExtensionTestHelper(page1);
   await helper1.waitForTestBridge();
-  
+
   // Create QT in Personal container
-  await helper1.createQuickTabInContainer('https://site1.com', 'firefox-container-1');
-  
+  await helper1.createQuickTabInContainer(
+    'https://site1.com',
+    'firefox-container-1'
+  );
+
   // Create QT in Work container
-  await helper1.createQuickTabInContainer('https://site2.com', 'firefox-container-2');
-  
+  await helper1.createQuickTabInContainer(
+    'https://site2.com',
+    'firefox-container-2'
+  );
+
   // Verify isolation
   const containerInfo = await helper1.getContainerInfo();
   expect(containerInfo.containers).toHaveLength(2);
-  
+
   const personal = containerInfo.containers.find(c => c.name === 'Personal');
   const work = containerInfo.containers.find(c => c.name === 'Work');
-  
+
   expect(personal.quickTabs).toHaveLength(1);
   expect(work.quickTabs).toHaveLength(1);
 });
@@ -572,40 +616,43 @@ test('should isolate Quick Tabs by container', async ({ context }) => {
 #### E.1 Storage Persistence Testing (Partial Solution)
 
 **Pattern:**
+
 ```javascript
-test('should persist Quick Tab state across browser restart (storage)', async ({ context }) => {
+test('should persist Quick Tab state across browser restart (storage)', async ({
+  context
+}) => {
   // Create QTs with various states
   const page1 = await context.newPage();
   await page1.goto('https://example.com');
   const helper1 = new ExtensionTestHelper(page1);
-  
+
   await helper1.createQuickTab('https://site1.com');
   await helper1.createQuickTab('https://site2.com');
-  
+
   const tabs = await helper1.getQuickTabs();
   const tab1 = tabs[0];
-  
+
   await helper1.minimizeQuickTab(tab1.id);
   await helper1.pinQuickTab(tab1.id);
-  
+
   // Close all pages (simulate browser close)
   await context.close();
-  
+
   // Create new context (simulate browser restart)
   const newContext = await browser.newContext();
   const page2 = await newContext.newPage();
   await page2.goto('https://example.com');
-  
+
   const helper2 = new ExtensionTestHelper(page2);
   await helper2.waitForTestBridge();
-  
+
   // Wait for restoration from storage
   await page2.waitForTimeout(2000); // Allow time for storage restoration
-  
+
   // Verify state persisted
   const restoredTabs = await helper2.getQuickTabs();
   expect(restoredTabs).toHaveLength(2);
-  
+
   const restoredTab1 = restoredTabs.find(t => t.id === tab1.id);
   expect(restoredTab1.minimized).toBe(true);
   expect(restoredTab1.pinnedToUrl).not.toBeNull();
@@ -613,15 +660,21 @@ test('should persist Quick Tab state across browser restart (storage)', async ({
 ```
 
 **Limitation Note:**
-- "Playwright cannot test actual browser process restart or extension lifecycle events. Storage-based persistence is the closest approximation."
-- "According to WebExtensions documentation, `browser.storage.local` persists across browser restarts but not across context destruction in test environments."
-- Source: <https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/local>
+
+- "Playwright cannot test actual browser process restart or extension lifecycle
+  events. Storage-based persistence is the closest approximation."
+- "According to WebExtensions documentation, `browser.storage.local` persists
+  across browser restarts but not across context destruction in test
+  environments."
+- Source:
+  <https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/local>
 
 ---
 
 ### Category F: Automated Result Logging for Agent Feedback
 
-**Current State:** Tests pass/fail but no structured feedback for Copilot Agent iteration.
+**Current State:** Tests pass/fail but no structured feedback for Copilot Agent
+iteration.
 
 **Required Infrastructure:**
 
@@ -643,13 +696,13 @@ export class TestResultLogger {
     this.testName = testName;
     this.resultsDir = path.join(__dirname, '../../test-results', testName);
     this.logs = [];
-    
+
     // Create results directory
     if (!fs.existsSync(this.resultsDir)) {
       fs.mkdirSync(this.resultsDir, { recursive: true });
     }
   }
-  
+
   /**
    * Log test step with state snapshot
    */
@@ -658,9 +711,9 @@ export class TestResultLogger {
     const screenshot = await page.screenshot({
       path: path.join(this.resultsDir, `${stepName}-${timestamp}.png`)
     });
-    
+
     const state = await helper.getQuickTabs();
-    
+
     this.logs.push({
       step: stepName,
       timestamp,
@@ -668,31 +721,31 @@ export class TestResultLogger {
       state
     });
   }
-  
+
   /**
    * Log test failure with diagnostics
    */
   async logFailure(error, page, helper) {
     const timestamp = new Date().toISOString();
-    
+
     // Capture failure screenshot
     await page.screenshot({
       path: path.join(this.resultsDir, `FAILURE-${timestamp}.png`)
     });
-    
+
     // Capture console logs
     const consoleLogs = await page.evaluate(() => {
       return window.__TEST_CONSOLE_LOGS__ || [];
     });
-    
+
     // Capture Quick Tab state
     const state = await helper.getQuickTabs().catch(() => null);
-    
+
     // Capture storage state
     const storage = await page.evaluate(() => {
       return browser.storage.local.get(null);
     });
-    
+
     const failureReport = {
       testName: this.testName,
       error: {
@@ -705,23 +758,23 @@ export class TestResultLogger {
       storageState: storage,
       steps: this.logs
     };
-    
+
     // Write failure report
     fs.writeFileSync(
       path.join(this.resultsDir, 'FAILURE-REPORT.json'),
       JSON.stringify(failureReport, null, 2)
     );
-    
+
     return failureReport;
   }
-  
+
   /**
    * Log test success with final state
    */
   async logSuccess(page, helper) {
     const timestamp = new Date().toISOString();
     const state = await helper.getQuickTabs();
-    
+
     const successReport = {
       testName: this.testName,
       status: 'PASS',
@@ -729,7 +782,7 @@ export class TestResultLogger {
       finalState: state,
       steps: this.logs
     };
-    
+
     fs.writeFileSync(
       path.join(this.resultsDir, 'SUCCESS-REPORT.json'),
       JSON.stringify(successReport, null, 2)
@@ -739,11 +792,12 @@ export class TestResultLogger {
 ```
 
 **Usage in Tests:**
+
 ```javascript
 test('Scenario 5: Manager with YouTube', async ({ page }) => {
   const logger = new TestResultLogger('scenario-5');
   const helper = new ExtensionTestHelper(page);
-  
+
   try {
     await logger.logStep('setup', page, helper);
     // ... test steps ...
@@ -758,6 +812,7 @@ test('Scenario 5: Manager with YouTube', async ({ page }) => {
 ```
 
 **Agent Integration:**
+
 - Failure reports in JSON format are easily parseable by Copilot Agent
 - Screenshots provide visual context for debugging
 - State dumps enable agent to understand exact failure conditions
@@ -794,36 +849,36 @@ jobs:
   test-extension:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Build extension with test bridge
         run: TEST_MODE=true npm run build:test
         env:
           NODE_ENV: test
-      
+
       - name: Validate test bridge injection
         run: npm run validate:test-bridge
-      
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps firefox chromium
-      
+
       - name: Run Playwright tests
         run: npm run test:extension
         env:
           CI: true
-      
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -833,7 +888,7 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 30
-      
+
       - name: Upload failure screenshots
         if: failure()
         uses: actions/upload-artifact@v4
@@ -841,7 +896,7 @@ jobs:
           name: failure-screenshots
           path: test-results/**/*FAILURE*.png
           retention-days: 7
-      
+
       - name: Comment PR with results
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -849,7 +904,7 @@ jobs:
           script: |
             const fs = require('fs');
             const resultsPath = 'test-results/results.json';
-            
+
             if (fs.existsSync(resultsPath)) {
               const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
               const comment = `## Playwright Test Results
@@ -870,15 +925,16 @@ jobs:
 ```
 
 **Parallelization Strategy:**
+
 ```yaml
 # For faster execution with test sharding
 strategy:
   matrix:
     shard: [1, 2, 3, 4]
-  
+
 steps:
   # ... existing steps ...
-  
+
   - name: Run Playwright tests (sharded)
     run: npx playwright test --shard=${{ matrix.shard }}/4
 ```
@@ -887,7 +943,8 @@ steps:
 
 ### Category H: Playwright Fixture Enhancements
 
-**Current State:** Basic helper class exists but no fixtures for common setup patterns.
+**Current State:** Basic helper class exists but no fixtures for common setup
+patterns.
 
 **Required Fixtures:**
 
@@ -909,18 +966,18 @@ export const test = base.extend({
   extensionPage: async ({ context }, use) => {
     const page = await context.newPage();
     await page.goto('https://example.com');
-    
+
     const helper = new ExtensionTestHelper(page);
     await helper.waitForTestBridge(15000);
     await helper.clearAllQuickTabs();
-    
+
     await use({ page, helper });
-    
+
     // Cleanup
     await helper.clearAllQuickTabs();
     await page.close();
   },
-  
+
   /**
    * Multi-tab fixture - Pre-configured with 3 pages
    */
@@ -928,35 +985,35 @@ export const test = base.extend({
     const page1 = await context.newPage();
     const page2 = await context.newPage();
     const page3 = await context.newPage();
-    
+
     await page1.goto('https://example.com/tab1');
     await page2.goto('https://example.com/tab2');
     await page3.goto('https://example.com/tab3');
-    
+
     const helper1 = new ExtensionTestHelper(page1);
     const helper2 = new ExtensionTestHelper(page2);
     const helper3 = new ExtensionTestHelper(page3);
-    
+
     await Promise.all([
       helper1.waitForTestBridge(),
       helper2.waitForTestBridge(),
       helper3.waitForTestBridge()
     ]);
-    
+
     await helper1.clearAllQuickTabs();
-    
+
     await use({
       pages: [page1, page2, page3],
       helpers: [helper1, helper2, helper3]
     });
-    
+
     // Cleanup
     await helper1.clearAllQuickTabs();
     await page1.close();
     await page2.close();
     await page3.close();
   },
-  
+
   /**
    * Container fixture - Firefox with predefined containers
    */
@@ -967,7 +1024,7 @@ export const test = base.extend({
         'privacy.userContext.ui.enabled': true
       }
     });
-    
+
     await use(context);
     await context.close();
   }
@@ -977,12 +1034,13 @@ export { expect } from '@playwright/test';
 ```
 
 **Usage Pattern:**
+
 ```javascript
 import { test, expect } from './fixtures.js';
 
 test('Scenario using fixtures', async ({ extensionPage }) => {
   const { page, helper } = extensionPage;
-  
+
   // Test bridge already loaded and cleared
   await helper.createQuickTab('https://github.com');
   const tabs = await helper.getQuickTabs();
@@ -992,7 +1050,7 @@ test('Scenario using fixtures', async ({ extensionPage }) => {
 test('Multi-tab scenario', async ({ multiTab }) => {
   const { helpers } = multiTab;
   const [helper1, helper2, helper3] = helpers;
-  
+
   // All pages already setup with test bridge
   await helper1.createQuickTab('https://site1.com');
   await helper2.waitForQuickTabCount(1);
@@ -1001,10 +1059,14 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 ```
 
 **Rationale:**
-- "Playwright fixtures reduce boilerplate and improve test maintainability by centralizing setup/teardown logic."
+
+- "Playwright fixtures reduce boilerplate and improve test maintainability by
+  centralizing setup/teardown logic."
 - Source: <https://playwright.dev/docs/test-fixtures>
-- "Worker-scoped fixtures enable expensive setup (like browser profiles) to be shared across tests for performance."
-- Source: <https://www.thisdot.co/blog/quick-guide-to-playwright-fixtures-enhancing-your-tests>
+- "Worker-scoped fixtures enable expensive setup (like browser profiles) to be
+  shared across tests for performance."
+- Source:
+  <https://www.thisdot.co/blog/quick-guide-to-playwright-fixtures-enhancing-your-tests>
 
 ---
 
@@ -1015,6 +1077,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **Goal:** Achieve 100% scenario coverage
 
 **Tasks:**
+
 1. Implement Scenarios 10-20 (10 scenarios)
 2. Use existing patterns from Scenarios 1-9
 3. Each scenario estimated 1-4 hours with Copilot assistance
@@ -1028,6 +1091,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **Goal:** Support all scenario testing requirements
 
 **Tasks:**
+
 1. Add solo/mute methods (B.1)
 2. Add Manager Panel methods (B.2)
 3. Add container methods (B.3)
@@ -1043,6 +1107,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **Goal:** Robust cross-tab testing
 
 **Tasks:**
+
 1. Implement enhanced sync utilities (C.1)
 2. Add exponential backoff polling
 3. Add state matching helpers
@@ -1056,6 +1121,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **Goal:** Enable container isolation scenarios
 
 **Tasks:**
+
 1. Create Firefox test profile with containers (D.1)
 2. Update Playwright config
 3. Implement container test patterns
@@ -1069,6 +1135,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **Goal:** Autonomous agent feedback loop
 
 **Tasks:**
+
 1. Implement result logger (F.1)
 2. Setup GitHub Actions workflow (G.1)
 3. Configure artifact uploads
@@ -1083,6 +1150,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **Goal:** Improve test maintainability
 
 **Tasks:**
+
 1. Create custom fixtures (H.1)
 2. Refactor existing tests to use fixtures
 3. Document fixture patterns
@@ -1094,18 +1162,21 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 ## 🎯 Success Metrics
 
 ### Phase 2 Complete (Target: Week 3-5)
+
 - ✅ All 20 Issue #47 scenarios have passing Playwright tests
 - ✅ Test execution time <2 minutes per scenario
 - ✅ Cross-tab sync verified with polling utilities
 - ✅ Container isolation tested with Firefox profiles
 
 ### Phase 3 Complete (Target: Week 6)
+
 - ✅ Test suite organized by category (foundational, cross-tab, container, etc.)
 - ✅ CI pipeline runs all tests on PR to main
 - ✅ Test artifacts uploaded on failure
 - ✅ Result logger provides JSON reports for agent analysis
 
 ### Phase 4 Complete (Target: Ongoing)
+
 - ✅ Copilot Agent can autonomously generate new scenario tests
 - ✅ Agent can analyze failure reports and propose fixes
 - ✅ Average iteration count ≤3 per scenario
@@ -1118,6 +1189,7 @@ test('Multi-tab scenario', async ({ multiTab }) => {
 **For Copilot Coding Agent to begin autonomous implementation:**
 
 ### Prerequisites Check
+
 - [x] Test bridge infrastructure complete (PR #241 merged)
 - [x] Playwright configs pointing to correct test directory
 - [x] Basic scenario tests (1-9) passing as reference
@@ -1148,7 +1220,8 @@ test('Multi-tab scenario', async ({ multiTab }) => {
    - Move to next scenario
 
 5. **Extend Test Bridge as Needed**
-   - If scenario requires new method (e.g., solo/mute), add to `src/test-bridge.js`
+   - If scenario requires new method (e.g., solo/mute), add to
+     `src/test-bridge.js`
    - Update validation script: `scripts/verify-test-bridge.cjs`
    - Rebuild: `TEST_MODE=true npm run build:test`
 
@@ -1175,18 +1248,23 @@ test('Multi-tab scenario', async ({ multiTab }) => {
    - Contains: Wrapper methods for all bridge operations
 
 5. **Gap Analysis**
-   - Path: `docs/manual/v1.6.0/copilot-testing-readiness-gap-analysis-revised.md`
+   - Path:
+     `docs/manual/v1.6.0/copilot-testing-readiness-gap-analysis-revised.md`
    - Contains: Architecture patterns and technical specifications
 
 ### External Documentation
 
 - **Playwright Test API:** <https://playwright.dev/docs/api/class-test>
 - **Playwright Fixtures:** <https://playwright.dev/docs/test-fixtures>
-- **WebExtensions API:** <https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions>
-- **BroadcastChannel API:** <https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel>
-- **Firefox Multi-Account Containers:** <https://support.mozilla.org/en-US/kb/containers>
+- **WebExtensions API:**
+  <https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions>
+- **BroadcastChannel API:**
+  <https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel>
+- **Firefox Multi-Account Containers:**
+  <https://support.mozilla.org/en-US/kb/containers>
 - **Playwright MCP:** <https://github.com/microsoft/playwright-mcp>
-- **GitHub Copilot Agent Mode:** <https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-agent>
+- **GitHub Copilot Agent Mode:**
+  <https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-agent>
 
 ---
 
@@ -1285,28 +1363,28 @@ Use Playwright MCP to view screenshot and analyze failure.
 
 **Use this table to track scenario implementation:**
 
-| Scenario | Status | Test File | Last Updated | Notes |
-|----------|--------|-----------|--------------|-------|
-| 1 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Cross-tab sync |
-| 2 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Multiple QTs |
-| 3 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Pinning |
-| 4 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Minimize/restore |
-| 5 | ❌ TODO | - | - | YouTube embed |
-| 6 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Storage persistence |
-| 7 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Research workflow |
-| 8 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Limits |
-| 9 | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Privacy |
-| 10 | ❌ TODO | - | - | Limit enforcement |
-| 11 | ❌ TODO | - | - | Emergency save |
-| 12 | ❌ TODO | - | - | Close minimized |
-| 13 | ❌ TODO | - | - | Solo/mute exclusion |
-| 14 | ❌ TODO | - | - | Browser restart |
-| 15 | ❌ TODO | - | - | Manager persistence |
-| 16 | ❌ TODO | - | - | Debug mode slots |
-| 17 | ❌ TODO | - | - | Multi-direction resize |
-| 18 | ❌ TODO | - | - | Z-index management |
-| 19 | ❌ TODO | - | - | Container isolation |
-| 20 | ❌ TODO | - | - | Container cleanup |
+| Scenario | Status  | Test File                  | Last Updated | Notes                  |
+| -------- | ------- | -------------------------- | ------------ | ---------------------- |
+| 1        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Cross-tab sync         |
+| 2        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Multiple QTs           |
+| 3        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Pinning                |
+| 4        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Minimize/restore       |
+| 5        | ❌ TODO | -                          | -            | YouTube embed          |
+| 6        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Storage persistence    |
+| 7        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Research workflow      |
+| 8        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Limits                 |
+| 9        | ✅ DONE | issue-47-scenarios.spec.js | Nov 22, 2025 | Privacy                |
+| 10       | ❌ TODO | -                          | -            | Limit enforcement      |
+| 11       | ❌ TODO | -                          | -            | Emergency save         |
+| 12       | ❌ TODO | -                          | -            | Close minimized        |
+| 13       | ❌ TODO | -                          | -            | Solo/mute exclusion    |
+| 14       | ❌ TODO | -                          | -            | Browser restart        |
+| 15       | ❌ TODO | -                          | -            | Manager persistence    |
+| 16       | ❌ TODO | -                          | -            | Debug mode slots       |
+| 17       | ❌ TODO | -                          | -            | Multi-direction resize |
+| 18       | ❌ TODO | -                          | -            | Z-index management     |
+| 19       | ❌ TODO | -                          | -            | Container isolation    |
+| 20       | ❌ TODO | -                          | -            | Container cleanup      |
 
 **Current Coverage:** 10/20 (50%)  
 **Target Coverage:** 20/20 (100%)

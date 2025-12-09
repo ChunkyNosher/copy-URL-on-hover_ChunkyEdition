@@ -1,17 +1,17 @@
 /**
  * Scenario 3: Solo Mode (Pin to Specific Tab)
- * 
+ *
  * Tests that Quick Tabs can be "soloed" to be visible only on specific tabs.
  * When a Quick Tab is soloed, it should:
  * - Only appear on tabs in the soloedOnTabs array
  * - Not appear on any other tabs (including new tabs)
  * - Solo state should sync across all tabs
  * - Broadcast should propagate solo changes within 100ms
- * 
+ *
  * Related Documentation:
  * - docs/issue-47-revised-scenarios.md (Scenario 3)
  * - docs/manual/v1.6.0/remaining-testing-work.md (Priority 1)
- * 
+ *
  * Covers Issues: #47 (Solo/Mute feature)
  */
 
@@ -90,11 +90,11 @@ describe('Scenario 3: Solo Mode Protocol', () => {
     // Connect channels for cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -129,18 +129,22 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       });
 
       // Add to all tabs
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container,
-        visibility: quickTab.visibility
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container,
+            visibility: quickTab.visibility
+          })
+        )
+      );
 
       // Setup tabs to handle solo updates
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -188,17 +192,21 @@ describe('Scenario 3: Solo Mode Protocol', () => {
         }
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container,
-        visibility: quickTab.visibility
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container,
+            visibility: quickTab.visibility
+          })
+        )
+      );
 
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -240,16 +248,20 @@ describe('Scenario 3: Solo Mode Protocol', () => {
         container: 'firefox-default'
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container
+          })
+        )
+      );
 
       let messageReceived = false;
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'SOLO') {
           messageReceived = true;
         }
@@ -287,17 +299,21 @@ describe('Scenario 3: Solo Mode Protocol', () => {
         }
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container,
-        visibility: { ...quickTab.visibility }
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container,
+            visibility: { ...quickTab.visibility }
+          })
+        )
+      );
 
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -368,16 +384,20 @@ describe('Scenario 3: Solo Mode Protocol', () => {
         container: 'firefox-default'
       });
 
-      stateManagers.forEach(sm => sm.add(new QuickTab({
-        id: quickTab.id,
-        url: quickTab.url,
-        position: quickTab.position,
-        size: quickTab.size,
-        container: quickTab.container
-      })));
+      stateManagers.forEach(sm =>
+        sm.add(
+          new QuickTab({
+            id: quickTab.id,
+            url: quickTab.url,
+            position: quickTab.position,
+            size: quickTab.size,
+            container: quickTab.container
+          })
+        )
+      );
 
       eventBuses.forEach((bus, index) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'SOLO') {
             const qt = stateManagers[index].get(message.data.id);
             if (qt) {
@@ -407,7 +427,7 @@ describe('Scenario 3: Solo Mode Protocol', () => {
       expect(qt.visibility.soloedOnTabs.length).toBe(1);
       expect(
         qt.visibility.soloedOnTabs.includes(tabs[0].tabId) ||
-        qt.visibility.soloedOnTabs.includes(tabs[1].tabId)
+          qt.visibility.soloedOnTabs.includes(tabs[1].tabId)
       ).toBe(true);
     });
   });

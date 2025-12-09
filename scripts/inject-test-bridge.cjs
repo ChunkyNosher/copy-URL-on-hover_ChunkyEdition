@@ -2,10 +2,10 @@
 
 /**
  * Inject Test Bridge for Local Testing
- * 
+ *
  * This script injects the test bridge into the built extension for local testing.
  * It's called during the build process when TEST_MODE=true is set.
- * 
+ *
  * @see docs/manual/v1.6.0/copilot-testing-readiness-gap-analysis-revised.md
  */
 
@@ -15,9 +15,19 @@ const path = require('path');
 const TEST_MODE = process.env.TEST_MODE === 'true';
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 const SRC_TEST_BRIDGE = path.join(__dirname, '..', 'src', 'test-bridge.js');
-const SRC_TEST_BRIDGE_BG_HANDLER = path.join(__dirname, '..', 'src', 'test-bridge-background-handler.js');
+const SRC_TEST_BRIDGE_BG_HANDLER = path.join(
+  __dirname,
+  '..',
+  'src',
+  'test-bridge-background-handler.js'
+);
 const SRC_TEST_BRIDGE_PAGE_PROXY = path.join(__dirname, '..', 'src', 'test-bridge-page-proxy.js');
-const SRC_TEST_BRIDGE_CONTENT_HANDLER = path.join(__dirname, '..', 'src', 'test-bridge-content-handler.js');
+const SRC_TEST_BRIDGE_CONTENT_HANDLER = path.join(
+  __dirname,
+  '..',
+  'src',
+  'test-bridge-content-handler.js'
+);
 const DIST_TEST_BRIDGE = path.join(DIST_DIR, 'test-bridge.js');
 const DIST_BACKGROUND = path.join(DIST_DIR, 'background.js');
 const DIST_CONTENT = path.join(DIST_DIR, 'content.js');
@@ -61,7 +71,7 @@ try {
   const testBridgeContent = fs.readFileSync(DIST_TEST_BRIDGE, 'utf8');
   const bgHandlerContent = fs.readFileSync(SRC_TEST_BRIDGE_BG_HANDLER, 'utf8');
   const backgroundContent = fs.readFileSync(DIST_BACKGROUND, 'utf8');
-  
+
   // Check if already injected
   if (backgroundContent.includes('COPILOT_TEST_BRIDGE')) {
     console.log('⏭️  Test bridge already injected in background.js');
@@ -82,12 +92,12 @@ try {
 try {
   const manifestContent = fs.readFileSync(DIST_MANIFEST, 'utf8');
   const manifest = JSON.parse(manifestContent);
-  
+
   // Ensure web_accessible_resources exists
   if (!manifest.web_accessible_resources) {
     manifest.web_accessible_resources = [];
   }
-  
+
   // Add test-bridge.js if not already present
   if (!manifest.web_accessible_resources.includes('test-bridge.js')) {
     manifest.web_accessible_resources.push('test-bridge.js');
@@ -107,7 +117,7 @@ try {
   const pageProxyContent = fs.readFileSync(SRC_TEST_BRIDGE_PAGE_PROXY, 'utf8');
   const contentHandlerContent = fs.readFileSync(SRC_TEST_BRIDGE_CONTENT_HANDLER, 'utf8');
   const contentScript = fs.readFileSync(DIST_CONTENT, 'utf8');
-  
+
   // Check if already injected
   if (contentScript.includes('Test Bridge Page Proxy')) {
     console.log('⏭️  Test bridge already injected in content.js');
@@ -222,7 +232,7 @@ try {
 // === TEST BRIDGE CONTENT HANDLER ===
 ${contentHandlerContent}
 `;
-    
+
     fs.appendFileSync(DIST_CONTENT, injectionScript);
     console.log('✓ Appended test bridge proxy and handler to content.js');
   }
@@ -238,17 +248,17 @@ try {
   if (!backgroundContent.includes('COPILOT_TEST_BRIDGE')) {
     throw new Error('Test bridge not found in background.js after injection');
   }
-  
+
   const contentContent = fs.readFileSync(DIST_CONTENT, 'utf8');
   if (!contentContent.includes('Test Bridge Page Proxy')) {
     throw new Error('Test bridge page proxy not found in content.js after injection');
   }
-  
+
   const manifestContent = fs.readFileSync(DIST_MANIFEST, 'utf8');
   if (!manifestContent.includes('test-bridge.js')) {
     throw new Error('test-bridge.js not found in manifest.json after injection');
   }
-  
+
   console.log('✓ Verification passed: Test bridge successfully injected');
   console.log('');
   console.log('✅ Test bridge injection complete!');

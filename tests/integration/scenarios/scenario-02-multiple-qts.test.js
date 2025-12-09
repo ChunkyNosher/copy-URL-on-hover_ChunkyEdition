@@ -1,13 +1,13 @@
 /**
  * Scenario 2: Multiple Quick Tabs with Cross-Tab Sync
- * 
+ *
  * Tests that multiple Quick Tabs can coexist, each maintains independent state,
  * and all sync correctly across tabs.
- * 
+ *
  * Related Documentation:
  * - docs/issue-47-revised-scenarios.md (Scenario 2)
  * - docs/manual/v1.6.0/remaining-testing-work.md (Phase 4)
- * 
+ *
  * Covers Issues: #47
  */
 
@@ -84,11 +84,11 @@ describe('Scenario 2: Multiple Quick Tabs Protocol', () => {
 
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -110,7 +110,7 @@ describe('Scenario 2: Multiple Quick Tabs Protocol', () => {
     test('creating two Quick Tabs in same tab syncs both to other tabs', async () => {
       // Setup broadcast handlers for all tabs
       eventBuses.forEach((bus, idx) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'CREATE') {
             const qt = new QuickTab({
               id: message.data.id,
@@ -203,23 +203,27 @@ describe('Scenario 2: Multiple Quick Tabs Protocol', () => {
       stateManagers[0].add(qt2);
 
       // Replicate to Tab B
-      stateManagers[1].add(new QuickTab({
-        id: qt1.id,
-        url: qt1.url,
-        position: qt1.position,
-        size: qt1.size,
-        container: qt1.container
-      }));
-      stateManagers[1].add(new QuickTab({
-        id: qt2.id,
-        url: qt2.url,
-        position: qt2.position,
-        size: qt2.size,
-        container: qt2.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt1.id,
+          url: qt1.url,
+          position: qt1.position,
+          size: qt1.size,
+          container: qt1.container
+        })
+      );
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt2.id,
+          url: qt2.url,
+          position: qt2.position,
+          size: qt2.size,
+          container: qt2.container
+        })
+      );
 
       // Setup position update handler
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION') {
           const qt = stateManagers[1].get(message.data.id);
           if (qt) {
@@ -284,17 +288,19 @@ describe('Scenario 2: Multiple Quick Tabs Protocol', () => {
 
       // Replicate to Tab B
       qts.forEach(qt => {
-        stateManagers[1].add(new QuickTab({
-          id: qt.id,
-          url: qt.url,
-          position: qt.position,
-          size: qt.size,
-          container: qt.container
-        }));
+        stateManagers[1].add(
+          new QuickTab({
+            id: qt.id,
+            url: qt.url,
+            position: qt.position,
+            size: qt.size,
+            container: qt.container
+          })
+        );
       });
 
       // Setup close handler
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'CLOSE') {
           stateManagers[1].delete(message.data.id);
         }
@@ -348,7 +354,7 @@ describe('Scenario 2: Multiple Quick Tabs Protocol', () => {
       const receivedUpdates = [];
 
       // Setup handler to track updates
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION') {
           receivedUpdates.push(message.data.id);
         }

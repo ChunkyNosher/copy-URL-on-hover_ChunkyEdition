@@ -25,7 +25,10 @@ Scanner
 
 ```javascript
 // BEFORE (Vulnerable):
-return urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be');
+return (
+  urlObj.hostname.includes('youtube.com') ||
+  urlObj.hostname.includes('youtu.be')
+);
 
 // AFTER (Secure):
 const hostname = urlObj.hostname.toLowerCase();

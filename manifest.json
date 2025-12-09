@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Copy URL on Hover Custom",
-  "version": "1.6.3.6-v10",
+  "version": "1.6.3.6-v11",
   "description": "Copy URLs or link text while hovering over links. Enhanced Quick Tabs with solo/mute visibility control, navigation, minimize, and sidebar manager.",
 
   "permissions": [
@@ -49,19 +49,13 @@
   },
 
   "background": {
-    "scripts": [
-      "dist/browser-polyfill.min.js",
-      "dist/background.js"
-    ]
+    "scripts": ["dist/browser-polyfill.min.js", "dist/background.js"]
   },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": [
-        "dist/browser-polyfill.min.js",
-        "dist/content.js"
-      ],
+      "js": ["dist/browser-polyfill.min.js", "dist/content.js"],
       "run_at": "document_end",
       "all_frames": false
     }

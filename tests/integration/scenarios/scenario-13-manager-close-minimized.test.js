@@ -1,19 +1,19 @@
 /**
  * Scenario 13: Manager "Close Minimized" Functionality
- * 
+ *
  * LOW PRIORITY (1 day effort)
- * 
+ *
  * Tests that the Manager Panel "Close Minimized" button works correctly:
  * - "Close Minimized" closes only minimized Quick Tabs
  * - Active Quick Tabs remain untouched
  * - Storage updated to remove only minimized entries
  * - Works correctly across tabs
  * - State remains consistent after operation
- * 
+ *
  * Related Documentation:
  * - docs/manual/updated-remaining-testing-work.md (Scenario 13 - LOW)
  * - docs/issue-47-revised-scenarios.md
- * 
+ *
  * Covers Issues: #47 (Manager Panel functionality)
  */
 
@@ -92,11 +92,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
     // Connect channels for cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -109,14 +109,15 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
 
     // Wire up broadcast handlers
     eventBuses.forEach((bus, tabIndex) => {
-      bus.on('broadcast:received', (message) => {
+      bus.on('broadcast:received', message => {
         if (message.type === 'DELETE') {
           stateManagers[tabIndex].delete(message.data.id);
         } else if (message.type === 'CLOSE_MINIMIZED') {
           // Remove only minimized Quick Tabs
-          const minimizedQts = Array.from(stateManagers[tabIndex].quickTabs.values())
-            .filter(qt => qt.visibility.minimized);
-          
+          const minimizedQts = Array.from(stateManagers[tabIndex].quickTabs.values()).filter(
+            qt => qt.visibility.minimized
+          );
+
           minimizedQts.forEach(qt => {
             stateManagers[tabIndex].delete(qt.id);
           });
@@ -200,10 +201,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       });
 
       // Close minimized on tab A - apply locally first, then broadcast
-      const minimizedQts = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
 
       await wait(150);
@@ -220,18 +222,20 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
 
     test('works when no Quick Tabs are minimized', async () => {
       // Create only active Quick Tabs
-      const quickTabs = Array.from({ length: 3 }, (_, i) => 
-        new QuickTab({
-          id: `qt-active-${i + 1}`,
-          url: `https://active${i + 1}.com`,
-          position: { left: (i + 1) * 50, top: (i + 1) * 50 },
-          size: { width: 800, height: 600 },
-          visibility: {
-            soloedOnTabs: [],
-            mutedOnTabs: [],
-            minimized: false
-          }
-        })
+      const quickTabs = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-active-${i + 1}`,
+            url: `https://active${i + 1}.com`,
+            position: { left: (i + 1) * 50, top: (i + 1) * 50 },
+            size: { width: 800, height: 600 },
+            visibility: {
+              soloedOnTabs: [],
+              mutedOnTabs: [],
+              minimized: false
+            }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -239,10 +243,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       });
 
       // Close minimized on tab A - apply locally first (none to close)
-      const minimizedQts1 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts1 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts1.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
 
       await wait(150);
@@ -258,18 +263,20 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
 
     test('works when all Quick Tabs are minimized', async () => {
       // Create only minimized Quick Tabs
-      const quickTabs = Array.from({ length: 3 }, (_, i) => 
-        new QuickTab({
-          id: `qt-minimized-${i + 1}`,
-          url: `https://minimized${i + 1}.com`,
-          position: { left: (i + 1) * 50, top: (i + 1) * 50 },
-          size: { width: 800, height: 600 },
-          visibility: {
-            soloedOnTabs: [],
-            mutedOnTabs: [],
-            minimized: true
-          }
-        })
+      const quickTabs = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-minimized-${i + 1}`,
+            url: `https://minimized${i + 1}.com`,
+            position: { left: (i + 1) * 50, top: (i + 1) * 50 },
+            size: { width: 800, height: 600 },
+            visibility: {
+              soloedOnTabs: [],
+              mutedOnTabs: [],
+              minimized: true
+            }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -277,10 +284,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       });
 
       // Close minimized on tab A - apply locally first (all are minimized)
-      const minimizedQts2 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts2 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts2.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
 
       await wait(150);
@@ -324,10 +332,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       });
 
       // CLOSE_MINIMIZED from tab B - apply locally first
-      const minimizedQts4 = Array.from(stateManagers[1].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts4 = Array.from(stateManagers[1].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts4.forEach(qt => stateManagers[1].delete(qt.id));
-      
+
       await broadcastManagers[1].broadcast('CLOSE_MINIMIZED', {});
 
       await wait(150);
@@ -371,22 +380,25 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       });
 
       // First CLOSE_MINIMIZED - apply locally first
-      const minimizedQts5a = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts5a = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts5a.forEach(qt => stateManagers[0].delete(qt.id));
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
       await wait(100);
 
       // Second CLOSE_MINIMIZED (should not cause errors) - apply locally first
-      const minimizedQts5b = Array.from(stateManagers[1].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts5b = Array.from(stateManagers[1].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts5b.forEach(qt => stateManagers[1].delete(qt.id));
       await broadcastManagers[1].broadcast('CLOSE_MINIMIZED', {});
       await wait(100);
 
       // Third CLOSE_MINIMIZED - apply locally first
-      const minimizedQts5c = Array.from(stateManagers[2].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts5c = Array.from(stateManagers[2].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts5c.forEach(qt => stateManagers[2].delete(qt.id));
       await broadcastManagers[2].broadcast('CLOSE_MINIMIZED', {});
       await wait(100);
@@ -405,7 +417,7 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
         id: 'qt-minimized-solo',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 },
         visibility: {
           soloedOnTabs: [tabs[0].tabId],
           mutedOnTabs: [],
@@ -416,10 +428,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       stateManagers.forEach(sm => sm.add(new QuickTab(qt)));
 
       // Close minimized on tab A - apply locally first
-      const minimizedQts6 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts6 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts6.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
       await wait(150);
 
@@ -434,7 +447,7 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
         id: 'qt-minimized-mute',
         url: 'https://example.com',
         position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 },
         visibility: {
           soloedOnTabs: [],
           mutedOnTabs: [tabs[1].tabId],
@@ -445,10 +458,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       stateManagers.forEach(sm => sm.add(new QuickTab(qt)));
 
       // Close minimized on tab A - apply locally first
-      const minimizedQts7 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts7 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts7.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
       await wait(150);
 
@@ -500,10 +514,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       });
 
       // Close minimized on tab A - apply locally first
-      const minimizedQts8 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts8 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts8.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
       await wait(150);
 
@@ -520,18 +535,20 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
   describe('State Consistency', () => {
     test('can minimize and close in sequence', async () => {
       // Start with all active
-      const quickTabs = Array.from({ length: 3 }, (_, i) => 
-        new QuickTab({
-          id: `qt-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: (i + 1) * 50, top: (i + 1) * 50 },
-          size: { width: 800, height: 600 },
-          visibility: {
-            soloedOnTabs: [],
-            mutedOnTabs: [],
-            minimized: false
-          }
-        })
+      const quickTabs = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: (i + 1) * 50, top: (i + 1) * 50 },
+            size: { width: 800, height: 600 },
+            visibility: {
+              soloedOnTabs: [],
+              mutedOnTabs: [],
+              minimized: false
+            }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -552,10 +569,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       await wait(100);
 
       // Close minimized - apply locally first
-      const minimizedQts9 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts9 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts9.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
 
       await wait(150);
@@ -573,18 +591,20 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
   describe('Performance', () => {
     test('CLOSE_MINIMIZED with many Quick Tabs completes quickly', async () => {
       // Create 10 active and 10 minimized Quick Tabs
-      const quickTabs = Array.from({ length: 20 }, (_, i) => 
-        new QuickTab({
-          id: `qt-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: (i % 10) * 50, top: Math.floor(i / 10) * 50 },
-          size: { width: 800, height: 600 },
-          visibility: {
-            soloedOnTabs: [],
-            mutedOnTabs: [],
-            minimized: i % 2 === 0 // Every other one is minimized
-          }
-        })
+      const quickTabs = Array.from(
+        { length: 20 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: (i % 10) * 50, top: Math.floor(i / 10) * 50 },
+            size: { width: 800, height: 600 },
+            visibility: {
+              soloedOnTabs: [],
+              mutedOnTabs: [],
+              minimized: i % 2 === 0 // Every other one is minimized
+            }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -594,10 +614,11 @@ describe('Scenario 13: Manager "Close Minimized" Protocol', () => {
       const startTime = Date.now();
 
       // Close minimized on tab A - apply locally first
-      const minimizedQts10 = Array.from(stateManagers[0].quickTabs.values())
-        .filter(qt => qt.visibility.minimized);
+      const minimizedQts10 = Array.from(stateManagers[0].quickTabs.values()).filter(
+        qt => qt.visibility.minimized
+      );
       minimizedQts10.forEach(qt => stateManagers[0].delete(qt.id));
-      
+
       await broadcastManagers[0].broadcast('CLOSE_MINIMIZED', {});
 
       await wait(150);

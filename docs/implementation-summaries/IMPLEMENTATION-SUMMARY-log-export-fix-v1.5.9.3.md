@@ -9,13 +9,15 @@
 
 ## Problem Statement
 
-The "Export Console Logs" button in the extension popup was reporting "No logs found" even when:
+The "Export Console Logs" button in the extension popup was reporting "No logs
+found" even when:
 
 - Debug mode was enabled
 - Logs were visible in the browser console
 - Extension was being actively used
 
-This made debugging and support nearly impossible, as users could not export their logs for troubleshooting.
+This made debugging and support nearly impossible, as users could not export
+their logs for troubleshooting.
 
 ---
 
@@ -23,11 +25,13 @@ This made debugging and support nearly impossible, as users could not export the
 
 ### The Issue
 
-The log export system was not capturing `console.log()` calls from content scripts:
+The log export system was not capturing `console.log()` calls from content
+scripts:
 
 1. **background.js**: Had console overrides ✅ (working correctly)
 2. **content.js**: Used `console.log()` directly for all logging
-3. **debug.js**: Only captured `debug()`, `debugError()`, etc. - NOT regular `console.log()`
+3. **debug.js**: Only captured `debug()`, `debugError()`, etc. - NOT regular
+   `console.log()`
 4. **content script**: Had no console override
 5. **Result**: Export found 0 content logs → "No logs found" error
 
@@ -35,7 +39,8 @@ The log export system was not capturing `console.log()` calls from content scrip
 
 From user screenshots and testing:
 
-- Browser console showed 100+ messages like `[QuickTabsManager]`, `[Copy-URL-on-Hover]`, etc.
+- Browser console showed 100+ messages like `[QuickTabsManager]`,
+  `[Copy-URL-on-Hover]`, etc.
 - All messages used direct `console.log()` calls
 - `getLogBuffer()` from debug.js returned empty array
 - Export button correctly threw error due to 0 logs
@@ -149,7 +154,8 @@ if (allLogs.length === 0) {
 - `package.json`: 1.5.9 → 1.5.9.3
 - `README.md`: Version header, footer, and "What's New" section
 - `.github/copilot-instructions.md`: Version and architecture notes
-- `.github/agents/bug-architect.md`: Version and console interceptor documentation
+- `.github/agents/bug-architect.md`: Version and console interceptor
+  documentation
 
 ---
 
@@ -332,7 +338,8 @@ See `log-export-no-logs-fix.md` lines 580-725 for full implementation guide.
 
 ## Conclusion
 
-The log export "No logs found" issue has been completely resolved by implementing a comprehensive console interception system that:
+The log export "No logs found" issue has been completely resolved by
+implementing a comprehensive console interception system that:
 
 1. ✅ Captures ALL console.log() calls (not just debug() functions)
 2. ✅ Works automatically without code changes
@@ -341,7 +348,8 @@ The log export "No logs found" issue has been completely resolved by implementin
 5. ✅ Has minimal performance impact
 6. ✅ Is future-proof and maintainable
 
-The solution is production-ready, thoroughly tested, and follows industry-standard practices for console interception in browser extensions.
+The solution is production-ready, thoroughly tested, and follows
+industry-standard practices for console interception in browser extensions.
 
 ---
 

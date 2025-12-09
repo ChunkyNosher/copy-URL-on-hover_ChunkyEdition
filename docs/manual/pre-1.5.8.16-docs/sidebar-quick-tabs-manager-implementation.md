@@ -260,10 +260,18 @@ Replace floating div with **Firefox Sidebar API** (`sidebar_action` in
     <div class="sidebar-header">
       <h1>Quick Tabs Manager</h1>
       <div class="header-actions">
-        <button id="closeMinimized" class="btn-secondary" title="Close all minimized Quick Tabs">
+        <button
+          id="closeMinimized"
+          class="btn-secondary"
+          title="Close all minimized Quick Tabs"
+        >
           Close Minimized
         </button>
-        <button id="closeAll" class="btn-danger" title="Close all Quick Tabs (active + minimized)">
+        <button
+          id="closeAll"
+          class="btn-danger"
+          title="Close all Quick Tabs (active + minimized)"
+        >
           Close All
         </button>
       </div>
@@ -328,7 +336,9 @@ Replace floating div with **Firefox Sidebar API** (`sidebar_action` in
     <div id="emptyState" class="empty-state" style="display: none;">
       <div class="empty-icon">📭</div>
       <div class="empty-text">No Quick Tabs</div>
-      <div class="empty-hint">Press Q while hovering over a link to create one</div>
+      <div class="empty-hint">
+        Press Q while hovering over a link to create one
+      </div>
     </div>
 
     <script src="quick-tabs-manager.js"></script>
@@ -368,7 +378,8 @@ Replace floating div with **Firefox Sidebar API** (`sidebar_action` in
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
   background: var(--primary-bg);
   color: var(--text-primary);
@@ -783,7 +794,11 @@ function renderUI() {
     const containerInfo = containersData[cookieStoreId];
     const containerState = quickTabsState[cookieStoreId];
 
-    if (!containerState || !containerState.tabs || containerState.tabs.length === 0) {
+    if (
+      !containerState ||
+      !containerState.tabs ||
+      containerState.tabs.length === 0
+    ) {
       // Skip containers with no Quick Tabs
       return;
     }
@@ -969,9 +984,11 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
  */
 function setupEventListeners() {
   // Close Minimized button
-  document.getElementById('closeMinimized').addEventListener('click', async () => {
-    await closeMinimizedTabs();
-  });
+  document
+    .getElementById('closeMinimized')
+    .addEventListener('click', async () => {
+      await closeMinimizedTabs();
+    });
 
   // Close All button
   document.getElementById('closeAll').addEventListener('click', async () => {
@@ -1029,7 +1046,9 @@ async function closeMinimizedTabs() {
     Object.keys(state).forEach(cookieStoreId => {
       if (state[cookieStoreId] && state[cookieStoreId].tabs) {
         const originalLength = state[cookieStoreId].tabs.length;
-        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !t.minimized);
+        state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(
+          t => !t.minimized
+        );
 
         if (state[cookieStoreId].tabs.length !== originalLength) {
           hasChanges = true;
@@ -1352,12 +1371,16 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // NEW: Handle minimize command from sidebar
   if (message.action === 'MINIMIZE_QUICK_TAB') {
     const quickTabId = message.quickTabId;
-    const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
+    const container = quickTabWindows.find(
+      w => w.dataset.quickTabId === quickTabId
+    );
 
     if (container) {
       const iframe = container.querySelector('iframe');
       const url = iframe?.src || iframe?.getAttribute('data-deferred-src');
-      const titleEl = container.querySelector('.copy-url-quicktab-titlebar span');
+      const titleEl = container.querySelector(
+        '.copy-url-quicktab-titlebar span'
+      );
       const title = titleEl?.textContent || 'Quick Tab';
 
       minimizeQuickTab(container, url, title);
@@ -1387,7 +1410,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // NEW: Handle close specific Quick Tab from sidebar
   if (message.action === 'CLOSE_QUICK_TAB') {
     const quickTabId = message.quickTabId;
-    const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
+    const container = quickTabWindows.find(
+      w => w.dataset.quickTabId === quickTabId
+    );
 
     if (container) {
       closeQuickTabWindow(container);
@@ -1413,7 +1438,11 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 **UPDATE `saveQuickTabState` function:**
 
 ```javascript
-async function saveQuickTabState(operationType, quickTabId, additionalData = {}) {
+async function saveQuickTabState(
+  operationType,
+  quickTabId,
+  additionalData = {}
+) {
   if (!CONFIG.quickTabPersistAcrossTabs) {
     return Promise.resolve();
   }
@@ -1424,7 +1453,9 @@ async function saveQuickTabState(operationType, quickTabId, additionalData = {})
   if (operationType === 'delete') {
     quickTabData = { id: quickTabId };
   } else {
-    const container = quickTabWindows.find(w => w.dataset.quickTabId === quickTabId);
+    const container = quickTabWindows.find(
+      w => w.dataset.quickTabId === quickTabId
+    );
 
     if (!container && operationType !== 'minimize') {
       debug(`[SAVE] Quick Tab ${quickTabId} not found, skipping save`);
@@ -1454,9 +1485,12 @@ async function saveQuickTabState(operationType, quickTabId, additionalData = {})
     } else {
       // Build state from container
       const iframe = container.querySelector('iframe');
-      const titleText = container.querySelector('.copy-url-quicktab-titlebar span');
+      const titleText = container.querySelector(
+        '.copy-url-quicktab-titlebar span'
+      );
       const rect = container.getBoundingClientRect();
-      const url = iframe?.src || iframe?.getAttribute('data-deferred-src') || '';
+      const url =
+        iframe?.src || iframe?.getAttribute('data-deferred-src') || '';
 
       quickTabData = {
         id: quickTabId,
@@ -1467,7 +1501,9 @@ async function saveQuickTabState(operationType, quickTabId, additionalData = {})
         width: Math.round(rect.width),
         height: Math.round(rect.height),
         pinnedToUrl: container._pinnedToUrl || null,
-        slotNumber: CONFIG.debugMode ? quickTabSlots.get(quickTabId) || null : null,
+        slotNumber: CONFIG.debugMode
+          ? quickTabSlots.get(quickTabId) || null
+          : null,
         minimized: false,
         activeTabId: activeTabId, // NEW
         ...additionalData

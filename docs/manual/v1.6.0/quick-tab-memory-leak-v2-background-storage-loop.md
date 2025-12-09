@@ -10,15 +10,25 @@
 
 ## Executive Summary
 
-Despite implementing fixes for the broadcast history memory leak (v1), a **second critical memory leak** has been identified in v1.6.1.5. This leak originates from the **background script's storage change listener** creating an independent feedback loop with Quick Tab saves. The listener detects storage changes, broadcasts to all tabs, which triggers re-renders and state updates, causing more storage writes, creating a **self-perpetuating cycle**.
+Despite implementing fixes for the broadcast history memory leak (v1), a
+**second critical memory leak** has been identified in v1.6.1.5. This leak
+originates from the **background script's storage change listener** creating an
+independent feedback loop with Quick Tab saves. The listener detects storage
+changes, broadcasts to all tabs, which triggers re-renders and state updates,
+causing more storage writes, creating a **self-perpetuating cycle**.
 
 **Critical Findings:**
 
-1. **Background Script Feedback Loop**: Storage listener broadcasts every change to all tabs, triggering saves
-2. **500-1000 Writes/Second**: Storage write frequency matches previous leak despite broadcast history being disabled
-3. **Dual Storage Writes**: Every Quick Tab operation writes to BOTH `local` and `session` storage, doubling traffic
-4. **No Write Source Tracking**: System cannot distinguish between local changes vs. remote updates
-5. **Broadcast Storm**: Every storage write triggers messages to ALL open tabs regardless of relevance
+1. **Background Script Feedback Loop**: Storage listener broadcasts every change
+   to all tabs, triggering saves
+2. **500-1000 Writes/Second**: Storage write frequency matches previous leak
+   despite broadcast history being disabled
+3. **Dual Storage Writes**: Every Quick Tab operation writes to BOTH `local` and
+   `session` storage, doubling traffic
+4. **No Write Source Tracking**: System cannot distinguish between local changes
+   vs. remote updates
+5. **Broadcast Storm**: Every storage write triggers messages to ALL open tabs
+   regardless of relevance
 
 **Log Evidence:**
 
@@ -83,11 +93,16 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
 **What's Wrong:**
 
-1. **No Source Tracking**: Listener fires for ALL storage changes, including ones made by the background script itself
-2. **Broadcast Everything**: Every change broadcasts to every open tab, regardless of which tab initiated the change
-3. **Double Processing**: Listens to both `local` and `session` storage, but saves write to both, causing double events
-4. **No Deduplication**: No mechanism to detect if broadcast state matches current tab state
-5. **Recursive Trigger**: Broadcasts can trigger content script logic that saves state, triggering more broadcasts
+1. **No Source Tracking**: Listener fires for ALL storage changes, including
+   ones made by the background script itself
+2. **Broadcast Everything**: Every change broadcasts to every open tab,
+   regardless of which tab initiated the change
+3. **Double Processing**: Listens to both `local` and `session` storage, but
+   saves write to both, causing double events
+4. **No Deduplication**: No mechanism to detect if broadcast state matches
+   current tab state
+5. **Recursive Trigger**: Broadcasts can trigger content script logic that saves
+   state, triggering more broadcasts
 
 **The Feedback Loop:**
 
@@ -150,7 +165,8 @@ async saveStateToStorage() {
 
 1. **Two Writes Per Save**: Every Quick Tab operation writes to BOTH storages
 2. **Two Change Events**: Each write fires `storage.onChanged` separately
-3. **Two Broadcasts**: Background script processes both events and broadcasts twice
+3. **Two Broadcasts**: Background script processes both events and broadcasts
+   twice
 4. **Multiplied Feedback**: Loop runs at 2x frequency because of dual storage
 
 **Evidence from Logs:**
@@ -165,29 +181,30 @@ async saveStateToStorage() {
 ### Problem Location 3: No Broadcast Deduplication in Content Scripts
 
 **File:** `src/content.js` (assumed)  
-**Issue:** Content scripts likely process every broadcast without checking if state actually changed
+**Issue:** Content scripts likely process every broadcast without checking if
+state actually changed
 
 **Expected But Missing Logic:**
 
 ```javascript
 // ❌ CURRENT (WRONG):
-eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', async (message) => {
+eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', async message => {
   // Processes every broadcast, even if state unchanged
   await quickTabsManager.hydrate(message.state);
   // This may trigger renders, which may trigger saves
 });
 
 // ✓ REQUIRED (CORRECT):
-eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', async (message) => {
+eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', async message => {
   // Check if state actually changed before processing
   const currentStateHash = quickTabsManager.getStateHash();
   const newStateHash = hashState(message.state);
-  
+
   if (currentStateHash === newStateHash) {
     console.log('[Content] Ignoring duplicate state broadcast');
     return; // Skip processing
   }
-  
+
   await quickTabsManager.hydrate(message.state);
 });
 ```
@@ -216,10 +233,14 @@ async function _broadcastToAllTabs(action, data) {
 
 **What's Wrong:**
 
-1. **Broadcasts to ALL tabs**: Even tabs that don't have Quick Tabs don't need updates
-2. **No tab filtering**: Doesn't check if tab has content script loaded or Quick Tabs active
-3. **No sender exclusion**: If a tab initiated a change, it gets its own update broadcasted back
-4. **Wasteful**: Sends hundreds of messages per second to tabs that don't need them
+1. **Broadcasts to ALL tabs**: Even tabs that don't have Quick Tabs don't need
+   updates
+2. **No tab filtering**: Doesn't check if tab has content script loaded or Quick
+   Tabs active
+3. **No sender exclusion**: If a tab initiated a change, it gets its own update
+   broadcasted back
+4. **Wasteful**: Sends hundreds of messages per second to tabs that don't need
+   them
 
 ---
 
@@ -249,9 +270,11 @@ async function _broadcastToAllTabs(action, data) {
 **Analysis:**
 
 - **Write Frequency**: Storage changes every 2-4ms
-- **Alternating Pattern**: Local → Session → Local → Session (dual write confirmation)
+- **Alternating Pattern**: Local → Session → Local → Session (dual write
+  confirmation)
 - **No Throttling**: Zero evidence of rate limiting or debouncing
-- **Broadcast on Every Change**: "broadcasting to all tabs" appears 50+ times in 232ms
+- **Broadcast on Every Change**: "broadcasting to all tabs" appears 50+ times in
+  232ms
 
 **Calculation:**
 
@@ -273,9 +296,11 @@ async function _broadcastToAllTabs(action, data) {
 **Key Observation:**
 
 The background script:
+
 1. Saves state to storage (triggers change event)
 2. Detects its own storage change
-3. Updates its own `globalQuickTabState` variable (redundant - it just saved this!)
+3. Updates its own `globalQuickTabState` variable (redundant - it just saved
+   this!)
 4. Broadcasts the state it just saved back to all tabs
 5. Tabs may respond with updates
 6. Background saves those updates
@@ -293,7 +318,9 @@ The background script:
 
 **Analysis:**
 
-The background script keeps "updating" its global state from storage even though:
+The background script keeps "updating" its global state from storage even
+though:
+
 - It's the one that wrote to storage
 - The state hasn't actually changed
 - It's just reading back what it wrote
@@ -322,7 +349,8 @@ Storage listeners fire (2 events)
 Background broadcasts to 10 open tabs (20 messages total)
 ```
 
-**Memory Allocated:** 
+**Memory Allocated:**
+
 - 2 storage write operations = ~50KB
 - 2 event listener callbacks = ~10KB
 - 20 broadcast messages = ~200KB
@@ -347,6 +375,7 @@ Background saves updates (back to Stage 1)
 ```
 
 **Memory Per Loop Iteration:**
+
 - 5 tabs × ~50KB per hydration = **250KB per iteration**
 - Loop frequency: **200+ iterations/second**
 - **Memory growth: 50MB/second**
@@ -362,6 +391,7 @@ More saves → More broadcasts
 ```
 
 After 10 seconds:
+
 - Iterations: 2,000+
 - Memory allocated: 500MB+
 - Garbage collection struggles to keep up
@@ -370,12 +400,14 @@ After 10 seconds:
 ### Why Garbage Collection Can't Keep Up
 
 **Normal Scenario:**
+
 - Object created
 - Object used
 - Object reference dropped
 - GC collects object within 1-2 seconds
 
 **This Leak:**
+
 - Objects created faster than GC cycles
 - Event listener closures keep references alive
 - Broadcast message queues accumulate
@@ -394,21 +426,25 @@ After 10 seconds:
 
 **Location:** `background.js` → `QuickTabHandler.js` → `saveStateToStorage()`
 
-**Purpose:** Track which component initiated a storage write to ignore self-triggered changes
+**Purpose:** Track which component initiated a storage write to ignore
+self-triggered changes
 
 **Implementation:**
 
 Add to QuickTabHandler constructor:
+
 - `lastWriteTimestamp` property (timestamp of last write)
 - `writeSourceId` property (unique ID: "background-{timestamp}")
 - `WRITE_IGNORE_WINDOW_MS` constant (default: 100ms)
 
 Modify `saveStateToStorage()` method:
+
 - Before writing, generate `writeSourceId`
 - Store `writeSourceId` and timestamp in `lastWriteTimestamp`
 - Include `writeSourceId` in saved state object (not just timestamp)
 
 Add to background.js storage listener:
+
 - Check if incoming change's `writeSourceId` matches `lastWriteTimestamp`
 - If match and within ignore window (100ms), skip processing
 - This prevents background from reacting to its own writes
@@ -428,13 +464,13 @@ await storage.local.set({
 // Storage listener fires
 storage.onChanged.addListener((changes) => {
   const sourceId = changes.quick_tabs_state_v2.newValue.writeSourceId;
-  
+
   // Check if this is our own write
   if (sourceId === lastWriteTimestamp.writeSourceId) {
     console.log('[Background] Ignoring self-write');
     return; // BREAKS THE LOOP
   }
-  
+
   // Process external writes only
   _updateGlobalStateFromStorage(newValue);
   await _broadcastToAllTabs(...);
@@ -443,7 +479,8 @@ storage.onChanged.addListener((changes) => {
 
 #### Fix 1.2: Eliminate Dual Storage Writes
 
-**Location:** `background.js` → `QuickTabHandler.js` → `saveStateToStorage()` and `saveState()`
+**Location:** `background.js` → `QuickTabHandler.js` → `saveStateToStorage()`
+and `saveState()`
 
 **Purpose:** Remove redundant session storage writes that double event frequency
 
@@ -463,6 +500,7 @@ Comment out or remove the session storage write block:
 **Reasoning:**
 
 Session storage was intended as fast-access cache, but:
+
 - It's causing double events (2x loop frequency)
 - Local storage is fast enough (<10ms read)
 - Session storage doesn't survive browser restart anyway
@@ -479,10 +517,12 @@ Session storage was intended as fast-access cache, but:
 **Implementation:**
 
 Add to background.js global scope:
+
 - `lastBroadcastedStateHash` variable (stores hash of last broadcast state)
 - `computeStateHash()` function (creates hash from state object)
 
 Modify `_handleQuickTabStateChange()` function:
+
 - Compute hash of new state before broadcasting
 - Compare with `lastBroadcastedStateHash`
 - If identical, skip broadcast (state unchanged)
@@ -495,14 +535,16 @@ function computeStateHash(state) {
   // Simple but effective hash for state comparison
   const stateStr = JSON.stringify({
     containers: Object.keys(state.containers || {}),
-    tabCounts: Object.values(state.containers || {}).map(c => c.tabs?.length || 0),
+    tabCounts: Object.values(state.containers || {}).map(
+      c => c.tabs?.length || 0
+    ),
     timestamp: state.timestamp
   });
-  
+
   // Generate hash (simple for now, can use crypto.subtle.digest later)
   let hash = 0;
   for (let i = 0; i < stateStr.length; i++) {
-    hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
+    hash = (hash << 5) - hash + stateStr.charCodeAt(i);
     hash = hash & hash; // Convert to 32bit integer
   }
   return hash;
@@ -514,16 +556,16 @@ function computeStateHash(state) {
 ```javascript
 async function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
-  
+
   // Compute hash of new state
   const newHash = computeStateHash(newValue);
-  
+
   // Check if state actually changed
   if (newHash === lastBroadcastedStateHash) {
     console.log('[Background] State unchanged, skipping broadcast');
     return; // PREVENTS REDUNDANT BROADCASTS
   }
-  
+
   // State changed, update hash and broadcast
   lastBroadcastedStateHash = newHash;
   _updateGlobalStateFromStorage(newValue);
@@ -544,6 +586,7 @@ async function _handleQuickTabStateChange(changes) {
 **Implementation:**
 
 Add to QuickTabsManager (or equivalent):
+
 - `currentStateHash` property
 - `computeStateHash()` method (same as background)
 - Hash comparison in broadcast handler
@@ -551,33 +594,36 @@ Add to QuickTabsManager (or equivalent):
 **Modified Broadcast Handler:**
 
 ```javascript
-eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', async (message) => {
+eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', async message => {
   // Compute hash of incoming state
   const incomingHash = quickTabsManager.computeStateHash(message.state);
-  
+
   // Compare with current state
   if (incomingHash === quickTabsManager.currentStateHash) {
     console.log('[QuickTabs] Ignoring duplicate broadcast (state unchanged)');
     return; // SKIP PROCESSING
   }
-  
+
   // State changed, update
   quickTabsManager.currentStateHash = incomingHash;
   await quickTabsManager.hydrate(message.state);
 });
 ```
 
-**Impact:** Prevents unnecessary hydrations and re-renders that waste CPU and trigger more saves.
+**Impact:** Prevents unnecessary hydrations and re-renders that waste CPU and
+trigger more saves.
 
 #### Fix 2.2: Throttle Broadcast Reception in Content Scripts
 
 **Location:** `src/content.js` → Message handlers
 
-**Purpose:** Even if state changed, don't process broadcasts faster than necessary
+**Purpose:** Even if state changed, don't process broadcasts faster than
+necessary
 
 **Implementation:**
 
 Add throttle decorator for broadcast handler:
+
 - Only process broadcasts once per 100ms
 - Queue rapid broadcasts and process latest after throttle window
 - Prevents overwhelming content script during broadcast storms
@@ -588,19 +634,19 @@ Add throttle decorator for broadcast handler:
 function throttleBroadcastHandler(handler, delay = 100) {
   let timeout = null;
   let latestMessage = null;
-  
-  return function(message) {
+
+  return function (message) {
     // Store latest message
     latestMessage = message;
-    
+
     // If throttle active, wait
     if (timeout) {
       return;
     }
-    
+
     // Process immediately
     handler(message);
-    
+
     // Set throttle window
     timeout = setTimeout(() => {
       timeout = null;
@@ -613,12 +659,9 @@ function throttleBroadcastHandler(handler, delay = 100) {
 }
 
 // Apply throttle
-const throttledSyncHandler = throttleBroadcastHandler(
-  async (message) => {
-    await quickTabsManager.hydrate(message.state);
-  },
-  100
-);
+const throttledSyncHandler = throttleBroadcastHandler(async message => {
+  await quickTabsManager.hydrate(message.state);
+}, 100);
 
 eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', throttledSyncHandler);
 ```
@@ -629,11 +672,13 @@ eventBus.on('SYNC_QUICK_TAB_STATE_FROM_BACKGROUND', throttledSyncHandler);
 
 **Location:** `background.js` → Global scope
 
-**Purpose:** Detect when broadcast frequency exceeds safe threshold and shut down
+**Purpose:** Detect when broadcast frequency exceeds safe threshold and shut
+down
 
 **Implementation:**
 
 Create `BroadcastMonitor` class:
+
 - Tracks broadcasts per second
 - If exceeds 50/second for 5+ seconds, trigger emergency shutdown
 - Logs warning and stops all broadcasting
@@ -649,15 +694,15 @@ class BroadcastMonitor {
     this.emergencyShutdown = false;
     this.violationCount = 0; // Number of consecutive violations
   }
-  
+
   recordBroadcast() {
     if (this.emergencyShutdown) {
       return false; // Blocked
     }
-    
+
     this.broadcastCount++;
     const now = Date.now();
-    
+
     // Check if window expired
     if (now - this.windowStart >= 1000) {
       // Check if exceeded threshold
@@ -666,7 +711,7 @@ class BroadcastMonitor {
         console.warn(
           `[BroadcastMonitor] RATE LIMIT EXCEEDED: ${this.broadcastCount} broadcasts/second`
         );
-        
+
         // 5 consecutive violations = emergency shutdown
         if (this.violationCount >= 5) {
           this.triggerEmergencyShutdown();
@@ -675,24 +720,27 @@ class BroadcastMonitor {
       } else {
         this.violationCount = 0; // Reset on clean window
       }
-      
+
       // Reset window
       this.broadcastCount = 1;
       this.windowStart = now;
     }
-    
+
     return true; // Allow broadcast
   }
-  
+
   triggerEmergencyShutdown() {
     this.emergencyShutdown = true;
-    console.error('[BroadcastMonitor] EMERGENCY SHUTDOWN: Broadcast rate limit exceeded');
-    
+    console.error(
+      '[BroadcastMonitor] EMERGENCY SHUTDOWN: Broadcast rate limit exceeded'
+    );
+
     // Notify user
     browser.notifications.create({
       type: 'basic',
       title: 'Quick Tabs Emergency Shutdown',
-      message: 'Excessive broadcast activity detected. Broadcasting disabled. Please reload extension.'
+      message:
+        'Excessive broadcast activity detected. Broadcasting disabled. Please reload extension.'
     });
   }
 }
@@ -709,7 +757,7 @@ async function _broadcastToAllTabs(action, data) {
     console.error('[Background] Broadcast blocked by rate monitor');
     return;
   }
-  
+
   // Continue with broadcast
   const tabs = await browser.tabs.query({});
   // ... rest of function
@@ -725,6 +773,7 @@ async function _broadcastToAllTabs(action, data) {
 **Implementation:**
 
 Add to QuickTabHandler:
+
 - `writeRateLimiter` instance of rate limiter class
 - Check before every storage write
 - Block writes exceeding 10/second
@@ -739,10 +788,10 @@ class StorageWriteRateLimiter {
     this.windowStart = Date.now();
     this.blockedWrites = 0;
   }
-  
+
   canWrite() {
     const now = Date.now();
-    
+
     // Reset window if expired
     if (now - this.windowStart >= 1000) {
       if (this.blockedWrites > 0) {
@@ -754,13 +803,13 @@ class StorageWriteRateLimiter {
       this.blockedWrites = 0;
       this.windowStart = now;
     }
-    
+
     // Check limit
     if (this.writeCount >= this.maxWritesPerSecond) {
       this.blockedWrites++;
       return false;
     }
-    
+
     this.writeCount++;
     return true;
   }
@@ -776,7 +825,7 @@ async saveStateToStorage() {
     console.warn('[QuickTabHandler] Storage write blocked by rate limiter');
     return;
   }
-  
+
   // Continue with save
   const stateToSave = {...};
   await this.browserAPI.storage.local.set({...});
@@ -794,6 +843,7 @@ async saveStateToStorage() {
 **Implementation:**
 
 Maintain registry of which tabs have Quick Tabs:
+
 - Track which tabs have active Quick Tabs
 - Track which tabs have content script loaded
 - Only broadcast to relevant tabs
@@ -806,23 +856,23 @@ class TabRegistry {
     this.tabsWithQuickTabs = new Set(); // tabId
     this.tabsWithContentScript = new Set(); // tabId
   }
-  
+
   registerTab(tabId, hasQuickTabs = false) {
     this.tabsWithContentScript.add(tabId);
     if (hasQuickTabs) {
       this.tabsWithQuickTabs.add(tabId);
     }
   }
-  
+
   unregisterTab(tabId) {
     this.tabsWithContentScript.delete(tabId);
     this.tabsWithQuickTabs.delete(tabId);
   }
-  
+
   shouldReceiveBroadcast(tabId) {
     return this.tabsWithContentScript.has(tabId);
   }
-  
+
   getRelevantTabs() {
     return Array.from(this.tabsWithContentScript);
   }
@@ -837,9 +887,11 @@ const tabRegistry = new TabRegistry();
 async function _broadcastToAllTabs(action, data) {
   // Get only relevant tabs
   const relevantTabIds = tabRegistry.getRelevantTabs();
-  
-  console.log(`[Background] Broadcasting to ${relevantTabIds.length} relevant tabs (out of all tabs)`);
-  
+
+  console.log(
+    `[Background] Broadcasting to ${relevantTabIds.length} relevant tabs (out of all tabs)`
+  );
+
   for (const tabId of relevantTabIds) {
     try {
       await browser.tabs.sendMessage(tabId, { action, ...data });
@@ -881,6 +933,7 @@ messageRouter.register('REGISTER_TAB_FOR_BROADCASTS', (msg, sender) => {
 **Implementation:**
 
 Add save batching:
+
 - Queue save requests instead of immediate writes
 - Flush queue after 100ms of inactivity
 - Reduces 100 rapid saves to 1 final save
@@ -895,29 +948,29 @@ class DebouncedStorage {
     this.pendingSave = null;
     this.saveTimer = null;
   }
-  
+
   save(key, value) {
     // Store pending save
     this.pendingSave = { key, value };
-    
+
     // Clear existing timer
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
     }
-    
+
     // Set new timer
     this.saveTimer = setTimeout(() => {
       this.flush();
     }, this.delay);
   }
-  
+
   async flush() {
     if (!this.pendingSave) return;
-    
+
     const { key, value } = this.pendingSave;
     this.pendingSave = null;
     this.saveTimer = null;
-    
+
     await this.storage.local.set({ [key]: value });
     console.log('[DebouncedStorage] Flushed pending save');
   }
@@ -931,10 +984,10 @@ const debouncedStorage = new DebouncedStorage(browser.storage, 100);
 ```javascript
 async saveStateToStorage() {
   const stateToSave = {...};
-  
+
   // Use debounced save instead of immediate
   debouncedStorage.save('quick_tabs_state_v2', stateToSave);
-  
+
   // NOT: await this.browserAPI.storage.local.set({...});
 }
 ```
@@ -945,15 +998,18 @@ async saveStateToStorage() {
 
 ### Phase 1: Critical Loop Breakers (P0 - Implement Immediately)
 
-1. **Write Source Tracking** - Prevents background from reacting to own writes (2-3 hours)
+1. **Write Source Tracking** - Prevents background from reacting to own writes
+   (2-3 hours)
 2. **Eliminate Dual Storage Writes** - Cuts event frequency in half (15 minutes)
-3. **State Deduplication Before Broadcasting** - Prevents redundant broadcasts (1-2 hours)
+3. **State Deduplication Before Broadcasting** - Prevents redundant broadcasts
+   (1-2 hours)
 
 **Total Phase 1: 3.5-5.5 hours**
 
 ### Phase 2: Content Script Protection (P1 - High Priority)
 
-4. **State Hash Checking in Content Scripts** - Prevents unnecessary processing (1-2 hours)
+4. **State Hash Checking in Content Scripts** - Prevents unnecessary processing
+   (1-2 hours)
 5. **Throttle Broadcast Reception** - Rate limits processing (1 hour)
 
 **Total Phase 2: 2-3 hours**
@@ -1060,63 +1116,76 @@ async saveStateToStorage() {
 
 ### Similarities
 
-| Aspect | v1 Leak (Broadcast History) | v2 Leak (Storage Listener) |
-|--------|----------------------------|----------------------------|
-| **Root Cause** | Infinite feedback loop | Infinite feedback loop |
-| **Write Frequency** | 500-1000/second | 500-1000/second |
-| **Memory Growth** | 900MB/second | ~50MB/second (slower but still critical) |
-| **Trigger** | Position updates | ANY Quick Tab operation |
-| **Severity** | CRITICAL | CRITICAL |
+| Aspect              | v1 Leak (Broadcast History) | v2 Leak (Storage Listener)               |
+| ------------------- | --------------------------- | ---------------------------------------- |
+| **Root Cause**      | Infinite feedback loop      | Infinite feedback loop                   |
+| **Write Frequency** | 500-1000/second             | 500-1000/second                          |
+| **Memory Growth**   | 900MB/second                | ~50MB/second (slower but still critical) |
+| **Trigger**         | Position updates            | ANY Quick Tab operation                  |
+| **Severity**        | CRITICAL                    | CRITICAL                                 |
 
 ### Differences
 
-| Aspect | v1 Leak | v2 Leak |
-|--------|---------|---------|
-| **Location** | BroadcastManager.js | background.js |
-| **Mechanism** | Broadcast history persistence | Storage change listener |
-| **Fixed In** | v1.6.1.5 (disabled feature) | NOT YET FIXED |
-| **Independence** | Isolated to broadcast system | Affects entire extension |
-| **Detection** | Logs show "broadcast-history" keys | Logs show "quicktabsstatev2" repeating |
+| Aspect           | v1 Leak                            | v2 Leak                                |
+| ---------------- | ---------------------------------- | -------------------------------------- |
+| **Location**     | BroadcastManager.js                | background.js                          |
+| **Mechanism**    | Broadcast history persistence      | Storage change listener                |
+| **Fixed In**     | v1.6.1.5 (disabled feature)        | NOT YET FIXED                          |
+| **Independence** | Isolated to broadcast system       | Affects entire extension               |
+| **Detection**    | Logs show "broadcast-history" keys | Logs show "quicktabsstatev2" repeating |
 
 ### Why v2 Persists After v1 Fix
 
-The v1 fix disabled broadcast history persistence, which stopped that specific feedback loop. However:
+The v1 fix disabled broadcast history persistence, which stopped that specific
+feedback loop. However:
 
-1. **Separate Systems**: Background script storage listener is independent from broadcast history
-2. **Different Triggers**: v1 triggered on broadcasts, v2 triggers on storage writes (which happen anyway)
-3. **Broader Scope**: v2 affects ALL Quick Tab operations, not just position updates
-4. **Harder to Detect**: v2 is harder to spot because storage writes are "normal" behavior
+1. **Separate Systems**: Background script storage listener is independent from
+   broadcast history
+2. **Different Triggers**: v1 triggered on broadcasts, v2 triggers on storage
+   writes (which happen anyway)
+3. **Broader Scope**: v2 affects ALL Quick Tab operations, not just position
+   updates
+4. **Harder to Detect**: v2 is harder to spot because storage writes are
+   "normal" behavior
 
-**Conclusion:** Both leaks must be fixed independently. Fixing v1 was necessary but not sufficient.
+**Conclusion:** Both leaks must be fixed independently. Fixing v1 was necessary
+but not sufficient.
 
 ---
 
 ## Root Cause Summary
 
-The v1.6.1.5 memory leak is caused by a **fundamental architectural flaw** in how the extension handles state synchronization:
+The v1.6.1.5 memory leak is caused by a **fundamental architectural flaw** in
+how the extension handles state synchronization:
 
 ### The Core Problem
 
 **Lack of distinction between local changes and remote updates**
 
-The background script's storage listener treats ALL storage changes the same way:
+The background script's storage listener treats ALL storage changes the same
+way:
+
 - Changes made by the background script itself
 - Changes made by other tabs
 - Changes from browser sync
 - Changes from extension updates
 
-Without distinguishing the source, every save triggers the listener, which broadcasts, which may trigger saves, creating the loop.
+Without distinguishing the source, every save triggers the listener, which
+broadcasts, which may trigger saves, creating the loop.
 
 ### The Amplifiers
 
-1. **Dual Storage Writes**: Every operation writes to both local and session storage, doubling event frequency
+1. **Dual Storage Writes**: Every operation writes to both local and session
+   storage, doubling event frequency
 2. **No Deduplication**: Broadcasts happen even when state hasn't changed
 3. **No Throttling**: No rate limiting on broadcasts or storage writes
-4. **Universal Broadcasting**: ALL tabs receive every broadcast, even irrelevant ones
+4. **Universal Broadcasting**: ALL tabs receive every broadcast, even irrelevant
+   ones
 
 ### The Result
 
 A **perfect storm** of feedback mechanisms that compound each other:
+
 - Background saves (1 write)
 - Triggers 2 storage events (local + session)
 - Triggers 2 broadcasts (one per event)
@@ -1128,23 +1197,29 @@ A **perfect storm** of feedback mechanisms that compound each other:
 
 ## Conclusion
 
-The v1.6.1.5 memory leak is a **second independent feedback loop** distinct from the v1 broadcast history leak. It originates from the background script's storage change listener broadcasting every change to all tabs without:
+The v1.6.1.5 memory leak is a **second independent feedback loop** distinct from
+the v1 broadcast history leak. It originates from the background script's
+storage change listener broadcasting every change to all tabs without:
 
 1. Tracking write sources to ignore self-writes
 2. Deduplicating state before broadcasting
 3. Filtering tabs that don't need updates
 4. Rate limiting broadcasts or storage writes
 
-**The fix requires implementing write source tracking as the primary solution**, combined with eliminating dual storage writes and adding state deduplication. Emergency monitoring provides a safety net but doesn't address the root cause.
+**The fix requires implementing write source tracking as the primary solution**,
+combined with eliminating dual storage writes and adding state deduplication.
+Emergency monitoring provides a safety net but doesn't address the root cause.
 
 **Critical Implementation Order:**
 
-1. **Phase 1 First** (Write source tracking, eliminate dual writes, state deduplication)
+1. **Phase 1 First** (Write source tracking, eliminate dual writes, state
+   deduplication)
 2. **Then Phase 2** (Content script protection)
 3. **Then Phase 3** (Emergency safeguards)
 4. **Finally Phase 4** (Optimizations)
 
-Skipping Phase 1 and jumping to Phase 3 would be like adding airbags without fixing the brakes – it mitigates but doesn't solve the problem.
+Skipping Phase 1 and jumping to Phase 3 would be like adding airbags without
+fixing the brakes – it mitigates but doesn't solve the problem.
 
 **Estimated Total Implementation Time:** 11-15 hours (1.5-2 days)
 

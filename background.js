@@ -171,20 +171,23 @@ function filterValidTabs(state) {
   if (!state?.tabs || !Array.isArray(state.tabs)) {
     return state;
   }
-  
+
   const originalCount = state.tabs.length;
   const validTabs = state.tabs.filter(tab => {
     if (!isValidQuickTabUrl(tab.url)) {
-      console.warn('[Background] Filtering out tab with invalid URL:', { id: tab.id, url: tab.url });
+      console.warn('[Background] Filtering out tab with invalid URL:', {
+        id: tab.id,
+        url: tab.url
+      });
       return false;
     }
     return true;
   });
-  
+
   if (validTabs.length !== originalCount) {
     console.log('[Background] Filtered', originalCount - validTabs.length, 'invalid tabs');
   }
-  
+
   return { ...state, tabs: validTabs };
 }
 
@@ -215,7 +218,7 @@ function _extractTabDataForHash(tab) {
 function _computeStringHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = (hash << 5) - hash + str.charCodeAt(i);
     hash = hash & hash; // Convert to 32bit integer
   }
   return hash;
@@ -232,13 +235,13 @@ function _computeStringHash(str) {
  */
 function computeStateHash(state) {
   if (!state) return 0;
-  
+
   const tabs = state.tabs || [];
   const tabData = tabs.map(_extractTabDataForHash);
-  
+
   // v1.6.3.2 - FIX: Include saveId in hash calculation
   const stateStr = JSON.stringify({ saveId: state.saveId, tabData });
-  
+
   return _computeStringHash(stateStr);
 }
 
@@ -337,13 +340,13 @@ async function tryLoadFromSessionStorage() {
   }
 
   const sessionState = result.quick_tabs_session;
-  
+
   // v1.6.2.2 - Unified format
   if (_hasValidTabsArray(sessionState)) {
     _applyUnifiedFormatState(sessionState, 'session storage', 'v1.6.2.2 unified');
     return true;
   }
-  
+
   // Backward compatibility: container format migration
   if (sessionState.containers) {
     _applyMigratedContainerState(sessionState, 'session storage');
@@ -363,7 +366,7 @@ async function tryLoadFromSessionStorage() {
  */
 function _processContainerTabs(containerKey, tabs, seenIds, allTabs) {
   console.log(`[Background] Migrating ${tabs.length} tabs from container: ${containerKey}`);
-  
+
   for (const tab of tabs) {
     if (seenIds.has(tab.id)) {
       console.warn(`[Background] Skipping duplicate tab ID during migration: ${tab.id}`);
@@ -378,21 +381,21 @@ function _processContainerTabs(containerKey, tabs, seenIds, allTabs) {
  * Migrate container format to unified format
  * v1.6.2.2 - Backward compatibility helper
  * v1.6.3.4-v11 - Refactored: Extracted _processContainerTabs to fix max-depth (bumps reduced)
- * 
+ *
  * @param {Object} containers - Container data object
  * @returns {Array} Unified tabs array (deduplicated)
  */
 function migrateContainersToUnifiedFormat(containers) {
   const allTabs = [];
   const seenIds = new Set();
-  
+
   for (const containerKey of Object.keys(containers)) {
     const tabs = containers[containerKey]?.tabs || [];
     if (tabs.length === 0) continue;
-    
+
     _processContainerTabs(containerKey, tabs, seenIds, allTabs);
   }
-  
+
   return allTabs;
 }
 
@@ -435,7 +438,7 @@ async function tryLoadFromSyncStorage() {
     isInitialized = true;
     return;
   }
-  
+
   // Backward compatibility: container format migration
   if (state.containers) {
     globalQuickTabState.tabs = migrateContainersToUnifiedFormat(state.containers);
@@ -504,7 +507,7 @@ async function migrateQuickTabState() {
   let migrated = false;
 
   // v1.6.2.2 - Process tabs array directly (unified format)
-  for (const quickTab of (globalQuickTabState.tabs || [])) {
+  for (const quickTab of globalQuickTabState.tabs || []) {
     if (migrateTabFromPinToSoloMute(quickTab)) {
       migrated = true;
     }
@@ -1061,20 +1064,20 @@ browser.webRequest.onHeadersReceived.addListener(
     // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
     const now = Date.now();
     const lastProcessed = recentlyProcessedIframes.get(details.url);
-    const shouldLog = !lastProcessed || (now - lastProcessed) >= IFRAME_DEDUP_WINDOW_MS;
-    
+    const shouldLog = !lastProcessed || now - lastProcessed >= IFRAME_DEDUP_WINDOW_MS;
+
     if (shouldLog) {
       console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
       recentlyProcessedIframes.set(details.url, now);
-      
+
       // Clean up old entries to prevent memory leak
       if (recentlyProcessedIframes.size > 100) {
         _cleanupOldIframeEntries(now);
       }
     }
 
-    const modifiedHeaders = details.responseHeaders.filter(
-      header => _filterSecurityHeader(header, details.url)
+    const modifiedHeaders = details.responseHeaders.filter(header =>
+      _filterSecurityHeader(header, details.url)
     );
 
     return { responseHeaders: modifiedHeaders };
@@ -1224,7 +1227,7 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
   let stateChanged = false;
 
   // v1.6.2.2 - Process tabs array directly (unified format)
-  for (const quickTab of (globalQuickTabState.tabs || [])) {
+  for (const quickTab of globalQuickTabState.tabs || []) {
     if (_removeTabFromQuickTab(quickTab, tabId)) {
       stateChanged = true;
     }
@@ -1373,11 +1376,11 @@ async function _broadcastQuickTabsClearedToTabs(tabs) {
   let successCount = 0;
   let failCount = 0;
   const failures = [];
-  
+
   for (const tab of tabs) {
     try {
       await browser.tabs.sendMessage(tab.id, {
-        action: 'QUICK_TABS_CLEARED'  // Different message: clear local only, no storage write
+        action: 'QUICK_TABS_CLEARED' // Different message: clear local only, no storage write
       });
       successCount++;
       console.log(`[Background] ✓ Notified tab ${tab.id}`);
@@ -1387,13 +1390,15 @@ async function _broadcastQuickTabsClearedToTabs(tabs) {
       console.log(`[Background] ✗ Failed tab ${tab.id}: ${err.message}`);
     }
   }
-  
+
   // Log broadcast summary
-  console.log(`[Background] Broadcast summary: ${successCount} success, ${failCount} failed, ${tabs.length} total`);
+  console.log(
+    `[Background] Broadcast summary: ${successCount} success, ${failCount} failed, ${tabs.length} total`
+  );
   if (failures.length > 0 && failures.length <= 10) {
     console.log('[Background] First failures:', failures.slice(0, 10));
   }
-  
+
   return { successCount, failCount, totalTabs: tabs.length };
 }
 
@@ -1402,36 +1407,36 @@ async function _broadcastQuickTabsClearedToTabs(tabs) {
 // Background clears storage ONCE, then broadcasts QUICK_TABS_CLEARED to all tabs
 messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
   console.log('[Background] Coordinated clear: Clearing Quick Tab storage once');
-  
+
   try {
     // v1.6.3.5-v8 - FIX Issue #8: Reset zero-tab tracking to prevent thrashing
     // Mark as "intentionally cleared" by setting counter to threshold value
     // This tells storage.onChanged to accept zero-tab states as valid
     consecutiveZeroTabReads = ZERO_TAB_CLEAR_THRESHOLD; // Intentionally cleared marker
     lastNonEmptyStateTimestamp = 0; // Allow immediate clear
-    
+
     // Step 1: Clear storage once (single write instead of N writes from N tabs)
     await browser.storage.local.remove('quick_tabs_state_v2');
-    
+
     // Step 2: Clear session storage if available
     if (typeof browser.storage.session !== 'undefined') {
       await browser.storage.session.remove('quick_tabs_session');
     }
-    
+
     // Step 3: Reset background's cache
     globalQuickTabState.tabs = [];
     globalQuickTabState.lastUpdate = Date.now();
     globalQuickTabState.saveId = `cleared-${Date.now()}`;
     lastBroadcastedStateHash = 0;
-    
+
     // v1.6.3.5-v8 - FIX Issue #7: Clear quickTabHostTabs to prevent phantom Quick Tabs
     quickTabHostTabs.clear();
-    
+
     // Step 4: Broadcast to all tabs to clear LOCAL state only (no storage write)
     // v1.6.3.5-v10 - FIX Issue #1: Use extracted function for per-tab logging
     const tabs = await browser.tabs.query({});
     const result = await _broadcastQuickTabsClearedToTabs(tabs);
-    
+
     console.log(`[Background] Coordinated clear complete: Notified ${tabs.length} tabs`);
     return { success: true, ...result };
   } catch (err) {
@@ -1440,7 +1445,9 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
   }
 });
 
-console.log(`[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`);
+console.log(
+  `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
+);
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
@@ -1557,11 +1564,11 @@ async function _broadcastToAllTabs(action, data) {
  */
 function _isSelfWrite(newValue, handler) {
   if (!newValue?.writeSourceId || !handler) return false;
-  
+
   const lastWrite = handler.getLastWriteTimestamp();
   const isSameSourceId = lastWrite?.writeSourceId === newValue.writeSourceId;
   const isWithinWindow = Date.now() - (lastWrite?.timestamp || 0) < WRITE_IGNORE_WINDOW_MS;
-  
+
   return isSameSourceId && isWithinWindow;
 }
 
@@ -1592,7 +1599,12 @@ function _isWithinClearCooldown(now) {
 function _shouldDeferClearForConfirmation() {
   consecutiveZeroTabReads++;
   if (consecutiveZeroTabReads < ZERO_TAB_CLEAR_THRESHOLD) {
-    console.warn('[Background] │ ⚠️ DEFERRED: Zero-tab read', consecutiveZeroTabReads, '/', ZERO_TAB_CLEAR_THRESHOLD);
+    console.warn(
+      '[Background] │ ⚠️ DEFERRED: Zero-tab read',
+      consecutiveZeroTabReads,
+      '/',
+      ZERO_TAB_CLEAR_THRESHOLD
+    );
     console.warn('[Background] │ Waiting for confirmation before clearing cache');
     return true;
   }
@@ -1611,7 +1623,7 @@ function _executeCacheClear(newValue) {
     timeSinceNonEmpty,
     currentCacheTabCount: globalQuickTabState.tabs?.length || 0
   });
-  
+
   console.log('[Background] Storage cleared (empty/missing tabs), clearing cache');
   globalQuickTabState.tabs = [];
   globalQuickTabState.lastUpdate = newValue?.timestamp || Date.now();
@@ -1631,10 +1643,10 @@ function _executeCacheClear(newValue) {
  */
 function _clearCacheForEmptyStorage(newValue) {
   const now = Date.now();
-  
+
   if (_isWithinClearCooldown(now)) return false;
   if (_shouldDeferClearForConfirmation()) return false;
-  
+
   _executeCacheClear(newValue);
   return true;
 }
@@ -1671,12 +1683,12 @@ function _shouldUpdateState(newValue) {
   const newHash = computeStateHash(newValue);
   const hashChanged = newHash !== lastBroadcastedStateHash;
   const saveIdChanged = _hasSaveIdChanged(newValue);
-  
+
   if (!hashChanged && !saveIdChanged) {
     console.log('[Background] State unchanged (same hash and saveId), skipping cache update');
     return false;
   }
-  
+
   lastBroadcastedStateHash = newHash;
   return true;
 }
@@ -1691,26 +1703,26 @@ function _shouldUpdateState(newValue) {
  * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
  * v1.6.3.4-v8 - FIX Issue #8: Extracted logging and validation helpers
- * 
+ *
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
  * - Each tab's StorageManager listens for storage.onChanged events
  * - Background script only needs to keep its own cache (globalQuickTabState) updated
- * 
+ *
  * @param {Object} changes - Storage changes object
  */
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
-  
+
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
-  
+
   // v1.6.3.4-v8 - Check early exit conditions
   if (_shouldIgnoreStorageChange(newValue, oldValue)) {
     return;
   }
-  
+
   // v1.6.3.4-v8 - Process and cache the update
   _processStorageUpdate(newValue);
 }
@@ -1757,15 +1769,20 @@ function _buildSampleTabInfo(newValue) {
 function _logStorageChange(oldValue, newValue) {
   const oldCount = _getTabCount(oldValue);
   const newCount = _getTabCount(newValue);
-  
+
   console.log('[Background] ┌─ storage.onChanged RECEIVED ─────────────────────────');
   console.log('[Background] │ tabs:', oldCount, '→', newCount);
-  console.log('[Background] │ saveId:', _getSaveIdOrNone(oldValue), '→', _getSaveIdOrNone(newValue));
+  console.log(
+    '[Background] │ saveId:',
+    _getSaveIdOrNone(oldValue),
+    '→',
+    _getSaveIdOrNone(newValue)
+  );
   console.log('[Background] Storage updated - sample tabs:', {
     tabCount: newCount,
     sampleTab: _buildSampleTabInfo(newValue)
   });
-  
+
   _logCorruptionWarning(oldCount, newCount);
   console.log('[Background] └──────────────────────────────────────────────────────');
 }
@@ -1810,7 +1827,7 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 
   // Update cooldown tracking and log comparison
   _updateCooldownAndLogChange(newValue, oldValue);
-  
+
   return false;
 }
 
@@ -1827,7 +1844,7 @@ function _isTransactionSelfWrite(newValue) {
     console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
     return true;
   }
-  
+
   return false;
 }
 
@@ -1838,7 +1855,7 @@ function _isTransactionSelfWrite(newValue) {
  * @returns {boolean} True if within cooldown
  */
 function _checkAndLogCooldown(now) {
-  const isWithinCooldown = (now - lastStorageChangeProcessed) < STORAGE_CHANGE_COOLDOWN_MS;
+  const isWithinCooldown = now - lastStorageChangeProcessed < STORAGE_CHANGE_COOLDOWN_MS;
   if (isWithinCooldown) {
     console.log('[Background] Storage change within cooldown, may skip');
   }
@@ -1874,7 +1891,10 @@ function _buildStorageChangeComparison(newValue, oldValue) {
  */
 function _updateCooldownAndLogChange(newValue, oldValue) {
   _checkAndLogCooldown(Date.now());
-  console.log('[Background] Storage change comparison:', _buildStorageChangeComparison(newValue, oldValue));
+  console.log(
+    '[Background] Storage change comparison:',
+    _buildStorageChangeComparison(newValue, oldValue)
+  );
 }
 
 /**
@@ -1897,7 +1917,10 @@ function _hasMatchingSaveIdAndTabCount(newValue, oldValue) {
 function _computeQuickTabContentKey(value) {
   if (!value?.tabs || !Array.isArray(value.tabs)) return '';
   // Create a deterministic key from tab IDs and minimized states
-  return value.tabs.map(t => `${t.id}:${t.minimized ? 1 : 0}`).sort().join(',');
+  return value.tabs
+    .map(t => `${t.id}:${t.minimized ? 1 : 0}`)
+    .sort()
+    .join(',');
 }
 
 /**
@@ -1964,12 +1987,12 @@ function _logSpuriousEventDetection(sameTimestamp, newValue) {
 function _isSpuriousFirefoxEvent(newValue, oldValue) {
   if (!_bothValuesExist(newValue, oldValue)) return false;
   if (!_hasMatchingSaveIdAndTabCount(newValue, oldValue)) return false;
-  
+
   if (_tabContentsDiffer(newValue, oldValue)) {
     console.log('[Background] Not spurious - tab content differs despite matching saveId/count');
     return false;
   }
-  
+
   _logSpuriousEventDetection(_timestampsMatch(newValue, oldValue), newValue);
   return true;
 }
@@ -1988,19 +2011,19 @@ const RECENT_WRITE_EXPIRY_MS = 500;
 function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
   const key = `${instanceId}-${saveId}`;
   const now = Date.now();
-  
+
   // Clean up old entries
   for (const [k, timestamp] of _recentlyProcessedWrites.entries()) {
     if (now - timestamp > RECENT_WRITE_EXPIRY_MS) {
       _recentlyProcessedWrites.delete(k);
     }
   }
-  
+
   // Check if this write was recently processed
   if (_recentlyProcessedWrites.has(key)) {
     return true;
   }
-  
+
   // Mark as processed
   _recentlyProcessedWrites.set(key, now);
   return false;
@@ -2027,10 +2050,10 @@ function _processStorageUpdate(newValue) {
   if (!_shouldUpdateState(newValue)) {
     return;
   }
-  
+
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
-  
+
   // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
   // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
@@ -2094,17 +2117,17 @@ async function _openSidebarAndSwitchToManager() {
   try {
     // Check if sidebar is already open
     const isOpen = await browser.sidebarAction.isOpen({});
-    
+
     if (!isOpen) {
       // Open sidebar if closed
       await browser.sidebarAction.open();
       // Wait for sidebar to fully initialize (DOM ready + scripts loaded)
       await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
     }
-    
+
     // Send message to sidebar to switch to Manager tab with retry logic
     await _sendManagerTabMessage();
-    
+
     console.log('[Sidebar] Opened sidebar and switched to Manager tab');
   } catch (error) {
     console.error('[Sidebar] Error opening sidebar:', error);
@@ -2152,11 +2175,11 @@ async function _trySendSidebarMessage(messageType) {
 async function _sendSidebarMessage(messageType, logPrefix) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 150; // ms between retries
-  
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const success = await _trySendSidebarMessage(messageType);
     if (success) return true;
-    
+
     // Sidebar might not be ready yet, wait before retry
     if (attempt < MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -2216,7 +2239,7 @@ browser.commands.onCommand.addListener(command => {
   if (command === 'toggle-quick-tabs-manager') {
     _handleToggleQuickTabsManager();
   }
-  
+
   // v1.6.3.4-v2 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
   if (command === '_execute_sidebar_action') {
     _handleOpenToSettingsTab();
@@ -2236,13 +2259,13 @@ async function _handleToggleQuickTabsManager() {
     browser.storage.local.set({ _requestedPrimaryTab: 'manager' }).catch(err => {
       console.warn('[Sidebar] Failed to set _requestedPrimaryTab:', err);
     });
-    
+
     // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     // toggle() properly handles user gesture context
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
       console.log('[Sidebar] Toggled sidebar via toggle() API');
-      
+
       // After toggle, try to switch to Manager if sidebar is now open
       // Use setTimeout to let the sidebar initialize
       setTimeout(async () => {
@@ -2254,13 +2277,13 @@ async function _handleToggleQuickTabsManager() {
       }, SIDEBAR_INIT_DELAY_MS);
       return;
     }
-    
+
     // Fallback for older Firefox without toggle()
     // v1.6.3.4-v5 - FIX Bug #1: Call open() FIRST without any awaits to preserve gesture
     // We can't check isOpen() first because that breaks the gesture context
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
-    
+
     // Wait for sidebar to initialize, then send message
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
     await _sendManagerTabMessage();
@@ -2281,9 +2304,9 @@ async function _openSidebarToManager() {
   // The sidebar will read this on DOMContentLoaded and show the correct tab
   await browser.storage.local.set({ _requestedPrimaryTab: 'manager' });
   console.debug('[Background] Set _requestedPrimaryTab to manager');
-  
+
   await browser.sidebarAction.open();
-  
+
   // Wait for sidebar to initialize, then send message as backup
   // The message may still fail on very first open, but storage ensures correct tab
   await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
@@ -2297,7 +2320,7 @@ async function _openSidebarToManager() {
  */
 async function _toggleManagerWhenSidebarOpen() {
   const currentTab = await _getCurrentPrimaryTab();
-  
+
   if (currentTab === 'manager') {
     // Manager is already showing - close the sidebar
     await browser.sidebarAction.close();
@@ -2321,12 +2344,12 @@ async function _handleOpenToSettingsTab() {
     browser.storage.local.set({ _requestedPrimaryTab: 'settings' }).catch(err => {
       console.warn('[Sidebar] Failed to set _requestedPrimaryTab:', err);
     });
-    
+
     // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
       console.log('[Sidebar] Toggled sidebar via toggle() API');
-      
+
       // After toggle, try to switch to Settings if sidebar is now open
       setTimeout(async () => {
         try {
@@ -2337,12 +2360,12 @@ async function _handleOpenToSettingsTab() {
       }, SIDEBAR_INIT_DELAY_MS);
       return;
     }
-    
+
     // Fallback: Call open() FIRST without awaits
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
-    
+
     // Switch to Settings tab
     await _sendSettingsTabMessage();
     console.log('[Sidebar] Opened sidebar and switched to Settings tab');
@@ -2379,6 +2402,615 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
   console.log('[Sidebar] Browser action uses popup (Chrome compatibility)');
 }
 // ==================== END BROWSER ACTION HANDLER ====================
+
+// ==================== v1.6.3.6-v11 PORT LIFECYCLE MANAGEMENT ====================
+// FIX Issue #11: Persistent port connections to keep background script alive
+// FIX Issue #12: Port lifecycle logging
+
+/**
+ * Port registry for tracking connected ports
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * Structure: portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount }
+ */
+const portRegistry = new Map();
+
+/**
+ * Port ID counter for unique identification
+ * v1.6.3.6-v11 - FIX Issue #12: Track port IDs
+ */
+let portIdCounter = 0;
+
+/**
+ * Port cleanup interval (5 minutes)
+ * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup
+ */
+const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Port inactivity threshold for logging warnings (10 minutes)
+ * v1.6.3.6-v11 - FIX Issue #17: Inactivity monitoring
+ */
+const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
+
+/**
+ * Generate unique port ID
+ * v1.6.3.6-v11 - FIX Issue #12: Port identification
+ * @returns {string} Unique port ID
+ */
+function generatePortId() {
+  portIdCounter++;
+  return `port-${Date.now()}-${portIdCounter}`;
+}
+
+/**
+ * Log port lifecycle event
+ * v1.6.3.6-v11 - FIX Issue #12: Comprehensive port logging
+ * @param {string} origin - Origin of the port (sidebar, content-tab-X)
+ * @param {string} event - Event type (open, close, disconnect, error, message)
+ * @param {Object} details - Event details
+ */
+function logPortLifecycle(origin, event, details = {}) {
+  console.log(`[Manager] PORT_LIFECYCLE [${origin}] [${event}]:`, {
+    tabId: details.tabId,
+    portId: details.portId,
+    timestamp: Date.now(),
+    ...details
+  });
+}
+
+/**
+ * Register a new port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
+ * @param {browser.runtime.Port} port - The connected port
+ * @param {string} origin - Origin identifier
+ * @param {number|null} tabId - Tab ID (if from content script)
+ * @param {string} type - Port type ('sidebar' or 'content')
+ * @returns {string} Generated port ID
+ */
+function registerPort(port, origin, tabId, type) {
+  const portId = generatePortId();
+
+  portRegistry.set(portId, {
+    port,
+    origin,
+    tabId,
+    type,
+    connectedAt: Date.now(),
+    lastMessageAt: null,
+    messageCount: 0
+  });
+
+  logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
+
+  return portId;
+}
+
+/**
+ * Unregister a port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
+ * @param {string} portId - Port ID to unregister
+ * @param {string} reason - Reason for disconnect
+ */
+function unregisterPort(portId, reason = 'disconnect') {
+  const portInfo = portRegistry.get(portId);
+  if (portInfo) {
+    logPortLifecycle(portInfo.origin, 'close', {
+      tabId: portInfo.tabId,
+      portId,
+      reason,
+      messageCount: portInfo.messageCount,
+      duration: Date.now() - portInfo.connectedAt
+    });
+    portRegistry.delete(portId);
+  }
+}
+
+/**
+ * Update port activity timestamp
+ * v1.6.3.6-v11 - FIX Issue #12: Track port activity
+ * @param {string} portId - Port ID
+ */
+function updatePortActivity(portId) {
+  const portInfo = portRegistry.get(portId);
+  if (portInfo) {
+    portInfo.lastMessageAt = Date.now();
+    portInfo.messageCount++;
+  }
+}
+
+/**
+ * Check if a port's tab still exists
+ * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting in cleanupStalePorts
+ * @param {Object} portInfo - Port info object
+ * @returns {Promise<boolean>} True if tab exists or port is not content type
+ */
+async function _checkPortTabExists(portInfo) {
+  if (portInfo.type !== 'content' || !portInfo.tabId) {
+    return true;
+  }
+
+  try {
+    await browser.tabs.get(portInfo.tabId);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+/**
+ * Check if a port is inactive (for logging purposes)
+ * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID
+ */
+function _checkPortInactivity(portInfo, now, portId) {
+  const lastActivity = portInfo.lastMessageAt || portInfo.connectedAt;
+  if (now - lastActivity > PORT_INACTIVITY_THRESHOLD_MS) {
+    console.warn('[Background] PORT_CLEANUP: Port has been inactive:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      inactiveMs: now - lastActivity
+    });
+  }
+}
+
+/**
+ * Clean up stale ports (e.g., from closed tabs)
+ * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
+ */
+async function cleanupStalePorts() {
+  console.log('[Background] PORT_CLEANUP: Starting periodic port cleanup...');
+
+  const now = Date.now();
+  const stalePorts = [];
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const tabExists = await _checkPortTabExists(portInfo);
+    if (!tabExists) {
+      stalePorts.push({ portId, reason: 'tab-closed' });
+      continue;
+    }
+
+    _checkPortInactivity(portInfo, now, portId);
+  }
+
+  // Remove stale ports
+  for (const { portId, reason } of stalePorts) {
+    unregisterPort(portId, reason);
+  }
+
+  console.log('[Background] PORT_CLEANUP: Complete.', {
+    removedCount: stalePorts.length,
+    remainingPorts: portRegistry.size
+  });
+}
+
+// Start periodic cleanup
+setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
+
+/**
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * @param {browser.runtime.Port} port - The connecting port
+ */
+function handlePortConnect(port) {
+  // Parse port name to determine origin
+  // Format: "quicktabs-{type}-{tabId}" (e.g., "quicktabs-sidebar" or "quicktabs-content-123")
+  const nameParts = port.name.split('-');
+  const type = nameParts[1] || 'unknown';
+  const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : port.sender?.tab?.id || null;
+  const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+
+  const portId = registerPort(port, origin, tabId, type);
+
+  // Store portId on the port for later reference
+  port._portId = portId;
+
+  // Handle messages from this port
+  port.onMessage.addListener(message => {
+    handlePortMessage(port, portId, message);
+  });
+
+  // Handle port disconnect
+  port.onDisconnect.addListener(() => {
+    const error = browser.runtime.lastError;
+    if (error) {
+      logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
+    }
+    unregisterPort(portId, 'client-disconnect');
+  });
+}
+
+/**
+ * Handle message received via port
+ * v1.6.3.6-v11 - FIX Issue #10: Message acknowledgment system
+ * @param {browser.runtime.Port} port - The port that sent the message
+ * @param {string} portId - Port ID
+ * @param {Object} message - The message
+ */
+async function handlePortMessage(port, portId, message) {
+  const portInfo = portRegistry.get(portId);
+  updatePortActivity(portId);
+
+  logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
+    portId,
+    tabId: portInfo?.tabId,
+    messageType: message.type,
+    correlationId: message.correlationId
+  });
+
+  // Route message based on type
+  const response = await routePortMessage(message, portInfo);
+
+  // Send acknowledgment if correlationId present
+  if (message.correlationId) {
+    const ack = {
+      type: 'ACKNOWLEDGMENT',
+      correlationId: message.correlationId,
+      originalType: message.type,
+      success: response?.success ?? true,
+      timestamp: Date.now(),
+      ...response
+    };
+
+    try {
+      port.postMessage(ack);
+      logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
+        portId,
+        correlationId: message.correlationId,
+        success: ack.success
+      });
+    } catch (err) {
+      console.error('[Background] Failed to send acknowledgment:', err.message);
+    }
+  }
+}
+
+/**
+ * Route port message to appropriate handler
+ * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
+ * @param {Object} message - Message to route
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Handler response
+ */
+function routePortMessage(message, portInfo) {
+  const { type, action } = message;
+
+  // Route by message type (v1.6.3.6-v11: FIX Issue #15)
+  switch (type) {
+    case 'ACTION_REQUEST':
+      return handleActionRequest(message, portInfo);
+
+    case 'STATE_UPDATE':
+      return handleStateUpdate(message, portInfo);
+
+    case 'BROADCAST':
+      return handleBroadcastRequest(message, portInfo);
+
+    default:
+      // Fallback to action-based routing for backwards compatibility
+      if (action) {
+        return handleLegacyAction(message, portInfo);
+      }
+      console.warn('[Background] Unknown message type:', type);
+      return Promise.resolve({ success: false, error: 'Unknown message type' });
+  }
+}
+
+/**
+ * Handle ACTION_REQUEST type messages
+ * v1.6.3.6-v11 - FIX Issue #15: Action request handling
+ * @param {Object} message - Action request message
+ * @param {Object} portInfo - Port info
+ */
+function handleActionRequest(message, portInfo) {
+  const { action, payload } = message;
+
+  console.log('[Background] Handling ACTION_REQUEST:', { action, portInfo: portInfo?.origin });
+
+  switch (action) {
+    case 'TOGGLE_GROUP':
+      // Manager toggle group - no storage write needed
+      return { success: true };
+
+    case 'MINIMIZE_TAB':
+      return executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+
+    case 'RESTORE_TAB':
+      return executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+
+    case 'CLOSE_TAB':
+      return executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+
+    case 'ADOPT_TAB':
+      return handleAdoptAction(payload);
+
+    case 'DELETE_GROUP':
+      // TODO: Implement delete group
+      return { success: false, error: 'Not implemented' };
+
+    default:
+      console.warn('[Background] Unknown action:', action);
+      return { success: false, error: `Unknown action: ${action}` };
+  }
+}
+
+/**
+ * Handle STATE_UPDATE type messages
+ * v1.6.3.6-v11 - FIX Issue #13: Background as sole writer
+ * @param {Object} message - State update message
+ * @param {Object} portInfo - Port info
+ */
+async function handleStateUpdate(message, portInfo) {
+  const { quickTabId, changes } = message.payload || {};
+
+  console.log('[Background] Handling STATE_UPDATE:', {
+    quickTabId,
+    changes,
+    source: portInfo?.origin
+  });
+
+  // Update global state
+  _updateGlobalQuickTabCache(quickTabId, changes, portInfo?.tabId);
+
+  // v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+  const writeResult = await writeStateWithVerification();
+
+  // v1.6.3.6-v11 - FIX Issue #19: Broadcast visibility changes to all ports
+  if (changes?.minimized !== undefined || changes?.visibility !== undefined) {
+    broadcastToAllPorts({
+      type: 'BROADCAST',
+      action: 'VISIBILITY_CHANGE',
+      quickTabId,
+      changes,
+      timestamp: Date.now()
+    });
+  }
+
+  return writeResult;
+}
+
+/**
+ * Handle BROADCAST type messages
+ * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * @param {Object} message - Broadcast message
+ * @param {Object} portInfo - Port info
+ */
+function handleBroadcastRequest(message, portInfo) {
+  const excludePortId = portInfo ? portInfo.port?._portId : null;
+
+  console.log('[Background] Broadcasting to all ports:', {
+    action: message.action,
+    excludePortId
+  });
+
+  broadcastToAllPorts(message, excludePortId);
+
+  return Promise.resolve({
+    success: true,
+    broadcastedTo: portRegistry.size - (excludePortId ? 1 : 0)
+  });
+}
+
+/**
+ * Handle legacy action-based messages (backwards compatibility)
+ * v1.6.3.6-v11 - Backwards compatibility with existing message format
+ * @param {Object} message - Legacy message
+ * @param {Object} portInfo - Port info
+ */
+function handleLegacyAction(message, portInfo) {
+  const { action, quickTabId } = message;
+
+  console.log('[Background] Handling legacy action:', { action, quickTabId });
+
+  // Map legacy actions to new handlers
+  if (action === 'MANAGER_COMMAND') {
+    return handleManagerCommand(message);
+  }
+
+  if (action === 'QUICK_TAB_STATE_CHANGE') {
+    return handleQuickTabStateChange(message, { tab: { id: portInfo?.tabId } });
+  }
+
+  return Promise.resolve({ success: false, error: 'Unknown legacy action' });
+}
+
+/**
+ * Handle adopt action (atomic single write)
+ * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * @param {Object} payload - Adoption payload
+ */
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId } = payload;
+
+  console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
+
+  // Read entire state
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = result?.quick_tabs_state_v2;
+
+  if (!state?.tabs) {
+    return { success: false, error: 'No state to adopt from' };
+  }
+
+  // Find and update the tab locally
+  const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
+  if (tabIndex === -1) {
+    return { success: false, error: 'Quick Tab not found' };
+  }
+
+  const oldOriginTabId = state.tabs[tabIndex].originTabId;
+  state.tabs[tabIndex].originTabId = targetTabId;
+
+  // Single atomic write
+  const saveId = `adopt-${quickTabId}-${Date.now()}`;
+  await browser.storage.local.set({
+    quick_tabs_state_v2: {
+      tabs: state.tabs,
+      saveId,
+      timestamp: Date.now(),
+      writingTabId: targetTabId,
+      writingInstanceId: `background-adopt-${Date.now()}`
+    }
+  });
+
+  // Update global cache
+  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (cachedTab) {
+    cachedTab.originTabId = targetTabId;
+  }
+
+  // Update host tracking
+  quickTabHostTabs.set(quickTabId, targetTabId);
+
+  console.log('[Background] ADOPT_TAB complete:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId
+  });
+
+  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+}
+
+/**
+ * Write state to storage with verification
+ * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+ * @returns {Promise<Object>} Write result with verification status
+ */
+async function writeStateWithVerification() {
+  const saveId = `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const stateToWrite = {
+    tabs: globalQuickTabState.tabs,
+    saveId,
+    timestamp: Date.now()
+  };
+
+  try {
+    // Write
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
+
+    // v1.6.3.6-v11 - FIX Issue #14: Read-back verification
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const readBack = result?.quick_tabs_state_v2;
+
+    const verified = readBack?.saveId === saveId;
+
+    if (!verified) {
+      console.error('[Background] Storage write verification FAILED:', {
+        expectedSaveId: saveId,
+        actualSaveId: readBack?.saveId,
+        expectedTabs: stateToWrite.tabs.length,
+        actualTabs: readBack?.tabs?.length
+      });
+    } else {
+      console.log('[Background] Storage write verified:', {
+        saveId,
+        tabCount: stateToWrite.tabs.length
+      });
+    }
+
+    return { success: verified, saveId, verified };
+  } catch (err) {
+    console.error('[Background] Storage write error:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Broadcast message to all connected ports
+ * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * @param {Object} message - Message to broadcast
+ * @param {string} excludePortId - Port ID to exclude from broadcast
+ */
+function broadcastToAllPorts(message, excludePortId = null) {
+  let sentCount = 0;
+  let errorCount = 0;
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portId === excludePortId) continue;
+
+    try {
+      portInfo.port.postMessage(message);
+      sentCount++;
+    } catch (err) {
+      console.warn('[Background] Failed to broadcast to port:', { portId, error: err.message });
+      errorCount++;
+    }
+  }
+
+  console.log('[Background] Broadcast complete:', {
+    action: message.action || message.type,
+    sentCount,
+    errorCount,
+    excludedPortId: excludePortId
+  });
+}
+
+// Register port connection listener
+browser.runtime.onConnect.addListener(handlePortConnect);
+
+console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
+
+// ==================== END PORT LIFECYCLE MANAGEMENT ====================
+
+// ==================== v1.6.3.6-v11 TAB LIFECYCLE EVENTS ====================
+// FIX Issue #16: Track browser tab lifecycle for orphan detection
+
+/**
+ * Handle browser tab removal
+ * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
+ * @param {number} tabId - ID of the removed tab
+ * @param {Object} removeInfo - Removal info
+ */
+function handleTabRemoved(tabId, removeInfo) {
+  console.log('[Background] TAB_REMOVED:', { tabId, removeInfo });
+
+  // Find Quick Tabs that belonged to this tab
+  const orphanedQuickTabs = globalQuickTabState.tabs.filter(t => t.originTabId === tabId);
+
+  if (orphanedQuickTabs.length === 0) {
+    console.log('[Background] No Quick Tabs affected by tab closure:', tabId);
+    return;
+  }
+
+  console.log('[Background] Quick Tabs orphaned by tab closure:', {
+    tabId,
+    count: orphanedQuickTabs.length,
+    quickTabIds: orphanedQuickTabs.map(t => t.id)
+  });
+
+  // Remove from host tracking
+  for (const qt of orphanedQuickTabs) {
+    quickTabHostTabs.delete(qt.id);
+  }
+
+  // Broadcast tab lifecycle change to all connected ports
+  broadcastToAllPorts({
+    type: 'BROADCAST',
+    action: 'TAB_LIFECYCLE_CHANGE',
+    event: 'tab-removed',
+    tabId,
+    affectedQuickTabs: orphanedQuickTabs.map(t => t.id),
+    timestamp: Date.now()
+  });
+
+  // Clean up ports associated with this tab
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.tabId === tabId) {
+      unregisterPort(portId, 'tab-removed');
+    }
+  }
+}
+
+// Register tab removal listener
+browser.tabs.onRemoved.addListener(handleTabRemoved);
+
+console.log('[Background] v1.6.3.6-v11 Tab lifecycle events initialized');
+
+// ==================== END TAB LIFECYCLE EVENTS ====================
 
 // ==================== v1.6.3.5-v3 MESSAGE INFRASTRUCTURE ====================
 // Background-as-Coordinator architecture for Quick Tab state synchronization
@@ -2499,21 +3131,21 @@ const quickTabHostTabs = new Map();
 async function handleQuickTabStateChange(message, sender) {
   const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
-  
+
   // v1.6.3.6-v5 - FIX Issue #4c: Log message receipt
   const messageId = message.messageId || generateMessageId();
   logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
-  
+
   console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
     quickTabId,
     changes,
     source,
     sourceTabId
   });
-  
+
   // Track which tab hosts this Quick Tab
   _updateQuickTabHostTracking(quickTabId, sourceTabId);
-  
+
   // v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes
   // Note: We check both `changes.deleted === true` (explicit deletion flag) and `source === 'destroy'`
   // (legacy source indication) for backward compatibility. The explicit flag is preferred for new code.
@@ -2521,13 +3153,13 @@ async function handleQuickTabStateChange(message, sender) {
     await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
     return { success: true };
   }
-  
+
   // Update globalQuickTabState cache
   _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
-  
+
   // Broadcast to all interested parties
   await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
-  
+
   return { success: true };
 }
 
@@ -2559,30 +3191,35 @@ function _updateQuickTabHostTracking(quickTabId, sourceTabId) {
 async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
   // v1.6.3.6-v5 - FIX Issue #4e: Generate correlation ID for deletion tracing
   const correlationId = `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
-  
+
   // v1.6.3.6-v5 - Log deletion submission
   logDeletionPropagation(correlationId, 'submit', quickTabId, {
     source,
     excludeTabId: sourceTabId
   });
-  
+
   console.log('[Background] Processing deletion for:', quickTabId);
   const beforeCount = globalQuickTabState.tabs.length;
   globalQuickTabState.tabs = globalQuickTabState.tabs.filter(t => t.id !== quickTabId);
   globalQuickTabState.lastUpdate = Date.now();
-  
+
   // Remove from host tracking
   quickTabHostTabs.delete(quickTabId);
-  
+
   console.log('[Background] Removed tab from cache:', {
     quickTabId,
     beforeCount,
     afterCount: globalQuickTabState.tabs.length,
     correlationId
   });
-  
+
   // Broadcast deletion to Manager (with correlation ID for tracing)
-  await broadcastQuickTabStateUpdate(quickTabId, { deleted: true, correlationId }, source, sourceTabId);
+  await broadcastQuickTabStateUpdate(
+    quickTabId,
+    { deleted: true, correlationId },
+    source,
+    sourceTabId
+  );
 }
 
 /**
@@ -2594,7 +3231,7 @@ async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
  */
 function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
   if (!changes || !quickTabId) return;
-  
+
   const existingTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (existingTab) {
     Object.assign(existingTab, changes);
@@ -2630,7 +3267,7 @@ let _lastCircuitBreakerReset = 0;
  * @param {number} now - Current timestamp
  */
 function _tryResetCircuitBreaker(now) {
-  if (_circuitBreakerTripped && (now - _lastCircuitBreakerReset) > 1000) {
+  if (_circuitBreakerTripped && now - _lastCircuitBreakerReset > 1000) {
     _circuitBreakerTripped = false;
     console.log('[Background] Broadcast circuit breaker RESET');
   }
@@ -2642,7 +3279,10 @@ function _tryResetCircuitBreaker(now) {
  * @param {number} now - Current timestamp
  */
 function _cleanupBroadcastHistory(now) {
-  while (_broadcastHistory.length > 0 && (now - _broadcastHistory[0].time) > BROADCAST_HISTORY_WINDOW_MS) {
+  while (
+    _broadcastHistory.length > 0 &&
+    now - _broadcastHistory[0].time > BROADCAST_HISTORY_WINDOW_MS
+  ) {
     _broadcastHistory.shift();
   }
 }
@@ -2655,8 +3295,8 @@ function _cleanupBroadcastHistory(now) {
  * @returns {boolean} True if duplicate
  */
 function _isDuplicateBroadcast(quickTabId, changesHash) {
-  return _broadcastHistory.some(entry => 
-    entry.quickTabId === quickTabId && entry.changesHash === changesHash
+  return _broadcastHistory.some(
+    entry => entry.quickTabId === quickTabId && entry.changesHash === changesHash
   );
 }
 
@@ -2669,7 +3309,11 @@ function _isDuplicateBroadcast(quickTabId, changesHash) {
 function _tripCircuitBreaker(now) {
   _circuitBreakerTripped = true;
   _lastCircuitBreakerReset = now;
-  console.error('[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within', BROADCAST_HISTORY_WINDOW_MS, 'ms');
+  console.error(
+    '[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within',
+    BROADCAST_HISTORY_WINDOW_MS,
+    'ms'
+  );
   console.error('[Background] Broadcasts in window:', _broadcastHistory.length);
   return { allowed: false, reason: 'circuit breaker limit exceeded' };
 }
@@ -2684,23 +3328,23 @@ function _tripCircuitBreaker(now) {
  */
 function _shouldAllowBroadcast(quickTabId, changes) {
   const now = Date.now();
-  
+
   _tryResetCircuitBreaker(now);
   if (_circuitBreakerTripped) {
     return { allowed: false, reason: 'circuit breaker tripped' };
   }
-  
+
   _cleanupBroadcastHistory(now);
-  
+
   const changesHash = JSON.stringify(changes);
   if (_isDuplicateBroadcast(quickTabId, changesHash)) {
     return { allowed: false, reason: 'duplicate broadcast within window' };
   }
-  
+
   if (_broadcastHistory.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
     return _tripCircuitBreaker(now);
   }
-  
+
   _broadcastHistory.push({ time: now, quickTabId, changesHash });
   return { allowed: true, reason: 'ok' };
 }
@@ -2727,10 +3371,10 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     });
     return;
   }
-  
+
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
-  
+
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
@@ -2740,10 +3384,10 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     originalSource: source,
     timestamp: Date.now()
   };
-  
+
   // v1.6.3.6-v5 - FIX Issue #4c: Log message dispatch to sidebar
   logMessageDispatch(messageId, 'QUICK_TAB_STATE_UPDATED', excludeTabId, 'sidebar');
-  
+
   // v1.6.3.6-v4 - FIX Issue #4: Log trigger source before broadcast
   console.log('[Background] Broadcasting QUICK_TAB_STATE_UPDATED:', {
     quickTabId,
@@ -2752,7 +3396,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     excludeTabId,
     triggerSource: source
   });
-  
+
   // Broadcast to Manager sidebar (if open)
   try {
     await browser.runtime.sendMessage(message);
@@ -2760,7 +3404,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
   } catch (_err) {
     // Sidebar may not be open - ignore
   }
-  
+
   // v1.6.3.7 - FIX Issue #3: For deletions, broadcast to ALL tabs (except sender)
   // This ensures UI button and Manager button produce identical cross-tab results
   if (changes?.deleted === true) {
@@ -2810,7 +3454,7 @@ async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlation
   if (tab.id === excludeTabId) {
     return { sent: false, skipped: true };
   }
-  
+
   const success = await _sendDeletionToTab(tab.id, quickTabId, correlationId);
   return { sent: success, skipped: false };
 }
@@ -2828,30 +3472,30 @@ async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlation
 async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, correlationId) {
   // v1.6.3.6-v5 - FIX Issue #4e: Use provided correlation ID or generate one
   const corrId = correlationId || `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
-  
+
   console.log('[Background] Broadcasting deletion to all tabs:', {
     quickTabId,
     source,
     excludeTabId,
     correlationId: corrId
   });
-  
+
   try {
     const tabs = await browser.tabs.query({});
     const results = await Promise.all(
       tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
     );
-    
+
     const successCount = results.filter(r => r.sent).length;
     const skipCount = results.filter(r => r.skipped).length;
-    
+
     // v1.6.3.6-v5 - FIX Issue #4e: Log deletion broadcast complete with correlation ID
     logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
       totalTabs: tabs.length,
       successCount,
       skipCount
     });
-    
+
     console.log('[Background] Deletion broadcast complete:', {
       quickTabId,
       totalTabs: tabs.length,
@@ -2871,16 +3515,16 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
  */
 function handleManagerCommand(message) {
   const { command, quickTabId, sourceContext } = message;
-  
+
   console.log('[Background] MANAGER_COMMAND received:', {
     command,
     quickTabId,
     sourceContext
   });
-  
+
   // Find which tab hosts this Quick Tab
   const hostTabId = quickTabHostTabs.get(quickTabId);
-  
+
   if (!hostTabId) {
     console.warn('[Background] Cannot execute command - Quick Tab host unknown:', quickTabId);
     // Try to find from cache
@@ -2892,7 +3536,7 @@ function handleManagerCommand(message) {
     }
     return Promise.resolve({ success: false, error: 'Quick Tab host unknown' });
   }
-  
+
   return executeManagerCommand(command, quickTabId, hostTabId);
 }
 
@@ -2920,20 +3564,20 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     console.warn('[Background] Invalid command rejected:', { command, quickTabId });
     return { success: false, error: `Unknown command: ${command}` };
   }
-  
+
   const executeMessage = {
     type: 'EXECUTE_COMMAND',
     command,
     quickTabId,
     source: 'manager'
   };
-  
+
   console.log('[Background] Routing command to tab:', {
     command,
     quickTabId,
     hostTabId
   });
-  
+
   try {
     const response = await browser.tabs.sendMessage(hostTabId, executeMessage);
     console.log('[Background] Command executed successfully:', response);
@@ -2959,14 +3603,14 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true; // Keep channel open for async response
   }
-  
+
   if (message.type === 'MANAGER_COMMAND') {
     handleManagerCommand(message)
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
   }
-  
+
   // Let other handlers process the message
   return false;
 });

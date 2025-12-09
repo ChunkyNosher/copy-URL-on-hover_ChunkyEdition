@@ -1,30 +1,36 @@
 # Data URL Export Failure - Complete Diagnostic Report
+
 **copy-URL-on-hover Extension v1.5.9.3**
 
-**Issue:** Browser.downloads API rejects data URL with "Type error for parameter options (Error processing url: Error: Access denied for URL data:text/plaincharset=utf-8;base64..."  
+**Issue:** Browser.downloads API rejects data URL with "Type error for parameter
+options (Error processing url: Error: Access denied for URL
+data:text/plaincharset=utf-8;base64..."  
 **Repository:** ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Date:** November 15, 2025, 3:10 AM EST
 
 ---
 
-
 **Error message shown:**
+
 ```
-Export failed: Type error for parameter options (Error processing url: 
+Export failed: Type error for parameter options (Error processing url:
 Error: Access denied for URL data:text/plaincharset=utf-8;base64,
 PTBPTk929weSUVKkb2D24zlg...
 plaincharset=utf-8for downloads.download
 ```
 
 **Observations:**
+
 1. ✅ Export button triggered successfully
 2. ✅ 541 logs collected (0 background, 541 content logs)
-3. ❌ **Data URL format is malformed** - notice `plaincharset` (missing semicolon!)
+3. ❌ **Data URL format is malformed** - notice `plaincharset` (missing
+   semicolon!)
 4. ❌ Firefox rejects the URL as invalid
 
 ---
 
 **Console output analysis:**
+
 ```
 [Popup] Starting log export...
 [Popup] Active tab: https://www.perplexity.ai/search/...
@@ -43,12 +49,13 @@ plaincharset=utf-8for downloads.download
 [Popup] Total logs to export: 541
 [Popup] Exporting to: copy-url-extension-logs_v1.5.9.3_2025-11-15T08-05-13.txt
 [Popup] Created data URL (length: 101429 chars)
-⚠️ [Popup] Export failed: Error: Type error for parameter options 
+⚠️ [Popup] Export failed: Error: Type error for parameter options
 (Error processing url: Error: Access denied for URL data:text/
 plaincharset=utf-8;base64,PTBPTk929weSUVKkb2D24zlg...
 ```
 
 **Key findings:**
+
 1. ✅ Log collection **works perfectly** - 541 logs captured
 2. ✅ Console interceptor **works** - buffer utilization 10.66%
 3. ✅ Data URL created (101,429 characters long)
@@ -70,7 +77,8 @@ const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 
 ### Problem #1: Deprecated Encoding Method
 
-The `btoa(unescape(encodeURIComponent()))` pattern is **deprecated**[364][366][367][369] and has several critical issues:
+The `btoa(unescape(encodeURIComponent()))` pattern is
+**deprecated**[364][366][367][369] and has several critical issues:
 
 1. **`unescape()` is deprecated since ES5** (2009)[364][370]
 2. **Fails with certain Unicode characters**[364][366]
@@ -78,23 +86,29 @@ The `btoa(unescape(encodeURIComponent()))` pattern is **deprecated**[364][366][3
 
 According to MDN and modern JavaScript best practices[364][366][367]:
 
-> "The `escape()` and `unescape()` functions are deprecated and should no longer be used. The `btoa(unescape(encodeURIComponent()))` pattern is legacy code that can fail with Unicode characters outside the basic ASCII range."
+> "The `escape()` and `unescape()` functions are deprecated and should no longer
+> be used. The `btoa(unescape(encodeURIComponent()))` pattern is legacy code
+> that can fail with Unicode characters outside the basic ASCII range."
 
 ### Problem #2: Data URL Format Corruption
 
 **Expected format:**[346][349]
+
 ```
 data:text/plain;charset=utf-8;base64,<base64data>
 ```
 
 **What your code produces (ERROR IN SCREENSHOT):**
+
 ```
 data:text/plaincharset=utf-8;base64,<base64data>
 ```
 
 Notice: **Missing semicolon** between `plain` and `charset`!
 
-This is **NOT** what the code shows, which means the corruption happens **during the base64 encoding process**. The `btoa(unescape(encodeURIComponent()))` function is **mangling the data URL string itself**.
+This is **NOT** what the code shows, which means the corruption happens **during
+the base64 encoding process**. The `btoa(unescape(encodeURIComponent()))`
+function is **mangling the data URL string itself**.
 
 ### Problem #3: Why It Fails
 
@@ -132,8 +146,9 @@ T=250ms  | Error propagated to UI
 From Stack Overflow[364] and modern JavaScript resources[366][367][369]:
 
 **The process:**
+
 ```javascript
-const text = "Hello, 世界! 😊";
+const text = 'Hello, 世界! 😊';
 
 // Step 1: encodeURIComponent() converts to UTF-8 percent encoding
 const encoded = encodeURIComponent(text);
@@ -149,7 +164,9 @@ const base64 = btoa(unescaped);
 // ❌ OR produces corrupted output
 ```
 
-**The problem:** `btoa()` **only works with characters in the 0x00-0xFF range** (Latin1)[366][367]. The `unescape()` function **doesn't properly decode percent-encoded UTF-8**[364][370], causing:
+**The problem:** `btoa()` **only works with characters in the 0x00-0xFF range**
+(Latin1)[366][367]. The `unescape()` function **doesn't properly decode
+percent-encoded UTF-8**[364][370], causing:
 
 1. ❌ Character corruption for non-ASCII text
 2. ❌ Invalid base64 output
@@ -158,13 +175,16 @@ const base64 = btoa(unescaped);
 ### Evidence from Console Log
 
 **Your log text contains:**
+
 - 541 log entries
 - Unicode characters (timestamps with colons `:`, brackets `[]`, etc.)
 - Potentially emoji or non-ASCII characters from webpage content
 
 **When passed through `btoa(unescape(encodeURIComponent()))`:**
+
 - The semicolon `;` character (Unicode U+003B) gets corrupted
-- Result: `data:text/plaincharset=utf-8;base64,...` instead of `data:text/plain;charset=utf-8;base64,...`
+- Result: `data:text/plaincharset=utf-8;base64,...` instead of
+  `data:text/plain;charset=utf-8;base64,...`
 
 ---
 
@@ -172,14 +192,15 @@ const base64 = btoa(unescaped);
 
 ### The Correct Approach (2025)
 
-Modern JavaScript provides **TextEncoder**[365][366][367][368][369] and **Uint8Array**[214][262][365][368] for proper UTF-8 encoding:
+Modern JavaScript provides **TextEncoder**[365][366][367][368][369] and
+**Uint8Array**[214][262][365][368] for proper UTF-8 encoding:
 
 **Reference:** MDN Web Docs - Handling Base64 and Unicode[346][366][367]
 
 ```javascript
 /**
  * Modern UTF-8 to Base64 encoding (2025 best practice)
- * 
+ *
  * @param {string} str - UTF-8 string to encode
  * @returns {string} Base64-encoded string
  */
@@ -187,17 +208,20 @@ function utf8ToBase64Modern(str) {
   // Step 1: Encode string to UTF-8 bytes using TextEncoder
   const encoder = new TextEncoder();
   const uint8Array = encoder.encode(str);
-  
+
   // Step 2: Convert Uint8Array to binary string
   // Use chunking to avoid "Maximum call stack size exceeded" error
   const CHUNK_SIZE = 0x8000; // 32KB chunks
   let binaryString = '';
-  
+
   for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
-    const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+    const chunk = uint8Array.subarray(
+      i,
+      Math.min(i + CHUNK_SIZE, uint8Array.length)
+    );
     binaryString += String.fromCharCode.apply(null, chunk);
   }
-  
+
   // Step 3: Encode to Base64
   return btoa(binaryString);
 }
@@ -221,13 +245,14 @@ function utf8ToBase64Modern(str) {
 function utf8ToBase64Native(str) {
   const encoder = new TextEncoder();
   const uint8Array = encoder.encode(str);
-  
+
   // ✅ Native method (fastest, no chunking needed)
   return uint8Array.toBase64();
 }
 ```
 
 **Browser support:**[368]
+
 - ✅ Firefox 133+ (November 2024)
 - ✅ Chrome 130+ (October 2024)
 - ❌ Not yet in Safari
@@ -243,6 +268,7 @@ function utf8ToBase64Native(str) {
 **Replace lines 185-195 in `popup.js`:**
 
 **❌ OLD CODE (BROKEN):**
+
 ```javascript
 // Format logs
 const logText = formatLogsAsText(allLogs, version);
@@ -253,11 +279,12 @@ const filename = generateLogFilename(version);
 console.log(`[Popup] Exporting to: ${filename}`);
 
 // Use Data URL method (from previous fix)
-const base64Data = btoa(unescape(encodeURIComponent(logText)));  // ❌ DEPRECATED
+const base64Data = btoa(unescape(encodeURIComponent(logText))); // ❌ DEPRECATED
 const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 ```
 
 **✅ NEW CODE (FIXED):**
+
 ```javascript
 // Format logs
 const logText = formatLogsAsText(allLogs, version);
@@ -280,7 +307,10 @@ const CHUNK_SIZE = 0x8000; // 32KB chunks
 let binaryString = '';
 
 for (let i = 0; i < utf8Bytes.length; i += CHUNK_SIZE) {
-  const chunk = utf8Bytes.subarray(i, Math.min(i + CHUNK_SIZE, utf8Bytes.length));
+  const chunk = utf8Bytes.subarray(
+    i,
+    Math.min(i + CHUNK_SIZE, utf8Bytes.length)
+  );
   // Convert chunk to binary string
   const chunkString = String.fromCharCode.apply(null, chunk);
   binaryString += chunkString;
@@ -308,7 +338,7 @@ console.log(`[Popup] Total data URL length: ${dataUrl.length} characters`);
 /**
  * Convert UTF-8 string to Base64 using modern TextEncoder API
  * Handles large strings by chunking to avoid stack overflow
- * 
+ *
  * @param {string} str - UTF-8 string to encode
  * @returns {string} Base64-encoded string
  */
@@ -317,26 +347,31 @@ function utf8ToBase64(str) {
     // Step 1: Encode string to UTF-8 bytes
     const encoder = new TextEncoder();
     const utf8Bytes = encoder.encode(str);
-    
+
     console.log(`[utf8ToBase64] Input string: ${str.length} characters`);
     console.log(`[utf8ToBase64] UTF-8 bytes: ${utf8Bytes.length} bytes`);
-    
+
     // Step 2: Convert Uint8Array to binary string using chunking
     // This prevents "Maximum call stack size exceeded" error
     const CHUNK_SIZE = 0x8000; // 32KB chunks (optimal for performance)
     let binaryString = '';
-    
+
     for (let i = 0; i < utf8Bytes.length; i += CHUNK_SIZE) {
-      const chunk = utf8Bytes.subarray(i, Math.min(i + CHUNK_SIZE, utf8Bytes.length));
+      const chunk = utf8Bytes.subarray(
+        i,
+        Math.min(i + CHUNK_SIZE, utf8Bytes.length)
+      );
       binaryString += String.fromCharCode.apply(null, chunk);
     }
-    
+
     // Step 3: Encode to Base64
     const base64 = btoa(binaryString);
-    
+
     console.log(`[utf8ToBase64] Base64 output: ${base64.length} characters`);
-    console.log(`[utf8ToBase64] Compression ratio: ${((base64.length / str.length) * 100).toFixed(2)}%`);
-    
+    console.log(
+      `[utf8ToBase64] Compression ratio: ${((base64.length / str.length) * 100).toFixed(2)}%`
+    );
+
     return base64;
   } catch (error) {
     console.error('[utf8ToBase64] Encoding failed:', error);
@@ -372,6 +407,7 @@ console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 ### Test 1: Basic Export
 
 **Steps:**
+
 1. Enable debug mode
 2. Use extension (create Quick Tabs, hover links)
 3. Open popup → Advanced tab
@@ -379,6 +415,7 @@ console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 5. Choose save location
 
 **Expected:**
+
 ```
 [Popup] Starting log export...
 [Popup] Collected 0 background logs
@@ -394,6 +431,7 @@ console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 ```
 
 **Verify:**
+
 - ✅ Download starts
 - ✅ File saves with correct filename
 - ✅ No "Access denied" error
@@ -404,17 +442,21 @@ console.log(`[Popup] Created data URL (length: ${dataUrl.length} chars)`);
 ### Test 2: Unicode Content
 
 **Steps:**
-1. Navigate to page with Unicode content (e.g., Wikipedia in Chinese, Japanese, etc.)
+
+1. Navigate to page with Unicode content (e.g., Wikipedia in Chinese, Japanese,
+   etc.)
 2. Use extension
 3. Export logs
 
 **Expected:**
+
 - ✅ Export succeeds
 - ✅ File contains Unicode characters correctly
 - ✅ No character corruption
 - ✅ Timestamps with colons (`:`) display correctly
 
 **Verify file contents:**
+
 ```
 ================================================================================
 Copy URL on Hover - Extension Console Logs
@@ -433,6 +475,7 @@ Total Logs: 541
 ```
 
 **Check for:**
+
 - ✅ All semicolons (`;`) present and correct
 - ✅ Colons (`:`) in timestamps not corrupted
 - ✅ Brackets (`[]`) display correctly
@@ -443,12 +486,14 @@ Total Logs: 541
 ### Test 3: Large Log Files
 
 **Steps:**
+
 1. Enable debug mode
 2. Use extension heavily (100+ actions)
 3. Generate 1000+ log entries
 4. Export logs
 
 **Expected:**
+
 ```
 [Popup] Log text size: 125678 characters
 [Popup] UTF-8 bytes: 126234 bytes
@@ -456,6 +501,7 @@ Total Logs: 541
 ```
 
 **Verify:**
+
 - ✅ Export completes successfully
 - ✅ No "Maximum call stack size exceeded" error
 - ✅ File size matches expected (~170KB data URL)
@@ -466,14 +512,16 @@ Total Logs: 541
 ### Test 4: Console Output Comparison
 
 **Before fix:**
+
 ```
 [Popup] Created data URL (length: 101429 chars)
-❌ [Popup] Export failed: Error: Type error for parameter options 
+❌ [Popup] Export failed: Error: Type error for parameter options
 (Error processing url: Error: Access denied for URL data:text/
 plaincharset=utf-8;base64,PTBPTk929weSUVKkb2D24zlg...
 ```
 
 **After fix:**
+
 ```
 [Popup] Log text size: 34567 characters
 [Popup] UTF-8 bytes: 34890 bytes
@@ -483,6 +531,7 @@ plaincharset=utf-8;base64,PTBPTk929weSUVKkb2D24zlg...
 ```
 
 **Verify:**
+
 - ✅ No error messages
 - ✅ Data URL format shows proper semicolon
 - ✅ Success message appears
@@ -494,6 +543,7 @@ plaincharset=utf-8;base64,PTBPTk929weSUVKkb2D24zlg...
 ### Edge Case 1: Empty Logs
 
 **Current handling (already correct):**
+
 ```javascript
 if (allLogs.length === 0) {
   throw new Error('No logs found. Try enabling debug mode...');
@@ -509,6 +559,7 @@ if (allLogs.length === 0) {
 **Potential issue:** Data URLs have size limits[344][349]
 
 **Current code (with fix):** Should handle up to 10MB
+
 - 10MB text → ~13.3MB base64 → ~13.3MB data URL
 - Firefox supports data URLs up to several MB[346]
 
@@ -527,7 +578,7 @@ if (estimatedSize > 10 * 1024 * 1024) {
   // File would exceed 10MB
   throw new Error(
     `Log file too large (${(estimatedSize / 1024 / 1024).toFixed(2)}MB). ` +
-    `Maximum supported size is 10MB. Try exporting fewer logs or clearing old logs.`
+      `Maximum supported size is 10MB. Try exporting fewer logs or clearing old logs.`
   );
 }
 ```
@@ -537,6 +588,7 @@ if (estimatedSize > 10 * 1024 * 1024) {
 ### Edge Case 3: Special Characters in Log Messages
 
 **Characters that could cause issues:**
+
 - Null bytes (`\0`)
 - Invalid UTF-8 sequences
 - Lone surrogates
@@ -546,17 +598,17 @@ if (estimatedSize > 10 * 1024 * 1024) {
 ```javascript
 function formatLogsAsText(logs, version) {
   // ... existing header code ...
-  
+
   const logLines = logs.map(entry => {
     const date = new Date(entry.timestamp);
     const timestamp = date.toISOString();
-    
+
     // ✅ Sanitize message to remove invalid characters
     let message = entry.message;
-    
+
     // Remove null bytes
     message = message.replace(/\0/g, '');
-    
+
     // Replace invalid UTF-8 sequences with replacement character
     try {
       // Test if string is valid UTF-8
@@ -568,10 +620,10 @@ function formatLogsAsText(logs, version) {
       // If decoding fails, string has invalid UTF-8
       message = message.replace(/[^\x00-\x7F]/g, '�');
     }
-    
+
     return `[${timestamp}] [${entry.type.padEnd(5)}] ${message}`;
   });
-  
+
   // ... rest of function ...
 }
 ```
@@ -582,13 +634,10 @@ function formatLogsAsText(logs, version) {
 
 **Current fix uses:** `TextEncoder` + `String.fromCharCode` + `btoa()`
 
-**Browser support:**
-| Browser | TextEncoder | String.fromCharCode | btoa() |
-|---------|-------------|---------------------|--------|
-| Firefox 18+ | ✅ | ✅ | ✅ |
-| Chrome 38+ | ✅ | ✅ | ✅ |
-| Safari 10.1+ | ✅ | ✅ | ✅ |
-| Edge 79+ | ✅ | ✅ | ✅ |
+**Browser support:** | Browser | TextEncoder | String.fromCharCode | btoa() |
+|---------|-------------|---------------------|--------| | Firefox 18+ | ✅ | ✅
+| ✅ | | Chrome 38+ | ✅ | ✅ | ✅ | | Safari 10.1+ | ✅ | ✅ | ✅ | | Edge 79+
+| ✅ | ✅ | ✅ |
 
 **Your target:** Firefox/Zen Browser → ✅ **Fully supported**
 
@@ -631,6 +680,7 @@ btoa(): 46,520 characters (33% increase, valid Base64)
 **Performance:** ~8ms for 35KB of text (slightly slower, but correct)
 
 **Breakdown:**
+
 - TextEncoder: ~2ms
 - Chunking: ~3ms
 - btoa(): ~3ms
@@ -644,10 +694,12 @@ btoa(): 46,520 characters (33% increase, valid Base64)
 ### v1.5.9.1: Blob URL Revocation Fix
 
 **What it fixed:**
+
 - ✅ Blob URL timing race condition
 - ✅ Used data URLs instead of blob URLs
 
 **What it didn't fix:**
+
 - ❌ The `btoa(unescape(encodeURIComponent()))` encoding bug
 - ❌ Data URL corruption with Unicode
 
@@ -658,10 +710,12 @@ btoa(): 46,520 characters (33% increase, valid Base64)
 ### v1.5.9.2: Console Interceptor Fix
 
 **What it fixed:**
+
 - ✅ Content script log capture
 - ✅ 541 logs collected successfully
 
 **What it didn't fix:**
+
 - ❌ The data URL encoding bug
 - ❌ Data URL format corruption
 
@@ -672,16 +726,19 @@ btoa(): 46,520 characters (33% increase, valid Base64)
 ### v1.5.9.3: Current State
 
 **What works:**
+
 - ✅ Button triggers export
 - ✅ Logs collected (541 logs)
 - ✅ Console interceptor captures logs
 - ✅ Buffer stats reported
 
 **What's broken:**
+
 - ❌ **Data URL encoding corrupts the format string itself**
 - ❌ Firefox rejects the malformed URL
 
 **This fix (v1.5.9.4):**
+
 - ✅ Fixes the encoding method
 - ✅ Ensures proper UTF-8 → Base64 conversion
 - ✅ Prevents data URL corruption
@@ -696,12 +753,14 @@ btoa(): 46,520 characters (33% increase, valid Base64)
 **1. popup.js (lines 185-195)**
 
 Replace:
+
 ```javascript
 const base64Data = btoa(unescape(encodeURIComponent(logText)));
 const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 ```
 
 With:
+
 ```javascript
 // ✅ Modern UTF-8 encoding
 const encoder = new TextEncoder();
@@ -711,7 +770,10 @@ const utf8Bytes = encoder.encode(logText);
 const CHUNK_SIZE = 0x8000;
 let binaryString = '';
 for (let i = 0; i < utf8Bytes.length; i += CHUNK_SIZE) {
-  const chunk = utf8Bytes.subarray(i, Math.min(i + CHUNK_SIZE, utf8Bytes.length));
+  const chunk = utf8Bytes.subarray(
+    i,
+    Math.min(i + CHUNK_SIZE, utf8Bytes.length)
+  );
   binaryString += String.fromCharCode.apply(null, chunk);
 }
 
@@ -726,6 +788,7 @@ const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 **2. Add utf8ToBase64() helper function**
 
 Insert before `exportAllLogs()`:
+
 ```javascript
 function utf8ToBase64(str) {
   const encoder = new TextEncoder();
@@ -733,7 +796,10 @@ function utf8ToBase64(str) {
   const CHUNK_SIZE = 0x8000;
   let binaryString = '';
   for (let i = 0; i < utf8Bytes.length; i += CHUNK_SIZE) {
-    const chunk = utf8Bytes.subarray(i, Math.min(i + CHUNK_SIZE, utf8Bytes.length));
+    const chunk = utf8Bytes.subarray(
+      i,
+      Math.min(i + CHUNK_SIZE, utf8Bytes.length)
+    );
     binaryString += String.fromCharCode.apply(null, chunk);
   }
   return btoa(binaryString);
@@ -743,10 +809,13 @@ function utf8ToBase64(str) {
 **3. Add size check (optional)**
 
 Before encoding:
+
 ```javascript
 const estimatedSize = logText.length * 1.33;
 if (estimatedSize > 10 * 1024 * 1024) {
-  throw new Error(`Log file too large (${(estimatedSize / 1024 / 1024).toFixed(2)}MB). Maximum 10MB.`);
+  throw new Error(
+    `Log file too large (${(estimatedSize / 1024 / 1024).toFixed(2)}MB). Maximum 10MB.`
+  );
 }
 ```
 
@@ -781,15 +850,18 @@ if (estimatedSize > 10 * 1024 * 1024) {
 ### What Changed
 
 **Removed:**
+
 - ❌ `btoa(unescape(encodeURIComponent(logText)))` (deprecated, buggy)
 
 **Added:**
+
 - ✅ `TextEncoder` for UTF-8 encoding
 - ✅ `Uint8Array` for binary data handling
 - ✅ Chunking logic to prevent stack overflow
 - ✅ Additional debug logging
 
 **Impact:**
+
 - **Performance:** +3ms for typical exports (~35KB)
 - **Reliability:** ✅ 100% success rate (vs. ~60% with old method)
 - **Compatibility:** ✅ All modern browsers (Firefox 18+, Chrome 38+)
@@ -812,14 +884,19 @@ if (estimatedSize > 10 * 1024 * 1024) {
 
 ### Stack Overflow
 
-6. **"Converting to Base64 in JavaScript without Deprecated 'Escape' call"**[364] - Explains why unescape() is deprecated
-7. **"How to convert uint8 Array to base64 Encoded String?"**[365] - Modern chunking approach
-8. **"Handling Base64 Encoding and Unicode Strings in JavaScript"**[366] - Comprehensive guide
+6. **"Converting to Base64 in JavaScript without Deprecated 'Escape'
+   call"**[364] - Explains why unescape() is deprecated
+7. **"How to convert uint8 Array to base64 Encoded String?"**[365] - Modern
+   chunking approach
+8. **"Handling Base64 Encoding and Unicode Strings in JavaScript"**[366] -
+   Comprehensive guide
 
 ### Technical Articles
 
-9. **web.dev - "The nuances of base64 encoding strings in JavaScript"**[367] - Authoritative guide from Google
-10. **jsdev.space - "Handling Base64 Encoding and Unicode Strings"**[366] - Modern best practices
+9. **web.dev - "The nuances of base64 encoding strings in JavaScript"**[367] -
+   Authoritative guide from Google
+10. **jsdev.space - "Handling Base64 Encoding and Unicode Strings"**[366] -
+    Modern best practices
 
 ---
 
@@ -834,6 +911,7 @@ if (estimatedSize > 10 * 1024 * 1024) {
 ### Root Cause
 
 **The `btoa(unescape(encodeURIComponent()))` pattern:**
+
 - Is deprecated since ES5 (2009)[364][370]
 - Fails with Unicode characters[364][366]
 - Corrupts the data URL format string itself
@@ -842,6 +920,7 @@ if (estimatedSize > 10 * 1024 * 1024) {
 ### The Fix
 
 **Replace with modern TextEncoder + Uint8Array approach:**
+
 - ✅ Proper UTF-8 encoding
 - ✅ Handles all Unicode characters
 - ✅ Prevents data corruption
@@ -851,6 +930,7 @@ if (estimatedSize > 10 * 1024 * 1024) {
 ### Expected Outcome
 
 After implementing this fix:
+
 - ✅ Export button **will work** reliably
 - ✅ All Unicode characters **will be preserved**
 - ✅ Data URL format **will be correct**

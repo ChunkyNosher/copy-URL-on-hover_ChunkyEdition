@@ -171,6 +171,7 @@ The issue stems from the following sequence in `index.js` (v1.5.9.10):
    ```
 
 3. **Tab 1 receives its own broadcast** (line 93+):
+
    ```javascript
    this.broadcastChannel.onmessage = event => {
      const { type, data } = event.data;

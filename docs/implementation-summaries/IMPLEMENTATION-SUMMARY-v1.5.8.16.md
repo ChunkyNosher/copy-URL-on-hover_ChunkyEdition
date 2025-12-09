@@ -2,13 +2,17 @@
 
 **Release Date:** 2025-11-14  
 **Version:** 1.5.8.16  
-**Focus:** Critical bug fixes for Quick Tabs RAM usage, cross-tab synchronization, and performance optimization
+**Focus:** Critical bug fixes for Quick Tabs RAM usage, cross-tab
+synchronization, and performance optimization
 
 ---
 
 ## Overview
 
-Version 1.5.8.16 addresses critical bugs reported by the user related to Quick Tabs performance, cross-tab synchronization, and memory usage. This release fixes RAM spikes up to 19GB, flickering during drag/resize operations, and improper cross-tab close behavior.
+Version 1.5.8.16 addresses critical bugs reported by the user related to Quick
+Tabs performance, cross-tab synchronization, and memory usage. This release
+fixes RAM spikes up to 19GB, flickering during drag/resize operations, and
+improper cross-tab close behavior.
 
 ---
 
@@ -23,16 +27,14 @@ Version 1.5.8.16 addresses critical bugs reported by the user related to Quick T
 - RAM usage spiked to 19GB before browser became unresponsive
 - Caused by rapid BroadcastChannel message loops
 
-**Root Cause:**
-Rapid BroadcastChannel messages creating event loops:
+**Root Cause:** Rapid BroadcastChannel messages creating event loops:
 
 1. User action triggers broadcast
 2. Message received by same tab that sent it
 3. Handler triggers another action
 4. Loop continues, consuming memory
 
-**Fix:**
-Added debouncing to BroadcastChannel message handler:
+**Fix:** Added debouncing to BroadcastChannel message handler:
 
 - 50ms debounce window to ignore duplicate messages
 - Automatic cleanup of debounce map to prevent memory leaks
@@ -88,15 +90,13 @@ this.broadcastChannel.onmessage = event => {
 - When switching to another tab, Quick Tab was still open
 - Expected: Close should work across ALL tabs (as per issue #47)
 
-**Root Cause:**
-Missing message handler for `CLOSE_QUICK_TAB_FROM_BACKGROUND`:
+**Root Cause:** Missing message handler for `CLOSE_QUICK_TAB_FROM_BACKGROUND`:
 
 - Background script sent close message to all tabs
 - Content script didn't have handler to process the message
 - BroadcastChannel alone wasn't sufficient for cross-tab close
 
-**Fix:**
-Added message handler in setupMessageListeners():
+**Fix:** Added message handler in setupMessageListeners():
 
 ```javascript
 case 'CLOSE_QUICK_TAB_FROM_BACKGROUND':
@@ -150,15 +150,14 @@ handleDestroy(id) {
 - Unnecessary storage writes risking quota issues
 - Poor performance and potential for race conditions
 
-**Root Cause:**
-`handlePositionChange` and `handleSizeChange` methods broadcast updates during operations:
+**Root Cause:** `handlePositionChange` and `handleSizeChange` methods broadcast
+updates during operations:
 
 - Throttled to 100ms intervals
 - Still created many messages per drag/resize
 - Storage writes on every intermediate update
 
-**Fix:**
-Removed all broadcasts and storage writes from intermediate handlers:
+**Fix:** Removed all broadcasts and storage writes from intermediate handlers:
 
 ```javascript
 // Before:
@@ -199,15 +198,14 @@ Position/size now only sync on operation end:
 - Quick Tab 1 reopens alongside Quick Tab 2
 - Storage not properly cleared on close
 
-**Partial Fix:**
-Enhanced close operation to properly update background state:
+**Partial Fix:** Enhanced close operation to properly update background state:
 
 - `handleDestroy` now sends close message to background
 - Background removes tab from storage before broadcasting
 - Better transaction ID handling prevents race conditions
 
-**Status:**
-Partially fixed. The enhanced close flow should prevent most reopen issues, but additional testing needed to confirm complete resolution.
+**Status:** Partially fixed. The enhanced close flow should prevent most reopen
+issues, but additional testing needed to confirm complete resolution.
 
 ---
 
@@ -222,7 +220,8 @@ case 'CLEAR_ALL_QUICK_TABS':
   break;
 ```
 
-Ensures the "Clear Quick Tab Storage" button in popup properly closes all Quick Tabs.
+Ensures the "Clear Quick Tab Storage" button in popup properly closes all Quick
+Tabs.
 
 ---
 
@@ -422,6 +421,8 @@ Version 1.5.8.16 successfully addresses the most critical Quick Tabs bugs:
 - ✅ Optimized sync performance (90%+ message reduction)
 - ✅ Updated all documentation and agent files
 
-The extension is now more stable, performant, and reliable. Remaining issues (Manager buttons, Clear Storage verification) are lower priority and can be addressed in future releases.
+The extension is now more stable, performant, and reliable. Remaining issues
+(Manager buttons, Clear Storage verification) are lower priority and can be
+addressed in future releases.
 
 **Release Status:** Ready for testing and deployment ✅

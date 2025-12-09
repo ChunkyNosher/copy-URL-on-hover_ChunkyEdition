@@ -42,16 +42,16 @@ export class StateManager {
    *   tracking, validation, and queuing - preventing parallel persistence conflicts.
    * v1.6.3.5-v7 - FIX Issue #5: Add comprehensive logging with timing, source, and state snapshot
    * v1.6.3.5-v10 - FIX Issue #4: Add forceEmpty parameter for intentional empty writes
-   * 
+   *
    * Writes unified format (v1.6.2.2+):
    * { tabs: [...], saveId: '...', timestamp: ..., transactionId: ... }
-   * 
+   *
    * @param {string} [source='unknown'] - Source of persist operation for logging
    * @param {boolean} [forceEmpty=false] - Allow empty (0 tabs) writes (for Close All)
    */
   async persistToStorage(source = 'unknown', forceEmpty = false) {
     const startTime = Date.now();
-    
+
     try {
       const tabs = this.getAll().map(qt => qt.serialize());
       const state = {
@@ -77,9 +77,9 @@ export class StateManager {
       // use hash deduplication, and validate ownership.
       // v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty to allow intentional empty writes
       const success = await persistStateToStorage(state, '[StateManager]', forceEmpty);
-      
+
       const duration = Date.now() - startTime;
-      
+
       if (success) {
         console.log(`[StateManager] Persisted ${tabs.length} Quick Tabs to storage:`, {
           source,
@@ -96,7 +96,7 @@ export class StateManager {
           reason: 'may have been skipped/blocked'
         });
       }
-      
+
       return success;
     } catch (err) {
       const duration = Date.now() - startTime;
@@ -114,7 +114,7 @@ export class StateManager {
    * Add Quick Tab to state
    * v1.6.3 - Assign global slot if not already assigned
    * v1.6.3.1 - Persist to storage for cross-context sync
-   * 
+   *
    * @param {QuickTab} quickTab - QuickTab domain entity
    */
   add(quickTab) {
@@ -129,13 +129,15 @@ export class StateManager {
     }
 
     this.quickTabs.set(quickTab.id, quickTab);
-    
+
     this.eventBus?.emit('state:added', { quickTab });
 
     console.log(`[StateManager] Added Quick Tab: ${quickTab.id} (slot: ${quickTab.slot})`);
 
     // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
-    this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
+    this.persistToStorage().catch(() => {
+      /* errors logged in persistToStorage */
+    });
   }
 
   /**
@@ -159,7 +161,7 @@ export class StateManager {
   /**
    * Update Quick Tab
    * v1.6.3.1 - Persist to storage for cross-context sync
-   * 
+   *
    * @param {QuickTab} quickTab - Updated QuickTab domain entity
    */
   update(quickTab) {
@@ -178,13 +180,15 @@ export class StateManager {
     console.log(`[StateManager] Updated Quick Tab: ${quickTab.id}`);
 
     // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
-    this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
+    this.persistToStorage().catch(() => {
+      /* errors logged in persistToStorage */
+    });
   }
 
   /**
    * Delete Quick Tab from state
    * v1.6.3.1 - Persist to storage for cross-context sync
-   * 
+   *
    * @param {string} id - Quick Tab ID
    * @returns {boolean} - True if deleted
    */
@@ -197,7 +201,9 @@ export class StateManager {
       console.log(`[StateManager] Deleted Quick Tab: ${id}`);
 
       // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
-      this.persistToStorage().catch(() => { /* errors logged in persistToStorage */ });
+      this.persistToStorage().catch(() => {
+        /* errors logged in persistToStorage */
+      });
     }
 
     return deleted;
@@ -234,7 +240,7 @@ export class StateManager {
 
   /**
    * Get Quick Tab by slot number
-   * 
+   *
    * @param {number} slot - Slot number to find
    * @returns {QuickTab|undefined} - Quick Tab with matching slot or undefined
    */
@@ -249,28 +255,28 @@ export class StateManager {
 
   /**
    * Assign global slot to a new Quick Tab
-   * 
+   *
    * Scans all existing Quick Tabs and returns the lowest available slot number.
    * Slot numbers start at 1 and are never reused until the Quick Tab is deleted.
-   * 
+   *
    * @returns {number} - Next available slot number (1, 2, 3, ...)
    */
   assignGlobalSlot() {
     const occupiedSlots = new Set();
-    
+
     // Collect all occupied slots
     for (const qt of this.quickTabs.values()) {
       if (qt.slot !== null && qt.slot !== undefined) {
         occupiedSlots.add(qt.slot);
       }
     }
-    
+
     // Find first available slot (starting from 1)
     let slot = 1;
     while (occupiedSlots.has(slot)) {
       slot++;
     }
-    
+
     console.log(`[StateManager] Assigned global slot: ${slot}`);
     return slot;
   }
@@ -290,7 +296,9 @@ export class StateManager {
 
     // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
     // v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty=true since this is an intentional "Close All" action
-    this.persistToStorage('clear', true /* forceEmpty */).catch(() => { /* errors logged in persistToStorage */ });
+    this.persistToStorage('clear', true /* forceEmpty */).catch(() => {
+      /* errors logged in persistToStorage */
+    });
   }
 
   /**
@@ -337,7 +345,7 @@ export class StateManager {
       if (zIndex > this.currentZIndex) {
         this.currentZIndex = zIndex;
       }
-      
+
       // v1.6.3.5-v7 - FIX Issue #5: Comprehensive logging for state transitions
       console.log('[StateManager] Z-index updated:', {
         id,
@@ -346,9 +354,11 @@ export class StateManager {
         currentHighest: this.currentZIndex,
         durationMs: Date.now() - startTime
       });
-      
+
       // v1.6.3.5-v7 - FIX Issue #8: Persist to storage after z-index update
-      this.persistToStorage('z-index-update').catch(() => { /* errors logged in persistToStorage */ });
+      this.persistToStorage('z-index-update').catch(() => {
+        /* errors logged in persistToStorage */
+      });
     }
   }
 
@@ -360,11 +370,11 @@ export class StateManager {
   bringToFront(id) {
     const startTime = Date.now();
     console.log('[StateManager] bringToFront() called:', { id, currentZIndex: this.currentZIndex });
-    
+
     const nextZIndex = this.getNextZIndex();
     this.updateZIndex(id, nextZIndex);
     this.eventBus?.emit('state:z-index-changed', { id, zIndex: nextZIndex });
-    
+
     console.log('[StateManager] bringToFront() complete:', {
       id,
       newZIndex: nextZIndex,

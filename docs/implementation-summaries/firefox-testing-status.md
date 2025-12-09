@@ -1,13 +1,15 @@
 # Firefox Extension Testing Status
 
 **Date**: 2025-11-22  
-**Status**: Chromium testing operational, Firefox testing requires manual approach
+**Status**: Chromium testing operational, Firefox testing requires manual
+approach
 
 ## Current State
 
 ### ✅ What Works
 
 **Playwright Tests with Chromium**
+
 - All Playwright tests run successfully in Chromium (headless mode)
 - Extension loads properly with Test Bridge API
 - Issue #47 test scenarios work
@@ -15,6 +17,7 @@
 - Solo/Mute features testable
 
 **Why Chromium Works**
+
 - Playwright natively supports Chromium extensions via command-line args
 - `launchPersistentContext` with `--load-extension` flag
 - Works in headless mode with `channel: 'chromium'`
@@ -22,20 +25,26 @@
 ### ❌ Firefox Limitation
 
 **Native Playwright Does NOT Support Firefox Extensions**
-- Playwright's `firefox.connect()` requires Juggler protocol (Playwright's patched Firefox)
+
+- Playwright's `firefox.connect()` requires Juggler protocol (Playwright's
+  patched Firefox)
 - Standard Firefox uses different remote debugging protocol
 - No command-line args to load extensions like Chromium
 
 **Attempted Solutions That Don't Work**
-1. ❌ `playwright-webextext` - Requires ancient Playwright version (@1.26.0 vs current 1.56.1)
+
+1. ❌ `playwright-webextext` - Requires ancient Playwright version (@1.26.0 vs
+   current 1.56.1)
 2. ❌ `web-ext` + `firefox.connect()` - Protocol mismatch (RDP vs Juggler)
-3. ❌ `launchPersistentContext` with args - Firefox doesn't support extension args
+3. ❌ `launchPersistentContext` with args - Firefox doesn't support extension
+   args
 
 ## Recommended Approaches
 
 ### Option 1: Use Chromium for Automated Testing (CURRENT)
 
 **Pros:**
+
 - ✅ Fully automated
 - ✅ CI/CD compatible
 - ✅ Headless mode
@@ -43,9 +52,11 @@
 - ✅ Extension APIs ~98% compatible
 
 **Cons:**
+
 - ❌ Not testing in primary target browser
 
 **Implementation:**
+
 ```javascript
 // tests/extension/fixtures.js
 import playwright from 'playwright/test';
@@ -83,12 +94,14 @@ npx web-ext run --firefox-profile=./test-profile --keep-profile-changes
 ```
 
 **Advantages:**
+
 - ✅ Tests actual Firefox behavior
 - ✅ Tests Firefox-specific APIs (contextualIdentities)
 - ✅ Visual verification
 - ✅ DevTools access
 
 **Disadvantages:**
+
 - ❌ Manual process
 - ❌ Not suitable for CI/CD
 - ❌ Requires human interaction
@@ -96,6 +109,7 @@ npx web-ext run --firefox-profile=./test-profile --keep-profile-changes
 ### Option 3: Selenium with Firefox (Alternative)
 
 **If Playwright Firefox support is critical:**
+
 - Use Selenium WebDriver instead
 - Selenium supports loading unsigned Firefox extensions
 - More complex setup than Playwright
@@ -105,6 +119,7 @@ npx web-ext run --firefox-profile=./test-profile --keep-profile-changes
 ### Recommended Hybrid Approach
 
 **Automated (Chromium):**
+
 - Run all Issue #47 scenarios
 - Test Solo/Mute logic
 - Test cross-tab sync
@@ -112,6 +127,7 @@ npx web-ext run --firefox-profile=./test-profile --keep-profile-changes
 - CI/CD integration
 
 **Manual (Firefox):**
+
 - Smoke test major features
 - Verify Firefox-specific APIs (containers)
 - Visual/UX verification
@@ -120,11 +136,14 @@ npx web-ext run --firefox-profile=./test-profile --keep-profile-changes
 ## API Compatibility
 
 ### Manifest V2 Support
+
 - **Firefox**: ✅ Full support, no deprecation planned
 - **Chromium**: ✅ Still supported (deprecated but functional)
 
 ### WebExtension APIs
+
 Most APIs work identically:
+
 - ✅ `browser.tabs`
 - ✅ `browser.storage`
 - ✅ `browser.runtime`
@@ -132,7 +151,9 @@ Most APIs work identically:
 - ✅ `browser.browserAction` (browser_action in manifest)
 
 ### Firefox-Specific Features
+
 Not testable in Chromium:
+
 - ❌ `browser.contextualIdentities` (container tabs)
 - ❌ Firefox-specific UI behaviors
 - ❌ Firefox performance characteristics
@@ -140,13 +161,15 @@ Not testable in Chromium:
 ## Test Coverage
 
 **Current Coverage (Chromium):**
+
 - ✅ ~80% of extension functionality
 - ✅ All core Quick Tab features
 - ✅ Solo/Mute logic
-- ✅ Cross-tab synchronization  
+- ✅ Cross-tab synchronization
 - ✅ Test Bridge API
 
 **Not Covered (Requires Firefox):**
+
 - ❌ Container-specific behavior verification
 - ❌ Firefox UI/UX
 - ❌ Firefox-specific performance
@@ -171,10 +194,13 @@ Not testable in Chromium:
 
 ## Conclusion
 
-**Current solution (Chromium automated + Firefox manual) is pragmatic and effective:**
+**Current solution (Chromium automated + Firefox manual) is pragmatic and
+effective:**
+
 - Catches ~95% of bugs automatically
 - Maintains Firefox compatibility
 - CI/CD ready
 - Minimal maintenance overhead
 
-**For a Firefox-primary extension, this is an acceptable trade-off given tool limitations.**
+**For a Firefox-primary extension, this is an acceptable trade-off given tool
+limitations.**

@@ -9,9 +9,16 @@
 
 ## Executive Summary
 
-This document analyzes the architectural requirements for enabling GitHub Copilot Coding Agent to autonomously test the Quick Tabs feature using Playwright MCP (Model Context Protocol) server integration. The focus is on identifying infrastructure gaps and workflow modifications needed to support agent-driven end-to-end testing based on the comprehensive behavioral scenarios defined in Issue #47.
+This document analyzes the architectural requirements for enabling GitHub
+Copilot Coding Agent to autonomously test the Quick Tabs feature using
+Playwright MCP (Model Context Protocol) server integration. The focus is on
+identifying infrastructure gaps and workflow modifications needed to support
+agent-driven end-to-end testing based on the comprehensive behavioral scenarios
+defined in Issue #47.
 
-**Key Insight:** GitHub Copilot Coding Agent + Playwright MCP creates a self-verifying workflow where the agent can:
+**Key Insight:** GitHub Copilot Coding Agent + Playwright MCP creates a
+self-verifying workflow where the agent can:
+
 1. Read behavioral specifications (Issue #47 scenarios)
 2. Generate test implementations
 3. Execute tests in a real browser
@@ -26,6 +33,7 @@ This document analyzes the architectural requirements for enabling GitHub Copilo
 ### What Exists (v1.6.0.11+)
 
 #### 1. **Extension Architecture**
+
 - Modular codebase with clear domain boundaries:
   - `src/domain/` - Pure business logic (QuickTab, Container entities)
   - `src/storage/` - Storage abstraction layer (Sync/Session adapters)
@@ -35,6 +43,7 @@ This document analyzes the architectural requirements for enabling GitHub Copilo
 - Jest unit test infrastructure (96% coverage in domain/storage layers)
 
 #### 2. **Test Infrastructure**
+
 - Jest test framework configured with module path mapping
 - Test helpers and builders:
   - `tests/helpers/test-builders.js` - Fluent builders for fixtures
@@ -47,6 +56,7 @@ This document analyzes the architectural requirements for enabling GitHub Copilo
 - Bundle size monitoring (content.js <500KB, background.js <300KB)
 
 #### 3. **Documentation**
+
 - Comprehensive behavioral specifications (Issue #47) with 20 detailed scenarios
 - Architecture documentation in agent files (`.github/agents/`)
 - Implementation guides in `docs/manual/v1.6.0/`
@@ -56,16 +66,18 @@ This document analyzes the architectural requirements for enabling GitHub Copilo
 
 #### 1. **Playwright MCP Integration Layer** ❌
 
-**Current Gap:** No connection between GitHub Copilot agent mode and browser automation capabilities.
+**Current Gap:** No connection between GitHub Copilot agent mode and browser
+automation capabilities.
 
 **Required Infrastructure:**
+
 - **MCP Server Configuration:**
   - MCP server manifest defining available tools/capabilities
   - Connection protocol between VS Code/Copilot and Playwright MCP
   - Authentication and permission boundaries for agent actions
-  
 - **Tool Registry:**
-  - Registry of Playwright actions exposed to Copilot (navigate, click, fill, assert)
+  - Registry of Playwright actions exposed to Copilot (navigate, click, fill,
+    assert)
   - Capability declarations for browser control (launch, screenshot, video)
   - State inspection tools (page snapshot, DOM query, storage inspection)
 
@@ -75,8 +87,9 @@ This document analyzes the architectural requirements for enabling GitHub Copilo
   - Error handling and retry logic for failed interactions
 
 **Architecture Pattern:**
+
 ```
-Copilot Agent (natural language) 
+Copilot Agent (natural language)
     ↓ (MCP Protocol)
 MCP Server (tool execution layer)
     ↓ (Playwright API)
@@ -86,6 +99,7 @@ Copilot Agent (observation & iteration)
 ```
 
 **Key Technical Requirements:**
+
 - MCP server must run as persistent background process during testing
 - Agent must have permission to invoke browser automation tools
 - Results must flow back to agent for analysis and decision-making
@@ -96,8 +110,10 @@ Copilot Agent (observation & iteration)
 **Current Gap:** Extension has no programmatic interface for test automation.
 
 **Required Infrastructure:**
+
 - **Test Mode Activation:**
-  - Environment variable or build flag (`TEST_MODE=true`) that exposes hidden APIs
+  - Environment variable or build flag (`TEST_MODE=true`) that exposes hidden
+    APIs
   - Test-only endpoints that bypass normal user interaction flows
   - Privileged access to internal state normally hidden from content scripts
 
@@ -118,29 +134,49 @@ Copilot Agent (observation & iteration)
   - Reset slot numbering and internal counters
 
 **Architecture Pattern:**
+
 ```javascript
 // Test Bridge Exposure Pattern (conceptual)
 if (TEST_MODE) {
   window.__COPILOT_TEST_BRIDGE__ = {
     // State Query Interface
-    getQuickTabs: async () => { /* return current QT array */ },
-    getContainers: async () => { /* return container groupings */ },
-    getManagerState: async () => { /* return panel state */ },
-    
+    getQuickTabs: async () => {
+      /* return current QT array */
+    },
+    getContainers: async () => {
+      /* return container groupings */
+    },
+    getManagerState: async () => {
+      /* return panel state */
+    },
+
     // Action Interface
-    createQuickTab: async (url, options) => { /* programmatic create */ },
-    setQuickTabPosition: async (id, x, y) => { /* explicit positioning */ },
-    toggleSolo: async (id) => { /* programmatic solo */ },
-    toggleMute: async (id) => { /* programmatic mute */ },
-    
+    createQuickTab: async (url, options) => {
+      /* programmatic create */
+    },
+    setQuickTabPosition: async (id, x, y) => {
+      /* explicit positioning */
+    },
+    toggleSolo: async id => {
+      /* programmatic solo */
+    },
+    toggleMute: async id => {
+      /* programmatic mute */
+    },
+
     // Reset Interface
-    clearAllQuickTabs: async () => { /* clean slate */ },
-    resetStorage: async () => { /* purge all state */ }
+    clearAllQuickTabs: async () => {
+      /* clean slate */
+    },
+    resetStorage: async () => {
+      /* purge all state */
+    }
   };
 }
 ```
 
 **Why This Matters:**
+
 - Allows Playwright tests to interact with extension deterministically
 - Eliminates flakiness from DOM selector brittleness
 - Enables Copilot agent to observe actual state vs. visual state
@@ -148,9 +184,11 @@ if (TEST_MODE) {
 
 #### 3. **Cross-Tab Testing Orchestration** ❌
 
-**Current Gap:** Playwright runs in single-page context; extension requires multi-tab scenarios.
+**Current Gap:** Playwright runs in single-page context; extension requires
+multi-tab scenarios.
 
 **Required Infrastructure:**
+
 - **Playwright Context Management:**
   - Configuration for opening multiple browser tabs within single test
   - Tab handle management (switching focus between tabs)
@@ -167,6 +205,7 @@ if (TEST_MODE) {
   - Browser restart simulation for persistence testing
 
 **Architecture Pattern:**
+
 ```
 Test Orchestrator
   ├─ Tab 1 (WP 1) - Context A
@@ -180,12 +219,14 @@ Test Orchestrator
 ```
 
 **Technical Challenges:**
+
 - Playwright's multi-context API must map to browser tabs semantically
 - Extension's BroadcastChannel only works within same browser session
 - Container isolation requires Firefox-specific profile configuration
 - Storage sync timing is asynchronous and non-deterministic
 
 **Mitigation Strategies:**
+
 - Use Playwright's `context.newPage()` for tab simulation
 - Implement wait strategies for cross-tab sync (poll Test Bridge API)
 - Configure Firefox profile with container definitions for container tests
@@ -193,9 +234,11 @@ Test Orchestrator
 
 #### 4. **Scenario-to-Test Mapping System** ❌
 
-**Current Gap:** Issue #47 scenarios are human-readable; Copilot needs structured input.
+**Current Gap:** Issue #47 scenarios are human-readable; Copilot needs
+structured input.
 
 **Required Infrastructure:**
+
 - **Scenario Metadata Schema:**
   - Machine-readable format extracting scenario purpose, steps, assertions
   - Tagging system (tags: `cross-tab`, `container`, `persistence`, etc.)
@@ -203,19 +246,22 @@ Test Orchestrator
 
 - **Test Generation Templates:**
   - Playwright test skeleton templates per scenario category
-  - Assertion pattern library (position assertions, visibility checks, sync verification)
+  - Assertion pattern library (position assertions, visibility checks, sync
+    verification)
   - Setup/teardown templates for common preconditions
 
 - **Copilot Prompt Engineering:**
   - Structured prompts that reference scenario metadata
   - Examples of successful test implementations for few-shot learning
-  - Constraints and guardrails (e.g., "always use Test Bridge API, not DOM selectors")
+  - Constraints and guardrails (e.g., "always use Test Bridge API, not DOM
+    selectors")
 
 **Architecture Pattern:**
+
 ```yaml
 # Scenario Metadata Example (conceptual)
 scenario_id: 1
-title: "Basic Quick Tab Creation & Cross-Tab Sync"
+title: 'Basic Quick Tab Creation & Cross-Tab Sync'
 category: cross-tab-sync
 prerequisites: []
 tags: [foundational, sync, position-persistence]
@@ -246,12 +292,14 @@ assertions:
 ```
 
 **Copilot Integration:**
+
 - Agent reads scenario metadata during test generation
 - Metadata provides structural hints (setup, steps, teardown)
 - Tags guide test organization (group by category)
 - Prerequisites inform test ordering and dependencies
 
 **Why Metadata Matters:**
+
 - Enables Copilot to understand scenario intent without full NLP
 - Provides grounding for test generation (explicit actions vs. ambiguous steps)
 - Supports automated test suite organization
@@ -262,6 +310,7 @@ assertions:
 **Current Gap:** No feedback mechanism for Copilot to validate test correctness.
 
 **Required Infrastructure:**
+
 - **Test Execution Reporting:**
   - Structured test result format (pass/fail/skip with diagnostics)
   - Screenshot/video capture on failure for visual debugging
@@ -285,6 +334,7 @@ assertions:
   - Loop continues until test passes or iteration limit reached
 
 **Architecture Pattern:**
+
 ```
 Test Execution
     ↓ (FAIL)
@@ -298,6 +348,7 @@ Repeat until success or max iterations
 ```
 
 **Success Criteria:**
+
 - Agent can autonomously fix 80%+ of test failures
 - Average iteration count: 1-3 attempts per scenario
 - Visual validation via page snapshots reduces false negatives
@@ -315,13 +366,15 @@ Repeat until success or max iterations
    - Install Playwright MCP server globally or per-project
    - Create `.vscode/mcp.json` with Playwright server definition
    - Verify MCP server starts correctly (play button in VS Code)
-   - Test basic MCP connectivity (Copilot can invoke `navigate()`, `screenshot()`)
+   - Test basic MCP connectivity (Copilot can invoke `navigate()`,
+     `screenshot()`)
 
 2. **Test Bridge API Skeleton**
    - Add `TEST_MODE` environment variable to build system
    - Create `src/test-bridge.js` module (only included in test builds)
    - Expose `window.__COPILOT_TEST_BRIDGE__` with placeholder methods
-   - Wire bridge to extension internals (QuickTabsManager, PanelManager, storage)
+   - Wire bridge to extension internals (QuickTabsManager, PanelManager,
+     storage)
 
 3. **Playwright Project Initialization**
    - Run `npm init playwright` with Copilot assistance
@@ -330,6 +383,7 @@ Repeat until success or max iterations
    - Define test fixtures for common setup (load extension, clear state)
 
 **Validation Criteria:**
+
 - MCP server responds to Copilot commands
 - Test Bridge API accessible in test context
 - Playwright can launch browser with extension loaded
@@ -340,6 +394,7 @@ Repeat until success or max iterations
 #### Workflow Pattern for Each Scenario:
 
 1. **Copilot Prompt Template:**
+
    ```
    Generate a Playwright test for Scenario [N] from Issue #47:
    - Use Test Bridge API (__COPILOT_TEST_BRIDGE__) for all extension interactions
@@ -364,6 +419,7 @@ Repeat until success or max iterations
    - After all 20 scenarios: Full test suite audit
 
 **Expected Artifacts Per Scenario:**
+
 - `tests/e2e/scenario-[N]-[slug].spec.js` - Playwright test file
 - Test execution video (if first run fails)
 - Console log dump (for sync debugging)
@@ -375,13 +431,16 @@ Repeat until success or max iterations
 
 1. **Test Groups by Tag:**
    - **Foundational** (Scenarios 1-3): Always run first, block others on failure
-   - **Cross-Tab Sync** (Scenarios 1, 2, 6, 7, 11): Test BroadcastChannel reliability
+   - **Cross-Tab Sync** (Scenarios 1, 2, 6, 7, 11): Test BroadcastChannel
+     reliability
    - **Solo/Mute** (Scenarios 3, 4, 13): Test visibility modes
    - **Manager Panel** (Scenarios 5, 6, 9, 12, 15): Test panel functionality
-   - **Container Isolation** (Scenarios 8, 19, 20): Test Firefox container boundaries
+   - **Container Isolation** (Scenarios 8, 19, 20): Test Firefox container
+     boundaries
    - **Persistence** (Scenarios 7, 11, 14, 15): Test storage/restart behavior
 
 2. **Execution Order:**
+
    ```
    1. Run Foundational suite (Scenarios 1-3) sequentially
    2. If all pass → Run remaining suites in parallel
@@ -395,6 +454,7 @@ Repeat until success or max iterations
    - Upload artifacts (videos, screenshots, logs) on failure
 
 **Infrastructure Requirements:**
+
 - Test grouping in `playwright.config.js` (projects per category)
 - Dependency definition (foundational tests as prerequisites)
 - Parallel execution with proper state isolation
@@ -424,6 +484,7 @@ Repeat until success or max iterations
    - Developer fixes bug, test passes, regression prevented
 
 **Architectural Benefits:**
+
 - Test suite evolves with codebase (less maintenance burden)
 - Regression coverage expands automatically
 - Agent learns from existing tests (pattern consistency)
@@ -436,6 +497,7 @@ Repeat until success or max iterations
 ### MCP Server Integration
 
 **Configuration File (`mcp.json`):**
+
 ```json
 {
   "servers": {
@@ -448,6 +510,7 @@ Repeat until success or max iterations
 ```
 
 **MCP Tools Required for Testing:**
+
 - `navigate(url)` - Navigate to specific page
 - `click(selector)` - Click elements
 - `fill(selector, text)` - Fill form inputs
@@ -457,6 +520,7 @@ Repeat until success or max iterations
 - `getPageState()` - Extract DOM snapshot for agent analysis
 
 **Agent ↔ MCP Communication:**
+
 - Agent sends tool requests as JSON-RPC messages
 - MCP server executes Playwright commands
 - Results (screenshots, page state) returned to agent
@@ -465,6 +529,7 @@ Repeat until success or max iterations
 ### Test Bridge API Specification
 
 **Exposure Conditions:**
+
 - Only present when `process.env.TEST_MODE === 'true'`
 - Only accessible via `window.__COPILOT_TEST_BRIDGE__` in page context
 - NOT exposed in production builds (security)
@@ -472,13 +537,17 @@ Repeat until success or max iterations
 **Core Methods Required:**
 
 **State Query Interface:**
-- `getQuickTabs()` → Returns array of QT objects (id, url, position, size, solo, mute, minimized)
+
+- `getQuickTabs()` → Returns array of QT objects (id, url, position, size, solo,
+  mute, minimized)
 - `getContainers()` → Returns container groupings with QT associations
 - `getManagerState()` → Returns panel position, size, visibility
 - `getSlotNumbering()` → Returns current slot assignments (debug mode)
 
 **Action Interface:**
-- `createQuickTab(url, options)` → Programmatically create QT with explicit state
+
+- `createQuickTab(url, options)` → Programmatically create QT with explicit
+  state
 - `closeQuickTab(id)` → Close specific QT by ID
 - `setQuickTabPosition(id, x, y)` → Set exact position (bypass drag)
 - `setQuickTabSize(id, width, height)` → Set exact size (bypass resize)
@@ -488,17 +557,21 @@ Repeat until success or max iterations
 - `restoreQuickTab(id)` → Restore from minimized state
 
 **Sync & Timing Interface:**
-- `waitForSync(timeout)` → Promise that resolves when all BroadcastChannel/storage sync complete
+
+- `waitForSync(timeout)` → Promise that resolves when all
+  BroadcastChannel/storage sync complete
 - `getLastSyncTime()` → Timestamp of last sync operation
 - `flushStorage()` → Force immediate storage save
 - `flushBroadcast()` → Ensure all broadcast messages sent
 
 **Reset Interface:**
+
 - `clearAllQuickTabs()` → Close all QTs, reset state
 - `resetStorage()` → Purge browser.storage.sync and browser.storage.local
 - `resetSlotNumbering()` → Reset debug mode slot tracking
 
 **Error Handling:**
+
 - All methods return Promises
 - Rejections include detailed error messages
 - Timeouts for async operations (default: 5s)
@@ -507,6 +580,7 @@ Repeat until success or max iterations
 ### Playwright Configuration
 
 **Browser Setup:**
+
 ```javascript
 // playwright.config.js (conceptual structure)
 {
@@ -522,7 +596,7 @@ Repeat until success or max iterations
     // Increase timeout for slow sync operations
     timeout: 10000
   },
-  
+
   // Test projects for categorization
   projects: [
     {
@@ -541,6 +615,7 @@ Repeat until success or max iterations
 ```
 
 **Fixtures for Extension Testing:**
+
 ```javascript
 // tests/fixtures.js (conceptual)
 {
@@ -551,7 +626,7 @@ Repeat until success or max iterations
     await page.waitForFunction(() => window.__COPILOT_TEST_BRIDGE__);
     await use(page);
   },
-  
+
   // Fixture for multi-tab scenarios
   multipleTabs: async ({ context }, use) => {
     const tabs = {
@@ -567,40 +642,45 @@ Repeat until success or max iterations
 
 ### Cross-Tab Orchestration
 
-**Challenge:** Playwright contexts are isolated; extension uses BroadcastChannel across tabs in same browser.
+**Challenge:** Playwright contexts are isolated; extension uses BroadcastChannel
+across tabs in same browser.
 
 **Solution Architecture:**
+
 1. **Single Browser Context, Multiple Pages:**
    - Use `context.newPage()` for each "tab" in scenario
    - All pages share same extension instance
    - BroadcastChannel works across pages in same context
 
 2. **Page Handle Management:**
+
    ```javascript
    // Conceptual pattern
    const wp1 = await context.newPage();
    await wp1.goto('https://wikipedia.org');
-   
+
    const yt1 = await context.newPage();
    await yt1.goto('https://youtube.com');
-   
+
    // Now BroadcastChannel will sync between wp1 and yt1
    ```
 
 3. **Sync Verification:**
+
    ```javascript
    // In WP 1
    await wp1.evaluate(() => window.__COPILOT_TEST_BRIDGE__.createQuickTab(...));
-   
+
    // Wait for sync to YT 1
    await yt1.evaluate(() => window.__COPILOT_TEST_BRIDGE__.waitForSync());
-   
+
    // Verify QT appeared in YT 1
    const qts = await yt1.evaluate(() => window.__COPILOT_TEST_BRIDGE__.getQuickTabs());
    expect(qts).toHaveLength(1);
    ```
 
 **Container Testing:**
+
 - Firefox containers require specific profile configuration
 - Create test profiles with predefined containers (Personal, Work, etc.)
 - Launch Playwright with `--profile` flag pointing to test profile
@@ -611,12 +691,14 @@ Repeat until success or max iterations
 ## Success Metrics
 
 ### Phase 1 Success Criteria (Foundation):
+
 - ✅ MCP server operational and responsive to Copilot commands
 - ✅ Test Bridge API exposes all required methods
 - ✅ Playwright launches Firefox with extension loaded
 - ✅ Test execution produces videos/screenshots on demand
 
 ### Phase 2 Success Criteria (Scenario Implementation):
+
 - ✅ All 20 scenarios from Issue #47 have passing Playwright tests
 - ✅ Average Copilot iteration count ≤3 per scenario
 - ✅ Test execution time <2 minutes per scenario (locally)
@@ -624,12 +706,14 @@ Repeat until success or max iterations
 - ✅ 95%+ failure detection rate (tests catch regressions)
 
 ### Phase 3 Success Criteria (Suite Organization):
+
 - ✅ Test suite organized by category with proper dependencies
 - ✅ CI pipeline runs all tests on PR to main
 - ✅ Parallel execution reduces total CI time to <10 minutes
 - ✅ Test artifacts (videos/logs) uploaded and accessible on failure
 
 ### Phase 4 Success Criteria (Maintenance):
+
 - ✅ Copilot can autonomously update 80%+ of tests after extension changes
 - ✅ New scenario tests generated in <5 minutes with minimal human input
 - ✅ Regression test coverage grows organically with each bug fix
@@ -642,14 +726,16 @@ Repeat until success or max iterations
 ### High-Risk Areas:
 
 1. **Cross-Tab Sync Timing:**
-   - **Risk:** BroadcastChannel/storage sync is asynchronous; tests may fail due to timing issues
+   - **Risk:** BroadcastChannel/storage sync is asynchronous; tests may fail due
+     to timing issues
    - **Mitigation:** Test Bridge API provides `waitForSync()` with timeout
    - **Fallback:** Implement polling strategies with exponential backoff
 
 2. **Container Isolation Complexity:**
    - **Risk:** Firefox container testing requires non-standard profile setup
    - **Mitigation:** Pre-configure test profiles with known containers
-   - **Fallback:** Manual testing for container-specific scenarios (Scenarios 8, 19, 20)
+   - **Fallback:** Manual testing for container-specific scenarios (Scenarios 8,
+     19, 20)
 
 3. **MCP Server Reliability:**
    - **Risk:** MCP server crashes or hangs during long test runs
@@ -657,16 +743,21 @@ Repeat until success or max iterations
    - **Fallback:** Graceful degradation to manual test execution
 
 4. **Agent Hallucination:**
-   - **Risk:** Copilot generates tests that pass but don't validate correct behavior
+   - **Risk:** Copilot generates tests that pass but don't validate correct
+     behavior
    - **Mitigation:** Human review of first 3 scenarios, spot-checks thereafter
-   - **Fallback:** Test validation layer (e.g., mutation testing to verify tests catch bugs)
+   - **Fallback:** Test validation layer (e.g., mutation testing to verify tests
+     catch bugs)
 
 ### Medium-Risk Areas:
 
 1. **Test Flakiness:**
-   - **Risk:** Non-deterministic failures due to animation timing, network latency
-   - **Mitigation:** Test Bridge API bypasses animations; use deterministic state setting
-   - **Monitoring:** Track flake rate, investigate scenarios with >5% failure rate
+   - **Risk:** Non-deterministic failures due to animation timing, network
+     latency
+   - **Mitigation:** Test Bridge API bypasses animations; use deterministic
+     state setting
+   - **Monitoring:** Track flake rate, investigate scenarios with >5% failure
+     rate
 
 2. **Scenario Metadata Drift:**
    - **Risk:** Issue #47 updated but metadata not regenerated
@@ -678,30 +769,35 @@ Repeat until success or max iterations
 ## Implementation Roadmap
 
 ### Week 1-2: Foundation
+
 - [ ] Install and configure Playwright MCP server
 - [ ] Implement Test Bridge API skeleton
 - [ ] Set up Playwright project with extension loading
 - [ ] Validate MCP ↔ Copilot connectivity
 
 ### Week 3-4: First 10 Scenarios
+
 - [ ] Generate tests for Scenarios 1-10 with Copilot
 - [ ] Review and refine test patterns
 - [ ] Document best practices for scenario-to-test conversion
 - [ ] Address Test Bridge API gaps discovered during testing
 
 ### Week 5: Remaining 10 Scenarios
+
 - [ ] Generate tests for Scenarios 11-20
 - [ ] Implement cross-tab orchestration for complex scenarios
 - [ ] Add container testing support (Scenarios 8, 19, 20)
 - [ ] Complete Test Bridge API with all required methods
 
 ### Week 6: Suite Organization & CI
+
 - [ ] Organize tests by category/tags
 - [ ] Configure parallel execution with dependencies
 - [ ] Set up GitHub Actions CI pipeline
 - [ ] Add artifact upload on failure
 
 ### Ongoing: Maintenance & Evolution
+
 - [ ] Monitor test flake rate, investigate failures
 - [ ] Update tests when extension changes
 - [ ] Generate tests for new scenarios as Issue #47 expands
@@ -712,6 +808,7 @@ Repeat until success or max iterations
 ## Appendix: Example Copilot Prompts
 
 ### Prompt 1: Generate Test for Scenario 1
+
 ```
 Generate a Playwright test for Scenario 1 from Issue #47 (docs/issue-47-revised-scenarios.md):
 
@@ -730,6 +827,7 @@ After generating the test, execute it using Playwright MCP and report results.
 ```
 
 ### Prompt 2: Fix Failing Test
+
 ```
 The test for Scenario 5 (Manager Panel - Minimize/Restore) is failing with the following error:
 
@@ -745,6 +843,7 @@ Use Playwright MCP to verify the test passes after your changes.
 ```
 
 ### Prompt 3: Generate Tests for New Scenario
+
 ```
 A new Scenario 21 has been added to Issue #47:
 
@@ -767,26 +866,31 @@ Test file: tests/e2e/scenario-21-drag-drop-url-import.spec.js
 
 Enabling GitHub Copilot Coding Agent to autonomously test Quick Tabs requires:
 
-1. **MCP Server Integration** - Connecting Copilot to Playwright for browser automation
+1. **MCP Server Integration** - Connecting Copilot to Playwright for browser
+   automation
 2. **Test Bridge API** - Exposing extension internals for programmatic testing
 3. **Cross-Tab Orchestration** - Multi-page testing infrastructure in Playwright
 4. **Scenario Metadata** - Structured input for Copilot test generation
 5. **Iteration Loop** - Feedback mechanism for agent self-correction
 
 Once these infrastructure components are in place, the workflow becomes:
+
 - **Human:** Define behavioral scenario in Issue #47
 - **Copilot:** Generate test implementation
 - **MCP Server:** Execute test in browser
 - **Copilot:** Observe results, iterate on failures
 - **Human:** Review and merge passing tests
 
-This architecture reduces testing burden by 70-80% while maintaining high coverage and enabling continuous validation as the extension evolves.
+This architecture reduces testing burden by 70-80% while maintaining high
+coverage and enabling continuous validation as the extension evolves.
 
 ---
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **References:**
+
 - Issue #47: `docs/issue-47-revised-scenarios.md`
 - Playwright MCP: https://github.com/microsoft/playwright-mcp
-- GitHub Copilot Agent Mode: https://docs.github.com/copilot/using-github-copilot/using-github-copilot-agent
+- GitHub Copilot Agent Mode:
+  https://docs.github.com/copilot/using-github-copilot/using-github-copilot-agent

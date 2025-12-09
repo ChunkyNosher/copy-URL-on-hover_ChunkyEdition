@@ -57,7 +57,7 @@ export class QuickTabWindow {
       });
       throw new Error(`Invalid URL for Quick Tab: ${options.url}`);
     }
-    
+
     // v1.6.0 Phase 2.4 - Extract initialization methods to reduce complexity
     this._initializeBasicProperties(options);
     this._initializePositionAndSize(options);
@@ -77,7 +77,7 @@ export class QuickTabWindow {
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
     // v1.6.3.2 - Debug ID display setting (from options, falls back to false)
     this.showDebugId = options.showDebugId ?? false;
-    
+
     // v1.6.3.4-v6 - FIX Issue #2: Log URL for debugging ghost iframe issues
     console.log('[QuickTabWindow] Created with URL:', { id: this.id, url: this.url });
   }
@@ -129,16 +129,16 @@ export class QuickTabWindow {
       this[name] = options[name] || noop;
     });
   }
-  
+
   /**
    * Re-wire callbacks after restore to capture fresh execution context
    * v1.6.3.5-v11 - FIX Issue #1: Stale closure references after restore
-   * 
+   *
    * After browser restart with hydration OR minimize/restore cycle, the original
    * callbacks may reference stale closure variables from construction time.
    * This method allows replacing callbacks with fresh versions that capture
    * the CURRENT handler context.
-   * 
+   *
    * @param {Object} callbacks - Object containing fresh callback functions
    * @returns {boolean} True if any callbacks were rewired
    */
@@ -155,21 +155,21 @@ export class QuickTabWindow {
       'onMute'
     ];
     const rewired = [];
-    
+
     callbackNames.forEach(name => {
       if (callbacks[name] && typeof callbacks[name] === 'function') {
         this[name] = callbacks[name];
         rewired.push(name);
       }
     });
-    
+
     console.log('[QuickTabWindow][rewireCallbacks] Re-wired callbacks:', {
       id: this.id,
       rewired,
       rewiredCount: rewired.length,
       totalCallbacks: callbackNames.length
     });
-    
+
     return rewired.length > 0;
   }
 
@@ -197,7 +197,7 @@ export class QuickTabWindow {
     // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate (unused timestamp tracking)
     // These fields were set during updatePosition/updateSize but never read by any code.
     // They were intended for cross-tab sync conflict resolution which was removed in v1.6.3.
-    
+
     // v1.6.3.5-v11 - FIX Issue #4: Operation-specific flags replace time-based callback suppression
     // These flags are checked by callbacks to determine if they should be suppressed
     // instead of using a broad time-based window that suppresses ALL callbacks
@@ -266,7 +266,7 @@ export class QuickTabWindow {
     // Step 5: Add to document and mark as rendered
     document.body.appendChild(this.container);
     this.rendered = true;
-    
+
     // v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild
     // When z-index is set before the element is in the DOM, the browser may not
     // properly create a stacking context. Setting z-index after appendChild and
@@ -282,40 +282,40 @@ export class QuickTabWindow {
     this.setupFocusHandlers();
 
     console.log('[QuickTabWindow] Rendered:', this.id);
-    
+
     // v1.6.3.5-v12 - FIX Issue #3: Log render completion with full container state
     console.log('[QuickTabWindow][render] Render completed - container established:', {
       id: this.id,
       hasContainer: !!this.container,
-      isAttachedToDOM: !!(this.container?.parentNode),
+      isAttachedToDOM: !!this.container?.parentNode,
       isRendered: this.isRendered()
     });
-    
+
     return this.container;
   }
-  
+
   /**
    * Apply z-index after container is appended to DOM and force reflow
    * v1.6.3.5-v10 - FIX Issue #3: Ensures proper stacking context creation
-   * 
+   *
    * Setting z-index before appendChild may not create the stacking context
    * correctly in all browsers. By setting it after the element is in the DOM
    * and forcing a reflow (by reading offsetHeight), we ensure the browser
    * has properly computed the stacking context.
-   * 
+   *
    * @private
    */
   _applyZIndexAfterAppend() {
     if (!this.container) return;
-    
+
     // Re-apply z-index to ensure it takes effect after appendChild
     this.container.style.zIndex = this.zIndex.toString();
-    
+
     // Force browser reflow to ensure z-index is applied immediately
     // Reading offsetHeight triggers a synchronous layout calculation
     // Using void operator to explicitly indicate intentional side-effect
     void this.container.offsetHeight;
-    
+
     // Verify z-index was applied correctly (defensive check for test environment)
     let verifiedZIndex = 'unknown';
     if (typeof window !== 'undefined' && window.getComputedStyle) {
@@ -329,7 +329,7 @@ export class QuickTabWindow {
     } else {
       verifiedZIndex = this.container.style.zIndex;
     }
-    
+
     console.log('[QuickTabWindow] Z-index applied after appendChild:', {
       id: this.id,
       targetZIndex: this.zIndex,
@@ -356,7 +356,8 @@ export class QuickTabWindow {
     const targetLeft = Number.isFinite(this.left) ? this.left : DEFAULT_LEFT;
     const targetTop = Number.isFinite(this.top) ? this.top : DEFAULT_TOP;
     const targetWidth = Number.isFinite(this.width) && this.width > 0 ? this.width : DEFAULT_WIDTH;
-    const targetHeight = Number.isFinite(this.height) && this.height > 0 ? this.height : DEFAULT_HEIGHT;
+    const targetHeight =
+      Number.isFinite(this.height) && this.height > 0 ? this.height : DEFAULT_HEIGHT;
 
     this.left = targetLeft;
     this.top = targetTop;
@@ -409,7 +410,7 @@ export class QuickTabWindow {
     // v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add data-quicktab-id attribute for DOM querying
     // This allows UICoordinator to find orphaned DOM elements via querySelector
     this.container.setAttribute('data-quicktab-id', this.id);
-    
+
     // v1.6.3.5-v9 - FIX Diagnostic Issue #7: Store instance reference on container element
     // This enables UICoordinator to recover orphaned windows instead of creating duplicates
     // Pattern: DOM element → QuickTabWindow instance (reverse lookup)
@@ -423,7 +424,7 @@ export class QuickTabWindow {
       'container.style.top': this.container.style.top,
       'container.style.zIndex': this.container.style.zIndex,
       'data-quicktab-id': this.container.getAttribute('data-quicktab-id'),
-      '__quickTabWindow': !!this.container.__quickTabWindow
+      __quickTabWindow: !!this.container.__quickTabWindow
     });
   }
 
@@ -486,7 +487,8 @@ export class QuickTabWindow {
         width: '100%',
         height: 'calc(100% - 40px)'
       },
-      sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
+      sandbox:
+        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
       allow: 'picture-in-picture; fullscreen'
     });
   }
@@ -822,9 +824,12 @@ export class QuickTabWindow {
       this.resizeController = null;
       console.log('[QuickTabWindow][minimize] Destroyed resize controller:', this.id);
     }
-    
+
     // v1.6.3.5-v12 - FIX Issue #3: Log controller destruction for lifecycle tracking
-    console.log('[QuickTabWindow][minimize] Controllers destroyed:', { id: this.id, operation: 'minimize' });
+    console.log('[QuickTabWindow][minimize] Controllers destroyed:', {
+      id: this.id,
+      operation: 'minimize'
+    });
 
     // v1.6.3.4-v7 - FIX Issue #1: Remove container from DOM instead of display:none
     // v1.6.3.5-v12 - FIX Issue #1: Add defensive DOM query fallback when container reference is lost
@@ -834,31 +839,39 @@ export class QuickTabWindow {
     } else {
       // Container reference lost - try fallback DOM query
       // v1.6.3.5-v12 - Code Review: Use more specific selector with class to avoid conflicts
-      const element = document.querySelector(`.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`);
+      const element = document.querySelector(
+        `.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`
+      );
       if (element) {
-        console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback DOM removal:', this.id);
+        console.warn(
+          '[QuickTabWindow][minimize] Container reference lost, using fallback DOM removal:',
+          this.id
+        );
         element.remove();
       } else {
-        console.log('[QuickTabWindow][minimize] No container or fallback DOM element found:', this.id);
+        console.log(
+          '[QuickTabWindow][minimize] No container or fallback DOM element found:',
+          this.id
+        );
       }
     }
 
     // v1.6.3.4-v7 - FIX Issue #1: Clear references and mark as not rendered
     this.container = null;
-    
+
     // v1.6.3.5-v12 - FIX Issue #3: Log container reference nullification for lifecycle tracking
     console.log('[QuickTabWindow][minimize] Container reference nullified:', {
       id: this.id,
       operation: 'minimize',
       hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
     });
-    
+
     this.iframe = null;
     this.titlebarBuilder = null;
     this.soloButton = null;
     this.muteButton = null;
     this.rendered = false;
-    
+
     // v1.6.3.5-v11 - FIX Issue #4: Clear operation flag
     this.isMinimizing = false;
 
@@ -934,12 +947,15 @@ export class QuickTabWindow {
     // v1.6.3.5-v11 - FIX Issue #4: Clear operation flag
     this.isRestoring = false;
 
-    console.log('[QuickTabWindow][restore] EXIT (state updated, render deferred to UICoordinator):', {
-      id: this.id,
-      minimized: this.minimized,
-      isRestoring: this.isRestoring
-    });
-    
+    console.log(
+      '[QuickTabWindow][restore] EXIT (state updated, render deferred to UICoordinator):',
+      {
+        id: this.id,
+        minimized: this.minimized,
+        isRestoring: this.isRestoring
+      }
+    );
+
     // v1.6.3.5-v12 - FIX Issue #3: Log restore completion with full instance state
     console.log('[QuickTabWindow][restore] Restore completed - instance state:', {
       id: this.id,
@@ -964,7 +980,7 @@ export class QuickTabWindow {
    */
   updateZIndex(newZIndex) {
     const oldZIndex = this.zIndex;
-    
+
     // v1.6.3.5-v11 - FIX Issue #9: Log entry with parameters
     console.log('[QuickTabWindow][updateZIndex] ENTRY:', {
       id: this.id,
@@ -973,7 +989,7 @@ export class QuickTabWindow {
       hasContainer: !!this.container,
       containerAttached: !!this.container?.parentNode
     });
-    
+
     // v1.6.3.4-v5 - FIX Bug #4: Guard against null/undefined to prevent TypeError
     if (newZIndex === undefined || newZIndex === null) {
       console.warn('[QuickTabWindow][updateZIndex] Called with null/undefined, skipping:', {
@@ -984,16 +1000,19 @@ export class QuickTabWindow {
     }
 
     this.zIndex = newZIndex;
-    
+
     // v1.6.3.5-v11 - FIX Issue #8: Defensive container check
     if (!this.container) {
-      console.warn('[QuickTabWindow][updateZIndex] No container - z-index stored but not applied to DOM:', {
-        id: this.id,
-        newZIndex
-      });
+      console.warn(
+        '[QuickTabWindow][updateZIndex] No container - z-index stored but not applied to DOM:',
+        {
+          id: this.id,
+          newZIndex
+        }
+      );
       return;
     }
-    
+
     // v1.6.3.5-v11 - FIX Issue #8: Verify container is attached to DOM
     if (!this.container.parentNode) {
       console.warn('[QuickTabWindow][updateZIndex] Container not attached to DOM:', {
@@ -1002,9 +1021,9 @@ export class QuickTabWindow {
       });
       // Still update the style in case container is re-attached later
     }
-    
+
     this.container.style.zIndex = newZIndex.toString();
-    
+
     // v1.6.3.5-v11 - FIX Issue #9: Log completion and verify update
     console.log('[QuickTabWindow][updateZIndex] EXIT:', {
       id: this.id,
@@ -1165,7 +1184,9 @@ export class QuickTabWindow {
     }
     // Fallback to global for backward compatibility (with deprecation warning)
     if (window.quickTabsManager?.currentTabId) {
-      console.warn('[QuickTabWindow] Using global quickTabsManager.currentTabId fallback. Pass currentTabId in constructor options instead.');
+      console.warn(
+        '[QuickTabWindow] Using global quickTabsManager.currentTabId fallback. Pass currentTabId in constructor options instead.'
+      );
       return window.quickTabsManager.currentTabId;
     }
     return null;
@@ -1195,7 +1216,9 @@ export class QuickTabWindow {
 
     const tabId = this._getCurrentTabId();
     if (tabId === null) {
-      console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID available. Pass currentTabId in constructor or call setCurrentTabId().`);
+      console.warn(
+        `[QuickTabWindow] Cannot toggle ${action} - no current tab ID available. Pass currentTabId in constructor or call setCurrentTabId().`
+      );
       return null;
     }
 
@@ -1281,7 +1304,9 @@ export class QuickTabWindow {
    * @param {number} top - Y position
    */
   setPosition(left, top) {
-    console.warn('[QuickTabWindow] DEPRECATED: setPosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.');
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: setPosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.'
+    );
     this.left = left;
     this.top = top;
     if (this.container) {
@@ -1298,7 +1323,9 @@ export class QuickTabWindow {
    * @param {number} height - Height in pixels
    */
   setSize(width, height) {
-    console.warn('[QuickTabWindow] DEPRECATED: setSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.');
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: setSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.'
+    );
     this.width = width;
     this.height = height;
     if (this.container) {
@@ -1317,7 +1344,9 @@ export class QuickTabWindow {
    * @param {number} top - Y position in pixels
    */
   updatePosition(left, top) {
-    console.warn('[QuickTabWindow] DEPRECATED: updatePosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.');
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: updatePosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.'
+    );
     this.setPosition(left, top);
     // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate timestamp tracking (dead code)
   }
@@ -1332,7 +1361,9 @@ export class QuickTabWindow {
    * @param {number} height - Height in pixels
    */
   updateSize(width, height) {
-    console.warn('[QuickTabWindow] DEPRECATED: updateSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.');
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: updateSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.'
+    );
     this.setSize(width, height);
     // v1.6.3.5-v5 - FIX Issue #6: Removed lastSizeUpdate timestamp tracking (dead code)
   }
@@ -1348,7 +1379,7 @@ export class QuickTabWindow {
   isRendered() {
     return Boolean(this.rendered && this.container && this.container.parentNode);
   }
-  
+
   /**
    * Log warning if rendered flag and container state are out of sync
    * v1.6.3.5-v12 - FIX Issue E: Helper to detect and log state desync at key lifecycle points
@@ -1362,7 +1393,7 @@ export class QuickTabWindow {
         operation,
         rendered: this.rendered,
         hasContainer: !!this.container,
-        containerAttached: !!(this.container?.parentNode)
+        containerAttached: !!this.container?.parentNode
       });
     }
     if (!this.rendered && this.container && this.container.parentNode) {
@@ -1447,7 +1478,7 @@ export class QuickTabWindow {
       hasOnDestroy: typeof this.onDestroy === 'function',
       callbackType: typeof this.onDestroy
     });
-    
+
     if (typeof this.onDestroy === 'function') {
       try {
         this.onDestroy(this.id);
@@ -1458,7 +1489,7 @@ export class QuickTabWindow {
     } else {
       console.warn('[QuickTabWindow] onDestroy callback not wired or not a function:', this.id);
     }
-    
+
     console.log('[QuickTabWindow] Destroyed:', this.id);
   }
 

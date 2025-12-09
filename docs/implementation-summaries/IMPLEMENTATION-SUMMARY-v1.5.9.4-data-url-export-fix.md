@@ -9,9 +9,14 @@
 
 ## Executive Summary
 
-Fixed critical log export bug where the "Export Console Logs" feature failed with "Access denied for URL" error due to malformed data URL encoding. The deprecated `btoa(unescape(encodeURIComponent()))` pattern was corrupting Unicode characters and the data URL format string itself, causing Firefox to reject the download.
+Fixed critical log export bug where the "Export Console Logs" feature failed
+with "Access denied for URL" error due to malformed data URL encoding. The
+deprecated `btoa(unescape(encodeURIComponent()))` pattern was corrupting Unicode
+characters and the data URL format string itself, causing Firefox to reject the
+download.
 
-**Solution:** Replaced with modern `TextEncoder` API with chunking support for reliable UTF-8 to Base64 conversion.
+**Solution:** Replaced with modern `TextEncoder` API with chunking support for
+reliable UTF-8 to Base64 conversion.
 
 ---
 
@@ -19,7 +24,8 @@ Fixed critical log export bug where the "Export Console Logs" feature failed wit
 
 ### Symptom
 
-When users clicked "Export Console Logs" in the popup's Advanced tab, the export would fail with:
+When users clicked "Export Console Logs" in the popup's Advanced tab, the export
+would fail with:
 
 ```
 Export failed: Type error for parameter options (Error processing url:
@@ -94,7 +100,10 @@ function utf8ToBase64(str) {
     let binaryString = '';
 
     for (let i = 0; i < utf8Bytes.length; i += CHUNK_SIZE) {
-      const chunk = utf8Bytes.subarray(i, Math.min(i + CHUNK_SIZE, utf8Bytes.length));
+      const chunk = utf8Bytes.subarray(
+        i,
+        Math.min(i + CHUNK_SIZE, utf8Bytes.length)
+      );
       binaryString += String.fromCharCode.apply(null, chunk);
     }
 
@@ -174,7 +183,8 @@ The modern approach using `TextEncoder`:
 
 1. **TextEncoder.encode()** - Properly converts UTF-8 to bytes
    - Input: `"Hello 世界"`
-   - Output: `Uint8Array[72, 101, 108, 108, 111, 32, 228, 184, 150, 231, 149, 140]`
+   - Output:
+     `Uint8Array[72, 101, 108, 108, 111, 32, 228, 184, 150, 231, 149, 140]`
 
 2. **String.fromCharCode()** - Converts bytes to binary string
    - Uses chunking to prevent stack overflow
@@ -213,7 +223,8 @@ The modern approach using `TextEncoder`:
 - **Memory**: Standard (chunking prevents overflow)
 - **Benefits**: No corruption, future-proof, handles large files
 
-**Performance impact:** Negligible (+3ms) for significantly improved reliability.
+**Performance impact:** Negligible (+3ms) for significantly improved
+reliability.
 
 ---
 
@@ -301,7 +312,9 @@ The modern approach using `TextEncoder`:
    ```javascript
    const estimatedSize = logText.length * 1.33;
    if (estimatedSize > 10 * 1024 * 1024) {
-     throw new Error(`Log file too large (${(estimatedSize / 1024 / 1024).toFixed(2)}MB)`);
+     throw new Error(
+       `Log file too large (${(estimatedSize / 1024 / 1024).toFixed(2)}MB)`
+     );
    }
    ```
 
@@ -345,7 +358,10 @@ The modern approach using `TextEncoder`:
 
 **Status:** ✅ **FIXED**
 
-The data URL export feature now works reliably with modern, standards-compliant UTF-8 encoding. The deprecated `btoa(unescape(encodeURIComponent()))` pattern has been replaced with `TextEncoder` API, eliminating character corruption and data URL malformation issues.
+The data URL export feature now works reliably with modern, standards-compliant
+UTF-8 encoding. The deprecated `btoa(unescape(encodeURIComponent()))` pattern
+has been replaced with `TextEncoder` API, eliminating character corruption and
+data URL malformation issues.
 
 **Key Achievements:**
 
@@ -356,7 +372,8 @@ The data URL export feature now works reliably with modern, standards-compliant 
 - ✅ Minimal performance impact (+3ms for 35KB)
 
 **Lines Changed:** ~25 lines in popup.js  
-**Risk Level:** LOW (only affects export functionality, has fallback error handling)  
+**Risk Level:** LOW (only affects export functionality, has fallback error
+handling)  
 **Testing Required:** Manual testing of export functionality recommended
 
 ---

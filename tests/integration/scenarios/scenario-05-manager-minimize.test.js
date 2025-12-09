@@ -1,8 +1,8 @@
 /**
  * Scenario 5: Manager Panel Minimize/Restore Operations
- * 
+ *
  * MEDIUM PRIORITY (2-3 days effort)
- * 
+ *
  * Tests that Manager Panel minimize/restore functionality works correctly:
  * - Minimize button in Manager minimizes Quick Tab
  * - Minimized Quick Tab shows yellow indicator in Manager
@@ -10,11 +10,11 @@
  * - Multiple Quick Tabs can be minimized/restored independently
  * - State persists across Manager Panel close/reopen
  * - Minimize/restore syncs correctly across tabs
- * 
+ *
  * Related Documentation:
  * - docs/manual/updated-remaining-testing-work.md (Scenario 5 - MEDIUM)
  * - docs/issue-47-revised-scenarios.md
- * 
+ *
  * Covers Issues: #47 (Manager Panel functionality)
  */
 
@@ -99,7 +99,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
     // Connect channels for cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
@@ -116,7 +116,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
 
     // Wire up broadcast handlers for UPDATE_MINIMIZE
     eventBuses.forEach((bus, tabIndex) => {
-      bus.on('broadcast:received', (message) => {
+      bus.on('broadcast:received', message => {
         if (message.type === 'UPDATE_MINIMIZE') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
@@ -154,7 +154,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
       // Minimize from Manager in Tab A
       const smA = stateManagers[0];
       const qtA = smA.get('qt-minimize-1');
-      
+
       // Apply minimize locally
       qtA.visibility.minimized = true;
       smA.update(qtA);
@@ -193,7 +193,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
       // Restore from Manager in Tab B
       const smB = stateManagers[1];
       const qtB = smB.get('qt-restore-1');
-      
+
       // Apply restore locally
       qtB.visibility.minimized = false;
       smB.update(qtB);
@@ -217,14 +217,16 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
   describe('Multiple Quick Tabs', () => {
     it('should handle minimize/restore independently for multiple Quick Tabs', async () => {
       // Create 5 Quick Tabs
-      const qts = Array.from({ length: 5 }, (_, i) =>
-        new QuickTab({
-          id: `qt-multi-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: (i + 1) * 100, top: (i + 1) * 100 },
-          size: { width: 800, height: 600 },
-          container: 'firefox-default'
-        })
+      const qts = Array.from(
+        { length: 5 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-multi-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: (i + 1) * 100, top: (i + 1) * 100 },
+            size: { width: 800, height: 600 },
+            container: 'firefox-default'
+          })
       );
 
       // Add all to all state managers
@@ -236,7 +238,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
 
       // Minimize QTs 1, 3, 5 from Tab A
       const smA = stateManagers[0];
-      
+
       for (const id of ['qt-multi-1', 'qt-multi-3', 'qt-multi-5']) {
         const qt = smA.get(id);
         qt.visibility.minimized = true;
@@ -297,15 +299,15 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
         const shouldMinimize = i % 2 === 0;
         const sm = stateManagers[i % 3]; // Cycle through tabs
         const qt = sm.get('qt-rapid-minimize');
-        
+
         qt.visibility.minimized = shouldMinimize;
         sm.update(qt);
-        
+
         await broadcastManagers[i % 3].broadcast('UPDATE_MINIMIZE', {
           id: 'qt-rapid-minimize',
           minimized: shouldMinimize
         });
-        
+
         await wait(10);
       }
 
@@ -406,7 +408,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
       // Verify synced to B and C
       const qtB = stateManagers[1].get('qt-sync-minimize');
       const qtC = stateManagers[2].get('qt-sync-minimize');
-      
+
       expect(qtB.visibility.minimized).toBe(true);
       expect(qtC.visibility.minimized).toBe(true);
     });
@@ -439,7 +441,7 @@ describe('Scenario 5: Manager Minimize/Restore Protocol', () => {
       // Verify synced to A and C
       const qtA = stateManagers[0].get('qt-sync-restore');
       const qtC = stateManagers[2].get('qt-sync-restore');
-      
+
       expect(qtA.visibility.minimized).toBe(false);
       expect(qtC.visibility.minimized).toBe(false);
     });

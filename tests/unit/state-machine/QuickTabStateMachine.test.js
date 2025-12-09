@@ -3,8 +3,8 @@
  * v1.6.3.5 - New test file for state machine module
  */
 
-import { 
-  QuickTabStateMachine, 
+import {
+  QuickTabStateMachine,
   QuickTabState,
   getStateMachine,
   resetStateMachine
@@ -72,7 +72,7 @@ describe('QuickTabStateMachine', () => {
     test('should not allow DESTROYED -> any state', () => {
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
       stateMachine.transition('tab-1', QuickTabState.DESTROYED, { source: 'test' });
-      
+
       expect(stateMachine.canTransition('tab-1', QuickTabState.VISIBLE)).toBe(false);
       expect(stateMachine.canTransition('tab-1', QuickTabState.MINIMIZED)).toBe(false);
     });
@@ -82,7 +82,7 @@ describe('QuickTabStateMachine', () => {
     test('should successfully transition valid states', () => {
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
       const result = stateMachine.transition('tab-1', QuickTabState.MINIMIZING, { source: 'test' });
-      
+
       expect(result.success).toBe(true);
       expect(result.fromState).toBe(QuickTabState.VISIBLE);
       expect(result.toState).toBe(QuickTabState.MINIMIZING);
@@ -92,9 +92,9 @@ describe('QuickTabStateMachine', () => {
     test('should reject invalid transitions when enforcing', () => {
       stateMachine.enforceTransitions = true;
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
-      
+
       const result = stateMachine.transition('tab-1', QuickTabState.RESTORING, { source: 'test' });
-      
+
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
       expect(stateMachine.getState('tab-1')).toBe(QuickTabState.VISIBLE);
@@ -103,9 +103,9 @@ describe('QuickTabStateMachine', () => {
     test('should allow invalid transitions with warning when not enforcing', () => {
       stateMachine.enforceTransitions = false;
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
-      
+
       const result = stateMachine.transition('tab-1', QuickTabState.RESTORING, { source: 'test' });
-      
+
       expect(result.success).toBe(true);
       expect(stateMachine.getState('tab-1')).toBe(QuickTabState.RESTORING);
     });
@@ -120,7 +120,7 @@ describe('QuickTabStateMachine', () => {
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'init');
       stateMachine.transition('tab-1', QuickTabState.MINIMIZING, { source: 'minimize' });
       stateMachine.transition('tab-1', QuickTabState.MINIMIZED, { source: 'minimize-complete' });
-      
+
       const history = stateMachine.getHistory('tab-1');
       expect(history.length).toBe(3);
       expect(history[0].toState).toBe(QuickTabState.VISIBLE);
@@ -133,7 +133,7 @@ describe('QuickTabStateMachine', () => {
     test('should not reinitialize already tracked tab', () => {
       const result1 = stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'init');
       const result2 = stateMachine.initialize('tab-1', QuickTabState.MINIMIZED, 'init-again');
-      
+
       expect(result1).toBe(true);
       expect(result2).toBe(false);
       expect(stateMachine.getState('tab-1')).toBe(QuickTabState.VISIBLE);
@@ -144,7 +144,7 @@ describe('QuickTabStateMachine', () => {
     test('should remove state and history', () => {
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
       stateMachine.remove('tab-1');
-      
+
       expect(stateMachine.getState('tab-1')).toBe(QuickTabState.UNKNOWN);
       expect(stateMachine.getHistory('tab-1')).toEqual([]);
     });
@@ -154,7 +154,7 @@ describe('QuickTabStateMachine', () => {
     test('should return correct statistics', () => {
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
       stateMachine.initialize('tab-2', QuickTabState.MINIMIZED, 'test');
-      
+
       const stats = stateMachine.getStats();
       expect(stats.trackedCount).toBe(2);
       expect(stats.stateCounts[QuickTabState.VISIBLE]).toBe(1);
@@ -167,7 +167,7 @@ describe('QuickTabStateMachine', () => {
       stateMachine.initialize('tab-1', QuickTabState.VISIBLE, 'test');
       stateMachine.initialize('tab-2', QuickTabState.MINIMIZED, 'test');
       stateMachine.clear();
-      
+
       expect(stateMachine.getStats().trackedCount).toBe(0);
     });
   });
@@ -182,10 +182,10 @@ describe('QuickTabStateMachine', () => {
     test('resetStateMachine should create fresh instance', () => {
       const instance1 = getStateMachine();
       instance1.initialize('tab-1', QuickTabState.VISIBLE, 'test');
-      
+
       resetStateMachine();
       const instance2 = getStateMachine();
-      
+
       expect(instance2.getStats().trackedCount).toBe(0);
     });
   });

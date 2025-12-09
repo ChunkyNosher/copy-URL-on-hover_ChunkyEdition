@@ -2,34 +2,43 @@
 
 **Version:** v1.6.1.4  
 **Date:** November 24, 2025  
-**Issue:** YouTube videos automatically play when opened as Quick Tabs, both in the originating tab and in synced tabs via cross-tab sync functionality
+**Issue:** YouTube videos automatically play when opened as Quick Tabs, both in
+the originating tab and in synced tabs via cross-tab sync functionality
 
 ---
 
 ## Issue Description
 
-When a YouTube video URL is opened as a Quick Tab, the video immediately begins playing. Due to the extension's cross-tab synchronization feature, this behavior propagates to all other tabs where the Quick Tab is synced, causing multiple simultaneous video playbacks across browser tabs.
+When a YouTube video URL is opened as a Quick Tab, the video immediately begins
+playing. Due to the extension's cross-tab synchronization feature, this behavior
+propagates to all other tabs where the Quick Tab is synced, causing multiple
+simultaneous video playbacks across browser tabs.
 
 ### Observed Behavior
 
-From the extension logs (`copy-url-extension-logs_v1.6.1.4_2025-11-24T18-30-28.txt`):
+From the extension logs
+(`copy-url-extension-logs_v1.6.1.4_2025-11-24T18-30-28.txt`):
 
 1. Quick Tab creation occurs normally:
+
    ```
    [QuickTabHandler] Create: https://www.youtube.com/watch?v=c5_fpF1tIOk&pp=0gcJCQsKAYcqIYzv
    ```
 
 2. Iframe loads successfully:
+
    ```
    [Quick Tabs] ✅ Successfully loaded iframe: https://www.youtube.com/watch?v=c5_fpF1tIOk
    ```
 
 3. State broadcasts to other tabs:
+
    ```
    [Background] Quick Tab state changed, broadcasting to all tabs
    ```
 
-4. **Problem:** No autoplay prevention mechanism exists - video starts playing immediately upon iframe load
+4. **Problem:** No autoplay prevention mechanism exists - video starts playing
+   immediately upon iframe load
 
 ---
 
@@ -37,14 +46,19 @@ From the extension logs (`copy-url-extension-logs_v1.6.1.4_2025-11-24T18-30-28.t
 
 ### Primary Issue: Missing Autoplay Prevention in Iframe Creation
 
-**Location:** `src/features/quick-tabs/window.js` - `QuickTabWindow.render()` method (Lines ~178-188)
+**Location:** `src/features/quick-tabs/window.js` - `QuickTabWindow.render()`
+method (Lines ~178-188)
 
 **Current iframe creation code:**
+
 ```javascript
 this.iframe = createElement('iframe', {
   src: this.url,
-  style: { /* styling properties */ },
-  sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+  style: {
+    /* styling properties */
+  },
+  sandbox:
+    'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
 });
 ```
 
@@ -53,38 +67,54 @@ this.iframe = createElement('iframe', {
 1. **No URL Autoplay Parameter Control**
    - YouTube URLs support `&autoplay=0` parameter to prevent autoplay
    - Current implementation directly uses `this.url` without modification
-   - YouTube defaults to autoplay when no parameter is specified in certain contexts
+   - YouTube defaults to autoplay when no parameter is specified in certain
+     contexts
 
 2. **Insufficient Sandbox Restrictions**
-   - Current sandbox: `'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'`
-   - **Missing:** The sandbox attribute does NOT include explicit autoplay blocking
-   - According to [W3Schools documentation](https://www.w3schools.com/tags/att_iframe_sandbox.asp) and [HTML.com reference](https://html.com/attributes/iframe-sandbox/), an **empty sandbox attribute** or sandbox **without** `allow-scripts` blocks autoplay
+   - Current sandbox:
+     `'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'`
+   - **Missing:** The sandbox attribute does NOT include explicit autoplay
+     blocking
+   - According to
+     [W3Schools documentation](https://www.w3schools.com/tags/att_iframe_sandbox.asp)
+     and [HTML.com reference](https://html.com/attributes/iframe-sandbox/), an
+     **empty sandbox attribute** or sandbox **without** `allow-scripts` blocks
+     autoplay
    - However, `allow-scripts` is **required** for YouTube player functionality
-   - **Conclusion:** Sandbox alone cannot solve this - URL parameter control is needed
+   - **Conclusion:** Sandbox alone cannot solve this - URL parameter control is
+     needed
 
 3. **No `allow` Attribute Management**
-   - Modern browsers use the `allow` attribute (Permissions Policy) for feature control
+   - Modern browsers use the `allow` attribute (Permissions Policy) for feature
+     control
    - Current code has NO `allow` attribute on the iframe element
-   - YouTube iframes should explicitly exclude `autoplay` from the `allow` attribute
-   - Reference: [Chrome Autoplay Policy](https://developer.chrome.com/blog/autoplay) states iframe delegation requires explicit `allow="autoplay"` to enable autoplay
+   - YouTube iframes should explicitly exclude `autoplay` from the `allow`
+     attribute
+   - Reference:
+     [Chrome Autoplay Policy](https://developer.chrome.com/blog/autoplay) states
+     iframe delegation requires explicit `allow="autoplay"` to enable autoplay
 
 ### Secondary Issue: Cross-Tab Sync Amplification
 
 **Location:** Background script and sync coordination
 
 When a Quick Tab is created:
+
 1. State is saved to `browser.storage.local` (key: `quick_tabs_state_v2`)
 2. Background script broadcasts `QUICK_TAB_STATE_CHANGED` to all tabs
 3. Each tab's `SyncCoordinator` receives broadcast and hydrates Quick Tabs
-4. **Problem:** Each tab creates its own iframe with the SAME unmodified URL, causing multiple simultaneous autoplays
+4. **Problem:** Each tab creates its own iframe with the SAME unmodified URL,
+   causing multiple simultaneous autoplays
 
 **From logs:**
+
 ```
 [Background] Quick Tab state changed, broadcasting to all tabs
 [Background] Updated global state from storage (container-aware): 1 containers
 ```
 
-This is **not a bug** in the sync mechanism itself, but the sync amplifies the autoplay issue by replicating it across all open tabs.
+This is **not a bug** in the sync mechanism itself, but the sync amplifies the
+autoplay issue by replicating it across all open tabs.
 
 ---
 
@@ -96,36 +126,46 @@ From research and documentation:
 
 1. **Default YouTube Behavior**
    - YouTube embed player defaults to autoplay when loaded in certain contexts
-   - The `watch?v=` URLs (regular YouTube watch pages) are particularly prone to autoplay
+   - The `watch?v=` URLs (regular YouTube watch pages) are particularly prone to
+     autoplay
    - Embed URLs (`/embed/VIDEO_ID`) offer better control
 
 2. **Browser Autoplay Policies**
    - Modern browsers (Chrome, Firefox) have autoplay policies
    - Cross-origin iframes can inherit autoplay permission from parent
-   - Without explicit denial, autoplay may occur based on Media Engagement Index (MEI)
+   - Without explicit denial, autoplay may occur based on Media Engagement Index
+     (MEI)
 
 3. **Iframe `allow` Attribute Delegation**
-   - Per Chrome documentation: "autoplay is allowed by default on same-origin iframes"
+   - Per Chrome documentation: "autoplay is allowed by default on same-origin
+     iframes"
    - For cross-origin iframes, `allow="autoplay"` explicitly grants permission
-   - **Critical:** Absence of `allow="autoplay"` should block autoplay, but some browsers/contexts still allow it
+   - **Critical:** Absence of `allow="autoplay"` should block autoplay, but some
+     browsers/contexts still allow it
    - **Solution:** Explicitly set `allow` attribute WITHOUT autoplay permission
 
 ### Current Sandbox Limitations
 
 The current sandbox configuration:
+
 ```javascript
-sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
 ```
 
 **Why this doesn't prevent autoplay:**
 
 1. `allow-scripts` is present, which enables JavaScript execution
 2. YouTube player **requires** JavaScript to function
-3. With JavaScript enabled, the YouTube player's internal autoplay logic can execute
-4. Sandbox blocks autoplay **only** when scripts are disabled (not viable for YouTube)
+3. With JavaScript enabled, the YouTube player's internal autoplay logic can
+   execute
+4. Sandbox blocks autoplay **only** when scripts are disabled (not viable for
+   YouTube)
 
-**Reference:** [W3Schools Sandbox Documentation](https://www.w3schools.com/tags/att_iframe_sandbox.asp)
-> "block automatically triggered features (such as automatically playing a video or automatically focusing a form control)"
+**Reference:**
+[W3Schools Sandbox Documentation](https://www.w3schools.com/tags/att_iframe_sandbox.asp)
+
+> "block automatically triggered features (such as automatically playing a video
+> or automatically focusing a form control)"
 
 This blocking only applies when sandbox is empty or scripts are blocked.
 
@@ -135,11 +175,13 @@ This blocking only applies when sandbox is empty or scripts are blocked.
 
 ### Multi-Layered Autoplay Prevention Strategy
 
-**Approach:** Implement redundant autoplay prevention mechanisms to ensure reliability across different browsers and contexts.
+**Approach:** Implement redundant autoplay prevention mechanisms to ensure
+reliability across different browsers and contexts.
 
 #### Layer 1: URL Parameter Modification (PRIMARY FIX)
 
-**Location:** `src/features/quick-tabs/window.js` - `QuickTabWindow.render()` method
+**Location:** `src/features/quick-tabs/window.js` - `QuickTabWindow.render()`
+method
 
 **What to Change:**
 
@@ -155,6 +197,7 @@ Before setting `iframe.src`, process the URL to ensure autoplay is disabled:
    - URL fragments (`#`) should be preserved
 
 **Why this is primary:**
+
 - Most reliable across all browsers
 - YouTube officially supports this parameter
 - Works for both `/watch` and `/embed` URLs
@@ -166,7 +209,8 @@ Before setting `iframe.src`, process the URL to ensure autoplay is disabled:
 
 **What to Change:**
 
-Add an `allow` attribute to the iframe element that explicitly **excludes** autoplay:
+Add an `allow` attribute to the iframe element that explicitly **excludes**
+autoplay:
 
 ```javascript
 // Current: NO allow attribute
@@ -174,6 +218,7 @@ Add an `allow` attribute to the iframe element that explicitly **excludes** auto
 ```
 
 Set `allow` to include only necessary permissions:
+
 - `accelerometer` - for device orientation (if needed)
 - `clipboard-write` - for copy operations
 - `encrypted-media` - for DRM content
@@ -182,6 +227,7 @@ Set `allow` to include only necessary permissions:
 - **OMIT:** `autoplay` - this is the critical exclusion
 
 **Why this helps:**
+
 - Provides defense-in-depth
 - Aligns with modern browser security policies
 - Prevents autoplay even if URL parameter is bypassed
@@ -194,11 +240,13 @@ Set `allow` to include only necessary permissions:
 **What to Consider:**
 
 If videos must autoplay for some reason (future feature), add `muted` attribute:
+
 - Browsers generally allow muted autoplay
 - User can manually unmute
 - Better UX than unexpected audio
 
-**For current fix:** This is NOT recommended as primary solution since the requirement is to prevent autoplay entirely.
+**For current fix:** This is NOT recommended as primary solution since the
+requirement is to prevent autoplay entirely.
 
 ---
 
@@ -213,7 +261,7 @@ If videos must autoplay for some reason (future feature), add `muted` attribute:
 2. **Changes Required:**
 
    **A. Create URL Processing Helper Method**
-   
+
    Add a new private method to the `QuickTabWindow` class:
    - Method name suggestion: `_processUrlForAutoplay(url)`
    - Purpose: Sanitize YouTube URLs to prevent autoplay
@@ -227,11 +275,12 @@ If videos must autoplay for some reason (future feature), add `muted` attribute:
      - Return modified URL string
 
    **B. Modify Iframe Creation**
-   
+
    Update the iframe `createElement` call:
    - Before: `src: this.url`
    - After: `src: this._processUrlForAutoplay(this.url)`
-   - Add `allow` attribute with carefully selected permissions (excluding autoplay)
+   - Add `allow` attribute with carefully selected permissions (excluding
+     autoplay)
    - Maintain existing `sandbox` attribute (required for other functionality)
 
 ### Testing Recommendations
@@ -270,11 +319,14 @@ If autoplay prevention was attempted before:
 
 1. **Only URL Parameter:** May work in some browsers but not all
 2. **Only Sandbox:** Insufficient because scripts are needed for YouTube
-3. **Only `allow` Attribute:** May not block without URL parameter in some contexts
+3. **Only `allow` Attribute:** May not block without URL parameter in some
+   contexts
 4. **Timing Issues:** If URL parameter is stripped during sync/hydration
-5. **URL Format:** Using `/watch?v=` instead of `/embed/` format (less controllable)
+5. **URL Format:** Using `/watch?v=` instead of `/embed/` format (less
+   controllable)
 
-**The Solution:** Combine **URL parameter modification** (primary) + `allow` attribute exclusion (secondary) for maximum compatibility.
+**The Solution:** Combine **URL parameter modification** (primary) + `allow`
+attribute exclusion (secondary) for maximum compatibility.
 
 ---
 
@@ -305,16 +357,21 @@ If autoplay is ever desired as a **user-configurable feature**:
 
 ## Summary
 
-**Root Cause:** Iframe creation directly uses unmodified YouTube URLs without autoplay prevention, combined with lack of `allow` attribute restrictions.
+**Root Cause:** Iframe creation directly uses unmodified YouTube URLs without
+autoplay prevention, combined with lack of `allow` attribute restrictions.
 
-**Impact:** Videos autoplay immediately in current tab and all synced tabs, causing disruptive audio playback.
+**Impact:** Videos autoplay immediately in current tab and all synced tabs,
+causing disruptive audio playback.
 
 **Fix Priority:**
-1. **CRITICAL:** Add URL parameter modification to set `&autoplay=0` for YouTube URLs
+
+1. **CRITICAL:** Add URL parameter modification to set `&autoplay=0` for YouTube
+   URLs
 2. **HIGH:** Add `allow` attribute to iframe without `autoplay` permission
 3. **OPTIONAL:** Consider muted attribute if autoplay needed in future
 
-**Implementation Scope:** Single file (`window.js`), approximately 30-50 lines of new code (helper method + iframe attribute updates).
+**Implementation Scope:** Single file (`window.js`), approximately 30-50 lines
+of new code (helper method + iframe attribute updates).
 
 **Risk:** LOW - Changes are isolated, non-breaking, and easily testable.
 
@@ -326,5 +383,7 @@ If autoplay is ever desired as a **user-configurable feature**:
 - [HTML iframe sandbox Attribute - W3Schools](https://www.w3schools.com/tags/att_iframe_sandbox.asp)
 - [Chrome Autoplay Policy Documentation](https://developer.chrome.com/blog/autoplay)
 - [HTML.com - iframe sandbox attribute](https://html.com/attributes/iframe-sandbox/)
-- Stack Overflow: [Disable autoplay in YouTube embedded code](https://stackoverflow.com/questions/44839312/disable-auto-play-in-youtube-embeded-code)
-- Stack Overflow: [Stop YouTube video autoplay](https://stackoverflow.com/questions/10861987/stop-youtube-video-autoplay)
+- Stack Overflow:
+  [Disable autoplay in YouTube embedded code](https://stackoverflow.com/questions/44839312/disable-auto-play-in-youtube-embeded-code)
+- Stack Overflow:
+  [Stop YouTube video autoplay](https://stackoverflow.com/questions/10861987/stop-youtube-video-autoplay)

@@ -4,21 +4,33 @@
 **Extension Version:** v1.6.1.5  
 **Date:** November 24, 2025  
 **Severity:** CRITICAL - System-Freezing Memory Leak  
-**Impact:** 32GB RAM consumption in seconds, browser freeze, requires extension uninstallation
+**Impact:** 32GB RAM consumption in seconds, browser freeze, requires extension
+uninstallation
 
 ---
 
 ## Executive Summary
 
-A **catastrophic infinite feedback loop** has been identified in the Quick Tab broadcast history persistence mechanism that causes exponential memory consumption at approximately **900MB per second**, leading to complete browser freeze within 30-40 seconds. The issue is triggered when a Quick Tab is opened and syncs across tabs, causing the broadcast history storage writes to trigger storage change listeners, which then trigger more storage writes, creating an **unstoppable cascade**.
+A **catastrophic infinite feedback loop** has been identified in the Quick Tab
+broadcast history persistence mechanism that causes exponential memory
+consumption at approximately **900MB per second**, leading to complete browser
+freeze within 30-40 seconds. The issue is triggered when a Quick Tab is opened
+and syncs across tabs, causing the broadcast history storage writes to trigger
+storage change listeners, which then trigger more storage writes, creating an
+**unstoppable cascade**.
 
 **Critical Findings:**
 
-1. **Exponential Storage Write Loop**: Every position update triggers hundreds of rapid-fire storage writes
-2. **Storage Change Listener Feedback**: Storage writes trigger onChanged listeners, which trigger more writes
-3. **No Write Throttling**: The `_persistBroadcastMessage()` method has no rate limiting
-4. **Memory Accumulation**: Each write cycle allocates new memory that isn't garbage collected
-5. **System-Wide Impact**: Memory leak persists even after browser restart until extension uninstall
+1. **Exponential Storage Write Loop**: Every position update triggers hundreds
+   of rapid-fire storage writes
+2. **Storage Change Listener Feedback**: Storage writes trigger onChanged
+   listeners, which trigger more writes
+3. **No Write Throttling**: The `_persistBroadcastMessage()` method has no rate
+   limiting
+4. **Memory Accumulation**: Each write cycle allocates new memory that isn't
+   garbage collected
+5. **System-Wide Impact**: Memory leak persists even after browser restart until
+   extension uninstall
 
 **Immediate Actions Required:**
 
@@ -33,7 +45,8 @@ A **catastrophic infinite feedback loop** has been identified in the Quick Tab b
 
 ### Timeline of Catastrophic Failure
 
-From the attached logs (`copy-url-extension-logs_v1.6.1.5_2025-11-24T20-30-16.txt`):
+From the attached logs
+(`copy-url-extension-logs_v1.6.1.5_2025-11-24T20-30-16.txt`):
 
 **20:30:01.787Z - 20:30:06.030Z (4.2 seconds):**
 
@@ -51,11 +64,15 @@ From the attached logs (`copy-url-extension-logs_v1.6.1.5_2025-11-24T20-30-16.tx
 
 **Key Observations:**
 
-1. **Write Frequency**: Storage writes occurring every **1-2 milliseconds** (500-1000 writes/second)
+1. **Write Frequency**: Storage writes occurring every **1-2 milliseconds**
+   (500-1000 writes/second)
 2. **No Throttling**: Zero evidence of rate limiting or debouncing
-3. **Continuous Acceleration**: Write frequency increases over time as more storage changes trigger more writes
-4. **quicktabsstatev2 Bursts**: Periodic bursts of `quicktabsstatev2` writes mixed with broadcast history writes
-5. **UPDATE_POSITION Triggers**: Each `Received broadcast UPDATEPOSITION` followed by 10-50 storage writes
+3. **Continuous Acceleration**: Write frequency increases over time as more
+   storage changes trigger more writes
+4. **quicktabsstatev2 Bursts**: Periodic bursts of `quicktabsstatev2` writes
+   mixed with broadcast history writes
+5. **UPDATE_POSITION Triggers**: Each `Received broadcast UPDATEPOSITION`
+   followed by 10-50 storage writes
 
 ### Evidence of Feedback Loop
 
@@ -107,6 +124,7 @@ From the attached logs (`copy-url-extension-logs_v1.6.1.5_2025-11-24T20-30-16.tx
 ### Memory Leak Quantification
 
 **Observed Behavior:**
+
 - **Initial Memory**: ~200MB (normal extension baseline)
 - **After 1 second**: ~1.1GB (+900MB)
 - **After 2 seconds**: ~2.0GB (+900MB)
@@ -115,13 +133,15 @@ From the attached logs (`copy-url-extension-logs_v1.6.1.5_2025-11-24T20-30-16.tx
 **Memory Growth Rate:** Approximately **900MB per second**
 
 **Root Cause:** Each storage write allocates memory for:
+
 1. Message object serialization
 2. Storage history object (50 messages × N tabs)
 3. Event listener callback context
 4. Logger buffer accumulation
 5. Debounce map entries
 
-**None of this memory is garbage collected** because the write loop never completes, keeping all references alive.
+**None of this memory is garbage collected** because the write loop never
+completes, keeping all references alive.
 
 ---
 
@@ -148,7 +168,7 @@ async _persistBroadcastMessage(type, data) {
 
   try {
     const historyKey = `quicktabs-broadcast-history-${this.cookieStoreId}`;
-    
+
     // ❌ PROBLEM: No rate limiting, no write coalescing
     // Load existing history
     const result = await globalThis.browser.storage.local.get(historyKey);
@@ -165,21 +185,21 @@ async _persistBroadcastMessage(type, data) {
     // ❌ PROBLEM: Cleanup triggers on EVERY write
     const now = Date.now();
     const needsCleanup = now - history.lastCleanup > 5000;
-    
+
     if (needsCleanup) {
       history.messages = history.messages.filter(
         msg => now - msg.timestamp < this.BROADCAST_HISTORY_TTL_MS
       );
-      
+
       this._limitHistorySize(history);
-      
+
       history.lastCleanup = now;
     }
 
     // ❌ PROBLEM: EVERY broadcast triggers a storage write
     // Position updates happen 50-100 times per second during drag
     await globalThis.browser.storage.local.set({ [historyKey]: history });
-    
+
     this.logger.debug('Message persisted to history', {
       type,
       historySize: history.messages.length
@@ -195,11 +215,15 @@ async _persistBroadcastMessage(type, data) {
 
 **What's Catastrophically Wrong:**
 
-1. **No Write Throttling**: Every single broadcast (50-100/sec during drag) triggers a storage write
+1. **No Write Throttling**: Every single broadcast (50-100/sec during drag)
+   triggers a storage write
 2. **No Write Batching**: Each message written individually instead of batched
-3. **Synchronous in Async**: The `await storage.local.set()` blocks, but more calls keep piling up
-4. **No Concurrency Control**: Multiple writes can run simultaneously, each loading, modifying, and saving
-5. **Race Conditions**: Concurrent writes overwrite each other, causing lost messages and repeated saves
+3. **Synchronous in Async**: The `await storage.local.set()` blocks, but more
+   calls keep piling up
+4. **No Concurrency Control**: Multiple writes can run simultaneously, each
+   loading, modifying, and saving
+5. **Race Conditions**: Concurrent writes overwrite each other, causing lost
+   messages and repeated saves
 
 **The Cascade:**
 
@@ -231,19 +255,19 @@ User Drags Quick Tab
 // In StorageManager or SyncCoordinator initialization
 browser.storage.local.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   for (const key of Object.keys(changes)) {
     console.log(`[StorageManager] Storage changed ${areaName} ${key}`);
-    
+
     // ❌ PROBLEM: This gets called for EVERY storage write, including broadcast history
     // When broadcast history is written, this fires
     // This may trigger state refresh, which triggers saves, which triggers more writes
-    
+
     if (key === 'quicktabsstatev2') {
       // Refresh state from storage
       this.handleStorageStateChange();
     }
-    
+
     // ❌ CRITICAL: If broadcast history writes trigger any logic that causes saves,
     // the feedback loop is established
   }
@@ -273,10 +297,13 @@ browser.storage.local.onChanged.addListener((changes, areaName) => {
 
 **Missing Safeguards:**
 
-1. **No Memory Usage Monitoring**: Extension doesn't track its own memory consumption
+1. **No Memory Usage Monitoring**: Extension doesn't track its own memory
+   consumption
 2. **No Write Rate Limiting**: No maximum writes/second enforcement
-3. **No Circuit Breaker**: No emergency shutdown when anomalous behavior detected
-4. **No Storage Quota Monitoring**: No check for approaching browser.storage limits
+3. **No Circuit Breaker**: No emergency shutdown when anomalous behavior
+   detected
+4. **No Storage Quota Monitoring**: No check for approaching browser.storage
+   limits
 
 **Required But Missing:**
 
@@ -289,7 +316,7 @@ class MemoryGuard {
     this.writeCount = 0;
     this.windowStart = Date.now();
   }
-  
+
   checkMemoryUsage() {
     if (performance.memory && performance.memory.usedJSHeapSize) {
       const usedMB = performance.memory.usedJSHeapSize / 1048576;
@@ -299,7 +326,7 @@ class MemoryGuard {
       }
     }
   }
-  
+
   checkWriteRate() {
     const now = Date.now();
     if (now - this.windowStart > 1000) {
@@ -329,11 +356,8 @@ class MemoryGuard {
 async function clearQuickTabsStorage() {
   try {
     // Clear all Quick Tab related storage
-    const keysToRemove = [
-      'quicktabsstatev2',
-      'quicktabssession'
-    ];
-    
+    const keysToRemove = ['quicktabsstatev2', 'quicktabssession'];
+
     // Clear broadcast history for all containers
     const allStorage = await browser.storage.local.get(null);
     for (const key of Object.keys(allStorage)) {
@@ -344,10 +368,10 @@ async function clearQuickTabsStorage() {
         keysToRemove.push(key);
       }
     }
-    
+
     await browser.storage.local.remove(keysToRemove);
     console.log('Quick Tabs storage cleared successfully');
-    
+
     // Notify all tabs to reset state
     await browser.runtime.sendMessage({
       type: 'STORAGE_CLEARED',
@@ -371,11 +395,13 @@ async function clearQuickTabsStorage() {
 
 **Location:** Create new file `src/features/quick-tabs/guards/MemoryGuard.js`
 
-**Purpose:** Monitor extension memory usage and trigger emergency shutdown at thresholds
+**Purpose:** Monitor extension memory usage and trigger emergency shutdown at
+thresholds
 
 **Implementation Requirements:**
 
 Create `MemoryGuard` class with the following responsibilities:
+
 - Monitor extension JS heap memory usage via `performance.memory.usedJSHeapSize`
 - Default thresholds: 1000MB for extension, 20000MB for browser
 - Check interval: Every 1 second
@@ -383,12 +409,15 @@ Create `MemoryGuard` class with the following responsibilities:
 - Emit shutdown event that QuickTabsManager can listen to
 
 **Key Methods Needed:**
+
 - `startMonitoring()` - Start interval-based memory checks
 - `checkMemoryLimits()` - Check current memory against thresholds
 - `triggerEmergencyShutdown(reason, memoryMB)` - Execute shutdown procedure
-- Shutdown procedure should close all Quick Tabs, stop intervals, clear listeners, notify user
+- Shutdown procedure should close all Quick Tabs, stop intervals, clear
+  listeners, notify user
 
-**Integration Point:** QuickTabsManager initialization must create MemoryGuard and listen for shutdown events
+**Integration Point:** QuickTabsManager initialization must create MemoryGuard
+and listen for shutdown events
 
 #### Fix 1.2: Write Rate Limiter
 
@@ -399,6 +428,7 @@ Create `MemoryGuard` class with the following responsibilities:
 **Implementation Requirements:**
 
 Add to BroadcastManager constructor:
+
 - `maxWritesPerSecond` property (default: 10)
 - `writeRateWindow` property (default: 1000ms)
 - `writeCountInWindow` counter
@@ -406,11 +436,13 @@ Add to BroadcastManager constructor:
 - `blockedWriteCount` metric
 
 Modify `_persistBroadcastMessage()` method:
+
 - Add `_checkWriteRateLimit()` call before attempting write
 - If limit exceeded, increment `blockedWriteCount` and return early
 - Log warning every 100 blocked writes
 
 Add new `_checkWriteRateLimit()` method:
+
 - Reset window if expired (now - windowStartTime >= writeRateWindow)
 - Check if writeCountInWindow >= maxWritesPerSecond
 - If at limit, return false (block write)
@@ -420,11 +452,13 @@ Add new `_checkWriteRateLimit()` method:
 
 **Location:** `src/features/quick-tabs/managers/StorageManager.js`
 
-**Purpose:** Automatically disable storage operations if failure rate exceeds threshold
+**Purpose:** Automatically disable storage operations if failure rate exceeds
+threshold
 
 **Implementation Requirements:**
 
 Add circuit breaker state to StorageManager constructor:
+
 - `circuitState` property (values: 'CLOSED', 'OPEN', 'HALF_OPEN')
 - `failureCount` counter
 - `failureThreshold` (default: 5 failures to open circuit)
@@ -433,16 +467,20 @@ Add circuit breaker state to StorageManager constructor:
 - `circuitResetTimer` reference
 
 Modify storage operation methods (save, load, etc.):
+
 - Check circuit state before operation
 - If OPEN, throw error immediately without attempting operation
 - Wrap operation in try/catch to record success/failure
 - Call `_recordCircuitSuccess()` or `_recordCircuitFailure()` based on result
 
 Add circuit breaker management methods:
-- `_recordCircuitFailure()` - Increment failure count, open circuit if threshold reached
+
+- `_recordCircuitFailure()` - Increment failure count, open circuit if threshold
+  reached
 - `_openCircuit()` - Set state to OPEN, schedule reset attempt, emit event
 - `_attemptCircuitReset()` - Set state to HALF_OPEN after timeout
-- `_recordCircuitSuccess()` - In HALF_OPEN state, increment success count, close if threshold reached
+- `_recordCircuitSuccess()` - In HALF_OPEN state, increment success count, close
+  if threshold reached
 - `_closeCircuit()` - Set state to CLOSED, reset counters
 
 ### Phase 2: Disable Broadcast History Persistence (IMMEDIATE)
@@ -456,7 +494,8 @@ Add circuit breaker management methods:
 
 **Change Required:**
 
-In the `broadcast()` method, comment out the call to `_persistBroadcastMessage()`:
+In the `broadcast()` method, comment out the call to
+`_persistBroadcastMessage()`:
 
 ```javascript
 // ❌ DISABLE BROADCAST HISTORY PERSISTENCE
@@ -467,7 +506,8 @@ In the `broadcast()` method, comment out the call to `_persistBroadcastMessage()
 
 Add comment explaining temporary disable and referencing memory leak issue.
 
-**Impact:** Late-joining tabs won't receive missed broadcasts. This is acceptable temporarily to prevent system-freezing memory leak.
+**Impact:** Late-joining tabs won't receive missed broadcasts. This is
+acceptable temporarily to prevent system-freezing memory leak.
 
 #### Fix 2.2: Disable History Replay
 
@@ -483,7 +523,7 @@ async replayBroadcastHistory() {
   // ❌ DISABLED: Broadcast history persistence disabled due to memory leak
   console.log('[BroadcastManager] Broadcast history replay disabled');
   return 0;
-  
+
   /* ORIGINAL CODE COMMENTED OUT
   // ... original implementation
   */
@@ -504,7 +544,7 @@ startPeriodicSnapshots() {
   // ❌ DISABLED: Snapshot broadcasting disabled due to memory leak concerns
   console.log('[BroadcastManager] Periodic snapshot broadcasting disabled');
   return;
-  
+
   /* ORIGINAL CODE COMMENTED OUT
   // ... original implementation
   */
@@ -520,13 +560,16 @@ startPeriodicSnapshots() {
 **Location:** `src/features/quick-tabs/managers/StorageManager.js`  
 **Method:** Storage change listener
 
-**Purpose:** Prevent broadcast history writes from triggering state refresh cascades
+**Purpose:** Prevent broadcast history writes from triggering state refresh
+cascades
 
 **Implementation Required:**
 
-Modify the `browser.storage.local.onChanged` listener to filter out problematic keys:
+Modify the `browser.storage.local.onChanged` listener to filter out problematic
+keys:
 
 Add early continue for broadcast history keys:
+
 ```javascript
 if (key.startsWith('quicktabs-broadcast-history-')) {
   console.log(`[StorageManager] Ignoring broadcast history change: ${key}`);
@@ -535,6 +578,7 @@ if (key.startsWith('quicktabs-broadcast-history-')) {
 ```
 
 Add early continue for sync message keys:
+
 ```javascript
 if (key.startsWith('quick-tabs-sync-')) {
   console.log(`[StorageManager] Ignoring sync message change: ${key}`);
@@ -543,13 +587,15 @@ if (key.startsWith('quick-tabs-sync-')) {
 ```
 
 Only process legitimate Quick Tab state keys:
+
 ```javascript
 if (key === 'quicktabsstatev2' || key === 'quicktabssession') {
   this.handleStorageStateChange(key, changes[key]);
 }
 ```
 
-**Critical:** This fix alone prevents the feedback loop by breaking the cascade at the storage listener level.
+**Critical:** This fix alone prevents the feedback loop by breaking the cascade
+at the storage listener level.
 
 ### Phase 4: Implement Write Batching (MEDIUM PRIORITY)
 
@@ -564,16 +610,20 @@ if (key === 'quicktabsstatev2' || key === 'quicktabssession') {
 **Implementation Requirements:**
 
 Add to BroadcastManager constructor:
+
 - `pendingHistoryWrites` array (queue of messages to write)
 - `batchWriteTimer` reference
 - `BATCH_WRITE_DELAY_MS` constant (default: 500ms)
 
 Replace `_persistBroadcastMessage()` with batched version:
+
 - Instead of immediate write, push message to `pendingHistoryWrites` queue
-- If `batchWriteTimer` not already scheduled, schedule `_flushPendingHistoryWrites()` after delay
+- If `batchWriteTimer` not already scheduled, schedule
+  `_flushPendingHistoryWrites()` after delay
 - Return immediately (no await on storage write)
 
 Add new `_flushPendingHistoryWrites()` method:
+
 - Clear timer reference
 - If queue empty, return
 - Load existing history from storage (single read)
@@ -583,7 +633,8 @@ Add new `_flushPendingHistoryWrites()` method:
 - Write entire batch to storage (single write)
 - Log how many messages were flushed
 
-**Benefit:** Reduces write frequency from 50-100/second to ~2/second (500ms batches), cutting storage operations by 95%.
+**Benefit:** Reduces write frequency from 50-100/second to ~2/second (500ms
+batches), cutting storage operations by 95%.
 
 ### Phase 5: Implement "Clear Quick Tabs Storage" Button (MEDIUM PRIORITY)
 
@@ -610,8 +661,11 @@ Create `clearQuickTabsStorage()` async function with these steps:
 8. Handle errors with user-friendly error messages
 
 Attach function to button click event:
+
 ```javascript
-document.getElementById('clearQuickTabsStorage')?.addEventListener('click', clearQuickTabsStorage);
+document
+  .getElementById('clearQuickTabsStorage')
+  ?.addEventListener('click', clearQuickTabsStorage);
 ```
 
 #### Fix 5.2: Add Clear Storage Button to UI
@@ -621,11 +675,13 @@ document.getElementById('clearQuickTabsStorage')?.addEventListener('click', clea
 **HTML Structure Required:**
 
 Add settings section with:
+
 - Section heading: "Storage Management"
 - Button with id "clearQuickTabsStorage" and danger styling
 - Help text explaining button purpose and when to use it
 
 Example structure:
+
 ```html
 <div class="settings-section">
   <h3>Storage Management</h3>
@@ -633,7 +689,8 @@ Example structure:
     Clear Quick Tabs Storage
   </button>
   <p class="help-text">
-    Removes all Quick Tab data and closes all Quick Tabs. Use this if you experience issues.
+    Removes all Quick Tab data and closes all Quick Tabs. Use this if you
+    experience issues.
   </p>
 </div>
 ```
@@ -645,26 +702,31 @@ Example structure:
 ### Must Implement Immediately (Before Any Other Changes)
 
 **Phase 1: Emergency Shutdown (P0)**
+
 1. MemoryGuard with automatic shutdown at 1GB extension / 20GB browser
 2. Write rate limiter (max 10 writes/second)
 3. Circuit breaker for storage operations
 
 **Phase 2: Disable Broken Feature (P0)**
+
 1. Comment out broadcast history persistence calls
 2. Disable history replay
 3. Disable periodic snapshots
 
 **Phase 3: Fix Feedback Loop (P1)**
+
 1. Ignore broadcast history keys in storage change listener
 2. Ignore sync message keys in storage change listener
 
 ### Can Implement After Safety Fixes
 
 **Phase 4: Optimize (P2)**
+
 1. Implement write batching (500ms windows)
 2. Reduce write frequency by 95%
 
 **Phase 5: User Recovery (P2)**
+
 1. Implement "Clear Quick Tabs Storage" button
 2. Add clear all Quick Tabs functionality
 
@@ -698,7 +760,8 @@ Example structure:
 4. **`src/features/quick-tabs/index.js` (QuickTabsManager)**
    - Import and initialize MemoryGuard in initialization sequence
    - Listen for emergency shutdown events from MemoryGuard
-   - Implement emergency cleanup procedure (close tabs, stop intervals, clear listeners)
+   - Implement emergency cleanup procedure (close tabs, stop intervals, clear
+     listeners)
    - Display user notification on emergency shutdown
 
 ### User-Facing Changes
@@ -781,26 +844,32 @@ Example structure:
 
 ### 1. Replace Broadcast History with Alternative Mechanism
 
-**Problem:** Broadcast history was designed to help late-joining tabs catch up, but storage-based persistence causes more problems than it solves.
+**Problem:** Broadcast history was designed to help late-joining tabs catch up,
+but storage-based persistence causes more problems than it solves.
 
-**Alternative:** Use runtime messaging to request state from active tabs when new tab loads.
+**Alternative:** Use runtime messaging to request state from active tabs when
+new tab loads.
 
 **Implementation Approach:**
 
 When a new tab loads and needs Quick Tab state:
+
 - Use `browser.tabs.query({})` to get all open tabs
-- Send `REQUEST_QUICK_TAB_STATE` message to each tab via `browser.tabs.sendMessage()`
+- Send `REQUEST_QUICK_TAB_STATE` message to each tab via
+  `browser.tabs.sendMessage()`
 - First tab that responds with state wins
 - Hydrate local state with received state
 - No storage writes involved
 
 Existing tabs listen for state requests:
+
 - Listen for `REQUEST_QUICK_TAB_STATE` messages via `browser.runtime.onMessage`
 - Serialize current Quick Tab state
 - Return serialized state as response
 - Message round-trip takes <50ms (vs 200ms+ for storage)
 
 **Benefits:**
+
 - No storage writes (zero feedback loop risk)
 - Instant state transfer (<50ms)
 - Only happens on tab load (rare event)
@@ -808,9 +877,11 @@ Existing tabs listen for state requests:
 
 ### 2. Move to Background Script State Management
 
-**Problem:** Each tab manages its own state, leading to synchronization complexity and race conditions.
+**Problem:** Each tab manages its own state, leading to synchronization
+complexity and race conditions.
 
-**Solution:** Move authoritative state to background script (service worker), tabs become "views" that reflect background state.
+**Solution:** Move authoritative state to background script (service worker),
+tabs become "views" that reflect background state.
 
 **Architecture Change:**
 
@@ -823,6 +894,7 @@ Background Script (Service Worker)
 ```
 
 **Benefits:**
+
 - Single source of truth eliminates sync complexity
 - No storage race conditions (one writer)
 - No broadcast history needed (background knows everything)
@@ -832,11 +904,13 @@ Background Script (Service Worker)
 **Implementation:**
 
 Background script maintains Map of Quick Tabs:
+
 - Listens for state change requests from tabs
 - Updates map and broadcasts changes to all connected tabs
 - Persists to storage on changes (single writer, no races)
 
 Content scripts connect to background:
+
 - Establish persistent port connection
 - Listen for state updates via port.onMessage
 - Render Quick Tabs based on received state
@@ -844,13 +918,16 @@ Content scripts connect to background:
 
 ### 3. Implement Storage Write Coalescing
 
-**Problem:** Every state change triggers immediate storage write, causing write storms.
+**Problem:** Every state change triggers immediate storage write, causing write
+storms.
 
-**Solution:** Collect all state changes in memory, flush to storage at fixed intervals.
+**Solution:** Collect all state changes in memory, flush to storage at fixed
+intervals.
 
 **Implementation Approach:**
 
 Create `StorageCoalescer` class:
+
 - Maintains `pendingWrites` Map of key → data
 - When state changes, queue writes instead of immediate persistence
 - Timer flushes queue every 1 second
@@ -858,6 +935,7 @@ Create `StorageCoalescer` class:
 - Reduces write frequency by 90%+
 
 **Benefits:**
+
 - Prevents storage write storms
 - Batches related changes together
 - Still maintains persistence (1 second delay acceptable)
@@ -867,31 +945,43 @@ Create `StorageCoalescer` class:
 
 ## Conclusion
 
-The Quick Tab memory leak is caused by a **catastrophic feedback loop** between broadcast history storage writes and storage change listeners. Every Quick Tab position update triggers storage writes, which trigger storage change events, which may trigger more writes, creating an exponential cascade that consumes 900MB/second and freezes the browser within 30-40 seconds.
+The Quick Tab memory leak is caused by a **catastrophic feedback loop** between
+broadcast history storage writes and storage change listeners. Every Quick Tab
+position update triggers storage writes, which trigger storage change events,
+which may trigger more writes, creating an exponential cascade that consumes
+900MB/second and freezes the browser within 30-40 seconds.
 
 **The fix requires three coordinated changes in priority order:**
 
-1. **Immediate Safety (P0)**: 
-   - Add emergency shutdown mechanisms (MemoryGuard, write rate limiter, circuit breaker)
+1. **Immediate Safety (P0)**:
+   - Add emergency shutdown mechanisms (MemoryGuard, write rate limiter, circuit
+     breaker)
    - Disable broadcast history persistence entirely to stop the bleeding
 
-2. **Feedback Loop Prevention (P1)**: 
+2. **Feedback Loop Prevention (P1)**:
    - Modify storage change listener to ignore broadcast history keys
    - This breaks the feedback loop at the listener level
 
-3. **Long-Term Optimization (P2)**: 
+3. **Long-Term Optimization (P2)**:
    - Implement write batching for performance
    - Consider architectural changes (runtime messaging, background script state)
 
 **Critical Implementation Note:**
 
-The broadcast history persistence feature (`_persistBroadcastMessage()`) **must be completely disabled** until all safety mechanisms are in place and the storage change listener is fixed. Attempting to "fix" the persistence without addressing the feedback loop will result in the same catastrophic memory leak.
+The broadcast history persistence feature (`_persistBroadcastMessage()`) **must
+be completely disabled** until all safety mechanisms are in place and the
+storage change listener is fixed. Attempting to "fix" the persistence without
+addressing the feedback loop will result in the same catastrophic memory leak.
 
 **User Recovery:**
 
-Users experiencing this issue must **uninstall and reinstall the extension** to clear corrupted storage. Once Phase 5 is implemented, the "Clear Quick Tabs Storage" button will provide an in-app recovery mechanism for future issues without requiring full extension reinstall.
+Users experiencing this issue must **uninstall and reinstall the extension** to
+clear corrupted storage. Once Phase 5 is implemented, the "Clear Quick Tabs
+Storage" button will provide an in-app recovery mechanism for future issues
+without requiring full extension reinstall.
 
 **Estimated Implementation Time:**
+
 - Phase 1 (Emergency Shutdown): 6-8 hours
 - Phase 2 (Disable Feature): 1 hour
 - Phase 3 (Fix Listener): 2-3 hours

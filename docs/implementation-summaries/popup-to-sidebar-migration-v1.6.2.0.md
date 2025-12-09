@@ -2,27 +2,33 @@
 
 ## Overview
 
-Complete migration of the extension's popup settings UI to the Firefox Sidebar API, completed on November 24, 2025. This migration provides Firefox users with a persistent, always-accessible settings interface while maintaining Chrome compatibility with the traditional popup.
+Complete migration of the extension's popup settings UI to the Firefox Sidebar
+API, completed on November 24, 2025. This migration provides Firefox users with
+a persistent, always-accessible settings interface while maintaining Chrome
+compatibility with the traditional popup.
 
 ## Migration Summary
 
 ### What Changed
 
 **Firefox Users:**
+
 - Clicking the toolbar icon now opens the sidebar (not popup)
 - Pressing `Alt+Shift+S` toggles the settings sidebar
 - All 5 tabs are available in the sidebar:
   1. Copy URL
   2. Quick Tabs
-  3. Appearance  
+  3. Appearance
   4. Advanced
   5. Manager (Quick Tabs Manager)
 
 **Chrome/Edge/Brave Users:**
+
 - No change - toolbar icon still opens popup
 - All features remain identical to Firefox
 
 **Keyboard Shortcuts:**
+
 - Settings Sidebar: `Ctrl+Shift+S` → `Alt+Shift+S` (NEW)
 - Quick Tabs Manager: `Ctrl+Alt+Z` → `Alt+Shift+Z` (UPDATED)
 
@@ -56,6 +62,7 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 ### UI Layout Comparison
 
 #### Original Popup (400x600px)
+
 ```
 ┌─────────────────────────────────────┐
 │  ⚙️ Copy URL on Hover               │ Header (48px)
@@ -77,6 +84,7 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 ```
 
 #### New Sidebar (Dynamic Width × 100vh)
+
 ```
 ┌─────────────────────────────────────┐
 │  ⚙️ Copy URL on Hover               │ Header (48px)
@@ -102,12 +110,14 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 ### Content Tabs Detail
 
 #### Tab 1: Copy URL
+
 - Keyboard shortcut configuration for URL copying
 - Modifier keys (Ctrl, Alt, Shift)
 - Copy text key configuration
 - Open in new tab settings
 
 #### Tab 2: Quick Tabs
+
 - Quick Tab keyboard shortcut
 - Close all key configuration
 - Max windows setting
@@ -118,6 +128,7 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 - Enable resize checkbox
 
 #### Tab 3: Appearance
+
 - Dark mode toggle
 - Notification display mode
 - Tooltip color picker (hex + visual)
@@ -131,6 +142,7 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 - Notification animation
 
 #### Tab 4: Advanced
+
 - **Console Log Filtering** (Main feature)
   - Live Console Output Filters (16 categories in 3 groups)
   - Export Log Filters (separate from live)
@@ -146,6 +158,7 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 - Clear log history button
 
 #### Tab 5: Manager (NEW!)
+
 - Iframe embedding quick-tabs-manager.html
 - Shows all active Quick Tabs
 - Container-grouped display
@@ -156,7 +169,9 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 ## Console Log Filtering Categories
 
 ### Live Console Filters
+
 **User Actions Group:**
+
 - 🔍 URL Detection
 - 👆 Hover Events
 - 📋 Clipboard Operations
@@ -165,6 +180,7 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 - 📊 Quick Tab Manager
 
 **System Operations Group:**
+
 - 📡 Event Bus
 - ⚙️ Configuration
 - 💾 State Management
@@ -174,20 +190,28 @@ Complete migration of the extension's popup settings UI to the Firefox Sidebar A
 - 📑 Tab Management
 
 **Diagnostics Group:**
+
 - ⏱️ Performance
 - ❌ Errors
 - 🚀 Initialization
 
 ### Export Filters
-Identical categories to Live Console, but independent settings allowing users to export comprehensive logs while keeping live console clean.
+
+Identical categories to Live Console, but independent settings allowing users to
+export comprehensive logs while keeping live console clean.
 
 ## Background.js Integration
 
-The sidebar opening mechanism was already implemented in background.js (lines 1269-1286):
+The sidebar opening mechanism was already implemented in background.js (lines
+1269-1286):
 
 ```javascript
 // Open sidebar when toolbar button is clicked (Firefox only)
-if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAction) {
+if (
+  typeof browser !== 'undefined' &&
+  browser.browserAction &&
+  browser.sidebarAction
+) {
   browser.browserAction.onClicked.addListener(async () => {
     try {
       if (browser.sidebarAction && browser.sidebarAction.open) {
@@ -201,6 +225,7 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
 ```
 
 This code:
+
 1. Checks if browser supports sidebar API (Firefox only)
 2. Listens for toolbar button clicks
 3. Opens the sidebar programmatically
@@ -209,19 +234,23 @@ This code:
 ## Cross-Browser Compatibility Strategy
 
 ### Firefox (Manifest v2)
+
 - **Toolbar Icon:** Opens sidebar via `sidebarAction.open()`
 - **Keyboard:** Alt+Shift+S opens sidebar
 - **Popup:** Not used (removed from manifest)
 - **Sidebar:** Full settings UI with 5 tabs
 
 ### Chrome/Edge/Brave (Manifest v2)
+
 - **Toolbar Icon:** Opens popup via `default_popup`
 - **Keyboard:** No sidebar shortcut (not supported)
 - **Popup:** Full settings UI with 4 tabs (no Manager tab as panel is separate)
 - **Sidebar:** Not available (API not supported)
 
 ### Detection Logic
+
 The extension uses feature detection:
+
 ```javascript
 if (typeof browser !== 'undefined' && browser.sidebarAction) {
   // Firefox with sidebar support
@@ -233,18 +262,21 @@ if (typeof browser !== 'undefined' && browser.sidebarAction) {
 ## Testing Results
 
 ### Unit Tests
+
 - **Total Tests:** 1821
 - **Passing:** 1819
 - **Skipped:** 2
 - **Result:** ✅ All tests passing
 
 ### Build Status
+
 - **Build:** ✅ Success
 - **ESLint:** ✅ Pass (1 expected HTML warning)
 - **Manifest Validation:** ✅ Pass
 - **Asset Copy:** ✅ Success
 
 ### Manual Testing Required
+
 - [ ] Firefox: Click toolbar icon → Sidebar opens
 - [ ] Firefox: Press Alt+Shift+S → Sidebar toggles
 - [ ] Firefox: Press Alt+Shift+Z → Quick Tabs Manager opens
@@ -259,17 +291,20 @@ if (typeof browser !== 'undefined' && browser.sidebarAction) {
 ## Migration Benefits
 
 ### For Firefox Users
+
 1. **Persistent Access:** Sidebar stays open while browsing
 2. **No Tab Switching:** Change settings without leaving current page
 3. **More Space:** Sidebar can be wider than 400px popup
 4. **Better UX:** Native browser integration
 
 ### For Chrome Users
+
 1. **No Disruption:** Everything works exactly as before
 2. **Familiar Interface:** Same popup UI maintained
 3. **Feature Parity:** All features available
 
 ### For Developers
+
 1. **Single Codebase:** Same HTML/JS for both popup and sidebar
 2. **Easy Maintenance:** Changes to settings UI apply to both
 3. **Progressive Enhancement:** Firefox gets enhanced UX, Chrome stays stable
@@ -278,20 +313,24 @@ if (typeof browser !== 'undefined' && browser.sidebarAction) {
 ## File Size Comparison
 
 ### Before Migration
+
 - **popup.html:** 51,555 bytes (1,544 lines)
 - **popup.js:** 42,229 bytes
 - **sidebar/settings.html:** 5,049 bytes (135 lines)
 - **sidebar/settings.js:** 10,041 bytes
 
 ### After Migration
+
 - **popup.html:** 51,555 bytes (unchanged - still used by Chrome)
 - **popup.js:** 42,229 bytes (unchanged - still used by Chrome)
-- **sidebar/settings.html:** 51,839 bytes (1,551 lines - +7 lines for Manager tab)
+- **sidebar/settings.html:** 51,839 bytes (1,551 lines - +7 lines for Manager
+  tab)
 - **sidebar/settings.js:** 42,229 bytes (full popup.js functionality)
 
 ## Known Limitations
 
-1. **Playwright Screenshots:** Cannot be generated due to browser installation issues in CI environment
+1. **Playwright Screenshots:** Cannot be generated due to browser installation
+   issues in CI environment
 2. **Chrome Sidebar:** Not available (API limitation)
 3. **Manual Testing:** Required for final validation in both browsers
 
@@ -304,8 +343,11 @@ if (typeof browser !== 'undefined' && browser.sidebarAction) {
 
 ## Conclusion
 
-The migration successfully brings the complete popup settings UI into the Firefox sidebar while maintaining full Chrome compatibility. The implementation follows the extension's architecture principles of cross-browser support, minimal disruption, and progressive enhancement. All unit tests pass, the build is successful, and the extension is ready for manual testing and deployment.
+The migration successfully brings the complete popup settings UI into the
+Firefox sidebar while maintaining full Chrome compatibility. The implementation
+follows the extension's architecture principles of cross-browser support,
+minimal disruption, and progressive enhancement. All unit tests pass, the build
+is successful, and the extension is ready for manual testing and deployment.
 
-**Status:** ✅ Complete and Ready for Testing
-**Version:** 1.6.2.0
-**Date:** November 24, 2025
+**Status:** ✅ Complete and Ready for Testing **Version:** 1.6.2.0 **Date:**
+November 24, 2025

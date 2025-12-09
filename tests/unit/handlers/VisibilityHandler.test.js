@@ -256,12 +256,12 @@ describe('VisibilityHandler', () => {
     test('should emit state:updated event for panel sync on restore', async () => {
       // Use fake timers for the delayed emit
       jest.useFakeTimers();
-      
+
       const stateUpdatedSpy = jest.fn();
       mockEventBus.on('state:updated', stateUpdatedSpy);
 
       visibilityHandler.handleRestore('qt-123');
-      
+
       // v1.6.3.5-v5 - New implementation uses _verifyRestoreAndEmit with promise-based delay
       // Need to advance timers and flush promises multiple times
       await jest.runAllTimersAsync();
@@ -277,7 +277,7 @@ describe('VisibilityHandler', () => {
         }),
         source: 'unknown'
       });
-      
+
       // Restore real timers
       jest.useRealTimers();
     });
@@ -327,18 +327,18 @@ describe('VisibilityHandler', () => {
   describe('Alias methods', () => {
     test('restoreQuickTab should call handleRestore with source parameter', () => {
       const spy = jest.spyOn(visibilityHandler, 'handleRestore');
-      
+
       visibilityHandler.restoreQuickTab('qt-123');
-      
+
       // v1.6.3.4 - FIX Issue #6: Now includes source parameter
       expect(spy).toHaveBeenCalledWith('qt-123', 'unknown');
     });
 
     test('restoreById should call handleRestore with source parameter', () => {
       const spy = jest.spyOn(visibilityHandler, 'handleRestore');
-      
+
       visibilityHandler.restoreById('qt-123');
-      
+
       // v1.6.3.4 - FIX Issue #6: Now includes source parameter
       expect(spy).toHaveBeenCalledWith('qt-123', 'unknown');
     });

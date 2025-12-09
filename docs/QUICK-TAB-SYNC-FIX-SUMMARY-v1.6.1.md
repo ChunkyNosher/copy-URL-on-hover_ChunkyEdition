@@ -9,7 +9,9 @@
 
 ## Executive Summary
 
-Fixed four critical bugs affecting Quick Tab visibility and synchronization across browser tabs. All fixes implement robust, architectural solutions that address root causes rather than symptoms.
+Fixed four critical bugs affecting Quick Tab visibility and synchronization
+across browser tabs. All fixes implement robust, architectural solutions that
+address root causes rather than symptoms.
 
 **Status**: ✅ All 4 bugs fixed, all tests passing
 
@@ -18,38 +20,59 @@ Fixed four critical bugs affecting Quick Tab visibility and synchronization acro
 ## Bugs Fixed
 
 ### Bug 1: Position Not Preserved When Switching Tabs ✅
-**Symptom**: Quick Tabs created in Tab 1 with custom positions appear in original positions when switching to Tab 2, or don't appear at all in Tab 3.
 
-**Root Cause**: UICoordinator only listened to `state:added`, `state:updated`, `state:deleted` events. When tab became visible, SyncCoordinator emitted `state:refreshed` after reloading from storage, but UICoordinator didn't react.
+**Symptom**: Quick Tabs created in Tab 1 with custom positions appear in
+original positions when switching to Tab 2, or don't appear at all in Tab 3.
 
-**Fix**: Added `state:refreshed` event listener and `_refreshAllRenderedTabs()` method to UICoordinator.
+**Root Cause**: UICoordinator only listened to `state:added`, `state:updated`,
+`state:deleted` events. When tab became visible, SyncCoordinator emitted
+`state:refreshed` after reloading from storage, but UICoordinator didn't react.
+
+**Fix**: Added `state:refreshed` event listener and `_refreshAllRenderedTabs()`
+method to UICoordinator.
 
 ### Bug 2: Quick Tabs Don't Appear in Newly Loaded Tabs ✅
-**Symptom**: Quick Tab created and moved in Tab 1 doesn't appear when switching to newly loaded Tab 2.
 
-**Root Cause**: Same as Bug 1 - UICoordinator not listening to `state:refreshed` event.
+**Symptom**: Quick Tab created and moved in Tab 1 doesn't appear when switching
+to newly loaded Tab 2.
+
+**Root Cause**: Same as Bug 1 - UICoordinator not listening to `state:refreshed`
+event.
 
 **Fix**: Same as Bug 1 - state refresh handling.
 
 ### Bug 3: Quick Tab Manager Panel Crashes on New Tabs ✅
-**Symptom**: Panel opened in Tab 1, switching to Tab 2 causes error: "can't access property 'setIsOpen', this.contentManager is null". Panel becomes stuck and unusable.
 
-**Root Cause**: Initialization order issue. PanelStateManager called `_applyState()` callback before contentManager was initialized. When state had `isOpen: true`, it tried to call `contentManager.setIsOpen()` on null.
+**Symptom**: Panel opened in Tab 1, switching to Tab 2 causes error: "can't
+access property 'setIsOpen', this.contentManager is null". Panel becomes stuck
+and unusable.
 
-**Fix**: 
+**Root Cause**: Initialization order issue. PanelStateManager called
+`_applyState()` callback before contentManager was initialized. When state had
+`isOpen: true`, it tried to call `contentManager.setIsOpen()` on null.
+
+**Fix**:
+
 - Initialize stateManager before controllers (controllers need it in options)
 - Apply state callback during init for position/size
 - Apply state again after controllers init to safely handle isOpen
-- Add null check in `_applyState()` to prevent calling `open()` before contentManager exists
+- Add null check in `_applyState()` to prevent calling `open()` before
+  contentManager exists
 
 ### Bug 4: Closed Quick Tabs Reappear ✅
+
 **Symptom**: Quick Tabs closed in Tab 1 still visible when switching to Tab 2.
 
-**Root Cause**: StateManager.hydrate() only tracked additions, not deletions. When storage updated with removed Quick Tab, hydrate() cleared the Map and rebuilt it, but only emitted `state:hydrated` event, not `state:deleted` for removed tabs.
+**Root Cause**: StateManager.hydrate() only tracked additions, not deletions.
+When storage updated with removed Quick Tab, hydrate() cleared the Map and
+rebuilt it, but only emitted `state:hydrated` event, not `state:deleted` for
+removed tabs.
 
-**Fix**: Modified hydrate() to compare existing IDs with incoming IDs and emit proper events:
+**Fix**: Modified hydrate() to compare existing IDs with incoming IDs and emit
+proper events:
+
 - `state:added` for new Quick Tabs
-- `state:updated` for existing Quick Tabs  
+- `state:updated` for existing Quick Tabs
 - `state:deleted` for removed Quick Tabs
 
 ---
@@ -59,14 +82,16 @@ Fixed four critical bugs affecting Quick Tab visibility and synchronization acro
 ### File 1: `src/features/quick-tabs/coordinators/UICoordinator.js`
 
 **Changes**:
+
 1. Added `state:refreshed` event listener in `setupStateListeners()`
 2. Implemented `_refreshAllRenderedTabs()` method
 
 **Code**:
+
 ```javascript
 setupStateListeners() {
   // ... existing listeners ...
-  
+
   // v1.6.1 - CRITICAL FIX: Listen to state:refreshed
   this.eventBus.on('state:refreshed', () => {
     console.log('[UICoordinator] State refreshed - re-rendering all visible tabs');
@@ -98,10 +123,11 @@ _refreshAllRenderedTabs() {
 
 ### File 2: `src/features/quick-tabs/managers/StateManager.js`
 
-**Changes**:
-Enhanced `hydrate()` method to track additions, updates, AND deletions
+**Changes**: Enhanced `hydrate()` method to track additions, updates, AND
+deletions
 
 **Code**:
+
 ```javascript
 hydrate(quickTabs) {
   if (!Array.isArray(quickTabs)) {
@@ -148,11 +174,13 @@ hydrate(quickTabs) {
 ### File 3: `src/features/quick-tabs/panel.js`
 
 **Changes**:
+
 1. Initialize stateManager before controllers
 2. Apply state twice: once during init, again after controllers
 3. Add null check in `_applyState()`
 
 **Code**:
+
 ```javascript
 async init() {
   // ... create panel ...
@@ -170,7 +198,7 @@ async init() {
   // Apply loaded state AGAIN after all components ready
   const savedState = this.stateManager.getState();
   this._applyState(savedState);
-  
+
   // ...
 }
 
@@ -227,6 +255,7 @@ UICoordinator._refreshAllRenderedTabs() ← NEW!
 ## Test Results
 
 ### Unit Tests
+
 ```
 Test Suites: 49 passed, 49 total
 Tests:       1,724 passed, 2 skipped, 1,726 total
@@ -237,6 +266,7 @@ Time:        3.807 s
 **Result**: ✅ All tests passing
 
 ### ESLint
+
 ```
 No errors in modified files:
 - src/features/quick-tabs/coordinators/UICoordinator.js
@@ -251,31 +281,42 @@ No errors in modified files:
 ## Architecture Improvements
 
 ### Before (Broken)
+
 - UICoordinator only listened to add/update/delete events
 - StateManager.hydrate() didn't track deletions
 - Panel initialization order caused null reference errors
 
 ### After (Fixed)
+
 - UICoordinator listens to ALL state events including refresh
 - StateManager.hydrate() tracks add/update/delete and emits proper events
-- Panel initialization order ensures all components ready before state application
+- Panel initialization order ensures all components ready before state
+  application
 - Null safety prevents crashes during async initialization
 
-**Key Principle**: Fix root causes, not symptoms. Never use setTimeout to "fix" sync issues.
+**Key Principle**: Fix root causes, not symptoms. Never use setTimeout to "fix"
+sync issues.
 
 ---
 
 ## Memory Artifacts Created
 
 ### 1. Architecture Memory
-**File**: `.agentic-tools-mcp/memories/architecture/Quick_Tab_Cross-Tab_Sync_Architecture_Pattern.json`
-**Content**: Complete documentation of three-layer sync system (BroadcastChannel, storage, visibility refresh)
+
+**File**:
+`.agentic-tools-mcp/memories/architecture/Quick_Tab_Cross-Tab_Sync_Architecture_Pattern.json`
+**Content**: Complete documentation of three-layer sync system
+(BroadcastChannel, storage, visibility refresh)
 
 ### 2. Troubleshooting Memory
-**File**: `.agentic-tools-mcp/memories/troubleshooting/Quick_Tab_Cross-Tab_Sync_Bug_Fix_Pattern.json`
-**Content**: Detailed bug symptoms, root causes, and solutions for all 3 bug patterns
 
-These memories are persistent and will be available for future AI agents working on this codebase.
+**File**:
+`.agentic-tools-mcp/memories/troubleshooting/Quick_Tab_Cross-Tab_Sync_Bug_Fix_Pattern.json`
+**Content**: Detailed bug symptoms, root causes, and solutions for all 3 bug
+patterns
+
+These memories are persistent and will be available for future AI agents working
+on this codebase.
 
 ---
 
@@ -294,7 +335,8 @@ These memories are persistent and will be available for future AI agents working
 
 ## Commits
 
-1. `fccb858` - Initial fix: UICoordinator state refresh, StateManager deletion tracking, panel init
+1. `fccb858` - Initial fix: UICoordinator state refresh, StateManager deletion
+   tracking, panel init
 2. `dd330e3` - Improved panel initialization order and null safety
 3. `7686f8d` - Persisted agent memory artifacts
 
@@ -305,8 +347,10 @@ These memories are persistent and will be available for future AI agents working
 ## Next Steps for Testing
 
 Manual browser testing recommended for:
+
 1. Create Quick Tab in Tab 1, move to corner, switch to Tab 2 - verify position
-2. Create multiple Quick Tabs, close one in Tab 1, switch to Tab 2 - verify deletion
+2. Create multiple Quick Tabs, close one in Tab 1, switch to Tab 2 - verify
+   deletion
 3. Open Panel Manager in Tab 1, switch to Tab 2 - verify no crash
 4. Solo/Mute Quick Tab, verify visibility rules work correctly
 

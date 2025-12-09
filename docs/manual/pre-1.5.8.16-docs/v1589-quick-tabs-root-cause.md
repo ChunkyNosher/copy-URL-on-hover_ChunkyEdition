@@ -59,7 +59,8 @@ critical architectural regression from all monolithic (pre-v1.5.8.6) versions.
   ```js
   eventBus.on(Events.QUICK_TAB_REQUESTED, opts => createQuickTabWindow(opts));
   browser.runtime.onMessage.addListener(msg => {
-    if (msg.action === 'CREATE_QUICK_TAB_FROM_BACKGROUND') createQuickTabWindow(msg);
+    if (msg.action === 'CREATE_QUICK_TAB_FROM_BACKGROUND')
+      createQuickTabWindow(msg);
   });
   ```
 

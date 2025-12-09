@@ -25,9 +25,7 @@ export const test = base.extend({
 
     // Verify extension build exists
     if (!fs.existsSync(path.join(extPath, 'manifest.json'))) {
-      throw new Error(
-        `Extension not found at ${extPath}. Run 'npm run build:prod' first.`
-      );
+      throw new Error(`Extension not found at ${extPath}. Run 'npm run build:prod' first.`);
     }
 
     // Create Firefox browser with extension loaded
@@ -36,12 +34,12 @@ export const test = base.extend({
     // Launch browser in TRUE HEADLESS mode (no Xvfb needed!)
     const browser = await browserTypeWithExt.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+      args: ['--no-sandbox', '--disable-dev-shm-usage']
     });
 
     // Create new context
     const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
+      viewport: { width: 1920, height: 1080 }
     });
 
     // Provide context to test
@@ -64,10 +62,9 @@ export const test = base.extend({
 
     // Wait for Test Bridge API to be available (optional - may not exist in all builds)
     try {
-      await page.waitForFunction(
-        () => typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined',
-        { timeout: 5000 }
-      );
+      await page.waitForFunction(() => typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined', {
+        timeout: 5000
+      });
     } catch (error) {
       // Test Bridge API is optional - extension may work without it
       console.log(
@@ -77,7 +74,7 @@ export const test = base.extend({
 
     await use(page);
     await page.close();
-  },
+  }
 });
 
 // Re-export expect

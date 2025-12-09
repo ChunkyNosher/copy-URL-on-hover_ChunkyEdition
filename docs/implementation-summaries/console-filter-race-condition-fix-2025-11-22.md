@@ -3,15 +3,20 @@
 **Date:** 2025-11-22  
 **Version:** v1.6.1  
 **Files Changed:** 3  
-**Issue:** Console log spam diagnostic (docs/manual/v1.6.0/console-log-spam-diagnostic.md)
+**Issue:** Console log spam diagnostic
+(docs/manual/v1.6.0/console-log-spam-diagnostic.md)
 
 ## Executive Summary
 
-Fixed critical race condition in live console filter initialization where early extension logs used default settings instead of user preferences from browser.storage.local. Implemented **Promise Export Pattern** with IIFE for proper async control, timeout protection, and graceful degradation.
+Fixed critical race condition in live console filter initialization where early
+extension logs used default settings instead of user preferences from
+browser.storage.local. Implemented **Promise Export Pattern** with IIFE for
+proper async control, timeout protection, and graceful degradation.
 
 ## Root Cause Analysis
 
 ### The Problem
+
 ```javascript
 // filter-settings.js (BEFORE)
 export async function initializeFilterSettings() {
@@ -25,6 +30,7 @@ initializeFilterSettings(); // ❌ Returns immediately, cache still null
 ```
 
 **Timeline of Bug:**
+
 - t=0ms: Module loads, calls `initializeFilterSettings()` (async, no await)
 - t=0ms: Function returns immediately (promise not awaited)
 - t=1ms: Console interceptor loads, overrides console.log
@@ -37,6 +43,7 @@ initializeFilterSettings(); // ❌ Returns immediately, cache still null
 - t=51ms: New logs use correct settings, but first 50ms filtered incorrectly
 
 ### Impact
+
 - First ~50-100ms of logs filtered using defaults instead of user settings
 - Users who enabled "all categories" see some logs missing
 - Confusing UX where settings appear ignored
@@ -45,6 +52,7 @@ initializeFilterSettings(); // ❌ Returns immediately, cache still null
 ## Architectural Solution: Promise Export Pattern
 
 ### Implementation
+
 ```javascript
 // filter-settings.js (AFTER)
 // Initialize cache with safe defaults immediately (never null)
@@ -54,17 +62,20 @@ let liveConsoleSettingsCache = getDefaultLiveConsoleSettings();
 export const settingsReady = (async () => {
   try {
     // Timeout protection (5s) to prevent hanging
-    const storagePromise = browser.storage.local.get(['liveConsoleCategoriesEnabled']);
+    const storagePromise = browser.storage.local.get([
+      'liveConsoleCategoriesEnabled'
+    ]);
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Storage timeout')), 5000)
     );
-    
+
     const result = await Promise.race([storagePromise, timeoutPromise]);
-    
+
     // Atomic batch update to prevent partial reads
-    const newSettings = result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
+    const newSettings =
+      result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
     liveConsoleSettingsCache = newSettings;
-    
+
     return { success: true, source: 'storage' };
   } catch (error) {
     console.error('Filter settings failed:', error);
@@ -75,6 +86,7 @@ export const settingsReady = (async () => {
 ```
 
 ### Usage in Consumers
+
 ```javascript
 // content.js - Wait for settings before starting
 (async function initExtension() {
@@ -92,31 +104,37 @@ settingsReady.then(result => {
 ## Key Architectural Benefits
 
 ### 1. **Graceful Degradation**
+
 - Cache initialized with defaults immediately (never null/undefined)
 - Functions work from first millisecond with safe fallback
 - Upgrades to user settings when storage loads
 
 ### 2. **Explicit Async Control**
+
 - Consumers can `await settingsReady` if they need guaranteed settings
 - Or proceed immediately with defaults for non-critical operations
 - No hidden async behavior blocking module loads
 
 ### 3. **Timeout Protection**
+
 - 5-second timeout on storage I/O prevents hanging
 - If storage is slow/unavailable, uses defaults after timeout
 - Better than indefinite wait breaking extension initialization
 
 ### 4. **Status Reporting**
+
 - Returns object: `{ success: boolean, source: string, error?: string }`
 - Consumers can log initialization status for debugging
 - Distinguishes: 'storage' vs 'defaults-error' vs 'defaults-no-api'
 
 ### 5. **Always Resolves**
+
 - Promise never rejects (always resolves with status)
 - Ensures extension functions even if storage fails
 - Prevents unhandled promise rejections breaking extension
 
 ### 6. **Atomic Updates**
+
 - Batch updates prevent partial cache reads during assignment
 - JavaScript single-threaded, but clearer for maintainability
 
@@ -124,9 +142,11 @@ settingsReady.then(result => {
 
 ### Default Settings: All-Enabled for Better UX
 
-**Rationale:** Diagnostic document recommends all categories enabled by default for better first-time user experience.
+**Rationale:** Diagnostic document recommends all categories enabled by default
+for better first-time user experience.
 
 **Changes:**
+
 ```javascript
 // Before (v1.6.0.x)
 {
@@ -150,6 +170,7 @@ settingsReady.then(result => {
 ```
 
 **Benefits:**
+
 - First-time users see all extension activity for troubleshooting
 - Users can identify noisy categories and disable them
 - Better debugging transparency
@@ -158,6 +179,7 @@ settingsReady.then(result => {
 ## Files Modified
 
 ### src/utils/filter-settings.js
+
 - Changed defaults to all-enabled (6 categories)
 - Implemented Promise Export pattern with IIFE
 - Added 5-second timeout protection
@@ -165,11 +187,13 @@ settingsReady.then(result => {
 - Returns status objects instead of silent failures
 
 ### src/utils/console-interceptor.js
+
 - Imported `settingsReady` promise
 - Added background initialization with status logging
 - Updated to handle status result objects
 
 ### src/content.js
+
 - Imported `settingsReady` promise
 - Added explicit await before extension initialization
 - Logs initialization status (storage vs defaults)
@@ -177,15 +201,17 @@ settingsReady.then(result => {
 ## Testing
 
 ### Build Status
-✅ Extension builds successfully with Rollup
-✅ IIFE format compatible (no top-level await issues)
+
+✅ Extension builds successfully with Rollup ✅ IIFE format compatible (no
+top-level await issues)
 
 ### Test Status
-✅ All 1814 tests pass (51 test suites)
-✅ No regressions introduced
-✅ 2 tests skipped (pre-existing)
+
+✅ All 1814 tests pass (51 test suites) ✅ No regressions introduced ✅ 2 tests
+skipped (pre-existing)
 
 ### Manual Testing Checklist
+
 - [ ] Fresh install: Verify defaults work immediately
 - [ ] Settings change: Verify live filter updates without page reload
 - [ ] Page reload: Verify user settings persist
@@ -195,15 +221,18 @@ settingsReady.then(result => {
 ## Why Not Other Approaches?
 
 ### Top-Level Await ❌
+
 ```javascript
 // Would block entire extension initialization
 await initializeFilterSettings();
 ```
+
 - Rollup bundles to IIFE format (no top-level await support)
 - Would serialize entire module load chain
 - Unnecessary blocking - defaults work fine initially
 
 ### Lazy Initialization ❌
+
 ```javascript
 // Initialize on first use
 export async function isCategoryEnabled(category) {
@@ -211,15 +240,18 @@ export async function isCategoryEnabled(category) {
   return cache[category];
 }
 ```
+
 - Changes API contract (functions become async)
 - Doesn't save time (filters needed immediately)
 - Consumers must await every function call
 
 ### Synchronous Defaults Only ❌
+
 ```javascript
 // Fire and forget background refresh
 browser.storage.local.get(...).then(result => cache = result);
 ```
+
 - No way for consumers to know when settings loaded
 - Can't await if needed (e.g., critical initialization)
 - Temporal uncertainty problematic for testing
@@ -227,12 +259,15 @@ browser.storage.local.get(...).then(result => cache = result);
 ## Performance Impact
 
 ### Before Fix
+
 - Race condition window: 0-100ms
 - Logs during window: ~50-200 (depending on activity)
-- Filtered incorrectly: hover, url-detection, event-bus, state, messaging, performance
+- Filtered incorrectly: hover, url-detection, event-bus, state, messaging,
+  performance
 - User confusion: Settings appear ignored
 
 ### After Fix
+
 - No race condition (cache always valid)
 - All logs respect user settings from t=0ms
 - Defaults changed to all-enabled (better UX)
@@ -241,11 +276,13 @@ browser.storage.local.get(...).then(result => cache = result);
 ## References
 
 ### Source Documents
+
 - `docs/manual/v1.6.0/console-log-spam-diagnostic.md` - Original bug report
 - Perplexity research: ES module async initialization patterns
 - Mozilla Web Extensions: browser.storage.local API
 
 ### Architectural Pattern
+
 - **Promise Export Pattern** for async module initialization
 - Recommended by Perplexity for browser extension contexts
 - Balances immediate functionality with eventual consistency
@@ -294,19 +331,23 @@ browser.storage.local.get(...).then(result => cache = result);
 ## Future Improvements
 
 ### Potential Enhancements
+
 1. **localStorage cache** - Faster than browser.storage.local for reads
 2. **AbortController** - Explicit cancellation support
 3. **Retry logic** - For transient storage errors
 4. **Metrics** - Track initialization timing and failures
 
 ### Not Implemented (Intentionally)
+
 - **Local storage cache**: Added complexity, minimal benefit
 - **Retry logic**: Defaults are sufficient, retry adds complexity
 - **AbortController**: No cancellation needed (extension lifecycle simple)
 
 ## Conclusion
 
-The Promise Export Pattern properly fixes the async initialization race condition while maintaining graceful degradation and explicit async control. The solution:
+The Promise Export Pattern properly fixes the async initialization race
+condition while maintaining graceful degradation and explicit async control. The
+solution:
 
 ✅ Eliminates race condition (cache always valid)  
 ✅ Timeout protection (5s) prevents hanging  
@@ -314,6 +355,6 @@ The Promise Export Pattern properly fixes the async initialization race conditio
 ✅ Graceful degradation with safe defaults  
 ✅ No API changes (existing code works)  
 ✅ All tests pass  
-✅ Clean architectural pattern  
+✅ Clean architectural pattern
 
 **The fix is architecturally sound and production-ready.**

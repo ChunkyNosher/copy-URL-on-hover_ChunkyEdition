@@ -174,7 +174,9 @@ function getExecutionContext() {
  * v1.6.0.13 - FIX: Now checks live console filter before logging
  */
 console.log = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
 
   // Always add to buffer (for export)
@@ -192,7 +194,9 @@ console.log = function (...args) {
  * v1.6.0.13 - Errors ALWAYS logged regardless of filter (critical)
  */
 console.error = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
 
   addToLogBuffer('ERROR', args, category);
@@ -206,7 +210,9 @@ console.error = function (...args) {
  * v1.6.0.13 - Warnings ALWAYS logged regardless of filter
  */
 console.warn = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
 
   addToLogBuffer('WARN', args, category);
@@ -220,7 +226,9 @@ console.warn = function (...args) {
  * v1.6.0.13 - Respects live console filter
  */
 console.info = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
 
   addToLogBuffer('INFO', args, category);
@@ -235,7 +243,9 @@ console.info = function (...args) {
  * v1.6.0.13 - Respects live console filter
  */
 console.debug = function (...args) {
-  const message = Array.from(args).map(arg => serializeArgument(arg)).join(' ');
+  const message = Array.from(args)
+    .map(arg => serializeArgument(arg))
+    .join(' ');
   const category = extractCategoryFromMessage(message);
 
   addToLogBuffer('DEBUG', args, category);
@@ -345,13 +355,20 @@ originalConsole.log('[Console Interceptor] Context:', getExecutionContext());
 // Wait for filter settings to load from storage in background
 // This doesn't block console interception (already active with defaults)
 // but ensures settings are synced as soon as possible
-settingsReady.then(result => {
-  if (result.success) {
-    originalConsole.log(`[Console Interceptor] ✓ Filter settings loaded (source: ${result.source})`);
-  } else {
-    originalConsole.warn(`[Console Interceptor] ⚠ Using default filters (${result.source}):`, result.error);
-  }
-}).catch(error => {
-  // This should never happen since settingsReady always resolves
-  originalConsole.error('[Console Interceptor] Unexpected promise rejection:', error);
-});
+settingsReady
+  .then(result => {
+    if (result.success) {
+      originalConsole.log(
+        `[Console Interceptor] ✓ Filter settings loaded (source: ${result.source})`
+      );
+    } else {
+      originalConsole.warn(
+        `[Console Interceptor] ⚠ Using default filters (${result.source}):`,
+        result.error
+      );
+    }
+  })
+  .catch(error => {
+    // This should never happen since settingsReady always resolves
+    originalConsole.error('[Console Interceptor] Unexpected promise rejection:', error);
+  });

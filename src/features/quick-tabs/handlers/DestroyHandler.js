@@ -55,34 +55,27 @@ export class DestroyHandler {
    * @param {Object} Events - Events constants object
    * @param {number} baseZIndex - Base z-index value to reset to
    */
-  constructor(
-    quickTabsMap,
-    minimizedManager,
-    eventBus,
-    currentZIndex,
-    Events,
-    baseZIndex
-  ) {
+  constructor(quickTabsMap, minimizedManager, eventBus, currentZIndex, Events, baseZIndex) {
     this.quickTabsMap = quickTabsMap;
     this.minimizedManager = minimizedManager;
     this.eventBus = eventBus;
     this.currentZIndex = currentZIndex;
     this.Events = Events;
     this.baseZIndex = baseZIndex;
-    
+
     // v1.6.3.4-v5 - FIX Bug #8: Debounce timer for storage writes
     this._storageDebounceTimer = null;
-    
+
     // v1.6.3.4-v5 - FIX Bug #7: Track destroyed IDs to prevent resurrection
     this._destroyedIds = new Set();
-    
+
     // v1.6.3.4-v10 - FIX Issue #6: Replace boolean _batchMode with Set tracking specific operation IDs
     // The boolean flag was vulnerable to timer interleaving: if a timer from an earlier
     // minimize operation fires during closeAll(), it would incorrectly skip persist because
     // _batchMode was true for the unrelated closeAll() operation.
     // Now each operation checks if its specific ID is in the batch Set.
     this._batchOperationIds = new Set();
-    
+
     // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Mutex flag to prevent closeAll duplicate execution
     this._closeAllInProgress = false;
     this._closeAllCooldownTimer = null;
@@ -117,7 +110,7 @@ export class DestroyHandler {
 
     // Get tab info BEFORE deleting (needed for state:deleted event)
     const tabWindow = this.quickTabsMap.get(id);
-    
+
     // v1.6.3.4 - FIX Issue #5: Log if tab not found in Map
     if (!tabWindow) {
       console.warn(`[DestroyHandler] Tab not found in Map (source: ${source}):`, id);
@@ -127,9 +120,9 @@ export class DestroyHandler {
     // v1.6.3.4 - FIX Issue #5: Log Map deletion
     const wasInMap = this.quickTabsMap.delete(id);
     console.log(`[DestroyHandler] Map.delete result (source: ${source}):`, { id, wasInMap });
-    
+
     this.minimizedManager.remove(id);
-    
+
     // v1.6.3.4-v5 - FIX Bug #7: Use shared utility for DOM cleanup
     if (removeQuickTabElement(id)) {
       console.log(`[DestroyHandler] Removed DOM element (source: ${source}):`, id);
@@ -148,16 +141,19 @@ export class DestroyHandler {
     // This replaces the boolean _batchMode flag which was vulnerable to timer interleaving.
     // Only skip persist if THIS specific ID was added to the batch Set by closeAll().
     if (this._batchOperationIds.has(id)) {
-      console.log(`[DestroyHandler] Batch mode - skipping individual persist (source: ${source}):`, {
-        id,
-        batchSetSize: this._batchOperationIds.size
-      });
+      console.log(
+        `[DestroyHandler] Batch mode - skipping individual persist (source: ${source}):`,
+        {
+          id,
+          batchSetSize: this._batchOperationIds.size
+        }
+      );
       return;
     }
 
     // v1.6.3.4-v5 - FIX Bug #8: Debounced persist to prevent write storms
     this._debouncedPersistToStorage();
-    
+
     console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, id);
   }
 
@@ -210,14 +206,17 @@ export class DestroyHandler {
 
     this.eventBus.emit('state:deleted', { id, quickTab: quickTabData, source });
     console.log(`[DestroyHandler] Emitted state:deleted (source: ${source}):`, id);
-    
+
     // v1.6.3.5-v11 - FIX Issue #6: Notify background about deletion for Manager update
     // This ensures the Manager sidebar gets immediate notification, not just via storage.onChanged
     this._notifyBackgroundOfDeletion(id, source).catch(err => {
-      console.warn(`[DestroyHandler] Failed to notify background (source: ${source}):`, err.message);
+      console.warn(
+        `[DestroyHandler] Failed to notify background (source: ${source}):`,
+        err.message
+      );
     });
   }
-  
+
   /**
    * Notify background about Quick Tab deletion
    * v1.6.3.5-v11 - FIX Issue #6: Send message to background for immediate Manager update
@@ -262,7 +261,7 @@ export class DestroyHandler {
     if (this._storageDebounceTimer) {
       clearTimeout(this._storageDebounceTimer);
     }
-    
+
     // Set new debounced timer
     this._storageDebounceTimer = setTimeout(() => {
       this._storageDebounceTimer = null;
@@ -280,13 +279,13 @@ export class DestroyHandler {
    */
   async _persistToStorage() {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
-    
+
     // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {
       console.error('[DestroyHandler] Failed to build state for storage');
       return;
     }
-    
+
     console.debug('[DestroyHandler] Persisting state with', state.tabs?.length || 0, 'tabs');
     const success = await persistStateToStorage(state, '[DestroyHandler]');
     if (!success) {
@@ -317,41 +316,44 @@ export class DestroyHandler {
   /**
    * Unified entry point for Quick Tab destruction
    * v1.6.3.7 - FIX Issue #3: Unify UI and Manager deletion paths
-   * 
+   *
    * This method provides a single authoritative deletion path that both UI button
    * and Manager close button should use. It ensures:
    * 1. Local cleanup via handleDestroy()
    * 2. Background notification for cross-tab sync (with broadcast flag)
    * 3. Storage persistence
-   * 
+   *
    * @param {string} id - Quick Tab ID to destroy
    * @param {string} source - Source of action ('UI', 'Manager', 'background', etc.)
    * @param {boolean} broadcast - Whether to broadcast deletion to other tabs (default: true)
    * @returns {Promise<void>}
    */
   async initiateDestruction(id, source = 'unknown', broadcast = true) {
-    console.log(`[DestroyHandler] initiateDestruction (source: ${source}, broadcast: ${broadcast}):`, id);
-    
+    console.log(
+      `[DestroyHandler] initiateDestruction (source: ${source}, broadcast: ${broadcast}):`,
+      id
+    );
+
     // v1.6.3.7 - Check if already destroyed to prevent duplicate processing
     if (this._destroyedIds.has(id)) {
       console.log('[DestroyHandler] initiateDestruction SKIPPED - already destroyed:', id);
       return;
     }
-    
+
     // Step 1: Local cleanup - handleDestroy handles Map, minimizedManager, DOM, and events
     // Note: handleDestroy also calls _notifyBackgroundOfDeletion and _debouncedPersistToStorage
     this.handleDestroy(id, source);
-    
+
     // Step 2: If broadcast flag is true, explicitly request cross-tab broadcast
     // This is redundant with handleDestroy's _notifyBackgroundOfDeletion, but ensures
     // the broadcast flag is honored for cases where we need to suppress cross-tab sync
     if (broadcast) {
       await this._requestCrossTabBroadcast(id, source);
     }
-    
+
     console.log(`[DestroyHandler] initiateDestruction complete (source: ${source}):`, id);
   }
-  
+
   /**
    * Request cross-tab broadcast of deletion via background script
    * v1.6.3.7 - FIX Issue #3: Explicit cross-tab broadcast request
@@ -367,9 +369,12 @@ export class DestroyHandler {
         quickTabId: id,
         changes: { deleted: true },
         source: source || 'destroy',
-        requestBroadcast: true  // Explicit flag to request cross-tab broadcast
+        requestBroadcast: true // Explicit flag to request cross-tab broadcast
       });
-      console.log(`[DestroyHandler] Requested cross-tab broadcast for deletion (source: ${source}):`, id);
+      console.log(
+        `[DestroyHandler] Requested cross-tab broadcast for deletion (source: ${source}):`,
+        id
+      );
     } catch (err) {
       // Background may not be available
       console.debug('[DestroyHandler] Could not request cross-tab broadcast:', err.message);
@@ -388,7 +393,9 @@ export class DestroyHandler {
     this._closeAllCooldownTimer = setTimeout(() => {
       this._closeAllInProgress = false;
       this._closeAllCooldownTimer = null;
-      console.log(`[DestroyHandler] closeAll mutex released after ${CLOSE_ALL_COOLDOWN_MS}ms cooldown`);
+      console.log(
+        `[DestroyHandler] closeAll mutex released after ${CLOSE_ALL_COOLDOWN_MS}ms cooldown`
+      );
     }, CLOSE_ALL_COOLDOWN_MS);
   }
 
@@ -406,7 +413,7 @@ export class DestroyHandler {
    *   Problem: closeAll() was executing 2-3 times per button click
    *   Fix: Add _closeAllInProgress flag with 2000ms cooldown
    * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
-   * 
+   *
    * @param {string} source - Source of action ('UI', 'Manager', etc.)
    */
   closeAll(source = 'Manager') {
@@ -415,14 +422,14 @@ export class DestroyHandler {
       console.warn(`[DestroyHandler] closeAll BLOCKED (mutex held, source: ${source})`);
       return;
     }
-    
+
     // v1.6.3.5-v6 - Acquire mutex
     this._closeAllInProgress = true;
     console.log(`[DestroyHandler] Closing all Quick Tabs (source: ${source}) - mutex acquired`);
-    
+
     // v1.6.3.5-v6 - Schedule mutex release with cooldown (extracted per code review)
     this._scheduleMutexRelease();
-    
+
     const count = this.quickTabsMap.size;
 
     // v1.6.3.4-v10 - FIX Issue #6: Add all IDs to batch Set BEFORE destroy loop
@@ -451,10 +458,10 @@ export class DestroyHandler {
     // Clear everything
     this.quickTabsMap.clear();
     console.log(`[DestroyHandler] Map cleared (source: ${source})`);
-    
+
     this.minimizedManager.clear();
     console.log(`[DestroyHandler] MinimizedManager cleared (source: ${source})`);
-    
+
     this.currentZIndex.value = this.baseZIndex;
 
     // v1.6.3.4-v5 - FIX Bug #7: Use shared utility to clean up ALL .quick-tab-window elements
@@ -476,7 +483,9 @@ export class DestroyHandler {
 
     // v1.6.3.2 - FIX Issue #6: Single atomic storage write after all cleanup
     // This replaces 6+ individual writes with 1 write
-    console.log(`[DestroyHandler] closeAll complete (source: ${source}) - performing single atomic storage write`);
+    console.log(
+      `[DestroyHandler] closeAll complete (source: ${source}) - performing single atomic storage write`
+    );
     this._persistToStorage();
   }
 }

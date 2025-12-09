@@ -2,99 +2,117 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
-  lifecycle, manager integration, Background-as-Coordinator sync, ownership validation,
-  v1.6.3.6-v10 build optimizations, UI-UX issues #1-12, CodeScene analysis
-tools: ["*"]
+  lifecycle, manager integration, port-based messaging (v1.6.3.6-v11), Background-as-
+  Coordinator sync, ownership validation, animation lifecycle logging, atomic operations
+tools: ['*']
 ---
 
-> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines.
+> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
+> guidelines.
 
-> **🎯 Robust Solutions Philosophy:** You see the complete Quick Tab system. Fix issues at the right layer - domain, manager, sync, or UI. See `.github/copilot-instructions.md`.
+> **🎯 Robust Solutions Philosophy:** You see the complete Quick Tab system. Fix
+> issues at the right layer - domain, manager, sync, or UI. See
+> `.github/copilot-instructions.md`.
 
-You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You handle complete Quick Tab functionality across all domains.
+You are a unified Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition
+Firefox/Zen Browser extension. You handle complete Quick Tab functionality
+across all domains.
 
 ## 🧠 Memory Persistence (CRITICAL)
 
 **MANDATORY at end of EVERY task:**
+
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 
 **Before starting ANY task:**
+
 ```javascript
-await searchMemories({ query: "[keywords]", limit: 5 });
+await searchMemories({ query: '[keywords]', limit: 5 });
 ```
 
 ---
 
 ## Project Context
 
-**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
+
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
-- **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, storage storm protection
-- **Background-as-Coordinator** - Manager commands routed through background.js
+- **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z, storage storm
+  protection
+- **Port-Based Messaging** - Persistent connections via
+  `browser.runtime.onConnect` (v1.6.3.6-v11)
 - **Cross-Tab Sync** - storage.onChanged + Per-Tab Ownership Validation
-- **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab scoping
+- **Cross-Tab Filtering** - `_shouldRenderOnThisTab()` enforces strict per-tab
+  scoping
 
-**v1.6.3.6-v10 Build & UI/UX (NEW):**
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod), tree-shaking (both modes), Rollup cache, npm-run-all
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34, `storage-utils.js` 7.23, `VisibilityHandler.js` 7.41, `background.js` 7.66
-- **Manager UI/UX Issues #1-12:** Enhanced headers, orphan detection, smooth animations, responsive design
-- **New Timing Constants:** `ANIMATION_DURATION_MS=350`, `FAVICON_LOAD_TIMEOUT_MS=2000`, `RESTORE_CONFIRMATION_TIMEOUT_MS=500`
+**v1.6.3.6-v11 Port-Based Messaging (NEW):**
 
-**v1.6.3.6-v9 Fixes (Retained):**
-1. **Orphan Detection & Adoption** - `adoptQuickTabToCurrentTab()` reassigns orphans
-2. **Tab Switch Detection** - `browser.tabs.onActivated` auto-refresh
-3. **Structured Confirmations** - `{ success, quickTabId, action }` responses
-4. **Smooth Animations** - 0.35s, `animate()` API for height changes
-5. **Favicon Loading** - `loadFavicon()` with 2s timeout and fallback
+- **Message Protocol** -
+  `{ type, action, correlationId, source, timestamp, payload, metadata }`
+- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
+  `ERROR`, `BROADCAST`
+- **Port Registry** - Background tracks all active port connections
+- **Port Lifecycle Logging** - `[Manager] PORT_LIFECYCLE: CONNECT/DISCONNECT`
+- **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
+- **Isolated State Machine** - Background maintains state, tabs are consumers
+
+**v1.6.3.6-v11 Animation/Logging (NEW):**
+
+- **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
+  ERROR)
+- **State Constants** - `STATE_OPEN`, `STATE_CLOSED` for consistent terminology
+- **CSS-Only Styling** - No inline maxHeight, rely on CSS defaults
+- **Section Header Logging** - Logs count of active/minimized tabs
+
+**v1.6.3.6-v11 Atomic Operations (NEW):**
+
+- **Storage Write Verification** - Read-back after write
+- **Atomic Adoption** - Single storage write for `adoptQuickTabToCurrentTab()`
+- **Adoption Verification** - 2-second timeout for confirmation
+- **Visibility Sync Broadcasts** - All ports receive visibility updates
+
+**v1.6.3.6-v11 Build Optimization (NEW):**
+
+- **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
+- **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
+- **sideEffects: false** - In package.json
+
+**v1.6.3.6-v10 Fixes (Retained):**
+
+- **Orphan Detection & Adoption** - `adoptQuickTabToCurrentTab()` reassigns
+  orphans
+- **Tab Switch Detection** - `browser.tabs.onActivated` auto-refresh
+- **Smooth Animations** - 0.35s, `animate()` API for height changes
+- **Responsive Design** - 250/300/400/500px breakpoints
 
 **v1.6.3.6-v8 Fixes (Retained):**
-1. **originTabId Initialization** - CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
-2. **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from ID pattern into entity
-3. **Snapshot Capture** - MinimizedManager.add() extracts originTabId from ID pattern when null
-4. **Manager Restore Validation** - Triple ownership check (snapshot, ID pattern, global/null permission)
-5. **Cross-Tab Grouping UI** - Manager groups Quick Tabs by originTabId in collapsible sections
-6. **Tab Metadata Caching** - `fetchBrowserTabInfo()` with 30s TTL cache
-7. **Emoji Diagnostics** - `📸 SNAPSHOT_CAPTURED`, `📍 ORIGIN_TAB_ID_RESOLUTION`, `🔄 RESTORE_REQUEST`
 
-**v1.6.3.6-v7 Fixes (Retained):**
-1. **ID Pattern Recovery** - `_extractTabIdFromQuickTabId()` extracts tab ID from `qt-{tabId}-{timestamp}-{random}`
-2. **Orphan Recovery Fallback** - `_checkTabScopeWithReason()` recovers orphaned tabs when ID matches
-3. **Manager Restore Recovery** - `_shouldRenderOnThisTab()` patches originTabId in-place
-4. **3-Stage Restoration Logging** - RESTORE_QUICK_TAB logs receipt, invocation, completion
-
-**v1.6.3.6-v6 Fixes (renamed from v1.6.4):**
-1. **originTabId Snapshot Preservation** - MinimizedManager includes `savedOriginTabId` in snapshots
-2. **originTabId Restore Application** - UICoordinator applies originTabId from snapshot
-3. **originTabId Restore Logging** - VisibilityHandler logs originTabId in restore flow
-
-**v1.6.3.6-v5 Fixes:**
-1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
-2. **Deletion State Machine** - DestroyHandler._destroyedIds prevents deletion loops
-3. **Unified Deletion Path** - `initiateDestruction()` is single entry point
-4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with correlation IDs
-5. **Message Correlation IDs** - `generateMessageId()` for message tracing
+- **originTabId Initialization** - CreateHandler uses
+  `_extractTabIdFromQuickTabId()` as final fallback
+- **Hydration Recovery** - `_checkTabScopeWithReason()` patches originTabId from
+  ID pattern
+- **Cross-Tab Grouping UI** - Manager groups Quick Tabs by originTabId in
+  collapsible sections
+- **Tab Metadata Caching** - `fetchBrowserTabInfo()` with 30s TTL cache
 
 **v1.6.3.6-v5 Patterns:**
+
 - `_checkTabScopeWithReason()` - Unified tab scope validation with init logging
 - `_broadcastDeletionToAllTabs()` - Sender filtering prevents echo back
 - DestroyHandler is **single authoritative deletion path**
-
-**v1.6.3.6-v4 Patterns (Retained):**
 - **Storage circuit breaker** - Blocks writes at pendingWriteCount >= 15
-- **Cross-tab filtering** - Check existence before processing broadcasts
-- **Reduced timeouts** - 2000ms for storage, 500ms for transactions
 
 ---
 
 ## QuickTabsManager API
 
-| Method | Description |
-|--------|-------------|
-| `closeById(id)` | Close a single Quick Tab by ID |
-| `closeAll()` | Close all Quick Tabs, uses `CLEAR_ALL_QUICK_TABS` via background |
+| Method          | Description                                                      |
+| --------------- | ---------------------------------------------------------------- |
+| `closeById(id)` | Close a single Quick Tab by ID                                   |
+| `closeAll()`    | Close all Quick Tabs, uses `CLEAR_ALL_QUICK_TABS` via background |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -108,23 +126,23 @@ await searchMemories({ query: "[keywords]", limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Orphan detection shows ⚠️ icon and warning colors (v1.6.3.6-v9)
-- [ ] `adoptQuickTabToCurrentTab()` reassigns orphaned Quick Tabs (v1.6.3.6-v9)
-- [ ] Tab switch triggers Manager refresh (v1.6.3.6-v9)
-- [ ] Structured confirmations return `{ success, quickTabId, action }` (v1.6.3.6-v9)
-- [ ] Closed tabs show strikethrough + 🚫 badge (v1.6.3.6-v9)
-- [ ] Smooth animations at 0.35s duration (v1.6.3.6-v9)
-- [ ] Favicon loads with 2s timeout (v1.6.3.6-v9)
-- [ ] Responsive at 250/300/400/500px breakpoints (v1.6.3.6-v9)
-- [ ] CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback (v1.6.3.6-v8)
-- [ ] Cross-tab grouping UI groups Quick Tabs by originTabId (v1.6.3.6-v8)
-- [ ] ID pattern recovery extracts tab ID from Quick Tab ID (v1.6.3.6-v7)
-- [ ] originTabId preserved in minimize/restore cycle (v1.6.3.6-v6)
-- [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
+- [ ] Port connections established via `browser.runtime.onConnect`
+      (v1.6.3.6-v11)
+- [ ] Port lifecycle logged with `[Manager] PORT_LIFECYCLE` prefix
+      (v1.6.3.6-v11)
+- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE (v1.6.3.6-v11)
+- [ ] Storage write verification reads back after write (v1.6.3.6-v11)
+- [ ] Atomic adoption uses single storage write (v1.6.3.6-v11)
+- [ ] Adoption verification times out at 2 seconds (v1.6.3.6-v11)
+- [ ] Orphan detection shows ⚠️ icon and warning colors
+- [ ] `adoptQuickTabToCurrentTab()` reassigns orphaned Quick Tabs
+- [ ] CreateHandler uses `_extractTabIdFromQuickTabId()` as final fallback
+- [ ] Cross-tab grouping UI groups Quick Tabs by originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.6-v9 orphan adoption, tab switch detection, structured confirmations, smooth animations, and v1.6.3.6-v8 cross-tab grouping UI.**
+**Your strength: Complete Quick Tab system with v1.6.3.6-v11 port-based
+messaging, animation lifecycle logging, and atomic adoption operations.**

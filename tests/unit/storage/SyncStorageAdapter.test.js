@@ -158,10 +158,12 @@ describe('SyncStorageAdapter', () => {
       const result = await adapter.load();
 
       expect(result.tabs).toHaveLength(2);
-      expect(result.tabs).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: 'qt-1' }),
-        expect.objectContaining({ id: 'qt-2' })
-      ]));
+      expect(result.tabs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'qt-1' }),
+          expect.objectContaining({ id: 'qt-2' })
+        ])
+      );
       // Should save in new format after migration
       expect(browser.storage.local.set).toHaveBeenCalled();
     });

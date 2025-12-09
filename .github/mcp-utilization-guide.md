@@ -2,7 +2,9 @@
 
 ## Overview
 
-This repository has **12 MCP servers** configured to enhance GitHub Copilot Coding Agent's capabilities. This guide provides explicit instructions on optimal usage with emphasis on **memory persistence across sessions**.
+This repository has **12 MCP servers** configured to enhance GitHub Copilot
+Coding Agent's capabilities. This guide provides explicit instructions on
+optimal usage with emphasis on **memory persistence across sessions**.
 
 ---
 
@@ -14,20 +16,24 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Tier 2: Agentic-Tools MCP** - Task tracking and session memory  
 **Tier 3: Persistent-Memory MCP** - Structured SQLite database
 
-**CRITICAL REQUIREMENT:** All three memory MCPs MUST have their storage directories committed to Git for persistence across agent runs.
+**CRITICAL REQUIREMENT:** All three memory MCPs MUST have their storage
+directories committed to Git for persistence across agent runs.
 
 ---
 
 ### 1. In-Memoria MCP 🧠 ⭐⭐⭐
 
-**Purpose:** Semantic code intelligence using knowledge graphs and vector embeddings
+**Purpose:** Semantic code intelligence using knowledge graphs and vector
+embeddings
 
 **Storage Location:** `.in-memoria/`
+
 - `patterns.db` (SQLite) - Code patterns, frequencies, naming conventions
 - `embeddings.db` (SurrealDB) - Vector embeddings for semantic search
 - `learned_intel.json` - Metadata and learning summaries
 
 **When to Use:**
+
 - Learning codebase patterns and conventions
 - Querying semantic relationships between code
 - Understanding project architecture
@@ -35,6 +41,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 - Generating documentation from learned patterns
 
 **Tools:**
+
 - `learn_codebase_intelligence` - Analyze and learn from codebase
 - `query_patterns` - Search learned patterns semantically
 - `contribute_insights` - Add manual insights to knowledge base
@@ -42,6 +49,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 - `get_intelligence_metrics` - View learning statistics
 
 **Example Prompts:**
+
 ```
 "Learn the Quick Tabs architecture patterns from the codebase"
 "Query In-Memoria for state management patterns"
@@ -50,6 +58,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 ```
 
 **Memory Persistence Workflow:**
+
 ```
 1. Agent learns patterns during work
 2. Patterns stored in .in-memoria/patterns.db
@@ -57,7 +66,8 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 4. Next agent run: Patterns available immediately
 ```
 
-**CRITICAL:** Commit `.in-memoria/patterns.db` to Git. Large `embeddings.db` can be gitignored if needed (see `.github/.gitignore`).
+**CRITICAL:** Commit `.in-memoria/patterns.db` to Git. Large `embeddings.db` can
+be gitignored if needed (see `.github/.gitignore`).
 
 ---
 
@@ -66,11 +76,13 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Purpose:** Task management and session memory with project-specific isolation
 
 **Storage Location:** `.agentic-tools-mcp/`
+
 - `tasks.json` - Task database
 - `memories.json` - Memory database
 - `projects.json` - Project metadata
 
 **When to Use:**
+
 - Creating and tracking tasks
 - Storing important decisions
 - Recording learnings from current session
@@ -78,6 +90,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 - Tracking subtasks and dependencies
 
 **Tools:**
+
 - `create_task` - Create new task
 - `update_task` - Update task status/details
 - `create_memory` - Store important memory
@@ -87,6 +100,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 - `get_project_info` - Get project metadata
 
 **Example Prompts:**
+
 ```
 "Create task to fix Quick Tab rendering issue"
 "Store memory that cross-tab sync uses storage.onChanged (v1.6.2+)"
@@ -96,6 +110,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 ```
 
 **Memory Persistence Workflow:**
+
 ```
 1. Agent creates tasks/memories during work
 2. Data stored in .agentic-tools-mcp/*.json
@@ -103,7 +118,8 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 4. Next agent run: Tasks/memories available
 ```
 
-**CRITICAL:** Commit `.agentic-tools-mcp/*.json` files to Git for session persistence.
+**CRITICAL:** Commit `.agentic-tools-mcp/*.json` files to Git for session
+persistence.
 
 ---
 
@@ -114,6 +130,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 **Storage Location:** `.mcp-data/memory.db` (SQLite database)
 
 **When to Use:**
+
 - Storing structured relational data
 - Complex queries across memory
 - Building relationships between memories
@@ -121,11 +138,13 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 - Structured knowledge retrieval
 
 **Tools:**
+
 - `sqlite_execute` - Execute SQL queries
 - `sqlite_execute_main_*` - Named SQL operations
 - `sqlite_get_catalog` - View database schema
 
 **Example Prompts:**
+
 ```
 "Store in SQLite memory: Quick Tab architecture uses isRendered() tracking"
 "Query SQLite memory for all state management decisions"
@@ -133,6 +152,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 ```
 
 **Memory Persistence Workflow:**
+
 ```
 1. Agent stores data in SQLite during work
 2. Data written to .mcp-data/memory.db
@@ -149,6 +169,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 ### At the End of EVERY Task:
 
 1. **Stage memory files:**
+
    ```bash
    git add .in-memoria/
    git add .agentic-tools-mcp/
@@ -156,6 +177,7 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
    ```
 
 2. **Commit with your code changes:**
+
    ```bash
    git commit -m "chore: persist agent memory from task"
    ```
@@ -167,11 +189,14 @@ This repository has **12 MCP servers** configured to enhance GitHub Copilot Codi
 
 ### Why This Is Critical
 
-Your memory files are stored in an **ephemeral GitHub Actions workspace** that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever and you'll have NO MEMORY of this work in future tasks.
+Your memory files are stored in an **ephemeral GitHub Actions workspace** that
+gets destroyed when your session ends. If you don't commit them to the PR, they
+will be lost forever and you'll have NO MEMORY of this work in future tasks.
 
 ### Verification Checklist
 
 Before finishing work:
+
 - [ ] `.in-memoria/` appears in git status
 - [ ] `.agentic-tools-mcp/` appears in git status
 - [ ] `.mcp-data/` appears in git status
@@ -191,18 +216,21 @@ Before finishing work:
 **MANDATORY USAGE:** Every code change MUST be linted before committing.
 
 **When to Use:**
+
 - BEFORE creating any commit or PR
 - AFTER writing/modifying JavaScript files
 - When code quality issues reported
 - To enforce consistent code style
 
 **Tools:**
+
 - `lint_file` - Check specific files
 - `fix_file` - Apply auto-fixes
 - `explain_rule` - Get rule explanations
 - `lint_directory` - Lint entire directories
 
 **Workflow:**
+
 ```
 1. Write/modify code
 2. IMMEDIATELY: Lint files with ESLint
@@ -220,9 +248,11 @@ Before finishing work:
 
 **Purpose:** Up-to-date documentation for libraries, frameworks, and APIs
 
-**MANDATORY USAGE:** Always fetch current documentation instead of relying on training data.
+**MANDATORY USAGE:** Always fetch current documentation instead of relying on
+training data.
 
 **When to Use:**
+
 - Implementing features with external APIs
 - Using WebExtensions APIs
 - Updating deprecated API usage
@@ -230,10 +260,12 @@ Before finishing work:
 - Checking Firefox compatibility
 
 **Tools:**
+
 - `get-library-docs` - Fetch library documentation
 - `resolve-library-id` - Find library in database
 
 **Example Prompts:**
+
 ```
 "Use Context7 to get latest Firefox clipboard API docs"
 "Fetch current browser.storage.sync documentation with quota limits"
@@ -247,10 +279,12 @@ Before finishing work:
 **Purpose:** Real-time web search with advanced reasoning
 
 **Configuration:**
+
 - Model: `sonar-reasoning-pro`
 - Citations: Enabled (returns sources)
 
 **When to Use:**
+
 - Need current information
 - Researching best practices
 - Finding recent solutions
@@ -258,9 +292,11 @@ Before finishing work:
 - Understanding new patterns
 
 **Tools:**
+
 - `perplexity_reason` - Advanced reasoning with web search and citations
 
 **Example Prompts:**
+
 ```
 "Use Perplexity to research current Firefox container API best practices"
 "Search for latest solutions to WebExtension clipboard issues"
@@ -276,18 +312,21 @@ Before finishing work:
 **Purpose:** Repository management with write permissions
 
 **Capabilities:**
+
 - Create/update/close issues and PRs
 - Add comments, labels, assignees
 - Trigger GitHub Actions workflows
 - Read repository data
 
 **When to Use:**
+
 - Creating issues from bug reports
 - Updating issue status
 - Creating pull requests
 - Adding review comments
 
 **Auto-Issue Creation:**
+
 - When user provides bug list → Create issues automatically
 - Use detailed descriptions with root cause analysis
 - Apply appropriate labels
@@ -300,12 +339,14 @@ Before finishing work:
 **Purpose:** Browser automation and testing
 
 **Configuration:**
+
 - Firefox: `.playwright-mcp-firefox-config.json`
 - Chrome: `.playwright-mcp-chrome-config.json`
 - Permissions: clipboard-read, clipboard-write
 - Isolated mode: Clean environment per test
 
 **When to Use:**
+
 - Testing extension functionality
 - Verifying UI changes
 - Reproducing bugs
@@ -320,6 +361,7 @@ Before finishing work:
 **Purpose:** Code health analysis and technical debt detection
 
 **When to Use:**
+
 - Analyzing code complexity
 - Identifying refactoring priorities
 - Detecting hotspots
@@ -332,6 +374,7 @@ Before finishing work:
 **Purpose:** Test coverage analysis
 
 **When to Use:**
+
 - Generating coverage reports
 - Tracking test quality
 - Identifying coverage gaps
@@ -344,6 +387,7 @@ Before finishing work:
 **Purpose:** CI/CD workflow management
 
 **When to Use:**
+
 - Triggering workflows
 - Checking build status
 - Managing automation
@@ -354,6 +398,7 @@ Before finishing work:
 ## Standard MCP Workflows
 
 ### Bug Fix Workflow
+
 ```
 1. Context7 MCP: Get API docs ⭐
 2. Write fix
@@ -365,6 +410,7 @@ Before finishing work:
 ```
 
 ### New Feature Workflow
+
 ```
 1. Perplexity MCP: Research best practices ⭐
 2. Context7 MCP: Get API docs ⭐
@@ -378,6 +424,7 @@ Before finishing work:
 ```
 
 ### Memory Persistence Workflow (EVERY Task)
+
 ```
 1. Complete work
 2. In-Memoria MCP: Learned patterns automatically stored 🧠
@@ -414,6 +461,7 @@ Before finishing work:
 ## Memory Persistence Best Practices
 
 ### DO:
+
 ✅ Commit memory files at end of EVERY task  
 ✅ Store important decisions in Agentic-Tools MCP  
 ✅ Let In-Memoria learn patterns automatically  
@@ -421,6 +469,7 @@ Before finishing work:
 ✅ Verify memory files in git status before finishing
 
 ### DON'T:
+
 ❌ Skip committing memory files  
 ❌ Assume memory persists without Git commits  
 ❌ Delete memory directories  
@@ -434,6 +483,7 @@ Before finishing work:
 **Problem:** Memory not available in next session
 
 **Solution:**
+
 1. Check if memory files were committed to PR
 2. Verify PR was merged to main
 3. Confirm next agent run checked out main branch
@@ -442,6 +492,7 @@ Before finishing work:
 **Problem:** Memory directories missing
 
 **Solution:**
+
 1. Create directories: `mkdir -p .in-memoria .agentic-tools-mcp .mcp-data`
 2. Add .gitkeep files: `touch .in-memoria/.gitkeep`
 3. Commit to repository
@@ -451,10 +502,15 @@ Before finishing work:
 ## Summary
 
 **12 MCP Servers Configured:**
+
 - 🧠 **3 Memory MCPs** - In-Memoria, Agentic-Tools, Persistent-Memory
 - ⭐ **3 Critical MCPs** - ESLint, Context7, Perplexity
-- 📋 **6 High Priority MCPs** - GitHub, Playwright (2), CodeScene, Codecov, GitHub Actions
+- 📋 **6 High Priority MCPs** - GitHub, Playwright (2), CodeScene, Codecov,
+  GitHub Actions
 
-**Key Principle:** Always commit memory files (.in-memoria/, .agentic-tools-mcp/, .mcp-data/) at the end of EVERY task for persistence across sessions.
+**Key Principle:** Always commit memory files (.in-memoria/,
+.agentic-tools-mcp/, .mcp-data/) at the end of EVERY task for persistence across
+sessions.
 
-**MCPs enhance capabilities - use them proactively and systematically, especially memory MCPs for cumulative learning.**
+**MCPs enhance capabilities - use them proactively and systematically,
+especially memory MCPs for cumulative learning.**

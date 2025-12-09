@@ -3,7 +3,8 @@
 **Document Version:** 1.0.0  
 **Target Version:** v1.6.2.3+  
 **Date:** November 26, 2025  
-**Rationale:** Clean removal of Firefox Container integration causing Issues #35 and #51
+**Rationale:** Clean removal of Firefox Container integration causing Issues #35
+and #51
 
 ---
 
@@ -11,7 +12,8 @@
 
 ### Why Remove Container API Integration?
 
-**Root Cause Analysis:** The Firefox Container API integration (added in v1.5.9 → v1.6.0) is **blocking Quick Tabs from syncing across tabs** because:
+**Root Cause Analysis:** The Firefox Container API integration (added in v1.5.9
+→ v1.6.0) is **blocking Quick Tabs from syncing across tabs** because:
 
 1. **Container-aware storage** creates isolated storage buckets per container
 2. **UICoordinator** refuses to render Quick Tabs from different containers
@@ -19,6 +21,7 @@
 4. **StorageManager** loads container-specific data instead of ALL Quick Tabs
 
 **Current Behavior:**
+
 ```javascript
 // Quick Tab created in firefox-default
 // User switches to tab in firefox-container-9
@@ -32,14 +35,17 @@
 ### Removal Benefits
 
 ✅ **Simpler architecture** - Remove 5+ container-aware abstractions  
-✅ **Global visibility** - All Quick Tabs visible across ALL tabs (Issue #47 compliance)  
-✅ **Cross-tab sync** - Position/size changes sync immediately (Issues #35 & #51 resolved)  
+✅ **Global visibility** - All Quick Tabs visible across ALL tabs (Issue #47
+compliance)  
+✅ **Cross-tab sync** - Position/size changes sync immediately (Issues #35 & #51
+resolved)  
 ✅ **Reduced complexity** - 30% fewer lines of container-specific code  
 ✅ **Better maintainability** - Single storage bucket, single state source
 
 ### Migration Strategy
 
 **Storage Format Change:**
+
 ```javascript
 // BEFORE (v1.6.2.x - Container-aware)
 {
@@ -63,7 +69,9 @@
 }
 ```
 
-**Impact:** Users with Quick Tabs spread across multiple containers will see them **merged into one global list** (which is the desired behavior per Issue #47).
+**Impact:** Users with Quick Tabs spread across multiple containers will see
+them **merged into one global list** (which is the desired behavior per Issue
+#47).
 
 ---
 
@@ -75,9 +83,11 @@
 
 **Action:** DELETE entire file
 
-**Why:** This is a pure domain entity with no side effects. It's only imported by `StorageManager` and `QuickTab`, so removing it is safe.
+**Why:** This is a pure domain entity with no side effects. It's only imported
+by `StorageManager` and `QuickTab`, so removing it is safe.
 
 **Verification:**
+
 ```bash
 # Check for imports
 grep -r "Container.js" src/
@@ -95,6 +105,7 @@ grep -r "Container.js" src/
 **Lines:** 61-65
 
 **Current Code:**
+
 ```javascript
 constructor({
   id,
@@ -111,6 +122,7 @@ constructor({
 ```
 
 **Fixed Code:**
+
 ```javascript
 constructor({
   id,
@@ -131,15 +143,17 @@ constructor({
 **Lines:** 74-75
 
 **Current Code:**
+
 ```javascript
 // Immutable core properties
 this.id = id;
 this.url = url;
-this.container = container || 'firefox-default';  // ← REMOVE THIS LINE
+this.container = container || 'firefox-default'; // ← REMOVE THIS LINE
 this.createdAt = createdAt;
 ```
 
 **Fixed Code:**
+
 ```javascript
 // Immutable core properties
 this.id = id;
@@ -153,6 +167,7 @@ this.createdAt = createdAt;
 **Lines:** 311-318
 
 **Current Code:**
+
 ```javascript
 /**
  * Check if this Quick Tab belongs to a specific container
@@ -166,6 +181,7 @@ belongsToContainer(containerIdOrCookieStoreId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // belongsToContainer method removed - Quick Tabs are no longer container-specific
 ```
@@ -175,6 +191,7 @@ belongsToContainer(containerIdOrCookieStoreId) {
 **Lines:** 325-334
 
 **Current Code:**
+
 ```javascript
 serialize() {
   return {
@@ -197,6 +214,7 @@ serialize() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 serialize() {
   return {
@@ -223,6 +241,7 @@ serialize() {
 **Lines:** 360-372
 
 **Current Code:**
+
 ```javascript
 static _normalizeStorageData(data) {
   const now = Date.now();
@@ -250,6 +269,7 @@ static _normalizeStorageData(data) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 static _normalizeStorageData(data) {
   const now = Date.now();
@@ -281,6 +301,7 @@ static _normalizeStorageData(data) {
 **Lines:** 383-402
 
 **Current Code:**
+
 ```javascript
 static create({ id, url, left = 100, top = 100, width = 800, height = 600, container, title }) {
   if (!id) {
@@ -309,6 +330,7 @@ static create({ id, url, left = 100, top = 100, width = 800, height = 600, conta
 ```
 
 **Fixed Code:**
+
 ```javascript
 static create({ id, url, left = 100, top = 100, width = 800, height = 600, title }) {
   if (!id) {
@@ -337,6 +359,7 @@ static create({ id, url, left = 100, top = 100, width = 800, height = 600, title
 ```
 
 **Summary of QuickTab Changes:**
+
 - ✅ 7 locations modified
 - ✅ `container` field completely removed
 - ✅ `belongsToContainer()` method deleted
@@ -357,6 +380,7 @@ This file needs the most changes since it's deeply container-aware.
 **Lines:** 40-86
 
 **Current Code:**
+
 ```javascript
 async save(containerId, tabs) {
   // Load existing state
@@ -387,18 +411,19 @@ async save(containerId, tabs) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Save Quick Tabs globally (no container isolation)
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified to single global state
- * 
+ *
  * @param {QuickTab[]} tabs - Array of QuickTab domain entities
  * @returns {Promise<string>} Save ID for tracking race conditions
  */
 async save(tabs) {
   // Generate save ID for race condition tracking
   const saveId = this._generateSaveId();
-  
+
   // Create unified state (no containers)
   const stateToSave = {
     [this.STORAGE_KEY]: {
@@ -436,6 +461,7 @@ async save(tabs) {
 **Lines:** 104-117
 
 **Current Code:**
+
 ```javascript
 /**
  * Load Quick Tabs for a specific container
@@ -455,6 +481,7 @@ async load(containerId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Load all Quick Tabs globally (no container filtering)
@@ -481,6 +508,7 @@ async load() {
 **Lines:** 119-127
 
 **Current Code:**
+
 ```javascript
 /**
  * Load all Quick Tabs across all containers
@@ -494,6 +522,7 @@ async loadAll() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Load all Quick Tabs globally (alias for load())
@@ -511,6 +540,7 @@ async loadAll() {
 **Lines:** 129-155
 
 **Current Code:**
+
 ```javascript
 /**
  * Delete a specific Quick Tab from a container
@@ -549,6 +579,7 @@ async delete(containerId, quickTabId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Delete a specific Quick Tab globally
@@ -587,6 +618,7 @@ async delete(quickTabId) {
 **Lines:** 157-177
 
 **Current Code:**
+
 ```javascript
 /**
  * Delete all Quick Tabs for a specific container
@@ -617,6 +649,7 @@ async deleteContainer(containerId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // deleteContainer() method removed - no longer needed without containers
 // Use clear() to delete all Quick Tabs globally
@@ -627,6 +660,7 @@ async deleteContainer(containerId) {
 **Lines:** 179-190
 
 **Current Code:**
+
 ```javascript
 /**
  * Clear all Quick Tabs across all containers
@@ -645,6 +679,7 @@ async clear() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Clear all Quick Tabs globally
@@ -662,11 +697,12 @@ async clear() {
 }
 ```
 
-##### Change 3.1.7: Update _loadRawState() Method
+##### Change 3.1.7: Update \_loadRawState() Method
 
 **Lines:** 192-237
 
 **Current Code:**
+
 ```javascript
 /**
  * Load raw state from storage (checks both local and sync, prioritizing local)
@@ -717,6 +753,7 @@ async _loadRawState() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Load raw state from storage (checks both local and sync, prioritizing local)
@@ -791,7 +828,7 @@ async _loadRawState() {
  */
 _migrateFromContainerFormat(oldState) {
   const allTabs = [];
-  
+
   // Flatten all containers into single array
   for (const containerId in oldState.containers) {
     const containerData = oldState.containers[containerId];
@@ -800,9 +837,9 @@ _migrateFromContainerFormat(oldState) {
       allTabs.push(...containerData.tabs);
     }
   }
-  
+
   console.log(`[SyncStorageAdapter] Migration complete: ${allTabs.length} total tabs`);
-  
+
   return {
     tabs: allTabs,
     timestamp: oldState.timestamp || Date.now(),
@@ -812,6 +849,7 @@ _migrateFromContainerFormat(oldState) {
 ```
 
 **Summary of SyncStorageAdapter Changes:**
+
 - ✅ `save()` - No longer takes `containerId`, saves to global state
 - ✅ `load()` - No longer takes `containerId`, returns global state
 - ✅ `loadAll()` - Aliased to `load()`
@@ -831,6 +869,7 @@ _migrateFromContainerFormat(oldState) {
 **Lines:** 27-30
 
 **Current Code:**
+
 ```javascript
 constructor(eventBus, cookieStoreId = 'firefox-default') {
   this.eventBus = eventBus;
@@ -843,6 +882,7 @@ constructor(eventBus, cookieStoreId = 'firefox-default') {
 ```
 
 **Fixed Code:**
+
 ```javascript
 constructor(eventBus) {
   this.eventBus = eventBus;
@@ -859,6 +899,7 @@ constructor(eventBus) {
 **Lines:** 55-81
 
 **Current Code:**
+
 ```javascript
 async save(quickTabs) {
   if (!quickTabs || quickTabs.length === 0) {
@@ -889,6 +930,7 @@ async save(quickTabs) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 async save(quickTabs) {
   if (!quickTabs || quickTabs.length === 0) {
@@ -921,11 +963,12 @@ async save(quickTabs) {
 **Lines:** 83-132
 
 **Current Code:**
+
 ```javascript
 /**
  * Load all Quick Tabs globally from ALL containers
  * v1.6.2 - MIGRATION: Simplified to use storage.local exclusively
- * 
+ *
  * CRITICAL FIX for Issue #35, #51, and #47:
  * - First tries to get state from background script (authoritative source)
  * - If background fails, falls back to loading from ALL containers in storage.local
@@ -957,6 +1000,7 @@ async loadAll() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Load all Quick Tabs globally
@@ -987,11 +1031,12 @@ async loadAll() {
 }
 ```
 
-#### Change 4.4: Update _tryLoadFromBackground Helper
+#### Change 4.4: Update \_tryLoadFromBackground Helper
 
 **Lines:** 144-160
 
 **Current Code:**
+
 ```javascript
 /**
  * Try to load Quick Tabs from background script
@@ -1017,11 +1062,12 @@ async _tryLoadFromBackground(browserAPI) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Try to load Quick Tabs from background script
  * v1.6.2.3 - CONTAINER REMOVAL: No container parameter needed
- * 
+ *
  * @private
  * @param {Object} browserAPI - Browser API reference
  * @returns {Promise<Array<QuickTab>|null>} Quick Tabs or null if not available
@@ -1041,11 +1087,12 @@ async _tryLoadFromBackground(browserAPI) {
 }
 ```
 
-#### Change 4.5: Replace _tryLoadFromAllContainers with _tryLoadFromGlobalStorage
+#### Change 4.5: Replace \_tryLoadFromAllContainers with \_tryLoadFromGlobalStorage
 
 **Lines:** 162-185
 
 **Current Code:**
+
 ```javascript
 /**
  * Try to load Quick Tabs from ALL containers in storage
@@ -1055,50 +1102,52 @@ async _tryLoadFromBackground(browserAPI) {
  */
 async _tryLoadFromAllContainers(browserAPI) {
   console.log('[StorageManager] Loading Quick Tabs from ALL containers');
-  
+
   const data = await browserAPI.storage.local.get('quick_tabs_state_v2');
   const containers = data?.quick_tabs_state_v2?.containers || {};
-  
+
   const allQuickTabs = this._flattenContainers(containers);
-  
+
   console.log(`[StorageManager] Total Quick Tabs loaded globally: ${allQuickTabs.length}`);
-  
+
   return allQuickTabs.length > 0 ? allQuickTabs : null;
 }
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Try to load Quick Tabs from global storage
  * v1.6.2.3 - CONTAINER REMOVAL: Loads from unified state
- * 
+ *
  * @private
  * @param {Object} browserAPI - Browser API reference
  * @returns {Promise<Array<QuickTab>|null>} Quick Tabs or null if not available
  */
 async _tryLoadFromGlobalStorage(browserAPI) {
   console.log('[StorageManager] Loading Quick Tabs from global storage');
-  
+
   const data = await browserAPI.storage.local.get('quick_tabs_state_v2');
   const tabs = data?.quick_tabs_state_v2?.tabs || [];
-  
+
   if (tabs.length === 0) {
     return null;
   }
-  
+
   const quickTabs = tabs.map(tabData => QuickTab.fromStorage(tabData));
   console.log(`[StorageManager] Loaded ${quickTabs.length} Quick Tabs globally`);
-  
+
   return quickTabs;
 }
 ```
 
-#### Change 4.6: Remove _flattenContainers Helper
+#### Change 4.6: Remove \_flattenContainers Helper
 
 **Lines:** 187-203
 
 **Current Code:**
+
 ```javascript
 /**
  * Flatten all containers into a single Quick Tab array
@@ -1108,21 +1157,22 @@ async _tryLoadFromGlobalStorage(browserAPI) {
  */
 _flattenContainers(containers) {
   const allQuickTabs = [];
-  
+
   for (const containerKey of Object.keys(containers)) {
     const tabs = containers[containerKey]?.tabs || [];
     if (tabs.length === 0) continue;
-    
+
     console.log(`[StorageManager] Loaded ${tabs.length} Quick Tabs from container: ${containerKey}`);
     const quickTabs = tabs.map(tabData => QuickTab.fromStorage(tabData));
     allQuickTabs.push(...quickTabs);
   }
-  
+
   return allQuickTabs;
 }
 ```
 
 **Fixed Code:**
+
 ```javascript
 // _flattenContainers method removed - no longer needed without containers
 ```
@@ -1132,6 +1182,7 @@ _flattenContainers(containers) {
 **Lines:** 205-234
 
 **Current Code:**
+
 ```javascript
 /**
  * Load Quick Tabs ONLY from current container
@@ -1167,6 +1218,7 @@ async loadFromCurrentContainer() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // loadFromCurrentContainer method removed - loadAll() is now the only load method
 ```
@@ -1176,6 +1228,7 @@ async loadFromCurrentContainer() {
 **Lines:** 352-377
 
 **Current Code:**
+
 ```javascript
 /**
  * Handle storage change event
@@ -1186,7 +1239,7 @@ async loadFromCurrentContainer() {
 handleStorageChange(newValue) {
   const context = typeof window !== 'undefined' ? 'content-script' : 'background';
   const willSkip = !newValue || this._shouldSkipStorageChange(newValue);
-  
+
   // Debug logging to track the sync pipeline
   console.log('[StorageManager] Processing storage change:', {
     context,
@@ -1196,7 +1249,7 @@ handleStorageChange(newValue) {
     willScheduleSync: !willSkip,
     timestamp: Date.now()
   });
-  
+
   if (willSkip) {
     console.log('[StorageManager] Skipping storage change (own save or pending)', {
       context,
@@ -1214,17 +1267,18 @@ handleStorageChange(newValue) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Handle storage change event
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified to use global state
- * 
+ *
  * @param {Object} newValue - New storage value
  */
 handleStorageChange(newValue) {
   const context = typeof window !== 'undefined' ? 'content-script' : 'background';
   const willSkip = !newValue || this._shouldSkipStorageChange(newValue);
-  
+
   // Debug logging to track the sync pipeline
   console.log('[StorageManager] Processing storage change:', {
     context,
@@ -1234,7 +1288,7 @@ handleStorageChange(newValue) {
     willScheduleSync: !willSkip,
     timestamp: Date.now()
   });
-  
+
   if (willSkip) {
     console.log('[StorageManager] Skipping storage change (own save or pending)', {
       context,
@@ -1251,11 +1305,12 @@ handleStorageChange(newValue) {
 }
 ```
 
-#### Change 4.9: Simplify _extractSyncState Method
+#### Change 4.9: Simplify \_extractSyncState Method
 
 **Lines:** 408-432
 
 **Current Code:**
+
 ```javascript
 /**
  * Extract state to sync from storage change
@@ -1276,16 +1331,18 @@ _extractSyncState(newValue) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // _extractSyncState method removed - no longer needed
 // State extraction is now handled directly in handleStorageChange()
 ```
 
-#### Change 4.10: Remove _extractContainerState Method
+#### Change 4.10: Remove \_extractContainerState Method
 
 **Lines:** 434-451
 
 **Current Code:**
+
 ```javascript
 /**
  * Extract container-specific state
@@ -1309,6 +1366,7 @@ _extractContainerState(newValue) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // _extractContainerState method removed - no longer needed without containers
 ```
@@ -1318,6 +1376,7 @@ _extractContainerState(newValue) {
 **Lines:** 466-504
 
 **Current Code:**
+
 ```javascript
 /**
  * Schedule debounced storage sync
@@ -1370,11 +1429,12 @@ scheduleStorageSync(stateSnapshot) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Schedule debounced storage sync
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified to emit global state
- * 
+ *
  * @param {Object} stateSnapshot - Storage state snapshot
  */
 scheduleStorageSync(stateSnapshot) {
@@ -1423,6 +1483,7 @@ scheduleStorageSync(stateSnapshot) {
 **Lines:** 540-546
 
 **Current Code:**
+
 ```javascript
 /**
  * Delete specific Quick Tab from storage
@@ -1438,11 +1499,12 @@ async delete(quickTabId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Delete specific Quick Tab from storage
  * v1.6.2.3 - CONTAINER REMOVAL: No container parameter needed
- * 
+ *
  * @param {string} quickTabId - Quick Tab ID to delete
  */
 async delete(quickTabId) {
@@ -1459,6 +1521,7 @@ async delete(quickTabId) {
 **Lines:** 548-554
 
 **Current Code:**
+
 ```javascript
 /**
  * Clear all Quick Tabs for current container
@@ -1473,6 +1536,7 @@ async clear() {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Clear all Quick Tabs globally
@@ -1488,6 +1552,7 @@ async clear() {
 ```
 
 **Summary of StorageManager Changes:**
+
 - ✅ Removed `cookieStoreId` from constructor
 - ✅ Updated `save()` to not use container ID
 - ✅ Simplified `loadAll()` to load global state
@@ -1511,6 +1576,7 @@ async clear() {
 **Lines:** 17-20
 
 **Current Code:**
+
 ```javascript
 constructor(eventBus, currentTabId = null, currentContainer = null) {
   this.eventBus = eventBus;
@@ -1521,6 +1587,7 @@ constructor(eventBus, currentTabId = null, currentContainer = null) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 constructor(eventBus, currentTabId = null) {
   this.eventBus = eventBus;
@@ -1535,6 +1602,7 @@ constructor(eventBus, currentTabId = null) {
 **Lines:** 124-133
 
 **Current Code:**
+
 ```javascript
 /**
  * Get Quick Tabs for specific container
@@ -1547,11 +1615,13 @@ getByContainer(cookieStoreId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // getByContainer method removed - Quick Tabs are no longer container-specific
 ```
 
 **Summary of StateManager Changes:**
+
 - ✅ Removed `currentContainer` from constructor
 - ✅ Removed `getByContainer()` method
 - ✅ All other methods (add, update, delete, getVisible, etc.) work unchanged
@@ -1567,6 +1637,7 @@ getByContainer(cookieStoreId) {
 **Lines:** 63-77 (exact lines from Issue #35 diagnostic report)
 
 **Current Code:**
+
 ```javascript
 render(quickTab) {
   // Skip if already rendered
@@ -1595,6 +1666,7 @@ render(quickTab) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 render(quickTab) {
   // Skip if already rendered
@@ -1606,7 +1678,7 @@ render(quickTab) {
   // ✅ CONTAINER CHECK REMOVED - Quick Tabs now render globally
   // Issue #35/#51 FIX: Container filtering removed to enable cross-tab sync
   // Visibility is now controlled exclusively by Solo/Mute rules via StateManager.getVisible()
-  
+
   console.log('[UICoordinator] Rendering tab globally:', quickTab.id);
 
   // Create QuickTabWindow from QuickTab entity
@@ -1621,6 +1693,7 @@ render(quickTab) {
 ```
 
 **Summary of UICoordinator Changes:**
+
 - ✅ **CRITICAL FIX:** Removed container check that caused Issue #35
 - ✅ Quick Tabs now render globally regardless of container
 - ✅ Visibility controlled by Solo/Mute rules only
@@ -1631,13 +1704,15 @@ render(quickTab) {
 
 **File:** `background.js`
 
-This file has extensive container-aware state management. We need to simplify it.
+This file has extensive container-aware state management. We need to simplify
+it.
 
 #### Change 7.1: Simplify globalQuickTabState
 
 **Lines:** 170-176
 
 **Current Code:**
+
 ```javascript
 const globalQuickTabState = {
   // Keyed by cookieStoreId (e.g., "firefox-default", "firefox-container-1")
@@ -1648,6 +1723,7 @@ const globalQuickTabState = {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // v1.6.2.3 - CONTAINER REMOVAL: Unified global state
 const globalQuickTabState = {
@@ -1661,6 +1737,7 @@ const globalQuickTabState = {
 **Lines:** 190-219
 
 **Current Code:**
+
 ```javascript
 function computeStateHash(state) {
   if (!state) return 0;
@@ -1682,7 +1759,7 @@ function computeStateHash(state) {
   });
   let hash = 0;
   for (let i = 0; i < stateStr.length; i++) {
-    hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
+    hash = (hash << 5) - hash + stateStr.charCodeAt(i);
     hash = hash & hash;
   }
   return hash;
@@ -1690,11 +1767,12 @@ function computeStateHash(state) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Compute a simple hash of the Quick Tab state for deduplication
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified to use global tab array
- * 
+ *
  * @param {Object} state - Quick Tab state object
  * @returns {number} 32-bit hash of the state
  */
@@ -1715,7 +1793,7 @@ function computeStateHash(state) {
   });
   let hash = 0;
   for (let i = 0; i < stateStr.length; i++) {
-    hash = ((hash << 5) - hash) + stateStr.charCodeAt(i);
+    hash = (hash << 5) - hash + stateStr.charCodeAt(i);
     hash = hash & hash;
   }
   return hash;
@@ -1735,7 +1813,9 @@ function computeStateHash(state) {
  */
 async function migrateQuickTabState() {
   if (!isInitialized) {
-    console.warn('[Background Migration] State not initialized, skipping migration');
+    console.warn(
+      '[Background Migration] State not initialized, skipping migration'
+    );
     return;
   }
 
@@ -1781,7 +1861,8 @@ async function saveMigratedQuickTabState() {
 
 **Lines:** 351-652 (StateCoordinator class)
 
-The StateCoordinator already uses a unified `tabs` array, so minimal changes needed:
+The StateCoordinator already uses a unified `tabs` array, so minimal changes
+needed:
 
 1. Update `loadStateFromSyncData()` to handle new format
 2. Remove container-aware loading logic
@@ -1790,7 +1871,7 @@ The StateCoordinator already uses a unified `tabs` array, so minimal changes nee
 /**
  * Helper: Load state from sync storage data
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified for unified format
- * 
+ *
  * @param {Object} data - Storage data
  */
 loadStateFromSyncData(data) {
@@ -1822,6 +1903,7 @@ loadStateFromSyncData(data) {
 **Lines:** 797-829
 
 **Current Code:**
+
 ```javascript
 chrome.tabs.onActivated.addListener(async activeInfo => {
   console.log('[Background] Tab activated:', activeInfo.tabId);
@@ -1832,7 +1914,9 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
       tabId: activeInfo.tabId
     })
     .catch(_err => {
-      console.log('[Background] Could not message tab (content script not ready)');
+      console.log(
+        '[Background] Could not message tab (content script not ready)'
+      );
     });
 
   // Get the tab's cookieStoreId to send only relevant state
@@ -1865,6 +1949,7 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
 ```
 
 **Fixed Code:**
+
 ```javascript
 // v1.6.2.3 - CONTAINER REMOVAL: Simplified tab activation
 chrome.tabs.onActivated.addListener(async activeInfo => {
@@ -1876,7 +1961,9 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
       tabId: activeInfo.tabId
     })
     .catch(_err => {
-      console.log('[Background] Could not message tab (content script not ready)');
+      console.log(
+        '[Background] Could not message tab (content script not ready)'
+      );
     });
 
   // Send global state for immediate sync
@@ -1901,6 +1988,7 @@ chrome.tabs.onActivated.addListener(async activeInfo => {
 **Lines:** 886-942
 
 **Current Code:**
+
 ```javascript
 async function _cleanupQuickTabStateAfterTabClose(tabId) {
   if (!isInitialized) {
@@ -1911,7 +1999,8 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
 
   // Iterate through all containers
   for (const containerId in globalQuickTabState.containers) {
-    const containerTabs = globalQuickTabState.containers[containerId].tabs || [];
+    const containerTabs =
+      globalQuickTabState.containers[containerId].tabs || [];
     if (_processContainerCleanup(containerTabs, tabId)) {
       stateChanged = true;
     }
@@ -1940,11 +2029,12 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Helper: Clean up Quick Tab state after tab closes
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified for unified state
- * 
+ *
  * @param {number} tabId - Tab ID that was closed
  * @returns {Promise<boolean>} True if state was changed and saved
  */
@@ -1990,6 +2080,7 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
 **Lines:** 1073-1110
 
 **Current Code:**
+
 ```javascript
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
@@ -2015,18 +2106,19 @@ function _handleQuickTabStateChange(changes) {
   }
 
   lastBroadcastedStateHash = newHash;
-  
+
   console.log('[Background] Quick Tab state changed, updating cache');
   _updateGlobalStateFromStorage(newValue);
 }
 ```
 
 **Fixed Code:**
+
 ```javascript
 /**
  * Handle Quick Tab state changes from storage
  * v1.6.2.3 - CONTAINER REMOVAL: Simplified for unified state
- * 
+ *
  * @param {Object} changes - Storage changes object
  */
 function _handleQuickTabStateChange(changes) {
@@ -2053,19 +2145,26 @@ function _handleQuickTabStateChange(changes) {
   }
 
   lastBroadcastedStateHash = newHash;
-  
-  console.log('[Background] Quick Tab state changed, updating cache (global format)');
-  
+
+  console.log(
+    '[Background] Quick Tab state changed, updating cache (global format)'
+  );
+
   // Update global state directly
   if (newValue && newValue.tabs) {
     globalQuickTabState.tabs = newValue.tabs;
     globalQuickTabState.timestamp = newValue.timestamp || Date.now();
-    console.log('[Background] Updated global state:', globalQuickTabState.tabs.length, 'tabs');
+    console.log(
+      '[Background] Updated global state:',
+      globalQuickTabState.tabs.length,
+      'tabs'
+    );
   }
 }
 ```
 
 **Summary of background.js Changes:**
+
 - ✅ Simplified `globalQuickTabState` structure
 - ✅ Updated `computeStateHash()` for unified format
 - ✅ Updated migration logic for unified format
@@ -2080,7 +2179,8 @@ function _handleQuickTabStateChange(changes) {
 
 **File:** `src/background/handlers/QuickTabHandler.js`
 
-This file handles message routing for Quick Tab operations. We need to remove container-specific handling.
+This file handles message routing for Quick Tab operations. We need to remove
+container-specific handling.
 
 #### Key Changes Needed:
 
@@ -2088,7 +2188,8 @@ This file handles message routing for Quick Tab operations. We need to remove co
 2. Update `handleGetQuickTabsState()` to return global state
 3. Remove container filtering logic
 
-**Action:** Review the file and remove any `cookieStoreId` references in method signatures and state filtering.
+**Action:** Review the file and remove any `cookieStoreId` references in method
+signatures and state filtering.
 
 ---
 
@@ -2096,13 +2197,16 @@ This file handles message routing for Quick Tab operations. We need to remove co
 
 **File:** `src/features/quick-tabs/index.js`
 
-The content script initializes the Quick Tab system. We need to remove container detection.
+The content script initializes the Quick Tab system. We need to remove container
+detection.
 
 #### Change 9.1: Remove Container Detection
 
-Look for any code that gets the current tab's `cookieStoreId` and removes it from initialization:
+Look for any code that gets the current tab's `cookieStoreId` and removes it
+from initialization:
 
 **Before:**
+
 ```javascript
 const currentTab = await browser.tabs.getCurrent();
 const cookieStoreId = currentTab.cookieStoreId || 'firefox-default';
@@ -2112,6 +2216,7 @@ const stateManager = new StateManager(eventBus, currentTabId, cookieStoreId);
 ```
 
 **After:**
+
 ```javascript
 const storageManager = new StorageManager(eventBus);
 const stateManager = new StateManager(eventBus, currentTabId);
@@ -2213,7 +2318,8 @@ The storage layer will automatically migrate from container format:
 }
 ```
 
-**Result:** Users see **all their Quick Tabs merged into one global list** (desired behavior).
+**Result:** Users see **all their Quick Tabs merged into one global list**
+(desired behavior).
 
 ### No Data Loss
 
@@ -2240,6 +2346,7 @@ npm run build
 ### Option 2: Keep Changes, Fix Bugs
 
 If only minor issues:
+
 - Container removal is correct
 - Fix individual bugs without reverting
 - Storage migration preserves all data
@@ -2253,9 +2360,12 @@ If only minor issues:
 - [ ] `src/domain/Container.js` - **DELETE** entire file
 - [ ] `src/domain/QuickTab.js` - Remove `container` field (7 locations)
 - [ ] `src/storage/SyncStorageAdapter.js` - Unified storage format (8 methods)
-- [ ] `src/features/quick-tabs/managers/StorageManager.js` - Remove container awareness (13 methods)
-- [ ] `src/features/quick-tabs/managers/StateManager.js` - Remove container filtering (2 methods)
-- [ ] `src/features/quick-tabs/coordinators/UICoordinator.js` - **CRITICAL** Remove container check (1 method)
+- [ ] `src/features/quick-tabs/managers/StorageManager.js` - Remove container
+      awareness (13 methods)
+- [ ] `src/features/quick-tabs/managers/StateManager.js` - Remove container
+      filtering (2 methods)
+- [ ] `src/features/quick-tabs/coordinators/UICoordinator.js` - **CRITICAL**
+      Remove container check (1 method)
 - [ ] `background.js` - Simplify global state (7 functions)
 - [ ] `src/background/handlers/QuickTabHandler.js` - Remove container parameters
 - [ ] `src/features/quick-tabs/index.js` - Remove container detection

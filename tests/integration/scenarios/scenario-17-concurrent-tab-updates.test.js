@@ -70,11 +70,11 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
     // Connect channels to simulate cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -87,7 +87,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
     // Wire up broadcast handlers for each tab
     eventBuses.forEach((bus, tabIndex) => {
-      bus.on('broadcast:received', (message) => {
+      bus.on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION') {
           const qt = stateManagers[tabIndex].get(message.data.id);
           if (qt) {
@@ -143,7 +143,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         return broadcastManagers[index].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: newLeft,
-          top: newTop 
+          top: newTop
         });
       });
 
@@ -167,13 +167,14 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
 
     test('different tabs updating different Quick Tabs simultaneously', async () => {
       // Create 5 Quick Tabs
-      const qts = [1, 2, 3, 4, 5].map(i =>
-        new QuickTab({
-          id: `qt-multi-${i}`,
-          url: `https://example${i}.com`,
-          position: { left: i * 50, top: i * 50 },
-          size: { width: 800, height: 600 }
-        })
+      const qts = [1, 2, 3, 4, 5].map(
+        i =>
+          new QuickTab({
+            id: `qt-multi-${i}`,
+            url: `https://example${i}.com`,
+            position: { left: i * 50, top: i * 50 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       // Add all to all tabs
@@ -188,7 +189,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         return broadcastManagers[index].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: 1000 + index * 100,
-          top: 1000 + index * 100 
+          top: 1000 + index * 100
         });
       });
 
@@ -229,7 +230,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         return broadcastManagers[index].broadcast('UPDATE_SIZE', {
           id: qt.id,
           width: newWidth,
-          height: newHeight 
+          height: newHeight
         });
       });
 
@@ -274,7 +275,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: 200,
-          top: 200 
+          top: 200
         })
       );
 
@@ -284,7 +285,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[1].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: 300,
-          top: 300 
+          top: 300
         })
       );
 
@@ -294,7 +295,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[2].broadcast('UPDATE_SIZE', {
           id: qt.id,
           width: 900,
-          height: 700 
+          height: 700
         })
       );
 
@@ -304,7 +305,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[3].broadcast('UPDATE_SIZE', {
           id: qt.id,
           width: 1000,
-          height: 800 
+          height: 800
         })
       );
 
@@ -315,14 +316,14 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[4].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: 400,
-          top: 400 
+          top: 400
         })
       );
       updates.push(
         broadcastManagers[4].broadcast('UPDATE_SIZE', {
           id: qt.id,
           width: 1100,
-          height: 900 
+          height: 900
         })
       );
 
@@ -364,11 +365,11 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
           position: { left: i * 100, top: i * 100 },
           size: { width: 800, height: 600 }
         };
-        
+
         // Add to creating tab's state first
         const qt = new QuickTab(qtData);
         stateManagers[index].add(qt);
-        
+
         // Then broadcast to other tabs (use flat schema)
         return broadcastManagers[index].broadcast('CREATE', {
           id: qtData.id,
@@ -399,13 +400,11 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         left: 100,
         top: 100,
         width: 800,
-        height: 600 
+        height: 600
       };
 
       // All tabs try to create the same Quick Tab
-      const creations = broadcastManagers.map(bm =>
-        bm.broadcast('CREATE', qtData)
-      );
+      const creations = broadcastManagers.map(bm => bm.broadcast('CREATE', qtData));
 
       await Promise.all(creations);
       await wait(200);
@@ -421,13 +420,14 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
   describe('State Consistency Under Load', () => {
     test('50 concurrent updates maintain state consistency', async () => {
       // Create 10 Quick Tabs
-      const qts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i =>
-        new QuickTab({
-          id: `qt-load-${i}`,
-          url: `https://example${i}.com`,
-          position: { left: i * 50, top: i * 50 },
-          size: { width: 800, height: 600 }
-        })
+      const qts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(
+        i =>
+          new QuickTab({
+            id: `qt-load-${i}`,
+            url: `https://example${i}.com`,
+            position: { left: i * 50, top: i * 50 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       // Add all to all tabs
@@ -447,7 +447,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
             broadcastManagers[tabIndex].broadcast('UPDATE_POSITION', {
               id: qt.id,
               left: newLeft,
-          top: newTop 
+              top: newTop
             })
           );
         });
@@ -508,7 +508,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         return broadcastManagers[index].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: 200 + index * 50,
-          top: 200 + index * 50 
+          top: 200 + index * 50
         });
       });
 
@@ -540,7 +540,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[0].broadcast('UPDATE_POSITION', {
           id: qt.id,
           left: 200,
-          top: 200 
+          top: 200
         })
       );
 
@@ -549,7 +549,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[1].broadcast('UPDATE_POSITION', {
           id: 'qt-nonexistent',
           left: 300,
-          top: 300 
+          top: 300
         })
       );
 
@@ -558,7 +558,7 @@ describe('Scenario 17: Concurrent Tab Updates Protocol', () => {
         broadcastManagers[2].broadcast('UPDATE_SIZE', {
           id: qt.id,
           width: 900,
-          height: 700 
+          height: 700
         })
       );
 

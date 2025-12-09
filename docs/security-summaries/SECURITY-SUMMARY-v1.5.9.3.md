@@ -13,7 +13,8 @@
 
 **File:** `src/utils/console-interceptor.js`
 
-**Purpose:** Capture all console.log/error/warn/info/debug calls for log export functionality
+**Purpose:** Capture all console.log/error/warn/info/debug calls for log export
+functionality
 
 **Security Considerations:**
 
@@ -150,7 +151,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 **Risk Level:** LOW (read-only operation, no sensitive data)
 
-**Recommendation:** Add sender validation in future update (not critical for log export):
+**Recommendation:** Add sender validation in future update (not critical for log
+export):
 
 ```javascript
 // Validate sender is from this extension
@@ -228,7 +230,8 @@ await browser.downloads.download({
 - Override happens at module load time
 - Malicious code would need to run before our module loads
 
-**Risk:** VERY LOW (only possible if malicious code injected before extension loads)
+**Risk:** VERY LOW (only possible if malicious code injected before extension
+loads)
 
 **Mitigation:** Already implemented (interceptor imported first)
 
@@ -347,7 +350,8 @@ await browser.downloads.download({
 
 ## Conclusion
 
-The log export fix implementation (v1.5.9.3) has been thoroughly reviewed for security concerns:
+The log export fix implementation (v1.5.9.3) has been thoroughly reviewed for
+security concerns:
 
 ✅ **CodeQL Analysis:** PASSED (0 alerts)  
 ✅ **Manual Review:** PASSED  
@@ -356,7 +360,10 @@ The log export fix implementation (v1.5.9.3) has been thoroughly reviewed for se
 
 **No security vulnerabilities were introduced by this update.**
 
-The console interception system is implemented using industry-standard practices and follows all browser extension security guidelines. The log export functionality is user-initiated, local-only, and does not transmit any data over the network.
+The console interception system is implemented using industry-standard practices
+and follows all browser extension security guidelines. The log export
+functionality is user-initiated, local-only, and does not transmit any data over
+the network.
 
 ---
 

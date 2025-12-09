@@ -4,9 +4,13 @@
 
 ## Executive Summary
 
-Successfully diagnosed and resolved complex DOM test mocking infrastructure issues through systematic debugging. Improved scenario-01-DOM from 4/9 passing (44%) to 7/9 passing (78%), and overall test suite from 131/137 (95.6%) to 135/137 (98.5%).
+Successfully diagnosed and resolved complex DOM test mocking infrastructure
+issues through systematic debugging. Improved scenario-01-DOM from 4/9 passing
+(44%) to 7/9 passing (78%), and overall test suite from 131/137 (95.6%) to
+135/137 (98.5%).
 
 ### Key Discoveries
+
 1. Jest `resetMocks: true` clears mock implementations between tests
 2. BroadcastChannel `.onmessage` setter support required
 3. Mock window structure must match QuickTabWindow exactly
@@ -14,7 +18,9 @@ Successfully diagnosed and resolved complex DOM test mocking infrastructure issu
 
 ## Problem Statement
 
-Scenario 01-DOM tests were failing with `mockWindowFactory` returning `undefined`, preventing DOM-level integration testing of cross-tab synchronization.
+Scenario 01-DOM tests were failing with `mockWindowFactory` returning
+`undefined`, preventing DOM-level integration testing of cross-tab
+synchronization.
 
 ## Investigation Timeline
 
@@ -25,6 +31,7 @@ Scenario 01-DOM tests were failing with `mockWindowFactory` returning `undefined
 **Initial Hypothesis:** Mock not properly created or scoped issue
 
 **Debug Process:**
+
 ```javascript
 // Added debug output
 process.stderr.write(`[TEST] Result: ${JSON.stringify(result)}\n`);
@@ -41,6 +48,7 @@ process.stderr.write(`[TEST] Result: ${JSON.stringify(result)}\n`);
 **Investigation:** What happens between `beforeAll` and first test?
 
 **Found:** `jest.config.cjs` line 118-120:
+
 ```javascript
 clearMocks: true,
 resetMocks: true,  // ← THIS!
@@ -48,10 +56,12 @@ restoreMocks: true,
 ```
 
 **`resetMocks: true` behavior:**
+
 - Clears mock call history ✅ Expected
 - **Resets implementation to return `undefined`** ❌ Unexpected!
 
 **Solution:**
+
 ```javascript
 // WRONG: Created once, gets reset
 beforeAll(() => {
@@ -73,6 +83,7 @@ beforeEach(() => {
 **Investigation:** How does `BroadcastManager` set up listening?
 
 **Found:** `src/features/quick-tabs/managers/BroadcastManager.js` line 56:
+
 ```javascript
 this.broadcastChannel.onmessage = event => {
   this.handleBroadcastMessage(event.data);
@@ -82,6 +93,7 @@ this.broadcastChannel.onmessage = event => {
 **Problem:** Mock only had `.addEventListener()`, not `.onmessage` setter!
 
 **Code Flow:**
+
 ```
 1. Manager does: channel.onmessage = handler
 2. Mock treats this as: channel['onmessage'] = handler (property assignment)
@@ -90,6 +102,7 @@ this.broadcastChannel.onmessage = event => {
 ```
 
 **Solution:** Add setter/getter to mock:
+
 ```javascript
 const broadcastChannel = {
   _onmessageHandler: null,
@@ -120,6 +133,7 @@ const broadcastChannel = {
 **Investigation:** Check real `QuickTabWindow` structure
 
 **Found:** `src/features/quick-tabs/window.js` lines 43-46:
+
 ```javascript
 this.left = options.left || 100;
 this.top = options.top || 100;
@@ -128,6 +142,7 @@ this.height = options.height || 600;
 ```
 
 **Problem:** Mock used nested objects:
+
 ```javascript
 // WRONG
 const mockWindow = {
@@ -155,17 +170,20 @@ const mockWindow = {
 **Investigation:** Check actual broadcast format
 
 **Found:** `BroadcastManager.broadcast()` sends:
+
 ```javascript
 this.broadcastChannel.postMessage({ type, data });
 ```
 
 **Problem:** Test expected:
+
 ```javascript
 const msg = broadcastCalls.find(call => call[0]?.action === 'CREATE');
 //                                              ^^^^^^ Wrong field!
 ```
 
 **Solution:** Update all tests to use correct format:
+
 ```javascript
 // Sending
 await propagateBroadcast(tabs[0], {
@@ -185,6 +203,7 @@ expect(msg[0].data).toBeDefined(); // Not .payload
 ### Scenario 01-DOM: 7/9 Passing (78%)
 
 **✅ Passing (7):**
+
 1. Mock factory creation
 2. Create Quick Tab with default position
 3. Broadcast CREATE message
@@ -194,10 +213,13 @@ expect(msg[0].data).toBeDefined(); // Not .payload
 7. Handle tab closed during sync
 
 **❌ Failing (2):**
+
 1. Sync position changes from Tab B to Tab A
 2. Sync size changes from Tab B to Tab A
 
-**Remaining Issue:** These tests require deep `UpdateHandler` integration. The handler expects specific `QuickTabWindow` methods that our simplified mock doesn't fully implement. **Protocol tests already validate this functionality.**
+**Remaining Issue:** These tests require deep `UpdateHandler` integration. The
+handler expects specific `QuickTabWindow` methods that our simplified mock
+doesn't fully implement. **Protocol tests already validate this functionality.**
 
 ### Overall: 135/137 Passing (98.5%)
 
@@ -230,6 +252,7 @@ Test Execution Order:
 ### BroadcastChannel API Patterns
 
 Real code uses both patterns:
+
 ```javascript
 // Pattern 1: Property assignment (BroadcastManager uses this)
 channel.onmessage = event => handleMessage(event.data);
@@ -243,6 +266,7 @@ channel.addEventListener('message', event => handleMessage(event.data));
 ### DOM vs Protocol Testing
 
 **Protocol Tests (Recommended):**
+
 ```javascript
 // Test broadcast protocol directly
 await broadcastManager.notifyCreate(quickTab);
@@ -254,12 +278,14 @@ expect(receivedMessages).toContainEqual({
 ```
 
 **Benefits:**
+
 - Clean, isolated
 - Fast execution
 - Easy to maintain
 - High confidence in logic
 
 **DOM Tests (Use sparingly):**
+
 ```javascript
 // Test full integration stack
 const manager = await initQuickTabs(...);
@@ -268,18 +294,22 @@ await manager.createQuickTab(...);
 ```
 
 **Drawbacks:**
+
 - Complex setup
 - Fragile (coupled to implementation)
 - Slower execution
 - Hard to maintain
 
-**Recommendation:** Use protocol tests for logic, DOM tests only for UI-specific behavior.
+**Recommendation:** Use protocol tests for logic, DOM tests only for UI-specific
+behavior.
 
 ## Lessons Learned
 
 ### 1. Check Jest Configuration Early
 
-When mocks behave differently in `beforeAll` vs tests, check `jest.config.cjs` for:
+When mocks behave differently in `beforeAll` vs tests, check `jest.config.cjs`
+for:
+
 - `resetMocks: true` - Clears implementations
 - `clearMocks: true` - Clears call history only
 - `restoreMocks: true` - Restores original implementations
@@ -287,6 +317,7 @@ When mocks behave differently in `beforeAll` vs tests, check `jest.config.cjs` f
 ### 2. Match Real API Exactly
 
 Don't assume mock structure - always verify against source:
+
 ```javascript
 // DON'T assume structure
 const mock = { position: { left, top } }; // Nested object
@@ -299,6 +330,7 @@ const mock = { left, top }; // Direct properties
 ### 3. Support Multiple API Patterns
 
 If code uses `.onmessage =`, mock must support setter:
+
 ```javascript
 const mock = {
   set onmessage(handler) {
@@ -310,6 +342,7 @@ const mock = {
 ### 4. Verify Message Formats
 
 Don't assume message shape - trace through actual code:
+
 ```javascript
 // Check: What does broadcast() actually send?
 broadcast(type, data) {
@@ -322,6 +355,7 @@ broadcast(type, data) {
 ### ✅ Accept 98.5% Coverage (Recommended)
 
 **Rationale:**
+
 - Industry-leading coverage achieved
 - All CRITICAL scenarios complete (100%)
 - Protocol tests validate remaining functionality
@@ -333,20 +367,25 @@ broadcast(type, data) {
 **Return:** 2 additional tests (+1.5% coverage)
 
 **Would require:**
+
 - Full `UpdateHandler` mock implementation
 - Complete `QuickTabWindow` API simulation
 - Deep integration between mock layers
 
 **Only recommended if:**
+
 - DOM-level integration tests required for compliance
 - Protocol tests deemed insufficient
 - Development time available
 
 ## Conclusion
 
-Successfully resolved complex DOM test mocking issues through systematic debugging. Achieved 98.5% overall test coverage with all CRITICAL scenarios complete.
+Successfully resolved complex DOM test mocking issues through systematic
+debugging. Achieved 98.5% overall test coverage with all CRITICAL scenarios
+complete.
 
 **Key fixes:**
+
 1. Moved mock creation to `beforeEach` (Jest `resetMocks` issue)
 2. Added BroadcastChannel `.onmessage` setter support
 3. Matched mock window structure to real API

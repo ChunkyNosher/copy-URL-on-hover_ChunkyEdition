@@ -102,7 +102,7 @@ export class CreateHandler {
 
       const newShowDebugId = changeData.newValue ?? false;
       const oldShowDebugId = changeData.oldValue ?? false;
-      
+
       if (newShowDebugId === oldShowDebugId) return;
 
       console.log('[CreateHandler] Debug ID setting changed:', {
@@ -110,10 +110,10 @@ export class CreateHandler {
         oldValue: oldShowDebugId,
         newValue: newShowDebugId
       });
-      
+
       // Update cached setting
       this.showDebugIdSetting = newShowDebugId;
-      
+
       // Update all rendered Quick Tabs
       this._updateAllQuickTabsDebugDisplay(newShowDebugId);
     };
@@ -130,7 +130,7 @@ export class CreateHandler {
    */
   _updateAllQuickTabsDebugDisplay(showDebugId) {
     let updatedCount = 0;
-    
+
     for (const [_id, tabWindow] of this.quickTabsMap) {
       // Only update rendered windows with the required method
       if (!tabWindow || typeof tabWindow.isRendered !== 'function') continue;
@@ -140,7 +140,7 @@ export class CreateHandler {
       tabWindow.updateDebugIdDisplay(showDebugId);
       updatedCount++;
     }
-    
+
     console.log('[CreateHandler] Updated debug ID display on', updatedCount, 'Quick Tabs');
   }
 
@@ -156,7 +156,10 @@ export class CreateHandler {
     try {
       const result = await browser.storage.local.get('quickTabShowDebugId');
       this.showDebugIdSetting = result.quickTabShowDebugId ?? false;
-      console.log('[CreateHandler] Loaded showDebugId from storage.local:', this.showDebugIdSetting);
+      console.log(
+        '[CreateHandler] Loaded showDebugId from storage.local:',
+        this.showDebugIdSetting
+      );
     } catch (err) {
       console.warn('[CreateHandler] Failed to load showDebugId setting:', err.message);
       this.showDebugIdSetting = false;
@@ -230,9 +233,9 @@ export class CreateHandler {
     console.log('[CreateHandler] Window created:', tabWindow);
 
     this.quickTabsMap.set(id, tabWindow);
-    
+
     this._emitCreationEvent(id, options.url);
-    
+
     // v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator
     // This allows UICoordinator to register the window in its renderedTabs Map
     this._emitWindowCreatedEvent(id, tabWindow);
@@ -341,16 +344,19 @@ export class CreateHandler {
     if (quickTabId) {
       const fromPattern = this._extractTabIdFromQuickTabId(quickTabId);
       if (fromPattern !== null) {
-        console.warn('[CreateHandler] ⚠️ originTabId recovered from ID pattern (was null in options):', {
-          quickTabId,
-          recoveredTabId: fromPattern
-        });
+        console.warn(
+          '[CreateHandler] ⚠️ originTabId recovered from ID pattern (was null in options):',
+          {
+            quickTabId,
+            recoveredTabId: fromPattern
+          }
+        );
         return fromPattern;
       }
     }
     return null;
   }
-  
+
   /**
    * Log originTabId assignment with appropriate severity
    * v1.6.3.6-v4 - FIX Issue #2: Extracted to reduce _buildVisibilityOptions complexity
@@ -370,8 +376,11 @@ export class CreateHandler {
         url: options.url
       });
     } else {
-      const source = options.originTabId ? 'options.originTabId' 
-        : options.activeTabId ? 'options.activeTabId' : 'defaults';
+      const source = options.originTabId
+        ? 'options.originTabId'
+        : options.activeTabId
+          ? 'options.activeTabId'
+          : 'defaults';
       console.log('[CreateHandler] originTabId set:', { originTabId, source });
     }
   }
@@ -387,27 +396,31 @@ export class CreateHandler {
    * v1.6.3.6-v8 - FIX Issue #1: Pass quickTabId to _getOriginTabId for pattern extraction
    * @private
    * @param {Object} options - Creation options
-   * @param {Object} defaults - Default values  
+   * @param {Object} defaults - Default values
    * @param {string} quickTabId - Quick Tab ID for pattern extraction fallback
    */
   _buildVisibilityOptions(options, defaults, quickTabId = null) {
     const originTabId = this._getOriginTabId(options, defaults, quickTabId);
-    
+
     // v1.6.3.6-v8 - FIX Issue #1: Critical diagnostic logging
     console.log('[CreateHandler] 📍 ORIGIN_TAB_ID_RESOLUTION:', {
       quickTabId,
       resolvedOriginTabId: originTabId,
-      source: originTabId === options.originTabId ? 'options.originTabId' :
-              originTabId === options.activeTabId ? 'options.activeTabId' :
-              originTabId === defaults.originTabId ? 'defaults.originTabId' :
-              'ID pattern extraction',
+      source:
+        originTabId === options.originTabId
+          ? 'options.originTabId'
+          : originTabId === options.activeTabId
+            ? 'options.activeTabId'
+            : originTabId === defaults.originTabId
+              ? 'defaults.originTabId'
+              : 'ID pattern extraction',
       optionsOriginTabId: options.originTabId,
       optionsActiveTabId: options.activeTabId,
       defaultsOriginTabId: defaults.originTabId
     });
-    
+
     this._logOriginTabIdAssignment(originTabId, options, defaults);
-    
+
     return {
       minimized: options.minimized ?? defaults.minimized,
       soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
@@ -457,7 +470,7 @@ export class CreateHandler {
    */
   _emitWindowCreatedEvent(id, tabWindow) {
     if (!this.eventBus) return;
-    
+
     this.eventBus.emit('window:created', { id, tabWindow });
     console.log('[CreateHandler] Emitted window:created for UICoordinator:', id);
   }

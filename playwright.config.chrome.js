@@ -1,4 +1,3 @@
-
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -29,7 +28,7 @@ export default {
 
   /* Opt out of parallel tests on CI - always use 1 worker for extension tests */
   workers: 1,
-  
+
   /* Increase teardown timeout for extension cleanup */
   globalTimeout: 5 * 60 * 1000, // 5 minutes for entire test run
 

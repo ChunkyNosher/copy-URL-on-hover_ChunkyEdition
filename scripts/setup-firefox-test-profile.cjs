@@ -2,18 +2,18 @@
 
 /**
  * Setup Firefox Profile for Playwright Testing
- * 
+ *
  * Creates a Firefox profile with the extension pre-installed for testing.
  * This script must be run before executing Firefox Playwright tests.
- * 
+ *
  * Strategy:
  * 1. Launch Firefox with a clean profile
  * 2. Manually install the extension as temporary
  * 3. Save the profile for test reuse
- * 
+ *
  * Note: This is a one-time setup that requires manual intervention due to
  * Firefox's security restrictions on automated extension installation.
- * 
+ *
  * @see docs/issue-47-revised-scenarios.md
  */
 
@@ -89,28 +89,35 @@ const rl = readline.createInterface({
 
 rl.question('', () => {
   rl.close();
-  
+
   console.log('');
   console.log('🦊 Launching Firefox...');
   console.log('');
-  
+
   try {
     // Launch Firefox with the profile
     // Using web-ext run for easier profile management
-    const firefoxProcess = spawn('npx', [
-      'web-ext',
-      'run',
-      '--source-dir', DIST_DIR,
-      '--profile', PROFILE_DIR,
-      '--keep-profile-changes',
-      '--no-reload',
-      '--firefox', 'firefox'
-    ], {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..')
-    });
-    
-    firefoxProcess.on('close', (code) => {
+    const firefoxProcess = spawn(
+      'npx',
+      [
+        'web-ext',
+        'run',
+        '--source-dir',
+        DIST_DIR,
+        '--profile',
+        PROFILE_DIR,
+        '--keep-profile-changes',
+        '--no-reload',
+        '--firefox',
+        'firefox'
+      ],
+      {
+        stdio: 'inherit',
+        cwd: path.join(__dirname, '..')
+      }
+    );
+
+    firefoxProcess.on('close', code => {
       console.log('');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('  Profile Setup Complete!');
@@ -123,14 +130,13 @@ rl.question('', () => {
       console.log('');
       process.exit(code || 0);
     });
-    
-    firefoxProcess.on('error', (error) => {
+
+    firefoxProcess.on('error', error => {
       console.error('✗ Failed to launch Firefox:', error.message);
       console.error('');
       console.error('Make sure Firefox is installed and accessible via PATH');
       process.exit(1);
     });
-    
   } catch (error) {
     console.error('✗ Error:', error.message);
     process.exit(1);

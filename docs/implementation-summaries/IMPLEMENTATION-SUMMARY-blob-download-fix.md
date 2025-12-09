@@ -3,7 +3,8 @@
 **Extension:** copy-URL-on-hover_ChunkyEdition  
 **Version:** 1.5.9.1  
 **Date:** November 15, 2025  
-**Issue:** Export Console Logs button triggers download, but download fails with "Failed" status  
+**Issue:** Export Console Logs button triggers download, but download fails with
+"Failed" status  
 **Solution:** Replace Blob URL with Data URL to eliminate race condition
 
 ---
@@ -12,13 +13,17 @@
 
 ### Problem
 
-The "Export Console Logs" feature in the extension popup was failing to complete downloads in Firefox/Zen Browser. The download would start but fail with "Failed" status due to a **timing race condition** where the blob URL was being revoked before Firefox completed its asynchronous I/O operations.
+The "Export Console Logs" feature in the extension popup was failing to complete
+downloads in Firefox/Zen Browser. The download would start but fail with
+"Failed" status due to a **timing race condition** where the blob URL was being
+revoked before Firefox completed its asynchronous I/O operations.
 
 ### Root Cause
 
 According to Mozilla Bug #1271345 and MDN documentation:
 
-- `browser.downloads.download()` returns immediately but performs async I/O (1-5 seconds) to determine target path
+- `browser.downloads.download()` returns immediately but performs async I/O (1-5
+  seconds) to determine target path
 - With `saveAs: true`, this includes user interaction time (2-10 seconds)
 - Original code revoked blob URL after only 1000ms using `setTimeout()`
 - Firefox's download manager tried to access the already-revoked blob URL
@@ -266,15 +271,23 @@ const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 
 ### Mozilla Documentation
 
-- **Bug #1271345:** "chrome.downloads.download will not download blob created in background script"
+- **Bug #1271345:** "chrome.downloads.download will not download blob created in
+  background script"
   - Status: RESOLVED FIXED (Firefox 49)
   - Key finding: Blob URLs require proper lifecycle management
-  - Quote: "If we revoke the blob right away when `download()` returns there is a race and DownloadCore can reference the revoked URL and throw."
+  - Quote: "If we revoke the blob right away when `download()` returns there is
+    a race and DownloadCore can reference the revoked URL and throw."
 
-- **MDN downloads.download():** https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download
-  - Quote: "If you use URL.createObjectURL() to download data created in JavaScript and you want to revoke the object URL (with revokeObjectURL) later (as it is strongly recommended), you need to do that after the download has been completed. To do so, listen to the downloads.onChanged event."
+- **MDN downloads.download():**
+  https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/download
+  - Quote: "If you use URL.createObjectURL() to download data created in
+    JavaScript and you want to revoke the object URL (with revokeObjectURL)
+    later (as it is strongly recommended), you need to do that after the
+    download has been completed. To do so, listen to the downloads.onChanged
+    event."
 
-- **MDN downloads.onChanged:** https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged
+- **MDN downloads.onChanged:**
+  https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/downloads/onChanged
   - Documents proper event-driven blob URL cleanup
 
 ### Stack Overflow
@@ -296,7 +309,8 @@ const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Data}`;
 
 - **Memory:** Slightly lower (no blob objects, no timeouts)
 - **CPU:** Minimal increase (base64 encoding ~1ms for typical log files)
-- **File size:** Data URL is ~33% larger than original text (negligible for small files)
+- **File size:** Data URL is ~33% larger than original text (negligible for
+  small files)
 
 ### Maintenance Impact
 
@@ -411,22 +425,30 @@ For future download features:
 ### Long-term Maintenance
 
 1. **Monitor Mozilla bugs** - Watch for API changes in future Firefox versions
-2. **Test on major updates** - Verify fix still works after Firefox major releases
-3. **Consider file size growth** - If logs exceed 5MB, migrate to event listener approach
+2. **Test on major updates** - Verify fix still works after Firefox major
+   releases
+3. **Consider file size growth** - If logs exceed 5MB, migrate to event listener
+   approach
 
 ---
 
 ## Conclusion
 
-This fix resolves a critical bug in the Export Console Logs feature by replacing a race-condition-prone Blob URL approach with a simple, reliable Data URL approach. The solution is:
+This fix resolves a critical bug in the Export Console Logs feature by replacing
+a race-condition-prone Blob URL approach with a simple, reliable Data URL
+approach. The solution is:
 
-- ✅ **Proven:** Based on official Mozilla documentation and community best practices
+- ✅ **Proven:** Based on official Mozilla documentation and community best
+  practices
 - ✅ **Simple:** Fewer lines of code, easier to maintain
 - ✅ **Reliable:** No race conditions, no timing dependencies
 - ✅ **Tested:** Passes all existing tests, builds successfully
 - ✅ **Appropriate:** Suitable for typical log file sizes (<1MB)
 
-The bug was a well-documented Firefox behavior related to blob URL lifecycle management during async I/O operations. The fix eliminates the entire class of timing-related download bugs by using inline data URLs instead of external blob references.
+The bug was a well-documented Firefox behavior related to blob URL lifecycle
+management during async I/O operations. The fix eliminates the entire class of
+timing-related download bugs by using inline data URLs instead of external blob
+references.
 
 ---
 

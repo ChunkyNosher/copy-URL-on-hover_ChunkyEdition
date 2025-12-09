@@ -10,17 +10,22 @@
 
 ## Executive Summary
 
-Analysis of browser console logs reveals **CRITICAL BUGS** not visible in extension logs. The most severe issue is **Bug #8: Keyboard shortcut async context loss**, which completely breaks sidebar keyboard shortcuts.
+Analysis of browser console logs reveals **CRITICAL BUGS** not visible in
+extension logs. The most severe issue is **Bug #8: Keyboard shortcut async
+context loss**, which completely breaks sidebar keyboard shortcuts.
 
 **Critical Findings:**
 
 1. **Keyboard shortcut fails 100% of the time** due to Firefox API restriction
-2. **Storage change listener spam** (15+ duplicate events per write) causes performance degradation
-3. **Multiple content script instances** running in iframes create redundant listeners
+2. **Storage change listener spam** (15+ duplicate events per write) causes
+   performance degradation
+3. **Multiple content script instances** running in iframes create redundant
+   listeners
 4. **WebSocket connection spam** unrelated to extension functionality
 5. **Floating panel never opened** during testing - user tested sidebar instead
 
 **Impact Assessment:**
+
 - 🔴 **CRITICAL:** Keyboard shortcuts completely broken
 - 🟠 **HIGH:** Performance degradation from listener spam
 - 🟡 **MEDIUM:** Log pollution making debugging impossible
@@ -44,8 +49,10 @@ Analysis of browser console logs reveals **CRITICAL BUGS** not visible in extens
 ### User-Visible Symptom
 
 When pressing keyboard shortcut to open sidebar (Alt+Shift+Z):
+
 - ❌ Nothing happens
-- ❌ Console shows error: `Error: sidebarAction.open may only be called from a user input handler`
+- ❌ Console shows error:
+  `Error: sidebarAction.open may only be called from a user input handler`
 - ❌ Sidebar doesn't open
 - ✅ Clicking extension icon works fine
 
@@ -66,12 +73,15 @@ When pressing keyboard shortcut to open sidebar (Alt+Shift+Z):
 **Location:** Lines 1360-1376 (`_openSidebarAndSwitchToManager()`)  
 **Caller:** Line 1428 (keyboard command handler)
 
-**The Problem:** Firefox's `browser.sidebarAction.open()` API has a strict requirement:
+**The Problem:** Firefox's `browser.sidebarAction.open()` API has a strict
+requirement:
 
 > **"sidebarAction.open may only be called from a user input handler"**
 
 This means:
-- The call MUST be **synchronous** and **direct** from a user action (keyboard/mouse event)
+
+- The call MUST be **synchronous** and **direct** from a user action
+  (keyboard/mouse event)
 - Any `await` operation BREAKS the "user input handler" context
 - After the first `await`, JavaScript is no longer in the user input handler
 - Subsequent API calls are rejected
@@ -82,35 +92,38 @@ This means:
 // Line 1428: Keyboard command handler
 browser.commands.onCommand.addListener(async command => {
   if (command === 'open-quick-tabs-manager') {
-    await _openSidebarAndSwitchToManager();  // ← async call, still in user input context
+    await _openSidebarAndSwitchToManager(); // ← async call, still in user input context
   }
 });
 
 // Line 1360: Sidebar opener
 async function _openSidebarAndSwitchToManager() {
   try {
-    const isOpen = await browser.sidebarAction.isOpen({});  // ← FIRST AWAIT - loses context
-    
+    const isOpen = await browser.sidebarAction.isOpen({}); // ← FIRST AWAIT - loses context
+
     if (!isOpen) {
-      await browser.sidebarAction.open();  // ← ERROR: No longer in user input handler
+      await browser.sidebarAction.open(); // ← ERROR: No longer in user input handler
       await new Promise(resolve => setTimeout(resolve, 300));
     }
-    
+
     await _sendManagerTabMessage();
     console.log('[Sidebar] Opened sidebar and switched to Manager tab');
   } catch (error) {
-    console.error('[Sidebar] Error opening sidebar:', error);  // ← Logs the error
+    console.error('[Sidebar] Error opening sidebar:', error); // ← Logs the error
   }
 }
 ```
 
 **Why It Fails:**
 
-1. User presses keyboard shortcut → `onCommand` fires (user input handler context)
+1. User presses keyboard shortcut → `onCommand` fires (user input handler
+   context)
 2. Handler calls `_openSidebarAndSwitchToManager()` (async function)
 3. Inside function, first line calls `await browser.sidebarAction.isOpen({})` ❌
-4. **JavaScript event loop processes the await** → execution leaves user input handler
-5. When execution resumes, we're in a **Promise callback**, NOT user input handler
+4. **JavaScript event loop processes the await** → execution leaves user input
+   handler
+5. When execution resumes, we're in a **Promise callback**, NOT user input
+   handler
 6. Call to `browser.sidebarAction.open()` is rejected by Firefox
 
 **This is a fundamental async/await timing issue with browser extension APIs.**
@@ -124,7 +137,8 @@ async function _openSidebarAndSwitchToManager() {
 browser.commands.onCommand.addListener(command => {
   if (command === 'open-quick-tabs-manager') {
     // Call open() IMMEDIATELY while still in user input context
-    browser.sidebarAction.open()
+    browser.sidebarAction
+      .open()
       .then(() => {
         // Wait for sidebar to initialize
         return new Promise(resolve => setTimeout(resolve, 300));
@@ -140,11 +154,11 @@ browser.commands.onCommand.addListener(command => {
         console.error('[Sidebar] Error opening sidebar:', error);
       });
   }
-  
+
   if (command === 'toggle-quick-tabs-manager') {
     _toggleQuickTabsPanel();
   }
-  
+
   if (command === '_execute_sidebar_action') {
     console.log('[Sidebar] Keyboard shortcut triggered (Alt+Shift+S)');
   }
@@ -153,18 +167,21 @@ browser.commands.onCommand.addListener(command => {
 
 **Solution #2: Remove isOpen() check entirely**
 
-Firefox's `sidebarAction.open()` is idempotent - calling it when sidebar is already open does nothing.
+Firefox's `sidebarAction.open()` is idempotent - calling it when sidebar is
+already open does nothing.
 
 ```javascript
 browser.commands.onCommand.addListener(command => {
   if (command === 'open-quick-tabs-manager') {
     // Just open it directly - Firefox handles already-open case
-    browser.sidebarAction.open()
+    browser.sidebarAction
+      .open()
       .catch(error => console.error('[Sidebar] Error:', error));
-    
+
     // Send message after delay
     setTimeout(() => {
-      browser.runtime.sendMessage({ type: 'SWITCH_TO_MANAGER_TAB' })
+      browser.runtime
+        .sendMessage({ type: 'SWITCH_TO_MANAGER_TAB' })
         .catch(() => {}); // Ignore if sidebar not ready
     }, 300);
   }
@@ -176,10 +193,13 @@ browser.commands.onCommand.addListener(command => {
 ```javascript
 async function _openSidebarAndSwitchToManager() {
   // Don't await - return Promise chain directly
-  return browser.sidebarAction.open()
+  return browser.sidebarAction
+    .open()
     .then(() => new Promise(resolve => setTimeout(resolve, 300)))
     .then(() => _sendManagerTabMessage())
-    .then(() => console.log('[Sidebar] Opened sidebar and switched to Manager tab'))
+    .then(() =>
+      console.log('[Sidebar] Opened sidebar and switched to Manager tab')
+    )
     .catch(error => console.error('[Sidebar] Error opening sidebar:', error));
 }
 
@@ -203,7 +223,9 @@ browser.commands.onCommand.addListener(async command => {
 **Verification:**
 
 Check console for:
-- ❌ **Before fix:** `Error: sidebarAction.open may only be called from a user input handler`
+
+- ❌ **Before fix:**
+  `Error: sidebarAction.open may only be called from a user input handler`
 - ✅ **After fix:** `[Sidebar] Opened sidebar and switched to Manager tab`
 
 ---
@@ -213,6 +235,7 @@ Check console for:
 ### User-Visible Symptom
 
 When creating ONE Quick Tab:
+
 - ✅ Quick Tab creates successfully
 - ✅ Storage updates once
 - ❌ Console shows 15-20+ duplicate "Storage changed" messages
@@ -230,32 +253,39 @@ When creating ONE Quick Tab:
 ... (REPEATED 15+ TIMES)
 ```
 
-**Pattern:** Every storage write triggers the listener 15-20 times in the SAME tab.
+**Pattern:** Every storage write triggers the listener 15-20 times in the SAME
+tab.
 
 ### Root Cause
 
 **File:** `src/features/quick-tabs/panel/PanelContentManager.js`  
-**Location:** Lines 540-565 (storage.onChanged listener in `setupEventListeners()`)
+**Location:** Lines 540-565 (storage.onChanged listener in
+`setupEventListeners()`)
 
-**The Problem:** Multiple `PanelContentManager` instances exist and each adds a storage listener.
+**The Problem:** Multiple `PanelContentManager` instances exist and each adds a
+storage listener.
 
 **Why This Happens:**
 
 1. Content script runs on **ALL frames** (main page + all iframes)
 2. Wikipedia pages have **MANY iframes** (15-20+ per page)
-3. Each iframe loads `content.js` → creates `QuickTabsManager` → creates `PanelManager` → creates `PanelContentManager`
-4. Each `PanelContentManager` calls `setupEventListeners()` which adds a `storage.onChanged` listener
+3. Each iframe loads `content.js` → creates `QuickTabsManager` → creates
+   `PanelManager` → creates `PanelContentManager`
+4. Each `PanelContentManager` calls `setupEventListeners()` which adds a
+   `storage.onChanged` listener
 5. ONE storage write triggers **ALL listeners** (one per iframe + main frame)
 
 **Evidence from logs:**
 
-The number "17" in the first log indicates **17 content script instances** are running:
+The number "17" in the first log indicates **17 content script instances** are
+running:
 
 ```
 [DEBUG] [PanelContentManager] Storage changed from another tab - updating content 17
 ```
 
 This suggests:
+
 - 1 main frame content script
 - 16 iframe content scripts
 - Each with its own storage listener
@@ -265,15 +295,15 @@ This suggests:
 ```javascript
 setupEventListeners() {
   // ... other listeners ...
-  
+
   // v1.6.2.x - Listen for storage changes from other tabs (cross-tab sync)
   const storageListener = (changes, areaName) => {
     if (areaName !== 'local') return;
-    
+
     // Check if quick_tabs_state_v2 changed
     if (changes.quick_tabs_state_v2) {
       debug('[PanelContentManager] Storage changed from another tab - updating content');
-      
+
       if (this._getIsOpen()) {
         this.updateContent();
       } else {
@@ -282,7 +312,7 @@ setupEventListeners() {
       }
     }
   };
-  
+
   browser.storage.onChanged.addListener(storageListener);  // ← Added for EVERY instance
   this._storageListener = storageListener;
 }
@@ -293,7 +323,8 @@ setupEventListeners() {
 1. **Performance:** 17 listeners fire for every storage write (redundant work)
 2. **Log spam:** Makes debugging impossible (real errors buried in noise)
 3. **Memory:** Each listener holds references, increasing memory usage
-4. **Race conditions:** Multiple instances updating simultaneously can cause conflicts
+4. **Race conditions:** Multiple instances updating simultaneously can cause
+   conflicts
 
 ### What Needs to Be Fixed
 
@@ -306,14 +337,18 @@ setupEventListeners() {
 ```javascript
 // Don't initialize panel in iframes - only in top frame
 if (window.top !== window.self) {
-  console.log('[Content Script] Running in iframe - skipping PanelManager initialization');
+  console.log(
+    '[Content Script] Running in iframe - skipping PanelManager initialization'
+  );
   // Still initialize QuickTabsManager for Quick Tab windows
   // Just don't create PanelManager
   return;
 }
 
 // Only runs in top frame
-console.log('[Content Script] Running in top frame - initializing PanelManager');
+console.log(
+  '[Content Script] Running in top frame - initializing PanelManager'
+);
 const panelManager = new PanelManager(/* ... */);
 ```
 
@@ -327,18 +362,18 @@ const panelManager = new PanelManager(/* ... */);
 ```javascript
 setupEventListeners() {
   // ... other listeners ...
-  
+
   let storageChangeTimeout = null;
-  
+
   const storageListener = (changes, areaName) => {
     if (areaName !== 'local') return;
-    
+
     if (changes.quick_tabs_state_v2) {
       // Debounce: only process latest change after 50ms
       clearTimeout(storageChangeTimeout);
       storageChangeTimeout = setTimeout(() => {
         debug('[PanelContentManager] Storage changed - updating (debounced)');
-        
+
         if (this._getIsOpen()) {
           this.updateContent();
         } else {
@@ -348,7 +383,7 @@ setupEventListeners() {
       }, 50);
     }
   };
-  
+
   browser.storage.onChanged.addListener(storageListener);
   this._storageListener = storageListener;
 }
@@ -358,7 +393,8 @@ setupEventListeners() {
 
 **Solution #3: Use a global singleton listener**
 
-Instead of each `PanelContentManager` adding its own listener, use ONE global listener:
+Instead of each `PanelContentManager` adding its own listener, use ONE global
+listener:
 
 ```javascript
 // At top of file (module scope)
@@ -368,21 +404,21 @@ const contentManagerInstances = new Set();
 export class PanelContentManager {
   constructor(/* ... */) {
     // ... existing constructor code ...
-    
+
     // Register this instance globally
     contentManagerInstances.add(this);
-    
+
     // Initialize global listener only once
     if (!globalStorageListenerInitialized) {
       this._initializeGlobalStorageListener();
       globalStorageListenerInitialized = true;
     }
   }
-  
+
   _initializeGlobalStorageListener() {
     browser.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== 'local') return;
-      
+
       if (changes.quick_tabs_state_v2) {
         // Notify ALL PanelContentManager instances
         for (const instance of contentManagerInstances) {
@@ -395,10 +431,10 @@ export class PanelContentManager {
       }
     });
   }
-  
+
   destroy() {
     // ... existing destroy code ...
-    
+
     // Remove from global registry
     contentManagerInstances.delete(this);
   }
@@ -416,7 +452,8 @@ export class PanelContentManager {
 **Expected Results:**
 
 - ❌ **Before fix:** 15-20 "Storage changed" logs
-- ✅ **After fix:** 1-2 logs maximum (one for main frame, maybe one for background)
+- ✅ **After fix:** 1-2 logs maximum (one for main frame, maybe one for
+  background)
 
 ---
 
@@ -425,6 +462,7 @@ export class PanelContentManager {
 ### User-Visible Symptom
 
 Not directly visible to user, but:
+
 - ❌ Performance degrades on pages with many iframes
 - ❌ Memory usage increases
 - ❌ Console spam makes debugging hard
@@ -441,7 +479,8 @@ Loaded Quick Tabs state: Object { tabs: (3) […], saveId: "1764356522186-gyildb
 ... (10+ TIMES with SAME saveId and timestamp)
 ```
 
-**This indicates:** `QuickTabsManager` is loading state 10+ times from the same storage write.
+**This indicates:** `QuickTabsManager` is loading state 10+ times from the same
+storage write.
 
 ### Root Cause
 
@@ -459,16 +498,20 @@ Loaded Quick Tabs state: Object { tabs: (3) […], saveId: "1764356522186-gyildb
 ]
 ```
 
-**The Problem:** Content script runs in ALL frames despite `"all_frames": false`.
+**The Problem:** Content script runs in ALL frames despite
+`"all_frames": false`.
 
 **Why This Happens:**
 
-Firefox's `all_frames: false` setting is **NOT RELIABLE**. Content scripts still execute in iframes, especially:
+Firefox's `all_frames: false` setting is **NOT RELIABLE**. Content scripts still
+execute in iframes, especially:
+
 - Iframes added dynamically after page load
 - Iframes from same origin as parent
 - Iframes created by JavaScript
 
-**Evidence:** Wikipedia pages have 15-20 iframes, and logs show 17 content script instances running.
+**Evidence:** Wikipedia pages have 15-20 iframes, and logs show 17 content
+script instances running.
 
 ### What Needs to Be Fixed
 
@@ -484,16 +527,16 @@ Firefox's `all_frames: false` setting is **NOT RELIABLE**. Content scripts still
 // Iframes should not initialize QuickTabsManager or PanelManager
 // ==================== IFRAME PROTECTION ====================
 
-const isTopFrame = (window.top === window.self);
+const isTopFrame = window.top === window.self;
 
 if (!isTopFrame) {
   console.log('[Content Script] Running in iframe - limited initialization');
   // Only initialize what's needed for Quick Tab iframes
   // Skip QuickTabsManager, PanelManager, keyboard shortcuts, etc.
-  
+
   // Maybe only initialize link hover detection for Quick Tab creation?
   // Or skip content script entirely in iframes?
-  
+
   // Exit early
   return; // or throw to stop execution
 }
@@ -513,13 +556,16 @@ if (window.top === window.self) {
   // ... rest of initialization
 } else {
   // Iframe - minimal or no initialization
-  console.log('[Content Script] Iframe detected - skipping manager initialization');
+  console.log(
+    '[Content Script] Iframe detected - skipping manager initialization'
+  );
 }
 ```
 
 **Solution #3: Use manifest to exclude iframes more reliably**
 
-Unfortunately, Chrome/Firefox don't provide a reliable manifest-only solution. Code-based frame detection is necessary.
+Unfortunately, Chrome/Firefox don't provide a reliable manifest-only solution.
+Code-based frame detection is necessary.
 
 ### Testing After Fix
 
@@ -541,7 +587,9 @@ Unfortunately, Chrome/Firefox don't provide a reliable manifest-only solution. C
 ### User-Visible Symptom
 
 Console is spammed with WebSocket errors:
-- ❌ `Firefox can't establish a connection to the server at ws://localhost:8089/`
+
+- ❌
+  `Firefox can't establish a connection to the server at ws://localhost:8089/`
 - ❌ `WebSocket connection closed event at port 8089`
 - ❌ Errors appear 20+ times during testing
 
@@ -562,7 +610,8 @@ WebSocket connection closed event at port 8089
 **File:** `background.js`  
 **Location:** Lines 43-54 (approximately, based on stack trace)
 
-**The Problem:** Extension is trying to connect to a WebSocket server that doesn't exist.
+**The Problem:** Extension is trying to connect to a WebSocket server that
+doesn't exist.
 
 **Likely Code:**
 
@@ -571,11 +620,11 @@ WebSocket connection closed event at port 8089
 function connectToWebSocket() {
   console.log('Connecting to WebSocket server at port 8089');
   const ws = new WebSocket('ws://localhost:8089/');
-  
-  ws.onerror = (error) => {
+
+  ws.onerror = error => {
     console.error('WebSocket error:', error);
   };
-  
+
   ws.onclose = () => {
     console.log('WebSocket connection closed event at port 8089');
   };
@@ -587,14 +636,17 @@ connectToWebSocket();
 
 **Why This Happens:**
 
-This is likely **development/debugging code** that was left in the production build.
+This is likely **development/debugging code** that was left in the production
+build.
 
 WebSocket connections are typically used for:
+
 - Hot reloading during development
 - Live debugging tools
 - Remote logging/monitoring
 
 **Impact:**
+
 - Not a functional bug (doesn't break Quick Tabs)
 - BUT: Spams console, making debugging difficult
 - Performance hit (repeated connection attempts)
@@ -658,7 +710,8 @@ async function tryConnectWebSocket() {
 **Expected Results:**
 
 - ❌ **Before fix:** 20+ WebSocket errors
-- ✅ **After fix:** No WebSocket logs at all (OR 1 log saying "WebSocket not enabled")
+- ✅ **After fix:** No WebSocket logs at all (OR 1 log saying "WebSocket not
+  enabled")
 
 ---
 
@@ -669,27 +722,33 @@ async function tryConnectWebSocket() {
 **Timeline of User Actions:**
 
 1. **Created Quick Tab "Oozora Subaru"** ✅
+
    ```
    [QuickTabsManager] createQuickTab called with: qt-121-1764356522186-1wweq6f16i8m3c
    [QuickTabWindow] Rendered: qt-121-1764356522186-1wweq6f16i8m3c
    ```
+
    - Quick Tab created successfully
    - Storage updated
    - 17 storage change events fired (Bug #9)
    - Panel NOT updated (panel not open)
 
 2. **Opened Sidebar** (clicked icon) ✅
+
    ```
    [Sidebar] Opened sidebar and switched to Manager tab
    ```
+
    - Sidebar opened successfully
    - User sees Quick Tab Manager in sidebar
    - **But floating panel was NEVER opened**
 
 3. **Attempted Keyboard Shortcut** ❌
+
    ```
    [Sidebar] Error opening sidebar: Error: sidebarAction.open may only be called from a user input handler
    ```
+
    - Error repeated 8 times
    - Keyboard shortcut completely broken (Bug #8)
    - User frustration increases
@@ -700,10 +759,12 @@ async function tryConnectWebSocket() {
    - State persists correctly across tabs
 
 5. **Dragged Quick Tabs** ✅
+
    ```
    [QuickTabWindow] Drag started: qt-121-1764356522186-1wweq6f16i8m3c
    [QuickTabWindow] Drag ended: qt-121-1764356522186-1wweq6f16i8m3c
    ```
+
    - Drag functionality works
    - Position updates correctly
 
@@ -711,12 +772,14 @@ async function tryConnectWebSocket() {
    ```
    Closed Quick Tab qt-121-1764356297353-1ip9jtlsqbzng
    ```
+
    - Tab closed successfully
    - BUT: Panel didn't update (was in sidebar, not floating panel)
 
 ### Key Insights
 
 **What Worked:**
+
 - ✅ Quick Tab creation
 - ✅ State persistence
 - ✅ Cross-tab sync (via storage.onChanged)
@@ -724,11 +787,13 @@ async function tryConnectWebSocket() {
 - ✅ Quick Tab dragging/positioning
 
 **What Failed:**
+
 - ❌ Keyboard shortcut (Bug #8 - async context loss)
 - ❌ Performance (Bug #9 - listener spam)
 - ❌ Floating panel (never opened, user tested sidebar)
 
 **User Confusion:**
+
 - User clicked icon → Sidebar opened
 - User thought sidebar WAS the floating panel
 - All reported bugs are about floating panel
@@ -737,6 +802,7 @@ async function tryConnectWebSocket() {
 **Evidence floating panel was never opened:**
 
 NO logs showing:
+
 - `[PanelManager] Opening panel`
 - `[PanelContentManager] updateContent called`
 - `[PanelContentManager] Live state: X tabs`
@@ -754,7 +820,8 @@ NO logs showing:
 2. Press Alt+Shift+Z
 3. Check console
 
-**Expected:** `Error: sidebarAction.open may only be called from a user input handler`  
+**Expected:**
+`Error: sidebarAction.open may only be called from a user input handler`  
 **Confirms:** Bug #8 exists
 
 **Test #2: Storage Listener Spam (Bug #9)**
@@ -792,7 +859,8 @@ NO logs showing:
 1. Close sidebar
 2. Press Alt+Shift+Z
 3. **Expected:** Sidebar opens immediately, no error
-4. **Verify:** Console shows `[Sidebar] Opened sidebar and switched to Manager tab`
+4. **Verify:** Console shows
+   `[Sidebar] Opened sidebar and switched to Manager tab`
 
 **Test #2: Storage Listener Spam Fixed**
 
@@ -824,9 +892,11 @@ NO logs showing:
 **Fix #1: Keyboard Shortcut Async Context Loss (Bug #8)**
 
 - **File:** `background.js`
-- **Location:** Lines 1428 (command handler) and 1360-1376 (`_openSidebarAndSwitchToManager()`)
+- **Location:** Lines 1428 (command handler) and 1360-1376
+  (`_openSidebarAndSwitchToManager()`)
 - **Change:** Call `browser.sidebarAction.open()` synchronously without await
-- **Code change:** Remove async/await, use Promise.then() OR call open() before any await
+- **Code change:** Remove async/await, use Promise.then() OR call open() before
+  any await
 - **Impact:** Keyboard shortcuts will work again
 
 ### Priority 2 - HIGH (Performance & UX)
@@ -836,7 +906,8 @@ NO logs showing:
 - **File:** `src/features/quick-tabs/panel/PanelContentManager.js`
 - **Location:** Line 540-565 (`setupEventListeners()`)
 - **Change:** Add debouncing OR only initialize in top frame
-- **Code change:** Debounce storage listener OR check `window.top === window.self`
+- **Code change:** Debounce storage listener OR check
+  `window.top === window.self`
 - **Impact:** Reduce redundant listener executions from 17 to 1
 
 **Fix #3: Multiple Content Script Instances (Bug #10)**
@@ -872,11 +943,11 @@ browser.commands.onCommand.addListener(async command => {
   if (command === 'toggle-quick-tabs-manager') {
     await _toggleQuickTabsPanel();
   }
-  
+
   if (command === 'open-quick-tabs-manager') {
-    await _openSidebarAndSwitchToManager();  // ← BREAKS USER INPUT CONTEXT
+    await _openSidebarAndSwitchToManager(); // ← BREAKS USER INPUT CONTEXT
   }
-  
+
   if (command === '_execute_sidebar_action') {
     console.log('[Sidebar] Keyboard shortcut triggered (Alt+Shift+S)');
   }
@@ -886,20 +957,24 @@ browser.commands.onCommand.addListener(async command => {
 **Fixed Code:**
 
 ```javascript
-browser.commands.onCommand.addListener(command => {  // ← Remove async
+browser.commands.onCommand.addListener(command => {
+  // ← Remove async
   if (command === 'toggle-quick-tabs-manager') {
     _toggleQuickTabsPanel();
   }
-  
+
   if (command === 'open-quick-tabs-manager') {
     // Call open() IMMEDIATELY (synchronously) while in user input context
-    browser.sidebarAction.open()
+    browser.sidebarAction
+      .open()
       .then(() => new Promise(resolve => setTimeout(resolve, 300)))
       .then(() => _sendManagerTabMessage())
-      .then(() => console.log('[Sidebar] Opened sidebar and switched to Manager tab'))
+      .then(() =>
+        console.log('[Sidebar] Opened sidebar and switched to Manager tab')
+      )
       .catch(error => console.error('[Sidebar] Error opening sidebar:', error));
   }
-  
+
   if (command === '_execute_sidebar_action') {
     console.log('[Sidebar] Keyboard shortcut triggered (Alt+Shift+S)');
   }
@@ -917,7 +992,7 @@ browser.commands.onCommand.addListener(command => {  // ← Remove async
 // Only run full extension in top frame to prevent duplicate instances
 // ==================== IFRAME PROTECTION ====================
 
-const IS_TOP_FRAME = (window.top === window.self);
+const IS_TOP_FRAME = window.top === window.self;
 
 if (!IS_TOP_FRAME) {
   console.log('[Content Script] Running in iframe - skipping initialization');
@@ -925,7 +1000,9 @@ if (!IS_TOP_FRAME) {
   throw new Error('Content script should not run in iframes');
 }
 
-console.log('[Content Script] Running in top frame - proceeding with initialization');
+console.log(
+  '[Content Script] Running in top frame - proceeding with initialization'
+);
 
 // Continue with normal content script initialization...
 ```
@@ -939,15 +1016,19 @@ console.log('[Content Script] Running in top frame - proceeding with initializat
 ```javascript
 const storageListener = (changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   if (changes.quick_tabs_state_v2) {
-    debug('[PanelContentManager] Storage changed from another tab - updating content');
-    
+    debug(
+      '[PanelContentManager] Storage changed from another tab - updating content'
+    );
+
     if (this._getIsOpen()) {
       this.updateContent();
     } else {
       this.stateChangedWhileClosed = true;
-      debug('[PanelContentManager] Storage changed while panel closed - will update on open');
+      debug(
+        '[PanelContentManager] Storage changed while panel closed - will update on open'
+      );
     }
   }
 };
@@ -960,13 +1041,13 @@ let storageChangeTimeout = null;
 
 const storageListener = (changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   if (changes.quick_tabs_state_v2) {
     // Debounce: only process latest change after 50ms
     clearTimeout(storageChangeTimeout);
     storageChangeTimeout = setTimeout(() => {
       debug('[PanelContentManager] Storage changed - updating (debounced)');
-      
+
       if (this._getIsOpen()) {
         this.updateContent();
       } else {
@@ -1014,7 +1095,8 @@ if (DEV_MODE) {
 **Root Causes Identified:**
 
 1. **Async/await breaks Firefox API requirements** (Bug #8)
-2. **Multiple content script instances** create redundant listeners (Bugs #9, #10)
+2. **Multiple content script instances** create redundant listeners (Bugs #9,
+   #10)
 3. **Development code left in production** spams console (Bug #11)
 
 **Fix Priority:**
@@ -1034,6 +1116,7 @@ if (DEV_MODE) {
 **Testing Coverage:**
 
 All bugs have:
+
 - Clear reproduction steps
 - Expected vs actual behavior
 - Verification procedures
@@ -1043,5 +1126,7 @@ All bugs have:
 
 **Report Generated By:** Perplexity AI  
 **Analysis Method:** Browser console log forensics + source code inspection  
-**Key Achievement:** Identified CRITICAL keyboard shortcut bug invisible in extension logs  
-**Next Steps:** Implement fixes in order of priority, test with keyboard shortcuts first
+**Key Achievement:** Identified CRITICAL keyboard shortcut bug invisible in
+extension logs  
+**Next Steps:** Implement fixes in order of priority, test with keyboard
+shortcuts first

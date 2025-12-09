@@ -1,19 +1,19 @@
 /**
  * Scenario 12: Manager "Close All" Functionality
- * 
+ *
  * LOW PRIORITY (1 day effort)
- * 
+ *
  * Tests that the Manager Panel "Close All" button works correctly:
  * - "Close All" closes all Quick Tabs in all tabs
  * - "Close All" clears storage completely
  * - "Close All" closes Manager Panel
  * - Operation completes successfully across tabs
  * - State remains consistent after "Close All"
- * 
+ *
  * Related Documentation:
  * - docs/manual/updated-remaining-testing-work.md (Scenario 12 - LOW)
  * - docs/issue-47-revised-scenarios.md
- * 
+ *
  * Covers Issues: #47 (Manager Panel functionality)
  */
 
@@ -94,11 +94,11 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
     // Connect channels for cross-tab delivery
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -111,7 +111,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
     // Wire up broadcast handlers for DELETE and CREATE
     eventBuses.forEach((bus, tabIndex) => {
-      bus.on('broadcast:received', (message) => {
+      bus.on('broadcast:received', message => {
         if (message.type === 'DELETE') {
           stateManagers[tabIndex].remove(message.data.id);
         } else if (message.type === 'CLOSE_ALL') {
@@ -144,13 +144,15 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
   describe('Basic Close All', () => {
     test('closes all Quick Tabs in all tabs', async () => {
       // Create 5 Quick Tabs
-      const quickTabs = Array.from({ length: 5 }, (_, i) => 
-        new QuickTab({
-          id: `qt-close-all-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: (i + 1) * 50, top: (i + 1) * 50 },
-          size: { width: 800, height: 600 },
-        })
+      const quickTabs = Array.from(
+        { length: 5 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-close-all-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: (i + 1) * 50, top: (i + 1) * 50 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       // Add to all state managers
@@ -165,7 +167,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // Close all on tab A - apply locally first, then broadcast
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -184,7 +186,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // Close all on tab A - apply locally first (already empty)
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -198,13 +200,15 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
   describe('Storage Cleanup', () => {
     test('storage clear called when closing all', async () => {
-      const quickTabs = Array.from({ length: 3 }, (_, i) => 
-        new QuickTab({
-          id: `qt-storage-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
-        })
+      const quickTabs = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-storage-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: 100, top: 100 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -213,7 +217,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // Close all on tab A - apply locally first, then broadcast
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -235,14 +239,14 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         id: 'qt-cross-1',
         url: 'https://example1.com',
         position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 }
       });
 
       const qt2 = new QuickTab({
         id: 'qt-cross-2',
         url: 'https://example2.com',
         position: { left: 200, top: 200 },
-          size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => {
@@ -257,7 +261,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // CLOSE_ALL from tab B - apply locally first, then broadcast
       stateManagers[1].quickTabs.clear();
-      
+
       await broadcastManagers[1].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -269,13 +273,15 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
     });
 
     test('multiple CLOSE_ALL calls are idempotent', async () => {
-      const quickTabs = Array.from({ length: 3 }, (_, i) => 
-        new QuickTab({
-          id: `qt-idempotent-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
-        })
+      const quickTabs = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-idempotent-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: 100, top: 100 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -306,18 +312,20 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
   describe('Edge Cases', () => {
     test('CLOSE_ALL with minimized Quick Tabs', async () => {
-      const quickTabs = Array.from({ length: 3 }, (_, i) => 
-        new QuickTab({
-          id: `qt-minimized-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
-          visibility: {
-            soloedOnTabs: [],
-            mutedOnTabs: [],
-            minimized: i === 0 // First one is minimized
-          }
-        })
+      const quickTabs = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-minimized-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: 100, top: 100 },
+            size: { width: 800, height: 600 },
+            visibility: {
+              soloedOnTabs: [],
+              mutedOnTabs: [],
+              minimized: i === 0 // First one is minimized
+            }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -326,7 +334,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // Close all on tab A - apply locally first, then broadcast
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -369,7 +377,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // Close all on tab A - apply locally first, then broadcast
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);
@@ -386,14 +394,14 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         id: 'qt-before',
         url: 'https://before.com',
         position: { left: 100, top: 100 },
-          size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 }
       });
 
       stateManagers.forEach(sm => sm.add(new QuickTab(qt1)));
 
       // Close all - apply locally first, then broadcast
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
       await wait(150);
 
@@ -402,7 +410,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
         id: 'qt-after',
         url: 'https://after.com',
         position: { left: 200, top: 200 },
-          size: { width: 800, height: 600 },
+        size: { width: 800, height: 600 }
       });
 
       stateManagers[0].add(qt2);
@@ -430,13 +438,15 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
   describe('Performance', () => {
     test('CLOSE_ALL with many Quick Tabs completes quickly', async () => {
       // Create 20 Quick Tabs
-      const quickTabs = Array.from({ length: 20 }, (_, i) => 
-        new QuickTab({
-          id: `qt-many-${i + 1}`,
-          url: `https://example${i + 1}.com`,
-          position: { left: (i % 10) * 50, top: Math.floor(i / 10) * 50 },
-          size: { width: 800, height: 600 },
-        })
+      const quickTabs = Array.from(
+        { length: 20 },
+        (_, i) =>
+          new QuickTab({
+            id: `qt-many-${i + 1}`,
+            url: `https://example${i + 1}.com`,
+            position: { left: (i % 10) * 50, top: Math.floor(i / 10) * 50 },
+            size: { width: 800, height: 600 }
+          })
       );
 
       stateManagers.forEach(sm => {
@@ -447,7 +457,7 @@ describe('Scenario 12: Manager "Close All" Protocol', () => {
 
       // Close all on tab A - apply locally first, then broadcast
       stateManagers[0].quickTabs.clear();
-      
+
       await broadcastManagers[0].broadcast('CLOSE_ALL', {});
 
       await wait(150);

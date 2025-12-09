@@ -1,4 +1,10 @@
 /* Quick Tabs Manager Sidebar Styles */
+/* v1.6.3.6-v11 - FIX Issues #1-9: Comprehensive diagnostics fixes
+ * - Issue #1: Animation timing coordinated at 0.35s
+ * - Issue #2: Removed inline maxHeight conflicts
+ * - Issue #4: Favicon container uses CSS classes only
+ * - Issue #12: Animation support via CSS variables
+ */
 /* v1.6.4.10 - FIX Issues #1-12: Comprehensive UI/UX improvements */
 
 :root {
@@ -12,25 +18,25 @@
   --orange-indicator: #ff9800; /* v1.6.4.9 - FIX Issue #4: Warning indicator */
   --red-danger: #f44336;
   --blue-primary: #4a90e2;
-  
+
   /* v1.6.4.10 - Issue #5/#6: Orphaned/Closed tab colors */
   --orphaned-bg: #fff3e0;
   --orphaned-text: #e65100;
   --closed-bg: #fafafa;
   --closed-text: #9e9e9e;
   --warning-color: #ff9800;
-  
+
   /* v1.6.4.10 - Issue #3: Visual hierarchy variables */
   --group-content-border: #e0e0e0;
   --group-content-bg: rgba(0, 0, 0, 0.02);
-  
+
   /* v1.6.4.10 - Issue #8: Divider styling */
   --divider-color: #e8e8e8;
-  
+
   /* v1.6.4.10 - Issue #2: Count badge styling */
   --count-badge-bg: #e3f2fd;
   --count-badge-text: #1976d2;
-  
+
   /* v1.6.4.10 - Animation timing */
   --animation-duration: 0.35s;
   --animation-timing: ease-in-out;
@@ -43,21 +49,21 @@
     --border-color: #555;
     --text-primary: #e0e0e0;
     --text-secondary: #999;
-    
+
     /* v1.6.4.10 - Issue #5/#6: Orphaned/Closed tab colors (dark mode) */
     --orphaned-bg: #3e2723;
     --orphaned-text: #ffb74d;
     --closed-bg: #333;
     --closed-text: #757575;
     --warning-color: #ffb74d;
-    
+
     /* v1.6.4.10 - Issue #3: Visual hierarchy (dark mode) */
     --group-content-border: #444;
     --group-content-bg: rgba(255, 255, 255, 0.03);
-    
+
     /* v1.6.4.10 - Issue #8: Divider styling (dark mode) */
     --divider-color: #444;
-    
+
     /* v1.6.4.10 - Issue #2: Count badge styling (dark mode) */
     --count-badge-bg: #1a237e;
     --count-badge-text: #90caf9;
@@ -225,7 +231,8 @@ html {
 }
 
 @keyframes pulse-warning {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -285,30 +292,30 @@ html {
 
 /* v1.6.4 - UI Fix: Button colors */
 /* Restore button - green arrow */
-.btn-icon[data-action="restore"] {
+.btn-icon[data-action='restore'] {
   color: #4caf50;
 }
 
 /* Close button - light gray */
-.btn-icon[data-action="close"] {
+.btn-icon[data-action='close'] {
   color: #999;
 }
 
-.btn-icon[data-action="close"]:hover {
+.btn-icon[data-action='close']:hover {
   color: #f44336;
   background: rgba(244, 67, 54, 0.1);
 }
 
 /* v1.6.3.7-v1 - FIX ISSUE #8: Adopt button for orphaned tabs */
 .btn-icon.btn-adopt,
-.btn-icon[data-action="adoptToCurrentTab"] {
+.btn-icon[data-action='adoptToCurrentTab'] {
   color: var(--orphaned-text);
   background: var(--orphaned-bg);
   border: 1px solid var(--warning-color);
 }
 
 .btn-icon.btn-adopt:hover,
-.btn-icon[data-action="adoptToCurrentTab"]:hover {
+.btn-icon[data-action='adoptToCurrentTab']:hover {
   background: rgba(255, 152, 0, 0.2);
   color: #e65100;
 }
@@ -337,8 +344,9 @@ html {
 .tab-group {
   border-bottom: 1px solid var(--border-color);
   /* Issue #7: Smooth removal animation */
-  transition: opacity var(--animation-duration) var(--animation-timing),
-              max-height var(--animation-duration) var(--animation-timing);
+  transition:
+    opacity var(--animation-duration) var(--animation-timing),
+    max-height var(--animation-duration) var(--animation-timing);
 }
 
 .tab-group:last-child {
@@ -383,8 +391,9 @@ html {
   content: '▼';
   font-size: 12px; /* Issue #4: Increased from 10px */
   color: var(--text-secondary);
-  transition: transform var(--animation-duration) var(--animation-timing),
-              color 0.2s ease; /* Issue #4: Also animate color */
+  transition:
+    transform var(--animation-duration) var(--animation-timing),
+    color 0.2s ease; /* Issue #4: Also animate color */
   flex-shrink: 0;
   width: 14px;
   text-align: center;
@@ -409,12 +418,25 @@ html {
   object-fit: contain;
 }
 
-/* Issue #9: Favicon fallback emoji styling */
+/* Issue #4: Favicon container class-based styling (no inline styles needed)
+ * v1.6.3.6-v11 - FIX Issue #4: Both image and fallback use identical CSS constraints
+ */
+.tab-favicon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+/* Issue #4/#9: Favicon fallback emoji styling - hidden by default */
 .tab-favicon-fallback {
   font-size: 14px;
   width: 16px;
   height: 16px;
-  display: inline-flex;
+  display: none; /* Issue #4: Hidden by default, shown via .visible class */
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -422,6 +444,11 @@ html {
   line-height: 1;
   /* Issue #9: Ensure emoji doesn't overflow */
   overflow: hidden;
+}
+
+/* Issue #4: Fallback visible state (toggled via JS using class only, no inline display) */
+.tab-favicon-fallback.visible {
+  display: inline-flex;
 }
 
 /* Truncated tab title */
@@ -499,7 +526,9 @@ html {
   min-width: 20px;
   text-align: center;
   /* Issue #10: Subtle transition for count updates */
-  transition: transform 0.2s ease, background-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease;
 }
 
 /* Issue #10: Visual feedback when count changes */
@@ -507,6 +536,15 @@ html {
   transform: scale(1.1);
   background-color: var(--blue-primary);
   color: white;
+}
+
+/* v1.6.3.6-v11 - Issue #20: Direction-specific animation */
+.tab-group-count.count-increased {
+  background-color: var(--green-indicator);
+}
+
+.tab-group-count.count-decreased {
+  background-color: var(--warning-color);
 }
 
 /* Issue #3: Visual hierarchy - Indented Quick Tab list with container effect */
@@ -522,9 +560,10 @@ html {
   border-bottom-left-radius: 4px;
   /* Issue #12: Animation support */
   overflow: hidden;
-  transition: max-height var(--animation-duration) var(--animation-timing),
-              opacity var(--animation-duration) var(--animation-timing),
-              padding var(--animation-duration) var(--animation-timing);
+  transition:
+    max-height var(--animation-duration) var(--animation-timing),
+    opacity var(--animation-duration) var(--animation-timing),
+    padding var(--animation-duration) var(--animation-timing);
 }
 
 /* Issue #12: Collapsed state - smooth transition */
@@ -535,9 +574,10 @@ html {
   padding-top: 0;
   padding-bottom: 0;
   /* Issue #12: Ensure all properties transition together */
-  transition: max-height var(--animation-duration) var(--animation-timing),
-              opacity var(--animation-duration) var(--animation-timing),
-              padding var(--animation-duration) var(--animation-timing);
+  transition:
+    max-height var(--animation-duration) var(--animation-timing),
+    opacity var(--animation-duration) var(--animation-timing),
+    padding var(--animation-duration) var(--animation-timing);
 }
 
 /* Issue #12: Expanded state with animation */
@@ -545,9 +585,10 @@ html {
   opacity: 1;
   /* max-height managed by JS for smooth animation */
   /* Issue #12: Delay opacity slightly for stagger effect */
-  transition: max-height var(--animation-duration) var(--animation-timing),
-              opacity var(--animation-duration) var(--animation-timing) 0.05s,
-              padding var(--animation-duration) var(--animation-timing);
+  transition:
+    max-height var(--animation-duration) var(--animation-timing),
+    opacity var(--animation-duration) var(--animation-timing) 0.05s,
+    padding var(--animation-duration) var(--animation-timing);
 }
 
 /* Issue #12: Item entrance animation */
@@ -664,16 +705,16 @@ html {
     padding: 8px 12px;
     gap: 6px;
   }
-  
+
   .tab-group-content {
     padding-left: 20px;
     margin-left: 10px;
   }
-  
+
   .tab-group-tab-id {
     display: none; /* Hide tab ID on smaller widths */
   }
-  
+
   /* Issue #11: Reduce badge padding at this breakpoint */
   .tab-group-count {
     padding: 3px 8px;
@@ -685,16 +726,16 @@ html {
   .tab-group-header {
     padding: 7px 10px;
   }
-  
+
   .tab-group-content {
     padding-left: 18px;
     margin-left: 8px;
   }
-  
+
   .tab-group-title {
     font-size: 12px;
   }
-  
+
   .orphaned-badge,
   .closed-tab-badge {
     font-size: 9px;
@@ -708,65 +749,65 @@ html {
     padding: 6px 10px;
     gap: 4px;
   }
-  
+
   .tab-group-header::before {
     font-size: 10px;
     width: 12px;
   }
-  
+
   .tab-group-content {
     padding-left: 16px;
     margin-left: 8px;
     border-left-width: 2px; /* Issue #11: Thinner border */
   }
-  
+
   .tab-group-content .quick-tab-item {
     padding-left: 8px;
     padding-top: 8px;
     padding-bottom: 8px;
   }
-  
+
   .tab-group-title {
     font-size: 12px;
   }
-  
+
   .tab-group-count {
     font-size: 10px;
     padding: 2px 6px; /* Issue #11: Smaller padding */
     min-width: 16px;
   }
-  
+
   .tab-favicon,
   .tab-favicon-fallback {
     width: 14px;
     height: 14px;
     font-size: 12px;
   }
-  
+
   .closed-tab-badge,
   .orphaned-badge {
     font-size: 9px;
     padding: 1px 4px;
     border-width: 0; /* Issue #11: Remove border at small sizes */
   }
-  
+
   /* Issue #11: Reduce button size */
   .tab-actions .btn-icon {
     width: 20px;
     height: 20px;
     font-size: 10px;
   }
-  
+
   /* Issue #11: Hide secondary metadata */
   .tab-meta {
     display: none;
   }
-  
+
   .section-divider::after {
     font-size: 8px;
     padding: 0 6px;
   }
-  
+
   /* Issue #11: Smaller section headers */
   .section-header {
     font-size: 9px;
@@ -779,46 +820,46 @@ html {
   .tab-group-header {
     padding: 5px 8px;
   }
-  
+
   .tab-group-content {
     padding-left: 12px;
     margin-left: 6px;
     padding-top: 4px;
     padding-bottom: 4px;
   }
-  
+
   .tab-favicon,
   .tab-favicon-fallback,
   .tab-favicon-container {
     display: none !important; /* Issue #11: Hide favicon on very narrow */
   }
-  
+
   .tab-group-count {
     padding: 1px 4px;
     font-size: 9px;
   }
-  
+
   .closed-tab-badge,
   .orphaned-badge {
     display: none; /* Issue #11: Hide badges on very narrow */
   }
-  
+
   /* Issue #11: Smaller title */
   .tab-group-title {
     font-size: 11px;
   }
-  
+
   /* Issue #11: Smaller arrow */
   .tab-group-header::before {
     font-size: 9px;
     width: 10px;
   }
-  
+
   /* Issue #11: Hide section headers */
   .section-header {
     display: none;
   }
-  
+
   /* Issue #11: Simpler divider */
   .section-divider::after {
     display: none;
@@ -831,7 +872,7 @@ html {
     padding-left: 32px;
     margin-left: 16px;
   }
-  
+
   .tab-group-content .quick-tab-item {
     padding-left: 16px;
   }

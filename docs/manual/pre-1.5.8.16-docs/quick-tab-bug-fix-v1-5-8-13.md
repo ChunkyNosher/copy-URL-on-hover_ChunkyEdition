@@ -353,7 +353,9 @@ browser.storage.local.clear();
 // ✅ REPLACE WITH:
 async function clearAllQuickTabsIfRequested(userRequested = false) {
   if (!userRequested) {
-    console.warn('[Background] Attempted to clear storage without user request');
+    console.warn(
+      '[Background] Attempted to clear storage without user request'
+    );
     return;
   }
 
@@ -401,7 +403,12 @@ async function saveQuickTabsToStorage() {
     const saveId = generateSaveId();
     currentSaveId = saveId;
 
-    console.log('[DEBUG] Saving Quick Tabs, saveId:', saveId, 'count:', quickTabWindows.length);
+    console.log(
+      '[DEBUG] Saving Quick Tabs, saveId:',
+      saveId,
+      'count:',
+      quickTabWindows.length
+    );
 
     const state = {
       tabs: quickTabWindows.map(container => {
@@ -416,7 +423,8 @@ async function saveQuickTabsToStorage() {
           minimized: false,
           pinnedToUrl: container.dataset.pinnedToUrl || null,
           title:
-            container.querySelector('.copy-url-quicktab-titlebar span')?.textContent || 'Quick Tab'
+            container.querySelector('.copy-url-quicktab-titlebar span')
+              ?.textContent || 'Quick Tab'
         };
       }),
       minimizedTabs: minimizedTabs.map(tab => ({ ...tab })),
@@ -455,11 +463,19 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   const newState = changes.quick_tabs_state_v2.newValue;
   const oldState = changes.quick_tabs_state_v2.oldValue;
 
-  console.log('[DEBUG] Storage changed, saveId:', newState?.saveId, 'current:', currentSaveId);
+  console.log(
+    '[DEBUG] Storage changed, saveId:',
+    newState?.saveId,
+    'current:',
+    currentSaveId
+  );
 
   // CRITICAL: Ignore our own saves
   if (newState && newState.saveId === currentSaveId) {
-    console.log('[QuickTabsManager] Ignoring own save operation:', newState.saveId);
+    console.log(
+      '[QuickTabsManager] Ignoring own save operation:',
+      newState.saveId
+    );
     return;
   }
 

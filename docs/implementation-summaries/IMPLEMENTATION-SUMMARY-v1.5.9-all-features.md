@@ -16,8 +16,9 @@
 **Labels**: enhancement, feature, utility  
 **Source**: `console-log-export-implementation.md`
 
-**Description**:
-Add functionality to export all extension console logs (from both content scripts and background scripts) to a downloadable .txt file. This will help users debug issues and provide better bug reports.
+**Description**: Add functionality to export all extension console logs (from
+both content scripts and background scripts) to a downloadable .txt file. This
+will help users debug issues and provide better bug reports.
 
 **Implementation Requirements**:
 
@@ -43,16 +44,19 @@ Add functionality to export all extension console logs (from both content script
 **Labels**: enhancement, feature, firefox-containers, isolation  
 **Source**: `container-isolation.md`
 
-**Description**:
-Integrate Firefox Container Tabs API to achieve complete Quick Tab isolation by container. Quick Tabs created in one container should only appear in tabs within that same container.
+**Description**: Integrate Firefox Container Tabs API to achieve complete Quick
+Tab isolation by container. Quick Tabs created in one container should only
+appear in tabs within that same container.
 
 **Implementation Requirements**:
 
 - Add `src/utils/container-utils.js` - Container detection and info utilities
 - Add `src/core/container-state-manager.js` - Container-aware state management
-- Update storage schema from `quick_tabs_state_v2` to `quick_tabs_state_v3` (container-keyed)
+- Update storage schema from `quick_tabs_state_v2` to `quick_tabs_state_v3`
+  (container-keyed)
 - Filter BroadcastChannel messages by cookieStoreId
-- Update Quick Tab Manager to show container-specific tabs with visual indicators
+- Update Quick Tab Manager to show container-specific tabs with visual
+  indicators
 - Add migration script from v2 to v3 storage format
 
 **Storage Format (v3)**:
@@ -93,11 +97,12 @@ Integrate Firefox Container Tabs API to achieve complete Quick Tab isolation by 
 **Labels**: bug, quick-tabs, ui  
 **Source**: `quick-tab-bugs-fixes.md`
 
-**Description**:
-When opening a Quick Tab using the keyboard shortcut, the iframe briefly flashes in the top-left corner (~1ms) before moving to its intended position.
+**Description**: When opening a Quick Tab using the keyboard shortcut, the
+iframe briefly flashes in the top-left corner (~1ms) before moving to its
+intended position.
 
-**Root Cause**:
-Quick Tab iframe is appended to DOM with default positioning (0,0) before position is calculated and applied.
+**Root Cause**: Quick Tab iframe is appended to DOM with default positioning
+(0,0) before position is calculated and applied.
 
 **Fix Strategy**:
 
@@ -132,8 +137,8 @@ requestAnimationFrame(() => (quickTab.style.visibility = 'visible'));
 **Labels**: enhancement, feature, notifications, ux  
 **Source**: `quick-tab-bugs-fixes.md`
 
-**Description**:
-Allow users to configure different notification styles for different events:
+**Description**: Allow users to configure different notification styles for
+different events:
 
 - **Quick Tab opened**: Slide animation in top-right corner (preferred)
 - **URL copied**: Pop-up animation at tooltip/cursor position (preferred)
@@ -142,7 +147,8 @@ Allow users to configure different notification styles for different events:
 
 - Create notification configuration system with per-event settings
 - Support multiple animation types: fade, slide, pop-up, bounce
-- Support multiple positions: top-left, top-right, bottom-left, bottom-right, tooltip/cursor
+- Support multiple positions: top-left, top-right, bottom-left, bottom-right,
+  tooltip/cursor
 - Add settings UI in popup.html Appearance tab
 - Create `src/ui/notification-animations.js` module
 
@@ -184,14 +190,15 @@ NOTIFICATION_CONFIGS = {
 **Labels**: bug, ui, settings  
 **Source**: `quick-tab-bugs-fixes.md`
 
-**Description**:
-The color picker input in the Appearance tab opens the browser's native color picker dialog, which causes the extension popup to close, making it impossible to save the selected color.
+**Description**: The color picker input in the Appearance tab opens the
+browser's native color picker dialog, which causes the extension popup to close,
+making it impossible to save the selected color.
 
-**Root Cause**:
-Native `<input type="color">` opens system dialog that causes popup to lose focus and close.
+**Root Cause**: Native `<input type="color">` opens system dialog that causes
+popup to lose focus and close.
 
-**Fix Strategy (Option A - Recommended)**:
-Replace native color input with custom in-popup color picker using Pickr library.
+**Fix Strategy (Option A - Recommended)**: Replace native color input with
+custom in-popup color picker using Pickr library.
 
 **Implementation**:
 
@@ -208,8 +215,8 @@ Replace native color input with custom in-popup color picker using Pickr library
 - `popup.js` - Initialize Pickr color picker
 - `popup.css` - Style Pickr theme
 
-**Alternative (Option B - Simpler)**:
-Remove color picker button, use hex-only input with live preview swatch.
+**Alternative (Option B - Simpler)**: Remove color picker button, use hex-only
+input with live preview swatch.
 
 ---
 
@@ -219,13 +226,15 @@ Remove color picker button, use hex-only input with live preview swatch.
 **Labels**: enhancement, feature, ux  
 **Source**: `quick-tab-bugs-fixes.md`
 
-**Description**:
-The Quick Tab Manager displays "Press Q while hovering over a link" even when the user has changed the shortcut. The message should dynamically reflect the configured shortcut.
+**Description**: The Quick Tab Manager displays "Press Q while hovering over a
+link" even when the user has changed the shortcut. The message should
+dynamically reflect the configured shortcut.
 
 **Implementation**:
 
 1. Add `getQuickTabShortcut()` function to read from settings
-2. Add `formatShortcutDisplay()` to format as human-readable string (e.g., "Ctrl+Q")
+2. Add `formatShortcutDisplay()` to format as human-readable string (e.g.,
+   "Ctrl+Q")
 3. Update Quick Tab Manager empty state message with dynamic shortcut
 4. Listen for storage changes to update message in real-time
 
@@ -248,11 +257,13 @@ The Quick Tab Manager displays "Press Q while hovering over a link" even when th
 **Labels**: bug, quick-tabs-manager, sync  
 **Source**: `quick-tab-manager-fixes-v1-5-8-16.md`
 
-**Description**:
-When user moves or resizes the Quick Tab Manager panel in Tab 1, then switches to Tab 2, the panel's position and size in Tab 2 do not reflect the changes made in Tab 1.
+**Description**: When user moves or resizes the Quick Tab Manager panel in Tab
+1, then switches to Tab 2, the panel's position and size in Tab 2 do not reflect
+the changes made in Tab 1.
 
-**Root Cause**:
-Panel state is saved to `browser.storage.local` but there's no BroadcastChannel or cross-tab messaging to notify other tabs of position/size changes.
+**Root Cause**: Panel state is saved to `browser.storage.local` but there's no
+BroadcastChannel or cross-tab messaging to notify other tabs of position/size
+changes.
 
 **Fix Strategy**:
 
@@ -269,7 +280,12 @@ const quickTabPanelChannel = new BroadcastChannel('quick-tab-panel-sync');
 
 quickTabPanelChannel.onmessage = event => {
   if (event.data.action === 'updatePanelState') {
-    applyPanelPosition(event.data.left, event.data.top, event.data.width, event.data.height);
+    applyPanelPosition(
+      event.data.left,
+      event.data.top,
+      event.data.width,
+      event.data.height
+    );
   }
 };
 
@@ -293,14 +309,17 @@ function savePanelState() {
 **Labels**: bug, quick-tabs-manager, ui  
 **Source**: `quick-tab-manager-fixes-v1-5-8-16.md`
 
-**Description**:
-When a Quick Tab is minimized, it should appear in the Quick Tab Manager with a **yellow** indicator, but currently shows a **green** indicator (which means active).
+**Description**: When a Quick Tab is minimized, it should appear in the Quick
+Tab Manager with a **yellow** indicator, but currently shows a **green**
+indicator (which means active).
 
-**Root Cause**:
-When `minimizeQuickTab()` is called, the state is saved with `minimized: true` via the save queue system, which batches updates every 50ms. The sidebar panel polls storage every 2 seconds, so there's a delay of up to 2+ seconds before the UI updates.
+**Root Cause**: When `minimizeQuickTab()` is called, the state is saved with
+`minimized: true` via the save queue system, which batches updates every 50ms.
+The sidebar panel polls storage every 2 seconds, so there's a delay of up to 2+
+seconds before the UI updates.
 
-**Fix Strategy**:
-Force immediate storage update when minimizing (bypass save queue) to ensure sidebar's storage change listener fires immediately.
+**Fix Strategy**: Force immediate storage update when minimizing (bypass save
+queue) to ensure sidebar's storage change listener fires immediately.
 
 **Implementation**:
 
@@ -319,7 +338,8 @@ await browser.storage.sync.set({ quick_tabs_state_v2: state });
 **Files to Modify**:
 
 - `content-legacy.js` - Modify `minimizeQuickTab()` function
-- `sidebar/quick-tabs-manager.js` - Add deduplication logic to prevent showing same tab twice
+- `sidebar/quick-tabs-manager.js` - Add deduplication logic to prevent showing
+  same tab twice
 
 ---
 
@@ -329,15 +349,18 @@ await browser.storage.sync.set({ quick_tabs_state_v2: state });
 **Labels**: bug, quick-tabs, restore  
 **Source**: `quick-tab-manager-fixes-v1-5-8-16.md`
 
-**Description**:
-When restoring a minimized Quick Tab, it should reappear at its original position and size, but currently appears at the default position.
+**Description**: When restoring a minimized Quick Tab, it should reappear at its
+original position and size, but currently appears at the default position.
 
-**Root Cause Analysis**:
-The `restoreQuickTab()` function correctly passes `tab.left` and `tab.top` to `createQuickTabWindow()`, but if these values are undefined (e.g., from old storage format or save queue failure), the function uses default positioning.
+**Root Cause Analysis**: The `restoreQuickTab()` function correctly passes
+`tab.left` and `tab.top` to `createQuickTabWindow()`, but if these values are
+undefined (e.g., from old storage format or save queue failure), the function
+uses default positioning.
 
 **Fix Strategy**:
 
-1. Ensure position data is always saved when minimizing (already fixed by Issue #8)
+1. Ensure position data is always saved when minimizing (already fixed by Issue
+   #8)
 2. Add defensive logging when position data is missing
 3. Add migration for old Quick Tabs without position data
 
@@ -346,7 +369,9 @@ The `restoreQuickTab()` function correctly passes `tab.left` and `tab.top` to `c
 ```javascript
 // In restoreQuickTab()
 if (tab.left === undefined || tab.top === undefined) {
-  console.warn(`[RESTORE] Quick Tab ${tab.id} has no stored position - using default`);
+  console.warn(
+    `[RESTORE] Quick Tab ${tab.id} has no stored position - using default`
+  );
 }
 
 createQuickTabWindow(
@@ -373,19 +398,25 @@ createQuickTabWindow(
 **Labels**: enhancement, feature, zen-browser, split-view  
 **Source**: `zen-browser-split-view-implementation-plan.md`
 
-**Description**:
-Add advanced Quick Tab behavior for Zen Browser's Split View feature:
+**Description**: Add advanced Quick Tab behavior for Zen Browser's Split View
+feature:
 
-**R1**: Quick Tabs opened in normal Tab 1 should appear in Tab 2/3 but NOT in Split View tabs  
-**R2**: Quick Tabs opened in Split View Tab 1-1 should only appear in that specific split pane  
-**R3**: Quick Tab Manager should follow focus in Split View (only visible in focused pane)  
-**R4**: Quick Tab Manager position should persist across tab/split view transitions
+**R1**: Quick Tabs opened in normal Tab 1 should appear in Tab 2/3 but NOT in
+Split View tabs  
+**R2**: Quick Tabs opened in Split View Tab 1-1 should only appear in that
+specific split pane  
+**R3**: Quick Tab Manager should follow focus in Split View (only visible in
+focused pane)  
+**R4**: Quick Tab Manager position should persist across tab/split view
+transitions
 
 **Implementation Requirements**:
 
-1. Create `src/utils/split-view-detector.js` - Detect Zen Browser split panes via DOM
+1. Create `src/utils/split-view-detector.js` - Detect Zen Browser split panes
+   via DOM
 2. Add split pane ID generation (e.g., `tab_2_pane_1`)
-3. Add `sourceContext` to all broadcast messages: `{ browserTabId, isSplitView, splitPaneId }`
+3. Add `sourceContext` to all broadcast messages:
+   `{ browserTabId, isSplitView, splitPaneId }`
 4. Implement `shouldAcceptBroadcast(source, receiver)` filtering function
 5. Create `src/utils/focus-tracker.js` - Track which split pane has focus
 6. Implement focus-based Quick Tab Manager visibility toggling
@@ -421,17 +452,17 @@ Add advanced Quick Tab behavior for Zen Browser's Split View feature:
 **Labels**: enhancement, feature, zen-browser, split-view, ux  
 **Source**: `zen-browser-split-view-implementation-plan.md`
 
-**Description**:
-Part of Zen Browser Split View support (see Issue #10).
+**Description**: Part of Zen Browser Split View support (see Issue #10).
 
-When the Quick Tab Manager is open in Split View Tab 1-1 and user clicks on Split View Tab 1-2, the panel should:
+When the Quick Tab Manager is open in Split View Tab 1-1 and user clicks on
+Split View Tab 1-2, the panel should:
 
 1. Hide in pane 1-1
 2. Show in pane 1-2 at the same relative position
 3. Only be visible in one pane at a time (spotlight behavior)
 
-**Implementation**:
-Uses FocusTracker from Issue #10 to detect pane switches and toggle panel visibility accordingly.
+**Implementation**: Uses FocusTracker from Issue #10 to detect pane switches and
+toggle panel visibility accordingly.
 
 ---
 
@@ -441,10 +472,11 @@ Uses FocusTracker from Issue #10 to detect pane switches and toggle panel visibi
 **Labels**: enhancement, feature, position-sync  
 **Source**: `zen-browser-split-view-implementation-plan.md`
 
-**Description**:
-Part of Zen Browser Split View support (see Issue #10).
+**Description**: Part of Zen Browser Split View support (see Issue #10).
 
-Store Quick Tab Manager position as **relative percentages** instead of absolute pixels, so when switching between tabs/split views with different viewport sizes, the panel maintains its visual location (e.g., "top-right corner").
+Store Quick Tab Manager position as **relative percentages** instead of absolute
+pixels, so when switching between tabs/split views with different viewport
+sizes, the panel maintains its visual location (e.g., "top-right corner").
 
 **Storage Format**:
 

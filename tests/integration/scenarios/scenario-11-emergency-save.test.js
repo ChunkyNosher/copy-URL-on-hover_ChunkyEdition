@@ -1,13 +1,13 @@
 /**
  * Scenario 11: Emergency Position/Size Save on Tab Switch
- * 
+ *
  * Tests that Quick Tab position/size is saved even during rapid tab switching
  * (emergency save mechanism) to prevent data loss.
- * 
+ *
  * Related Documentation:
  * - docs/issue-47-revised-scenarios.md (Scenario 11)
  * - docs/manual/v1.6.0/remaining-testing-work.md (Priority 1)
- * 
+ *
  * Covers Issues: #35, #51 (position/size not transferring between tabs)
  */
 
@@ -84,11 +84,11 @@ describe('Scenario 11: Emergency Save Protocol', () => {
 
     channels.forEach((sourceChannel, sourceIndex) => {
       const originalPostMessage = sourceChannel.postMessage;
-      sourceChannel.postMessage = jest.fn((message) => {
+      sourceChannel.postMessage = jest.fn(message => {
         if (originalPostMessage && originalPostMessage.mock) {
           originalPostMessage(message);
         }
-        
+
         setTimeout(() => {
           channels.forEach((targetChannel, targetIndex) => {
             if (sourceIndex !== targetIndex && targetChannel.onmessage) {
@@ -117,16 +117,18 @@ describe('Scenario 11: Emergency Save Protocol', () => {
       });
 
       stateManagers[0].add(qt);
-      stateManagers[1].add(new QuickTab({
-        id: qt.id,
-        url: qt.url,
-        position: { ...qt.position },
-        size: { ...qt.size },
-        container: qt.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt.id,
+          url: qt.url,
+          position: { ...qt.position },
+          size: { ...qt.size },
+          container: qt.container
+        })
+      );
 
       // Setup position update handler
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION') {
           const qtInB = stateManagers[1].get(message.data.id);
           if (qtInB) {
@@ -169,16 +171,18 @@ describe('Scenario 11: Emergency Save Protocol', () => {
       });
 
       stateManagers[0].add(qt);
-      stateManagers[1].add(new QuickTab({
-        id: qt.id,
-        url: qt.url,
-        position: { ...qt.position },
-        size: { ...qt.size },
-        container: qt.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt.id,
+          url: qt.url,
+          position: { ...qt.position },
+          size: { ...qt.size },
+          container: qt.container
+        })
+      );
 
       const positionUpdates = [];
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION') {
           positionUpdates.push({
             left: message.data.left,
@@ -218,7 +222,7 @@ describe('Scenario 11: Emergency Save Protocol', () => {
 
       // Verify updates received (may coalesce due to rapid broadcasts)
       expect(positionUpdates.length).toBeGreaterThan(0);
-      
+
       // Verify at least the first update was captured
       expect(positionUpdates[0]).toEqual({ left: 200, top: 200 });
 
@@ -240,16 +244,18 @@ describe('Scenario 11: Emergency Save Protocol', () => {
       });
 
       stateManagers[0].add(qt);
-      stateManagers[1].add(new QuickTab({
-        id: qt.id,
-        url: qt.url,
-        position: { ...qt.position },
-        size: { ...qt.size },
-        container: qt.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt.id,
+          url: qt.url,
+          position: { ...qt.position },
+          size: { ...qt.size },
+          container: qt.container
+        })
+      );
 
       // Setup size update handler
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_SIZE') {
           const qtInB = stateManagers[1].get(message.data.id);
           if (qtInB) {
@@ -294,16 +300,18 @@ describe('Scenario 11: Emergency Save Protocol', () => {
       });
 
       stateManagers[0].add(qt);
-      stateManagers[1].add(new QuickTab({
-        id: qt.id,
-        url: qt.url,
-        position: { ...qt.position },
-        size: { ...qt.size },
-        container: qt.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt.id,
+          url: qt.url,
+          position: { ...qt.position },
+          size: { ...qt.size },
+          container: qt.container
+        })
+      );
 
       // Setup handlers
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         const qtInB = stateManagers[1].get(message.data.id);
         if (!qtInB) return;
 
@@ -352,16 +360,18 @@ describe('Scenario 11: Emergency Save Protocol', () => {
       });
 
       stateManagers[0].add(qt);
-      stateManagers[1].add(new QuickTab({
-        id: qt.id,
-        url: qt.url,
-        position: { ...qt.position },
-        size: { ...qt.size },
-        container: qt.container
-      }));
+      stateManagers[1].add(
+        new QuickTab({
+          id: qt.id,
+          url: qt.url,
+          position: { ...qt.position },
+          size: { ...qt.size },
+          container: qt.container
+        })
+      );
 
       let updateCount = 0;
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION' || message.type === 'UPDATE_SIZE') {
           updateCount++;
         }
@@ -399,7 +409,7 @@ describe('Scenario 11: Emergency Save Protocol', () => {
 
       // Setup handler that will receive broadcast but QT doesn't exist yet
       let receivedUpdate = false;
-      eventBuses[1].on('broadcast:received', (message) => {
+      eventBuses[1].on('broadcast:received', message => {
         if (message.type === 'UPDATE_POSITION') {
           receivedUpdate = true;
           // Try to get non-existent QT
@@ -432,20 +442,22 @@ describe('Scenario 11: Emergency Save Protocol', () => {
 
       // Add to all tabs
       stateManagers.forEach(sm => {
-        sm.add(new QuickTab({
-          id: qt.id,
-          url: qt.url,
-          position: { ...qt.position },
-          size: { ...qt.size },
-          container: qt.container
-        }));
+        sm.add(
+          new QuickTab({
+            id: qt.id,
+            url: qt.url,
+            position: { ...qt.position },
+            size: { ...qt.size },
+            container: qt.container
+          })
+        );
       });
 
       const updatesReceived = [[], [], []];
 
       // Setup handlers on all tabs
       eventBuses.forEach((bus, idx) => {
-        bus.on('broadcast:received', (message) => {
+        bus.on('broadcast:received', message => {
           if (message.type === 'UPDATE_POSITION') {
             updatesReceived[idx].push(message.data);
           }

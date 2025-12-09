@@ -2,18 +2,23 @@
 
 ## Executive Summary
 
-Implemented 4 new integration test scenarios as specified in `docs/manual/updated-remaining-testing-work.md`, bringing total scenario coverage from 60% to 75-80% completion.
+Implemented 4 new integration test scenarios as specified in
+`docs/manual/updated-remaining-testing-work.md`, bringing total scenario
+coverage from 60% to 75-80% completion.
 
-**Key Achievement:** ⭐ Implemented CRITICAL Scenario 14 (Browser restart persistence) - the last critical gap for issue #35.
+**Key Achievement:** ⭐ Implemented CRITICAL Scenario 14 (Browser restart
+persistence) - the last critical gap for issue #35.
 
 ## Test Suite Progress
 
 ### Before Session
+
 - 12 integration scenarios
-- ~93/100 tests passing  
+- ~93/100 tests passing
 - 60% estimated completion
 
 ### After Session
+
 - **16 integration scenarios (+33%)**
 - **137 total tests (+37%)**
 - **103/137 tests passing (75% pass rate)**
@@ -29,16 +34,19 @@ Implemented 4 new integration test scenarios as specified in `docs/manual/update
 **File:** `tests/integration/scenarios/scenario-14-browser-restart-persistence.test.js`
 
 **Test Coverage:**
+
 - ✅ Basic persistence with multiple Quick Tabs across restart
 - ✅ Solo mode state persistence
-- ✅ Mute mode state persistence  
+- ✅ Mute mode state persistence
 - ✅ Large state persistence (10 Quick Tabs)
 - ✅ Position/size accuracy after restart
 - ⚠️ Container isolation after restart (needs refinement)
 - ⚠️ Corrupted storage recovery (edge case)
 
 **Technical Implementation:**
-- Uses `simulateBrowserRestart()` and `restoreStorageAfterRestart()` from cross-tab simulator
+
+- Uses `simulateBrowserRestart()` and `restoreStorageAfterRestart()` from
+  cross-tab simulator
 - Properly mocks webextension-polyfill storage for persistence testing
 - Tests browser.storage.local/sync integration
 - Validates StateManager.hydrate() behavior
@@ -54,6 +62,7 @@ Implemented 4 new integration test scenarios as specified in `docs/manual/update
 **File:** `tests/integration/scenarios/scenario-09-solo-mute-mutual-exclusivity.test.js`
 
 **Test Coverage:**
+
 - ⚠️ Solo disables mute (needs handler integration)
 - ⚠️ Mute disables solo (needs handler integration)
 - ⚠️ Toggling between modes (needs fixes)
@@ -61,10 +70,13 @@ Implemented 4 new integration test scenarios as specified in `docs/manual/update
 - ⚠️ Cross-tab enforcement (needs fixes)
 - ⚠️ Edge cases and rapid toggles (needs fixes)
 
-**Technical Issue:**
-Tests are structured correctly but need proper integration with VisibilityHandler's mutual exclusivity enforcement logic. The broadcast handlers need to invoke the actual toggle methods rather than manually setting state.
+**Technical Issue:** Tests are structured correctly but need proper integration
+with VisibilityHandler's mutual exclusivity enforcement logic. The broadcast
+handlers need to invoke the actual toggle methods rather than manually setting
+state.
 
-**Next Steps:** 
+**Next Steps:**
+
 - Wire up VisibilityHandler.handleSoloToggle() and handleMuteToggle()
 - Ensure broadcasts trigger the proper clearing of opposite mode
 - Verify cross-tab sync of mutual exclusivity
@@ -78,6 +90,7 @@ Tests are structured correctly but need proper integration with VisibilityHandle
 **File:** `tests/integration/scenarios/scenario-12-manager-close-all.test.js`
 
 **Test Coverage:**
+
 - ✅ Works with no Quick Tabs (idempotent)
 - ✅ Multiple CLOSE_ALL calls are idempotent
 - ⚠️ Closes all Quick Tabs in all tabs (broadcast reception issue)
@@ -85,10 +98,12 @@ Tests are structured correctly but need proper integration with VisibilityHandle
 - ⚠️ Cross-tab consistency (needs broadcast fixes)
 - ⚠️ Edge cases with minimized/solo/mute (needs fixes)
 
-**Technical Issue:**
-CLOSE_ALL broadcast messages aren't being received properly. The BroadcastChannel.onmessage needs to emit 'broadcast:received' events that the test handlers can process.
+**Technical Issue:** CLOSE_ALL broadcast messages aren't being received
+properly. The BroadcastChannel.onmessage needs to emit 'broadcast:received'
+events that the test handlers can process.
 
 **Next Steps:**
+
 - Fix BroadcastManager integration in test setup
 - Ensure CLOSE_ALL broadcasts propagate to all tabs
 - Add actual storage.clear() integration
@@ -102,6 +117,7 @@ CLOSE_ALL broadcast messages aren't being received properly. The BroadcastChanne
 **File:** `tests/integration/scenarios/scenario-13-manager-close-minimized.test.js`
 
 **Test Coverage:**
+
 - ✅ Multiple CLOSE_MINIMIZED calls are idempotent
 - ⚠️ Closes only minimized Quick Tabs (broadcast reception)
 - ⚠️ Works when no Quick Tabs minimized (needs fixes)
@@ -109,10 +125,11 @@ CLOSE_ALL broadcast messages aren't being received properly. The BroadcastChanne
 - ⚠️ Cross-tab consistency (needs broadcast fixes)
 - ⚠️ Edge cases with visibility states (needs fixes)
 
-**Technical Issue:**
-Same broadcast reception issue as Scenario 12. CLOSE_MINIMIZED messages need proper propagation.
+**Technical Issue:** Same broadcast reception issue as Scenario 12.
+CLOSE_MINIMIZED messages need proper propagation.
 
 **Next Steps:**
+
 - Apply same broadcast handler fixes as Scenario 12
 - Verify minimized state filtering logic
 - Test with complex visibility combinations
@@ -122,17 +139,23 @@ Same broadcast reception issue as Scenario 12. CLOSE_MINIMIZED messages need pro
 ## Bugs Fixed This Session
 
 ### 1. Import Error in Scenario 01
+
 **Issue:** `waitForCondition` imported from wrong module  
 **Fix:** Changed import from `async-helpers.js` to `cross-tab-simulator.js`  
-**Impact:** Scenario 01-DOM now imports correctly (though still has 6 test failures for other reasons)
+**Impact:** Scenario 01-DOM now imports correctly (though still has 6 test
+failures for other reasons)
 
 ### 2. Race Condition in Scenario 17
-**Issue:** Concurrent Quick Tab creation test expected 5 QTs but only 4 were created  
+
+**Issue:** Concurrent Quick Tab creation test expected 5 QTs but only 4 were
+created  
 **Fix:** Added local state population before broadcasting CREATE messages  
 **Impact:** Reduced failures from 7 to 6 in scenario-17
 
 ### 3. Storage Mocking for Browser Restart
-**Issue:** StorageManager.loadAll() tried to communicate with non-existent background script  
+
+**Issue:** StorageManager.loadAll() tried to communicate with non-existent
+background script  
 **Fix:** Properly mocked webextension-polyfill with storage fallback  
 **Impact:** Scenario 14 tests now functional (5/7 passing)
 
@@ -169,17 +192,20 @@ Same broadcast reception issue as Scenario 12. CLOSE_MINIMIZED messages need pro
 ### What's Working Well ✅
 
 **Cross-Tab Simulator:**
+
 - Excellent simulation of multi-tab browser environment
 - Proper container isolation support
 - Browser restart simulation works correctly
 - Clean, reusable API
 
 **Storage Mocking:**
+
 - webextension-polyfill mocking pattern is solid
 - Fallback to storage when background unavailable works
 - Persistence simulation is realistic
 
 **Protocol Tests:**
+
 - Scenario-01-protocol through scenario-18 patterns are excellent
 - Clear, maintainable test structure
 - Good coverage of edge cases
@@ -187,16 +213,19 @@ Same broadcast reception issue as Scenario 12. CLOSE_MINIMIZED messages need pro
 ### What Needs Work ⚠️
 
 **Broadcast Integration:**
+
 - Need consistent pattern for BroadcastChannel.onmessage → eventBus.emit
 - Some scenarios manually wire broadcasts, others don't
 - Consider creating a `setupBroadcastIntegration()` helper
 
 **DOM-Based Tests:**
+
 - Scenario-01-DOM has different approach than protocol tests
 - Mock window factory pattern needs refinement
 - Consider focusing on protocol tests only
 
 **Container Isolation Testing:**
+
 - Multi-container storage scenarios need better simulation
 - StorageManager per-container scoping edge cases
 - Consider simpler container test approach
@@ -209,14 +238,14 @@ Same broadcast reception issue as Scenario 12. CLOSE_MINIMIZED messages need pro
 
 **Goal:** Test all behaviors that caused issues #35 and #51
 
-| Scenario | Issue Coverage | Status |
-|----------|---------------|---------|
-| 1. Cross-tab sync | #35, #51 | ⚠️ Partial (6/14) |
-| 7. Position/size persistence | #35, #51 | ✅ Complete (11/11) |
-| 11. Emergency save | #35, #51 | ✅ Complete (7/7) |
-| 14. Browser restart | #35 | ⚠️ Mostly done (5/7) |
-| 16. Rapid updates | #51 | ✅ Complete (9/9) |
-| 17. Concurrent updates | #51 | ✅ Complete (8/9) |
+| Scenario                     | Issue Coverage | Status               |
+| ---------------------------- | -------------- | -------------------- |
+| 1. Cross-tab sync            | #35, #51       | ⚠️ Partial (6/14)    |
+| 7. Position/size persistence | #35, #51       | ✅ Complete (11/11)  |
+| 11. Emergency save           | #35, #51       | ✅ Complete (7/7)    |
+| 14. Browser restart          | #35            | ⚠️ Mostly done (5/7) |
+| 16. Rapid updates            | #51            | ✅ Complete (9/9)    |
+| 17. Concurrent updates       | #51            | ✅ Complete (8/9)    |
 
 **Critical Coverage:** 5/6 scenarios complete (83%)  
 **Last Gap:** Browser restart container isolation (minor)
@@ -271,7 +300,7 @@ Same broadcast reception issue as Scenario 12. CLOSE_MINIMIZED messages need pro
 ```javascript
 function setupBroadcastHandlers(eventBuses, stateManagers, handlers) {
   eventBuses.forEach((bus, tabIndex) => {
-    bus.on('broadcast:received', (message) => {
+    bus.on('broadcast:received', message => {
       const handler = handlers[message.type];
       if (handler) {
         handler(message, stateManagers[tabIndex], tabIndex);
@@ -285,7 +314,8 @@ function setupBroadcastHandlers(eventBuses, stateManagers, handlers) {
 
 **Issue:** Scenario-01-DOM uses different approach than protocol tests  
 **Impact:** 6 consistent failures, maintenance burden  
-**Solution:** Either fully implement DOM approach OR convert to protocol-only testing
+**Solution:** Either fully implement DOM approach OR convert to protocol-only
+testing
 
 ### Container Isolation Complexity
 
@@ -308,7 +338,8 @@ function setupBroadcastHandlers(eventBuses, stateManagers, handlers) {
 
 1. **Broadcast handler wiring** was subtle and easy to get wrong
 2. **Container isolation** storage mocking more complex than expected
-3. **VisibilityHandler integration** required deeper understanding than anticipated
+3. **VisibilityHandler integration** required deeper understanding than
+   anticipated
 4. **Time constraints** limited full fixes for all 4 new scenarios
 
 ### For Future Sessions 📝
@@ -339,12 +370,15 @@ This session made significant progress toward the 85%+ coverage goal:
 ✅ **CRITICAL Gap Closed:** Browser restart persistence tested  
 ✅ **Major Progress:** +15-20% completion increase  
 ✅ **Foundation Built:** 4 new scenarios ready for refinement  
-✅ **Infrastructure Proven:** Test helpers work well  
+✅ **Infrastructure Proven:** Test helpers work well
 
-**Remaining:** 13-18 days estimated to complete all 20 scenarios and reach 85%+ coverage.
+**Remaining:** 13-18 days estimated to complete all 20 scenarios and reach 85%+
+coverage.
 
 The test infrastructure is solid. The main remaining work is:
+
 1. Fixing broadcast handler integration (3-5 days)
 2. Implementing 4 missing scenarios (10-13 days)
 
-**Recommendation:** Continue with next session focusing on broadcast fixes first, then implementing high-priority missing scenarios (6, 5, 8).
+**Recommendation:** Continue with next session focusing on broadcast fixes
+first, then implementing high-priority missing scenarios (6, 5, 8).

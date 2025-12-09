@@ -19,12 +19,12 @@
  *   - Issue #1: Async Tab ID Race - Block writes with unknown tab ID instead of allowing
  *   - Issue #2: Circuit breaker to block all writes when pendingWriteCount > 15
  *   - Issue #4: Empty state corruption fixed by Issue #1's fail-closed approach
- * 
+ *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
  * - Self-write detection via writingInstanceId/writingTabId
  * - Transaction IDs tracked until storage.onChanged confirms processing
- * 
+ *
  * @module storage-utils
  */
 
@@ -183,12 +183,13 @@ let ownershipValidationEnabled = true;
 let writeCounter = 0; // v1.6.3.6-v2: Module-level counter for unique IDs
 const WRITING_INSTANCE_ID = (() => {
   // Use performance.now() for higher resolution than Date.now()
-  const highResTime = typeof performance !== 'undefined' && performance.now 
-    ? performance.now().toString(36).replace('.', '') 
-    : Date.now().toString(36);
+  const highResTime =
+    typeof performance !== 'undefined' && performance.now
+      ? performance.now().toString(36).replace('.', '')
+      : Date.now().toString(36);
   const timestamp = Date.now().toString(36);
   const randomPart1 = Math.random().toString(36).slice(2, 8);
-  
+
   // Use crypto.getRandomValues if available for additional entropy
   let randomPart2 = Math.random().toString(36).slice(2, 6);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
@@ -196,7 +197,7 @@ const WRITING_INSTANCE_ID = (() => {
     crypto.getRandomValues(array);
     randomPart2 = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
   }
-  
+
   return `inst-${timestamp}-${highResTime}-${randomPart1}-${randomPart2}`;
 })();
 
@@ -225,7 +226,7 @@ let currentWritingTabId = null;
  */
 async function initWritingTabId() {
   if (currentWritingTabId !== null) return currentWritingTabId;
-  
+
   try {
     const browserAPI = getBrowserStorageAPI();
     const tab = await _fetchCurrentTab(browserAPI);
@@ -236,7 +237,7 @@ async function initWritingTabId() {
   } catch (err) {
     console.warn('[StorageUtils] Could not get current tab ID:', err.message);
   }
-  
+
   return currentWritingTabId;
 }
 
@@ -277,7 +278,7 @@ function _isValidPositiveInteger(tabId) {
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Allow content scripts to set tab ID
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the tab ID from background script and pass it here.
- * 
+ *
  * @param {number} tabId - The browser tab ID to use for ownership tracking (must be positive integer)
  */
 export function setWritingTabId(tabId) {
@@ -291,7 +292,7 @@ export function setWritingTabId(tabId) {
     });
     return;
   }
-  
+
   const oldTabId = currentWritingTabId;
   currentWritingTabId = tabId;
   console.log('[StorageUtils] Writing tab ID set explicitly:', {
@@ -347,7 +348,7 @@ function _isMatchingTabId(writingTabId, currentTabId) {
  */
 export function isSelfWrite(newValue, currentTabId = null) {
   if (!newValue) return false;
-  
+
   // v1.6.3.6-v2 - FIX Issue #1: Check lastWrittenTransactionId first (most deterministic)
   if (_isMatchingTransactionId(newValue.transactionId)) {
     console.log('[StorageUtils] SKIPPED self-write (lastWrittenTransactionId matches):', {
@@ -355,7 +356,7 @@ export function isSelfWrite(newValue, currentTabId = null) {
     });
     return true;
   }
-  
+
   // Check instance ID (second most reliable)
   if (_isMatchingInstanceId(newValue.writingInstanceId)) {
     console.log('[StorageUtils] SKIPPED self-write (writingInstanceId matches):', {
@@ -364,7 +365,7 @@ export function isSelfWrite(newValue, currentTabId = null) {
     });
     return true;
   }
-  
+
   // Fall back to tab ID check
   if (_isMatchingTabId(newValue.writingTabId, currentTabId)) {
     console.log('[StorageUtils] SKIPPED self-write (writingTabId matches):', {
@@ -373,7 +374,7 @@ export function isSelfWrite(newValue, currentTabId = null) {
     });
     return true;
   }
-  
+
   return false;
 }
 
@@ -387,17 +388,17 @@ export function isSelfWrite(newValue, currentTabId = null) {
 export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
   // Get current tab ID
   const tabId = currentTabId ?? currentWritingTabId;
-  
+
   // If we don't have originTabId, we can't determine ownership - allow write
   if (tabData.originTabId === null || tabData.originTabId === undefined) {
     return true;
   }
-  
+
   // If we don't know our tab ID, allow write (can't validate)
   if (tabId === null) {
     return true;
   }
-  
+
   return tabData.originTabId === tabId;
 }
 
@@ -432,10 +433,14 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
       totalTabs: tabs.length,
       ownedTabs: ownedTabs.length,
       filteredOut: nonOwnedCount,
-      filteredIds: tabs.filter(t => t.originTabId !== tabId && t.originTabId !== null && t.originTabId !== undefined).map(t => ({
-        id: t.id,
-        originTabId: t.originTabId
-      }))
+      filteredIds: tabs
+        .filter(
+          t => t.originTabId !== tabId && t.originTabId !== null && t.originTabId !== undefined
+        )
+        .map(t => ({
+          id: t.id,
+          originTabId: t.originTabId
+        }))
     });
   }
 }
@@ -447,7 +452,7 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
  */
 function _handleEmptyWriteValidation(tabId, forceEmpty) {
   const hasOwnershipHistory = previouslyOwnedTabIds.has(tabId);
-  
+
   if (!forceEmpty) {
     console.warn('[StorageUtils] Storage write BLOCKED - no owned tabs:', {
       currentTabId: tabId,
@@ -456,9 +461,13 @@ function _handleEmptyWriteValidation(tabId, forceEmpty) {
       hasOwnershipHistory,
       reason: 'Empty write requires forceEmpty=true'
     });
-    return { shouldWrite: false, ownedTabs: [], reason: 'empty write blocked - forceEmpty required' };
+    return {
+      shouldWrite: false,
+      ownedTabs: [],
+      reason: 'empty write blocked - forceEmpty required'
+    };
   }
-  
+
   if (!hasOwnershipHistory) {
     console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
       currentTabId: tabId,
@@ -467,16 +476,24 @@ function _handleEmptyWriteValidation(tabId, forceEmpty) {
       hasOwnershipHistory,
       reason: 'Tab never owned Quick Tabs, cannot write empty state'
     });
-    return { shouldWrite: false, ownedTabs: [], reason: 'empty write blocked - no ownership history' };
+    return {
+      shouldWrite: false,
+      ownedTabs: [],
+      reason: 'empty write blocked - no ownership history'
+    };
   }
-  
+
   // Tab has ownership history and forceEmpty=true - allow empty write
   console.log('[StorageUtils] Empty write allowed:', {
     currentTabId: tabId,
     forceEmpty,
     hasOwnershipHistory
   });
-  return { shouldWrite: true, ownedTabs: [], reason: 'intentional empty write with ownership history' };
+  return {
+    shouldWrite: true,
+    ownedTabs: [],
+    reason: 'intentional empty write with ownership history'
+  };
 }
 
 /**
@@ -493,13 +510,13 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
   if (!ownershipValidationEnabled) {
     return { shouldWrite: true, ownedTabs: tabs, reason: 'ownership validation disabled' };
   }
-  
+
   if (!Array.isArray(tabs)) {
     return { shouldWrite: true, ownedTabs: [], reason: 'invalid tabs array' };
   }
-  
+
   const tabId = currentTabId ?? currentWritingTabId;
-  
+
   // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
   // Previously this allowed writes with unknown tab ID, which caused:
   // - Self-write detection to fail (isSelfWrite returns false)
@@ -509,28 +526,29 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
     console.warn('[StorageUtils] Storage write BLOCKED - unknown tab ID (initialization race?):', {
       tabCount: tabs.length,
       forceEmpty,
-      suggestion: 'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
+      suggestion:
+        'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
     });
     return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety' };
   }
-  
+
   // Filter to only tabs owned by this tab
   const ownedTabs = _filterOwnedTabs(tabs, tabId);
   _logOwnershipFiltering(tabs, ownedTabs, tabId);
-  
+
   // v1.6.3.6-v2 - FIX Issue #3: Handle empty state writes properly
   if (tabs.length === 0) {
     return _handleEmptyWriteValidation(tabId, forceEmpty);
   }
-  
+
   // v1.6.3.6-v2 - FIX Issue #3: Track ownership when writing tabs
   if (ownedTabs.length > 0) {
     previouslyOwnedTabIds.add(tabId);
   }
-  
+
   // Should write if we own at least one tab
   const shouldWrite = ownedTabs.length > 0;
-  
+
   return {
     shouldWrite,
     ownedTabs,
@@ -560,22 +578,22 @@ export function setOwnershipValidationEnabled(enabled) {
  */
 function _processSnapshotResult(result, operationId, startTime, logPrefix) {
   const durationMs = Date.now() - startTime;
-  
+
   stateSnapshot = result?.[STATE_KEY] || { tabs: [], timestamp: 0 };
   const tabCount = stateSnapshot.tabs?.length || 0;
-  
+
   logStorageRead(operationId, STATE_KEY, 'complete', {
     success: true,
     dataFound: !!result?.[STATE_KEY],
     tabCount,
     durationMs
   });
-  
+
   console.log(`${logPrefix} State snapshot captured:`, {
     tabCount,
     timestamp: stateSnapshot.timestamp
   });
-  
+
   return stateSnapshot;
 }
 
@@ -590,13 +608,13 @@ function _processSnapshotResult(result, operationId, startTime, logPrefix) {
  */
 function _handleSnapshotError(err, operationId, startTime, logPrefix) {
   const durationMs = Date.now() - startTime;
-  
+
   logStorageRead(operationId, STATE_KEY, 'complete', {
     success: false,
     dataFound: false,
     durationMs
   });
-  
+
   console.error(`${logPrefix} Failed to capture state snapshot:`, err);
 }
 
@@ -605,7 +623,7 @@ function _handleSnapshotError(err, operationId, startTime, logPrefix) {
  * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage read logging
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting helpers
- * 
+ *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<Object|null>} Captured state snapshot or null on error
  */
@@ -615,12 +633,12 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
     console.warn(`${logPrefix} Cannot capture snapshot: storage.local API unavailable`);
     return null;
   }
-  
+
   const operationId = generateStorageOperationId();
   const startTime = Date.now();
-  
+
   logStorageRead(operationId, STATE_KEY, 'start');
-  
+
   try {
     const result = await browserAPI.storage.local.get(STATE_KEY);
     return _processSnapshotResult(result, operationId, startTime, logPrefix);
@@ -633,7 +651,7 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
 /**
  * Begin a storage transaction - captures state snapshot
  * v1.6.3.4-v9 - FIX Issue #17: Transaction pattern with BEGIN/COMMIT/ROLLBACK
- * 
+ *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<boolean>} True if transaction started, false if already active
  */
@@ -642,16 +660,16 @@ export async function beginTransaction(logPrefix = '[StorageUtils]') {
     console.warn(`${logPrefix} Transaction already active - nested transactions not supported`);
     return false;
   }
-  
+
   transactionActive = true;
   const snapshot = await captureStateSnapshot(logPrefix);
-  
+
   if (!snapshot) {
     transactionActive = false;
     console.error(`${logPrefix} Failed to begin transaction: could not capture snapshot`);
     return false;
   }
-  
+
   console.log(`${logPrefix} Transaction BEGIN`);
   return true;
 }
@@ -659,7 +677,7 @@ export async function beginTransaction(logPrefix = '[StorageUtils]') {
 /**
  * Commit current transaction - clears snapshot and marks transaction complete
  * v1.6.3.4-v9 - FIX Issue #17: Transaction pattern with BEGIN/COMMIT/ROLLBACK
- * 
+ *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {boolean} True if committed, false if no active transaction
  */
@@ -668,7 +686,7 @@ export function commitTransaction(logPrefix = '[StorageUtils]') {
     console.warn(`${logPrefix} No active transaction to commit`);
     return false;
   }
-  
+
   stateSnapshot = null;
   transactionActive = false;
   console.log(`${logPrefix} Transaction COMMIT`);
@@ -678,7 +696,7 @@ export function commitTransaction(logPrefix = '[StorageUtils]') {
 /**
  * Rollback current transaction - restores state snapshot to storage
  * v1.6.3.4-v9 - FIX Issue #16, #17: Rollback on failure instead of writing empty state
- * 
+ *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<boolean>} True if rollback succeeded, false on error
  */
@@ -687,27 +705,27 @@ export async function rollbackTransaction(logPrefix = '[StorageUtils]') {
     console.warn(`${logPrefix} No active transaction to rollback`);
     return false;
   }
-  
+
   if (!stateSnapshot) {
     console.error(`${logPrefix} Cannot rollback: no snapshot available`);
     transactionActive = false;
     return false;
   }
-  
+
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     console.error(`${logPrefix} Cannot rollback: storage API unavailable`);
     transactionActive = false;
     return false;
   }
-  
+
   try {
     console.log(`${logPrefix} Transaction ROLLBACK - restoring snapshot:`, {
       tabCount: stateSnapshot.tabs?.length || 0
     });
-    
+
     await browserAPI.storage.local.set({ [STATE_KEY]: stateSnapshot });
-    
+
     stateSnapshot = null;
     transactionActive = false;
     console.log(`${logPrefix} Rollback completed successfully`);
@@ -722,7 +740,7 @@ export async function rollbackTransaction(logPrefix = '[StorageUtils]') {
 /**
  * Check if a transaction is currently active
  * v1.6.3.4-v9 - FIX Issue #17: Helper for transaction state
- * 
+ *
  * @returns {boolean} True if transaction is active
  */
 export function isTransactionActive() {
@@ -732,7 +750,7 @@ export function isTransactionActive() {
 /**
  * Get the current state snapshot (if transaction is active)
  * v1.6.3.4-v9 - FIX Issue #17: Helper for accessing snapshot
- * 
+ *
  * @returns {Object|null} Current snapshot or null
  */
 export function getStateSnapshot() {
@@ -742,7 +760,7 @@ export function getStateSnapshot() {
 /**
  * Generate unique save ID for storage deduplication
  * Format: 'timestamp-random9chars'
- * 
+ *
  * @returns {string} Unique save ID
  */
 export function generateSaveId() {
@@ -754,7 +772,7 @@ export function generateSaveId() {
  * v1.6.3.4-v6 - FIX Issue #1: Transaction IDs for atomic storage writes
  * v1.6.3.6-v2 - FIX Issue #1: Include writeCounter for truly unique IDs
  * Format: 'txn-timestamp-counter-random6chars'
- * 
+ *
  * @returns {string} Unique transaction ID
  */
 export function generateTransactionId() {
@@ -801,7 +819,7 @@ function _hasValidProtocol(urlStr) {
  * Validate URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Reject malformed URLs
  * Refactored: Extracted helpers to reduce complexity
- * 
+ *
  * @param {*} url - URL to validate
  * @returns {boolean} True if URL is valid
  */
@@ -810,24 +828,24 @@ export function isValidQuickTabUrl(url) {
   if (_isNullishUrl(url) || _isLiteralUndefined(url)) {
     return false;
   }
-  
+
   const urlStr = String(url);
-  
+
   // Reject URLs containing /undefined path
   if (urlStr.includes('/undefined')) {
     return false;
   }
-  
+
   // Allow about:blank for testing
   if (urlStr === 'about:blank') {
     return true;
   }
-  
+
   // Must start with valid protocol and be parseable
   if (!_hasValidProtocol(urlStr)) {
     return false;
   }
-  
+
   try {
     new URL(urlStr);
     return true;
@@ -840,7 +858,7 @@ export function isValidQuickTabUrl(url) {
  * Check if storage change should be processed (deduplication)
  * v1.6.3.4-v6 - FIX Issue #5: Prevent processing identical changes
  * v1.6.3.5-v5 - FIX Issue #7: Event-driven transaction cleanup
- * 
+ *
  * @param {string} transactionId - Transaction ID from the change
  * @returns {boolean} True if change should be processed
  */
@@ -848,21 +866,21 @@ export function shouldProcessStorageChange(transactionId) {
   // Check if this is our own write
   if (transactionId && IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     console.log('[StorageUtils] Ignoring self-write:', transactionId);
-    
+
     // v1.6.3.5-v5 - FIX Issue #7: Event-driven cleanup - now that we've seen the event,
     // we can clean up the transaction immediately instead of waiting for timeout
     cleanupTransactionId(transactionId);
-    
+
     return false;
   }
-  
+
   // Check cooldown period
   const now = Date.now();
   if (now - lastStorageChangeTime < STORAGE_CHANGE_COOLDOWN_MS) {
     console.log('[StorageUtils] Change within cooldown period, may skip');
   }
   lastStorageChangeTime = now;
-  
+
   return true;
 }
 
@@ -874,22 +892,22 @@ export function shouldProcessStorageChange(transactionId) {
  */
 export function cleanupTransactionId(transactionId) {
   if (!transactionId) return;
-  
+
   // Remove from in-progress set
   const wasPresent = IN_PROGRESS_TRANSACTIONS.delete(transactionId);
-  
+
   // Clear any pending fallback timeout (only if present)
   if (TRANSACTION_CLEANUP_TIMEOUTS.has(transactionId)) {
     clearTimeout(TRANSACTION_CLEANUP_TIMEOUTS.get(transactionId));
     TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
   }
-  
+
   // v1.6.3.6-v3 - FIX Issue #3: Clear any pending escalation warning timeout
   if (TRANSACTION_WARNING_TIMEOUTS.has(transactionId)) {
     clearTimeout(TRANSACTION_WARNING_TIMEOUTS.get(transactionId));
     TRANSACTION_WARNING_TIMEOUTS.delete(transactionId);
   }
-  
+
   if (wasPresent) {
     console.log('[StorageUtils] Transaction cleanup (event-driven):', transactionId);
   }
@@ -918,7 +936,7 @@ function _clearExistingTimeout(timeoutMap, transactionId) {
  */
 function _handleEscalationWarning(transactionId, scheduleTime) {
   if (!IN_PROGRESS_TRANSACTIONS.has(transactionId)) return;
-  
+
   const elapsedMs = Date.now() - scheduleTime;
   console.warn('[StorageUtils] ⚠️ TRANSACTION STALE WARNING:', {
     transactionId,
@@ -941,7 +959,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
     clearTimeout(TRANSACTION_WARNING_TIMEOUTS.get(transactionId));
     TRANSACTION_WARNING_TIMEOUTS.delete(transactionId);
   }
-  
+
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
     console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
@@ -949,7 +967,8 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
       expectedEvent: 'storage.onChanged never fired',
       elapsedMs,
       triggerModule: 'storage-utils (fallback timer)',
-      suggestion: 'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
+      suggestion:
+        'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
     });
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
   }
@@ -965,13 +984,13 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
  */
 function scheduleFallbackCleanup(transactionId) {
   if (!transactionId) return;
-  
+
   // Clear any existing timeouts for this transaction
   _clearExistingTimeout(TRANSACTION_CLEANUP_TIMEOUTS, transactionId);
   _clearExistingTimeout(TRANSACTION_WARNING_TIMEOUTS, transactionId);
-  
+
   const scheduleTime = Date.now();
-  
+
   // Schedule intermediate warning at 250ms
   const warningTimeoutId = setTimeout(() => {
     try {
@@ -980,18 +999,22 @@ function scheduleFallbackCleanup(transactionId) {
       console.warn('[StorageUtils] Error in escalation warning:', err.message);
     }
   }, ESCALATION_WARNING_MS);
-  
+
   TRANSACTION_WARNING_TIMEOUTS.set(transactionId, warningTimeoutId);
-  
+
   // Schedule fallback cleanup at 500ms
   const timeoutId = setTimeout(() => {
     try {
       _handleTransactionTimeout(transactionId, scheduleTime);
     } catch (err) {
-      console.error('[StorageUtils] Error in transaction fallback cleanup:', transactionId, err.message);
+      console.error(
+        '[StorageUtils] Error in transaction fallback cleanup:',
+        transactionId,
+        err.message
+      );
     }
   }, TRANSACTION_FALLBACK_CLEANUP_MS);
-  
+
   TRANSACTION_CLEANUP_TIMEOUTS.set(transactionId, timeoutId);
 }
 
@@ -1025,7 +1048,7 @@ function _serializeTabForHash(tab) {
 function _computeStringHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = (hash << 5) - hash + str.charCodeAt(i);
     hash = hash & hash; // Convert to 32bit integer
   }
   return hash;
@@ -1035,24 +1058,24 @@ function _computeStringHash(str) {
  * Compute hash of state for deduplication
  * v1.6.3.4-v6 - FIX Issue #5: Prevent duplicate writes
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting helpers
- * 
+ *
  * @param {Object} state - State object to hash
  * @returns {number} 32-bit hash
  */
 export function computeStateHash(state) {
   if (!state) return 0;
-  
+
   const tabs = state.tabs || [];
   const tabData = tabs.map(_serializeTabForHash);
   const stateStr = JSON.stringify({ saveId: state.saveId, tabData });
-  
+
   return _computeStringHash(stateStr);
 }
 
 /**
  * Check if state has changed compared to last persist
  * v1.6.3.4-v6 - FIX Issue #5: Prevent duplicate writes
- * 
+ *
  * @param {Object} state - State to check
  * @returns {boolean} True if state has changed
  */
@@ -1090,7 +1113,7 @@ function _hasChromeBrowserAPI() {
  * Get browser storage API (browser or chrome)
  * Returns null if not available (e.g., in unit tests)
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting environment checks
- * 
+ *
  * @returns {Object|null} Browser storage API or null
  */
 export function getBrowserStorageAPI() {
@@ -1147,7 +1170,7 @@ function _getNumericValue(tab, options) {
 function _getArrayValue(tab, flatKey, nestedKey) {
   const flatVal = tab[flatKey];
   const nestedVal = tab.visibility?.[nestedKey];
-  const arr = Array.isArray(flatVal) ? flatVal : (Array.isArray(nestedVal) ? nestedVal : []);
+  const arr = Array.isArray(flatVal) ? flatVal : Array.isArray(nestedVal) ? nestedVal : [];
   return [...arr];
 }
 
@@ -1168,10 +1191,30 @@ function serializeTabForStorage(tab, isMinimized) {
     id: String(tab.id),
     url: String(tab.url || ''),
     title: String(tab.title || ''),
-    left: _getNumericValue(tab, { flatKey: 'left', nestedObj: 'position', nestedKey: 'left', defaultVal: 0 }),
-    top: _getNumericValue(tab, { flatKey: 'top', nestedObj: 'position', nestedKey: 'top', defaultVal: 0 }),
-    width: _getNumericValue(tab, { flatKey: 'width', nestedObj: 'size', nestedKey: 'width', defaultVal: 400 }),
-    height: _getNumericValue(tab, { flatKey: 'height', nestedObj: 'size', nestedKey: 'height', defaultVal: 300 }),
+    left: _getNumericValue(tab, {
+      flatKey: 'left',
+      nestedObj: 'position',
+      nestedKey: 'left',
+      defaultVal: 0
+    }),
+    top: _getNumericValue(tab, {
+      flatKey: 'top',
+      nestedObj: 'position',
+      nestedKey: 'top',
+      defaultVal: 0
+    }),
+    width: _getNumericValue(tab, {
+      flatKey: 'width',
+      nestedObj: 'size',
+      nestedKey: 'width',
+      defaultVal: 400
+    }),
+    height: _getNumericValue(tab, {
+      flatKey: 'height',
+      nestedObj: 'size',
+      nestedKey: 'height',
+      defaultVal: 300
+    }),
     zIndex: _getNumericValue(tab, { flatKey: 'zIndex', defaultVal: DEFAULT_ZINDEX }),
     minimized: Boolean(isMinimized),
     soloedOnTabs: _getArrayValue(tab, 'soloedOnTabs', 'soloedOnTabs'),
@@ -1238,7 +1281,7 @@ function _hasValidUrl(tab) {
 function _hasValidPosition(tab) {
   const left = tab.left ?? tab.position?.left;
   const top = tab.top ?? tab.position?.top;
-  
+
   if (typeof left !== 'number' || typeof top !== 'number') {
     console.error('[StorageUtils] Tab has invalid position:', { id: tab.id, left, top });
     return false;
@@ -1268,7 +1311,7 @@ function _isValidDimension(value) {
 function _hasValidSize(tab) {
   const width = tab.width ?? tab.size?.width;
   const height = tab.height ?? tab.size?.height;
-  
+
   const isValid = _isValidDimension(width) && _isValidDimension(height);
   if (!isValid) {
     console.error('[StorageUtils] Tab has invalid size:', { id: tab.id, width, height });
@@ -1296,17 +1339,17 @@ function validateTab(tab) {
  */
 export function validateStateForPersist(state) {
   const errors = [];
-  
+
   if (!state) {
     errors.push('State is null/undefined');
     return { valid: false, errors };
   }
-  
+
   if (!state.tabs || !Array.isArray(state.tabs)) {
     errors.push('State.tabs is not an array');
     return { valid: false, errors };
   }
-  
+
   // Check for duplicate IDs
   const ids = new Set();
   for (const tab of state.tabs) {
@@ -1315,13 +1358,13 @@ export function validateStateForPersist(state) {
     }
     ids.add(tab.id);
   }
-  
+
   // Validate each tab
   const invalidTabs = state.tabs.filter(tab => !validateTab(tab));
   if (invalidTabs.length > 0) {
     errors.push(`${invalidTabs.length} tabs failed validation`);
   }
-  
+
   // Validate minimized count matches actual count
   const minimizedCount = state.tabs.filter(t => t.minimized === true).length;
   const nonMinimizedCount = state.tabs.filter(t => t.minimized !== true).length;
@@ -1330,7 +1373,7 @@ export function validateStateForPersist(state) {
     minimizedCount,
     nonMinimizedCount
   });
-  
+
   return {
     valid: errors.length === 0,
     errors
@@ -1350,7 +1393,7 @@ function _processTabForStorage(tab, minimizedManager) {
     console.warn('[StorageUtils] buildStateForStorage: Skipping invalid tab (no id)');
     return { tabData: null, skipped: true };
   }
-  
+
   if (!isValidQuickTabUrl(tab.url)) {
     console.warn('[StorageUtils] buildStateForStorage: Skipping tab with invalid URL:', {
       id: tab.id,
@@ -1358,7 +1401,7 @@ function _processTabForStorage(tab, minimizedManager) {
     });
     return { tabData: null, skipped: true };
   }
-  
+
   const isMinimized = minimizedManager?.isMinimized?.(tab.id) || tab.minimized || false;
   const tabData = serializeTabForStorage(tab, isMinimized);
   return { tabData, skipped: false };
@@ -1371,7 +1414,7 @@ function _processTabForStorage(tab, minimizedManager) {
  * v1.6.3.4-v6 - FIX Issue #2, #6: Filter invalid URLs, validate before return
  * Refactored: Extracted _processTabForStorage to reduce complexity
  * Uses minimizedManager.isMinimized() for consistent minimized state
- * 
+ *
  * @param {Map} quickTabsMap - Map of Quick Tab instances
  * @param {Object} minimizedManager - Manager for minimized Quick Tabs
  * @returns {Object|null} - State object in unified format, or null if error
@@ -1381,10 +1424,10 @@ export function buildStateForStorage(quickTabsMap, minimizedManager) {
     console.warn('[StorageUtils] buildStateForStorage: quickTabsMap is null/undefined');
     return null;
   }
-  
+
   const tabs = [];
   let skippedCount = 0;
-  
+
   for (const tab of quickTabsMap.values()) {
     const { tabData, skipped } = _processTabForStorage(tab, minimizedManager);
     if (skipped) {
@@ -1393,22 +1436,22 @@ export function buildStateForStorage(quickTabsMap, minimizedManager) {
       tabs.push(tabData);
     }
   }
-  
+
   if (skippedCount > 0) {
     console.log('[StorageUtils] buildStateForStorage: Skipped', skippedCount, 'invalid tabs');
   }
-  
+
   const state = { tabs, timestamp: Date.now(), saveId: generateSaveId() };
-  
+
   if (!validateStateSerializable(state)) {
     return null;
   }
-  
+
   const validation = validateStateForPersist(state);
   if (!validation.valid) {
     console.error('[StorageUtils] State validation failed:', validation.errors);
   }
-  
+
   return state;
 }
 
@@ -1455,31 +1498,37 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
   if (tabCount > 0) {
     return false; // Not an empty write
   }
-  
+
   // v1.6.3.5-v10 - FIX Issue #4: Stricter empty write protection
   // Tabs with 0 Quick Tabs should NEVER write unless forceEmpty=true (e.g., Close All action)
   // This prevents storage corruption where non-owner tabs overwrite valid state
   if (!forceEmpty) {
-    console.warn(`${logPrefix} BLOCKED: Empty write rejected (forceEmpty required) [${transactionId}]`);
+    console.warn(
+      `${logPrefix} BLOCKED: Empty write rejected (forceEmpty required) [${transactionId}]`
+    );
     console.warn(`${logPrefix} │ This prevents non-owner tabs from corrupting storage`);
     console.warn(`${logPrefix} │ Use forceEmpty=true for intentional "Close All" operations`);
     return true;
   }
-  
+
   // v1.6.3.4-v8 - FIX Issue #1: Log WARNING when going from N tabs to 0
   if (previousTabCount > 0) {
-    console.warn(`${logPrefix} ⚠️ WARNING: State going from ${previousTabCount} tabs → 0 tabs [${transactionId}]`);
+    console.warn(
+      `${logPrefix} ⚠️ WARNING: State going from ${previousTabCount} tabs → 0 tabs [${transactionId}]`
+    );
     console.warn(`${logPrefix} Stack trace:`, new Error().stack);
   }
-  
+
   console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
-  
+
   const now = Date.now();
   if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {
-    console.warn(`${logPrefix} REJECTED: Empty write within cooldown (${now - lastEmptyWriteTime}ms < ${EMPTY_WRITE_COOLDOWN_MS}ms) [${transactionId}]`);
+    console.warn(
+      `${logPrefix} REJECTED: Empty write within cooldown (${now - lastEmptyWriteTime}ms < ${EMPTY_WRITE_COOLDOWN_MS}ms) [${transactionId}]`
+    );
     return true;
   }
-  
+
   lastEmptyWriteTime = now;
   return false;
 }
@@ -1509,9 +1558,15 @@ function _cleanupExpiredSaveIdEntries(now) {
  */
 function _logDuplicateWriteWarning(saveId, existing, transactionId, now) {
   const elapsedMs = now - existing.firstTimestamp;
-  console.error(`[StorageUtils] ⚠️ DUPLICATE WRITE DETECTED: saveId "${saveId}" written ${existing.count} times in ${elapsedMs}ms`);
-  console.error('[StorageUtils] This indicates a storage write loop - same saveId should not be written multiple times.');
-  console.error(`[StorageUtils] Transaction: ${transactionId}, First transaction: ${existing.firstTransaction}`);
+  console.error(
+    `[StorageUtils] ⚠️ DUPLICATE WRITE DETECTED: saveId "${saveId}" written ${existing.count} times in ${elapsedMs}ms`
+  );
+  console.error(
+    '[StorageUtils] This indicates a storage write loop - same saveId should not be written multiple times.'
+  );
+  console.error(
+    `[StorageUtils] Transaction: ${transactionId}, First transaction: ${existing.firstTransaction}`
+  );
 }
 
 /**
@@ -1525,10 +1580,10 @@ function _logDuplicateWriteWarning(saveId, existing, transactionId, now) {
  */
 function _trackDuplicateSaveIdWrite(saveId, transactionId, _logPrefix) {
   const now = Date.now();
-  
+
   // Clean up old entries outside the tracking window
   _cleanupExpiredSaveIdEntries(now);
-  
+
   // Track this write
   const existing = saveIdWriteTracker.get(saveId);
   if (!existing) {
@@ -1539,9 +1594,9 @@ function _trackDuplicateSaveIdWrite(saveId, transactionId, _logPrefix) {
     });
     return;
   }
-  
+
   existing.count++;
-  
+
   // Log warning if threshold exceeded
   if (existing.count > DUPLICATE_SAVEID_THRESHOLD) {
     _logDuplicateWriteWarning(saveId, existing, transactionId, now);
@@ -1563,29 +1618,29 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     return false;
   }
-  
+
   // v1.6.3.6-v2 - FIX Issue #2: Track duplicate saveId writes to detect loops
   const saveId = stateWithTxn.saveId;
   if (saveId) {
     _trackDuplicateSaveIdWrite(saveId, transactionId, logPrefix);
   }
-  
+
   // v1.6.3.4-v6 - FIX Issue #1: Track in-progress transaction
   IN_PROGRESS_TRANSACTIONS.add(transactionId);
-  
+
   // v1.6.3.5-v5 - FIX Issue #7: Schedule fallback cleanup (in case storage.onChanged doesn't fire)
   scheduleFallbackCleanup(transactionId);
-  
+
   // v1.6.3.6-v5 - FIX Issue #4b: Generate operation ID for storage write logging
   const operationId = generateStorageOperationId();
   const startTime = Date.now();
-  
+
   // v1.6.3.6-v5 - Log storage write start
   logStorageWrite(operationId, STATE_KEY, 'start', {
     tabCount,
     transactionId
   });
-  
+
   // v1.6.3.4-v12 - FIX Issue #6: Log transaction sequencing
   console.log(`${logPrefix} Storage write executing:`, {
     transaction: transactionId,
@@ -1593,37 +1648,39 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     pendingCount: pendingWriteCount,
     tabCount
   });
-  
+
   // v1.6.3.4-v2 - FIX Bug #1: Create timeout with cleanup to prevent race condition
   const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
-  
+
   try {
     // v1.6.3.4-v2 - FIX Bug #1: Wrap storage.local.set with timeout
     const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
-    
+
     await Promise.race([storagePromise, timeout.promise]);
-    
+
     const durationMs = Date.now() - startTime;
-    
+
     // v1.6.3.4-v8 - Update previous tab count after successful write
     previousTabCount = tabCount;
-    
+
     // v1.6.3.4-v12 - FIX Issue #6: Update last completed transaction
     lastCompletedTransactionId = transactionId;
-    
+
     // v1.6.3.6-v2 - FIX Issue #1: Update lastWrittenTransactionId for self-write detection
     lastWrittenTransactionId = transactionId;
-    
+
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-    
+
     // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
     if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
       const tripDuration = Date.now() - circuitBreakerTripTime;
       circuitBreakerTripped = false;
       circuitBreakerTripTime = null;
-      console.log(`[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`);
+      console.log(
+        `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
+      );
     }
-    
+
     // v1.6.3.6-v5 - Log storage write complete (success)
     logStorageWrite(operationId, STATE_KEY, 'complete', {
       success: true,
@@ -1631,14 +1688,14 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
       durationMs,
       transactionId
     });
-    
+
     console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
     return true;
   } catch (err) {
     const durationMs = Date.now() - startTime;
-    
+
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-    
+
     // v1.6.3.6-v5 - Log storage write complete (failure)
     logStorageWrite(operationId, STATE_KEY, 'complete', {
       success: false,
@@ -1646,13 +1703,13 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
       durationMs,
       transactionId
     });
-    
+
     console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
     return false;
   } finally {
     // v1.6.3.4-v3 - FIX: Always clear timeout to prevent memory leak
     timeout.clear();
-    
+
     // v1.6.3.5-v5 - FIX Issue #7: Transaction cleanup is now event-driven
     // The fallback cleanup scheduled above will handle cases where storage.onChanged doesn't fire
     // The cleanupTransactionId() function is called from shouldProcessStorageChange() when
@@ -1677,7 +1734,11 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
  * @returns {Promise<boolean>} Result of the write operation
  */
-export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', transactionId = '') {
+export function queueStorageWrite(
+  writeOperation,
+  logPrefix = '[StorageUtils]',
+  transactionId = ''
+) {
   // v1.6.3.6-v3 - FIX Issue #2: Circuit breaker check BEFORE incrementing pendingWriteCount
   // This prevents infinite storage write loops from overwhelming the system
   if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
@@ -1685,15 +1746,19 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
       circuitBreakerTripped = true;
       circuitBreakerTripTime = Date.now();
       console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
-      console.error(`[StorageUtils] Blocking ALL new storage writes (threshold: ${CIRCUIT_BREAKER_THRESHOLD})`);
+      console.error(
+        `[StorageUtils] Blocking ALL new storage writes (threshold: ${CIRCUIT_BREAKER_THRESHOLD})`
+      );
       console.error('[StorageUtils] Current queue depth:', pendingWriteCount);
       console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
-      console.error('[StorageUtils] To recover: Close tabs using this extension, then go to about:addons, disable and re-enable the extension');
+      console.error(
+        '[StorageUtils] To recover: Close tabs using this extension, then go to about:addons, disable and re-enable the extension'
+      );
     }
     console.error(`[StorageUtils] Write BLOCKED by circuit breaker [${transactionId}]`);
     return Promise.resolve(false);
   }
-  
+
   // v1.6.3.4-v12 - FIX Issue #6: Log queue state with previous transaction
   pendingWriteCount++;
   console.log(`${logPrefix} Storage write queued:`, {
@@ -1702,28 +1767,41 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
     prevTransaction: lastCompletedTransactionId,
     queueDepth: pendingWriteCount
   });
-  
+
   // v1.6.3.6-v2 - FIX Issue #2: Backlog detection warnings
   if (pendingWriteCount > 10) {
-    console.error(`[StorageUtils] ⚠️⚠️⚠️ CRITICAL STORAGE WRITE BACKLOG: ${pendingWriteCount} pending transactions!`);
+    console.error(
+      `[StorageUtils] ⚠️⚠️⚠️ CRITICAL STORAGE WRITE BACKLOG: ${pendingWriteCount} pending transactions!`
+    );
     console.error('[StorageUtils] This strongly indicates an infinite storage write loop.');
-    console.error('[StorageUtils] Check for self-write detection failure in storage.onChanged listener.');
+    console.error(
+      '[StorageUtils] Check for self-write detection failure in storage.onChanged listener.'
+    );
     console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
     console.error(`[StorageUtils] Current transaction: ${transactionId}`);
   } else if (pendingWriteCount > 5) {
-    console.warn(`[StorageUtils] ⚠️ STORAGE WRITE BACKLOG DETECTED: ${pendingWriteCount} pending transactions`);
-    console.warn('[StorageUtils] Possible infinite loop - check storage.onChanged listener for self-write.');
-    console.warn(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`);
+    console.warn(
+      `[StorageUtils] ⚠️ STORAGE WRITE BACKLOG DETECTED: ${pendingWriteCount} pending transactions`
+    );
+    console.warn(
+      '[StorageUtils] Possible infinite loop - check storage.onChanged listener for self-write.'
+    );
+    console.warn(
+      `[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`
+    );
   }
-  
+
   // Chain this operation to the previous one
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
       // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
       const droppedWrites = pendingWriteCount - 1; // Current write failed, others are dropped
-      console.error(`[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`, err);
-      
+      console.error(
+        `[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`,
+        err
+      );
+
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
       // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
       // Without this reset, the `false` return value contaminates subsequent writes
@@ -1732,7 +1810,7 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
       storageWriteQueuePromise = Promise.resolve();
       return false;
     });
-  
+
   return storageWriteQueuePromise;
 }
 
@@ -1776,12 +1854,12 @@ function _validateStateStructure(state, logPrefix) {
     console.error(`${logPrefix} Cannot persist: state is null/undefined`);
     return { valid: false };
   }
-  
+
   if (!state.tabs || !Array.isArray(state.tabs)) {
     console.error(`${logPrefix} Cannot persist: state.tabs is invalid`);
     return { valid: false };
   }
-  
+
   return { valid: true };
 }
 
@@ -1828,8 +1906,10 @@ function _logPersistInitiation(options) {
     minimizedCount,
     transaction: transactionId
   });
-  
-  console.log(`${logPrefix} Persisting ${tabCount} tabs (${minimizedCount} minimized) [${transactionId}]`);
+
+  console.log(
+    `${logPrefix} Persisting ${tabCount} tabs (${minimizedCount} minimized) [${transactionId}]`
+  );
 }
 
 /**
@@ -1841,7 +1921,7 @@ function _logPersistInitiation(options) {
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Ownership validation extracted
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting phases
- * 
+ *
  * @param {Object} state - State object to persist
  * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
  * @param {boolean} forceEmpty - Allow empty (0 tabs) writes (default: false)
@@ -1850,42 +1930,42 @@ function _logPersistInitiation(options) {
 export function persistStateToStorage(state, logPrefix = '[StorageUtils]', forceEmpty = false) {
   const transactionId = generateTransactionId();
   console.log(`${logPrefix} Storage write STARTED [${transactionId}]`);
-  
+
   // Phase 1: Validate state structure
   if (!_validateStateStructure(state, logPrefix).valid) {
     return Promise.resolve(false);
   }
-  
+
   const tabCount = state.tabs.length;
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
-  
+
   // Phase 2: Check empty write protection
   if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
     return Promise.resolve(false);
   }
-  
+
   // Phase 3: Validate ownership
   if (!_validatePersistOwnership(state, forceEmpty, logPrefix, transactionId).shouldProceed) {
     return Promise.resolve(false);
   }
-  
+
   // Phase 4: Check for state changes
   if (!hasStateChanged(state)) {
     console.log(`${logPrefix} Storage write SKIPPED [${transactionId}] (no changes)`);
     return Promise.resolve(true);
   }
-  
+
   // Phase 5: Validate state content
   const validation = validateStateForPersist(state);
   if (!validation.valid) {
     console.error(`${logPrefix} State validation failed [${transactionId}]:`, validation.errors);
   }
-  
+
   // Phase 6: Log and execute write
   _logPersistInitiation({ logPrefix, transactionId, tabCount, minimizedCount, forceEmpty });
-  
+
   const stateWithTxn = _prepareStateForWrite(state, transactionId);
-  
+
   return queueStorageWrite(
     () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId),
     logPrefix,

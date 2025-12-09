@@ -108,7 +108,11 @@ async function initializeGlobalState() {
     // Try session storage first (faster)
     if (typeof browser.storage.session !== 'undefined') {
       result = await browser.storage.session.get('quick_tabs_session');
-      if (result && result.quick_tabs_session && result.quick_tabs_session.tabs) {
+      if (
+        result &&
+        result.quick_tabs_session &&
+        result.quick_tabs_session.tabs
+      ) {
         globalQuickTabState.tabs = result.quick_tabs_session.tabs;
         globalQuickTabState.lastUpdate = result.quick_tabs_session.timestamp;
         isInitialized = true;
@@ -118,7 +122,11 @@ async function initializeGlobalState() {
 
     // Fall back to sync storage
     result = await browser.storage.sync.get('quick_tabs_state_v2');
-    if (result && result.quick_tabs_state_v2 && result.quick_tabs_state_v2.tabs) {
+    if (
+      result &&
+      result.quick_tabs_state_v2 &&
+      result.quick_tabs_state_v2.tabs
+    ) {
       globalQuickTabState.tabs = result.quick_tabs_state_v2.tabs;
       globalQuickTabState.lastUpdate = result.quick_tabs_state_v2.timestamp;
       isInitialized = true;
@@ -146,7 +154,9 @@ if (message.action === 'CREATE_QUICK_TAB') {
   }
 
   // Check if tab already exists
-  const existingIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+  const existingIndex = globalQuickTabState.tabs.findIndex(
+    t => t.url === message.url
+  );
 
   if (existingIndex !== -1) {
     // Update existing entry
@@ -188,7 +198,14 @@ if (message.action === 'CREATE_QUICK_TAB') {
 
 ```javascript
 if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
-  broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
+  broadcastQuickTabCreation(
+    url,
+    windowWidth,
+    windowHeight,
+    posX,
+    posY,
+    pinnedToUrl
+  );
   saveQuickTabsToStorage(); // ← Direct storage write
 }
 ```
@@ -197,7 +214,14 @@ if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
 
 ```javascript
 if (!fromBroadcast && CONFIG.quickTabPersistAcrossTabs) {
-  broadcastQuickTabCreation(url, windowWidth, windowHeight, posX, posY, pinnedToUrl);
+  broadcastQuickTabCreation(
+    url,
+    windowWidth,
+    windowHeight,
+    posX,
+    posY,
+    pinnedToUrl
+  );
 
   // Notify background script for state coordination
   browser.runtime
@@ -230,7 +254,9 @@ if (message.action === 'CLOSE_QUICK_TAB') {
   }
 
   // Remove from global state
-  const tabIndex = globalQuickTabState.tabs.findIndex(t => t.url === message.url);
+  const tabIndex = globalQuickTabState.tabs.findIndex(
+    t => t.url === message.url
+  );
   if (tabIndex !== -1) {
     globalQuickTabState.tabs.splice(tabIndex, 1);
     globalQuickTabState.lastUpdate = Date.now();
@@ -387,8 +413,8 @@ if (areaName === 'sync' && changes.quick_tabs_state_v2) {
 <div class="setting-group">
   <button id="clearStorageBtn" style="...">🗑️ Clear Quick Tab Storage</button>
   <small>
-    This will clear all saved Quick Tab positions and state from browser storage. Use this if Quick
-    Tabs are behaving unexpectedly.
+    This will clear all saved Quick Tab positions and state from browser
+    storage. Use this if Quick Tabs are behaving unexpectedly.
   </small>
 </div>
 ```
@@ -396,28 +422,34 @@ if (areaName === 'sync' && changes.quick_tabs_state_v2) {
 **popup.js:**
 
 ```javascript
-document.getElementById('clearStorageBtn').addEventListener('click', async function () {
-  if (confirm('This will clear all saved Quick Tab positions and state. Are you sure?')) {
-    // Clear sync storage
-    await browser.storage.sync.remove('quick_tabs_state_v2');
+document
+  .getElementById('clearStorageBtn')
+  .addEventListener('click', async function () {
+    if (
+      confirm(
+        'This will clear all saved Quick Tab positions and state. Are you sure?'
+      )
+    ) {
+      // Clear sync storage
+      await browser.storage.sync.remove('quick_tabs_state_v2');
 
-    // Clear session storage if available
-    if (typeof browser.storage.session !== 'undefined') {
-      await browser.storage.session.remove('quick_tabs_session');
-    }
+      // Clear session storage if available
+      if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.remove('quick_tabs_session');
+      }
 
-    // Notify all tabs to close Quick Tabs
-    browser.tabs.query({}).then(tabs => {
-      tabs.forEach(tab => {
-        browser.tabs
-          .sendMessage(tab.id, {
-            action: 'CLEAR_ALL_QUICK_TABS'
-          })
-          .catch(() => {});
+      // Notify all tabs to close Quick Tabs
+      browser.tabs.query({}).then(tabs => {
+        tabs.forEach(tab => {
+          browser.tabs
+            .sendMessage(tab.id, {
+              action: 'CLEAR_ALL_QUICK_TABS'
+            })
+            .catch(() => {});
+        });
       });
-    });
-  }
-});
+    }
+  });
 ```
 
 ## Code Statistics

@@ -4,7 +4,7 @@
  *
  * This demonstrates the facade/coordinator pattern from the refactoring plan.
  * Reduces setupResizeHandlers from 195 lines to ~15 lines of orchestration.
- * 
+ *
  * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
  *   - Issue #3: Add public cleanup() method for DOM event listener cleanup before minimize
  */
@@ -56,7 +56,7 @@ export class ResizeController {
     }
     this.handles = [];
   }
-  
+
   /**
    * Public cleanup method for DOM event listener cleanup before minimize
    * v1.6.3.5-v11 - FIX Issue #3: DOM event listeners not cleaned up on minimize

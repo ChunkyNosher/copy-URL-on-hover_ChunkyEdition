@@ -2,24 +2,30 @@
 
 **Report Date:** November 26, 2025  
 **Extension Version:** v1.6.2.2  
-**Purpose:** Strip down Quick Tabs to local-only functionality (remove all cross-tab sync)  
+**Purpose:** Strip down Quick Tabs to local-only functionality (remove all
+cross-tab sync)  
 **Report Version:** 1.0
 
 ---
 
 ## Executive Summary
 
-This guide details how to remove ALL cross-tab synchronization architecture from the Quick Tabs feature while preserving core Quick Tab functionality (create, drag, resize, minimize, close). The result will be a **single-tab Quick Tabs system** where:
+This guide details how to remove ALL cross-tab synchronization architecture from
+the Quick Tabs feature while preserving core Quick Tab functionality (create,
+drag, resize, minimize, close). The result will be a **single-tab Quick Tabs
+system** where:
 
-✅ **KEEP:** Quick Tabs work within a single tab (create, drag, resize, minimize, close)  
+✅ **KEEP:** Quick Tabs work within a single tab (create, drag, resize,
+minimize, close)  
 ✅ **KEEP:** Quick Tab Manager Panel works within a single tab  
 ✅ **KEEP:** Solo/Mute functionality works within current tab  
 ❌ **REMOVE:** Cross-tab sync (Quick Tabs don't appear in other tabs)  
 ❌ **REMOVE:** Background script communication for state sync  
 ❌ **REMOVE:** Storage-based state persistence  
-❌ **REMOVE:** BroadcastChannel real-time sync  
+❌ **REMOVE:** BroadcastChannel real-time sync
 
-**Result:** Clean, simple, single-tab Quick Tabs feature ready for future cross-tab sync rebuild.
+**Result:** Clean, simple, single-tab Quick Tabs feature ready for future
+cross-tab sync rebuild.
 
 ---
 
@@ -50,7 +56,9 @@ src/features/quick-tabs/sync/MemoryMonitor.js
 src/features/quick-tabs/coordinators/SyncCoordinator.js
 ```
 
-**Rationale:** These files implement cross-tab real-time sync via BroadcastChannel, storage write circuit breakers, and memory monitoring for sync operations. Without cross-tab sync, these are entirely unnecessary.
+**Rationale:** These files implement cross-tab real-time sync via
+BroadcastChannel, storage write circuit breakers, and memory monitoring for sync
+operations. Without cross-tab sync, these are entirely unnecessary.
 
 ---
 
@@ -61,13 +69,15 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 **Decision:** DELETE ENTIRE FILE
 
 **Rationale:** This file handles:
+
 - Writing Quick Tab state to browser.storage.local
 - Reading Quick Tab state from storage
 - Listening to storage.onChanged for cross-tab sync
 - Managing saveId deduplication
 - Container-aware storage format
 
-**None of this is needed for single-tab Quick Tabs.** Quick Tabs can exist purely in memory (via `StateManager`) for the lifetime of the page.
+**None of this is needed for single-tab Quick Tabs.** Quick Tabs can exist
+purely in memory (via `StateManager`) for the lifetime of the page.
 
 ---
 
@@ -76,6 +86,7 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 ### File: `src/features/quick-tabs/coordinators/UICoordinator.js`
 
 **Current Responsibilities:**
+
 - Listen to `state:added`, `state:updated`, `state:deleted` events
 - Render/update/destroy Quick Tab UI based on state changes
 - Apply pending updates after state hydration
@@ -102,7 +113,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - `_onStateDeleted()` - Remove Quick Tab UI
    - `_onQuickTabChanged()` - Update position/size/zIndex
 
-**Result:** UICoordinator becomes a simple state-to-UI bridge with no storage or sync concerns.
+**Result:** UICoordinator becomes a simple state-to-UI bridge with no storage or
+sync concerns.
 
 ---
 
@@ -113,6 +125,7 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 **Decision:** REMOVE ALL Quick Tab state management from background script
 
 **Current Background Responsibilities:**
+
 - Maintain cached Quick Tab state
 - Handle CREATE_QUICK_TAB messages
 - Handle UPDATE_QUICK_TAB_POSITION messages
@@ -139,7 +152,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - Remove `cachedState` variable
    - Remove state update logic
 
-**Result:** Background script no longer participates in Quick Tab management. All Quick Tab logic stays in content script.
+**Result:** Background script no longer participates in Quick Tab management.
+All Quick Tab logic stays in content script.
 
 ### File: `src/content.js`
 
@@ -151,7 +165,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 2. **Remove storage sync helpers:**
    - Remove `_handleQuickTabStorageSync()` function
 
-**Rationale:** Without background script involvement, content script doesn't need to listen for sync messages.
+**Rationale:** Without background script involvement, content script doesn't
+need to listen for sync messages.
 
 ---
 
@@ -181,6 +196,7 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 ### File: `src/features/quick-tabs/handlers/UpdateHandler.js`
 
 **Current Responsibilities:**
+
 - Handle position/size changes during drag/resize
 - Debounce storage writes
 - Track pending saves
@@ -204,7 +220,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - Remove debounce logic (was for storage writes)
 
 4. **Remove background communication:**
-   - Remove `browser.runtime.sendMessage({ action: 'UPDATE_QUICK_TAB_POSITION' })`
+   - Remove
+     `browser.runtime.sendMessage({ action: 'UPDATE_QUICK_TAB_POSITION' })`
    - Remove `browser.runtime.sendMessage({ action: 'UPDATE_QUICK_TAB_SIZE' })`
    - Remove `browser.runtime.sendMessage({ action: 'UPDATE_QUICK_TAB_ZINDEX' })`
 
@@ -213,7 +230,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - `handleSizeChange()` → update QuickTab domain entity, update UI
    - No storage, no broadcast, no background
 
-**Result:** Position/size updates are purely local UI updates with in-memory state changes.
+**Result:** Position/size updates are purely local UI updates with in-memory
+state changes.
 
 ---
 
@@ -235,7 +253,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - No cross-tab solo/mute logic needed
    - Keep `currentTabId` for local solo/mute filtering
 
-**Result:** Visibility changes (minimize, restore, bring to front) are purely local UI operations.
+**Result:** Visibility changes (minimize, restore, bring to front) are purely
+local UI operations.
 
 ---
 
@@ -254,7 +273,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 3. **Simplify to pure in-memory deletion:**
    - `handleDestroy()` → remove from StateManager, remove from DOM, that's it
 
-**Result:** Closing Quick Tabs is purely local - remove from memory, remove from UI.
+**Result:** Closing Quick Tabs is purely local - remove from memory, remove from
+UI.
 
 ---
 
@@ -263,6 +283,7 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 ### File: `src/features/quick-tabs/managers/StateManager.js`
 
 **Current Responsibilities:**
+
 - Maintain in-memory Map of QuickTab entities
 - Handle hydration from storage (with skipDeletions logic)
 - Emit state change events
@@ -300,7 +321,8 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - Remove `currentContainer` references (no cross-container sync)
    - Keep `currentTabId` for solo/mute filtering
 
-**Result:** StateManager becomes a simple in-memory CRUD store with event emission. No storage, no sync, no hydration complexity.
+**Result:** StateManager becomes a simple in-memory CRUD store with event
+emission. No storage, no sync, no hydration complexity.
 
 ---
 
@@ -349,6 +371,7 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
    - DELETE `cleanup()` method (was for BroadcastSync)
 
 **Result:** Index.js initialization flow is drastically simpler:
+
 1. Detect context (container, tab ID)
 2. Initialize managers (state, events, memoryGuard)
 3. Initialize handlers (create, update, visibility, destroy)
@@ -364,6 +387,7 @@ src/features/quick-tabs/coordinators/SyncCoordinator.js
 After removing sync architecture, verify core functionality still works:
 
 ### Test 1: Create Quick Tab
+
 1. Open any webpage
 2. Hover over a link
 3. Press Ctrl+E (or configured shortcut)
@@ -371,12 +395,14 @@ After removing sync architecture, verify core functionality still works:
 5. **Expected:** Quick Tab is draggable, resizable
 
 ### Test 2: Multiple Quick Tabs
+
 1. Create 3 Quick Tabs from different links
 2. **Expected:** All 3 Quick Tabs visible on current tab
 3. **Expected:** Can drag, resize, bring to front each one
 4. **Expected:** Z-index updates when clicking different Quick Tabs
 
 ### Test 3: Minimize/Restore
+
 1. Create Quick Tab
 2. Click minimize button
 3. **Expected:** Quick Tab disappears, appears in Manager Panel minimized list
@@ -385,12 +411,14 @@ After removing sync architecture, verify core functionality still works:
 6. **Expected:** Quick Tab reappears at last position
 
 ### Test 4: Close Quick Tab
+
 1. Create Quick Tab
 2. Click close button (X)
 3. **Expected:** Quick Tab disappears immediately
 4. **Expected:** No errors in console
 
 ### Test 5: Close All
+
 1. Create 3 Quick Tabs
 2. Open Manager Panel
 3. Click "Close All"
@@ -398,15 +426,18 @@ After removing sync architecture, verify core functionality still works:
 5. **Expected:** Panel shows "No Quick Tabs"
 
 ### Test 6: Solo/Mute (Local Only)
+
 1. Create Quick Tab
 2. Click Solo button
 3. **Expected:** Solo button highlights
 4. **Expected:** Quick Tab still visible (solo on current tab)
 5. Click Mute button
 6. **Expected:** Mute button highlights, solo deactivates
-7. **Expected:** Quick Tab still visible (mute would hide on DIFFERENT tabs, but we're on current tab)
+7. **Expected:** Quick Tab still visible (mute would hide on DIFFERENT tabs, but
+   we're on current tab)
 
 ### Test 7: No Cross-Tab Sync
+
 1. Create Quick Tab in Tab A
 2. Open Tab B (same domain)
 3. **Expected:** Quick Tab does NOT appear in Tab B
@@ -416,6 +447,7 @@ After removing sync architecture, verify core functionality still works:
 7. **Expected:** Quick Tab gone (no persistence)
 
 ### Test 8: No Persistence
+
 1. Create Quick Tab
 2. Close browser
 3. Reopen browser, navigate to same page
@@ -423,6 +455,7 @@ After removing sync architecture, verify core functionality still works:
 5. **Expected:** No errors in console about storage
 
 ### Test 9: Manager Panel
+
 1. Create 2 Quick Tabs
 2. Minimize 1 Quick Tab
 3. Open Manager Panel (Ctrl+Alt+Z)
@@ -433,6 +466,7 @@ After removing sync architecture, verify core functionality still works:
 8. **Expected:** Panel closes, Quick Tabs remain
 
 ### Test 10: No Background Errors
+
 1. Open browser console
 2. Create Quick Tab
 3. Drag Quick Tab
@@ -447,6 +481,7 @@ After removing sync architecture, verify core functionality still works:
 ## Summary of Removed Files
 
 **Deleted Files (8 total):**
+
 ```
 src/features/quick-tabs/sync/BroadcastSync.js
 src/features/quick-tabs/sync/BroadcastChannelFactory.js
@@ -457,6 +492,7 @@ src/features/quick-tabs/managers/StorageManager.js
 ```
 
 **After deletion, remove empty directories:**
+
 ```
 src/features/quick-tabs/sync/  (if empty)
 ```
@@ -466,6 +502,7 @@ src/features/quick-tabs/sync/  (if empty)
 ## Summary of Modified Files
 
 **Modified Files (10 total):**
+
 ```
 src/features/quick-tabs/index.js
 src/features/quick-tabs/coordinators/UICoordinator.js
@@ -483,6 +520,7 @@ src/content.js
 ## Code Size Reduction Estimate
 
 **Before Removal:**
+
 - `sync/` directory: ~28KB (4 files)
 - `SyncCoordinator.js`: ~15KB
 - `StorageManager.js`: ~25KB (estimated)
@@ -491,6 +529,7 @@ src/content.js
 - **Total removed: ~76KB of sync architecture**
 
 **After Removal:**
+
 - Cleaner, simpler codebase
 - Easier to understand and debug
 - No sync bugs or race conditions
@@ -503,31 +542,47 @@ src/content.js
 ### ✅ Kept Components
 
 **Domain Models:**
-- `src/domain/QuickTab.js` - QuickTab entity (url, title, position, size, visibility)
+
+- `src/domain/QuickTab.js` - QuickTab entity (url, title, position, size,
+  visibility)
 
 **UI Components:**
+
 - `src/features/quick-tabs/window.js` - QuickTabWindow (draggable iframe)
 - `src/features/quick-tabs/panel.js` - PanelManager (manager panel UI)
 - `src/features/quick-tabs/minimized-manager.js` - MinimizedManager (tracking)
 
 **Managers:**
-- `src/features/quick-tabs/managers/StateManager.js` - In-memory CRUD (simplified)
+
+- `src/features/quick-tabs/managers/StateManager.js` - In-memory CRUD
+  (simplified)
 - `src/features/quick-tabs/managers/EventManager.js` - Emergency save handlers
 
 **Handlers:**
-- `src/features/quick-tabs/handlers/CreateHandler.js` - Create Quick Tabs (local only)
-- `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates (local only)
-- `src/features/quick-tabs/handlers/VisibilityHandler.js` - Minimize/restore/focus (local only)
-- `src/features/quick-tabs/handlers/DestroyHandler.js` - Close Quick Tabs (local only)
+
+- `src/features/quick-tabs/handlers/CreateHandler.js` - Create Quick Tabs (local
+  only)
+- `src/features/quick-tabs/handlers/UpdateHandler.js` - Position/size updates
+  (local only)
+- `src/features/quick-tabs/handlers/VisibilityHandler.js` -
+  Minimize/restore/focus (local only)
+- `src/features/quick-tabs/handlers/DestroyHandler.js` - Close Quick Tabs (local
+  only)
 
 **Coordinators:**
-- `src/features/quick-tabs/coordinators/UICoordinator.js` - State-to-UI bridge (simplified)
+
+- `src/features/quick-tabs/coordinators/UICoordinator.js` - State-to-UI bridge
+  (simplified)
 
 **Guards:**
-- `src/features/quick-tabs/guards/MemoryGuard.js` - Emergency shutdown protection
+
+- `src/features/quick-tabs/guards/MemoryGuard.js` - Emergency shutdown
+  protection
 
 **Entry Point:**
-- `src/features/quick-tabs/index.js` - Feature module initialization (simplified)
+
+- `src/features/quick-tabs/index.js` - Feature module initialization
+  (simplified)
 
 ### ✅ Functionality Preserved
 
@@ -558,10 +613,13 @@ src/content.js
 ## Benefits of Removal
 
 1. **Simpler codebase** - ~76KB of sync code removed
-2. **Easier debugging** - No race conditions, storage conflicts, or sync timing issues
-3. **Faster performance** - No storage writes, no broadcast messages, no background communication
+2. **Easier debugging** - No race conditions, storage conflicts, or sync timing
+   issues
+3. **Faster performance** - No storage writes, no broadcast messages, no
+   background communication
 4. **Foundation for rebuild** - Clean slate to rebuild cross-tab sync correctly
-5. **Single source of truth** - State is purely in-memory, no storage/memory divergence
+5. **Single source of truth** - State is purely in-memory, no storage/memory
+   divergence
 6. **No iframe nesting bugs** - Simplified architecture reduces edge cases
 
 ---
@@ -571,9 +629,11 @@ src/content.js
 Once cross-tab sync is removed:
 
 1. **Test thoroughly** - Verify all Phase 8 tests pass
-2. **Document behavior** - Update README to clarify "single-tab Quick Tabs" behavior
+2. **Document behavior** - Update README to clarify "single-tab Quick Tabs"
+   behavior
 3. **Plan sync rebuild** - Design new cross-tab sync architecture from scratch
-4. **Consider simpler sync** - Maybe just storage.local persistence without real-time sync?
+4. **Consider simpler sync** - Maybe just storage.local persistence without
+   real-time sync?
 5. **Or keep it simple** - Single-tab Quick Tabs might be enough for most users
 
 ---
@@ -583,6 +643,7 @@ Once cross-tab sync is removed:
 Use this checklist when performing the removal:
 
 ### Phase 1: Delete Sync Infrastructure
+
 - [ ] Delete `src/features/quick-tabs/sync/BroadcastSync.js`
 - [ ] Delete `src/features/quick-tabs/sync/BroadcastChannelFactory.js`
 - [ ] Delete `src/features/quick-tabs/sync/CircuitBreaker.js`
@@ -591,22 +652,27 @@ Use this checklist when performing the removal:
 - [ ] Delete empty `src/features/quick-tabs/sync/` directory
 
 ### Phase 2: Delete Storage Persistence
+
 - [ ] Delete `src/features/quick-tabs/managers/StorageManager.js`
 
 ### Phase 3: Simplify UICoordinator
+
 - [ ] Remove `updateHandler` parameter from constructor
 - [ ] Remove `_applyPendingUpdates()` method
 - [ ] Remove storage refresh listeners
 - [ ] Test that UI rendering still works
 
 ### Phase 4: Remove Background Communication
-- [ ] Remove Quick Tab message handlers from `src/background/handlers/QuickTabHandler.js`
+
+- [ ] Remove Quick Tab message handlers from
+      `src/background/handlers/QuickTabHandler.js`
 - [ ] Remove storage.onChanged listener for Quick Tabs
 - [ ] Remove cached state management
 - [ ] Remove `_handleQuickTabStorageSync()` from `src/content.js`
 - [ ] Remove sync message listener from `src/content.js`
 
 ### Phase 5: Simplify Handlers
+
 - [ ] Remove storage writes from `CreateHandler.js`
 - [ ] Remove background messages from `CreateHandler.js`
 - [ ] Remove BroadcastSync from `UpdateHandler.js`
@@ -618,6 +684,7 @@ Use this checklist when performing the removal:
 - [ ] Remove background messages from `DestroyHandler.js`
 
 ### Phase 6: Simplify StateManager
+
 - [ ] Remove `hydrate()` method
 - [ ] Remove `hydrateSilent()` method
 - [ ] Remove all hydration helper methods
@@ -626,6 +693,7 @@ Use this checklist when performing the removal:
 - [ ] Test CRUD operations still work
 
 ### Phase 7: Update Index.js
+
 - [ ] Remove SyncCoordinator import and initialization
 - [ ] Remove StorageManager import and initialization
 - [ ] Remove storage parameter from handler constructors
@@ -635,6 +703,7 @@ Use this checklist when performing the removal:
 - [ ] Update initialization flow comments
 
 ### Phase 8: Verification Testing
+
 - [ ] Test: Create Quick Tab works
 - [ ] Test: Multiple Quick Tabs work
 - [ ] Test: Minimize/Restore works

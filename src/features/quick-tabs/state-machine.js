@@ -1,15 +1,15 @@
 /**
  * QuickTabStateMachine - Explicit lifecycle state tracking and transition validation
- * 
+ *
  * v1.6.3.5 - New module for Phase 1 of Architecture Refactor
- * 
+ *
  * Responsibilities:
  * - Track each Quick Tab's current state (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
  * - Validate state transitions before allowing operations
  * - Log every state change with timestamp and initiator
  * - Reject invalid operations (e.g., minimize already-minimized tab)
  * - Provide state history for debugging
- * 
+ *
  * @module state-machine
  */
 
@@ -72,23 +72,23 @@ export class QuickTabStateMachine {
      * @private
      */
     this._states = new Map();
-    
+
     /**
      * State history for each Quick Tab (circular buffer)
      * @type {Map<string, StateTransition[]>}
      * @private
      */
     this._history = new Map();
-    
+
     /**
      * Whether to enforce state transitions (can be disabled for rollout)
      * @type {boolean}
      */
     this.enforceTransitions = true;
-    
+
     console.log('[QuickTabStateMachine] Initialized');
   }
-  
+
   /**
    * Get current state for a Quick Tab
    * @param {string} id - Quick Tab ID
@@ -97,7 +97,7 @@ export class QuickTabStateMachine {
   getState(id) {
     return this._states.get(id) || QuickTabState.UNKNOWN;
   }
-  
+
   /**
    * Check if a state transition is valid
    * @param {string} id - Quick Tab ID
@@ -107,15 +107,15 @@ export class QuickTabStateMachine {
   canTransition(id, toState) {
     const fromState = this.getState(id);
     const validTargets = VALID_TRANSITIONS.get(fromState);
-    
+
     if (!validTargets) {
       console.warn('[QuickTabStateMachine] Unknown fromState:', fromState);
       return false;
     }
-    
+
     return validTargets.has(toState);
   }
-  
+
   /**
    * Check if a transition from a specific state to another is valid
    * @param {string} fromState - Source state
@@ -126,7 +126,7 @@ export class QuickTabStateMachine {
     const validTargets = VALID_TRANSITIONS.get(fromState);
     return validTargets ? validTargets.has(toState) : false;
   }
-  
+
   /**
    * Perform a state transition with validation and logging
    * @param {string} id - Quick Tab ID
@@ -140,7 +140,7 @@ export class QuickTabStateMachine {
     const { source = 'unknown', metadata = {} } = options;
     const fromState = this.getState(id);
     const timestamp = Date.now();
-    
+
     // Create transition entry for logging
     const transitionEntry = {
       fromState,
@@ -149,11 +149,11 @@ export class QuickTabStateMachine {
       source,
       metadata
     };
-    
+
     // Check if transition is valid
     if (!this.canTransition(id, toState)) {
       const error = `Invalid transition: ${fromState} → ${toState}`;
-      
+
       if (this.enforceTransitions) {
         console.error('[QuickTabStateMachine] REJECTED:', {
           id,
@@ -162,7 +162,7 @@ export class QuickTabStateMachine {
         });
         return { success: false, error, fromState, toState };
       }
-      
+
       // Log warning but allow if not enforcing
       console.warn('[QuickTabStateMachine] WARNING (not enforced):', {
         id,
@@ -170,13 +170,13 @@ export class QuickTabStateMachine {
         error
       });
     }
-    
+
     // Perform transition
     this._states.set(id, toState);
-    
+
     // Add to history
     this._addToHistory(id, transitionEntry);
-    
+
     // Log successful transition
     console.log('[QuickTabStateMachine] Transition:', {
       id,
@@ -185,10 +185,10 @@ export class QuickTabStateMachine {
       source,
       timestamp: new Date(timestamp).toISOString()
     });
-    
+
     return { success: true, fromState, toState };
   }
-  
+
   /**
    * Add a transition to the history for a Quick Tab
    * @private
@@ -197,21 +197,21 @@ export class QuickTabStateMachine {
    */
   _addToHistory(id, entry) {
     let history = this._history.get(id);
-    
+
     if (!history) {
       history = [];
       this._history.set(id, history);
     }
-    
+
     // Add new entry
     history.push(entry);
-    
+
     // Trim to max size (keep most recent)
     if (history.length > MAX_HISTORY_SIZE) {
       history.shift();
     }
   }
-  
+
   /**
    * Get state history for a Quick Tab
    * @param {string} id - Quick Tab ID
@@ -220,7 +220,7 @@ export class QuickTabStateMachine {
   getHistory(id) {
     return this._history.get(id) || [];
   }
-  
+
   /**
    * Initialize a Quick Tab in a specific state
    * Useful for hydration from storage
@@ -232,13 +232,16 @@ export class QuickTabStateMachine {
   initialize(id, state, source = 'init') {
     // Skip if already tracking (idempotent)
     if (this._states.has(id)) {
-      console.warn('[QuickTabStateMachine] Already tracking (init skipped):', { id, currentState: this._states.get(id) });
+      console.warn('[QuickTabStateMachine] Already tracking (init skipped):', {
+        id,
+        currentState: this._states.get(id)
+      });
       return false;
     }
-    
+
     const timestamp = Date.now();
     this._states.set(id, state);
-    
+
     this._addToHistory(id, {
       fromState: QuickTabState.UNKNOWN,
       toState: state,
@@ -246,11 +249,11 @@ export class QuickTabStateMachine {
       source,
       metadata: { type: 'initialize' }
     });
-    
+
     console.log('[QuickTabStateMachine] Initialized:', { id, state, source });
     return true;
   }
-  
+
   /**
    * Remove a Quick Tab from tracking
    * @param {string} id - Quick Tab ID
@@ -258,12 +261,12 @@ export class QuickTabStateMachine {
   remove(id) {
     const hadState = this._states.delete(id);
     const hadHistory = this._history.delete(id);
-    
+
     if (hadState || hadHistory) {
       console.log('[QuickTabStateMachine] Removed:', id);
     }
   }
-  
+
   /**
    * Get all tracked Quick Tab IDs
    * @returns {string[]} Array of Quick Tab IDs
@@ -271,25 +274,25 @@ export class QuickTabStateMachine {
   getAllIds() {
     return Array.from(this._states.keys());
   }
-  
+
   /**
    * Get statistics about the state machine
    * @returns {Object} Statistics object
    */
   getStats() {
     const stateCounts = {};
-    
+
     for (const state of this._states.values()) {
       stateCounts[state] = (stateCounts[state] || 0) + 1;
     }
-    
+
     return {
       trackedCount: this._states.size,
       stateCounts,
       enforcing: this.enforceTransitions
     };
   }
-  
+
   /**
    * Clear all state tracking (for testing/reset)
    */
@@ -298,7 +301,7 @@ export class QuickTabStateMachine {
     this._history.clear();
     console.log('[QuickTabStateMachine] Cleared all state tracking');
   }
-  
+
   /**
    * Dump full state for debugging
    * @returns {Object} Full state dump
@@ -306,15 +309,15 @@ export class QuickTabStateMachine {
   dump() {
     const states = {};
     const histories = {};
-    
+
     for (const [id, state] of this._states) {
       states[id] = state;
     }
-    
+
     for (const [id, history] of this._history) {
       histories[id] = history;
     }
-    
+
     return { states, histories };
   }
 }

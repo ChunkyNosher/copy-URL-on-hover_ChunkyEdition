@@ -1,38 +1,50 @@
 # Agentic-Tools MCP Memory Search Fix
 
 **Date:** November 24, 2025  
-**Issue:** Memory search functionality broken with `Cannot read properties of undefined (reading 'toLowerCase')`  
+**Issue:** Memory search functionality broken with
+`Cannot read properties of undefined (reading 'toLowerCase')`  
 **Status:** ✅ RESOLVED
 
 ## Problem Statement
 
 The agentic-tools MCP `search_memories` function was failing with:
+
 ```
 Error searching memories: Cannot read properties of undefined (reading 'toLowerCase')
 ```
 
-This prevented searching through the 104 stored memories, blocking access to critical architectural decisions, testing strategies, and implementation details related to Issue #47 and Quick Tabs synchronization.
+This prevented searching through the 104 stored memories, blocking access to
+critical architectural decisions, testing strategies, and implementation details
+related to Issue #47 and Quick Tabs synchronization.
 
 ## Root Cause Analysis
 
 ### Investigation Process
 
-1. **Initial Testing**: Attempted to search for "issue #47" and "Quick Tabs sync" - both failed
-2. **list_memories Verification**: Confirmed 104 memories exist and list function works
-3. **Schema Inspection**: Examined memory JSON files to understand expected structure
-4. **Perplexity Research**: Found GitHub issue #2044 documenting identical error in MCP memory servers
-5. **Validation Scan**: Used jq to check all 104 memory files for schema compliance
+1. **Initial Testing**: Attempted to search for "issue #47" and "Quick Tabs
+   sync" - both failed
+2. **list_memories Verification**: Confirmed 104 memories exist and list
+   function works
+3. **Schema Inspection**: Examined memory JSON files to understand expected
+   structure
+4. **Perplexity Research**: Found GitHub issue #2044 documenting identical error
+   in MCP memory servers
+5. **Validation Scan**: Used jq to check all 104 memory files for schema
+   compliance
 
 ### Root Cause
 
-Memory file `.agentic-tools-mcp/memories/architecture/Gap_7_Structured_Logging_Complete.json` used the field name `content` instead of `details`. 
+Memory file
+`.agentic-tools-mcp/memories/architecture/Gap_7_Structured_Logging_Complete.json`
+used the field name `content` instead of `details`.
 
 **Expected Schema:**
+
 ```json
 {
   "id": "...",
   "title": "...",
-  "details": "...",    // ✅ CORRECT
+  "details": "...", // ✅ CORRECT
   "category": "...",
   "dateCreated": "...",
   "dateUpdated": "..."
@@ -40,22 +52,26 @@ Memory file `.agentic-tools-mcp/memories/architecture/Gap_7_Structured_Logging_C
 ```
 
 **Problematic Schema:**
+
 ```json
 {
   "id": "...",
   "title": "...",
-  "content": "...",    // ❌ WRONG - causes search to fail
+  "content": "...", // ❌ WRONG - causes search to fail
   "category": "..."
 }
 ```
 
-When the search function iterated through memories and tried to search the `details` field, it encountered `undefined` and crashed when calling `.toLowerCase()` on it.
+When the search function iterated through memories and tried to search the
+`details` field, it encountered `undefined` and crashed when calling
+`.toLowerCase()` on it.
 
 ## Solution Implemented
 
 ### 1. Schema Fix
 
 Used jq to rename the field:
+
 ```bash
 jq '.details = .content | del(.content)' Gap_7_Structured_Logging_Complete.json > fixed.json
 mv fixed.json Gap_7_Structured_Logging_Complete.json
@@ -63,15 +79,19 @@ mv fixed.json Gap_7_Structured_Logging_Complete.json
 
 ### 2. Documentation Update
 
-Added "Memory Schema Validation" section to `.github/copilot-instructions.md` including:
+Added "Memory Schema Validation" section to `.github/copilot-instructions.md`
+including:
+
 - Required field list with types
 - Common error explanation
 - Validation commands
-- Clarification about create_memory parameter naming (uses `content` parameter but stores as `details`)
+- Clarification about create_memory parameter naming (uses `content` parameter
+  but stores as `details`)
 
 ### 3. Troubleshooting Memory
 
 Created memory documenting:
+
 - Root cause
 - Fix procedure
 - Validation commands
@@ -81,27 +101,30 @@ Created memory documenting:
 
 ### Test Suite - All Passing ✅
 
-| Test | Query | Results | Status |
-|------|-------|---------|--------|
-| Issue #47 Search | "issue #47" | 10 memories | ✅ PASS |
-| Quick Tabs Search | "Quick Tabs sync" | 3 memories | ✅ PASS |
-| Architecture Filter | "sync" + category:"architecture" | 10 memories | ✅ PASS |
-| Pattern Search | "architecture pattern" | 3 memories | ✅ PASS |
-| Memory Retrieval | ID: c2baed27-3d42-4b53-9da8-41af42b15a69 | Full content | ✅ PASS |
+| Test                | Query                                    | Results      | Status  |
+| ------------------- | ---------------------------------------- | ------------ | ------- |
+| Issue #47 Search    | "issue #47"                              | 10 memories  | ✅ PASS |
+| Quick Tabs Search   | "Quick Tabs sync"                        | 3 memories   | ✅ PASS |
+| Architecture Filter | "sync" + category:"architecture"         | 10 memories  | ✅ PASS |
+| Pattern Search      | "architecture pattern"                   | 3 memories   | ✅ PASS |
+| Memory Retrieval    | ID: c2baed27-3d42-4b53-9da8-41af42b15a69 | Full content | ✅ PASS |
 
 ### Sample Search Results
 
 **Query: "issue #47"** (10 results, top 3 shown)
+
 1. Integration test scenarios implementation (100% relevance)
 2. Phase 1 completion (100% relevance)
 3. Manual testing procedure (100% relevance)
 
 **Query: "Quick Tabs sync"** (3 results)
+
 1. Scenario 2: Multiple Quick Tabs sync (26.6% relevance)
 2. Issue #47 Scenario 2 (24.1% relevance)
 3. Playwright MCP setup (13.9% relevance)
 
 **Query: "sync" with category:"architecture"** (10 results, top 3 shown)
+
 1. Console Filter Async/Sync Issue (100% relevance)
 2. Quick Tab Cross-Tab Sync Architecture Pattern (95.1% relevance)
 3. Cross-Domain Sync Improvements (87.9% relevance)
@@ -110,9 +133,11 @@ Created memory documenting:
 
 ### Architecture Insights Retrieved
 
-Successfully retrieved the critical "Quick Tab Cross-Tab Sync Architecture Pattern" memory showing:
+Successfully retrieved the critical "Quick Tab Cross-Tab Sync Architecture
+Pattern" memory showing:
 
 **Three-Layer Synchronization System:**
+
 1. **Layer 1: Real-time BroadcastChannel** - Fast <10ms cross-tab notifications
 2. **Layer 2: Persistent browser.storage.local** - Reliable state persistence
 3. **Layer 3: Tab Visibility Refresh** - UI sync when tab becomes visible
@@ -120,6 +145,7 @@ Successfully retrieved the critical "Quick Tab Cross-Tab Sync Architecture Patte
 ### Issue #47 Context
 
 Found extensive documentation on:
+
 - 11 integration test scenarios implemented (83 tests)
 - Manual testing procedures
 - Test Bridge API for autonomous testing
@@ -144,15 +170,20 @@ find .agentic-tools-mcp/memories -name "*.json" -exec sh -c \
 ### Documentation Standards
 
 Updated Copilot instructions to clarify:
-- The `create_memory` tool parameter is named `content` but stores as `details` in JSON
+
+- The `create_memory` tool parameter is named `content` but stores as `details`
+  in JSON
 - Manual memory file creation should use `details` field
 - Schema validation should be run before committing memory files
 
 ## Files Modified
 
-1. `.agentic-tools-mcp/memories/architecture/Gap_7_Structured_Logging_Complete.json` - Fixed schema
-2. `.github/copilot-instructions.md` - Added validation section (+643 bytes, 24,957 bytes total)
-3. `.agentic-tools-mcp/memories/troubleshooting/Agentic-Tools_MCP_Search_Bug_Fix.json` - New memory
+1. `.agentic-tools-mcp/memories/architecture/Gap_7_Structured_Logging_Complete.json` -
+   Fixed schema
+2. `.github/copilot-instructions.md` - Added validation section (+643 bytes,
+   24,957 bytes total)
+3. `.agentic-tools-mcp/memories/troubleshooting/Agentic-Tools_MCP_Search_Bug_Fix.json` -
+   New memory
 
 ## Impact
 
@@ -174,20 +205,23 @@ Updated Copilot instructions to clarify:
 
 ### Additional Issue Discovered
 
-After fixing the schema bug, a secondary limitation was identified: **long search queries return NO results**.
+After fixing the schema bug, a secondary limitation was identified: **long
+search queries return NO results**.
 
 ### Root Cause
 
-The agentic-tools-mcp search uses simple text matching with AND token logic, NOT semantic/vector search. The algorithm requires ALL query tokens to match memory content, causing longer queries to fail the 0.3 relevance threshold.
+The agentic-tools-mcp search uses simple text matching with AND token logic, NOT
+semantic/vector search. The algorithm requires ALL query tokens to match memory
+content, causing longer queries to fail the 0.3 relevance threshold.
 
 ### Evidence
 
-| Query | Results | Max Relevance |
-|-------|---------|---------------|
-| "Quick Tabs cross-tab synchronization BroadcastChannel" | 0 | N/A |
-| "sync" | 5 | 100% |
-| "cross-tab" | 3 | 93% |
-| "BroadcastChannel" | 3 | 34% |
+| Query                                                   | Results | Max Relevance |
+| ------------------------------------------------------- | ------- | ------------- |
+| "Quick Tabs cross-tab synchronization BroadcastChannel" | 0       | N/A           |
+| "sync"                                                  | 5       | 100%          |
+| "cross-tab"                                             | 3       | 93%           |
+| "BroadcastChannel"                                      | 3       | 34%           |
 
 ### Best Practices Added to Copilot Instructions
 
@@ -210,4 +244,5 @@ Then combine results.
 ### Files Updated
 
 - `.github/copilot-instructions.md` - Added query length limitation guidance
-- `.agentic-tools-mcp/memories/best-practices/Memory_Search_Query_Length_Limitation.json` - New best practice memory
+- `.agentic-tools-mcp/memories/best-practices/Memory_Search_Query_Length_Limitation.json` -
+  New best practice memory

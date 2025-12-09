@@ -24,7 +24,7 @@ export default {
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['json', { outputFile: 'test-results/results.json' }],
-    ['list'],
+    ['list']
   ],
 
   // Global test settings
@@ -45,7 +45,7 @@ export default {
     viewport: { width: 1920, height: 1080 },
 
     // Action timeout
-    actionTimeout: 10 * 1000, // 10 seconds
+    actionTimeout: 10 * 1000 // 10 seconds
   },
 
   // Projects (browser configurations)
@@ -56,11 +56,11 @@ export default {
         // Firefox browser configuration
         browserName: 'firefox',
         // CRITICAL: Firefox extensions work in true headless mode
-        headless: true,
-      },
-    },
+        headless: true
+      }
+    }
   ],
 
   // Output directories
-  outputDir: 'test-results',
+  outputDir: 'test-results'
 };

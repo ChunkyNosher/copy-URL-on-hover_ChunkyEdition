@@ -9,11 +9,17 @@
 
 ## Executive Summary
 
-**Good news:** The mass rendering bug (all Quick Tabs appearing in all tabs) is FIXED. Container filtering is working correctly.
+**Good news:** The mass rendering bug (all Quick Tabs appearing in all tabs) is
+FIXED. Container filtering is working correctly.
 
-**Bad news:** **Issues #35 and #51 persist** - Quick Tabs created in one tab **do NOT appear in other tabs** until those tabs are focused/refreshed, and position/size changes **do NOT sync across tabs** in real-time. The root cause is **missing `storage:changed` event emission** from StorageManager, causing SyncCoordinator to never receive cross-tab updates.
+**Bad news:** **Issues #35 and #51 persist** - Quick Tabs created in one tab
+**do NOT appear in other tabs** until those tabs are focused/refreshed, and
+position/size changes **do NOT sync across tabs** in real-time. The root cause
+is **missing `storage:changed` event emission** from StorageManager, causing
+SyncCoordinator to never receive cross-tab updates.
 
 **From logs at 2025-11-26T01:14:01.248Z:**
+
 ```
 [UICoordinator] Refusing to render Quick Tab from wrong container {
   quickTabId: "qt-1764119633979-8vclo2kg9",
@@ -22,7 +28,9 @@
 }
 ```
 
-Container filtering is working ✅. But the same tab ID (130) that created the Quick Tab in `firefox-default` now opened a new page in `firefox-container-9` and correctly refuses to render Quick Tabs from the wrong container.
+Container filtering is working ✅. But the same tab ID (130) that created the
+Quick Tab in `firefox-default` now opened a new page in `firefox-container-9`
+and correctly refuses to render Quick Tabs from the wrong container.
 
 **However, the real problem is:**
 
@@ -32,7 +40,9 @@ Container filtering is working ✅. But the same tab ID (130) that created the Q
 [StorageManager] Processing storage change
 ```
 
-`storage:changed` event **is NOT emitted** to EventBus → SyncCoordinator never receives updates → UICoordinator never re-renders → Quick Tabs don't sync across tabs.
+`storage:changed` event **is NOT emitted** to EventBus → SyncCoordinator never
+receives updates → UICoordinator never re-renders → Quick Tabs don't sync across
+tabs.
 
 ---
 
@@ -50,7 +60,8 @@ Container filtering is working ✅. But the same tab ID (130) that created the Q
 2. User opens Tab B
 3. Quick Tab does **NOT appear** in Tab B ❌
 4. User focuses Tab B (triggers `event:tab-visible`)
-5. **NOW** Quick Tab appears (via `SyncCoordinator.handleTabVisible()` → manual storage load)
+5. **NOW** Quick Tab appears (via `SyncCoordinator.handleTabVisible()` → manual
+   storage load)
 
 ### Root Cause: StorageManager Not Emitting Events
 
@@ -108,7 +119,8 @@ UICoordinator NEVER renders new Quick Tab ❌
 }
 ```
 
-**Notice:** Logs show `willScheduleSync: true` but **no follow-up log** of `eventBus.emit('storage:changed')` being called.
+**Notice:** Logs show `willScheduleSync: true` but **no follow-up log** of
+`eventBus.emit('storage:changed')` being called.
 
 **SyncCoordinator is waiting for this event:**
 
@@ -117,7 +129,10 @@ UICoordinator NEVER renders new Quick Tab ❌
 this.eventBus.on('storage:changed', ({ state }) => {
   console.log('[SyncCoordinator] *** RECEIVED storage:changed EVENT ***', {
     context: typeof window !== 'undefined' ? 'content-script' : 'background',
-    tabUrl: typeof window !== 'undefined' ? window.location?.href?.substring(0, 50) : 'N/A',
+    tabUrl:
+      typeof window !== 'undefined'
+        ? window.location?.href?.substring(0, 50)
+        : 'N/A',
     hasState: !!state,
     timestamp: Date.now()
   });
@@ -125,7 +140,8 @@ this.eventBus.on('storage:changed', ({ state }) => {
 });
 ```
 
-**This console log NEVER appears in the logs ❌**, proving the event is never emitted.
+**This console log NEVER appears in the logs ❌**, proving the event is never
+emitted.
 
 ---
 
@@ -147,13 +163,15 @@ this.eventBus.on('storage:changed', ({ state }) => {
 ```
 
 **This works because:**
+
 1. User focuses tab
 2. `EventManager` emits `event:tab-visible`
 3. `SyncCoordinator` **manually loads from storage** (bypassing event system)
 4. `StateManager.hydrate()` called
 5. `UICoordinator` re-renders (correctly filtering by container)
 
-**But this is reactive, not proactive** - Quick Tabs only appear when you focus the tab, not when they're created.
+**But this is reactive, not proactive** - Quick Tabs only appear when you focus
+the tab, not when they're created.
 
 ---
 
@@ -204,7 +222,8 @@ this.eventBus.on('storage:changed', ({ state }) => {
 }
 ```
 
-**But no `[SyncCoordinator] *** RECEIVED storage:changed EVENT ***` log appears.**
+**But no `[SyncCoordinator] \*** RECEIVED storage:changed EVENT **\*` log
+appears.**
 
 **Result:** Quick Tab in Tab B never updates position until tab is focused.
 
@@ -220,26 +239,28 @@ this.eventBus.on('storage:changed', ({ state }) => {
 // Somewhere in StorageManager.js
 browser.storage.onChanged.addListener((changes, areaName) => {
   console.log('[StorageManager] *** LISTENER FIRED ***', { ... });
-  
+
   if (areaName !== 'local') return;
   if (!changes.quick_tabs_state_v2) return;
-  
+
   console.log('[StorageManager] Storage changed:', { ... });
-  
+
   const newValue = changes.quick_tabs_state_v2.newValue;
-  
+
   console.log('[StorageManager] Processing storage change:', { ... });
-  
+
   // ❌ MISSING: eventBus.emit('storage:changed', { state: newValue });
 });
 ```
 
 **The emit call is either:**
+
 1. Not present in the code
 2. Behind a conditional that's never true
 3. In a code path that's not being reached
 
-**Without seeing the full StorageManager.js file**, the most likely issue is that the event emission was removed or commented out during refactoring.
+**Without seeing the full StorageManager.js file**, the most likely issue is
+that the event emission was removed or commented out during refactoring.
 
 ---
 
@@ -271,15 +292,18 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
 **From Chrome Extensions API docs:**
 
-> "Fired when one or more items change in a storage area. This event fires in **all tabs except the one that made the change**."
+> "Fired when one or more items change in a storage area. This event fires in
+> **all tabs except the one that made the change**."
 
 **This means:**
+
 - ✅ Event fires immediately when storage changes
 - ✅ No polling needed
 - ✅ Reliable cross-tab communication
 - ✅ Already implemented correctly in the extension
 
-**The extension's StorageManager correctly listens to `storage.onChanged`** - the problem is it doesn't forward the event to SyncCoordinator.
+**The extension's StorageManager correctly listens to `storage.onChanged`** -
+the problem is it doesn't forward the event to SyncCoordinator.
 
 ---
 
@@ -294,17 +318,17 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ```javascript
 browser.storage.onChanged.addListener((changes, areaName) => {
   console.log('[StorageManager] *** LISTENER FIRED ***', { ... });
-  
+
   if (areaName !== 'local') return;
   if (!changes.quick_tabs_state_v2) return;
-  
+
   const newValue = changes.quick_tabs_state_v2.newValue;
-  
+
   console.log('[StorageManager] Processing storage change:', { ... });
-  
+
   // Existing code processes saveId tracking, etc.
   // ...
-  
+
   // NEW: Emit event to EventBus so SyncCoordinator can handle it
   if (this.eventBus) {
     console.log('[StorageManager] Emitting storage:changed event to EventBus');
@@ -334,12 +358,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Test Case 1: Quick Tab Creation Cross-Tab Sync
 
 **Steps:**
+
 1. Open Tab A in `firefox-default` container
 2. Create Quick Tab via Q keyboard shortcut
 3. Open Tab B in `firefox-default` container (different page)
 4. **Verify:** Quick Tab from Tab A appears **immediately** in Tab B ✅
 
 **Expected Logs (Tab B):**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [StorageManager] Storage changed: { ... }
@@ -360,6 +386,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Test Case 2: Position Sync Across Tabs
 
 **Steps:**
+
 1. Open Tab A and Tab B in same container
 2. Create Quick Tab in Tab A
 3. Verify Quick Tab appears in Tab B (Test Case 1)
@@ -367,6 +394,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 5. **Verify:** Quick Tab in Tab B **immediately moves** to new position ✅
 
 **Expected Logs (Tab B):**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [StorageManager] Emitting storage:changed event to EventBus   ← NEW LOG
@@ -384,6 +412,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Test Case 3: Size Sync Across Tabs
 
 **Steps:**
+
 1. Open Tab A and Tab B in same container
 2. Create Quick Tab in Tab A
 3. In Tab A, resize Quick Tab
@@ -394,12 +423,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Test Case 4: Z-Index Sync Across Tabs
 
 **Steps:**
+
 1. Open Tab A and Tab B in same container
 2. Create Quick Tab 1 and Quick Tab 2 in Tab A
 3. Click Quick Tab 1 to bring to front (zIndex increase)
 4. **Verify:** In Tab B, Quick Tab 1 is now on top ✅
 
 **Expected Logs (Tab B):**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [SyncCoordinator] *** RECEIVED storage:changed EVENT ***
@@ -413,12 +444,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Test Case 5: Close Sync Across Tabs
 
 **Steps:**
+
 1. Open Tab A and Tab B in same container
 2. Create Quick Tab in Tab A
 3. Close Quick Tab in Tab A
 4. **Verify:** Quick Tab **immediately disappears** from Tab B ✅
 
 **Expected Logs (Tab B):**
+
 ```
 [StorageManager] *** LISTENER FIRED ***
 [SyncCoordinator] *** RECEIVED storage:changed EVENT ***
@@ -432,9 +465,11 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
 ## Why Tab Focus Workaround Exists
 
-**The current workaround (manual sync on tab visible) was added because cross-tab events weren't working.**
+**The current workaround (manual sync on tab visible) was added because
+cross-tab events weren't working.**
 
 **From EventManager.js:**
+
 ```javascript
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
@@ -445,6 +480,7 @@ document.addEventListener('visibilitychange', () => {
 ```
 
 **This triggers:**
+
 ```javascript
 // In SyncCoordinator.js
 this.eventBus.on('event:tab-visible', () => {
@@ -453,6 +489,7 @@ this.eventBus.on('event:tab-visible', () => {
 ```
 
 **Which manually loads from storage:**
+
 ```javascript
 async handleTabVisible() {
   const storageState = await this.storageManager.loadAll();
@@ -462,12 +499,15 @@ async handleTabVisible() {
 ```
 
 **This works, but:**
+
 - ❌ Only updates when tab is focused
 - ❌ Not real-time
 - ❌ User sees stale state until they focus tab
 - ❌ Workaround for broken event system
 
-**Once `storage:changed` emission is fixed, this workaround becomes a backup mechanism** (useful for browser restart recovery) rather than the primary sync method.
+**Once `storage:changed` emission is fixed, this workaround becomes a backup
+mechanism** (useful for browser restart recovery) rather than the primary sync
+method.
 
 ---
 
@@ -478,6 +518,7 @@ async handleTabVisible() {
 **The EventBus is passed correctly:**
 
 **From logs at 2025-11-26T01:13:57.550Z:**
+
 ```
 [QuickTabsManager] EventBus instance verification: {
   internalEventBusId: "r",
@@ -488,6 +529,7 @@ async handleTabVisible() {
 ```
 
 **SyncCoordinator receives the EventBus:**
+
 ```
 [SyncCoordinator] Setting up listeners (storage.onChanged only) {
   context: "content-script",
@@ -508,6 +550,7 @@ async handleTabVisible() {
 ### StateManager.hydrate() Works Correctly
 
 **From logs at 2025-11-26T01:14:04.718Z:**
+
 ```
 [StateManager] Hydrate called {
   context: "content-script",
@@ -522,6 +565,7 @@ async handleTabVisible() {
 ```
 
 **StateManager.hydrate() correctly:**
+
 - ✅ Compares incoming vs existing Quick Tabs
 - ✅ Emits `state:added` for new Quick Tabs
 - ✅ Emits `state:updated` for changed Quick Tabs
@@ -538,6 +582,7 @@ async handleTabVisible() {
 ### Before Fix (Current Broken State)
 
 **Per tab activation:**
+
 - Load ALL Quick Tabs from storage (I/O operation)
 - Deserialize JSON
 - Compare with in-memory state
@@ -550,6 +595,7 @@ async handleTabVisible() {
 ### After Fix (Event-Driven Sync)
 
 **Per storage change:**
+
 - Receive `storage:changed` event (0ms - instant)
 - Extract changed Quick Tabs (O(1) - just parse event data)
 - Hydrate state with changes (O(k) where k = changed Quick Tabs, typically 1)
@@ -558,6 +604,7 @@ async handleTabVisible() {
 **Cost:** ~5-10ms per change (instant, real-time)
 
 **Benefits:**
+
 - ✅ 10x faster than manual sync
 - ✅ Real-time updates (no waiting for tab focus)
 - ✅ Lower memory usage (no full state reload)
@@ -570,6 +617,7 @@ async handleTabVisible() {
 ### Firefox
 
 **storage.onChanged support:**
+
 - ✅ Fully supported since Firefox 45
 - ✅ Fires in all tabs except originating tab
 - ✅ No known issues
@@ -577,11 +625,13 @@ async handleTabVisible() {
 ### Chrome
 
 **storage.onChanged support:**
+
 - ✅ Fully supported since Chrome 20
 - ✅ Fires in all tabs except originating tab
 - ✅ No known issues
 
-**Both browsers handle `storage.onChanged` identically** - the extension's use is correct and portable.
+**Both browsers handle `storage.onChanged` identically** - the extension's use
+is correct and portable.
 
 ---
 
@@ -593,14 +643,17 @@ async handleTabVisible() {
 this.eventBus.emit('storage:changed', { state: newValue });
 ```
 
-**Root cause:** StorageManager processes `storage.onChanged` events but doesn't forward them to EventBus, breaking the event-driven architecture.
+**Root cause:** StorageManager processes `storage.onChanged` events but doesn't
+forward them to EventBus, breaking the event-driven architecture.
 
 **Fix complexity:** ⭐ Trivial (1-2 lines)  
-**Fix risk:** ⭐ Very Low (adds event that entire system is already designed for)  
+**Fix risk:** ⭐ Very Low (adds event that entire system is already designed
+for)  
 **Testing effort:** ⭐⭐ Moderate (5 test cases to verify all sync scenarios)  
 **Expected outcome:** ✅ Real-time cross-tab sync for all Quick Tab operations
 
 **Once fixed:**
+
 - ✅ Quick Tabs appear immediately in other tabs
 - ✅ Position/size changes sync in real-time
 - ✅ Z-index changes sync in real-time
@@ -608,19 +661,24 @@ this.eventBus.emit('storage:changed', { state: newValue });
 - ✅ Tab focus workaround becomes backup (still useful for browser restart)
 - ✅ 10x performance improvement over manual sync
 
-**The architecture is sound, the event system is in place, the listeners are registered.** All that's missing is emitting the event that connects StorageManager to SyncCoordinator.
+**The architecture is sound, the event system is in place, the listeners are
+registered.** All that's missing is emitting the event that connects
+StorageManager to SyncCoordinator.
 
 ---
 
 ## Implementation Checklist
 
 ### Phase 1: Add Event Emission (Critical)
+
 - [ ] Locate storage.onChanged listener in StorageManager.js
-- [ ] Add `eventBus.emit('storage:changed', { state: newValue })` after processing
+- [ ] Add `eventBus.emit('storage:changed', { state: newValue })` after
+      processing
 - [ ] Add debug logging for event emission
 - [ ] Verify EventBus is available before emitting
 
 ### Phase 2: Testing
+
 - [ ] Test Case 1: Quick Tab creation cross-tab sync
 - [ ] Test Case 2: Position sync across tabs
 - [ ] Test Case 3: Size sync across tabs
@@ -628,6 +686,7 @@ this.eventBus.emit('storage:changed', { state: newValue });
 - [ ] Test Case 5: Close sync across tabs
 
 ### Phase 3: Verification
+
 - [ ] Check logs for `[SyncCoordinator] *** RECEIVED storage:changed EVENT ***`
 - [ ] Verify no duplicate `[UICoordinator] Refusing to render` warnings
 - [ ] Confirm real-time updates (no tab focus required)

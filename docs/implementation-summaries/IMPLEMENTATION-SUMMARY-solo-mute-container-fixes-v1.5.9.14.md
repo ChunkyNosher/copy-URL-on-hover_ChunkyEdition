@@ -16,7 +16,8 @@ This implementation addresses **all critical issues** identified in:
 ### Root Cause #1: Missing Global Window Reference ✅ FIXED
 
 **Problem:** QuickTabWindow cannot access `window.quickTabsManager`  
-**Fix:** Added global exposure in `src/features/quick-tabs/index.js` after initialization
+**Fix:** Added global exposure in `src/features/quick-tabs/index.js` after
+initialization
 
 ```javascript
 // v1.5.9.13 - Expose manager globally for QuickTabWindow button access
@@ -27,7 +28,8 @@ if (typeof window !== 'undefined') {
 ```
 
 **Location:** Line ~100 in init() method  
-**Impact:** Solo/mute buttons can now access currentTabId via window.quickTabsManager.currentTabId
+**Impact:** Solo/mute buttons can now access currentTabId via
+window.quickTabsManager.currentTabId
 
 ### Root Cause #2: Background Script Handler Returns Null Tab ID ✅ FIXED
 
@@ -37,7 +39,9 @@ if (typeof window !== 'undefined') {
 ```javascript
 // FIRST: Try sender.tab (standard approach for content scripts)
 if (sender.tab && sender.tab.id) {
-  console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`);
+  console.log(
+    `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${sender.tab.id} from sender.tab`
+  );
   sendResponse({ tabId: sender.tab.id });
   return true;
 }
@@ -45,7 +49,9 @@ if (sender.tab && sender.tab.id) {
 // FALLBACK: Query active tab in current window
 browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
   if (tabs && tabs.length > 0 && tabs[0].id) {
-    console.log(`[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`);
+    console.log(
+      `[Background] GET_CURRENT_TAB_ID: Returning tab ID ${tabs[0].id} from tabs.query`
+    );
     sendResponse({ tabId: tabs[0].id });
   } else {
     console.warn('[Background] GET_CURRENT_TAB_ID: Could not determine tab ID');
@@ -55,7 +61,8 @@ browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
 ```
 
 **Location:** Line ~1313 in background.js  
-**Impact:** Tab ID detection now succeeds even during initialization race conditions
+**Impact:** Tab ID detection now succeeds even during initialization race
+conditions
 
 ### Root Cause #3: Schema Inconsistencies ✅ FIXED
 
@@ -114,7 +121,8 @@ toggleSolo(soloBtn) {
 
 ### Issue #1: Container Detection Race Conditions ✅ FIXED
 
-**Problem:** Async tabs.query() can return stale container data due to timing issues  
+**Problem:** Async tabs.query() can return stale container data due to timing
+issues  
 **Fix:** Added `getCurrentContainer()` method for on-demand fresh detection
 
 ```javascript
@@ -146,11 +154,13 @@ async getCurrentContainer() {
 ```
 
 **Location:** Line ~130 in index.js  
-**Impact:** Container detection always returns fresh data, preventing stale container issues
+**Impact:** Container detection always returns fresh data, preventing stale
+container issues
 
 ### Issue #2: BroadcastChannel Created Once with Wrong Container ✅ FIXED
 
-**Problem:** BroadcastChannel joined once during init, never updated if container changes  
+**Problem:** BroadcastChannel joined once during init, never updated if
+container changes  
 **Fix:** Implemented lazy channel creation with `getBroadcastChannel()`
 
 ```javascript
@@ -199,7 +209,8 @@ async broadcast(type, data) {
 ```
 
 **Location:** Line ~846 in index.js  
-**Impact:** Content scripts automatically switch to correct container's BroadcastChannel
+**Impact:** Content scripts automatically switch to correct container's
+BroadcastChannel
 
 ### Issue #3: No Container Validation Before Rendering ✅ FIXED
 
@@ -243,7 +254,8 @@ async syncFromStorage(state, containerFilter = null) {
 ```
 
 **Location:** Line ~645 in index.js  
-**Impact:** Triple-layer validation prevents Quick Tabs from leaking across containers
+**Impact:** Triple-layer validation prevents Quick Tabs from leaking across
+containers
 
 ### Issue #4: Enhanced Container Logging ✅ ADDED
 
@@ -338,9 +350,12 @@ All existing tests pass, including Quick Tabs creation flow tests.
 
 ### Multiple Validation Layers
 
-1. **Storage sync:** Validates filter matches current container (refuses to sync if mismatch)
-2. **Per-tab creation:** Validates each tab's container matches current before rendering
-3. **BroadcastChannel:** Validates container before joining channel (re-creates if changed)
+1. **Storage sync:** Validates filter matches current container (refuses to sync
+   if mismatch)
+2. **Per-tab creation:** Validates each tab's container matches current before
+   rendering
+3. **BroadcastChannel:** Validates container before joining channel (re-creates
+   if changed)
 4. **Logging:** Comprehensive warnings for all container mismatches
 
 ### Error Handling
@@ -352,29 +367,38 @@ All existing tests pass, including Quick Tabs creation flow tests.
 
 ## Edge Cases Addressed
 
-1. **User switches containers mid-operation:** getCurrentContainer() always returns fresh value
-2. **Tab context changes during async operation:** Re-validation prevents stale data usage
-3. **BroadcastChannel on wrong container:** Lazy creation ensures correct channel membership
-4. **Storage sync with wrong container:** Validation refuses to sync, preventing leaks
-5. **Sender.tab undefined during init:** Fallback to tabs.query() ensures tab ID detection succeeds
-6. **Emergency save triggered mid-operation:** Uses current solo/mute state, not legacy format
+1. **User switches containers mid-operation:** getCurrentContainer() always
+   returns fresh value
+2. **Tab context changes during async operation:** Re-validation prevents stale
+   data usage
+3. **BroadcastChannel on wrong container:** Lazy creation ensures correct
+   channel membership
+4. **Storage sync with wrong container:** Validation refuses to sync, preventing
+   leaks
+5. **Sender.tab undefined during init:** Fallback to tabs.query() ensures tab ID
+   detection succeeds
+6. **Emergency save triggered mid-operation:** Uses current solo/mute state, not
+   legacy format
 
 ## Manual Testing Checklist
 
 ### Solo Functionality
 
-- [ ] Click solo button (⭕) on Tab 1 → icon changes to 🎯, background changes to gray
+- [ ] Click solo button (⭕) on Tab 1 → icon changes to 🎯, background changes
+      to gray
 - [ ] Quick Tab disappears from Tab 2 and Tab 3
 - [ ] Quick Tab remains visible on Tab 1
 - [ ] Click solo button again (🎯) → icon changes to ⭕, background clears
 - [ ] Quick Tab reappears on Tab 2 and Tab 3
 - [ ] Console logs show: `[QuickTabWindow] toggleSolo called for: qt-xxx`
 - [ ] Console logs show: `[QuickTabsManager] Toggling solo for qt-xxx: [1234]`
-- [ ] Background logs show: `[Background] Received solo update: qt-xxx soloedOnTabs: [1234]`
+- [ ] Background logs show:
+      `[Background] Received solo update: qt-xxx soloedOnTabs: [1234]`
 
 ### Mute Functionality
 
-- [ ] Click mute button (🔊) on Tab 1 → icon changes to 🔇, background changes to red
+- [ ] Click mute button (🔊) on Tab 1 → icon changes to 🔇, background changes
+      to red
 - [ ] Quick Tab disappears from Tab 1 only
 - [ ] Quick Tab remains visible on Tab 2 and Tab 3
 - [ ] Click mute button again (🔇) → icon changes to 🔊, background clears
@@ -403,9 +427,13 @@ All existing tests pass, including Quick Tabs creation flow tests.
 
 ## Known Limitations
 
-1. **Broadcast calls not awaited:** Fire-and-forget pattern used for broadcasts. Errors are handled internally but broadcast operations don't block execution.
-2. **Container cleanup on tab close:** Background script should handle removing dead tab IDs from solo/mute arrays (existing feature, not modified in this fix).
-3. **No UI feedback for container mismatches:** If a container mismatch is detected, it's logged to console but there's no user-facing notification.
+1. **Broadcast calls not awaited:** Fire-and-forget pattern used for broadcasts.
+   Errors are handled internally but broadcast operations don't block execution.
+2. **Container cleanup on tab close:** Background script should handle removing
+   dead tab IDs from solo/mute arrays (existing feature, not modified in this
+   fix).
+3. **No UI feedback for container mismatches:** If a container mismatch is
+   detected, it's logged to console but there's no user-facing notification.
 
 ## Files Modified
 
@@ -432,7 +460,10 @@ All existing tests pass, including Quick Tabs creation flow tests.
 
 ## Summary
 
-This implementation provides **robust, defense-in-depth fixes** for both solo/mute functionality and container isolation. The fixes are minimal, surgical, and preserve all existing functionality while adding comprehensive validation and logging.
+This implementation provides **robust, defense-in-depth fixes** for both
+solo/mute functionality and container isolation. The fixes are minimal,
+surgical, and preserve all existing functionality while adding comprehensive
+validation and logging.
 
 **Key Achievements:**
 

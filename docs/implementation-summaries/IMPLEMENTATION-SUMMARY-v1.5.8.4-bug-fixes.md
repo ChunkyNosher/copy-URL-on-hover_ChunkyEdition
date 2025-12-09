@@ -93,7 +93,10 @@ step:
 
 ```javascript
 // Verify content script is loading
-console.log('[Copy-URL-on-Hover] Content script loaded at:', new Date().toISOString());
+console.log(
+  '[Copy-URL-on-Hover] Content script loaded at:',
+  new Date().toISOString()
+);
 
 // Initialize core systems
 console.log('[Copy-URL-on-Hover] Initializing core systems...');

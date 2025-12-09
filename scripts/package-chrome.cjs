@@ -40,7 +40,7 @@ const chromeManifest = JSON.parse(fs.readFileSync(chromeManifestSrc, 'utf8'));
 
 // Fix background script paths
 if (chromeManifest.background && chromeManifest.background.scripts) {
-  chromeManifest.background.scripts = chromeManifest.background.scripts.map(script => 
+  chromeManifest.background.scripts = chromeManifest.background.scripts.map(script =>
     script.replace(/^dist\//, '')
   );
 }
@@ -63,11 +63,10 @@ const outputFile = `chrome-extension-v${version}.zip`;
 
 try {
   // Package from dist-chrome/ directory
-  execSync(
-    `cd dist-chrome && zip -r -1 -FS ../${outputFile} * -x '*.DS_Store' -x '*.map'`,
-    { stdio: 'inherit' }
-  );
-  
+  execSync(`cd dist-chrome && zip -r -1 -FS ../${outputFile} * -x '*.DS_Store' -x '*.map'`, {
+    stdio: 'inherit'
+  });
+
   const stats = fs.statSync(outputFile);
   console.log(`✅ Chrome package created: ${outputFile}`);
   console.log(`   Size: ${(stats.size / 1024).toFixed(2)} KB`);

@@ -46,7 +46,8 @@ if (typeof browser === 'undefined') {
 
 ### Why This Caused the Issue
 
-This code attempted to create a browser API compatibility shim, but it had a fundamental flaw:
+This code attempted to create a browser API compatibility shim, but it had a
+fundamental flaw:
 
 1. **Variable Shadowing:**
    - `let browser;` declares a local variable named `browser`
@@ -54,7 +55,8 @@ This code attempted to create a browser API compatibility shim, but it had a fun
    - The local `browser` variable is `undefined` at this point
 
 2. **Check Always Returns True:**
-   - `typeof browser === 'undefined'` checks the LOCAL variable (which is undefined)
+   - `typeof browser === 'undefined'` checks the LOCAL variable (which is
+     undefined)
    - The check is TRUE even though Firefox has a global `browser` object
    - This happens because JavaScript hoists the `let` declaration
 
@@ -103,11 +105,17 @@ Replaced the buggy initialization with proper browser API access:
 // Use global browser API if available (Firefox), otherwise fall back to chrome (Chrome)
 /* eslint-disable-next-line no-undef */
 const browserAPI =
-  typeof browser !== 'undefined' ? browser : typeof chrome !== 'undefined' ? chrome : null;
+  typeof browser !== 'undefined'
+    ? browser
+    : typeof chrome !== 'undefined'
+      ? chrome
+      : null;
 
 // Verify browser API is available
 if (!browserAPI) {
-  console.error('[Popup] Browser API not available. Extension may not work properly.');
+  console.error(
+    '[Popup] Browser API not available. Extension may not work properly.'
+  );
 }
 ```
 
@@ -174,8 +182,7 @@ tabs.forEach(tab => {
 - All 68 tests pass
 - No regressions introduced
 
-✅ **Manual Testing Required:**
-User should test in Firefox/Zen Browser:
+✅ **Manual Testing Required:** User should test in Firefox/Zen Browser:
 
 1. **Export Console Logs:**
    - Open extension popup → Advanced tab
@@ -238,15 +245,18 @@ User should test in Firefox/Zen Browser:
 
 ## Files Changed
 
-- `popup.js` - Fixed browser API initialization and all API calls (lines 1-10, and 15+ occurrences)
+- `popup.js` - Fixed browser API initialization and all API calls (lines 1-10,
+  and 15+ occurrences)
 - `dist/popup.js` - Built version includes the fix
 
 ---
 
 ## Lessons Learned
 
-1. **Variable shadowing is dangerous** - Always check for global object conflicts
-2. **Cross-browser compatibility requires care** - Test patterns in all target browsers
+1. **Variable shadowing is dangerous** - Always check for global object
+   conflicts
+2. **Cross-browser compatibility requires care** - Test patterns in all target
+   browsers
 3. **Defensive programming saves time** - Null checks prevent crashes
 4. **TypeScript would have caught this** - Consider migrating critical files
 

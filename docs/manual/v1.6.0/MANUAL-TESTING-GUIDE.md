@@ -1,6 +1,7 @@
 # v1.6.0 Critical Fixes - Manual Testing Guide
 
-**Purpose:** Verify all critical bug fixes are working correctly in Firefox/Zen Browser  
+**Purpose:** Verify all critical bug fixes are working correctly in Firefox/Zen
+Browser  
 **Date:** November 20, 2025  
 **Status:** Ready for Testing
 
@@ -57,7 +58,8 @@
 If FAIL:
 
 1. Check `dist/content.js` exists
-2. Verify `dist/manifest.json` has `"js": ["dist/content.js"]` (not just `"content.js"`)
+2. Verify `dist/manifest.json` has `"js": ["dist/content.js"]` (not just
+   `"content.js"`)
 3. Rebuild: `npm run build`
 4. Reload extension in about:debugging
 
@@ -80,7 +82,8 @@ If FAIL:
 
 - Console shows: `[Content] Received TOGGLE_QUICK_TABS_PANEL request`
 - Console shows: `[Content] ✓ Quick Tabs panel toggled successfully`
-- OR console shows: `[Content] Quick Tabs manager not initialized` (acceptable if no Quick Tabs exist yet)
+- OR console shows: `[Content] Quick Tabs manager not initialized` (acceptable
+  if no Quick Tabs exist yet)
 - No "Could not establish connection" errors
 
 ❌ **FAIL if:**
@@ -102,7 +105,8 @@ If FAIL:
 
 ## Test 3: Export Console Logs Button ✅
 
-**What This Tests:** LogHandler registration and EXPORT_LOGS message handling (Issue #2)
+**What This Tests:** LogHandler registration and EXPORT_LOGS message handling
+(Issue #2)
 
 ### Steps:
 
@@ -178,7 +182,8 @@ If FAIL:
 
 ## Test 5: No Duplicate Command Listeners ✅
 
-**What This Tests:** Removal of obsolete toggle-minimized-manager listener (Issue #4)
+**What This Tests:** Removal of obsolete toggle-minimized-manager listener
+(Issue #4)
 
 ### Steps:
 
@@ -265,7 +270,8 @@ Use this checklist to track testing progress:
 
 **All tests passing?** ✅ v1.6.0 critical bugs are FIXED!
 
-**Any tests failing?** ❌ See troubleshooting sections or create GitHub issue with:
+**Any tests failing?** ❌ See troubleshooting sections or create GitHub issue
+with:
 
 - Test number that failed
 - Expected vs actual behavior
@@ -294,7 +300,8 @@ Expected E2E test results:
 
 - 21 test cases in v1.6.0-critical-fixes.spec.js
 - All tests should PASS
-- Tests cover: content loading, keyboard shortcuts, log export, log clear, architecture
+- Tests cover: content loading, keyboard shortcuts, log export, log clear,
+  architecture
 
 ---
 

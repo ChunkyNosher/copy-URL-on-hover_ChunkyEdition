@@ -6,20 +6,27 @@
 
 ## Overview
 
-Successfully implemented cross-browser compatibility for the Copy URL on Hover extension, enabling it to work on both Firefox and Chrome/Chromium browsers while maintaining Manifest v2. This implementation follows the official guide at `docs/manual/v1.6.0/cross-browser-manifest-v2-guide.md`.
+Successfully implemented cross-browser compatibility for the Copy URL on Hover
+extension, enabling it to work on both Firefox and Chrome/Chromium browsers
+while maintaining Manifest v2. This implementation follows the official guide at
+`docs/manual/v1.6.0/cross-browser-manifest-v2-guide.md`.
 
 ## Implementation Details
 
 ### 1. Polyfill Integration
 
-**webextension-polyfill@0.12.0** provides the `browser` namespace and Promise-based APIs for Chrome.
+**webextension-polyfill@0.12.0** provides the `browser` namespace and
+Promise-based APIs for Chrome.
 
 **Changes:**
+
 - Created `scripts/copy-polyfill.cjs` to copy polyfill to dist/
-- Modified build process: `clean → copy:polyfill → rollup → copy-assets → fix-manifest`
+- Modified build process:
+  `clean → copy:polyfill → rollup → copy-assets → fix-manifest`
 - Polyfill loaded BEFORE all other scripts in manifest.json
 
 **Build Scripts:**
+
 ```json
 "build": "npm run clean && npm run copy:polyfill && rollup -c && npm run copy-assets && npm run fix-manifest"
 "copy:polyfill": "node scripts/copy-polyfill.cjs"
@@ -33,35 +40,43 @@ Successfully implemented cross-browser compatibility for the Copy URL on Hover e
 {
   "permissions": [
     // Removed: "contextualIdentities" (Firefox-only)
-    "storage", "tabs", "webRequest", "webRequestBlocking", 
-    "<all_urls>", "cookies", "downloads"
+    "storage",
+    "tabs",
+    "webRequest",
+    "webRequestBlocking",
+    "<all_urls>",
+    "cookies",
+    "downloads"
   ],
-  
+
   "options_ui": {
     // Changed: "browser_style": true → "open_in_tab": true
     "page": "options_page.html",
     "open_in_tab": true
   },
-  
+
   "background": {
     // Added polyfill, Removed "persistent": true
     "scripts": [
-      "dist/browser-polyfill.min.js",  // Must be first!
+      "dist/browser-polyfill.min.js", // Must be first!
       "dist/background.js"
     ]
   },
-  
-  "content_scripts": [{
-    // Added polyfill
-    "js": [
-      "dist/browser-polyfill.min.js",  // Must be first!
-      "dist/content.js"
-    ]
-  }]
+
+  "content_scripts": [
+    {
+      // Added polyfill
+      "js": [
+        "dist/browser-polyfill.min.js", // Must be first!
+        "dist/content.js"
+      ]
+    }
+  ]
 }
 ```
 
 **Key Changes:**
+
 1. ❌ Removed `contextualIdentities` permission (Firefox-only, breaks Chrome)
 2. ❌ Removed `persistent: true` (implicit in Manifest v2)
 3. ✅ Changed `options_ui` to use `open_in_tab: true` (cross-browser)
@@ -73,11 +88,13 @@ Successfully implemented cross-browser compatibility for the Copy URL on Hover e
 Created `src/shims/container-shim.js` for Chrome compatibility:
 
 **Purpose:**
+
 - Firefox has native `contextualIdentities` API for container isolation
 - Chrome has no equivalent feature
 - Shim provides graceful degradation
 
 **Implementation:**
+
 ```javascript
 export class ContainerShim {
   constructor() {
@@ -89,9 +106,15 @@ export class ContainerShim {
     };
   }
 
-  async get() { return this.defaultContainer; }
-  async query() { return [this.defaultContainer]; }
-  isSupported() { return false; }
+  async get() {
+    return this.defaultContainer;
+  }
+  async query() {
+    return [this.defaultContainer];
+  }
+  isSupported() {
+    return false;
+  }
 }
 
 export function getContainerAPI() {
@@ -103,6 +126,7 @@ export function getContainerAPI() {
 ```
 
 **Usage:**
+
 ```javascript
 import { getContainerAPI } from '../../../shims/container-shim.js';
 
@@ -130,9 +154,11 @@ if (containerAPI.isSupported()) {
 
 3. **`src/utils/browser-api.js`** and **`src/core/browser-api.js`**
    - Added cross-browser comments
-   - Existing defensive checks: `if (browser.contextualIdentities && browser.contextualIdentities.get)`
+   - Existing defensive checks:
+     `if (browser.contextualIdentities && browser.contextualIdentities.get)`
 
 **Pattern:**
+
 ```javascript
 // Cross-browser: Check before using Firefox-only API
 if (browser.contextualIdentities && browser.contextualIdentities.get) {
@@ -150,6 +176,7 @@ if (browser.contextualIdentities && browser.contextualIdentities.get) {
 2. **`scripts/package-chrome.cjs`** - Creates `.zip` for Chrome Web Store
 
 **Package Commands:**
+
 ```bash
 npm run package:firefox  # → firefox-extension.xpi
 npm run package:chrome    # → chrome-extension.zip
@@ -158,6 +185,7 @@ npm run package:chrome    # → chrome-extension.zip
 ### 6. Documentation
 
 **Updated `README.md`:**
+
 - Changed title to reflect cross-browser support
 - Added Browser Compatibility section
 - Added feature matrix showing what works on each browser
@@ -167,14 +195,17 @@ npm run package:chrome    # → chrome-extension.zip
 ## Testing Results
 
 ### Automated Tests
+
 - ✅ **1909 unit tests passing** (Jest)
 - ✅ **ESLint clean** (zero errors, zero warnings on shim)
 - ✅ **Build succeeds** consistently
 
 ### Manual Testing Required
+
 Users should test the following on both Firefox and Chrome:
 
 **Test Checklist:**
+
 - [ ] Extension loads without errors
 - [ ] Popup opens and settings work
 - [ ] Copy URL (Y key) works
@@ -187,40 +218,41 @@ Users should test the following on both Firefox and Chrome:
 
 ### Fully Supported Browsers
 
-| Browser | Status | Notes |
-|---------|--------|-------|
-| Firefox | ✅ Full | All features including container isolation |
-| Zen Browser | ✅ Full | Firefox-based, full feature set |
-| Chrome | ✅ Core | Containers degrade to single default |
-| Edge | ✅ Core | Chrome-compatible |
-| Brave | ✅ Core | Chrome-compatible |
-| Opera | ✅ Core | Chrome-compatible |
+| Browser     | Status  | Notes                                      |
+| ----------- | ------- | ------------------------------------------ |
+| Firefox     | ✅ Full | All features including container isolation |
+| Zen Browser | ✅ Full | Firefox-based, full feature set            |
+| Chrome      | ✅ Core | Containers degrade to single default       |
+| Edge        | ✅ Core | Chrome-compatible                          |
+| Brave       | ✅ Core | Chrome-compatible                          |
+| Opera       | ✅ Core | Chrome-compatible                          |
 
 ### Feature Matrix
 
-| Feature | Firefox/Zen | Chrome/Chromium |
-|---------|-------------|-----------------|
-| Copy URL (Y key) | ✅ | ✅ |
-| Copy Text (X key) | ✅ | ✅ |
-| Open Link (O key) | ✅ | ✅ |
-| Quick Tabs (Q key) | ✅ | ✅ |
-| Drag & Resize | ✅ | ✅ |
-| Solo/Mute | ✅ | ✅ (global) |
-| Container Isolation | ✅ | ⚠️ Single default |
-| Quick Tabs Manager | ✅ | ✅ |
-| Settings Persistence | ✅ | ✅ |
-| Auto-Updates | ✅ | ⚠️ Chrome Web Store |
+| Feature              | Firefox/Zen | Chrome/Chromium     |
+| -------------------- | ----------- | ------------------- |
+| Copy URL (Y key)     | ✅          | ✅                  |
+| Copy Text (X key)    | ✅          | ✅                  |
+| Open Link (O key)    | ✅          | ✅                  |
+| Quick Tabs (Q key)   | ✅          | ✅                  |
+| Drag & Resize        | ✅          | ✅                  |
+| Solo/Mute            | ✅          | ✅ (global)         |
+| Container Isolation  | ✅          | ⚠️ Single default   |
+| Quick Tabs Manager   | ✅          | ✅                  |
+| Settings Persistence | ✅          | ✅                  |
+| Auto-Updates         | ✅          | ⚠️ Chrome Web Store |
 
 ### Known Limitations
 
 **Chrome/Chromium:**
+
 - ⚠️ No Firefox Container support (no equivalent API)
 - ⚠️ Solo/Mute works globally instead of per-container
 - ⚠️ Manifest v2 being phased out by Chrome (mid-2025 timeline)
 - ⚠️ Auto-updates require Chrome Web Store (or manual updates)
 
-**Migration Path:**
-When Chrome fully deprecates Manifest v2, options include:
+**Migration Path:** When Chrome fully deprecates Manifest v2, options include:
+
 1. Migrate to Manifest v3 (requires rewriting webRequestBlocking)
 2. Continue supporting Firefox only (long-term v2 support)
 3. Accept Chrome limitations (some sites won't work in Quick Tabs)
@@ -230,12 +262,14 @@ When Chrome fully deprecates Manifest v2, options include:
 ### Why Manifest v2?
 
 **Advantages:**
+
 - ✅ Fully supported by Firefox (indefinitely)
 - ✅ Easier cross-browser support than v3
 - ✅ `webRequestBlocking` works without rewrites
 - ✅ Simpler background page model
 
 **Trade-offs:**
+
 - ⚠️ Chrome Web Store shows "deprecated" warning
 - ⚠️ Chrome will eventually phase out v2
 - ⚠️ New Chrome Web Store submissions require v3
@@ -243,12 +277,14 @@ When Chrome fully deprecates Manifest v2, options include:
 ### Why webextension-polyfill?
 
 **Benefits:**
+
 - ✅ Unified `browser.*` API namespace
 - ✅ Promise-based APIs everywhere
 - ✅ Zero overhead on Firefox (passthrough)
 - ✅ Minimal bundle size (~10KB)
 
 **Verification:**
+
 - ✅ Context7 documentation confirmed correct usage
 - ✅ Perplexity analysis validated approach
 - ✅ Official Mozilla implementation
@@ -256,14 +292,18 @@ When Chrome fully deprecates Manifest v2, options include:
 ## Files Changed
 
 ### New Files
+
 - `scripts/copy-polyfill.cjs` - Copies polyfill to dist
 - `scripts/package-firefox.cjs` - Firefox packaging
 - `scripts/package-chrome.cjs` - Chrome packaging
 - `src/shims/container-shim.js` - Container API shim
-- `docs/implementation-summaries/cross-browser-manifest-v2-implementation.md` - This file
-- `.agentic-tools-mcp/memories/architecture/Cross-Browser_Manifest_V2_Implementation.json` - Memory
+- `docs/implementation-summaries/cross-browser-manifest-v2-implementation.md` -
+  This file
+- `.agentic-tools-mcp/memories/architecture/Cross-Browser_Manifest_V2_Implementation.json` -
+  Memory
 
 ### Modified Files
+
 - `manifest.json` - Cross-browser manifest with polyfill
 - `package.json` - Build scripts and package commands
 - `README.md` - Browser compatibility documentation
@@ -276,13 +316,17 @@ When Chrome fully deprecates Manifest v2, options include:
 ## Verification Steps
 
 ### Context7 Verification
+
 Used Context7 MCP to fetch official webextension-polyfill documentation:
+
 - ✅ Confirmed manifest.json pattern is correct
 - ✅ Verified polyfill load order (must be first)
 - ✅ Validated build setup
 
 ### Perplexity Verification
+
 Used Perplexity MCP for real-time validation:
+
 - ✅ Confirmed cross-browser approach is sound
 - ✅ Noted Chrome Manifest v2 deprecation timeline
 - ✅ Validated container shim strategy
@@ -294,6 +338,7 @@ Created architectural memory at:
 `.agentic-tools-mcp/memories/architecture/Cross-Browser_Manifest_V2_Implementation.json`
 
 **Memory includes:**
+
 - Implementation details
 - Cross-browser patterns
 - Build process
@@ -303,17 +348,20 @@ Created architectural memory at:
 ## Next Steps
 
 ### For Users
+
 1. Test extension on both Firefox and Chrome
 2. Report any browser-specific issues
 3. Verify all features work as expected
 
 ### For Developers
+
 1. Monitor Chrome Manifest v2 deprecation timeline
 2. Plan Manifest v3 migration when necessary
 3. Continue testing on both browsers
 4. Consider publishing to Chrome Web Store
 
 ### For Maintainers
+
 1. Keep `webextension-polyfill` updated
 2. Test on new browser versions
 3. Monitor container API changes
@@ -321,8 +369,12 @@ Created architectural memory at:
 
 ## Conclusion
 
-Successfully implemented cross-browser compatibility while maintaining Manifest v2. The extension now works on Firefox, Chrome, Edge, Brave, Opera, and other Chromium-based browsers with graceful degradation for Firefox-specific features.
+Successfully implemented cross-browser compatibility while maintaining Manifest
+v2. The extension now works on Firefox, Chrome, Edge, Brave, Opera, and other
+Chromium-based browsers with graceful degradation for Firefox-specific features.
 
-**Key Achievement:** Single codebase supporting multiple browsers with minimal overhead and maximum feature preservation.
+**Key Achievement:** Single codebase supporting multiple browsers with minimal
+overhead and maximum feature preservation.
 
-**Testing:** All automated tests pass. Manual testing recommended on both Firefox and Chrome to verify real-world behavior.
+**Testing:** All automated tests pass. Manual testing recommended on both
+Firefox and Chrome to verify real-world behavior.

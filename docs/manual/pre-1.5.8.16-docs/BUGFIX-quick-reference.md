@@ -105,15 +105,15 @@
 
 ## Key Differences
 
-| Aspect | BEFORE (Buggy) | AFTER (Fixed) |
-|--------|----------------|---------------|
-| Variable declaration | `let browser;` | `const browserAPI` |
-| Shadowing | ✗ Shadows global `browser` | ✓ No shadowing |
-| Type check | Checks local undefined var | Checks global `browser` |
-| Result in Firefox | `browser = chrome` (undefined) | `browserAPI = browser` (global) |
-| API calls | Return `undefined` | Return proper Promises |
-| Export Logs | ✗ Crashes | ✓ Works |
-| Clear Storage | ✗ Crashes | ✓ Works |
+| Aspect               | BEFORE (Buggy)                 | AFTER (Fixed)                   |
+| -------------------- | ------------------------------ | ------------------------------- |
+| Variable declaration | `let browser;`                 | `const browserAPI`              |
+| Shadowing            | ✗ Shadows global `browser`     | ✓ No shadowing                  |
+| Type check           | Checks local undefined var     | Checks global `browser`         |
+| Result in Firefox    | `browser = chrome` (undefined) | `browserAPI = browser` (global) |
+| API calls            | Return `undefined`             | Return proper Promises          |
+| Export Logs          | ✗ Crashes                      | ✓ Works                         |
+| Clear Storage        | ✗ Crashes                      | ✓ Works                         |
 
 ## Why Variable Shadowing is Dangerous
 
@@ -127,11 +127,11 @@ function myFunction() {
   //  ↑
   //  This SHADOWS the global browser!
   //  Now "browser" inside this function refers to LOCAL var
-  
+
   if (typeof browser === 'undefined') {  ← TRUE (local var is undefined)
     browser = chrome;  ← Assigns to LOCAL var, not global!
   }
-  
+
   // Now browser === chrome (which may be undefined in Firefox)
   // Global window.browser is untouched but inaccessible!
 }
@@ -142,15 +142,18 @@ function myFunction() {
 After applying this fix, verify:
 
 ### Export Console Logs
+
 - [ ] Open extension popup → Advanced tab
 - [ ] Enable "Debug Mode"
 - [ ] Use the extension (hover links, create Quick Tabs)
 - [ ] Click "Export Console Logs"
-- [ ] Verify file downloads (e.g., `copy-url-extension-logs_v1.5.9.3_2025-11-15T12-30-00.txt`)
+- [ ] Verify file downloads (e.g.,
+      `copy-url-extension-logs_v1.5.9.3_2025-11-15T12-30-00.txt`)
 - [ ] Open the file and verify it contains log entries
 - [ ] Check browser console - no errors
 
 ### Clear Quick Tabs Storage
+
 - [ ] Create a few Quick Tabs
 - [ ] Note their positions
 - [ ] Open extension popup → Advanced tab
@@ -164,16 +167,19 @@ After applying this fix, verify:
 ## Additional Notes
 
 **Why didn't ESLint catch this?**
+
 - Variable shadowing is allowed by default in JavaScript
 - Would need `no-shadow` rule enabled to catch this
 - Consider adding to ESLint config for future prevention
 
 **Why didn't tests catch this?**
+
 - Tests mock the browser API
 - Mocks don't test the initialization logic
 - Would need integration tests in real browser to catch this
 
 **How to prevent in the future?**
+
 1. Never declare variables with global names (`browser`, `window`, `document`)
 2. Use descriptive names: `browserAPI`, `myBrowser`, `extensionAPI`
 3. Enable ESLint `no-shadow` rule

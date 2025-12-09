@@ -1,14 +1,14 @@
 /**
  * Tab Operations Utility Module
  * Extracted from quick-tabs-manager.js to reduce code complexity
- * 
+ *
  * Handles:
  * - Close all tabs
  * - Close minimized tabs
  * - Restore Quick Tabs
  * - Adopt orphaned Quick Tabs
  * - Messaging utilities
- * 
+ *
  * @version 1.6.4.11
  */
 
@@ -78,10 +78,10 @@ export async function sendMessageToTab(tabId, action, quickTabId) {
 export async function sendMessageToAllTabs(action, quickTabId) {
   const tabs = await browser.tabs.query({});
   console.log(`[Manager] Sending ${action} to ${tabs.length} tabs for:`, quickTabId);
-  
+
   let successCount = 0;
   let errorCount = 0;
-  
+
   for (const tab of tabs) {
     const result = await sendMessageToTab(tab.id, action, quickTabId);
     if (result) {
@@ -90,7 +90,7 @@ export async function sendMessageToAllTabs(action, quickTabId) {
       errorCount++;
     }
   }
-  
+
   return { success: successCount, errors: errorCount };
 }
 
@@ -110,22 +110,25 @@ export function sendRestoreMessageWithTimeout(tabId, quickTabId, timeoutMs) {
       });
       reject(new Error(`Confirmation timeout after ${timeoutMs}ms`));
     }, timeoutMs);
-    
-    browser.tabs.sendMessage(tabId, {
-      action: 'RESTORE_QUICK_TAB',
-      quickTabId,
-      _meta: {
-        requestId: `restore-${quickTabId}-${Date.now()}`,
-        sentAt: Date.now(),
-        expectsConfirmation: true
-      }
-    }).then(response => {
-      clearTimeout(timer);
-      resolve(response);
-    }).catch(err => {
-      clearTimeout(timer);
-      reject(err);
-    });
+
+    browser.tabs
+      .sendMessage(tabId, {
+        action: 'RESTORE_QUICK_TAB',
+        quickTabId,
+        _meta: {
+          requestId: `restore-${quickTabId}-${Date.now()}`,
+          sentAt: Date.now(),
+          expectsConfirmation: true
+        }
+      })
+      .then(response => {
+        clearTimeout(timer);
+        resolve(response);
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        reject(err);
+      });
   });
 }
 
@@ -140,14 +143,14 @@ export function sendRestoreMessageWithTimeout(tabId, quickTabId, timeoutMs) {
  */
 function _handleRestoreSuccess(response, tabId, quickTabId, quickTabHostInfo, tracking) {
   if (tracking.confirmedBy) return; // Already confirmed by another tab
-  
+
   tracking.confirmedBy = tabId;
   console.log('[Manager] ✅ RESTORE_CONFIRMED_BY_TAB:', {
     quickTabId,
     confirmedBy: tabId,
     response
   });
-  
+
   // Update quickTabHostInfo with confirmed host
   if (quickTabHostInfo) {
     quickTabHostInfo.set(quickTabId, {
@@ -179,11 +182,11 @@ async function _sendRestoreToBroadcastTab(tab, quickTabId, quickTabHostInfo, tra
         expectsConfirmation: true
       }
     });
-    
+
     if (response?.success) {
       _handleRestoreSuccess(response, tab.id, quickTabId, quickTabHostInfo, tracking);
     }
-    
+
     return { success: response?.success ?? false, response };
   } catch (_err) {
     return { success: false, error: _err.message };
@@ -199,25 +202,25 @@ async function _sendRestoreToBroadcastTab(tab, quickTabId, quickTabHostInfo, tra
 export async function sendRestoreMessageWithConfirmationBroadcast(quickTabId, quickTabHostInfo) {
   const tabs = await browser.tabs.query({});
   console.log(`[Manager] Broadcasting RESTORE_QUICK_TAB to ${tabs.length} tabs for:`, quickTabId);
-  
+
   const tracking = { confirmedBy: null };
   let successCount = 0;
   let errorCount = 0;
-  
+
   for (const tab of tabs) {
     const result = await _sendRestoreToBroadcastTab(tab, quickTabId, quickTabHostInfo, tracking);
     if (result.success) successCount++;
     else errorCount++;
   }
-  
+
   const result = {
     success: successCount > 0,
     confirmedBy: tracking.confirmedBy,
     broadcastResults: { success: successCount, errors: errorCount, totalTabs: tabs.length }
   };
-  
+
   console.log(`[Manager] Restored Quick Tab ${quickTabId} via broadcast:`, result);
-  
+
   return result;
 }
 
@@ -266,7 +269,7 @@ export function filterMinimizedFromContainerFormat(state) {
 
   Object.keys(state).forEach(cookieStoreId => {
     if (cookieStoreId === 'saveId' || cookieStoreId === 'timestamp') return;
-    
+
     if (state[cookieStoreId] && state[cookieStoreId].tabs) {
       const originalLength = state[cookieStoreId].tabs.length;
       state[cookieStoreId].tabs = state[cookieStoreId].tabs.filter(t => !isTabMinimizedHelper(t));
@@ -289,12 +292,12 @@ export function filterMinimizedFromContainerFormat(state) {
  */
 export function validateRestoreTabData(quickTabId, quickTabsState) {
   const tabData = findTabInState(quickTabId, quickTabsState);
-  
+
   if (!tabData) {
     console.warn('[Manager] Restore REJECTED: Tab not found in state:', quickTabId);
     return { valid: false, tabData: null, error: 'Quick Tab not found' };
   }
-  
+
   console.log('[Manager] 📋 RESTORE_TAB_DATA:', {
     quickTabId,
     originTabId: tabData.originTabId,
@@ -302,7 +305,7 @@ export function validateRestoreTabData(quickTabId, quickTabsState) {
     visibilityMinimized: tabData.visibility?.minimized,
     url: tabData.url?.substring(0, 50)
   });
-  
+
   const isMinimized = isTabMinimizedHelper(tabData);
   if (!isMinimized) {
     console.warn('[Manager] Restore REJECTED: Tab is not minimized:', {
@@ -312,7 +315,7 @@ export function validateRestoreTabData(quickTabId, quickTabsState) {
     });
     return { valid: false, tabData, error: 'Tab is already active - cannot restore' };
   }
-  
+
   return { valid: true, tabData, error: null };
 }
 
@@ -368,11 +371,11 @@ function _handleTargetedRestoreResponse(response, targetTabId, quickTabId, quick
     completedAt: response?.completedAt || Date.now(),
     responseDetails: response
   });
-  
+
   if (response?.success) {
     _updateHostInfoAfterRestore(targetTabId, quickTabId, quickTabHostInfo);
   }
-  
+
   return { success: response?.success ?? false, confirmedBy: targetTabId };
 }
 
@@ -386,7 +389,7 @@ function _handleTargetedRestoreResponse(response, targetTabId, quickTabId, quick
 export async function sendRestoreMessage(quickTabId, tabData, quickTabHostInfo) {
   const hostInfo = quickTabHostInfo?.get(quickTabId);
   const targetTabId = _resolveTargetTabId(hostInfo, tabData);
-  
+
   console.log('[Manager] 🎯 RESTORE_TARGET_RESOLUTION:', {
     quickTabId,
     targetTabId,
@@ -394,19 +397,22 @@ export async function sendRestoreMessage(quickTabId, tabData, quickTabHostInfo) 
     originTabId: tabData.originTabId,
     source: hostInfo ? 'quickTabHostInfo' : tabData.originTabId ? 'originTabId' : 'broadcast'
   });
-  
+
   // No target - fall back to broadcast
   if (!targetTabId) {
     console.log('[Manager] ⚠️ No host tab info found, using broadcast for restore:', quickTabId);
     return sendRestoreMessageWithConfirmationBroadcast(quickTabId, quickTabHostInfo);
   }
-  
+
   // Try targeted message first
   try {
     const response = await sendRestoreMessageWithTimeout(targetTabId, quickTabId, 500);
     return _handleTargetedRestoreResponse(response, targetTabId, quickTabId, quickTabHostInfo);
   } catch (err) {
-    console.warn(`[Manager] Targeted restore failed (tab ${targetTabId} may be closed), falling back to broadcast:`, err.message);
+    console.warn(
+      `[Manager] Targeted restore failed (tab ${targetTabId} may be closed), falling back to broadcast:`,
+      err.message
+    );
     return sendRestoreMessageWithConfirmationBroadcast(quickTabId, quickTabHostInfo);
   }
 }
@@ -421,7 +427,7 @@ export function scheduleRestoreVerification(quickTabId) {
       const stateResult = await browser.storage.local.get(STATE_KEY);
       const state = stateResult?.[STATE_KEY];
       const tab = state?.tabs?.find(t => t.id === quickTabId);
-      
+
       if (tab?.domVerified === false) {
         console.warn('[Manager] Restore WARNING: DOM not verified after restore:', quickTabId);
       } else if (tab && !tab.minimized) {
@@ -444,14 +450,14 @@ export function isOrphanedQuickTab(tab, browserTabInfoCache) {
   if (tab.originTabId == null) {
     return true;
   }
-  
+
   // Check if the origin tab is still open using cached browser tab info
   const cachedInfo = browserTabInfoCache?.get(tab.originTabId);
   if (cachedInfo && cachedInfo.data === null) {
     // Cache indicates this tab was closed
     return true;
   }
-  
+
   // Not orphaned (or we don't have confirmation yet)
   return false;
 }
@@ -464,45 +470,50 @@ export function isOrphanedQuickTab(tab, browserTabInfoCache) {
  * @param {Map} browserTabInfoCache - Cache of browser tab info
  * @returns {Promise<{ success: boolean, oldOriginTabId?: number, newOriginTabId?: number }>}
  */
-export async function adoptQuickTab(quickTabId, targetTabId, quickTabHostInfo, browserTabInfoCache) {
+export async function adoptQuickTab(
+  quickTabId,
+  targetTabId,
+  quickTabHostInfo,
+  browserTabInfoCache
+) {
   console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
     quickTabId,
     targetTabId,
     timestamp: Date.now()
   });
-  
+
   // Validate targetTabId
   if (!targetTabId || targetTabId < 0) {
     console.error('[Manager] ❌ Invalid targetTabId for adopt:', targetTabId);
     return { success: false };
   }
-  
+
   try {
     // Read current state
     const result = await browser.storage.local.get(STATE_KEY);
     const state = result?.[STATE_KEY];
-    
+
     if (!state?.tabs?.length) {
       console.warn('[Manager] No Quick Tabs in storage to adopt');
       return { success: false };
     }
-    
+
     // Find the Quick Tab
     const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
     if (tabIndex === -1) {
       console.warn('[Manager] Quick Tab not found for adopt:', quickTabId);
       return { success: false };
     }
-    
+
     const quickTab = state.tabs[tabIndex];
     const oldOriginTabId = quickTab.originTabId;
-    
+
     // Update originTabId
     quickTab.originTabId = targetTabId;
-    
+
     // Generate new saveId for the update
     const saveId = `adopt-${quickTabId}-${Date.now()}`;
-    
+
     // Persist the change
     await browser.storage.local.set({
       [STATE_KEY]: {
@@ -513,14 +524,14 @@ export async function adoptQuickTab(quickTabId, targetTabId, quickTabHostInfo, b
         writingInstanceId: `manager-adopt-${Date.now()}`
       }
     });
-    
+
     console.log('[Manager] ✅ ADOPT_COMPLETED:', {
       quickTabId,
       oldOriginTabId,
       newOriginTabId: targetTabId,
       saveId
     });
-    
+
     // Update local quickTabHostInfo
     if (quickTabHostInfo) {
       quickTabHostInfo.set(quickTabId, {
@@ -530,12 +541,12 @@ export async function adoptQuickTab(quickTabId, targetTabId, quickTabHostInfo, b
         confirmed: true
       });
     }
-    
+
     // Invalidate cache for old tab
     if (browserTabInfoCache && oldOriginTabId) {
       browserTabInfoCache.delete(oldOriginTabId);
     }
-    
+
     return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
   } catch (err) {
     console.error('[Manager] ❌ Error adopting Quick Tab:', err);

@@ -1,16 +1,16 @@
 /**
  * Container Isolation Tests
- * 
+ *
  * Tests for Firefox Container boundary enforcement, container context detection,
  * and storage key container prefixing as specified in comprehensive-unit-testing-strategy.md (Section 6)
- * 
+ *
  * Related Documentation:
  * - docs/manual/comprehensive-unit-testing-strategy.md (Section 6.1)
  * - docs/issue-47-revised-scenarios.md (Scenarios 8, 19, 20)
- * 
+ *
  * Related Issues:
  * - #47: Quick Tabs comprehensive behavior scenarios
- * 
+ *
  * @jest-environment jsdom
  */
 
@@ -93,10 +93,10 @@ describe('Container Isolation', () => {
     test('should distinguish between different containers', async () => {
       const containers = [
         'firefox-default',
-        'firefox-container-1',  // Personal
-        'firefox-container-2',  // Work
-        'firefox-container-3',  // Banking
-        'firefox-container-4'   // Shopping
+        'firefox-container-1', // Personal
+        'firefox-container-2', // Work
+        'firefox-container-3', // Banking
+        'firefox-container-4' // Shopping
       ];
 
       for (const containerId of containers) {
@@ -136,7 +136,7 @@ describe('Container Isolation', () => {
 
     test('should storage keys follow consistent format', () => {
       const pattern = /^qt_firefox-(default|container-\d+)_qt-[a-zA-Z0-9-]+$/;
-      
+
       const keys = [
         'qt_firefox-default_qt-abc123',
         'qt_firefox-container-1_qt-def456',
@@ -219,7 +219,7 @@ describe('Container Isolation', () => {
       expect(filtered).toHaveLength(1);
       expect(filtered[0].id).toBe('qt-2');
       expect(filtered[0].cookieStoreId).toBe('firefox-container-1');
-      
+
       // Should not include default container Quick Tab
       expect(filtered.find(qt => qt.id === 'qt-1')).toBeUndefined();
     });
@@ -254,15 +254,11 @@ describe('Container Isolation', () => {
         position: { left: 100, top: 100 }
       };
 
-      const receivingContainers = [
-        'firefox-default',
-        'firefox-container-1',
-        'firefox-container-2'
-      ];
+      const receivingContainers = ['firefox-default', 'firefox-container-1', 'firefox-container-2'];
 
       receivingContainers.forEach(containerId => {
         const shouldReceive = containerId === message.cookieStoreId;
-        
+
         if (shouldReceive) {
           // Message should be processed
           expect(message.cookieStoreId).toBe(containerId);
@@ -324,9 +320,7 @@ describe('Container Isolation', () => {
 
       await browser.storage.sync.remove(storageKey);
 
-      expect(browser.storage.sync.remove).toHaveBeenCalledWith(
-        'qt_firefox-container-1_qt-1'
-      );
+      expect(browser.storage.sync.remove).toHaveBeenCalledWith('qt_firefox-container-1_qt-1');
     });
 
     test('should not affect Quick Tabs in other containers when deleting', async () => {
@@ -341,12 +335,8 @@ describe('Container Isolation', () => {
       await browser.storage.sync.remove('qt_firefox-container-1_qt-1');
 
       // Verify only container-1 key was removed
-      expect(browser.storage.sync.remove).toHaveBeenCalledWith(
-        'qt_firefox-container-1_qt-1'
-      );
-      expect(browser.storage.sync.remove).not.toHaveBeenCalledWith(
-        'qt_firefox-default_qt-1'
-      );
+      expect(browser.storage.sync.remove).toHaveBeenCalledWith('qt_firefox-container-1_qt-1');
+      expect(browser.storage.sync.remove).not.toHaveBeenCalledWith('qt_firefox-default_qt-1');
     });
   });
 
@@ -366,14 +356,14 @@ describe('Container Isolation', () => {
     test('should detect when all tabs in container are closed', () => {
       const containerTabs = {
         'firefox-default': [1, 2],
-        'firefox-container-1': []  // All closed
+        'firefox-container-1': [] // All closed
       };
 
       const container1HasTabs = containerTabs['firefox-container-1'].length > 0;
       const defaultHasTabs = containerTabs['firefox-default'].length > 0;
 
       expect(container1HasTabs).toBe(false); // Should trigger cleanup
-      expect(defaultHasTabs).toBe(true);    // Should not cleanup
+      expect(defaultHasTabs).toBe(true); // Should not cleanup
     });
 
     test('should prepare Quick Tabs for cleanup when container closes', async () => {
@@ -384,14 +374,9 @@ describe('Container Isolation', () => {
       ];
 
       // When all tabs in container closed, these Quick Tabs should be removed
-      const keysToRemove = quickTabsToCleanup.map(qt =>
-        `qt_${containerId}_${qt.id}`
-      );
+      const keysToRemove = quickTabsToCleanup.map(qt => `qt_${containerId}_${qt.id}`);
 
-      expect(keysToRemove).toEqual([
-        'qt_firefox-container-1_qt-1',
-        'qt_firefox-container-1_qt-2'
-      ]);
+      expect(keysToRemove).toEqual(['qt_firefox-container-1_qt-1', 'qt_firefox-container-1_qt-2']);
     });
   });
 
@@ -425,7 +410,7 @@ describe('Container Isolation', () => {
       expect(managerView.containersDisplayed).toHaveLength(3);
 
       // But operations respect boundaries
-      const canRestoreInCurrentContainer = (qtContainer) => {
+      const canRestoreInCurrentContainer = qtContainer => {
         return qtContainer === managerView.currentContainer;
       };
 
@@ -494,19 +479,17 @@ describe('Container Isolation', () => {
 
     test('should handle malformed storage keys', () => {
       const malformedKeys = [
-        'qt_qt-1',                    // Missing container (only 2 parts)
-        'qt-1',                       // Wrong format entirely (no underscores)
-        'qt__qt-1',                   // Empty container
-        'qt_firefox-container-1_'     // Missing ID (empty string)
+        'qt_qt-1', // Missing container (only 2 parts)
+        'qt-1', // Wrong format entirely (no underscores)
+        'qt__qt-1', // Empty container
+        'qt_firefox-container-1_' // Missing ID (empty string)
       ];
 
       malformedKeys.forEach(key => {
         const parts = key.split('_');
-        const isValid = parts.length >= 3 && 
-                       parts[0] === 'qt' && 
-                       parts[1].length > 0 && 
-                       parts[2].length > 0;
-        
+        const isValid =
+          parts.length >= 3 && parts[0] === 'qt' && parts[1].length > 0 && parts[2].length > 0;
+
         expect(isValid).toBe(false);
       });
     });
@@ -514,16 +497,14 @@ describe('Container Isolation', () => {
     test('should handle storage with mixed key formats', async () => {
       const mixedStorage = {
         'qt_firefox-default_qt-1': { id: 'qt-1', cookieStoreId: 'firefox-default' },
-        'invalidKey': { id: 'qt-2' },
+        invalidKey: { id: 'qt-2' },
         'qt_firefox-container-1_qt-3': { id: 'qt-3', cookieStoreId: 'firefox-container-1' }
       };
 
       browser.storage.sync.get.mockResolvedValue(mixedStorage);
 
       const result = await browser.storage.sync.get(null);
-      const validKeys = Object.keys(result).filter(key => 
-        key.startsWith('qt_firefox-')
-      );
+      const validKeys = Object.keys(result).filter(key => key.startsWith('qt_firefox-'));
 
       expect(validKeys).toHaveLength(2);
       expect(validKeys).toContain('qt_firefox-default_qt-1');

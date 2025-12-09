@@ -1,9 +1,9 @@
 /**
  * Extension Test Utilities for GitHub Copilot Autonomous Testing
- * 
+ *
  * Provides wrapper utilities for Playwright MCP to interact with browser extension
  * via the Test Bridge programmatic interface.
- * 
+ *
  * @version 1.0.0
  * @see docs/manual/v1.6.0/copilot-testing-implementation.md
  */
@@ -32,40 +32,44 @@ export class ExtensionTestHelper {
    */
   async waitForTestBridge(timeoutMs = 10000) {
     console.log('[ExtensionTestHelper] Waiting for test bridge...');
-    
+
     try {
       // Use Playwright's evaluate with Promise-based polling (recommended approach)
-      await this.page.evaluate(async (timeout) => {
+      await this.page.evaluate(async timeout => {
         const startTime = Date.now();
-        
+
         while (Date.now() - startTime < timeout) {
           if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
             console.log('[Page Context] Test bridge found!');
             return true;
           }
-          
+
           // Poll every 50ms for faster detection
           await new Promise(resolve => setTimeout(resolve, 50));
         }
-        
+
         throw new Error(`Test bridge not available after ${timeout}ms`);
       }, timeoutMs);
-      
+
       console.log('[ExtensionTestHelper] ✓ Test bridge available');
       return true;
     } catch (error) {
       console.error('[ExtensionTestHelper] ✗ Test bridge not available:', error.message);
-      
+
       // Log diagnostic information
-      const diagnostics = await this.page.evaluate(() => {
-        return {
-          windowKeys: Object.keys(window).filter(k => k.includes('COPILOT') || k.includes('TEST')),
-          hasDocument: typeof document !== 'undefined',
-          documentReady: document.readyState,
-          url: window.location.href
-        };
-      }).catch(() => ({}));
-      
+      const diagnostics = await this.page
+        .evaluate(() => {
+          return {
+            windowKeys: Object.keys(window).filter(
+              k => k.includes('COPILOT') || k.includes('TEST')
+            ),
+            hasDocument: typeof document !== 'undefined',
+            documentReady: document.readyState,
+            url: window.location.href
+          };
+        })
+        .catch(() => ({}));
+
       console.error('[ExtensionTestHelper] Diagnostics:', diagnostics);
       throw error;
     }
@@ -470,7 +474,7 @@ export class ExtensionTestHelper {
     let delay = 50;
     const maxDelay = 500;
     const endTime = Date.now() + timeout;
-    
+
     while (Date.now() < endTime) {
       await this.page.waitForTimeout(delay);
       delay = Math.min(delay * 1.5, maxDelay);
@@ -487,10 +491,10 @@ export class ExtensionTestHelper {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `${name}-${timestamp}.png`;
       const filepath = join(this.screenshotDir, filename);
-      
+
       // Ensure directory exists
       await mkdir(dirname(filepath), { recursive: true });
-      
+
       await this.page.screenshot({ path: filepath });
       console.log(`[ExtensionTestHelper] Screenshot saved: ${filepath}`);
     } catch (error) {
@@ -505,23 +509,23 @@ export class ExtensionTestHelper {
    */
   async verifyQuickTabBehavior(scenario) {
     console.log(`[ExtensionTestHelper] Verifying scenario: ${scenario}`);
-    
+
     switch (scenario) {
       case 'basic-creation':
         return this._verifyBasicCreation();
-      
+
       case 'cross-tab-persistence':
         return this._verifyCrossTabPersistence();
-      
+
       case 'pinning':
         return this._verifyPinning();
-      
+
       case 'minimization':
         return this._verifyMinimization();
-      
+
       case 'multiple-quick-tabs':
         return this._verifyMultipleQuickTabs();
-      
+
       default:
         return {
           passed: false,
@@ -540,9 +544,9 @@ export class ExtensionTestHelper {
       const url = 'https://example.com';
       await this.createQuickTab(url);
       const tabs = await this.getQuickTabs();
-      
+
       const passed = tabs.length === 1 && tabs[0].url === url;
-      
+
       return {
         passed,
         message: passed ? 'Basic creation verified' : 'Basic creation failed',
@@ -566,11 +570,11 @@ export class ExtensionTestHelper {
       // Create Quick Tab in current tab
       const url = 'https://example.com/test';
       await this.createQuickTab(url);
-      
+
       // Open new tab (requires context to be passed in)
       // This would need to be implemented in the test itself
       // as it requires access to browser context
-      
+
       return {
         passed: true,
         message: 'Cross-tab persistence test requires context access',
@@ -594,19 +598,19 @@ export class ExtensionTestHelper {
       const url = 'https://example.com/pin-test';
       await this.createQuickTab(url);
       const tabs = await this.getQuickTabs();
-      
+
       if (tabs.length === 0) {
         throw new Error('No tabs created');
       }
-      
+
       const tabId = tabs[0].id;
-      
+
       // Pin the tab
       await this.pinQuickTab(tabId);
       const pinnedTab = await this.getQuickTabById(tabId);
-      
+
       const passed = pinnedTab && pinnedTab.pinnedToUrl !== null;
-      
+
       return {
         passed,
         message: passed ? 'Pinning verified' : 'Pinning failed',
@@ -630,19 +634,19 @@ export class ExtensionTestHelper {
       const url = 'https://example.com/minimize-test';
       await this.createQuickTab(url);
       const tabs = await this.getQuickTabs();
-      
+
       if (tabs.length === 0) {
         throw new Error('No tabs created');
       }
-      
+
       const tabId = tabs[0].id;
-      
+
       // Minimize the tab
       await this.minimizeQuickTab(tabId);
       const minimizedTab = await this.getQuickTabById(tabId);
-      
+
       const passed = minimizedTab && minimizedTab.minimized === true;
-      
+
       return {
         passed,
         message: passed ? 'Minimization verified' : 'Minimization failed',
@@ -663,19 +667,15 @@ export class ExtensionTestHelper {
    */
   async _verifyMultipleQuickTabs() {
     try {
-      const urls = [
-        'https://en.wikipedia.org',
-        'https://youtube.com',
-        'https://github.com'
-      ];
-      
+      const urls = ['https://en.wikipedia.org', 'https://youtube.com', 'https://github.com'];
+
       for (const url of urls) {
         await this.createQuickTab(url);
       }
-      
+
       const tabs = await this.getQuickTabs();
       const passed = tabs.length === urls.length;
-      
+
       return {
         passed,
         message: passed

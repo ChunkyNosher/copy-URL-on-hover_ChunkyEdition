@@ -2,7 +2,9 @@
 
 ## Overview
 
-The storage layer provides an abstraction over browser storage APIs (`browser.storage.sync` and `browser.storage.session`) with automatic format migration, container isolation, and race condition prevention.
+The storage layer provides an abstraction over browser storage APIs
+(`browser.storage.sync` and `browser.storage.session`) with automatic format
+migration, container isolation, and race condition prevention.
 
 ## Storage Layer Architecture
 
@@ -337,7 +339,8 @@ sequenceDiagram
     end
 ```
 
-**Key**: Each tab tracks its own writes via `pendingSaves` Set, preventing infinite sync loops
+**Key**: Each tab tracks its own writes via `pendingSaves` Set, preventing
+infinite sync loops
 
 ## Container Isolation
 
@@ -380,7 +383,8 @@ graph TB
 
 **Implementation**:
 
-- Each `SyncStorageAdapter.load(containerId)` only returns data for that container
+- Each `SyncStorageAdapter.load(containerId)` only returns data for that
+  container
 - Other containers' data is never exposed to the calling code
 - Enforced at adapter level, not application level
 

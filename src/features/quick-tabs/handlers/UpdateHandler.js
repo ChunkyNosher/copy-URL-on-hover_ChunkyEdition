@@ -50,7 +50,7 @@ export class UpdateHandler {
     this.quickTabsMap = quickTabsMap;
     this.eventBus = eventBus;
     this.minimizedManager = minimizedManager;
-    
+
     // v1.6.3.4 - FIX Issue #2: Debounce state tracking for _persistToStorage
     this._debounceTimer = null;
     // v1.6.3.5-v7 - FIX Bug: Separate timer object for drag/resize debouncing
@@ -75,19 +75,19 @@ export class UpdateHandler {
     if (tab) {
       tab.left = Math.round(left);
       tab.top = Math.round(top);
-      
+
       // Emit lightweight event for Manager live updates (without persistence)
       this.eventBus?.emit('tab:position-changing', {
         id,
         left: tab.left,
         top: tab.top
       });
-      
+
       // Debounced persist during drag (200ms) for cross-context sync
       this._debouncedDragPersist(id, 'position');
     }
   }
-  
+
   /**
    * Debounced persist during drag/resize operations
    * v1.6.3.5-v7 - FIX Issue #4: Enable live sync without overwhelming storage
@@ -98,12 +98,12 @@ export class UpdateHandler {
    */
   _debouncedDragPersist(id, type) {
     const key = `drag-${id}-${type}`;
-    
+
     // Clear existing timer for this operation
     if (this._dragDebounceTimers[key]) {
       clearTimeout(this._dragDebounceTimers[key]);
     }
-    
+
     // Schedule new persist (200ms - faster than DEBOUNCE_DELAY_MS for end operations)
     this._dragDebounceTimers[key] = setTimeout(() => {
       delete this._dragDebounceTimers[key];
@@ -126,13 +126,13 @@ export class UpdateHandler {
   handlePositionChangeEnd(id, left, top) {
     // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
     console.log('[UpdateHandler] handlePositionChangeEnd called:', { id, left, top });
-    
+
     const roundedLeft = Math.round(left);
     const roundedTop = Math.round(top);
 
     // Update the Quick Tab's stored position
     const tab = this.quickTabsMap.get(id);
-    
+
     // v1.6.3.4-v12 - FIX Issue #3: Check DOM if tab not in Map
     if (!tab) {
       const domExists = this._checkDOMExists(id);
@@ -141,17 +141,21 @@ export class UpdateHandler {
         reason: 'tab not in quickTabsMap',
         inDOM: domExists
       });
-      
+
       if (domExists) {
         // v1.6.3.5-v8 - FIX Issue #3: Request re-wiring via event
         this._emitOrphanedTabEvent(id, 'position', { left: roundedLeft, top: roundedTop });
       }
       return;
     }
-    
+
     tab.left = roundedLeft;
     tab.top = roundedTop;
-    console.log('[UpdateHandler] Updated tab position in Map:', { id, left: roundedLeft, top: roundedTop });
+    console.log('[UpdateHandler] Updated tab position in Map:', {
+      id,
+      left: roundedLeft,
+      top: roundedTop
+    });
 
     // Emit event for coordinators
     this.eventBus?.emit('tab:position-updated', {
@@ -164,7 +168,7 @@ export class UpdateHandler {
     console.log('[UpdateHandler] Scheduling storage persist after position change');
     this._persistToStorage();
   }
-  
+
   /**
    * Emit event when orphaned DOM element detected
    * v1.6.3.5-v8 - FIX Issue #3: Request re-wiring from UICoordinator
@@ -179,13 +183,13 @@ export class UpdateHandler {
       updateType,
       updateData
     });
-    
+
     // Guard: Only emit if eventBus is available
     if (!this.eventBus) {
       console.warn('[UpdateHandler] Cannot emit tab:orphaned - eventBus not available');
       return;
     }
-    
+
     // Emit event for UICoordinator to handle re-wiring
     this.eventBus.emit('tab:orphaned', {
       id,
@@ -193,7 +197,7 @@ export class UpdateHandler {
       updateData
     });
   }
-  
+
   /**
    * Check if a DOM element exists for a Quick Tab ID
    * v1.6.3.4-v12 - FIX Issue #3: Helper to verify DOM state
@@ -228,14 +232,14 @@ export class UpdateHandler {
     if (tab) {
       tab.width = Math.round(width);
       tab.height = Math.round(height);
-      
+
       // Emit lightweight event for Manager live updates (without persistence)
       this.eventBus?.emit('tab:size-changing', {
         id,
         width: tab.width,
         height: tab.height
       });
-      
+
       // Debounced persist during resize (200ms) for cross-context sync
       this._debouncedDragPersist(id, 'size');
     }
@@ -256,13 +260,13 @@ export class UpdateHandler {
   handleSizeChangeEnd(id, width, height) {
     // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
     console.log('[UpdateHandler] handleSizeChangeEnd called:', { id, width, height });
-    
+
     const roundedWidth = Math.round(width);
     const roundedHeight = Math.round(height);
 
     // Update the Quick Tab's stored size
     const tab = this.quickTabsMap.get(id);
-    
+
     // v1.6.3.4-v12 - FIX Issue #3: Check DOM if tab not in Map
     if (!tab) {
       const domExists = this._checkDOMExists(id);
@@ -271,17 +275,21 @@ export class UpdateHandler {
         reason: 'tab not in quickTabsMap',
         inDOM: domExists
       });
-      
+
       if (domExists) {
         // v1.6.3.5-v8 - FIX Issue #3: Request re-wiring via event
         this._emitOrphanedTabEvent(id, 'size', { width: roundedWidth, height: roundedHeight });
       }
       return;
     }
-    
+
     tab.width = roundedWidth;
     tab.height = roundedHeight;
-    console.log('[UpdateHandler] Updated tab size in Map:', { id, width: roundedWidth, height: roundedHeight });
+    console.log('[UpdateHandler] Updated tab size in Map:', {
+      id,
+      width: roundedWidth,
+      height: roundedHeight
+    });
 
     // Emit event for coordinators
     this.eventBus?.emit('tab:size-updated', {
@@ -307,13 +315,13 @@ export class UpdateHandler {
     if (this._debounceTimer) {
       clearTimeout(this._debounceTimer);
     }
-    
+
     // v1.6.3.4 - FIX Issue #2: Schedule debounced persist
     this._debounceTimer = setTimeout(() => {
       this._doPersist();
     }, DEBOUNCE_DELAY_MS);
   }
-  
+
   /**
    * Check if 64-bit hash has changed compared to last hash
    * v1.6.3.4-v10 - FIX Issue #5: Helper for cleaner hash comparison
@@ -343,19 +351,19 @@ export class UpdateHandler {
       hasMinimizedManager: !!this.minimizedManager,
       timestamp: Date.now()
     });
-    
+
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
-    
+
     // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {
       console.error('[UpdateHandler] Failed to build state for storage');
       return;
     }
-    
+
     // v1.6.3.4-v10 - FIX Issue #5: Compute 64-bit hash and compare both parts
     const newHash = this._computeStateHash(state);
     const hashChanged = this._hasHashChanged(this._lastStateHash, newHash);
-    
+
     if (!hashChanged) {
       console.log('[UpdateHandler] State unchanged (hash match), skipping storage write:', {
         hashLo: newHash.lo,
@@ -363,7 +371,7 @@ export class UpdateHandler {
       });
       return;
     }
-    
+
     // v1.6.3.4-v10 - FIX Issue #8: Log hash change for debugging
     console.log('[UpdateHandler] State changed (hash mismatch), proceeding with storage write:', {
       oldHashLo: this._lastStateHash?.lo,
@@ -372,11 +380,11 @@ export class UpdateHandler {
       newHashHi: newHash.hi,
       tabCount: state.tabs?.length
     });
-    
+
     // Update hash and persist
     this._lastStateHash = newHash;
     const success = await persistStateToStorage(state, '[UpdateHandler]');
-    
+
     // v1.6.3.6-v4 - FIX Issue #1: Log result
     if (success) {
       console.log('[UpdateHandler] _doPersist SUCCESS:', {
@@ -387,7 +395,7 @@ export class UpdateHandler {
       console.error('[UpdateHandler] Storage persist failed or timed out');
     }
   }
-  
+
   /**
    * Compute a simple hash of the state for change detection
    * v1.6.3.4 - FIX Issue #2: Used to skip redundant storage writes
@@ -403,20 +411,20 @@ export class UpdateHandler {
     if (!state?.tabs) {
       return { lo: 0, hi: 0 };
     }
-    
+
     // Create a string of just the position/size/zIndex data that we care about
     // v1.6.3.4 - FIX Issue #3: Include zIndex for z-index persistence
-    const stateStr = state.tabs.map(t => 
-      `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.zIndex}:${t.minimized}`
-    ).join('|');
-    
+    const stateStr = state.tabs
+      .map(t => `${t.id}:${t.left}:${t.top}:${t.width}:${t.height}:${t.zIndex}:${t.minimized}`)
+      .join('|');
+
     // v1.6.3.4-v10 - FIX Issue #5: djb2 hash for low 32 bits
     let hashLo = 0;
     for (let i = 0; i < stateStr.length; i++) {
-      hashLo = ((hashLo << 5) - hashLo) + stateStr.charCodeAt(i);
+      hashLo = (hashLo << 5) - hashLo + stateStr.charCodeAt(i);
       hashLo = hashLo & 0xffffffff; // Convert to 32-bit integer
     }
-    
+
     // v1.6.3.4-v10 - FIX Issue #5: sdbm hash for high 32 bits
     // Using different algorithm ensures different collision patterns
     let hashHi = 0;
@@ -424,7 +432,7 @@ export class UpdateHandler {
       hashHi = stateStr.charCodeAt(i) + (hashHi << 6) + (hashHi << 16) - hashHi;
       hashHi = hashHi & 0xffffffff; // Convert to 32-bit integer
     }
-    
+
     return { lo: hashLo, hi: hashHi };
   }
 

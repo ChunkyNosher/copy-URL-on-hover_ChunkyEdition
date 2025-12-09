@@ -8,7 +8,10 @@
 
 ## Overview
 
-Implemented complete Firefox Container Tabs API integration to ensure Quick Tabs created in one container remain invisible and unsynchronized from Quick Tabs in other containers. This provides true container isolation where each Firefox Container maintains its own independent Quick Tabs state.
+Implemented complete Firefox Container Tabs API integration to ensure Quick Tabs
+created in one container remain invisible and unsynchronized from Quick Tabs in
+other containers. This provides true container isolation where each Firefox
+Container maintains its own independent Quick Tabs state.
 
 ---
 
@@ -19,10 +22,12 @@ Implemented complete Firefox Container Tabs API integration to ensure Quick Tabs
 **QuickTabsManager (src/features/quick-tabs/index.js):**
 
 - Added `this.cookieStoreId` instance property to store container context
-- Implemented `detectContainerContext()` method that uses `browser.tabs.query({ active: true, currentWindow: true })`
+- Implemented `detectContainerContext()` method that uses
+  `browser.tabs.query({ active: true, currentWindow: true })`
 - Container context detected during `init()` before any other initialization
 - Defaults to `'firefox-default'` if detection fails
-- Uses `tabs.query()` instead of `tabs.getCurrent()` because content scripts can't use `getCurrent()`
+- Uses `tabs.query()` instead of `tabs.getCurrent()` because content scripts
+  can't use `getCurrent()`
 
 ```javascript
 async detectContainerContext() {
@@ -55,7 +60,8 @@ async detectContainerContext() {
 
 **Benefits:**
 
-- Automatic isolation - tabs in different containers listen to different channels
+- Automatic isolation - tabs in different containers listen to different
+  channels
 - No manual message filtering needed
 - Broadcasts stay within container boundaries
 
@@ -115,7 +121,8 @@ if (message.cookieStoreId && message.cookieStoreId !== this.cookieStoreId) {
 **createQuickTab() - Auto-assigns container:**
 
 ```javascript
-const cookieStoreId = options.cookieStoreId || this.cookieStoreId || 'firefox-default';
+const cookieStoreId =
+  options.cookieStoreId || this.cookieStoreId || 'firefox-default';
 ```
 
 **All Quick Tab objects now include:**
@@ -127,7 +134,8 @@ const cookieStoreId = options.cookieStoreId || this.cookieStoreId || 'firefox-de
 
 **All sendMessage calls updated to include cookieStoreId:**
 
-- `EMERGENCY_SAVE_QUICK_TABS` - includes `cookieStoreId` and per-tab `cookieStoreId`
+- `EMERGENCY_SAVE_QUICK_TABS` - includes `cookieStoreId` and per-tab
+  `cookieStoreId`
 - `UPDATE_QUICK_TAB_POSITION_FINAL` - includes `cookieStoreId` from tab
 - `UPDATE_QUICK_TAB_SIZE_FINAL` - includes `cookieStoreId` from tab
 - `UPDATE_QUICK_TAB_PIN` - includes `cookieStoreId` from tab
@@ -214,17 +222,21 @@ const currentContainerTabs = currentContainerState?.tabs || [];
 
 ### Why tabs.query() Instead of tabs.getCurrent()?
 
-`browser.tabs.getCurrent()` only works in browser UI contexts (popup, options page). In content scripts, it returns `undefined`. The extension's Quick Tabs feature runs in content scripts, so it must use:
+`browser.tabs.getCurrent()` only works in browser UI contexts (popup, options
+page). In content scripts, it returns `undefined`. The extension's Quick Tabs
+feature runs in content scripts, so it must use:
 
 ```javascript
 browser.tabs.query({ active: true, currentWindow: true });
 ```
 
-This pattern is documented in Mozilla's examples for detecting the current tab's container.
+This pattern is documented in Mozilla's examples for detecting the current tab's
+container.
 
 ### Why Container-Specific BroadcastChannels?
 
-BroadcastChannel is a simple publish-subscribe system where all listeners receive all messages on a channel. If all tabs listen to `'quick-tabs-sync'`:
+BroadcastChannel is a simple publish-subscribe system where all listeners
+receive all messages on a channel. If all tabs listen to `'quick-tabs-sync'`:
 
 - Tab in Container 1 broadcasts: "Create Quick Tab X"
 - Tab in Container 2 receives the broadcast and creates Quick Tab X (WRONG)
@@ -237,7 +249,8 @@ Using container-specific channels (`'quick-tabs-sync-firefox-container-1'`):
 
 ### Why Enforce Container Filtering in syncFromStorage()?
 
-Previous implementation allowed `containerFilter` to be null, which would sync all containers. This violated container isolation principles. The fix:
+Previous implementation allowed `containerFilter` to be null, which would sync
+all containers. This violated container isolation principles. The fix:
 
 - Never allows `containerFilter` to be null
 - Always defaults to `this.cookieStoreId`
@@ -250,7 +263,8 @@ Previous implementation allowed `containerFilter` to be null, which would sync a
 
 **No performance degradation:**
 
-- Container-specific channels reduce unnecessary processing (tabs only process relevant messages)
+- Container-specific channels reduce unnecessary processing (tabs only process
+  relevant messages)
 - Storage filtering reduces data processing (only current container's state)
 - BroadcastChannel already fast (<10ms cross-tab sync)
 - Container detection happens once during init (negligible overhead)
@@ -276,7 +290,8 @@ Previous implementation allowed `containerFilter` to be null, which would sync a
 ## Future Enhancements
 
 1. **Panel UI Enhancement:** Show current container name/icon in panel header
-2. **Cross-Container Management:** Optional view to see all containers' Quick Tabs (admin view)
+2. **Cross-Container Management:** Optional view to see all containers' Quick
+   Tabs (admin view)
 3. **Container-Specific Settings:** Per-container Quick Tab preferences
 4. **Container Icons:** Use Firefox container icons in Quick Tab UI
 
@@ -286,7 +301,8 @@ Previous implementation allowed `containerFilter` to be null, which would sync a
 
 ### Content Scripts
 
-- `src/features/quick-tabs/index.js` - Core QuickTabsManager with container detection
+- `src/features/quick-tabs/index.js` - Core QuickTabsManager with container
+  detection
 - `src/features/quick-tabs/panel.js` - PanelManager with container filtering
 
 ### Background Script
@@ -301,11 +317,16 @@ Previous implementation allowed `containerFilter` to be null, which would sync a
 
 ## Conclusion
 
-Successfully implemented complete Firefox Container Tabs integration with defense-in-depth isolation at multiple architectural layers:
+Successfully implemented complete Firefox Container Tabs integration with
+defense-in-depth isolation at multiple architectural layers:
 
-1. **Detection Layer:** Container context detected and stored during initialization
-2. **Communication Layer:** Container-specific BroadcastChannel + message validation
+1. **Detection Layer:** Container context detected and stored during
+   initialization
+2. **Communication Layer:** Container-specific BroadcastChannel + message
+   validation
 3. **Storage Layer:** Container-filtered read/write operations
 4. **UI Layer:** Panel displays only current container's Quick Tabs
 
-All layers work together to ensure Quick Tabs in Container 1 remain completely isolated from Container 2, with independent state, synchronization, and management interfaces.
+All layers work together to ensure Quick Tabs in Container 1 remain completely
+isolated from Container 2, with independent state, synchronization, and
+management interfaces.
