@@ -65,11 +65,31 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v10 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v12 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v10 Build & Analysis (NEW):**
+**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+
+- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
+  exponential backoff retry
+- **Heartbeat** - Sidebar sends `HEARTBEAT` every 25s, background responds with
+  `HEARTBEAT_ACK`, 5s timeout
+- **Storage Deduplication** - Multi-method dedup: transactionId, saveId+timestamp,
+  content hash
+- **Cache Reconciliation** - `_triggerCacheReconciliation()` queries content
+  scripts for state recovery
+- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()` for
+  ordered deletion
+- **Architectural Resilience** - Coordinator is optimization, not requirement;
+  content scripts can write directly to storage
+
+**v1.6.3.6-v12 Features (Retained):**
+
+- Port-based messaging, animation lifecycle, atomic operations
+- Port registry, persistent connections, correlationId tracking
+
+**v1.6.3.6-v10 Build & Analysis (Retained):**
 
 - **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
   tree-shaking, Rollup cache, npm-run-all

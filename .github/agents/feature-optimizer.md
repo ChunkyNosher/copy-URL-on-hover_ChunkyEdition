@@ -61,11 +61,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.6-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v10 Build Optimizations (NEW):**
+**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+
+- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()`
+- **Heartbeat** - Keep background alive, 25s interval, 5s timeout
+- **Storage Deduplication** - Multi-method dedup
+- **Architectural Resilience** - Coordinator is optimization, not requirement
+
+**v1.6.3.6-v10 Build Optimizations (Retained):**
 
 - **`.buildconfig.json`** - Centralized bundle size thresholds
 - **Terser Minification:** Dev (beautify, 2 passes) vs Prod (no beautify, 3

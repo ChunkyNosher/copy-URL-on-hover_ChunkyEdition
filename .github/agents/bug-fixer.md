@@ -37,11 +37,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.6-v12 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v11 Port-Based Messaging (NEW):**
+**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+
+- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
+  exponential backoff
+- **Heartbeat** - `HEARTBEAT` every 25s, `HEARTBEAT_ACK` response, 5s timeout
+- **Storage Deduplication** - transactionId, saveId+timestamp, content hash
+- **Cache Reconciliation** - `_triggerCacheReconciliation()`
+- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()`
+- **Architectural Resilience** - Coordinator is optimization, not requirement
+
+**v1.6.3.6-v12 Port-Based Messaging (Retained):**
 
 - **Port Registry** -
   `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
@@ -52,14 +62,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 - **Storage Write Verification** - Read-back after write to verify success
 
-**v1.6.3.6-v11 Animation/Logging (NEW):**
+**v1.6.3.6-v12 Animation/Logging (NEW):**
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
 - **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
 - **Adoption Verification** - 2-second timeout for adoption confirmation
 
-**v1.6.3.6-v11 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (NEW):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -126,7 +136,7 @@ architecture, race conditions
 
 ---
 
-## v1.6.3.6-v11 Fix Patterns
+## v1.6.3.6-v12 Fix Patterns
 
 ### Port-Based Messaging Pattern
 

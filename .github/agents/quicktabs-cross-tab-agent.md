@@ -2,7 +2,7 @@
 name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging
-  (v1.6.3.6-v11), storage.onChanged events, Background-as-Coordinator, Per-Tab
+  (v1.6.3.6-v12), storage.onChanged events, Background-as-Coordinator, Per-Tab
   Ownership Validation, originTabId filtering, Promise-Based Sequencing, animation
   lifecycle logging, atomic operations
 tools: ['*']
@@ -40,7 +40,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v11 Port-Based Messaging (NEW):**
+**v1.6.3.6-v12 Port-Based Messaging (NEW):**
 
 - **Port Registry** - Background maintains
   `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
@@ -55,14 +55,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Periodic Cleanup** - Removes stale port entries
 - **Isolated State Machine** - Background maintains state, tabs are consumers
 
-**v1.6.3.6-v11 Atomic Operations (NEW):**
+**v1.6.3.6-v12 Atomic Operations (NEW):**
 
 - **Storage Write Verification** - Read-back after write to verify success
 - **Atomic Adoption** - Single storage write for adoption operations
 - **Visibility Sync Broadcasts** - All ports receive visibility updates
 - **Adoption Verification** - 2-second timeout for adoption confirmation
 
-**v1.6.3.6-v11 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (NEW):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -139,12 +139,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 ## Testing Requirements
 
 - [ ] Port connections established via `browser.runtime.onConnect`
-      (v1.6.3.6-v11)
-- [ ] Port cleanup on `browser.tabs.onRemoved` (v1.6.3.6-v11)
-- [ ] Message acknowledgments include correlationId (v1.6.3.6-v11)
-- [ ] Storage write verification reads back after write (v1.6.3.6-v11)
-- [ ] Atomic adoption uses single storage write (v1.6.3.6-v11)
-- [ ] Visibility sync broadcasts to all ports (v1.6.3.6-v11)
+      (v1.6.3.6-v12)
+- [ ] Port cleanup on `browser.tabs.onRemoved` (v1.6.3.6-v12)
+- [ ] Message acknowledgments include correlationId (v1.6.3.6-v12)
+- [ ] Storage write verification reads back after write (v1.6.3.6-v12)
+- [ ] Atomic adoption uses single storage write (v1.6.3.6-v12)
+- [ ] Visibility sync broadcasts to all ports (v1.6.3.6-v12)
 - [ ] Tab switch detection triggers Manager refresh
 - [ ] Structured confirmations return `{ success, quickTabId, action }`
 - [ ] Multi-layer ID recovery works across CreateHandler, hydration, snapshots
@@ -155,5 +155,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.6-v11 port-based messaging,
+**Your strength: Reliable cross-tab sync with v1.6.3.6-v12 port-based messaging,
 atomic operations, and storage write verification.**
