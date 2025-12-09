@@ -48,7 +48,11 @@ import {
   STATE_OPEN,
   STATE_CLOSED
 } from './utils/render-helpers.js';
-import { STORAGE_READ_DEBOUNCE_MS } from './utils/storage-handlers.js';
+import {
+  STORAGE_READ_DEBOUNCE_MS,
+  queryAllContentScriptsForQuickTabs,
+  restoreStateFromContentScripts
+} from './utils/storage-handlers.js';
 import {
   isOperationPending,
   setupPendingOperation,
@@ -154,6 +158,40 @@ const pendingAcks = new Map();
  */
 const ACK_TIMEOUT_MS = 1000;
 
+// ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
+// FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
+
+/**
+ * Heartbeat interval (25 seconds - Firefox idle timeout is 30s)
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ */
+const HEARTBEAT_INTERVAL_MS = 25000;
+
+/**
+ * Heartbeat timeout (5 seconds)
+ * v1.6.3.6-v12 - FIX Issue #4: Detect unresponsive background
+ */
+const HEARTBEAT_TIMEOUT_MS = 5000;
+
+/**
+ * Heartbeat interval ID
+ * v1.6.3.6-v12 - FIX Issue #4: Track interval for cleanup
+ */
+let heartbeatIntervalId = null;
+
+/**
+ * Last heartbeat response time
+ * v1.6.3.6-v12 - FIX Issue #4: Track background responsiveness
+ */
+let lastHeartbeatResponse = Date.now();
+
+/**
+ * Consecutive heartbeat failures
+ * v1.6.3.6-v12 - FIX Issue #4: Track for reconnection
+ */
+let consecutiveHeartbeatFailures = 0;
+const MAX_HEARTBEAT_FAILURES = 2;
+
 /**
  * Generate correlation ID for message acknowledgment
  * v1.6.3.6-v11 - FIX Issue #10: Correlation tracking
@@ -181,6 +219,7 @@ function logPortLifecycle(event, details = {}) {
 /**
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
  */
 function connectToBackground() {
   try {
@@ -199,9 +238,15 @@ function connectToBackground() {
       logPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
+      // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
+      stopHeartbeat();
+
       // Attempt reconnection after delay
       setTimeout(connectToBackground, 1000);
     });
+
+    // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
+    startHeartbeat();
 
     console.log('[Manager] v1.6.3.6-v11 Port connection established');
   } catch (err) {
@@ -210,9 +255,135 @@ function connectToBackground() {
   }
 }
 
+// ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
+
+/**
+ * Start heartbeat interval
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ */
+function startHeartbeat() {
+  // Clear any existing interval
+  stopHeartbeat();
+
+  // Send initial heartbeat immediately
+  sendHeartbeat();
+
+  // Start interval
+  heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+  console.log('[Manager] v1.6.3.6-v12 Heartbeat started (every', HEARTBEAT_INTERVAL_MS / 1000, 's)');
+}
+
+/**
+ * Stop heartbeat interval
+ * v1.6.3.6-v12 - FIX Issue #4: Cleanup on disconnect/unload
+ */
+function stopHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+    console.log('[Manager] v1.6.3.6-v12 Heartbeat stopped');
+  }
+}
+
+/**
+ * Send heartbeat message to background
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
+ */
+async function sendHeartbeat() {
+  if (!backgroundPort) {
+    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected');
+    consecutiveHeartbeatFailures++;
+    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - reconnecting');
+      connectToBackground();
+    }
+    return;
+  }
+
+  const timestamp = Date.now();
+
+  try {
+    // Send heartbeat with timeout
+    const response = await sendPortMessageWithTimeout({
+      type: 'HEARTBEAT',
+      timestamp,
+      source: 'sidebar'
+    }, HEARTBEAT_TIMEOUT_MS);
+
+    // Success - reset failure count
+    consecutiveHeartbeatFailures = 0;
+    lastHeartbeatResponse = Date.now();
+
+    console.log('[Manager] PORT_HEARTBEAT: success', {
+      roundTripMs: Date.now() - timestamp,
+      backgroundAlive: response?.backgroundAlive,
+      isInitialized: response?.isInitialized
+    });
+  } catch (err) {
+    consecutiveHeartbeatFailures++;
+    console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
+      error: err.message,
+      failures: consecutiveHeartbeatFailures,
+      maxFailures: MAX_HEARTBEAT_FAILURES
+    });
+
+    // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
+    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - reconnecting');
+      backgroundPort = null;
+      connectToBackground();
+    }
+  }
+}
+
+/**
+ * Send port message with timeout
+ * v1.6.3.6-v12 - FIX Issue #4: Wrap port messages with timeout
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} Response from background
+ */
+function sendPortMessageWithTimeout(message, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!backgroundPort) {
+      reject(new Error('Port not connected'));
+      return;
+    }
+
+    const correlationId = generateCorrelationId();
+    const messageWithCorrelation = { ...message, correlationId };
+
+    // Set up timeout
+    const timeout = setTimeout(() => {
+      pendingAcks.delete(correlationId);
+      reject(new Error('Heartbeat timeout'));
+    }, timeoutMs);
+
+    // Track pending ack
+    pendingAcks.set(correlationId, {
+      resolve,
+      reject,
+      timeout,
+      sentAt: Date.now()
+    });
+
+    // Send message
+    try {
+      backgroundPort.postMessage(messageWithCorrelation);
+    } catch (err) {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      reject(err);
+    }
+  });
+}
+
+// ==================== END HEARTBEAT FUNCTIONS ====================
+
 /**
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
+ * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
@@ -221,6 +392,12 @@ function handlePortMessage(message) {
     action: message.action,
     correlationId: message.correlationId
   });
+
+  // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment
+  if (message.type === 'HEARTBEAT_ACK') {
+    handleAcknowledgment(message);
+    return;
+  }
 
   // Handle acknowledgment
   if (message.type === 'ACKNOWLEDGMENT') {
@@ -903,7 +1080,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
+// v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 window.addEventListener('unload', () => {
+  // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
+  stopHeartbeat();
+
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
     backgroundPort.disconnect();
@@ -1053,6 +1234,7 @@ function _handleEmptyStorageState() {
  * v1.6.3.5-v11 - FIX Issue #6: Allow legitimate single-tab deletions (cache=1, storage=0)
  *   Storage storms are detected when MULTIPLE tabs vanish unexpectedly.
  *   A single tab going to 0 is legitimate user action.
+ * v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation instead of silently using cache
  * @param {Object} state - Storage state
  * @returns {boolean} True if storm detected and handled
  */
@@ -1081,21 +1263,65 @@ function _detectStorageStorm(state) {
     return false; // Not a storm - proceed with normal update
   }
 
-  // Multiple tabs vanished at once - this IS a storage storm
-  console.warn(
-    '[Manager] ⚠️ Storage storm detected - 0 tabs in storage but',
-    inMemoryTabsCache.length,
-    'in cache:',
-    {
-      storageTabCount: storageTabs.length,
-      cacheTabCount: inMemoryTabsCache.length,
-      lastKnownGoodCount: lastKnownGoodTabCount,
-      saveId: state.saveId
-    }
-  );
+  // v1.6.3.6-v12 - FIX Issue #5: CACHE_DIVERGENCE - trigger reconciliation
+  console.warn('[Manager] v1.6.3.6-v12 CACHE_DIVERGENCE:', {
+    storageTabCount: storageTabs.length,
+    cacheTabCount: inMemoryTabsCache.length,
+    lastKnownGoodCount: lastKnownGoodTabCount,
+    saveId: state.saveId
+  });
+
+  // v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation with content scripts
+  _triggerCacheReconciliation();
+
+  // Temporarily use cache to prevent blank UI while reconciliation runs
   quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
-  console.log('[Manager] Using in-memory cache to prevent list clearing');
+  console.log('[Manager] Using in-memory cache temporarily during reconciliation');
   return true;
+}
+
+/**
+ * Trigger reconciliation with content scripts when cache diverges from storage
+ * v1.6.3.6-v12 - FIX Issue #5: Query content scripts and restore to STORAGE if needed
+ * v1.6.3.6-v12 - FIX Code Review: Use module-level imports instead of dynamic import
+ */
+async function _triggerCacheReconciliation() {
+  console.log('[Manager] v1.6.3.6-v12 Starting cache reconciliation...');
+
+  try {
+    // Query all content scripts for their Quick Tabs
+    // v1.6.3.6-v12 - FIX Code Review: Using module-level import
+    const contentScriptTabs = await queryAllContentScriptsForQuickTabs();
+
+    console.log('[Manager] v1.6.3.6-v12 Reconciliation found:', {
+      contentScriptTabCount: contentScriptTabs.length,
+      cacheTabCount: inMemoryTabsCache.length
+    });
+
+    if (contentScriptTabs.length > 0) {
+      // v1.6.3.6-v12 - FIX Issue #5: Content scripts have tabs - restore to STORAGE
+      console.warn('[Manager] CORRUPTION CONFIRMED: Content scripts have tabs but storage is empty');
+      console.log('[Manager] v1.6.3.6-v12 Restoring state to storage...');
+
+      const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
+      quickTabsState = restoredState;
+      inMemoryTabsCache = [...restoredState.tabs];
+      lastKnownGoodTabCount = restoredState.tabs.length;
+
+      console.log('[Manager] v1.6.3.6-v12 Reconciliation complete: Restored', contentScriptTabs.length, 'tabs to storage');
+      renderUI(); // Re-render with restored state
+    } else {
+      // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
+      console.log('[Manager] v1.6.3.6-v12 Content scripts confirm 0 tabs - accepting empty state');
+      inMemoryTabsCache = [];
+      lastKnownGoodTabCount = 0;
+      quickTabsState = { tabs: [], timestamp: Date.now() };
+      renderUI();
+    }
+  } catch (err) {
+    console.error('[Manager] v1.6.3.6-v12 Reconciliation error:', err.message);
+    // Keep using cache on error - better than showing blank
+  }
 }
 
 /**
