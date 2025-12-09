@@ -3196,6 +3196,7 @@ async function handlePortMessage(port, portId, message) {
  * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
  * v1.6.3.6-v12 - FIX Issue #2, #4: Added HEARTBEAT handling
  * v1.6.4.0 - FIX Issue E: Added REQUEST_FULL_STATE_SYNC handling
+ * v1.6.3.7-v4 - FIX Issue #8, #10: Added HEALTH_PROBE and LISTENER_VERIFICATION handling
  * @param {Object} message - Message to route
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
@@ -3209,12 +3210,16 @@ function routePortMessage(message, portInfo) {
     case 'HEARTBEAT':
       return handleHeartbeat(message, portInfo);
 
+    // v1.6.3.7-v4 - FIX Issue #8, #10: Health and verification probes
+    case 'HEALTH_PROBE':
+      return handleHealthProbe(message, portInfo);
+    case 'LISTENER_VERIFICATION':
+      return handleListenerVerification(message, portInfo);
+
     case 'ACTION_REQUEST':
       return handleActionRequest(message, portInfo);
-
     case 'STATE_UPDATE':
       return handleStateUpdate(message, portInfo);
-
     case 'BROADCAST':
       return handleBroadcastRequest(message, portInfo);
 
@@ -3227,13 +3232,70 @@ function routePortMessage(message, portInfo) {
       return handleFullStateSyncRequest(message, portInfo);
 
     default:
-      // Fallback to action-based routing for backwards compatibility
-      if (action) {
-        return handleLegacyAction(message, portInfo);
-      }
-      console.warn('[Background] Unknown message type:', type);
-      return Promise.resolve({ success: false, error: 'Unknown message type' });
+      return _handleUnknownPortMessage(type, action, message, portInfo);
   }
+}
+
+/**
+ * Handle unknown port message types
+ * v1.6.3.7-v4 - Extracted for complexity reduction
+ * @private
+ */
+function _handleUnknownPortMessage(type, action, message, portInfo) {
+  // Fallback to action-based routing for backwards compatibility
+  if (action) {
+    return handleLegacyAction(message, portInfo);
+  }
+  console.warn('[Background] Unknown message type:', type);
+  return Promise.resolve({ success: false, error: 'Unknown message type' });
+}
+
+/**
+ * Handle HEALTH_PROBE message for circuit breaker early recovery
+ * v1.6.3.7-v4 - FIX Issue #8: Lightweight probe to detect if background is responsive
+ * @param {Object} message - Health probe message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Health acknowledgment
+ */
+function handleHealthProbe(message, portInfo) {
+  console.log('[Background] HEALTH_PROBE received:', {
+    source: message.source || portInfo?.origin || 'unknown',
+    timestamp: message.timestamp,
+    portId: portInfo?.port?._portId
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'HEALTH_ACK',
+    healthy: true,
+    timestamp: Date.now(),
+    originalTimestamp: message.timestamp,
+    isInitialized,
+    cacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+}
+
+/**
+ * Handle LISTENER_VERIFICATION message to confirm port listener is working
+ * v1.6.3.7-v4 - FIX Issue #10: Test message to verify listener registration succeeded
+ * @param {Object} message - Verification message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Verification acknowledgment
+ */
+function handleListenerVerification(message, portInfo) {
+  console.log('[Background] LISTENER_VERIFICATION received:', {
+    source: message.source || portInfo?.origin || 'unknown',
+    timestamp: message.timestamp,
+    portId: portInfo?.port?._portId
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'LISTENER_VERIFICATION_ACK',
+    verified: true,
+    timestamp: Date.now(),
+    originalTimestamp: message.timestamp
+  });
 }
 
 /**
@@ -4654,6 +4716,25 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
 // Register message handlers for Quick Tab coordination
 // This extends the existing runtime.onMessage listener
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // v1.6.3.7-v4 - FIX Issue #8: Handle HEALTH_PROBE for circuit breaker early recovery
+  // This handles probes sent via sendMessage when port is down
+  if (message.type === 'HEALTH_PROBE') {
+    console.log('[Background] HEALTH_PROBE via sendMessage received:', {
+      source: message.source,
+      timestamp: message.timestamp
+    });
+    sendResponse({
+      success: true,
+      type: 'HEALTH_ACK',
+      healthy: true,
+      timestamp: Date.now(),
+      originalTimestamp: message.timestamp,
+      isInitialized,
+      cacheTabCount: globalQuickTabState.tabs?.length || 0
+    });
+    return true;
+  }
+
   // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
   if (message.type === 'QUICK_TAB_STATE_CHANGE') {
     handleQuickTabStateChange(message, sender)

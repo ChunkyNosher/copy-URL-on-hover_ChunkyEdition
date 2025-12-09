@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v3** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v4** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,39 +9,34 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v3 Status:** Session Quick Tabs, BroadcastChannel, Tab Grouping,
-Alarms API ✅
+**🔧 v1.6.3.7-v4 Status:** Critical communication fixes, early recovery probing,
+user feedback improvements ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v3
+## 🎉 What's New in v1.6.3.7-v4
 
-**🚀 New APIs & Features (December 2025) ✅**
+**🔧 Critical Fixes (December 2025) ✅**
 
-- ✅ **storage.session API** - Session-scoped Quick Tabs
-  - `permanent: false` - Session Quick Tabs auto-clear on browser close
-  - `session_quick_tabs` storage key for session state
-- ✅ **BroadcastChannel API** - Real-time tab messaging
-  - `quick-tabs-updates` channel for instant sync
-  - Message types: `created`, `updated`, `deleted`, `minimized`, `restored`
-- ✅ **sessions API** - Per-tab state management
-  - `TabStateManager.js` for per-tab Quick Tab state
-- ✅ **browser.alarms API** - Scheduled cleanup tasks
-  - `cleanup-orphaned` (60 min), `sync-session-state` (5 min),
-    `diagnostic-snapshot` (120 min)
-- ✅ **tabs.group() API** - Tab grouping (Firefox 138+)
-  - `QuickTabGroupManager.js` for group operations
-  - Context menu integration for grouping
-- ✅ **notifications API** - System notifications
-  - `NotificationManager.js` for rich notifications
-- ✅ **DOM Reconciliation** - Sidebar animation optimization
-  - `_itemElements` Map for differential updates
-  - originTabId initialization fix in window.js
+**Issues #1-4: Cross-Tab Sync Architecture**
+- ✅ **BroadcastChannel Wiring** - Backend handlers now send broadcasts
+- ✅ **Port State Updates** - Route through port primary, runtime secondary
+- ✅ **Message Deduplication** - Prevent multiple renders via message ID tracking
+- ✅ **Enhanced Heartbeat** - Failure mode detection (PORT_DISCONNECTED, BACKGROUND_DEAD)
 
-**Why This Matters:** These features add session-scoped tabs, real-time sync,
-scheduled maintenance, and smoother animations.
+**Issues #5-10: Reliability & User Feedback**
+- ✅ **Close All Feedback** - User notification on failure via `_showCloseAllErrorNotification()`
+- ✅ **Session Cache Validation** - Cache includes sessionId + timestamp
+- ✅ **Storage Polling Backup** - 2s→10s (BroadcastChannel is PRIMARY)
+- ✅ **Circuit Breaker Probes** - 10s→2s with 500ms early recovery probes
+- ✅ **Error Handling** - try-catch in message listeners with graceful degradation
+- ✅ **Listener Verification** - Test messages after registration
+
+**Why This Matters:** Fixes critical state sync failures that caused sidebar to
+show stale/empty Quick Tabs. Now uses three-tier fallback: BroadcastChannel
+(primary), Port (secondary), Storage (tertiary).
 
 ---
 
@@ -50,6 +45,7 @@ scheduled maintenance, and smoother animations.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v3** - Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms
 - **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
 - **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
 - **v1.6.3.6-v5** - Cross-tab isolation fixes, deletion loop fixes

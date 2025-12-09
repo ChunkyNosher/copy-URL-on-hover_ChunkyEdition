@@ -1092,6 +1092,7 @@ function _routePortMessage(message) {
   // v1.6.4.0 - FIX Issue E: Handle full state sync response
   if (message.type === 'FULL_STATE_SYNC') {
     _handleStateSyncResponse(message);
+    return;
   }
 }
 
