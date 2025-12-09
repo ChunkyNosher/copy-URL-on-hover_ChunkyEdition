@@ -1611,8 +1611,10 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
     // Validate prerequisites
     const validationError = _validateManagerAction(quickTabId);
     if (validationError) {
-      const reason = !quickTabsManager ? 'manager_not_ready' : 'invalid_params';
-      if (!quickTabsManager) console.warn('[Content] QuickTabsManager not initialized');
+      const isManagerNotReady = !quickTabsManager;
+      const reason = isManagerNotReady ? 'manager_not_ready' : 'invalid_params';
+      // Log warning only if manager not ready (avoid nested if)
+      isManagerNotReady && console.warn('[Content] QuickTabsManager not initialized');
       sendResponse(_buildActionErrorResponse({ action, quickTabId, currentTabId, error: validationError, reason }));
       return;
     }
@@ -1976,479 +1978,508 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 }
 
 // ==================== TEST BRIDGE HANDLER FUNCTIONS ====================
+// v1.6.3.6-v11 - FIX Bundle Size Issue #3: Conditional test infrastructure
+// Test handlers are only included in test builds (process.env.TEST_MODE === 'true')
+// In production builds, this entire block is eliminated by dead code removal
 
-/**
- * Verify QuickTabsManager is initialized
- * @private
- */
-function _requireQuickTabsManager() {
-  if (!quickTabsManager) {
-    throw new Error('QuickTabsManager not initialized');
-  }
-  return quickTabsManager;
-}
+// Single constant for test mode check to ensure consistency
+const IS_TEST_MODE = process.env.TEST_MODE === 'true';
 
-/**
- * Generic sync test handler wrapper to reduce duplication
- * @private
- */
-function _wrapSyncTestHandler(name, handler) {
-  return (data, sendResponse) => {
-    console.log(`[Test Bridge Handler] ${name}:`, data);
-    try {
-      const result = handler(_requireQuickTabsManager(), data);
-      sendResponse({ success: true, ...result });
-    } catch (error) {
-      console.error(`[Test Bridge Handler] ${name} error:`, error);
-      sendResponse({ success: false, error: error.message });
+let _testHandleCreateQuickTab;
+let _testHandleMinimizeQuickTab;
+let _testHandleRestoreQuickTab;
+let _testHandlePinQuickTab;
+let _testHandleUnpinQuickTab;
+let _testHandleCloseQuickTab;
+let _testHandleClearAllQuickTabs;
+let _testHandleToggleSolo;
+let _testHandleToggleMute;
+let _testHandleGetVisibilityState;
+let _testHandleGetManagerState;
+let _testHandleSetManagerPosition;
+let _testHandleSetManagerSize;
+let _testHandleCloseAllMinimized;
+let _testHandleGetContainerInfo;
+let _testHandleCreateQuickTabInContainer;
+let _testHandleVerifyContainerIsolation;
+let _testHandleGetSlotNumbering;
+let _testHandleSetDebugMode;
+let _testHandleGetQuickTabGeometry;
+let _testHandleVerifyZIndexOrder;
+
+// Only define test handlers when TEST_MODE is enabled
+if (IS_TEST_MODE) {
+  /**
+   * Verify QuickTabsManager is initialized
+   * @private
+   */
+  const _requireQuickTabsManager = () => {
+    if (!quickTabsManager) {
+      throw new Error('QuickTabsManager not initialized');
     }
+    return quickTabsManager;
   };
-}
 
-/**
- * Generic async test handler wrapper to reduce duplication
- * @private
- */
-function _wrapAsyncTestHandler(name, handler) {
-  return (data, sendResponse) => {
-    console.log(`[Test Bridge Handler] ${name}:`, data);
-    (async () => {
+  /**
+   * Generic sync test handler wrapper to reduce duplication
+   * @private
+   */
+  const _wrapSyncTestHandler = (name, handler) => {
+    return (data, sendResponse) => {
+      console.log(`[Test Bridge Handler] ${name}:`, data);
       try {
-        const result = await handler(_requireQuickTabsManager(), data);
+        const result = handler(_requireQuickTabsManager(), data);
         sendResponse({ success: true, ...result });
       } catch (error) {
         console.error(`[Test Bridge Handler] ${name} error:`, error);
         sendResponse({ success: false, error: error.message });
       }
-    })();
-  };
-}
-
-// Test handler implementations using wrapper pattern
-const _testHandleCreateQuickTab = _wrapSyncTestHandler('TEST_CREATE_QUICK_TAB', (manager, data) => {
-  const { url, options = {} } = data;
-  manager.createQuickTab({ url, title: options.title || 'Test Quick Tab', ...options });
-  return { message: 'Quick Tab created', data: { url, options } };
-});
-
-const _testHandleMinimizeQuickTab = _wrapSyncTestHandler('TEST_MINIMIZE_QUICK_TAB', (manager, data) => {
-  manager.minimizeById(data.id);
-  return { message: 'Quick Tab minimized', data: { id: data.id } };
-});
-
-const _testHandleRestoreQuickTab = _wrapSyncTestHandler('TEST_RESTORE_QUICK_TAB', (manager, data) => {
-  manager.restoreById(data.id);
-  return { message: 'Quick Tab restored', data: { id: data.id } };
-});
-
-const _testHandlePinQuickTab = _wrapAsyncTestHandler('TEST_PIN_QUICK_TAB', async (manager, data) => {
-  const tab = manager.tabs.get(data.id);
-  if (!tab) throw new Error(`Quick Tab not found: ${data.id}`);
-  const currentUrl = window.location.href;
-  tab.pinnedToUrl = currentUrl;
-  await manager.storage.saveQuickTab(tab);
-  return { message: 'Quick Tab pinned', data: { id: data.id, pinnedToUrl: currentUrl } };
-});
-
-const _testHandleUnpinQuickTab = _wrapAsyncTestHandler('TEST_UNPIN_QUICK_TAB', async (manager, data) => {
-  const tab = manager.tabs.get(data.id);
-  if (!tab) throw new Error(`Quick Tab not found: ${data.id}`);
-  tab.pinnedToUrl = null;
-  await manager.storage.saveQuickTab(tab);
-  return { message: 'Quick Tab unpinned', data: { id: data.id } };
-});
-
-const _testHandleCloseQuickTab = _wrapSyncTestHandler('TEST_CLOSE_QUICK_TAB', (manager, data) => {
-  manager.closeById(data.id);
-  return { message: 'Quick Tab closed', data: { id: data.id } };
-});
-
-const _testHandleClearAllQuickTabs = _wrapSyncTestHandler('TEST_CLEAR_ALL_QUICK_TAB', (manager) => {
-  const tabIds = Array.from(manager.tabs.keys());
-  manager.closeAll();
-  return { message: 'All Quick Tabs cleared', data: { count: tabIds.length } };
-});
-
-/**
- * Get domain tab and validate it exists
- * @private
- */
-function _getDomainTab(manager, id) {
-  const tab = manager.tabs.get(id);
-  if (!tab) throw new Error(`Quick Tab not found: ${id}`);
-  const domainTab = tab.domainTab;
-  if (!domainTab) throw new Error(`Domain model not found for Quick Tab: ${id}`);
-  return { tab, domainTab };
-}
-
-/**
- * Generic visibility toggle handler (Solo/Mute)
- * @private
- */
-function _toggleVisibility(manager, data, toggleFn, mode) {
-  const { id, tabId } = data;
-  const { domainTab } = _getDomainTab(manager, id);
-  const isNowActive = toggleFn.call(domainTab, tabId);
-
-  if (manager.broadcast) {
-    const broadcastData = mode === 'SOLO'
-      ? { id, tabId, isNowSoloed: isNowActive, soloedOnTabs: domainTab.visibility.soloedOnTabs }
-      : { id, tabId, isNowMuted: isNowActive, mutedOnTabs: domainTab.visibility.mutedOnTabs };
-    manager.broadcast.broadcastMessage(mode, broadcastData);
-  }
-
-  return {
-    message: isNowActive ? `${mode} enabled` : `${mode} disabled`,
-    data: {
-      id, tabId,
-      ...(mode === 'SOLO' ? { isNowSoloed: isNowActive } : { isNowMuted: isNowActive }),
-      soloedOnTabs: domainTab.visibility.soloedOnTabs,
-      mutedOnTabs: domainTab.visibility.mutedOnTabs
-    }
-  };
-}
-
-const _testHandleToggleSolo = _wrapAsyncTestHandler('TEST_TOGGLE_SOLO', async (manager, data) => {
-  const { domainTab } = _getDomainTab(manager, data.id);
-  const result = _toggleVisibility(manager, data, domainTab.toggleSolo, 'SOLO');
-  await manager.storage.saveQuickTab(domainTab);
-  return result;
-});
-
-const _testHandleToggleMute = _wrapAsyncTestHandler('TEST_TOGGLE_MUTE', async (manager, data) => {
-  const { domainTab } = _getDomainTab(manager, data.id);
-  const result = _toggleVisibility(manager, data, domainTab.toggleMute, 'MUTE');
-  await manager.storage.saveQuickTab(domainTab);
-  return result;
-});
-
-/**
- * Process a single tab for visibility state
- * @private
- */
-function _processTabVisibility(id, tab, tabId, visibilityState) {
-  const domainTab = tab.domainTab;
-  if (!domainTab) return;
-
-  const shouldBeVisible = domainTab.shouldBeVisible(tabId);
-  const isSoloed = domainTab.visibility.soloedOnTabs.includes(tabId);
-  const isMuted = domainTab.visibility.mutedOnTabs.includes(tabId);
-
-  visibilityState.quickTabs[id] = {
-    id, url: domainTab.url, title: domainTab.title,
-    shouldBeVisible, isSoloed, isMuted,
-    soloedOnTabs: domainTab.visibility.soloedOnTabs,
-    mutedOnTabs: domainTab.visibility.mutedOnTabs
-  };
-
-  (shouldBeVisible ? visibilityState.visible : visibilityState.hidden).push(id);
-}
-
-/**
- * Handle TEST_GET_VISIBILITY_STATE message
- * @private
- */
-function _testHandleGetVisibilityState(data, sendResponse) {
-  console.log('[Test Bridge Handler] TEST_GET_VISIBILITY_STATE:', data);
-  try {
-    const manager = _requireQuickTabsManager();
-    const { tabId } = data;
-    const visibilityState = { tabId, visible: [], hidden: [], quickTabs: {} };
-
-    for (const [id, tab] of manager.tabs) {
-      _processTabVisibility(id, tab, tabId, visibilityState);
-    }
-
-    sendResponse({ success: true, data: visibilityState });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_GET_VISIBILITY_STATE error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Handle TEST_GET_MANAGER_STATE message (deprecated)
- * @private
- */
-function _testHandleGetManagerState(sendResponse) {
-  console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE (deprecated - floating panel removed)');
-  try {
-    const manager = _requireQuickTabsManager();
-    const minimizedTabs = manager.minimizedManager?.getAll() || [];
-
-    sendResponse({
-      success: true,
-      data: {
-        visible: false,
-        position: null,
-        size: null,
-        minimizedTabs: minimizedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
-        minimizedCount: minimizedTabs.length,
-        deprecationNotice: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
-      }
-    });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_GET_MANAGER_STATE error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Handle TEST_SET_MANAGER_POSITION message (deprecated)
- * @private
- */
-function _testHandleSetManagerPosition(sendResponse) {
-  console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)');
-  sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
-}
-
-/**
- * Handle TEST_SET_MANAGER_SIZE message (deprecated)
- * @private
- */
-function _testHandleSetManagerSize(sendResponse) {
-  console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)');
-  sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
-}
-
-/**
- * Handle TEST_CLOSE_ALL_MINIMIZED message
- * @private
- */
-function _testHandleCloseAllMinimized(sendResponse) {
-  console.log('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED');
-  try {
-    const manager = _requireQuickTabsManager();
-    const minimizedTabs = manager.minimizedManager?.getAll() || [];
-    const minimizedIds = minimizedTabs.map(tab => tab.id);
-
-    for (const id of minimizedIds) {
-      manager.closeById(id);
-    }
-
-    sendResponse({
-      success: true,
-      message: 'All minimized Quick Tabs closed',
-      data: { count: minimizedIds.length, closedIds: minimizedIds }
-    });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Process tab for container info
- * @private
- * @param {string} id - Tab ID
- * @param {Object} tab - Tab object
- * @param {Object} containerInfo - Container info to populate
- */
-function _processTabContainer(id, tab, containerInfo) {
-  const domainTab = tab.domainTab;
-  if (!domainTab) return;
-
-  const containerId = domainTab.cookieStoreId || 'firefox-default';
-
-  if (!containerInfo.containers[containerId]) {
-    containerInfo.containers[containerId] = { id: containerId, quickTabs: [] };
-  }
-
-  containerInfo.containers[containerId].quickTabs.push({
-    id, url: domainTab.url, title: domainTab.title, cookieStoreId: domainTab.cookieStoreId
-  });
-}
-
-function _testHandleGetContainerInfo(sendResponse) {
-  console.log('[Test Bridge Handler] TEST_GET_CONTAINER_INFO');
-  try {
-    const manager = _requireQuickTabsManager();
-    const containerInfo = {
-      currentContainer: manager.cookieStoreId || 'firefox-default',
-      containers: {}
     };
-
-    for (const [id, tab] of manager.tabs) {
-      _processTabContainer(id, tab, containerInfo);
-    }
-
-    sendResponse({ success: true, data: containerInfo });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_GET_CONTAINER_INFO error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Handle TEST_CREATE_QUICK_TAB_IN_CONTAINER message
- * @private
- */
-function _testHandleCreateQuickTabInContainer(data, sendResponse) {
-  console.log('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER:', data);
-  try {
-    const manager = _requireQuickTabsManager();
-    const { url, cookieStoreId } = data;
-    manager.createQuickTab({ url, title: 'Test Quick Tab', cookieStoreId });
-    sendResponse({ success: true, message: 'Quick Tab created in container', data: { url, cookieStoreId } });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Handle TEST_VERIFY_CONTAINER_ISOLATION message
- * @private
- */
-function _getTabContainerId(manager, tabId) {
-  const tab = manager.tabs.get(tabId);
-  if (!tab || !tab.domainTab) throw new Error(`Quick Tab not found: ${tabId}`);
-  return tab.domainTab.cookieStoreId || 'firefox-default';
-}
-
-function _testHandleVerifyContainerIsolation(data, sendResponse) {
-  console.log('[Test Bridge Handler] TEST_VERIFY_CONTAINER_ISOLATION:', data);
-  try {
-    const manager = _requireQuickTabsManager();
-    const { id1, id2 } = data;
-    const container1 = _getTabContainerId(manager, id1);
-    const container2 = _getTabContainerId(manager, id2);
-    const isIsolated = container1 !== container2;
-
-    sendResponse({ success: true, data: { id1, id2, container1, container2, isIsolated } });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_VERIFY_CONTAINER_ISOLATION error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Handle TEST_GET_SLOT_NUMBERING message
- * @private
- */
-function _testHandleGetSlotNumbering(sendResponse) {
-  console.log('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING');
-  try {
-    const manager = _requireQuickTabsManager();
-    const slotInfo = { slots: [] };
-
-    if (manager.minimizedManager) {
-      const slots = manager.minimizedManager.slots || [];
-      slotInfo.slots = slots.map((slot, index) => ({
-        slotNumber: index + 1,
-        isOccupied: slot !== null,
-        quickTabId: slot ? slot.id : null
-      }));
-    }
-
-    sendResponse({ success: true, data: slotInfo });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * Handle TEST_SET_DEBUG_MODE message
- * @private
- */
-function _testHandleSetDebugMode(data, sendResponse) {
-  console.log('[Test Bridge Handler] TEST_SET_DEBUG_MODE:', data);
-  (async () => {
-    try {
-      const { enabled } = data;
-      await browser.storage.local.set({ debugMode: enabled });
-      sendResponse({
-        success: true,
-        message: enabled ? 'Debug mode enabled' : 'Debug mode disabled',
-        data: { enabled }
-      });
-    } catch (error) {
-      console.error('[Test Bridge Handler] TEST_SET_DEBUG_MODE error:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-  })();
-}
-
-/**
- * Get element geometry data
- * @private
- * @param {Element} element - DOM element
- * @returns {Object} - Geometry data with position, size, and zIndex
- */
-function _getElementGeometry(element) {
-  const rect = element.getBoundingClientRect();
-  const computedStyle = window.getComputedStyle(element);
-  return {
-    position: {
-      left: parseFloat(element.style.left) || rect.left,
-      top: parseFloat(element.style.top) || rect.top
-    },
-    size: {
-      width: parseFloat(element.style.width) || rect.width,
-      height: parseFloat(element.style.height) || rect.height
-    },
-    zIndex: parseInt(computedStyle.zIndex, 10) || 0
   };
-}
 
-function _testHandleGetQuickTabGeometry(data, sendResponse) {
-  console.log('[Test Bridge Handler] TEST_GET_QUICK_TAB_GEOMETRY:', data);
-  try {
-    const manager = _requireQuickTabsManager();
-    const { id } = data;
+  /**
+   * Generic async test handler wrapper to reduce duplication
+   * @private
+   */
+  const _wrapAsyncTestHandler = (name, handler) => {
+    return (data, sendResponse) => {
+      console.log(`[Test Bridge Handler] ${name}:`, data);
+      (async () => {
+        try {
+          const result = await handler(_requireQuickTabsManager(), data);
+          sendResponse({ success: true, ...result });
+        } catch (error) {
+          console.error(`[Test Bridge Handler] ${name} error:`, error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+    };
+  };
+
+  // Test handler implementations using wrapper pattern
+  _testHandleCreateQuickTab = _wrapSyncTestHandler('TEST_CREATE_QUICK_TAB', (manager, data) => {
+    const { url, options = {} } = data;
+    manager.createQuickTab({ url, title: options.title || 'Test Quick Tab', ...options });
+    return { message: 'Quick Tab created', data: { url, options } };
+  });
+
+  _testHandleMinimizeQuickTab = _wrapSyncTestHandler('TEST_MINIMIZE_QUICK_TAB', (manager, data) => {
+    manager.minimizeById(data.id);
+    return { message: 'Quick Tab minimized', data: { id: data.id } };
+  });
+
+  _testHandleRestoreQuickTab = _wrapSyncTestHandler('TEST_RESTORE_QUICK_TAB', (manager, data) => {
+    manager.restoreById(data.id);
+    return { message: 'Quick Tab restored', data: { id: data.id } };
+  });
+
+  _testHandlePinQuickTab = _wrapAsyncTestHandler('TEST_PIN_QUICK_TAB', async (manager, data) => {
+    const tab = manager.tabs.get(data.id);
+    if (!tab) throw new Error(`Quick Tab not found: ${data.id}`);
+    const currentUrl = window.location.href;
+    tab.pinnedToUrl = currentUrl;
+    await manager.storage.saveQuickTab(tab);
+    return { message: 'Quick Tab pinned', data: { id: data.id, pinnedToUrl: currentUrl } };
+  });
+
+  _testHandleUnpinQuickTab = _wrapAsyncTestHandler('TEST_UNPIN_QUICK_TAB', async (manager, data) => {
+    const tab = manager.tabs.get(data.id);
+    if (!tab) throw new Error(`Quick Tab not found: ${data.id}`);
+    tab.pinnedToUrl = null;
+    await manager.storage.saveQuickTab(tab);
+    return { message: 'Quick Tab unpinned', data: { id: data.id } };
+  });
+
+  _testHandleCloseQuickTab = _wrapSyncTestHandler('TEST_CLOSE_QUICK_TAB', (manager, data) => {
+    manager.closeById(data.id);
+    return { message: 'Quick Tab closed', data: { id: data.id } };
+  });
+
+  _testHandleClearAllQuickTabs = _wrapSyncTestHandler('TEST_CLEAR_ALL_QUICK_TAB', (manager) => {
+    const tabIds = Array.from(manager.tabs.keys());
+    manager.closeAll();
+    return { message: 'All Quick Tabs cleared', data: { count: tabIds.length } };
+  });
+
+  /**
+   * Get domain tab and validate it exists
+   * @private
+   */
+  const _getDomainTab = (manager, id) => {
     const tab = manager.tabs.get(id);
     if (!tab) throw new Error(`Quick Tab not found: ${id}`);
-    if (!tab.element) throw new Error(`DOM element not found for Quick Tab: ${id}`);
+    const domainTab = tab.domainTab;
+    if (!domainTab) throw new Error(`Domain model not found for Quick Tab: ${id}`);
+    return { tab, domainTab };
+  };
 
-    sendResponse({ success: true, data: { id, ..._getElementGeometry(tab.element) } });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_GET_QUICK_TAB_GEOMETRY error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
+  /**
+   * Generic visibility toggle handler (Solo/Mute)
+   * @private
+   */
+  const _toggleVisibility = (manager, data, toggleFn, mode) => {
+    const { id, tabId } = data;
+    const { domainTab } = _getDomainTab(manager, id);
+    const isNowActive = toggleFn.call(domainTab, tabId);
+
+    if (manager.broadcast) {
+      const broadcastData = mode === 'SOLO'
+        ? { id, tabId, isNowSoloed: isNowActive, soloedOnTabs: domainTab.visibility.soloedOnTabs }
+        : { id, tabId, isNowMuted: isNowActive, mutedOnTabs: domainTab.visibility.mutedOnTabs };
+      manager.broadcast.broadcastMessage(mode, broadcastData);
+    }
+
+    return {
+      message: isNowActive ? `${mode} enabled` : `${mode} disabled`,
+      data: {
+        id, tabId,
+        ...(mode === 'SOLO' ? { isNowSoloed: isNowActive } : { isNowMuted: isNowActive }),
+        soloedOnTabs: domainTab.visibility.soloedOnTabs,
+        mutedOnTabs: domainTab.visibility.mutedOnTabs
+      }
+    };
+  };
+
+  _testHandleToggleSolo = _wrapAsyncTestHandler('TEST_TOGGLE_SOLO', async (manager, data) => {
+    const { domainTab } = _getDomainTab(manager, data.id);
+    const result = _toggleVisibility(manager, data, domainTab.toggleSolo, 'SOLO');
+    await manager.storage.saveQuickTab(domainTab);
+    return result;
+  });
+
+  _testHandleToggleMute = _wrapAsyncTestHandler('TEST_TOGGLE_MUTE', async (manager, data) => {
+    const { domainTab } = _getDomainTab(manager, data.id);
+    const result = _toggleVisibility(manager, data, domainTab.toggleMute, 'MUTE');
+    await manager.storage.saveQuickTab(domainTab);
+    return result;
+  });
+
+  /**
+   * Process a single tab for visibility state
+   * @private
+   */
+  const _processTabVisibility = (id, tab, tabId, visibilityState) => {
+    const domainTab = tab.domainTab;
+    if (!domainTab) return;
+
+    const shouldBeVisible = domainTab.shouldBeVisible(tabId);
+    const isSoloed = domainTab.visibility.soloedOnTabs.includes(tabId);
+    const isMuted = domainTab.visibility.mutedOnTabs.includes(tabId);
+
+    visibilityState.quickTabs[id] = {
+      id, url: domainTab.url, title: domainTab.title,
+      shouldBeVisible, isSoloed, isMuted,
+      soloedOnTabs: domainTab.visibility.soloedOnTabs,
+      mutedOnTabs: domainTab.visibility.mutedOnTabs
+    };
+
+    (shouldBeVisible ? visibilityState.visible : visibilityState.hidden).push(id);
+  };
+
+  /**
+   * Handle TEST_GET_VISIBILITY_STATE message
+   * @private
+   */
+  _testHandleGetVisibilityState = (data, sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_GET_VISIBILITY_STATE:', data);
+    try {
+      const manager = _requireQuickTabsManager();
+      const { tabId } = data;
+      const visibilityState = { tabId, visible: [], hidden: [], quickTabs: {} };
+
+      for (const [id, tab] of manager.tabs) {
+        _processTabVisibility(id, tab, tabId, visibilityState);
+      }
+
+      sendResponse({ success: true, data: visibilityState });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_GET_VISIBILITY_STATE error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Handle TEST_GET_MANAGER_STATE message (deprecated)
+   * @private
+   */
+  _testHandleGetManagerState = (sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE (deprecated - floating panel removed)');
+    try {
+      const manager = _requireQuickTabsManager();
+      const minimizedTabs = manager.minimizedManager?.getAll() || [];
+
+      sendResponse({
+        success: true,
+        data: {
+          visible: false,
+          position: null,
+          size: null,
+          minimizedTabs: minimizedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
+          minimizedCount: minimizedTabs.length,
+          deprecationNotice: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
+        }
+      });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_GET_MANAGER_STATE error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Handle TEST_SET_MANAGER_POSITION message (deprecated)
+   * @private
+   */
+  _testHandleSetManagerPosition = (sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)');
+    sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
+  };
+
+  /**
+   * Handle TEST_SET_MANAGER_SIZE message (deprecated)
+   * @private
+   */
+  _testHandleSetManagerSize = (sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)');
+    sendResponse({ success: false, error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.' });
+  };
+
+  /**
+   * Handle TEST_CLOSE_ALL_MINIMIZED message
+   * @private
+   */
+  _testHandleCloseAllMinimized = (sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED');
+    try {
+      const manager = _requireQuickTabsManager();
+      const minimizedTabs = manager.minimizedManager?.getAll() || [];
+      const minimizedIds = minimizedTabs.map(tab => tab.id);
+
+      for (const id of minimizedIds) {
+        manager.closeById(id);
+      }
+
+      sendResponse({
+        success: true,
+        message: 'All minimized Quick Tabs closed',
+        data: { count: minimizedIds.length, closedIds: minimizedIds }
+      });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_CLOSE_ALL_MINIMIZED error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Process tab for container info
+   * @private
+   */
+  const _processTabContainer = (id, tab, containerInfo) => {
+    const domainTab = tab.domainTab;
+    if (!domainTab) return;
+
+    const containerId = domainTab.cookieStoreId || 'firefox-default';
+
+    if (!containerInfo.containers[containerId]) {
+      containerInfo.containers[containerId] = { id: containerId, quickTabs: [] };
+    }
+
+    containerInfo.containers[containerId].quickTabs.push({
+      id, url: domainTab.url, title: domainTab.title, cookieStoreId: domainTab.cookieStoreId
+    });
+  };
+
+  _testHandleGetContainerInfo = (sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_GET_CONTAINER_INFO');
+    try {
+      const manager = _requireQuickTabsManager();
+      const containerInfo = {
+        currentContainer: manager.cookieStoreId || 'firefox-default',
+        containers: {}
+      };
+
+      for (const [id, tab] of manager.tabs) {
+        _processTabContainer(id, tab, containerInfo);
+      }
+
+      sendResponse({ success: true, data: containerInfo });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_GET_CONTAINER_INFO error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Handle TEST_CREATE_QUICK_TAB_IN_CONTAINER message
+   * @private
+   */
+  _testHandleCreateQuickTabInContainer = (data, sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER:', data);
+    try {
+      const manager = _requireQuickTabsManager();
+      const { url, cookieStoreId } = data;
+      manager.createQuickTab({ url, title: 'Test Quick Tab', cookieStoreId });
+      sendResponse({ success: true, message: 'Quick Tab created in container', data: { url, cookieStoreId } });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_CREATE_QUICK_TAB_IN_CONTAINER error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Handle TEST_VERIFY_CONTAINER_ISOLATION message
+   * @private
+   */
+  const _getTabContainerId = (manager, tabId) => {
+    const tab = manager.tabs.get(tabId);
+    if (!tab || !tab.domainTab) throw new Error(`Quick Tab not found: ${tabId}`);
+    return tab.domainTab.cookieStoreId || 'firefox-default';
+  };
+
+  _testHandleVerifyContainerIsolation = (data, sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_VERIFY_CONTAINER_ISOLATION:', data);
+    try {
+      const manager = _requireQuickTabsManager();
+      const { id1, id2 } = data;
+      const container1 = _getTabContainerId(manager, id1);
+      const container2 = _getTabContainerId(manager, id2);
+      const isIsolated = container1 !== container2;
+
+      sendResponse({ success: true, data: { id1, id2, container1, container2, isIsolated } });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_VERIFY_CONTAINER_ISOLATION error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Handle TEST_GET_SLOT_NUMBERING message
+   * @private
+   */
+  _testHandleGetSlotNumbering = (sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING');
+    try {
+      const manager = _requireQuickTabsManager();
+      const slotInfo = { slots: [] };
+
+      if (manager.minimizedManager) {
+        const slots = manager.minimizedManager.slots || [];
+        slotInfo.slots = slots.map((slot, index) => ({
+          slotNumber: index + 1,
+          isOccupied: slot !== null,
+          quickTabId: slot ? slot.id : null
+        }));
+      }
+
+      sendResponse({ success: true, data: slotInfo });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_GET_SLOT_NUMBERING error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Handle TEST_SET_DEBUG_MODE message
+   * @private
+   */
+  _testHandleSetDebugMode = (data, sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_SET_DEBUG_MODE:', data);
+    (async () => {
+      try {
+        const { enabled } = data;
+        await browser.storage.local.set({ debugMode: enabled });
+        sendResponse({
+          success: true,
+          message: enabled ? 'Debug mode enabled' : 'Debug mode disabled',
+          data: { enabled }
+        });
+      } catch (error) {
+        console.error('[Test Bridge Handler] TEST_SET_DEBUG_MODE error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+  };
+
+  /**
+   * Get element geometry data
+   * @private
+   */
+  const _getElementGeometry = (element) => {
+    const rect = element.getBoundingClientRect();
+    const computedStyle = window.getComputedStyle(element);
+    return {
+      position: {
+        left: parseFloat(element.style.left) || rect.left,
+        top: parseFloat(element.style.top) || rect.top
+      },
+      size: {
+        width: parseFloat(element.style.width) || rect.width,
+        height: parseFloat(element.style.height) || rect.height
+      },
+      zIndex: parseInt(computedStyle.zIndex, 10) || 0
+    };
+  };
+
+  _testHandleGetQuickTabGeometry = (data, sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_GET_QUICK_TAB_GEOMETRY:', data);
+    try {
+      const manager = _requireQuickTabsManager();
+      const { id } = data;
+      const tab = manager.tabs.get(id);
+      if (!tab) throw new Error(`Quick Tab not found: ${id}`);
+      if (!tab.element) throw new Error(`DOM element not found for Quick Tab: ${id}`);
+
+      sendResponse({ success: true, data: { id, ..._getElementGeometry(tab.element) } });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_GET_QUICK_TAB_GEOMETRY error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+
+  /**
+   * Get z-index for a tab element
+   * @private
+   */
+  const _getTabZIndex = (manager, id) => {
+    const tab = manager.tabs.get(id);
+    if (!tab || !tab.element) throw new Error(`Quick Tab or element not found: ${id}`);
+
+    const computedStyle = window.getComputedStyle(tab.element);
+    return { id, zIndex: parseInt(computedStyle.zIndex, 10) || 0 };
+  };
+
+  /**
+   * Verify z-index order is descending
+   * @private
+   */
+  const _verifyDescendingZIndex = (zIndexData) => {
+    for (let i = 0; i < zIndexData.length - 1; i++) {
+      if (zIndexData[i].zIndex <= zIndexData[i + 1].zIndex) return false;
+    }
+    return true;
+  };
+
+  /**
+   * Handle TEST_VERIFY_ZINDEX_ORDER message
+   * @private
+   */
+  _testHandleVerifyZIndexOrder = (data, sendResponse) => {
+    console.log('[Test Bridge Handler] TEST_VERIFY_ZINDEX_ORDER:', data);
+    try {
+      const manager = _requireQuickTabsManager();
+      const { ids } = data;
+      const zIndexData = ids.map(id => _getTabZIndex(manager, id));
+      const isCorrectOrder = _verifyDescendingZIndex(zIndexData);
+
+      sendResponse({ success: true, data: { ids, zIndexData, isCorrectOrder } });
+    } catch (error) {
+      console.error('[Test Bridge Handler] TEST_VERIFY_ZINDEX_ORDER error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+  
+  console.log('[Content] TEST_MODE enabled - test bridge handlers loaded');
 }
-
-/**
- * Get z-index for a tab element
- * @private
- */
-function _getTabZIndex(manager, id) {
-  const tab = manager.tabs.get(id);
-  if (!tab || !tab.element) throw new Error(`Quick Tab or element not found: ${id}`);
-
-  const computedStyle = window.getComputedStyle(tab.element);
-  return { id, zIndex: parseInt(computedStyle.zIndex, 10) || 0 };
-}
-
-/**
- * Verify z-index order is descending
- * @private
- */
-function _verifyDescendingZIndex(zIndexData) {
-  for (let i = 0; i < zIndexData.length - 1; i++) {
-    if (zIndexData[i].zIndex <= zIndexData[i + 1].zIndex) return false;
-  }
-  return true;
-}
-
-/**
- * Handle TEST_VERIFY_ZINDEX_ORDER message
- * @private
- */
-function _testHandleVerifyZIndexOrder(data, sendResponse) {
-  console.log('[Test Bridge Handler] TEST_VERIFY_ZINDEX_ORDER:', data);
-  try {
-    const manager = _requireQuickTabsManager();
-    const { ids } = data;
-    const zIndexData = ids.map(id => _getTabZIndex(manager, id));
-    const isCorrectOrder = _verifyDescendingZIndex(zIndexData);
-
-    sendResponse({ success: true, data: { ids, zIndexData, isCorrectOrder } });
-  } catch (error) {
-    console.error('[Test Bridge Handler] TEST_VERIFY_ZINDEX_ORDER error:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
+// ==================== END TEST BRIDGE HANDLER FUNCTIONS ====================
 
 // ==================== MESSAGE DISPATCHER ====================
 
@@ -2626,93 +2657,100 @@ const TYPE_HANDLERS = {
     // This handler is mainly for logging and potential future use
     sendResponse({ received: true });
     return true;
-  },
-  
-  'TEST_CREATE_QUICK_TAB': (message, sendResponse) => {
-    _testHandleCreateQuickTab(message.data, sendResponse);
-    return true;
-  },
-  'TEST_MINIMIZE_QUICK_TAB': (message, sendResponse) => {
-    _testHandleMinimizeQuickTab(message.data, sendResponse);
-    return true;
-  },
-  'TEST_RESTORE_QUICK_TAB': (message, sendResponse) => {
-    _testHandleRestoreQuickTab(message.data, sendResponse);
-    return true;
-  },
-  'TEST_PIN_QUICK_TAB': (message, sendResponse) => {
-    _testHandlePinQuickTab(message.data, sendResponse);
-    return true;
-  },
-  'TEST_UNPIN_QUICK_TAB': (message, sendResponse) => {
-    _testHandleUnpinQuickTab(message.data, sendResponse);
-    return true;
-  },
-  'TEST_CLOSE_QUICK_TAB': (message, sendResponse) => {
-    _testHandleCloseQuickTab(message.data, sendResponse);
-    return true;
-  },
-  'TEST_CLEAR_ALL_QUICK_TAB': (message, sendResponse) => {
-    _testHandleClearAllQuickTabs(sendResponse);
-    return true;
-  },
-  'TEST_TOGGLE_SOLO': (message, sendResponse) => {
-    _testHandleToggleSolo(message.data, sendResponse);
-    return true;
-  },
-  'TEST_TOGGLE_MUTE': (message, sendResponse) => {
-    _testHandleToggleMute(message.data, sendResponse);
-    return true;
-  },
-  'TEST_GET_VISIBILITY_STATE': (message, sendResponse) => {
-    _testHandleGetVisibilityState(message.data, sendResponse);
-    return true;
-  },
-  'TEST_GET_MANAGER_STATE': (message, sendResponse) => {
-    _testHandleGetManagerState(sendResponse);
-    return true;
-  },
-  'TEST_SET_MANAGER_POSITION': (message, sendResponse) => {
-    _testHandleSetManagerPosition(sendResponse);
-    return true;
-  },
-  'TEST_SET_MANAGER_SIZE': (message, sendResponse) => {
-    _testHandleSetManagerSize(sendResponse);
-    return true;
-  },
-  'TEST_CLOSE_ALL_MINIMIZED': (message, sendResponse) => {
-    _testHandleCloseAllMinimized(sendResponse);
-    return true;
-  },
-  'TEST_GET_CONTAINER_INFO': (message, sendResponse) => {
-    _testHandleGetContainerInfo(sendResponse);
-    return true;
-  },
-  'TEST_CREATE_QUICK_TAB_IN_CONTAINER': (message, sendResponse) => {
-    _testHandleCreateQuickTabInContainer(message.data, sendResponse);
-    return true;
-  },
-  'TEST_VERIFY_CONTAINER_ISOLATION': (message, sendResponse) => {
-    _testHandleVerifyContainerIsolation(message.data, sendResponse);
-    return true;
-  },
-  'TEST_GET_SLOT_NUMBERING': (message, sendResponse) => {
-    _testHandleGetSlotNumbering(sendResponse);
-    return true;
-  },
-  'TEST_SET_DEBUG_MODE': (message, sendResponse) => {
-    _testHandleSetDebugMode(message.data, sendResponse);
-    return true;
-  },
-  'TEST_GET_QUICK_TAB_GEOMETRY': (message, sendResponse) => {
-    _testHandleGetQuickTabGeometry(message.data, sendResponse);
-    return true;
-  },
-  'TEST_VERIFY_ZINDEX_ORDER': (message, sendResponse) => {
-    _testHandleVerifyZIndexOrder(message.data, sendResponse);
-    return true;
   }
 };
+
+// v1.6.3.6-v11 - FIX Bundle Size Issue #3: Conditionally add test handlers only in test mode
+// This allows Rollup's dead code elimination to remove test handlers in production builds
+if (IS_TEST_MODE) {
+  Object.assign(TYPE_HANDLERS, {
+    'TEST_CREATE_QUICK_TAB': (message, sendResponse) => {
+      _testHandleCreateQuickTab(message.data, sendResponse);
+      return true;
+    },
+    'TEST_MINIMIZE_QUICK_TAB': (message, sendResponse) => {
+      _testHandleMinimizeQuickTab(message.data, sendResponse);
+      return true;
+    },
+    'TEST_RESTORE_QUICK_TAB': (message, sendResponse) => {
+      _testHandleRestoreQuickTab(message.data, sendResponse);
+      return true;
+    },
+    'TEST_PIN_QUICK_TAB': (message, sendResponse) => {
+      _testHandlePinQuickTab(message.data, sendResponse);
+      return true;
+    },
+    'TEST_UNPIN_QUICK_TAB': (message, sendResponse) => {
+      _testHandleUnpinQuickTab(message.data, sendResponse);
+      return true;
+    },
+    'TEST_CLOSE_QUICK_TAB': (message, sendResponse) => {
+      _testHandleCloseQuickTab(message.data, sendResponse);
+      return true;
+    },
+    'TEST_CLEAR_ALL_QUICK_TAB': (message, sendResponse) => {
+      _testHandleClearAllQuickTabs(sendResponse);
+      return true;
+    },
+    'TEST_TOGGLE_SOLO': (message, sendResponse) => {
+      _testHandleToggleSolo(message.data, sendResponse);
+      return true;
+    },
+    'TEST_TOGGLE_MUTE': (message, sendResponse) => {
+      _testHandleToggleMute(message.data, sendResponse);
+      return true;
+    },
+    'TEST_GET_VISIBILITY_STATE': (message, sendResponse) => {
+      _testHandleGetVisibilityState(message.data, sendResponse);
+      return true;
+    },
+    'TEST_GET_MANAGER_STATE': (message, sendResponse) => {
+      _testHandleGetManagerState(sendResponse);
+      return true;
+    },
+    'TEST_SET_MANAGER_POSITION': (message, sendResponse) => {
+      _testHandleSetManagerPosition(sendResponse);
+      return true;
+    },
+    'TEST_SET_MANAGER_SIZE': (message, sendResponse) => {
+      _testHandleSetManagerSize(sendResponse);
+      return true;
+    },
+    'TEST_CLOSE_ALL_MINIMIZED': (message, sendResponse) => {
+      _testHandleCloseAllMinimized(sendResponse);
+      return true;
+    },
+    'TEST_GET_CONTAINER_INFO': (message, sendResponse) => {
+      _testHandleGetContainerInfo(sendResponse);
+      return true;
+    },
+    'TEST_CREATE_QUICK_TAB_IN_CONTAINER': (message, sendResponse) => {
+      _testHandleCreateQuickTabInContainer(message.data, sendResponse);
+      return true;
+    },
+    'TEST_VERIFY_CONTAINER_ISOLATION': (message, sendResponse) => {
+      _testHandleVerifyContainerIsolation(message.data, sendResponse);
+      return true;
+    },
+    'TEST_GET_SLOT_NUMBERING': (message, sendResponse) => {
+      _testHandleGetSlotNumbering(sendResponse);
+      return true;
+    },
+    'TEST_SET_DEBUG_MODE': (message, sendResponse) => {
+      _testHandleSetDebugMode(message.data, sendResponse);
+      return true;
+    },
+    'TEST_GET_QUICK_TAB_GEOMETRY': (message, sendResponse) => {
+      _testHandleGetQuickTabGeometry(message.data, sendResponse);
+      return true;
+    },
+    'TEST_VERIFY_ZINDEX_ORDER': (message, sendResponse) => {
+      _testHandleVerifyZIndexOrder(message.data, sendResponse);
+      return true;
+    }
+  });
+  console.log('[Content] Test bridge TYPE_HANDLERS registered');
+}
 
 /**
  * Main message dispatcher

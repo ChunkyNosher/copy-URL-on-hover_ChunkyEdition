@@ -49,10 +49,11 @@
     }
   },
   "treeshake": {
-    "preset": "recommended",
-    "moduleSideEffects": true,
-    "propertyReadSideEffects": true,
-    "tryCatchDeoptimization": true
+    "_comment": "v1.6.3.6-v11: Aggressive tree-shaking for browser extension. Safe for extensions but NOT for libraries (they may need side effects preserved). moduleSideEffects:false assumes modules are pure exports. propertyReadSideEffects:false allows eliminating unused property reads.",
+    "preset": "smallest",
+    "moduleSideEffects": false,
+    "propertyReadSideEffects": false,
+    "tryCatchDeoptimization": false
   },
   "cache": {
     "enabled": true,

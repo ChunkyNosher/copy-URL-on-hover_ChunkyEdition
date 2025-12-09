@@ -110,6 +110,43 @@ jobs:
         run: npm run build:prod
         # If this fails, there's a syntax or build error
 
+      # v1.6.3.6-v11 - FIX Bundle Size Issue #4: Bundle size analysis and regression check
+      - name: Check bundle sizes
+        run: npm run build:check-size
+
+      - name: Check bundle size regression
+        run: |
+          CONTENT_SIZE=$(wc -c < dist/content.js)
+          BG_SIZE=$(wc -c < dist/background.js)
+          # Baseline sizes (update these when optimizations land)
+          CONTENT_BASELINE=250000
+          BG_BASELINE=55000
+          # Calculate percentage growth
+          CONTENT_GROWTH=$(( (CONTENT_SIZE - CONTENT_BASELINE) * 100 / CONTENT_BASELINE ))
+          BG_GROWTH=$(( (BG_SIZE - BG_BASELINE) * 100 / BG_BASELINE ))
+          echo "content.js: ${CONTENT_SIZE} bytes (baseline: ${CONTENT_BASELINE}, growth: ${CONTENT_GROWTH}%)"
+          echo "background.js: ${BG_SIZE} bytes (baseline: ${BG_BASELINE}, growth: ${BG_GROWTH}%)"
+          # Warn if growth >5%, fail if growth >10%
+          if [ $CONTENT_GROWTH -gt 10 ] || [ $BG_GROWTH -gt 10 ]; then
+            echo "::error::Bundle size regression detected (>10% growth)"
+            exit 1
+          elif [ $CONTENT_GROWTH -gt 5 ] || [ $BG_GROWTH -gt 5 ]; then
+            echo "::warning::Bundle size growing (>5% growth) - consider optimization"
+          else
+            echo "✓ Bundle sizes within acceptable range"
+          fi
+
+      - name: Verify test handlers excluded from production
+        run: |
+          # Check that TEST_ handlers are NOT in production bundle
+          # Use comprehensive pattern to catch all test handler functions
+          TEST_COUNT=$(grep -cE "TEST_(CREATE|MINIMIZE|RESTORE|PIN|UNPIN|CLOSE|CLEAR|TOGGLE|GET|SET|VERIFY)_" dist/content.js || echo "0")
+          if [ "$TEST_COUNT" -gt "0" ]; then
+            echo "::warning::Test handlers found in production bundle ($TEST_COUNT occurrences) - conditional compilation may not be working"
+          else
+            echo "✓ Test handlers excluded from production bundle"
+          fi
+
       # Validate no ES6 imports/exports in bundle (CRITICAL for browser compatibility)
       - name: Check bundle has no imports/exports
         run: |
