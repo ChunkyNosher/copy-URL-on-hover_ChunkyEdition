@@ -19,7 +19,10 @@ const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 
 // Debounce timing
-const STORAGE_READ_DEBOUNCE_MS = 50;
+// v1.6.3.7-v4 - FIX Issue #7: Increased from 50ms to 500ms
+// Since BroadcastChannel is now PRIMARY for instant updates, storage polling is BACKUP
+// Higher debounce prevents rapid storage reads during burst operations
+const STORAGE_READ_DEBOUNCE_MS = 500;
 
 /**
  * Identify tabs that changed position or size between two state snapshots

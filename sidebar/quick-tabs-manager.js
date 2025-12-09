@@ -152,9 +152,34 @@ let lastRenderedStateHash = 0;
 //   Recovery operation: Manager uses cache when storage returns suspicious 0-tab results
 //   The cache should NEVER be used to overwrite background's authoritative state.
 //   See v1.6.3.5-architectural-issues.md Architecture Issue #6 for context.
-let inMemoryTabsCache = [];
+// v1.6.3.7-v4 - FIX Issue #6: Added sessionId and timestamp to prevent restoring ghost tabs
+//   Cache now has structure: { tabs: [], timestamp: number, sessionId: string }
+//   On fallback, we validate that cache is from current session
+let inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
 let lastKnownGoodTabCount = 0;
 const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 tab
+
+// v1.6.3.7-v4 - FIX Issue #6: Session ID to identify current browser session
+// This prevents restoring cache from a previous browser session
+let currentSessionId = '';
+
+/**
+ * Generate a unique session ID for this browser session
+ * v1.6.3.7-v4 - FIX Issue #6: Session validation for cache
+ * @returns {string} Unique session identifier
+ */
+function _generateSessionId() {
+  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+/**
+ * Initialize session ID on sidebar load
+ * v1.6.3.7-v4 - FIX Issue #6: Must be called during DOMContentLoaded
+ */
+function _initializeSessionId() {
+  currentSessionId = _generateSessionId();
+  console.log('[Manager] v1.6.3.7-v4 Session initialized:', { sessionId: currentSessionId });
+}
 
 // UI Elements (cached for performance)
 let containersList;
@@ -1983,27 +2008,44 @@ async function checkStorageDebounce() {
  * v1.6.3.5-v11 - FIX Issue #6: Clear cache when storage is legitimately empty
  *   If storage is empty and cache has only 1 tab, this is a legitimate single-tab deletion.
  *   Sets quickTabsState and logs appropriately - used as flow control signal
+ * v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache as fallback
  */
 function _handleEmptyStorageState() {
+  const cacheTabs = inMemoryTabsCache.tabs || [];
+  const cacheSessionId = inMemoryTabsCache.sessionId || '';
+  
   // v1.6.3.5-v11 - FIX Issue #6: Check if this is a legitimate single-tab deletion
-  if (inMemoryTabsCache.length === 1) {
+  if (cacheTabs.length === 1) {
     console.log(
       '[Manager] Storage empty with single-tab cache - clearing cache (legitimate deletion)'
     );
-    inMemoryTabsCache = [];
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
     quickTabsState = {};
     return;
   }
 
-  // Multiple tabs in cache but storage empty - use cache (potential storm protection)
-  if (inMemoryTabsCache.length > 1) {
+  // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache as fallback
+  if (cacheTabs.length > 1 && cacheSessionId === currentSessionId) {
     console.log(
       '[Manager] Storage returned empty but cache has',
-      inMemoryTabsCache.length,
-      'tabs - using cache'
+      cacheTabs.length,
+      'tabs - using cache (same session)'
     );
-    quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
+    quickTabsState = { tabs: cacheTabs, timestamp: Date.now() };
+  } else if (cacheTabs.length > 1 && cacheSessionId !== currentSessionId) {
+    // v1.6.3.7-v4 - FIX Issue #6: Cache from different session - reject with warning
+    console.warn('[Manager] ⚠️ STALE_CACHE_REJECTED: Cache is from different session', {
+      cacheSessionId,
+      currentSessionId,
+      cacheTabs: cacheTabs.length,
+      cacheTimestamp: inMemoryTabsCache.timestamp,
+      warning: 'Not restoring ghost tabs from previous session'
+    });
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    lastKnownGoodTabCount = 0;
+    quickTabsState = {};
+    console.log('[Manager] Loaded Quick Tabs state: empty (cache rejected)');
   } else {
     // Cache is empty too - normal empty state
     quickTabsState = {};
@@ -2018,11 +2060,14 @@ function _handleEmptyStorageState() {
  *   Storage storms are detected when MULTIPLE tabs vanish unexpectedly.
  *   A single tab going to 0 is legitimate user action.
  * v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation instead of silently using cache
+ * v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache in storm detection
  * @param {Object} state - Storage state
  * @returns {boolean} True if storm detected and handled
  */
 function _detectStorageStorm(state) {
   const storageTabs = state.tabs || [];
+  const cacheTabs = inMemoryTabsCache.tabs || [];
+  const cacheSessionId = inMemoryTabsCache.sessionId || '';
 
   // No storm if storage has tabs
   if (storageTabs.length !== 0) {
@@ -2030,18 +2075,31 @@ function _detectStorageStorm(state) {
   }
 
   // No cache to protect - no storm possible
-  if (inMemoryTabsCache.length < MIN_TABS_FOR_CACHE_PROTECTION) {
+  if (cacheTabs.length < MIN_TABS_FOR_CACHE_PROTECTION) {
     return false;
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache
+  if (cacheSessionId !== currentSessionId) {
+    console.warn('[Manager] ⚠️ STALE_CACHE_IGNORED: Cache is from different session during storm detection', {
+      cacheSessionId,
+      currentSessionId,
+      cacheTabCount: cacheTabs.length,
+      warning: 'Not using stale cache for fallback'
+    });
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    lastKnownGoodTabCount = 0;
+    return false; // No valid cache to use
   }
 
   // v1.6.3.5-v11 - FIX Issue #6: Single tab deletion is legitimate, not a storm
   // If cache has exactly 1 tab and storage has 0, user closed the last Quick Tab
-  if (inMemoryTabsCache.length === 1) {
+  if (cacheTabs.length === 1) {
     console.log(
       '[Manager] Single tab→0 transition detected - clearing cache (legitimate deletion)'
     );
     // Clear the cache to accept the new 0-tab state
-    inMemoryTabsCache = [];
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
     return false; // Not a storm - proceed with normal update
   }
@@ -2049,16 +2107,26 @@ function _detectStorageStorm(state) {
   // v1.6.3.6-v12 - FIX Issue #5: CACHE_DIVERGENCE - trigger reconciliation
   console.warn('[Manager] v1.6.3.6-v12 CACHE_DIVERGENCE:', {
     storageTabCount: storageTabs.length,
-    cacheTabCount: inMemoryTabsCache.length,
+    cacheTabCount: cacheTabs.length,
     lastKnownGoodCount: lastKnownGoodTabCount,
-    saveId: state.saveId
+    saveId: state.saveId,
+    cacheSessionId,
+    currentSessionId
+  });
+
+  // v1.6.3.7-v4 - FIX Issue #6: Log fallback rescue with warning
+  console.warn('[Manager] ⚠️ FALLBACK_RESCUE_TRIGGERED:', {
+    reason: 'Storage shows 0 tabs but cache has valid data from current session',
+    cacheTabs: cacheTabs.length,
+    sessionMatch: cacheSessionId === currentSessionId,
+    action: 'Using cache temporarily while reconciling with content scripts'
   });
 
   // v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation with content scripts
   _triggerCacheReconciliation();
 
   // Temporarily use cache to prevent blank UI while reconciliation runs
-  quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
+  quickTabsState = { tabs: cacheTabs, timestamp: Date.now() };
   console.log('[Manager] Using in-memory cache temporarily during reconciliation');
   return true;
 }
@@ -2067,6 +2135,7 @@ function _detectStorageStorm(state) {
  * Trigger reconciliation with content scripts when cache diverges from storage
  * v1.6.3.6-v12 - FIX Issue #5: Query content scripts and restore to STORAGE if needed
  * v1.6.3.6-v12 - FIX Code Review: Use module-level imports instead of dynamic import
+ * v1.6.3.7-v4 - FIX Issue #6: Update cache with new object structure
  */
 async function _triggerCacheReconciliation() {
   console.log('[Manager] v1.6.3.6-v12 Starting cache reconciliation...');
@@ -2075,10 +2144,11 @@ async function _triggerCacheReconciliation() {
     // Query all content scripts for their Quick Tabs
     // v1.6.3.6-v12 - FIX Code Review: Using module-level import
     const contentScriptTabs = await queryAllContentScriptsForQuickTabs();
+    const cacheTabs = inMemoryTabsCache.tabs || [];
 
     console.log('[Manager] v1.6.3.6-v12 Reconciliation found:', {
       contentScriptTabCount: contentScriptTabs.length,
-      cacheTabCount: inMemoryTabsCache.length
+      cacheTabCount: cacheTabs.length
     });
 
     if (contentScriptTabs.length > 0) {
@@ -2090,7 +2160,12 @@ async function _triggerCacheReconciliation() {
 
       const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
       quickTabsState = restoredState;
-      inMemoryTabsCache = [...restoredState.tabs];
+      // v1.6.3.7-v4 - FIX Issue #6: Update cache with new object structure
+      inMemoryTabsCache = {
+        tabs: [...restoredState.tabs],
+        timestamp: Date.now(),
+        sessionId: currentSessionId
+      };
       lastKnownGoodTabCount = restoredState.tabs.length;
 
       console.log(
@@ -2102,7 +2177,8 @@ async function _triggerCacheReconciliation() {
     } else {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
       console.log('[Manager] v1.6.3.6-v12 Content scripts confirm 0 tabs - accepting empty state');
-      inMemoryTabsCache = [];
+      // v1.6.3.7-v4 - FIX Issue #6: Clear cache with new object structure
+      inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
       lastKnownGoodTabCount = 0;
       quickTabsState = { tabs: [], timestamp: Date.now() };
       renderUI();
@@ -2118,17 +2194,27 @@ async function _triggerCacheReconciliation() {
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
  * v1.6.3.5-v11 - FIX Issue #6: Also update cache when tabs.length is 0 (legitimate deletion)
  *   The cache must be cleared when tabs legitimately reach 0, not just updated when > 0.
+ * v1.6.3.7-v4 - FIX Issue #6: Added session ID and timestamp to cache structure
  * @param {Array} tabs - Tabs array from storage
  */
 function _updateInMemoryCache(tabs) {
   if (tabs.length > 0) {
-    inMemoryTabsCache = [...tabs];
+    // v1.6.3.7-v4 - FIX Issue #6: Store with session ID and timestamp
+    inMemoryTabsCache = {
+      tabs: [...tabs],
+      timestamp: Date.now(),
+      sessionId: currentSessionId
+    };
     lastKnownGoodTabCount = tabs.length;
-    console.log('[Manager] Updated in-memory cache:', { tabCount: tabs.length });
+    console.log('[Manager] Updated in-memory cache:', {
+      tabCount: tabs.length,
+      sessionId: currentSessionId,
+      timestamp: inMemoryTabsCache.timestamp
+    });
   } else if (lastKnownGoodTabCount === 1) {
     // v1.6.3.5-v11 - FIX Issue #6: Clear cache when going from 1→0 (single-tab deletion)
     console.log('[Manager] Clearing in-memory cache (single-tab deletion detected)');
-    inMemoryTabsCache = [];
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
   }
   // Note: If lastKnownGoodTabCount > 1 and tabs.length === 0, we don't clear the cache
