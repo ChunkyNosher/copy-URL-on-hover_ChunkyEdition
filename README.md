@@ -1,43 +1,44 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7** (Build v2) - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v3** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
-visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel
+visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating Panel
 Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 Build v2 Status:** Single Writer Authority, Unified Render Pipeline, Orphaned Tab Recovery ✅
+**🔧 v1.6.3.7-v3 Status:** Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms API ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7 (Build v2)
+## 🎉 What's New in v1.6.3.7-v3
 
-**🚀 Architecture & Reliability Improvements (December 2025) ✅**
+**🚀 New APIs & Features (December 2025) ✅**
 
-- ✅ **New Permissions** - Rich notifications, clipboard API, scheduled alarms
-  - `notifications` - Rich notification types (Firefox + Chrome)
-  - `clipboardRead`, `clipboardWrite` - Clipboard API (Firefox only)
-  - `alarms` - Scheduled tasks (Firefox + Chrome)
-- ✅ **Single Writer Authority** - Manager no longer writes to storage directly
-  - Commands: `ADOPT_TAB`, `CLOSE_MINIMIZED_TABS` sent to background
-  - Background handlers: `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()`
-- ✅ **Unified Render Pipeline** - New `scheduleRender(source)` entry point
-  - Hash-based deduplication prevents redundant renders
-  - `_checkAndReloadStaleState()` for state staleness detection
-- ✅ **Orphaned Tab Recovery** - Hydration preserves orphaned tabs
-  - `orphaned: true` flag for adoption UI display
-  - Improved cross-tab recovery UX
-- ✅ **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on reconnection
-  - `_requestFullStateSync()` ensures state consistency
-- ✅ **Storage Write Verification** - `writeStateWithVerificationAndRetry()`
-  - Read-back confirmation with retry logic
+- ✅ **storage.session API** - Session-scoped Quick Tabs
+  - `permanent: false` - Session Quick Tabs auto-clear on browser close
+  - `session_quick_tabs` storage key for session state
+- ✅ **BroadcastChannel API** - Real-time tab messaging
+  - `quick-tabs-updates` channel for instant sync
+  - Message types: `created`, `updated`, `deleted`, `minimized`, `restored`
+- ✅ **sessions API** - Per-tab state management
+  - `TabStateManager.js` for per-tab Quick Tab state
+- ✅ **browser.alarms API** - Scheduled cleanup tasks
+  - `cleanup-orphaned` (60 min), `sync-session-state` (5 min), `diagnostic-snapshot` (120 min)
+- ✅ **tabs.group() API** - Tab grouping (Firefox 138+)
+  - `QuickTabGroupManager.js` for group operations
+  - Context menu integration for grouping
+- ✅ **notifications API** - System notifications
+  - `NotificationManager.js` for rich notifications
+- ✅ **DOM Reconciliation** - Sidebar animation optimization
+  - `_itemElements` Map for differential updates
+  - originTabId initialization fix in window.js
 
-**Why This Matters:** These systemic fixes eliminate race conditions, state desync, and orphaned tab issues that occurred during cross-tab operations.
+**Why This Matters:** These features add session-scoped tabs, real-time sync, scheduled maintenance, and smoother animations.
 
 ---
 
@@ -45,7 +46,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history including:
 
-- **v1.6.3.7** - Firefox keepalive, port circuit breaker, UI performance
+- **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
+- **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
 - **v1.6.3.6-v5** - Cross-tab isolation fixes, deletion loop fixes
 - **v1.6.2** - Firefox sidebar integration with unified settings
 - **v1.6.0** - Domain-Driven Design architecture refactoring
@@ -79,8 +81,10 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 ✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
 ✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility  
+✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
+✓ **Tab Grouping** - tabs.group() API support, Firefox 138+ (v1.6.3.7-v3)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ **Cross-Tab Sync via storage.onChanged**  
+✓ **Cross-Tab Sync via storage.onChanged + BroadcastChannel**  
 ✓ 100+ Site-Specific Handlers  
 ✓ Dark Mode support  
 ✓ Auto-Updates via GitHub releases
@@ -212,6 +216,7 @@ complete list of optimized websites including:
 ## 📝 Notes
 
 - Quick Tabs persist across browser tabs automatically
+- Session Quick Tabs clear on browser close (`permanent: false`)
 - Container isolation prevents cross-container state leaks
 - Solo/Mute features replace old "Pin to Page" functionality
 - All settings stored in browser.storage.sync with automatic cloud sync
@@ -223,6 +228,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v2** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v3** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
