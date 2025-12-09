@@ -19,6 +19,11 @@
  *   - Issue #1: Async Tab ID Race - Block writes with unknown tab ID instead of allowing
  *   - Issue #2: Circuit breaker to block all writes when pendingWriteCount > 15
  *   - Issue #4: Empty state corruption fixed by Issue #1's fail-closed approach
+ * v1.6.3.7-v3 - API #1: storage.session support
+ *   - Added SESSION_STATE_KEY for session-only Quick Tabs
+ *   - Added routeTabToStorage() for permanent/session routing
+ *   - Added loadAllQuickTabs() to load from both storage layers
+ *   - Added saveSessionQuickTabs() for session storage writes
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -32,6 +37,10 @@ import { CONSTANTS } from '../core/config.js';
 
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
 export const STATE_KEY = 'quick_tabs_state_v2';
+
+// v1.6.3.7-v3 - API #1: Session storage key for session-only Quick Tabs
+// Session storage auto-clears when browser closes (no stale data persistence)
+export const SESSION_STATE_KEY = 'quick_tabs_session_state';
 
 // v1.6.3.4-v2 - FIX Bug #1: Timeout for storage operations (5 seconds)
 // v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
@@ -2057,3 +2066,178 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
     transactionId
   );
 }
+
+// ==================== v1.6.3.7-v3 SESSION STORAGE FUNCTIONS ====================
+// API #1: storage.session - Session-Scoped Quick Tabs
+// Session Quick Tabs auto-clear when browser closes (no stale data persistence)
+
+/**
+ * Check if storage.session API is available
+ * v1.6.3.7-v3 - API #1: Session storage availability check
+ * @returns {boolean} True if storage.session is available
+ */
+export function isSessionStorageAvailable() {
+  const browserAPI = getBrowserStorageAPI();
+  return !!(browserAPI?.storage?.session?.set && browserAPI?.storage?.session?.get);
+}
+
+/**
+ * Separate tabs into permanent and session-only categories
+ * v1.6.3.7-v3 - API #1: Route tabs based on permanent property
+ * @param {Array} tabs - Array of Quick Tab data
+ * @returns {{ permanentTabs: Array, sessionTabs: Array }}
+ */
+export function routeTabsToStorageLayers(tabs) {
+  if (!Array.isArray(tabs)) {
+    return { permanentTabs: [], sessionTabs: [] };
+  }
+
+  // Session tabs have permanent === false (explicit)
+  // All other tabs go to permanent storage (default behavior)
+  const sessionTabs = tabs.filter(tab => tab.permanent === false);
+  const permanentTabs = tabs.filter(tab => tab.permanent !== false);
+
+  console.log('[StorageUtils] Routed tabs to storage layers:', {
+    permanentCount: permanentTabs.length,
+    sessionCount: sessionTabs.length
+  });
+
+  return { permanentTabs, sessionTabs };
+}
+
+/**
+ * Save session-only Quick Tabs to storage.session
+ * v1.6.3.7-v3 - API #1: Session storage write
+ * @param {Array} sessionTabs - Array of session Quick Tab data
+ * @param {string} logPrefix - Log prefix for messages
+ * @returns {Promise<boolean>} True if saved successfully
+ */
+export async function saveSessionQuickTabs(sessionTabs, logPrefix = '[StorageUtils]') {
+  if (!isSessionStorageAvailable()) {
+    console.warn(`${logPrefix} storage.session not available`);
+    return false;
+  }
+
+  const browserAPI = getBrowserStorageAPI();
+
+  try {
+    const state = {
+      tabs: sessionTabs,
+      saveId: generateSaveId(),
+      timestamp: Date.now()
+    };
+
+    await browserAPI.storage.session.set({ [SESSION_STATE_KEY]: state });
+    console.log(`${logPrefix} Saved ${sessionTabs.length} session Quick Tabs to storage.session`);
+    return true;
+  } catch (err) {
+    console.error(`${logPrefix} Failed to save session Quick Tabs:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Load session-only Quick Tabs from storage.session
+ * v1.6.3.7-v3 - API #1: Session storage read
+ * @param {string} logPrefix - Log prefix for messages
+ * @returns {Promise<Array>} Array of session Quick Tabs (empty if none)
+ */
+export async function loadSessionQuickTabs(logPrefix = '[StorageUtils]') {
+  if (!isSessionStorageAvailable()) {
+    console.log(`${logPrefix} storage.session not available, returning empty array`);
+    return [];
+  }
+
+  const browserAPI = getBrowserStorageAPI();
+
+  try {
+    const result = await browserAPI.storage.session.get(SESSION_STATE_KEY);
+    const state = result?.[SESSION_STATE_KEY];
+
+    if (!state?.tabs || !Array.isArray(state.tabs)) {
+      console.log(`${logPrefix} No session Quick Tabs found`);
+      return [];
+    }
+
+    console.log(`${logPrefix} Loaded ${state.tabs.length} session Quick Tabs from storage.session`);
+    return state.tabs;
+  } catch (err) {
+    console.error(`${logPrefix} Failed to load session Quick Tabs:`, err.message);
+    return [];
+  }
+}
+
+/**
+ * Load all Quick Tabs from both storage layers (local + session)
+ * v1.6.3.7-v3 - API #1: Unified loading from both storage layers
+ * @param {string} logPrefix - Log prefix for messages
+ * @returns {Promise<{ tabs: Array, saveId: string, timestamp: number }>}
+ */
+export async function loadAllQuickTabs(logPrefix = '[StorageUtils]') {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI) {
+    console.warn(`${logPrefix} Browser API not available`);
+    return { tabs: [], saveId: null, timestamp: 0 };
+  }
+
+  // Load from local storage (permanent tabs)
+  let permanentTabs = [];
+  let permanentSaveId = null;
+  let permanentTimestamp = 0;
+
+  try {
+    const localResult = await browserAPI.storage.local.get(STATE_KEY);
+    const localState = localResult?.[STATE_KEY];
+
+    if (localState?.tabs && Array.isArray(localState.tabs)) {
+      permanentTabs = localState.tabs;
+      permanentSaveId = localState.saveId;
+      permanentTimestamp = localState.timestamp || 0;
+    }
+  } catch (err) {
+    console.error(`${logPrefix} Failed to load permanent Quick Tabs:`, err.message);
+  }
+
+  // Load from session storage (session-only tabs)
+  const sessionTabs = await loadSessionQuickTabs(logPrefix);
+
+  // Merge results (permanent tabs first, then session tabs)
+  const allTabs = [...permanentTabs, ...sessionTabs];
+
+  console.log(`${logPrefix} Loaded Quick Tabs from all layers:`, {
+    permanentCount: permanentTabs.length,
+    sessionCount: sessionTabs.length,
+    totalCount: allTabs.length
+  });
+
+  return {
+    tabs: allTabs,
+    saveId: permanentSaveId || generateSaveId(),
+    timestamp: permanentTimestamp || Date.now()
+  };
+}
+
+/**
+ * Clear all session Quick Tabs from storage.session
+ * v1.6.3.7-v3 - API #1: Session storage clear
+ * @param {string} logPrefix - Log prefix for messages
+ * @returns {Promise<boolean>} True if cleared successfully
+ */
+export async function clearSessionQuickTabs(logPrefix = '[StorageUtils]') {
+  if (!isSessionStorageAvailable()) {
+    return false;
+  }
+
+  const browserAPI = getBrowserStorageAPI();
+
+  try {
+    await browserAPI.storage.session.remove(SESSION_STATE_KEY);
+    console.log(`${logPrefix} Cleared session Quick Tabs from storage.session`);
+    return true;
+  } catch (err) {
+    console.error(`${logPrefix} Failed to clear session Quick Tabs:`, err.message);
+    return false;
+  }
+}
+
+// ==================== END SESSION STORAGE FUNCTIONS ====================

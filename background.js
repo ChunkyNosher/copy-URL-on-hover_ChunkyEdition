@@ -135,6 +135,17 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
+// ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
+// API #4: browser.alarms - Scheduled cleanup tasks
+const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
+const ALARM_SYNC_SESSION_STATE = 'sync-session-state';
+const ALARM_DIAGNOSTIC_SNAPSHOT = 'diagnostic-snapshot';
+
+// Alarm intervals in minutes
+const ALARM_CLEANUP_INTERVAL_MIN = 60;      // Hourly orphan cleanup
+const ALARM_SYNC_INTERVAL_MIN = 5;          // Every 5 minutes sync
+const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120;  // Every 2 hours diagnostic
+
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
 // Use runtime.sendMessage periodically as it DOES reset the idle timer
@@ -199,6 +210,215 @@ function _stopKeepalive() {
 
 // Start keepalive on script load
 startKeepalive();
+
+// ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
+// API #4: browser.alarms - Scheduled cleanup tasks
+
+/**
+ * Initialize browser.alarms for scheduled cleanup tasks
+ * v1.6.3.7-v3 - API #4: Create alarms on extension startup
+ */
+async function initializeAlarms() {
+  console.log('[Background] v1.6.3.7-v3 Initializing browser.alarms...');
+
+  try {
+    // Create cleanup-orphaned alarm - runs hourly
+    await browser.alarms.create(ALARM_CLEANUP_ORPHANED, {
+      delayInMinutes: 30, // First run after 30 minutes
+      periodInMinutes: ALARM_CLEANUP_INTERVAL_MIN
+    });
+    console.log('[Background] Created alarm:', ALARM_CLEANUP_ORPHANED, '(every', ALARM_CLEANUP_INTERVAL_MIN, 'min)');
+
+    // Create sync-session-state alarm - runs every 5 minutes
+    await browser.alarms.create(ALARM_SYNC_SESSION_STATE, {
+      delayInMinutes: 1, // First run after 1 minute
+      periodInMinutes: ALARM_SYNC_INTERVAL_MIN
+    });
+    console.log('[Background] Created alarm:', ALARM_SYNC_SESSION_STATE, '(every', ALARM_SYNC_INTERVAL_MIN, 'min)');
+
+    // Create diagnostic-snapshot alarm - runs every 2 hours
+    await browser.alarms.create(ALARM_DIAGNOSTIC_SNAPSHOT, {
+      delayInMinutes: 60, // First run after 1 hour
+      periodInMinutes: ALARM_DIAGNOSTIC_INTERVAL_MIN
+    });
+    console.log('[Background] Created alarm:', ALARM_DIAGNOSTIC_SNAPSHOT, '(every', ALARM_DIAGNOSTIC_INTERVAL_MIN, 'min)');
+
+    console.log('[Background] v1.6.3.7-v3 All alarms initialized successfully');
+  } catch (err) {
+    console.error('[Background] Failed to initialize alarms:', err.message);
+  }
+}
+
+/**
+ * Handle alarm events
+ * v1.6.3.7-v3 - API #4: Route alarms to appropriate handlers
+ * @param {Object} alarm - Alarm info object
+ */
+async function handleAlarm(alarm) {
+  console.log('[Background] ALARM_FIRED:', alarm.name, 'at', new Date().toISOString());
+
+  switch (alarm.name) {
+    case ALARM_CLEANUP_ORPHANED:
+      await cleanupOrphanedQuickTabs();
+      break;
+
+    case ALARM_SYNC_SESSION_STATE:
+      await syncSessionState();
+      break;
+
+    case ALARM_DIAGNOSTIC_SNAPSHOT:
+      logDiagnosticSnapshot();
+      break;
+
+    default:
+      console.warn('[Background] Unknown alarm:', alarm.name);
+  }
+}
+
+/**
+ * Cleanup orphaned Quick Tabs whose origin tabs no longer exist
+ * v1.6.3.7-v3 - API #4: Hourly orphan cleanup
+ */
+async function cleanupOrphanedQuickTabs() {
+  console.log('[Background] Running orphaned Quick Tab cleanup...');
+
+  const initGuard = checkInitializationGuard('cleanupOrphanedQuickTabs');
+  if (!initGuard.initialized) {
+    console.warn('[Background] Skipping cleanup - not initialized');
+    return;
+  }
+
+  try {
+    // Get all open browser tabs
+    const openTabs = await browser.tabs.query({});
+    const openTabIds = new Set(openTabs.map(t => t.id));
+
+    // Find orphaned Quick Tabs (their origin tab no longer exists)
+    const orphanedTabs = globalQuickTabState.tabs.filter(qt => {
+      const originTabId = qt.originTabId;
+      // Quick Tab is orphaned if it has an originTabId that is no longer open
+      return originTabId != null && !openTabIds.has(originTabId);
+    });
+
+    if (orphanedTabs.length === 0) {
+      console.log('[Background] No orphaned Quick Tabs found');
+      return;
+    }
+
+    console.log('[Background] Found', orphanedTabs.length, 'orphaned Quick Tabs:', 
+      orphanedTabs.map(t => ({ id: t.id, originTabId: t.originTabId }))
+    );
+
+    // Mark as orphaned in state instead of deleting (for user review in Manager)
+    for (const orphan of orphanedTabs) {
+      orphan.orphaned = true;
+    }
+
+    // Update global state
+    globalQuickTabState.lastUpdate = Date.now();
+
+    // Save to storage
+    const saveId = `cleanup-${Date.now()}`;
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: globalQuickTabState.tabs,
+        saveId,
+        timestamp: Date.now()
+      }
+    });
+
+    console.log('[Background] Marked', orphanedTabs.length, 'Quick Tabs as orphaned');
+  } catch (err) {
+    console.error('[Background] Orphan cleanup failed:', err.message);
+  }
+}
+
+/**
+ * Sync session state between storage layers
+ * v1.6.3.7-v3 - API #4: Periodic session state validation
+ */
+async function syncSessionState() {
+  console.log('[Background] Running session state sync...');
+
+  const initGuard = checkInitializationGuard('syncSessionState');
+  if (!initGuard.initialized) {
+    console.warn('[Background] Skipping sync - not initialized');
+    return;
+  }
+
+  // Early exit if session storage not available
+  if (typeof browser.storage.session === 'undefined') {
+    console.log('[Background] Session storage not available, skipping sync');
+    return;
+  }
+
+  try {
+    await _performSessionSync();
+  } catch (err) {
+    console.error('[Background] Session sync failed:', err.message);
+  }
+}
+
+/**
+ * Perform the actual session sync operation
+ * v1.6.3.7-v3 - API #4: Extracted to reduce max-depth in syncSessionState
+ * @private
+ */
+async function _performSessionSync() {
+  const sessionResult = await browser.storage.session.get('quick_tabs_session');
+  const localResult = await browser.storage.local.get('quick_tabs_state_v2');
+
+  const sessionTabs = sessionResult?.quick_tabs_session?.tabs || [];
+  const localTabs = localResult?.quick_tabs_state_v2?.tabs || [];
+
+  console.log('[Background] Session sync check:', {
+    sessionTabCount: sessionTabs.length,
+    localTabCount: localTabs.length,
+    cacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+
+  // If session storage has fewer tabs than local, re-sync
+  if (sessionTabs.length < localTabs.length) {
+    console.log('[Background] Session storage out of sync - re-syncing from local');
+    await browser.storage.session.set({
+      quick_tabs_session: {
+        tabs: localTabs,
+        timestamp: Date.now()
+      }
+    });
+  }
+}
+
+/**
+ * Log diagnostic snapshot of current state
+ * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
+ */
+function logDiagnosticSnapshot() {
+  console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
+  console.log('[Background] Timestamp:', new Date().toISOString());
+  console.log('[Background] Cache state:', {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    lastUpdate: globalQuickTabState.lastUpdate,
+    saveId: globalQuickTabState.saveId,
+    isInitialized
+  });
+  console.log('[Background] Port registry:', {
+    connectedPorts: portRegistry.size,
+    portIds: [...portRegistry.keys()]
+  });
+  console.log('[Background] Quick Tab host tracking:', {
+    trackedQuickTabs: quickTabHostTabs.size
+  });
+  console.log('[Background] =================================================================');
+}
+
+// Register alarm listener
+browser.alarms.onAlarm.addListener(handleAlarm);
+
+// Initialize alarms on script load
+initializeAlarms();
+
+// ==================== END ALARMS MECHANISM ====================
 
 /**
  * Valid URL protocols for Quick Tab creation

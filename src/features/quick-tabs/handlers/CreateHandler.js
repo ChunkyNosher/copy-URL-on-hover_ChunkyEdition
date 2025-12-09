@@ -251,6 +251,7 @@ export class CreateHandler {
   /**
    * Get default option values
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
+   * v1.6.3.7-v3 - API #1: Add permanent default (true for local storage)
    * @private
    */
   _getDefaults() {
@@ -264,7 +265,8 @@ export class CreateHandler {
       soloedOnTabs: [],
       mutedOnTabs: [],
       showDebugId: false, // v1.6.3.2 - Default for Debug ID display
-      originTabId: null // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
+      originTabId: null, // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
+      permanent: true // v1.6.3.7-v3 - API #1: true = local storage, false = session storage
     };
   }
 
@@ -273,6 +275,7 @@ export class CreateHandler {
    * v1.6.3.2 - Added showDebugId setting for Debug ID display feature
    * v1.6.3.2 - Refactored to reduce complexity by extracting geometry options
    * v1.6.3.6-v8 - FIX Issue #1: Pass id to _buildVisibilityOptions for pattern extraction
+   * v1.6.3.7-v3 - API #1: Include permanent property in built options
    * @private
    */
   _buildTabOptions(id, cookieStoreId, options, defaults) {
@@ -281,6 +284,7 @@ export class CreateHandler {
       url: options.url,
       cookieStoreId,
       zIndex: this.currentZIndex.value,
+      permanent: options.permanent ?? defaults.permanent, // v1.6.3.7-v3 - API #1
       ...this._buildGeometryOptions(options, defaults),
       ...this._buildVisibilityOptions(options, defaults, id),
       ...this._extractCallbacks(options)

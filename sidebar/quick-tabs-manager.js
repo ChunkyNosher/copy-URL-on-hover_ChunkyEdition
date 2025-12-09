@@ -73,6 +73,14 @@ import {
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
+// v1.6.3.7-v3 - API #2: BroadcastChannel for instant updates
+import {
+  initBroadcastChannel,
+  addBroadcastListener,
+  removeBroadcastListener,
+  closeBroadcastChannel,
+  isChannelAvailable as _isChannelAvailable
+} from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
@@ -878,6 +886,224 @@ function _sendActionRequest(action, payload) {
 
 // ==================== END PORT CONNECTION ====================
 
+// ==================== v1.6.3.7-v3 BROADCAST CHANNEL ====================
+// API #2: BroadcastChannel - Real-Time Tab Messaging
+// BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
+
+/**
+ * Handler function reference for cleanup
+ * v1.6.3.7-v3 - API #2: Track handler for removal
+ */
+let broadcastHandlerRef = null;
+
+/**
+ * Initialize BroadcastChannel for real-time updates
+ * v1.6.3.7-v3 - API #2: Setup channel and listener
+ */
+function initializeBroadcastChannel() {
+  const initialized = initBroadcastChannel();
+  if (!initialized) {
+    console.log('[Manager] BroadcastChannel not available, using storage.onChanged only');
+    return;
+  }
+
+  // Create handler function
+  broadcastHandlerRef = handleBroadcastChannelMessage;
+
+  // Add listener
+  const added = addBroadcastListener(broadcastHandlerRef);
+  if (added) {
+    console.log('[Manager] v1.6.3.7-v3 BroadcastChannel listener added');
+  }
+}
+
+/**
+ * Handle messages from BroadcastChannel
+ * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
+ * @param {MessageEvent} event - BroadcastChannel message event
+ */
+function handleBroadcastChannelMessage(event) {
+  const message = event.data;
+
+  if (!message || !message.type) {
+    return;
+  }
+
+  console.log('[Manager] BROADCAST_RECEIVED:', {
+    type: message.type,
+    quickTabId: message.quickTabId,
+    timestamp: message.timestamp
+  });
+
+  switch (message.type) {
+    case 'quick-tab-created':
+      handleBroadcastCreate(message);
+      break;
+
+    case 'quick-tab-updated':
+      handleBroadcastUpdate(message);
+      break;
+
+    case 'quick-tab-deleted':
+      handleBroadcastDelete(message);
+      break;
+
+    case 'quick-tab-minimized':
+    case 'quick-tab-restored':
+      handleBroadcastMinimizeRestore(message);
+      break;
+
+    default:
+      console.log('[Manager] Unknown broadcast type:', message.type);
+  }
+}
+
+/**
+ * Handle quick-tab-created broadcast
+ * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
+ * @param {Object} message - Broadcast message with data
+ */
+function handleBroadcastCreate(message) {
+  const { quickTabId, data } = message;
+
+  if (!quickTabId || !data) {
+    return;
+  }
+
+  // Check if already exists
+  const existingIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  if (existingIdx >= 0) {
+    console.log('[Manager] Quick Tab already exists, skipping create:', quickTabId);
+    return;
+  }
+
+  // Add to state
+  if (!quickTabsState.tabs) {
+    quickTabsState.tabs = [];
+  }
+  quickTabsState.tabs.push(data);
+  quickTabsState.timestamp = Date.now();
+
+  // Update cache
+  _updateInMemoryCache(quickTabsState.tabs);
+  lastLocalUpdateTime = Date.now();
+
+  console.log('[Manager] BROADCAST_CREATE: added Quick Tab:', quickTabId);
+
+  // Trigger targeted UI update
+  scheduleRender('broadcast-create');
+}
+
+/**
+ * Handle quick-tab-updated broadcast
+ * v1.6.3.7-v3 - API #2: Update existing Quick Tab
+ * @param {Object} message - Broadcast message with changes
+ */
+function handleBroadcastUpdate(message) {
+  const { quickTabId, changes } = message;
+
+  if (!quickTabId || !changes) {
+    return;
+  }
+
+  // Find the tab
+  const tabIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  if (tabIdx < 0) {
+    console.log('[Manager] Quick Tab not found for update:', quickTabId);
+    return;
+  }
+
+  // Apply changes
+  Object.assign(quickTabsState.tabs[tabIdx], changes);
+  quickTabsState.timestamp = Date.now();
+
+  // Update cache
+  _updateInMemoryCache(quickTabsState.tabs);
+  lastLocalUpdateTime = Date.now();
+
+  console.log('[Manager] BROADCAST_UPDATE: updated Quick Tab:', quickTabId, changes);
+
+  // Trigger UI update
+  scheduleRender('broadcast-update');
+}
+
+/**
+ * Handle quick-tab-deleted broadcast
+ * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
+ * @param {Object} message - Broadcast message
+ */
+function handleBroadcastDelete(message) {
+  const { quickTabId } = message;
+
+  if (!quickTabId) {
+    return;
+  }
+
+  // Find and remove
+  const tabIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  if (tabIdx < 0) {
+    console.log('[Manager] Quick Tab not found for delete:', quickTabId);
+    return;
+  }
+
+  quickTabsState.tabs.splice(tabIdx, 1);
+  quickTabsState.timestamp = Date.now();
+
+  // Update cache
+  _updateInMemoryCache(quickTabsState.tabs);
+  lastLocalUpdateTime = Date.now();
+
+  console.log('[Manager] BROADCAST_DELETE: removed Quick Tab:', quickTabId);
+
+  // Trigger UI update
+  scheduleRender('broadcast-delete');
+}
+
+/**
+ * Handle quick-tab-minimized and quick-tab-restored broadcasts
+ * v1.6.3.7-v3 - API #2: Update minimized state
+ * @param {Object} message - Broadcast message
+ */
+function handleBroadcastMinimizeRestore(message) {
+  const { quickTabId, changes } = message;
+
+  if (!quickTabId) {
+    return;
+  }
+
+  const tabIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  if (tabIdx < 0) {
+    return;
+  }
+
+  // Apply minimized state
+  if (changes && 'minimized' in changes) {
+    quickTabsState.tabs[tabIdx].minimized = changes.minimized;
+    quickTabsState.timestamp = Date.now();
+
+    _updateInMemoryCache(quickTabsState.tabs);
+    lastLocalUpdateTime = Date.now();
+
+    console.log('[Manager] BROADCAST_MINIMIZE:', quickTabId, 'minimized=', changes.minimized);
+    scheduleRender('broadcast-minimize');
+  }
+}
+
+/**
+ * Cleanup BroadcastChannel on window unload
+ * v1.6.3.7-v3 - API #2: Remove listener and close channel
+ */
+function cleanupBroadcastChannel() {
+  if (broadcastHandlerRef) {
+    removeBroadcastListener(broadcastHandlerRef);
+    broadcastHandlerRef = null;
+  }
+  closeBroadcastChannel();
+  console.log('[Manager] v1.6.3.7-v3 BroadcastChannel cleaned up');
+}
+
+// ==================== END BROADCAST CHANNEL ====================
+
 // ==================== v1.6.3.6-v11 COUNT BADGE ANIMATION ====================
 // FIX Issue #20: Diff-based rendering for count badge animation
 
@@ -1362,6 +1588,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
   connectToBackground();
 
+  // v1.6.3.7-v3 - API #2: Initialize BroadcastChannel for instant updates
+  initializeBroadcastChannel();
+
   // Load container information from Firefox API
   await loadContainerInfo();
 
@@ -1384,12 +1613,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 2000);
 
-  console.log('[Manager] v1.6.3.6-v11 Port connection + Message infrastructure initialized');
+  console.log('[Manager] v1.6.3.7-v3 Port + BroadcastChannel + Message infrastructure initialized');
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
+// v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
 window.addEventListener('unload', () => {
+  // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
+  cleanupBroadcastChannel();
+
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
 
