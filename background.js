@@ -4282,6 +4282,8 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
+ * v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT when available (primary)
+ *              then fall back to runtime.sendMessage (secondary)
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -4324,12 +4326,31 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     triggerSource: source
   });
 
-  // Broadcast to Manager sidebar (if open)
-  try {
-    await browser.runtime.sendMessage(message);
-    console.log('[Background] Sent state update to sidebar/popup');
-  } catch (_err) {
-    // Sidebar may not be open - ignore
+  // v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT (primary)
+  // Port-based messaging is more reliable than runtime.sendMessage for sidebar
+  let sentViaPort = false;
+  const sidebarPortsSent = _broadcastToSidebarPorts(message);
+  if (sidebarPortsSent > 0) {
+    sentViaPort = true;
+    console.log('[Background] STATE_UPDATE sent via PORT to', sidebarPortsSent, 'sidebar(s):', {
+      messageId,
+      quickTabId
+    });
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #3: Fall back to runtime.sendMessage if no ports available
+  // This ensures sidebar gets the message even if port connection hasn't been established yet
+  if (!sentViaPort) {
+    try {
+      await browser.runtime.sendMessage(message);
+      console.log('[Background] STATE_UPDATE sent via runtime.sendMessage (no port available):', {
+        messageId,
+        quickTabId
+      });
+    } catch (_err) {
+      // Sidebar may not be open - ignore
+      console.log('[Background] No port or runtime listener available for state update');
+    }
   }
 
   // v1.6.3.7 - FIX Issue #3: For deletions, broadcast to ALL tabs (except sender)
@@ -4338,6 +4359,39 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
     await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId);
   }
+}
+
+/**
+ * Broadcast message to all connected sidebar ports
+ * v1.6.3.7-v4 - FIX Issue #3: Send state updates via port for reliable delivery
+ * @private
+ * @param {Object} message - Message to send
+ * @returns {number} Number of ports the message was sent to
+ */
+function _broadcastToSidebarPorts(message) {
+  let sentCount = 0;
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    // Only send to sidebar ports (not content script ports)
+    if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
+      continue;
+    }
+
+    try {
+      portInfo.port.postMessage(message);
+      sentCount++;
+      console.log('[Background] PORT_MESSAGE_SENT:', {
+        portId,
+        messageType: message.type,
+        messageId: message.messageId,
+        quickTabId: message.quickTabId
+      });
+    } catch (err) {
+      console.warn('[Background] Failed to send to port:', { portId, error: err.message });
+    }
+  }
+
+  return sentCount;
 }
 
 /**

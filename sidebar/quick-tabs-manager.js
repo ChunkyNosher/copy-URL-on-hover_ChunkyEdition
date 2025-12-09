@@ -99,6 +99,21 @@ const RECONNECT_BACKOFF_MAX_MS = 10000;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
 const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
 
+// ==================== v1.6.3.7-v4 MESSAGE DEDUPLICATION ====================
+// FIX Issue #4: Prevent multiple renders from independent message listeners
+// Track processed state versions to avoid duplicate processing
+/**
+ * Set of recently processed message IDs (for correlation ID based dedup)
+ * v1.6.3.7-v4 - FIX Issue #4: Message deduplication
+ */
+const recentlyProcessedMessageIds = new Set();
+
+/**
+ * Max age for message ID tracking (ms)
+ * v1.6.3.7-v4 - FIX Issue #4: Cleanup old message IDs
+ */
+const MESSAGE_ID_MAX_AGE_MS = 5000;
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -453,71 +468,148 @@ function stopHeartbeat() {
  * Send heartbeat message to background
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
  * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
+ * v1.6.3.7-v4 - FIX Issue #1: Enhanced logging to distinguish port vs background state
+ *
+ * Three-tier communication architecture:
+ * 1. BroadcastChannel (PRIMARY) - Instant cross-tab messaging
+ * 2. Port messaging (SECONDARY) - Persistent connection to background
+ * 3. storage.onChanged (TERTIARY) - Reliable fallback
  */
 async function sendHeartbeat() {
+  const heartbeatStartTime = Date.now();
+
+  // v1.6.3.7-v4 - FIX Issue #1: Log heartbeat attempt with port state
+  _logHeartbeatAttempt();
+
   if (!backgroundPort) {
-    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected', {
-      circuitBreakerState,
-      reconnectAttempts
-    });
-    consecutiveHeartbeatFailures++;
-    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
-      scheduleReconnect();
-    }
+    _handlePortDisconnected();
     return;
   }
-
-  const timestamp = Date.now();
 
   try {
     // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
     const response = await sendPortMessageWithTimeout(
-      {
-        type: 'HEARTBEAT',
-        timestamp,
-        source: 'sidebar'
-      },
+      { type: 'HEARTBEAT', timestamp: Date.now(), source: 'sidebar' },
       HEARTBEAT_TIMEOUT_MS
     );
 
-    // Success - reset failure count
-    consecutiveHeartbeatFailures = 0;
-    lastHeartbeatResponse = Date.now();
-
-    console.log('[Manager] PORT_HEARTBEAT: success', {
-      roundTripMs: Date.now() - timestamp,
-      backgroundAlive: response?.backgroundAlive,
-      isInitialized: response?.isInitialized,
-      circuitBreakerState
-    });
+    _handleHeartbeatSuccess(response, heartbeatStartTime);
   } catch (err) {
-    consecutiveHeartbeatFailures++;
+    _handleHeartbeatFailure(err);
+  }
+}
 
-    // v1.6.3.7 - FIX Issue #2: Enhanced failure logging
-    console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
-      error: err.message,
-      failures: consecutiveHeartbeatFailures,
-      maxFailures: MAX_HEARTBEAT_FAILURES,
-      timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-      circuitBreakerState
-    });
+/**
+ * Log heartbeat attempt details
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _logHeartbeatAttempt() {
+  console.log('[Manager] HEARTBEAT_ATTEMPT:', {
+    portExists: backgroundPort !== null,
+    portConnected: backgroundPort ? 'yes' : 'no',
+    circuitBreakerState,
+    consecutiveFailures: consecutiveHeartbeatFailures,
+    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse
+  });
+}
 
-    // v1.6.3.6-v12 - FIX Issue #4: Treat port as dead after timeout
-    if (err.message === 'Heartbeat timeout') {
-      console.error(
-        '[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie'
-      );
-      backgroundPort = null;
-    }
+/**
+ * Handle case when port is disconnected
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _handlePortDisconnected() {
+  console.warn('[Manager] HEARTBEAT_FAILED: port disconnected', {
+    status: 'PORT_DISCONNECTED',
+    circuitBreakerState,
+    reconnectAttempts,
+    diagnosis: 'Port object is null - connection was closed or never established'
+  });
+  consecutiveHeartbeatFailures++;
+  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+    console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+    scheduleReconnect();
+  }
+}
 
-    // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
-    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
-      backgroundPort = null;
-      stopHeartbeat();
-      scheduleReconnect();
-    }
+/**
+ * Handle successful heartbeat response
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ * @param {Object} response - Response from background
+ * @param {number} startTime - When heartbeat was started
+ */
+function _handleHeartbeatSuccess(response, startTime) {
+  consecutiveHeartbeatFailures = 0;
+  lastHeartbeatResponse = Date.now();
+
+  console.log('[Manager] HEARTBEAT_SUCCESS:', {
+    status: 'BACKGROUND_ALIVE',
+    roundTripMs: Date.now() - startTime,
+    backgroundAlive: response?.backgroundAlive ?? true,
+    isInitialized: response?.isInitialized,
+    circuitBreakerState,
+    diagnosis: 'Background script is alive and responding'
+  });
+}
+
+/**
+ * Handle heartbeat failure
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ * @param {Error} err - Error that occurred
+ */
+function _handleHeartbeatFailure(err) {
+  consecutiveHeartbeatFailures++;
+
+  const isTimeout = err.message === 'Heartbeat timeout';
+  const isPortClosed = err.message.includes('disconnected') || err.message.includes('closed');
+
+  console.warn('[Manager] HEARTBEAT_FAILED:', {
+    status: isTimeout ? 'BACKGROUND_DEAD' : isPortClosed ? 'PORT_CLOSED' : 'UNKNOWN_ERROR',
+    error: err.message,
+    failures: consecutiveHeartbeatFailures,
+    maxFailures: MAX_HEARTBEAT_FAILURES,
+    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+    circuitBreakerState,
+    diagnosis: _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed)
+  });
+
+  _processHeartbeatFailureRecovery(isTimeout);
+}
+
+/**
+ * Get diagnosis message for heartbeat failure
+ * v1.6.3.7-v4 - Extracted to reduce _handleHeartbeatFailure complexity
+ * @private
+ * @param {boolean} isTimeout - Whether failure was timeout
+ * @param {boolean} isPortClosed - Whether port was closed
+ * @returns {string} Diagnosis message
+ */
+function _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed) {
+  if (isTimeout) return 'Port is open but background script is not responding (Firefox 30s termination?)';
+  if (isPortClosed) return 'Port was closed by background script';
+  return 'Unknown heartbeat failure';
+}
+
+/**
+ * Process recovery actions after heartbeat failure
+ * v1.6.3.7-v4 - Extracted to reduce _handleHeartbeatFailure complexity
+ * @private
+ * @param {boolean} isTimeout - Whether failure was timeout
+ */
+function _processHeartbeatFailureRecovery(isTimeout) {
+  if (isTimeout) {
+    console.error('[Manager] v1.6.3.7 ZOMBIE_PORT_DETECTED: Port appears alive but background is dead');
+    backgroundPort = null;
+  }
+
+  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+    console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
+    backgroundPort = null;
+    stopHeartbeat();
+    scheduleReconnect();
   }
 }
 
@@ -676,10 +768,22 @@ function _handleStateSyncResponse(response) {
 /**
  * Unified render entry point - ALL render triggers go through here
  * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
+ * v1.6.3.7-v4 - FIX Issue #4: Enhanced deduplication with message ID tracking
  * @param {string} source - Source of render trigger for logging
+ * @param {string} [messageId] - Optional message ID for deduplication
  */
-function scheduleRender(source = 'unknown') {
+function scheduleRender(source = 'unknown', messageId = null) {
   const currentHash = computeStateHash(quickTabsState);
+
+  // v1.6.3.7-v4 - FIX Issue #4: Check message ID deduplication first
+  if (messageId && _isMessageAlreadyProcessed(messageId)) {
+    console.log('[Manager] RENDER_DEDUPLICATION: message already processed', {
+      source,
+      messageId,
+      hash: currentHash
+    });
+    return;
+  }
 
   // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
   if (currentHash === lastRenderedStateHash) {
@@ -690,8 +794,14 @@ function scheduleRender(source = 'unknown') {
     return;
   }
 
+  // v1.6.3.7-v4 - FIX Issue #4: Track this message as processed
+  if (messageId) {
+    _markMessageAsProcessed(messageId);
+  }
+
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
+    messageId,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
@@ -701,6 +811,55 @@ function scheduleRender(source = 'unknown') {
   renderUI();
 }
 
+/**
+ * Check if a message was already processed (deduplication)
+ * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
+ * @private
+ * @param {string} messageId - Message ID to check
+ * @returns {boolean} True if already processed
+ */
+function _isMessageAlreadyProcessed(messageId) {
+  if (!messageId) return false;
+  return recentlyProcessedMessageIds.has(messageId);
+}
+
+/**
+ * Map of processed message IDs with their timestamps
+ * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient cleanup
+ */
+const processedMessageTimestamps = new Map();
+
+/**
+ * Mark a message as processed for deduplication
+ * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
+ * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient memory management
+ * @private
+ * @param {string} messageId - Message ID to mark
+ */
+function _markMessageAsProcessed(messageId) {
+  if (!messageId) return;
+  recentlyProcessedMessageIds.add(messageId);
+  processedMessageTimestamps.set(messageId, Date.now());
+}
+
+/**
+ * Cleanup expired message IDs (called periodically)
+ * v1.6.3.7-v4 - FIX Code Review: Efficient periodic cleanup instead of per-message timers
+ * @private
+ */
+function _cleanupExpiredMessageIds() {
+  const now = Date.now();
+  for (const [messageId, timestamp] of processedMessageTimestamps) {
+    if (now - timestamp > MESSAGE_ID_MAX_AGE_MS) {
+      recentlyProcessedMessageIds.delete(messageId);
+      processedMessageTimestamps.delete(messageId);
+    }
+  }
+}
+
+// Start periodic cleanup interval (every 5 seconds)
+setInterval(_cleanupExpiredMessageIds, 5000);
+
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
 
 /**
@@ -708,9 +867,20 @@ function scheduleRender(source = 'unknown') {
  * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
  * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
  * v1.6.4.0 - FIX Issue E: Handle FULL_STATE_SYNC response
+ * v1.6.3.7-v4 - FIX Issue #3: Handle STATE_UPDATE from port (not just runtime.onMessage)
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
+  // v1.6.3.7-v4 - FIX Issue #3: Enhanced logging showing message source
+  console.log('[Manager] PORT_MESSAGE_RECEIVED:', {
+    type: message.type,
+    action: message.action,
+    messageId: message.messageId,
+    correlationId: message.correlationId,
+    source: 'port-connection',
+    timestamp: Date.now()
+  });
+
   logPortLifecycle('message', {
     type: message.type,
     action: message.action,
@@ -738,8 +908,24 @@ function handlePortMessage(message) {
   // Handle state updates
   if (message.type === 'STATE_UPDATE') {
     // v1.6.4.0 - FIX Issue B: Route through unified render entry point
+    // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
     handleStateUpdateBroadcast(message);
-    scheduleRender('port-STATE_UPDATE');
+    scheduleRender('port-STATE_UPDATE', message.messageId);
+    return;
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #3: Handle QUICK_TAB_STATE_UPDATED via port
+  // Background now routes state updates through port when available
+  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
+    console.log('[Manager] PORT_STATE_UPDATE_RECEIVED:', {
+      quickTabId: message.quickTabId,
+      changes: message.changes,
+      messageId: message.messageId,
+      source: 'port'
+    });
+
+    handleStateUpdateBroadcast(message);
+    scheduleRender('port-QUICK_TAB_STATE_UPDATED', message.messageId);
     return;
   }
 
@@ -789,16 +975,17 @@ function handleAcknowledgment(ack) {
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
  * v1.6.4.0 - FIX Issue B: Route all renders through scheduleRender()
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
  */
 function handleBroadcast(message) {
-  const { action } = message;
+  const { action, messageId } = message;
 
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Manager] Received visibility change broadcast:', message);
       // v1.6.4.0 - FIX Issue B: Route through unified entry point
-      scheduleRender('broadcast-VISIBILITY_CHANGE');
+      scheduleRender('broadcast-VISIBILITY_CHANGE', messageId);
       break;
 
     case 'TAB_LIFECYCLE_CHANGE':
@@ -808,7 +995,7 @@ function handleBroadcast(message) {
         browserTabInfoCache.delete(message.tabId);
       }
       // v1.6.4.0 - FIX Issue B: Route through unified entry point
-      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE');
+      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE', messageId);
       break;
 
     default:
@@ -940,6 +1127,7 @@ function initializeBroadcastChannel() {
 /**
  * Handle messages from BroadcastChannel
  * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
+ * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
@@ -949,41 +1137,56 @@ function handleBroadcastChannelMessage(event) {
     return;
   }
 
-  console.log('[Manager] BROADCAST_RECEIVED:', {
+  // v1.6.3.7-v4 - FIX Issue #4: Generate messageId from BroadcastChannel message for deduplication
+  // BroadcastChannel messages don't have messageId, so we generate one from type+quickTabId+timestamp+random
+  // Added random component to ensure uniqueness even for rapid same-type messages
+  const randomSuffix = Math.random().toString(36).substring(2, 7);
+  const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+
+  console.log('[Manager] BROADCAST_CHANNEL_RECEIVED:', {
     type: message.type,
     quickTabId: message.quickTabId,
-    timestamp: message.timestamp
+    timestamp: message.timestamp,
+    messageId: broadcastMessageId,
+    source: 'BroadcastChannel'
   });
 
-  switch (message.type) {
-    case 'quick-tab-created':
-      handleBroadcastCreate(message);
-      break;
+  // v1.6.3.7-v4 - Route to handler based on message type
+  _routeBroadcastMessage(message, broadcastMessageId);
+}
 
-    case 'quick-tab-updated':
-      handleBroadcastUpdate(message);
-      break;
+/**
+ * Route broadcast message to appropriate handler
+ * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
+ * @private
+ * @param {Object} message - BroadcastChannel message
+ * @param {string} messageId - Generated message ID for deduplication
+ */
+function _routeBroadcastMessage(message, messageId) {
+  const handlers = {
+    'quick-tab-created': handleBroadcastCreate,
+    'quick-tab-updated': handleBroadcastUpdate,
+    'quick-tab-deleted': handleBroadcastDelete,
+    'quick-tab-minimized': handleBroadcastMinimizeRestore,
+    'quick-tab-restored': handleBroadcastMinimizeRestore
+  };
 
-    case 'quick-tab-deleted':
-      handleBroadcastDelete(message);
-      break;
-
-    case 'quick-tab-minimized':
-    case 'quick-tab-restored':
-      handleBroadcastMinimizeRestore(message);
-      break;
-
-    default:
-      console.log('[Manager] Unknown broadcast type:', message.type);
+  const handler = handlers[message.type];
+  if (handler) {
+    handler(message, messageId);
+  } else {
+    console.log('[Manager] Unknown broadcast type:', message.type);
   }
 }
 
 /**
  * Handle quick-tab-created broadcast
  * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message with data
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastCreate(message) {
+function handleBroadcastCreate(message, messageId) {
   const { quickTabId, data } = message;
 
   if (!quickTabId || !data) {
@@ -1010,16 +1213,18 @@ function handleBroadcastCreate(message) {
 
   console.log('[Manager] BROADCAST_CREATE: added Quick Tab:', quickTabId);
 
-  // Trigger targeted UI update
-  scheduleRender('broadcast-create');
+  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+  scheduleRender('broadcast-create', messageId);
 }
 
 /**
  * Handle quick-tab-updated broadcast
  * v1.6.3.7-v3 - API #2: Update existing Quick Tab
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message with changes
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastUpdate(message) {
+function handleBroadcastUpdate(message, messageId) {
   const { quickTabId, changes } = message;
 
   if (!quickTabId || !changes) {
@@ -1043,16 +1248,18 @@ function handleBroadcastUpdate(message) {
 
   console.log('[Manager] BROADCAST_UPDATE: updated Quick Tab:', quickTabId, changes);
 
-  // Trigger UI update
-  scheduleRender('broadcast-update');
+  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+  scheduleRender('broadcast-update', messageId);
 }
 
 /**
  * Handle quick-tab-deleted broadcast
  * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastDelete(message) {
+function handleBroadcastDelete(message, messageId) {
   const { quickTabId } = message;
 
   if (!quickTabId) {
@@ -1075,16 +1282,18 @@ function handleBroadcastDelete(message) {
 
   console.log('[Manager] BROADCAST_DELETE: removed Quick Tab:', quickTabId);
 
-  // Trigger UI update
-  scheduleRender('broadcast-delete');
+  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+  scheduleRender('broadcast-delete', messageId);
 }
 
 /**
  * Handle quick-tab-minimized and quick-tab-restored broadcasts
  * v1.6.3.7-v3 - API #2: Update minimized state
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastMinimizeRestore(message) {
+function handleBroadcastMinimizeRestore(message, messageId) {
   const { quickTabId, changes } = message;
 
   if (!quickTabId) {
@@ -1105,7 +1314,8 @@ function handleBroadcastMinimizeRestore(message) {
     lastLocalUpdateTime = Date.now();
 
     console.log('[Manager] BROADCAST_MINIMIZE:', quickTabId, 'minimized=', changes.minimized);
-    scheduleRender('broadcast-minimize');
+    // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+    scheduleRender('broadcast-minimize', messageId);
   }
 }
 
@@ -1280,12 +1490,22 @@ async function saveCollapseState(collapseState) {
 
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
 // v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
+// v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  // v1.6.3.7-v4 - FIX Issue #4: Log message source for debugging
+  console.log('[Manager] RUNTIME_MESSAGE_RECEIVED:', {
+    type: message.type,
+    messageId: message.messageId,
+    source: 'runtime.onMessage',
+    timestamp: Date.now()
+  });
+
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
     console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
       quickTabId: message.quickTabId,
       changes: message.changes,
-      source: message.originalSource
+      source: message.originalSource,
+      messageId: message.messageId
     });
 
     // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
@@ -1296,8 +1516,8 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       handleStateUpdateMessage(message.quickTabId, message.changes);
     }
 
-    // Re-render UI
-    renderUI();
+    // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
+    scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
     sendResponse({ received: true });
     return true;
   }
@@ -1306,11 +1526,13 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'QUICK_TAB_DELETED') {
     console.log('[Manager] Received QUICK_TAB_DELETED:', {
       quickTabId: message.quickTabId,
-      source: message.source
+      source: message.source,
+      messageId: message.messageId
     });
 
     handleStateDeletedMessage(message.quickTabId);
-    renderUI();
+    // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
+    scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
     sendResponse({ received: true });
     return true;
   }
