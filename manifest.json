@@ -18,7 +18,8 @@
     "notifications",
     "clipboardRead",
     "clipboardWrite",
-    "alarms"
+    "alarms",
+    "menus"
   ],
 
   "commands": {

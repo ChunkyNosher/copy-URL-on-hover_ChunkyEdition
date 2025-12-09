@@ -4582,3 +4582,410 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 console.log('[Background] v1.6.3.5-v3 Message infrastructure registered');
 // ==================== END MESSAGE INFRASTRUCTURE ====================
+
+// ==================== v1.6.3.7-v3 CONTEXT MENUS ====================
+// API #7: Enhanced contextMenus for Quick Tab grouping options
+
+/**
+ * Context menu IDs for Quick Tab grouping
+ * v1.6.3.7-v3 - API #7: Context menu constants
+ */
+const CONTEXT_MENU_IDS = {
+  GROUPING_SUBMENU: 'qt-grouping-submenu',
+  CREATE_NEW_GROUP: 'create-new-group',
+  ADD_TO_GROUP: 'add-to-group'
+};
+
+/**
+ * Initialize context menus for Quick Tab grouping
+ * v1.6.3.7-v3 - API #7: Creates submenu with grouping options
+ */
+function initializeContextMenus() {
+  console.log('[Background] v1.6.3.7-v3 Initializing context menus...');
+
+  try {
+    // Create main submenu for Quick Tab Grouping
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
+      title: 'Quick Tab Grouping',
+      contexts: ['page', 'link']
+    });
+
+    // Create "Create new group..." option
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_IDS.CREATE_NEW_GROUP,
+      parentId: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
+      title: 'Create new Quick Tab group...',
+      contexts: ['page', 'link']
+    });
+
+    // Create "Add to group..." option
+    browser.contextMenus.create({
+      id: CONTEXT_MENU_IDS.ADD_TO_GROUP,
+      parentId: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
+      title: 'Add to group...',
+      contexts: ['page', 'link']
+    });
+
+    console.log('[Background] v1.6.3.7-v3 Context menus created successfully');
+  } catch (err) {
+    console.error('[Background] Failed to create context menus:', err.message);
+  }
+}
+
+/**
+ * Handle context menu click events
+ * v1.6.3.7-v3 - API #7: Route menu clicks to appropriate handlers
+ * @param {Object} info - Click info (menuItemId, linkUrl, pageUrl, etc.)
+ * @param {Object} tab - Tab where the menu was clicked
+ */
+async function handleContextMenuClick(info, tab) {
+  const { menuItemId, linkUrl, pageUrl } = info;
+  const tabId = tab?.id;
+
+  console.log('[Background] Context menu clicked:', {
+    menuItemId,
+    linkUrl,
+    pageUrl,
+    tabId
+  });
+
+  switch (menuItemId) {
+    case CONTEXT_MENU_IDS.CREATE_NEW_GROUP:
+      await handleCreateNewGroup(linkUrl || pageUrl, tabId);
+      break;
+
+    case CONTEXT_MENU_IDS.ADD_TO_GROUP:
+      await handleAddToGroup(linkUrl || pageUrl, tabId);
+      break;
+
+    default:
+      console.log('[Background] Unknown context menu item:', menuItemId);
+  }
+}
+
+/**
+ * Handle "Create new Quick Tab group..." menu action
+ * v1.6.3.7-v3 - API #7: Creates group with current tab
+ * @param {string} url - URL from context menu
+ * @param {number} tabId - Current tab ID
+ */
+async function handleCreateNewGroup(url, tabId) {
+  console.log('[Background] Creating new Quick Tab group:', { url, tabId });
+
+  // Check if tabs.group API is available (Firefox 138+)
+  if (typeof browser.tabs.group !== 'function') {
+    console.warn('[Background] tabs.group API not available (requires Firefox 138+)');
+    // Show notification about unavailable feature
+    await notifyGroupingUnavailable();
+    return;
+  }
+
+  try {
+    // Create group with current tab
+    const groupId = await browser.tabs.group({
+      tabIds: [tabId],
+      createProperties: {
+        windowId: browser.windows.WINDOW_ID_CURRENT
+      }
+    });
+
+    // Store group metadata
+    const metadata = {
+      groupId,
+      name: `Quick Tab Group ${groupId}`,
+      tabIds: [tabId],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    await saveQuickTabGroupMetadata(metadata);
+
+    console.log('[Background] Quick Tab group created:', metadata);
+    
+    // Notify user of success
+    await notifyGroupCreated(metadata.name);
+  } catch (err) {
+    console.error('[Background] Failed to create Quick Tab group:', err.message);
+  }
+}
+
+/**
+ * Handle "Add to group..." menu action
+ * v1.6.3.7-v3 - API #7: Shows prompt to select group
+ * @param {string} url - URL from context menu
+ * @param {number} tabId - Current tab ID
+ */
+async function handleAddToGroup(url, tabId) {
+  console.log('[Background] Add to group requested:', { url, tabId });
+
+  // Check if tabs.group API is available (Firefox 138+)
+  if (typeof browser.tabs.group !== 'function') {
+    console.warn('[Background] tabs.group API not available (requires Firefox 138+)');
+    await notifyGroupingUnavailable();
+    return;
+  }
+
+  // For now, log the request - full UI would require popup/sidebar interaction
+  console.log('[Background] Add to group: Feature requires group selection UI (coming soon)');
+  
+  // Notify user that this feature is coming
+  await notifyFeatureComingSoon('Add to group');
+}
+
+/**
+ * Save Quick Tab group metadata to storage
+ * v1.6.3.7-v3 - API #7: Persist group data
+ * @param {Object} metadata - Group metadata
+ */
+async function saveQuickTabGroupMetadata(metadata) {
+  try {
+    const result = await browser.storage.local.get('quickTabGroups');
+    const groups = result.quickTabGroups || [];
+    groups.push(metadata);
+    await browser.storage.local.set({ quickTabGroups: groups });
+    console.log('[Background] Group metadata saved:', metadata.groupId);
+  } catch (err) {
+    console.error('[Background] Failed to save group metadata:', err.message);
+  }
+}
+
+// Register context menu click listener
+browser.contextMenus.onClicked.addListener(handleContextMenuClick);
+
+// Initialize context menus on script load
+initializeContextMenus();
+
+console.log('[Background] v1.6.3.7-v3 Context menus initialized');
+// ==================== END CONTEXT MENUS ====================
+
+// ==================== v1.6.3.7-v3 NOTIFICATIONS API ====================
+// API #6: browser.notifications for user feedback
+
+/**
+ * Notification icon path
+ * v1.6.3.7-v3 - API #6: Notification constants
+ */
+const NOTIFICATION_ICON_PATH = '/icons/icon-48.png';
+
+/**
+ * Auto-clear timeout for notifications (ms)
+ * v1.6.3.7-v3 - API #6: 5 second auto-clear
+ */
+const NOTIFICATION_AUTO_CLEAR_MS = 5000;
+
+/**
+ * Check if notifications API is available
+ * v1.6.3.7-v3 - API #6: Feature detection
+ * @returns {boolean} True if available
+ */
+function isNotificationsAvailable() {
+  return typeof browser.notifications !== 'undefined' &&
+         typeof browser.notifications.create === 'function';
+}
+
+/**
+ * Notify when Quick Tab is created
+ * v1.6.3.7-v3 - API #6: User feedback for creation
+ * @param {Object} quickTab - Quick Tab data { id, title, url }
+ */
+async function notifyQuickTabCreated(quickTab) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-created-${quickTab.id}`;
+    const title = quickTab.title || 'Quick Tab';
+    const truncatedTitle = title.length > 50 ? title.substring(0, 47) + '...' : title;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Quick Tab Created',
+      message: `"${truncatedTitle}" is now a Quick Tab`,
+      priority: 1
+    });
+
+    // Auto-clear after timeout
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    console.log('[Background] Quick Tab created notification sent:', notificationId);
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify about storage warning
+ * v1.6.3.7-v3 - API #6: Storage issue alerts
+ * @param {string} message - Warning message
+ */
+async function notifyStorageWarning(message) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-storage-warning-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Quick Tabs Storage Issue',
+      message: message || 'A storage issue was detected',
+      priority: 2
+    });
+
+    // Auto-clear after longer timeout for warnings
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS * 2);
+
+    console.log('[Background] Storage warning notification sent:', notificationId);
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send warning notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify that grouping is unavailable (Firefox < 138)
+ * v1.6.3.7-v3 - API #6: Feature unavailable notification
+ */
+async function notifyGroupingUnavailable() {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-grouping-unavailable-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Tab Grouping Unavailable',
+      message: 'Tab grouping requires Firefox 138 or newer',
+      priority: 1
+    });
+
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify that Quick Tab group was created
+ * v1.6.3.7-v3 - API #6: Group creation success notification
+ * @param {string} groupName - Name of the created group
+ */
+async function notifyGroupCreated(groupName) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-group-created-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Quick Tab Group Created',
+      message: `Group "${groupName}" created successfully`,
+      priority: 1
+    });
+
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Notify that a feature is coming soon
+ * v1.6.3.7-v3 - API #6: Coming soon notification
+ * @param {string} featureName - Name of the feature
+ */
+async function notifyFeatureComingSoon(featureName) {
+  if (!isNotificationsAvailable()) {
+    return null;
+  }
+
+  try {
+    const notificationId = `qt-coming-soon-${Date.now()}`;
+
+    await browser.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: NOTIFICATION_ICON_PATH,
+      title: 'Feature Coming Soon',
+      message: `"${featureName}" will be available in a future update`,
+      priority: 1
+    });
+
+    setTimeout(() => {
+      browser.notifications.clear(notificationId).catch(() => {});
+    }, NOTIFICATION_AUTO_CLEAR_MS);
+
+    return notificationId;
+  } catch (err) {
+    console.warn('[Background] Failed to send notification:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Check if sidebar can be opened
+ * v1.6.3.7-v3 - Extracted to reduce nesting depth
+ * @returns {boolean} True if sidebarAction.open is available
+ */
+function canOpenSidebar() {
+  return typeof browser.sidebarAction?.open === 'function';
+}
+
+/**
+ * Handle notification click events
+ * v1.6.3.7-v3 - API #6: Notification click handler
+ * @param {string} notificationId - ID of clicked notification
+ */
+async function handleNotificationClick(notificationId) {
+  console.log('[Background] Notification clicked:', notificationId);
+
+  try {
+    // If it's a Quick Tab created notification, open the sidebar
+    const isQuickTabNotification = notificationId.startsWith('qt-created-');
+    if (isQuickTabNotification && canOpenSidebar()) {
+      await browser.sidebarAction.open();
+      console.log('[Background] Sidebar opened from notification click');
+    }
+
+    // Clear the notification after handling
+    await browser.notifications.clear(notificationId);
+  } catch (err) {
+    console.error('[Background] Error handling notification click:', err.message);
+  }
+}
+
+// Register notification click listener if available
+if (isNotificationsAvailable() && browser.notifications.onClicked) {
+  browser.notifications.onClicked.addListener(handleNotificationClick);
+  console.log('[Background] v1.6.3.7-v3 Notification click listener registered');
+}
+
+console.log('[Background] v1.6.3.7-v3 Notifications API initialized');
+// ==================== END NOTIFICATIONS API ====================
