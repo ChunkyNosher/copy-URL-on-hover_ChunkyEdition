@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7.
+  documentation. Current version: v1.6.3.7-v2.
 tools: ['*']
 ---
 
@@ -69,91 +69,60 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7)
+## Current Extension State (v1.6.3.7-v2)
 
-### v1.6.3.7 Features (NEW)
+### v1.6.3.7-v2 Features (NEW)
+
+- **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox), `alarms`
+- **Single Writer Authority** - Manager sends commands to background (ADOPT_TAB, CLOSE_MINIMIZED_TABS)
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
+- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based detection
+- **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on port reconnection
+- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with read-back
+
+### v1.6.3.7 Features (Retained)
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for differential updates
 - **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
-- **Package Optimization** - ZIP -9 for Firefox (~40% smaller), -6 for Chrome
-
-### v1.6.3.6-v12 Lifecycle Resilience (Retained)
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
-  exponential backoff retry
-- **Heartbeat** - Sidebar sends `HEARTBEAT` every 25s, background responds with
-  `HEARTBEAT_ACK`, 5s timeout
-- **Storage Deduplication** - Multi-method: transactionId, saveId+timestamp,
-  content hash
-- **Cache Reconciliation** - `_triggerCacheReconciliation()` queries content
-  scripts
-- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()` for
-  ordered deletion
-- **Architectural Resilience** - Coordinator is optimization, not requirement
 
 ### v1.6.3.6-v12 Port-Based Messaging (Retained)
 
-- **Port Registry** - Background maintains
-  `{ portId -> { port, origin, tabId, type, ... } }`
-- **Message Protocol** -
-  `{ type, action, correlationId, source, timestamp, payload, metadata }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
-  `ERROR`, `BROADCAST`
-- **Port Lifecycle Logging** - `[Manager] PORT_LIFECYCLE: CONNECT/DISCONNECT`
-- **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
-- **Isolated State Machine** - Background maintains state, tabs are consumers
-
-### v1.6.3.6-v12 Animation/Logging (Retained)
-
-- **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
-  ERROR)
-- **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
-- **Adoption Verification** - 2-second timeout
-
-### v1.6.3.6-v12 Build Optimization (Retained)
-
-- **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
-- **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
-- **sideEffects: false** - In package.json
+- **Port Registry** - Background maintains `{ portId -> { port, origin, tabId, type, ... } }`
+- **Message Protocol** - `{ type, action, correlationId, source, timestamp, payload, metadata }`
+- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
 
 ### Architecture
 
-- **Status:** Background-as-Coordinator ✅
+- **Status:** Background-as-Coordinator with Single Writer Authority ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Features
+### Key Functions (v1.6.3.7-v2)
 
-- **Solo/Mute:** Tab-specific visibility control
-- **Global Visibility:** All Quick Tabs visible everywhere
-- **Quick Tabs Manager:** Sidebar (Ctrl+Alt+Z or Alt+Shift+Z)
-- **Cross-Tab Sync:** storage.onChanged + port-based messaging
-
-### Keyboard Shortcuts
-
-- **Q:** Create Quick Tab
-- **Ctrl+Alt+Z or Alt+Shift+Z:** Toggle Quick Tabs Manager sidebar
-- **Esc:** Close all Quick Tabs
-- **Y:** Copy URL
-- **X:** Copy link text
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `scheduleRender(source)` | Manager | Unified render entry point |
+| `_checkAndReloadStaleState()` | Manager | State staleness detection |
+| `_requestFullStateSync()` | Manager | Port reconnection sync |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification |
+| `handleFullStateSyncRequest()` | Background | State sync handler |
+| `handleCloseMinimizedTabsCommand()` | Background | Close minimized handler |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7
-- [ ] **v1.6.3.7:** Keepalive mechanism documented
-- [ ] **v1.6.3.7:** Circuit breaker pattern documented
-- [ ] **v1.6.3.7:** UI performance (debounced renderUI) documented
-- [ ] **v1.6.3.7:** originTabId validation documented
-- [ ] Architecture references accurate (DDD with Background-as-Coordinator)
+- [ ] Version numbers match 1.6.3.7-v2
+- [ ] **v1.6.3.7-v2:** New permissions documented
+- [ ] **v1.6.3.7-v2:** Single Writer Authority documented
+- [ ] **v1.6.3.7-v2:** Unified render pipeline documented
+- [ ] **v1.6.3.7-v2:** Orphaned tab recovery documented
+- [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
-- [ ] Global visibility documented (Container isolation REMOVED)
-- [ ] MCP tools listed correctly
-- [ ] Keyboard shortcuts current
 
 ---
 
@@ -161,31 +130,11 @@ nothing.
 
 | Error                        | Fix                                            |
 | ---------------------------- | ---------------------------------------------- |
-| v1.6.3.6-v12 or earlier      | Update to 1.6.3.7                              |
+| v1.6.3.7 or earlier          | Update to 1.6.3.7-v2                           |
 | "Pin to Page"                | Use "Solo/Mute"                                |
-| BroadcastChannel             | Use storage.onChanged + port-based             |
-| Container refs               | Remove (global visibility)                     |
-| Files >15KB                  | Apply compression                              |
-| Missing keepalive            | Document `_startKeepalive()`, 20s interval     |
-| Missing circuit breaker      | Document closed/open/half-open, backoff        |
-| Missing renderUI debounce    | Document RENDER_DEBOUNCE_MS = 300              |
-
----
-
-## Before Every Commit Checklist
-
-- [ ] Searched memories for past updates 🧠
-- [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.7
-- [ ] **v1.6.3.7:** Keepalive mechanism documented
-- [ ] **v1.6.3.7:** Circuit breaker documented
-- [ ] **v1.6.3.7:** UI performance documented
-- [ ] **v1.6.3.7:** originTabId validation documented
-- [ ] No "Pin to Page" references
-- [ ] storage.onChanged + port-based messaging documented
-- [ ] MCP tool lists consistent
-- [ ] Keyboard shortcuts current (Ctrl+Alt+Z or Alt+Shift+Z)
-- [ ] Memory files committed (.agentic-tools-mcp/) 🧠
+| Direct storage writes        | Use Single Writer Authority                    |
+| Missing scheduleRender       | Document unified render pipeline               |
+| Missing orphaned flag        | Document orphaned tab recovery                 |
 
 ---
 

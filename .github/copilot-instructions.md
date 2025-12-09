@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7  
+**Version:** 1.6.3.7-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -17,27 +17,31 @@ Tabs Manager
 - **Port-based messaging** with persistent connections
 - **Cross-tab sync via storage.onChanged + Background-as-Coordinator**
 - **Cross-tab isolation via `originTabId`** with strict per-tab scoping
-- **Lifecycle resilience** with keepalive & circuit breaker (v1.6.3.7)
+- **Lifecycle resilience** with keepalive & circuit breaker
 
-**v1.6.3.7 Features (NEW):**
+**v1.6.3.7-v2 Features (NEW):**
+
+- **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox), `alarms`
+- **Single Writer Authority** - Manager sends commands (ADOPT_TAB, CLOSE_MINIMIZED_TABS) to background
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
+- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based detection
+- **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on port reconnection
+- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with read-back confirmation
+
+**v1.6.3.7 Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` resets Firefox 30s idle timer every 20s
-- **Port Circuit Breaker** - State machine: closed→open→half-open with exponential backoff
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
 - **UI Performance** - Debounced `renderUI()` (300ms), differential storage updates
 - **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
-- **Package Optimization** - ZIP -9 for Firefox XPI (~40% smaller), -6 for Chrome
 
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
+**Prior Versions (Retained):**
 
-- Init guard, heartbeat (25s), storage dedup, cache reconciliation, deletion acks
-- Port heartbeat timeout (5s), architectural resilience
+- v12: Init guard, heartbeat (25s), storage dedup, cache reconciliation, deletion acks
+- v11: Port registry, persistent connections, lifecycle logging, state coordinator
 
-**v1.6.3.6-v11 Port-Based Messaging (Retained):**
-
-- Port registry, persistent connections, lifecycle logging, state coordinator
-- Storage write verification, message types, tab lifecycle events
-
-**Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager, Background Script (port registry)
+**Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager, Background Script
 
 **Deprecated:** `setPosition()`, `setSize()`, `updateQuickTabPosition()`, `updateQuickTabSize()`
 
@@ -54,22 +58,25 @@ Tabs Manager
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Port-Based Messaging + storage.onChanged
+### CRITICAL: Single Writer Authority (v1.6.3.7-v2)
 
-**v1.6.3.7 Keepalive & Circuit Breaker:** Background stays alive via `_startKeepalive()` (20s). Port circuit breaker handles disconnections with exponential backoff (100ms→10s max).
+**Manager no longer writes to storage directly.** All state changes flow through background:
+- `ADOPT_TAB` - Manager sends adoption request to background
+- `CLOSE_MINIMIZED_TABS` - Background handler `handleCloseMinimizedTabsCommand()`
+- `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
+
+**Unified Render Pipeline:** `scheduleRender(source)` with hash-based deduplication prevents redundant renders.
 
 **Message Protocol:**
 
 ```javascript
-{ type: 'ACTION_REQUEST|STATE_UPDATE|ACKNOWLEDGMENT|ERROR|BROADCAST|HEARTBEAT|HEARTBEAT_ACK|DELETION_ACK',
+{ type: 'ACTION_REQUEST|STATE_UPDATE|ACKNOWLEDGMENT|ERROR|BROADCAST|HEARTBEAT|REQUEST_FULL_STATE_SYNC',
   action, correlationId, source, timestamp, payload, metadata }
 ```
 
 **Port Registry:** `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt } }`
 
-**Circuit Breaker States:** `closed` (normal) → `open` (failing) → `half-open` (testing recovery)
-
-**Event Flow:** Port connection → Tab writes storage → storage.onChanged fires → `_analyzeStorageChange()` → Conditional renderUI
+**Event Flow:** Port connection → Background writes storage → storage.onChanged → `scheduleRender()` → hash check → renderUI
 
 ---
 
@@ -88,39 +95,40 @@ Tabs Manager
 
 ---
 
-## 🆕 v1.6.3.7 Patterns
+## 🆕 v1.6.3.7-v2 Patterns
 
-**Background Keepalive:** `_startKeepalive()` uses `browser.runtime.sendMessage()` and `browser.tabs.query()` every 20s to reset Firefox's 30-second idle timer (Bug 1851373).
+**Single Writer Authority:** Manager sends commands to background, never writes storage directly.
+- `handleFullStateSyncRequest()` - Background responds to sync requests
+- `handleCloseMinimizedTabsCommand()` - Background closes minimized tabs
 
-**Port Circuit Breaker:** State machine with exponential backoff for reconnection:
-- States: `closed` (normal) → `open` (failing) → `half-open` (testing)
-- Backoff: 100ms → 200ms → 500ms → ... → 10s max
+**Unified Render Pipeline:** `scheduleRender(source)` replaces direct `renderUI()` calls.
+- Hash-based deduplication prevents redundant renders
+- `_checkAndReloadStaleState()` detects state staleness in debounce
 
-**UI Performance:**
-- `renderUI()` debounced to max once per 300ms with state hash comparison
-- `_analyzeStorageChange()` detects differential updates - skips renderUI for z-index-only changes
-- Resize operations wrapped in `requestAnimationFrame` callbacks
+**Orphaned Tab Recovery:** Hydration preserves orphaned tabs with `orphaned: true` flag.
+- UI shows adoption buttons for orphaned tabs
+- Background handles `ADOPT_TAB` commands
 
-**originTabId Validation:** `_isValidOriginTabId()` validates positive integers only
+**Storage Write Verification:** `writeStateWithVerificationAndRetry()` reads back after write.
 
-### Prior Patterns (Retained)
+### v1.6.3.7 Patterns (Retained)
 
-**v12:** Lifecycle resilience, heartbeat (25s), storage dedup, cache reconciliation, deletion acks  
-**v11:** Port-based messaging, animation lifecycle, atomic adoption  
-**v10:** Orphan adoption, tab switch detection, smooth animations (0.35s)
+**Background Keepalive:** `_startKeepalive()` every 20s resets Firefox 30s idle timer.
+
+**Port Circuit Breaker:** closed→open→half-open with exponential backoff (100ms→10s).
+
+**Port Reconnection:** `_requestFullStateSync()` on reconnection ensures state consistency.
 
 ### Key Timing Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `KEEPALIVE_INTERVAL_MS` | 20000 | Firefox 30s timeout workaround (v1.6.3.7) |
-| `RENDER_DEBOUNCE_MS` | 300 | UI render debounce (v1.6.3.7) |
-| `RECONNECT_BACKOFF_INITIAL_MS` | 100 | Circuit breaker initial backoff (v1.6.3.7) |
-| `RECONNECT_BACKOFF_MAX_MS` | 10000 | Circuit breaker max backoff (v1.6.3.7) |
-| `HEARTBEAT_INTERVAL_MS` | 25000 | Keep background alive (v12) |
-| `HEARTBEAT_TIMEOUT_MS` | 5000 | Heartbeat response timeout (v12) |
-| `ADOPTION_VERIFICATION_TIMEOUT_MS` | 2000 | Adoption verification |
-| `STORAGE_TIMEOUT_MS` | 2000 | Storage operation timeout |
+| `KEEPALIVE_INTERVAL_MS` | 20000 | Firefox 30s timeout workaround |
+| `RENDER_DEBOUNCE_MS` | 300 | UI render debounce |
+| `RECONNECT_BACKOFF_INITIAL_MS` | 100 | Circuit breaker initial backoff |
+| `RECONNECT_BACKOFF_MAX_MS` | 10000 | Circuit breaker max backoff |
+| `HEARTBEAT_INTERVAL_MS` | 25000 | Keep background alive |
+| `STORAGE_WRITE_RETRY_MS` | 1000 | Write verification retry (v1.6.3.7-v2) |
 
 ---
 
@@ -131,17 +139,16 @@ Tabs Manager
 | QuickTabStateMachine | `canTransition()`, `transition()` |
 | QuickTabMediator | `minimize()`, `restore()`, `destroy()` |
 | MapTransactionManager | `beginTransaction()`, `commitTransaction()`, `rollbackTransaction()` |
-| UICoordinator | `setHandlers()`, `clearAll()`, `_shouldRenderOnThisTab()` |
+| UICoordinator | `setHandlers()`, `clearAll()`, `scheduleRender()` |
 | DestroyHandler | `_closeAllInProgress`, `_destroyedIds`, `initiateDestruction()` |
-| PortRegistry | Port tracking, cleanup on tab close |
-| CircuitBreaker (v1.6.3.7) | `closed`→`open`→`half-open` states, exponential backoff |
-| KeepaliveManager (v1.6.3.7) | `_startKeepalive()`, Firefox 30s timeout workaround |
+| Background (v1.6.3.7-v2) | `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()` |
+| Manager (v1.6.3.7-v2) | `_requestFullStateSync()`, `_checkAndReloadStaleState()` |
 
 ---
 
 ## 🔧 Storage Utilities
 
-**Key Exports:** `STATE_KEY`, `WRITING_INSTANCE_ID`, `logStorageRead()`, `logStorageWrite()`, `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, `isSelfWrite()`, `persistStateToStorage()`, `queueStorageWrite()`
+**Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`, `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`, `writeStateWithVerificationAndRetry()` (v1.6.3.7-v2)
 
 **CRITICAL:** Use `storage.local` for Quick Tab state, NOT `storage.sync`.
 
@@ -149,10 +156,10 @@ Tabs Manager
 
 ## 🏗️ Key Patterns
 
-Promise sequencing, debounced drag, orphan recovery, per-tab scoping, transaction rollback, state machine, ownership validation, Single Writer Model, coordinated clear, closeAll mutex.
+Promise sequencing, debounced drag, orphan recovery, per-tab scoping, transaction rollback, state machine, ownership validation, Single Writer Authority, coordinated clear, closeAll mutex.
+- **v1.6.3.7-v2:** Single Writer Authority, unified render pipeline, orphaned tab recovery, state staleness detection, port reconnection sync, storage write verification
 - **v1.6.3.7:** Keepalive (20s), circuit breaker, debounced renderUI, differential storage updates
-- **v12:** Lifecycle resilience, heartbeat, storage dedup, cache reconciliation, deletion acks
-- **v11:** Port-based messaging, animation lifecycle, atomic adoption
+- **v12:** Lifecycle resilience, heartbeat, storage dedup, cache reconciliation
 
 ---
 
@@ -205,20 +212,19 @@ Promise sequencing, debounced drag, orphan recovery, per-tab scoping, transactio
 
 | File | Features |
 |------|----------|
-| `background.js` | Port registry, keepalive (v1.6.3.7), circuit breaker, init guard |
-| `quick-tabs-manager.js` | Port connection, debounced renderUI, differential updates |
-| `src/content.js` | Manager action handling |
-| `src/utils/storage-utils.js` | Storage operation logging |
+| `background.js` | Port registry, keepalive, `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()` |
+| `quick-tabs-manager.js` | `scheduleRender()`, `_requestFullStateSync()`, `_checkAndReloadStaleState()` |
+| `src/utils/storage-utils.js` | `writeStateWithVerificationAndRetry()` |
 | `src/render-helpers.js` | `_isValidOriginTabId()`, `groupQuickTabsByOriginTab()` |
 
 ### Storage
 
 **State Key:** `quick_tabs_state_v2` (storage.local)  
-**Format:** `{ tabs: [...], saveId, timestamp, writingTabId, writingInstanceId }`
+**Format:** `{ tabs: [{ ..., orphaned: true }], saveId, timestamp, writingTabId }`
 
 ### Messages
 
-**Protocol:** `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`, `HEARTBEAT`, `HEARTBEAT_ACK`, `DELETION_ACK`
+**Protocol:** `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`, `ADOPT_TAB`, `CLOSE_MINIMIZED_TABS`
 
 ---
 
