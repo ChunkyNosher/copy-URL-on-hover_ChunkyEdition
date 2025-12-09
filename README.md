@@ -2,14 +2,15 @@
 
 **Version 1.6.3.7-v3** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
-visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating Panel
-Manager.
+visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
+Floating Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v3 Status:** Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms API ✅
+**🔧 v1.6.3.7-v3 Status:** Session Quick Tabs, BroadcastChannel, Tab Grouping,
+Alarms API ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -28,7 +29,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **sessions API** - Per-tab state management
   - `TabStateManager.js` for per-tab Quick Tab state
 - ✅ **browser.alarms API** - Scheduled cleanup tasks
-  - `cleanup-orphaned` (60 min), `sync-session-state` (5 min), `diagnostic-snapshot` (120 min)
+  - `cleanup-orphaned` (60 min), `sync-session-state` (5 min),
+    `diagnostic-snapshot` (120 min)
 - ✅ **tabs.group() API** - Tab grouping (Firefox 138+)
   - `QuickTabGroupManager.js` for group operations
   - Context menu integration for grouping
@@ -38,13 +40,15 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
   - `_itemElements` Map for differential updates
   - originTabId initialization fix in window.js
 
-**Why This Matters:** These features add session-scoped tabs, real-time sync, scheduled maintenance, and smoother animations.
+**Why This Matters:** These features add session-scoped tabs, real-time sync,
+scheduled maintenance, and smoother animations.
 
 ---
 
 ## 🎉 Previous Releases
 
-See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history including:
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
+including:
 
 - **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
 - **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
@@ -56,7 +60,8 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history includin
 
 ## 🎯 Firefox Sidebar Integration
 
-**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager in the sidebar!
+**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager
+in the sidebar!
 
 - **Firefox:** Click toolbar button OR press `Alt+Shift+S` to open sidebar
 - **Chrome/Edge/Brave:** Traditional popup (toolbar button) + Extension Options
@@ -170,7 +175,8 @@ works globally rather than per-container.
 
 ## 📖 Usage
 
-**Basic Copy Functions:** Hover over link → Press **Y** (URL), **X** (text), or **O** (open)
+**Basic Copy Functions:** Hover over link → Press **Y** (URL), **X** (text), or
+**O** (open)
 
 **Quick Tabs:** Hover → **Q** to open → Drag/resize → **Esc** to close all
 
@@ -178,11 +184,13 @@ works globally rather than per-container.
 
 ## ⚙️ Settings
 
-Access via extension icon or sidebar (Firefox). Tabs: Copy URL, Quick Tabs, Appearance, Advanced.
+Access via extension icon or sidebar (Firefox). Tabs: Copy URL, Quick Tabs,
+Appearance, Advanced.
 
 ## 🔒 Security Notice
 
-Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers. **Only open Quick Tabs from trusted websites.**
+Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers.
+**Only open Quick Tabs from trusted websites.**
 
 ## 🐛 Known Limitations
 
@@ -192,7 +200,8 @@ Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers.
 
 ## 📚 Documentation
 
-See [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and [docs/manual/](docs/manual/) for architecture.
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and
+[docs/manual/](docs/manual/) for architecture.
 
 ## 🛠️ Development
 

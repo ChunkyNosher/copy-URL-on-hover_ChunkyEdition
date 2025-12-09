@@ -29,9 +29,11 @@ class QuickTabGroupManager {
    * @returns {boolean} True if tabs.group API is available
    */
   static isTabsGroupAvailable() {
-    return typeof browser !== 'undefined' &&
-           typeof browser.tabs !== 'undefined' &&
-           typeof browser.tabs.group === 'function';
+    return (
+      typeof browser !== 'undefined' &&
+      typeof browser.tabs !== 'undefined' &&
+      typeof browser.tabs.group === 'function'
+    );
   }
 
   /**

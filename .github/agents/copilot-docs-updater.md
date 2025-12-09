@@ -73,26 +73,39 @@ nothing.
 
 ### v1.6.3.7 (Build v2) Features (NEW)
 
-- **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox), `alarms`
-- **Single Writer Authority** - Manager sends commands to background (ADOPT_TAB, CLOSE_MINIMIZED_TABS)
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
-- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based detection
+- **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox),
+  `alarms`
+- **Single Writer Authority** - Manager sends commands to background (ADOPT_TAB,
+  CLOSE_MINIMIZED_TABS)
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
+  deduplication
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
+  `orphaned: true` flag
+- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based
+  detection
 - **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on port reconnection
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with read-back
+- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with
+  read-back
 
 ### v1.6.3.7 Features (Retained)
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for differential updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+  (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for
+  differential updates
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive
+  integers
 
 ### v1.6.3.6-v12 Port-Based Messaging (Retained)
 
-- **Port Registry** - Background maintains `{ portId -> { port, origin, tabId, type, ... } }`
-- **Message Protocol** - `{ type, action, correlationId, source, timestamp, payload, metadata }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
+- **Port Registry** - Background maintains
+  `{ portId -> { port, origin, tabId, type, ... } }`
+- **Message Protocol** -
+  `{ type, action, correlationId, source, timestamp, payload, metadata }`
+- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
+  `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
 
 ### Architecture
 
@@ -102,14 +115,14 @@ nothing.
 
 ### Key Functions (v1.6.3.7 (Build v2))
 
-| Function | Location | Purpose |
-|----------|----------|---------|
-| `scheduleRender(source)` | Manager | Unified render entry point |
-| `_checkAndReloadStaleState()` | Manager | State staleness detection |
-| `_requestFullStateSync()` | Manager | Port reconnection sync |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification |
-| `handleFullStateSyncRequest()` | Background | State sync handler |
-| `handleCloseMinimizedTabsCommand()` | Background | Close minimized handler |
+| Function                               | Location      | Purpose                    |
+| -------------------------------------- | ------------- | -------------------------- |
+| `scheduleRender(source)`               | Manager       | Unified render entry point |
+| `_checkAndReloadStaleState()`          | Manager       | State staleness detection  |
+| `_requestFullStateSync()`              | Manager       | Port reconnection sync     |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification         |
+| `handleFullStateSyncRequest()`         | Background    | State sync handler         |
+| `handleCloseMinimizedTabsCommand()`    | Background    | Close minimized handler    |
 
 ---
 
@@ -128,13 +141,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                        | Fix                                            |
-| ---------------------------- | ---------------------------------------------- |
-| v1.6.3.7 or earlier          | Update to 1.6.3.7-v2                           |
-| "Pin to Page"                | Use "Solo/Mute"                                |
-| Direct storage writes        | Use Single Writer Authority                    |
-| Missing scheduleRender       | Document unified render pipeline               |
-| Missing orphaned flag        | Document orphaned tab recovery                 |
+| Error                  | Fix                              |
+| ---------------------- | -------------------------------- |
+| v1.6.3.7 or earlier    | Update to 1.6.3.7-v2             |
+| "Pin to Page"          | Use "Solo/Mute"                  |
+| Direct storage writes  | Use Single Writer Authority      |
+| Missing scheduleRender | Document unified render pipeline |
+| Missing orphaned flag  | Document orphaned tab recovery   |
 
 ---
 

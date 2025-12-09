@@ -142,9 +142,9 @@ const ALARM_SYNC_SESSION_STATE = 'sync-session-state';
 const ALARM_DIAGNOSTIC_SNAPSHOT = 'diagnostic-snapshot';
 
 // Alarm intervals in minutes
-const ALARM_CLEANUP_INTERVAL_MIN = 60;      // Hourly orphan cleanup
-const ALARM_SYNC_INTERVAL_MIN = 5;          // Every 5 minutes sync
-const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120;  // Every 2 hours diagnostic
+const ALARM_CLEANUP_INTERVAL_MIN = 60; // Hourly orphan cleanup
+const ALARM_SYNC_INTERVAL_MIN = 5; // Every 5 minutes sync
+const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120; // Every 2 hours diagnostic
 
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
@@ -159,14 +159,14 @@ function startKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
   }
-  
+
   // Immediate ping to register activity
   triggerIdleReset();
-  
+
   keepaliveIntervalId = setInterval(() => {
     triggerIdleReset();
   }, KEEPALIVE_INTERVAL_MS);
-  
+
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
 }
 
@@ -178,7 +178,7 @@ async function triggerIdleReset() {
   try {
     // Method 1: browser.tabs.query triggers event handlers which reset idle timer
     const tabs = await browser.tabs.query({});
-    
+
     // Method 2: Self-send a message (this resets the idle timer)
     // Note: This will be caught by our own listener but that's fine
     try {
@@ -186,7 +186,7 @@ async function triggerIdleReset() {
     } catch (_err) {
       // Expected to fail if no listener, but the message send itself resets the timer
     }
-    
+
     console.log('[Background] KEEPALIVE: idle timer reset via tabs.query + sendMessage', {
       tabCount: tabs.length,
       timestamp: Date.now()
@@ -227,21 +227,39 @@ async function initializeAlarms() {
       delayInMinutes: 30, // First run after 30 minutes
       periodInMinutes: ALARM_CLEANUP_INTERVAL_MIN
     });
-    console.log('[Background] Created alarm:', ALARM_CLEANUP_ORPHANED, '(every', ALARM_CLEANUP_INTERVAL_MIN, 'min)');
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_CLEANUP_ORPHANED,
+      '(every',
+      ALARM_CLEANUP_INTERVAL_MIN,
+      'min)'
+    );
 
     // Create sync-session-state alarm - runs every 5 minutes
     await browser.alarms.create(ALARM_SYNC_SESSION_STATE, {
       delayInMinutes: 1, // First run after 1 minute
       periodInMinutes: ALARM_SYNC_INTERVAL_MIN
     });
-    console.log('[Background] Created alarm:', ALARM_SYNC_SESSION_STATE, '(every', ALARM_SYNC_INTERVAL_MIN, 'min)');
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_SYNC_SESSION_STATE,
+      '(every',
+      ALARM_SYNC_INTERVAL_MIN,
+      'min)'
+    );
 
     // Create diagnostic-snapshot alarm - runs every 2 hours
     await browser.alarms.create(ALARM_DIAGNOSTIC_SNAPSHOT, {
       delayInMinutes: 60, // First run after 1 hour
       periodInMinutes: ALARM_DIAGNOSTIC_INTERVAL_MIN
     });
-    console.log('[Background] Created alarm:', ALARM_DIAGNOSTIC_SNAPSHOT, '(every', ALARM_DIAGNOSTIC_INTERVAL_MIN, 'min)');
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_DIAGNOSTIC_SNAPSHOT,
+      '(every',
+      ALARM_DIAGNOSTIC_INTERVAL_MIN,
+      'min)'
+    );
 
     console.log('[Background] v1.6.3.7-v3 All alarms initialized successfully');
   } catch (err) {
@@ -305,7 +323,10 @@ async function cleanupOrphanedQuickTabs() {
       return;
     }
 
-    console.log('[Background] Found', orphanedTabs.length, 'orphaned Quick Tabs:', 
+    console.log(
+      '[Background] Found',
+      orphanedTabs.length,
+      'orphaned Quick Tabs:',
       orphanedTabs.map(t => ({ id: t.id, originTabId: t.originTabId }))
     );
 
@@ -659,10 +680,14 @@ async function initializeGlobalState() {
     if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
       initializationRetryCount++;
       const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
-      console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+      console.log(
+        `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
+      );
       setTimeout(() => initializeGlobalState(), backoffMs);
     } else {
-      console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+      console.error(
+        '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
+      );
       // Fall back to empty state after max retries
       globalQuickTabState.tabs = [];
       globalQuickTabState.lastUpdate = Date.now();
@@ -3610,8 +3635,8 @@ async function handleCloseMinimizedTabsCommand() {
   }
 
   // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(tab =>
-    tab.minimized === true || tab.visibility?.minimized === true
+  const minimizedTabs = globalQuickTabState.tabs.filter(
+    tab => tab.minimized === true || tab.visibility?.minimized === true
   );
 
   if (minimizedTabs.length === 0) {
@@ -3630,8 +3655,8 @@ async function handleCloseMinimizedTabsCommand() {
   await _broadcastCloseManyToAllTabs(closedIds);
 
   // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab =>
-    !(tab.minimized === true || tab.visibility?.minimized === true)
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
+    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
   );
   globalQuickTabState.lastUpdate = Date.now();
 
@@ -3694,13 +3719,15 @@ async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
  */
 function _sendCloseMessageToTabs(tabs, quickTabId) {
   for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      source: 'background-command'
-    }).catch(() => {
-      // Content script may not be loaded
-    });
+    browser.tabs
+      .sendMessage(tab.id, {
+        action: 'CLOSE_QUICK_TAB',
+        quickTabId,
+        source: 'background-command'
+      })
+      .catch(() => {
+        // Content script may not be loaded
+      });
   }
 }
 
@@ -3715,12 +3742,17 @@ async function writeStateWithVerificationAndRetry(operation) {
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
-    
+    const result = await _attemptStorageWriteWithVerification(
+      operation,
+      saveId,
+      attempt,
+      backoffMs
+    );
+
     if (result.success && result.verified) {
       return result;
     }
-    
+
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
@@ -3755,7 +3787,13 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite(operation, saveId, stateToWrite.tabs.length, attempt, backoffMs);
+    return await _verifyStorageWrite(
+      operation,
+      saveId,
+      stateToWrite.tabs.length,
+      attempt,
+      backoffMs
+    );
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -3781,13 +3819,16 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
-    operation,
-    expectedSaveId: saveId,
-    actualSaveId: readBack?.saveId,
-    backoffMs
-  });
-  
+  console.warn(
+    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
+    {
+      operation,
+      expectedSaveId: saveId,
+      actualSaveId: readBack?.saveId,
+      backoffMs
+    }
+  );
+
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -4371,9 +4412,7 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     const tabs = await browser.tabs.query({});
 
     // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
-    const pendingTabs = new Set(
-      tabs.filter(t => t.id !== excludeTabId).map(t => t.id)
-    );
+    const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
 
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
@@ -4702,7 +4741,7 @@ async function handleCreateNewGroup(url, tabId) {
     await saveQuickTabGroupMetadata(metadata);
 
     console.log('[Background] Quick Tab group created:', metadata);
-    
+
     // Notify user of success
     await notifyGroupCreated(metadata.name);
   } catch (err) {
@@ -4728,7 +4767,7 @@ async function handleAddToGroup(url, tabId) {
 
   // For now, log the request - full UI would require popup/sidebar interaction
   console.log('[Background] Add to group: Feature requires group selection UI (coming soon)');
-  
+
   // Notify user that this feature is coming
   await notifyFeatureComingSoon('Add to group');
 }
@@ -4780,8 +4819,10 @@ const NOTIFICATION_AUTO_CLEAR_MS = 5000;
  * @returns {boolean} True if available
  */
 function isNotificationsAvailable() {
-  return typeof browser.notifications !== 'undefined' &&
-         typeof browser.notifications.create === 'function';
+  return (
+    typeof browser.notifications !== 'undefined' &&
+    typeof browser.notifications.create === 'function'
+  );
 }
 
 /**

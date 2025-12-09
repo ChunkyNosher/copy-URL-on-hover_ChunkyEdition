@@ -40,9 +40,11 @@ class NotificationManager {
    * @returns {boolean} True if notifications API is available
    */
   static isAvailable() {
-    return typeof browser !== 'undefined' &&
-           typeof browser.notifications !== 'undefined' &&
-           typeof browser.notifications.create === 'function';
+    return (
+      typeof browser !== 'undefined' &&
+      typeof browser.notifications !== 'undefined' &&
+      typeof browser.notifications.create === 'function'
+    );
   }
 
   /**
@@ -262,7 +264,7 @@ function initNotificationClickListener() {
     return false;
   }
 
-  browser.notifications.onClicked.addListener((notificationId) => {
+  browser.notifications.onClicked.addListener(notificationId => {
     NotificationManager.handleNotificationClick(notificationId);
   });
 

@@ -46,7 +46,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
 - **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`, `sync-session-state`)
+- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
+  `sync-session-state`)
 - **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 - **originTabId Fix** - Initialization in window.js `_initializeVisibility()`
@@ -59,8 +60,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.7-v1 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+  (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 
 **Key Features:**
@@ -132,10 +135,10 @@ architecture, race conditions
 // Real-time cross-tab messaging
 const updateChannel = new BroadcastChannel('quick-tabs-updates');
 updateChannel.postMessage({
-    type: 'quick-tab-created|updated|deleted|minimized|restored',
-    quickTabId: id,
-    data: quickTab,
-    timestamp: Date.now()
+  type: 'quick-tab-created|updated|deleted|minimized|restored',
+  quickTabId: id,
+  data: quickTab,
+  timestamp: Date.now()
 });
 ```
 
@@ -149,12 +152,18 @@ function reconcileDOM(newTabs) {
   const newIds = new Set(newTabs.map(t => t.id));
   // Remove deleted
   for (const [id, el] of _itemElements) {
-    if (!newIds.has(id)) { el.remove(); _itemElements.delete(id); }
+    if (!newIds.has(id)) {
+      el.remove();
+      _itemElements.delete(id);
+    }
   }
   // Add/update existing
   for (const tab of newTabs) {
-    if (!_itemElements.has(tab.id)) { /* create new element */ }
-    else { /* update existing */ }
+    if (!_itemElements.has(tab.id)) {
+      /* create new element */
+    } else {
+      /* update existing */
+    }
   }
 }
 ```
@@ -163,9 +172,10 @@ function reconcileDOM(newTabs) {
 
 ```javascript
 // Session vs Permanent routing
-const storage = quickTab.permanent === false 
-  ? browser.storage.session 
-  : browser.storage.local;
+const storage =
+  quickTab.permanent === false
+    ? browser.storage.session
+    : browser.storage.local;
 ```
 
 ## v1.6.3.7-v1/v2 Fix Patterns (Retained)

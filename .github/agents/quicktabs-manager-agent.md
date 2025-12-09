@@ -41,10 +41,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
-- **Port-Based Messaging** - Persistent connections via `browser.runtime.onConnect`
+- **Port-Based Messaging** - Persistent connections via
+  `browser.runtime.onConnect`
 - **Single Writer Authority** - Manager sends commands, never writes storage
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
-- **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible sections
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
+  deduplication
+- **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible
+  sections
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
@@ -53,25 +56,30 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`BroadcastChannelManager`)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`, `sync-session-state`)
+- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
+  `sync-session-state`)
 - **DOM Reconciliation** - `_itemElements` Map for animation optimization
 - **originTabId Fix** - Initialization in window.js `_initializeVisibility()`
 
 **v1.6.3.7-v2 Features (Retained):**
 
-- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to background
-- **Unified Render Pipeline** - `scheduleRender(source)` replaces direct `renderUI()` calls
-- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based detection
+- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to
+  background
+- **Unified Render Pipeline** - `scheduleRender(source)` replaces direct
+  `renderUI()` calls
+- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based
+  detection
 - **Port Reconnection Sync** - `_requestFullStateSync()` on port reconnection
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
+  `orphaned: true` flag
 
 **Key Functions (v1.6.3.7-v3):**
 
-| Function | Purpose |
-|----------|---------|
-| `scheduleRender(source)` | Unified render entry point |
-| `_itemElements` | DOM reconciliation Map |
-| `BroadcastChannelManager` | Real-time tab messaging |
+| Function                  | Purpose                    |
+| ------------------------- | -------------------------- |
+| `scheduleRender(source)`  | Unified render entry point |
+| `_itemElements`           | DOM reconciliation Map     |
+| `BroadcastChannelManager` | Real-time tab messaging    |
 
 **Manager as Pure Consumer:**
 
@@ -80,7 +88,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - `closeAllTabs()` uses `CLEAR_ALL_QUICK_TABS` message
 - Adoption uses `ADOPT_TAB` command to background
 
-**CRITICAL:** Use `storage.local` for permanent Quick Tabs, `storage.session` for session tabs.
+**CRITICAL:** Use `storage.local` for permanent Quick Tabs, `storage.session`
+for session tabs.
 
 ---
 

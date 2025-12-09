@@ -41,38 +41,49 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.7 (Build v2) Features (NEW):**
 
-- **Single Writer Authority** - Manager sends commands, background writes storage
+- **Single Writer Authority** - Manager sends commands, background writes
+  storage
   - Commands: `ADOPT_TAB`, `CLOSE_MINIMIZED_TABS` sent to background
-  - Background handlers: `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()`
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
-- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based detection
+  - Background handlers: `handleFullStateSyncRequest()`,
+    `handleCloseMinimizedTabsCommand()`
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
+  deduplication
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
+  `orphaned: true` flag
+- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based
+  detection
 - **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on port reconnection
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with read-back
+- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with
+  read-back
 
 **v1.6.3.7 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+  (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 
 **v1.6.3.6-v12 Port-Based Messaging (Retained):**
 
-- **Port Registry** - Background maintains `{ portId -> { port, origin, tabId, type, ... } }`
-- **Message Protocol** - `{ type, action, correlationId, source, timestamp, payload, metadata }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
+- **Port Registry** - Background maintains
+  `{ portId -> { port, origin, tabId, type, ... } }`
+- **Message Protocol** -
+  `{ type, action, correlationId, source, timestamp, payload, metadata }`
+- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
+  `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
 - **Persistent Connections** - `browser.runtime.onConnect` for persistent ports
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 
 **Key Functions (v1.6.3.7 (Build v2)):**
 
-| Function | Location | Purpose |
-|----------|----------|---------|
-| `scheduleRender(source)` | Manager | Unified render entry point |
-| `_checkAndReloadStaleState()` | Manager | State staleness detection |
-| `_requestFullStateSync()` | Manager | Port reconnection sync |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification |
-| `handleFullStateSyncRequest()` | Background | State sync handler |
+| Function                               | Location      | Purpose                    |
+| -------------------------------------- | ------------- | -------------------------- |
+| `scheduleRender(source)`               | Manager       | Unified render entry point |
+| `_checkAndReloadStaleState()`          | Manager       | State staleness detection  |
+| `_requestFullStateSync()`              | Manager       | Port reconnection sync     |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification         |
+| `handleFullStateSyncRequest()`         | Background    | State sync handler         |
 
 **Storage Format:**
 
@@ -89,10 +100,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Single Writer Authority - Manager sends commands, not storage writes (v1.6.3.7 (Build v2))
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison (v1.6.3.7 (Build v2))
-- [ ] `REQUEST_FULL_STATE_SYNC` restores state on reconnection (v1.6.3.7 (Build v2))
-- [ ] `writeStateWithVerificationAndRetry()` confirms writes (v1.6.3.7 (Build v2))
+- [ ] Single Writer Authority - Manager sends commands, not storage writes
+      (v1.6.3.7 (Build v2))
+- [ ] `scheduleRender()` prevents redundant renders via hash comparison
+      (v1.6.3.7 (Build v2))
+- [ ] `REQUEST_FULL_STATE_SYNC` restores state on reconnection (v1.6.3.7 (Build
+      v2))
+- [ ] `writeStateWithVerificationAndRetry()` confirms writes (v1.6.3.7 (Build
+      v2))
 - [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
 - [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
 - [ ] Strict tab isolation rejects null originTabId
@@ -101,5 +116,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7 (Build v2) Single Writer Authority,
-unified render pipeline, state sync, and storage write verification.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7 (Build v2) Single Writer
+Authority, unified render pipeline, state sync, and storage write
+verification.**

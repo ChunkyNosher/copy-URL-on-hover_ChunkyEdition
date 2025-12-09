@@ -42,42 +42,52 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
-- **Port-Based Messaging** - Persistent connections via `browser.runtime.onConnect`
-- **Single Writer Authority** - Manager sends commands, background writes storage
-- **Cross-Tab Sync** - storage.onChanged + BroadcastChannel + Per-Tab Ownership Validation
+- **Port-Based Messaging** - Persistent connections via
+  `browser.runtime.onConnect`
+- **Single Writer Authority** - Manager sends commands, background writes
+  storage
+- **Cross-Tab Sync** - storage.onChanged + BroadcastChannel + Per-Tab Ownership
+  Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
 **v1.6.3.7-v3 Features (NEW):**
 
-- **storage.session API** - Session Quick Tabs (`permanent: false`, `session_quick_tabs` key)
+- **storage.session API** - Session Quick Tabs (`permanent: false`,
+  `session_quick_tabs` key)
 - **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
 - **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`, `sync-session-state`)
+- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
+  `sync-session-state`)
 - **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
 - **notifications API** - System notifications (NotificationManager.js)
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 
 **v1.6.3.7-v2 Features (Retained):**
 
-- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based deduplication
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with `orphaned: true` flag
+- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to
+  background
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
+  deduplication
+- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
+  `orphaned: true` flag
 
 **v1.6.3.7-v1 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
+  (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 
 **Key Functions (v1.6.3.7-v3):**
 
-| Function | Location | Purpose |
-|----------|----------|---------|
-| `scheduleRender(source)` | Manager | Unified render entry point |
-| `_itemElements` | Manager | DOM reconciliation Map |
-| `BroadcastChannelManager` | channels/ | Real-time tab messaging |
-| `TabStateManager` | core/ | Per-tab state (sessions API) |
-| `QuickTabGroupManager` | quick-tabs/ | Tab grouping (Firefox 138+) |
+| Function                  | Location    | Purpose                      |
+| ------------------------- | ----------- | ---------------------------- |
+| `scheduleRender(source)`  | Manager     | Unified render entry point   |
+| `_itemElements`           | Manager     | DOM reconciliation Map       |
+| `BroadcastChannelManager` | channels/   | Real-time tab messaging      |
+| `TabStateManager`         | core/       | Per-tab state (sessions API) |
+| `QuickTabGroupManager`    | quick-tabs/ | Tab grouping (Firefox 138+)  |
 
 ---
 

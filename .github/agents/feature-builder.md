@@ -70,7 +70,8 @@ UI)
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
 - **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`, `sync-session-state`)
+- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
+  `sync-session-state`)
 - **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
 - **notifications API** - System notifications (NotificationManager.js)
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
@@ -83,7 +84,8 @@ UI)
 
 **v1.6.3.7-v1 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
+  idle timer
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 
@@ -96,7 +98,8 @@ UI)
 
 **Key Classes:**
 
-- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING,
+  DESTROYED
 - **QuickTabMediator** - Operation coordination with rollback
 - **MapTransactionManager** - Atomic Map operations (2000ms timeout)
 - **UICoordinator** - `setHandlers()`, `_shouldRenderOnThisTab()`
@@ -163,9 +166,9 @@ architecture
 
 **Layer-by-Layer Approach:** Domain → Storage → Feature → UI
 
-**Implementation Guidelines:**
-✅ Follow existing patterns, use dependency injection, make code testable
-❌ Don't mix layers, use global state, skip error handling
+**Implementation Guidelines:** ✅ Follow existing patterns, use dependency
+injection, make code testable ❌ Don't mix layers, use global state, skip error
+handling
 
 ### Phase 4: Testing
 
@@ -253,7 +256,11 @@ See QuickTab domain for Solo/Mute implementation patterns.
 
 ```javascript
 const channel = new BroadcastChannel('quick-tabs-updates');
-channel.postMessage({ type: 'quick-tab-created', quickTabId: id, timestamp: Date.now() });
+channel.postMessage({
+  type: 'quick-tab-created',
+  quickTabId: id,
+  timestamp: Date.now()
+});
 ```
 
 ### Storage Routing Pattern (v1.6.3.7-v3)
@@ -261,7 +268,10 @@ channel.postMessage({ type: 'quick-tab-created', quickTabId: id, timestamp: Date
 ```javascript
 // Session: permanent: false → storage.session
 // Permanent: permanent: true → storage.local
-const storage = quickTab.permanent === false ? browser.storage.session : browser.storage.local;
+const storage =
+  quickTab.permanent === false
+    ? browser.storage.session
+    : browser.storage.local;
 ```
 
 ---

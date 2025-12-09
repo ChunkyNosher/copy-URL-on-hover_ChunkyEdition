@@ -21,10 +21,12 @@
  * @returns {boolean} True if browser.sessions API is available
  */
 function isSessionsApiAvailable() {
-  return typeof browser !== 'undefined' &&
+  return (
+    typeof browser !== 'undefined' &&
     browser.sessions &&
     typeof browser.sessions.setTabValue === 'function' &&
-    typeof browser.sessions.getTabValue === 'function';
+    typeof browser.sessions.getTabValue === 'function'
+  );
 }
 
 /**
@@ -86,11 +88,21 @@ export async function getCurrentQuickTab(tabId) {
       return null;
     }
 
-    console.log('[TabStateManager] Retrieved current Quick Tab for tab', tabId, ':', metadata.currentQuickTabId);
+    console.log(
+      '[TabStateManager] Retrieved current Quick Tab for tab',
+      tabId,
+      ':',
+      metadata.currentQuickTabId
+    );
     return metadata.currentQuickTabId;
   } catch (err) {
     // Tab may not exist or have no value set
-    console.log('[TabStateManager] Could not get current Quick Tab for tab', tabId, ':', err.message);
+    console.log(
+      '[TabStateManager] Could not get current Quick Tab for tab',
+      tabId,
+      ':',
+      err.message
+    );
     return null;
   }
 }

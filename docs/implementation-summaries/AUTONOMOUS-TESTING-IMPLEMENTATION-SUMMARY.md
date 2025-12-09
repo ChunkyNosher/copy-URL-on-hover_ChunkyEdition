@@ -268,6 +268,7 @@ programmatically.
 
 1. **Write feature code**
 2. **Create test using ExtensionTestHelper**:
+
    ```javascript
    test('my test', async ({ page }) => {
      const helper = new ExtensionTestHelper(page);
@@ -279,6 +280,7 @@ programmatically.
      expect(tabs).toHaveLength(1);
    });
    ```
+
 3. **Run tests locally**: `npm run test:extension`
 4. **Commit code + tests**
 5. **GitHub Actions runs automatically**

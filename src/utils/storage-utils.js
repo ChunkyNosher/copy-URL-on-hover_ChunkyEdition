@@ -972,7 +972,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
 
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
-    
+
     // v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging
     console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
       transactionId,
@@ -989,7 +989,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
       suggestion:
         'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
     });
-    
+
     // v1.6.3.7 - FIX Issue #6: Log whether transaction should have matched
     console.warn('[StorageUtils] TRANSACTION_TIMEOUT diagnostic:', {
       transactionId,
@@ -1003,7 +1003,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
         'storage.onChanged listener not registered'
       ]
     });
-    
+
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
   }
   TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
@@ -1218,12 +1218,15 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  */
 function _logOriginTabIdUndefined(tab, rawOriginTabId, rawActiveTabId) {
   if (rawOriginTabId !== undefined) return;
-  console.log('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId read from instance:', {
-    quickTabId: tab.id,
-    rawOriginTabId: 'undefined',
-    rawActiveTabId: rawActiveTabId !== undefined ? rawActiveTabId : 'undefined',
-    willFallbackTo: rawActiveTabId ?? 'null'
-  });
+  console.log(
+    '[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId read from instance:',
+    {
+      quickTabId: tab.id,
+      rawOriginTabId: 'undefined',
+      rawActiveTabId: rawActiveTabId !== undefined ? rawActiveTabId : 'undefined',
+      willFallbackTo: rawActiveTabId ?? 'null'
+    }
+  );
 }
 
 /**
@@ -1270,13 +1273,13 @@ function serializeTabForStorage(tab, isMinimized) {
   // Log the raw instance value BEFORE the fallback chain to detect undefined → null conversion
   const rawOriginTabId = tab.originTabId;
   const rawActiveTabId = tab.activeTabId;
-  
+
   // v1.6.3.7-v3 - FIX Issue #4: Log when undefined is being converted to null
   _logOriginTabIdUndefined(tab, rawOriginTabId, rawActiveTabId);
 
   // v1.6.3.7 - FIX Issue #7: Extract originTabId with fallback chain
   const extractedOriginTabId = rawOriginTabId ?? rawActiveTabId ?? null;
-  
+
   // v1.6.3.7 - FIX Issue #7: Adoption flow logging - only log when originTabId is problematic (null)
   _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiveTabId);
 

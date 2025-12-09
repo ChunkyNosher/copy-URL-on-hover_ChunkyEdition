@@ -769,6 +769,7 @@ async function tryConnectWebSocket() {
    - Position updates correctly
 
 6. **Closed Quick Tab** ✅
+
    ```
    Closed Quick Tab qt-121-1764356297353-1ip9jtlsqbzng
    ```

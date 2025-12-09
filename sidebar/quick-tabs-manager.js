@@ -341,7 +341,7 @@ function connectToBackground() {
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
     logPortLifecycle('error', { error: err.message });
-    
+
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
   }
@@ -353,26 +353,26 @@ function connectToBackground() {
  */
 function scheduleReconnect() {
   reconnectAttempts++;
-  
+
   console.log('[Manager] RECONNECT_SCHEDULED:', {
     attempt: reconnectAttempts,
     backoffMs: reconnectBackoffMs,
     circuitBreakerState,
     maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD
   });
-  
+
   // Check if we should trip the circuit breaker
   if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
     tripCircuitBreaker();
     return;
   }
-  
+
   // Schedule reconnect with current backoff
   setTimeout(() => {
     console.log('[Manager] Attempting reconnect (attempt', reconnectAttempts, ')');
     connectToBackground();
   }, reconnectBackoffMs);
-  
+
   // Calculate next backoff with exponential increase, capped at max
   reconnectBackoffMs = Math.min(reconnectBackoffMs * 2, RECONNECT_BACKOFF_MAX_MS);
 }
@@ -398,13 +398,13 @@ function handleConnectionFailure() {
 function tripCircuitBreaker() {
   circuitBreakerState = 'open';
   circuitBreakerOpenTime = Date.now();
-  
+
   console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
     attempts: reconnectAttempts,
     cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
     reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
   });
-  
+
   // Schedule attempt to reopen circuit breaker
   setTimeout(() => {
     console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
@@ -430,7 +430,11 @@ function startHeartbeat() {
 
   // Start interval
   heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-  console.log('[Manager] v1.6.3.6-v12 Heartbeat started (every', HEARTBEAT_INTERVAL_MS / 1000, 's)');
+  console.log(
+    '[Manager] v1.6.3.6-v12 Heartbeat started (every',
+    HEARTBEAT_INTERVAL_MS / 1000,
+    's)'
+  );
 }
 
 /**
@@ -468,11 +472,14 @@ async function sendHeartbeat() {
 
   try {
     // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
-    const response = await sendPortMessageWithTimeout({
-      type: 'HEARTBEAT',
-      timestamp,
-      source: 'sidebar'
-    }, HEARTBEAT_TIMEOUT_MS);
+    const response = await sendPortMessageWithTimeout(
+      {
+        type: 'HEARTBEAT',
+        timestamp,
+        source: 'sidebar'
+      },
+      HEARTBEAT_TIMEOUT_MS
+    );
 
     // Success - reset failure count
     consecutiveHeartbeatFailures = 0;
@@ -486,7 +493,7 @@ async function sendHeartbeat() {
     });
   } catch (err) {
     consecutiveHeartbeatFailures++;
-    
+
     // v1.6.3.7 - FIX Issue #2: Enhanced failure logging
     console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
       error: err.message,
@@ -498,7 +505,9 @@ async function sendHeartbeat() {
 
     // v1.6.3.6-v12 - FIX Issue #4: Treat port as dead after timeout
     if (err.message === 'Heartbeat timeout') {
-      console.error('[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie');
+      console.error(
+        '[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie'
+      );
       backgroundPort = null;
     }
 
@@ -610,7 +619,12 @@ async function _requestFullStateSync() {
       console.warn('[Manager] State sync response did not include state:', response);
     }
   } catch (err) {
-    console.warn('[Manager] State sync timed out after', STATE_SYNC_TIMEOUT_MS, 'ms, proceeding with cached state (may be stale):', err.message);
+    console.warn(
+      '[Manager] State sync timed out after',
+      STATE_SYNC_TIMEOUT_MS,
+      'ms, proceeding with cached state (may be stale):',
+      err.message
+    );
   }
 }
 
@@ -624,7 +638,7 @@ function _handleStateSyncResponse(response) {
   const serverState = response.state;
   const serverTabCount = serverState?.tabs?.length ?? 0;
   const cacheTabCount = quickTabsState?.tabs?.length ?? 0;
-  
+
   const serverHash = computeStateHash(serverState);
   const cacheHash = computeStateHash(quickTabsState);
   const hashDiverged = serverHash !== cacheHash;
@@ -638,14 +652,20 @@ function _handleStateSyncResponse(response) {
   });
 
   if (hashDiverged) {
-    console.log('[Manager] STATE_DIVERGENCE_DETECTED: server has', serverTabCount, 'tabs, cache had', cacheTabCount, 'tabs - updating');
-    
+    console.log(
+      '[Manager] STATE_DIVERGENCE_DETECTED: server has',
+      serverTabCount,
+      'tabs, cache had',
+      cacheTabCount,
+      'tabs - updating'
+    );
+
     // Update local state from server
     quickTabsState = serverState;
     _updateInMemoryCache(serverState.tabs || []);
     lastKnownGoodTabCount = serverTabCount;
     lastLocalUpdateTime = Date.now();
-    
+
     // Trigger UI update
     scheduleRender('state-sync-divergence');
   } else {
@@ -660,7 +680,7 @@ function _handleStateSyncResponse(response) {
  */
 function scheduleRender(source = 'unknown') {
   const currentHash = computeStateHash(quickTabsState);
-  
+
   // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
   if (currentHash === lastRenderedStateHash) {
     console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
@@ -722,7 +742,7 @@ function handlePortMessage(message) {
     scheduleRender('port-STATE_UPDATE');
     return;
   }
-  
+
   // v1.6.4.0 - FIX Issue E: Handle full state sync response
   if (message.type === 'FULL_STATE_SYNC') {
     _handleStateSyncResponse(message);
@@ -1841,7 +1861,9 @@ async function _triggerCacheReconciliation() {
 
     if (contentScriptTabs.length > 0) {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts have tabs - restore to STORAGE
-      console.warn('[Manager] CORRUPTION CONFIRMED: Content scripts have tabs but storage is empty');
+      console.warn(
+        '[Manager] CORRUPTION CONFIRMED: Content scripts have tabs but storage is empty'
+      );
       console.log('[Manager] v1.6.3.6-v12 Restoring state to storage...');
 
       const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
@@ -1849,7 +1871,11 @@ async function _triggerCacheReconciliation() {
       inMemoryTabsCache = [...restoredState.tabs];
       lastKnownGoodTabCount = restoredState.tabs.length;
 
-      console.log('[Manager] v1.6.3.6-v12 Reconciliation complete: Restored', contentScriptTabs.length, 'tabs to storage');
+      console.log(
+        '[Manager] v1.6.3.6-v12 Reconciliation complete: Restored',
+        contentScriptTabs.length,
+        'tabs to storage'
+      );
       renderUI(); // Re-render with restored state
     } else {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
@@ -1984,34 +2010,37 @@ function updateUIStats(totalTabs, latestTimestamp) {
 function renderUI() {
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
-  
+
   // v1.6.4.0 - FIX Issue D: Capture state hash when debounce is set
   capturedStateHashAtDebounce = computeStateHash(quickTabsState);
   debounceSetTimestamp = Date.now();
-  
+
   // Clear any existing debounce timer
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
   }
-  
+
   // Schedule the actual render
   renderDebounceTimer = setTimeout(async () => {
     renderDebounceTimer = null;
-    
+
     // Only render if still pending (wasn't cancelled)
     if (!pendingRenderUI) {
       console.log('[Manager] Skipping debounced render - no longer pending');
       return;
     }
-    
+
     pendingRenderUI = false;
-    
+
     // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
     const staleCheckResult = await _checkAndReloadStaleState();
     if (staleCheckResult.stateReloaded) {
-      console.log('[Manager] State changed while debounce was waiting, rendering with fresh state', staleCheckResult);
+      console.log(
+        '[Manager] State changed while debounce was waiting, rendering with fresh state',
+        staleCheckResult
+      );
     }
-    
+
     // Recalculate hash after potential fresh load
     const finalHash = computeStateHash(quickTabsState);
     if (finalHash === lastRenderedHash) {
@@ -2021,12 +2050,12 @@ function renderUI() {
       });
       return;
     }
-    
+
     // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
     // This ensures consistent state even on render failure
     lastRenderedHash = finalHash;
     lastRenderedStateHash = finalHash;
-    
+
     // Synchronize DOM mutation with requestAnimationFrame
     requestAnimationFrame(() => {
       _renderUIImmediate();
@@ -2043,15 +2072,25 @@ function renderUI() {
 async function _checkAndReloadStaleState() {
   const currentHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
-  
+
   if (currentHash === capturedStateHashAtDebounce) {
-    return { stateReloaded: false, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
+    return {
+      stateReloaded: false,
+      capturedHash: capturedStateHashAtDebounce,
+      currentHash,
+      debounceWaitMs: debounceWaitTime
+    };
   }
-  
+
   // State changed during wait - fetch fresh state from storage to ensure consistency
   await _loadFreshStateFromStorage();
-  
-  return { stateReloaded: true, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
+
+  return {
+    stateReloaded: true,
+    capturedHash: capturedStateHashAtDebounce,
+    currentHash,
+    debounceWaitMs: debounceWaitTime
+  };
 }
 
 /**
@@ -2100,7 +2139,7 @@ function _renderUIImmediate_force() {
 async function _renderUIImmediate() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
-  
+
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
@@ -2116,7 +2155,7 @@ async function _renderUIImmediate() {
     _showEmptyState();
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
-    
+
     // v1.6.3.7 - FIX Issue #8: Log render exit
     console.log('[Manager] RENDER_UI: exit (empty state)', {
       triggerReason,
@@ -2143,7 +2182,7 @@ async function _renderUIImmediate() {
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
-  
+
   // v1.6.3.7 - FIX Issue #8: Log render exit with summary
   console.log('[Manager] RENDER_UI: exit', {
     triggerReason,
@@ -2151,7 +2190,7 @@ async function _renderUIImmediate() {
     groupsCreated: groups.size,
     durationMs: Date.now() - renderStartTime
   });
-  
+
   _logRenderComplete(allTabs, groups, renderStartTime);
 }
 
@@ -2187,13 +2226,13 @@ function _logRenderStart(allTabs) {
 function _showEmptyState() {
   containersList.style.display = 'none';
   emptyState.style.display = 'flex';
-  
+
   // v1.6.3.7-v3 - FIX Issue #3: Clear tracking maps when going to empty state
   _itemElements.clear();
   _groupElements.clear();
   _groupsContainer = null;
   containersList.innerHTML = '';
-  
+
   console.log('[Manager] UI showing empty state (0 tabs)');
 }
 
@@ -2255,7 +2294,7 @@ async function _buildGroupsContainer(groups, collapseState) {
  */
 async function _reconcileGroups(groups, collapseState) {
   const startTime = Date.now();
-  
+
   // Ensure we have a groups container
   if (!_groupsContainer || !containersList.contains(_groupsContainer)) {
     // First render or container was removed - create fresh
@@ -2265,7 +2304,7 @@ async function _reconcileGroups(groups, collapseState) {
     containersList.appendChild(_groupsContainer);
     _groupElements.clear();
     _itemElements.clear();
-    
+
     console.log('[Manager] RECONCILE: Created fresh groups container');
   }
 
@@ -2275,7 +2314,7 @@ async function _reconcileGroups(groups, collapseState) {
 
   const existingGroupKeys = new Set(_groupElements.keys());
   const newGroupKeys = new Set(sortedGroupKeys.map(k => String(k)));
-  
+
   // Calculate diff
   const groupsToRemove = [...existingGroupKeys].filter(k => !newGroupKeys.has(k));
   const groupsToAdd = sortedGroupKeys.filter(k => !existingGroupKeys.has(String(k)));
@@ -2357,9 +2396,9 @@ function _removeGroup(groupKey) {
  * @param {Array} sortedGroupKeys - Sorted keys for positioning
  */
 function _addGroup(groupKey, group, collapseState, sortedGroupKeys) {
-  console.log('[Manager] RECONCILE_ADD_GROUP:', { 
-    groupKey, 
-    tabCount: group.quickTabs?.length ?? 0 
+  console.log('[Manager] RECONCILE_ADD_GROUP:', {
+    groupKey,
+    tabCount: group.quickTabs?.length ?? 0
   });
 
   const detailsEl = renderTabGroup(groupKey, group, collapseState);
@@ -2503,11 +2542,11 @@ function _removeQuickTabItem(itemId, _content) {
 
   // Add removing class for exit animation
   item.classList.add('removing');
-  
+
   // v1.6.3.7-v3 - FIX: Delete from tracking map immediately to prevent
   // duplicate operations during animation, but keep DOM element until animation completes
   _itemElements.delete(itemId);
-  
+
   // Remove DOM element after animation completes
   setTimeout(() => {
     if (item.parentNode) {
@@ -2527,10 +2566,10 @@ function _removeQuickTabItem(itemId, _content) {
 function _addQuickTabItem(tab, content, sortedTabs) {
   const isMinimized = isTabMinimizedHelper(tab);
   const item = renderQuickTabItem(tab, 'global', isMinimized);
-  
+
   // v1.6.3.7-v3 - FIX Issue #3: Add new-item class for entrance animation
   item.classList.add('new-item');
-  
+
   _itemElements.set(tab.id, item);
 
   // Find correct position
@@ -2551,8 +2590,8 @@ function _addQuickTabItem(tab, content, sortedTabs) {
     item.classList.remove('new-item');
   }, ANIMATION_DURATION_MS);
 
-  console.log('[Manager] RECONCILE_ADD_ITEM:', { 
-    itemId: tab.id, 
+  console.log('[Manager] RECONCILE_ADD_ITEM:', {
+    itemId: tab.id,
     isMinimized,
     position: tabIndex
   });
@@ -2569,7 +2608,7 @@ function _updateQuickTabItem(tab) {
   if (!item) return;
 
   const isMinimized = isTabMinimizedHelper(tab);
-  
+
   // Update minimized state if changed
   _updateItemMinimizedState(item, tab, isMinimized);
 
@@ -2590,11 +2629,11 @@ function _updateQuickTabItem(tab) {
  */
 function _updateItemMinimizedState(item, tab, isMinimized) {
   const wasMinimized = item.classList.contains('minimized');
-  
+
   if (isMinimized !== wasMinimized) {
     item.classList.toggle('minimized', isMinimized);
     item.classList.toggle('active', !isMinimized);
-    
+
     // Update action buttons (minimize <-> restore)
     _updateItemActionButtons(item, tab, isMinimized);
   }
@@ -2608,7 +2647,7 @@ function _updateItemMinimizedState(item, tab, isMinimized) {
 function _updateItemTitle(item, tab) {
   const titleEl = item.querySelector('.tab-title');
   const newTitle = tab.title || 'Quick Tab';
-  
+
   if (titleEl && titleEl.textContent !== newTitle) {
     titleEl.textContent = newTitle;
     titleEl.title = tab.title || tab.url;
@@ -2623,7 +2662,7 @@ function _updateItemTitle(item, tab) {
 function _updateItemMeta(item, tab, isMinimized) {
   const metaEl = item.querySelector('.tab-meta');
   if (!metaEl) return;
-  
+
   const newMeta = _buildMetaText(tab, isMinimized);
   if (metaEl.textContent !== newMeta) {
     metaEl.textContent = newMeta;
@@ -2640,7 +2679,7 @@ function _updateItemStatusIndicator(item, tab, isMinimized) {
   if (!indicator) return;
 
   const indicatorClass = _getIndicatorClass(tab, isMinimized);
-  
+
   // Remove all indicator classes and add the correct one
   indicator.classList.remove('green', 'yellow', 'orange');
   indicator.classList.add(indicatorClass);
@@ -2675,24 +2714,24 @@ function _updateItemActionButtons(item, tab, isMinimized) {
  */
 function _buildMetaText(tab, isMinimized) {
   const metaParts = [];
-  
+
   if (isMinimized) {
     metaParts.push('Minimized');
   }
-  
+
   if (tab.activeTabId) {
     metaParts.push(`Tab ${tab.activeTabId}`);
   }
-  
+
   const sizePosition = _formatSizePosition(tab);
   if (sizePosition) {
     metaParts.push(sizePosition);
   }
-  
+
   if (tab.slotNumber) {
     metaParts.push(`Slot ${tab.slotNumber}`);
   }
-  
+
   return metaParts.join(' • ');
 }
 
@@ -2712,7 +2751,7 @@ function _updateSectionHeaders(content, sortedTabs) {
       activeCount++;
     }
   }
-  
+
   const hasBothSections = activeCount > 0 && minimizedCount > 0;
 
   if (hasBothSections) {
@@ -2742,7 +2781,7 @@ function _removeSectionElements(content) {
   const activeHeader = content.querySelector('.section-header');
   const divider = content.querySelector('.section-divider');
   const minimizedHeader = content.querySelectorAll('.section-header')[1];
-  
+
   if (activeHeader) activeHeader.remove();
   if (divider) divider.remove();
   if (minimizedHeader) minimizedHeader.remove();
@@ -2756,7 +2795,7 @@ function _removeSectionElements(content) {
  */
 function _reorderGroups(sortedGroupKeys) {
   let previousEl = null;
-  
+
   for (const groupKey of sortedGroupKeys) {
     const groupEl = _groupElements.get(String(groupKey));
     if (!groupEl) continue;
@@ -2776,7 +2815,7 @@ function _repositionGroupElement(groupEl, previousEl) {
     previousEl.after(groupEl);
     return;
   }
-  
+
   if (!previousEl && _groupsContainer.firstChild !== groupEl) {
     _groupsContainer.insertBefore(groupEl, _groupsContainer.firstChild);
   }
@@ -3626,7 +3665,7 @@ function _handleStorageChange(change) {
 
   // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
   const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
-  
+
   // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
   if (changeAnalysis.hasDataChange) {
     lastLocalUpdateTime = Date.now();
@@ -3635,7 +3674,7 @@ function _handleStorageChange(change) {
       reason: changeAnalysis.changeReason
     });
   }
-  
+
   // v1.6.3.7 - FIX Issue #3: Skip renderUI if only metadata changed
   if (!changeAnalysis.requiresRender) {
     console.log('[Manager] STORAGE_LISTENER: Skipping renderUI (metadata-only change)', {
@@ -3662,7 +3701,7 @@ function _handleStorageChange(change) {
 function _analyzeStorageChange(oldValue, newValue) {
   const oldTabs = oldValue?.tabs || [];
   const newTabs = newValue?.tabs || [];
-  
+
   // Tab count change always requires render
   if (oldTabs.length !== newTabs.length) {
     return {
@@ -3673,10 +3712,10 @@ function _analyzeStorageChange(oldValue, newValue) {
       skipReason: null
     };
   }
-  
+
   // Check for structural changes using helper
   const changeResults = _checkTabChanges(oldTabs, newTabs);
-  
+
   // If only z-index changed, skip render
   if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
     return {
@@ -3687,7 +3726,7 @@ function _analyzeStorageChange(oldValue, newValue) {
       skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
     };
   }
-  
+
   // If there are data changes, render is required
   if (changeResults.hasDataChange) {
     return {
@@ -3698,7 +3737,7 @@ function _analyzeStorageChange(oldValue, newValue) {
       skipReason: null
     };
   }
-  
+
   // No changes detected
   return {
     requiresRender: false,
@@ -3719,9 +3758,11 @@ function _analyzeStorageChange(oldValue, newValue) {
  */
 function _checkSingleTabDataChanges(oldTab, newTab) {
   const reasons = [];
-  
+
   if (oldTab.originTabId !== newTab.originTabId) {
-    reasons.push(`originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`);
+    reasons.push(
+      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
+    );
   }
   if (oldTab.minimized !== newTab.minimized) {
     reasons.push(`minimized changed for ${newTab.id}`);
@@ -3735,7 +3776,7 @@ function _checkSingleTabDataChanges(oldTab, newTab) {
   if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
     reasons.push(`title/url changed for ${newTab.id}`);
   }
-  
+
   return {
     hasDataChange: reasons.length > 0,
     reasons
@@ -3752,36 +3793,36 @@ function _checkSingleTabDataChanges(oldTab, newTab) {
  */
 function _checkTabChanges(oldTabs, newTabs) {
   const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-  
+
   let hasDataChange = false;
   let hasMetadataOnlyChange = false;
   const zIndexChanges = [];
   const dataChangeReasons = [];
-  
+
   for (const newTab of newTabs) {
     const oldTab = oldTabMap.get(newTab.id);
-    
+
     if (!oldTab) {
       // New tab ID - requires render
       hasDataChange = true;
       dataChangeReasons.push(`New tab: ${newTab.id}`);
       continue;
     }
-    
+
     // Check for data changes
     const dataResult = _checkSingleTabDataChanges(oldTab, newTab);
     if (dataResult.hasDataChange) {
       hasDataChange = true;
       dataChangeReasons.push(...dataResult.reasons);
     }
-    
+
     // Check for metadata-only changes (z-index)
     if (oldTab.zIndex !== newTab.zIndex) {
       hasMetadataOnlyChange = true;
       zIndexChanges.push({ id: newTab.id, old: oldTab.zIndex, new: newTab.zIndex });
     }
   }
-  
+
   return {
     hasDataChange,
     hasMetadataOnlyChange,
@@ -4208,20 +4249,20 @@ function _scheduleNormalUpdate() {
  */
 async function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
-  
+
   try {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
     const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
       timestamp: Date.now()
     });
-    
+
     if (response?.success || response?.timedOut) {
       console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
         closedCount: response?.closedCount || 0,
         closedIds: response?.closedIds || [],
         timedOut: response?.timedOut || false
       });
-      
+
       // Re-render UI to reflect the change
       scheduleRender('close-minimized-success');
     } else {
@@ -4952,10 +4993,13 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
 
   try {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
-    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', { quickTabId, targetTabId });
-    
+    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', {
+      quickTabId,
+      targetTabId
+    });
+
     const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId });
-    
+
     _handleAdoptResponse(quickTabId, targetTabId, response);
   } catch (err) {
     console.error('[Manager] ❌ Error sending adopt command:', err);
@@ -4979,7 +5023,7 @@ function _handleAdoptResponse(quickTabId, targetTabId, response) {
       oldOriginTabId: response?.oldOriginTabId,
       timedOut: response?.timedOut || false
     });
-    
+
     // Update local tracking
     quickTabHostInfo.set(quickTabId, {
       hostTabId: targetTabId,
@@ -5018,7 +5062,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
     message: `${quickTabId} → tab-${targetTabId}`,
     timestamp: Date.now()
   });
-  
+
   // v1.6.3.7 - FIX Issue #7: Use standardized format for adoption flow tracking
   console.log('[Manager] ADOPTION_FLOW:', {
     quickTabId,
@@ -5028,7 +5072,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
     currentBrowserTabId,
     timestamp: Date.now()
   });
-  
+
   console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
     quickTabId,
     targetTabId,
@@ -5056,20 +5100,26 @@ function _isValidTargetTabId(targetTabId) {
  */
 async function _performAdoption(quickTabId, targetTabId) {
   const writeStartTime = Date.now();
-  
+
   // Read current state
   const stateResult = await _readStorageForAdoption(quickTabId, targetTabId);
   if (!stateResult.success) {
     return null;
   }
-  
+
   const { state, quickTab, tabIndex: _tabIndex, oldOriginTabId } = stateResult;
-  
+
   // Update and persist
   quickTab.originTabId = targetTabId;
   _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId);
-  
-  const persistResult = await _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime);
+
+  const persistResult = await _persistAdoption(
+    quickTabId,
+    targetTabId,
+    state,
+    oldOriginTabId,
+    writeStartTime
+  );
   return persistResult;
 }
 
