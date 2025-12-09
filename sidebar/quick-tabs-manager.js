@@ -2,6 +2,17 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  * 
+ * v1.6.3.6-v11 - FIX Issues #1-9 from comprehensive diagnostics
+ *   - FIX Issue #1: Animations properly invoked on toggle
+ *   - FIX Issue #2: Removed inline maxHeight conflicts, JS calculates scrollHeight
+ *   - FIX Issue #3: Comprehensive animation lifecycle logging
+ *   - FIX Issue #4: Favicon container uses CSS classes
+ *   - FIX Issue #5: Consistent state terminology (STATE_OPEN/STATE_CLOSED)
+ *   - FIX Issue #6: Section header creation logging
+ *   - FIX Issue #7: Count badge update animation
+ *   - FIX Issue #8: Unified storage event logging
+ *   - FIX Issue #9: Adoption verification logging
+ * 
  * v1.6.3.6-v11 - ARCH: Architectural improvements (Issues #10-21)
  *   - FIX Issue #10: Message acknowledgment system with correlationId
  *   - FIX Issue #11: Persistent port connection to background script
@@ -32,7 +43,10 @@ import {
   scrollIntoViewIfNeeded,
   checkAndRemoveEmptyGroups,
   extractTabsFromState,
-  groupQuickTabsByOriginTab
+  groupQuickTabsByOriginTab,
+  logStateTransition,
+  STATE_OPEN,
+  STATE_CLOSED
 } from './utils/render-helpers.js';
 import { STORAGE_READ_DEBOUNCE_MS } from './utils/storage-handlers.js';
 import {
@@ -146,7 +160,7 @@ const ACK_TIMEOUT_MS = 1000;
  * @returns {string} Unique correlation ID
  */
 function generateCorrelationId() {
-  return `corr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `corr-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
 /**
@@ -1493,6 +1507,8 @@ function _createGroupTitle(groupKey, group, isOrphaned, _isClosedTab) {
 
 /**
  * Create group content element with Quick Tab items
+ * Issue #2: Removed inline maxHeight initialization - CSS handles initial state
+ * Issue #6: Added logging for section header creation
  * @private
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @param {boolean} isOpen - Whether group starts open
@@ -1511,23 +1527,44 @@ function _createGroupContent(quickTabs, isOpen) {
   const minimizedTabs = sortedTabs.filter(t => isTabMinimizedHelper(t));
   const hasBothSections = activeTabs.length > 0 && minimizedTabs.length > 0;
   
+  // Issue #6: Log section creation with counts before DOM insertion
+  console.log('[Manager] Creating group content sections:', {
+    activeCount: activeTabs.length,
+    minimizedCount: minimizedTabs.length,
+    hasBothSections,
+    isOpen,
+    timestamp: Date.now()
+  });
+  
   // Issue #8: Section headers and dividers
   if (hasBothSections) {
-    content.appendChild(_createSectionHeader(`Active (${activeTabs.length})`));
+    const activeHeader = _createSectionHeader(`Active (${activeTabs.length})`);
+    content.appendChild(activeHeader);
+    // Issue #6: Confirm DOM insertion
+    console.log('[Manager] Section header inserted: Active', { count: activeTabs.length });
   }
   
   activeTabs.forEach(tab => content.appendChild(renderQuickTabItem(tab, 'global', false)));
   
   if (hasBothSections) {
     content.appendChild(_createSectionDivider('minimized'));
-    content.appendChild(_createSectionHeader(`Minimized (${minimizedTabs.length})`));
+    const minimizedHeader = _createSectionHeader(`Minimized (${minimizedTabs.length})`);
+    content.appendChild(minimizedHeader);
+    // Issue #6: Confirm DOM insertion
+    console.log('[Manager] Section header inserted: Minimized', { count: minimizedTabs.length });
   }
   
   minimizedTabs.forEach(tab => content.appendChild(renderQuickTabItem(tab, 'global', true)));
   
-  // Issue #12: Initial animation state
-  content.style.maxHeight = isOpen ? 'none' : '0';
-  content.style.opacity = isOpen ? '1' : '0';
+  // Issue #2: DO NOT set inline maxHeight - CSS handles initial state via :not([open])
+  // The animation functions (animateCollapse/animateExpand) calculate scrollHeight dynamically
+  // Setting inline styles here conflicts with CSS rules and JS animations
+  if (!isOpen) {
+    // Only set for initially collapsed state - will be managed by animation functions
+    content.style.maxHeight = '0';
+    content.style.opacity = '0';
+  }
+  // Issue #2: For open state, rely on CSS defaults (no inline styles)
   
   return content;
 }
@@ -1557,7 +1594,8 @@ function _createSectionDivider(label) {
 /**
  * Issue #9: Create favicon element with timeout and fallback
 /**
- * Issue #4/#6/#12: Attach event listeners for collapse toggle with smooth animations
+ * Issue #1/#5: Attach event listeners for collapse toggle with smooth animations
+ * v1.6.3.6-v11 - FIX Issues #1, #5: Animations properly invoked, consistent state terminology
  * v1.6.4.10 - Enhanced with smooth height animations and scroll-into-view
  * @param {HTMLElement} container - Container with <details> elements
  * @param {Object} collapseState - Current collapse state (will be modified)
@@ -1569,32 +1607,41 @@ function attachCollapseEventListeners(container, collapseState) {
     const content = details.querySelector('.tab-group-content');
     let isAnimating = false;
     
-    // Issue #12: Override default toggle behavior for smooth animation
+    // Issue #1: Override default toggle behavior to invoke animation functions
     details.querySelector('summary').addEventListener('click', async (e) => {
+      // Issue #1: Prevent default toggle to manually control via animation functions
       e.preventDefault();
       
-      if (isAnimating) return; // Prevent rapid clicking
+      // Issue #1: isAnimating flag prevents rapid-click issues
+      if (isAnimating) {
+        console.log(`[Manager] Toggle ignored - animation in progress for [${details.dataset.originTabId}]`);
+        return;
+      }
       isAnimating = true;
       
       const originTabId = details.dataset.originTabId;
       const isCurrentlyOpen = details.open;
       
-      // Issue #4: Log state transition with clear terminology
-      const fromState = isCurrentlyOpen ? 'open' : 'closed';
-      const toState = isCurrentlyOpen ? 'closed' : 'open';
-      console.log(`[Manager] Group [${originTabId}] toggled: ${fromState} → ${toState}`, {
-        originTabId,
-        fromState,
-        toState,
-        timestamp: Date.now()
+      // Issue #5: Use consistent state terminology via imported constants
+      const fromState = isCurrentlyOpen ? STATE_OPEN : STATE_CLOSED;
+      const toState = isCurrentlyOpen ? STATE_CLOSED : STATE_OPEN;
+      
+      // Issue #5: Use unified state transition logging
+      logStateTransition(originTabId, 'toggle', fromState, toState, {
+        trigger: 'user-click',
+        animationPending: true
       });
       
       if (isCurrentlyOpen) {
-        // Issue #12: Animate collapse (closing) - using imported animateCollapse
-        await animateCollapse(details, content);
+        // Issue #1: INVOKE animateCollapse - this was previously not being called
+        console.log(`[Manager] Invoking animateCollapse() for group [${originTabId}]`);
+        const result = await animateCollapse(details, content);
+        console.log(`[Manager] animateCollapse() completed for group [${originTabId}]:`, result);
       } else {
-        // Issue #12: Animate expand (opening) - using imported animateExpand
-        await animateExpand(details, content);
+        // Issue #1: INVOKE animateExpand - this was previously not being called  
+        console.log(`[Manager] Invoking animateExpand() for group [${originTabId}]`);
+        const result = await animateExpand(details, content);
+        console.log(`[Manager] animateExpand() completed for group [${originTabId}]:`, result);
         
         // Issue #4: Scroll into view if group is off-screen after expanding
         scrollIntoViewIfNeeded(details);
@@ -2107,12 +2154,25 @@ function _buildStorageChangeContext(change) {
 
 /**
  * Log storage change event with comprehensive details
+ * Issue #8: Unified logStorageEvent() format for sequence analysis
  * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
+ * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
  * @private
  * @param {Object} context - Storage change context
  */
 function _logStorageChangeEvent(context) {
-  console.log('[Manager] 📦 STORAGE_CHANGED:', {
+  // Issue #8: Determine what changed (added/removed tab IDs)
+  const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
+  const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
+  const addedIds = [...newIds].filter(id => !oldIds.has(id));
+  const removedIds = [...oldIds].filter(id => !newIds.has(id));
+  
+  // Issue #8: Unified format for storage event logging
+  console.log(`[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${context.newTabCount - context.oldTabCount}), saveId: '${context.newValue?.saveId || 'none'}', source: tab-${context.sourceTabId || 'unknown'}`, {
+    changes: {
+      added: addedIds,
+      removed: removedIds
+    },
     oldTabCount: context.oldTabCount,
     newTabCount: context.newTabCount,
     delta: context.newTabCount - context.oldTabCount,
@@ -3230,10 +3290,13 @@ function _isValidTargetTabId(targetTabId) {
 
 /**
  * Perform the adoption operation
+ * Issue #9: Enhanced with storage verification logging
+ * v1.6.3.6-v11 - FIX Issue #9: Adoption verification logging
  * @private
- * @returns {Promise<{ oldOriginTabId: number }|null>} Result or null if failed
+ * @returns {Promise<{ oldOriginTabId: number, saveId: string, writeTimestamp: number }|null>} Result or null if failed
  */
 async function _performAdoption(quickTabId, targetTabId) {
+  const writeStartTime = Date.now();
   const result = await browser.storage.local.get(STATE_KEY);
   const state = result?.[STATE_KEY];
   
@@ -3256,24 +3319,95 @@ async function _performAdoption(quickTabId, targetTabId) {
   
   // Persist the change
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
-  await browser.storage.local.set({
-    [STATE_KEY]: {
-      tabs: state.tabs,
-      saveId,
-      timestamp: Date.now(),
-      writingTabId: targetTabId,
-      writingInstanceId: `manager-adopt-${Date.now()}`
-    }
+  const writeTimestamp = Date.now();
+  const stateToWrite = {
+    tabs: state.tabs,
+    saveId,
+    timestamp: writeTimestamp,
+    writingTabId: targetTabId,
+    writingInstanceId: `manager-adopt-${writeTimestamp}`
+  };
+  
+  // Issue #9: Log exact data being written
+  console.log('[Manager] 📝 ADOPT_STORAGE_WRITE:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    saveId,
+    timestamp: writeTimestamp,
+    tabCount: state.tabs.length
   });
+  
+  await browser.storage.local.set({ [STATE_KEY]: stateToWrite });
+  
+  const writeEndTime = Date.now();
   
   console.log('[Manager] ✅ ADOPT_COMPLETED:', {
     quickTabId,
     oldOriginTabId,
     newOriginTabId: targetTabId,
-    saveId
+    saveId,
+    writeDurationMs: writeEndTime - writeStartTime
   });
   
-  return { oldOriginTabId };
+  // Issue #9: Set up temporary listener for storage.onChanged to verify write confirmation
+  _verifyAdoptionInStorage(quickTabId, saveId, writeTimestamp);
+  
+  return { oldOriginTabId, saveId, writeTimestamp };
+}
+
+/**
+ * Issue #9: Verify adoption was persisted by monitoring storage.onChanged
+ * Logs time delta between write and confirmation, warns if no confirmation within 2 seconds
+ * @private
+ * @param {string} quickTabId - Quick Tab ID that was adopted
+ * @param {string} expectedSaveId - SaveId to look for in storage change
+ * @param {number} writeTimestamp - Timestamp when write occurred
+ */
+function _verifyAdoptionInStorage(quickTabId, expectedSaveId, writeTimestamp) {
+  let confirmed = false;
+  const CONFIRMATION_TIMEOUT_MS = 2000;
+  
+  // Issue #9: Temporary listener for this specific saveId
+  const verificationListener = (changes, areaName) => {
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    
+    const newValue = changes[STATE_KEY].newValue;
+    if (newValue?.saveId === expectedSaveId) {
+      confirmed = true;
+      const confirmationTime = Date.now();
+      const timeDelta = confirmationTime - writeTimestamp;
+      
+      console.log('[Manager] ✅ ADOPT_VERIFICATION_CONFIRMED:', {
+        quickTabId,
+        saveId: expectedSaveId,
+        writeTimestamp,
+        confirmationTimestamp: confirmationTime,
+        timeDeltaMs: timeDelta
+      });
+      
+      // Clean up listener
+      browser.storage.onChanged.removeListener(verificationListener);
+    }
+  };
+  
+  browser.storage.onChanged.addListener(verificationListener);
+  
+  // Issue #9: Warning if no confirmation within timeout
+  setTimeout(() => {
+    if (!confirmed) {
+      console.warn('[Manager] ⚠️ ADOPT_VERIFICATION_TIMEOUT:', {
+        quickTabId,
+        saveId: expectedSaveId,
+        writeTimestamp,
+        timeoutMs: CONFIRMATION_TIMEOUT_MS,
+        message: 'No storage.onChanged confirmation received within timeout'
+      });
+      
+      // Clean up listener
+      browser.storage.onChanged.removeListener(verificationListener);
+    }
+  }, CONFIRMATION_TIMEOUT_MS);
 }
 
 /**

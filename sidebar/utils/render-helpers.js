@@ -8,7 +8,14 @@
  * - Animation utilities
  * - Group rendering
  * 
- * @version 1.6.4.11
+ * @version 1.6.3.6-v11
+ * 
+ * v1.6.3.6-v11 - FIX Issues #1-9 from comprehensive diagnostics:
+ *   - Issue #1: Animations now properly invoked on toggle
+ *   - Issue #2: Removed inline maxHeight initialization conflicts
+ *   - Issue #3: Comprehensive animation lifecycle logging with phases
+ *   - Issue #4: Favicon container uses CSS classes instead of inline styles
+ *   - Issue #5: Consistent state terminology (STATE_OPEN/STATE_CLOSED)
  */
 
 // Animation timing
@@ -16,6 +23,19 @@ const ANIMATION_DURATION_MS = 350;
 
 // Favicon loading timeout
 const FAVICON_LOAD_TIMEOUT_MS = 2000;
+
+// Issue #5: Consistent state terminology constants
+const STATE_OPEN = 'open';
+const STATE_CLOSED = 'closed';
+
+// Animation phases for logging (Issue #3)
+const ANIMATION_PHASE = {
+  START: 'START',
+  CALC: 'CALC',
+  TRANSITION: 'TRANSITION',
+  COMPLETE: 'COMPLETE',
+  ERROR: 'ERROR'
+};
 
 /**
  * Compute hash of state for deduplication
@@ -79,6 +99,7 @@ export function createFavicon(url) {
 
 /**
  * Create group favicon element with timeout and fallback
+ * Issue #4: Uses CSS classes instead of inline styles for consistent sizing
  * @param {HTMLElement} container - Container element to append to
  * @param {number|string} groupKey - Group key (originTabId or 'orphaned')
  * @param {Object} group - Group object with tabInfo
@@ -87,7 +108,7 @@ export function createGroupFavicon(container, groupKey, group) {
   // Orphaned group uses warning folder icon
   if (groupKey === 'orphaned') {
     const folderIcon = document.createElement('span');
-    folderIcon.className = 'tab-favicon-fallback';
+    folderIcon.className = 'tab-favicon-fallback visible'; // Issue #4: visible class for immediate display
     folderIcon.textContent = '⚠️';
     container.appendChild(folderIcon);
     return;
@@ -96,27 +117,23 @@ export function createGroupFavicon(container, groupKey, group) {
   // Closed tabs get special icon
   if (!group.tabInfo) {
     const closedIcon = document.createElement('span');
-    closedIcon.className = 'tab-favicon-fallback';
+    closedIcon.className = 'tab-favicon-fallback visible'; // Issue #4: visible class for immediate display
     closedIcon.textContent = '🚫';
     container.appendChild(closedIcon);
     return;
   }
   
-  // Create container for favicon (to handle loading/fallback swap)
+  // Issue #4: Create container for favicon using CSS class only (no inline display style)
   const faviconContainer = document.createElement('span');
   faviconContainer.className = 'tab-favicon-container';
-  faviconContainer.style.display = 'inline-flex';
-  faviconContainer.style.alignItems = 'center';
-  faviconContainer.style.width = '16px';
-  faviconContainer.style.height = '16px';
-  faviconContainer.style.marginRight = '4px';
+  // Issue #4: Removed inline display: 'inline-flex' - rely on CSS class
   
   if (group.tabInfo.favIconUrl) {
     _createFaviconWithTimeout(faviconContainer, group.tabInfo.favIconUrl, groupKey);
   } else {
     // No favicon URL - use fallback directly
     const fallback = document.createElement('span');
-    fallback.className = 'tab-favicon-fallback';
+    fallback.className = 'tab-favicon-fallback visible'; // Issue #4: visible class for immediate display
     fallback.textContent = '🌐';
     faviconContainer.appendChild(fallback);
   }
@@ -126,6 +143,7 @@ export function createGroupFavicon(container, groupKey, group) {
 
 /**
  * Create favicon image with timeout and fallback handling
+ * Issue #4: Both image and fallback use identical CSS-based sizing (no inline styles)
  * @private
  */
 function _createFaviconWithTimeout(container, faviconUrl, groupKey) {
@@ -134,17 +152,19 @@ function _createFaviconWithTimeout(container, faviconUrl, groupKey) {
   favicon.alt = '';
   
   // Pre-create fallback (avoid dynamic insertion)
+  // Issue #4: Uses CSS class for sizing - no inline display style on init
   const fallback = document.createElement('span');
   fallback.className = 'tab-favicon-fallback';
   fallback.textContent = '🌐';
-  fallback.style.display = 'none';
+  // Issue #4: Initially hidden via CSS (display: none by default without .visible class)
   
   // Loading timeout
   let loaded = false;
   const timeoutId = setTimeout(() => {
     if (!loaded) {
       favicon.style.display = 'none';
-      fallback.style.display = 'inline-flex';
+      // Issue #4: Show fallback using CSS class only (no inline style)
+      fallback.classList.add('visible');
       console.log(`[Manager] Favicon timeout for Tab [${groupKey}], loading fallback`, {
         tabId: groupKey,
         faviconUrl: faviconUrl?.substring(0, 50),
@@ -163,7 +183,8 @@ function _createFaviconWithTimeout(container, faviconUrl, groupKey) {
     loaded = true;
     clearTimeout(timeoutId);
     favicon.style.display = 'none';
-    fallback.style.display = 'inline-flex';
+    // Issue #4: Show fallback using CSS class only (no inline style)
+    fallback.classList.add('visible');
   };
   
   favicon.src = faviconUrl;
@@ -174,89 +195,175 @@ function _createFaviconWithTimeout(container, faviconUrl, groupKey) {
 
 /**
  * Animate collapse (closing) of a details element
+ * Issue #1: This function is invoked by attachCollapseEventListeners
+ * Issue #3: Comprehensive lifecycle logging with phases
  * @param {HTMLDetailsElement} details - Details element
  * @param {HTMLElement} content - Content element to animate
+ * @returns {Promise<{success: boolean, originTabId: string, durationMs: number}>}
  */
 export async function animateCollapse(details, content) {
+  const startTime = Date.now();
   const originTabId = details.dataset.originTabId;
   
-  console.log(`[Manager] Group [${originTabId}] collapse animation started`, {
+  // Issue #3: Phase START logging
+  console.log(`[Manager] Animation [${originTabId}] [collapse] [${ANIMATION_PHASE.START}]: Beginning collapse animation`, {
     originTabId,
-    startHeight: content.scrollHeight,
-    timestamp: Date.now()
+    timestamp: startTime
   });
   
-  // Get current height
-  const startHeight = content.scrollHeight;
-  
-  // Set explicit height to enable transition
-  content.style.maxHeight = `${startHeight}px`;
-  content.style.overflow = 'hidden';
-  
-  // Force reflow
-  content.offsetHeight;
-  
-  // Animate to 0
-  content.style.maxHeight = '0';
-  content.style.opacity = '0';
-  
-  // Wait for animation to complete
-  await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION_MS));
-  
-  // Actually close the details
-  details.open = false;
-  
-  console.log(`[Manager] Group [${originTabId}] collapse animation completed`, {
-    originTabId,
-    finalState: 'closed',
-    durationMs: ANIMATION_DURATION_MS
-  });
+  try {
+    // Issue #3: Phase CALC logging - height calculation
+    const startHeight = content.scrollHeight;
+    console.log(`[Manager] Animation [${originTabId}] [collapse] [${ANIMATION_PHASE.CALC}]: Height calculated`, {
+      originTabId,
+      startHeight,
+      duration: Date.now() - startTime
+    });
+    
+    // Issue #2: Set explicit height to enable transition (calculated from scrollHeight)
+    content.style.maxHeight = `${startHeight}px`;
+    content.style.overflow = 'hidden';
+    
+    // Force reflow to ensure the browser registers the starting state
+    content.offsetHeight;
+    
+    // Issue #3: Phase TRANSITION logging
+    console.log(`[Manager] Animation [${originTabId}] [collapse] [${ANIMATION_PHASE.TRANSITION}]: Transitioning to collapsed`, {
+      originTabId,
+      fromHeight: startHeight,
+      toHeight: 0,
+      animationMs: ANIMATION_DURATION_MS
+    });
+    
+    // Animate to 0
+    content.style.maxHeight = '0';
+    content.style.opacity = '0';
+    
+    // Wait for animation to complete
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION_MS));
+    
+    // Actually close the details
+    details.open = false;
+    
+    // Issue #2: Clean up inline styles after animation
+    content.style.maxHeight = '';
+    content.style.overflow = '';
+    content.style.opacity = '';
+    
+    const durationMs = Date.now() - startTime;
+    
+    // Issue #3: Phase COMPLETE logging
+    console.log(`[Manager] Animation [${originTabId}] [collapse] [${ANIMATION_PHASE.COMPLETE}]: ${startHeight}px → 0px`, {
+      originTabId,
+      finalState: STATE_CLOSED,
+      measuredDurationMs: durationMs,
+      expectedDurationMs: ANIMATION_DURATION_MS
+    });
+    
+    return { success: true, originTabId, durationMs };
+  } catch (err) {
+    const durationMs = Date.now() - startTime;
+    
+    // Issue #3: Phase ERROR logging
+    console.error(`[Manager] Animation [${originTabId}] [collapse] [${ANIMATION_PHASE.ERROR}]: Animation failed`, {
+      originTabId,
+      error: err.message,
+      durationMs
+    });
+    
+    // Fallback: just close without animation
+    details.open = false;
+    return { success: false, originTabId, durationMs, error: err.message };
+  }
 }
 
 /**
  * Animate expand (opening) of a details element
+ * Issue #1: This function is invoked by attachCollapseEventListeners
+ * Issue #3: Comprehensive lifecycle logging with phases
  * @param {HTMLDetailsElement} details - Details element
  * @param {HTMLElement} content - Content element to animate
+ * @returns {Promise<{success: boolean, originTabId: string, durationMs: number, targetHeight: number}>}
  */
 export async function animateExpand(details, content) {
+  const startTime = Date.now();
   const originTabId = details.dataset.originTabId;
   
-  console.log(`[Manager] Group [${originTabId}] expand animation started`, {
+  // Issue #3: Phase START logging
+  console.log(`[Manager] Animation [${originTabId}] [expand] [${ANIMATION_PHASE.START}]: Beginning expand animation`, {
     originTabId,
-    timestamp: Date.now()
+    timestamp: startTime
   });
   
-  // Open the details first (to measure content height)
-  details.open = true;
-  
-  // Set initial state for animation
-  content.style.maxHeight = '0';
-  content.style.opacity = '0';
-  content.style.overflow = 'hidden';
-  
-  // Force reflow
-  content.offsetHeight;
-  
-  // Get target height
-  const targetHeight = content.scrollHeight;
-  
-  // Animate to full height
-  content.style.maxHeight = `${targetHeight}px`;
-  content.style.opacity = '1';
-  
-  // Wait for animation to complete
-  await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION_MS));
-  
-  // Remove inline styles to allow natural sizing
-  content.style.maxHeight = 'none';
-  content.style.overflow = '';
-  
-  console.log(`[Manager] Group [${originTabId}] expand animation completed`, {
-    originTabId,
-    finalState: 'open',
-    targetHeight,
-    durationMs: ANIMATION_DURATION_MS
-  });
+  try {
+    // Open the details first (to measure content height)
+    details.open = true;
+    
+    // Issue #2: Set initial state for animation (start from 0)
+    content.style.maxHeight = '0';
+    content.style.opacity = '0';
+    content.style.overflow = 'hidden';
+    
+    // Force reflow to ensure browser registers starting state
+    content.offsetHeight;
+    
+    // Issue #3: Phase CALC logging - get target height after DOM is ready
+    const targetHeight = content.scrollHeight;
+    console.log(`[Manager] Animation [${originTabId}] [expand] [${ANIMATION_PHASE.CALC}]: Height calculated`, {
+      originTabId,
+      targetHeight,
+      duration: Date.now() - startTime
+    });
+    
+    // Issue #3: Phase TRANSITION logging
+    console.log(`[Manager] Animation [${originTabId}] [expand] [${ANIMATION_PHASE.TRANSITION}]: Transitioning to expanded`, {
+      originTabId,
+      fromHeight: 0,
+      toHeight: targetHeight,
+      animationMs: ANIMATION_DURATION_MS
+    });
+    
+    // Animate to full height
+    content.style.maxHeight = `${targetHeight}px`;
+    content.style.opacity = '1';
+    
+    // Wait for animation to complete
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION_MS));
+    
+    // Issue #2: Remove inline styles to allow natural sizing
+    content.style.maxHeight = '';
+    content.style.overflow = '';
+    content.style.opacity = '';
+    
+    const durationMs = Date.now() - startTime;
+    
+    // Issue #3: Phase COMPLETE logging
+    console.log(`[Manager] Animation [${originTabId}] [expand] [${ANIMATION_PHASE.COMPLETE}]: 0px → ${targetHeight}px`, {
+      originTabId,
+      finalState: STATE_OPEN,
+      targetHeight,
+      measuredDurationMs: durationMs,
+      expectedDurationMs: ANIMATION_DURATION_MS
+    });
+    
+    return { success: true, originTabId, durationMs, targetHeight };
+  } catch (err) {
+    const durationMs = Date.now() - startTime;
+    
+    // Issue #3: Phase ERROR logging
+    console.error(`[Manager] Animation [${originTabId}] [expand] [${ANIMATION_PHASE.ERROR}]: Animation failed`, {
+      originTabId,
+      error: err.message,
+      durationMs
+    });
+    
+    // Fallback: just open without animation
+    details.open = true;
+    content.style.maxHeight = '';
+    content.style.overflow = '';
+    content.style.opacity = '';
+    return { success: false, originTabId, durationMs, error: err.message };
+  }
 }
 
 /**
@@ -481,4 +588,30 @@ export function sortGroupKeys(groupKeys, groups) {
   });
 }
 
-export { ANIMATION_DURATION_MS, FAVICON_LOAD_TIMEOUT_MS };
+/**
+ * Issue #5: Unified state transition logging utility
+ * Creates consistent logs for state changes throughout the Manager
+ * @param {string} groupId - Group ID (originTabId or 'orphaned')
+ * @param {string} operation - Operation type (toggle, collapse, expand, etc.)
+ * @param {string} fromState - Previous state (use STATE_OPEN or STATE_CLOSED)
+ * @param {string} toState - New state (use STATE_OPEN or STATE_CLOSED)
+ * @param {Object} metadata - Additional context
+ */
+export function logStateTransition(groupId, operation, fromState, toState, metadata = {}) {
+  console.log(`[Manager] STATE_TRANSITION [${groupId}] [${operation}]: ${fromState} → ${toState}`, {
+    groupId,
+    operation,
+    fromState,
+    toState,
+    timestamp: Date.now(),
+    ...metadata
+  });
+}
+
+export { 
+  ANIMATION_DURATION_MS, 
+  FAVICON_LOAD_TIMEOUT_MS,
+  STATE_OPEN,
+  STATE_CLOSED,
+  ANIMATION_PHASE
+};

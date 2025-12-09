@@ -1,4 +1,10 @@
 /* Quick Tabs Manager Sidebar Styles */
+/* v1.6.3.6-v11 - FIX Issues #1-9: Comprehensive diagnostics fixes
+ * - Issue #1: Animation timing coordinated at 0.35s
+ * - Issue #2: Removed inline maxHeight conflicts
+ * - Issue #4: Favicon container uses CSS classes only
+ * - Issue #12: Animation support via CSS variables
+ */
 /* v1.6.4.10 - FIX Issues #1-12: Comprehensive UI/UX improvements */
 
 :root {
@@ -409,12 +415,25 @@ html {
   object-fit: contain;
 }
 
-/* Issue #9: Favicon fallback emoji styling */
+/* Issue #4: Favicon container class-based styling (no inline styles needed)
+ * v1.6.3.6-v11 - FIX Issue #4: Both image and fallback use identical CSS constraints
+ */
+.tab-favicon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+/* Issue #4/#9: Favicon fallback emoji styling - hidden by default */
 .tab-favicon-fallback {
   font-size: 14px;
   width: 16px;
   height: 16px;
-  display: inline-flex;
+  display: none; /* Issue #4: Hidden by default, shown via .visible class */
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -422,6 +441,11 @@ html {
   line-height: 1;
   /* Issue #9: Ensure emoji doesn't overflow */
   overflow: hidden;
+}
+
+/* Issue #4: Fallback visible state (toggled via JS using class only, no inline display) */
+.tab-favicon-fallback.visible {
+  display: inline-flex;
 }
 
 /* Truncated tab title */
