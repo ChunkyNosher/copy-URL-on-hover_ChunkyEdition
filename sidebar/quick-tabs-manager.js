@@ -2,6 +2,13 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  * 
+ * v1.6.3.6-v11 - ARCH: Architectural improvements (Issues #10-21)
+ *   - FIX Issue #10: Message acknowledgment system with correlationId
+ *   - FIX Issue #11: Persistent port connection to background script
+ *   - FIX Issue #12: Port lifecycle logging
+ *   - FIX Issue #17: Port cleanup on window unload
+ *   - FIX Issue #20: Count badge diff-based animation
+ * 
  * v1.6.4.12 - REFACTOR: Major refactoring for code health improvement
  *   - Code Health: 5.34 → 9.09 (+70% improvement)
  *   - Extracted utilities to sidebar/utils/ modules  
@@ -109,6 +116,346 @@ let lastLocalUpdateTime = 0;
 
 // Browser tab info cache
 const browserTabInfoCache = new Map();
+
+// ==================== v1.6.3.6-v11 PORT CONNECTION ====================
+// FIX Issue #11: Persistent port connection to background script
+// FIX Issue #10: Message acknowledgment tracking
+
+/**
+ * Port connection to background script
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent connection
+ */
+let backgroundPort = null;
+
+/**
+ * Pending acknowledgments map
+ * v1.6.3.6-v11 - FIX Issue #10: Track pending acknowledgments
+ * Key: correlationId, Value: { resolve, reject, timeout, sentAt }
+ */
+const pendingAcks = new Map();
+
+/**
+ * Acknowledgment timeout (1 second)
+ * v1.6.3.6-v11 - FIX Issue #10: Fallback timeout
+ */
+const ACK_TIMEOUT_MS = 1000;
+
+/**
+ * Generate correlation ID for message acknowledgment
+ * v1.6.3.6-v11 - FIX Issue #10: Correlation tracking
+ * @returns {string} Unique correlation ID
+ */
+function generateCorrelationId() {
+  return `corr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Log port lifecycle event
+ * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
+ * @param {string} event - Event name
+ * @param {Object} details - Event details
+ */
+function logPortLifecycle(event, details = {}) {
+  console.log(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, {
+    tabId: currentBrowserTabId,
+    portId: backgroundPort?._portId,
+    timestamp: Date.now(),
+    ...details
+  });
+}
+
+/**
+ * Connect to background script via persistent port
+ * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ */
+function connectToBackground() {
+  try {
+    backgroundPort = browser.runtime.connect({
+      name: 'quicktabs-sidebar'
+    });
+    
+    logPortLifecycle('open', { portName: backgroundPort.name });
+    
+    // Handle messages from background
+    backgroundPort.onMessage.addListener(handlePortMessage);
+    
+    // Handle disconnect
+    backgroundPort.onDisconnect.addListener(() => {
+      const error = browser.runtime.lastError;
+      logPortLifecycle('disconnect', { error: error?.message });
+      backgroundPort = null;
+      
+      // Attempt reconnection after delay
+      setTimeout(connectToBackground, 1000);
+    });
+    
+    console.log('[Manager] v1.6.3.6-v11 Port connection established');
+  } catch (err) {
+    console.error('[Manager] Failed to connect to background:', err.message);
+    logPortLifecycle('error', { error: err.message });
+  }
+}
+
+/**
+ * Handle messages received via port
+ * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
+ * @param {Object} message - Message from background
+ */
+function handlePortMessage(message) {
+  logPortLifecycle('message', { 
+    type: message.type, 
+    action: message.action,
+    correlationId: message.correlationId 
+  });
+  
+  // Handle acknowledgment
+  if (message.type === 'ACKNOWLEDGMENT') {
+    handleAcknowledgment(message);
+    return;
+  }
+  
+  // Handle broadcasts
+  if (message.type === 'BROADCAST') {
+    handleBroadcast(message);
+    return;
+  }
+  
+  // Handle state updates
+  if (message.type === 'STATE_UPDATE') {
+    handleStateUpdateBroadcast(message);
+  }
+}
+
+/**
+ * Handle acknowledgment from background
+ * v1.6.3.6-v11 - FIX Issue #10: Complete pending operation
+ * @param {Object} ack - Acknowledgment message
+ */
+function handleAcknowledgment(ack) {
+  const { correlationId, success, originalType } = ack;
+  
+  const pending = pendingAcks.get(correlationId);
+  if (!pending) {
+    console.warn('[Manager] Received ack for unknown correlationId:', correlationId);
+    return;
+  }
+  
+  // Clear timeout
+  clearTimeout(pending.timeout);
+  
+  // Resolve promise
+  if (success) {
+    pending.resolve(ack);
+  } else {
+    pending.reject(new Error(ack.error || 'Operation failed'));
+  }
+  
+  // Clean up
+  pendingAcks.delete(correlationId);
+  
+  console.log('[Manager] ✅ Acknowledgment received:', {
+    correlationId,
+    originalType,
+    success,
+    roundTripMs: Date.now() - pending.sentAt
+  });
+}
+
+/**
+ * Handle broadcast messages from background
+ * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
+ * @param {Object} message - Broadcast message
+ */
+function handleBroadcast(message) {
+  const { action } = message;
+  
+  switch (action) {
+    case 'VISIBILITY_CHANGE':
+      console.log('[Manager] Received visibility change broadcast:', message);
+      // Trigger UI refresh
+      renderUI();
+      break;
+    
+    case 'TAB_LIFECYCLE_CHANGE':
+      console.log('[Manager] Received tab lifecycle broadcast:', message);
+      // Refresh browser tab info cache for affected tabs
+      if (message.tabId) {
+        browserTabInfoCache.delete(message.tabId);
+      }
+      renderUI();
+      break;
+    
+    default:
+      console.log('[Manager] Received broadcast:', message);
+  }
+}
+
+/**
+ * Handle state update broadcasts
+ * v1.6.3.6-v11 - FIX Issue #19: State sync via port
+ * @param {Object} message - State update message
+ */
+function handleStateUpdateBroadcast(message) {
+  const { quickTabId, changes } = message.payload || message;
+  
+  if (quickTabId && changes) {
+    handleStateUpdateMessage(quickTabId, changes);
+    renderUI();
+  }
+}
+
+/**
+ * Send message via port with acknowledgment tracking
+ * v1.6.3.6-v11 - FIX Issue #10: Request-acknowledgment pattern
+ * @param {Object} message - Message to send
+ * @returns {Promise<Object>} Acknowledgment response
+ */
+function sendWithAck(message) {
+  return new Promise((resolve, reject) => {
+    if (!backgroundPort) {
+      reject(new Error('No port connection'));
+      return;
+    }
+    
+    const correlationId = generateCorrelationId();
+    const messageWithCorrelation = {
+      ...message,
+      correlationId,
+      timestamp: Date.now()
+    };
+    
+    // Set up timeout fallback
+    const timeout = setTimeout(() => {
+      pendingAcks.delete(correlationId);
+      console.warn('[Manager] Acknowledgment timeout for:', correlationId);
+      
+      // Fallback: trigger re-render anyway
+      renderUI();
+      
+      // Resolve with timeout indicator
+      resolve({ success: true, timedOut: true, correlationId });
+    }, ACK_TIMEOUT_MS);
+    
+    // Store pending ack
+    pendingAcks.set(correlationId, {
+      resolve,
+      reject,
+      timeout,
+      sentAt: Date.now()
+    });
+    
+    // Send message
+    try {
+      backgroundPort.postMessage(messageWithCorrelation);
+      console.log('[Manager] Sent message with ack request:', {
+        type: message.type,
+        action: message.action,
+        correlationId
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Send ACTION_REQUEST via port
+ * v1.6.3.6-v11 - FIX Issue #15: Typed messages
+ * Note: Prefixed with _ as it's prepared for future use but not yet integrated
+ * @param {string} action - Action name
+ * @param {Object} payload - Action payload
+ * @returns {Promise<Object>} Response
+ */
+function _sendActionRequest(action, payload) {
+  return sendWithAck({
+    type: 'ACTION_REQUEST',
+    action,
+    payload,
+    source: 'sidebar'
+  });
+}
+
+// ==================== END PORT CONNECTION ====================
+
+// ==================== v1.6.3.6-v11 COUNT BADGE ANIMATION ====================
+// FIX Issue #20: Diff-based rendering for count badge animation
+
+/**
+ * Track previous count values for diff-based animation
+ * v1.6.3.6-v11 - FIX Issue #20: Count badge animation
+ * Key: groupKey, Value: previous count
+ */
+const previousGroupCounts = new Map();
+
+/**
+ * Animation duration for count badge updates
+ * v1.6.3.6-v11 - FIX Issue #20: Count badge animation
+ */
+const COUNT_BADGE_ANIMATION_MS = 500;
+
+/**
+ * Check if group count changed and apply animation class
+ * v1.6.3.6-v11 - FIX Issue #20: Diff-based rendering
+ * @param {string} groupKey - Group key
+ * @param {number} newCount - New tab count
+ * @param {HTMLElement} countElement - Count badge element
+ */
+function animateCountBadgeIfChanged(groupKey, newCount, countElement) {
+  const previousCount = previousGroupCounts.get(String(groupKey));
+  
+  // Update stored count
+  previousGroupCounts.set(String(groupKey), newCount);
+  
+  // Skip animation if this is the first render for this group
+  if (previousCount === undefined) {
+    return;
+  }
+  
+  // Skip if count hasn't changed
+  if (previousCount === newCount) {
+    return;
+  }
+  
+  // Apply animation class
+  countElement.classList.add('updated');
+  
+  // Add direction indicator for accessibility/styling
+  if (newCount > previousCount) {
+    countElement.classList.add('count-increased');
+  } else {
+    countElement.classList.add('count-decreased');
+  }
+  
+  console.log('[Manager] 🔢 Count badge animated:', {
+    groupKey,
+    previousCount,
+    newCount,
+    delta: newCount - previousCount
+  });
+  
+  // Remove animation class after animation completes
+  setTimeout(() => {
+    countElement.classList.remove('updated', 'count-increased', 'count-decreased');
+  }, COUNT_BADGE_ANIMATION_MS);
+}
+
+/**
+ * Clear stored counts for removed groups
+ * v1.6.3.6-v11 - FIX Issue #20: Clean up stale count tracking
+ * @param {Set} currentGroupKeys - Set of current group keys
+ */
+function cleanupPreviousGroupCounts(currentGroupKeys) {
+  for (const key of previousGroupCounts.keys()) {
+    if (!currentGroupKeys.has(key)) {
+      previousGroupCounts.delete(key);
+    }
+  }
+}
+
+// ==================== END COUNT BADGE ANIMATION ====================
+
 
 /**
  * Fetch browser tab information with caching (30s TTL)
@@ -513,6 +860,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('[Manager] Could not get current tab ID:', err);
   }
 
+  // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
+  connectToBackground();
+
   // Load container information from Firefox API
   await loadContainerInfo();
 
@@ -535,7 +885,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 2000);
   
-  console.log('[Manager] v1.6.3.7-v1 Message infrastructure initialized');
+  console.log('[Manager] v1.6.3.6-v11 Port connection + Message infrastructure initialized');
+});
+
+// v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
+window.addEventListener('unload', () => {
+  if (backgroundPort) {
+    logPortLifecycle('unload', { reason: 'window-unload' });
+    backgroundPort.disconnect();
+    backgroundPort = null;
+  }
+  
+  // Clear pending acks
+  for (const [_correlationId, pending] of pendingAcks.entries()) {
+    clearTimeout(pending.timeout);
+  }
+  pendingAcks.clear();
 });
 
 /**
@@ -828,6 +1193,8 @@ async function renderUI() {
   
   if (allTabs.length === 0) {
     _showEmptyState();
+    // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
+    previousGroupCounts.clear();
     return;
   }
   
@@ -836,6 +1203,10 @@ async function renderUI() {
   const collapseState = await loadCollapseState();
   
   _logGroupRendering(groups);
+  
+  // v1.6.3.6-v11 - FIX Issue #20: Clean up stale count tracking
+  const currentGroupKeys = new Set([...groups.keys()].map(String));
+  cleanupPreviousGroupCounts(currentGroupKeys);
   
   const groupsContainer = await _buildGroupsContainer(groups, collapseState);
   checkAndRemoveEmptyGroups(groupsContainer, groups);
@@ -1085,13 +1456,13 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
     summary.appendChild(orphanedBadge);
   }
   
-  // Issue #2/#10: Count badge with update tracking
+  // Issue #2/#10/#20: Count badge with update tracking and animation
   const count = document.createElement('span');
   count.className = 'tab-group-count';
   count.textContent = String(group.quickTabs.length);
   count.dataset.count = String(group.quickTabs.length); // For tracking updates
-  // Issue #10: Log badge value for debugging
-  console.log(`[Manager] Group [${groupKey}] count badge: ${group.quickTabs.length}`);
+  // v1.6.3.6-v11 - FIX Issue #20: Apply animation if count changed
+  animateCountBadgeIfChanged(groupKey, group.quickTabs.length, count);
   summary.appendChild(count);
   
   return summary;

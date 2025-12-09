@@ -2380,6 +2380,604 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
 }
 // ==================== END BROWSER ACTION HANDLER ====================
 
+// ==================== v1.6.3.6-v11 PORT LIFECYCLE MANAGEMENT ====================
+// FIX Issue #11: Persistent port connections to keep background script alive
+// FIX Issue #12: Port lifecycle logging
+
+/**
+ * Port registry for tracking connected ports
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * Structure: portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount }
+ */
+const portRegistry = new Map();
+
+/**
+ * Port ID counter for unique identification
+ * v1.6.3.6-v11 - FIX Issue #12: Track port IDs
+ */
+let portIdCounter = 0;
+
+/**
+ * Port cleanup interval (5 minutes)
+ * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup
+ */
+const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Port inactivity threshold for logging warnings (10 minutes)
+ * v1.6.3.6-v11 - FIX Issue #17: Inactivity monitoring
+ */
+const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
+
+/**
+ * Generate unique port ID
+ * v1.6.3.6-v11 - FIX Issue #12: Port identification
+ * @returns {string} Unique port ID
+ */
+function generatePortId() {
+  portIdCounter++;
+  return `port-${Date.now()}-${portIdCounter}`;
+}
+
+/**
+ * Log port lifecycle event
+ * v1.6.3.6-v11 - FIX Issue #12: Comprehensive port logging
+ * @param {string} origin - Origin of the port (sidebar, content-tab-X)
+ * @param {string} event - Event type (open, close, disconnect, error, message)
+ * @param {Object} details - Event details
+ */
+function logPortLifecycle(origin, event, details = {}) {
+  console.log(`[Manager] PORT_LIFECYCLE [${origin}] [${event}]:`, {
+    tabId: details.tabId,
+    portId: details.portId,
+    timestamp: Date.now(),
+    ...details
+  });
+}
+
+/**
+ * Register a new port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
+ * @param {browser.runtime.Port} port - The connected port
+ * @param {string} origin - Origin identifier
+ * @param {number|null} tabId - Tab ID (if from content script)
+ * @param {string} type - Port type ('sidebar' or 'content')
+ * @returns {string} Generated port ID
+ */
+function registerPort(port, origin, tabId, type) {
+  const portId = generatePortId();
+  
+  portRegistry.set(portId, {
+    port,
+    origin,
+    tabId,
+    type,
+    connectedAt: Date.now(),
+    lastMessageAt: null,
+    messageCount: 0
+  });
+  
+  logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
+  
+  return portId;
+}
+
+/**
+ * Unregister a port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
+ * @param {string} portId - Port ID to unregister
+ * @param {string} reason - Reason for disconnect
+ */
+function unregisterPort(portId, reason = 'disconnect') {
+  const portInfo = portRegistry.get(portId);
+  if (portInfo) {
+    logPortLifecycle(portInfo.origin, 'close', {
+      tabId: portInfo.tabId,
+      portId,
+      reason,
+      messageCount: portInfo.messageCount,
+      duration: Date.now() - portInfo.connectedAt
+    });
+    portRegistry.delete(portId);
+  }
+}
+
+/**
+ * Update port activity timestamp
+ * v1.6.3.6-v11 - FIX Issue #12: Track port activity
+ * @param {string} portId - Port ID
+ */
+function updatePortActivity(portId) {
+  const portInfo = portRegistry.get(portId);
+  if (portInfo) {
+    portInfo.lastMessageAt = Date.now();
+    portInfo.messageCount++;
+  }
+}
+
+/**
+ * Check if a port's tab still exists
+ * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting in cleanupStalePorts
+ * @param {Object} portInfo - Port info object
+ * @returns {Promise<boolean>} True if tab exists or port is not content type
+ */
+async function _checkPortTabExists(portInfo) {
+  if (portInfo.type !== 'content' || !portInfo.tabId) {
+    return true;
+  }
+  
+  try {
+    await browser.tabs.get(portInfo.tabId);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+/**
+ * Check if a port is inactive (for logging purposes)
+ * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID
+ */
+function _checkPortInactivity(portInfo, now, portId) {
+  const lastActivity = portInfo.lastMessageAt || portInfo.connectedAt;
+  if ((now - lastActivity) > PORT_INACTIVITY_THRESHOLD_MS) {
+    console.warn('[Background] PORT_CLEANUP: Port has been inactive:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      inactiveMs: now - lastActivity
+    });
+  }
+}
+
+/**
+ * Clean up stale ports (e.g., from closed tabs)
+ * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
+ */
+async function cleanupStalePorts() {
+  console.log('[Background] PORT_CLEANUP: Starting periodic port cleanup...');
+  
+  const now = Date.now();
+  const stalePorts = [];
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const tabExists = await _checkPortTabExists(portInfo);
+    if (!tabExists) {
+      stalePorts.push({ portId, reason: 'tab-closed' });
+      continue;
+    }
+    
+    _checkPortInactivity(portInfo, now, portId);
+  }
+  
+  // Remove stale ports
+  for (const { portId, reason } of stalePorts) {
+    unregisterPort(portId, reason);
+  }
+  
+  console.log('[Background] PORT_CLEANUP: Complete.', {
+    removedCount: stalePorts.length,
+    remainingPorts: portRegistry.size
+  });
+}
+
+// Start periodic cleanup
+setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
+
+/**
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * @param {browser.runtime.Port} port - The connecting port
+ */
+function handlePortConnect(port) {
+  // Parse port name to determine origin
+  // Format: "quicktabs-{type}-{tabId}" (e.g., "quicktabs-sidebar" or "quicktabs-content-123")
+  const nameParts = port.name.split('-');
+  const type = nameParts[1] || 'unknown';
+  const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : (port.sender?.tab?.id || null);
+  const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+  
+  const portId = registerPort(port, origin, tabId, type);
+  
+  // Store portId on the port for later reference
+  port._portId = portId;
+  
+  // Handle messages from this port
+  port.onMessage.addListener((message) => {
+    handlePortMessage(port, portId, message);
+  });
+  
+  // Handle port disconnect
+  port.onDisconnect.addListener(() => {
+    const error = browser.runtime.lastError;
+    if (error) {
+      logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
+    }
+    unregisterPort(portId, 'client-disconnect');
+  });
+}
+
+/**
+ * Handle message received via port
+ * v1.6.3.6-v11 - FIX Issue #10: Message acknowledgment system
+ * @param {browser.runtime.Port} port - The port that sent the message
+ * @param {string} portId - Port ID
+ * @param {Object} message - The message
+ */
+async function handlePortMessage(port, portId, message) {
+  const portInfo = portRegistry.get(portId);
+  updatePortActivity(portId);
+  
+  logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
+    portId,
+    tabId: portInfo?.tabId,
+    messageType: message.type,
+    correlationId: message.correlationId
+  });
+  
+  // Route message based on type
+  const response = await routePortMessage(message, portInfo);
+  
+  // Send acknowledgment if correlationId present
+  if (message.correlationId) {
+    const ack = {
+      type: 'ACKNOWLEDGMENT',
+      correlationId: message.correlationId,
+      originalType: message.type,
+      success: response?.success ?? true,
+      timestamp: Date.now(),
+      ...response
+    };
+    
+    try {
+      port.postMessage(ack);
+      logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
+        portId,
+        correlationId: message.correlationId,
+        success: ack.success
+      });
+    } catch (err) {
+      console.error('[Background] Failed to send acknowledgment:', err.message);
+    }
+  }
+}
+
+/**
+ * Route port message to appropriate handler
+ * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
+ * @param {Object} message - Message to route
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Handler response
+ */
+function routePortMessage(message, portInfo) {
+  const { type, action } = message;
+  
+  // Route by message type (v1.6.3.6-v11: FIX Issue #15)
+  switch (type) {
+    case 'ACTION_REQUEST':
+      return handleActionRequest(message, portInfo);
+    
+    case 'STATE_UPDATE':
+      return handleStateUpdate(message, portInfo);
+    
+    case 'BROADCAST':
+      return handleBroadcastRequest(message, portInfo);
+    
+    default:
+      // Fallback to action-based routing for backwards compatibility
+      if (action) {
+        return handleLegacyAction(message, portInfo);
+      }
+      console.warn('[Background] Unknown message type:', type);
+      return Promise.resolve({ success: false, error: 'Unknown message type' });
+  }
+}
+
+/**
+ * Handle ACTION_REQUEST type messages
+ * v1.6.3.6-v11 - FIX Issue #15: Action request handling
+ * @param {Object} message - Action request message
+ * @param {Object} portInfo - Port info
+ */
+function handleActionRequest(message, portInfo) {
+  const { action, payload } = message;
+  
+  console.log('[Background] Handling ACTION_REQUEST:', { action, portInfo: portInfo?.origin });
+  
+  switch (action) {
+    case 'TOGGLE_GROUP':
+      // Manager toggle group - no storage write needed
+      return { success: true };
+    
+    case 'MINIMIZE_TAB':
+      return executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+    
+    case 'RESTORE_TAB':
+      return executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+    
+    case 'CLOSE_TAB':
+      return executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+    
+    case 'ADOPT_TAB':
+      return handleAdoptAction(payload);
+    
+    case 'DELETE_GROUP':
+      // TODO: Implement delete group
+      return { success: false, error: 'Not implemented' };
+    
+    default:
+      console.warn('[Background] Unknown action:', action);
+      return { success: false, error: `Unknown action: ${action}` };
+  }
+}
+
+/**
+ * Handle STATE_UPDATE type messages
+ * v1.6.3.6-v11 - FIX Issue #13: Background as sole writer
+ * @param {Object} message - State update message
+ * @param {Object} portInfo - Port info
+ */
+async function handleStateUpdate(message, portInfo) {
+  const { quickTabId, changes } = message.payload || {};
+  
+  console.log('[Background] Handling STATE_UPDATE:', { quickTabId, changes, source: portInfo?.origin });
+  
+  // Update global state
+  _updateGlobalQuickTabCache(quickTabId, changes, portInfo?.tabId);
+  
+  // v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+  const writeResult = await writeStateWithVerification();
+  
+  // v1.6.3.6-v11 - FIX Issue #19: Broadcast visibility changes to all ports
+  if (changes?.minimized !== undefined || changes?.visibility !== undefined) {
+    broadcastToAllPorts({
+      type: 'BROADCAST',
+      action: 'VISIBILITY_CHANGE',
+      quickTabId,
+      changes,
+      timestamp: Date.now()
+    });
+  }
+  
+  return writeResult;
+}
+
+/**
+ * Handle BROADCAST type messages
+ * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * @param {Object} message - Broadcast message
+ * @param {Object} portInfo - Port info
+ */
+function handleBroadcastRequest(message, portInfo) {
+  const excludePortId = portInfo ? portInfo.port?._portId : null;
+  
+  console.log('[Background] Broadcasting to all ports:', {
+    action: message.action,
+    excludePortId
+  });
+  
+  broadcastToAllPorts(message, excludePortId);
+  
+  return Promise.resolve({ success: true, broadcastedTo: portRegistry.size - (excludePortId ? 1 : 0) });
+}
+
+/**
+ * Handle legacy action-based messages (backwards compatibility)
+ * v1.6.3.6-v11 - Backwards compatibility with existing message format
+ * @param {Object} message - Legacy message
+ * @param {Object} portInfo - Port info
+ */
+function handleLegacyAction(message, portInfo) {
+  const { action, quickTabId } = message;
+  
+  console.log('[Background] Handling legacy action:', { action, quickTabId });
+  
+  // Map legacy actions to new handlers
+  if (action === 'MANAGER_COMMAND') {
+    return handleManagerCommand(message);
+  }
+  
+  if (action === 'QUICK_TAB_STATE_CHANGE') {
+    return handleQuickTabStateChange(message, { tab: { id: portInfo?.tabId } });
+  }
+  
+  return Promise.resolve({ success: false, error: 'Unknown legacy action' });
+}
+
+/**
+ * Handle adopt action (atomic single write)
+ * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * @param {Object} payload - Adoption payload
+ */
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId } = payload;
+  
+  console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
+  
+  // Read entire state
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = result?.quick_tabs_state_v2;
+  
+  if (!state?.tabs) {
+    return { success: false, error: 'No state to adopt from' };
+  }
+  
+  // Find and update the tab locally
+  const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
+  if (tabIndex === -1) {
+    return { success: false, error: 'Quick Tab not found' };
+  }
+  
+  const oldOriginTabId = state.tabs[tabIndex].originTabId;
+  state.tabs[tabIndex].originTabId = targetTabId;
+  
+  // Single atomic write
+  const saveId = `adopt-${quickTabId}-${Date.now()}`;
+  await browser.storage.local.set({
+    quick_tabs_state_v2: {
+      tabs: state.tabs,
+      saveId,
+      timestamp: Date.now(),
+      writingTabId: targetTabId,
+      writingInstanceId: `background-adopt-${Date.now()}`
+    }
+  });
+  
+  // Update global cache
+  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (cachedTab) {
+    cachedTab.originTabId = targetTabId;
+  }
+  
+  // Update host tracking
+  quickTabHostTabs.set(quickTabId, targetTabId);
+  
+  console.log('[Background] ADOPT_TAB complete:', { quickTabId, oldOriginTabId, newOriginTabId: targetTabId });
+  
+  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+}
+
+/**
+ * Write state to storage with verification
+ * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+ * @returns {Promise<Object>} Write result with verification status
+ */
+async function writeStateWithVerification() {
+  const saveId = `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const stateToWrite = {
+    tabs: globalQuickTabState.tabs,
+    saveId,
+    timestamp: Date.now()
+  };
+  
+  try {
+    // Write
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
+    
+    // v1.6.3.6-v11 - FIX Issue #14: Read-back verification
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const readBack = result?.quick_tabs_state_v2;
+    
+    const verified = readBack?.saveId === saveId;
+    
+    if (!verified) {
+      console.error('[Background] Storage write verification FAILED:', {
+        expectedSaveId: saveId,
+        actualSaveId: readBack?.saveId,
+        expectedTabs: stateToWrite.tabs.length,
+        actualTabs: readBack?.tabs?.length
+      });
+    } else {
+      console.log('[Background] Storage write verified:', {
+        saveId,
+        tabCount: stateToWrite.tabs.length
+      });
+    }
+    
+    return { success: verified, saveId, verified };
+  } catch (err) {
+    console.error('[Background] Storage write error:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Broadcast message to all connected ports
+ * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * @param {Object} message - Message to broadcast
+ * @param {string} excludePortId - Port ID to exclude from broadcast
+ */
+function broadcastToAllPorts(message, excludePortId = null) {
+  let sentCount = 0;
+  let errorCount = 0;
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portId === excludePortId) continue;
+    
+    try {
+      portInfo.port.postMessage(message);
+      sentCount++;
+    } catch (err) {
+      console.warn('[Background] Failed to broadcast to port:', { portId, error: err.message });
+      errorCount++;
+    }
+  }
+  
+  console.log('[Background] Broadcast complete:', {
+    action: message.action || message.type,
+    sentCount,
+    errorCount,
+    excludedPortId: excludePortId
+  });
+}
+
+// Register port connection listener
+browser.runtime.onConnect.addListener(handlePortConnect);
+
+console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
+
+// ==================== END PORT LIFECYCLE MANAGEMENT ====================
+
+// ==================== v1.6.3.6-v11 TAB LIFECYCLE EVENTS ====================
+// FIX Issue #16: Track browser tab lifecycle for orphan detection
+
+/**
+ * Handle browser tab removal
+ * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
+ * @param {number} tabId - ID of the removed tab
+ * @param {Object} removeInfo - Removal info
+ */
+function handleTabRemoved(tabId, removeInfo) {
+  console.log('[Background] TAB_REMOVED:', { tabId, removeInfo });
+  
+  // Find Quick Tabs that belonged to this tab
+  const orphanedQuickTabs = globalQuickTabState.tabs.filter(t => t.originTabId === tabId);
+  
+  if (orphanedQuickTabs.length === 0) {
+    console.log('[Background] No Quick Tabs affected by tab closure:', tabId);
+    return;
+  }
+  
+  console.log('[Background] Quick Tabs orphaned by tab closure:', {
+    tabId,
+    count: orphanedQuickTabs.length,
+    quickTabIds: orphanedQuickTabs.map(t => t.id)
+  });
+  
+  // Remove from host tracking
+  for (const qt of orphanedQuickTabs) {
+    quickTabHostTabs.delete(qt.id);
+  }
+  
+  // Broadcast tab lifecycle change to all connected ports
+  broadcastToAllPorts({
+    type: 'BROADCAST',
+    action: 'TAB_LIFECYCLE_CHANGE',
+    event: 'tab-removed',
+    tabId,
+    affectedQuickTabs: orphanedQuickTabs.map(t => t.id),
+    timestamp: Date.now()
+  });
+  
+  // Clean up ports associated with this tab
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.tabId === tabId) {
+      unregisterPort(portId, 'tab-removed');
+    }
+  }
+}
+
+// Register tab removal listener
+browser.tabs.onRemoved.addListener(handleTabRemoved);
+
+console.log('[Background] v1.6.3.6-v11 Tab lifecycle events initialized');
+
+// ==================== END TAB LIFECYCLE EVENTS ====================
+
 // ==================== v1.6.3.5-v3 MESSAGE INFRASTRUCTURE ====================
 // Background-as-Coordinator architecture for Quick Tab state synchronization
 // Phase 1: Message handlers (non-breaking, parallel with storage events)

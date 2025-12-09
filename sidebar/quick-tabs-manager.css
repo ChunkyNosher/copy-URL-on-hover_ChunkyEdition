@@ -509,6 +509,15 @@ html {
   color: white;
 }
 
+/* v1.6.3.6-v11 - Issue #20: Direction-specific animation */
+.tab-group-count.count-increased {
+  background-color: var(--green-indicator);
+}
+
+.tab-group-count.count-decreased {
+  background-color: var(--warning-color);
+}
+
 /* Issue #3: Visual hierarchy - Indented Quick Tab list with container effect */
 .tab-group-content {
   padding-left: 28px; /* Issue #3: Slightly more indentation */

@@ -383,6 +383,140 @@ async function getCurrentTabIdFromBackground() {
   }
 }
 
+// ==================== v1.6.3.6-v11 PORT CONNECTION ====================
+// FIX Issue #11: Persistent port connection to background script
+// FIX Issue #12: Port lifecycle logging
+// FIX Issue #17: Port cleanup on tab close
+
+/**
+ * Port connection to background script
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent connection
+ */
+let backgroundPort = null;
+
+/**
+ * Current tab ID cached after background connection
+ * v1.6.3.6-v11 - Used for port name and logging
+ */
+let cachedTabId = null;
+
+/**
+ * Log port lifecycle event
+ * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
+ * @param {string} event - Event name
+ * @param {Object} details - Event details
+ */
+function logContentPortLifecycle(event, details = {}) {
+  console.log(`[Content] PORT_LIFECYCLE [content-tab-${cachedTabId || 'unknown'}] [${event}]:`, {
+    tabId: cachedTabId,
+    timestamp: Date.now(),
+    ...details
+  });
+}
+
+/**
+ * Connect to background script via persistent port
+ * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ * @param {number} tabId - Current tab ID
+ */
+function connectContentToBackground(tabId) {
+  cachedTabId = tabId;
+  
+  try {
+    backgroundPort = browser.runtime.connect({
+      name: `quicktabs-content-${tabId}`
+    });
+    
+    logContentPortLifecycle('open', { portName: backgroundPort.name });
+    
+    // Handle messages from background
+    backgroundPort.onMessage.addListener(handleContentPortMessage);
+    
+    // Handle disconnect
+    backgroundPort.onDisconnect.addListener(() => {
+      const error = browser.runtime.lastError;
+      logContentPortLifecycle('disconnect', { error: error?.message });
+      backgroundPort = null;
+      
+      // Attempt reconnection after delay (only if tab still active)
+      setTimeout(() => {
+        if (!backgroundPort && document.visibilityState !== 'hidden') {
+          connectContentToBackground(tabId);
+        }
+      }, 2000);
+    });
+    
+    console.log('[Content] v1.6.3.6-v11 Port connection established to background');
+  } catch (err) {
+    console.error('[Content] Failed to connect to background:', err.message);
+    logContentPortLifecycle('error', { error: err.message });
+  }
+}
+
+/**
+ * Handle messages received via port
+ * v1.6.3.6-v11 - FIX Issue #11: Process messages from background
+ * @param {Object} message - Message from background
+ */
+function handleContentPortMessage(message) {
+  logContentPortLifecycle('message', { 
+    type: message.type, 
+    action: message.action 
+  });
+  
+  // Handle broadcasts
+  if (message.type === 'BROADCAST') {
+    handleContentBroadcast(message);
+    return;
+  }
+  
+  // Handle acknowledgments (if content script sends requests)
+  if (message.type === 'ACKNOWLEDGMENT') {
+    console.log('[Content] Received acknowledgment:', message.correlationId);
+  }
+}
+
+/**
+ * Handle broadcast messages from background
+ * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
+ * @param {Object} message - Broadcast message
+ */
+function handleContentBroadcast(message) {
+  const { action } = message;
+  
+  switch (action) {
+    case 'VISIBILITY_CHANGE':
+      console.log('[Content] Received visibility change broadcast:', {
+        quickTabId: message.quickTabId,
+        changes: message.changes
+      });
+      // Quick Tabs manager will handle this via its own listeners
+      break;
+    
+    case 'TAB_LIFECYCLE_CHANGE':
+      console.log('[Content] Received tab lifecycle broadcast:', {
+        event: message.event,
+        tabId: message.tabId,
+        affectedQuickTabs: message.affectedQuickTabs
+      });
+      break;
+    
+    default:
+      console.log('[Content] Received broadcast:', message);
+  }
+}
+
+// v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
+window.addEventListener('unload', () => {
+  if (backgroundPort) {
+    logContentPortLifecycle('unload', { reason: 'window-unload' });
+    backgroundPort.disconnect();
+    backgroundPort = null;
+  }
+});
+
+// ==================== END PORT CONNECTION ====================
+
 /**
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
@@ -403,6 +537,9 @@ async function initializeQuickTabsFeature() {
   if (currentTabId !== null) {
     setWritingTabId(currentTabId);
     console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
+    
+    // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
+    connectContentToBackground(currentTabId);
   } else {
     console.warn('[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation');
   }
