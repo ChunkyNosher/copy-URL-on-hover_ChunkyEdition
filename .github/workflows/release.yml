@@ -86,7 +86,7 @@ jobs:
           echo "📦 Packaging Firefox extension..."
           [ -d "dist" ] || { echo "❌ dist directory not found"; exit 1; }
           cd dist
-          zip -r -1 -FS ../firefox-extension-v${{ steps.get_version.outputs.version }}.xpi . -x '*.DS_Store' -x '*.map'
+          zip -r -9 -FS ../firefox-extension-v${{ steps.get_version.outputs.version }}.xpi . -x '*.DS_Store' -x '*.map'
           cd ..
           [ -f "firefox-extension-v${{ steps.get_version.outputs.version }}.xpi" ] || { echo "❌ Firefox package failed"; exit 1; }
           echo "✓ Firefox package created"
@@ -150,7 +150,7 @@ jobs:
 
           # Package Chrome extension
           cd dist-chrome
-          zip -r -1 -FS ../chrome-extension-v${{ steps.get_version.outputs.version }}.zip . -x '*.DS_Store' -x '*.map'
+          zip -r -6 -FS ../chrome-extension-v${{ steps.get_version.outputs.version }}.zip . -x '*.DS_Store' -x '*.map'
           cd ..
           [ -f "chrome-extension-v${{ steps.get_version.outputs.version }}.zip" ] || { echo "❌ Chrome package failed"; exit 1; }
           echo "✓ Chrome package created"

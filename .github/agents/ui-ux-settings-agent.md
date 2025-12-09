@@ -59,9 +59,14 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v10 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.7 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.6-v10 Build & UI/UX (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+
+**v1.6.3.6-v10 Build & UI/UX (Retained):**
 
 - **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
   tree-shaking, Rollup cache

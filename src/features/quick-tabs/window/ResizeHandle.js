@@ -82,6 +82,10 @@ export class ResizeHandle {
     this.minHeight = options.minHeight || 300;
     // v1.6.3.5-v11 - FIX Issue #3: Track destroyed state for cleanup
     this.destroyed = false;
+    // v1.6.3.7 - FIX Issue #4: Track rAF ID for throttling
+    this.rafId = null;
+    // v1.6.3.7 - FIX Issue #4: Store pending dimensions for rAF callback
+    this.pendingDimensions = null;
 
     if (!this.config) {
       throw new Error(`Invalid resize direction: ${direction}`);
@@ -165,26 +169,43 @@ export class ResizeHandle {
   /**
    * Handle resize drag
    * Uses configuration to determine which dimensions to modify
+   * v1.6.3.7 - FIX Issue #4: Wrap DOM updates in requestAnimationFrame
    */
   handlePointerMove(e) {
     if (!this.isResizing) return;
+    if (this.destroyed) return;
 
     const dx = e.clientX - this.startState.x;
     const dy = e.clientY - this.startState.y;
 
     const newDimensions = this.calculateNewDimensions(dx, dy);
+    
+    // v1.6.3.7 - FIX Issue #4: Store pending dimensions and schedule rAF
+    this.pendingDimensions = newDimensions;
+    
+    // Skip if rAF is already scheduled
+    if (this.rafId) return;
+    
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = null;
+      
+      // Double-check state in case of rapid cleanup
+      if (this.destroyed || !this.isResizing || !this.pendingDimensions) return;
+      
+      const dims = this.pendingDimensions;
+      
+      // Apply dimensions
+      Object.assign(this.window, dims);
 
-    // Apply dimensions
-    Object.assign(this.window, newDimensions);
+      // Update DOM
+      this.window.container.style.width = `${dims.width}px`;
+      this.window.container.style.height = `${dims.height}px`;
+      this.window.container.style.left = `${dims.left}px`;
+      this.window.container.style.top = `${dims.top}px`;
 
-    // Update DOM
-    this.window.container.style.width = `${newDimensions.width}px`;
-    this.window.container.style.height = `${newDimensions.height}px`;
-    this.window.container.style.left = `${newDimensions.left}px`;
-    this.window.container.style.top = `${newDimensions.top}px`;
-
-    // Notify callbacks
-    this.notifyChanges(newDimensions);
+      // Notify callbacks (only position/size change, not final)
+      this.notifyChanges(dims);
+    });
 
     e.preventDefault();
   }
@@ -357,9 +378,17 @@ export class ResizeHandle {
    * Public cleanup method for DOM event listener cleanup before minimize
    * v1.6.3.5-v11 - FIX Issue #3: DOM event listeners not cleaned up on minimize
    * Removes event listeners without removing the element from DOM
+   * v1.6.3.7 - FIX Issue #4: Also cancel pending rAF
    */
   cleanup() {
     if (this.destroyed) return;
+
+    // v1.6.3.7 - FIX Issue #4: Cancel pending animation frame
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.pendingDimensions = null;
 
     this._removeListeners();
     this.isResizing = false;
@@ -370,9 +399,18 @@ export class ResizeHandle {
   /**
    * Cleanup event listeners
    * v1.6.3.5-v11 - FIX Issue #3: Set destroyed flag and use _removeListeners
+   * v1.6.3.7 - FIX Issue #4: Also cancel pending rAF
    */
   destroy() {
     this.destroyed = true;
+    
+    // v1.6.3.7 - FIX Issue #4: Cancel pending animation frame
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.pendingDimensions = null;
+    
     this._removeListeners();
 
     if (this.element) {

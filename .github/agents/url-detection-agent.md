@@ -60,9 +60,14 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.6-v10 Build & Analysis (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+
+**v1.6.3.6-v10 Build & Analysis (Retained):**
 
 - **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
   tree-shaking, Rollup cache

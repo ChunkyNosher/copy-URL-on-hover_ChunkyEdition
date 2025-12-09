@@ -36,20 +36,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect` (v1.6.3.6-v12)
+  `browser.runtime.onConnect`
 - **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible
   sections
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v12 Port-Based Messaging (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` skips z-index-only changes
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+
+**v1.6.3.6-v12 Port-Based Messaging (Retained):**
 
 - **Port Registry** -
   `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
@@ -64,7 +71,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Visibility Sync** - Broadcasts to all ports on visibility changes
 - **Count Badge Animation** - `.updated` CSS class for animation
 
-**v1.6.3.6-v12 Animation/Logging (NEW):**
+**v1.6.3.6-v12 Animation/Logging (Retained):**
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
@@ -73,7 +80,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Adoption Verification** - 2-second timeout for adoption confirmation
 - **Section Header Logging** - Logs count of active/minimized tabs
 
-**v1.6.3.6-v12 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (Retained):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -117,21 +124,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Port connection established on Manager open (v1.6.3.6-v12)
+- [ ] Background keepalive keeps Firefox background alive (v1.6.3.7)
+- [ ] Circuit breaker handles port disconnections with backoff (v1.6.3.7)
+- [ ] Debounced renderUI prevents excessive renders (v1.6.3.7)
+- [ ] `_analyzeStorageChange()` skips z-index-only updates (v1.6.3.7)
+- [ ] Port connection established on Manager open
 - [ ] Port lifecycle logged with `[Manager] PORT_LIFECYCLE` prefix
-      (v1.6.3.6-v12)
-- [ ] Message acknowledgments include correlationId (v1.6.3.6-v12)
-- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE (v1.6.3.6-v12)
-- [ ] Adoption verification times out at 2 seconds (v1.6.3.6-v12)
-- [ ] Count badge animates with `.updated` class (v1.6.3.6-v12)
+- [ ] Message acknowledgments include correlationId
+- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE
+- [ ] Count badge animates with `.updated` class
 - [ ] Orphan detection shows ⚠️ icon and warning colors
-- [ ] "Adopt" button calls `adoptQuickTabToCurrentTab()`
-- [ ] Cross-tab grouping UI displays Quick Tabs grouped by originTabId
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.6-v12 port-based messaging,
-animation lifecycle logging, and atomic adoption operations.**
+**Your strength: Manager coordination with v1.6.3.7 keepalive, circuit breaker,
+debounced UI rendering, and v12 port-based messaging.**

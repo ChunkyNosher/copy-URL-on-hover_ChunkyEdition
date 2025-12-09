@@ -65,11 +65,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.6-v12 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.6-v12 Lifecycle Resilience (NEW):**
+**v1.6.3.7 Features (NEW):**
+
+- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+
+**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
 
 - **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
   exponential backoff retry
@@ -106,43 +113,12 @@ const relevantMemories = await searchMemories({
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
 - State hydration on page reload
 
-**v1.6.3.6-v5 Fixes:**
+**Key Fixes (Summary):**
 
-1. **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined
-   originTabId
-2. **Deletion State Machine** - DestroyHandler.\_destroyedIds prevents deletion
-   loops
-3. **Unified Deletion Path** - `initiateDestruction()` is single entry point
-4. **Storage Operation Logging** - `logStorageRead()`, `logStorageWrite()` with
-   correlation IDs
-5. **Message Correlation IDs** - `generateMessageId()` for message tracing
-
-**v1.6.3.6-v4 Fixes (Retained):**
-
-1. **Position/Size Logging** - Full trace visibility from pointer event →
-   storage
-2. **setWritingTabId() Export** - Content scripts can set tab ID for storage
-   ownership
-3. **Broadcast Deduplication** - Circuit breaker in background.js (10+
-   broadcasts/100ms trips)
-4. **Hydration Flag** - `_isHydrating` in UICoordinator suppresses orphaned
-   window warnings
-5. **sender.tab.id Only** - GET_CURRENT_TAB_ID uses sender.tab.id, removed
-   active tab fallback
-
-**v1.6.3.6-v4 Storage Fixes (Retained):**
-
-1. **Storage Circuit Breaker** - Blocks ALL writes when
-   `pendingWriteCount >= 15`
-2. **Fail-Closed Tab ID Validation** - `validateOwnershipForWrite()` blocks when
-   `tabId === null`
-3. **Enhanced Loop Detection** - Escalation warning at 250ms
-
-**v1.6.3.6 Fixes (Retained):**
-
-1. **Cross-Tab Filtering** - Handlers check quickTabsMap/minimizedManager before
-   processing
-2. **Reduced Timeouts** - `STORAGE_TIMEOUT_MS` = 2000ms
+- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined originTabId
+- **Deletion State Machine** - DestroyHandler.\_destroyedIds prevents loops
+- **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
+- **Unified Deletion Path** - `initiateDestruction()` is single entry point
 
 **Architecture:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 UICoordinator

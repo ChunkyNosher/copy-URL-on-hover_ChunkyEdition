@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.6-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, and Persistent Floating Panel
 Manager.
@@ -9,249 +9,81 @@ Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.6-v5 Status:** Critical stability fixes for cross-tab isolation,
-deletion loops, and logging infrastructure ✅
+**🔧 v1.6.3.7 Status:** Firefox 30-second timeout workaround, port circuit breaker, UI performance improvements ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.6-v5
+## 🎉 What's New in v1.6.3.7
 
-**🔧 Critical Stability Fixes (December 6, 2025) ✅**
+**🚀 Performance & Reliability Improvements (December 2025) ✅**
 
-Major fixes for cross-tab isolation, deletion handling, and logging
-infrastructure:
+- ✅ **Firefox 30-Second Timeout Workaround** - Background script stays alive
+  - `_startKeepalive()` uses `browser.runtime.sendMessage()` and `browser.tabs.query()` every 20s
+  - Resets Firefox's idle timer to prevent background script termination (Bug 1851373)
+- ✅ **Port Circuit Breaker** - Handles port disconnections gracefully
+  - State machine: closed → open → half-open with exponential backoff
+  - Reconnection attempts: 100ms → 200ms → 500ms → ... → 10s max
+- ✅ **UI Performance** - Faster, more responsive Quick Tabs Manager
+  - Debounced `renderUI()` to max once per 300ms with state hash comparison
+  - `_analyzeStorageChange()` detects differential updates - skips renderUI for z-index-only changes
+  - Resize operations wrapped in `requestAnimationFrame` callbacks
+- ✅ **originTabId Validation** - More robust tab tracking
+  - `_isValidOriginTabId()` validates positive integers only
+  - Enhanced `groupQuickTabsByOriginTab()` with comprehensive logging
+- ✅ **Package Optimization** - Smaller extension files
+  - ZIP compression -9 for Firefox XPI (~40% size reduction)
+  - ZIP compression -6 for Chrome ZIP packages
 
-- ✅ **Cross-Tab State Contamination Fixed** - Quick Tabs no longer leak between
-  browser tabs
-  - `_shouldRenderOnThisTab()` now strictly rejects Quick Tabs with
-    null/undefined `originTabId`
-  - Added `_checkTabScopeWithReason()` for unified tab scope validation
-  - Structured init logging shows total/validated/filtered counts
-- ✅ **Deletion Loop / Log Explosion Fixed** - Single deletion now produces
-  single log sequence
-  - Deletion state machine prevents cascading loops
-  - DestroyHandler is now the single authoritative deletion path
-  - `_destroyedIds` Set prevents duplicate destruction
-- ✅ **Inconsistent UI Delete Behavior Fixed** - UI button and Manager close now
-  behave identically
-  - Added `initiateDestruction()` unified entry point
-  - Both paths route through background-coordinated broadcasts
-  - Sender tab filtering prevents echo loops
-- ✅ **Logging Infrastructure Improved** - Full observability for storage and
-  messaging
-  - Storage operation logging with timing and status (no payloads)
-  - Cross-tab message logging with correlation IDs
-  - Deletion propagation tracking end-to-end
-
-**Why This Matters:** The previous implementation had critical bugs where Quick
-Tabs would appear in wrong tabs, closing a Quick Tab would trigger infinite log
-spam, and deletion behavior differed between UI button and Manager. These issues
-are now fully resolved.
+**Why This Matters:** Firefox aggressively suspends background scripts after 30 seconds of inactivity, causing Quick Tab state to be lost. The keepalive mechanism prevents this. The circuit breaker ensures graceful recovery from port disconnections.
 
 ---
 
-## 🎉 Previous Release: v1.6.0.11
+## 🎉 Previous Releases
 
-**🎯 Console Filter Integration & UI Polish (November 21, 2025) ✅**
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history including:
 
-Major improvements to filter workflow and UI consistency based on user feedback:
-
-- ✅ **Filter Settings Integration** - Simplified settings workflow
-  - Console filters now save with main "Save Settings" button
-  - Removed separate "Save Live Filters" and "Save Export Filters" buttons
-  - Filters automatically notify content scripts when changed
-  - Reset button now also resets filter settings to defaults
-- ✅ **UI Alignment Fixes** - Professional layout improvements
-  - Fixed triangle rotation using correct CSS selector (`+` instead of `~`)
-  - Buttons now align with title text (baseline alignment)
-  - Increased spacing between category title and buttons (25px extra)
-- ✅ **Architectural Improvements** - Better code organization
-  - Added `gatherFilterSettings()` for unified filter collection
-  - Modified `saveSettings()` to be async and handle filters
-  - Removed redundant `saveFilterSettings()` and `resetFilterSettings()`
-    functions
-  - Buttons aligned with title text baseline (not geometric center)
-  - Increased spacing between count and buttons (+25px)
-  - Reduced vertical spacing in category lists (-10px)
-  - Replaced emoji button labels with clear text ("Select All" / "Deselect All")
-
-**Why This Matters:** The previous implementation logged every keystroke to the
-console, making debugging impossible. Now only actual shortcut executions are
-logged, providing clean, actionable debug output.
-
-**Documentation:**
-[Implementation Analysis](docs/manual/v1.6.0/v1.6.0.9-debug-console-filter-and-ui-issues-comprehensive-analysis.md)
+- **v1.6.3.6-v5** - Cross-tab isolation fixes, deletion loop fixes, logging infrastructure
+- **v1.6.2** - Firefox sidebar integration with unified settings
+- **v1.6.0.11** - Console filter integration & UI polish
+- **v1.6.0.8** - Live console output & export filtering
+- **v1.6.0** - Domain-Driven Design architecture refactoring
 
 ---
 
-## 🎯 Firefox Sidebar Integration (v1.6.2) - UPDATED!
+## 🎯 Firefox Sidebar Integration
 
-**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager
-now in the sidebar!
+**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager in the sidebar!
 
-### Firefox Users (Native Sidebar Experience)
-
-- **🔧 Complete Settings in Sidebar** - Click the toolbar button OR press
-  `Alt+Shift+S` to open
-- **📑 5 Tabs** - Copy URL, Quick Tabs, Appearance, Advanced, and Manager tabs
-- **🪟 Integrated Quick Tabs Manager** - View all active Quick Tabs in the
-  Manager tab
-- **🔄 Real-time Sync** - Settings changes sync across all tabs instantly
-- **💾 All Settings Features** - Full Quick Tabs configuration, console log
-  filtering, debug tools
-
-### Chrome/Edge/Brave Users (Popup Compatibility)
-
-- **📦 Traditional Popup** - Toolbar button opens the standard settings popup
-  (unchanged)
-- **⚙️ Settings Page** - Access via Extensions page → Extension Options
-- **✅ Full Feature Parity** - All features work identically to Firefox
-
-### Keyboard Shortcuts
-
-- **Firefox Sidebar Settings:** `Alt+Shift+S` - Toggle complete settings sidebar
-  (NEW!)
-- **Quick Tabs Manager:** `Alt+Shift+Z` - Toggle floating Quick Tabs Manager
-  panel (UPDATED!)
-
-### Why This Matters
-
-Firefox's sidebar API provides a persistent, always-accessible interface for ALL
-settings without leaving your current page. The complete popup UI has been
-migrated to the sidebar, including all 4 settings tabs PLUS the Quick Tabs
-Manager. Chrome/Chromium browsers don't support sidebars, so they continue using
-the traditional popup approach.
-
-**Cross-Browser Note:** This extension intelligently detects browser
-capabilities and provides the best user experience for each platform. Firefox
-users get the complete settings experience in a native sidebar, while Chrome
-users keep the familiar popup interface.
+- **Firefox:** Click toolbar button OR press `Alt+Shift+S` to open sidebar
+- **Chrome/Edge/Brave:** Traditional popup (toolbar button) + Extension Options
+- **Quick Tabs Manager:** `Alt+Shift+Z` or `Ctrl+Alt+Z` to toggle
 
 ---
 
-**Previous Release: v1.6.0.8 - Live Console Output & Export Filtering (November
-21, 2025)**
+## 🏗️ Architecture (v1.6.0+)
 
-Granular control over console log output to reduce noise and improve debugging
-experience:
+**Domain-Driven Design with Background-as-Coordinator**
 
-- ✅ **Live Console Filtering** - Control what appears in browser console in
-  real-time
-  - 16 log categories organized into 3 groups (User Actions, System Operations,
-    Diagnostics)
-  - Disable noisy categories (Hover, URL Detection) by default for cleaner
-    console
-  - Independent settings for each category
-- ✅ **Export Log Filtering** - Control what gets included in .txt export files
-  - Separate filter settings for live console vs export (maximum flexibility)
-  - All categories enabled by default for comprehensive debugging
-  - Export metadata shows which filters were applied
-- ✅ **Collapsible Filter UI** - Space-efficient accordion groups in Advanced
-  tab
-  - Expandable/collapsible category groups
-  - Select All / Deselect All buttons per group
-  - Visual category icons for easy identification
+- **QuickTab Domain Entity** - Pure business logic (100% test coverage)
+- **Storage Abstraction Layer** - Async-first adapters (92% coverage)
+- **Phase 1 COMPLETE** - 96% average coverage, 249 tests
 
-**Why This Matters:** Hover and URL Detection events can generate hundreds of
-logs, flooding the console and making Quick Tab debugging difficult. With
-filtering, you can disable noisy categories while keeping important logs
-visible.
-
-**Usage:** Extension popup → Advanced tab → Console Log Filters section
-
-**Documentation:**
-[Implementation Guide](docs/manual/v1.6.0/live-console-and-export-filtering-guide.md)
-
----
-
-**Previous Release: v1.6.0.3 - Critical Bug Fixes (November 20, 2025)**
-
-- ✅ **Quick Tabs Not Rendering** - Fixed PanelManager initialization race
-  condition
-- ✅ **Quick Tab Manager Panel Not Opening** - Keyboard shortcut (Ctrl+Alt+Z)
-  now works
-- ✅ **Copy Text Keyboard Shortcut Failing** - Enhanced error logging
-
-**Documentation:**
-[Bug Diagnosis Report](docs/manual/v1.6.0.3-bug-diagnosis-and-fix-report.md) |
-[Release Summary](docs/misc/v1.6.0.3-RELEASE-SUMMARY.md)
-
----
-
-**🏗️ v1.6.0 Architecture Refactoring - Domain-Driven Design**
-
-v1.6.0 represents a comprehensive architectural transformation to reduce
-technical debt and improve maintainability following evidence-based patterns
-from Mozilla, Chrome, and industry best practices.
-
-**Phase 1: Domain Layer + Storage Abstraction (100% COMPLETE ✅)**
-
-- ✅ **QuickTab Domain Entity** - Pure business logic (100% test coverage, 49
-  tests)
-  - Solo/Mute visibility rules
-  - Position/size/z-index management
-  - Dead tab cleanup
-  - Container isolation
-- ✅ **Container Domain Entity** - Firefox container support (100% coverage, 34
-  tests)
-- ✅ **Storage Abstraction Layer** - Async-first adapters (92% coverage, 76
-  tests)
-  - SyncStorageAdapter with quota management
-  - SessionStorageAdapter for temporary storage
-  - Automatic fallback to local storage
-  - FormatMigrator for legacy format support
-
-**Technical Improvements:**
-
-- Zero technical debt - Phase 1 complete with 96% average coverage
-- Fast test execution - 249 tests run in <2s
-- Architecture boundaries enforced by ESLint
-- Bundle size monitoring (content.js <500KB, background.js <300KB)
-
-**Status:** Phase 1 COMPLETE. Next: Phase 2.1 (QuickTabsManager decomposition).
-See [Phase 1 Complete Report](docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md)
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 
 ---
 
 ## ✨ Key Features
 
-**Core Features:**
-
-✓ Quick URL Copying with keyboard shortcuts  
+✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
-✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility
-(v1.5.9.13)  
-✓ **Firefox Container Isolation** - Complete container boundary respect
-(v1.5.9.12)  
+✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ **Cross-Tab Sync via storage.onChanged (v1.6.2+)**  
-✓ Z-Index Management - Smart layering based on interaction  
-✓ Auto-Updates via GitHub releases  
+✓ **Cross-Tab Sync via storage.onChanged**  
 ✓ 100+ Site-Specific Handlers  
-✓ Debug Mode with slot number tracking  
-✓ Dark Mode support
-
-**Solo/Mute Features (v1.5.9.13):**
-
-- **Solo Mode (🎯)** - Show Quick Tab ONLY on specific browser tabs
-- **Mute Mode (🔇)** - Hide Quick Tab ONLY on specific browser tabs
-- Mutual exclusivity - Solo and Mute cannot be active simultaneously
-- Real-time cross-tab sync (<10ms latency)
-- Automatic cleanup when tabs close
-- Container-aware isolation
-
-**Quick Tabs Features:**
-
-✓ Complete UI with favicon, dynamic title, all controls  
-✓ 8-Direction resize from edges/corners  
-✓ Pointer Events API for drag/resize (no escape)  
-✓ Navigation controls (back, forward, reload)  
-✓ Minimize to manager panel  
-✓ Position/size persistence across tabs  
-✓ Emergency state save on tab switches  
-✓ Smart Z-Index management
+✓ Dark Mode support  
+✓ Auto-Updates via GitHub releases
 
 ## 🚀 Installation
 
@@ -334,165 +166,36 @@ works globally rather than per-container.
 
 ## 📖 Usage
 
-### Basic Copy Functions
+**Basic Copy Functions:** Hover over link → Press **Y** (URL), **X** (text), or **O** (open)
 
-1. Hover over any link
-2. Press:
-   - **Y** - Copy URL
-   - **X** - Copy link text
-   - **O** - Open in new tab
-3. Notification confirms the action
+**Quick Tabs:** Hover → **Q** to open → Drag/resize → **Esc** to close all
 
-### Quick Tabs
-
-1. Hover over a link
-2. Press **Q** to open Quick Tab
-3. Use controls:
-   - **🔗** Open in new tab
-   - **🎯/⭕** Solo mode toggle (show ONLY on this tab)
-   - **🔇/🔊** Mute toggle (hide ONLY on this tab)
-   - **−** Minimize to manager
-   - **✕** Close
-4. **Drag** title bar to move
-5. **Resize** from any edge or corner
-6. **Press Esc** to close all Quick Tabs
-
-### Quick Tabs Manager Panel
-
-1. **Press `Ctrl+Alt+Z`** to open/close panel
-2. Panel shows:
-   - All Quick Tabs by Firefox Container
-   - 🟢 Active / 🟡 Minimized indicators
-   - Tab metadata (position, size, slot)
-3. **Drag** header to move
-4. **Resize** by dragging edges/corners
-5. **Click** Quick Tab for actions:
-   - 🔗 Go to Tab
-   - ➖ Minimize / ↑ Restore
-   - ✕ Close
-6. **Action Buttons:**
-   - Close Minimized
-   - Close All
-7. Panel updates in real-time
-8. Position/size persist across sessions
+**Quick Tabs Manager:** **Ctrl+Alt+Z** to toggle panel
 
 ## ⚙️ Settings
 
-Access settings by clicking the extension icon.
-
-**Copy URL Tab:**
-
-- Keyboard shortcuts (Y, X, O defaults)
-- Modifier keys (Ctrl, Alt, Shift)
-
-**Quick Tabs Tab:**
-
-- Quick Tab shortcut (Q default)
-- Close all shortcut (Esc default)
-- Max windows (1-10)
-- Default size and position
-- Close on open toggle
-
-**Appearance Tab:**
-
-- Notification style (tooltip/notification)
-- Colors, borders, animations
-- Position and size
-- Dark mode toggle
-
-- Debug mode toggle
-
-**Advanced Tab:**
-
-- Clear Quick Tab Storage
-- Export Console Logs
-- Clear Log History
-- Reset settings to defaults
+Access via extension icon or sidebar (Firefox). Tabs: Copy URL, Quick Tabs, Appearance, Advanced.
 
 ## 🔒 Security Notice
 
-**Manifest v2 Required:** Uses `webRequestBlocking` permission to modify
-X-Frame-Options and CSP headers for Quick Tabs iframe display.
-
-**X-Frame-Options Bypass:** Removes headers to allow any website in iframes.
-Removes clickjacking protection for iframed content.
-
-**Firefox Container Isolation (v1.5.9.12+):** Quick Tabs respect Firefox
-Container boundaries for additional isolation.
-
-**Use at your own discretion.** Only open Quick Tabs from trusted websites.
+Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers. **Only open Quick Tabs from trusted websites.**
 
 ## 🐛 Known Limitations
 
-1. **Quick Tab Focus:** Clicking inside iframe captures keyboard focus. Click
-   main page to restore shortcuts.
-2. **Nested Quick Tabs:** Only works for same-origin iframes. Use "Open in New
-   Tab" for cross-origin.
-3. **Zen Browser Themes:** Cannot detect Zen workspace themes. Use built-in dark
-   mode.
-4. **Manifest v2:** Must remain on v2 for `webRequestBlocking` support.
+- Quick Tab Focus: Click main page to restore shortcuts after iframe interaction
+- Nested Quick Tabs: Same-origin only; use "Open in New Tab" for cross-origin
+- Manifest v2: Required for `webRequestBlocking` support
 
 ## 📚 Documentation
 
-- **Changelog:** See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version
-  history
-- **Architecture:** See `/docs/manual/` for architecture documentation
-- **Refactoring Plan:**
-  [copy-url-on-hover-refactoring-plan-v2-evidence-based.md](docs/manual/1.5.9%20docs/copy-url-on-hover-refactoring-plan-v2-evidence-based.md)
-- **Phase 1 Complete:**
-  [v1.6.0-REFACTORING-PHASE1-COMPLETE.md](docs/misc/v1.6.0-REFACTORING-PHASE1-COMPLETE.md)
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and [docs/manual/](docs/manual/) for architecture.
 
 ## 🛠️ Development
 
-### Build the Extension
-
 ```bash
-npm install
-npm run build
-```
-
-### Run Tests
-
-```bash
-npm test                # All tests
-npm run test:unit       # Unit tests only
-npm run test:domain     # Domain layer (100% coverage required)
-npm run test:storage    # Storage layer (90% coverage required)
-npm run test:watch      # Watch mode
-```
-
-### Interactive Browser Testing with Playwright MCP
-
-Test the extension in a live browser using Playwright MCP for interactive
-debugging:
-
-```bash
-npm run build:prod      # Build extension first
-npm run mcp:chrome      # Launch Chrome with extension
-npm run mcp:firefox     # Launch Firefox with extension
-```
-
-See [docs/PLAYWRIGHT_MCP_TESTING.md](docs/PLAYWRIGHT_MCP_TESTING.md) for
-complete testing guide including:
-
-- MCP server configuration
-- Testing Quick Tabs features interactively
-- Keyboard shortcut testing
-- Container isolation validation
-
-### Validation
-
-```bash
-npm run lint                    # ESLint
-npm run format                  # Prettier
-npm run validate:architecture   # Architecture boundaries
-npm run build:check-size        # Bundle size limits
-```
-
-### CI Pipeline
-
-```bash
-npm run ci:full   # Complete CI (lint, test, build, validate)
+npm install && npm run build    # Build
+npm test                        # Run tests
+npm run lint                    # Lint
 ```
 
 ## 🌐 Supported Websites (100+)
@@ -520,6 +223,6 @@ for details.
 
 ---
 
-**Version 1.6.3.6-v5** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
