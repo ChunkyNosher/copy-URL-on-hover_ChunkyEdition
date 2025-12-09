@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7 (Build v2).
+  documentation. Current version: v1.6.3.7-v4.
 tools: ['*']
 ---
 
@@ -69,34 +69,44 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7 (Build v2))
+## Current Extension State (v1.6.3.7-v4)
 
-### v1.6.3.7 (Build v2) Features (NEW)
+### v1.6.3.7-v4 Features (NEW)
 
-- **New Permissions** - `notifications`, `clipboardRead/Write` (Firefox),
-  `alarms`
-- **Single Writer Authority** - Manager sends commands to background (ADOPT_TAB,
-  CLOSE_MINIMIZED_TABS)
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
-  deduplication
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
-  `orphaned: true` flag
-- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based
-  detection
-- **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on port reconnection
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with
-  read-back
+- **Circuit Breaker Probing** - Early recovery with 500ms health probes
+  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
+- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
+  errors when background returns failure
+- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch with
+  graceful degradation
+- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
+  message after connection
+- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
+  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
+- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
+- **Session Cache Validation** - Cache structure with sessionId + timestamp
 
-### v1.6.3.7 Features (Retained)
+### v1.6.3.7-v3 Features (Retained)
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-  (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), `_analyzeStorageChange()` for
-  differential updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive
-  integers
+- **storage.session API** - Session Quick Tabs (`permanent: false`)
+- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
+- **sessions API** - Per-tab state management (TabStateManager.js)
+- **browser.alarms API** - Scheduled tasks
+- **tabs.group() API** - Tab grouping (Firefox 138+)
+- **DOM Reconciliation** - Sidebar animation optimization
+
+### v1.6.3.7-v2 Features (Retained)
+
+- **Single Writer Authority** - Manager sends commands to background
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based dedup
+- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
+- **Storage Write Verification** - `writeStateWithVerificationAndRetry()`
+
+### v1.6.3.7-v1 Features (Retained)
+
+- **Background Keepalive** - `_startKeepalive()` every 20s
+- **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
+- **UI Performance** - Debounced renderUI (300ms)
 
 ### v1.6.3.6-v12 Port-Based Messaging (Retained)
 
@@ -113,27 +123,28 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7 (Build v2))
+### Key Functions (v1.6.3.7-v4)
 
-| Function                               | Location      | Purpose                    |
-| -------------------------------------- | ------------- | -------------------------- |
-| `scheduleRender(source)`               | Manager       | Unified render entry point |
-| `_checkAndReloadStaleState()`          | Manager       | State staleness detection  |
-| `_requestFullStateSync()`              | Manager       | Port reconnection sync     |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification         |
-| `handleFullStateSyncRequest()`         | Background    | State sync handler         |
-| `handleCloseMinimizedTabsCommand()`    | Background    | Close minimized handler    |
+| Function                               | Location      | Purpose                      |
+| -------------------------------------- | ------------- | ---------------------------- |
+| `scheduleRender(source)`               | Manager       | Unified render entry point   |
+| `_probeBackgroundHealth()`             | Manager       | Circuit breaker health probe |
+| `_routePortMessage()`                  | Manager       | Message routing (refactored) |
+| `_showCloseAllErrorNotification()`     | Manager       | Close all error feedback     |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification           |
+| `handleFullStateSyncRequest()`         | Background    | State sync handler           |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v2
-- [ ] **v1.6.3.7 (Build v2):** New permissions documented
-- [ ] **v1.6.3.7 (Build v2):** Single Writer Authority documented
-- [ ] **v1.6.3.7 (Build v2):** Unified render pipeline documented
-- [ ] **v1.6.3.7 (Build v2):** Orphaned tab recovery documented
+- [ ] Version numbers match 1.6.3.7-v4
+- [ ] **v1.6.3.7-v4:** Circuit breaker probing documented
+- [ ] **v1.6.3.7-v4:** Close all feedback documented
+- [ ] **v1.6.3.7-v4:** Message error handling documented
+- [ ] **v1.6.3.7-v4:** Refactored message handling documented
+- [ ] **v1.6.3.7-v4:** Storage polling backup documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -141,13 +152,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                  | Fix                              |
-| ---------------------- | -------------------------------- |
-| v1.6.3.7 or earlier    | Update to 1.6.3.7-v2             |
-| "Pin to Page"          | Use "Solo/Mute"                  |
-| Direct storage writes  | Use Single Writer Authority      |
-| Missing scheduleRender | Document unified render pipeline |
-| Missing orphaned flag  | Document orphaned tab recovery   |
+| Error                    | Fix                                 |
+| ------------------------ | ----------------------------------- |
+| v1.6.3.7-v3 or earlier   | Update to 1.6.3.7-v4                |
+| "Pin to Page"            | Use "Solo/Mute"                     |
+| Direct storage writes    | Use Single Writer Authority         |
+| Missing circuit breaker  | Document probing pattern            |
+| Missing close all feedback| Document error notification        |
 
 ---
 

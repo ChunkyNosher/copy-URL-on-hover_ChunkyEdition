@@ -97,7 +97,11 @@ const RENDER_DEBOUNCE_MS = 300;
 const RECONNECT_BACKOFF_INITIAL_MS = 100;
 const RECONNECT_BACKOFF_MAX_MS = 10000;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
-const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
+// v1.6.3.7-v4 - FIX Issue #8: Reduced from 10000ms to 2000ms
+// Shorter blackout period with early recovery probes
+const CIRCUIT_BREAKER_OPEN_DURATION_MS = 2000;
+// v1.6.3.7-v4 - FIX Issue #8: Probe interval for early recovery detection
+const CIRCUIT_BREAKER_PROBE_INTERVAL_MS = 500;
 
 // ==================== v1.6.3.7-v4 MESSAGE DEDUPLICATION ====================
 // FIX Issue #4: Prevent multiple renders from independent message listeners
@@ -284,12 +288,15 @@ const MAX_HEARTBEAT_FAILURES = 2;
 /**
  * Circuit breaker state
  * v1.6.3.7 - FIX Issue #5: Prevent thundering herd on reconnect
+ * v1.6.3.7-v4 - FIX Issue #8: Add probing for early recovery detection
  * States: 'closed' (connected), 'open' (not trying), 'half-open' (attempting)
  */
 let circuitBreakerState = 'closed';
 let circuitBreakerOpenTime = 0;
 let reconnectAttempts = 0;
 let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+// v1.6.3.7-v4 - FIX Issue #8: Timer for early recovery probes
+let circuitBreakerProbeTimerId = null;
 
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention
@@ -350,9 +357,12 @@ function connectToBackground() {
     logPortLifecycle('open', { portName: backgroundPort.name });
 
     // Handle messages from background
+    // v1.6.3.7-v4 - FIX Issue #10: Log listener registration
     backgroundPort.onMessage.addListener(handlePortMessage);
+    console.log('[Manager] LISTENER_REGISTERED: Port onMessage listener added');
 
     // Handle disconnect
+    // v1.6.3.7-v4 - FIX Issue #10: Log disconnect listener registration
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       logPortLifecycle('disconnect', { error: error?.message });
@@ -361,9 +371,13 @@ function connectToBackground() {
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
       stopHeartbeat();
 
+      // v1.6.3.7-v4 - FIX Issue #8: Stop circuit breaker probes on disconnect
+      _stopCircuitBreakerProbes();
+
       // v1.6.3.7 - FIX Issue #5: Implement exponential backoff reconnection
       scheduleReconnect();
     });
+    console.log('[Manager] LISTENER_REGISTERED: Port onDisconnect listener added');
 
     // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
     circuitBreakerState = 'closed';
@@ -377,6 +391,9 @@ function connectToBackground() {
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
 
+    // v1.6.3.7-v4 - FIX Issue #10: Send test message to verify listener works
+    _verifyPortListenerRegistration();
+
     console.log('[Manager] v1.6.3.6-v11 Port connection established');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
@@ -384,6 +401,27 @@ function connectToBackground() {
 
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
+  }
+}
+
+/**
+ * Verify port listener registration by sending a test message
+ * v1.6.3.7-v4 - FIX Issue #10: Confirm listener is actually receiving messages
+ * @private
+ */
+function _verifyPortListenerRegistration() {
+  if (!backgroundPort) return;
+
+  try {
+    // Send a ping message that should get an acknowledgment
+    backgroundPort.postMessage({
+      type: 'LISTENER_VERIFICATION',
+      timestamp: Date.now(),
+      source: 'sidebar'
+    });
+    console.log('[Manager] LISTENER_VERIFICATION: Test message sent to verify port listener');
+  } catch (err) {
+    console.error('[Manager] LISTENER_VERIFICATION_FAILED: Could not send test message:', err.message);
   }
 }
 
@@ -434,6 +472,7 @@ function handleConnectionFailure() {
 /**
  * Trip the circuit breaker to "open" state
  * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
+ * v1.6.3.7-v4 - FIX Issue #8: Add early recovery probes during open period
  */
 function tripCircuitBreaker() {
   circuitBreakerState = 'open';
@@ -442,17 +481,90 @@ function tripCircuitBreaker() {
   console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
     attempts: reconnectAttempts,
     cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
+    probeIntervalMs: CIRCUIT_BREAKER_PROBE_INTERVAL_MS,
     reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
   });
 
-  // Schedule attempt to reopen circuit breaker
+  // v1.6.3.7-v4 - FIX Issue #8: Start probing for early recovery
+  _startCircuitBreakerProbes();
+
+  // Schedule hard reopen at max cooldown time
   setTimeout(() => {
+    _stopCircuitBreakerProbes();
     console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
     circuitBreakerState = 'half-open';
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
     connectToBackground();
   }, CIRCUIT_BREAKER_OPEN_DURATION_MS);
+}
+
+/**
+ * Start periodic probes during circuit breaker open period
+ * v1.6.3.7-v4 - FIX Issue #8: Detect early background recovery
+ * @private
+ */
+function _startCircuitBreakerProbes() {
+  _stopCircuitBreakerProbes(); // Clear any existing probe timer
+
+  circuitBreakerProbeTimerId = setInterval(() => {
+    if (circuitBreakerState !== 'open') {
+      _stopCircuitBreakerProbes();
+      return;
+    }
+
+    const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
+    console.log('[Manager] CIRCUIT_BREAKER_PROBE:', {
+      state: circuitBreakerState,
+      timeSinceOpenMs: timeSinceOpen,
+      timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
+    });
+
+    // Attempt a lightweight probe to detect if background recovered
+    _probeBackgroundHealth().then(healthy => {
+      if (healthy && circuitBreakerState === 'open') {
+        console.log('[Manager] CIRCUIT_BREAKER_EARLY_RECOVERY: Background responding - transitioning to HALF-OPEN');
+        _stopCircuitBreakerProbes();
+        circuitBreakerState = 'half-open';
+        reconnectAttempts = 0;
+        reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+        connectToBackground();
+      }
+    }).catch(() => {
+      // Probe failed, continue waiting
+      console.log('[Manager] CIRCUIT_BREAKER_PROBE_FAILED: Background still unresponsive');
+    });
+  }, CIRCUIT_BREAKER_PROBE_INTERVAL_MS);
+}
+
+/**
+ * Stop circuit breaker probes
+ * v1.6.3.7-v4 - FIX Issue #8: Cleanup probe timer
+ * @private
+ */
+function _stopCircuitBreakerProbes() {
+  if (circuitBreakerProbeTimerId) {
+    clearInterval(circuitBreakerProbeTimerId);
+    circuitBreakerProbeTimerId = null;
+  }
+}
+
+/**
+ * Probe background health with a lightweight ping
+ * v1.6.3.7-v4 - FIX Issue #8: Quick check if background is responsive
+ * @private
+ * @returns {Promise<boolean>} True if background is healthy
+ */
+async function _probeBackgroundHealth() {
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage({ type: 'HEALTH_PROBE', timestamp: Date.now() }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
+    ]);
+    return response?.healthy === true || response?.type === 'HEALTH_ACK';
+  } catch {
+    return false;
+  }
 }
 
 // ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
@@ -893,10 +1005,42 @@ setInterval(_cleanupExpiredMessageIds, 5000);
  * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
  * v1.6.4.0 - FIX Issue E: Handle FULL_STATE_SYNC response
  * v1.6.3.7-v4 - FIX Issue #3: Handle STATE_UPDATE from port (not just runtime.onMessage)
+ * v1.6.3.7-v4 - FIX Issue #9: Wrapped in try-catch for error handling
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
-  // v1.6.3.7-v4 - FIX Issue #3: Enhanced logging showing message source
+  // v1.6.3.7-v4 - FIX Issue #9: Wrap in try-catch to handle corrupted messages gracefully
+  try {
+    // v1.6.3.7-v4 - FIX Issue #9: Validate message structure
+    if (!message || typeof message !== 'object') {
+      console.warn('[Manager] PORT_MESSAGE_INVALID: Received non-object message:', typeof message);
+      return;
+    }
+
+    _logPortMessageReceived(message);
+
+    // Route message to appropriate handler
+    _routePortMessage(message);
+  } catch (err) {
+    // v1.6.3.7-v4 - FIX Issue #9: Log error with context and continue
+    console.error('[Manager] PORT_MESSAGE_ERROR: Error processing port message:', {
+      error: err.message,
+      stack: err.stack,
+      messageType: message?.type,
+      messageAction: message?.action,
+      timestamp: Date.now()
+    });
+    // Don't rethrow - graceful degradation
+  }
+}
+
+/**
+ * Log port message received with details
+ * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * @private
+ * @param {Object} message - Message from background
+ */
+function _logPortMessageReceived(message) {
   console.log('[Manager] PORT_MESSAGE_RECEIVED:', {
     type: message.type,
     action: message.action,
@@ -911,15 +1055,17 @@ function handlePortMessage(message) {
     action: message.action,
     correlationId: message.correlationId
   });
+}
 
+/**
+ * Route port message to appropriate handler
+ * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * @private
+ * @param {Object} message - Message to route
+ */
+function _routePortMessage(message) {
   // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment
-  if (message.type === 'HEARTBEAT_ACK') {
-    handleAcknowledgment(message);
-    return;
-  }
-
-  // Handle acknowledgment
-  if (message.type === 'ACKNOWLEDGMENT') {
+  if (message.type === 'HEARTBEAT_ACK' || message.type === 'ACKNOWLEDGMENT') {
     handleAcknowledgment(message);
     return;
   }
@@ -932,33 +1078,39 @@ function handlePortMessage(message) {
 
   // Handle state updates
   if (message.type === 'STATE_UPDATE') {
-    // v1.6.4.0 - FIX Issue B: Route through unified render entry point
-    // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
     handleStateUpdateBroadcast(message);
     scheduleRender('port-STATE_UPDATE', message.messageId);
     return;
   }
 
   // v1.6.3.7-v4 - FIX Issue #3: Handle QUICK_TAB_STATE_UPDATED via port
-  // Background now routes state updates through port when available
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    console.log('[Manager] PORT_STATE_UPDATE_RECEIVED:', {
-      quickTabId: message.quickTabId,
-      changes: message.changes,
-      messageId: message.messageId,
-      source: 'port'
-    });
-
-    handleStateUpdateBroadcast(message);
-    scheduleRender('port-QUICK_TAB_STATE_UPDATED', message.messageId);
+    _handleQuickTabStateUpdate(message);
     return;
   }
 
   // v1.6.4.0 - FIX Issue E: Handle full state sync response
   if (message.type === 'FULL_STATE_SYNC') {
     _handleStateSyncResponse(message);
-    return;
   }
+}
+
+/**
+ * Handle QUICK_TAB_STATE_UPDATED message from port
+ * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * @private
+ * @param {Object} message - State update message
+ */
+function _handleQuickTabStateUpdate(message) {
+  console.log('[Manager] PORT_STATE_UPDATE_RECEIVED:', {
+    quickTabId: message.quickTabId,
+    changes: message.changes,
+    messageId: message.messageId,
+    source: 'port'
+  });
+
+  handleStateUpdateBroadcast(message);
+  scheduleRender('port-QUICK_TAB_STATE_UPDATED', message.messageId);
 }
 
 /**
@@ -1874,13 +2026,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
 
-  // Auto-refresh every 2 seconds
+  // v1.6.3.7-v4 - FIX Issue #7: Increased from 2s to 10s
+  // BroadcastChannel is now PRIMARY for instant updates (fixed in Issue #2)
+  // Storage polling is now a BACKUP fallback, so longer interval is acceptable
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
-  }, 2000);
+  }, 10000);
 
-  console.log('[Manager] v1.6.3.7-v3 Port + BroadcastChannel + Message infrastructure initialized');
+  console.log('[Manager] v1.6.3.7-v4 Port + BroadcastChannel + Message infrastructure initialized (storage poll: 10s)');
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
@@ -4677,6 +4831,19 @@ async function closeAllTabs() {
     const response = await _sendClearAllMessage();
     _logClearAllResponse(response, startTime);
 
+    // v1.6.3.7-v4 - FIX Issue #5: Handle explicit failure response with user feedback
+    if (!response?.success) {
+      const errorReason = response?.error || response?.reason || 'Unknown error';
+      console.error('[Manager] Close All: Operation FAILED:', {
+        reason: errorReason,
+        response,
+        durationMs: Date.now() - startTime
+      });
+      // Show user-facing error notification
+      _showCloseAllErrorNotification(errorReason);
+      return; // Don't reset local state if operation failed
+    }
+
     const hostInfoBeforeClear = quickTabHostInfo.size;
     quickTabHostInfo.clear();
 
@@ -4686,7 +4853,33 @@ async function closeAllTabs() {
     console.log('[Manager] Close All: UI updated, operation complete');
   } catch (err) {
     _logCloseAllError(err, startTime);
+    // v1.6.3.7-v4 - FIX Issue #5: Show user-facing error notification
+    _showCloseAllErrorNotification(err.message);
   }
+}
+
+/**
+ * Show error notification to user when Close All fails
+ * v1.6.3.7-v4 - FIX Issue #5: User feedback for failed operations
+ * @private
+ * @param {string} reason - Reason for failure
+ */
+function _showCloseAllErrorNotification(reason) {
+  const notification = document.createElement('div');
+  notification.className = 'error-notification';
+  notification.textContent = `Close All failed: ${reason}`;
+  Object.assign(notification.style, ERROR_NOTIFICATION_STYLES);
+
+  document.body.appendChild(notification);
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.parentNode.removeChild(notification);
+    }
+  }, 5000);
+
+  console.log('[Manager] Close All: Error notification shown to user:', reason);
 }
 
 /**

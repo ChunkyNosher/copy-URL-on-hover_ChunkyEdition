@@ -65,7 +65,7 @@ const relevantMemories = await searchMemories({
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7 Features (NEW):**
+**v1.6.3.7-v4 Features (NEW):**
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
   idle timer

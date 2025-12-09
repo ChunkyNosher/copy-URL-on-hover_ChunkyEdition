@@ -37,9 +37,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7 Features (NEW):**
+**v1.6.3.7-v4 Features (NEW):**
+
+- **Circuit Breaker Probing** - Early recovery with 500ms health probes
+- **Message Error Handling** - Graceful degradation in port message handlers
+
+**v1.6.3.7-v1 Features (Retained):**
 
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
@@ -86,8 +91,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Circuit breaker handles port disconnections (v1.6.3.7)
-- [ ] `_isValidOriginTabId()` validates positive integers (v1.6.3.7)
+- [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
+- [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
+- [ ] `_isValidOriginTabId()` validates positive integers (v1.6.3.7-v1)
 - [ ] Port connections established
 - [ ] Message acknowledgments include correlationId
 - [ ] Animation lifecycle logged correctly
@@ -102,5 +108,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.7 circuit breaker,
-originTabId validation, and v12 port-based messaging.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.7-v4 circuit breaker
+probing, message error handling, and v12 port-based messaging.**
