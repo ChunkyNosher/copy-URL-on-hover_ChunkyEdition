@@ -2,7 +2,7 @@
 name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
-  port-based messaging (v1.6.3.6-v11), Background-as-Coordinator, storage storm
+  port-based messaging (v1.6.3.6-v12), Background-as-Coordinator, storage storm
   protection, in-memory cache, real-time state updates, animation lifecycle logging,
   Single Writer Model, cross-tab grouping UI
 tools: ['*']
@@ -42,14 +42,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect` (v1.6.3.6-v11)
+  `browser.runtime.onConnect` (v1.6.3.6-v12)
 - **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible
   sections
 - **Solo/Mute Indicators** - 🎯 Solo on X tabs, 🔇 Muted on X tabs (header)
 - **Keyboard Shortcuts** - Ctrl+Alt+Z or Alt+Shift+Z to toggle sidebar
 - **Single Writer Model** - Manager uses `CLEAR_ALL_QUICK_TABS` via background
 
-**v1.6.3.6-v11 Port-Based Messaging (NEW):**
+**v1.6.3.6-v12 Port-Based Messaging (NEW):**
 
 - **Port Registry** -
   `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount } }`
@@ -64,7 +64,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Visibility Sync** - Broadcasts to all ports on visibility changes
 - **Count Badge Animation** - `.updated` CSS class for animation
 
-**v1.6.3.6-v11 Animation/Logging (NEW):**
+**v1.6.3.6-v12 Animation/Logging (NEW):**
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
@@ -73,7 +73,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Adoption Verification** - 2-second timeout for adoption confirmation
 - **Section Header Logging** - Logs count of active/minimized tabs
 
-**v1.6.3.6-v11 Build Optimization (NEW):**
+**v1.6.3.6-v12 Build Optimization (NEW):**
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -117,13 +117,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Port connection established on Manager open (v1.6.3.6-v11)
+- [ ] Port connection established on Manager open (v1.6.3.6-v12)
 - [ ] Port lifecycle logged with `[Manager] PORT_LIFECYCLE` prefix
-      (v1.6.3.6-v11)
-- [ ] Message acknowledgments include correlationId (v1.6.3.6-v11)
-- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE (v1.6.3.6-v11)
-- [ ] Adoption verification times out at 2 seconds (v1.6.3.6-v11)
-- [ ] Count badge animates with `.updated` class (v1.6.3.6-v11)
+      (v1.6.3.6-v12)
+- [ ] Message acknowledgments include correlationId (v1.6.3.6-v12)
+- [ ] Animation lifecycle logs START/CALC/TRANSITION/COMPLETE (v1.6.3.6-v12)
+- [ ] Adoption verification times out at 2 seconds (v1.6.3.6-v12)
+- [ ] Count badge animates with `.updated` class (v1.6.3.6-v12)
 - [ ] Orphan detection shows ⚠️ icon and warning colors
 - [ ] "Adopt" button calls `adoptQuickTabToCurrentTab()`
 - [ ] Cross-tab grouping UI displays Quick Tabs grouped by originTabId
@@ -133,5 +133,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.6-v11 port-based messaging,
+**Your strength: Manager coordination with v1.6.3.6-v12 port-based messaging,
 animation lifecycle logging, and atomic adoption operations.**

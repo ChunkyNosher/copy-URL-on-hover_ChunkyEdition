@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.6-v11
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.6-v12
   port-based messaging, animation lifecycle, atomic operations
 tools: ['*']
 ---
@@ -39,7 +39,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Version:** 1.6.3.6-v11 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.6-v11 Features (NEW):**
+**v1.6.3.6-v12 Features (NEW):**
 
 - **Port-Based Messaging** - Persistent connections via
   `browser.runtime.onConnect`
@@ -79,9 +79,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Port connections established (v1.6.3.6-v11)
-- [ ] Message acknowledgments include correlationId (v1.6.3.6-v11)
-- [ ] Animation lifecycle logged correctly (v1.6.3.6-v11)
+- [ ] Port connections established (v1.6.3.6-v12)
+- [ ] Message acknowledgments include correlationId (v1.6.3.6-v12)
+- [ ] Animation lifecycle logged correctly (v1.6.3.6-v12)
 - [ ] Strict tab isolation rejects null originTabId (v1.6.3.6-v5)
 - [ ] Deletion state machine prevents loops (v1.6.3.6-v5)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -93,5 +93,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.6-v11 port-based
+**Your strength: Individual Quick Tab isolation with v1.6.3.6-v12 port-based
 messaging and animation lifecycle.**

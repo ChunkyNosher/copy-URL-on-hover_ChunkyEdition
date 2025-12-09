@@ -544,11 +544,14 @@ export class QuickTabHandler {
    * Get Quick Tabs state for a specific container
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
    * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
+   * v1.6.3.6-v12 - FIX Issue #1: Return explicit error when not initialized
    */
   async handleGetQuickTabsState(message, _sender) {
     try {
-      if (!this.isInitialized) {
-        await this.initializeFn();
+      // v1.6.3.6-v12 - FIX Issue #1: Check initialization and wait with timeout
+      const initResult = await this._ensureInitialized();
+      if (!initResult.success) {
+        return initResult;
       }
 
       const cookieStoreId = message.cookieStoreId || 'firefox-default';
@@ -576,6 +579,34 @@ export class QuickTabHandler {
         error: err.message
       };
     }
+  }
+
+  /**
+   * Ensure handler is initialized before operations
+   * v1.6.3.6-v12 - FIX Issue #1: Extracted to reduce nesting depth
+   * @returns {Promise<Object>} Result with success flag
+   * @private
+   */
+  async _ensureInitialized() {
+    if (this.isInitialized) {
+      return { success: true };
+    }
+
+    console.log('[QuickTabHandler] v1.6.3.6-v12 Not initialized, attempting initialization...');
+    await this.initializeFn();
+
+    if (!this.isInitialized) {
+      console.warn('[QuickTabHandler] v1.6.3.6-v12 Initialization failed or still pending');
+      return {
+        success: false,
+        error: 'NOT_INITIALIZED',
+        message: 'Background script still initializing. Please retry.',
+        retryable: true,
+        tabs: []
+      };
+    }
+
+    return { success: true };
   }
 
   /**

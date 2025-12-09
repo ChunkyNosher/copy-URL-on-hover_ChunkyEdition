@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.6-v11.
+  documentation. Current version: v1.6.3.6-v12.
 tools: ['*']
 ---
 
@@ -69,9 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.6-v11)
+## Current Extension State (v1.6.3.6-v12)
 
-### v1.6.3.6-v11 Port-Based Messaging (Issues #10-21)
+### v1.6.3.6-v12 Lifecycle Resilience (Issues #1-8)
+
+- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
+  exponential backoff retry
+- **Heartbeat** - Sidebar sends `HEARTBEAT` every 25s, background responds with
+  `HEARTBEAT_ACK`, 5s timeout
+- **Storage Deduplication** - Multi-method: transactionId, saveId+timestamp,
+  content hash
+- **Cache Reconciliation** - `_triggerCacheReconciliation()` queries content
+  scripts
+- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()` for
+  ordered deletion
+- **Architectural Resilience** - Coordinator is optimization, not requirement
+
+### v1.6.3.6-v12 Port-Based Messaging (Issues #10-21)
 
 - **Port Registry** - Background maintains
   `{ portId -> { port, origin, tabId, type, ... } }`
@@ -83,14 +97,14 @@ nothing.
 - **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
 - **Isolated State Machine** - Background maintains state, tabs are consumers
 
-### v1.6.3.6-v11 Animation/Logging (Issues #1-9)
+### v1.6.3.6-v12 Animation/Logging (Issues #1-9)
 
 - **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE (or
   ERROR)
 - **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
 - **Adoption Verification** - 2-second timeout
 
-### v1.6.3.6-v11 Build Optimization
+### v1.6.3.6-v12 Build Optimization
 
 - **Aggressive Tree-Shaking** - `preset: "smallest"`, `moduleSideEffects: false`
 - **Conditional Compilation** - `IS_TEST_MODE` for test-specific code
@@ -122,10 +136,12 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.6-v11
-- [ ] **v1.6.3.6-v11:** Port-based messaging documented
-- [ ] **v1.6.3.6-v11:** Animation lifecycle phases documented
-- [ ] **v1.6.3.6-v11:** Build optimization documented
+- [ ] Version numbers match 1.6.3.6-v12
+- [ ] **v1.6.3.6-v12:** Lifecycle resilience documented
+- [ ] **v1.6.3.6-v12:** Heartbeat mechanism documented
+- [ ] **v1.6.3.6-v12:** Port-based messaging documented
+- [ ] **v1.6.3.6-v12:** Animation lifecycle phases documented
+- [ ] **v1.6.3.6-v12:** Build optimization documented
 - [ ] Architecture references accurate (DDD with Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 - [ ] Global visibility documented (Container isolation REMOVED)
@@ -138,11 +154,12 @@ nothing.
 
 | Error                        | Fix                                            |
 | ---------------------------- | ---------------------------------------------- |
-| v1.6.3.6-v10 or earlier      | Update to 1.6.3.6-v11                          |
+| v1.6.3.6-v12 or earlier      | Update to 1.6.3.6-v12                          |
 | "Pin to Page"                | Use "Solo/Mute"                                |
 | BroadcastChannel             | Use storage.onChanged + port-based             |
 | Container refs               | Remove (global visibility)                     |
 | Files >15KB                  | Apply compression                              |
+| Missing lifecycle resilience | Document heartbeat, init guard, cache reconcil |
 | Missing port-based messaging | Document port registry, message types          |
 | Missing animation lifecycle  | Document START/CALC/TRANSITION/COMPLETE phases |
 
@@ -152,10 +169,12 @@ nothing.
 
 - [ ] Searched memories for past updates 🧠
 - [ ] All files under 15KB verified 📏
-- [ ] Version numbers updated to 1.6.3.6-v11
-- [ ] **v1.6.3.6-v11:** Port-based messaging documented
-- [ ] **v1.6.3.6-v11:** Animation lifecycle documented
-- [ ] **v1.6.3.6-v11:** Build optimization documented
+- [ ] Version numbers updated to 1.6.3.6-v12
+- [ ] **v1.6.3.6-v12:** Lifecycle resilience documented
+- [ ] **v1.6.3.6-v12:** Heartbeat mechanism documented
+- [ ] **v1.6.3.6-v12:** Port-based messaging documented
+- [ ] **v1.6.3.6-v12:** Animation lifecycle documented
+- [ ] **v1.6.3.6-v12:** Build optimization documented
 - [ ] No "Pin to Page" references
 - [ ] storage.onChanged + port-based messaging documented
 - [ ] MCP tool lists consistent

@@ -111,6 +111,21 @@ let consecutiveZeroTabReads = 0;
 const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
+// ==================== v1.6.3.6-v12 CONSTANTS ====================
+// FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
+const HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
+const HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
+
+// FIX Issue #3: Multi-method deduplication
+const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
+
+// FIX Issue #6: Deletion acknowledgment tracking
+const DELETION_ACK_TIMEOUT_MS = 1000; // 1 second timeout for deletion acknowledgments
+const pendingDeletionAcks = new Map(); // correlationId -> { pendingTabs: Set, completedTabs: Set, startTime, resolve, reject }
+
+// FIX Issue #7: Enhanced logging state tracking
+let lastCacheUpdateLog = null; // Track last cache state for before/after logging
+
 /**
  * Valid URL protocols for Quick Tab creation
  * @private
@@ -191,6 +206,56 @@ function filterValidTabs(state) {
   return { ...state, tabs: validTabs };
 }
 
+// ==================== v1.6.3.6-v12 INITIALIZATION GUARDS ====================
+// FIX Issue #1: All handlers must check initialization before accessing globalQuickTabState
+
+/**
+ * Check if background script is initialized and return error response if not
+ * v1.6.3.6-v12 - FIX Issue #1: Initialization guard pattern
+ * @param {string} handlerName - Name of the calling handler for logging
+ * @returns {{ initialized: boolean, errorResponse: Object|null }} Guard result
+ */
+function checkInitializationGuard(handlerName) {
+  if (!isInitialized) {
+    console.warn(`[Background] v1.6.3.6-v12 Handler called before initialization: ${handlerName}`);
+    return {
+      initialized: false,
+      errorResponse: {
+        success: false,
+        error: 'NOT_INITIALIZED',
+        message: 'Background script still initializing. Please retry.',
+        retryable: true
+      }
+    };
+  }
+  return { initialized: true, errorResponse: null };
+}
+
+/**
+ * Wait for initialization to complete with timeout
+ * v1.6.3.6-v12 - FIX Issue #1: Blocking wait for handlers that need state
+ * @param {number} timeoutMs - Maximum time to wait (default 5000ms)
+ * @returns {Promise<boolean>} True if initialized, false if timeout
+ */
+async function waitForInitialization(timeoutMs = 5000) {
+  if (isInitialized) return true;
+
+  console.log('[Background] Waiting for initialization to complete...');
+  const startTime = Date.now();
+
+  while (!isInitialized && Date.now() - startTime < timeoutMs) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  if (!isInitialized) {
+    console.warn('[Background] Initialization wait timeout after', timeoutMs, 'ms');
+    return false;
+  }
+
+  console.log('[Background] Initialization completed after', Date.now() - startTime, 'ms wait');
+  return true;
+}
+
 /**
  * Extract relevant tab data for hashing
  * v1.6.3.4-v11 - Extracted from computeStateHash to reduce complexity
@@ -247,9 +312,15 @@ function computeStateHash(state) {
 
 // v1.6.2.2 - Format detection and migrators removed (unified format)
 
+// v1.6.3.6-v12 - FIX Issue #1: Retry limit for initialization
+let initializationRetryCount = 0;
+const MAX_INITIALIZATION_RETRIES = 3;
+
 /**
  * v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup
  * v1.6.2.2 - Simplified for unified format
+ * v1.6.3.6-v12 - FIX Issue #1: Proper error handling - don't set isInitialized on failure
+ * v1.6.3.6-v12 - FIX Code Review: Added retry limit to prevent infinite loop
  */
 async function initializeGlobalState() {
   // Guard: Already initialized
@@ -258,16 +329,51 @@ async function initializeGlobalState() {
     return;
   }
 
+  console.log('[Background] Starting state initialization...');
+  const initStartTime = Date.now();
+
   try {
     // Try session storage first (faster)
     const loaded = await tryLoadFromSessionStorage();
-    if (loaded) return;
+    if (loaded) {
+      initializationRetryCount = 0; // Reset on success
+      console.log('[Background] v1.6.3.6-v12 Initialization complete from session storage:', {
+        tabCount: globalQuickTabState.tabs?.length || 0,
+        durationMs: Date.now() - initStartTime
+      });
+      return;
+    }
 
     // Fall back to sync storage
     await tryLoadFromSyncStorage();
+    initializationRetryCount = 0; // Reset on success
+    console.log('[Background] v1.6.3.6-v12 Initialization complete from local storage:', {
+      tabCount: globalQuickTabState.tabs?.length || 0,
+      durationMs: Date.now() - initStartTime
+    });
   } catch (err) {
-    console.error('[Background] Error initializing global state:', err);
-    isInitialized = true; // Mark as initialized even on error to prevent blocking
+    // v1.6.3.6-v12 - FIX Issue #1: Do NOT set isInitialized=true on error
+    // This ensures handlers know state is not ready
+    console.error('[Background] v1.6.3.6-v12 INITIALIZATION FAILED:', {
+      error: err.message,
+      durationMs: Date.now() - initStartTime,
+      retryCount: initializationRetryCount,
+      maxRetries: MAX_INITIALIZATION_RETRIES
+    });
+
+    // v1.6.3.6-v12 - FIX Code Review: Limit retries with exponential backoff
+    if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
+      initializationRetryCount++;
+      const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
+      console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+      setTimeout(() => initializeGlobalState(), backoffMs);
+    } else {
+      console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+      // Fall back to empty state after max retries
+      globalQuickTabState.tabs = [];
+      globalQuickTabState.lastUpdate = Date.now();
+      isInitialized = true;
+    }
   }
 }
 
@@ -1469,18 +1575,38 @@ if (chrome.sidePanel) {
 /**
  * Apply unified format state to global state from storage
  * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
+ * v1.6.3.6-v12 - FIX Issue #7: Enhanced logging with before/after state snapshots
  * @param {Object} newValue - Storage value with tabs array
  */
 function _applyUnifiedFormatFromStorage(newValue) {
+  // v1.6.3.6-v12 - FIX Issue #7: Log before state for before/after comparison
+  const beforeState = {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    saveId: globalQuickTabState.saveId,
+    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id) // Sample first 5
+  };
+
   globalQuickTabState.tabs = newValue.tabs;
   globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
   // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
   globalQuickTabState.saveId = newValue.saveId || null;
-  console.log(
-    '[Background] Updated global state from storage (unified format):',
-    newValue.tabs.length,
-    'tabs'
-  );
+
+  // v1.6.3.6-v12 - FIX Issue #7: Log after state with comparison
+  const afterState = {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    saveId: globalQuickTabState.saveId,
+    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id)
+  };
+
+  console.log('[Background] v1.6.3.6-v12 CACHE_UPDATE:', {
+    before: beforeState,
+    after: afterState,
+    delta: afterState.tabCount - beforeState.tabCount,
+    saveIdChanged: beforeState.saveId !== afterState.saveId
+  });
+
+  // Store for debugging
+  lastCacheUpdateLog = { beforeState, afterState, timestamp: Date.now() };
 }
 
 /**
@@ -1807,21 +1933,19 @@ function _logCorruptionWarning(oldCount, newCount) {
  * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Check for Firefox spurious events (no data change)
  * v1.6.3.6-v2 - FIX Issue #1: Removed _isSpuriousFirefoxEvent check - causes false negatives during loops
  *              Content scripts handle self-write detection via isSelfWrite(), background just updates cache
+ * v1.6.3.6-v12 - FIX Issue #3: Multi-method deduplication restored with improved logic
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {boolean} True if change should be ignored
  */
 function _shouldIgnoreStorageChange(newValue, oldValue) {
-  // v1.6.3.6-v2 - FIX Issue #1: REMOVED _isSpuriousFirefoxEvent check
-  // This was creating false negatives during rapid writes (loops), where legitimate
-  // writes were being incorrectly classified as spurious because they had matching
-  // saveId/tab counts. Content scripts handle their own self-write detection via
-  // isSelfWrite() function - background should not attempt to re-filter.
-  // See: v1.6.3.5-comprehensive-diagnostic-report.md Issue #1, Failure mode 3
-
-  // Check if this is a self-write via transaction ID only (most reliable method)
-  // We only check transaction ID, not writingInstanceId, to avoid false negatives
-  if (_isTransactionSelfWrite(newValue)) {
+  // v1.6.3.6-v12 - FIX Issue #3: Multi-method deduplication in priority order
+  const dedupResult = _multiMethodDeduplication(newValue, oldValue);
+  if (dedupResult.shouldSkip) {
+    console.log('[Background] v1.6.3.6-v12 Storage change SKIPPED:', {
+      method: dedupResult.method,
+      reason: dedupResult.reason
+    });
     return true;
   }
 
@@ -1832,8 +1956,88 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 }
 
 /**
+ * Multi-method deduplication for storage changes
+ * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {{ shouldSkip: boolean, method: string, reason: string }}
+ */
+function _multiMethodDeduplication(newValue, oldValue) {
+  // Method 1: transactionId (highest priority - deterministic)
+  // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
+  if (_isTransactionSelfWrite(newValue)) {
+    return {
+      shouldSkip: true,
+      method: 'transactionId',
+      reason: `Transaction ${newValue.transactionId} in progress`
+    };
+  }
+
+  // Method 2: saveId + timestamp comparison (catches duplicates from same source)
+  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
+    return {
+      shouldSkip: true,
+      method: 'saveId+timestamp',
+      reason: 'Same saveId and timestamp within window'
+    };
+  }
+
+  // Method 3: Content hash comparison (catches Firefox spurious events)
+  if (_isContentHashDuplicate(newValue, oldValue)) {
+    return {
+      shouldSkip: true,
+      method: 'contentHash',
+      reason: 'Identical content with same saveId'
+    };
+  }
+
+  return { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
+}
+
+/**
+ * Check if saveId + timestamp indicate a duplicate write
+ * v1.6.3.6-v12 - FIX Issue #3: Second dedup method
+ * @private
+ */
+function _isSaveIdTimestampDuplicate(newValue, oldValue) {
+  if (!newValue?.saveId || !oldValue?.saveId) return false;
+  if (newValue.saveId !== oldValue.saveId) return false;
+
+  // Same saveId - check if timestamps are close enough to be same write
+  const newTs = newValue.timestamp || 0;
+  const oldTs = oldValue.timestamp || 0;
+  return Math.abs(newTs - oldTs) < DEDUP_SAVEID_TIMESTAMP_WINDOW_MS;
+}
+
+/**
+ * Check if content hash indicates a duplicate (Firefox spurious event)
+ * v1.6.3.6-v12 - FIX Issue #3: Third dedup method (safe version)
+ * Only skips if BOTH saveId matches AND content is identical
+ * This prevents false negatives during rapid legitimate writes
+ * @private
+ */
+function _isContentHashDuplicate(newValue, oldValue) {
+  if (!newValue || !oldValue) return false;
+
+  // Only apply this check if saveId matches (same source)
+  if (newValue.saveId !== oldValue.saveId) return false;
+
+  // Compute content keys
+  const newContentKey = _computeQuickTabContentKey(newValue);
+  const oldContentKey = _computeQuickTabContentKey(oldValue);
+
+  if (newContentKey === oldContentKey && newContentKey !== '') {
+    console.log('[Background] v1.6.3.6-v12 Content hash match detected (Firefox spurious event)');
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Check if this is a self-write via transaction ID
  * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
+ * v1.6.3.6-v12 - Note: This is also called by _multiMethodDeduplication() as Method 1
  * Other self-write detection methods are handled by content scripts
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if self-write
@@ -2671,6 +2875,7 @@ async function handlePortMessage(port, portId, message) {
 /**
  * Route port message to appropriate handler
  * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Added HEARTBEAT handling
  * @param {Object} message - Message to route
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
@@ -2680,6 +2885,10 @@ function routePortMessage(message, portInfo) {
 
   // Route by message type (v1.6.3.6-v11: FIX Issue #15)
   switch (type) {
+    // v1.6.3.6-v12 - FIX Issue #2, #4: Handle heartbeat to prevent Firefox termination
+    case 'HEARTBEAT':
+      return handleHeartbeat(message, portInfo);
+
     case 'ACTION_REQUEST':
       return handleActionRequest(message, portInfo);
 
@@ -2689,6 +2898,10 @@ function routePortMessage(message, portInfo) {
     case 'BROADCAST':
       return handleBroadcastRequest(message, portInfo);
 
+    // v1.6.3.6-v12 - FIX Issue #6: Handle deletion acknowledgments
+    case 'DELETION_ACK':
+      return handleDeletionAck(message, portInfo);
+
     default:
       // Fallback to action-based routing for backwards compatibility
       if (action) {
@@ -2697,6 +2910,88 @@ function routePortMessage(message, portInfo) {
       console.warn('[Background] Unknown message type:', type);
       return Promise.resolve({ success: false, error: 'Unknown message type' });
   }
+}
+
+/**
+ * Handle HEARTBEAT message to keep background script alive
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat mechanism prevents Firefox 30s termination
+ * @param {Object} message - Heartbeat message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Heartbeat acknowledgment
+ */
+function handleHeartbeat(message, portInfo) {
+  const { timestamp, source } = message;
+  const now = Date.now();
+  const latencyMs = now - (timestamp || now);
+
+  console.log('[Background] PORT_HEARTBEAT received:', {
+    source: source || portInfo?.origin || 'unknown',
+    latencyMs,
+    portId: portInfo?.port?._portId,
+    tabId: portInfo?.tabId
+  });
+
+  // Log successful heartbeat for monitoring
+  console.log('[Background] PORT_HEARTBEAT: success', {
+    portCount: portRegistry.size,
+    isInitialized
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'HEARTBEAT_ACK',
+    originalTimestamp: timestamp,
+    timestamp: now,
+    latencyMs,
+    backgroundAlive: true,
+    isInitialized
+  });
+}
+
+/**
+ * Handle deletion acknowledgment from content scripts
+ * v1.6.3.6-v12 - FIX Issue #6: Track acknowledgments for deletion ordering
+ * @param {Object} message - Deletion ack message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Ack response
+ */
+function handleDeletionAck(message, portInfo) {
+  const { correlationId, quickTabId, tabId } = message;
+
+  console.log('[Background] DELETION_ACK received:', {
+    correlationId,
+    quickTabId,
+    fromTabId: tabId || portInfo?.tabId
+  });
+
+  // Find pending deletion tracking
+  const pending = pendingDeletionAcks.get(correlationId);
+  if (!pending) {
+    console.warn('[Background] No pending deletion for correlationId:', correlationId);
+    return Promise.resolve({ success: false, error: 'No pending deletion' });
+  }
+
+  // Mark tab as completed
+  const ackTabId = tabId || portInfo?.tabId;
+  if (ackTabId) {
+    pending.completedTabs.add(ackTabId);
+    pending.pendingTabs.delete(ackTabId);
+  }
+
+  console.log('[Background] Deletion progress:', {
+    correlationId,
+    completed: pending.completedTabs.size,
+    pending: pending.pendingTabs.size
+  });
+
+  // Check if all tabs have acknowledged
+  if (pending.pendingTabs.size === 0) {
+    console.log('[Background] All tabs acknowledged deletion:', correlationId);
+    pending.resolve({ success: true, allAcked: true });
+    pendingDeletionAcks.delete(correlationId);
+  }
+
+  return Promise.resolve({ success: true, recorded: true });
 }
 
 /**
@@ -3124,11 +3419,23 @@ const quickTabHostTabs = new Map();
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes (deleted: true) by removing from cache
  * v1.6.3.6-v5 - FIX Issue #4c: Added message receipt logging
+ * v1.6.3.6-v12 - FIX Issue #1: Added initialization guard
  * Background becomes the coordinator, updating cache and broadcasting to other contexts
  * @param {Object} message - Message containing state change
  * @param {Object} sender - Sender info (includes tab.id)
  */
 async function handleQuickTabStateChange(message, sender) {
+  // v1.6.3.6-v12 - FIX Issue #1: Check initialization before processing
+  const guard = checkInitializationGuard('handleQuickTabStateChange');
+  if (!guard.initialized) {
+    // Wait briefly for initialization, then retry or fail
+    const initialized = await waitForInitialization(2000);
+    if (!initialized) {
+      console.warn('[Background] v1.6.3.6-v12 State change rejected - not initialized');
+      return guard.errorResponse;
+    }
+  }
+
   const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
 
@@ -3463,6 +3770,7 @@ async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlation
  * Broadcast deletion event to all content scripts except the sender tab
  * v1.6.3.7 - FIX Issue #3: Unified deletion behavior across UI and Manager paths
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging with correlation IDs
+ * v1.6.3.6-v12 - FIX Issue #6: Added acknowledgment tracking for message ordering
  * @private
  * @param {string} quickTabId - Quick Tab ID being deleted
  * @param {string} source - Source of deletion
@@ -3482,12 +3790,25 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
 
   try {
     const tabs = await browser.tabs.query({});
+
+    // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
+    const pendingTabs = new Set(
+      tabs.filter(t => t.id !== excludeTabId).map(t => t.id)
+    );
+
+    // Set up acknowledgment tracking with timeout
+    const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
+
+    // Send deletion messages to all tabs
     const results = await Promise.all(
       tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
     );
 
     const successCount = results.filter(r => r.sent).length;
     const skipCount = results.filter(r => r.skipped).length;
+
+    // v1.6.3.6-v12 - FIX Issue #6: Wait for acknowledgments (with timeout)
+    await _waitForDeletionAcks(corrId, ackPromise);
 
     // v1.6.3.6-v5 - FIX Issue #4e: Log deletion broadcast complete with correlation ID
     logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
@@ -3506,6 +3827,71 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
   } catch (err) {
     console.error('[Background] Error broadcasting deletion:', err.message);
   }
+}
+
+/**
+ * Wait for deletion acknowledgments with timeout
+ * v1.6.3.6-v12 - FIX Code Review: Extracted to reduce nesting depth
+ * @private
+ * @param {string} corrId - Correlation ID
+ * @param {Promise} ackPromise - Promise that resolves when acks received
+ */
+async function _waitForDeletionAcks(corrId, ackPromise) {
+  let timeoutId = null;
+  try {
+    await Promise.race([
+      ackPromise.then(result => {
+        if (timeoutId) clearTimeout(timeoutId);
+        return result;
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Ack timeout')), DELETION_ACK_TIMEOUT_MS);
+      })
+    ]);
+    console.log('[Background] v1.6.3.6-v12 All deletion acks received:', corrId);
+  } catch (ackErr) {
+    if (timeoutId) clearTimeout(timeoutId);
+    _logDeletionAckTimeout(corrId, ackErr);
+  }
+}
+
+/**
+ * Log deletion acknowledgment timeout with details
+ * v1.6.3.6-v12 - FIX Code Review: Extracted to reduce nesting
+ * @private
+ * @param {string} corrId - Correlation ID
+ * @param {Error} ackErr - The timeout error
+ */
+function _logDeletionAckTimeout(corrId, ackErr) {
+  const pending = pendingDeletionAcks.get(corrId);
+  console.warn('[Background] v1.6.3.6-v12 Deletion ack timeout:', {
+    correlationId: corrId,
+    pendingTabs: pending ? Array.from(pending.pendingTabs) : [],
+    completedTabs: pending ? Array.from(pending.completedTabs) : [],
+    error: ackErr.message
+  });
+  // Clean up on timeout
+  pendingDeletionAcks.delete(corrId);
+}
+
+/**
+ * Set up tracking for deletion acknowledgments
+ * v1.6.3.6-v12 - FIX Issue #6: Message ordering via acknowledgments
+ * @private
+ * @param {string} correlationId - Correlation ID
+ * @param {Set<number>} pendingTabs - Set of tab IDs expected to acknowledge
+ * @returns {Promise<Object>} Promise that resolves when all acks received
+ */
+function _setupDeletionAckTracking(correlationId, pendingTabs) {
+  return new Promise((resolve, reject) => {
+    pendingDeletionAcks.set(correlationId, {
+      pendingTabs: new Set(pendingTabs),
+      completedTabs: new Set(),
+      startTime: Date.now(),
+      resolve,
+      reject
+    });
+  });
 }
 
 /**
