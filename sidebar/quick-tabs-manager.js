@@ -2,6 +2,14 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v3 - FIX Issue #3: DOM Reconciliation for CSS animation flickering
+ *   - Implements differential DOM updates instead of full re-renders
+ *   - Tracks existing DOM elements by Quick Tab ID (_itemElements Map)
+ *   - Tracks existing group elements by originTabId (_groupElements Map)
+ *   - Only creates/removes DOM for added/deleted Quick Tabs
+ *   - Updates existing elements in-place without triggering CSS animations
+ *   - New items animate in correctly; existing items remain stable
+ *
  * v1.6.3.6-v11 - FIX Issues #1-9 from comprehensive diagnostics
  *   - FIX Issue #1: Animations properly invoked on toggle
  *   - FIX Issue #2: Removed inline maxHeight conflicts, JS calculates scrollHeight
@@ -41,12 +49,13 @@ import {
   animateCollapse,
   animateExpand,
   scrollIntoViewIfNeeded,
-  checkAndRemoveEmptyGroups,
+  animateGroupRemoval,
   extractTabsFromState,
   groupQuickTabsByOriginTab,
   logStateTransition,
   STATE_OPEN,
-  STATE_CLOSED
+  STATE_CLOSED,
+  ANIMATION_DURATION_MS
 } from './utils/render-helpers.js';
 import {
   STORAGE_READ_DEBOUNCE_MS,
@@ -143,6 +152,27 @@ let lastLocalUpdateTime = 0;
 
 // Browser tab info cache
 const browserTabInfoCache = new Map();
+
+// ==================== v1.6.3.7-v3 DOM RECONCILIATION ====================
+// FIX Issue #3: Track DOM elements for differential updates (prevents CSS animation flickering)
+
+/**
+ * Map of Quick Tab ID -> DOM element for reconciliation
+ * v1.6.3.7-v3 - FIX Issue #3: Track individual Quick Tab items
+ */
+const _itemElements = new Map();
+
+/**
+ * Map of originTabId (group key) -> DOM details element for reconciliation
+ * v1.6.3.7-v3 - FIX Issue #3: Track group containers
+ */
+const _groupElements = new Map();
+
+/**
+ * Last known groups container reference for reconciliation
+ * v1.6.3.7-v3 - FIX Issue #3: Cache the container reference
+ */
+let _groupsContainer = null;
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
@@ -1827,6 +1857,10 @@ function _renderUIImmediate_force() {
 
 /**
  * Internal render function - performs actual DOM manipulation
+ * v1.6.3.7-v3 - FIX Issue #3: Uses reconciliation for differential updates
+ *   - Prevents CSS animation flickering by keeping existing DOM elements
+ *   - Only adds/removes DOM for actual changes
+ *   - Updates existing elements in-place
  * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
  * v1.6.3.7 - FIX Issue #8: Enhanced render logging for debugging
  */
@@ -1870,11 +1904,8 @@ async function _renderUIImmediate() {
   const currentGroupKeys = new Set([...groups.keys()].map(String));
   cleanupPreviousGroupCounts(currentGroupKeys);
 
-  const groupsContainer = await _buildGroupsContainer(groups, collapseState);
-  checkAndRemoveEmptyGroups(groupsContainer, groups);
-
-  containersList.appendChild(groupsContainer);
-  attachCollapseEventListeners(groupsContainer, collapseState);
+  // v1.6.3.7-v3 - FIX Issue #3: Use reconciliation instead of full rebuild
+  await _reconcileGroups(groups, collapseState);
 
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
@@ -1917,22 +1948,32 @@ function _logRenderStart(allTabs) {
 
 /**
  * Show empty state UI
+ * v1.6.3.7-v3 - FIX Issue #3: Clear DOM element tracking maps when empty
  * @private
  */
 function _showEmptyState() {
   containersList.style.display = 'none';
   emptyState.style.display = 'flex';
+  
+  // v1.6.3.7-v3 - FIX Issue #3: Clear tracking maps when going to empty state
+  _itemElements.clear();
+  _groupElements.clear();
+  _groupsContainer = null;
+  containersList.innerHTML = '';
+  
   console.log('[Manager] UI showing empty state (0 tabs)');
 }
 
 /**
- * Show content state UI
+ * Show content state UI (prepare for reconciliation)
+ * v1.6.3.7-v3 - FIX Issue #3: No longer clears innerHTML, uses reconciliation instead
  * @private
  */
 function _showContentState() {
   containersList.style.display = 'block';
   emptyState.style.display = 'none';
-  containersList.innerHTML = '';
+  // v1.6.3.7-v3 - FIX Issue #3: Removed innerHTML = '' to enable reconciliation
+  // DOM elements are now managed via _reconcileGroups()
 }
 
 /**
@@ -1968,6 +2009,547 @@ async function _buildGroupsContainer(groups, collapseState) {
 
   return groupsContainer;
 }
+
+// ==================== v1.6.3.7-v3 DOM RECONCILIATION FUNCTIONS ====================
+// FIX Issue #3: Differential DOM updates to prevent CSS animation flickering
+
+/**
+ * Reconcile groups - differential update of the groups container
+ * v1.6.3.7-v3 - FIX Issue #3: Main reconciliation entry point
+ * @private
+ * @param {Map} groups - Map of groupKey -> { quickTabs: [], tabInfo: {} }
+ * @param {Object} collapseState - Collapse state for groups
+ */
+async function _reconcileGroups(groups, collapseState) {
+  const startTime = Date.now();
+  
+  // Ensure we have a groups container
+  if (!_groupsContainer || !containersList.contains(_groupsContainer)) {
+    // First render or container was removed - create fresh
+    _groupsContainer = document.createElement('div');
+    _groupsContainer.className = 'tab-groups-container';
+    containersList.innerHTML = '';
+    containersList.appendChild(_groupsContainer);
+    _groupElements.clear();
+    _itemElements.clear();
+    
+    console.log('[Manager] RECONCILE: Created fresh groups container');
+  }
+
+  const sortedGroupKeys = _getSortedGroupKeys(groups);
+  await _fetchMissingTabInfo(sortedGroupKeys, groups);
+  _resortGroupKeys(sortedGroupKeys, groups);
+
+  const existingGroupKeys = new Set(_groupElements.keys());
+  const newGroupKeys = new Set(sortedGroupKeys.map(k => String(k)));
+  
+  // Calculate diff
+  const groupsToRemove = [...existingGroupKeys].filter(k => !newGroupKeys.has(k));
+  const groupsToAdd = sortedGroupKeys.filter(k => !existingGroupKeys.has(String(k)));
+  const groupsToUpdate = sortedGroupKeys.filter(k => existingGroupKeys.has(String(k)));
+
+  console.log('[Manager] RECONCILE_GROUPS:', {
+    existing: existingGroupKeys.size,
+    incoming: newGroupKeys.size,
+    toRemove: groupsToRemove.length,
+    toAdd: groupsToAdd.length,
+    toUpdate: groupsToUpdate.length
+  });
+
+  // 1. Remove deleted groups (with exit animation)
+  for (const groupKey of groupsToRemove) {
+    _removeGroup(groupKey);
+  }
+
+  // 2. Update existing groups (in-place, no animation)
+  for (const groupKey of groupsToUpdate) {
+    const group = groups.get(groupKey);
+    if (_shouldSkipGroup(group, groupKey)) {
+      _removeGroup(String(groupKey));
+      continue;
+    }
+    _updateGroup(String(groupKey), group, collapseState);
+  }
+
+  // 3. Add new groups (with entrance animation)
+  for (const groupKey of groupsToAdd) {
+    const group = groups.get(groupKey);
+    if (_shouldSkipGroup(group, groupKey)) continue;
+    _addGroup(groupKey, group, collapseState, sortedGroupKeys);
+  }
+
+  // Ensure correct order of groups in DOM
+  _reorderGroups(sortedGroupKeys);
+
+  // Attach collapse event listeners for any new groups
+  attachCollapseEventListeners(_groupsContainer, collapseState);
+
+  console.log('[Manager] RECONCILE_COMPLETE:', {
+    durationMs: Date.now() - startTime,
+    finalGroupCount: _groupElements.size,
+    finalItemCount: _itemElements.size
+  });
+}
+
+/**
+ * Remove a group from the DOM with exit animation
+ * v1.6.3.7-v3 - FIX Issue #3: Animated group removal
+ * @private
+ * @param {string} groupKey - Group key to remove
+ */
+function _removeGroup(groupKey) {
+  const groupEl = _groupElements.get(groupKey);
+  if (!groupEl) return;
+
+  console.log('[Manager] RECONCILE_REMOVE_GROUP:', { groupKey });
+
+  // Remove item tracking for this group's items
+  const itemsInGroup = groupEl.querySelectorAll('.quick-tab-item[data-tab-id]');
+  itemsInGroup.forEach(item => {
+    _itemElements.delete(item.dataset.tabId);
+  });
+
+  // Use animated removal from render-helpers
+  animateGroupRemoval(groupEl);
+  _groupElements.delete(groupKey);
+}
+
+/**
+ * Add a new group to the DOM
+ * v1.6.3.7-v3 - FIX Issue #3: New groups get entrance animation
+ * @private
+ * @param {string|number} groupKey - Group key
+ * @param {Object} group - Group data
+ * @param {Object} collapseState - Collapse state
+ * @param {Array} sortedGroupKeys - Sorted keys for positioning
+ */
+function _addGroup(groupKey, group, collapseState, sortedGroupKeys) {
+  console.log('[Manager] RECONCILE_ADD_GROUP:', { 
+    groupKey, 
+    tabCount: group.quickTabs?.length ?? 0 
+  });
+
+  const detailsEl = renderTabGroup(groupKey, group, collapseState);
+  _groupElements.set(String(groupKey), detailsEl);
+
+  // Track all items in this new group and add new-item class for animation
+  const itemsInGroup = detailsEl.querySelectorAll('.quick-tab-item[data-tab-id]');
+  itemsInGroup.forEach(item => {
+    _itemElements.set(item.dataset.tabId, item);
+    // v1.6.3.7-v3 - FIX Issue #3: Items in new groups get entrance animation
+    item.classList.add('new-item');
+    setTimeout(() => item.classList.remove('new-item'), ANIMATION_DURATION_MS);
+  });
+
+  // Insert at correct position
+  const keyIndex = sortedGroupKeys.indexOf(groupKey);
+  const nextGroupKey = sortedGroupKeys[keyIndex + 1];
+  const nextGroupEl = nextGroupKey ? _groupElements.get(String(nextGroupKey)) : null;
+
+  if (nextGroupEl && _groupsContainer.contains(nextGroupEl)) {
+    _groupsContainer.insertBefore(detailsEl, nextGroupEl);
+  } else {
+    _groupsContainer.appendChild(detailsEl);
+  }
+}
+
+/**
+ * Update an existing group in-place without recreating it
+ * v1.6.3.7-v3 - FIX Issue #3: Updates header and reconciles items without animation
+ * @private
+ * @param {string} groupKey - Group key
+ * @param {Object} group - Group data
+ * @param {Object} _collapseState - Collapse state (unused, kept for API consistency)
+ */
+function _updateGroup(groupKey, group, _collapseState) {
+  const groupEl = _groupElements.get(groupKey);
+  if (!groupEl) return;
+
+  // Update header elements (count, title, badges)
+  _updateGroupHeader(groupEl, groupKey, group);
+
+  // Reconcile items within the group
+  const content = groupEl.querySelector('.tab-group-content');
+  if (content) {
+    _reconcileGroupItems(content, group.quickTabs, groupKey);
+  }
+}
+
+/**
+ * Update group header elements without recreating the group
+ * v1.6.3.7-v3 - FIX Issue #3: In-place header updates
+ * @private
+ * @param {HTMLElement} groupEl - Group details element
+ * @param {string} groupKey - Group key
+ * @param {Object} group - Group data
+ */
+function _updateGroupHeader(groupEl, groupKey, group) {
+  // Update count badge
+  const countEl = groupEl.querySelector('.tab-group-count');
+  if (countEl) {
+    const newCount = group.quickTabs?.length ?? 0;
+    if (countEl.textContent !== String(newCount)) {
+      animateCountBadgeIfChanged(groupKey, newCount, countEl);
+      countEl.textContent = String(newCount);
+      countEl.dataset.count = String(newCount);
+    }
+  }
+
+  // Update title if tabInfo changed
+  const titleEl = groupEl.querySelector('.tab-group-title');
+  if (titleEl && group.tabInfo?.title && titleEl.textContent !== group.tabInfo.title) {
+    titleEl.textContent = group.tabInfo.title;
+    titleEl.title = group.tabInfo.url || '';
+  }
+}
+
+/**
+ * Reconcile items within a group content element
+ * v1.6.3.7-v3 - FIX Issue #3: Differential item updates within groups
+ * @private
+ * @param {HTMLElement} content - Group content element
+ * @param {Array} quickTabs - Array of Quick Tab data
+ * @param {string} groupKey - Group key for logging
+ */
+function _reconcileGroupItems(content, quickTabs, groupKey) {
+  // Sort: active first, then minimized
+  const sortedTabs = [...quickTabs].sort((a, b) => {
+    return (isTabMinimizedHelper(a) ? 1 : 0) - (isTabMinimizedHelper(b) ? 1 : 0);
+  });
+
+  const existingItemIds = new Set();
+  content.querySelectorAll('.quick-tab-item[data-tab-id]').forEach(item => {
+    existingItemIds.add(item.dataset.tabId);
+  });
+
+  const newItemIds = new Set(sortedTabs.map(t => t.id));
+
+  // Calculate diff
+  const itemsToRemove = [...existingItemIds].filter(id => !newItemIds.has(id));
+  const itemsToAdd = sortedTabs.filter(t => !existingItemIds.has(t.id));
+  const itemsToUpdate = sortedTabs.filter(t => existingItemIds.has(t.id));
+
+  // 1. Remove deleted items
+  for (const itemId of itemsToRemove) {
+    _removeQuickTabItem(itemId, content);
+  }
+
+  // 2. Update existing items (in-place)
+  for (const tab of itemsToUpdate) {
+    _updateQuickTabItem(tab);
+  }
+
+  // 3. Add new items
+  for (const tab of itemsToAdd) {
+    _addQuickTabItem(tab, content, sortedTabs);
+  }
+
+  // Update section headers if needed
+  _updateSectionHeaders(content, sortedTabs);
+
+  console.log('[Manager] RECONCILE_GROUP_ITEMS:', {
+    groupKey,
+    removed: itemsToRemove.length,
+    added: itemsToAdd.length,
+    updated: itemsToUpdate.length
+  });
+}
+
+/**
+ * Remove a Quick Tab item from the DOM
+ * v1.6.3.7-v3 - FIX Issue #3: Item removal with exit animation
+ * @private
+ * @param {string} itemId - Quick Tab ID to remove
+ * @param {HTMLElement} _content - Content container (unused, kept for API consistency)
+ */
+function _removeQuickTabItem(itemId, _content) {
+  const item = _itemElements.get(itemId);
+  if (!item) return;
+
+  console.log('[Manager] RECONCILE_REMOVE_ITEM:', { itemId });
+
+  // Add removing class for exit animation
+  item.classList.add('removing');
+  
+  // v1.6.3.7-v3 - FIX: Delete from tracking map immediately to prevent
+  // duplicate operations during animation, but keep DOM element until animation completes
+  _itemElements.delete(itemId);
+  
+  // Remove DOM element after animation completes
+  setTimeout(() => {
+    if (item.parentNode) {
+      item.remove();
+    }
+  }, ANIMATION_DURATION_MS);
+}
+
+/**
+ * Add a new Quick Tab item to the DOM
+ * v1.6.3.7-v3 - FIX Issue #3: New items get entrance animation via .new-item class
+ * @private
+ * @param {Object} tab - Quick Tab data
+ * @param {HTMLElement} content - Content container
+ * @param {Array} sortedTabs - All tabs in sorted order for positioning
+ */
+function _addQuickTabItem(tab, content, sortedTabs) {
+  const isMinimized = isTabMinimizedHelper(tab);
+  const item = renderQuickTabItem(tab, 'global', isMinimized);
+  
+  // v1.6.3.7-v3 - FIX Issue #3: Add new-item class for entrance animation
+  item.classList.add('new-item');
+  
+  _itemElements.set(tab.id, item);
+
+  // Find correct position
+  const tabIndex = sortedTabs.findIndex(t => t.id === tab.id);
+  const nextTab = sortedTabs[tabIndex + 1];
+  const nextItem = nextTab ? _itemElements.get(nextTab.id) : null;
+
+  // Insert at correct position (after section headers if applicable)
+  if (nextItem && content.contains(nextItem)) {
+    content.insertBefore(item, nextItem);
+  } else {
+    // Append at end
+    content.appendChild(item);
+  }
+
+  // v1.6.3.7-v3 - FIX Issue #3: Remove new-item class after animation completes
+  setTimeout(() => {
+    item.classList.remove('new-item');
+  }, ANIMATION_DURATION_MS);
+
+  console.log('[Manager] RECONCILE_ADD_ITEM:', { 
+    itemId: tab.id, 
+    isMinimized,
+    position: tabIndex
+  });
+}
+
+/**
+ * Update an existing Quick Tab item in-place
+ * v1.6.3.7-v3 - FIX Issue #3: In-place property updates without recreation
+ * @private
+ * @param {Object} tab - Quick Tab data
+ */
+function _updateQuickTabItem(tab) {
+  const item = _itemElements.get(tab.id);
+  if (!item) return;
+
+  const isMinimized = isTabMinimizedHelper(tab);
+  
+  // Update minimized state if changed
+  _updateItemMinimizedState(item, tab, isMinimized);
+
+  // Update title text
+  _updateItemTitle(item, tab);
+
+  // Update meta info (size/position)
+  _updateItemMeta(item, tab, isMinimized);
+
+  // Update domVerified warning indicator
+  _updateItemStatusIndicator(item, tab, isMinimized);
+}
+
+/**
+ * Update the minimized state classes and related UI
+ * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce _updateQuickTabItem complexity
+ * @private
+ */
+function _updateItemMinimizedState(item, tab, isMinimized) {
+  const wasMinimized = item.classList.contains('minimized');
+  
+  if (isMinimized !== wasMinimized) {
+    item.classList.toggle('minimized', isMinimized);
+    item.classList.toggle('active', !isMinimized);
+    
+    // Update action buttons (minimize <-> restore)
+    _updateItemActionButtons(item, tab, isMinimized);
+  }
+}
+
+/**
+ * Update the title element of a Quick Tab item
+ * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce _updateQuickTabItem complexity
+ * @private
+ */
+function _updateItemTitle(item, tab) {
+  const titleEl = item.querySelector('.tab-title');
+  const newTitle = tab.title || 'Quick Tab';
+  
+  if (titleEl && titleEl.textContent !== newTitle) {
+    titleEl.textContent = newTitle;
+    titleEl.title = tab.title || tab.url;
+  }
+}
+
+/**
+ * Update the meta element of a Quick Tab item
+ * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce _updateQuickTabItem complexity
+ * @private
+ */
+function _updateItemMeta(item, tab, isMinimized) {
+  const metaEl = item.querySelector('.tab-meta');
+  if (!metaEl) return;
+  
+  const newMeta = _buildMetaText(tab, isMinimized);
+  if (metaEl.textContent !== newMeta) {
+    metaEl.textContent = newMeta;
+  }
+}
+
+/**
+ * Update status indicator for a Quick Tab item
+ * v1.6.3.7-v3 - FIX Issue #3: In-place status indicator update
+ * @private
+ */
+function _updateItemStatusIndicator(item, tab, isMinimized) {
+  const indicator = item.querySelector('.status-indicator');
+  if (!indicator) return;
+
+  const indicatorClass = _getIndicatorClass(tab, isMinimized);
+  
+  // Remove all indicator classes and add the correct one
+  indicator.classList.remove('green', 'yellow', 'orange');
+  indicator.classList.add(indicatorClass);
+
+  // Update tooltip for warning state
+  if (indicatorClass === 'orange') {
+    indicator.title = 'Warning: Window may not be visible. Try restoring again.';
+  } else {
+    indicator.title = '';
+  }
+}
+
+/**
+ * Update action buttons for a Quick Tab item
+ * v1.6.3.7-v3 - FIX Issue #3: Swap minimize/restore buttons on state change
+ * @private
+ */
+function _updateItemActionButtons(item, tab, isMinimized) {
+  const actionsEl = item.querySelector('.tab-actions');
+  if (!actionsEl) return;
+
+  // Clear existing buttons and add new ones
+  // Note: Event delegation is used, so no listeners to preserve
+  const newActions = _createTabActions(tab, isMinimized);
+  actionsEl.replaceChildren(...newActions.childNodes);
+}
+
+/**
+ * Build meta text for a Quick Tab item
+ * v1.6.3.7-v3 - FIX Issue #3: Helper for meta text generation
+ * @private
+ */
+function _buildMetaText(tab, isMinimized) {
+  const metaParts = [];
+  
+  if (isMinimized) {
+    metaParts.push('Minimized');
+  }
+  
+  if (tab.activeTabId) {
+    metaParts.push(`Tab ${tab.activeTabId}`);
+  }
+  
+  const sizePosition = _formatSizePosition(tab);
+  if (sizePosition) {
+    metaParts.push(sizePosition);
+  }
+  
+  if (tab.slotNumber) {
+    metaParts.push(`Slot ${tab.slotNumber}`);
+  }
+  
+  return metaParts.join(' • ');
+}
+
+/**
+ * Update section headers in group content
+ * v1.6.3.7-v3 - FIX Issue #3: Update section counts without full rebuild
+ * @private
+ */
+function _updateSectionHeaders(content, sortedTabs) {
+  // v1.6.3.7-v3 - Optimized: Single pass to count active/minimized tabs
+  let activeCount = 0;
+  let minimizedCount = 0;
+  for (const tab of sortedTabs) {
+    if (isTabMinimizedHelper(tab)) {
+      minimizedCount++;
+    } else {
+      activeCount++;
+    }
+  }
+  
+  const hasBothSections = activeCount > 0 && minimizedCount > 0;
+
+  if (hasBothSections) {
+    _updateSectionHeaderCounts(content, activeCount, minimizedCount);
+  } else {
+    _removeSectionElements(content);
+  }
+}
+
+/**
+ * Update section header counts
+ * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce nesting depth
+ * @private
+ */
+function _updateSectionHeaderCounts(content, activeCount, minimizedCount) {
+  const headers = content.querySelectorAll('.section-header');
+  if (headers[0]) headers[0].textContent = `Active (${activeCount})`;
+  if (headers[1]) headers[1].textContent = `Minimized (${minimizedCount})`;
+}
+
+/**
+ * Remove section elements when only one type of tab exists
+ * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce nesting depth
+ * @private
+ */
+function _removeSectionElements(content) {
+  const activeHeader = content.querySelector('.section-header');
+  const divider = content.querySelector('.section-divider');
+  const minimizedHeader = content.querySelectorAll('.section-header')[1];
+  
+  if (activeHeader) activeHeader.remove();
+  if (divider) divider.remove();
+  if (minimizedHeader) minimizedHeader.remove();
+}
+
+/**
+ * Reorder groups in the DOM to match sorted order
+ * v1.6.3.7-v3 - FIX Issue #3: Ensure correct visual order without recreation
+ * @private
+ * @param {Array} sortedGroupKeys - Group keys in desired order
+ */
+function _reorderGroups(sortedGroupKeys) {
+  let previousEl = null;
+  
+  for (const groupKey of sortedGroupKeys) {
+    const groupEl = _groupElements.get(String(groupKey));
+    if (!groupEl) continue;
+
+    _repositionGroupElement(groupEl, previousEl);
+    previousEl = groupEl;
+  }
+}
+
+/**
+ * Position a group element in the correct location in the DOM
+ * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce nesting depth
+ * @private
+ */
+function _repositionGroupElement(groupEl, previousEl) {
+  if (previousEl && groupEl.previousElementSibling !== previousEl) {
+    previousEl.after(groupEl);
+    return;
+  }
+  
+  if (!previousEl && _groupsContainer.firstChild !== groupEl) {
+    _groupsContainer.insertBefore(groupEl, _groupsContainer.firstChild);
+  }
+}
+
+// ==================== END DOM RECONCILIATION FUNCTIONS ====================
 
 /**
  * Get sorted group keys (orphaned last, closed before orphaned)

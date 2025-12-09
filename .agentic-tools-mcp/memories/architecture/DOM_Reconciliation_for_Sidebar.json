@@ -1,0 +1,8 @@
+{
+  "id": "18641931-e70a-42d8-8169-d50586338ac0",
+  "title": "DOM Reconciliation for Sidebar",
+  "details": "v1.6.3.7-v3 introduced DOM reconciliation to prevent CSS animation flickering in the sidebar. Key patterns:\n\n1. Track DOM elements by ID: `_itemElements`, `_groupElements`, `_groupsContainer`\n2. Reconciliation functions: `_reconcileGroups()`, `_reconcileGroupItems()`\n3. Animation classes: `.new-item` for entrance, `.removing` for exit\n4. Use `ANIMATION_DURATION_MS` constant from render-helpers.js (350ms)\n5. CSS animations only trigger on class add, not on DOM insertion\n6. Action buttons use event delegation, so replacing children is safe\n\nEntry point: `_renderUIImmediate()` → `_reconcileGroups()` (not full rebuild)",
+  "category": "architecture",
+  "dateCreated": "2025-12-09T18:44:59.812Z",
+  "dateUpdated": "2025-12-09T18:44:59.812Z"
+}
