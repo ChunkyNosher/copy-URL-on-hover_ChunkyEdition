@@ -2950,6 +2950,7 @@ async function handlePortMessage(port, portId, message) {
  * Route port message to appropriate handler
  * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
  * v1.6.3.6-v12 - FIX Issue #2, #4: Added HEARTBEAT handling
+ * v1.6.4.0 - FIX Issue E: Added REQUEST_FULL_STATE_SYNC handling
  * @param {Object} message - Message to route
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
@@ -2975,6 +2976,10 @@ function routePortMessage(message, portInfo) {
     // v1.6.3.6-v12 - FIX Issue #6: Handle deletion acknowledgments
     case 'DELETION_ACK':
       return handleDeletionAck(message, portInfo);
+
+    // v1.6.4.0 - FIX Issue E: Handle state sync request after port reconnection
+    case 'REQUEST_FULL_STATE_SYNC':
+      return handleFullStateSyncRequest(message, portInfo);
 
     default:
       // Fallback to action-based routing for backwards compatibility
@@ -3071,6 +3076,7 @@ function handleDeletionAck(message, portInfo) {
 /**
  * Handle ACTION_REQUEST type messages
  * v1.6.3.6-v11 - FIX Issue #15: Action request handling
+ * v1.6.4.0 - FIX Issue A: Added CLOSE_MINIMIZED_TABS handler
  * @param {Object} message - Action request message
  * @param {Object} portInfo - Port info
  */
@@ -3095,6 +3101,10 @@ function handleActionRequest(message, portInfo) {
 
     case 'ADOPT_TAB':
       return handleAdoptAction(payload);
+
+    // v1.6.4.0 - FIX Issue A: Handle close minimized tabs command
+    case 'CLOSE_MINIMIZED_TABS':
+      return handleCloseMinimizedTabsCommand();
 
     case 'DELETE_GROUP':
       // TODO: Implement delete group
@@ -3287,6 +3297,281 @@ async function writeStateWithVerification() {
     return { success: false, error: err.message };
   }
 }
+
+// ==================== v1.6.4.0 COMMAND HANDLERS ====================
+// FIX Issue A: Background as sole storage writer
+// FIX Issue E: State sync on port reconnection
+// FIX Issue F: Storage write verification with retry
+
+/**
+ * Maximum retries for storage write verification
+ * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
+ */
+const STORAGE_WRITE_MAX_RETRIES = 3;
+
+/**
+ * Initial backoff for storage write retry
+ * v1.6.4.0 - FIX Issue F: Exponential backoff
+ */
+const STORAGE_WRITE_BACKOFF_INITIAL_MS = 100;
+
+/**
+ * Handle REQUEST_FULL_STATE_SYNC message
+ * v1.6.4.0 - FIX Issue E: State sync on port reconnection
+ * @param {Object} message - Sync request message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} State sync response
+ */
+async function handleFullStateSyncRequest(message, portInfo) {
+  const { currentCacheHash, currentCacheTabCount, timestamp } = message;
+  const now = Date.now();
+  const latencyMs = now - (timestamp || now);
+
+  console.log('[Background] REQUEST_FULL_STATE_SYNC received:', {
+    source: portInfo?.origin,
+    clientCacheHash: currentCacheHash,
+    clientCacheTabCount: currentCacheTabCount,
+    latencyMs
+  });
+
+  // Check initialization
+  const guard = checkInitializationGuard('handleFullStateSyncRequest');
+  if (!guard.initialized) {
+    const initialized = await waitForInitialization(2000);
+    if (!initialized) {
+      return {
+        success: false,
+        error: 'Background not initialized',
+        retryable: true
+      };
+    }
+  }
+
+  const serverHash = computeStateHash({ tabs: globalQuickTabState.tabs });
+  const serverTabCount = globalQuickTabState.tabs?.length ?? 0;
+
+  console.log('[Background] STATE_SYNC_RESPONSE:', {
+    serverTabCount,
+    serverHash,
+    clientCacheHash: currentCacheHash,
+    clientCacheTabCount: currentCacheTabCount,
+    diverged: serverHash !== currentCacheHash
+  });
+
+  return {
+    success: true,
+    type: 'FULL_STATE_SYNC',
+    state: {
+      tabs: globalQuickTabState.tabs,
+      lastUpdate: globalQuickTabState.lastUpdate,
+      saveId: globalQuickTabState.saveId
+    },
+    serverHash,
+    serverTabCount,
+    timestamp: now
+  };
+}
+
+/**
+ * Handle CLOSE_MINIMIZED_TABS command
+ * v1.6.4.0 - FIX Issue A: Background as sole storage writer
+ * @returns {Promise<Object>} Command result
+ */
+async function handleCloseMinimizedTabsCommand() {
+  console.log('[Background] Handling CLOSE_MINIMIZED_TABS command');
+
+  // Check initialization
+  const guard = checkInitializationGuard('handleCloseMinimizedTabsCommand');
+  if (!guard.initialized) {
+    const initialized = await waitForInitialization(2000);
+    if (!initialized) {
+      return guard.errorResponse;
+    }
+  }
+
+  // Find minimized tabs
+  const minimizedTabs = globalQuickTabState.tabs.filter(tab =>
+    tab.minimized === true || tab.visibility?.minimized === true
+  );
+
+  if (minimizedTabs.length === 0) {
+    console.log('[Background] No minimized tabs to close');
+    return { success: true, closedCount: 0, closedIds: [] };
+  }
+
+  const closedIds = minimizedTabs.map(tab => tab.id);
+
+  console.log('[Background] Closing minimized tabs:', {
+    count: closedIds.length,
+    ids: closedIds
+  });
+
+  // Broadcast close messages to content scripts first
+  await _broadcastCloseManyToAllTabs(closedIds);
+
+  // Remove minimized tabs from state
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab =>
+    !(tab.minimized === true || tab.visibility?.minimized === true)
+  );
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Write to storage with verification (FIX Issue F)
+  const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
+
+  // Remove from host tracking
+  for (const id of closedIds) {
+    quickTabHostTabs.delete(id);
+  }
+
+  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {
+    closedCount: closedIds.length,
+    closedIds,
+    writeVerified: writeResult.verified
+  });
+
+  return {
+    success: true,
+    closedCount: closedIds.length,
+    closedIds,
+    verified: writeResult.verified
+  };
+}
+
+/**
+ * Broadcast close messages for multiple Quick Tabs to all content scripts
+ * v1.6.4.0 - FIX Issue A: Helper for CLOSE_MINIMIZED_TABS
+ * @private
+ * @param {Array<string>} quickTabIds - Quick Tab IDs to close
+ */
+async function _broadcastCloseManyToAllTabs(quickTabIds) {
+  try {
+    const tabs = await browser.tabs.query({});
+    await _sendCloseMessagesToAllTabs(tabs, quickTabIds);
+  } catch (err) {
+    console.error('[Background] Error broadcasting close messages:', err.message);
+  }
+}
+
+/**
+ * Send close messages to all browser tabs for given Quick Tab IDs
+ * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * @private
+ * @param {Array} tabs - Browser tabs
+ * @param {Array<string>} quickTabIds - Quick Tab IDs to close
+ */
+async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
+  for (const quickTabId of quickTabIds) {
+    _sendCloseMessageToTabs(tabs, quickTabId);
+  }
+}
+
+/**
+ * Send close message to all browser tabs for a single Quick Tab
+ * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * @private
+ * @param {Array} tabs - Browser tabs
+ * @param {string} quickTabId - Quick Tab ID to close
+ */
+function _sendCloseMessageToTabs(tabs, quickTabId) {
+  for (const tab of tabs) {
+    browser.tabs.sendMessage(tab.id, {
+      action: 'CLOSE_QUICK_TAB',
+      quickTabId,
+      source: 'background-command'
+    }).catch(() => {
+      // Content script may not be loaded
+    });
+  }
+}
+
+/**
+ * Write state to storage with verification and exponential backoff retry
+ * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
+ * @param {string} operation - Operation name for logging
+ * @returns {Promise<Object>} Write result with verification status
+ */
+async function writeStateWithVerificationAndRetry(operation) {
+  const saveId = `bg-${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
+
+  for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
+    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
+    
+    if (result.success && result.verified) {
+      return result;
+    }
+    
+    if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+      backoffMs *= 2; // Exponential backoff
+    }
+  }
+
+  console.error('[Background] Storage write verification FAILED after max retries:', {
+    operation,
+    saveId,
+    maxRetries: STORAGE_WRITE_MAX_RETRIES
+  });
+
+  return { success: false, saveId, verified: false, attempts: STORAGE_WRITE_MAX_RETRIES };
+}
+
+/**
+ * Attempt a single storage write with verification
+ * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * @private
+ * @param {string} operation - Operation name
+ * @param {string} saveId - Save ID
+ * @param {number} attempt - Current attempt number
+ * @param {number} backoffMs - Current backoff time
+ * @returns {Promise<{ success: boolean, verified: boolean, needsRetry: boolean, attempts?: number, saveId?: string }>}
+ */
+async function _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs) {
+  const stateToWrite = {
+    tabs: globalQuickTabState.tabs,
+    saveId,
+    timestamp: Date.now()
+  };
+
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
+    return await _verifyStorageWrite(operation, saveId, stateToWrite.tabs.length, attempt, backoffMs);
+  } catch (err) {
+    console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
+    return { success: false, verified: false, needsRetry: true };
+  }
+}
+
+/**
+ * Verify storage write by reading back the data
+ * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * @private
+ */
+async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoffMs) {
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const readBack = result?.quick_tabs_state_v2;
+  const verified = readBack?.saveId === saveId;
+
+  if (verified) {
+    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
+      operation,
+      saveId,
+      tabCount
+    });
+    return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
+  }
+
+  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
+    operation,
+    expectedSaveId: saveId,
+    actualSaveId: readBack?.saveId,
+    backoffMs
+  });
+  
+  return { success: false, verified: false, needsRetry: true };
+}
+
+// ==================== END v1.6.4.0 COMMAND HANDLERS ====================
 
 /**
  * Broadcast message to all connected ports

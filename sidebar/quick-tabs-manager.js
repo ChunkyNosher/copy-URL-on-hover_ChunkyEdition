@@ -295,6 +295,10 @@ function connectToBackground() {
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
     startHeartbeat();
 
+    // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
+    // This ensures Manager has latest state after any disconnection
+    _requestFullStateSync();
+
     console.log('[Manager] v1.6.3.6-v11 Port connection established');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
@@ -514,10 +518,138 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
 
 // ==================== END HEARTBEAT FUNCTIONS ====================
 
+// ==================== v1.6.4.0 STATE SYNC & UNIFIED RENDER ====================
+// FIX Issue E: State sync on port reconnection
+// FIX Issue B: Unified render entry point
+// FIX Issue D: Hash-based state staleness detection
+
+/**
+ * State hash captured when debounce timer was set
+ * v1.6.4.0 - FIX Issue D: Detect state staleness during debounce
+ */
+let capturedStateHashAtDebounce = 0;
+
+/**
+ * Timestamp when debounce was set
+ * v1.6.4.0 - FIX Issue D: Track debounce timing
+ */
+let debounceSetTimestamp = 0;
+
+/**
+ * State sync timeout (5 seconds)
+ * v1.6.4.0 - FIX Issue E: Timeout for state sync request
+ */
+const STATE_SYNC_TIMEOUT_MS = 5000;
+
+/**
+ * Request full state sync from background after port reconnection
+ * v1.6.4.0 - FIX Issue E: Ensure Manager has latest state after reconnection
+ * @private
+ */
+async function _requestFullStateSync() {
+  if (!backgroundPort) {
+    console.warn('[Manager] Cannot request state sync - port not connected');
+    return;
+  }
+
+  console.log('[Manager] STATE_SYNC_REQUESTED: requesting full state from background');
+
+  try {
+    const response = await sendPortMessageWithTimeout(
+      {
+        type: 'REQUEST_FULL_STATE_SYNC',
+        timestamp: Date.now(),
+        source: 'sidebar',
+        currentCacheHash: computeStateHash(quickTabsState),
+        currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
+      },
+      STATE_SYNC_TIMEOUT_MS
+    );
+
+    if (response?.success && response?.state) {
+      _handleStateSyncResponse(response);
+    } else {
+      console.warn('[Manager] State sync response did not include state:', response);
+    }
+  } catch (err) {
+    console.warn('[Manager] State sync timed out after', STATE_SYNC_TIMEOUT_MS, 'ms, proceeding with cached state (may be stale):', err.message);
+  }
+}
+
+/**
+ * Handle state sync response from background
+ * v1.6.4.0 - FIX Issue E: Compare and update state
+ * @private
+ * @param {Object} response - Response from background with state
+ */
+function _handleStateSyncResponse(response) {
+  const serverState = response.state;
+  const serverTabCount = serverState?.tabs?.length ?? 0;
+  const cacheTabCount = quickTabsState?.tabs?.length ?? 0;
+  
+  const serverHash = computeStateHash(serverState);
+  const cacheHash = computeStateHash(quickTabsState);
+  const hashDiverged = serverHash !== cacheHash;
+
+  console.log('[Manager] STATE_SYNC_RECEIVED:', {
+    serverTabCount,
+    cacheTabCount,
+    serverHash,
+    cacheHash,
+    diverged: hashDiverged
+  });
+
+  if (hashDiverged) {
+    console.log('[Manager] STATE_DIVERGENCE_DETECTED: server has', serverTabCount, 'tabs, cache had', cacheTabCount, 'tabs - updating');
+    
+    // Update local state from server
+    quickTabsState = serverState;
+    _updateInMemoryCache(serverState.tabs || []);
+    lastKnownGoodTabCount = serverTabCount;
+    lastLocalUpdateTime = Date.now();
+    
+    // Trigger UI update
+    scheduleRender('state-sync-divergence');
+  } else {
+    console.log('[Manager] State sync complete - no divergence detected');
+  }
+}
+
+/**
+ * Unified render entry point - ALL render triggers go through here
+ * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
+ * @param {string} source - Source of render trigger for logging
+ */
+function scheduleRender(source = 'unknown') {
+  const currentHash = computeStateHash(quickTabsState);
+  
+  // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
+  if (currentHash === lastRenderedStateHash) {
+    console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
+      source,
+      hash: currentHash
+    });
+    return;
+  }
+
+  console.log('[Manager] RENDER_SCHEDULED:', {
+    source,
+    newHash: currentHash,
+    previousHash: lastRenderedStateHash,
+    timestamp: Date.now()
+  });
+
+  // Route to the debounced renderUI
+  renderUI();
+}
+
+// ==================== END STATE SYNC & UNIFIED RENDER ====================
+
 /**
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
  * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
+ * v1.6.4.0 - FIX Issue E: Handle FULL_STATE_SYNC response
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
@@ -547,7 +679,16 @@ function handlePortMessage(message) {
 
   // Handle state updates
   if (message.type === 'STATE_UPDATE') {
+    // v1.6.4.0 - FIX Issue B: Route through unified render entry point
     handleStateUpdateBroadcast(message);
+    scheduleRender('port-STATE_UPDATE');
+    return;
+  }
+  
+  // v1.6.4.0 - FIX Issue E: Handle full state sync response
+  if (message.type === 'FULL_STATE_SYNC') {
+    _handleStateSyncResponse(message);
+    return;
   }
 }
 
@@ -589,6 +730,7 @@ function handleAcknowledgment(ack) {
 /**
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
+ * v1.6.4.0 - FIX Issue B: Route all renders through scheduleRender()
  * @param {Object} message - Broadcast message
  */
 function handleBroadcast(message) {
@@ -597,8 +739,8 @@ function handleBroadcast(message) {
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Manager] Received visibility change broadcast:', message);
-      // Trigger UI refresh
-      renderUI();
+      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      scheduleRender('broadcast-VISIBILITY_CHANGE');
       break;
 
     case 'TAB_LIFECYCLE_CHANGE':
@@ -607,7 +749,8 @@ function handleBroadcast(message) {
       if (message.tabId) {
         browserTabInfoCache.delete(message.tabId);
       }
-      renderUI();
+      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE');
       break;
 
     default:
@@ -618,6 +761,7 @@ function handleBroadcast(message) {
 /**
  * Handle state update broadcasts
  * v1.6.3.6-v11 - FIX Issue #19: State sync via port
+ * v1.6.4.0 - FIX Issue B: No longer calls renderUI directly - caller must route through scheduleRender
  * @param {Object} message - State update message
  */
 function handleStateUpdateBroadcast(message) {
@@ -625,7 +769,7 @@ function handleStateUpdateBroadcast(message) {
 
   if (quickTabId && changes) {
     handleStateUpdateMessage(quickTabId, changes);
-    renderUI();
+    // v1.6.4.0 - FIX Issue B: renderUI() removed - caller (handlePortMessage) now routes through scheduleRender()
   }
 }
 
@@ -1571,11 +1715,16 @@ function updateUIStats(totalTabs, latestTimestamp) {
 /**
  * Render the Quick Tabs Manager UI (debounced)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
+ * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
+  
+  // v1.6.4.0 - FIX Issue D: Capture state hash when debounce is set
+  capturedStateHashAtDebounce = computeStateHash(quickTabsState);
+  debounceSetTimestamp = Date.now();
   
   // Clear any existing debounce timer
   if (renderDebounceTimer) {
@@ -1583,7 +1732,7 @@ function renderUI() {
   }
   
   // Schedule the actual render
-  renderDebounceTimer = setTimeout(() => {
+  renderDebounceTimer = setTimeout(async () => {
     renderDebounceTimer = null;
     
     // Only render if still pending (wasn't cancelled)
@@ -1594,11 +1743,17 @@ function renderUI() {
     
     pendingRenderUI = false;
     
-    // Check if state actually changed before rebuilding DOM
-    const currentHash = computeStateHash(quickTabsState);
-    if (currentHash === lastRenderedHash) {
+    // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
+    const staleCheckResult = await _checkAndReloadStaleState();
+    if (staleCheckResult.stateReloaded) {
+      console.log('[Manager] State changed while debounce was waiting, rendering with fresh state', staleCheckResult);
+    }
+    
+    // Recalculate hash after potential fresh load
+    const finalHash = computeStateHash(quickTabsState);
+    if (finalHash === lastRenderedHash) {
       console.log('[Manager] Skipping render - state hash unchanged', {
-        hash: currentHash,
+        hash: finalHash,
         tabCount: quickTabsState?.tabs?.length ?? 0
       });
       return;
@@ -1606,14 +1761,53 @@ function renderUI() {
     
     // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
     // This ensures consistent state even on render failure
-    lastRenderedHash = currentHash;
-    lastRenderedStateHash = currentHash;
+    lastRenderedHash = finalHash;
+    lastRenderedStateHash = finalHash;
     
     // Synchronize DOM mutation with requestAnimationFrame
     requestAnimationFrame(() => {
       _renderUIImmediate();
     });
   }, RENDER_DEBOUNCE_MS);
+}
+
+/**
+ * Check for stale state during debounce and reload if needed
+ * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * @private
+ * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, debounceWaitMs: number }>}
+ */
+async function _checkAndReloadStaleState() {
+  const currentHash = computeStateHash(quickTabsState);
+  const debounceWaitTime = Date.now() - debounceSetTimestamp;
+  
+  if (currentHash === capturedStateHashAtDebounce) {
+    return { stateReloaded: false, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
+  }
+  
+  // State changed during wait - fetch fresh state from storage to ensure consistency
+  await _loadFreshStateFromStorage();
+  
+  return { stateReloaded: true, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
+}
+
+/**
+ * Load fresh state from storage during debounce stale check
+ * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * @private
+ */
+async function _loadFreshStateFromStorage() {
+  try {
+    const freshResult = await browser.storage.local.get(STATE_KEY);
+    const freshState = freshResult?.[STATE_KEY];
+    if (freshState?.tabs) {
+      quickTabsState = freshState;
+      _updateInMemoryCache(freshState.tabs);
+      console.log('[Manager] Loaded fresh state from storage (stale prevention)');
+    }
+  } catch (err) {
+    console.warn('[Manager] Failed to load fresh state, using current:', err.message);
+  }
 }
 
 /**
@@ -3006,6 +3200,7 @@ function _handleSuspiciousStorageDrop(oldValue) {
 /**
  * Schedule debounced storage update
  * v1.6.3.5-v2 - Extracted to reduce complexity
+ * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
  */
 function _scheduleStorageUpdate() {
   if (storageReadDebounceTimer) {
@@ -3015,11 +3210,8 @@ function _scheduleStorageUpdate() {
   storageReadDebounceTimer = setTimeout(() => {
     storageReadDebounceTimer = null;
     loadQuickTabsState().then(() => {
-      const newHash = computeStateHash(quickTabsState);
-      if (newHash !== lastRenderedStateHash) {
-        lastRenderedStateHash = newHash;
-        renderUI();
-      }
+      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      scheduleRender('storage.onChanged');
     });
   }, STORAGE_READ_DEBOUNCE_MS);
 }
@@ -3132,6 +3324,7 @@ async function _processReconciliationResult(uniqueQuickTabs) {
  * Restore state from content scripts data
  * v1.6.3.4-v9 - Extracted to reduce nesting depth
  * v1.6.3.5-v2 - FIX Code Review: Use SAVEID_RECONCILED constant
+ * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
  *
  * ARCHITECTURE NOTE (v1.6.3.5-v6):
  * This function writes directly to storage as a RECOVERY operation.
@@ -3159,21 +3352,20 @@ async function _restoreStateFromContentScripts(quickTabs) {
 
   // Update local state and re-render
   quickTabsState = restoredState;
-  renderUI();
+  // v1.6.4.0 - FIX Issue B: Route through unified entry point
+  scheduleRender('restore-from-content-scripts');
 }
 
 /**
  * Schedule normal state update after delay
  * v1.6.3.4-v9 - Extracted to reduce code duplication
+ * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
  */
 function _scheduleNormalUpdate() {
   setTimeout(() => {
     loadQuickTabsState().then(() => {
-      const newHash = computeStateHash(quickTabsState);
-      if (newHash !== lastRenderedStateHash) {
-        lastRenderedStateHash = newHash;
-        renderUI();
-      }
+      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      scheduleRender('reconciliation-complete');
     });
   }, STORAGE_READ_DEBOUNCE_MS);
 }
@@ -3182,37 +3374,36 @@ function _scheduleNormalUpdate() {
  * Close all minimized Quick Tabs (NEW FEATURE #1)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local and updated for unified format
  * v1.6.3.4-v6 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
- *
- * ARCHITECTURE NOTE (v1.6.3.5-v6):
- * This function writes directly to storage, which violates the "single-writer" architecture.
- * This is a known deviation that should be addressed in a future refactor:
- * - Should send CLOSE_MINIMIZED_QUICK_TABS command to background
- * - Background should handle the storage write
- * - Manager should receive confirmation via message
- *
- * Current behavior is acceptable for now because:
- * 1. Operation is atomic (read-modify-write within same function)
- * 2. Content scripts are notified before storage write
- * 3. No race condition risk since minimized tabs have no DOM
- *
- * TODO: Migrate to background-coordinated approach (see v1.6.3.5-architectural-issues.md)
- */
-/**
- * Close all minimized Quick Tabs
- * v1.6.4.11 - Refactored to reduce cyclomatic complexity
+ * v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
+ *   - Manager sends CLOSE_MINIMIZED_TABS command
+ *   - Background processes command, updates state, writes to storage
+ *   - Background sends confirmation back to Manager
  */
 async function closeMinimizedTabs() {
+  console.log('[Manager] Close Minimized Tabs requested');
+  
   try {
-    const state = await _loadStorageState();
-    if (!state) return;
-
-    const minimizedTabIds = _collectMinimizedTabIds(state);
-    console.log('[Manager] Closing minimized tabs:', minimizedTabIds);
-
-    await _broadcastCloseMessages(minimizedTabIds);
-    await _updateStorageAfterClose(state);
+    // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
+    const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
+      timestamp: Date.now()
+    });
+    
+    if (response?.success || response?.timedOut) {
+      console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
+        closedCount: response?.closedCount || 0,
+        closedIds: response?.closedIds || [],
+        timedOut: response?.timedOut || false
+      });
+      
+      // Re-render UI to reflect the change
+      scheduleRender('close-minimized-success');
+    } else {
+      console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
+        error: response?.error || 'Unknown error'
+      });
+    }
   } catch (err) {
-    console.error('Error closing minimized tabs:', err);
+    console.error('[Manager] Error sending close minimized command:', err);
   }
 }
 
@@ -3917,9 +4108,9 @@ async function closeQuickTab(quickTabId) {
 /**
  * Adopt an orphaned Quick Tab to the current browser tab
  * v1.6.3.7-v1 - FIX ISSUE #8: Allow users to "rescue" orphaned Quick Tabs
- *   - Updates originTabId to the current browser tab
- *   - Persists the change to storage
- *   - Re-renders the Manager UI
+ * v1.6.4.0 - FIX Issue A: Send ADOPT_TAB command to background instead of direct storage write
+ *   - Manager sends command, background is sole writer
+ *   - Background updates state, writes to storage, sends confirmation
  * @param {string} quickTabId - The Quick Tab ID to adopt
  * @param {number} targetTabId - The browser tab ID to adopt to
  */
@@ -3933,12 +4124,56 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
   }
 
   try {
-    const adoptResult = await _performAdoption(quickTabId, targetTabId);
-    if (adoptResult) {
-      _finalizeAdoption(quickTabId, targetTabId, adoptResult.oldOriginTabId);
-    }
+    // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
+    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', { quickTabId, targetTabId });
+    
+    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId });
+    
+    _handleAdoptResponse(quickTabId, targetTabId, response);
   } catch (err) {
-    console.error('[Manager] ❌ Error adopting Quick Tab:', err);
+    console.error('[Manager] ❌ Error sending adopt command:', err);
+  }
+}
+
+/**
+ * Handle adoption command response
+ * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} targetTabId - Target browser tab ID
+ * @param {Object} response - Response from background
+ */
+function _handleAdoptResponse(quickTabId, targetTabId, response) {
+  if (response?.success || response?.timedOut) {
+    // v1.6.4.0 - FIX Issue A: Command succeeded (or timed out with assumed success)
+    console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
+      quickTabId,
+      targetTabId,
+      oldOriginTabId: response?.oldOriginTabId,
+      timedOut: response?.timedOut || false
+    });
+    
+    // Update local tracking
+    quickTabHostInfo.set(quickTabId, {
+      hostTabId: targetTabId,
+      lastUpdate: Date.now(),
+      lastOperation: 'adopt',
+      confirmed: true
+    });
+
+    // Invalidate cache for old tab (if response has it)
+    if (response?.oldOriginTabId) {
+      browserTabInfoCache.delete(response.oldOriginTabId);
+    }
+
+    // Re-render UI to reflect the change
+    scheduleRender('adopt-success');
+  } else {
+    console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
+      quickTabId,
+      targetTabId,
+      error: response?.error || 'Unknown error'
+    });
   }
 }
 
