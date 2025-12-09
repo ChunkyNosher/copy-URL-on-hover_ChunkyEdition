@@ -1,0 +1,8 @@
+{
+  "id": "e30e5971-3760-4087-832b-3982ee6a5b89",
+  "title": "Issue C Orphaned Tab Display Fix",
+  "details": "Implemented Issue C from quick-tabs-systemic-issues.md: Enable Orphaned Tab Display and Adoption UI.\n\nKey findings:\n1. The rendering pipeline already supported orphaned tabs - groupQuickTabsByOriginTab() creates 'orphaned' group, renderTabGroup() renders with badges, _createTabActions() adds adopt button\n2. filterInvalidTabs() in validation.js only filters invalid URLs, NOT orphaned tabs (those with null originTabId)\n3. The fix focused on adding comprehensive hydration logging to debug future issues\n\nChanges made:\n- validation.js: Added HYDRATION_STARTED, HYDRATION_VALIDATION, HYDRATION_KEPT_FOR_RECOVERY, HYDRATION_BLOCKED_TABS, HYDRATION_COMPLETE logs\n- quick-tabs-manager.js: Added ORPHANED_GROUP_RENDER logging when rendering orphaned groups\n- quick-tabs-manager.js: Added ADOPTION_INITIATED log when adopt button clicked\n\nThe orphaned tab detection and adoption flow was already working correctly - the issue may have been a misunderstanding of what was being blocked. Tabs with null originTabId are kept in state and rendered in the 'orphaned' group with adoption UI.",
+  "category": "general",
+  "dateCreated": "2025-12-09T07:03:46.828Z",
+  "dateUpdated": "2025-12-09T07:03:46.828Z"
+}

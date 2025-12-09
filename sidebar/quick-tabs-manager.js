@@ -2050,6 +2050,7 @@ function _logRenderComplete(allTabs, groups, renderStartTime) {
 /**
  * Issue #4: Render a single tab group as a <details> element
  * v1.6.4.10 - Enhanced with Issues #2, #4, #5, #6, #8, #9 improvements
+ * v1.6.4.0 - FIX Issue C: Added comprehensive logging for orphaned group rendering
  * Refactored to reduce complexity by extracting helper functions
  * @param {number|string} groupKey - originTabId or 'orphaned'
  * @param {Object} group - { quickTabs: Array, tabInfo: Object | null }
@@ -2063,6 +2064,17 @@ function renderTabGroup(groupKey, group, collapseState) {
 
   const isOrphaned = groupKey === 'orphaned';
   const isClosedTab = !isOrphaned && !group.tabInfo;
+
+  // v1.6.4.0 - FIX Issue C: Log orphaned group rendering
+  if (isOrphaned) {
+    console.log('[Manager] ORPHANED_GROUP_RENDER:', {
+      groupKey,
+      tabCount: group.quickTabs.length,
+      tabIds: group.quickTabs.map(t => t.id),
+      message: 'Rendering orphaned Quick Tabs with adoption UI',
+      timestamp: Date.now()
+    });
+  }
 
   // Issue #5/#6: Add special classes
   if (isOrphaned) details.classList.add('orphaned');
@@ -4180,9 +4192,18 @@ function _handleAdoptResponse(quickTabId, targetTabId, response) {
 /**
  * Log adopt request
  * v1.6.3.7 - FIX Issue #7: Enhanced adoption data flow logging
+ * v1.6.4.0 - FIX Issue C: Added ADOPTION_INITIATED log as specified in acceptance criteria
  * @private
  */
 function _logAdoptRequest(quickTabId, targetTabId) {
+  // v1.6.4.0 - FIX Issue C: Log ADOPTION_INITIATED as specified in issue requirements
+  console.log('[Manager] ADOPTION_INITIATED:', {
+    quickTabId,
+    targetTabId,
+    message: `${quickTabId} → tab-${targetTabId}`,
+    timestamp: Date.now()
+  });
+  
   // v1.6.3.7 - FIX Issue #7: Use standardized format for adoption flow tracking
   console.log('[Manager] ADOPTION_FLOW:', {
     quickTabId,
