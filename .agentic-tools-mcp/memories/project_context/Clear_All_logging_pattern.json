@@ -1,0 +1,8 @@
+{
+  "id": "a827841e-86aa-4885-a7c9-926bbd4a6452",
+  "title": "Clear All logging pattern",
+  "details": "The Clear All Quick Tabs functionality in sidebar/settings.js uses a correlation ID pattern for end-to-end tracing:\n1. Generate correlationId with format `clear-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`\n2. Log BEFORE sendMessage with `[Settings] CLEAR_ALL_COMMAND_INITIATED | correlationId=... | timestamp=...`\n3. Log in response handler with `[Settings] CLEAR_ALL_RESPONSE | correlationId=... | success=... | successCount=... | failCount=... | totalTabs=...`\n4. Warn if failCount > 0\n5. Error logging also includes correlationId for full traceability",
+  "category": "project_context",
+  "dateCreated": "2025-12-10T02:45:48.716Z",
+  "dateUpdated": "2025-12-10T02:45:48.716Z"
+}
