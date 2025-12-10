@@ -1,0 +1,8 @@
+{
+  "id": "4499fcfb-76b7-4366-8391-71a2684e94e6",
+  "title": "Dedup and SequenceId fix v1.6.3.7-v9",
+  "details": "Fixed three critical issues in v1.6.3.7-v9:\n\n1. Issue #3 - Fragmented Deduplication Logic:\n   - REMOVED dead code: IN_PROGRESS_TRANSACTIONS set (never populated)\n   - REMOVED _isTransactionSelfWrite() function (dead code)\n   - Unified dedup: saveId-based is PRIMARY, content hash is SECONDARY fallback\n   - Extracted helpers: _areSaveIdsDifferent(), _logContentHashMatch() for complexity\n\n2. Issue #5 - Storage Change Race Condition:\n   - Increased STORAGE_CHANGE_COOLDOWN_MS from 50ms to 200ms\n   - Kept single authoritative dedup in _multiMethodDeduplication()\n\n3. Issue #6 - Storage Event Ordering:\n   - Added storageWriteSequenceId counter (monotonically increasing)\n   - Added _getNextStorageSequenceId() helper function\n   - All storage writes now include sequenceId field\n   - QuickTabHandler has static _sequenceId and _getNextSequenceId()\n   - Manager validates sequenceId: rejects if <= lastAppliedSequenceId\n   - Added 2-second watchdog timer for storage event verification\n   - Added helper functions: _validateSequenceId(), _cancelStorageWatchdog(), _startStorageWatchdog()\n\nKey files changed:\n- background.js: Dedup logic, sequenceId in storage writes\n- src/background/handlers/QuickTabHandler.js: sequenceId in handler writes\n- sidebar/quick-tabs-manager.js: Sequence validation, watchdog timer",
+  "category": "technical_decisions",
+  "dateCreated": "2025-12-10T18:36:44.722Z",
+  "dateUpdated": "2025-12-10T18:36:44.722Z"
+}

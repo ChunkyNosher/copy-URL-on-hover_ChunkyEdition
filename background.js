@@ -112,13 +112,29 @@ let lastBroadcastedStateHash = 0;
 // v1.6.1.6 - Memory leak fix: Window for ignoring self-triggered storage events (ms)
 const WRITE_IGNORE_WINDOW_MS = 100;
 
-// v1.6.3.4-v6 - FIX Issue #1: Track in-progress storage transactions
-// This prevents storage.onChanged from processing writes we just triggered
-const IN_PROGRESS_TRANSACTIONS = new Set();
+// v1.6.3.7-v9 - FIX Issue #3: REMOVED IN_PROGRESS_TRANSACTIONS (dead code)
+// The set was declared but NEVER populated anywhere in the codebase
+// Transaction-based dedup is replaced by unified saveId-based deduplication
+// See _multiMethodDeduplication() for the unified dedup strategy
 
-// v1.6.3.4-v6 - FIX Issue #5: Cooldown for storage.onChanged processing
-const STORAGE_CHANGE_COOLDOWN_MS = 50;
+// v1.6.3.7-v9 - FIX Issue #5: Increased cooldown from 50ms to 200ms
+// Cooldown is now applied conditionally only when dedup filter triggers
+const STORAGE_CHANGE_COOLDOWN_MS = 200;
 let lastStorageChangeProcessed = 0;
+
+// v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering validation
+// Incremented on every storage write to ensure Manager processes in correct order
+let storageWriteSequenceId = 0;
+
+/**
+ * Get the next sequence ID for storage writes
+ * v1.6.3.7-v9 - FIX Issue #6: Monotonically increasing sequence ID
+ * @returns {number} Next sequence ID
+ */
+function _getNextStorageSequenceId() {
+  storageWriteSequenceId++;
+  return storageWriteSequenceId;
+}
 
 // v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
 // Also track consecutive 0-tab reads to require confirmation before clearing
@@ -153,7 +169,7 @@ let _lastCacheUpdateLog = null; // Track last cache state for before/after loggi
 
 // ==================== v1.6.4.9 LOGGING ENHANCEMENT TRACKING VARIABLES ====================
 // Issue #4: Deduplication Decision Logging
-// (Already tracked by IN_PROGRESS_TRANSACTIONS set)
+// v1.6.3.7-v9 - FIX Issue #3: Dedup now tracked via saveId in _multiMethodDeduplication()
 
 // Issue #5: Keepalive Health Monitoring
 let lastKeepaliveSuccessTime = Date.now(); // Track last successful keepalive reset
@@ -461,11 +477,14 @@ async function cleanupOrphanedQuickTabs() {
     globalQuickTabState.lastUpdate = Date.now();
 
     // Save to storage
+    // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
     const saveId = `cleanup-${Date.now()}`;
+    const sequenceId = _getNextStorageSequenceId();
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId,
+        sequenceId,
         timestamp: Date.now()
       }
     });
@@ -1054,17 +1073,20 @@ async function tryLoadFromSyncStorage() {
 /**
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  *
  * @returns {Promise<void>}
  */
 async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sequenceId = _getNextStorageSequenceId();
 
   try {
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
+        sequenceId,
         timestamp: Date.now()
       }
     });
@@ -1151,6 +1173,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
 /**
  * Helper: Save migrated Quick Tab state to storage
  * v1.6.2.2 - Updated for unified format
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  *
  * @returns {Promise<void>}
  */
@@ -1160,6 +1183,7 @@ async function saveMigratedQuickTabState() {
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
     saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    sequenceId: _getNextStorageSequenceId(),
     timestamp: Date.now()
   };
 
@@ -1839,9 +1863,11 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
     return false;
   }
 
+  // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
     saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    sequenceId: _getNextStorageSequenceId(),
     timestamp: Date.now()
   };
 
@@ -2463,55 +2489,32 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
  * v1.6.4.9 - Issue #4: Enhanced logging with comparison values
+ * v1.6.3.7-v9 - FIX Issue #3: Unified dedup strategy - removed dead transactionId code
+ *   - PRIMARY: saveId + timestamp comparison (Method 1)
+ *   - SECONDARY: Content hash comparison for messages without saveId (Method 2)
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _multiMethodDeduplication(newValue, oldValue) {
-  // v1.6.4.9 - Issue #4: Log dedup check start with comparison values
+  // v1.6.3.7-v9 - FIX Issue #3: Log dedup check start with comparison values (removed transactionId)
   console.log('[Background] DEDUP_CHECK:', {
     newSaveId: newValue?.saveId,
     oldSaveId: oldValue?.saveId,
     newTimestamp: newValue?.timestamp,
     oldTimestamp: oldValue?.timestamp,
-    newTransactionId: newValue?.transactionId,
-    inProgressTransactionCount: IN_PROGRESS_TRANSACTIONS.size
+    newSequenceId: newValue?.sequenceId,
+    oldSequenceId: oldValue?.sequenceId
   });
 
-  // v1.6.4.9 - Issue #4: Periodically log transaction set size if > 5
-  if (IN_PROGRESS_TRANSACTIONS.size > 5) {
-    console.warn('[Background] DEDUP_CHECK: Large in-progress transaction set:', {
-      size: IN_PROGRESS_TRANSACTIONS.size,
-      transactions: Array.from(IN_PROGRESS_TRANSACTIONS).slice(0, 10) // Log first 10
-    });
-  }
-
-  // Method 1: transactionId (highest priority - deterministic)
-  // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
-  if (_isTransactionSelfWrite(newValue)) {
-    // v1.6.4.9 - Issue #4: Log elapsed time for transaction match
-    const transactionStartTime = _getTransactionStartTime(newValue.transactionId);
-    const result = {
-      shouldSkip: true,
-      method: 'transactionId',
-      reason: `Transaction ${newValue.transactionId} in progress`
-    };
-    console.log('[Background] DEDUP_RESULT:', {
-      ...result,
-      decision: 'skip',
-      elapsedMs: transactionStartTime ? Date.now() - transactionStartTime : 'unknown'
-    });
-    return result;
-  }
-
-  // Method 2: saveId + timestamp comparison (catches duplicates from same source)
+  // v1.6.3.7-v9 - FIX Issue #3: Method 1 (PRIMARY) - saveId + timestamp comparison
+  // This is the primary dedup method - every state update should have a saveId
   if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
     const result = {
       shouldSkip: true,
       method: 'saveId+timestamp',
       reason: 'Same saveId and timestamp within window'
     };
-    // v1.6.4.9 - Issue #4: Log comparison values
     console.log('[Background] DEDUP_RESULT:', {
       ...result,
       decision: 'skip',
@@ -2525,16 +2528,18 @@ function _multiMethodDeduplication(newValue, oldValue) {
     return result;
   }
 
-  // Method 3: Content hash comparison (catches Firefox spurious events)
+  // v1.6.3.7-v9 - FIX Issue #3: Method 2 (SECONDARY) - Content hash comparison
+  // Only used as secondary safeguard for messages without saveId or Firefox spurious events
   if (_isContentHashDuplicate(newValue, oldValue)) {
     const result = {
       shouldSkip: true,
       method: 'contentHash',
-      reason: 'Identical content with same saveId'
+      reason: 'Identical content (secondary safeguard for no-saveId messages)'
     };
     console.log('[Background] DEDUP_RESULT:', {
       ...result,
-      decision: 'skip'
+      decision: 'skip',
+      hasSaveId: !!newValue?.saveId
     });
     return result;
   }
@@ -2548,23 +2553,9 @@ function _multiMethodDeduplication(newValue, oldValue) {
 }
 
 /**
- * Get transaction start time from tracking (for elapsed time logging)
- * v1.6.4.9 - Issue #4: Helper for transaction timing
- * @private
- * @param {string} transactionId - Transaction ID
- * @returns {number|null} Start timestamp or null
- */
-function _getTransactionStartTime(transactionId) {
-  // Transaction IDs are often formatted as timestamp-based strings
-  // Try to extract timestamp from common formats like "bg-op-{timestamp}-{random}"
-  if (!transactionId) return null;
-  const match = transactionId.match(/-(\d{13})-/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-/**
  * Check if saveId + timestamp indicate a duplicate write
  * v1.6.3.6-v12 - FIX Issue #3: Second dedup method
+ * v1.6.3.7-v9 - FIX Issue #3: Now the PRIMARY dedup method
  * @private
  */
 function _isSaveIdTimestampDuplicate(newValue, oldValue) {
@@ -2578,50 +2569,78 @@ function _isSaveIdTimestampDuplicate(newValue, oldValue) {
 }
 
 /**
+ * Check if saveIds indicate different writes (not a duplicate)
+ * v1.6.3.7-v9 - FIX Issue #3: Extracted helper to reduce complexity
+ * @private
+ */
+function _areSaveIdsDifferent(newValue, oldValue) {
+  const newHasSaveId = !!newValue?.saveId;
+  const oldHasSaveId = !!oldValue?.saveId;
+
+  if (!newHasSaveId || !oldHasSaveId) {
+    return false; // Can't determine if different without both saveIds
+  }
+
+  return newValue.saveId !== oldValue.saveId;
+}
+
+/**
+ * Log content hash match details
+ * v1.6.3.7-v9 - FIX Issue #3: Extracted helper to reduce complexity
+ * @private
+ */
+function _logContentHashMatch(newHasSaveId, oldHasSaveId, saveIdMatch) {
+  const mode = (!newHasSaveId || !oldHasSaveId) ? 'secondary-no-saveId' : 'firefox-spurious';
+  console.log('[Background] v1.6.3.7-v9 Content hash match detected:', {
+    mode,
+    newHasSaveId,
+    oldHasSaveId,
+    saveIdMatch
+  });
+}
+
+/**
  * Check if content hash indicates a duplicate (Firefox spurious event)
  * v1.6.3.6-v12 - FIX Issue #3: Third dedup method (safe version)
- * Only skips if BOTH saveId matches AND content is identical
- * This prevents false negatives during rapid legitimate writes
+ * v1.6.3.7-v9 - FIX Issue #3: Updated as SECONDARY safeguard for messages without saveId
+ *   - If neither has saveId: use pure content comparison (secondary safeguard)
+ *   - If both have same saveId: check content to catch Firefox spurious events
+ *   - If saveIds differ: not a duplicate (different writes)
  * @private
  */
 function _isContentHashDuplicate(newValue, oldValue) {
   if (!newValue || !oldValue) return false;
 
-  // Only apply this check if saveId matches (same source)
-  if (newValue.saveId !== oldValue.saveId) return false;
+  // If saveIds differ, not a duplicate (different writes)
+  if (_areSaveIdsDifferent(newValue, oldValue)) {
+    return false;
+  }
 
   // Compute content keys
   const newContentKey = _computeQuickTabContentKey(newValue);
   const oldContentKey = _computeQuickTabContentKey(oldValue);
 
-  if (newContentKey === oldContentKey && newContentKey !== '') {
-    console.log('[Background] v1.6.3.6-v12 Content hash match detected (Firefox spurious event)');
-    return true;
+  // Check for content match
+  if (newContentKey !== oldContentKey || newContentKey === '') {
+    return false;
   }
 
-  return false;
+  // Content matches - this is a duplicate
+  const newHasSaveId = !!newValue?.saveId;
+  const oldHasSaveId = !!oldValue?.saveId;
+  const saveIdMatch = newHasSaveId && oldHasSaveId && newValue.saveId === oldValue.saveId;
+
+  _logContentHashMatch(newHasSaveId, oldHasSaveId, saveIdMatch);
+  return true;
 }
 
-/**
- * Check if this is a self-write via transaction ID
- * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
- * v1.6.3.6-v12 - Note: This is also called by _multiMethodDeduplication() as Method 1
- * Other self-write detection methods are handled by content scripts
- * @param {Object} newValue - New storage value
- * @returns {boolean} True if self-write
- */
-function _isTransactionSelfWrite(newValue) {
-  // Check transaction ID - the most deterministic method
-  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
-    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
-    return true;
-  }
-
-  return false;
-}
+// v1.6.3.7-v9 - FIX Issue #3: REMOVED _isTransactionSelfWrite function (dead code)
+// The IN_PROGRESS_TRANSACTIONS set was never populated, making this function useless
+// Transaction-based dedup is replaced by saveId-based deduplication
 
 /**
  * Check and log if storage change is within cooldown period
+ * v1.6.3.7-v9 - FIX Issue #5: Cooldown now applied conditionally only when dedup triggers
  * @private
  * @param {number} now - Current timestamp
  * @returns {boolean} True if within cooldown
@@ -2637,6 +2656,7 @@ function _checkAndLogCooldown(now) {
 
 /**
  * Build storage change comparison object for logging
+ * v1.6.3.7-v9 - FIX Issue #3, #6: Replaced transactionId with sequenceId for event ordering
  * @private
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
@@ -2648,7 +2668,8 @@ function _buildStorageChangeComparison(newValue, oldValue) {
     newTabCount: _getTabCount(newValue),
     oldSaveId: oldValue?.saveId,
     newSaveId: newValue?.saveId,
-    transactionId: newValue?.transactionId,
+    oldSequenceId: oldValue?.sequenceId,
+    newSequenceId: newValue?.sequenceId,
     writingInstanceId: newValue?.writingInstanceId,
     writingTabId: newValue?.writingTabId
   };
@@ -4199,11 +4220,14 @@ async function handleAdoptAction(payload) {
   state.tabs[tabIndex].originTabId = targetTabId;
 
   // Single atomic write
+  // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
+  const sequenceId = _getNextStorageSequenceId();
   await browser.storage.local.set({
     quick_tabs_state_v2: {
       tabs: state.tabs,
       saveId,
+      sequenceId,
       timestamp: Date.now(),
       writingTabId: targetTabId,
       writingInstanceId: `background-adopt-${Date.now()}`
@@ -4231,7 +4255,7 @@ async function handleAdoptAction(payload) {
   _sendStateUpdateViaPorts(quickTabId, { originTabId: targetTabId }, 'adopt', corrId);
 
   // v1.6.4.13 - FIX Issue #6: Broadcast full state sync confirmation
-  _broadcastStorageWriteConfirmation({ tabs: state.tabs, saveId }, saveId);
+  _broadcastStorageWriteConfirmation({ tabs: state.tabs, saveId, sequenceId }, saveId);
 
   // v1.6.4.9 - Issue #9: Log successful adoption completion
   console.log('[Background] ADOPTION_COMPLETED:', {
@@ -4250,14 +4274,17 @@ async function handleAdoptAction(payload) {
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
  * v1.6.3.7-v7 - FIX Issue #6: Add BroadcastChannel confirmation after successful write
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
   const saveId = `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sequenceId = _getNextStorageSequenceId();
 
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
+    sequenceId,
     timestamp: Date.now()
   };
 
@@ -4281,6 +4308,7 @@ async function writeStateWithVerification() {
     } else {
       console.log('[Background] Storage write verified:', {
         saveId,
+        sequenceId,
         tabCount: stateToWrite.tabs.length
       });
 
@@ -4288,7 +4316,7 @@ async function writeStateWithVerification() {
       _broadcastStorageWriteConfirmation(stateToWrite, saveId);
     }
 
-    return { success: verified, saveId, verified };
+    return { success: verified, saveId, sequenceId, verified };
   } catch (err) {
     console.error('[Background] Storage write error:', err.message);
     return { success: false, error: err.message };
@@ -4822,6 +4850,7 @@ function _logStorageWriteFinalResult(result, saveId, operation, tabCount, stateH
 /**
  * Attempt a single storage write with verification
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -4830,9 +4859,11 @@ function _logStorageWriteFinalResult(result, saveId, operation, tabCount, stateH
  * @returns {Promise<{ success: boolean, verified: boolean, needsRetry: boolean, attempts?: number, saveId?: string }>}
  */
 async function _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs) {
+  const sequenceId = _getNextStorageSequenceId();
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
+    sequenceId,
     timestamp: Date.now()
   };
 
@@ -4841,6 +4872,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
     return await _verifyStorageWrite(
       operation,
       saveId,
+      sequenceId,
       stateToWrite.tabs.length,
       attempt,
       backoffMs
@@ -4854,9 +4886,10 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 /**
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId parameter
  * @private
  */
-async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoffMs) {
+async function _verifyStorageWrite(operation, saveId, sequenceId, tabCount, attempt, backoffMs) {
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
@@ -4865,13 +4898,14 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
     console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
       operation,
       saveId,
+      sequenceId,
       tabCount
     });
 
     // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel after verified write
     _broadcastStorageWriteConfirmation(readBack, saveId);
 
-    return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
+    return { success: true, saveId, sequenceId, verified: true, attempts: attempt, needsRetry: false };
   }
 
   console.warn(

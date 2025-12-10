@@ -235,6 +235,26 @@ let lastProcessedSaveId = '';
  */
 let lastSaveIdProcessedAt = 0;
 
+// ==================== v1.6.3.7-v9 SEQUENCE ID EVENT ORDERING ====================
+// FIX Issue #6: Validate storage event ordering using sequence IDs
+/**
+ * Last applied sequence ID to validate event ordering
+ * v1.6.3.7-v9 - FIX Issue #6: Events with sequenceId <= lastAppliedSequenceId are rejected
+ */
+let lastAppliedSequenceId = 0;
+
+/**
+ * Watchdog timer ID for storage.onChanged verification
+ * v1.6.3.7-v9 - FIX Issue #6: If no event within 2s of expected write, re-read storage
+ */
+let storageWatchdogTimerId = null;
+
+/**
+ * Watchdog timeout duration (ms)
+ * v1.6.3.7-v9 - FIX Issue #6: 2 second timeout before explicit re-read
+ */
+const STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -5633,16 +5653,25 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.3.7-v6 - Gap #2 & Issue #7: Enhanced deduplication logging with channel source
+ * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId validation for event ordering
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
 
+  // v1.6.3.7-v9 - FIX Issue #6: Cancel any pending watchdog timer
+  _cancelStorageWatchdog();
+
   _logStorageMessageReceived(context);
   _logStorageChangeEvent(context);
   _logTabIdChanges(context);
   _logPositionSizeChanges(context);
+
+  // v1.6.3.7-v9 - FIX Issue #6: Validate sequence ID to ensure correct event ordering
+  if (!_validateSequenceId(context)) {
+    return; // Event is out of order, reject it
+  }
 
   // v1.6.3.7-v6 - Gap #2: Special case - if oldValue was empty and newValue has tabs
   if (_handleEmptyToPopulatedTransition(context)) {
@@ -5659,14 +5688,134 @@ function _handleStorageChange(change) {
 }
 
 /**
+ * Validate sequence ID for event ordering
+ * v1.6.3.7-v9 - FIX Issue #6: Reject updates with sequenceId <= lastAppliedSequenceId
+ * @private
+ * @param {Object} context - Storage change context
+ * @returns {boolean} True if valid (should process), false if out-of-order (reject)
+ */
+function _validateSequenceId(context) {
+  const newSequenceId = context.newValue?.sequenceId;
+
+  // If no sequenceId, process the event (backward compatibility)
+  if (newSequenceId === undefined || newSequenceId === null) {
+    console.log('[Manager] SEQUENCE_VALIDATION: No sequenceId present, processing event (backward compat)', {
+      saveId: context.newValue?.saveId,
+      timestamp: Date.now()
+    });
+    return true;
+  }
+
+  // Check if this is a newer event
+  if (newSequenceId <= lastAppliedSequenceId) {
+    console.warn('[Manager] SEQUENCE_VALIDATION_REJECTED: Out-of-order event detected', {
+      newSequenceId,
+      lastAppliedSequenceId,
+      saveId: context.newValue?.saveId,
+      decision: 'reject',
+      timestamp: Date.now()
+    });
+    return false;
+  }
+
+  // Valid sequence - update tracking and proceed
+  const previousSequenceId = lastAppliedSequenceId;
+  lastAppliedSequenceId = newSequenceId;
+
+  console.log('[Manager] SEQUENCE_VALIDATION_ACCEPTED:', {
+    previousSequenceId,
+    newSequenceId,
+    saveId: context.newValue?.saveId,
+    decision: 'process',
+    timestamp: Date.now()
+  });
+
+  return true;
+}
+
+/**
+ * Cancel the storage watchdog timer
+ * v1.6.3.7-v9 - FIX Issue #6: Helper function for watchdog management
+ * @private
+ */
+function _cancelStorageWatchdog() {
+  if (storageWatchdogTimerId !== null) {
+    clearTimeout(storageWatchdogTimerId);
+    storageWatchdogTimerId = null;
+  }
+}
+
+/**
+ * Apply state from watchdog recovery
+ * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
+ * @private
+ * @param {Object} currentState - State from storage
+ * @param {string} expectedSaveId - Expected save ID
+ */
+function _applyWatchdogRecoveryState(currentState, expectedSaveId) {
+  quickTabsState = currentState;
+  _updateInMemoryCache(currentState.tabs);
+  if (currentState.sequenceId) {
+    lastAppliedSequenceId = currentState.sequenceId;
+  }
+  scheduleRender('storage-watchdog-recovery', expectedSaveId);
+}
+
+/**
+ * Handle watchdog timeout and verify storage state
+ * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
+ * @private
+ * @param {string} expectedSaveId - Expected save ID
+ */
+async function _handleWatchdogTimeout(expectedSaveId) {
+  console.warn('[Manager] STORAGE_WATCHDOG_TIMEOUT: No storage.onChanged received within', STORAGE_WATCHDOG_TIMEOUT_MS, 'ms');
+  console.log('[Manager] STORAGE_WATCHDOG: Explicitly re-reading storage to verify state consistency');
+
+  try {
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const currentState = result?.quick_tabs_state_v2;
+
+    if (currentState?.saveId === expectedSaveId) {
+      console.log('[Manager] STORAGE_WATCHDOG: Storage matches expected state - event may have been lost');
+      _applyWatchdogRecoveryState(currentState, expectedSaveId);
+    } else {
+      console.log('[Manager] STORAGE_WATCHDOG: Storage state differs from expected', {
+        expectedSaveId,
+        actualSaveId: currentState?.saveId,
+        actualSequenceId: currentState?.sequenceId
+      });
+    }
+  } catch (err) {
+    console.error('[Manager] STORAGE_WATCHDOG: Failed to re-read storage:', err.message);
+  }
+
+  storageWatchdogTimerId = null;
+}
+
+/**
+ * Start watchdog timer for storage event verification
+ * v1.6.3.7-v9 - FIX Issue #6: If no storage.onChanged within timeout, re-read storage
+ * @param {string} expectedSaveId - Save ID we're expecting to receive
+ */
+function _startStorageWatchdog(expectedSaveId) {
+  _cancelStorageWatchdog();
+
+  storageWatchdogTimerId = setTimeout(() => {
+    _handleWatchdogTimeout(expectedSaveId);
+  }, STORAGE_WATCHDOG_TIMEOUT_MS);
+}
+
+/**
  * Log storage message received with channel source
  * v1.6.3.7-v6 - Issue #7: Extracted for complexity reduction
+ * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId to logging
  * @private
  * @param {Object} context - Storage change context
  */
 function _logStorageMessageReceived(context) {
   console.log('[Manager] MESSAGE_RECEIVED [STORAGE]:', {
     saveId: context.newValue?.saveId || 'none',
+    sequenceId: context.newValue?.sequenceId ?? 'none',
     oldTabCount: context.oldTabCount,
     newTabCount: context.newTabCount,
     timestamp: Date.now()
@@ -5676,6 +5825,9 @@ function _logStorageMessageReceived(context) {
     event: 'storage.onChanged',
     oldSaveId: context.oldValue?.saveId || 'none',
     newSaveId: context.newValue?.saveId || 'none',
+    oldSequenceId: context.oldValue?.sequenceId ?? 'none',
+    newSequenceId: context.newValue?.sequenceId ?? 'none',
+    lastAppliedSequenceId,
     timestamp: Date.now()
   });
 }
@@ -5957,7 +6109,7 @@ function _logStorageChangeEvent(context) {
 
   // v1.6.4.13 - Issue #5: Log MESSAGE_RECEIVED with [STORAGE] prefix
   if (DEBUG_MESSAGING) {
-    console.log(`[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:`, {
+    console.log('[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:', {
       saveId: context.newValue?.saveId,
       tabCount: context.newTabCount,
       delta: context.newTabCount - context.oldTabCount,

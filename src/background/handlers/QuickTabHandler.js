@@ -26,6 +26,10 @@ export class QuickTabHandler {
   // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat
   static DEDUP_TTL_MS = 10000;
 
+  // v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering
+  // Uses a static counter shared across all handler instances
+  static _sequenceId = 0;
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;
@@ -41,6 +45,16 @@ export class QuickTabHandler {
     // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
     this.processedMessages = new Map(); // messageKey -> timestamp
     this.lastCleanup = Date.now();
+  }
+
+  /**
+   * Get the next sequence ID for storage writes
+   * v1.6.3.7-v9 - FIX Issue #6: Monotonically increasing sequence ID
+   * @returns {number} Next sequence ID
+   */
+  static _getNextSequenceId() {
+    QuickTabHandler._sequenceId++;
+    return QuickTabHandler._sequenceId;
   }
 
   /**
@@ -641,6 +655,7 @@ export class QuickTabHandler {
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -648,10 +663,14 @@ export class QuickTabHandler {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
 
+    // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
+    const sequenceId = QuickTabHandler._getNextSequenceId();
+
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
       saveId: generatedSaveId,
+      sequenceId,
       timestamp: Date.now(),
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
@@ -694,6 +713,7 @@ export class QuickTabHandler {
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
+   * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
    */
   async saveStateToStorage() {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
@@ -701,9 +721,13 @@ export class QuickTabHandler {
     const tabCount = this.globalState.tabs?.length ?? 0;
     const saveTimestamp = Date.now();
 
+    // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
+    const sequenceId = QuickTabHandler._getNextSequenceId();
+
     // v1.6.3.6-v4 - FIX Issue #1: Log before storage write
     console.log('[QuickTabHandler] saveStateToStorage ENTRY:', {
       writeSourceId,
+      sequenceId,
       tabCount,
       timestamp: saveTimestamp
     });
@@ -711,6 +735,7 @@ export class QuickTabHandler {
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
+      sequenceId,
       timestamp: saveTimestamp,
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
@@ -725,6 +750,7 @@ export class QuickTabHandler {
       // v1.6.3.6-v4 - FIX Issue #1: Log successful completion (was missing before!)
       console.log('[QuickTabHandler] saveStateToStorage SUCCESS:', {
         writeSourceId,
+        sequenceId,
         tabCount,
         timestamp: saveTimestamp,
         tabIds: this.globalState.tabs.map(t => t.id).slice(0, 10) // First 10 IDs
