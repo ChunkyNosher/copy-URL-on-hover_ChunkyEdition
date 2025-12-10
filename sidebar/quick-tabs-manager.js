@@ -1665,6 +1665,7 @@ function handleBroadcastChannelMessage(event) {
 /**
  * Route broadcast message to appropriate handler
  * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
+ * v1.6.3.7-v7 - FIX Issue #6: Added full-state-sync handler
  * @private
  * @param {Object} message - BroadcastChannel message
  * @param {string} messageId - Generated message ID for deduplication
@@ -1675,7 +1676,8 @@ function _routeBroadcastMessage(message, messageId) {
     'quick-tab-updated': handleBroadcastUpdate,
     'quick-tab-deleted': handleBroadcastDelete,
     'quick-tab-minimized': handleBroadcastMinimizeRestore,
-    'quick-tab-restored': handleBroadcastMinimizeRestore
+    'quick-tab-restored': handleBroadcastMinimizeRestore,
+    'full-state-sync': handleBroadcastFullStateSync
   };
 
   const handler = handlers[message.type];
@@ -1684,6 +1686,60 @@ function _routeBroadcastMessage(message, messageId) {
   } else {
     console.log('[Manager] Unknown broadcast type:', message.type);
   }
+}
+
+/**
+ * Handle full-state-sync broadcast
+ * v1.6.3.7-v7 - FIX Issue #6: Handle full state sync from background
+ * This provides instant state updates after storage writes
+ * @param {Object} message - Broadcast message with state and saveId
+ * @param {string} messageId - Message ID for deduplication
+ */
+function handleBroadcastFullStateSync(message, messageId) {
+  const { state, saveId } = message;
+
+  if (!state || !state.tabs) {
+    console.log('[Manager] [BC] Invalid full-state-sync message, skipping');
+    return;
+  }
+
+  // Check saveId deduplication
+  if (saveId && saveId === lastProcessedSaveId) {
+    console.log('[Manager] [BC] full-state-sync DEDUP_SKIPPED:', {
+      saveId,
+      reason: 'already processed'
+    });
+    return;
+  }
+
+  console.log('[Manager] [BC] FULL_STATE_SYNC received:', {
+    tabCount: state.tabs.length,
+    saveId,
+    messageId
+  });
+
+  // Update local state with full state
+  quickTabsState.tabs = state.tabs;
+  quickTabsState.saveId = saveId;
+  quickTabsState.timestamp = state.timestamp || Date.now();
+
+  // Update cache
+  _updateInMemoryCache(state.tabs);
+  lastLocalUpdateTime = Date.now();
+
+  // Track processed saveId
+  if (saveId) {
+    lastProcessedSaveId = saveId;
+    lastSaveIdProcessedAt = Date.now();
+  }
+
+  console.log('[Manager] [BC] Full state sync applied:', {
+    tabCount: state.tabs.length,
+    saveId
+  });
+
+  // Schedule render
+  scheduleRender('broadcast-full-state-sync', messageId);
 }
 
 /**

@@ -158,6 +158,26 @@ export function broadcastQuickTabRestored(quickTabId) {
 }
 
 /**
+ * Broadcast full state sync event
+ * v1.6.3.7-v7 - FIX Issue #6: Storage write confirmation via BroadcastChannel
+ * Used to notify Manager when storage is updated with new state
+ * @param {Object} state - Full state object with tabs array
+ * @param {string} saveId - Save ID for deduplication
+ * @returns {boolean} True if broadcast succeeded
+ */
+export function broadcastFullStateSync(state, saveId) {
+  console.log('[BroadcastChannelManager] Broadcasting full-state-sync:', {
+    tabCount: state?.tabs?.length || 0,
+    saveId
+  });
+  return postMessage({
+    type: 'full-state-sync',
+    state,
+    saveId
+  });
+}
+
+/**
  * Add listener for BroadcastChannel messages
  * v1.6.3.7-v3 - API #2: Listen for targeted updates from other tabs
  * @param {Function} handler - Message handler function (event) => void
@@ -212,6 +232,7 @@ export default {
   broadcastQuickTabDeleted,
   broadcastQuickTabMinimized,
   broadcastQuickTabRestored,
+  broadcastFullStateSync,
   addBroadcastListener,
   removeBroadcastListener,
   closeBroadcastChannel

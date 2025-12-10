@@ -9,6 +9,18 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
+// v1.6.3.7-v7 - FIX Communication Issue #1 & #2: Import BroadcastChannelManager
+// Background must broadcast state changes via BroadcastChannel for instant sidebar updates
+import {
+  initBroadcastChannel as initBroadcastChannelManager,
+  isChannelAvailable as isBroadcastChannelAvailable,
+  broadcastQuickTabCreated,
+  broadcastQuickTabUpdated,
+  broadcastQuickTabDeleted,
+  broadcastQuickTabMinimized,
+  broadcastQuickTabRestored,
+  broadcastFullStateSync
+} from './src/features/quick-tabs/channels/BroadcastChannelManager.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -290,6 +302,27 @@ function _stopKeepalive() {
 
 // Start keepalive on script load
 startKeepalive();
+
+// ==================== v1.6.3.7-v7 BROADCASTCHANNEL INITIALIZATION ====================
+// FIX Communication Issue #1 & #2: Initialize BroadcastChannel for instant sidebar updates
+// This is Tier 1 (PRIMARY) messaging - instant cross-tab sync
+
+/**
+ * Initialize BroadcastChannel for background-to-Manager communication
+ * v1.6.3.7-v7 - FIX Issue #1 & #2: Background must use BroadcastChannel
+ */
+function initializeBackgroundBroadcastChannel() {
+  const initialized = initBroadcastChannelManager();
+  if (initialized) {
+    console.log('[Background] [BC] BroadcastChannel initialized for state broadcasts');
+  } else {
+    console.warn('[Background] [BC] BroadcastChannel NOT available - Manager will use polling fallback');
+  }
+  return initialized;
+}
+
+// Initialize BroadcastChannel on script load
+initializeBackgroundBroadcastChannel();
 
 // ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
@@ -3121,12 +3154,13 @@ function generatePortId() {
 /**
  * Log port lifecycle event
  * v1.6.3.6-v11 - FIX Issue #12: Comprehensive port logging
+ * v1.6.3.7-v7 - FIX Issue #8: Use [PORT] prefix for unified logging
  * @param {string} origin - Origin of the port (sidebar, content-tab-X)
  * @param {string} event - Event type (open, close, disconnect, error, message)
  * @param {Object} details - Event details
  */
 function logPortLifecycle(origin, event, details = {}) {
-  console.log(`[Manager] PORT_LIFECYCLE [${origin}] [${event}]:`, {
+  console.log(`[Background] [PORT] PORT_LIFECYCLE [${origin}] [${event}]:`, {
     tabId: details.tabId,
     portId: details.portId,
     timestamp: Date.now(),
@@ -3808,6 +3842,7 @@ async function handleAdoptAction(payload) {
 /**
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+ * v1.6.3.7-v7 - FIX Issue #6: Add BroadcastChannel confirmation after successful write
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
@@ -3841,6 +3876,9 @@ async function writeStateWithVerification() {
         saveId,
         tabCount: stateToWrite.tabs.length
       });
+
+      // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel
+      _broadcastStorageWriteConfirmation(stateToWrite, saveId);
     }
 
     return { success: verified, saveId, verified };
@@ -3848,6 +3886,27 @@ async function writeStateWithVerification() {
     console.error('[Background] Storage write error:', err.message);
     return { success: false, error: err.message };
   }
+}
+
+/**
+ * Broadcast storage write confirmation via BroadcastChannel
+ * v1.6.3.7-v7 - FIX Issue #6: Notify Manager of successful storage writes
+ * @private
+ * @param {Object} state - State that was written
+ * @param {string} saveId - Save ID for deduplication
+ */
+function _broadcastStorageWriteConfirmation(state, saveId) {
+  if (!isBroadcastChannelAvailable()) {
+    console.log('[Background] [BC] BroadcastChannel not available for write confirmation');
+    return;
+  }
+
+  const bcSuccess = broadcastFullStateSync(state, saveId);
+  console.log('[Background] [BC] Storage write confirmation broadcast:', {
+    saveId,
+    tabCount: state?.tabs?.length || 0,
+    success: bcSuccess
+  });
 }
 
 // ==================== v1.6.4.0 COMMAND HANDLERS ====================
@@ -4150,6 +4209,10 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
       saveId,
       tabCount
     });
+
+    // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel after verified write
+    _broadcastStorageWriteConfirmation(readBack, saveId);
+
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
@@ -4618,6 +4681,7 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
  * v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT when available (primary)
  *              then fall back to runtime.sendMessage (secondary)
+ * v1.6.3.7-v7 - FIX Issue #1 & #2: Added BroadcastChannel as Tier 1 (PRIMARY) messaging
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -4660,19 +4724,23 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     triggerSource: source
   });
 
-  // v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT (primary)
+  // v1.6.3.7-v7 - FIX Issue #1 & #2: Tier 1 (PRIMARY) - BroadcastChannel for instant updates
+  // BroadcastChannel provides instant cross-tab messaging without port connections
+  _broadcastViaBroadcastChannel(quickTabId, changes, messageId);
+
+  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 - Route state updates through PORT (secondary)
   // Port-based messaging is more reliable than runtime.sendMessage for sidebar
   let sentViaPort = false;
   const sidebarPortsSent = _broadcastToSidebarPorts(message);
   if (sidebarPortsSent > 0) {
     sentViaPort = true;
-    console.log('[Background] STATE_UPDATE sent via PORT to', sidebarPortsSent, 'sidebar(s):', {
+    console.log('[Background] [PORT] STATE_UPDATE sent to', sidebarPortsSent, 'sidebar(s):', {
       messageId,
       quickTabId
     });
   }
 
-  // v1.6.3.7-v4 - FIX Issue #3: Fall back to runtime.sendMessage if no ports available
+  // v1.6.3.7-v4 - FIX Issue #3: Tier 3 - Fall back to runtime.sendMessage if no ports available
   // This ensures sidebar gets the message even if port connection hasn't been established yet
   if (!sentViaPort) {
     try {
@@ -4692,6 +4760,46 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
   if (changes?.deleted === true) {
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
     await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId);
+  }
+}
+
+/**
+ * Broadcast state update via BroadcastChannel (Tier 1 - PRIMARY)
+ * v1.6.3.7-v7 - FIX Issue #1 & #2: Use BroadcastChannel for instant Manager updates
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ * @param {string} messageId - Message ID for correlation
+ */
+function _broadcastViaBroadcastChannel(quickTabId, changes, messageId) {
+  if (!isBroadcastChannelAvailable()) {
+    console.log('[Background] [BC] BroadcastChannel not available, skipping BC broadcast');
+    return;
+  }
+
+  let bcSuccess = false;
+
+  // Determine broadcast type based on changes
+  if (changes?.deleted === true) {
+    // Deletion
+    bcSuccess = broadcastQuickTabDeleted(quickTabId);
+    console.log('[Background] [BC] Broadcast quick-tab-deleted:', { quickTabId, messageId, success: bcSuccess });
+  } else if (changes?.minimized === true) {
+    // Minimize
+    bcSuccess = broadcastQuickTabMinimized(quickTabId);
+    console.log('[Background] [BC] Broadcast quick-tab-minimized:', { quickTabId, messageId, success: bcSuccess });
+  } else if (changes?.minimized === false) {
+    // Restore from minimized
+    bcSuccess = broadcastQuickTabRestored(quickTabId);
+    console.log('[Background] [BC] Broadcast quick-tab-restored:', { quickTabId, messageId, success: bcSuccess });
+  } else if (changes?.url && !globalQuickTabState.tabs.find(t => t.id === quickTabId)) {
+    // New tab (has URL and not in cache yet)
+    bcSuccess = broadcastQuickTabCreated(quickTabId, changes);
+    console.log('[Background] [BC] Broadcast quick-tab-created:', { quickTabId, messageId, success: bcSuccess });
+  } else {
+    // General update
+    bcSuccess = broadcastQuickTabUpdated(quickTabId, changes);
+    console.log('[Background] [BC] Broadcast quick-tab-updated:', { quickTabId, messageId, success: bcSuccess });
   }
 }
 
