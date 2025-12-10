@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v8), BroadcastChannel from background, operation confirmations,
-  connection state tracking, zombie detection, circuit breaker probing
+  (v1.6.3.7-v9), unified keepalive, sequence tracking, storage integrity,
+  initialization barrier, port age management
 tools: ['*']
 ---
 
@@ -38,15 +38,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v9 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v8 Features (NEW):**
+**v1.6.3.7-v9 Features (NEW):**
 
-- **BroadcastChannel from Background** - Tier 1 messaging now functional
-- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
-- **Operation Confirmations** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED handlers
-- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
-- **Storage Write Confirmations** - `_broadcastStorageWriteConfirmation()` after writes
+- **Unified Keepalive** - Single 20s interval with correlation IDs
+- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Port Age Management** - 90s max age, 30s stale timeout
+- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+- **Race Cooldown** - Single authoritative dedup with 200ms cooldown
+
+**v1.6.3.7-v8 Features (Retained):**
+
+- **Port Message Queue** - Messages queued during reconnection
+- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
+- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
 
 **v1.6.3.7-v6 Features (Retained):**
 
@@ -92,14 +101,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
 - **UI Performance** - Debounced renderUI (300ms)
 
-**Key Functions (v1.6.3.7-v8):**
+**Key Functions (v1.6.3.7-v9):**
 
 | Function                       | Location   | Purpose                        |
 | ------------------------------ | ---------- | ------------------------------ |
+| `validateStorageIntegrity()`   | Storage    | Integrity check with backup    |
+| `processOrderedStorageEvent()` | Background | sequenceId validation          |
+| `processOrderedPortMessage()`  | Manager    | messageSequence reorder buffer |
 | `broadcastFullStateSync()`     | Background | Full state sync via BC         |
-| `_broadcastViaBroadcastChannel()` | Background | BC posting helper           |
-| `handleBroadcastFullStateSync()` | Manager  | Handle full state from BC      |
-| `_handleOperationConfirmation()` | Manager  | Confirmation handlers          |
 | `scheduleRender(source)`       | Manager    | Unified render entry point     |
 | `handleFullStateSyncRequest()` | Background | State sync handler             |
 
@@ -118,14 +127,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] BroadcastChannel from background works (Tier 1) (v1.6.3.7-v8)
-- [ ] Full state sync via `broadcastFullStateSync()` works (v1.6.3.7-v8)
-- [ ] Operation confirmations handled correctly (v1.6.3.7-v8)
-- [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
-- [ ] Deduplication visibility shows `RENDER_SKIPPED reason=...` (v1.6.3.7-v6)
+- [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
+- [ ] Sequence tracking works (sequenceId, messageSequence, sequenceNumber) (v1.6.3.7-v9)
+- [ ] Storage integrity validation works (v1.6.3.7-v9)
+- [ ] Initialization barrier prevents race conditions (v1.6.3.7-v9)
+- [ ] Port age management works (90s max, 30s stale) (v1.6.3.7-v9)
+- [ ] Port message queue works during reconnection (v1.6.3.7-v8)
 - [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
-- [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
-- [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] BroadcastChannel delivers instant updates (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] `scheduleRender()` prevents redundant renders via hash comparison
@@ -134,6 +142,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v8 BroadcastChannel from
-background, operation confirmations, v6 unified channel logging, v5 connection
-state tracking, zombie detection, v4 circuit breaker probing.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7-v9 unified keepalive,
+sequence tracking, storage integrity, initialization barrier, v8 port resilience,
+v6 unified channel logging, v5 connection state tracking.**

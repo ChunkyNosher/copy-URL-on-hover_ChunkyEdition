@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v8.
+  documentation. Current version: v1.6.3.7-v9.
 tools: ['*']
 ---
 
@@ -69,15 +69,26 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v8)
+## Current Extension State (v1.6.3.7-v9)
 
-### v1.6.3.7-v8 Features (NEW)
+### v1.6.3.7-v9 Features (NEW)
 
-- **BroadcastChannel from Background** - Tier 1 messaging now functional
-- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
-- **Operation Confirmations** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED handlers
-- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
-- **Storage Write Confirmations** - `_broadcastStorageWriteConfirmation()` after writes
+- **Unified Keepalive** - Single 20s interval with correlation IDs
+- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
+- **Unified Deduplication** - saveId-based dedup, removed dead IN_PROGRESS_TRANSACTIONS
+- **Port Age Management** - 90s max age, 30s stale timeout
+- **Storage Integrity** - Write validation with sync backup and corruption recovery
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+- **Race Cooldown** - Single authoritative dedup with 200ms cooldown
+
+### v1.6.3.7-v8 Features (Retained)
+
+- **Port Message Queue** - Messages queued during reconnection
+- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
+- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
+- **Firefox Termination Detection** - 10s health check interval
 
 ### v1.6.3.7-v6 Features (Retained)
 
@@ -127,14 +138,14 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v8)
+### Key Functions (v1.6.3.7-v9)
 
 | Function                               | Location      | Purpose                        |
 | -------------------------------------- | ------------- | ------------------------------ |
+| `validateStorageIntegrity()`           | Storage utils | Integrity check with backup    |
+| `processOrderedStorageEvent()`         | Background    | sequenceId validation          |
+| `processOrderedPortMessage()`          | Manager       | messageSequence reorder buffer |
 | `broadcastFullStateSync()`             | Background    | Full state sync via BC         |
-| `_broadcastViaBroadcastChannel()`      | Background    | BC posting helper              |
-| `handleBroadcastFullStateSync()`       | Manager       | Handle full state from BC      |
-| `_handleOperationConfirmation()`       | Manager       | Confirmation handlers          |
 | `scheduleRender(source)`               | Manager       | Unified render entry point     |
 | `writeStateWithVerificationAndRetry()` | Storage utils | Write verification + lifecycle |
 
@@ -143,14 +154,13 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v8
-- [ ] **v1.6.3.7-v8:** BroadcastChannel from background documented
-- [ ] **v1.6.3.7-v8:** Operation confirmations documented
-- [ ] **v1.6.3.7-v8:** Full state sync documented
+- [ ] Version numbers match 1.6.3.7-v9
+- [ ] **v1.6.3.7-v9:** Unified keepalive documented
+- [ ] **v1.6.3.7-v9:** Sequence tracking documented
+- [ ] **v1.6.3.7-v9:** Storage integrity documented
+- [ ] **v1.6.3.7-v9:** Initialization barrier documented
+- [ ] **v1.6.3.7-v8:** Port resilience documented
 - [ ] **v1.6.3.7-v6:** Unified channel logging documented
-- [ ] **v1.6.3.7-v6:** Lifecycle tracing documented
-- [ ] **v1.6.3.7-v5:** Connection state tracking documented
-- [ ] **v1.6.3.7-v4:** Circuit breaker probing documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -158,13 +168,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                      | Fix                                  |
-| -------------------------- | ------------------------------------ |
-| v1.6.3.7-v6 or earlier     | Update to 1.6.3.7-v8                 |
-| "Pin to Page"              | Use "Solo/Mute"                      |
-| Direct storage writes      | Use Single Writer Authority          |
-| Missing BC from background | Document `broadcastFullStateSync()`  |
-| Missing confirmations      | Document operation confirmation handlers |
+| Error                      | Fix                                    |
+| -------------------------- | -------------------------------------- |
+| v1.6.3.7-v8 or earlier     | Update to 1.6.3.7-v9                   |
+| "Pin to Page"              | Use "Solo/Mute"                        |
+| Direct storage writes      | Use Single Writer Authority            |
+| Missing sequence tracking  | Document sequenceId/messageSequence    |
+| Missing initialization     | Document initialization barrier flags  |
 
 ---
 
