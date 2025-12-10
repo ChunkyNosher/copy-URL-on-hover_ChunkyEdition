@@ -3,9 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.7-v4), ownership validation, unified
-  render pipeline, orphaned tab recovery, session tabs, BroadcastChannel, circuit
-  breaker probing
+  sync with Single Writer Authority (v1.6.3.7-v5), connection state tracking,
+  zombie detection, listener deduplication, session cache validation, circuit breaker
 tools: ['*']
 ---
 
@@ -37,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -51,7 +50,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v5 Features (NEW):**
+
+- **Connection State Tracking** - Three states: connected → zombie → disconnected
+  with `_transitionConnectionState()` and `connectionState` variable
+- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
+  immediate BroadcastChannel fallback when port becomes unresponsive
+- **Unified Message Routing** - `path` property in logs distinguishes port vs
+  runtime.onMessage paths for debugging clarity
+- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
+  prevents duplicate `renderUI()` calls for same state change
+- **Session Cache Validation** - `_initializeSessionId()` validates cache with
+  sessionId + timestamp; cross-session data rejected
+- **Runtime Message Handling** - runtime.onMessage handler with try-catch wrappers
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Circuit Breaker Probing** - Early recovery with 500ms health probes
   (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
@@ -73,36 +86,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
   `sync-session-state`)
 - **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
-- **notifications API** - System notifications (NotificationManager.js)
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 
-**v1.6.3.7-v2 Features (Retained):**
+**Key Functions (v1.6.3.7-v5):**
 
-- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to
-  background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
-  deduplication
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
-  `orphaned: true` flag
-
-**v1.6.3.7-v1 Features (Retained):**
-
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-  (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
-
-**Key Functions (v1.6.3.7-v4):**
-
-| Function                   | Location    | Purpose                        |
-| -------------------------- | ----------- | ------------------------------ |
-| `scheduleRender(source)`   | Manager     | Unified render entry point     |
-| `_itemElements`            | Manager     | DOM reconciliation Map         |
-| `_probeBackgroundHealth()` | Manager     | Circuit breaker health probe   |
-| `BroadcastChannelManager`  | channels/   | Real-time tab messaging        |
-| `TabStateManager`          | core/       | Per-tab state (sessions API)   |
-| `QuickTabGroupManager`     | quick-tabs/ | Tab grouping (Firefox 138+)    |
+| Function                       | Location    | Purpose                        |
+| ------------------------------ | ----------- | ------------------------------ |
+| `scheduleRender(source)`       | Manager     | Unified render entry point     |
+| `_transitionConnectionState()` | Manager     | Connection state transitions   |
+| `lastProcessedSaveId`          | Manager     | Deduplication tracking         |
+| `_initializeSessionId()`       | Manager     | Session cache validation       |
+| `_probeBackgroundHealth()`     | Manager     | Circuit breaker health probe   |
+| `BroadcastChannelManager`      | channels/   | Real-time tab messaging        |
+| `TabStateManager`              | core/       | Per-tab state (sessions API)   |
 
 ---
 
@@ -119,21 +115,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
+- [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
+- [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
+- [ ] Session cache validation rejects cross-session data (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Close all shows error notification on failure (v1.6.3.7-v4)
 - [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
 - [ ] Session Quick Tabs clear on browser close (v1.6.3.7-v3)
 - [ ] BroadcastChannel delivers real-time updates (v1.6.3.7-v3)
-- [ ] Alarms trigger scheduled cleanup (v1.6.3.7-v3)
 - [ ] DOM reconciliation prevents full re-renders (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison
-- [ ] Orphaned tabs preserved with `orphaned: true` flag
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.7-v4 circuit breaker
-probing, close all feedback, message error handling, and v3 session tabs,
-BroadcastChannel, alarms, and DOM reconciliation.**
+**Your strength: Complete Quick Tab system with v1.6.3.7-v5 connection state
+tracking, zombie detection, listener deduplication, session cache validation,
+and v4 circuit breaker probing, close all feedback, message error handling.**

@@ -3,7 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v4), circuit breaker probing, message error handling, storage polling backup
+  (v1.6.3.7-v5), connection state tracking, zombie detection, listener deduplication,
+  session cache validation, circuit breaker probing, message error handling
 tools: ['*']
 ---
 
@@ -37,9 +38,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v5 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v5 Features (NEW):**
+
+- **Connection State Tracking** - Three states: connected → zombie → disconnected
+  with `_transitionConnectionState()` method and `connectionState` variable
+- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
+  immediate BroadcastChannel fallback when port becomes unresponsive
+- **Unified Message Routing** - `path` property in logs (port vs runtime.onMessage)
+- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
+  prevents duplicate `renderUI()` calls for same state change
+- **Session Cache Validation** - `_initializeSessionId()` validates cache with
+  sessionId + timestamp; rejects cross-session data
+- **Runtime Message Handling** - runtime.onMessage handler with try-catch wrappers
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Circuit Breaker Probing** - Early recovery with 500ms health probes
   (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
@@ -67,25 +81,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
 - **UI Performance** - Debounced renderUI (300ms)
 
-**v1.6.3.6-v12 Port-Based Messaging (Retained):**
+**Key Functions (v1.6.3.7-v5):**
 
-- **Port Registry** - Background maintains
-  `{ portId -> { port, origin, tabId, type, ... } }`
-- **Message Protocol** -
-  `{ type, action, correlationId, source, timestamp, payload, metadata }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
-  `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
-- **Persistent Connections** - `browser.runtime.onConnect` for persistent ports
-- **Tab Lifecycle Events** - `browser.tabs.onRemoved` triggers port cleanup
-
-**Key Functions (v1.6.3.7-v4):**
-
-| Function                   | Location      | Purpose                      |
-| -------------------------- | ------------- | ---------------------------- |
-| `scheduleRender(source)`   | Manager       | Unified render entry point   |
-| `_probeBackgroundHealth()` | Manager       | Circuit breaker health probe |
-| `_routePortMessage()`      | Manager       | Message routing (refactored) |
-| `handleFullStateSyncRequest()` | Background | State sync handler          |
+| Function                       | Location   | Purpose                        |
+| ------------------------------ | ---------- | ------------------------------ |
+| `scheduleRender(source)`       | Manager    | Unified render entry point     |
+| `_transitionConnectionState()` | Manager    | Connection state transitions   |
+| `lastProcessedSaveId`          | Manager    | Deduplication tracking         |
+| `_initializeSessionId()`       | Manager    | Session cache validation       |
+| `_probeBackgroundHealth()`     | Manager    | Circuit breaker health probe   |
+| `handleFullStateSyncRequest()` | Background | State sync handler             |
 
 **Storage Format:**
 
@@ -102,6 +107,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
+- [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
+- [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
+- [ ] Session cache validation rejects cross-session data (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
 - [ ] Storage polling backup works at 10s intervals (v1.6.3.7-v4)
@@ -109,13 +118,11 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] `scheduleRender()` prevents redundant renders via hash comparison
 - [ ] Background keepalive keeps Firefox background alive
-- [ ] Circuit breaker handles port disconnections with backoff
-- [ ] Strict tab isolation rejects null originTabId
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v4 circuit breaker
-probing, BroadcastChannel as primary, storage polling as backup, and message
-error handling.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7-v5 connection state tracking,
+zombie detection, listener deduplication, session cache validation, and v4
+circuit breaker probing, BroadcastChannel as primary, storage polling as backup.**

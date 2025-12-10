@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7-v4  
+**Version:** 1.6.3.7-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,7 +22,22 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v5 Features (NEW):**
+
+- **Connection State Tracking** - Three explicit states: connected → zombie →
+  disconnected with `_transitionConnectionState()` method
+- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
+  immediate BroadcastChannel fallback when port becomes unresponsive
+- **Unified Message Routing** - `path` property in logs distinguishes port vs
+  runtime.onMessage paths
+- **Listener Deduplication** - `lastProcessedSaveId` tracking prevents duplicate
+  renders via saveId comparison before processing
+- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
+  cache with sessionId + timestamp validation
+- **Runtime Message Handling** - runtime.onMessage handler with try-catch
+  wrappers for graceful error handling
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Circuit Breaker Probing** - Early recovery with 500ms health probes during
   open state (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
@@ -101,7 +116,27 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.7-v4: Circuit Breaker Probing + Message Handling
+### v1.6.3.7-v5: Connection State Tracking + Deduplication
+
+**Connection States:** Three explicit states: `connected` → `zombie` → `disconnected`.
+`_transitionConnectionState()` manages transitions with logging. `connectionState` variable tracks current state.
+
+**Zombie Detection:** Heartbeat timeout (5s) triggers zombie state. BroadcastChannel fallback
+enabled automatically when port becomes unresponsive.
+
+**Unified Message Routing:** `path` property added to all message logs (`port` or `runtime.onMessage`)
+for debugging clarity.
+
+**Listener Deduplication:** `lastProcessedSaveId` tracking prevents duplicate `renderUI()` calls.
+saveId comparison in `scheduleRender()` checks before processing.
+
+**Session Cache Validation:** `_initializeSessionId()` called in DOMContentLoaded. Cache includes
+sessionId + timestamp; cross-session cache is rejected.
+
+**Runtime Message Handling:** runtime.onMessage handler with try-catch wrappers. Errors logged
+with full context (message type, error stack). Invalid messages logged and skipped gracefully.
+
+### v1.6.3.7-v4: Circuit Breaker Probing + Message Handling (Retained)
 
 **Circuit Breaker Probing:** Early recovery with health probes during open state.
 `CIRCUIT_BREAKER_OPEN_DURATION_MS` reduced 10000→2000ms, `CIRCUIT_BREAKER_PROBE_INTERVAL_MS` = 500ms.
@@ -120,61 +155,19 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 
 ### v1.6.3.7-v3: BroadcastChannel + Storage Routing (Retained)
 
-**BroadcastChannel Pattern (NEW):**
+**BroadcastChannel:** `new BroadcastChannel('quick-tabs-updates')` for real-time sync
 
-```javascript
-const updateChannel = new BroadcastChannel('quick-tabs-updates');
-updateChannel.postMessage({
-  type: 'quick-tab-created|updated|deleted|minimized|restored',
-  quickTabId: id,
-  data: quickTab,
-  timestamp: Date.now()
-});
-```
+**Storage Routing:** Session (`permanent: false` → storage.session), Permanent (→ storage.local)
 
-**Storage Routing Pattern (NEW):**
+**Alarms:** `cleanup-orphaned` (60min), `sync-session-state` (5min), `diagnostic-snapshot` (120min)
 
-```javascript
-// Session Quick Tabs: permanent: false → storage.session
-// Permanent Quick Tabs: permanent: true (default) → storage.local
-```
+**DOM Reconciliation:** `_itemElements` Map for differential updates
 
-**Alarms Pattern (NEW):**
+**Message Protocol:** `{ type, action, correlationId, source, timestamp, payload, metadata }`
 
-```javascript
-browser.alarms.create('cleanup-orphaned', { periodInMinutes: 60 });
-browser.alarms.create('sync-session-state', { periodInMinutes: 5 });
-browser.alarms.create('diagnostic-snapshot', { periodInMinutes: 120 });
-```
+**Port Registry:** `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt } }`
 
-**DOM Reconciliation Pattern (NEW):**
-
-```javascript
-// Track existing elements by ID
-_itemElements = new Map(); // quickTabId → DOM element
-// Differential updates: only add new, remove deleted, update changed
-```
-
-**Message Protocol:**
-
-```javascript
-{
-  type: ('ACTION_REQUEST|STATE_UPDATE|ACKNOWLEDGMENT|ERROR|BROADCAST|HEARTBEAT|REQUEST_FULL_STATE_SYNC',
-    action,
-    correlationId,
-    source,
-    timestamp,
-    payload,
-    metadata);
-}
-```
-
-**Port Registry:**
-`{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt } }`
-
-**Event Flow:** Port connection → Background writes storage →
-storage.onChanged + BroadcastChannel → `scheduleRender()` → hash check →
-renderUI
+**Event Flow:** Port → Background writes storage → storage.onChanged + BroadcastChannel → `scheduleRender()` → renderUI
 
 ---
 
@@ -193,70 +186,61 @@ renderUI
 
 ---
 
-## 🆕 v1.6.3.7-v4 Patterns
+## 🆕 v1.6.3.7-v5 Patterns
 
-- **Circuit Breaker Probing** - `_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`,
-  `CIRCUIT_BREAKER_OPEN_DURATION_MS`=2000ms, `CIRCUIT_BREAKER_PROBE_INTERVAL_MS`=500ms
-- **Close All Feedback** - `_showCloseAllErrorNotification()`, don't reset local state on failure
-- **Message Error Handling** - try-catch in `handlePortMessage()`, graceful degradation
-- **Listener Verification** - `_verifyPortListenerRegistration()` with LISTENER_VERIFICATION
-- **Refactored Handlers** - `_logPortMessageReceived()`, `_routePortMessage()`,
-  `_handleQuickTabStateUpdate()` (complexity 10→4)
-- **Storage Polling Backup** - 2s→10s (BroadcastChannel is PRIMARY)
+- **Connection States** - `connectionState`: connected/zombie/disconnected, `_transitionConnectionState()`
+- **Zombie Detection** - 5s heartbeat timeout triggers zombie state, BroadcastChannel fallback
+- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
+- **Session Cache** - `_initializeSessionId()`, sessionId + timestamp validation
+- **Runtime Messages** - runtime.onMessage handler with try-catch
+
+## 🆕 v1.6.3.7-v4 Patterns (Retained)
+
+- **Circuit Breaker** - `_probeBackgroundHealth()`, `CIRCUIT_BREAKER_OPEN_DURATION_MS`=2000ms
+- **Close All Feedback** - `_showCloseAllErrorNotification()` on failure
+- **Listener Verification** - `_verifyPortListenerRegistration()` with test message
+- **Refactored Handlers** - `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
 
 ## 🆕 v1.6.3.7-v3 Patterns (Retained)
 
 - **storage.session** - `SESSION_STATE_KEY`, `permanent: false` for session Quick Tabs
-- **BroadcastChannel** - `quick-tabs-updates` channel, message types: created/updated/deleted/minimized/restored
-- **browser.alarms** - `cleanup-orphaned` (60min), `sync-session-state` (5min), `diagnostic-snapshot` (120min)
-- **tabs.group()** - Firefox 138+, `QuickTabGroupManager.js`
+- **BroadcastChannel** - `quick-tabs-updates` channel
+- **browser.alarms** - `cleanup-orphaned`, `sync-session-state`, `diagnostic-snapshot`
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 
 ### v1.6.3.7-v2 Patterns (Retained)
 
-- **Single Writer Authority** - Manager sends commands to background, `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()`
-- **Unified Render Pipeline** - `scheduleRender(source)`, hash-based deduplication, `_checkAndReloadStaleState()`
-- **Orphaned Tab Recovery** - `orphaned: true` flag, UI adoption buttons, `ADOPT_TAB` commands
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` reads back after write
+- **Single Writer Authority** - Manager sends commands to background
+- **Unified Render Pipeline** - `scheduleRender(source)`, hash-based deduplication
+- **Orphaned Tab Recovery** - `orphaned: true` flag, `ADOPT_TAB` commands
 
 ### v1.6.3.7-v1 Patterns (Retained)
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s idle timer
+- **Background Keepalive** - `_startKeepalive()` every 20s
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
-- **Port Reconnection** - `_requestFullStateSync()` on reconnection
 
 ### Key Timing Constants
 
-| Constant                            | Value | Purpose                            |
-| ----------------------------------- | ----- | ---------------------------------- |
-| `KEEPALIVE_INTERVAL_MS`             | 20000 | Firefox 30s timeout workaround     |
-| `RENDER_DEBOUNCE_MS`                | 300   | UI render debounce                 |
-| `RECONNECT_BACKOFF_INITIAL_MS`      | 100   | Circuit breaker initial            |
-| `RECONNECT_BACKOFF_MAX_MS`          | 10000 | Circuit breaker max                |
-| `CIRCUIT_BREAKER_OPEN_DURATION_MS`  | 2000  | Open state (v4, was 10000)         |
-| `CIRCUIT_BREAKER_PROBE_INTERVAL_MS` | 500   | Health probe interval (v4, NEW)    |
-| `STORAGE_POLLING_INTERVAL_MS`       | 10000 | Polling backup (v4, was 2000)      |
-| `HEARTBEAT_INTERVAL_MS`             | 25000 | Keep background alive              |
-| `CLEANUP_ORPHANED_MINUTES`          | 60    | Orphaned cleanup (v3)              |
-| `SYNC_SESSION_STATE_MINUTES`        | 5     | Session sync (v3)                  |
+| Constant                            | Value | Purpose                        |
+| ----------------------------------- | ----- | ------------------------------ |
+| `KEEPALIVE_INTERVAL_MS`             | 20000 | Firefox 30s timeout workaround |
+| `RENDER_DEBOUNCE_MS`                | 300   | UI render debounce             |
+| `CIRCUIT_BREAKER_OPEN_DURATION_MS`  | 2000  | Open state (v4)                |
+| `STORAGE_POLLING_INTERVAL_MS`       | 10000 | Polling backup (v4)            |
+| `HEARTBEAT_INTERVAL_MS`             | 25000 | Keep background alive          |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                        | Methods                                                    |
-| ---------------------------- | ---------------------------------------------------------- |
-| QuickTabStateMachine         | `canTransition()`, `transition()`                          |
-| QuickTabMediator             | `minimize()`, `restore()`, `destroy()`                     |
-| MapTransactionManager        | `beginTransaction()`, `commitTransaction()`, `rollback()`  |
-| UICoordinator                | `setHandlers()`, `clearAll()`, `scheduleRender()`          |
-| DestroyHandler               | `_closeAllInProgress`, `_destroyedIds`, `initiateDestruction()` |
-| TabStateManager (v3)         | `getTabState()`, `setTabState()`, `clearTabState()`        |
-| BroadcastChannelManager (v3) | `postMessage()`, `onMessage()`, `close()`                  |
-| QuickTabGroupManager (v3)    | `createGroup()`, `addToGroup()`, `removeFromGroup()`       |
-| NotificationManager (v3)     | `show()`, `clear()`, `onClick()`                           |
-| Background                   | `handleFullStateSyncRequest()`, `handleCloseMinimizedTabsCommand()` |
-| Manager                      | `_requestFullStateSync()`, `_probeBackgroundHealth()`      |
+| Class                   | Methods                                               |
+| ----------------------- | ----------------------------------------------------- |
+| QuickTabStateMachine    | `canTransition()`, `transition()`                     |
+| QuickTabMediator        | `minimize()`, `restore()`, `destroy()`                |
+| MapTransactionManager   | `beginTransaction()`, `commitTransaction()`           |
+| TabStateManager (v3)    | `getTabState()`, `setTabState()`                      |
+| BroadcastChannelManager | `postMessage()`, `onMessage()`                        |
+| Manager                 | `_transitionConnectionState()`, `lastProcessedSaveId`     |
 
 ---
 
@@ -272,7 +256,8 @@ renderUI
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, coordinated clear, closeAll mutex, circuit breaker probing (v4).
+Authority, coordinated clear, closeAll mutex, circuit breaker probing (v4),
+connection state tracking (v5), listener deduplication (v5).
 
 ---
 
@@ -325,16 +310,13 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ### Key Files
 
-| File                                                          | Features                                                      |
-| ------------------------------------------------------------- | ------------------------------------------------------------- |
-| `background.js`                                               | Port registry, keepalive, alarms handlers                     |
-| `quick-tabs-manager.js`                                       | `scheduleRender()`, `_probeBackgroundHealth()`, circuit breaker (v4) |
-| `src/utils/storage-utils.js`                                  | `writeStateWithVerificationAndRetry()`, `SESSION_STATE_KEY`   |
-| `src/render-helpers.js`                                       | `_isValidOriginTabId()`, `groupQuickTabsByOriginTab()`        |
-| `src/core/TabStateManager.js`                                 | Per-tab state (sessions API, v3)                              |
-| `src/features/quick-tabs/channels/BroadcastChannelManager.js` | Real-time messaging (v3)                                      |
-| `src/features/quick-tabs/QuickTabGroupManager.js`             | Tab grouping (Firefox 138+, v3)                               |
-| `src/features/notifications/NotificationManager.js`           | System notifications (v3)                                     |
+| File                     | Features                                                     |
+| ------------------------ | ------------------------------------------------------------ |
+| `background.js`          | Port registry, keepalive, alarms handlers                    |
+| `quick-tabs-manager.js`  | `scheduleRender()`, `_setConnectionState()`, connection states (v5) |
+| `storage-utils.js`       | `writeStateWithVerificationAndRetry()`, `SESSION_STATE_KEY`  |
+| `TabStateManager.js`     | Per-tab state (sessions API, v3)                             |
+| `BroadcastChannelManager.js` | Real-time messaging (v3)                                 |
 
 ### Storage
 

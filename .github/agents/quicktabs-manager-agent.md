@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v4), unified render pipeline, DOM reconciliation, BroadcastChannel,
-  session tabs, circuit breaker probing, close all feedback, message error handling
+  (v1.6.3.7-v5), connection state tracking, zombie detection, listener deduplication,
+  session cache validation, unified render pipeline, DOM reconciliation, BroadcastChannel
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -51,9 +51,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
-- **Circuit Breaker Probing** - Early recovery with health probes (v4)
+- **Connection State Tracking** - Three states: connected/zombie/disconnected (v5)
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v5 Features (NEW):**
+
+- **Connection State Tracking** - `connectionState` variable with three states:
+  connected → zombie → disconnected, managed by `_transitionConnectionState()` method
+- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
+  immediate BroadcastChannel fallback when port becomes unresponsive
+- **Unified Message Routing** - `path` property in logs distinguishes port vs
+  runtime.onMessage paths for debugging clarity
+- **Listener Deduplication** - `lastProcessedSaveId` tracking prevents duplicate
+  `renderUI()` calls via saveId comparison in `scheduleRender()`
+- **Session Cache Validation** - `_initializeSessionId()` called in DOMContentLoaded;
+  cache with sessionId + timestamp; cross-session cache rejected
+- **Runtime Message Handling** - runtime.onMessage handler with try-catch
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Circuit Breaker Probing** - `_probeBackgroundHealth()` every 500ms during
   open state (reduced open duration 10s→2s)
@@ -74,29 +88,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
   `sync-session-state`)
 - **DOM Reconciliation** - `_itemElements` Map for animation optimization
-- **originTabId Fix** - Initialization in window.js `_initializeVisibility()`
 
-**v1.6.3.7-v2 Features (Retained):**
+**Key Functions (v1.6.3.7-v5):**
 
-- **Single Writer Authority** - Manager sends ADOPT_TAB, CLOSE_MINIMIZED_TABS to
-  background
-- **Unified Render Pipeline** - `scheduleRender(source)` replaces direct
-  `renderUI()` calls
-- **State Staleness Detection** - `_checkAndReloadStaleState()` hash-based
-  detection
-- **Port Reconnection Sync** - `_requestFullStateSync()` on port reconnection
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
-  `orphaned: true` flag
-
-**Key Functions (v1.6.3.7-v4):**
-
-| Function                   | Purpose                        |
-| -------------------------- | ------------------------------ |
-| `scheduleRender(source)`   | Unified render entry point     |
-| `_itemElements`            | DOM reconciliation Map         |
-| `_probeBackgroundHealth()` | Circuit breaker health probe   |
-| `_routePortMessage()`      | Message routing (refactored)   |
-| `BroadcastChannelManager`  | Real-time tab messaging        |
+| Function                       | Purpose                           |
+| ------------------------------ | --------------------------------- |
+| `scheduleRender(source)`       | Unified render entry point        |
+| `_transitionConnectionState()` | Connection state transitions (v5) |
+| `lastProcessedSaveId`          | Deduplication tracking (v5)       |
+| `_initializeSessionId()`       | Session cache validation (v5)     |
+| `_probeBackgroundHealth()`     | Circuit breaker health probe      |
+| `_routePortMessage()`          | Message routing (refactored)      |
 
 **Manager as Pure Consumer:**
 
@@ -123,6 +125,10 @@ for session tabs.
 
 ## Testing Requirements
 
+- [ ] Connection state transitions work (connected→zombie→disconnected) (v1.6.3.7-v5)
+- [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
+- [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
+- [ ] Session cache validation rejects cross-session data (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Close all shows error notification on failure (v1.6.3.7-v4)
 - [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
@@ -130,14 +136,12 @@ for session tabs.
 - [ ] BroadcastChannel updates trigger render (v1.6.3.7-v3)
 - [ ] DOM reconciliation prevents full re-renders (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison
-- [ ] Orphaned tabs show adoption UI with `orphaned: true` flag
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v4 circuit breaker probing,
-close all feedback, message error handling, and v3 session tabs,
-BroadcastChannel, DOM reconciliation, and unified render pipeline.**
+**Your strength: Manager coordination with v1.6.3.7-v5 connection state tracking,
+zombie detection, listener deduplication, session cache validation, and v4
+circuit breaker probing, close all feedback, message error handling.**

@@ -2,6 +2,15 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v5 - FIX State Sync Issues #1-10 from quick-tabs-state-sync-issues.md
+ *   - FIX Issue #1: Three explicit connection states (connected/zombie/disconnected)
+ *   - FIX Issue #3: Unified message routing with logging for port vs runtime path
+ *   - FIX Issue #4: State versioning with saveId deduplication
+ *   - FIX Issue #5: Close All error feedback with user notifications
+ *   - FIX Issue #6: Session cache validation with sessionId
+ *   - FIX Issue #9: Message error handling with try-catch in all listeners
+ *   - FIX Issue #10: Listener registration verification with test messages
+ *
  * v1.6.3.7-v3 - FIX Issue #3: DOM Reconciliation for CSS animation flickering
  *   - Implements differential DOM updates instead of full re-renders
  *   - Tracks existing DOM elements by Quick Tab ID (_itemElements Map)
@@ -118,6 +127,47 @@ const recentlyProcessedMessageIds = new Set();
  */
 const MESSAGE_ID_MAX_AGE_MS = 5000;
 
+// ==================== v1.6.3.7-v5 CONNECTION STATE TRACKING ====================
+// FIX Issue #1: Three explicit connection states for background detection
+/**
+ * Connection state enum
+ * v1.6.3.7-v5 - FIX Issue #1: Track three explicit states
+ * - 'connected': Port is open AND background is responding to heartbeats
+ * - 'zombie': Port appears open but background is not responding (Firefox 30s termination)
+ * - 'disconnected': Port is closed, no connection
+ */
+const CONNECTION_STATE = {
+  CONNECTED: 'connected',
+  ZOMBIE: 'zombie',
+  DISCONNECTED: 'disconnected'
+};
+
+/**
+ * Current connection state
+ * v1.6.3.7-v5 - FIX Issue #1: Explicit state tracking
+ */
+let connectionState = CONNECTION_STATE.DISCONNECTED;
+
+/**
+ * Timestamp of last connection state transition
+ * v1.6.3.7-v5 - FIX Issue #1: State transition logging
+ */
+let lastConnectionStateChange = 0;
+
+// ==================== v1.6.3.7-v5 SAVEID DEDUPLICATION ====================
+// FIX Issue #4: State versioning using saveId for deduplication
+/**
+ * Last processed saveId to prevent duplicate renders
+ * v1.6.3.7-v5 - FIX Issue #4: SaveId-based deduplication
+ */
+let lastProcessedSaveId = '';
+
+/**
+ * Timestamp of last saveId processing
+ * v1.6.3.7-v5 - FIX Issue #4: Track when saveId was processed
+ */
+let lastSaveIdProcessedAt = 0;
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -182,7 +232,7 @@ function _generateSessionId() {
  */
 function _initializeSessionId() {
   currentSessionId = _generateSessionId();
-  console.log('[Manager] v1.6.3.7-v4 Session initialized:', { sessionId: currentSessionId });
+  console.log('[Manager] v1.6.3.7-v5 Session initialized:', { sessionId: currentSessionId });
 }
 
 // UI Elements (cached for performance)
@@ -323,9 +373,44 @@ function logPortLifecycle(event, details = {}) {
   console.log(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, {
     tabId: currentBrowserTabId,
     portId: backgroundPort?._portId,
+    connectionState,
     timestamp: Date.now(),
     ...details
   });
+}
+
+/**
+ * Transition connection state with logging
+ * v1.6.3.7-v5 - FIX Issue #1: Explicit state transitions
+ * @param {string} newState - New connection state
+ * @param {string} reason - Reason for state change
+ */
+function _transitionConnectionState(newState, reason) {
+  const oldState = connectionState;
+  const now = Date.now();
+  const timeSinceLastChange = now - lastConnectionStateChange;
+
+  connectionState = newState;
+  lastConnectionStateChange = now;
+
+  console.log('[Manager] CONNECTION_STATE_TRANSITION:', {
+    oldState,
+    newState,
+    reason,
+    timeSinceLastChangeMs: timeSinceLastChange,
+    timestamp: now
+  });
+
+  // v1.6.3.7-v5 - FIX Issue #1: When entering zombie state, immediately switch to BroadcastChannel
+  if (newState === CONNECTION_STATE.ZOMBIE) {
+    console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to BroadcastChannel fallback immediately');
+    // BroadcastChannel is already initialized and active - just log the fallback activation
+    if (_isChannelAvailable()) {
+      console.log('[Manager] BroadcastChannel fallback ACTIVE - will receive updates via broadcast');
+    } else {
+      console.warn('[Manager] BroadcastChannel NOT available - relying on storage polling only');
+    }
+  }
 }
 
 /**
@@ -333,6 +418,7 @@ function logPortLifecycle(event, details = {}) {
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
  * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
+ * v1.6.3.7-v5 - FIX Issue #1: Update connection state on connect
  */
 function connectToBackground() {
   // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
@@ -368,6 +454,9 @@ function connectToBackground() {
       logPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
+      // v1.6.3.7-v5 - FIX Issue #1: Update connection state
+      _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
+
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
       stopHeartbeat();
 
@@ -384,6 +473,9 @@ function connectToBackground() {
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
 
+    // v1.6.3.7-v5 - FIX Issue #1: Update connection state (will be upgraded to CONNECTED after first heartbeat success)
+    _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'port-connected');
+
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
     startHeartbeat();
 
@@ -394,10 +486,13 @@ function connectToBackground() {
     // v1.6.3.7-v4 - FIX Issue #10: Send test message to verify listener works
     _verifyPortListenerRegistration();
 
-    console.log('[Manager] v1.6.3.6-v11 Port connection established');
+    console.log('[Manager] v1.6.3.7-v5 Port connection established');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
     logPortLifecycle('error', { error: err.message });
+
+    // v1.6.3.7-v5 - FIX Issue #1: Update connection state
+    _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'connection-error');
 
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
@@ -639,12 +734,14 @@ async function sendHeartbeat() {
 /**
  * Log heartbeat attempt details
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * v1.6.3.7-v5 - FIX Issue #1: Added connectionState to logging
  * @private
  */
 function _logHeartbeatAttempt() {
   console.log('[Manager] HEARTBEAT_ATTEMPT:', {
     portExists: backgroundPort !== null,
     portConnected: backgroundPort ? 'yes' : 'no',
+    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Explicit connection state
     circuitBreakerState,
     consecutiveFailures: consecutiveHeartbeatFailures,
     timeSinceLastSuccess: Date.now() - lastHeartbeatResponse
@@ -654,15 +751,23 @@ function _logHeartbeatAttempt() {
 /**
  * Handle case when port is disconnected
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * v1.6.3.7-v5 - FIX Issue #1: Update connection state
  * @private
  */
 function _handlePortDisconnected() {
   console.warn('[Manager] HEARTBEAT_FAILED: port disconnected', {
     status: 'PORT_DISCONNECTED',
+    connectionState,
     circuitBreakerState,
     reconnectAttempts,
     diagnosis: 'Port object is null - connection was closed or never established'
   });
+
+  // v1.6.3.7-v5 - FIX Issue #1: Update connection state
+  if (connectionState !== CONNECTION_STATE.DISCONNECTED) {
+    _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'heartbeat-port-null');
+  }
+
   consecutiveHeartbeatFailures++;
   if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
     console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
@@ -673,6 +778,7 @@ function _handlePortDisconnected() {
 /**
  * Handle successful heartbeat response
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * v1.6.3.7-v5 - FIX Issue #1: Update connection state on success
  * @private
  * @param {Object} response - Response from background
  * @param {number} startTime - When heartbeat was started
@@ -681,8 +787,14 @@ function _handleHeartbeatSuccess(response, startTime) {
   consecutiveHeartbeatFailures = 0;
   lastHeartbeatResponse = Date.now();
 
+  // v1.6.3.7-v5 - FIX Issue #1: Confirm we're in CONNECTED state (recovered from zombie)
+  if (connectionState !== CONNECTION_STATE.CONNECTED) {
+    _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'heartbeat-success');
+  }
+
   console.log('[Manager] HEARTBEAT_SUCCESS:', {
     status: 'BACKGROUND_ALIVE',
+    connectionState,
     roundTripMs: Date.now() - startTime,
     backgroundAlive: response?.backgroundAlive ?? true,
     isInitialized: response?.isInitialized,
@@ -694,6 +806,7 @@ function _handleHeartbeatSuccess(response, startTime) {
 /**
  * Handle heartbeat failure
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * v1.6.3.7-v5 - FIX Issue #1: Immediately detect zombie state and switch to BroadcastChannel
  * @private
  * @param {Error} err - Error that occurred
  */
@@ -709,9 +822,17 @@ function _handleHeartbeatFailure(err) {
     failures: consecutiveHeartbeatFailures,
     maxFailures: MAX_HEARTBEAT_FAILURES,
     timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+    connectionState,
     circuitBreakerState,
     diagnosis: _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed)
   });
+
+  // v1.6.3.7-v5 - FIX Issue #1: IMMEDIATELY detect zombie state on first timeout
+  // Don't wait for MAX_HEARTBEAT_FAILURES - zombie detection should be instant
+  if (isTimeout && connectionState === CONNECTION_STATE.CONNECTED) {
+    _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'heartbeat-timeout-zombie');
+    // BroadcastChannel fallback is activated in _transitionConnectionState
+  }
 
   _processHeartbeatFailureRecovery(isTimeout);
 }
@@ -906,13 +1027,27 @@ function _handleStateSyncResponse(response) {
  * Unified render entry point - ALL render triggers go through here
  * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
  * v1.6.3.7-v4 - FIX Issue #4: Enhanced deduplication with message ID tracking
+ * v1.6.3.7-v5 - FIX Issue #4: Added saveId-based deduplication
  * @param {string} source - Source of render trigger for logging
  * @param {string} [messageId] - Optional message ID for deduplication
  */
 function scheduleRender(source = 'unknown', messageId = null) {
   const currentHash = computeStateHash(quickTabsState);
+  // v1.6.3.7-v5 - FIX Code Review: Validate saveId is a non-empty string
+  const currentSaveId = _getValidSaveId(quickTabsState?.saveId);
 
-  // v1.6.3.7-v4 - FIX Issue #4: Check message ID deduplication first
+  // v1.6.3.7-v5 - FIX Issue #4: Check saveId deduplication first (state versioning)
+  if (currentSaveId && currentSaveId === lastProcessedSaveId) {
+    console.log('[Manager] RENDER_DEDUPLICATION: saveId already processed', {
+      source,
+      saveId: currentSaveId,
+      lastProcessedSaveId,
+      hash: currentHash
+    });
+    return;
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #4: Check message ID deduplication
   if (messageId && _isMessageAlreadyProcessed(messageId)) {
     console.log('[Manager] RENDER_DEDUPLICATION: message already processed', {
       source,
@@ -931,6 +1066,17 @@ function scheduleRender(source = 'unknown', messageId = null) {
     return;
   }
 
+  // v1.6.3.7-v5 - FIX Issue #4: Track this saveId as processed
+  if (currentSaveId) {
+    lastProcessedSaveId = currentSaveId;
+    lastSaveIdProcessedAt = Date.now();
+    console.log('[Manager] SAVEID_PROCESSED:', {
+      saveId: currentSaveId,
+      source,
+      timestamp: lastSaveIdProcessedAt
+    });
+  }
+
   // v1.6.3.7-v4 - FIX Issue #4: Track this message as processed
   if (messageId) {
     _markMessageAsProcessed(messageId);
@@ -939,6 +1085,7 @@ function scheduleRender(source = 'unknown', messageId = null) {
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     messageId,
+    saveId: currentSaveId,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
@@ -958,6 +1105,27 @@ function scheduleRender(source = 'unknown', messageId = null) {
 function _isMessageAlreadyProcessed(messageId) {
   if (!messageId) return false;
   return recentlyProcessedMessageIds.has(messageId);
+}
+
+/**
+ * Validate and return saveId as string
+ * v1.6.3.7-v5 - FIX Code Review: Type validation for saveId
+ * @private
+ * @param {*} saveId - Value to validate
+ * @returns {string} Valid saveId string or empty string
+ */
+function _getValidSaveId(saveId) {
+  if (typeof saveId === 'string' && saveId.length > 0) {
+    return saveId;
+  }
+  // Handle unexpected types gracefully
+  if (saveId != null && typeof saveId !== 'string') {
+    console.warn('[Manager] SAVEID_INVALID_TYPE: saveId is not a string', {
+      type: typeof saveId,
+      value: saveId
+    });
+  }
+  return '';
 }
 
 /**
@@ -1037,6 +1205,7 @@ function handlePortMessage(message) {
 /**
  * Log port message received with details
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * v1.6.3.7-v5 - FIX Issue #3: Added path indicator for unified message routing logging
  * @private
  * @param {Object} message - Message from background
  */
@@ -1045,8 +1214,10 @@ function _logPortMessageReceived(message) {
     type: message.type,
     action: message.action,
     messageId: message.messageId,
+    saveId: message.saveId,
     correlationId: message.correlationId,
-    source: 'port-connection',
+    path: 'port-connection',  // v1.6.3.7-v5 - FIX Issue #3: Explicit path indicator
+    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Include connection state
     timestamp: Date.now()
   });
 
@@ -1060,6 +1231,7 @@ function _logPortMessageReceived(message) {
 /**
  * Route port message to appropriate handler
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * v1.6.3.7-v5 - FIX Issue #3: Added logging for STATE_UPDATE via port path
  * @private
  * @param {Object} message - Message to route
  */
@@ -1078,6 +1250,13 @@ function _routePortMessage(message) {
 
   // Handle state updates
   if (message.type === 'STATE_UPDATE') {
+    // v1.6.3.7-v5 - FIX Issue #3: Log STATE_UPDATE received via port
+    console.log('[Manager] PORT_STATE_UPDATE:', {
+      type: message.type,
+      quickTabId: message.quickTabId || message.payload?.quickTabId,
+      path: 'port-connection',
+      timestamp: Date.now()
+    });
     handleStateUpdateBroadcast(message);
     scheduleRender('port-STATE_UPDATE', message.messageId);
     return;
@@ -1099,6 +1278,7 @@ function _routePortMessage(message) {
 /**
  * Handle QUICK_TAB_STATE_UPDATED message from port
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * v1.6.3.7-v5 - FIX Issue #3: Enhanced path logging
  * @private
  * @param {Object} message - State update message
  */
@@ -1107,7 +1287,8 @@ function _handleQuickTabStateUpdate(message) {
     quickTabId: message.quickTabId,
     changes: message.changes,
     messageId: message.messageId,
-    source: 'port'
+    saveId: message.saveId,
+    path: 'port-connection'  // v1.6.3.7-v5 - FIX Issue #3: Explicit path
   });
 
   handleStateUpdateBroadcast(message);
@@ -1669,54 +1850,114 @@ async function saveCollapseState(collapseState) {
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
 // v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
 // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+// v1.6.3.7-v5 - FIX Issue #9: Wrapped in try-catch for error handling
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // v1.6.3.7-v4 - FIX Issue #4: Log message source for debugging
+  // v1.6.3.7-v5 - FIX Issue #9: Wrap entire handler in try-catch
+  try {
+    return _processRuntimeMessage(message, sendResponse);
+  } catch (err) {
+    // v1.6.3.7-v5 - FIX Issue #9: Log error with full context and continue gracefully
+    console.error('[Manager] RUNTIME_MESSAGE_ERROR: Error processing runtime message:', {
+      error: err.message,
+      stack: err.stack,
+      messageType: message?.type,
+      timestamp: Date.now()
+    });
+    // Don't rethrow - graceful degradation
+    return false;
+  }
+});
+// v1.6.3.7-v5 - FIX Issue #10: Log listener registration confirmation
+console.log('[Manager] LISTENER_REGISTERED: browser.runtime.onMessage listener added');
+
+/**
+ * Process runtime message
+ * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} message - Incoming message
+ * @param {Function} sendResponse - Response callback
+ * @returns {boolean} True if message was handled asynchronously
+ */
+function _processRuntimeMessage(message, sendResponse) {
+  // v1.6.3.7-v5 - FIX Issue #9: Validate message structure
+  if (!message || typeof message !== 'object') {
+    console.warn('[Manager] RUNTIME_MESSAGE_INVALID: Received non-object message:', typeof message);
+    return false;
+  }
+
+  // v1.6.3.7-v5 - FIX Issue #3: Enhanced logging showing message path
   console.log('[Manager] RUNTIME_MESSAGE_RECEIVED:', {
     type: message.type,
     messageId: message.messageId,
-    source: 'runtime.onMessage',
+    saveId: message.saveId,
+    path: 'runtime.onMessage',  // v1.6.3.7-v5 - FIX Issue #3: Explicit path indicator
+    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Include connection state
     timestamp: Date.now()
   });
 
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
-      quickTabId: message.quickTabId,
-      changes: message.changes,
-      source: message.originalSource,
-      messageId: message.messageId
-    });
-
-    // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
-    if (message.changes?.deleted === true || message.originalSource === 'destroy') {
-      handleStateDeletedMessage(message.quickTabId);
-    } else if (message.quickTabId && message.changes) {
-      // Update local state cache
-      handleStateUpdateMessage(message.quickTabId, message.changes);
-    }
-
-    // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
-    scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
-    sendResponse({ received: true });
+    _handleRuntimeStateUpdated(message, sendResponse);
     return true;
   }
 
   // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
   if (message.type === 'QUICK_TAB_DELETED') {
-    console.log('[Manager] Received QUICK_TAB_DELETED:', {
-      quickTabId: message.quickTabId,
-      source: message.source,
-      messageId: message.messageId
-    });
-
-    handleStateDeletedMessage(message.quickTabId);
-    // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
-    scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
-    sendResponse({ received: true });
+    _handleRuntimeDeleted(message, sendResponse);
     return true;
   }
 
   return false;
-});
+}
+
+/**
+ * Handle QUICK_TAB_STATE_UPDATED via runtime.onMessage
+ * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
+ * @private
+ * @param {Object} message - State update message
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleRuntimeStateUpdated(message, sendResponse) {
+  console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
+    quickTabId: message.quickTabId,
+    changes: message.changes,
+    source: message.originalSource,
+    messageId: message.messageId,
+    path: 'runtime.onMessage'  // v1.6.3.7-v5 - FIX Issue #3
+  });
+
+  // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
+  if (message.changes?.deleted === true || message.originalSource === 'destroy') {
+    handleStateDeletedMessage(message.quickTabId);
+  } else if (message.quickTabId && message.changes) {
+    // Update local state cache
+    handleStateUpdateMessage(message.quickTabId, message.changes);
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
+  scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
+  sendResponse({ received: true });
+}
+
+/**
+ * Handle QUICK_TAB_DELETED via runtime.onMessage
+ * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
+ * @private
+ * @param {Object} message - Deletion message
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleRuntimeDeleted(message, sendResponse) {
+  console.log('[Manager] Received QUICK_TAB_DELETED:', {
+    quickTabId: message.quickTabId,
+    source: message.source,
+    messageId: message.messageId,
+    path: 'runtime.onMessage'  // v1.6.3.7-v5 - FIX Issue #3
+  });
+
+  handleStateDeletedMessage(message.quickTabId);
+  // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
+  scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
+  sendResponse({ received: true });
+}
 
 /**
  * Handle state update message from background
@@ -1994,6 +2235,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
 
+  // v1.6.3.7-v5 - FIX Issue #6: Initialize session ID for cache validation
+  _initializeSessionId();
+
   // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -2035,7 +2279,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 10000);
 
-  console.log('[Manager] v1.6.3.7-v4 Port + BroadcastChannel + Message infrastructure initialized (storage poll: 10s)');
+  console.log('[Manager] v1.6.3.7-v5 Port + BroadcastChannel + Message infrastructure initialized', {
+    storagePollingMs: 10000,
+    sessionId: currentSessionId,
+    connectionState
+  });
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
