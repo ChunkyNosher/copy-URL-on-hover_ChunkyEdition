@@ -60,12 +60,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v9 Features (NEW):**
+**v1.6.3.7-v10 Features (NEW):**
+
+- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
+- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
+- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
+- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
+
+**v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
 - **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)

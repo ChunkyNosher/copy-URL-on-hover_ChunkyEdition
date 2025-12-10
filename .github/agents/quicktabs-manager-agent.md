@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v9), unified keepalive, sequence tracking, storage integrity,
-  initialization barrier, port age management
+  (v1.6.3.7-v10), storage watchdog, BC gap detection, IndexedDB checksum,
+  port message reordering, initialization timing
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v10 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -53,7 +53,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
 - **Operation Confirmations** - Closed-loop feedback for all operations (v7)
 
-**v1.6.3.7-v9 Features (NEW):**
+**v1.6.3.7-v10 Features (NEW):**
+
+- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
+- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
+- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
+- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
+- **Tab Affinity Diagnostics** - Age bucket logging, defensive cleanup
+- **Initialization Timing** - initializationStartTime with listener logging
+
+**v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
 - **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
@@ -107,11 +116,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   `sync-session-state`)
 - **DOM Reconciliation** - `_itemElements` Map for animation optimization
 
-**Key Functions (v1.6.3.7-v9):**
+**Key Functions (v1.6.3.7-v10):**
 
 | Function                       | Purpose                                  |
 | ------------------------------ | ---------------------------------------- |
-| `processOrderedPortMessage()`  | messageSequence reorder buffer           |
+| `processPortMessageReorder()`  | Port message queue with 1s timeout (v10) |
+| `handleBCGapDetection()`       | BC gap detection callback (v10)          |
 | `validateSequenceNumber()`     | BC sequence gap detection                |
 | `scheduleRender(source)`       | Unified render entry point               |
 | `_transitionConnectionState()` | Connection state transitions (v5)        |
@@ -142,6 +152,9 @@ for session tabs.
 
 ## Testing Requirements
 
+- [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
+- [ ] BC gap detection triggers storage fallback (v1.6.3.7-v10)
+- [ ] Port message reordering queue works (1s timeout) (v1.6.3.7-v10)
 - [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
 - [ ] Sequence tracking works (messageSequence, sequenceNumber) (v1.6.3.7-v9)
 - [ ] Initialization barrier prevents race conditions (v1.6.3.7-v9)
@@ -156,6 +169,6 @@ for session tabs.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v9 unified keepalive,
-sequence tracking, initialization barrier, v8 port resilience, v6 unified
-channel logging, v5 connection state tracking.**
+**Your strength: Manager coordination with v1.6.3.7-v10 storage watchdog,
+BC gap detection, port message reordering, v9 unified keepalive,
+sequence tracking, v8 port resilience, v5 connection state tracking.**

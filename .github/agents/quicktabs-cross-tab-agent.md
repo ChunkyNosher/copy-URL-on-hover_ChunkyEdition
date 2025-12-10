@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v9), unified keepalive, sequence tracking, storage integrity,
-  initialization barrier, port age management
+  (v1.6.3.7-v10), storage watchdog, BC gap detection, IndexedDB checksum,
+  port message reordering, initialization timing
 tools: ['*']
 ---
 
@@ -38,9 +38,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v10 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v9 Features (NEW):**
+**v1.6.3.7-v10 Features (NEW):**
+
+- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
+- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
+- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
+- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
+- **Tab Affinity Diagnostics** - Age bucket logging, defensive cleanup
+- **Initialization Timing** - initializationStartTime with listener logging
+
+**v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
 - **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
@@ -101,16 +110,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
 - **UI Performance** - Debounced renderUI (300ms)
 
-**Key Functions (v1.6.3.7-v9):**
+**Key Functions (v1.6.3.7-v10):**
 
-| Function                       | Location   | Purpose                        |
-| ------------------------------ | ---------- | ------------------------------ |
-| `validateStorageIntegrity()`   | Storage    | Integrity check with backup    |
-| `processOrderedStorageEvent()` | Background | sequenceId validation          |
-| `processOrderedPortMessage()`  | Manager    | messageSequence reorder buffer |
-| `broadcastFullStateSync()`     | Background | Full state sync via BC         |
-| `scheduleRender(source)`       | Manager    | Unified render entry point     |
-| `handleFullStateSyncRequest()` | Background | State sync handler             |
+| Function                       | Location   | Purpose                            |
+| ------------------------------ | ---------- | ---------------------------------- |
+| `startStorageWatchdog()`       | Background | Watchdog timer for writes (v10)    |
+| `handleBCGapDetection()`       | Manager    | BC gap detection callback (v10)    |
+| `validateChecksumOnStartup()`  | Storage    | IndexedDB corruption check (v10)   |
+| `processPortMessageReorder()`  | Manager    | Port message queue (v10)           |
+| `validateStorageIntegrity()`   | Storage    | Integrity check with backup        |
+| `processOrderedStorageEvent()` | Background | sequenceId validation              |
+| `broadcastFullStateSync()`     | Background | Full state sync via BC             |
+| `scheduleRender(source)`       | Manager    | Unified render entry point         |
+| `handleFullStateSyncRequest()` | Background | State sync handler                 |
 
 **Storage Format:**
 
@@ -127,6 +139,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
+- [ ] BC gap detection triggers storage fallback (v1.6.3.7-v10)
+- [ ] IndexedDB checksum validation works on startup (v1.6.3.7-v10)
+- [ ] Port message reordering queue works (1s timeout) (v1.6.3.7-v10)
 - [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
 - [ ] Sequence tracking works (sequenceId, messageSequence, sequenceNumber) (v1.6.3.7-v9)
 - [ ] Storage integrity validation works (v1.6.3.7-v9)
@@ -142,6 +158,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v9 unified keepalive,
-sequence tracking, storage integrity, initialization barrier, v8 port resilience,
-v6 unified channel logging, v5 connection state tracking.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7-v10 storage watchdog,
+BC gap detection, IndexedDB checksum, port message reordering, v9 unified keepalive,
+sequence tracking, storage integrity, v8 port resilience.**

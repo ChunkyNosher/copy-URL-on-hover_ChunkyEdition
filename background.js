@@ -105,6 +105,9 @@ const globalQuickTabState = {
 // Flag to track initialization status
 let isInitialized = false;
 
+// v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for listener entry logging
+let initializationStartTime = Date.now();
+
 // v1.6.1.6 - Memory leak fix: State hash for deduplication
 // Prevents redundant broadcasts when state hasn't actually changed
 let lastBroadcastedStateHash = 0;
@@ -1107,6 +1110,7 @@ async function _tryRestoreFromStartupBackup(operationId) {
 /**
  * Check storage integrity on startup
  * v1.6.3.7-v9 - FIX Issue #8: Verify storage.local data on initialization
+ * v1.6.3.7-v10 - FIX Issue #8: Add checksum comparison with sync backup
  * @returns {Promise<{healthy: boolean, recovered: boolean, error: string|null}>}
  */
 async function checkStorageIntegrityOnStartup() {
@@ -1118,33 +1122,202 @@ async function checkStorageIntegrityOnStartup() {
     const localResult = await browser.storage.local.get('quick_tabs_state_v2');
     const localState = localResult?.quick_tabs_state_v2;
     
+    // v1.6.3.7-v10 - FIX Issue #8: Compute checksums for comparison
+    const localChecksum = _computeStorageChecksum(localState);
+    
+    // If sync backup is enabled, compare checksums
+    const checksumResult = await _performChecksumComparison(operationId, localState, localChecksum);
+    if (checksumResult.shouldReturn) {
+      return checksumResult.result;
+    }
+    
     // If local storage has data, we're good
-    if (localState?.tabs && localState.tabs.length > 0) {
-      console.log('[Background] STORAGE_INTEGRITY_CHECK_PASSED:', {
-        operationId,
-        localTabCount: localState.tabs.length,
-        saveId: localState.saveId
-      });
-      return { healthy: true, recovered: false, error: null };
+    if (_hasValidLocalState(localState)) {
+      return _logAndReturnHealthy(operationId, localState, localChecksum);
     }
     
     // Local storage is empty - check if we have a backup and try recovery
-    const backupResult = ENABLE_SYNC_STORAGE_BACKUP 
-      ? await _tryRestoreFromStartupBackup(operationId)
-      : { hasBackup: false, recovered: false };
-    
-    if (backupResult.recovered) {
-      return { healthy: false, recovered: true, error: null };
-    }
-    
-    // No data in either storage - this is expected for new installations
-    console.log('[Background] STORAGE_INTEGRITY_CHECK_COMPLETE: No existing data', { operationId });
-    return { healthy: true, recovered: false, error: null };
+    return await _attemptBackupRecovery(operationId);
     
   } catch (err) {
     console.error('[Background] STORAGE_INTEGRITY_CHECK_ERROR:', { operationId, error: err.message });
     return { healthy: false, recovered: false, error: err.message };
   }
+}
+
+/**
+ * Perform checksum comparison if sync backup is enabled
+ * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
+ * @private
+ */
+async function _performChecksumComparison(operationId, localState, localChecksum) {
+  if (!ENABLE_SYNC_STORAGE_BACKUP) {
+    return { shouldReturn: false, result: null };
+  }
+  
+  const checksumResult = await _compareStorageChecksums(operationId, localState, localChecksum);
+  if (checksumResult.mismatch && checksumResult.recovered) {
+    return { shouldReturn: true, result: { healthy: false, recovered: true, error: null } };
+  }
+  return { shouldReturn: false, result: null };
+}
+
+/**
+ * Check if local state has valid tabs
+ * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
+ * @private
+ */
+function _hasValidLocalState(localState) {
+  return localState?.tabs && localState.tabs.length > 0;
+}
+
+/**
+ * Log and return healthy result
+ * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
+ * @private
+ */
+function _logAndReturnHealthy(operationId, localState, localChecksum) {
+  console.log('[Background] STORAGE_INTEGRITY_CHECK_PASSED:', {
+    operationId,
+    localTabCount: localState.tabs.length,
+    localChecksum,
+    saveId: localState.saveId
+  });
+  return { healthy: true, recovered: false, error: null };
+}
+
+/**
+ * Attempt backup recovery if local storage is empty
+ * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
+ * @private
+ */
+async function _attemptBackupRecovery(operationId) {
+  const backupResult = ENABLE_SYNC_STORAGE_BACKUP 
+    ? await _tryRestoreFromStartupBackup(operationId)
+    : { hasBackup: false, recovered: false };
+  
+  if (backupResult.recovered) {
+    return { healthy: false, recovered: true, error: null };
+  }
+  
+  // No data in either storage - this is expected for new installations
+  console.log('[Background] STORAGE_INTEGRITY_CHECK_COMPLETE: No existing data', { operationId });
+  return { healthy: true, recovered: false, error: null };
+}
+
+/**
+ * Compute a checksum for storage state (hash of tab IDs + states)
+ * v1.6.3.7-v10 - FIX Issue #8: Data checksum for corruption detection
+ * @private
+ * @param {Object} state - State object with tabs array
+ * @returns {string} Checksum string or 'empty' if no tabs
+ */
+function _computeStorageChecksum(state) {
+  if (!state?.tabs || state.tabs.length === 0) {
+    return 'empty';
+  }
+  
+  // Build a deterministic string from tab IDs and their minimized states
+  const tabSignatures = state.tabs
+    .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
+    .sort()
+    .join('|');
+  
+  // v1.6.3.7-v10 - FIX Code Review: djb2-like hash algorithm explanation
+  // hash = hash * 33 + char is equivalent to (hash << 5) - hash + char
+  // This is a simple, fast string hash used for corruption detection (not crypto)
+  let hash = state.tabs.length;
+  for (let i = 0; i < tabSignatures.length; i++) {
+    hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
+  }
+  
+  return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
+}
+
+/**
+ * Compare local storage checksum with sync backup checksum
+ * v1.6.3.7-v10 - FIX Issue #8: Detect subtle corruption via checksum mismatch
+ * @private
+ * @param {string} operationId - Operation ID for logging
+ * @param {Object} localState - Local storage state
+ * @param {string} localChecksum - Computed local checksum
+ * @returns {Promise<{mismatch: boolean, recovered: boolean}>}
+ */
+async function _compareStorageChecksums(operationId, localState, localChecksum) {
+  try {
+    const syncResult = await browser.storage.sync.get('quick_tabs_backup');
+    const syncBackup = syncResult?.quick_tabs_backup;
+    
+    if (!syncBackup?.tabs || syncBackup.tabs.length === 0) {
+      // No sync backup to compare against
+      return { mismatch: false, recovered: false };
+    }
+    
+    const syncChecksum = _computeStorageChecksum(syncBackup);
+    const localTabCount = localState?.tabs?.length || 0;
+    const syncTabCount = syncBackup.tabs.length;
+    
+    const mismatchResult = _detectChecksumMismatch(localChecksum, syncChecksum, localTabCount, syncTabCount);
+    
+    if (mismatchResult.hasMismatch) {
+      return await _handleChecksumMismatch(operationId, localChecksum, syncChecksum, localTabCount, syncTabCount, mismatchResult, localState);
+    }
+    
+    return { mismatch: false, recovered: false };
+  } catch (err) {
+    console.warn('[Background] STORAGE_CHECKSUM_COMPARISON_ERROR:', {
+      operationId,
+      error: err.message
+    });
+    return { mismatch: false, recovered: false };
+  }
+}
+
+/**
+ * Detect if there is a checksum or count mismatch between local and sync
+ * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce _compareStorageChecksums complexity
+ * @private
+ */
+function _detectChecksumMismatch(localChecksum, syncChecksum, localTabCount, syncTabCount) {
+  const countMismatch = localTabCount !== syncTabCount && localTabCount > 0 && syncTabCount > 0;
+  const checksumMismatch = localChecksum !== 'empty' && syncChecksum !== 'empty' && localChecksum !== syncChecksum;
+  
+  return {
+    hasMismatch: countMismatch || checksumMismatch,
+    countMismatch,
+    checksumMismatch
+  };
+}
+
+/**
+ * Handle detected checksum mismatch
+ * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce _compareStorageChecksums complexity
+ * @private
+ */
+async function _handleChecksumMismatch(operationId, localChecksum, syncChecksum, localTabCount, syncTabCount, mismatchResult, localState) {
+  console.warn('[Background] STORAGE_INTEGRITY_CHECKSUM_MISMATCH:', {
+    operationId,
+    localChecksum,
+    syncChecksum,
+    localTabCount,
+    syncTabCount,
+    countMismatch: mismatchResult.countMismatch,
+    checksumMismatch: mismatchResult.checksumMismatch,
+    timestamp: Date.now()
+  });
+  
+  // Determine which source to trust (prefer the one with more data)
+  if (syncTabCount > localTabCount) {
+    console.log('[Background] STORAGE_INTEGRITY_RECOVERY: Restoring from sync backup (more complete)');
+    await attemptRecoveryFromSyncBackup(operationId, localState);
+    return { mismatch: true, recovered: true };
+  }
+  
+  console.log('[Background] STORAGE_INTEGRITY_MISMATCH_KEPT_LOCAL: Local has more or equal data', {
+    localTabCount,
+    syncTabCount
+  });
+  return { mismatch: true, recovered: false };
 }
 
 // ==================== END ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
@@ -3419,15 +3592,18 @@ async function _handleSettingsChange(changes) {
 /**
  * Handle storage.onChanged events with initialization guard
  * v1.6.3.7-v9 - FIX Issue #11: Explicit initialization check before processing
+ * v1.6.3.7-v10 - FIX Issue #11: Added time since init start for logging
  * @param {Object} changes - Storage changes
  * @param {string} areaName - Storage area name
  */
 function _handleStorageOnChanged(changes, areaName) {
-  // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with initialization status
-  console.log('[Background] STORAGE_LISTENER_ENTRY:', {
+  // v1.6.3.7-v10 - FIX Issue #11: Log listener entry with initialization status + time since init start
+  const timeSinceInitStartMs = Date.now() - initializationStartTime;
+  console.log('[Background] LISTENER_ENTRY: storage.onChanged', {
+    isInitialized,
+    timeSinceInitStartMs,
     areaName,
     changedKeys: Object.keys(changes),
-    isInitialized,
     timestamp: Date.now()
   });
   
@@ -3436,6 +3612,7 @@ function _handleStorageOnChanged(changes, areaName) {
     console.warn('[Background] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
       areaName,
       changedKeys: Object.keys(changes),
+      timeSinceInitStartMs,
       message: 'Skipping - background script not yet initialized',
       timestamp: Date.now()
     });
@@ -3460,8 +3637,13 @@ function _handleStorageOnChanged(changes, areaName) {
 
 // Register storage.onChanged listener
 // v1.6.3.7-v9 - FIX Issue #11: Listener is registered at script load, but handler has init guard
+// v1.6.3.7-v10 - FIX Issue #11: Enhanced logging with initialization status
 browser.storage.onChanged.addListener(_handleStorageOnChanged);
-console.log('[Background] v1.6.3.7-v9 storage.onChanged listener registered with init guard');
+console.log('[Background] LISTENER_REGISTERED: storage.onChanged', {
+  isInitialized,
+  hasInitGuard: true,
+  timestamp: Date.now()
+});
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
@@ -3839,25 +4021,150 @@ function _getNextPortMessageSequence() {
   return portMessageSequenceCounter;
 }
 
+// v1.6.3.7-v10 - FIX Issue #9: Timeout for stuck queue messages (1 second)
+// v1.6.3.7-v10 - FIX Code Review: Different timeouts for different scenarios:
+//   - PORT_MESSAGE_QUEUE_TIMEOUT_MS (1s): Port messages need faster recovery since ports
+//     are synchronous and in-order within a single connection
+//   - STORAGE_WATCHDOG_TIMEOUT_MS (2s in manager): Storage events can be delayed by browser's
+//     storage API and need more time before triggering fallback
+const PORT_MESSAGE_QUEUE_TIMEOUT_MS = 1000;
+
+/**
+ * Map of buffer timeout timers per port
+ * v1.6.3.7-v10 - FIX Issue #9: Track timeout timers for message reordering fallback
+ * Key: portId, Value: timerId
+ */
+const portBufferTimeouts = new Map();
+
 /**
  * Initialize sequence tracking for a new port
  * v1.6.3.7-v9 - Issue #9: Set up tracking when port connects
+ * v1.6.3.7-v10 - FIX Issue #9: Added lastProcessedPortMessageSequence tracking
  * @param {string} portId - Port ID to track
  */
 function _initPortSequenceTracking(portId) {
   portSequenceTracking.set(portId, {
     lastReceivedSeq: 0,
+    lastProcessedPortMessageSequence: 0, // v1.6.3.7-v10 - FIX Issue #9: Track last processed sequence
     reorderBuffer: new Map()
   });
+  console.log('[Background] PORT_SEQUENCE_TRACKING_INIT:', { portId, timestamp: Date.now() });
 }
 
 /**
  * Clean up sequence tracking for disconnected port
  * v1.6.3.7-v9 - Issue #9: Remove tracking when port disconnects
+ * v1.6.3.7-v10 - FIX Issue #9: Also clear buffer timeout
  * @param {string} portId - Port ID to clean up
  */
 function _cleanupPortSequenceTracking(portId) {
+  // v1.6.3.7-v10 - FIX Issue #9: Clear any pending buffer timeout
+  const timerId = portBufferTimeouts.get(portId);
+  if (timerId) {
+    clearTimeout(timerId);
+    portBufferTimeouts.delete(portId);
+  }
   portSequenceTracking.delete(portId);
+  console.log('[Background] PORT_SEQUENCE_TRACKING_CLEANUP:', { portId, timestamp: Date.now() });
+}
+
+/**
+ * Start a timeout for stuck port message queue
+ * v1.6.3.7-v10 - FIX Issue #9: Process out-of-order messages after timeout
+ * @private
+ * @param {string} portId - Port ID
+ */
+function _startPortBufferTimeout(portId) {
+  // Clear existing timeout if any
+  _clearPortBufferTimeout(portId);
+
+  const timerId = setTimeout(() => {
+    const tracking = portSequenceTracking.get(portId);
+    if (!tracking || tracking.reorderBuffer.size === 0) {
+      portBufferTimeouts.delete(portId);
+      return;
+    }
+
+    console.warn('[Background] PORT_MESSAGE_TIMEOUT:', {
+      portId,
+      bufferSize: tracking.reorderBuffer.size,
+      timeoutMs: PORT_MESSAGE_QUEUE_TIMEOUT_MS,
+      timestamp: Date.now()
+    });
+
+    // Force process all buffered messages in sequence order
+    _forceProcessBufferedMessagesAfterTimeout(portId, tracking);
+    portBufferTimeouts.delete(portId);
+  }, PORT_MESSAGE_QUEUE_TIMEOUT_MS);
+
+  portBufferTimeouts.set(portId, timerId);
+}
+
+/**
+ * Clear port buffer timeout
+ * v1.6.3.7-v10 - FIX Issue #9: Helper to clear timeout
+ * @private
+ * @param {string} portId - Port ID
+ */
+function _clearPortBufferTimeout(portId) {
+  const timerId = portBufferTimeouts.get(portId);
+  if (timerId) {
+    clearTimeout(timerId);
+    portBufferTimeouts.delete(portId);
+  }
+}
+
+/**
+ * Force process all buffered messages after timeout expires
+ * v1.6.3.7-v10 - FIX Issue #9: Fallback to process out-of-order
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} tracking - Sequence tracking object
+ */
+async function _forceProcessBufferedMessagesAfterTimeout(portId, tracking) {
+  if (!tracking.reorderBuffer || tracking.reorderBuffer.size === 0) {
+    return;
+  }
+
+  // Get sorted sequence numbers and process all
+  const sequences = Array.from(tracking.reorderBuffer.keys()).sort((a, b) => a - b);
+  const portInfo = portRegistry.get(portId);
+  let processedCount = 0;
+
+  for (const seq of sequences) {
+    const message = tracking.reorderBuffer.get(seq);
+    if (!message) continue;
+
+    tracking.reorderBuffer.delete(seq);
+    tracking.lastReceivedSeq = Math.max(tracking.lastReceivedSeq, seq);
+    processedCount++;
+
+    console.log('[Background] PORT_MESSAGE_DEQUEUED:', {
+      portId,
+      messageSequence: seq,
+      reason: 'timeout',
+      remainingBuffered: tracking.reorderBuffer.size,
+      timestamp: Date.now()
+    });
+
+    // Route the message
+    try {
+      await routePortMessage(message, portInfo);
+    } catch (err) {
+      console.error('[Background] Error processing timeout-dequeued message:', {
+        portId,
+        messageSequence: seq,
+        error: err.message
+      });
+    }
+  }
+
+  console.log('[Background] PORT_BUFFER_TIMEOUT_FLUSH_COMPLETE:', {
+    portId,
+    processedCount,
+    newLastReceivedSeq: tracking.lastReceivedSeq,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -4282,6 +4589,7 @@ async function handlePortMessage(port, portId, message) {
 /**
  * Process port message sequence number for reordering
  * v1.6.3.7-v9 - Issue #9: Track and buffer out-of-order messages
+ * v1.6.3.7-v10 - FIX Issue #9: Add 1-second timeout for stuck queue messages
  * @private
  * @param {string} portId - Port ID
  * @param {Object} message - Message with messageSequence
@@ -4301,6 +4609,8 @@ function _processPortMessageSequence(portId, message) {
   // Message is in order
   if (receivedSeq === expectedSeq || tracking.lastReceivedSeq === 0) {
     tracking.lastReceivedSeq = receivedSeq;
+    // v1.6.3.7-v10 - FIX Issue #9: Clear timeout since we received expected message
+    _clearPortBufferTimeout(portId);
     return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
   }
 
@@ -4315,6 +4625,17 @@ function _processPortMessageSequence(portId, message) {
 
     // Buffer it for later processing
     tracking.reorderBuffer.set(receivedSeq, message);
+    // v1.6.3.7-v10 - FIX Issue #9: Log buffered message
+    console.log('[Background] PORT_MESSAGE_QUEUED:', {
+      portId,
+      messageSequence: receivedSeq,
+      expectedSequence: expectedSeq,
+      bufferSize: tracking.reorderBuffer.size,
+      timestamp: Date.now()
+    });
+
+    // v1.6.3.7-v10 - FIX Issue #9: Start timeout for stuck queue messages
+    _startPortBufferTimeout(portId);
 
     // Check buffer size limit
     if (tracking.reorderBuffer.size > MAX_REORDER_BUFFER_SIZE) {
@@ -4889,11 +5210,15 @@ async function writeStateWithVerification() {
 /**
  * Broadcast storage write confirmation via BroadcastChannel
  * v1.6.3.7-v7 - FIX Issue #6: Notify Manager of successful storage writes
+ * v1.6.3.7-v10 - FIX Issue #6: Also notify Manager to start watchdog timer via port
  * @private
  * @param {Object} state - State that was written
  * @param {string} saveId - Save ID for deduplication
  */
 function _broadcastStorageWriteConfirmation(state, saveId) {
+  // v1.6.3.7-v10 - FIX Issue #6: Notify Manager to start watchdog via port message
+  _notifyManagerToStartWatchdog(saveId, state?.sequenceId);
+
   if (!isBroadcastChannelAvailable()) {
     if (DEBUG_MESSAGING) {
       console.log('[Background] [BC] BroadcastChannel not available for write confirmation');
@@ -4909,6 +5234,56 @@ function _broadcastStorageWriteConfirmation(state, saveId) {
       success: bcSuccess,
       timestamp: Date.now()
     });
+  }
+}
+
+// v1.6.3.7-v10 - FIX Code Review: Define storage watchdog timeout constant
+// This is communicated to Manager for informational purposes; Manager uses its own local constant
+const BACKGROUND_STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
+
+/**
+ * Notify Manager to start storage watchdog timer
+ * v1.6.3.7-v10 - FIX Issue #6: Send PORT message to Manager to start 2s watchdog
+ * If storage.onChanged doesn't fire within 2s, Manager will re-read storage
+ * @private
+ * @param {string} expectedSaveId - Save ID we expect Manager to receive
+ * @param {number} sequenceId - Sequence ID for tracking
+ */
+function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
+  const watchdogMessage = {
+    type: 'START_STORAGE_WATCHDOG',
+    expectedSaveId,
+    sequenceId,
+    timeoutMs: BACKGROUND_STORAGE_WATCHDOG_TIMEOUT_MS, // v1.6.3.7-v10 - Use constant
+    timestamp: Date.now()
+  };
+
+  let notifiedCount = 0;
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    // Only notify sidebar ports (Manager)
+    if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
+      continue;
+    }
+
+    try {
+      portInfo.port.postMessage(watchdogMessage);
+      notifiedCount++;
+      console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SENT:', {
+        portId,
+        expectedSaveId,
+        sequenceId,
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      console.warn('[Background] Failed to send watchdog notification:', {
+        portId,
+        error: err.message
+      });
+    }
+  }
+
+  if (notifiedCount === 0) {
+    console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SKIPPED: No sidebar ports connected');
   }
 }
 
