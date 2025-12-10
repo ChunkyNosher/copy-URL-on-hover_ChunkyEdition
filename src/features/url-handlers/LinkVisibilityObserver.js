@@ -1,6 +1,6 @@
 /**
  * LinkVisibilityObserver - IntersectionObserver-based Lazy Link Processing
- * v1.6.4.14 - Phase 3A Optimization #6: Content Script Lazy Loading
+ * v1.6.3.7-v8 - Phase 3A Optimization #6: Content Script Lazy Loading
  *
  * Purpose: Optimize CPU usage on link-heavy pages by only tracking visible links.
  * Links outside the viewport don't need hover handlers until they become visible.

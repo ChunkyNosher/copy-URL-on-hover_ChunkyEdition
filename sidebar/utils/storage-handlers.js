@@ -18,49 +18,49 @@ const STATE_KEY = 'quick_tabs_state_v2';
 const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 
-// ==================== v1.6.4.14 DYNAMIC DEBOUNCE ====================
+// ==================== v1.6.3.7-v8 DYNAMIC DEBOUNCE ====================
 // FIX Issue #12: Context-dependent debounce timing based on active messaging tier
 
 /**
  * Debounce timing when Tier 1 (BroadcastChannel) is active
- * v1.6.4.14 - FIX Issue #12: Higher debounce when instant messaging works
+ * v1.6.3.7-v8 - FIX Issue #12: Higher debounce when instant messaging works
  */
 const STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS = 500;
 
 /**
  * Debounce timing when in fallback mode (Tier 1 inactive)
- * v1.6.4.14 - FIX Issue #12: Lower debounce to compensate for slower sync
+ * v1.6.3.7-v8 - FIX Issue #12: Lower debounce to compensate for slower sync
  */
 const STORAGE_READ_DEBOUNCE_FALLBACK_MS = 200;
 
 /**
  * Default debounce - use fallback value for safety
  * v1.6.3.7-v4 - FIX Issue #7: Increased from 50ms to 500ms
- * v1.6.4.14 - FIX Issue #12: Now dynamic based on active tier
+ * v1.6.3.7-v8 - FIX Issue #12: Now dynamic based on active tier
  */
 let STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_FALLBACK_MS;
 
 /**
  * Track whether Tier 1 (BroadcastChannel) is currently active
- * v1.6.4.14 - FIX Issue #12: Runtime detection of active tier
+ * v1.6.3.7-v8 - FIX Issue #12: Runtime detection of active tier
  */
 let isTier1Active = false;
 
 /**
  * Timestamp of last BroadcastChannel message received
- * v1.6.4.14 - FIX Issue #12: Track BC activity
+ * v1.6.3.7-v8 - FIX Issue #12: Track BC activity
  */
 let lastBroadcastMessageTime = 0;
 
 /**
  * Threshold for considering Tier 1 inactive (10 seconds without BC message)
- * v1.6.4.14 - FIX Issue #12: If no BC messages for this long, consider fallback
+ * v1.6.3.7-v8 - FIX Issue #12: If no BC messages for this long, consider fallback
  */
 const TIER1_INACTIVE_THRESHOLD_MS = 10000;
 
 /**
  * Update Tier 1 status based on recent BroadcastChannel activity
- * v1.6.4.14 - FIX Issue #12: Called when BC message is received
+ * v1.6.3.7-v8 - FIX Issue #12: Called when BC message is received
  */
 export function notifyBroadcastMessageReceived() {
   lastBroadcastMessageTime = Date.now();
@@ -82,7 +82,7 @@ export function notifyBroadcastMessageReceived() {
 
 /**
  * Check and update debounce based on Tier 1 activity
- * v1.6.4.14 - FIX Issue #12: Called periodically to detect fallback mode
+ * v1.6.3.7-v8 - FIX Issue #12: Called periodically to detect fallback mode
  * @returns {number} Current debounce value in ms
  */
 export function getEffectiveDebounceMs() {
@@ -109,7 +109,7 @@ export function getEffectiveDebounceMs() {
 
 /**
  * Get current tier status for diagnostics
- * v1.6.4.14 - FIX Issue #12: Diagnostic helper
+ * v1.6.3.7-v8 - FIX Issue #12: Diagnostic helper
  * @returns {Object} Tier status information
  */
 export function getTierStatus() {
@@ -406,14 +406,14 @@ export function createStorageChangeHandler(deps) {
 
   /**
    * Schedule debounced storage update
-   * v1.6.4.14 - FIX Issue #12: Use dynamic debounce based on active tier
+   * v1.6.3.7-v8 - FIX Issue #12: Use dynamic debounce based on active tier
    */
   function scheduleStorageUpdate() {
     if (storageReadDebounceTimer) {
       clearTimeout(storageReadDebounceTimer);
     }
 
-    // v1.6.4.14 - FIX Issue #12: Get effective debounce based on tier status
+    // v1.6.3.7-v8 - FIX Issue #12: Get effective debounce based on tier status
     const effectiveDebounceMs = getEffectiveDebounceMs();
 
     storageReadDebounceTimer = setTimeout(async () => {
@@ -505,6 +505,6 @@ export {
   SAVEID_RECONCILED,
   SAVEID_CLEARED,
   STORAGE_READ_DEBOUNCE_MS
-  // v1.6.4.14 - FIX Issue #12: New functions already exported at definition:
+  // v1.6.3.7-v8 - FIX Issue #12: New functions already exported at definition:
   // notifyBroadcastMessageReceived, getEffectiveDebounceMs, getTierStatus
 };

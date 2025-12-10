@@ -229,7 +229,7 @@ import { initNotifications } from './features/notifications/index.js';
 import { initQuickTabs } from './features/quick-tabs/index.js';
 import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
-// v1.6.4.14 - Phase 3A Optimization #6: IntersectionObserver for visibility-aware link processing
+// v1.6.3.7-v8 - Phase 3A Optimization #6: IntersectionObserver for visibility-aware link processing
 import LinkVisibilityObserver from './features/url-handlers/LinkVisibilityObserver.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { settingsReady } from './utils/filter-settings.js';
@@ -682,7 +682,7 @@ function initMainFeatures() {
 
   // Note: Notification styles now injected by notifications module (v1.5.9.0)
 
-  // v1.6.4.14 - Phase 3A Optimization #6: Initialize LinkVisibilityObserver
+  // v1.6.3.7-v8 - Phase 3A Optimization #6: Initialize LinkVisibilityObserver
   // This enables IntersectionObserver-based visibility tracking for links
   // to reduce CPU usage on link-heavy pages by skipping hover processing
   // for links that are not currently visible in the viewport
@@ -794,7 +794,7 @@ function _handleMouseover(event, context) {
   const domainType = getDomainType();
   const element = event.target;
 
-  // v1.6.4.14 - Phase 3A Optimization #6: Skip processing for off-screen links
+  // v1.6.3.7-v8 - Phase 3A Optimization #6: Skip processing for off-screen links
   // This optimization reduces CPU usage on link-heavy pages by only processing
   // hover events for links that are currently visible in the viewport
   if (!LinkVisibilityObserver.isLinkVisible(element)) {

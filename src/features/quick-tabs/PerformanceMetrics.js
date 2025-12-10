@@ -1,6 +1,6 @@
 /**
  * PerformanceMetrics - Performance Metrics Collection
- * v1.6.4.14 - Phase 3A Optimization #12: Performance metrics collection
+ * v1.6.3.7-v8 - Phase 3A Optimization #12: Performance metrics collection
  *
  * Purpose: Provide visibility into actual performance bottlenecks.
  * Enables data-driven optimization decisions and regression detection.

@@ -1,6 +1,6 @@
 /**
  * StorageCache - Hybrid Storage Strategy with Read-Through Caching
- * v1.6.4.14 - Phase 3A Optimization #1: Read-through cache for Quick Tab state
+ * v1.6.3.7-v8 - Phase 3A Optimization #1: Read-through cache for Quick Tab state
  *
  * Purpose: Reduce storage operation latency by 40-60% through intelligent caching.
  * Storage remains source-of-truth, but repeated reads are served from in-memory cache.

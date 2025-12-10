@@ -66,7 +66,7 @@ import {
   getBrowserStorageAPI
 } from '@utils/storage-utils.js';
 
-// v1.6.4.14 - FIX Issue #11: Import BroadcastChannelManager for cross-context notifications
+// v1.6.3.7-v8 - FIX Issue #11: Import BroadcastChannelManager for cross-context notifications
 import {
   broadcastQuickTabMinimized,
   broadcastQuickTabRestored
@@ -564,10 +564,10 @@ export class VisibilityHandler {
           id
         );
 
-        // v1.6.4.14 - FIX Issue #15: Schedule cross-context broadcast after local processing
+        // v1.6.3.7-v8 - FIX Issue #15: Schedule cross-context broadcast after local processing
         // Use setTimeout to ensure local eventBus listeners process first
         setTimeout(() => {
-          // v1.6.4.14 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
+          // v1.6.3.7-v8 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
           const broadcastSuccess = broadcastQuickTabMinimized(id);
           console.log(
             `${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`,
@@ -1079,7 +1079,7 @@ export class VisibilityHandler {
   /**
    * Emit state:updated event for restore (synchronous version for promise chaining)
    * v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission for ordered execution
-   * v1.6.4.14 - FIX Issue #11, #15: Add BroadcastChannel notification for cross-context sync
+   * v1.6.3.7-v8 - FIX Issue #11, #15: Add BroadcastChannel notification for cross-context sync
    * Note: Returns void, caller handles flow control
    * @private
    */
@@ -1114,10 +1114,10 @@ export class VisibilityHandler {
       originTabId: tabWindow?.originTabId ?? 'N/A'
     });
 
-    // v1.6.4.14 - FIX Issue #15: Schedule cross-context broadcast after local processing
+    // v1.6.3.7-v8 - FIX Issue #15: Schedule cross-context broadcast after local processing
     // Use setTimeout to ensure local eventBus listeners process first
     setTimeout(() => {
-      // v1.6.4.14 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
+      // v1.6.3.7-v8 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
       const broadcastSuccess = broadcastQuickTabRestored(id);
       console.log(
         `${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`,

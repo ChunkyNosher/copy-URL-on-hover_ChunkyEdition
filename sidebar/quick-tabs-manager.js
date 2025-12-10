@@ -90,7 +90,7 @@ import {
   closeBroadcastChannel,
   isChannelAvailable as _isChannelAvailable
 } from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
-// v1.6.4.14 - Phase 3A Optimization: Performance metrics
+// v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
 // ==================== CONSTANTS ====================
@@ -381,65 +381,65 @@ let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
 // v1.6.3.7-v4 - FIX Issue #8: Timer for early recovery probes
 let circuitBreakerProbeTimerId = null;
 
-// ==================== v1.6.4.14 PORT MESSAGE QUEUE ====================
+// ==================== v1.6.3.7-v8 PORT MESSAGE QUEUE ====================
 // FIX Issue #9: Buffer messages arriving before listener registration
 /**
  * Queue for port messages that arrive before listener is fully registered
- * v1.6.4.14 - FIX Issue #9: Prevent silent message drops on reconnection
+ * v1.6.3.7-v8 - FIX Issue #9: Prevent silent message drops on reconnection
  */
 let portMessageQueue = [];
 
 /**
  * Flag indicating if listener is fully registered
- * v1.6.4.14 - FIX Issue #9: Track listener registration state
+ * v1.6.3.7-v8 - FIX Issue #9: Track listener registration state
  */
 let listenerFullyRegistered = false;
 
-// ==================== v1.6.4.14 RECONNECTION GUARD ====================
+// ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
 // FIX Issue #10: Prevent concurrent reconnection attempts
 /**
  * Atomic guard for reconnection - prevents multiple simultaneous attempts
- * v1.6.4.14 - FIX Issue #10: Race condition prevention
+ * v1.6.3.7-v8 - FIX Issue #10: Race condition prevention
  */
 let isReconnecting = false;
 
-// ==================== v1.6.4.14 HEARTBEAT HYSTERESIS ====================
+// ==================== v1.6.3.7-v8 HEARTBEAT HYSTERESIS ====================
 // FIX Issue #13: Require consecutive failures before ZOMBIE
 /**
  * Number of consecutive heartbeat failures required before ZOMBIE transition
- * v1.6.4.14 - FIX Issue #13: Hysteresis for heartbeat failure detection
+ * v1.6.3.7-v8 - FIX Issue #13: Hysteresis for heartbeat failure detection
  */
 const HEARTBEAT_FAILURES_BEFORE_ZOMBIE = 3;
 
 /**
  * Counter for consecutive heartbeat timeouts (separate from general failures)
- * v1.6.4.14 - FIX Issue #13: Track timeout-specific failures for hysteresis
+ * v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
  */
 let consecutiveHeartbeatTimeouts = 0;
 
-// ==================== v1.6.4.14 BACKGROUND ACTIVITY DETECTION ====================
+// ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
 // FIX Issue #14: Detect Firefox background script termination
 /**
  * Interval for background activity check (10 seconds)
- * v1.6.4.14 - FIX Issue #14: Detect idle background before Firefox terminates it
+ * v1.6.3.7-v8 - FIX Issue #14: Detect idle background before Firefox terminates it
  */
 const BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS = 10000;
 
 /**
  * Warning threshold for stale background state (30 seconds)
- * v1.6.4.14 - FIX Issue #14: Firefox terminates at 30s idle
+ * v1.6.3.7-v8 - FIX Issue #14: Firefox terminates at 30s idle
  */
 const BACKGROUND_STALE_WARNING_THRESHOLD_MS = 30000;
 
 /**
  * Timestamp of last message received from background via port
- * v1.6.4.14 - FIX Issue #14: Track background activity
+ * v1.6.3.7-v8 - FIX Issue #14: Track background activity
  */
 let lastBackgroundMessageTime = Date.now();
 
 /**
  * Timer ID for background activity check
- * v1.6.4.14 - FIX Issue #14: Periodic health check
+ * v1.6.3.7-v8 - FIX Issue #14: Periodic health check
  */
 let backgroundActivityCheckTimerId = null;
 
@@ -571,11 +571,11 @@ function _logDisconnectedFallback() {
  * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on connect
- * v1.6.4.14 - FIX Issue #9: Port message queue for buffering pre-listener messages
- * v1.6.4.14 - FIX Issue #10: Atomic reconnection guard with isReconnecting flag
+ * v1.6.3.7-v8 - FIX Issue #9: Port message queue for buffering pre-listener messages
+ * v1.6.3.7-v8 - FIX Issue #10: Atomic reconnection guard with isReconnecting flag
  */
 function connectToBackground() {
-  // v1.6.4.14 - FIX Issue #10: Prevent concurrent reconnection attempts
+  // v1.6.3.7-v8 - FIX Issue #10: Prevent concurrent reconnection attempts
   if (isReconnecting) {
     console.log('[Manager] [PORT] [RECONNECT_BLOCKED]:', {
       reason: 'already_in_progress',
@@ -598,9 +598,9 @@ function connectToBackground() {
     console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
   }
 
-  // v1.6.4.14 - FIX Issue #10: Set reconnection guard
+  // v1.6.3.7-v8 - FIX Issue #10: Set reconnection guard
   isReconnecting = true;
-  // v1.6.4.14 - FIX Issue #9: Reset listener registration state
+  // v1.6.3.7-v8 - FIX Issue #9: Reset listener registration state
   listenerFullyRegistered = false;
   portMessageQueue = [];
 
@@ -613,7 +613,7 @@ function connectToBackground() {
 
     // Handle messages from background
     // v1.6.3.7-v4 - FIX Issue #10: Log listener registration
-    // v1.6.4.14 - FIX Issue #9: Use wrapper to handle message queue
+    // v1.6.3.7-v8 - FIX Issue #9: Use wrapper to handle message queue
     backgroundPort.onMessage.addListener(_handlePortMessageWithQueue);
     console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
       type: 'onMessage',
@@ -627,7 +627,7 @@ function connectToBackground() {
       logPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
-      // v1.6.4.14 - FIX Issue #9: Reset listener state on disconnect
+      // v1.6.3.7-v8 - FIX Issue #9: Reset listener state on disconnect
       listenerFullyRegistered = false;
 
       // v1.6.3.7-v5 - FIX Issue #1: Update connection state
@@ -636,7 +636,7 @@ function connectToBackground() {
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
       stopHeartbeat();
 
-      // v1.6.4.14 - FIX Issue #14: Stop background activity check
+      // v1.6.3.7-v8 - FIX Issue #14: Stop background activity check
       _stopBackgroundActivityCheck();
 
       // v1.6.3.7-v4 - FIX Issue #8: Stop circuit breaker probes on disconnect
@@ -650,7 +650,7 @@ function connectToBackground() {
       timestamp: Date.now()
     });
 
-    // v1.6.4.14 - FIX Issue #9: Mark listener as fully registered and flush queue
+    // v1.6.3.7-v8 - FIX Issue #9: Mark listener as fully registered and flush queue
     listenerFullyRegistered = true;
     _flushPortMessageQueue();
 
@@ -665,7 +665,7 @@ function connectToBackground() {
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
     startHeartbeat();
 
-    // v1.6.4.14 - FIX Issue #14: Start background activity monitoring
+    // v1.6.3.7-v8 - FIX Issue #14: Start background activity monitoring
     _startBackgroundActivityCheck();
 
     // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
@@ -675,7 +675,7 @@ function connectToBackground() {
     // v1.6.3.7-v4 - FIX Issue #10: Send test message to verify listener works
     _verifyPortListenerRegistration();
 
-    console.log('[Manager] v1.6.4.14 Port connection established');
+    console.log('[Manager] v1.6.3.7-v8 Port connection established');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
     logPortLifecycle('error', { error: err.message });
@@ -686,7 +686,7 @@ function connectToBackground() {
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
   } finally {
-    // v1.6.4.14 - FIX Issue #10: Always clear reconnection guard
+    // v1.6.3.7-v8 - FIX Issue #10: Always clear reconnection guard
     isReconnecting = false;
   }
 }
@@ -854,20 +854,20 @@ async function _probeBackgroundHealth() {
   }
 }
 
-// ==================== v1.6.4.14 PORT MESSAGE QUEUE ====================
+// ==================== v1.6.3.7-v8 PORT MESSAGE QUEUE ====================
 // FIX Issue #9: Buffer messages arriving before listener registration
 
 /**
  * Handle port message with queue support
- * v1.6.4.14 - FIX Issue #9: Buffer messages if listener not fully registered
+ * v1.6.3.7-v8 - FIX Issue #9: Buffer messages if listener not fully registered
  * @private
  * @param {Object} message - Message from background
  */
 function _handlePortMessageWithQueue(message) {
-  // v1.6.4.14 - FIX Issue #14: Update last background message time
+  // v1.6.3.7-v8 - FIX Issue #14: Update last background message time
   lastBackgroundMessageTime = Date.now();
 
-  // v1.6.4.14 - FIX Issue #9: If listener not fully registered, queue the message
+  // v1.6.3.7-v8 - FIX Issue #9: If listener not fully registered, queue the message
   if (!listenerFullyRegistered) {
     portMessageQueue.push(message);
     console.log('[Manager] [PORT] [MESSAGE_QUEUED]:', {
@@ -884,7 +884,7 @@ function _handlePortMessageWithQueue(message) {
 
 /**
  * Flush queued port messages after listener is fully registered
- * v1.6.4.14 - FIX Issue #9: Process buffered messages
+ * v1.6.3.7-v8 - FIX Issue #9: Process buffered messages
  * @private
  */
 function _flushPortMessageQueue() {
@@ -923,12 +923,12 @@ function _flushPortMessageQueue() {
   });
 }
 
-// ==================== v1.6.4.14 BACKGROUND ACTIVITY DETECTION ====================
+// ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
 // FIX Issue #14: Detect Firefox background script termination
 
 /**
  * Start background activity monitoring
- * v1.6.4.14 - FIX Issue #14: Periodic check to detect idle background
+ * v1.6.3.7-v8 - FIX Issue #14: Periodic check to detect idle background
  * @private
  */
 function _startBackgroundActivityCheck() {
@@ -948,7 +948,7 @@ function _startBackgroundActivityCheck() {
 
 /**
  * Stop background activity monitoring
- * v1.6.4.14 - FIX Issue #14: Cleanup timer
+ * v1.6.3.7-v8 - FIX Issue #14: Cleanup timer
  * @private
  */
 function _stopBackgroundActivityCheck() {
@@ -961,7 +961,7 @@ function _stopBackgroundActivityCheck() {
 
 /**
  * Check if background is still active and responsive
- * v1.6.4.14 - FIX Issue #14: Detect Firefox 30s termination
+ * v1.6.3.7-v8 - FIX Issue #14: Detect Firefox 30s termination
  * @private
  */
 async function _checkBackgroundActivity() {
@@ -986,7 +986,7 @@ async function _checkBackgroundActivity() {
 
 /**
  * Send health ping to background and handle response
- * v1.6.4.14 - FIX Issue #14: Extracted to reduce _checkBackgroundActivity depth
+ * v1.6.3.7-v8 - FIX Issue #14: Extracted to reduce _checkBackgroundActivity depth
  * @private
  * @param {number} timeSinceLastMessage - Time since last background message
  */
@@ -1010,7 +1010,7 @@ async function _sendBackgroundHealthPing(timeSinceLastMessage) {
 
 /**
  * Handle the result of a background health ping
- * v1.6.4.14 - FIX Issue #14: Extracted to reduce nesting depth
+ * v1.6.3.7-v8 - FIX Issue #14: Extracted to reduce nesting depth
  * @private
  * @param {boolean} healthy - Whether background responded successfully
  * @param {number} timeSinceLastMessage - Time since last background message
@@ -1155,14 +1155,14 @@ function _handlePortDisconnected() {
  * Handle successful heartbeat response
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on success
- * v1.6.4.14 - FIX Issue #13: Reset timeout counter on success
+ * v1.6.3.7-v8 - FIX Issue #13: Reset timeout counter on success
  * @private
  * @param {Object} response - Response from background
  * @param {number} startTime - When heartbeat was started
  */
 function _handleHeartbeatSuccess(response, startTime) {
   consecutiveHeartbeatFailures = 0;
-  // v1.6.4.14 - FIX Issue #13: Reset timeout-specific counter on success
+  // v1.6.3.7-v8 - FIX Issue #13: Reset timeout-specific counter on success
   consecutiveHeartbeatTimeouts = 0;
   lastHeartbeatResponse = Date.now();
 
@@ -1187,7 +1187,7 @@ function _handleHeartbeatSuccess(response, startTime) {
  * Handle heartbeat failure
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Immediately detect zombie state and switch to BroadcastChannel
- * v1.6.4.14 - FIX Issue #13: Implement hysteresis - require 2-3 consecutive failures before ZOMBIE
+ * v1.6.3.7-v8 - FIX Issue #13: Implement hysteresis - require 2-3 consecutive failures before ZOMBIE
  * @private
  * @param {Error} err - Error that occurred
  */
@@ -1197,7 +1197,7 @@ function _handleHeartbeatFailure(err) {
   const isTimeout = err.message === 'Heartbeat timeout';
   const isPortClosed = err.message.includes('disconnected') || err.message.includes('closed');
 
-  // v1.6.4.14 - FIX Issue #13: Track timeout-specific failures for hysteresis
+  // v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
   if (isTimeout) {
     consecutiveHeartbeatTimeouts++;
   } else {
@@ -1218,7 +1218,7 @@ function _handleHeartbeatFailure(err) {
     diagnosis: _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed)
   });
 
-  // v1.6.4.14 - FIX Issue #13: Implement hysteresis - require consecutive failures before ZOMBIE
+  // v1.6.3.7-v8 - FIX Issue #13: Implement hysteresis - require consecutive failures before ZOMBIE
   // Instead of immediately transitioning on first timeout, require 2-3 consecutive timeouts
   if (isTimeout && connectionState === CONNECTION_STATE.CONNECTED) {
     if (consecutiveHeartbeatTimeouts >= HEARTBEAT_FAILURES_BEFORE_ZOMBIE) {

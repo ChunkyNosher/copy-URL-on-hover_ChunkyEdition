@@ -1,6 +1,6 @@
 /**
  * MemoryMonitor - Memory Monitoring with Automatic Cleanup
- * v1.6.4.14 - Phase 3A Optimization #10: Memory monitoring and cleanup
+ * v1.6.3.7-v8 - Phase 3A Optimization #10: Memory monitoring and cleanup
  *
  * Purpose: Monitor memory usage and trigger automatic cleanup when thresholds exceeded.
  * Prevents OOM crashes and provides visibility into memory trends.
