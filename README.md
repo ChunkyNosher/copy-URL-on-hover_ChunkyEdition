@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v4** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,34 +9,35 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v4 Status:** Critical communication fixes, early recovery probing,
-user feedback improvements ✅
+**🔧 v1.6.3.7-v5 Status:** Connection state tracking, zombie detection, listener
+deduplication, session cache validation ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v4
+## 🎉 What's New in v1.6.3.7-v5
 
-**🔧 Critical Fixes (December 2025) ✅**
+**🔧 Reliability Improvements (December 2025) ✅**
 
-**Issues #1-4: Cross-Tab Sync Architecture**
-- ✅ **BroadcastChannel Wiring** - Backend handlers now send broadcasts
-- ✅ **Port State Updates** - Route through port primary, runtime secondary
-- ✅ **Message Deduplication** - Prevent multiple renders via message ID tracking
-- ✅ **Enhanced Heartbeat** - Failure mode detection (PORT_DISCONNECTED, BACKGROUND_DEAD)
+**Connection State Tracking:**
+- ✅ **Three Explicit States** - connected → zombie → disconnected
+- ✅ **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
+- ✅ **`_handleZombieConnection()`** - Immediate fallback when port becomes unresponsive
 
-**Issues #5-10: Reliability & User Feedback**
-- ✅ **Close All Feedback** - User notification on failure via `_showCloseAllErrorNotification()`
-- ✅ **Session Cache Validation** - Cache includes sessionId + timestamp
-- ✅ **Storage Polling Backup** - 2s→10s (BroadcastChannel is PRIMARY)
-- ✅ **Circuit Breaker Probes** - 10s→2s with 500ms early recovery probes
-- ✅ **Error Handling** - try-catch in message listeners with graceful degradation
-- ✅ **Listener Verification** - Test messages after registration
+**Message Handling & Deduplication:**
+- ✅ **Unified Message Routing** - `path` property distinguishes port vs runtime.onMessage
+- ✅ **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate `renderUI()` calls
+- ✅ **`_isDuplicateUpdate()`** - saveId-based duplicate detection
 
-**Why This Matters:** Fixes critical state sync failures that caused sidebar to
-show stale/empty Quick Tabs. Now uses three-tier fallback: BroadcastChannel
-(primary), Port (secondary), Storage (tertiary).
+**Session & Error Handling:**
+- ✅ **Session Cache Validation** - `_initializeSessionId()` rejects cross-session cache
+- ✅ **Runtime Message Handling** - `_handleRuntimeMessage()` with try-catch wrappers
+- ✅ **Listener Registration Verification** - Enhanced logging after registration
+
+**Why This Matters:** Addresses edge cases where background script termination
+wasn't detected properly, leading to stale UI. Now has three-tier detection:
+heartbeat timeout (zombie), port disconnection, and BroadcastChannel fallback.
 
 ---
 
@@ -45,6 +46,7 @@ show stale/empty Quick Tabs. Now uses three-tier fallback: BroadcastChannel
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v4** - Circuit breaker probing, close all feedback, error handling
 - **v1.6.3.7-v3** - Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms
 - **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
 - **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
@@ -233,6 +235,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v3** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

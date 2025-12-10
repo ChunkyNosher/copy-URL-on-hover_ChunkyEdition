@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v4.
+  documentation. Current version: v1.6.3.7-v5.
 tools: ['*']
 ---
 
@@ -69,9 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v4)
+## Current Extension State (v1.6.3.7-v5)
 
-### v1.6.3.7-v4 Features (NEW)
+### v1.6.3.7-v5 Features (NEW)
+
+- **Connection State Tracking** - Three states: connected → zombie → disconnected
+  with `_transitionConnectionState()` method and `connectionState` variable
+- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
+  immediate BroadcastChannel fallback when port becomes unresponsive
+- **Unified Message Routing** - `path` property in logs distinguishes port vs
+  runtime.onMessage paths
+- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
+  prevents duplicate `renderUI()` calls
+- **Session Cache Validation** - `_initializeSessionId()` validates cache with
+  sessionId + timestamp; rejects cross-session data
+- **Runtime Message Handling** - runtime.onMessage handler with try-catch
+
+### v1.6.3.7-v4 Features (Retained)
 
 - **Circuit Breaker Probing** - Early recovery with 500ms health probes
   (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
@@ -84,7 +98,6 @@ nothing.
 - **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
   `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
 - **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
-- **Session Cache Validation** - Cache structure with sessionId + timestamp
 
 ### v1.6.3.7-v3 Features (Retained)
 
@@ -95,56 +108,37 @@ nothing.
 - **tabs.group() API** - Tab grouping (Firefox 138+)
 - **DOM Reconciliation** - Sidebar animation optimization
 
-### v1.6.3.7-v2 Features (Retained)
-
-- **Single Writer Authority** - Manager sends commands to background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based dedup
-- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()`
-
-### v1.6.3.7-v1 Features (Retained)
-
-- **Background Keepalive** - `_startKeepalive()` every 20s
-- **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
-- **UI Performance** - Debounced renderUI (300ms)
-
-### v1.6.3.6-v12 Port-Based Messaging (Retained)
-
-- **Port Registry** - Background maintains
-  `{ portId -> { port, origin, tabId, type, ... } }`
-- **Message Protocol** -
-  `{ type, action, correlationId, source, timestamp, payload, metadata }`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
-  `ERROR`, `BROADCAST`, `REQUEST_FULL_STATE_SYNC`
-
 ### Architecture
 
 - **Status:** Background-as-Coordinator with Single Writer Authority ✅
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v4)
+### Key Functions (v1.6.3.7-v5)
 
-| Function                               | Location      | Purpose                      |
-| -------------------------------------- | ------------- | ---------------------------- |
-| `scheduleRender(source)`               | Manager       | Unified render entry point   |
-| `_probeBackgroundHealth()`             | Manager       | Circuit breaker health probe |
-| `_routePortMessage()`                  | Manager       | Message routing (refactored) |
-| `_showCloseAllErrorNotification()`     | Manager       | Close all error feedback     |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification           |
-| `handleFullStateSyncRequest()`         | Background    | State sync handler           |
+| Function                               | Location      | Purpose                        |
+| -------------------------------------- | ------------- | ------------------------------ |
+| `scheduleRender(source)`               | Manager       | Unified render entry point     |
+| `_transitionConnectionState()`         | Manager       | Connection state transitions   |
+| `lastProcessedSaveId`                  | Manager       | Deduplication tracking         |
+| `_initializeSessionId()`               | Manager       | Session cache validation       |
+| `_probeBackgroundHealth()`             | Manager       | Circuit breaker health probe   |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification             |
+| `handleFullStateSyncRequest()`         | Background    | State sync handler             |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v4
+- [ ] Version numbers match 1.6.3.7-v5
+- [ ] **v1.6.3.7-v5:** Connection state tracking documented
+- [ ] **v1.6.3.7-v5:** Zombie detection documented
+- [ ] **v1.6.3.7-v5:** Listener deduplication documented
+- [ ] **v1.6.3.7-v5:** Session cache validation documented
+- [ ] **v1.6.3.7-v5:** Runtime message handling documented
 - [ ] **v1.6.3.7-v4:** Circuit breaker probing documented
 - [ ] **v1.6.3.7-v4:** Close all feedback documented
-- [ ] **v1.6.3.7-v4:** Message error handling documented
-- [ ] **v1.6.3.7-v4:** Refactored message handling documented
-- [ ] **v1.6.3.7-v4:** Storage polling backup documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -152,13 +146,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                                 |
-| ------------------------ | ----------------------------------- |
-| v1.6.3.7-v3 or earlier   | Update to 1.6.3.7-v4                |
-| "Pin to Page"            | Use "Solo/Mute"                     |
-| Direct storage writes    | Use Single Writer Authority         |
-| Missing circuit breaker  | Document probing pattern            |
-| Missing close all feedback| Document error notification        |
+| Error                      | Fix                                  |
+| -------------------------- | ------------------------------------ |
+| v1.6.3.7-v4 or earlier     | Update to 1.6.3.7-v5                 |
+| "Pin to Page"              | Use "Solo/Mute"                      |
+| Direct storage writes      | Use Single Writer Authority          |
+| Missing connection states  | Document connected/zombie/disconnected|
+| Missing deduplication      | Document saveId-based deduplication  |
 
 ---
 
