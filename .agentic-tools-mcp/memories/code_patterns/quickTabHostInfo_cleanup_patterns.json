@@ -1,0 +1,8 @@
+{
+  "id": "a6cb85b9-8889-4a0e-9f52-8f362e52a4b4",
+  "title": "quickTabHostInfo cleanup patterns",
+  "details": "v1.6.3.7-v10 Fix Issue #10 patterns for quickTabHostInfo Map cleanup:\n\n1. TTL-based cleanup (24h): _cleanupStaleHostInfoEntries() removes entries older than HOST_INFO_TTL_MS\n2. Defensive cleanup: _defensiveCleanupStaleHostInfo() cross-checks against browser.tabs.query({status:'complete'}) to remove entries for closed tabs\n3. browser.tabs.onRemoved listener: _handleBrowserTabRemoved() removes entries when tab closes\n4. Age bucket distribution: _getHostInfoAgeStats() tracks entries by bucket (<1h, 1-6h, 6-24h, >24h)\n5. Sample entries logging: _getSampleHostInfoEntries() gets first N entries for diagnostics\n6. Helper functions: _getAgeBucketKey(), _updateMinMaxEntries(), _isStaleHostInfoEntry(), _removeStaleHostInfoEntries() reduce complexity/nesting\n\nCleanup job runs every 60s via HOST_INFO_CLEANUP_INTERVAL_MS.\nAll functions prefixed with _ and have version comments.",
+  "category": "code_patterns",
+  "dateCreated": "2025-12-10T22:24:51.870Z",
+  "dateUpdated": "2025-12-10T22:24:51.870Z"
+}

@@ -2,6 +2,12 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v10 - FIX Issue #10 (state-persistence-issues.md): Tab Affinity Map Desynchronization
+ *   - FIX Issue #10: Enhanced cleanup job logging with before/after sizes and age bucket counts
+ *   - FIX Issue #10: Age bucket distribution (< 1h, 1-6h, 6-24h, > 24h) in diagnostics
+ *   - FIX Issue #10: Defensive cleanup via browser.tabs.query() cross-check
+ *   - FIX Issue #10: Sample entries logging (first 5 entries with ages) every 60s
+ *
  * v1.6.3.7-v9 - FIX Issues #2, #10:
  *   - FIX Issue #2: Unified MESSAGE_RECEIVED logging with [PORT], [BC], [RUNTIME] prefixes
  *   - FIX Issue #2: Correlation ID tracking across all three message paths
@@ -3345,11 +3351,16 @@ function _removeFromHostInfo(quickTabId) {
 /**
  * Clean up stale quickTabHostInfo entries older than TTL
  * v1.6.3.7-v9 - Issue #10: Remove entries older than 24 hours
+ * v1.6.3.7-v10 - FIX Issue #10: Enhanced logging with before/after sizes and age buckets
  * @private
+ * @returns {Object} Cleanup result with before/after counts and removed entries
  */
 function _cleanupStaleHostInfoEntries() {
   const now = Date.now();
   const ttlThreshold = now - HOST_INFO_TTL_MS;
+  
+  // v1.6.3.7-v10 - FIX Issue #10: Track before size for logging
+  const sizeBeforeCleanup = quickTabHostInfo.size;
   let removedCount = 0;
   const removedEntries = [];
 
@@ -3368,68 +3379,117 @@ function _cleanupStaleHostInfoEntries() {
     }
   }
 
-  if (removedCount > 0) {
-    console.log('[Manager] [HOST_INFO_CLEANUP] STALE_ENTRIES_REMOVED:', {
-      removedCount,
-      removedEntries,
-      remainingCount: quickTabHostInfo.size,
-      timestamp: now
-    });
+  // v1.6.3.7-v10 - FIX Issue #10: Always log cleanup result with before/after sizes
+  const sizeAfterCleanup = quickTabHostInfo.size;
+  console.log('[Manager] [HOST_INFO_CLEANUP] TTL_CLEANUP_COMPLETE:', {
+    sizeBeforeCleanup,
+    sizeAfterCleanup,
+    removedCount,
+    removedEntries: removedCount > 0 ? removedEntries : [],
+    ttlHours: HOST_INFO_TTL_MS / (1000 * 60 * 60),
+    timestamp: now
+  });
+  
+  return { sizeBeforeCleanup, sizeAfterCleanup, removedCount, removedEntries };
+}
+
+// v1.6.3.7-v10 - FIX Issue #10: Time constants for age bucket boundaries
+const AGE_BUCKET_BOUNDARIES = {
+  ONE_HOUR_MS: 60 * 60 * 1000,
+  SIX_HOURS_MS: 6 * 60 * 60 * 1000,
+  TWENTY_FOUR_HOURS_MS: 24 * 60 * 60 * 1000
+};
+
+/**
+ * Categorize age into bucket
+ * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce complexity
+ * @private
+ * @param {number} ageMs - Age in milliseconds
+ * @returns {string} Bucket key
+ */
+function _getAgeBucketKey(ageMs) {
+  if (ageMs < AGE_BUCKET_BOUNDARIES.ONE_HOUR_MS) return 'lessThan1h';
+  if (ageMs < AGE_BUCKET_BOUNDARIES.SIX_HOURS_MS) return 'oneToSixH';
+  if (ageMs < AGE_BUCKET_BOUNDARIES.TWENTY_FOUR_HOURS_MS) return 'sixTo24H';
+  return 'moreThan24h';
+}
+
+/**
+ * Update min/max entry tracking
+ * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce complexity
+ * @private
+ */
+function _updateMinMaxEntries(ageMs, quickTabId, hostTabId, stats) {
+  if (ageMs < stats.minAgeMs) {
+    stats.minAgeMs = ageMs;
+    stats.newestEntry = { quickTabId, hostTabId, ageMs };
+  }
+  if (ageMs > stats.maxAgeMs) {
+    stats.maxAgeMs = ageMs;
+    stats.oldestEntry = { quickTabId, hostTabId, ageMs };
   }
 }
 
 /**
  * Get age statistics for quickTabHostInfo entries
  * v1.6.3.7-v9 - Issue #10: Calculate min/max/avg age for diagnostics
+ * v1.6.3.7-v10 - FIX Issue #10: Add age bucket counts (< 1h, 1-6h, 6-24h, > 24h)
  * @private
- * @returns {Object} Age statistics { minAgeMs, maxAgeMs, avgAgeMs, oldestEntry, newestEntry }
+ * @returns {Object} Age statistics with bucket counts
  */
 function _getHostInfoAgeStats() {
   const now = Date.now();
-  let minAgeMs = Infinity;
-  let maxAgeMs = 0;
+  const stats = {
+    minAgeMs: Infinity,
+    maxAgeMs: 0,
+    newestEntry: null,
+    oldestEntry: null
+  };
   let totalAgeMs = 0;
-  let oldestEntry = null;
-  let newestEntry = null;
   let entryCount = 0;
+  
+  // v1.6.3.7-v10 - FIX Issue #10: Age bucket counts
+  const ageBuckets = {
+    lessThan1h: 0,
+    oneToSixH: 0,
+    sixTo24H: 0,
+    moreThan24h: 0
+  };
 
   for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
-    // Skip entries without valid lastUpdate timestamp (consistent with _cleanupStaleHostInfoEntries)
     if (!entry || !entry.lastUpdate) continue;
     
     const ageMs = now - entry.lastUpdate;
     totalAgeMs += ageMs;
     entryCount++;
 
-    // Update newest entry if this is newer (smaller age)
-    if (ageMs < minAgeMs) {
-      minAgeMs = ageMs;
-      newestEntry = { quickTabId, hostTabId: entry.hostTabId, ageMs };
-    }
-    // Update oldest entry if this is older (larger age)
-    if (ageMs > maxAgeMs) {
-      maxAgeMs = ageMs;
-      oldestEntry = { quickTabId, hostTabId: entry.hostTabId, ageMs };
-    }
+    // v1.6.3.7-v10 - FIX Issue #10: Categorize into age buckets
+    ageBuckets[_getAgeBucketKey(ageMs)]++;
+    
+    // Update min/max tracking
+    _updateMinMaxEntries(ageMs, quickTabId, entry.hostTabId, stats);
   }
 
   return {
     entryCount,
-    minAgeMs: entryCount > 0 ? minAgeMs : 0,
-    maxAgeMs: entryCount > 0 ? maxAgeMs : 0,
+    minAgeMs: entryCount > 0 ? stats.minAgeMs : 0,
+    maxAgeMs: entryCount > 0 ? stats.maxAgeMs : 0,
     avgAgeMs: entryCount > 0 ? Math.round(totalAgeMs / entryCount) : 0,
-    oldestEntry,
-    newestEntry
+    oldestEntry: stats.oldestEntry,
+    newestEntry: stats.newestEntry,
+    ageBuckets
   };
 }
 
 /**
  * Log quickTabHostInfo diagnostic statistics
  * v1.6.3.7-v9 - Issue #10: Log size and age stats every 60 seconds
+ * v1.6.3.7-v10 - FIX Issue #10: Enhanced with age buckets and sample entries
  * @private
  */
 function _logHostInfoDiagnostics() {
   const stats = _getHostInfoAgeStats();
+  const now = Date.now();
   
   // Convert ms to human-readable format
   const msToTimeStr = (ms) => {
@@ -3439,9 +3499,19 @@ function _logHostInfoDiagnostics() {
     return `${(ms / 3600000).toFixed(1)}h`;
   };
 
+  // v1.6.3.7-v10 - FIX Issue #10: Get first 5 sample entries for diagnostics
+  const sampleEntries = _getSampleHostInfoEntries(5, now, msToTimeStr);
+
   console.log('[Manager] [HOST_INFO_DIAGNOSTICS]:', {
     mapSize: quickTabHostInfo.size,
     entryCount: stats.entryCount,
+    // v1.6.3.7-v10 - FIX Issue #10: Age bucket distribution
+    ageBuckets: {
+      '<1h': stats.ageBuckets.lessThan1h,
+      '1-6h': stats.ageBuckets.oneToSixH,
+      '6-24h': stats.ageBuckets.sixTo24H,
+      '>24h': stats.ageBuckets.moreThan24h
+    },
     minAge: msToTimeStr(stats.minAgeMs),
     maxAge: msToTimeStr(stats.maxAgeMs),
     avgAge: msToTimeStr(stats.avgAgeMs),
@@ -3450,20 +3520,56 @@ function _logHostInfoDiagnostics() {
       hostTabId: stats.oldestEntry.hostTabId,
       age: msToTimeStr(stats.oldestEntry.ageMs)
     } : null,
-    timestamp: Date.now()
+    // v1.6.3.7-v10 - FIX Issue #10: Sample entries for diagnostics
+    sampleEntries,
+    timestamp: now
   });
+}
+
+/**
+ * Get sample host info entries for diagnostic logging
+ * v1.6.3.7-v10 - FIX Issue #10: Extract first N entries with their ages
+ * @private
+ * @param {number} count - Number of sample entries to retrieve
+ * @param {number} now - Current timestamp
+ * @param {Function} msToTimeStr - Time formatter function
+ * @returns {Array} Array of sample entry objects
+ */
+function _getSampleHostInfoEntries(count, now, msToTimeStr) {
+  const samples = [];
+  let i = 0;
+  
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    if (i >= count) break;
+    if (!entry || !entry.lastUpdate) continue;
+    
+    const ageMs = now - entry.lastUpdate;
+    samples.push({
+      quickTabId,
+      hostTabId: entry.hostTabId,
+      age: msToTimeStr(ageMs),
+      lastOperation: entry.lastOperation || 'unknown'
+    });
+    i++;
+  }
+  
+  return samples;
 }
 
 /**
  * Run cleanup job for quickTabHostInfo: remove stale entries and log diagnostics
  * v1.6.3.7-v9 - Issue #10: Combined cleanup and diagnostic logging
+ * v1.6.3.7-v10 - FIX Issue #10: Added defensive cleanup against browser.tabs.query()
  * @private
  */
-function _runHostInfoCleanupJob() {
+async function _runHostInfoCleanupJob() {
   // First log diagnostics
   _logHostInfoDiagnostics();
   
-  // Then clean up stale entries
+  // v1.6.3.7-v10 - FIX Issue #10: Defensive cleanup - cross-check against open tabs
+  await _defensiveCleanupStaleHostInfo();
+  
+  // Then clean up stale entries (TTL-based)
   _cleanupStaleHostInfoEntries();
 }
 
@@ -3519,6 +3625,84 @@ function _cleanupHostInfoForClosedTab(closedTabId) {
       remainingCount: quickTabHostInfo.size,
       timestamp: Date.now()
     });
+  }
+}
+
+/**
+ * Check if host info entry should be removed based on open tabs
+ * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce nesting depth
+ * @private
+ * @param {Object} entry - Host info entry
+ * @param {Set} openTabIds - Set of open tab IDs
+ * @returns {boolean} True if entry is stale and should be removed
+ */
+function _isStaleHostInfoEntry(entry, openTabIds) {
+  if (!entry || !entry.hostTabId) return false;
+  return !openTabIds.has(entry.hostTabId);
+}
+
+/**
+ * Remove stale entries from quickTabHostInfo and collect results
+ * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce nesting depth
+ * @private
+ * @param {Set} openTabIds - Set of open tab IDs
+ * @returns {Object} Removed entries and stale host tab IDs
+ */
+function _removeStaleHostInfoEntries(openTabIds) {
+  const removedEntries = [];
+  const staleHostTabIds = new Set();
+  
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    if (_isStaleHostInfoEntry(entry, openTabIds)) {
+      staleHostTabIds.add(entry.hostTabId);
+      quickTabHostInfo.delete(quickTabId);
+      removedEntries.push({
+        quickTabId,
+        hostTabId: entry.hostTabId,
+        lastOperation: entry.lastOperation || 'unknown'
+      });
+    }
+  }
+  
+  return { removedEntries, staleHostTabIds };
+}
+
+/**
+ * Defensive cleanup: Remove quickTabHostInfo entries for tabs that are no longer open
+ * v1.6.3.7-v10 - FIX Issue #10: Cross-check against browser.tabs.query() to remove stale entries
+ * Called during cleanup job to ensure Map doesn't contain entries for closed tabs
+ * @private
+ * @returns {Promise<Object>} Cleanup result with removed count
+ */
+async function _defensiveCleanupStaleHostInfo() {
+  const now = Date.now();
+  
+  try {
+    // Query all open tabs
+    const openTabs = await browser.tabs.query({ status: 'complete' });
+    const openTabIds = new Set(openTabs.map(tab => tab.id));
+    
+    // v1.6.3.7-v10 - FIX Issue #10: Extracted to helper for reduced nesting
+    const { removedEntries, staleHostTabIds } = _removeStaleHostInfoEntries(openTabIds);
+    
+    if (removedEntries.length > 0) {
+      console.log('[Manager] [HOST_INFO_CLEANUP] STALE_HOST_INFO_REMOVED:', {
+        removedCount: removedEntries.length,
+        staleHostTabIds: Array.from(staleHostTabIds),
+        removedEntries,
+        remainingCount: quickTabHostInfo.size,
+        openTabCount: openTabs.length,
+        timestamp: now
+      });
+    }
+    
+    return { removedCount: removedEntries.length, removedEntries };
+  } catch (error) {
+    console.warn('[Manager] [HOST_INFO_CLEANUP] Defensive cleanup failed:', {
+      error: error.message,
+      timestamp: now
+    });
+    return { removedCount: 0, removedEntries: [], error: error.message };
   }
 }
 
