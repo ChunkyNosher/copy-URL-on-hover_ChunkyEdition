@@ -1,0 +1,8 @@
+{
+  "id": "d28852c1-08c7-48ad-bcb3-cc74fa893767",
+  "title": "v1.6.3.7-v9 Issues #2 and #10",
+  "details": "Version 1.6.3.7-v9 implements two critical fixes:\n\n**Issue #2: Unified MESSAGE_RECEIVED Logging**\n- All three message paths (PORT, BC, RUNTIME) now use consistent `MESSAGE_RECEIVED [PATH] [TYPE]:` format\n- Added `MESSAGE_PROCESSED [PATH] [TYPE]:` exit logging with duration tracking\n- Correlation IDs generated for messages without one (format: `{path}-{timestamp}-{random}`)\n- Entry time tracking added to: `handlePortMessage()`, `handleBroadcastChannelMessage()`, `_processRuntimeMessage()`\n\n**Issue #10: Tab Affinity Map Cleanup (quickTabHostInfo)**\n- Constants: `HOST_INFO_TTL_MS` (24h), `HOST_INFO_CLEANUP_INTERVAL_MS` (60s)\n- Cleanup functions: `_cleanupStaleHostInfoEntries()`, `_getHostInfoAgeStats()`, `_logHostInfoDiagnostics()`, `_runHostInfoCleanupJob()`\n- Browser tab listener: `_handleBrowserTabRemoved()`, `_initBrowserTabsOnRemovedListener()`, `_cleanupHostInfoForClosedTab()`\n- Interval management: `_startHostInfoCleanupInterval()`, `_stopHostInfoCleanupInterval()`, `hostInfoCleanupIntervalId`\n\nKey patterns:\n- Use `continue` instead of nested `if` to avoid max-depth ESLint errors\n- Use consistent null checks: `!entry || !entry.lastUpdate`\n- Log format: `[Manager] [HOST_INFO_CLEANUP]` or `[Manager] [HOST_INFO_DIAGNOSTICS]`",
+  "category": "project_context",
+  "dateCreated": "2025-12-10T18:18:22.578Z",
+  "dateUpdated": "2025-12-10T18:18:22.578Z"
+}

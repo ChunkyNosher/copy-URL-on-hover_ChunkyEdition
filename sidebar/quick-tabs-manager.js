@@ -2,6 +2,14 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v9 - FIX Issues #2, #10:
+ *   - FIX Issue #2: Unified MESSAGE_RECEIVED logging with [PORT], [BC], [RUNTIME] prefixes
+ *   - FIX Issue #2: Correlation ID tracking across all three message paths
+ *   - FIX Issue #2: Message entry/exit logging with duration for performance tracking
+ *   - FIX Issue #10: Tab affinity map (quickTabHostInfo) 24-hour TTL cleanup
+ *   - FIX Issue #10: browser.tabs.onRemoved listener to clean up closed tab entries
+ *   - FIX Issue #10: Diagnostic logging for quickTabHostInfo size and age stats (60s)
+ *
  * v1.6.3.7-v5 - FIX State Sync Issues #1-10 from quick-tabs-state-sync-issues.md
  *   - FIX Issue #1: Three explicit connection states (connected/zombie/disconnected)
  *   - FIX Issue #3: Unified message routing with logging for port vs runtime path
@@ -110,6 +118,27 @@ const DOM_VERIFICATION_DELAY_MS = 500;
 // Issue #5: Feature flag for verbose message routing logs
 // Set to true to enable detailed logging of message routing at all tiers
 const DEBUG_MESSAGING = true;
+
+// ==================== v1.6.3.7-v9 Issue #10: TAB AFFINITY MAP CLEANUP ====================
+// Constants for quickTabHostInfo TTL-based cleanup and browser.tabs.onRemoved handling
+
+/**
+ * TTL for quickTabHostInfo entries (24 hours in milliseconds)
+ * v1.6.3.7-v9 - Issue #10: Remove stale entries older than this
+ */
+const HOST_INFO_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Cleanup interval for quickTabHostInfo stale entries (60 seconds)
+ * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
+ */
+const HOST_INFO_CLEANUP_INTERVAL_MS = 60000;
+
+/**
+ * Interval ID for quickTabHostInfo cleanup job
+ * v1.6.3.7-v9 - Issue #10: Track for potential cleanup
+ */
+let hostInfoCleanupIntervalId = null;
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
@@ -1817,6 +1846,9 @@ setInterval(_cleanupExpiredMessageIds, 5000);
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
+  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
+  const messageEntryTime = Date.now();
+  
   // v1.6.3.7-v4 - FIX Issue #9: Wrap in try-catch to handle corrupted messages gracefully
   try {
     // v1.6.3.7-v4 - FIX Issue #9: Validate message structure
@@ -1825,10 +1857,21 @@ function handlePortMessage(message) {
       return;
     }
 
-    _logPortMessageReceived(message);
+    _logPortMessageReceived(message, messageEntryTime);
 
     // Route message to appropriate handler
     _routePortMessage(message);
+    
+    // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+    const processingDurationMs = Date.now() - messageEntryTime;
+    if (DEBUG_MESSAGING) {
+      console.log(`[Manager] MESSAGE_PROCESSED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
+        quickTabId: message.quickTabId,
+        correlationId: message.correlationId,
+        durationMs: processingDurationMs,
+        timestamp: Date.now()
+      });
+    }
   } catch (err) {
     // v1.6.3.7-v4 - FIX Issue #9: Log error with context and continue
     console.error('[Manager] PORT_MESSAGE_ERROR: Error processing port message:', {
@@ -1847,26 +1890,31 @@ function handlePortMessage(message) {
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
  * v1.6.3.7-v5 - FIX Issue #3: Added path indicator for unified message routing logging
  * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
+ * v1.6.3.7-v9 - Issue #2: Added entryTime parameter for timing, generate correlationId if missing
  * @private
  * @param {Object} message - Message from background
+ * @param {number} entryTime - Timestamp when message was received
  */
-function _logPortMessageReceived(message) {
+function _logPortMessageReceived(message, entryTime) {
+  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
+  const correlationId = message.correlationId || `port-${entryTime}-${Math.random().toString(36).substring(2, 7)}`;
+  
   // v1.6.4.13 - Issue #5: Consolidated log with [PORT] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
     quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
-    correlationId: message.correlationId,
+    correlationId,
     from: 'background',
     path: 'port-connection',
     connectionState,
-    timestamp: Date.now()
+    timestamp: entryTime
   });
 
   logPortLifecycle('message', {
     type: message.type,
     action: message.action,
-    correlationId: message.correlationId
+    correlationId
   });
 }
 
@@ -2214,9 +2262,12 @@ function initializeBroadcastChannel() {
  * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
  * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
  * v1.6.3.7-v9 - Issue #7: Added sequence number tracking for gap detection
+ * v1.6.3.7-v9 - Issue #2: Added entry/exit timing and correlation ID
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
+  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
+  const messageEntryTime = Date.now();
   const message = event.data;
 
   if (!message || !message.type) {
@@ -2246,19 +2297,35 @@ function handleBroadcastChannelMessage(event) {
   // Added random component to ensure uniqueness even for rapid same-type messages
   const randomSuffix = Math.random().toString(36).substring(2, 7);
   const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+  
+  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
+  const correlationId = message.correlationId || `bc-${messageEntryTime}-${randomSuffix}`;
 
   // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
+  // v1.6.3.7-v9 - Issue #2: Added correlationId for tracking
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
     messageId: broadcastMessageId,
+    correlationId,
     sequenceNumber: message.sequenceNumber, // v1.6.3.7-v9
     saveId: message.saveId,
     from: 'BroadcastChannel',
-    timestamp: Date.now()
+    timestamp: messageEntryTime
   });
 
   // v1.6.3.7-v4 - Route to handler based on message type
   _routeBroadcastMessage(message, broadcastMessageId);
+  
+  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+  const processingDurationMs = Date.now() - messageEntryTime;
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] MESSAGE_PROCESSED [BC] [${message.type}]:`, {
+      quickTabId: message.quickTabId,
+      correlationId,
+      durationMs: processingDurationMs,
+      timestamp: Date.now()
+    });
+  }
 }
 
 /**
@@ -2730,50 +2797,74 @@ console.log('[Manager] LISTENER_REGISTERED: browser.runtime.onMessage listener a
  * @returns {boolean} True if message was handled asynchronously
  */
 function _processRuntimeMessage(message, sendResponse) {
+  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
+  const messageEntryTime = Date.now();
+  
   // v1.6.3.7-v5 - FIX Issue #9: Validate message structure
   if (!message || typeof message !== 'object') {
     console.warn('[Manager] RUNTIME_MESSAGE_INVALID: Received non-object message:', typeof message);
     return false;
   }
 
-  // v1.6.3.7-v5 - FIX Issue #3: Enhanced logging showing message path
-  console.log('[Manager] RUNTIME_MESSAGE_RECEIVED:', {
-    type: message.type,
+  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
+  const correlationId = message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // v1.6.3.7-v9 - Issue #2: Unified MESSAGE_RECEIVED logging with [RUNTIME] prefix
+  // Matches format of [PORT] and [BC] paths
+  console.log(`[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || 'UNKNOWN'}]:`, {
+    quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
-    path: 'runtime.onMessage',  // v1.6.3.7-v5 - FIX Issue #3: Explicit path indicator
-    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Include connection state
-    timestamp: Date.now()
+    correlationId,
+    from: 'runtime.onMessage',
+    path: 'runtime-onMessage',
+    timestamp: messageEntryTime
   });
 
+  let handled = false;
+  
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    _handleRuntimeStateUpdated(message, sendResponse);
-    return true;
+    _handleRuntimeStateUpdated(message, sendResponse, correlationId);
+    handled = true;
+  } else if (message.type === 'QUICK_TAB_DELETED') {
+    // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
+    _handleRuntimeDeleted(message, sendResponse, correlationId);
+    handled = true;
   }
 
-  // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
-  if (message.type === 'QUICK_TAB_DELETED') {
-    _handleRuntimeDeleted(message, sendResponse);
-    return true;
+  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+  const processingDurationMs = Date.now() - messageEntryTime;
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || 'UNKNOWN'}]:`, {
+      quickTabId: message.quickTabId,
+      correlationId,
+      handled,
+      durationMs: processingDurationMs,
+      timestamp: Date.now()
+    });
   }
 
-  return false;
+  return handled;
 }
 
 /**
  * Handle QUICK_TAB_STATE_UPDATED via runtime.onMessage
  * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
+ * v1.6.3.7-v9 - Issue #2: Added correlationId parameter for tracking
  * @private
  * @param {Object} message - State update message
  * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID for tracking
  */
-function _handleRuntimeStateUpdated(message, sendResponse) {
-  console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
+function _handleRuntimeStateUpdated(message, sendResponse, correlationId) {
+  // v1.6.3.7-v9 - Issue #2: Use [RUNTIME] prefix and include correlationId
+  console.log('[Manager] [RUNTIME] STATE_UPDATE_RECEIVED:', {
     quickTabId: message.quickTabId,
     changes: message.changes,
     source: message.originalSource,
     messageId: message.messageId,
-    path: 'runtime.onMessage'  // v1.6.3.7-v5 - FIX Issue #3
+    correlationId,
+    path: 'runtime-onMessage'
   });
 
   // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
@@ -2786,28 +2877,32 @@ function _handleRuntimeStateUpdated(message, sendResponse) {
 
   // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
   scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
-  sendResponse({ received: true });
+  sendResponse({ received: true, correlationId });
 }
 
 /**
  * Handle QUICK_TAB_DELETED via runtime.onMessage
  * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
+ * v1.6.3.7-v9 - Issue #2: Added correlationId parameter for tracking
  * @private
  * @param {Object} message - Deletion message
  * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID for tracking
  */
-function _handleRuntimeDeleted(message, sendResponse) {
-  console.log('[Manager] Received QUICK_TAB_DELETED:', {
+function _handleRuntimeDeleted(message, sendResponse, correlationId) {
+  // v1.6.3.7-v9 - Issue #2: Use [RUNTIME] prefix and include correlationId
+  console.log('[Manager] [RUNTIME] DELETE_RECEIVED:', {
     quickTabId: message.quickTabId,
     source: message.source,
     messageId: message.messageId,
-    path: 'runtime.onMessage'  // v1.6.3.7-v5 - FIX Issue #3
+    correlationId,
+    path: 'runtime-onMessage'
   });
 
   handleStateDeletedMessage(message.quickTabId);
   // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
   scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
-  sendResponse({ received: true });
+  sendResponse({ received: true, correlationId });
 }
 
 /**
@@ -3068,6 +3163,226 @@ function _removeFromHostInfo(quickTabId) {
   }
 }
 
+// ==================== v1.6.3.7-v9 Issue #10: TAB AFFINITY MAP CLEANUP ====================
+// Functions for TTL-based cleanup and browser.tabs.onRemoved handling
+
+/**
+ * Clean up stale quickTabHostInfo entries older than TTL
+ * v1.6.3.7-v9 - Issue #10: Remove entries older than 24 hours
+ * @private
+ */
+function _cleanupStaleHostInfoEntries() {
+  const now = Date.now();
+  const ttlThreshold = now - HOST_INFO_TTL_MS;
+  let removedCount = 0;
+  const removedEntries = [];
+
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    // Skip null entries (consistent with _getHostInfoAgeStats)
+    if (!entry || !entry.lastUpdate) continue;
+    
+    if (entry.lastUpdate < ttlThreshold) {
+      quickTabHostInfo.delete(quickTabId);
+      removedCount++;
+      removedEntries.push({
+        quickTabId,
+        hostTabId: entry.hostTabId,
+        ageHours: Math.round((now - entry.lastUpdate) / (1000 * 60 * 60))
+      });
+    }
+  }
+
+  if (removedCount > 0) {
+    console.log('[Manager] [HOST_INFO_CLEANUP] STALE_ENTRIES_REMOVED:', {
+      removedCount,
+      removedEntries,
+      remainingCount: quickTabHostInfo.size,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Get age statistics for quickTabHostInfo entries
+ * v1.6.3.7-v9 - Issue #10: Calculate min/max/avg age for diagnostics
+ * @private
+ * @returns {Object} Age statistics { minAgeMs, maxAgeMs, avgAgeMs, oldestEntry, newestEntry }
+ */
+function _getHostInfoAgeStats() {
+  const now = Date.now();
+  let minAgeMs = Infinity;
+  let maxAgeMs = 0;
+  let totalAgeMs = 0;
+  let oldestEntry = null;
+  let newestEntry = null;
+  let entryCount = 0;
+
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    // Skip entries without valid lastUpdate timestamp (consistent with _cleanupStaleHostInfoEntries)
+    if (!entry || !entry.lastUpdate) continue;
+    
+    const ageMs = now - entry.lastUpdate;
+    totalAgeMs += ageMs;
+    entryCount++;
+
+    // Update newest entry if this is newer (smaller age)
+    if (ageMs < minAgeMs) {
+      minAgeMs = ageMs;
+      newestEntry = { quickTabId, hostTabId: entry.hostTabId, ageMs };
+    }
+    // Update oldest entry if this is older (larger age)
+    if (ageMs > maxAgeMs) {
+      maxAgeMs = ageMs;
+      oldestEntry = { quickTabId, hostTabId: entry.hostTabId, ageMs };
+    }
+  }
+
+  return {
+    entryCount,
+    minAgeMs: entryCount > 0 ? minAgeMs : 0,
+    maxAgeMs: entryCount > 0 ? maxAgeMs : 0,
+    avgAgeMs: entryCount > 0 ? Math.round(totalAgeMs / entryCount) : 0,
+    oldestEntry,
+    newestEntry
+  };
+}
+
+/**
+ * Log quickTabHostInfo diagnostic statistics
+ * v1.6.3.7-v9 - Issue #10: Log size and age stats every 60 seconds
+ * @private
+ */
+function _logHostInfoDiagnostics() {
+  const stats = _getHostInfoAgeStats();
+  
+  // Convert ms to human-readable format
+  const msToTimeStr = (ms) => {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+    return `${(ms / 3600000).toFixed(1)}h`;
+  };
+
+  console.log('[Manager] [HOST_INFO_DIAGNOSTICS]:', {
+    mapSize: quickTabHostInfo.size,
+    entryCount: stats.entryCount,
+    minAge: msToTimeStr(stats.minAgeMs),
+    maxAge: msToTimeStr(stats.maxAgeMs),
+    avgAge: msToTimeStr(stats.avgAgeMs),
+    oldestEntry: stats.oldestEntry ? {
+      quickTabId: stats.oldestEntry.quickTabId,
+      hostTabId: stats.oldestEntry.hostTabId,
+      age: msToTimeStr(stats.oldestEntry.ageMs)
+    } : null,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Run cleanup job for quickTabHostInfo: remove stale entries and log diagnostics
+ * v1.6.3.7-v9 - Issue #10: Combined cleanup and diagnostic logging
+ * @private
+ */
+function _runHostInfoCleanupJob() {
+  // First log diagnostics
+  _logHostInfoDiagnostics();
+  
+  // Then clean up stale entries
+  _cleanupStaleHostInfoEntries();
+}
+
+/**
+ * Start the periodic cleanup job for quickTabHostInfo
+ * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
+ */
+function _startHostInfoCleanupInterval() {
+  // Don't start if already running
+  if (hostInfoCleanupIntervalId !== null) {
+    return;
+  }
+  
+  hostInfoCleanupIntervalId = setInterval(_runHostInfoCleanupJob, HOST_INFO_CLEANUP_INTERVAL_MS);
+  console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job started:', {
+    intervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
+    ttlMs: HOST_INFO_TTL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop the periodic cleanup job for quickTabHostInfo
+ * v1.6.3.7-v9 - Issue #10: Stop cleanup on unload
+ */
+function _stopHostInfoCleanupInterval() {
+  if (hostInfoCleanupIntervalId !== null) {
+    clearInterval(hostInfoCleanupIntervalId);
+    hostInfoCleanupIntervalId = null;
+    console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job stopped');
+  }
+}
+
+/**
+ * Remove quickTabHostInfo entries for a closed browser tab
+ * v1.6.3.7-v9 - Issue #10: Clean up entries when browser tab closes
+ * @param {number} closedTabId - ID of the closed browser tab
+ */
+function _cleanupHostInfoForClosedTab(closedTabId) {
+  const removedQuickTabIds = [];
+  
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    if (entry.hostTabId === closedTabId) {
+      quickTabHostInfo.delete(quickTabId);
+      removedQuickTabIds.push(quickTabId);
+    }
+  }
+  
+  if (removedQuickTabIds.length > 0) {
+    console.log('[Manager] [HOST_INFO_CLEANUP] BROWSER_TAB_CLOSED:', {
+      closedTabId,
+      removedQuickTabIds,
+      remainingCount: quickTabHostInfo.size,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Handler for browser.tabs.onRemoved event
+ * v1.6.3.7-v9 - Issue #10: Remove quickTabHostInfo entries for closed tabs
+ * @param {number} tabId - ID of the closed tab
+ * @param {Object} removeInfo - Information about the removal
+ */
+function _handleBrowserTabRemoved(tabId, removeInfo) {
+  // Clean up quickTabHostInfo entries for this tab
+  _cleanupHostInfoForClosedTab(tabId);
+  
+  // Also invalidate browser tab info cache
+  browserTabInfoCache.delete(tabId);
+  
+  if (DEBUG_MESSAGING) {
+    console.log('[Manager] [BROWSER_TAB_REMOVED]:', {
+      tabId,
+      windowClosing: removeInfo?.isWindowClosing,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Initialize browser.tabs.onRemoved listener
+ * v1.6.3.7-v9 - Issue #10: Listen for tab closures to clean up quickTabHostInfo
+ */
+function _initBrowserTabsOnRemovedListener() {
+  if (browser?.tabs?.onRemoved) {
+    browser.tabs.onRemoved.addListener(_handleBrowserTabRemoved);
+    console.log('[Manager] LISTENER_REGISTERED: browser.tabs.onRemoved listener added');
+  } else {
+    console.warn('[Manager] browser.tabs.onRemoved API not available');
+  }
+}
+
+// ==================== END v1.6.3.7-v9 Issue #10 ====================
+
 /**
  * Send MANAGER_COMMAND to background for remote Quick Tab control
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
@@ -3181,6 +3496,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
 
+  // v1.6.3.7-v9 - Issue #10: Setup browser.tabs.onRemoved listener for quickTabHostInfo cleanup
+  _initBrowserTabsOnRemovedListener();
+  
+  // v1.6.3.7-v9 - Issue #10: Start periodic cleanup job for quickTabHostInfo (every 60s)
+  _startHostInfoCleanupInterval();
+
   // v1.6.3.7-v4 - FIX Issue #7: Increased from 2s to 10s
   // BroadcastChannel is now PRIMARY for instant updates (fixed in Issue #2)
   // Storage polling is now a BACKUP fallback, so longer interval is acceptable
@@ -3189,22 +3510,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 10000);
 
-  console.log('[Manager] v1.6.3.7-v5 Port + BroadcastChannel + Message infrastructure initialized', {
+  console.log('[Manager] v1.6.3.7-v9 Port + BroadcastChannel + Message infrastructure initialized', {
     storagePollingMs: 10000,
     sessionId: currentSessionId,
-    connectionState
+    connectionState,
+    hostInfoCleanupIntervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
+    hostInfoTTLMs: HOST_INFO_TTL_MS
   });
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
+// v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
 window.addEventListener('unload', () => {
   // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
   cleanupBroadcastChannel();
 
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
+  
+  // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
+  _stopHostInfoCleanupInterval();
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
