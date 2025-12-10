@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7-v5  
+**Version:** 1.6.3.7-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,20 +22,24 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.7-v5 Features (NEW):**
+**v1.6.3.7-v6 Features (NEW):**
 
-- **Connection State Tracking** - Three explicit states: connected → zombie →
-  disconnected with `_transitionConnectionState()` method
-- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
-  immediate BroadcastChannel fallback when port becomes unresponsive
-- **Unified Message Routing** - `path` property in logs distinguishes port vs
-  runtime.onMessage paths
-- **Listener Deduplication** - `lastProcessedSaveId` tracking prevents duplicate
-  renders via saveId comparison before processing
+- **Initial State Load Wait** - 2-second wait before rendering empty state
+- **Unified Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
+- **Deduplication Decision Visibility** - `RENDER_SKIPPED reason=...` logging
+- **Connection State Enhancements** - Duration tracking, fallback status logging
+- **Clear All Tracing** - Correlation ID for `CLEAR_ALL_COMMAND_INITIATED`
+- **Keepalive Health Monitoring** - 60s health check, consecutive failure tracking
+- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
+- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT`, `_RETRY`, `_SUCCESS`
+- **Adoption Lifecycle** - `ADOPTION_STARTED`, `_COMPLETED`, `_FAILED` logging
+
+**v1.6.3.7-v5 Features (Retained):**
+
+- **Connection State Tracking** - Three states: connected → zombie → disconnected
+- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
+- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
 - **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
-  cache with sessionId + timestamp validation
-- **Runtime Message Handling** - runtime.onMessage handler with try-catch
-  wrappers for graceful error handling
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -116,25 +120,22 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.7-v5: Connection State Tracking + Deduplication
+### v1.6.3.7-v6: Enhanced Observability + Lifecycle Logging
 
-**Connection States:** Three explicit states: `connected` → `zombie` → `disconnected`.
-`_transitionConnectionState()` manages transitions with logging. `connectionState` variable tracks current state.
+**State Load:** 2s wait before empty state, `STATE_LOAD_STARTED/COMPLETED` logging.
 
-**Zombie Detection:** Heartbeat timeout (5s) triggers zombie state. BroadcastChannel fallback
-enabled automatically when port becomes unresponsive.
+**Channel Logging:** `[BC]`, `[PORT]`, `[STORAGE]` prefixes. Channel-aware dedup.
 
-**Unified Message Routing:** `path` property added to all message logs (`port` or `runtime.onMessage`)
-for debugging clarity.
+**Dedup Visibility:** `RENDER_SKIPPED reason=...`, `DEDUP_CHECK/RESULT` logging.
 
-**Listener Deduplication:** `lastProcessedSaveId` tracking prevents duplicate `renderUI()` calls.
-saveId comparison in `scheduleRender()` checks before processing.
+**Lifecycle Tracing:**
+- **Clear All:** `CLEAR_ALL_COMMAND_INITIATED/RESPONSE` with correlation ID
+- **Keepalive:** 60s health check, `KEEPALIVE_HEALTH_WARNING` at 90s
+- **Port Registry:** `PORT_REGISTERED/UNREGISTERED`, size warnings at 50/100+
+- **Storage Write:** `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS/FINAL_FAILURE`
+- **Adoption:** `ADOPTION_STARTED/COMPLETED/FAILED` with correlation ID
 
-**Session Cache Validation:** `_initializeSessionId()` called in DOMContentLoaded. Cache includes
-sessionId + timestamp; cross-session cache is rejected.
-
-**Runtime Message Handling:** runtime.onMessage handler with try-catch wrappers. Errors logged
-with full context (message type, error stack). Invalid messages logged and skipped gracefully.
+### v1.6.3.7-v5: Connection State Tracking + Deduplication (Retained)
 
 ### v1.6.3.7-v4: Circuit Breaker Probing + Message Handling (Retained)
 
@@ -186,13 +187,21 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 
 ---
 
-## 🆕 v1.6.3.7-v5 Patterns
+## 🆕 v1.6.3.7-v6 Patterns
 
-- **Connection States** - `connectionState`: connected/zombie/disconnected, `_transitionConnectionState()`
-- **Zombie Detection** - 5s heartbeat timeout triggers zombie state, BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
-- **Session Cache** - `_initializeSessionId()`, sessionId + timestamp validation
-- **Runtime Messages** - runtime.onMessage handler with try-catch
+- **Initial State Load Wait** - 2s wait before empty state render
+- **Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
+- **Deduplication Visibility** - `RENDER_SKIPPED reason=...` logging
+- **Keepalive Health** - 60s health check with `KEEPALIVE_HEALTH_WARNING`
+- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED`
+- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
+- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED`
+
+## 🆕 v1.6.3.7-v5 Patterns (Retained)
+
+- **Connection States** - `connectionState`: connected/zombie/disconnected
+- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
+- **Listener Deduplication** - `lastProcessedSaveId` comparison
 
 ## 🆕 v1.6.3.7-v4 Patterns (Retained)
 
@@ -240,7 +249,7 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 | MapTransactionManager   | `beginTransaction()`, `commitTransaction()`           |
 | TabStateManager (v3)    | `getTabState()`, `setTabState()`                      |
 | BroadcastChannelManager | `postMessage()`, `onMessage()`                        |
-| Manager                 | `_transitionConnectionState()`, `lastProcessedSaveId`     |
+| Manager                 | `scheduleRender()`, `_transitionConnectionState()`    |
 
 ---
 
@@ -257,7 +266,7 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, coordinated clear, closeAll mutex, circuit breaker probing (v4),
-connection state tracking (v5), listener deduplication (v5).
+connection state tracking (v5), enhanced observability (v6).
 
 ---
 
@@ -312,9 +321,9 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 | File                     | Features                                                     |
 | ------------------------ | ------------------------------------------------------------ |
-| `background.js`          | Port registry, keepalive, alarms handlers                    |
-| `quick-tabs-manager.js`  | `scheduleRender()`, `_setConnectionState()`, connection states (v5) |
-| `storage-utils.js`       | `writeStateWithVerificationAndRetry()`, `SESSION_STATE_KEY`  |
+| `background.js`          | Port registry, keepalive, alarms, lifecycle logging (v6)     |
+| `quick-tabs-manager.js`  | `scheduleRender()`, channel logging, dedup visibility (v6)   |
+| `storage-utils.js`       | `writeStateWithVerificationAndRetry()`, write lifecycle (v6) |
 | `TabStateManager.js`     | Per-tab state (sessions API, v3)                             |
 | `BroadcastChannelManager.js` | Real-time messaging (v3)                                 |
 

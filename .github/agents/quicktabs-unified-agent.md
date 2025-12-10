@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.7-v5), connection state tracking,
-  zombie detection, listener deduplication, session cache validation, circuit breaker
+  sync with Single Writer Authority (v1.6.3.7-v6), enhanced observability, unified
+  channel logging, lifecycle tracing, connection state tracking, zombie detection
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v6 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,19 +50,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.7-v5 Features (NEW):**
+**v1.6.3.7-v6 Features (NEW):**
+
+- **Initial State Load Wait** - 2-second wait before rendering empty state
+- **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
+- **Deduplication Visibility** - `RENDER_SKIPPED reason=saveId_match|hash_match`
+- **Clear All Tracing** - `CLEAR_ALL_COMMAND_INITIATED`, response with counts
+- **Keepalive Health** - 60s health check, consecutive failure tracking
+- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
+- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
+- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED` logging
+
+**v1.6.3.7-v5 Features (Retained):**
 
 - **Connection State Tracking** - Three states: connected → zombie → disconnected
-  with `_transitionConnectionState()` and `connectionState` variable
-- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
-  immediate BroadcastChannel fallback when port becomes unresponsive
-- **Unified Message Routing** - `path` property in logs distinguishes port vs
-  runtime.onMessage paths for debugging clarity
-- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
-  prevents duplicate `renderUI()` calls for same state change
-- **Session Cache Validation** - `_initializeSessionId()` validates cache with
-  sessionId + timestamp; cross-session data rejected
-- **Runtime Message Handling** - runtime.onMessage handler with try-catch wrappers
+- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
+- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
+- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -88,7 +92,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 
-**Key Functions (v1.6.3.7-v5):**
+**Key Functions (v1.6.3.7-v6):**
 
 | Function                       | Location    | Purpose                        |
 | ------------------------------ | ----------- | ------------------------------ |
@@ -115,22 +119,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
+- [ ] Deduplication visibility shows `RENDER_SKIPPED reason=...` (v1.6.3.7-v6)
+- [ ] Lifecycle tracing logs (port, storage, adoption) (v1.6.3.7-v6)
+- [ ] Keepalive health monitoring works (v1.6.3.7-v6)
 - [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
 - [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
 - [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
-- [ ] Session cache validation rejects cross-session data (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Close all shows error notification on failure (v1.6.3.7-v4)
-- [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
 - [ ] Session Quick Tabs clear on browser close (v1.6.3.7-v3)
 - [ ] BroadcastChannel delivers real-time updates (v1.6.3.7-v3)
-- [ ] DOM reconciliation prevents full re-renders (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.7-v5 connection state
-tracking, zombie detection, listener deduplication, session cache validation,
-and v4 circuit breaker probing, close all feedback, message error handling.**
+**Your strength: Complete Quick Tab system with v1.6.3.7-v6 enhanced observability,
+unified channel logging, lifecycle tracing, v5 connection state tracking,
+zombie detection, v4 circuit breaker probing, close all feedback.**
