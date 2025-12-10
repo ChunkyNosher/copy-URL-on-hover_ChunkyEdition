@@ -3,6 +3,7 @@
  * Manages real-time messaging between tabs using BroadcastChannel API
  * v1.6.3.7-v3 - API #2: BroadcastChannel for instant sidebar updates
  * v1.6.4.13 - Issue #5: Enhanced logging for broadcast operations
+ * v1.6.4.15 - Phase 3B Optimization #5: Backpressure protection
  *
  * Purpose: Provides instant messaging between tabs without full re-renders
  * BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
@@ -13,6 +14,7 @@
  * - quick-tab-deleted: A Quick Tab was deleted
  * - quick-tab-minimized: A Quick Tab was minimized
  * - quick-tab-restored: A Quick Tab was restored from minimized state
+ * - broadcast-ack: Acknowledgment of received broadcast (backpressure)
  *
  * @module BroadcastChannelManager
  */
@@ -26,6 +28,39 @@ let updateChannel = null;
 
 // v1.6.4.13 - Issue #5: Debug flag for verbose logging
 const DEBUG_BC_MESSAGING = true;
+
+// ==================== v1.6.4.15 BACKPRESSURE CONSTANTS ====================
+// Phase 3B Optimization #5: Broadcast overflow protection
+
+// ACK timeout - if no ACK within this time, throttle future broadcasts
+const ACK_TIMEOUT_MS = 500;
+
+// Throttle duration when backpressure is detected
+const THROTTLE_DURATION_MS = 1000;
+
+// Maximum unacknowledged broadcasts before triggering backpressure
+const MAX_UNACKED_BROADCASTS = 5;
+
+// Repeated ACK timeout threshold before throttling
+const REPEATED_ACK_TIMEOUT_THRESHOLD = 3;
+
+// Per-client state tracking
+const _clientState = new Map(); // clientId -> { lastAckTime, unackedCount, throttledUntil }
+
+// Pending ACKs tracking
+const _pendingAcks = new Map(); // messageId -> { timestamp, timeoutId }
+
+// Global backpressure state
+let _globalThrottledUntil = 0;
+let _messageIdCounter = 0;
+
+// Metrics
+const _backpressureMetrics = {
+  acksReceived: 0,
+  acksTimedOut: 0,
+  throttleEvents: 0,
+  messagesDropped: 0
+};
 
 /**
  * Initialize the BroadcastChannel
@@ -64,6 +99,7 @@ export function isChannelAvailable() {
  * Post a message to the BroadcastChannel
  * v1.6.3.7-v3 - API #2: Send targeted change events
  * v1.6.4.13 - Issue #5: Consolidated logging with success/failure status (single log)
+ * v1.6.4.15 - Phase 3B: Updated to use backpressure-aware posting
  * @param {Object} message - Message to broadcast
  * @returns {boolean} True if message was sent
  */
@@ -80,38 +116,9 @@ function postMessage(message) {
     return false;
   }
 
-  try {
-    const timestamp = Date.now();
-    const messageWithMeta = {
-      ...message,
-      timestamp,
-      source: 'BroadcastChannelManager'
-    };
-    updateChannel.postMessage(messageWithMeta);
-    
-    // v1.6.4.13 - Issue #5: Log POST_SUCCESS with message details (single consolidated log)
-    if (DEBUG_BC_MESSAGING) {
-      console.log('[BroadcastChannelManager] [BC] POST_SUCCESS:', {
-        type: message.type,
-        quickTabId: message.quickTabId,
-        success: true,
-        timestamp
-      });
-    }
-    return true;
-  } catch (err) {
-    // v1.6.4.13 - Issue #5: Log POST_FAILED with error details
-    if (DEBUG_BC_MESSAGING) {
-      console.error('[BroadcastChannelManager] [BC] POST_FAILED:', {
-        type: message.type,
-        quickTabId: message.quickTabId,
-        error: err.message,
-        success: false,
-        timestamp: Date.now()
-      });
-    }
-    return false;
-  }
+  // Use backpressure-aware posting for state-changing messages
+  const requireAck = message.type === 'full-state-sync';
+  return _postMessageWithBackpressure(message, requireAck);
 }
 
 /**
@@ -304,5 +311,310 @@ export default {
   broadcastFullStateSync,
   addBroadcastListener,
   removeBroadcastListener,
-  closeBroadcastChannel
+  closeBroadcastChannel,
+  // v1.6.4.15 - Backpressure exports
+  sendAcknowledgment,
+  handleIncomingAck,
+  isThrottled,
+  getBackpressureMetrics,
+  resetBackpressureMetrics,
+  getClientState,
+  clearClientState
 };
+
+// ==================== v1.6.4.15 BACKPRESSURE IMPLEMENTATION ====================
+// Phase 3B Optimization #5: Broadcast overflow protection with ACK mechanism
+
+/**
+ * Generate unique message ID for ACK tracking
+ * @private
+ * @returns {string} Unique message ID
+ */
+function _generateMessageId() {
+  _messageIdCounter++;
+  return `bc-${Date.now()}-${_messageIdCounter}`;
+}
+
+/**
+ * Check if broadcasts are currently throttled
+ * @returns {boolean} True if throttled
+ */
+export function isThrottled() {
+  return Date.now() < _globalThrottledUntil;
+}
+
+/**
+ * Check if broadcasts should be allowed (backpressure check)
+ * @private
+ * @returns {{ allowed: boolean, reason: string }}
+ */
+function _shouldAllowBroadcast() {
+  // Check global throttle
+  if (isThrottled()) {
+    return {
+      allowed: false,
+      reason: `Global throttle active (${_globalThrottledUntil - Date.now()}ms remaining)`
+    };
+  }
+
+  // Check unacked broadcasts count
+  if (_pendingAcks.size >= MAX_UNACKED_BROADCASTS) {
+    _triggerThrottle('max_unacked_broadcasts');
+    return {
+      allowed: false,
+      reason: `Too many unacked broadcasts (${_pendingAcks.size}/${MAX_UNACKED_BROADCASTS})`
+    };
+  }
+
+  return { allowed: true, reason: 'ok' };
+}
+
+/**
+ * Trigger throttling due to backpressure
+ * @private
+ * @param {string} reason - Reason for throttle
+ */
+function _triggerThrottle(reason) {
+  _globalThrottledUntil = Date.now() + THROTTLE_DURATION_MS;
+  _backpressureMetrics.throttleEvents++;
+
+  if (DEBUG_BC_MESSAGING) {
+    console.warn('[BroadcastChannelManager] [BC] BACKPRESSURE_THROTTLE:', {
+      reason,
+      throttleDurationMs: THROTTLE_DURATION_MS,
+      pendingAcks: _pendingAcks.size,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Register a pending ACK for a broadcast message
+ * @private
+ * @param {string} messageId - Message ID to track
+ */
+function _registerPendingAck(messageId) {
+  // Set up timeout for ACK
+  const timeoutId = setTimeout(() => {
+    _handleAckTimeout(messageId);
+  }, ACK_TIMEOUT_MS);
+
+  _pendingAcks.set(messageId, {
+    timestamp: Date.now(),
+    timeoutId
+  });
+}
+
+/**
+ * Handle ACK timeout - no ACK received in time
+ * @private
+ * @param {string} messageId - Message ID that timed out
+ */
+function _handleAckTimeout(messageId) {
+  const pending = _pendingAcks.get(messageId);
+  if (!pending) return;
+
+  _pendingAcks.delete(messageId);
+  _backpressureMetrics.acksTimedOut++;
+
+  if (DEBUG_BC_MESSAGING) {
+    console.warn('[BroadcastChannelManager] [BC] ACK_TIMEOUT:', {
+      messageId,
+      timeoutMs: ACK_TIMEOUT_MS,
+      pendingAcks: _pendingAcks.size
+    });
+  }
+
+  // Consider throttling if too many timeouts
+  const timeoutCount = _backpressureMetrics.acksTimedOut;
+  if (timeoutCount > REPEATED_ACK_TIMEOUT_THRESHOLD &&
+      timeoutCount % REPEATED_ACK_TIMEOUT_THRESHOLD === 0) {
+    _triggerThrottle('repeated_ack_timeouts');
+  }
+}
+
+/**
+ * Send an acknowledgment for a received broadcast
+ * Clients should call this after processing a broadcast message
+ *
+ * @param {string} originalMessageId - ID of the message being acknowledged
+ * @param {string} [clientId] - Optional client identifier
+ * @returns {boolean} True if ACK was sent
+ */
+export function sendAcknowledgment(originalMessageId, clientId = null) {
+  if (!isChannelAvailable()) {
+    return false;
+  }
+
+  try {
+    updateChannel.postMessage({
+      type: 'broadcast-ack',
+      originalMessageId,
+      clientId: clientId || 'unknown',
+      timestamp: Date.now()
+    });
+
+    if (DEBUG_BC_MESSAGING) {
+      console.log('[BroadcastChannelManager] [BC] ACK_SENT:', {
+        originalMessageId,
+        clientId
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[BroadcastChannelManager] Failed to send ACK:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Handle incoming acknowledgment from a client
+ * Called by the broadcast sender when receiving ACK messages
+ *
+ * @param {Object} ackMessage - ACK message { originalMessageId, clientId, timestamp }
+ */
+export function handleIncomingAck(ackMessage) {
+  if (!ackMessage || !ackMessage.originalMessageId) {
+    return;
+  }
+
+  const { originalMessageId, clientId } = ackMessage;
+
+  // Clear pending ACK
+  const pending = _pendingAcks.get(originalMessageId);
+  if (pending) {
+    clearTimeout(pending.timeoutId);
+    _pendingAcks.delete(originalMessageId);
+    _backpressureMetrics.acksReceived++;
+
+    if (DEBUG_BC_MESSAGING) {
+      console.log('[BroadcastChannelManager] [BC] ACK_RECEIVED:', {
+        originalMessageId,
+        clientId,
+        latencyMs: Date.now() - pending.timestamp,
+        pendingAcks: _pendingAcks.size
+      });
+    }
+  }
+
+  // Update client state
+  if (clientId) {
+    const state = _clientState.get(clientId) || {
+      lastAckTime: 0,
+      unackedCount: 0,
+      throttledUntil: 0
+    };
+    state.lastAckTime = Date.now();
+    state.unackedCount = Math.max(0, state.unackedCount - 1);
+    _clientState.set(clientId, state);
+  }
+}
+
+/**
+ * Get backpressure metrics
+ * @returns {Object} Metrics object
+ */
+export function getBackpressureMetrics() {
+  return {
+    ..._backpressureMetrics,
+    pendingAcks: _pendingAcks.size,
+    isThrottled: isThrottled(),
+    throttledUntil: _globalThrottledUntil,
+    trackedClients: _clientState.size
+  };
+}
+
+/**
+ * Reset backpressure metrics
+ */
+export function resetBackpressureMetrics() {
+  _backpressureMetrics.acksReceived = 0;
+  _backpressureMetrics.acksTimedOut = 0;
+  _backpressureMetrics.throttleEvents = 0;
+  _backpressureMetrics.messagesDropped = 0;
+}
+
+/**
+ * Get state for a specific client
+ * @param {string} clientId - Client identifier
+ * @returns {Object|null} Client state or null
+ */
+export function getClientState(clientId) {
+  return _clientState.get(clientId) || null;
+}
+
+/**
+ * Clear state for a specific client (e.g., when client disconnects)
+ * @param {string} clientId - Client identifier
+ */
+export function clearClientState(clientId) {
+  _clientState.delete(clientId);
+}
+
+/**
+ * Post a message with backpressure protection
+ * v1.6.4.15 - Enhanced with backpressure checks
+ * @private
+ * @param {Object} message - Message to broadcast
+ * @param {boolean} [requireAck=false] - Whether to require ACK
+ * @returns {boolean} True if message was sent
+ */
+function _postMessageWithBackpressure(message, requireAck = false) {
+  // Check backpressure
+  const backpressureCheck = _shouldAllowBroadcast();
+  if (!backpressureCheck.allowed) {
+    _backpressureMetrics.messagesDropped++;
+    if (DEBUG_BC_MESSAGING) {
+      console.warn('[BroadcastChannelManager] [BC] MESSAGE_DROPPED:', {
+        type: message.type,
+        reason: backpressureCheck.reason,
+        quickTabId: message.quickTabId
+      });
+    }
+    return false;
+  }
+
+  // Generate message ID for ACK tracking
+  const messageId = _generateMessageId();
+  const messageWithMeta = {
+    ...message,
+    messageId,
+    timestamp: Date.now(),
+    source: 'BroadcastChannelManager',
+    requireAck
+  };
+
+  try {
+    updateChannel.postMessage(messageWithMeta);
+
+    // Register for ACK if required
+    if (requireAck) {
+      _registerPendingAck(messageId);
+    }
+
+    if (DEBUG_BC_MESSAGING) {
+      console.log('[BroadcastChannelManager] [BC] POST_SUCCESS:', {
+        type: message.type,
+        messageId,
+        quickTabId: message.quickTabId,
+        requireAck,
+        success: true,
+        timestamp: Date.now()
+      });
+    }
+
+    return true;
+  } catch (err) {
+    if (DEBUG_BC_MESSAGING) {
+      console.error('[BroadcastChannelManager] [BC] POST_FAILED:', {
+        type: message.type,
+        quickTabId: message.quickTabId,
+        error: err.message,
+        success: false,
+        timestamp: Date.now()
+      });
+    }
+    return false;
+  }
+}
