@@ -8,7 +8,7 @@
  * - Suspicious storage drop detection
  * - Reconciliation with content scripts
  *
- * @version 1.6.4.11
+ * @version 1.6.4.14
  */
 
 // Storage keys
@@ -18,11 +18,110 @@ const STATE_KEY = 'quick_tabs_state_v2';
 const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 
-// Debounce timing
-// v1.6.3.7-v4 - FIX Issue #7: Increased from 50ms to 500ms
-// Since BroadcastChannel is now PRIMARY for instant updates, storage polling is BACKUP
-// Higher debounce prevents rapid storage reads during burst operations
-const STORAGE_READ_DEBOUNCE_MS = 500;
+// ==================== v1.6.4.14 DYNAMIC DEBOUNCE ====================
+// FIX Issue #12: Context-dependent debounce timing based on active messaging tier
+
+/**
+ * Debounce timing when Tier 1 (BroadcastChannel) is active
+ * v1.6.4.14 - FIX Issue #12: Higher debounce when instant messaging works
+ */
+const STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS = 500;
+
+/**
+ * Debounce timing when in fallback mode (Tier 1 inactive)
+ * v1.6.4.14 - FIX Issue #12: Lower debounce to compensate for slower sync
+ */
+const STORAGE_READ_DEBOUNCE_FALLBACK_MS = 200;
+
+/**
+ * Default debounce - use fallback value for safety
+ * v1.6.3.7-v4 - FIX Issue #7: Increased from 50ms to 500ms
+ * v1.6.4.14 - FIX Issue #12: Now dynamic based on active tier
+ */
+let STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_FALLBACK_MS;
+
+/**
+ * Track whether Tier 1 (BroadcastChannel) is currently active
+ * v1.6.4.14 - FIX Issue #12: Runtime detection of active tier
+ */
+let isTier1Active = false;
+
+/**
+ * Timestamp of last BroadcastChannel message received
+ * v1.6.4.14 - FIX Issue #12: Track BC activity
+ */
+let lastBroadcastMessageTime = 0;
+
+/**
+ * Threshold for considering Tier 1 inactive (10 seconds without BC message)
+ * v1.6.4.14 - FIX Issue #12: If no BC messages for this long, consider fallback
+ */
+const TIER1_INACTIVE_THRESHOLD_MS = 10000;
+
+/**
+ * Update Tier 1 status based on recent BroadcastChannel activity
+ * v1.6.4.14 - FIX Issue #12: Called when BC message is received
+ */
+export function notifyBroadcastMessageReceived() {
+  lastBroadcastMessageTime = Date.now();
+  const wasActive = isTier1Active;
+  isTier1Active = true;
+
+  if (!wasActive) {
+    // Tier 1 became active - increase debounce
+    STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS;
+    console.log('[POLLING] [TIER_STATUS]:', {
+      activeTier: 'BroadcastChannel',
+      debounceMs: STORAGE_READ_DEBOUNCE_MS,
+      previousDebounceMs: STORAGE_READ_DEBOUNCE_FALLBACK_MS,
+      reason: 'tier1_activated',
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Check and update debounce based on Tier 1 activity
+ * v1.6.4.14 - FIX Issue #12: Called periodically to detect fallback mode
+ * @returns {number} Current debounce value in ms
+ */
+export function getEffectiveDebounceMs() {
+  const now = Date.now();
+  const timeSinceLastBC = now - lastBroadcastMessageTime;
+
+  // Check if Tier 1 should be considered inactive
+  if (isTier1Active && timeSinceLastBC > TIER1_INACTIVE_THRESHOLD_MS) {
+    isTier1Active = false;
+    STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_FALLBACK_MS;
+    console.log('[POLLING] [TIER_STATUS]:', {
+      activeTier: 'storage-polling-fallback',
+      debounceMs: STORAGE_READ_DEBOUNCE_MS,
+      previousDebounceMs: STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS,
+      reason: 'tier1_inactive',
+      timeSinceLastBCMs: timeSinceLastBC,
+      threshold: TIER1_INACTIVE_THRESHOLD_MS,
+      timestamp: now
+    });
+  }
+
+  return STORAGE_READ_DEBOUNCE_MS;
+}
+
+/**
+ * Get current tier status for diagnostics
+ * v1.6.4.14 - FIX Issue #12: Diagnostic helper
+ * @returns {Object} Tier status information
+ */
+export function getTierStatus() {
+  const now = Date.now();
+  return {
+    isTier1Active,
+    debounceMs: STORAGE_READ_DEBOUNCE_MS,
+    lastBroadcastMessageTime,
+    timeSinceLastBCMs: lastBroadcastMessageTime > 0 ? now - lastBroadcastMessageTime : -1,
+    tier1InactiveThresholdMs: TIER1_INACTIVE_THRESHOLD_MS
+  };
+}
 
 /**
  * Identify tabs that changed position or size between two state snapshots
@@ -307,11 +406,15 @@ export function createStorageChangeHandler(deps) {
 
   /**
    * Schedule debounced storage update
+   * v1.6.4.14 - FIX Issue #12: Use dynamic debounce based on active tier
    */
   function scheduleStorageUpdate() {
     if (storageReadDebounceTimer) {
       clearTimeout(storageReadDebounceTimer);
     }
+
+    // v1.6.4.14 - FIX Issue #12: Get effective debounce based on tier status
+    const effectiveDebounceMs = getEffectiveDebounceMs();
 
     storageReadDebounceTimer = setTimeout(async () => {
       storageReadDebounceTimer = null;
@@ -322,7 +425,7 @@ export function createStorageChangeHandler(deps) {
         lastRenderedStateHash = newHash;
         renderUI();
       }
-    }, STORAGE_READ_DEBOUNCE_MS);
+    }, effectiveDebounceMs);
   }
 
   /**
@@ -397,4 +500,11 @@ export function createStorageChangeHandler(deps) {
   };
 }
 
-export { STATE_KEY, SAVEID_RECONCILED, SAVEID_CLEARED, STORAGE_READ_DEBOUNCE_MS };
+export {
+  STATE_KEY,
+  SAVEID_RECONCILED,
+  SAVEID_CLEARED,
+  STORAGE_READ_DEBOUNCE_MS
+  // v1.6.4.14 - FIX Issue #12: New functions already exported at definition:
+  // notifyBroadcastMessageReceived, getEffectiveDebounceMs, getTierStatus
+};

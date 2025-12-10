@@ -66,6 +66,12 @@ import {
   getBrowserStorageAPI
 } from '@utils/storage-utils.js';
 
+// v1.6.4.14 - FIX Issue #11: Import BroadcastChannelManager for cross-context notifications
+import {
+  broadcastQuickTabMinimized,
+  broadcastQuickTabRestored
+} from '../channels/BroadcastChannelManager.js';
+
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
 // STATE_EMIT_DELAY_MS must be LESS THAN MINIMIZE_DEBOUNCE_MS to prevent race condition
 // Old values: MINIMIZE_DEBOUNCE_MS=150, STATE_EMIT_DELAY_MS=200 (race condition!)
@@ -554,9 +560,25 @@ export class VisibilityHandler {
         quickTabData.domVerified = false; // v1.6.3.5-v7 - FIX Issue #6
         this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
         console.log(
-          `${this._logPrefix} Emitted state:updated for minimize (source: ${source}):`,
+          `${this._logPrefix} [EVENT] [INTERNAL_EMIT] state:updated for minimize (source: ${source}):`,
           id
         );
+
+        // v1.6.4.14 - FIX Issue #15: Schedule cross-context broadcast after local processing
+        // Use setTimeout to ensure local eventBus listeners process first
+        setTimeout(() => {
+          // v1.6.4.14 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
+          const broadcastSuccess = broadcastQuickTabMinimized(id);
+          console.log(
+            `${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`,
+            {
+              operation: 'minimize',
+              tabId: id,
+              success: broadcastSuccess,
+              timestamp: Date.now()
+            }
+          );
+        }, 0);
       }
 
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
@@ -1057,6 +1079,7 @@ export class VisibilityHandler {
   /**
    * Emit state:updated event for restore (synchronous version for promise chaining)
    * v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission for ordered execution
+   * v1.6.4.14 - FIX Issue #11, #15: Add BroadcastChannel notification for cross-context sync
    * Note: Returns void, caller handles flow control
    * @private
    */
@@ -1085,11 +1108,27 @@ export class VisibilityHandler {
 
     this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
     // v1.6.3.6-v6 - FIX: Include originTabId in emission log for debugging cross-tab validation
-    console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, {
+    console.log(`${this._logPrefix} [EVENT] [INTERNAL_EMIT] state:updated for restore (source: ${source}):`, id, {
       domVerified: isDOMRendered,
       isRestoreOperation: true,
       originTabId: tabWindow?.originTabId ?? 'N/A'
     });
+
+    // v1.6.4.14 - FIX Issue #15: Schedule cross-context broadcast after local processing
+    // Use setTimeout to ensure local eventBus listeners process first
+    setTimeout(() => {
+      // v1.6.4.14 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
+      const broadcastSuccess = broadcastQuickTabRestored(id);
+      console.log(
+        `${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`,
+        {
+          operation: 'restore',
+          tabId: id,
+          success: broadcastSuccess,
+          timestamp: Date.now()
+        }
+      );
+    }, 0);
   }
 
   /**
