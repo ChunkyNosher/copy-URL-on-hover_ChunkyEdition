@@ -237,6 +237,11 @@ let initializationStarted = false;
 let initializationComplete = false;
 
 /**
+ * v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for time-since-init logging
+ */
+let initializationStartTime = 0;
+
+/**
  * Check if sidebar is fully initialized
  * v1.6.3.7-v9 - FIX Issue #11: Guard function for listeners
  * @returns {boolean} True if initialization is complete
@@ -245,16 +250,24 @@ function isFullyInitialized() {
   return initializationStarted && initializationComplete;
 }
 
+// v1.6.3.7-v10 - FIX Code Review: Named constant for uninitialized timestamp
+const INIT_TIME_NOT_STARTED = -1;
+
 /**
  * Log listener entry with initialization status
  * v1.6.3.7-v9 - FIX Issue #11: Diagnostic logging for race detection
+ * v1.6.3.7-v10 - FIX Issue #11: Added time since init start
  * @param {string} listenerName - Name of the listener
  * @param {Object} context - Additional context to log
  */
 function logListenerEntry(listenerName, context = {}) {
   const fullyInit = isFullyInitialized();
-  console.log(`[Manager] LISTENER_ENTRY [${listenerName}]:`, {
+  const timeSinceInitStartMs = initializationStartTime > 0 ? Date.now() - initializationStartTime : INIT_TIME_NOT_STARTED;
+  console.log(`[Manager] LISTENER_ENTRY: ${listenerName}`, {
     isFullyInitialized: fullyInit,
+    initializationStarted,
+    initializationComplete,
+    timeSinceInitStartMs,
     connectionState,
     timestamp: Date.now(),
     ...context
@@ -1982,47 +1995,21 @@ function _logPortMessageReceived(message, entryTime) {
  * Route port message to appropriate handler
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
  * v1.6.3.7-v5 - FIX Issue #3: Added logging for STATE_UPDATE via port path
+ * v1.6.3.7-v10 - FIX Issue #6: Handle START_STORAGE_WATCHDOG message
+ * v1.6.3.7-v10 - FIX ESLint: Refactored to use lookup table to reduce complexity
  * @private
  * @param {Object} message - Message to route
  */
 function _routePortMessage(message) {
-  // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment
+  // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment (combined check)
   if (message.type === 'HEARTBEAT_ACK' || message.type === 'ACKNOWLEDGMENT') {
     handleAcknowledgment(message);
     return;
   }
 
-  // Handle broadcasts
-  if (message.type === 'BROADCAST') {
-    handleBroadcast(message);
-    return;
-  }
-
-  // Handle state updates
-  if (message.type === 'STATE_UPDATE') {
-    // v1.6.3.7-v5 - FIX Issue #3: Log STATE_UPDATE received via port
-    console.log('[Manager] PORT_STATE_UPDATE:', {
-      type: message.type,
-      quickTabId: message.quickTabId || message.payload?.quickTabId,
-      path: 'port-connection',
-      timestamp: Date.now()
-    });
-    handleStateUpdateBroadcast(message);
-    scheduleRender('port-STATE_UPDATE', message.messageId);
-    return;
-  }
-
-  // v1.6.3.7-v4 - FIX Issue #3: Handle QUICK_TAB_STATE_UPDATED via port
-  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    _handleQuickTabStateUpdate(message);
-    return;
-  }
-
-  // v1.6.4.0 - FIX Issue E: Handle full state sync response
-  if (message.type === 'FULL_STATE_SYNC') {
-    _handleStateSyncResponse(message);
-    return;
-  }
+  // v1.6.3.7-v10 - Use handler lookup for simple routes
+  const handled = _tryRoutePortMessageByType(message);
+  if (handled) return;
 
   // v1.6.3.7-v7 - FIX Issue #7: Handle operation confirmations from background
   if (_isOperationConfirmation(message.type)) {
@@ -2037,6 +2024,78 @@ function _routePortMessage(message) {
     messageId: message.messageId,
     timestamp: Date.now()
   });
+}
+
+/**
+ * Try to route port message by type using lookup table
+ * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce _routePortMessage complexity
+ * @private
+ * @param {Object} message - Message to route
+ * @returns {boolean} True if message was handled
+ */
+function _tryRoutePortMessageByType(message) {
+  const handlers = {
+    'START_STORAGE_WATCHDOG': _handleStartStorageWatchdog,
+    'BROADCAST': handleBroadcast,
+    'QUICK_TAB_STATE_UPDATED': _handleQuickTabStateUpdate,
+    'FULL_STATE_SYNC': _handleStateSyncResponse
+  };
+
+  const handler = handlers[message.type];
+  if (handler) {
+    handler(message);
+    return true;
+  }
+
+  // Special handling for STATE_UPDATE with logging
+  if (message.type === 'STATE_UPDATE') {
+    _handlePortStateUpdate(message);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Handle STATE_UPDATE message via port
+ * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce _routePortMessage complexity
+ * @private
+ * @param {Object} message - State update message
+ */
+function _handlePortStateUpdate(message) {
+  console.log('[Manager] PORT_STATE_UPDATE:', {
+    type: message.type,
+    quickTabId: message.quickTabId || message.payload?.quickTabId,
+    path: 'port-connection',
+    timestamp: Date.now()
+  });
+  handleStateUpdateBroadcast(message);
+  scheduleRender('port-STATE_UPDATE', message.messageId);
+}
+
+/**
+ * Handle START_STORAGE_WATCHDOG message from background
+ * v1.6.3.7-v10 - FIX Issue #6: Start watchdog timer when background notifies of storage write
+ * v1.6.3.7-v10 - FIX Code Review: timeoutMs destructured for logging but timer uses STORAGE_WATCHDOG_TIMEOUT_MS
+ * @private
+ * @param {Object} message - Watchdog message with expectedSaveId and timeoutMs
+ */
+function _handleStartStorageWatchdog(message) {
+  const { expectedSaveId, sequenceId, timeoutMs } = message;
+  
+  // Note: timeoutMs from message is logged for debugging, but timer uses local constant
+  // STORAGE_WATCHDOG_TIMEOUT_MS (2000ms) to ensure consistent behavior
+  console.log('[Manager] START_STORAGE_WATCHDOG received:', {
+    expectedSaveId,
+    sequenceId,
+    backgroundTimeoutMs: timeoutMs, // v1.6.3.7-v10 - Renamed for clarity
+    localTimeoutMs: STORAGE_WATCHDOG_TIMEOUT_MS,
+    timestamp: Date.now()
+  });
+  
+  // Start the watchdog timer - if storage.onChanged doesn't arrive in time,
+  // _handleWatchdogTimeout will re-read storage explicitly
+  _startStorageWatchdog(expectedSaveId);
 }
 
 /**
@@ -2323,6 +2382,8 @@ function initializeBroadcastChannel() {
  * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
  * v1.6.3.7-v9 - Issue #7: Added sequence number tracking for gap detection
  * v1.6.3.7-v9 - Issue #2: Added entry/exit timing and correlation ID
+ * v1.6.3.7-v10 - FIX Issue #7: Wire gap detection callback invocation, check for stale channel
+ * v1.6.3.7-v10 - FIX ESLint: Extracted helpers to reduce complexity
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
@@ -2334,40 +2395,18 @@ function handleBroadcastChannelMessage(event) {
     return;
   }
 
-  // v1.6.3.7-v9 - Issue #7: Check for sequence gap if sequenceNumber present
-  if (typeof message.sequenceNumber === 'number') {
-    const seqResult = processReceivedSequence(message.sequenceNumber);
-    if (seqResult.hasGap) {
-      // Calculate expected sequence: current - gap = what we expected
-      const expectedSeq = message.sequenceNumber - seqResult.gapSize;
-      console.warn('[Manager] [BC] SEQUENCE_GAP_DETECTED:', {
-        expectedSequence: expectedSeq,
-        receivedSequence: message.sequenceNumber,
-        gapSize: seqResult.gapSize,
-        type: message.type,
-        quickTabId: message.quickTabId
-      });
-      // Trigger storage fallback read to recover missed messages
-      _triggerStorageFallbackOnGap(seqResult.gapSize);
-    }
-  }
+  // v1.6.3.7-v10 - FIX Issue #7: Check for stale channel and sequence gaps
+  _checkBroadcastChannelHealth(message);
 
-  // v1.6.3.7-v4 - FIX Issue #4: Generate messageId from BroadcastChannel message for deduplication
-  // BroadcastChannel messages don't have messageId, so we generate one from type+quickTabId+timestamp+random
-  // Added random component to ensure uniqueness even for rapid same-type messages
-  const randomSuffix = Math.random().toString(36).substring(2, 7);
-  const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
-  
-  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
-  const correlationId = message.correlationId || `bc-${messageEntryTime}-${randomSuffix}`;
+  // v1.6.3.7-v10 - Generate IDs for dedup and correlation
+  const { broadcastMessageId, correlationId } = _generateBroadcastMessageIds(message, messageEntryTime);
 
   // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
-  // v1.6.3.7-v9 - Issue #2: Added correlationId for tracking
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
     messageId: broadcastMessageId,
     correlationId,
-    sequenceNumber: message.sequenceNumber, // v1.6.3.7-v9
+    sequenceNumber: message.sequenceNumber,
     saveId: message.saveId,
     from: 'BroadcastChannel',
     timestamp: messageEntryTime
@@ -2377,15 +2416,92 @@ function handleBroadcastChannelMessage(event) {
   _routeBroadcastMessage(message, broadcastMessageId);
   
   // v1.6.3.7-v9 - Issue #2: Log message exit with duration
-  const processingDurationMs = Date.now() - messageEntryTime;
-  if (DEBUG_MESSAGING) {
-    console.log(`[Manager] MESSAGE_PROCESSED [BC] [${message.type}]:`, {
-      quickTabId: message.quickTabId,
-      correlationId,
-      durationMs: processingDurationMs,
+  _logBroadcastMessageProcessed(message, correlationId, messageEntryTime);
+}
+
+/**
+ * Check BroadcastChannel health and trigger fallback if needed
+ * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce handleBroadcastChannelMessage complexity
+ * @private
+ * @param {Object} message - Message being processed
+ */
+function _checkBroadcastChannelHealth(message) {
+  // Check if BroadcastChannel is stale
+  if (isBroadcastChannelStale()) {
+    console.warn('[Manager] [BC] STALE_CHANNEL_DETECTED: BroadcastChannel is stale, triggering storage fallback');
+    console.log('[Manager] STORAGE_FALLBACK_ACTIVATED:', {
+      reason: 'stale-broadcast-channel',
       timestamp: Date.now()
     });
+    _triggerStorageFallbackOnGap(0);
+    return;
   }
+
+  // Check for sequence gap if sequenceNumber present
+  if (typeof message.sequenceNumber === 'number') {
+    _checkSequenceGap(message);
+  }
+}
+
+/**
+ * Check for sequence gap in message
+ * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce complexity
+ * @private
+ * @param {Object} message - Message with sequenceNumber
+ */
+function _checkSequenceGap(message) {
+  const seqResult = processReceivedSequence(message.sequenceNumber);
+  if (!seqResult.hasGap) return;
+
+  const expectedSeq = message.sequenceNumber - seqResult.gapSize;
+  console.warn('[Manager] [BC] SEQUENCE_GAP_DETECTED:', {
+    expectedSequence: expectedSeq,
+    receivedSequence: message.sequenceNumber,
+    gapSize: seqResult.gapSize,
+    type: message.type,
+    quickTabId: message.quickTabId
+  });
+  console.log('[Manager] STORAGE_FALLBACK_ACTIVATED:', {
+    reason: 'sequence-gap',
+    gapSize: seqResult.gapSize,
+    timestamp: Date.now()
+  });
+  _triggerStorageFallbackOnGap(seqResult.gapSize);
+}
+
+/**
+ * Generate message ID and correlation ID for broadcast message
+ * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce handleBroadcastChannelMessage complexity
+ * @private
+ * @param {Object} message - Broadcast message
+ * @param {number} messageEntryTime - Timestamp when message was received
+ * @returns {{ broadcastMessageId: string, correlationId: string }}
+ */
+function _generateBroadcastMessageIds(message, messageEntryTime) {
+  const randomSuffix = Math.random().toString(36).substring(2, 7);
+  const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+  const correlationId = message.correlationId || `bc-${messageEntryTime}-${randomSuffix}`;
+  return { broadcastMessageId, correlationId };
+}
+
+/**
+ * Log broadcast message processed with duration
+ * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce handleBroadcastChannelMessage complexity
+ * @private
+ * @param {Object} message - Processed message
+ * @param {string} correlationId - Correlation ID
+ * @param {number} messageEntryTime - Timestamp when message was received
+ */
+function _logBroadcastMessageProcessed(message, correlationId, messageEntryTime) {
+  if (!DEBUG_MESSAGING) return;
+  
+  const processingDurationMs = Date.now() - messageEntryTime;
+  console.log(`[Manager] MESSAGE_PROCESSED [BC] [${message.type}]:`, {
+    quickTabId: message.quickTabId,
+    correlationId,
+    durationMs: processingDurationMs,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -3481,10 +3597,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.7-v9 - FIX Issue #11: Mark initialization started
   initializationStarted = true;
   
+  // v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for time-since-init logging
+  initializationStartTime = Date.now();
+  
   // v1.6.3.7-v6 - Gap #1: Log DOM_CONTENT_LOADED
   // v1.6.3.7-v9 - FIX Issue #11: Include init flags in log
   console.log('[Manager] DOM_CONTENT_LOADED:', {
-    timestamp: Date.now(),
+    timestamp: initializationStartTime,
     url: window.location.href,
     initializationStarted,
     initializationComplete
@@ -5626,6 +5745,7 @@ function setupEventListeners() {
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
+  // v1.6.3.7-v10 - FIX Issue #11: Enhanced LISTENER_REGISTERED logging
   browser.storage.onChanged.addListener((changes, areaName) => {
     // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
     logListenerEntry('storage.onChanged', {
@@ -5635,9 +5755,11 @@ function setupEventListeners() {
     
     // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
     if (!isFullyInitialized()) {
+      const timeSinceInitStartMs = initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
       console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
         initializationStarted,
         initializationComplete,
+        timeSinceInitStartMs,
         areaName,
         message: 'Skipping - sidebar not yet fully initialized',
         timestamp: Date.now()
@@ -5649,8 +5771,11 @@ function setupEventListeners() {
     _handleStorageChange(changes[STATE_KEY]);
   });
   // v1.6.3.7-v6 - Gap #3: Log listener registration
-  // v1.6.3.7-v9 - FIX Issue #11: Note that listener has init guard
-  console.log('[Manager] LISTENER_REGISTERED: storage.onChanged listener added', {
+  // v1.6.3.7-v10 - FIX Issue #11: LISTENER_REGISTERED with init status
+  console.log('[Manager] LISTENER_REGISTERED: storage.onChanged', {
+    isFullyInitialized: isFullyInitialized(),
+    initializationStarted,
+    initializationComplete,
     storageArea: 'local',
     stateKey: STATE_KEY,
     hasInitGuard: true,
