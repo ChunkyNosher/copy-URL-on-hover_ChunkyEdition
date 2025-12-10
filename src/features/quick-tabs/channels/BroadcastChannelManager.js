@@ -117,12 +117,19 @@ function postMessage(message) {
 /**
  * Broadcast Quick Tab created event
  * v1.6.3.7-v3 - API #2: Instant notification of new Quick Tab
+ * v1.6.4.13 - Issue #5: Enhanced logging with [BC] prefix
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} data - Full Quick Tab data
  * @returns {boolean} True if broadcast succeeded
  */
 export function broadcastQuickTabCreated(quickTabId, data) {
-  console.log('[BroadcastChannelManager] Broadcasting quick-tab-created:', quickTabId);
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] [BC] BROADCAST_INITIATED: quick-tab-created', {
+      quickTabId,
+      hasData: !!data,
+      timestamp: Date.now()
+    });
+  }
   return postMessage({
     type: 'quick-tab-created',
     quickTabId,
@@ -133,12 +140,19 @@ export function broadcastQuickTabCreated(quickTabId, data) {
 /**
  * Broadcast Quick Tab updated event
  * v1.6.3.7-v3 - API #2: Instant notification of Quick Tab change
+ * v1.6.4.13 - Issue #5: Enhanced logging with [BC] prefix
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - Only the changed properties
  * @returns {boolean} True if broadcast succeeded
  */
 export function broadcastQuickTabUpdated(quickTabId, changes) {
-  console.log('[BroadcastChannelManager] Broadcasting quick-tab-updated:', quickTabId);
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] [BC] BROADCAST_INITIATED: quick-tab-updated', {
+      quickTabId,
+      changesKeys: changes ? Object.keys(changes) : [],
+      timestamp: Date.now()
+    });
+  }
   return postMessage({
     type: 'quick-tab-updated',
     quickTabId,
@@ -149,11 +163,17 @@ export function broadcastQuickTabUpdated(quickTabId, changes) {
 /**
  * Broadcast Quick Tab deleted event
  * v1.6.3.7-v3 - API #2: Instant notification of Quick Tab deletion
+ * v1.6.4.13 - Issue #5: Enhanced logging with [BC] prefix
  * @param {string} quickTabId - Quick Tab ID
  * @returns {boolean} True if broadcast succeeded
  */
 export function broadcastQuickTabDeleted(quickTabId) {
-  console.log('[BroadcastChannelManager] Broadcasting quick-tab-deleted:', quickTabId);
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] [BC] BROADCAST_INITIATED: quick-tab-deleted', {
+      quickTabId,
+      timestamp: Date.now()
+    });
+  }
   return postMessage({
     type: 'quick-tab-deleted',
     quickTabId
@@ -163,11 +183,17 @@ export function broadcastQuickTabDeleted(quickTabId) {
 /**
  * Broadcast Quick Tab minimized event
  * v1.6.3.7-v3 - API #2: Instant notification of minimize
+ * v1.6.4.13 - Issue #5: Enhanced logging with [BC] prefix
  * @param {string} quickTabId - Quick Tab ID
  * @returns {boolean} True if broadcast succeeded
  */
 export function broadcastQuickTabMinimized(quickTabId) {
-  console.log('[BroadcastChannelManager] Broadcasting quick-tab-minimized:', quickTabId);
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] [BC] BROADCAST_INITIATED: quick-tab-minimized', {
+      quickTabId,
+      timestamp: Date.now()
+    });
+  }
   return postMessage({
     type: 'quick-tab-minimized',
     quickTabId,
@@ -178,11 +204,17 @@ export function broadcastQuickTabMinimized(quickTabId) {
 /**
  * Broadcast Quick Tab restored event
  * v1.6.3.7-v3 - API #2: Instant notification of restore
+ * v1.6.4.13 - Issue #5: Enhanced logging with [BC] prefix
  * @param {string} quickTabId - Quick Tab ID
  * @returns {boolean} True if broadcast succeeded
  */
 export function broadcastQuickTabRestored(quickTabId) {
-  console.log('[BroadcastChannelManager] Broadcasting quick-tab-restored:', quickTabId);
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] [BC] BROADCAST_INITIATED: quick-tab-restored', {
+      quickTabId,
+      timestamp: Date.now()
+    });
+  }
   return postMessage({
     type: 'quick-tab-restored',
     quickTabId,
@@ -193,16 +225,20 @@ export function broadcastQuickTabRestored(quickTabId) {
 /**
  * Broadcast full state sync event
  * v1.6.3.7-v7 - FIX Issue #6: Storage write confirmation via BroadcastChannel
+ * v1.6.4.13 - Issue #5: Enhanced logging with [BC] prefix
  * Used to notify Manager when storage is updated with new state
  * @param {Object} state - Full state object with tabs array
  * @param {string} saveId - Save ID for deduplication
  * @returns {boolean} True if broadcast succeeded
  */
 export function broadcastFullStateSync(state, saveId) {
-  console.log('[BroadcastChannelManager] Broadcasting full-state-sync:', {
-    tabCount: state?.tabs?.length || 0,
-    saveId
-  });
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] [BC] BROADCAST_INITIATED: full-state-sync', {
+      tabCount: state?.tabs?.length || 0,
+      saveId,
+      timestamp: Date.now()
+    });
+  }
   return postMessage({
     type: 'full-state-sync',
     state,

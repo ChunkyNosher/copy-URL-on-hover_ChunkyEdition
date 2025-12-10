@@ -2768,15 +2768,19 @@ function _processStorageUpdate(newValue) {
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
 
-  // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
+  // v1.6.3.4-v11 - Background caches state for popup/sidebar queries
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
-  // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
-  console.log('[Background] Updating cache only (no broadcast):', {
+  // v1.6.4.13 - FIX Issue #1 & #2: ALSO broadcast to BroadcastChannel for Manager updates
+  console.log('[Background] [STORAGE] STATE_CHANGE_DETECTED:', {
     tabCount: filteredValue.tabs?.length || 0,
     saveId: filteredValue.saveId,
-    note: 'Tabs sync independently via storage.onChanged'
+    timestamp: Date.now()
   });
   _updateGlobalStateFromStorage(filteredValue);
+
+  // v1.6.4.13 - FIX Issue #1 & #2: Broadcast state change via BroadcastChannel (Tier 1)
+  // This ensures Manager receives instant updates when storage changes
+  _broadcastStorageWriteConfirmation(filteredValue, filteredValue.saveId);
 }
 
 /**
@@ -3827,9 +3831,23 @@ async function handleAdoptAction(payload) {
   if (cachedTab) {
     cachedTab.originTabId = targetTabId;
   }
+  globalQuickTabState.saveId = saveId;
+  globalQuickTabState.lastUpdate = Date.now();
 
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
+
+  // v1.6.4.13 - FIX Issue #1 & #2: Broadcast via BroadcastChannel (Tier 1)
+  _broadcastOperationConfirmation('ADOPT_CONFIRMED', quickTabId, {
+    originTabId: targetTabId,
+    oldOriginTabId
+  }, saveId, corrId);
+
+  // v1.6.4.13 - FIX Issue #3: Send STATE_UPDATE via port (Tier 2)
+  _sendStateUpdateViaPorts(quickTabId, { originTabId: targetTabId }, 'adopt', corrId);
+
+  // v1.6.4.13 - FIX Issue #6: Broadcast full state sync confirmation
+  _broadcastStorageWriteConfirmation({ tabs: state.tabs, saveId }, saveId);
 
   // v1.6.4.9 - Issue #9: Log successful adoption completion
   console.log('[Background] ADOPTION_COMPLETED:', {
@@ -3902,17 +3920,211 @@ async function writeStateWithVerification() {
  */
 function _broadcastStorageWriteConfirmation(state, saveId) {
   if (!isBroadcastChannelAvailable()) {
-    console.log('[Background] [BC] BroadcastChannel not available for write confirmation');
+    if (DEBUG_MESSAGING) {
+      console.log('[Background] [BC] BroadcastChannel not available for write confirmation');
+    }
     return;
   }
 
   const bcSuccess = broadcastFullStateSync(state, saveId);
-  console.log('[Background] [BC] Storage write confirmation broadcast:', {
-    saveId,
-    tabCount: state?.tabs?.length || 0,
-    success: bcSuccess
+  if (DEBUG_MESSAGING) {
+    console.log('[Background] [BC] Storage write confirmation broadcast:', {
+      saveId,
+      tabCount: state?.tabs?.length || 0,
+      success: bcSuccess,
+      timestamp: Date.now()
+    });
+  }
+}
+
+// ==================== v1.6.4.13 MESSAGING HELPER FUNCTIONS ====================
+// FIX Issues #1-8: Centralized messaging helpers for all state operations
+
+/**
+ * Broadcast operation confirmation via BroadcastChannel (Tier 1)
+ * v1.6.4.13 - FIX Issue #1 & #2: Background broadcasts state changes to Manager
+ * @private
+ * @param {string} operationType - Type of operation (e.g., 'MINIMIZE_CONFIRMED', 'RESTORE_CONFIRMED')
+ * @param {string} quickTabId - Quick Tab ID affected
+ * @param {Object} changes - State changes made
+ * @param {string} saveId - Save ID for deduplication
+ * @param {string} correlationId - Correlation ID for tracing
+ */
+function _broadcastOperationConfirmation(operationType, quickTabId, changes, saveId, correlationId) {
+  if (!isBroadcastChannelAvailable()) {
+    if (DEBUG_MESSAGING) {
+      console.log('[Background] [BC] BROADCAST_SKIPPED: Channel not available for operation confirmation', {
+        operationType,
+        quickTabId,
+        timestamp: Date.now()
+      });
+    }
+    return;
+  }
+
+  // Determine which broadcast function to call based on operation type
+  let bcSuccess = false;
+  const timestamp = Date.now();
+
+  switch (operationType) {
+    case 'MINIMIZE_CONFIRMED':
+      bcSuccess = broadcastQuickTabMinimized(quickTabId);
+      break;
+    case 'RESTORE_CONFIRMED':
+      bcSuccess = broadcastQuickTabRestored(quickTabId);
+      break;
+    case 'DELETE_CONFIRMED':
+      bcSuccess = broadcastQuickTabDeleted(quickTabId);
+      break;
+    case 'ADOPT_CONFIRMED':
+    case 'UPDATE_CONFIRMED':
+      bcSuccess = broadcastQuickTabUpdated(quickTabId, changes);
+      break;
+    default:
+      // Fallback to full state sync for unknown types
+      bcSuccess = broadcastFullStateSync({ tabs: globalQuickTabState.tabs, saveId }, saveId);
+  }
+
+  // Log broadcast result
+  if (DEBUG_MESSAGING) {
+    console.log('[Background] [BC] OPERATION_BROADCAST:', {
+      type: operationType,
+      quickTabId,
+      correlationId,
+      success: bcSuccess,
+      timestamp
+    });
+  }
+}
+
+/**
+ * Send STATE_UPDATE message via connected ports (Tier 2)
+ * v1.6.4.13 - FIX Issue #3: Port used for state updates, not just heartbeat
+ * @private
+ * @param {string} quickTabId - Quick Tab ID affected
+ * @param {Object} changes - State changes made
+ * @param {string} operation - Operation name (e.g., 'minimize', 'restore', 'delete', 'adopt')
+ * @param {string} correlationId - Correlation ID for tracing
+ */
+function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlationId) {
+  const message = {
+    type: 'STATE_UPDATE',
+    quickTabId,
+    changes,
+    operation,
+    correlationId,
+    saveId: globalQuickTabState.saveId,
+    source: 'background',
+    timestamp: Date.now()
+  };
+
+  const result = _sendMessageToSidebarPorts(message, quickTabId, operation, correlationId);
+
+  if (DEBUG_MESSAGING) {
+    console.log('[Background] [PORT] STATE_UPDATE_BROADCAST_COMPLETE:', {
+      quickTabId,
+      operation,
+      sentCount: result.sentCount,
+      errorCount: result.errorCount,
+      totalPorts: portRegistry.size,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Send message to all sidebar ports and track results
+ * v1.6.4.13 - Extracted to reduce nesting depth in _sendStateUpdateViaPorts
+ * @private
+ * @param {Object} message - Message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @param {string} operation - Operation name for logging  
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {{ sentCount: number, errorCount: number }} Send results
+ */
+function _sendMessageToSidebarPorts(message, quickTabId, operation, correlationId) {
+  let sentCount = 0;
+  let errorCount = 0;
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (!_isSidebarPort(portInfo)) {
+      continue;
+    }
+
+    const result = _trySendToPort(portInfo.port, message, portId, quickTabId, operation, correlationId);
+    if (result.success) {
+      sentCount++;
+    } else {
+      errorCount++;
+    }
+  }
+
+  return { sentCount, errorCount };
+}
+
+/**
+ * Check if port is a sidebar port
+ * @private
+ * @param {Object} portInfo - Port info from registry
+ * @returns {boolean} True if sidebar port
+ */
+function _isSidebarPort(portInfo) {
+  return portInfo.origin === 'sidebar' || portInfo.port?.name?.includes('sidebar');
+}
+
+/**
+ * Try to send message to a port
+ * v1.6.4.13 - Helper for _sendMessageToSidebarPorts
+ * @private
+ * @param {browser.runtime.Port} port - Port to send to
+ * @param {Object} message - Message to send
+ * @param {string} portId - Port ID for logging
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @param {string} operation - Operation name for logging
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {{ success: boolean }} success: true if postMessage succeeded, false if an error was thrown
+ */
+function _trySendToPort(port, message, portId, quickTabId, operation, correlationId) {
+  try {
+    port.postMessage(message);
+    _logPortSendSuccess(portId, quickTabId, operation, correlationId);
+    return { success: true };
+  } catch (err) {
+    _logPortSendFailure(portId, quickTabId, err.message);
+    return { success: false };
+  }
+}
+
+/**
+ * Log successful port send
+ * @private
+ */
+function _logPortSendSuccess(portId, quickTabId, operation, correlationId) {
+  if (DEBUG_MESSAGING) {
+    console.log('[Background] [PORT] STATE_UPDATE_SENT:', {
+      portId,
+      quickTabId,
+      operation,
+      correlationId,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Log failed port send
+ * @private
+ */
+function _logPortSendFailure(portId, quickTabId, errorMessage) {
+  console.warn('[Background] [PORT] STATE_UPDATE_FAILED:', {
+    portId,
+    quickTabId,
+    error: errorMessage,
+    timestamp: Date.now()
   });
 }
+
+// ==================== END v1.6.4.13 MESSAGING HELPERS ====================
 
 // ==================== v1.6.4.0 COMMAND HANDLERS ====================
 // FIX Issue A: Background as sole storage writer
@@ -4034,9 +4246,15 @@ async function handleCloseMinimizedTabsCommand() {
   // Write to storage with verification (FIX Issue F)
   const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
 
-  // Remove from host tracking
+  // v1.6.4.13 - Combined loop: cleanup + broadcast confirmations + state updates
+  // Code review: Combined three loops into one for performance
   for (const id of closedIds) {
+    // Remove from host tracking
     quickTabHostTabs.delete(id);
+    // FIX Issue #1 & #2: Broadcast deletion confirmations via BroadcastChannel
+    _broadcastOperationConfirmation('DELETE_CONFIRMED', id, { deleted: true }, writeResult.saveId, null);
+    // FIX Issue #3: Send STATE_UPDATE via ports for deleted tabs
+    _sendStateUpdateViaPorts(id, { deleted: true }, 'close-minimized', null);
   }
 
   console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {

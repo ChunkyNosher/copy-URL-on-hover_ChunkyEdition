@@ -2250,11 +2250,34 @@ function handleStateUpdateMessage(quickTabId, changes) {
   if (existingIndex >= 0) {
     // Update existing tab
     Object.assign(quickTabsState.tabs[existingIndex], changes);
-    console.log('[Manager] Updated tab from message:', quickTabId);
+    // v1.6.4.13 - Issue #5: Structured logging for state updates
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] [STATE] TAB_UPDATED:', {
+        quickTabId,
+        changes,
+        timestamp: Date.now()
+      });
+    }
   } else if (changes.url) {
     // Add new tab
     quickTabsState.tabs.push({ id: quickTabId, ...changes });
-    console.log('[Manager] Added new tab from message:', quickTabId);
+    // v1.6.4.13 - Issue #5: Structured logging for state updates
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] [STATE] TAB_ADDED:', {
+        quickTabId,
+        changes,
+        timestamp: Date.now()
+      });
+    }
+  } else {
+    // v1.6.4.13 - Issue #5: Log when update skipped (tab not found and no URL)
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] [STATE] UPDATE_SKIPPED: Tab not found and no URL in changes', {
+        quickTabId,
+        changesKeys: Object.keys(changes),
+        timestamp: Date.now()
+      });
+    }
   }
 
   // v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ANY state change
