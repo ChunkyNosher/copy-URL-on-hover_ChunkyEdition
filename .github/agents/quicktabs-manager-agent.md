@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v6), enhanced observability, unified channel logging, deduplication
-  visibility, lifecycle tracing, connection state tracking, zombie detection
+  (v1.6.3.7-v7), BroadcastChannel from background, operation confirmations,
+  connection state tracking, zombie detection
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v7 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -51,9 +51,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
-- **Enhanced Observability** - Unified channel logging, lifecycle tracing (v6)
+- **Operation Confirmations** - Closed-loop feedback for all operations (v7)
 
-**v1.6.3.7-v6 Features (NEW):**
+**v1.6.3.7-v7 Features (NEW):**
+
+- **BroadcastChannel from Background** - Tier 1 messaging now functional
+- **Full State Sync** - `handleBroadcastFullStateSync()` handler for BC messages
+- **Operation Confirmations** - `_handleOperationConfirmation()` for all ops
+- **`_isOperationConfirmation()`** - Type checking for confirmation messages
+- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
+
+**v1.6.3.7-v6 Features (Retained):**
 
 - **Initial State Load Wait** - 2-second wait before rendering empty state
 - **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
@@ -92,16 +100,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   `sync-session-state`)
 - **DOM Reconciliation** - `_itemElements` Map for animation optimization
 
-**Key Functions (v1.6.3.7-v6):**
+**Key Functions (v1.6.3.7-v7):**
 
 | Function                       | Purpose                                  |
 | ------------------------------ | ---------------------------------------- |
+| `handleBroadcastFullStateSync()` | Handle full state from BC              |
+| `_handleOperationConfirmation()` | Confirmation handlers                  |
+| `_isOperationConfirmation()`   | Type checking for confirmations          |
 | `scheduleRender(source)`       | Unified render entry point               |
 | `_transitionConnectionState()` | Connection state transitions (v5)        |
-| `lastProcessedSaveId`          | Deduplication tracking (v5)              |
-| `_initializeSessionId()`       | Session cache validation (v5)            |
 | `_probeBackgroundHealth()`     | Circuit breaker health probe             |
-| `_routePortMessage()`          | Message routing (refactored)             |
 
 **Manager as Pure Consumer:**
 
@@ -128,17 +136,16 @@ for session tabs.
 
 ## Testing Requirements
 
+- [ ] BroadcastChannel from background works (v1.6.3.7-v7)
+- [ ] Full state sync via `handleBroadcastFullStateSync()` works (v1.6.3.7-v7)
+- [ ] Operation confirmations handled correctly (v1.6.3.7-v7)
 - [ ] Initial state load wait works (2s before empty state) (v1.6.3.7-v6)
 - [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
-- [ ] Deduplication visibility shows `RENDER_SKIPPED reason=...` (v1.6.3.7-v6)
-- [ ] Clear all tracing logs correlation ID (v1.6.3.7-v6)
 - [ ] Connection state transitions work (connected→zombie→disconnected) (v1.6.3.7-v5)
 - [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
-- [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Close all shows error notification on failure (v1.6.3.7-v4)
 - [ ] Session Quick Tabs display with `permanent: false` indicator (v1.6.3.7-v3)
-- [ ] BroadcastChannel updates trigger render (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -146,6 +153,6 @@ for session tabs.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v6 enhanced observability,
-unified channel logging, deduplication visibility, v5 connection state tracking,
-zombie detection, v4 circuit breaker probing, close all feedback.**
+**Your strength: Manager coordination with v1.6.3.7-v7 BroadcastChannel from
+background, operation confirmations, v6 unified channel logging, v5 connection
+state tracking, zombie detection, v4 circuit breaker probing.**

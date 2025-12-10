@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7-v6  
+**Version:** 1.6.3.7-v7  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,7 +22,15 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.7-v6 Features (NEW):**
+**v1.6.3.7-v7 Features (NEW):**
+
+- **BroadcastChannel from Background** - Tier 1 messaging now functional
+- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
+- **Operation Confirmations** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED handlers
+- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
+- **Storage Write Confirmations** - `_broadcastStorageWriteConfirmation()` after writes
+
+**v1.6.3.7-v6 Features (Retained):**
 
 - **Initial State Load Wait** - 2-second wait before rendering empty state
 - **Unified Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
@@ -43,52 +51,31 @@ Tabs Manager
 
 **v1.6.3.7-v4 Features (Retained):**
 
-- **Circuit Breaker Probing** - Early recovery with 500ms health probes during
-  open state (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
-- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
-  errors when background returns failure
-- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch with
-  graceful degradation
-- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
-  message after connection
-- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
-  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
-- **Storage Polling Backup** - Increased from 2s to 10s (BroadcastChannel is now
-  PRIMARY for instant updates)
+- **Circuit Breaker Probing** - `_probeBackgroundHealth()` with 500ms probes
+- **Close All Feedback** - `_showCloseAllErrorNotification()` on failure
+- **Refactored Message Handling** - `_routePortMessage()` (complexity 10→4)
+- **Storage Polling Backup** - 10s (BroadcastChannel is PRIMARY)
 
 **v1.6.3.7-v3 Features (Retained):**
 
-- **storage.session API** - Session-scoped Quick Tabs (`permanent: false`)
+- **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
-- **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
-  `sync-session-state`, `diagnostic-snapshot`)
-- **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
-- **notifications API** - System notifications (NotificationManager.js)
-- **DOM Reconciliation** - Sidebar animation optimization with `_itemElements`
-  Map
+- **browser.alarms API** - Scheduled tasks
+- **tabs.group() API** - Tab grouping (Firefox 138+)
+- **DOM Reconciliation** - `_itemElements` Map for differential updates
 
 **v1.6.3.7-v2 Features (Retained):**
 
-- **Single Writer Authority** - Manager sends commands (ADOPT_TAB,
-  CLOSE_MINIMIZED_TABS) to background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
-  deduplication
-- **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
-  `orphaned: true` flag
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()` with
-  read-back confirmation
+- **Single Writer Authority** - Manager sends commands to background
+- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based dedup
+- **Orphaned Tab Recovery** - `orphaned: true` flag
+- **Storage Write Verification** - `writeStateWithVerificationAndRetry()`
 
 **v1.6.3.7-v1 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` resets Firefox 30s idle timer
-  every 20s
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-  (100ms→10s)
-- **UI Performance** - Debounced `renderUI()` (300ms), differential storage
-  updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive
-  integers
+- **Background Keepalive** - `_startKeepalive()` every 20s
+- **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive ints
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, BroadcastChannelManager, QuickTabGroupManager,
@@ -120,7 +107,20 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.7-v6: Enhanced Observability + Lifecycle Logging
+### v1.6.3.7-v7: BroadcastChannel from Background + Confirmations
+
+**BroadcastChannel (Tier 1):** Background now posts to `quick-tabs-updates` channel after state ops.
+
+**Full State Sync:** `broadcastFullStateSync()` sends complete state to all Manager instances.
+
+**Operation Confirmations:** `_isOperationConfirmation()`, `_handleOperationConfirmation()` for
+MINIMIZE_CONFIRMED, RESTORE_CONFIRMED, DELETE_CONFIRMED, UPDATE_CONFIRMED, ADOPT_CONFIRMED.
+
+**Storage Write Confirmations:** `_broadcastStorageWriteConfirmation()` broadcasts after storage.local.set().
+
+**DEBUG Flags:** `DEBUG_MESSAGING` constants for toggling verbose logs.
+
+### v1.6.3.7-v6: Enhanced Observability + Lifecycle Logging (Retained)
 
 **State Load:** 2s wait before empty state, `STATE_LOAD_STARTED/COMPLETED` logging.
 
@@ -137,22 +137,14 @@ background:
 
 ### v1.6.3.7-v5: Connection State Tracking + Deduplication (Retained)
 
-### v1.6.3.7-v4: Circuit Breaker Probing + Message Handling (Retained)
+### v1.6.3.7-v4: Circuit Breaker Probing (Retained)
 
-**Circuit Breaker Probing:** Early recovery with health probes during open state.
-`CIRCUIT_BREAKER_OPEN_DURATION_MS` reduced 10000→2000ms, `CIRCUIT_BREAKER_PROBE_INTERVAL_MS` = 500ms.
-If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
+**Circuit Breaker Probing:** `CIRCUIT_BREAKER_OPEN_DURATION_MS`=2000ms,
+`CIRCUIT_BREAKER_PROBE_INTERVAL_MS`=500ms.
 
 **Close All Feedback:** `_showCloseAllErrorNotification()` on background failure.
 
-**Message Error Handling:** `handlePortMessage()` wrapped in try-catch with graceful degradation.
-
-**Listener Verification:** `_verifyPortListenerRegistration()` sends test message after connection.
-
-**Refactored Message Handling:** Extracted `_logPortMessageReceived()`, `_routePortMessage()`,
-`_handleQuickTabStateUpdate()` (complexity 10→4).
-
-**Storage Polling Backup:** Increased 2s→10s (BroadcastChannel is PRIMARY).
+**Refactored Message Handling:** `_routePortMessage()` (complexity 10→4).
 
 ### v1.6.3.7-v3: BroadcastChannel + Storage Routing (Retained)
 
@@ -187,7 +179,15 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 
 ---
 
-## 🆕 v1.6.3.7-v6 Patterns
+## 🆕 v1.6.3.7-v7 Patterns
+
+- **BroadcastChannel from Background** - `_broadcastViaBroadcastChannel()` helper
+- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
+- **Operation Confirmations** - `_handleOperationConfirmation()` handlers
+- **DEBUG_MESSAGING** - Toggle flags for verbose logging
+- **Storage Write Confirmations** - Broadcast after storage.local.set()
+
+## 🆕 v1.6.3.7-v6 Patterns (Retained)
 
 - **Initial State Load Wait** - 2s wait before empty state render
 - **Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
@@ -205,10 +205,8 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 
 ## 🆕 v1.6.3.7-v4 Patterns (Retained)
 
-- **Circuit Breaker** - `_probeBackgroundHealth()`, `CIRCUIT_BREAKER_OPEN_DURATION_MS`=2000ms
+- **Circuit Breaker** - `_probeBackgroundHealth()`, 2000ms open duration
 - **Close All Feedback** - `_showCloseAllErrorNotification()` on failure
-- **Listener Verification** - `_verifyPortListenerRegistration()` with test message
-- **Refactored Handlers** - `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
 
 ## 🆕 v1.6.3.7-v3 Patterns (Retained)
 
@@ -266,7 +264,8 @@ If `_probeBackgroundHealth()` succeeds → immediate half-open → reconnect.
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, coordinated clear, closeAll mutex, circuit breaker probing (v4),
-connection state tracking (v5), enhanced observability (v6).
+connection state tracking (v5), enhanced observability (v6), BroadcastChannel
+from background (v7).
 
 ---
 
@@ -321,8 +320,8 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 | File                     | Features                                                     |
 | ------------------------ | ------------------------------------------------------------ |
-| `background.js`          | Port registry, keepalive, alarms, lifecycle logging (v6)     |
-| `quick-tabs-manager.js`  | `scheduleRender()`, channel logging, dedup visibility (v6)   |
+| `background.js`          | Port registry, BroadcastChannel posting, confirmations (v7)  |
+| `quick-tabs-manager.js`  | `scheduleRender()`, confirmation handlers, dedup (v7)        |
 | `storage-utils.js`       | `writeStateWithVerificationAndRetry()`, write lifecycle (v6) |
 | `TabStateManager.js`     | Per-tab state (sessions API, v3)                             |
 | `BroadcastChannelManager.js` | Real-time messaging (v3)                                 |

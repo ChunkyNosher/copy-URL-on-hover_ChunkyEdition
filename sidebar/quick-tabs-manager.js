@@ -99,6 +99,11 @@ const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 
+// ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
+// Issue #5: Feature flag for verbose message routing logs
+// Set to true to enable detailed logging of message routing at all tiers
+const DEBUG_MESSAGING = true;
+
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
 const RENDER_DEBOUNCE_MS = 300;
@@ -1334,25 +1339,20 @@ function handlePortMessage(message) {
  * Log port message received with details
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
  * v1.6.3.7-v5 - FIX Issue #3: Added path indicator for unified message routing logging
+ * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
  * @private
  * @param {Object} message - Message from background
  */
 function _logPortMessageReceived(message) {
-  // v1.6.3.7-v6 - Issue #7: Log message received with channel source
+  // v1.6.4.13 - Issue #5: Consolidated log with [PORT] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
-    messageId: message.messageId,
-    saveId: message.saveId,
-    correlationId: message.correlationId
-  });
-
-  console.log('[Manager] PORT_MESSAGE_RECEIVED:', {
-    type: message.type,
-    action: message.action,
+    quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
     correlationId: message.correlationId,
-    path: 'port-connection',  // v1.6.3.7-v5 - FIX Issue #3: Explicit path indicator
-    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Include connection state
+    from: 'background',
+    path: 'port-connection',
+    connectionState,
     timestamp: Date.now()
   });
 
@@ -1408,6 +1408,72 @@ function _routePortMessage(message) {
     _handleStateSyncResponse(message);
     return;
   }
+
+  // v1.6.3.7-v7 - FIX Issue #7: Handle operation confirmations from background
+  if (_isOperationConfirmation(message.type)) {
+    _handleOperationConfirmation(message);
+    return;
+  }
+
+  // v1.6.3.7-v7 - FIX Issue #7: Log unknown message types for debugging
+  console.log('[Manager] [PORT] UNKNOWN_MESSAGE_TYPE:', {
+    type: message.type,
+    action: message.action,
+    messageId: message.messageId,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Check if message type is an operation confirmation
+ * v1.6.3.7-v7 - FIX Issue #7: Support operation confirmation messages
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean} True if this is an operation confirmation
+ */
+function _isOperationConfirmation(type) {
+  const confirmationTypes = [
+    'MINIMIZE_CONFIRMED',
+    'RESTORE_CONFIRMED',
+    'DELETE_CONFIRMED',
+    'UPDATE_CONFIRMED',
+    'ADOPT_CONFIRMED',
+    'CLEAR_ALL_CONFIRMED'
+  ];
+  return confirmationTypes.includes(type);
+}
+
+/**
+ * Handle operation confirmation from background
+ * v1.6.3.7-v7 - FIX Issue #7: Process confirmations and trigger UI update
+ * @private
+ * @param {Object} message - Confirmation message
+ */
+function _handleOperationConfirmation(message) {
+  const { type, quickTabId, correlationId, success, error } = message;
+
+  // Default success to true if not explicitly false (confirmation messages typically indicate success)
+  const isSuccess = success !== false;
+
+  console.log('[Manager] [PORT] OPERATION_CONFIRMED:', {
+    type,
+    quickTabId,
+    correlationId,
+    success: isSuccess,
+    error: error || null,
+    timestamp: Date.now()
+  });
+
+  // If there's a pending acknowledgment for this correlationId, resolve it
+  if (correlationId && pendingAcks.has(correlationId)) {
+    const pending = pendingAcks.get(correlationId);
+    clearTimeout(pending.timeout);
+    pending.resolve({ success: isSuccess, type, quickTabId });
+    pendingAcks.delete(correlationId);
+  }
+
+  // Schedule render to reflect the confirmed operation
+  scheduleRender(`port-${type}`, message.messageId);
 }
 
 /**
@@ -1628,6 +1694,7 @@ function initializeBroadcastChannel() {
  * Handle messages from BroadcastChannel
  * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
  * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
+ * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
@@ -1643,19 +1710,13 @@ function handleBroadcastChannelMessage(event) {
   const randomSuffix = Math.random().toString(36).substring(2, 7);
   const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
 
-  // v1.6.3.7-v6 - Issue #7: Log message received with channel source
+  // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
-    timestamp: message.timestamp,
-    messageId: broadcastMessageId
-  });
-
-  console.log('[Manager] BROADCAST_CHANNEL_RECEIVED:', {
-    type: message.type,
-    quickTabId: message.quickTabId,
-    timestamp: message.timestamp,
     messageId: broadcastMessageId,
-    source: 'BroadcastChannel'
+    saveId: message.saveId,
+    from: 'BroadcastChannel',
+    timestamp: Date.now()
   });
 
   // v1.6.3.7-v4 - Route to handler based on message type
@@ -1665,6 +1726,7 @@ function handleBroadcastChannelMessage(event) {
 /**
  * Route broadcast message to appropriate handler
  * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
+ * v1.6.3.7-v7 - FIX Issue #6: Added full-state-sync handler
  * @private
  * @param {Object} message - BroadcastChannel message
  * @param {string} messageId - Generated message ID for deduplication
@@ -1675,15 +1737,77 @@ function _routeBroadcastMessage(message, messageId) {
     'quick-tab-updated': handleBroadcastUpdate,
     'quick-tab-deleted': handleBroadcastDelete,
     'quick-tab-minimized': handleBroadcastMinimizeRestore,
-    'quick-tab-restored': handleBroadcastMinimizeRestore
+    'quick-tab-restored': handleBroadcastMinimizeRestore,
+    'full-state-sync': handleBroadcastFullStateSync
   };
 
   const handler = handlers[message.type];
   if (handler) {
     handler(message, messageId);
   } else {
-    console.log('[Manager] Unknown broadcast type:', message.type);
+    // v1.6.3.7-v7 - FIX Issue #7: Use consistent [BC] prefix for BroadcastChannel messages
+    console.log('[Manager] [BC] UNKNOWN_MESSAGE_TYPE:', {
+      type: message.type,
+      quickTabId: message.quickTabId,
+      messageId,
+      timestamp: Date.now()
+    });
   }
+}
+
+/**
+ * Handle full-state-sync broadcast
+ * v1.6.3.7-v7 - FIX Issue #6: Handle full state sync from background
+ * This provides instant state updates after storage writes
+ * @param {Object} message - Broadcast message with state and saveId
+ * @param {string} messageId - Message ID for deduplication
+ */
+function handleBroadcastFullStateSync(message, messageId) {
+  const { state, saveId } = message;
+
+  if (!state || !state.tabs) {
+    console.log('[Manager] [BC] Invalid full-state-sync message, skipping');
+    return;
+  }
+
+  // Check saveId deduplication
+  if (saveId && saveId === lastProcessedSaveId) {
+    console.log('[Manager] [BC] full-state-sync DEDUP_SKIPPED:', {
+      saveId,
+      reason: 'already processed'
+    });
+    return;
+  }
+
+  console.log('[Manager] [BC] FULL_STATE_SYNC received:', {
+    tabCount: state.tabs.length,
+    saveId,
+    messageId
+  });
+
+  // Update local state with full state
+  // v1.6.3.7-v7 - FIX Code Review: Use defensive copy to avoid shared reference issues
+  quickTabsState.tabs = [...state.tabs];
+  quickTabsState.saveId = saveId;
+  quickTabsState.timestamp = state.timestamp || Date.now();
+
+  // Update cache
+  _updateInMemoryCache(state.tabs);
+  lastLocalUpdateTime = Date.now();
+
+  // Track processed saveId
+  if (saveId) {
+    lastProcessedSaveId = saveId;
+    lastSaveIdProcessedAt = Date.now();
+  }
+
+  console.log('[Manager] [BC] Full state sync applied:', {
+    tabCount: state.tabs.length,
+    saveId
+  });
+
+  // Schedule render
+  scheduleRender('broadcast-full-state-sync', messageId);
 }
 
 /**
@@ -4891,6 +5015,7 @@ function _buildStorageChangeContext(change) {
  * Issue #8: Unified logStorageEvent() format for sequence analysis
  * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
  * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
+ * v1.6.4.13 - Issue #5: Added [STORAGE] prefix for message routing logging
  * @private
  * @param {Object} context - Storage change context
  */
@@ -4900,6 +5025,17 @@ function _logStorageChangeEvent(context) {
   const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
   const addedIds = [...newIds].filter(id => !oldIds.has(id));
   const removedIds = [...oldIds].filter(id => !newIds.has(id));
+
+  // v1.6.4.13 - Issue #5: Log MESSAGE_RECEIVED with [STORAGE] prefix
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:`, {
+      saveId: context.newValue?.saveId,
+      tabCount: context.newTabCount,
+      delta: context.newTabCount - context.oldTabCount,
+      source: `tab-${context.sourceTabId || 'unknown'}`,
+      timestamp: Date.now()
+    });
+  }
 
   // Issue #8: Unified format for storage event logging
   console.log(
