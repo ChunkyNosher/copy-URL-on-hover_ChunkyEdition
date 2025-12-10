@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v5.
+  documentation. Current version: v1.6.3.7-v6.
 tools: ['*']
 ---
 
@@ -69,21 +69,26 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v5)
+## Current Extension State (v1.6.3.7-v6)
 
-### v1.6.3.7-v5 Features (NEW)
+### v1.6.3.7-v6 Features (NEW)
+
+- **Initial State Load Wait** - 2-second wait before rendering empty state
+- **Unified Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
+- **Deduplication Decision Visibility** - `RENDER_SKIPPED reason=...` logging
+- **Connection State Enhancements** - Duration tracking, fallback status logging
+- **Clear All Tracing** - Correlation ID for command tracking
+- **Keepalive Health Monitoring** - 60s health check, consecutive failure tracking
+- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
+- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
+- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED` logging
+
+### v1.6.3.7-v5 Features (Retained)
 
 - **Connection State Tracking** - Three states: connected → zombie → disconnected
-  with `_transitionConnectionState()` method and `connectionState` variable
-- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
-  immediate BroadcastChannel fallback when port becomes unresponsive
-- **Unified Message Routing** - `path` property in logs distinguishes port vs
-  runtime.onMessage paths
-- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
-  prevents duplicate `renderUI()` calls
-- **Session Cache Validation** - `_initializeSessionId()` validates cache with
-  sessionId + timestamp; rejects cross-session data
-- **Runtime Message Handling** - runtime.onMessage handler with try-catch
+- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
+- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
+- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
 
 ### v1.6.3.7-v4 Features (Retained)
 
@@ -114,7 +119,7 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v5)
+### Key Functions (v1.6.3.7-v6)
 
 | Function                               | Location      | Purpose                        |
 | -------------------------------------- | ------------- | ------------------------------ |
@@ -123,7 +128,7 @@ nothing.
 | `lastProcessedSaveId`                  | Manager       | Deduplication tracking         |
 | `_initializeSessionId()`               | Manager       | Session cache validation       |
 | `_probeBackgroundHealth()`             | Manager       | Circuit breaker health probe   |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification             |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification + lifecycle |
 | `handleFullStateSyncRequest()`         | Background    | State sync handler             |
 
 ---
@@ -131,14 +136,14 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v5
+- [ ] Version numbers match 1.6.3.7-v6
+- [ ] **v1.6.3.7-v6:** Unified channel logging documented
+- [ ] **v1.6.3.7-v6:** Deduplication visibility documented
+- [ ] **v1.6.3.7-v6:** Lifecycle tracing documented
+- [ ] **v1.6.3.7-v6:** Keepalive health monitoring documented
 - [ ] **v1.6.3.7-v5:** Connection state tracking documented
 - [ ] **v1.6.3.7-v5:** Zombie detection documented
-- [ ] **v1.6.3.7-v5:** Listener deduplication documented
-- [ ] **v1.6.3.7-v5:** Session cache validation documented
-- [ ] **v1.6.3.7-v5:** Runtime message handling documented
 - [ ] **v1.6.3.7-v4:** Circuit breaker probing documented
-- [ ] **v1.6.3.7-v4:** Close all feedback documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -148,11 +153,11 @@ nothing.
 
 | Error                      | Fix                                  |
 | -------------------------- | ------------------------------------ |
-| v1.6.3.7-v4 or earlier     | Update to 1.6.3.7-v5                 |
+| v1.6.3.7-v5 or earlier     | Update to 1.6.3.7-v6                 |
 | "Pin to Page"              | Use "Solo/Mute"                      |
 | Direct storage writes      | Use Single Writer Authority          |
-| Missing connection states  | Document connected/zombie/disconnected|
-| Missing deduplication      | Document saveId-based deduplication  |
+| Missing channel logging    | Document `[BC]`, `[PORT]`, `[STORAGE]`|
+| Missing lifecycle logging  | Document lifecycle events            |
 
 ---
 

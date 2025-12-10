@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v5), connection state tracking, zombie detection, listener deduplication,
-  session cache validation, circuit breaker probing, message error handling
+  (v1.6.3.7-v6), enhanced observability, unified channel logging, lifecycle tracing,
+  connection state tracking, zombie detection, circuit breaker probing
 tools: ['*']
 ---
 
@@ -38,20 +38,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v6 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v5 Features (NEW):**
+**v1.6.3.7-v6 Features (NEW):**
+
+- **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
+- **Deduplication Visibility** - `RENDER_SKIPPED reason=...` logging
+- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
+- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
+- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED` logging
+- **Keepalive Health** - 60s health check, consecutive failure tracking
+
+**v1.6.3.7-v5 Features (Retained):**
 
 - **Connection State Tracking** - Three states: connected → zombie → disconnected
-  with `_transitionConnectionState()` method and `connectionState` variable
-- **Zombie Detection** - Heartbeat timeout (5s) triggers zombie state with
-  immediate BroadcastChannel fallback when port becomes unresponsive
-- **Unified Message Routing** - `path` property in logs (port vs runtime.onMessage)
-- **Listener Deduplication** - `lastProcessedSaveId` comparison in `scheduleRender()`
-  prevents duplicate `renderUI()` calls for same state change
-- **Session Cache Validation** - `_initializeSessionId()` validates cache with
-  sessionId + timestamp; rejects cross-session data
-- **Runtime Message Handling** - runtime.onMessage handler with try-catch wrappers
+- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
+- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
+- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -81,7 +84,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
 - **UI Performance** - Debounced renderUI (300ms)
 
-**Key Functions (v1.6.3.7-v5):**
+**Key Functions (v1.6.3.7-v6):**
 
 | Function                       | Location   | Purpose                        |
 | ------------------------------ | ---------- | ------------------------------ |
@@ -107,13 +110,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
+- [ ] Deduplication visibility shows `RENDER_SKIPPED reason=...` (v1.6.3.7-v6)
+- [ ] Port registry lifecycle logging works (v1.6.3.7-v6)
+- [ ] Storage write lifecycle logging works (v1.6.3.7-v6)
 - [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
 - [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
 - [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
-- [ ] Session cache validation rejects cross-session data (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
-- [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
-- [ ] Storage polling backup works at 10s intervals (v1.6.3.7-v4)
 - [ ] BroadcastChannel delivers instant updates (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] `scheduleRender()` prevents redundant renders via hash comparison
@@ -123,6 +127,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v5 connection state tracking,
-zombie detection, listener deduplication, session cache validation, and v4
-circuit breaker probing, BroadcastChannel as primary, storage polling as backup.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7-v6 enhanced observability,
+unified channel logging, lifecycle tracing, v5 connection state tracking,
+zombie detection, v4 circuit breaker probing, BroadcastChannel as primary.**

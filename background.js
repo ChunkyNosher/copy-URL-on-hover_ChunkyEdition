@@ -135,6 +135,23 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
+// ==================== v1.6.4.9 LOGGING ENHANCEMENT TRACKING VARIABLES ====================
+// Issue #4: Deduplication Decision Logging
+// (Already tracked by IN_PROGRESS_TRANSACTIONS set)
+
+// Issue #5: Keepalive Health Monitoring
+let lastKeepaliveSuccessTime = Date.now(); // Track last successful keepalive reset
+let keepaliveSuccessCount = 0; // Counter for rate-limited success logging (every 10th)
+let consecutiveKeepaliveFailures = 0; // Track consecutive failures for warning
+const KEEPALIVE_LOG_EVERY_N = 10; // Log success every Nth keepalive
+const KEEPALIVE_HEALTH_CHECK_INTERVAL_MS = 60000; // Health check every 60 seconds
+const KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS = 90000; // Warn if no success for 90+ seconds
+let keepaliveHealthCheckIntervalId = null; // Health check interval ID
+
+// Issue #6: Port Registry Size Warnings
+const PORT_REGISTRY_WARN_THRESHOLD = 50; // Warn if registry exceeds 50 ports
+const PORT_REGISTRY_CRITICAL_THRESHOLD = 100; // Critical if exceeds 100 ports
+
 // ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
 const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
@@ -154,11 +171,17 @@ let keepaliveIntervalId = null;
 /**
  * Start keepalive interval to reset Firefox's idle timer
  * v1.6.3.7 - FIX Issue #1: Use browser.runtime.sendMessage to reset idle timer
+ * v1.6.4.9 - Issue #5: Added health monitoring with periodic health checks
  */
 function startKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
   }
+
+  // v1.6.4.9 - Issue #5: Initialize health tracking
+  lastKeepaliveSuccessTime = Date.now();
+  consecutiveKeepaliveFailures = 0;
+  keepaliveSuccessCount = 0;
 
   // Immediate ping to register activity
   triggerIdleReset();
@@ -167,12 +190,39 @@ function startKeepalive() {
     triggerIdleReset();
   }, KEEPALIVE_INTERVAL_MS);
 
+  // v1.6.4.9 - Issue #5: Start health check interval
+  _startKeepaliveHealthCheck();
+
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
+}
+
+/**
+ * Start periodic health check for keepalive mechanism
+ * v1.6.4.9 - Issue #5: Check if keepalive is functioning properly
+ * @private
+ */
+function _startKeepaliveHealthCheck() {
+  if (keepaliveHealthCheckIntervalId) {
+    clearInterval(keepaliveHealthCheckIntervalId);
+  }
+
+  keepaliveHealthCheckIntervalId = setInterval(() => {
+    const timeSinceLastSuccess = Date.now() - lastKeepaliveSuccessTime;
+    if (timeSinceLastSuccess > KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS) {
+      console.warn('[Background] KEEPALIVE_HEALTH_WARNING:', {
+        timeSinceLastSuccessMs: timeSinceLastSuccess,
+        lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString(),
+        consecutiveFailures: consecutiveKeepaliveFailures,
+        threshold: KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS
+      });
+    }
+  }, KEEPALIVE_HEALTH_CHECK_INTERVAL_MS);
 }
 
 /**
  * Trigger idle timer reset using tabs.query and sendMessage
  * v1.6.3.7 - FIX Issue #1: Firefox treats tabs.query and runtime.sendMessage as activity
+ * v1.6.4.9 - Issue #5: Added health tracking and rate-limited success logging
  */
 async function triggerIdleReset() {
   try {
@@ -187,24 +237,54 @@ async function triggerIdleReset() {
       // Expected to fail if no listener, but the message send itself resets the timer
     }
 
-    console.log('[Background] KEEPALIVE: idle timer reset via tabs.query + sendMessage', {
-      tabCount: tabs.length,
-      timestamp: Date.now()
-    });
+    // v1.6.4.9 - Issue #5: Track success and reset failure counter
+    lastKeepaliveSuccessTime = Date.now();
+    consecutiveKeepaliveFailures = 0;
+    keepaliveSuccessCount++;
+
+    // v1.6.4.9 - Issue #5: Rate-limited success logging (every 10th success)
+    if (keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
+      console.log('[Background] KEEPALIVE_RESET_SUCCESS:', {
+        tabCount: tabs.length,
+        successCount: keepaliveSuccessCount,
+        timestamp: Date.now()
+      });
+    }
   } catch (err) {
-    console.warn('[Background] KEEPALIVE: trigger failed:', err.message);
+    // v1.6.4.9 - Issue #5: Track failures and warn if consecutive
+    consecutiveKeepaliveFailures++;
+    console.error('[Background] KEEPALIVE_RESET_FAILED:', {
+      error: err.message,
+      consecutiveFailures: consecutiveKeepaliveFailures,
+      lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString()
+    });
+
+    // v1.6.4.9 - Issue #5: Warn if > 2 consecutive failures
+    if (consecutiveKeepaliveFailures > 2) {
+      console.warn('[Background] KEEPALIVE_CONSECUTIVE_FAILURES_WARNING:', {
+        failureCount: consecutiveKeepaliveFailures,
+        timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime
+      });
+    }
   }
 }
 
 /**
  * Stop keepalive interval
  * v1.6.3.7 - FIX Issue #1: Cleanup function
+ * v1.6.4.9 - Issue #5: Also stop health check interval
  */
 function _stopKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
     keepaliveIntervalId = null;
     console.log('[Background] v1.6.3.7 Keepalive stopped');
+  }
+
+  // v1.6.4.9 - Issue #5: Stop health check interval
+  if (keepaliveHealthCheckIntervalId) {
+    clearInterval(keepaliveHealthCheckIntervalId);
+    keepaliveHealthCheckIntervalId = null;
   }
 }
 
@@ -2160,6 +2240,15 @@ function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
 
+  // v1.6.4.9 - Issue #4: Log storage change received with incoming values
+  console.log('[Background] STORAGE_CHANGE_RECEIVED:', {
+    saveId: newValue?.saveId,
+    timestamp: newValue?.timestamp,
+    transactionId: newValue?.transactionId,
+    tabCount: newValue?.tabs?.length ?? 0,
+    oldSaveId: oldValue?.saveId
+  });
+
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
 
@@ -2277,40 +2366,104 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 /**
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
+ * v1.6.4.9 - Issue #4: Enhanced logging with comparison values
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _multiMethodDeduplication(newValue, oldValue) {
+  // v1.6.4.9 - Issue #4: Log dedup check start with comparison values
+  console.log('[Background] DEDUP_CHECK:', {
+    newSaveId: newValue?.saveId,
+    oldSaveId: oldValue?.saveId,
+    newTimestamp: newValue?.timestamp,
+    oldTimestamp: oldValue?.timestamp,
+    newTransactionId: newValue?.transactionId,
+    inProgressTransactionCount: IN_PROGRESS_TRANSACTIONS.size
+  });
+
+  // v1.6.4.9 - Issue #4: Periodically log transaction set size if > 5
+  if (IN_PROGRESS_TRANSACTIONS.size > 5) {
+    console.warn('[Background] DEDUP_CHECK: Large in-progress transaction set:', {
+      size: IN_PROGRESS_TRANSACTIONS.size,
+      transactions: Array.from(IN_PROGRESS_TRANSACTIONS).slice(0, 10) // Log first 10
+    });
+  }
+
   // Method 1: transactionId (highest priority - deterministic)
   // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
   if (_isTransactionSelfWrite(newValue)) {
-    return {
+    // v1.6.4.9 - Issue #4: Log elapsed time for transaction match
+    const transactionStartTime = _getTransactionStartTime(newValue.transactionId);
+    const result = {
       shouldSkip: true,
       method: 'transactionId',
       reason: `Transaction ${newValue.transactionId} in progress`
     };
+    console.log('[Background] DEDUP_RESULT:', {
+      ...result,
+      decision: 'skip',
+      elapsedMs: transactionStartTime ? Date.now() - transactionStartTime : 'unknown'
+    });
+    return result;
   }
 
   // Method 2: saveId + timestamp comparison (catches duplicates from same source)
   if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
-    return {
+    const result = {
       shouldSkip: true,
       method: 'saveId+timestamp',
       reason: 'Same saveId and timestamp within window'
     };
+    // v1.6.4.9 - Issue #4: Log comparison values
+    console.log('[Background] DEDUP_RESULT:', {
+      ...result,
+      decision: 'skip',
+      comparison: {
+        saveId: newValue?.saveId,
+        newTs: newValue?.timestamp,
+        oldTs: oldValue?.timestamp,
+        diffMs: Math.abs((newValue?.timestamp || 0) - (oldValue?.timestamp || 0))
+      }
+    });
+    return result;
   }
 
   // Method 3: Content hash comparison (catches Firefox spurious events)
   if (_isContentHashDuplicate(newValue, oldValue)) {
-    return {
+    const result = {
       shouldSkip: true,
       method: 'contentHash',
       reason: 'Identical content with same saveId'
     };
+    console.log('[Background] DEDUP_RESULT:', {
+      ...result,
+      decision: 'skip'
+    });
+    return result;
   }
 
-  return { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
+  const result = { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
+  console.log('[Background] DEDUP_RESULT:', {
+    ...result,
+    decision: 'process'
+  });
+  return result;
+}
+
+/**
+ * Get transaction start time from tracking (for elapsed time logging)
+ * v1.6.4.9 - Issue #4: Helper for transaction timing
+ * @private
+ * @param {string} transactionId - Transaction ID
+ * @returns {number|null} Start timestamp or null
+ */
+function _getTransactionStartTime(transactionId) {
+  // Transaction IDs are often formatted as timestamp-based strings
+  // Try to extract timestamp from common formats like "bg-op-{timestamp}-{random}"
+  if (!transactionId) return null;
+  const match = transactionId.match(/-(\d{13})-/);
+  return match ? parseInt(match[1], 10) : null;
 }
 
 /**
@@ -2992,6 +3145,7 @@ function logPortLifecycle(origin, event, details = {}) {
  */
 function registerPort(port, origin, tabId, type) {
   const portId = generatePortId();
+  const beforeCount = portRegistry.size;
 
   portRegistry.set(portId, {
     port,
@@ -3003,20 +3157,70 @@ function registerPort(port, origin, tabId, type) {
     messageCount: 0
   });
 
+  // v1.6.4.9 - Issue #6: Enhanced PORT_REGISTERED logging
+  console.log('[Background] PORT_REGISTERED:', {
+    portId,
+    origin,
+    tabId,
+    type,
+    registrySize: portRegistry.size,
+    previousSize: beforeCount
+  });
+
+  // v1.6.4.9 - Issue #6: Warn if registry size exceeds thresholds
+  _checkPortRegistrySizeWarnings();
+
   logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
 
   return portId;
 }
 
 /**
+ * Check port registry size and log warnings if thresholds exceeded
+ * v1.6.4.9 - Issue #6: Port registry size monitoring
+ * @private
+ */
+function _checkPortRegistrySizeWarnings() {
+  const size = portRegistry.size;
+  if (size >= PORT_REGISTRY_CRITICAL_THRESHOLD) {
+    console.error('[Background] PORT_REGISTRY_CRITICAL:', {
+      size,
+      threshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
+      message: 'Port registry exceeds critical threshold - possible memory leak'
+    });
+  } else if (size >= PORT_REGISTRY_WARN_THRESHOLD) {
+    console.warn('[Background] PORT_REGISTRY_WARNING:', {
+      size,
+      threshold: PORT_REGISTRY_WARN_THRESHOLD,
+      message: 'Port registry exceeds warning threshold'
+    });
+  }
+}
+
+/**
  * Unregister a port connection
  * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
+ * v1.6.4.9 - Issue #6: Enhanced PORT_UNREGISTERED logging
  * @param {string} portId - Port ID to unregister
  * @param {string} reason - Reason for disconnect
  */
 function unregisterPort(portId, reason = 'disconnect') {
   const portInfo = portRegistry.get(portId);
+  const beforeCount = portRegistry.size;
+
   if (portInfo) {
+    // v1.6.4.9 - Issue #6: Enhanced PORT_UNREGISTERED logging
+    console.log('[Background] PORT_UNREGISTERED:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      reason,
+      messageCount: portInfo.messageCount,
+      duration: Date.now() - portInfo.connectedAt,
+      registrySizeBefore: beforeCount,
+      registrySizeAfter: beforeCount - 1
+    });
+
     logPortLifecycle(portInfo.origin, 'close', {
       tabId: portInfo.tabId,
       portId,
@@ -3082,9 +3286,16 @@ function _checkPortInactivity(portInfo, now, portId) {
 /**
  * Clean up stale ports (e.g., from closed tabs)
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
+ * v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP logging with before/after counts
  */
 async function cleanupStalePorts() {
-  console.log('[Background] PORT_CLEANUP: Starting periodic port cleanup...');
+  const beforeCount = portRegistry.size;
+
+  // v1.6.4.9 - Issue #6: Log cleanup start
+  console.log('[Background] PORT_CLEANUP_START:', {
+    currentRegistrySize: beforeCount,
+    timestamp: Date.now()
+  });
 
   const now = Date.now();
   const stalePorts = [];
@@ -3104,9 +3315,15 @@ async function cleanupStalePorts() {
     unregisterPort(portId, reason);
   }
 
-  console.log('[Background] PORT_CLEANUP: Complete.', {
+  const afterCount = portRegistry.size;
+
+  // v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP_COMPLETE logging
+  console.log('[Background] PORT_CLEANUP_COMPLETE:', {
+    beforeCount,
+    afterCount,
     removedCount: stalePorts.length,
-    remainingPorts: portRegistry.size
+    removedPorts: stalePorts.map(p => p.portId),
+    timestamp: Date.now()
   });
 }
 
@@ -3506,28 +3723,52 @@ function handleLegacyAction(message, portInfo) {
 /**
  * Handle adopt action (atomic single write)
  * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * v1.6.4.9 - Issue #9: Enhanced adoption lifecycle logging
  * @param {Object} payload - Adoption payload
  */
 async function handleAdoptAction(payload) {
-  const { quickTabId, targetTabId } = payload;
+  const { quickTabId, targetTabId, correlationId } = payload;
+  const corrId = correlationId || `adopt-${Date.now()}-${quickTabId?.substring(0, 8) || 'unknown'}`;
 
-  console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
+  // v1.6.4.9 - Issue #9: Log adoption initiation
+  console.log('[Background] ADOPTION_STARTED:', {
+    quickTabId,
+    targetTabId,
+    correlationId: corrId,
+    timestamp: Date.now()
+  });
 
   // Read entire state
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
 
   if (!state?.tabs) {
+    // v1.6.4.9 - Issue #9: Log adoption failure
+    console.error('[Background] ADOPTION_FAILED:', {
+      quickTabId,
+      targetTabId,
+      correlationId: corrId,
+      reason: 'No state to adopt from'
+    });
     return { success: false, error: 'No state to adopt from' };
   }
 
   // Find and update the tab locally
   const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
   if (tabIndex === -1) {
+    // v1.6.4.9 - Issue #9: Log adoption failure
+    console.error('[Background] ADOPTION_FAILED:', {
+      quickTabId,
+      targetTabId,
+      correlationId: corrId,
+      reason: 'Quick Tab not found',
+      availableTabIds: state.tabs.map(t => t.id).slice(0, 10) // Log first 10 for debugging
+    });
     return { success: false, error: 'Quick Tab not found' };
   }
 
   const oldOriginTabId = state.tabs[tabIndex].originTabId;
+  const adoptedTabUrl = state.tabs[tabIndex].url;
   state.tabs[tabIndex].originTabId = targetTabId;
 
   // Single atomic write
@@ -3551,10 +3792,14 @@ async function handleAdoptAction(payload) {
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
 
-  console.log('[Background] ADOPT_TAB complete:', {
+  // v1.6.4.9 - Issue #9: Log successful adoption completion
+  console.log('[Background] ADOPTION_COMPLETED:', {
     quickTabId,
+    url: adoptedTabUrl,
     oldOriginTabId,
-    newOriginTabId: targetTabId
+    newOriginTabId: targetTabId,
+    correlationId: corrId,
+    timestamp: Date.now()
   });
 
   return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
@@ -3796,12 +4041,21 @@ function _sendCloseMessageToTabs(tabs, quickTabId) {
 /**
  * Write state to storage with verification and exponential backoff retry
  * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
+ * v1.6.4.9 - Issue #8: Enhanced logging with attempt numbers and success signals
  * @param {string} operation - Operation name for logging
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerificationAndRetry(operation) {
   const saveId = `bg-${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
+
+  // v1.6.4.9 - Issue #8: Log initial write attempt
+  console.log('[Background] STORAGE_WRITE_ATTEMPT:', {
+    saveId,
+    operation,
+    attempt: `1/${STORAGE_WRITE_MAX_RETRIES}`,
+    tabCount: globalQuickTabState.tabs?.length ?? 0
+  });
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
     const result = await _attemptStorageWriteWithVerification(
@@ -3812,19 +4066,37 @@ async function writeStateWithVerificationAndRetry(operation) {
     );
 
     if (result.success && result.verified) {
+      // v1.6.4.9 - Issue #8: Clear success signal
+      console.log('[Background] STORAGE_WRITE_SUCCESS:', {
+        saveId,
+        operation,
+        attemptNumber: attempt,
+        totalAttempts: STORAGE_WRITE_MAX_RETRIES,
+        tabCount: globalQuickTabState.tabs?.length ?? 0
+      });
       return result;
     }
 
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
+      // v1.6.4.9 - Issue #8: Log each retry with clear attempt counter
+      console.log('[Background] STORAGE_WRITE_RETRY:', {
+        saveId,
+        operation,
+        attempt: `${attempt + 1}/${STORAGE_WRITE_MAX_RETRIES}`,
+        backoffMs,
+        reason: 'verification pending'
+      });
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
     }
   }
 
-  console.error('[Background] Storage write verification FAILED after max retries:', {
+  // v1.6.4.9 - Issue #8: Clear failure signal when all retries exhausted
+  console.error('[Background] STORAGE_WRITE_FINAL_FAILURE:', {
     operation,
     saveId,
-    maxRetries: STORAGE_WRITE_MAX_RETRIES
+    totalAttempts: STORAGE_WRITE_MAX_RETRIES,
+    tabCount: globalQuickTabState.tabs?.length ?? 0
   });
 
   return { success: false, saveId, verified: false, attempts: STORAGE_WRITE_MAX_RETRIES };

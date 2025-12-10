@@ -154,6 +154,32 @@ let connectionState = CONNECTION_STATE.DISCONNECTED;
  */
 let lastConnectionStateChange = 0;
 
+/**
+ * Consecutive connection failures counter for state transition context
+ * v1.6.3.7-v6 - Issue #3: Track consecutive failures for transition logging
+ */
+let consecutiveConnectionFailures = 0;
+
+// ==================== v1.6.3.7-v6 INITIALIZATION TRACKING ====================
+// Gap #1: State Loading & Initialization Race Condition
+/**
+ * Timeout ID for initial empty state wait
+ * v1.6.3.7-v6 - Gap #1: Wait 2 seconds before rendering empty if initial load is empty
+ */
+let initialLoadTimeoutId = null;
+
+/**
+ * Start time for state load duration tracking
+ * v1.6.3.7-v6 - Gap #1: Track load duration for diagnostics
+ */
+let stateLoadStartTime = 0;
+
+/**
+ * Flag to track if initial state load has completed
+ * v1.6.3.7-v6 - Gap #1: Prevent duplicate initialization
+ */
+let initialStateLoadComplete = false;
+
 // ==================== v1.6.3.7-v5 SAVEID DEDUPLICATION ====================
 // FIX Issue #4: State versioning using saveId for deduplication
 /**
@@ -382,35 +408,92 @@ function logPortLifecycle(event, details = {}) {
 /**
  * Transition connection state with logging
  * v1.6.3.7-v5 - FIX Issue #1: Explicit state transitions
+ * v1.6.3.7-v6 - Issue #3: Enhanced context logging with duration, reason, and failure count
  * @param {string} newState - New connection state
  * @param {string} reason - Reason for state change
  */
 function _transitionConnectionState(newState, reason) {
   const oldState = connectionState;
   const now = Date.now();
-  const timeSinceLastChange = now - lastConnectionStateChange;
+  const durationInPreviousState = lastConnectionStateChange > 0 ? now - lastConnectionStateChange : 0;
 
   connectionState = newState;
   lastConnectionStateChange = now;
 
+  _updateConsecutiveFailures(newState);
+  _logConnectionStateTransition(oldState, newState, reason, durationInPreviousState, now);
+  _logFallbackModeIfNeeded(newState);
+}
+
+/**
+ * Update consecutive failure counter based on state
+ * v1.6.3.7-v6 - Extracted to reduce _transitionConnectionState complexity
+ * @private
+ * @param {string} newState - New connection state
+ */
+function _updateConsecutiveFailures(newState) {
+  if (newState === CONNECTION_STATE.DISCONNECTED || newState === CONNECTION_STATE.ZOMBIE) {
+    consecutiveConnectionFailures++;
+  } else if (newState === CONNECTION_STATE.CONNECTED) {
+    consecutiveConnectionFailures = 0;
+  }
+}
+
+/**
+ * Log connection state transition with context
+ * v1.6.3.7-v6 - Extracted to reduce _transitionConnectionState complexity
+ * @private
+ */
+function _logConnectionStateTransition(oldState, newState, reason, duration, now) {
+  const isFallbackMode = newState === CONNECTION_STATE.ZOMBIE || newState === CONNECTION_STATE.DISCONNECTED;
   console.log('[Manager] CONNECTION_STATE_TRANSITION:', {
-    oldState,
+    previousState: oldState,
     newState,
     reason,
-    timeSinceLastChangeMs: timeSinceLastChange,
+    durationInPreviousStateMs: duration,
+    consecutiveFailures: consecutiveConnectionFailures,
+    fallbackModeActive: isFallbackMode,
+    broadcastChannelAvailable: isFallbackMode ? _isChannelAvailable() : null,
     timestamp: now
   });
+}
 
-  // v1.6.3.7-v5 - FIX Issue #1: When entering zombie state, immediately switch to BroadcastChannel
+/**
+ * Log fallback mode activation if entering zombie or disconnected state
+ * v1.6.3.7-v6 - Extracted to reduce _transitionConnectionState complexity
+ * @private
+ * @param {string} newState - New connection state
+ */
+function _logFallbackModeIfNeeded(newState) {
   if (newState === CONNECTION_STATE.ZOMBIE) {
-    console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to BroadcastChannel fallback immediately');
-    // BroadcastChannel is already initialized and active - just log the fallback activation
-    if (_isChannelAvailable()) {
-      console.log('[Manager] BroadcastChannel fallback ACTIVE - will receive updates via broadcast');
-    } else {
-      console.warn('[Manager] BroadcastChannel NOT available - relying on storage polling only');
-    }
+    _logZombieFallback();
+  } else if (newState === CONNECTION_STATE.DISCONNECTED) {
+    _logDisconnectedFallback();
   }
+}
+
+/**
+ * Log zombie state fallback
+ * @private
+ */
+function _logZombieFallback() {
+  console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to BroadcastChannel fallback immediately');
+  if (_isChannelAvailable()) {
+    console.log('[Manager] FALLBACK_CHANNEL_ACTIVATED: BroadcastChannel is ACTIVE - will receive updates via broadcast');
+  } else {
+    console.warn('[Manager] FALLBACK_CHANNEL_UNAVAILABLE: BroadcastChannel NOT available - relying on storage polling only');
+  }
+}
+
+/**
+ * Log disconnected state fallback
+ * @private
+ */
+function _logDisconnectedFallback() {
+  console.log('[Manager] FALLBACK_MODE_ACTIVE: Port disconnected, using BroadcastChannel + storage polling', {
+    broadcastAvailable: _isChannelAvailable(),
+    storagePollingMs: 10000
+  });
 }
 
 /**
@@ -941,6 +1024,7 @@ const STATE_SYNC_TIMEOUT_MS = 5000;
 /**
  * Request full state sync from background after port reconnection
  * v1.6.4.0 - FIX Issue E: Ensure Manager has latest state after reconnection
+ * v1.6.3.7-v6 - Gap #3 & Gap #4: Enhanced logging for state sync request/response/timeout
  * @private
  */
 async function _requestFullStateSync() {
@@ -949,13 +1033,19 @@ async function _requestFullStateSync() {
     return;
   }
 
-  console.log('[Manager] STATE_SYNC_REQUESTED: requesting full state from background');
+  const syncRequestTime = Date.now();
+  // v1.6.3.7-v6 - Gap #4: Log when sync request is sent with timestamp
+  console.log('[Manager] STATE_SYNC_REQUESTED:', {
+    timestamp: syncRequestTime,
+    timeoutMs: STATE_SYNC_TIMEOUT_MS,
+    currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
+  });
 
   try {
     const response = await sendPortMessageWithTimeout(
       {
         type: 'REQUEST_FULL_STATE_SYNC',
-        timestamp: Date.now(),
+        timestamp: syncRequestTime,
         source: 'sidebar',
         currentCacheHash: computeStateHash(quickTabsState),
         currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
@@ -964,17 +1054,25 @@ async function _requestFullStateSync() {
     );
 
     if (response?.success && response?.state) {
+      // v1.6.3.7-v6 - Gap #4: Log response arrival with data count
+      const responseTime = Date.now();
+      console.log('[Manager] STATE_SYNC_RESPONSE_RECEIVED:', {
+        timestamp: responseTime,
+        roundTripMs: responseTime - syncRequestTime,
+        serverTabCount: response.state?.tabs?.length ?? 0
+      });
       _handleStateSyncResponse(response);
     } else {
       console.warn('[Manager] State sync response did not include state:', response);
     }
   } catch (err) {
-    console.warn(
-      '[Manager] State sync timed out after',
-      STATE_SYNC_TIMEOUT_MS,
-      'ms, proceeding with cached state (may be stale):',
-      err.message
-    );
+    // v1.6.3.7-v6 - Gap #4: Log timeout with clear timeout indication
+    console.warn('[Manager] STATE_SYNC_TIMEOUT:', {
+      timestamp: Date.now(),
+      timeoutMs: STATE_SYNC_TIMEOUT_MS,
+      error: err.message,
+      message: `State sync did not complete within ${STATE_SYNC_TIMEOUT_MS}ms`
+    });
   }
 }
 
@@ -1028,17 +1126,34 @@ function _handleStateSyncResponse(response) {
  * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
  * v1.6.3.7-v4 - FIX Issue #4: Enhanced deduplication with message ID tracking
  * v1.6.3.7-v5 - FIX Issue #4: Added saveId-based deduplication
+ * v1.6.3.7-v6 - Gap #5: Enhanced deduplication logging with reason codes
  * @param {string} source - Source of render trigger for logging
  * @param {string} [messageId] - Optional message ID for deduplication
  */
 function scheduleRender(source = 'unknown', messageId = null) {
   const currentHash = computeStateHash(quickTabsState);
+  const currentTabCount = quickTabsState?.tabs?.length ?? 0;
   // v1.6.3.7-v5 - FIX Code Review: Validate saveId is a non-empty string
   const currentSaveId = _getValidSaveId(quickTabsState?.saveId);
 
+  // v1.6.3.7-v6 - Gap #5: Special case - if previousHash was 0 (empty) and new has tabs, ALWAYS render
+  if (lastRenderedStateHash === 0 && currentTabCount > 0) {
+    console.log('[Manager] RENDER_SPECIAL_CASE: Previous state was empty, forcing render', {
+      source,
+      previousHash: lastRenderedStateHash,
+      currentHash,
+      currentTabCount
+    });
+    // Skip all deduplication checks and proceed to render
+    _proceedToRender(source, messageId, currentSaveId, currentHash);
+    return;
+  }
+
   // v1.6.3.7-v5 - FIX Issue #4: Check saveId deduplication first (state versioning)
   if (currentSaveId && currentSaveId === lastProcessedSaveId) {
-    console.log('[Manager] RENDER_DEDUPLICATION: saveId already processed', {
+    // v1.6.3.7-v6 - Gap #5: Log with reason code
+    console.log('[Manager] RENDER_SKIPPED:', {
+      reason: 'saveId_match',
       source,
       saveId: currentSaveId,
       lastProcessedSaveId,
@@ -1049,7 +1164,9 @@ function scheduleRender(source = 'unknown', messageId = null) {
 
   // v1.6.3.7-v4 - FIX Issue #4: Check message ID deduplication
   if (messageId && _isMessageAlreadyProcessed(messageId)) {
-    console.log('[Manager] RENDER_DEDUPLICATION: message already processed', {
+    // v1.6.3.7-v6 - Gap #5: Log with reason code
+    console.log('[Manager] RENDER_SKIPPED:', {
+      reason: 'message_dedup',
       source,
       messageId,
       hash: currentHash
@@ -1059,13 +1176,24 @@ function scheduleRender(source = 'unknown', messageId = null) {
 
   // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
   if (currentHash === lastRenderedStateHash) {
-    console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
+    // v1.6.3.7-v6 - Gap #5: Log with reason code
+    console.log('[Manager] RENDER_SKIPPED:', {
+      reason: 'hash_match',
       source,
       hash: currentHash
     });
     return;
   }
 
+  _proceedToRender(source, messageId, currentSaveId, currentHash);
+}
+
+/**
+ * Proceed with rendering after passing deduplication checks
+ * v1.6.3.7-v6 - Gap #5: Extracted to support special case rendering
+ * @private
+ */
+function _proceedToRender(source, messageId, currentSaveId, currentHash) {
   // v1.6.3.7-v5 - FIX Issue #4: Track this saveId as processed
   if (currentSaveId) {
     lastProcessedSaveId = currentSaveId;
@@ -1210,6 +1338,13 @@ function handlePortMessage(message) {
  * @param {Object} message - Message from background
  */
 function _logPortMessageReceived(message) {
+  // v1.6.3.7-v6 - Issue #7: Log message received with channel source
+  console.log(`[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
+    messageId: message.messageId,
+    saveId: message.saveId,
+    correlationId: message.correlationId
+  });
+
   console.log('[Manager] PORT_MESSAGE_RECEIVED:', {
     type: message.type,
     action: message.action,
@@ -1465,6 +1600,7 @@ let broadcastHandlerRef = null;
 /**
  * Initialize BroadcastChannel for real-time updates
  * v1.6.3.7-v3 - API #2: Setup channel and listener
+ * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
  */
 function initializeBroadcastChannel() {
   const initialized = initBroadcastChannel();
@@ -1479,6 +1615,11 @@ function initializeBroadcastChannel() {
   // Add listener
   const added = addBroadcastListener(broadcastHandlerRef);
   if (added) {
+    // v1.6.3.7-v6 - Gap #3: Log listener registration with details
+    console.log('[Manager] LISTENER_REGISTERED: BroadcastChannel listener added', {
+      channel: 'quick-tabs-updates',
+      timestamp: Date.now()
+    });
     console.log('[Manager] v1.6.3.7-v3 BroadcastChannel listener added');
   }
 }
@@ -1501,6 +1642,13 @@ function handleBroadcastChannelMessage(event) {
   // Added random component to ensure uniqueness even for rapid same-type messages
   const randomSuffix = Math.random().toString(36).substring(2, 7);
   const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+
+  // v1.6.3.7-v6 - Issue #7: Log message received with channel source
+  console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
+    quickTabId: message.quickTabId,
+    timestamp: message.timestamp,
+    messageId: broadcastMessageId
+  });
 
   console.log('[Manager] BROADCAST_CHANNEL_RECEIVED:', {
     type: message.type,
@@ -2229,6 +2377,12 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // v1.6.3.7-v6 - Gap #1: Log DOM_CONTENT_LOADED
+  console.log('[Manager] DOM_CONTENT_LOADED:', {
+    timestamp: Date.now(),
+    url: window.location.href
+  });
+
   // Cache DOM elements
   containersList = document.getElementById('containersList');
   emptyState = document.getElementById('emptyState');
@@ -2258,11 +2412,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load container information from Firefox API
   await loadContainerInfo();
 
-  // Load Quick Tabs state from storage
-  await loadQuickTabsState();
+  // v1.6.3.7-v6 - Gap #1: Track state load start time
+  stateLoadStartTime = Date.now();
 
-  // Render initial UI
-  renderUI();
+  // Load Quick Tabs state from storage
+  const loadedState = await loadQuickTabsState();
+  const tabCount = quickTabsState?.tabs?.length ?? 0;
+
+  // v1.6.3.7-v6 - Gap #1: If initial load is empty, wait 2 seconds before rendering empty
+  if (tabCount === 0 && !initialStateLoadComplete) {
+    console.log('[Manager] INITIAL_LOAD_EMPTY: Waiting 2s for storage.onChanged before rendering empty', {
+      timestamp: Date.now()
+    });
+    
+    initialLoadTimeoutId = setTimeout(() => {
+      initialLoadTimeoutId = null;
+      initialStateLoadComplete = true;
+      const currentTabCount = quickTabsState?.tabs?.length ?? 0;
+      
+      if (currentTabCount === 0) {
+        console.log('[Manager] INITIAL_LOAD_TIMEOUT: No tabs received after 2s wait, rendering empty state', {
+          timestamp: Date.now()
+        });
+        renderUI();
+      } else {
+        console.log('[Manager] INITIAL_LOAD_TIMEOUT: Tabs received during wait period', {
+          tabCount: currentTabCount,
+          timestamp: Date.now()
+        });
+      }
+    }, 2000);
+  } else {
+    initialStateLoadComplete = true;
+    // Render initial UI
+    renderUI();
+  }
 
   // Setup event listeners
   setupEventListeners();
@@ -2630,10 +2814,18 @@ function _updateInMemoryCache(tabs) {
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
+ * v1.6.3.7-v6 - Gap #1: STATE_LOAD_STARTED and STATE_LOAD_COMPLETED logging
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
+
+  // v1.6.3.7-v6 - Gap #1: Log state load start
+  console.log('[Manager] STATE_LOAD_STARTED:', {
+    timestamp: loadStartTime,
+    sessionId: currentSessionId,
+    existingTabCount: quickTabsState?.tabs?.length ?? 0
+  });
 
   try {
     await checkStorageDebounce();
@@ -2646,10 +2838,7 @@ async function loadQuickTabsState() {
 
     if (!state) {
       _handleEmptyStorageState();
-      console.log('[Manager] Storage read complete: empty state', {
-        source: 'storage.local',
-        durationMs: Date.now() - loadStartTime
-      });
+      _logStateLoadCompleted('empty', 0, loadStartTime);
       return;
     }
 
@@ -2666,25 +2855,64 @@ async function loadQuickTabsState() {
     const newHash = computeStateHash(state);
     if (newHash === lastRenderedStateHash) {
       console.log('[Manager] Storage state unchanged (hash match), skipping update');
+      _logStateLoadCompleted('skipped-hash-match', state.tabs?.length ?? 0, loadStartTime);
       return;
     }
 
     // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
     if (_detectStorageStorm(state)) return;
 
-    // v1.6.3.5-v4 - Update cache with new valid state
-    _updateInMemoryCache(state.tabs || []);
-
-    quickTabsState = state;
-    filterInvalidTabs(quickTabsState);
-
-    // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
-    lastLocalUpdateTime = Date.now();
-
-    console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
+    _processLoadedState(state, loadStartTime);
   } catch (err) {
+    _logStateLoadCompleted('error', 0, loadStartTime, err.message);
     console.error('[Manager] Error loading Quick Tabs state:', err);
   }
+}
+
+/**
+ * Log state load completed event
+ * v1.6.3.7-v6 - Gap #1: Extracted to reduce loadQuickTabsState complexity
+ * @private
+ * @param {string} status - Load status
+ * @param {number} tabCount - Number of tabs loaded
+ * @param {number} startTime - Load start time
+ * @param {string} [error] - Error message if failed
+ */
+function _logStateLoadCompleted(status, tabCount, startTime, error = null) {
+  const logData = {
+    status,
+    tabCount,
+    durationMs: Date.now() - startTime,
+    source: 'storage.local'
+  };
+  if (error) {
+    logData.error = error;
+  }
+  if (status === 'success') {
+    logData.saveId = quickTabsState?.saveId;
+  }
+  console.log('[Manager] STATE_LOAD_COMPLETED:', logData);
+}
+
+/**
+ * Process loaded state and update local cache
+ * v1.6.3.7-v6 - Extracted to reduce loadQuickTabsState complexity
+ * @private
+ * @param {Object} state - Loaded state object
+ * @param {number} loadStartTime - When load started
+ */
+function _processLoadedState(state, loadStartTime) {
+  // v1.6.3.5-v4 - Update cache with new valid state
+  _updateInMemoryCache(state.tabs || []);
+
+  quickTabsState = state;
+  filterInvalidTabs(quickTabsState);
+
+  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
+  lastLocalUpdateTime = Date.now();
+
+  _logStateLoadCompleted('success', quickTabsState.tabs?.length ?? 0, loadStartTime);
+  console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
 }
 
 /**
@@ -4274,6 +4502,12 @@ function setupEventListeners() {
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
+  // v1.6.3.7-v6 - Gap #3: Log listener registration
+  console.log('[Manager] LISTENER_REGISTERED: storage.onChanged listener added', {
+    storageArea: 'local',
+    stateKey: STATE_KEY,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -4345,28 +4579,22 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime on storage.onChanged
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
+ * v1.6.3.7-v6 - Gap #2 & Issue #7: Enhanced deduplication logging with channel source
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
 
-  // v1.6.3.7 - FIX Issue #8: Log storage listener entry
-  console.log('[Manager] STORAGE_LISTENER:', {
-    event: 'storage.onChanged',
-    oldSaveId: context.oldValue?.saveId || 'none',
-    newSaveId: context.newValue?.saveId || 'none',
-    timestamp: Date.now()
-  });
-
-  // Log the storage change
+  _logStorageMessageReceived(context);
   _logStorageChangeEvent(context);
-
-  // Log tab ID changes (added/removed)
   _logTabIdChanges(context);
-
-  // Log position/size updates
   _logPositionSizeChanges(context);
+
+  // v1.6.3.7-v6 - Gap #2: Special case - if oldValue was empty and newValue has tabs
+  if (_handleEmptyToPopulatedTransition(context)) {
+    return;
+  }
 
   // Check for and handle suspicious drops
   if (_isSuspiciousStorageDrop(context.oldTabCount, context.newTabCount, context.newValue)) {
@@ -4374,10 +4602,85 @@ function _handleStorageChange(change) {
     return;
   }
 
-  // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
+  _processStorageChangeAnalysis(context);
+}
+
+/**
+ * Log storage message received with channel source
+ * v1.6.3.7-v6 - Issue #7: Extracted for complexity reduction
+ * @private
+ * @param {Object} context - Storage change context
+ */
+function _logStorageMessageReceived(context) {
+  console.log('[Manager] MESSAGE_RECEIVED [STORAGE]:', {
+    saveId: context.newValue?.saveId || 'none',
+    oldTabCount: context.oldTabCount,
+    newTabCount: context.newTabCount,
+    timestamp: Date.now()
+  });
+
+  console.log('[Manager] STORAGE_LISTENER:', {
+    event: 'storage.onChanged',
+    oldSaveId: context.oldValue?.saveId || 'none',
+    newSaveId: context.newValue?.saveId || 'none',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle special case: empty state to populated state transition
+ * v1.6.3.7-v6 - Gap #2: Extracted for complexity reduction
+ * v1.6.3.7-v6 - FIX Code Review: Use clearer positive check (> 0) instead of (<= 0)
+ * @private
+ * @param {Object} context - Storage change context
+ * @returns {boolean} True if handled (early return), false otherwise
+ */
+function _handleEmptyToPopulatedTransition(context) {
+  // Skip if not a transition from empty to populated
+  if (context.oldTabCount !== 0 || context.newTabCount <= 0) {
+    return false;
+  }
+
+  console.log('[Manager] STORAGE_SPECIAL_CASE: Old state was empty, new state has tabs - forcing render', {
+    oldTabCount: context.oldTabCount,
+    newTabCount: context.newTabCount,
+    saveId: context.newValue?.saveId,
+    channel: 'STORAGE'
+  });
+
+  // Cancel pending initial load timeout since data arrived during wait period
+  _cancelInitialLoadTimeout();
+
+  _updateLocalStateCache(context.newValue);
+  lastLocalUpdateTime = Date.now();
+  scheduleRender('storage-empty-to-populated', context.newValue?.saveId);
+  return true;
+}
+
+/**
+ * Cancel initial load timeout if it exists
+ * v1.6.3.7-v6 - FIX Code Review: Extracted to prevent race conditions
+ * @private
+ */
+function _cancelInitialLoadTimeout() {
+  if (initialLoadTimeoutId !== null) {
+    clearTimeout(initialLoadTimeoutId);
+    initialLoadTimeoutId = null;
+    initialStateLoadComplete = true;
+    console.log('[Manager] INITIAL_LOAD_TIMEOUT_CANCELLED: Data received during wait period');
+  }
+}
+
+/**
+ * Process storage change analysis and schedule update if needed
+ * v1.6.3.7-v6 - Extracted for complexity reduction
+ * @private
+ * @param {Object} context - Storage change context
+ */
+function _processStorageChangeAnalysis(context) {
   const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
 
-  // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
+  // Update lastLocalUpdateTime for ANY real data change
   if (changeAnalysis.hasDataChange) {
     lastLocalUpdateTime = Date.now();
     console.log('[Manager] STORAGE_LISTENER: lastLocalUpdateTime updated', {
@@ -4386,13 +4689,14 @@ function _handleStorageChange(change) {
     });
   }
 
-  // v1.6.3.7 - FIX Issue #3: Skip renderUI if only metadata changed
+  // v1.6.3.7-v6 - Gap #2 & Gap #5: Log deduplication decision
   if (!changeAnalysis.requiresRender) {
-    console.log('[Manager] STORAGE_LISTENER: Skipping renderUI (metadata-only change)', {
+    console.log('[Manager] RENDER_SKIPPED:', {
+      reason: changeAnalysis.changeType === 'metadata-only' ? 'metadata_only' : 'no_changes',
+      channel: 'STORAGE',
       changeType: changeAnalysis.changeType,
-      reason: changeAnalysis.skipReason
+      skipReason: changeAnalysis.skipReason
     });
-    // Still update local state cache but don't re-render
     _updateLocalStateCache(context.newValue);
     return;
   }
