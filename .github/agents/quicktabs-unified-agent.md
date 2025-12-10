@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.7-v7), BroadcastChannel from background,
+  sync with Single Writer Authority (v1.6.3.7-v8), BroadcastChannel from background,
   operation confirmations, connection state tracking, zombie detection
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v8 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,7 +50,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.7-v7 Features (NEW):**
+**v1.6.3.7-v8 Features (NEW):**
 
 - **BroadcastChannel from Background** - Tier 1 messaging now functional
 - **Full State Sync** - `broadcastFullStateSync()` for complete state updates
@@ -101,7 +101,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 
-**Key Functions (v1.6.3.7-v7):**
+**Key Functions (v1.6.3.7-v8):**
 
 | Function                       | Location    | Purpose                        |
 | ------------------------------ | ----------- | ------------------------------ |
@@ -128,9 +128,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] BroadcastChannel from background works (Tier 1) (v1.6.3.7-v7)
-- [ ] Full state sync via `broadcastFullStateSync()` works (v1.6.3.7-v7)
-- [ ] Operation confirmations handled correctly (v1.6.3.7-v7)
+- [ ] BroadcastChannel from background works (Tier 1) (v1.6.3.7-v8)
+- [ ] Full state sync via `broadcastFullStateSync()` works (v1.6.3.7-v8)
+- [ ] Operation confirmations handled correctly (v1.6.3.7-v8)
 - [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
 - [ ] Lifecycle tracing logs (port, storage, adoption) (v1.6.3.7-v6)
 - [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
@@ -144,6 +144,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.7-v7 BroadcastChannel from
+**Your strength: Complete Quick Tab system with v1.6.3.7-v8 BroadcastChannel from
 background, operation confirmations, v6 unified channel logging, lifecycle
 tracing, v5 connection state tracking, zombie detection, v4 circuit breaker.**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7-v7  
+**Version:** 1.6.3.7-v8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,60 +22,36 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.7-v7 Features (NEW):**
+**v1.6.3.7-v8 Features (NEW):**
 
-- **BroadcastChannel from Background** - Tier 1 messaging now functional
-- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
-- **Operation Confirmations** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED handlers
-- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
-- **Storage Write Confirmations** - `_broadcastStorageWriteConfirmation()` after writes
+- **Port Message Queue** - Messages queued during reconnection (#9)
+- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions (#10)
+- **VisibilityHandler Broadcasts** - `broadcastQuickTabMinimized/Restored` (#11)
+- **Dynamic Debounce** - 500ms Tier1 (port), 200ms fallback (BC) (#12)
+- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state (#13)
+- **Firefox Termination Detection** - 10s health check interval (#14)
+- **EventBus to Broadcast Bridge** - Forward events via setTimeout (#15)
+- **Hybrid Storage Cache** - Read-through caching (StorageCache.js)
+- **Memory Monitoring** - MemoryMonitor.js for heap tracking
+- **Performance Metrics** - PerformanceMetrics.js for timing collection
+- **Content IntersectionObserver** - LinkVisibilityObserver.js
+- **Incremental State Persistence** - IncrementalSync.js
+- **Selective Persistence** - PersistenceSchema.js
+- **Message Batching** - MessageBatcher.js with adaptive windows
+- **Broadcast Backpressure** - BroadcastChannelManager enhancement
+- **Virtual Scrolling** - VirtualScrollList.js for large lists
+- **Debounced DOM Updates** - DOMUpdateBatcher.js
+- **Event Listener Lifecycle** - ManagedEventListeners.js
+- **Object Pool** - QuickTabUIObjectPool.js for UI elements
 
-**v1.6.3.7-v6 Features (Retained):**
+**v1.6.3.7-v7 Features (Retained):** BroadcastChannel from background, full state sync,
+operation confirmations, DEBUG_MESSAGING flags, storage write confirmations.
 
-- **Initial State Load Wait** - 2-second wait before rendering empty state
-- **Unified Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
-- **Deduplication Decision Visibility** - `RENDER_SKIPPED reason=...` logging
-- **Connection State Enhancements** - Duration tracking, fallback status logging
-- **Clear All Tracing** - Correlation ID for `CLEAR_ALL_COMMAND_INITIATED`
-- **Keepalive Health Monitoring** - 60s health check, consecutive failure tracking
-- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
-- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT`, `_RETRY`, `_SUCCESS`
-- **Adoption Lifecycle** - `ADOPTION_STARTED`, `_COMPLETED`, `_FAILED` logging
-
-**v1.6.3.7-v5 Features (Retained):**
-
-- **Connection State Tracking** - Three states: connected → zombie → disconnected
-- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
-- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Circuit Breaker Probing** - `_probeBackgroundHealth()` with 500ms probes
-- **Close All Feedback** - `_showCloseAllErrorNotification()` on failure
-- **Refactored Message Handling** - `_routePortMessage()` (complexity 10→4)
-- **Storage Polling Backup** - 10s (BroadcastChannel is PRIMARY)
-
-**v1.6.3.7-v3 Features (Retained):**
-
-- **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
-- **browser.alarms API** - Scheduled tasks
-- **tabs.group() API** - Tab grouping (Firefox 138+)
-- **DOM Reconciliation** - `_itemElements` Map for differential updates
-
-**v1.6.3.7-v2 Features (Retained):**
-
-- **Single Writer Authority** - Manager sends commands to background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based dedup
-- **Orphaned Tab Recovery** - `orphaned: true` flag
-- **Storage Write Verification** - `writeStateWithVerificationAndRetry()`
-
-**v1.6.3.7-v1 Features (Retained):**
-
-- **Background Keepalive** - `_startKeepalive()` every 20s
-- **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive ints
+**v1.6.3.7-v3 to v6 Features (Retained):** Connection state tracking (v5), zombie
+detection (v5), circuit breaker probing (v4), storage.session API (v3),
+BroadcastChannel API (v3), browser.alarms (v3), DOM reconciliation (v3), Single
+Writer Authority (v2), unified render pipeline (v2), background keepalive (v1),
+port circuit breaker (v1).
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, BroadcastChannelManager, QuickTabGroupManager,
@@ -107,60 +83,44 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.7-v7: BroadcastChannel from Background + Confirmations
+### v1.6.3.7-v8: Performance & Resilience Optimizations
 
-**BroadcastChannel (Tier 1):** Background now posts to `quick-tabs-updates` channel after state ops.
+**Port Resilience:**
+- **Message Queue** - Messages queued during port reconnection
+- **Atomic Guard** - `isReconnecting` flag prevents concurrent reconnection attempts
+- **Heartbeat Hysteresis** - 3 consecutive failures before ZOMBIE state transition
 
-**Full State Sync:** `broadcastFullStateSync()` sends complete state to all Manager instances.
+**Broadcast Enhancements:**
+- **VisibilityHandler Broadcasts** - `broadcastQuickTabMinimized()`, `broadcastQuickTabRestored()`
+- **Dynamic Debounce** - 500ms for Tier1 (port), 200ms for fallback (BroadcastChannel)
+- **EventBus Bridge** - Forward events to broadcasts via setTimeout
 
-**Operation Confirmations:** `_isOperationConfirmation()`, `_handleOperationConfirmation()` for
-MINIMIZE_CONFIRMED, RESTORE_CONFIRMED, DELETE_CONFIRMED, UPDATE_CONFIRMED, ADOPT_CONFIRMED.
+**Performance Modules:**
+- **StorageCache.js** - Hybrid read-through caching
+- **MemoryMonitor.js** - Heap usage tracking
+- **PerformanceMetrics.js** - Timing collection
+- **IncrementalSync.js** - Incremental state persistence
+- **MessageBatcher.js** - Adaptive message batching
+- **VirtualScrollList.js** - Virtual scrolling for large lists
+- **DOMUpdateBatcher.js** - Debounced DOM updates
 
-**Storage Write Confirmations:** `_broadcastStorageWriteConfirmation()` broadcasts after storage.local.set().
+**Lifecycle Improvements:**
+- **Firefox Termination Detection** - 10s health check interval
+- **ManagedEventListeners.js** - Automatic cleanup
+- **QuickTabUIObjectPool.js** - Object pooling for UI elements
 
-**DEBUG Flags:** `DEBUG_MESSAGING` constants for toggling verbose logs.
+### v1.6.3.7-v7: BroadcastChannel from Background + Confirmations (Retained)
 
-### v1.6.3.7-v6: Enhanced Observability + Lifecycle Logging (Retained)
+**BC Tier 1:** Background posts to `quick-tabs-updates` after state ops.
+**Full State Sync:** `broadcastFullStateSync()` for complete state updates.
+**Confirmations:** MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED handlers.
 
-**State Load:** 2s wait before empty state, `STATE_LOAD_STARTED/COMPLETED` logging.
+### v1.6.3.7-v3 to v6: Core Infrastructure (Retained)
 
-**Channel Logging:** `[BC]`, `[PORT]`, `[STORAGE]` prefixes. Channel-aware dedup.
-
-**Dedup Visibility:** `RENDER_SKIPPED reason=...`, `DEDUP_CHECK/RESULT` logging.
-
-**Lifecycle Tracing:**
-- **Clear All:** `CLEAR_ALL_COMMAND_INITIATED/RESPONSE` with correlation ID
-- **Keepalive:** 60s health check, `KEEPALIVE_HEALTH_WARNING` at 90s
-- **Port Registry:** `PORT_REGISTERED/UNREGISTERED`, size warnings at 50/100+
-- **Storage Write:** `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS/FINAL_FAILURE`
-- **Adoption:** `ADOPTION_STARTED/COMPLETED/FAILED` with correlation ID
-
-### v1.6.3.7-v5: Connection State Tracking + Deduplication (Retained)
-
-### v1.6.3.7-v4: Circuit Breaker Probing (Retained)
-
-**Circuit Breaker Probing:** `CIRCUIT_BREAKER_OPEN_DURATION_MS`=2000ms,
-`CIRCUIT_BREAKER_PROBE_INTERVAL_MS`=500ms.
-
-**Close All Feedback:** `_showCloseAllErrorNotification()` on background failure.
-
-**Refactored Message Handling:** `_routePortMessage()` (complexity 10→4).
-
-### v1.6.3.7-v3: BroadcastChannel + Storage Routing (Retained)
-
-**BroadcastChannel:** `new BroadcastChannel('quick-tabs-updates')` for real-time sync
-
-**Storage Routing:** Session (`permanent: false` → storage.session), Permanent (→ storage.local)
-
-**Alarms:** `cleanup-orphaned` (60min), `sync-session-state` (5min), `diagnostic-snapshot` (120min)
-
-**DOM Reconciliation:** `_itemElements` Map for differential updates
-
-**Message Protocol:** `{ type, action, correlationId, source, timestamp, payload, metadata }`
-
-**Port Registry:** `{ portId -> { port, origin, tabId, type, connectedAt, lastMessageAt } }`
-
-**Event Flow:** Port → Background writes storage → storage.onChanged + BroadcastChannel → `scheduleRender()` → renderUI
+**v6:** Channel logging (`[BC]`, `[PORT]`, `[STORAGE]`), lifecycle tracing.
+**v5:** Connection states (connected→zombie→disconnected), deduplication.
+**v4:** Circuit breaker probing (500ms), close all feedback.
+**v3:** storage.session, BroadcastChannel, browser.alarms, DOM reconciliation.
 
 ---
 
@@ -179,52 +139,26 @@ MINIMIZE_CONFIRMED, RESTORE_CONFIRMED, DELETE_CONFIRMED, UPDATE_CONFIRMED, ADOPT
 
 ---
 
-## 🆕 v1.6.3.7-v7 Patterns
+## 🆕 v1.6.3.7-v8 Patterns
 
-- **BroadcastChannel from Background** - `_broadcastViaBroadcastChannel()` helper
-- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
-- **Operation Confirmations** - `_handleOperationConfirmation()` handlers
-- **DEBUG_MESSAGING** - Toggle flags for verbose logging
-- **Storage Write Confirmations** - Broadcast after storage.local.set()
+- **Port Message Queue** - Queue messages during reconnection
+- **Atomic Reconnection** - `isReconnecting` guard prevents race conditions
+- **Heartbeat Hysteresis** - 3 failures threshold before state change
+- **Dynamic Debounce** - Tier-based debounce timing (500ms/200ms)
+- **Hybrid Storage Cache** - Read-through caching with invalidation
+- **Virtual Scrolling** - Render only visible items
+- **Object Pooling** - Reuse UI elements to reduce GC pressure
+- **Message Batching** - Adaptive windows based on message rate
 
-## 🆕 v1.6.3.7-v6 Patterns (Retained)
+## Prior Version Patterns (v1-v7 Retained)
 
-- **Initial State Load Wait** - 2s wait before empty state render
-- **Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
-- **Deduplication Visibility** - `RENDER_SKIPPED reason=...` logging
-- **Keepalive Health** - 60s health check with `KEEPALIVE_HEALTH_WARNING`
-- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED`
-- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
-- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED`
-
-## 🆕 v1.6.3.7-v5 Patterns (Retained)
-
-- **Connection States** - `connectionState`: connected/zombie/disconnected
-- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` comparison
-
-## 🆕 v1.6.3.7-v4 Patterns (Retained)
-
-- **Circuit Breaker** - `_probeBackgroundHealth()`, 2000ms open duration
-- **Close All Feedback** - `_showCloseAllErrorNotification()` on failure
-
-## 🆕 v1.6.3.7-v3 Patterns (Retained)
-
-- **storage.session** - `SESSION_STATE_KEY`, `permanent: false` for session Quick Tabs
-- **BroadcastChannel** - `quick-tabs-updates` channel
-- **browser.alarms** - `cleanup-orphaned`, `sync-session-state`, `diagnostic-snapshot`
-- **DOM Reconciliation** - `_itemElements` Map for differential updates
-
-### v1.6.3.7-v2 Patterns (Retained)
-
-- **Single Writer Authority** - Manager sends commands to background
-- **Unified Render Pipeline** - `scheduleRender(source)`, hash-based deduplication
-- **Orphaned Tab Recovery** - `orphaned: true` flag, `ADOPT_TAB` commands
-
-### v1.6.3.7-v1 Patterns (Retained)
-
-- **Background Keepalive** - `_startKeepalive()` every 20s
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff (100ms→10s)
+- **v7:** BC from background, full state sync, operation confirmations
+- **v6:** Channel logging, lifecycle tracing, keepalive health
+- **v5:** Connection states, zombie detection, listener deduplication
+- **v4:** Circuit breaker probing, close all feedback
+- **v3:** storage.session, BroadcastChannel, browser.alarms, DOM reconciliation
+- **v2:** Single Writer Authority, unified render pipeline, orphan recovery
+- **v1:** Background keepalive, port circuit breaker
 
 ### Key Timing Constants
 
@@ -265,7 +199,8 @@ Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, coordinated clear, closeAll mutex, circuit breaker probing (v4),
 connection state tracking (v5), enhanced observability (v6), BroadcastChannel
-from background (v7).
+from background (v7), port message queue (v8), hybrid storage cache (v8),
+virtual scrolling (v8), object pooling (v8), message batching (v8).
 
 ---
 
@@ -324,7 +259,18 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 | `quick-tabs-manager.js`  | `scheduleRender()`, confirmation handlers, dedup (v7)        |
 | `storage-utils.js`       | `writeStateWithVerificationAndRetry()`, write lifecycle (v6) |
 | `TabStateManager.js`     | Per-tab state (sessions API, v3)                             |
-| `BroadcastChannelManager.js` | Real-time messaging (v3)                                 |
+| `BroadcastChannelManager.js` | Real-time messaging, backpressure (v8)                   |
+| `StorageCache.js`        | Hybrid read-through caching (v8)                             |
+| `MemoryMonitor.js`       | Heap usage tracking (v8)                                     |
+| `PerformanceMetrics.js`  | Timing collection (v8)                                       |
+| `IncrementalSync.js`     | Incremental state persistence (v8)                           |
+| `MessageBatcher.js`      | Adaptive message batching (v8)                               |
+| `VirtualScrollList.js`   | Virtual scrolling for lists (v8)                             |
+| `DOMUpdateBatcher.js`    | Debounced DOM updates (v8)                                   |
+| `ManagedEventListeners.js` | Event listener lifecycle (v8)                              |
+| `QuickTabUIObjectPool.js` | UI element object pooling (v8)                              |
+| `LinkVisibilityObserver.js` | Content IntersectionObserver (v8)                         |
+| `PersistenceSchema.js`   | Selective persistence schema (v8)                            |
 
 ### Storage
 

@@ -90,6 +90,8 @@ import {
   closeBroadcastChannel,
   isChannelAvailable as _isChannelAvailable
 } from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
+// v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
+import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
@@ -379,6 +381,68 @@ let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
 // v1.6.3.7-v4 - FIX Issue #8: Timer for early recovery probes
 let circuitBreakerProbeTimerId = null;
 
+// ==================== v1.6.3.7-v8 PORT MESSAGE QUEUE ====================
+// FIX Issue #9: Buffer messages arriving before listener registration
+/**
+ * Queue for port messages that arrive before listener is fully registered
+ * v1.6.3.7-v8 - FIX Issue #9: Prevent silent message drops on reconnection
+ */
+let portMessageQueue = [];
+
+/**
+ * Flag indicating if listener is fully registered
+ * v1.6.3.7-v8 - FIX Issue #9: Track listener registration state
+ */
+let listenerFullyRegistered = false;
+
+// ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
+// FIX Issue #10: Prevent concurrent reconnection attempts
+/**
+ * Atomic guard for reconnection - prevents multiple simultaneous attempts
+ * v1.6.3.7-v8 - FIX Issue #10: Race condition prevention
+ */
+let isReconnecting = false;
+
+// ==================== v1.6.3.7-v8 HEARTBEAT HYSTERESIS ====================
+// FIX Issue #13: Require consecutive failures before ZOMBIE
+/**
+ * Number of consecutive heartbeat failures required before ZOMBIE transition
+ * v1.6.3.7-v8 - FIX Issue #13: Hysteresis for heartbeat failure detection
+ */
+const HEARTBEAT_FAILURES_BEFORE_ZOMBIE = 3;
+
+/**
+ * Counter for consecutive heartbeat timeouts (separate from general failures)
+ * v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
+ */
+let consecutiveHeartbeatTimeouts = 0;
+
+// ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
+// FIX Issue #14: Detect Firefox background script termination
+/**
+ * Interval for background activity check (10 seconds)
+ * v1.6.3.7-v8 - FIX Issue #14: Detect idle background before Firefox terminates it
+ */
+const BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS = 10000;
+
+/**
+ * Warning threshold for stale background state (30 seconds)
+ * v1.6.3.7-v8 - FIX Issue #14: Firefox terminates at 30s idle
+ */
+const BACKGROUND_STALE_WARNING_THRESHOLD_MS = 30000;
+
+/**
+ * Timestamp of last message received from background via port
+ * v1.6.3.7-v8 - FIX Issue #14: Track background activity
+ */
+let lastBackgroundMessageTime = Date.now();
+
+/**
+ * Timer ID for background activity check
+ * v1.6.3.7-v8 - FIX Issue #14: Periodic health check
+ */
+let backgroundActivityCheckTimerId = null;
+
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention
 let renderDebounceTimer = null;
@@ -507,8 +571,19 @@ function _logDisconnectedFallback() {
  * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on connect
+ * v1.6.3.7-v8 - FIX Issue #9: Port message queue for buffering pre-listener messages
+ * v1.6.3.7-v8 - FIX Issue #10: Atomic reconnection guard with isReconnecting flag
  */
 function connectToBackground() {
+  // v1.6.3.7-v8 - FIX Issue #10: Prevent concurrent reconnection attempts
+  if (isReconnecting) {
+    console.log('[Manager] [PORT] [RECONNECT_BLOCKED]:', {
+      reason: 'already_in_progress',
+      timestamp: Date.now()
+    });
+    return;
+  }
+
   // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
   if (circuitBreakerState === 'open') {
     const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
@@ -523,6 +598,12 @@ function connectToBackground() {
     console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
   }
 
+  // v1.6.3.7-v8 - FIX Issue #10: Set reconnection guard
+  isReconnecting = true;
+  // v1.6.3.7-v8 - FIX Issue #9: Reset listener registration state
+  listenerFullyRegistered = false;
+  portMessageQueue = [];
+
   try {
     backgroundPort = browser.runtime.connect({
       name: 'quicktabs-sidebar'
@@ -532,8 +613,12 @@ function connectToBackground() {
 
     // Handle messages from background
     // v1.6.3.7-v4 - FIX Issue #10: Log listener registration
-    backgroundPort.onMessage.addListener(handlePortMessage);
-    console.log('[Manager] LISTENER_REGISTERED: Port onMessage listener added');
+    // v1.6.3.7-v8 - FIX Issue #9: Use wrapper to handle message queue
+    backgroundPort.onMessage.addListener(_handlePortMessageWithQueue);
+    console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
+      type: 'onMessage',
+      timestamp: Date.now()
+    });
 
     // Handle disconnect
     // v1.6.3.7-v4 - FIX Issue #10: Log disconnect listener registration
@@ -542,11 +627,17 @@ function connectToBackground() {
       logPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
+      // v1.6.3.7-v8 - FIX Issue #9: Reset listener state on disconnect
+      listenerFullyRegistered = false;
+
       // v1.6.3.7-v5 - FIX Issue #1: Update connection state
       _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
 
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
       stopHeartbeat();
+
+      // v1.6.3.7-v8 - FIX Issue #14: Stop background activity check
+      _stopBackgroundActivityCheck();
 
       // v1.6.3.7-v4 - FIX Issue #8: Stop circuit breaker probes on disconnect
       _stopCircuitBreakerProbes();
@@ -554,7 +645,14 @@ function connectToBackground() {
       // v1.6.3.7 - FIX Issue #5: Implement exponential backoff reconnection
       scheduleReconnect();
     });
-    console.log('[Manager] LISTENER_REGISTERED: Port onDisconnect listener added');
+    console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
+      type: 'onDisconnect',
+      timestamp: Date.now()
+    });
+
+    // v1.6.3.7-v8 - FIX Issue #9: Mark listener as fully registered and flush queue
+    listenerFullyRegistered = true;
+    _flushPortMessageQueue();
 
     // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
     circuitBreakerState = 'closed';
@@ -567,6 +665,9 @@ function connectToBackground() {
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
     startHeartbeat();
 
+    // v1.6.3.7-v8 - FIX Issue #14: Start background activity monitoring
+    _startBackgroundActivityCheck();
+
     // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
@@ -574,7 +675,7 @@ function connectToBackground() {
     // v1.6.3.7-v4 - FIX Issue #10: Send test message to verify listener works
     _verifyPortListenerRegistration();
 
-    console.log('[Manager] v1.6.3.7-v5 Port connection established');
+    console.log('[Manager] v1.6.3.7-v8 Port connection established');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
     logPortLifecycle('error', { error: err.message });
@@ -584,6 +685,9 @@ function connectToBackground() {
 
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
+  } finally {
+    // v1.6.3.7-v8 - FIX Issue #10: Always clear reconnection guard
+    isReconnecting = false;
   }
 }
 
@@ -750,6 +854,190 @@ async function _probeBackgroundHealth() {
   }
 }
 
+// ==================== v1.6.3.7-v8 PORT MESSAGE QUEUE ====================
+// FIX Issue #9: Buffer messages arriving before listener registration
+
+/**
+ * Handle port message with queue support
+ * v1.6.3.7-v8 - FIX Issue #9: Buffer messages if listener not fully registered
+ * @private
+ * @param {Object} message - Message from background
+ */
+function _handlePortMessageWithQueue(message) {
+  // v1.6.3.7-v8 - FIX Issue #14: Update last background message time
+  lastBackgroundMessageTime = Date.now();
+
+  // v1.6.3.7-v8 - FIX Issue #9: If listener not fully registered, queue the message
+  if (!listenerFullyRegistered) {
+    portMessageQueue.push(message);
+    console.log('[Manager] [PORT] [MESSAGE_QUEUED]:', {
+      type: message?.type || message?.action || 'unknown',
+      queueSize: portMessageQueue.length,
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  // Process message normally
+  handlePortMessage(message);
+}
+
+/**
+ * Flush queued port messages after listener is fully registered
+ * v1.6.3.7-v8 - FIX Issue #9: Process buffered messages
+ * @private
+ */
+function _flushPortMessageQueue() {
+  if (portMessageQueue.length === 0) {
+    console.log('[Manager] [PORT] [QUEUE_FLUSH]: No messages to flush');
+    return;
+  }
+
+  console.log('[Manager] [PORT] [QUEUE_FLUSH_STARTED]:', {
+    messageCount: portMessageQueue.length,
+    timestamp: Date.now()
+  });
+
+  const messagesToProcess = [...portMessageQueue];
+  portMessageQueue = [];
+
+  for (const message of messagesToProcess) {
+    try {
+      console.log('[Manager] [PORT] [QUEUE_MESSAGE_PROCESSING]:', {
+        type: message?.type || message?.action || 'unknown',
+        timestamp: Date.now()
+      });
+      handlePortMessage(message);
+    } catch (err) {
+      console.error('[Manager] [PORT] [QUEUE_MESSAGE_ERROR]:', {
+        type: message?.type || message?.action || 'unknown',
+        error: err.message,
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  console.log('[Manager] [PORT] [QUEUE_FLUSH_COMPLETED]:', {
+    processedCount: messagesToProcess.length,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
+// FIX Issue #14: Detect Firefox background script termination
+
+/**
+ * Start background activity monitoring
+ * v1.6.3.7-v8 - FIX Issue #14: Periodic check to detect idle background
+ * @private
+ */
+function _startBackgroundActivityCheck() {
+  _stopBackgroundActivityCheck(); // Clear any existing check
+
+  lastBackgroundMessageTime = Date.now();
+
+  backgroundActivityCheckTimerId = setInterval(() => {
+    _checkBackgroundActivity();
+  }, BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS);
+
+  console.log('[Manager] [HEALTH_CHECK] Background activity monitoring started', {
+    checkIntervalMs: BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS,
+    staleThresholdMs: BACKGROUND_STALE_WARNING_THRESHOLD_MS
+  });
+}
+
+/**
+ * Stop background activity monitoring
+ * v1.6.3.7-v8 - FIX Issue #14: Cleanup timer
+ * @private
+ */
+function _stopBackgroundActivityCheck() {
+  if (backgroundActivityCheckTimerId) {
+    clearInterval(backgroundActivityCheckTimerId);
+    backgroundActivityCheckTimerId = null;
+    console.log('[Manager] [HEALTH_CHECK] Background activity monitoring stopped');
+  }
+}
+
+/**
+ * Check if background is still active and responsive
+ * v1.6.3.7-v8 - FIX Issue #14: Detect Firefox 30s termination
+ * @private
+ */
+async function _checkBackgroundActivity() {
+  const now = Date.now();
+  const timeSinceLastMessage = now - lastBackgroundMessageTime;
+
+  // Check if background might be stale (approaching Firefox 30s termination)
+  if (timeSinceLastMessage >= BACKGROUND_STALE_WARNING_THRESHOLD_MS) {
+    console.warn('[Manager] [WARNING] [BACKGROUND_POSSIBLY_DEAD]:', {
+      timeSinceLastMessageMs: timeSinceLastMessage,
+      thresholdMs: BACKGROUND_STALE_WARNING_THRESHOLD_MS,
+      lastMessageTime: new Date(lastBackgroundMessageTime).toISOString(),
+      timestamp: now
+    });
+  }
+
+  // If no messages for 10 seconds, send a ping to keep background alive
+  if (timeSinceLastMessage >= BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS) {
+    await _sendBackgroundHealthPing(timeSinceLastMessage);
+  }
+}
+
+/**
+ * Send health ping to background and handle response
+ * v1.6.3.7-v8 - FIX Issue #14: Extracted to reduce _checkBackgroundActivity depth
+ * @private
+ * @param {number} timeSinceLastMessage - Time since last background message
+ */
+async function _sendBackgroundHealthPing(timeSinceLastMessage) {
+  console.log('[Manager] [HEALTH_CHECK] [PING_SENT]:', {
+    reason: 'no_messages_received',
+    timeSinceLastMessageMs: timeSinceLastMessage,
+    timestamp: Date.now()
+  });
+
+  try {
+    const healthy = await _probeBackgroundHealth();
+    _handleHealthPingResult(healthy, timeSinceLastMessage);
+  } catch (err) {
+    console.error('[Manager] [HEALTH_CHECK] [PING_FAILED]:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Handle the result of a background health ping
+ * v1.6.3.7-v8 - FIX Issue #14: Extracted to reduce nesting depth
+ * @private
+ * @param {boolean} healthy - Whether background responded successfully
+ * @param {number} timeSinceLastMessage - Time since last background message
+ */
+function _handleHealthPingResult(healthy, timeSinceLastMessage) {
+  if (healthy) {
+    // Update last message time since background responded
+    lastBackgroundMessageTime = Date.now();
+    console.log('[Manager] [HEALTH_CHECK] [PING_SUCCESS]:', {
+      backgroundResponsive: true,
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  console.warn('[Manager] [HEALTH_CHECK] [BACKGROUND_UNRESPONSIVE]:', {
+    timeSinceLastMessageMs: timeSinceLastMessage,
+    connectionState,
+    timestamp: Date.now()
+  });
+
+  // If background is unresponsive and we're in CONNECTED state, transition to ZOMBIE
+  if (connectionState === CONNECTION_STATE.CONNECTED) {
+    _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'health-check-unresponsive');
+  }
+}
+
 // ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
 
 /**
@@ -867,12 +1155,15 @@ function _handlePortDisconnected() {
  * Handle successful heartbeat response
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on success
+ * v1.6.3.7-v8 - FIX Issue #13: Reset timeout counter on success
  * @private
  * @param {Object} response - Response from background
  * @param {number} startTime - When heartbeat was started
  */
 function _handleHeartbeatSuccess(response, startTime) {
   consecutiveHeartbeatFailures = 0;
+  // v1.6.3.7-v8 - FIX Issue #13: Reset timeout-specific counter on success
+  consecutiveHeartbeatTimeouts = 0;
   lastHeartbeatResponse = Date.now();
 
   // v1.6.3.7-v5 - FIX Issue #1: Confirm we're in CONNECTED state (recovered from zombie)
@@ -880,13 +1171,14 @@ function _handleHeartbeatSuccess(response, startTime) {
     _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'heartbeat-success');
   }
 
-  console.log('[Manager] HEARTBEAT_SUCCESS:', {
+  console.log('[Manager] [HEARTBEAT] SUCCESS:', {
     status: 'BACKGROUND_ALIVE',
     connectionState,
     roundTripMs: Date.now() - startTime,
     backgroundAlive: response?.backgroundAlive ?? true,
     isInitialized: response?.isInitialized,
     circuitBreakerState,
+    consecutiveTimeouts: consecutiveHeartbeatTimeouts,
     diagnosis: 'Background script is alive and responding'
   });
 }
@@ -895,6 +1187,7 @@ function _handleHeartbeatSuccess(response, startTime) {
  * Handle heartbeat failure
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Immediately detect zombie state and switch to BroadcastChannel
+ * v1.6.3.7-v8 - FIX Issue #13: Implement hysteresis - require 2-3 consecutive failures before ZOMBIE
  * @private
  * @param {Error} err - Error that occurred
  */
@@ -904,22 +1197,44 @@ function _handleHeartbeatFailure(err) {
   const isTimeout = err.message === 'Heartbeat timeout';
   const isPortClosed = err.message.includes('disconnected') || err.message.includes('closed');
 
-  console.warn('[Manager] HEARTBEAT_FAILED:', {
-    status: isTimeout ? 'BACKGROUND_DEAD' : isPortClosed ? 'PORT_CLOSED' : 'UNKNOWN_ERROR',
+  // v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
+  if (isTimeout) {
+    consecutiveHeartbeatTimeouts++;
+  } else {
+    // Non-timeout failures (like port closed) still count but reset timeout counter
+    consecutiveHeartbeatTimeouts = 0;
+  }
+
+  console.warn('[Manager] [HEARTBEAT] [FAILURE]:', {
+    status: isTimeout ? 'TIMEOUT' : isPortClosed ? 'PORT_CLOSED' : 'UNKNOWN_ERROR',
     error: err.message,
-    failures: consecutiveHeartbeatFailures,
-    maxFailures: MAX_HEARTBEAT_FAILURES,
+    count: consecutiveHeartbeatTimeouts,
+    maxBeforeZombie: HEARTBEAT_FAILURES_BEFORE_ZOMBIE,
+    totalFailures: consecutiveHeartbeatFailures,
+    maxTotalFailures: MAX_HEARTBEAT_FAILURES,
     timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
     connectionState,
     circuitBreakerState,
     diagnosis: _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed)
   });
 
-  // v1.6.3.7-v5 - FIX Issue #1: IMMEDIATELY detect zombie state on first timeout
-  // Don't wait for MAX_HEARTBEAT_FAILURES - zombie detection should be instant
+  // v1.6.3.7-v8 - FIX Issue #13: Implement hysteresis - require consecutive failures before ZOMBIE
+  // Instead of immediately transitioning on first timeout, require 2-3 consecutive timeouts
   if (isTimeout && connectionState === CONNECTION_STATE.CONNECTED) {
-    _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'heartbeat-timeout-zombie');
-    // BroadcastChannel fallback is activated in _transitionConnectionState
+    if (consecutiveHeartbeatTimeouts >= HEARTBEAT_FAILURES_BEFORE_ZOMBIE) {
+      console.warn('[Manager] [HEARTBEAT] [ZOMBIE_TRANSITION]: Consecutive timeout threshold reached', {
+        consecutiveTimeouts: consecutiveHeartbeatTimeouts,
+        threshold: HEARTBEAT_FAILURES_BEFORE_ZOMBIE
+      });
+      _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'heartbeat-timeout-zombie');
+      // BroadcastChannel fallback is activated in _transitionConnectionState
+    } else {
+      console.log('[Manager] [HEARTBEAT] [TIMEOUT_WARNING]: Timeout detected but below threshold', {
+        consecutiveTimeouts: consecutiveHeartbeatTimeouts,
+        threshold: HEARTBEAT_FAILURES_BEFORE_ZOMBIE,
+        remainingBeforeZombie: HEARTBEAT_FAILURES_BEFORE_ZOMBIE - consecutiveHeartbeatTimeouts
+      });
+    }
   }
 
   _processHeartbeatFailureRecovery(isTimeout);
@@ -2250,11 +2565,34 @@ function handleStateUpdateMessage(quickTabId, changes) {
   if (existingIndex >= 0) {
     // Update existing tab
     Object.assign(quickTabsState.tabs[existingIndex], changes);
-    console.log('[Manager] Updated tab from message:', quickTabId);
+    // v1.6.4.13 - Issue #5: Structured logging for state updates
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] [STATE] TAB_UPDATED:', {
+        quickTabId,
+        changes,
+        timestamp: Date.now()
+      });
+    }
   } else if (changes.url) {
     // Add new tab
     quickTabsState.tabs.push({ id: quickTabId, ...changes });
-    console.log('[Manager] Added new tab from message:', quickTabId);
+    // v1.6.4.13 - Issue #5: Structured logging for state updates
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] [STATE] TAB_ADDED:', {
+        quickTabId,
+        changes,
+        timestamp: Date.now()
+      });
+    }
+  } else {
+    // v1.6.4.13 - Issue #5: Log when update skipped (tab not found and no URL)
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] [STATE] UPDATE_SKIPPED: Tab not found and no URL in changes', {
+        quickTabId,
+        changesKeys: Object.keys(changes),
+        timestamp: Date.now()
+      });
+    }
   }
 
   // v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ANY state change

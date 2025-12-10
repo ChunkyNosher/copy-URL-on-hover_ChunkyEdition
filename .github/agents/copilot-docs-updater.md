@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v7.
+  documentation. Current version: v1.6.3.7-v8.
 tools: ['*']
 ---
 
@@ -69,9 +69,9 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v7)
+## Current Extension State (v1.6.3.7-v8)
 
-### v1.6.3.7-v7 Features (NEW)
+### v1.6.3.7-v8 Features (NEW)
 
 - **BroadcastChannel from Background** - Tier 1 messaging now functional
 - **Full State Sync** - `broadcastFullStateSync()` for complete state updates
@@ -127,7 +127,7 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v7)
+### Key Functions (v1.6.3.7-v8)
 
 | Function                               | Location      | Purpose                        |
 | -------------------------------------- | ------------- | ------------------------------ |
@@ -143,10 +143,10 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v7
-- [ ] **v1.6.3.7-v7:** BroadcastChannel from background documented
-- [ ] **v1.6.3.7-v7:** Operation confirmations documented
-- [ ] **v1.6.3.7-v7:** Full state sync documented
+- [ ] Version numbers match 1.6.3.7-v8
+- [ ] **v1.6.3.7-v8:** BroadcastChannel from background documented
+- [ ] **v1.6.3.7-v8:** Operation confirmations documented
+- [ ] **v1.6.3.7-v8:** Full state sync documented
 - [ ] **v1.6.3.7-v6:** Unified channel logging documented
 - [ ] **v1.6.3.7-v6:** Lifecycle tracing documented
 - [ ] **v1.6.3.7-v5:** Connection state tracking documented
@@ -160,7 +160,7 @@ nothing.
 
 | Error                      | Fix                                  |
 | -------------------------- | ------------------------------------ |
-| v1.6.3.7-v6 or earlier     | Update to 1.6.3.7-v7                 |
+| v1.6.3.7-v6 or earlier     | Update to 1.6.3.7-v8                 |
 | "Pin to Page"              | Use "Solo/Mute"                      |
 | Direct storage writes      | Use Single Writer Authority          |
 | Missing BC from background | Document `broadcastFullStateSync()`  |
