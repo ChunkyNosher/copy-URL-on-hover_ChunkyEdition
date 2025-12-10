@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,36 +9,39 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v7 Status:** BroadcastChannel from background, operation
-confirmations, full state sync ✅
+**🔧 v1.6.3.7-v8 Status:** Performance optimizations, port resilience, hybrid
+storage cache ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v7
+## 🎉 What's New in v1.6.3.7-v8
 
-**🔧 BroadcastChannel from Background + Confirmations (December 2025) ✅**
+**🔧 Performance & Resilience Optimizations (December 2025) ✅**
 
-**BroadcastChannel Tier 1:**
-- ✅ **Background posts to BC** - `_broadcastViaBroadcastChannel()` helper
-- ✅ **Full state sync** - `broadcastFullStateSync()` for complete state updates
-- ✅ **Write confirmations** - `_broadcastStorageWriteConfirmation()` after writes
+**Port Resilience (Phase 2):**
+- ✅ **Port message queue** - Messages queued during reconnection
+- ✅ **Atomic reconnection guard** - `isReconnecting` flag prevents race conditions
+- ✅ **Heartbeat hysteresis** - 3 failures before ZOMBIE state transition
+- ✅ **Firefox termination detection** - 10s health check interval
 
-**Operation Confirmations:**
-- ✅ **Confirmation handlers** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED
-- ✅ **`_isOperationConfirmation()`** - Type checking for confirmation messages
-- ✅ **`_handleOperationConfirmation()`** - Centralized confirmation handling
-- ✅ **`handleBroadcastFullStateSync()`** - Full state updates from background
+**Broadcast Enhancements:**
+- ✅ **VisibilityHandler broadcasts** - `broadcastQuickTabMinimized/Restored`
+- ✅ **Dynamic debounce** - 500ms Tier1, 200ms fallback
+- ✅ **EventBus to broadcast bridge** - Forward events via setTimeout
 
-**Debug Improvements:**
-- ✅ **DEBUG_MESSAGING flags** - Toggle verbose messaging logs
-- ✅ **Unknown message logging** - Logs unhandled PORT and BC message types
-- ✅ **Defensive copy fix** - Fixed array copy in `handleBroadcastFullStateSync()`
+**Performance Modules (Phase 3):**
+- ✅ **Hybrid storage cache** - StorageCache.js with read-through caching
+- ✅ **Memory monitoring** - MemoryMonitor.js for heap tracking
+- ✅ **Performance metrics** - PerformanceMetrics.js for timing collection
+- ✅ **Virtual scrolling** - VirtualScrollList.js for large lists
+- ✅ **Message batching** - MessageBatcher.js with adaptive windows
+- ✅ **Object pooling** - QuickTabUIObjectPool.js for UI elements
 
-**Why This Matters:** Background now broadcasts via BroadcastChannel (Tier 1),
-enabling instant cross-tab updates without polling. Operation confirmations
-provide closed-loop feedback for all state operations.
+**Why This Matters:** Improved port resilience ensures stable messaging during
+Firefox background script lifecycle events. Performance modules optimize memory
+usage and render performance for users with many Quick Tabs.
 
 ---
 
@@ -47,6 +50,7 @@ provide closed-loop feedback for all state operations.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v7** - BroadcastChannel from background, operation confirmations
 - **v1.6.3.7-v6** - Enhanced observability, unified channel logging, lifecycle
 - **v1.6.3.7-v5** - Connection state tracking, zombie detection, deduplication
 - **v1.6.3.7-v4** - Circuit breaker probing, close all feedback, error handling
@@ -238,6 +242,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v7** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v8** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

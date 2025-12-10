@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v7), BroadcastChannel from background, operation confirmations,
+  (v1.6.3.7-v8), BroadcastChannel from background, operation confirmations,
   connection state tracking, zombie detection, circuit breaker probing
 tools: ['*']
 ---
@@ -38,9 +38,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v7 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v8 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v7 Features (NEW):**
+**v1.6.3.7-v8 Features (NEW):**
 
 - **BroadcastChannel from Background** - Tier 1 messaging now functional
 - **Full State Sync** - `broadcastFullStateSync()` for complete state updates
@@ -92,7 +92,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
 - **UI Performance** - Debounced renderUI (300ms)
 
-**Key Functions (v1.6.3.7-v7):**
+**Key Functions (v1.6.3.7-v8):**
 
 | Function                       | Location   | Purpose                        |
 | ------------------------------ | ---------- | ------------------------------ |
@@ -118,9 +118,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] BroadcastChannel from background works (Tier 1) (v1.6.3.7-v7)
-- [ ] Full state sync via `broadcastFullStateSync()` works (v1.6.3.7-v7)
-- [ ] Operation confirmations handled correctly (v1.6.3.7-v7)
+- [ ] BroadcastChannel from background works (Tier 1) (v1.6.3.7-v8)
+- [ ] Full state sync via `broadcastFullStateSync()` works (v1.6.3.7-v8)
+- [ ] Operation confirmations handled correctly (v1.6.3.7-v8)
 - [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
 - [ ] Deduplication visibility shows `RENDER_SKIPPED reason=...` (v1.6.3.7-v6)
 - [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
@@ -134,6 +134,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v7 BroadcastChannel from
+**Your strength: Reliable cross-tab sync with v1.6.3.7-v8 BroadcastChannel from
 background, operation confirmations, v6 unified channel logging, v5 connection
 state tracking, zombie detection, v4 circuit breaker probing.**
