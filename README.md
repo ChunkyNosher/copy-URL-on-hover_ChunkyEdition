@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,41 +9,36 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v6 Status:** Enhanced observability, unified channel logging,
-lifecycle tracing, keepalive health monitoring ✅
+**🔧 v1.6.3.7-v7 Status:** BroadcastChannel from background, operation
+confirmations, full state sync ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v6
+## 🎉 What's New in v1.6.3.7-v7
 
-**🔧 Enhanced Observability (December 2025) ✅**
+**🔧 BroadcastChannel from Background + Confirmations (December 2025) ✅**
 
-**Unified Message Channel Logging:**
-- ✅ **`[BC]`** - BroadcastChannel messages: `MESSAGE_RECEIVED [BC] [ACTION]`
-- ✅ **`[PORT]`** - Port messages: `MESSAGE_RECEIVED [PORT] [ACTION]`
-- ✅ **`[STORAGE]`** - Storage changes: `MESSAGE_RECEIVED [STORAGE] [saveId]`
+**BroadcastChannel Tier 1:**
+- ✅ **Background posts to BC** - `_broadcastViaBroadcastChannel()` helper
+- ✅ **Full state sync** - `broadcastFullStateSync()` for complete state updates
+- ✅ **Write confirmations** - `_broadcastStorageWriteConfirmation()` after writes
 
-**Deduplication Decision Visibility:**
-- ✅ **`RENDER_SKIPPED`** - Logs reason: `saveId_match|hash_match|message_dedup`
-- ✅ **Empty→Non-empty Override** - Always renders when transitioning from empty
-- ✅ **`DEDUP_CHECK`/`DEDUP_RESULT`** - Method-level dedup logging
+**Operation Confirmations:**
+- ✅ **Confirmation handlers** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED
+- ✅ **`_isOperationConfirmation()`** - Type checking for confirmation messages
+- ✅ **`_handleOperationConfirmation()`** - Centralized confirmation handling
+- ✅ **`handleBroadcastFullStateSync()`** - Full state updates from background
 
-**Lifecycle Tracing:**
-- ✅ **State Load** - `STATE_LOAD_STARTED`, `STATE_LOAD_COMPLETED` with tab count
-- ✅ **Port Registry** - `PORT_REGISTERED`, `PORT_UNREGISTERED` with reasons
-- ✅ **Storage Writes** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS/FINAL_FAILURE`
-- ✅ **Adoption** - `ADOPTION_STARTED/COMPLETED/FAILED` with correlation ID
-- ✅ **Clear All** - `CLEAR_ALL_COMMAND_INITIATED`, response with success/fail counts
+**Debug Improvements:**
+- ✅ **DEBUG_MESSAGING flags** - Toggle verbose messaging logs
+- ✅ **Unknown message logging** - Logs unhandled PORT and BC message types
+- ✅ **Defensive copy fix** - Fixed array copy in `handleBroadcastFullStateSync()`
 
-**Health Monitoring:**
-- ✅ **Keepalive Health** - 60s health check, warns if no success for 90+ seconds
-- ✅ **Connection State** - Duration tracking, consecutive failure count
-- ✅ **Port Registry Size** - Warnings at 50 ports, critical at 100+
-
-**Why This Matters:** Complete visibility into message flow, deduplication
-decisions, and lifecycle events. Makes debugging cross-tab sync issues trivial.
+**Why This Matters:** Background now broadcasts via BroadcastChannel (Tier 1),
+enabling instant cross-tab updates without polling. Operation confirmations
+provide closed-loop feedback for all state operations.
 
 ---
 
@@ -52,6 +47,7 @@ decisions, and lifecycle events. Makes debugging cross-tab sync issues trivial.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v6** - Enhanced observability, unified channel logging, lifecycle
 - **v1.6.3.7-v5** - Connection state tracking, zombie detection, deduplication
 - **v1.6.3.7-v4** - Circuit breaker probing, close all feedback, error handling
 - **v1.6.3.7-v3** - Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms
@@ -242,6 +238,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v6** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v7** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

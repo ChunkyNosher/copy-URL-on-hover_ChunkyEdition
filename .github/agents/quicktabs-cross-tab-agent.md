@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v6), enhanced observability, unified channel logging, lifecycle tracing,
+  (v1.6.3.7-v7), BroadcastChannel from background, operation confirmations,
   connection state tracking, zombie detection, circuit breaker probing
 tools: ['*']
 ---
@@ -38,9 +38,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v7 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v6 Features (NEW):**
+**v1.6.3.7-v7 Features (NEW):**
+
+- **BroadcastChannel from Background** - Tier 1 messaging now functional
+- **Full State Sync** - `broadcastFullStateSync()` for complete state updates
+- **Operation Confirmations** - MINIMIZE/RESTORE/DELETE/ADOPT_CONFIRMED handlers
+- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
+- **Storage Write Confirmations** - `_broadcastStorageWriteConfirmation()` after writes
+
+**v1.6.3.7-v6 Features (Retained):**
 
 - **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
 - **Deduplication Visibility** - `RENDER_SKIPPED reason=...` logging
@@ -84,15 +92,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
 - **UI Performance** - Debounced renderUI (300ms)
 
-**Key Functions (v1.6.3.7-v6):**
+**Key Functions (v1.6.3.7-v7):**
 
 | Function                       | Location   | Purpose                        |
 | ------------------------------ | ---------- | ------------------------------ |
+| `broadcastFullStateSync()`     | Background | Full state sync via BC         |
+| `_broadcastViaBroadcastChannel()` | Background | BC posting helper           |
+| `handleBroadcastFullStateSync()` | Manager  | Handle full state from BC      |
+| `_handleOperationConfirmation()` | Manager  | Confirmation handlers          |
 | `scheduleRender(source)`       | Manager    | Unified render entry point     |
-| `_transitionConnectionState()` | Manager    | Connection state transitions   |
-| `lastProcessedSaveId`          | Manager    | Deduplication tracking         |
-| `_initializeSessionId()`       | Manager    | Session cache validation       |
-| `_probeBackgroundHealth()`     | Manager    | Circuit breaker health probe   |
 | `handleFullStateSyncRequest()` | Background | State sync handler             |
 
 **Storage Format:**
@@ -110,23 +118,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] BroadcastChannel from background works (Tier 1) (v1.6.3.7-v7)
+- [ ] Full state sync via `broadcastFullStateSync()` works (v1.6.3.7-v7)
+- [ ] Operation confirmations handled correctly (v1.6.3.7-v7)
 - [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
 - [ ] Deduplication visibility shows `RENDER_SKIPPED reason=...` (v1.6.3.7-v6)
-- [ ] Port registry lifecycle logging works (v1.6.3.7-v6)
-- [ ] Storage write lifecycle logging works (v1.6.3.7-v6)
 - [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
 - [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
-- [ ] Listener deduplication prevents duplicate renders (v1.6.3.7-v5)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] BroadcastChannel delivers instant updates (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] `scheduleRender()` prevents redundant renders via hash comparison
-- [ ] Background keepalive keeps Firefox background alive
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v6 enhanced observability,
-unified channel logging, lifecycle tracing, v5 connection state tracking,
-zombie detection, v4 circuit breaker probing, BroadcastChannel as primary.**
+**Your strength: Reliable cross-tab sync with v1.6.3.7-v7 BroadcastChannel from
+background, operation confirmations, v6 unified channel logging, v5 connection
+state tracking, zombie detection, v4 circuit breaker probing.**
