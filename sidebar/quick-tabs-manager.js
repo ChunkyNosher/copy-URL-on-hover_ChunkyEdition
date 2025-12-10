@@ -1408,6 +1408,72 @@ function _routePortMessage(message) {
     _handleStateSyncResponse(message);
     return;
   }
+
+  // v1.6.3.7-v7 - FIX Issue #7: Handle operation confirmations from background
+  if (_isOperationConfirmation(message.type)) {
+    _handleOperationConfirmation(message);
+    return;
+  }
+
+  // v1.6.3.7-v7 - FIX Issue #7: Log unknown message types for debugging
+  console.log('[Manager] [PORT] UNKNOWN_MESSAGE_TYPE:', {
+    type: message.type,
+    action: message.action,
+    messageId: message.messageId,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Check if message type is an operation confirmation
+ * v1.6.3.7-v7 - FIX Issue #7: Support operation confirmation messages
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean} True if this is an operation confirmation
+ */
+function _isOperationConfirmation(type) {
+  const confirmationTypes = [
+    'MINIMIZE_CONFIRMED',
+    'RESTORE_CONFIRMED',
+    'DELETE_CONFIRMED',
+    'UPDATE_CONFIRMED',
+    'ADOPT_CONFIRMED',
+    'CLEAR_ALL_CONFIRMED'
+  ];
+  return confirmationTypes.includes(type);
+}
+
+/**
+ * Handle operation confirmation from background
+ * v1.6.3.7-v7 - FIX Issue #7: Process confirmations and trigger UI update
+ * @private
+ * @param {Object} message - Confirmation message
+ */
+function _handleOperationConfirmation(message) {
+  const { type, quickTabId, correlationId, success, error } = message;
+
+  // Default success to true if not explicitly false (confirmation messages typically indicate success)
+  const isSuccess = success !== false;
+
+  console.log('[Manager] [PORT] OPERATION_CONFIRMED:', {
+    type,
+    quickTabId,
+    correlationId,
+    success: isSuccess,
+    error: error || null,
+    timestamp: Date.now()
+  });
+
+  // If there's a pending acknowledgment for this correlationId, resolve it
+  if (correlationId && pendingAcks.has(correlationId)) {
+    const pending = pendingAcks.get(correlationId);
+    clearTimeout(pending.timeout);
+    pending.resolve({ success: isSuccess, type, quickTabId });
+    pendingAcks.delete(correlationId);
+  }
+
+  // Schedule render to reflect the confirmed operation
+  scheduleRender(`port-${type}`, message.messageId);
 }
 
 /**
@@ -1684,7 +1750,13 @@ function _routeBroadcastMessage(message, messageId) {
   if (handler) {
     handler(message, messageId);
   } else {
-    console.log('[Manager] Unknown broadcast type:', message.type);
+    // v1.6.3.7-v7 - FIX Issue #7: Use consistent [BC] prefix for BroadcastChannel messages
+    console.log('[Manager] [BC] UNKNOWN_MESSAGE_TYPE:', {
+      type: message.type,
+      quickTabId: message.quickTabId,
+      messageId,
+      timestamp: Date.now()
+    });
   }
 }
 
@@ -1719,7 +1791,8 @@ function handleBroadcastFullStateSync(message, messageId) {
   });
 
   // Update local state with full state
-  quickTabsState.tabs = state.tabs;
+  // v1.6.3.7-v7 - FIX Code Review: Use defensive copy to avoid shared reference issues
+  quickTabsState.tabs = [...state.tabs];
   quickTabsState.saveId = saveId;
   quickTabsState.timestamp = state.timestamp || Date.now();
 
