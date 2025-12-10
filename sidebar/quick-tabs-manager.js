@@ -88,7 +88,12 @@ import {
   addBroadcastListener,
   removeBroadcastListener,
   closeBroadcastChannel,
-  isChannelAvailable as _isChannelAvailable
+  isChannelAvailable as _isChannelAvailable,
+  // v1.6.3.7-v9 - Issue #7: Import sequence tracking functions
+  setGapDetectionCallback,
+  processReceivedSequence,
+  resetSequenceTracking,
+  isBroadcastChannelStale
 } from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
@@ -334,12 +339,21 @@ const ACK_TIMEOUT_MS = 1000;
 
 // ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
 // FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
+// v1.6.3.7-v9 - Issue #1: Consolidated heartbeat (25s) and keepalive (20s) into unified 20s system
 
 /**
- * Heartbeat interval (25 seconds - Firefox idle timeout is 30s)
- * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * Unified keepalive interval (20 seconds - same as background keepalive)
+ * v1.6.3.7-v9 - Issue #1: Consolidated from separate 25s heartbeat and 20s keepalive
+ * Firefox idle timeout is 30s, so 20s gives ~10s safety margin
  */
-const HEARTBEAT_INTERVAL_MS = 25000;
+const UNIFIED_KEEPALIVE_INTERVAL_MS = 20000;
+
+/**
+ * Heartbeat interval - kept for backwards compatibility but now uses unified timing
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * v1.6.3.7-v9 - Issue #1: Now equals UNIFIED_KEEPALIVE_INTERVAL_MS
+ */
+const HEARTBEAT_INTERVAL_MS = UNIFIED_KEEPALIVE_INTERVAL_MS;
 
 /**
  * Heartbeat timeout (5 seconds)
@@ -365,6 +379,39 @@ let lastHeartbeatResponse = Date.now();
  */
 let consecutiveHeartbeatFailures = 0;
 const MAX_HEARTBEAT_FAILURES = 2;
+
+// ==================== v1.6.3.7-v9 UNIFIED KEEPALIVE STATE (Issue #1) ====================
+// Consolidated keepalive system with correlation IDs and immediate fallback
+
+/**
+ * Counter for keepalive correlation IDs
+ * v1.6.3.7-v9 - Issue #1: Track keepalive cycles for debugging
+ */
+let keepaliveCorrelationCounter = 0;
+
+/**
+ * Current keepalive cycle correlation ID
+ * v1.6.3.7-v9 - Issue #1: Unique ID per keepalive round
+ */
+let currentKeepaliveCorrelationId = null;
+
+/**
+ * Timestamp when current keepalive cycle started
+ * v1.6.3.7-v9 - Issue #1: Track round-trip time
+ */
+let currentKeepaliveStartTime = 0;
+
+/**
+ * Threshold for consecutive keepalive failures before ZOMBIE transition
+ * v1.6.3.7-v9 - Issue #1: Use same threshold as HEARTBEAT_FAILURES_BEFORE_ZOMBIE
+ */
+const KEEPALIVE_FAILURES_BEFORE_ZOMBIE = 3;
+
+/**
+ * Counter for consecutive keepalive failures (unified tracking)
+ * v1.6.3.7-v9 - Issue #1: Combined heartbeat + keepalive failure tracking
+ */
+let consecutiveKeepaliveFailures = 0;
 
 // ==================== v1.6.3.7 CIRCUIT BREAKER STATE ====================
 // FIX Issue #5: Port Reconnect Circuit Breaker to prevent thundering herd
@@ -1048,15 +1095,18 @@ function startHeartbeat() {
   // Clear any existing interval
   stopHeartbeat();
 
+  // v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
+  consecutiveKeepaliveFailures = 0;
+
   // Send initial heartbeat immediately
   sendHeartbeat();
 
-  // Start interval
+  // Start interval - v1.6.3.7-v9: Uses unified UNIFIED_KEEPALIVE_INTERVAL_MS (20s)
   heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
   console.log(
-    '[Manager] v1.6.3.6-v12 Heartbeat started (every',
+    '[Manager] v1.6.3.7-v9 Unified keepalive started (every',
     HEARTBEAT_INTERVAL_MS / 1000,
-    's)'
+    's) - consolidated heartbeat + keepalive'
   );
 }
 
@@ -1068,15 +1118,27 @@ function stopHeartbeat() {
   if (heartbeatIntervalId) {
     clearInterval(heartbeatIntervalId);
     heartbeatIntervalId = null;
-    console.log('[Manager] v1.6.3.6-v12 Heartbeat stopped');
+    console.log('[Manager] v1.6.3.7-v9 Unified keepalive stopped');
   }
 }
 
 /**
- * Send heartbeat message to background
+ * Generate keepalive correlation ID
+ * v1.6.3.7-v9 - Issue #1: Unique ID per keepalive round for tracing
+ * @private
+ * @returns {string} Correlation ID
+ */
+function _generateKeepaliveCorrelationId() {
+  keepaliveCorrelationCounter++;
+  return `ka-${Date.now()}-${keepaliveCorrelationCounter}`;
+}
+
+/**
+ * Send heartbeat message to background (unified keepalive)
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
  * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
  * v1.6.3.7-v4 - FIX Issue #1: Enhanced logging to distinguish port vs background state
+ * v1.6.3.7-v9 - Issue #1: Unified keepalive with correlation IDs and START/COMPLETE logs
  *
  * Three-tier communication architecture:
  * 1. BroadcastChannel (PRIMARY) - Instant cross-tab messaging
@@ -1084,26 +1146,98 @@ function stopHeartbeat() {
  * 3. storage.onChanged (TERTIARY) - Reliable fallback
  */
 async function sendHeartbeat() {
-  const heartbeatStartTime = Date.now();
+  // v1.6.3.7-v9 - Issue #1: Generate correlation ID for this keepalive round
+  currentKeepaliveCorrelationId = _generateKeepaliveCorrelationId();
+  currentKeepaliveStartTime = Date.now();
+
+  // v1.6.3.7-v9 - Issue #1: Log keepalive START with correlation ID
+  console.log('[Manager] [KEEPALIVE] START:', {
+    correlationId: currentKeepaliveCorrelationId,
+    portExists: backgroundPort !== null,
+    connectionState,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    timestamp: currentKeepaliveStartTime
+  });
 
   // v1.6.3.7-v4 - FIX Issue #1: Log heartbeat attempt with port state
   _logHeartbeatAttempt();
 
   if (!backgroundPort) {
     _handlePortDisconnected();
+    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (failed - no port)
+    _logKeepaliveComplete(false, 'port-disconnected');
     return;
   }
 
   try {
     // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
     const response = await sendPortMessageWithTimeout(
-      { type: 'HEARTBEAT', timestamp: Date.now(), source: 'sidebar' },
+      { 
+        type: 'HEARTBEAT', 
+        timestamp: Date.now(), 
+        source: 'sidebar',
+        correlationId: currentKeepaliveCorrelationId // v1.6.3.7-v9: Include correlation ID
+      },
       HEARTBEAT_TIMEOUT_MS
     );
 
-    _handleHeartbeatSuccess(response, heartbeatStartTime);
+    _handleHeartbeatSuccess(response, currentKeepaliveStartTime);
+    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (success)
+    _logKeepaliveComplete(true, 'success');
   } catch (err) {
     _handleHeartbeatFailure(err);
+    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (failed)
+    _logKeepaliveComplete(false, err.message);
+    // v1.6.3.7-v9 - Issue #1: Trigger immediate fallback on failure
+    _triggerKeepaliveFallback(err);
+  }
+}
+
+/**
+ * Log keepalive cycle completion
+ * v1.6.3.7-v9 - Issue #1: COMPLETE log with correlation ID
+ * @private
+ * @param {boolean} success - Whether keepalive succeeded
+ * @param {string} reason - Success/failure reason
+ */
+function _logKeepaliveComplete(success, reason) {
+  const duration = Date.now() - currentKeepaliveStartTime;
+  console.log('[Manager] [KEEPALIVE] COMPLETE:', {
+    correlationId: currentKeepaliveCorrelationId,
+    success,
+    reason,
+    durationMs: duration,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Trigger immediate fallback mechanism on keepalive failure
+ * v1.6.3.7-v9 - Issue #1: Backpressure detection with immediate fallback
+ * @private
+ * @param {Error} err - The error that caused failure
+ */
+function _triggerKeepaliveFallback(err) {
+  consecutiveKeepaliveFailures++;
+  
+  console.warn('[Manager] [KEEPALIVE] FALLBACK_TRIGGERED:', {
+    correlationId: currentKeepaliveCorrelationId,
+    error: err.message,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE,
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.7-v9 - Issue #1: Check if we should transition to ZOMBIE
+  if (consecutiveKeepaliveFailures >= KEEPALIVE_FAILURES_BEFORE_ZOMBIE) {
+    if (connectionState === CONNECTION_STATE.CONNECTED) {
+      console.warn('[Manager] [KEEPALIVE] ZOMBIE_TRANSITION: Consecutive failure threshold reached', {
+        consecutiveFailures: consecutiveKeepaliveFailures,
+        threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE
+      });
+      _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'keepalive-failure-threshold');
+    }
   }
 }
 
@@ -1111,15 +1245,18 @@ async function sendHeartbeat() {
  * Log heartbeat attempt details
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Added connectionState to logging
+ * v1.6.3.7-v9 - Issue #1: Added keepalive correlation ID
  * @private
  */
 function _logHeartbeatAttempt() {
   console.log('[Manager] HEARTBEAT_ATTEMPT:', {
+    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     portExists: backgroundPort !== null,
     portConnected: backgroundPort ? 'yes' : 'no',
     connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Explicit connection state
     circuitBreakerState,
     consecutiveFailures: consecutiveHeartbeatFailures,
+    consecutiveKeepaliveFailures, // v1.6.3.7-v9
     timeSinceLastSuccess: Date.now() - lastHeartbeatResponse
   });
 }
@@ -1128,10 +1265,12 @@ function _logHeartbeatAttempt() {
  * Handle case when port is disconnected
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state
+ * v1.6.3.7-v9 - Issue #1: Increment unified failure counter
  * @private
  */
 function _handlePortDisconnected() {
   console.warn('[Manager] HEARTBEAT_FAILED: port disconnected', {
+    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     status: 'PORT_DISCONNECTED',
     connectionState,
     circuitBreakerState,
@@ -1145,8 +1284,11 @@ function _handlePortDisconnected() {
   }
 
   consecutiveHeartbeatFailures++;
+  // v1.6.3.7-v9 - Issue #1: Also increment unified counter
+  consecutiveKeepaliveFailures++;
+  
   if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-    console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+    console.error('[Manager] v1.6.3.7-v9 Max heartbeat failures - triggering reconnect');
     scheduleReconnect();
   }
 }
@@ -1156,6 +1298,7 @@ function _handlePortDisconnected() {
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on success
  * v1.6.3.7-v8 - FIX Issue #13: Reset timeout counter on success
+ * v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
  * @private
  * @param {Object} response - Response from background
  * @param {number} startTime - When heartbeat was started
@@ -1164,6 +1307,8 @@ function _handleHeartbeatSuccess(response, startTime) {
   consecutiveHeartbeatFailures = 0;
   // v1.6.3.7-v8 - FIX Issue #13: Reset timeout-specific counter on success
   consecutiveHeartbeatTimeouts = 0;
+  // v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
+  consecutiveKeepaliveFailures = 0;
   lastHeartbeatResponse = Date.now();
 
   // v1.6.3.7-v5 - FIX Issue #1: Confirm we're in CONNECTED state (recovered from zombie)
@@ -1172,6 +1317,7 @@ function _handleHeartbeatSuccess(response, startTime) {
   }
 
   console.log('[Manager] [HEARTBEAT] SUCCESS:', {
+    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     status: 'BACKGROUND_ALIVE',
     connectionState,
     roundTripMs: Date.now() - startTime,
@@ -1179,6 +1325,7 @@ function _handleHeartbeatSuccess(response, startTime) {
     isInitialized: response?.isInitialized,
     circuitBreakerState,
     consecutiveTimeouts: consecutiveHeartbeatTimeouts,
+    consecutiveKeepaliveFailures, // v1.6.3.7-v9
     diagnosis: 'Background script is alive and responding'
   });
 }
@@ -1281,6 +1428,34 @@ function _processHeartbeatFailureRecovery(isTimeout) {
  * @param {number} timeoutMs - Timeout in milliseconds
  * @returns {Promise<Object>} Response from background
  */
+// ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
+// Monotonic sequence counter for outgoing port messages
+
+/**
+ * Monotonic sequence counter for outgoing port messages from Manager
+ * v1.6.3.7-v9 - Issue #9: Detect message reordering
+ */
+let _managerPortMessageSequence = 0;
+
+/**
+ * Get next message sequence number for port messages
+ * v1.6.3.7-v9 - Issue #9: Generate monotonically increasing sequence
+ * @private
+ * @returns {number} Next sequence number
+ */
+function _getNextManagerPortMessageSequence() {
+  _managerPortMessageSequence++;
+  return _managerPortMessageSequence;
+}
+
+/**
+ * Send a message via port with timeout and correlation ID
+ * v1.6.3.6-v12 - FIX Issue #4: Send messages with acknowledgment tracking
+ * v1.6.3.7-v9 - Issue #9: Added message sequence number for ordering
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} Response from background
+ */
 function sendPortMessageWithTimeout(message, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!backgroundPort) {
@@ -1289,7 +1464,13 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
     }
 
     const correlationId = generateCorrelationId();
-    const messageWithCorrelation = { ...message, correlationId };
+    // v1.6.3.7-v9 - Issue #9: Add message sequence number
+    const messageSequence = _getNextManagerPortMessageSequence();
+    const messageWithCorrelation = { 
+      ...message, 
+      correlationId,
+      messageSequence // v1.6.3.7-v9
+    };
 
     // Set up timeout
     const timeout = setTimeout(() => {
@@ -1302,12 +1483,23 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
       resolve,
       reject,
       timeout,
-      sentAt: Date.now()
+      sentAt: Date.now(),
+      messageSequence // v1.6.3.7-v9: Track sequence for debugging
     });
 
     // Send message
     try {
       backgroundPort.postMessage(messageWithCorrelation);
+      
+      // v1.6.3.7-v9 - Issue #9: Log sequence for debugging
+      if (DEBUG_MESSAGING) {
+        console.log('[Manager] [PORT] MESSAGE_SENT:', {
+          type: message.type,
+          correlationId,
+          messageSequence,
+          timestamp: Date.now()
+        });
+      }
     } catch (err) {
       clearTimeout(timeout);
       pendingAcks.delete(correlationId);
@@ -1982,6 +2174,7 @@ let broadcastHandlerRef = null;
  * Initialize BroadcastChannel for real-time updates
  * v1.6.3.7-v3 - API #2: Setup channel and listener
  * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
+ * v1.6.3.7-v9 - Issue #7: Set up sequence gap detection callback
  */
 function initializeBroadcastChannel() {
   const initialized = initBroadcastChannel();
@@ -1989,6 +2182,15 @@ function initializeBroadcastChannel() {
     console.log('[Manager] BroadcastChannel not available, using storage.onChanged only');
     return;
   }
+
+  // v1.6.3.7-v9 - Issue #7: Reset sequence tracking on init
+  resetSequenceTracking();
+
+  // v1.6.3.7-v9 - Issue #7: Set up gap detection callback
+  setGapDetectionCallback((gapInfo) => {
+    console.warn('[Manager] [BC] GAP_DETECTION_CALLBACK:', gapInfo);
+    // The actual fallback is handled in handleBroadcastChannelMessage via _triggerStorageFallbackOnGap
+  });
 
   // Create handler function
   broadcastHandlerRef = handleBroadcastChannelMessage;
@@ -1999,9 +2201,10 @@ function initializeBroadcastChannel() {
     // v1.6.3.7-v6 - Gap #3: Log listener registration with details
     console.log('[Manager] LISTENER_REGISTERED: BroadcastChannel listener added', {
       channel: 'quick-tabs-updates',
+      sequenceTrackingEnabled: true, // v1.6.3.7-v9
       timestamp: Date.now()
     });
-    console.log('[Manager] v1.6.3.7-v3 BroadcastChannel listener added');
+    console.log('[Manager] v1.6.3.7-v9 BroadcastChannel listener added with sequence tracking');
   }
 }
 
@@ -2010,6 +2213,7 @@ function initializeBroadcastChannel() {
  * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
  * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
  * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
+ * v1.6.3.7-v9 - Issue #7: Added sequence number tracking for gap detection
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
@@ -2017,6 +2221,24 @@ function handleBroadcastChannelMessage(event) {
 
   if (!message || !message.type) {
     return;
+  }
+
+  // v1.6.3.7-v9 - Issue #7: Check for sequence gap if sequenceNumber present
+  if (typeof message.sequenceNumber === 'number') {
+    const seqResult = processReceivedSequence(message.sequenceNumber);
+    if (seqResult.hasGap) {
+      // Calculate expected sequence: current - gap = what we expected
+      const expectedSeq = message.sequenceNumber - seqResult.gapSize;
+      console.warn('[Manager] [BC] SEQUENCE_GAP_DETECTED:', {
+        expectedSequence: expectedSeq,
+        receivedSequence: message.sequenceNumber,
+        gapSize: seqResult.gapSize,
+        type: message.type,
+        quickTabId: message.quickTabId
+      });
+      // Trigger storage fallback read to recover missed messages
+      _triggerStorageFallbackOnGap(seqResult.gapSize);
+    }
   }
 
   // v1.6.3.7-v4 - FIX Issue #4: Generate messageId from BroadcastChannel message for deduplication
@@ -2029,6 +2251,7 @@ function handleBroadcastChannelMessage(event) {
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
     messageId: broadcastMessageId,
+    sequenceNumber: message.sequenceNumber, // v1.6.3.7-v9
     saveId: message.saveId,
     from: 'BroadcastChannel',
     timestamp: Date.now()
@@ -2036,6 +2259,47 @@ function handleBroadcastChannelMessage(event) {
 
   // v1.6.3.7-v4 - Route to handler based on message type
   _routeBroadcastMessage(message, broadcastMessageId);
+}
+
+/**
+ * Trigger storage fallback read when sequence gap is detected
+ * v1.6.3.7-v9 - Issue #7: Recover from message loss via storage read
+ * @private
+ * @param {number} gapSize - Number of missed messages
+ */
+async function _triggerStorageFallbackOnGap(gapSize) {
+  console.log('[Manager] [BC] STORAGE_FALLBACK_TRIGGERED:', {
+    reason: 'sequence-gap',
+    gapSize,
+    timestamp: Date.now()
+  });
+
+  try {
+    // Read full state from storage to recover any missed updates
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const state = result?.quick_tabs_state_v2;
+
+    if (state?.tabs) {
+      console.log('[Manager] [BC] STORAGE_FALLBACK_SUCCESS:', {
+        tabCount: state.tabs.length,
+        saveId: state.saveId
+      });
+
+      // Update local state
+      quickTabsState.tabs = [...state.tabs];
+      quickTabsState.saveId = state.saveId;
+      quickTabsState.timestamp = state.timestamp || Date.now();
+
+      // Update cache and trigger render
+      _updateInMemoryCache(state.tabs);
+      lastLocalUpdateTime = Date.now();
+      scheduleRender('storage-fallback');
+    }
+  } catch (err) {
+    console.error('[Manager] [BC] STORAGE_FALLBACK_FAILED:', {
+      error: err.message
+    });
+  }
 }
 
 /**

@@ -4,6 +4,7 @@
  * v1.6.3.7-v3 - API #2: BroadcastChannel for instant sidebar updates
  * v1.6.4.13 - Issue #5: Enhanced logging for broadcast operations
  * v1.6.4.15 - Phase 3B Optimization #5: Backpressure protection
+ * v1.6.3.7-v9 - Issue #7: Monotonic sequence counter for message loss detection
  *
  * Purpose: Provides instant messaging between tabs without full re-renders
  * BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
@@ -28,6 +29,155 @@ let updateChannel = null;
 
 // v1.6.4.13 - Issue #5: Debug flag for verbose logging
 const DEBUG_BC_MESSAGING = true;
+
+// ==================== v1.6.3.7-v9 SEQUENCE COUNTER (Issue #7) ====================
+// Monotonic sequence counter for message loss detection
+
+/**
+ * Monotonic sequence counter for outgoing broadcasts
+ * v1.6.3.7-v9 - Issue #7: Detect message coalescing/loss
+ */
+let _broadcastSequenceCounter = 0;
+
+/**
+ * Last received sequence number (for gap detection on receiver side)
+ * v1.6.3.7-v9 - Issue #7: Track received sequence for gap detection
+ */
+let _lastReceivedSequenceNumber = 0;
+
+/**
+ * Time of last received broadcast message
+ * v1.6.3.7-v9 - Issue #7: Detect stale state (no messages for >5s)
+ */
+let _lastBroadcastReceivedTime = Date.now();
+
+/**
+ * Callback for gap detection (set by listener)
+ * v1.6.3.7-v9 - Issue #7: Notify listener of detected gaps
+ */
+let _gapDetectionCallback = null;
+
+/**
+ * Threshold for switching to polling-only mode (5 seconds)
+ * v1.6.3.7-v9 - Issue #7: If no messages for this long, assume BC unreliable
+ */
+const NO_MESSAGE_POLLING_THRESHOLD_MS = 5000;
+
+/**
+ * Get the next sequence number for outgoing broadcast
+ * v1.6.3.7-v9 - Issue #7: Generate monotonically increasing sequence
+ * @returns {number} Next sequence number
+ */
+function _getNextSequenceNumber() {
+  _broadcastSequenceCounter++;
+  return _broadcastSequenceCounter;
+}
+
+/**
+ * Get current broadcast sequence counter value (for diagnostics)
+ * v1.6.3.7-v9 - Issue #7: Expose for logging/debugging
+ * @returns {number} Current sequence counter
+ */
+export function getCurrentSequenceNumber() {
+  return _broadcastSequenceCounter;
+}
+
+/**
+ * Get last received sequence number (for diagnostics)
+ * v1.6.3.7-v9 - Issue #7: Expose for logging/debugging
+ * @returns {number} Last received sequence number
+ */
+export function getLastReceivedSequenceNumber() {
+  return _lastReceivedSequenceNumber;
+}
+
+/**
+ * Check if BroadcastChannel appears stale (no messages for >5s)
+ * v1.6.3.7-v9 - Issue #7: Heuristic for polling-only mode
+ * @returns {boolean} True if channel appears stale
+ */
+export function isBroadcastChannelStale() {
+  return Date.now() - _lastBroadcastReceivedTime > NO_MESSAGE_POLLING_THRESHOLD_MS;
+}
+
+/**
+ * Set callback for gap detection notification
+ * v1.6.3.7-v9 - Issue #7: Allow listener to register gap handler
+ * @param {Function} callback - Called with { expectedSeq, receivedSeq, gap } when gap detected
+ */
+export function setGapDetectionCallback(callback) {
+  _gapDetectionCallback = callback;
+}
+
+/**
+ * Safely invoke gap detection callback
+ * v1.6.3.7-v9 - Issue #7: Extracted to reduce nesting depth
+ * @private
+ * @param {number} expectedSequence - Expected sequence number
+ * @param {number} receivedSequence - Received sequence number
+ * @param {number} gapSize - Size of the gap
+ */
+function _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize) {
+  if (!_gapDetectionCallback) {
+    return;
+  }
+  
+  try {
+    _gapDetectionCallback({
+      expectedSeq: expectedSequence,
+      receivedSeq: receivedSequence,
+      gap: gapSize
+    });
+  } catch (err) {
+    console.error('[BroadcastChannelManager] Gap detection callback error:', err.message);
+  }
+}
+
+/**
+ * Process incoming sequence number and detect gaps
+ * v1.6.3.7-v9 - Issue #7: Detect message coalescing/loss
+ * @param {number} receivedSequence - Sequence number from received message
+ * @returns {{ hasGap: boolean, gapSize: number, isFirstMessage: boolean }}
+ */
+export function processReceivedSequence(receivedSequence) {
+  _lastBroadcastReceivedTime = Date.now();
+  
+  // First message - no gap possible
+  if (_lastReceivedSequenceNumber === 0) {
+    _lastReceivedSequenceNumber = receivedSequence;
+    return { hasGap: false, gapSize: 0, isFirstMessage: true };
+  }
+  
+  const expectedSequence = _lastReceivedSequenceNumber + 1;
+  const hasGap = receivedSequence > expectedSequence;
+  const gapSize = hasGap ? receivedSequence - expectedSequence : 0;
+  
+  if (hasGap) {
+    console.warn('[BroadcastChannelManager] [BC] SEQUENCE_GAP_DETECTED:', {
+      expectedSequence,
+      receivedSequence,
+      gapSize,
+      missedMessages: gapSize,
+      timestamp: Date.now()
+    });
+    
+    // Notify listener of gap (extracted to reduce nesting)
+    _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize);
+  }
+  
+  _lastReceivedSequenceNumber = receivedSequence;
+  return { hasGap, gapSize, isFirstMessage: false };
+}
+
+/**
+ * Reset sequence tracking (e.g., on channel reinit)
+ * v1.6.3.7-v9 - Issue #7: Reset state for fresh start
+ */
+export function resetSequenceTracking() {
+  _lastReceivedSequenceNumber = 0;
+  _lastBroadcastReceivedTime = Date.now();
+  console.log('[BroadcastChannelManager] [BC] Sequence tracking reset');
+}
 
 // ==================== v1.6.4.15 BACKPRESSURE CONSTANTS ====================
 // Phase 3B Optimization #5: Broadcast overflow protection
@@ -319,7 +469,14 @@ export default {
   getBackpressureMetrics,
   resetBackpressureMetrics,
   getClientState,
-  clearClientState
+  clearClientState,
+  // v1.6.3.7-v9 - Issue #7: Sequence tracking exports
+  getCurrentSequenceNumber,
+  getLastReceivedSequenceNumber,
+  isBroadcastChannelStale,
+  setGapDetectionCallback,
+  processReceivedSequence,
+  resetSequenceTracking
 };
 
 // ==================== v1.6.4.15 BACKPRESSURE IMPLEMENTATION ====================
@@ -555,6 +712,7 @@ export function clearClientState(clientId) {
 /**
  * Post a message with backpressure protection
  * v1.6.4.15 - Enhanced with backpressure checks
+ * v1.6.3.7-v9 - Issue #7: Added monotonic sequence number for message loss detection
  * @private
  * @param {Object} message - Message to broadcast
  * @param {boolean} [requireAck=false] - Whether to require ACK
@@ -577,9 +735,13 @@ function _postMessageWithBackpressure(message, requireAck = false) {
 
   // Generate message ID for ACK tracking
   const messageId = _generateMessageId();
+  // v1.6.3.7-v9 - Issue #7: Add monotonic sequence number
+  const sequenceNumber = _getNextSequenceNumber();
+  
   const messageWithMeta = {
     ...message,
     messageId,
+    sequenceNumber, // v1.6.3.7-v9 - Issue #7: Monotonic sequence for gap detection
     timestamp: Date.now(),
     source: 'BroadcastChannelManager',
     requireAck
@@ -597,6 +759,7 @@ function _postMessageWithBackpressure(message, requireAck = false) {
       console.log('[BroadcastChannelManager] [BC] POST_SUCCESS:', {
         type: message.type,
         messageId,
+        sequenceNumber, // v1.6.3.7-v9 - Issue #7: Log sequence number
         quickTabId: message.quickTabId,
         requireAck,
         success: true,
@@ -610,6 +773,7 @@ function _postMessageWithBackpressure(message, requireAck = false) {
       console.error('[BroadcastChannelManager] [BC] POST_FAILED:', {
         type: message.type,
         quickTabId: message.quickTabId,
+        sequenceNumber, // v1.6.3.7-v9 - Issue #7: Log sequence number even on failure
         error: err.message,
         success: false,
         timestamp: Date.now()

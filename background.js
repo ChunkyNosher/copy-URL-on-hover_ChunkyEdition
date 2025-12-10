@@ -3208,6 +3208,74 @@ const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  */
 const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 
+// ==================== v1.6.3.7-v9 PORT AGE THRESHOLDS (Issue #4) ====================
+// Maximum age and inactivity thresholds for port cleanup
+
+/**
+ * Maximum port lifetime (90 seconds)
+ * v1.6.3.7-v9 - Issue #4: Ports older than this are removed regardless of activity
+ */
+const PORT_MAX_AGE_MS = 90 * 1000;
+
+/**
+ * Port inactivity timeout for stale marking (30 seconds)
+ * v1.6.3.7-v9 - Issue #4: Ports with no messages for this duration are marked stale
+ */
+const PORT_STALE_TIMEOUT_MS = 30 * 1000;
+
+// ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
+// Monotonic sequence counter for port messages to detect reordering
+
+/**
+ * Monotonic sequence counter for outgoing port messages
+ * v1.6.3.7-v9 - Issue #9: Detect message reordering
+ */
+let portMessageSequenceCounter = 0;
+
+/**
+ * Map of expected sequence numbers per port
+ * v1.6.3.7-v9 - Issue #9: Track expected sequence per port connection
+ * Key: portId, Value: { lastReceivedSeq: number, reorderBuffer: Map<seq, message> }
+ */
+const portSequenceTracking = new Map();
+
+/**
+ * Maximum reorder buffer size before forced flush
+ * v1.6.3.7-v9 - Issue #9: Prevent unbounded buffer growth
+ */
+const MAX_REORDER_BUFFER_SIZE = 10;
+
+/**
+ * Get next message sequence number for port messages
+ * v1.6.3.7-v9 - Issue #9: Generate monotonically increasing sequence
+ * @returns {number} Next sequence number
+ */
+function _getNextPortMessageSequence() {
+  portMessageSequenceCounter++;
+  return portMessageSequenceCounter;
+}
+
+/**
+ * Initialize sequence tracking for a new port
+ * v1.6.3.7-v9 - Issue #9: Set up tracking when port connects
+ * @param {string} portId - Port ID to track
+ */
+function _initPortSequenceTracking(portId) {
+  portSequenceTracking.set(portId, {
+    lastReceivedSeq: 0,
+    reorderBuffer: new Map()
+  });
+}
+
+/**
+ * Clean up sequence tracking for disconnected port
+ * v1.6.3.7-v9 - Issue #9: Remove tracking when port disconnects
+ * @param {string} portId - Port ID to clean up
+ */
+function _cleanupPortSequenceTracking(portId) {
+  portSequenceTracking.delete(portId);
+}
+
 /**
  * Generate unique port ID
  * v1.6.3.6-v11 - FIX Issue #12: Port identification
@@ -3242,21 +3310,29 @@ function logPortLifecycle(origin, event, details = {}) {
  * @param {string} origin - Origin identifier
  * @param {number|null} tabId - Tab ID (if from content script)
  * @param {string} type - Port type ('sidebar' or 'content')
+ * @param {number|null} windowId - Window ID for sidebar ports (v1.6.3.7-v9)
  * @returns {string} Generated port ID
  */
-function registerPort(port, origin, tabId, type) {
+function registerPort(port, origin, tabId, type, windowId = null) {
   const portId = generatePortId();
   const beforeCount = portRegistry.size;
+  const now = Date.now();
 
   portRegistry.set(portId, {
     port,
     origin,
     tabId,
     type,
-    connectedAt: Date.now(),
+    // v1.6.3.7-v9 - Issue #4: Enhanced metadata tracking
+    windowId: windowId || port.sender?.tab?.windowId || null,
+    connectedAt: now,
     lastMessageAt: null,
+    lastActivityTime: now, // v1.6.3.7-v9: Tracks both sent and received
     messageCount: 0
   });
+
+  // v1.6.3.7-v9 - Issue #9: Initialize sequence tracking for this port
+  _initPortSequenceTracking(portId);
 
   // v1.6.4.9 - Issue #6: Enhanced PORT_REGISTERED logging
   console.log('[Background] PORT_REGISTERED:', {
@@ -3264,6 +3340,7 @@ function registerPort(port, origin, tabId, type) {
     origin,
     tabId,
     type,
+    windowId: windowId || port.sender?.tab?.windowId || null, // v1.6.3.7-v9
     registrySize: portRegistry.size,
     previousSize: beforeCount
   });
@@ -3302,6 +3379,7 @@ function _checkPortRegistrySizeWarnings() {
  * Unregister a port connection
  * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
  * v1.6.4.9 - Issue #6: Enhanced PORT_UNREGISTERED logging
+ * v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
  * @param {string} portId - Port ID to unregister
  * @param {string} reason - Reason for disconnect
  */
@@ -3315,6 +3393,7 @@ function unregisterPort(portId, reason = 'disconnect') {
       portId,
       origin: portInfo.origin,
       tabId: portInfo.tabId,
+      windowId: portInfo.windowId, // v1.6.3.7-v9
       reason,
       messageCount: portInfo.messageCount,
       duration: Date.now() - portInfo.connectedAt,
@@ -3330,18 +3409,24 @@ function unregisterPort(portId, reason = 'disconnect') {
       duration: Date.now() - portInfo.connectedAt
     });
     portRegistry.delete(portId);
+    
+    // v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
+    _cleanupPortSequenceTracking(portId);
   }
 }
 
 /**
  * Update port activity timestamp
  * v1.6.3.6-v11 - FIX Issue #12: Track port activity
+ * v1.6.3.7-v9 - Issue #4: Update lastActivityTime
  * @param {string} portId - Port ID
  */
 function updatePortActivity(portId) {
   const portInfo = portRegistry.get(portId);
   if (portInfo) {
-    portInfo.lastMessageAt = Date.now();
+    const now = Date.now();
+    portInfo.lastMessageAt = now;
+    portInfo.lastActivityTime = now; // v1.6.3.7-v9
     portInfo.messageCount++;
   }
 }
@@ -3373,21 +3458,74 @@ async function _checkPortTabExists(portInfo) {
  * @param {string} portId - Port ID
  */
 function _checkPortInactivity(portInfo, now, portId) {
-  const lastActivity = portInfo.lastMessageAt || portInfo.connectedAt;
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
   if (now - lastActivity > PORT_INACTIVITY_THRESHOLD_MS) {
     console.warn('[Background] PORT_CLEANUP: Port has been inactive:', {
       portId,
       origin: portInfo.origin,
       tabId: portInfo.tabId,
+      windowId: portInfo.windowId, // v1.6.3.7-v9
       inactiveMs: now - lastActivity
     });
   }
 }
 
 /**
+ * Check if port exceeds maximum age threshold
+ * v1.6.3.7-v9 - Issue #4: Age-based cleanup
+ * @private
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID for logging
+ * @returns {boolean} True if port exceeds max age
+ */
+function _isPortTooOld(portInfo, now, portId) {
+  const age = now - portInfo.connectedAt;
+  if (age > PORT_MAX_AGE_MS) {
+    console.warn('[Background] [PORT] PORT_MAX_AGE_EXCEEDED:', {
+      portId,
+      origin: portInfo.origin,
+      ageMs: age,
+      maxAgeMs: PORT_MAX_AGE_MS,
+      windowId: portInfo.windowId
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if port is stale (no activity for timeout period)
+ * v1.6.3.7-v9 - Issue #4: Inactivity-based cleanup
+ * @private
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID for logging
+ * @returns {boolean} True if port is stale
+ */
+function _isPortStale(portInfo, now, portId) {
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+  const inactivityMs = now - lastActivity;
+  
+  if (inactivityMs > PORT_STALE_TIMEOUT_MS) {
+    console.warn('[Background] [PORT] PORT_STALE_DETECTED:', {
+      portId,
+      origin: portInfo.origin,
+      inactivityMs,
+      staleTimeoutMs: PORT_STALE_TIMEOUT_MS,
+      windowId: portInfo.windowId,
+      messageCount: portInfo.messageCount
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
  * Clean up stale ports (e.g., from closed tabs)
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
  * v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP logging with before/after counts
+ * v1.6.3.7-v9 - Issue #4: Added age-based and inactivity-based cleanup
  */
 async function cleanupStalePorts() {
   const beforeCount = portRegistry.size;
@@ -3395,6 +3533,8 @@ async function cleanupStalePorts() {
   // v1.6.4.9 - Issue #6: Log cleanup start
   console.log('[Background] PORT_CLEANUP_START:', {
     currentRegistrySize: beforeCount,
+    maxAgeMs: PORT_MAX_AGE_MS,
+    staleTimeoutMs: PORT_STALE_TIMEOUT_MS,
     timestamp: Date.now()
   });
 
@@ -3402,12 +3542,26 @@ async function cleanupStalePorts() {
   const stalePorts = [];
 
   for (const [portId, portInfo] of portRegistry.entries()) {
+    // v1.6.3.7-v9 - Issue #4: Check max age first (hard limit)
+    if (_isPortTooOld(portInfo, now, portId)) {
+      stalePorts.push({ portId, reason: 'max-age-exceeded' });
+      continue;
+    }
+
+    // Check if tab still exists
     const tabExists = await _checkPortTabExists(portInfo);
     if (!tabExists) {
       stalePorts.push({ portId, reason: 'tab-closed' });
       continue;
     }
 
+    // v1.6.3.7-v9 - Issue #4: Check inactivity (30s stale timeout)
+    if (_isPortStale(portInfo, now, portId)) {
+      stalePorts.push({ portId, reason: 'stale-inactivity' });
+      continue;
+    }
+
+    // Original inactivity check (logging only, 10 min threshold)
     _checkPortInactivity(portInfo, now, portId);
   }
 
@@ -3419,11 +3573,18 @@ async function cleanupStalePorts() {
   const afterCount = portRegistry.size;
 
   // v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP_COMPLETE logging
+  // v1.6.3.7-v9 - Issue #4: Enhanced with reason breakdown
+  const reasonCounts = {};
+  for (const { reason } of stalePorts) {
+    reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+  }
+
   console.log('[Background] PORT_CLEANUP_COMPLETE:', {
     beforeCount,
     afterCount,
     removedCount: stalePorts.length,
-    removedPorts: stalePorts.map(p => p.portId),
+    reasonBreakdown: reasonCounts, // v1.6.3.7-v9
+    removedPorts: stalePorts.map(p => ({ id: p.portId, reason: p.reason })),
     timestamp: Date.now()
   });
 }
@@ -3434,6 +3595,7 @@ setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 /**
  * Handle incoming port connection
  * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * v1.6.3.7-v9 - Issue #4: Extract window ID for sidebar tracking
  * @param {browser.runtime.Port} port - The connecting port
  */
 function handlePortConnect(port) {
@@ -3443,8 +3605,10 @@ function handlePortConnect(port) {
   const type = nameParts[1] || 'unknown';
   const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : port.sender?.tab?.id || null;
   const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+  // v1.6.3.7-v9 - Issue #4: Extract window ID for sidebar tracking
+  const windowId = port.sender?.tab?.windowId || null;
 
-  const portId = registerPort(port, origin, tabId, type);
+  const portId = registerPort(port, origin, tabId, type, windowId);
 
   // Store portId on the port for later reference
   port._portId = portId;
@@ -3467,6 +3631,7 @@ function handlePortConnect(port) {
 /**
  * Handle message received via port
  * v1.6.3.6-v11 - FIX Issue #10: Message acknowledgment system
+ * v1.6.3.7-v9 - Issue #9: Message sequence tracking and reordering
  * @param {browser.runtime.Port} port - The port that sent the message
  * @param {string} portId - Port ID
  * @param {Object} message - The message
@@ -3475,15 +3640,34 @@ async function handlePortMessage(port, portId, message) {
   const portInfo = portRegistry.get(portId);
   updatePortActivity(portId);
 
+  // v1.6.3.7-v9 - Issue #9: Check message sequence if present
+  if (typeof message.messageSequence === 'number') {
+    const sequenceResult = _processPortMessageSequence(portId, message);
+    if (sequenceResult.buffered) {
+      // Message was buffered for reordering, don't process yet
+      console.log('[Background] [PORT] MESSAGE_BUFFERED:', {
+        portId,
+        messageSequence: message.messageSequence,
+        expectedSequence: sequenceResult.expectedSequence,
+        bufferSize: sequenceResult.bufferSize
+      });
+      return;
+    }
+  }
+
   logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
     portId,
     tabId: portInfo?.tabId,
     messageType: message.type,
-    correlationId: message.correlationId
+    correlationId: message.correlationId,
+    messageSequence: message.messageSequence // v1.6.3.7-v9
   });
 
   // Route message based on type
   const response = await routePortMessage(message, portInfo);
+
+  // v1.6.3.7-v9 - Issue #9: Process any buffered messages that are now in order
+  _processBufferedMessages(port, portId);
 
   // Send acknowledgment if correlationId present
   if (message.correlationId) {
@@ -3493,6 +3677,8 @@ async function handlePortMessage(port, portId, message) {
       originalType: message.type,
       success: response?.success ?? true,
       timestamp: Date.now(),
+      // v1.6.3.7-v9 - Issue #9: Include sequence number for tracking
+      messageSequence: _getNextPortMessageSequence(),
       ...response
     };
 
@@ -3507,6 +3693,146 @@ async function handlePortMessage(port, portId, message) {
       console.error('[Background] Failed to send acknowledgment:', err.message);
     }
   }
+}
+
+/**
+ * Process port message sequence number for reordering
+ * v1.6.3.7-v9 - Issue #9: Track and buffer out-of-order messages
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} message - Message with messageSequence
+ * @returns {{ buffered: boolean, expectedSequence: number, bufferSize: number }}
+ */
+function _processPortMessageSequence(portId, message) {
+  let tracking = portSequenceTracking.get(portId);
+  if (!tracking) {
+    // Initialize if not exists (shouldn't happen but handle gracefully)
+    _initPortSequenceTracking(portId);
+    tracking = portSequenceTracking.get(portId);
+  }
+
+  const expectedSeq = tracking.lastReceivedSeq + 1;
+  const receivedSeq = message.messageSequence;
+
+  // Message is in order
+  if (receivedSeq === expectedSeq || tracking.lastReceivedSeq === 0) {
+    tracking.lastReceivedSeq = receivedSeq;
+    return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+  }
+
+  // Message is out of order - future message arrived early
+  if (receivedSeq > expectedSeq) {
+    console.warn('[Background] [PORT] OUT_OF_ORDER_MESSAGE:', {
+      portId,
+      expectedSequence: expectedSeq,
+      receivedSequence: receivedSeq,
+      gap: receivedSeq - expectedSeq
+    });
+
+    // Buffer it for later processing
+    tracking.reorderBuffer.set(receivedSeq, message);
+
+    // Check buffer size limit
+    if (tracking.reorderBuffer.size > MAX_REORDER_BUFFER_SIZE) {
+      console.warn('[Background] [PORT] REORDER_BUFFER_FLUSH:', {
+        portId,
+        bufferSize: tracking.reorderBuffer.size,
+        maxSize: MAX_REORDER_BUFFER_SIZE
+      });
+      // Force process oldest messages in buffer
+      _forceFlushReorderBuffer(portId, tracking);
+    }
+
+    return { buffered: true, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+  }
+
+  // receivedSeq < expectedSeq: Old/duplicate message, ignore
+  console.log('[Background] [PORT] DUPLICATE_MESSAGE_IGNORED:', {
+    portId,
+    receivedSequence: receivedSeq,
+    lastReceivedSequence: tracking.lastReceivedSeq
+  });
+  return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+}
+
+/**
+ * Process any buffered messages that are now in order
+ * v1.6.3.7-v9 - Issue #9: Drain buffer after processing a message
+ * @private
+ * @param {browser.runtime.Port} port - Port to process messages for
+ * @param {string} portId - Port ID
+ */
+async function _processBufferedMessages(port, portId) {
+  const tracking = portSequenceTracking.get(portId);
+  if (!tracking || tracking.reorderBuffer.size === 0) {
+    return;
+  }
+
+  let processedCount = 0;
+  // Process messages in sequence order
+  let hasMoreMessages = true;
+  while (hasMoreMessages) {
+    const nextExpected = tracking.lastReceivedSeq + 1;
+    const bufferedMessage = tracking.reorderBuffer.get(nextExpected);
+    
+    if (!bufferedMessage) {
+      hasMoreMessages = false;
+      continue;
+    }
+
+    // Remove from buffer and process
+    tracking.reorderBuffer.delete(nextExpected);
+    tracking.lastReceivedSeq = nextExpected;
+    processedCount++;
+
+    console.log('[Background] [PORT] BUFFERED_MESSAGE_PROCESSED:', {
+      portId,
+      messageSequence: nextExpected,
+      remainingBuffered: tracking.reorderBuffer.size
+    });
+
+    // Route the buffered message
+    const portInfo = portRegistry.get(portId);
+    await routePortMessage(bufferedMessage, portInfo);
+  }
+
+  if (processedCount > 0) {
+    console.log('[Background] [PORT] REORDER_BUFFER_DRAINED:', {
+      portId,
+      processedCount,
+      remainingBuffered: tracking.reorderBuffer.size
+    });
+  }
+}
+
+/**
+ * Force flush reorder buffer when it exceeds max size
+ * v1.6.3.7-v9 - Issue #9: Prevent unbounded buffer growth
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} tracking - Sequence tracking object
+ */
+function _forceFlushReorderBuffer(portId, tracking) {
+  // Get sorted sequence numbers
+  const sequences = Array.from(tracking.reorderBuffer.keys()).sort((a, b) => a - b);
+  
+  // Remove oldest half of buffer
+  const toRemove = Math.floor(sequences.length / 2);
+  for (let i = 0; i < toRemove; i++) {
+    tracking.reorderBuffer.delete(sequences[i]);
+  }
+
+  // Update lastReceivedSeq to skip the gap
+  if (sequences.length > toRemove) {
+    tracking.lastReceivedSeq = sequences[toRemove] - 1;
+  }
+
+  console.warn('[Background] [PORT] BUFFER_FORCE_FLUSHED:', {
+    portId,
+    removedCount: toRemove,
+    newLastReceivedSeq: tracking.lastReceivedSeq,
+    remainingBuffered: tracking.reorderBuffer.size
+  });
 }
 
 /**
