@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v9.
+  documentation. Current version: v1.6.3.7-v10.
 tools: ['*']
 ---
 
@@ -69,9 +69,18 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v9)
+## Current Extension State (v1.6.3.7-v10)
 
-### v1.6.3.7-v9 Features (NEW)
+### v1.6.3.7-v10 Features (NEW)
+
+- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
+- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
+- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
+- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
+- **Tab Affinity Diagnostics** - Age bucket logging, defensive cleanup
+- **Initialization Timing** - initializationStartTime with listener logging
+
+### v1.6.3.7-v9 Features (Retained)
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
 - **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
@@ -138,29 +147,32 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v9)
+### Key Functions (v1.6.3.7-v10)
 
-| Function                               | Location      | Purpose                        |
-| -------------------------------------- | ------------- | ------------------------------ |
-| `validateStorageIntegrity()`           | Storage utils | Integrity check with backup    |
-| `processOrderedStorageEvent()`         | Background    | sequenceId validation          |
-| `processOrderedPortMessage()`          | Manager       | messageSequence reorder buffer |
-| `broadcastFullStateSync()`             | Background    | Full state sync via BC         |
-| `scheduleRender(source)`               | Manager       | Unified render entry point     |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification + lifecycle |
+| Function                               | Location      | Purpose                          |
+| -------------------------------------- | ------------- | -------------------------------- |
+| `startStorageWatchdog()`               | Background    | Watchdog timer for writes (v10)  |
+| `validateChecksumOnStartup()`          | Storage utils | IndexedDB corruption check (v10) |
+| `processPortMessageWithReorder()`      | Manager       | Port message queue (v10)         |
+| `validateStorageIntegrity()`           | Storage utils | Integrity check with backup      |
+| `processOrderedStorageEvent()`         | Background    | sequenceId validation            |
+| `broadcastFullStateSync()`             | Background    | Full state sync via BC           |
+| `scheduleRender(source)`               | Manager       | Unified render entry point       |
+| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification + lifecycle   |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v9
+- [ ] Version numbers match 1.6.3.7-v10
+- [ ] **v1.6.3.7-v10:** Storage watchdog documented
+- [ ] **v1.6.3.7-v10:** BC gap detection documented
+- [ ] **v1.6.3.7-v10:** IndexedDB checksum documented
+- [ ] **v1.6.3.7-v10:** Port message reordering documented
 - [ ] **v1.6.3.7-v9:** Unified keepalive documented
 - [ ] **v1.6.3.7-v9:** Sequence tracking documented
-- [ ] **v1.6.3.7-v9:** Storage integrity documented
-- [ ] **v1.6.3.7-v9:** Initialization barrier documented
 - [ ] **v1.6.3.7-v8:** Port resilience documented
-- [ ] **v1.6.3.7-v6:** Unified channel logging documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -170,11 +182,11 @@ nothing.
 
 | Error                      | Fix                                    |
 | -------------------------- | -------------------------------------- |
-| v1.6.3.7-v8 or earlier     | Update to 1.6.3.7-v9                   |
+| v1.6.3.7-v9 or earlier     | Update to 1.6.3.7-v10                  |
 | "Pin to Page"              | Use "Solo/Mute"                        |
 | Direct storage writes      | Use Single Writer Authority            |
-| Missing sequence tracking  | Document sequenceId/messageSequence    |
-| Missing initialization     | Document initialization barrier flags  |
+| Missing storage watchdog   | Document 2s watchdog timer             |
+| Missing BC gap detection   | Document gap detection callback        |
 
 ---
 

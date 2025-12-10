@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,40 +9,43 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v9 Status:** Messaging hardening, storage integrity, unified
-keepalive ✅
+**🔧 v1.6.3.7-v10 Status:** State persistence hardening, storage watchdog,
+BC gap detection, IndexedDB checksum validation ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v9
+## 🎉 What's New in v1.6.3.7-v10
 
-**🔧 Messaging & Storage Hardening (December 2025) ✅**
+**🔧 State Persistence Hardening (December 2025) ✅**
 
-**Keepalive & Logging Unification:**
-- ✅ **Unified keepalive** - Single 20s interval (consolidated from 25s heartbeat + 20s keepalive)
-- ✅ **Correlation IDs** - Track keepalive round-trips with unique IDs
-- ✅ **MESSAGE_RECEIVED format** - Unified logging with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
+**Storage Event Ordering (Issue #6):**
+- ✅ **Storage watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
+- ✅ **Sequence validation gate** - lastAppliedSequenceId tracking for event ordering
 
-**Sequence Tracking (Message Ordering):**
-- ✅ **Storage sequenceId** - Event ordering validation for storage writes
-- ✅ **Port messageSequence** - Reorder buffer for out-of-order port messages
-- ✅ **BC sequenceNumber** - Gap detection for BroadcastChannel coalescing
+**BroadcastChannel Gap Detection (Issue #7):**
+- ✅ **Gap callback wired** - Gap detection properly triggers storage fallback
+- ✅ **Staleness check** - 5s threshold for BroadcastChannel message freshness
 
-**Port & Tab Management:**
-- ✅ **Port age metadata** - 90s max age, 30s stale timeout
-- ✅ **Tab affinity cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
-- ✅ **Initialization barrier** - `initializationStarted`/`initializationComplete` flags
+**IndexedDB Corruption Detection (Issue #8):**
+- ✅ **Checksum validation** - Compare local storage checksum with sync backup on startup
+- ✅ **Auto-restore** - Automatic recovery from sync backup on mismatch
 
-**Storage Integrity:**
-- ✅ **Write validation** - Verify storage writes with sync backup
-- ✅ **Corruption recovery** - Detect and recover from IndexedDB corruption
-- ✅ **Race cooldown** - Single authoritative dedup with 200ms cooldown
+**Port Message Reordering (Issue #9):**
+- ✅ **Reorder queue** - Queue for out-of-order port messages
+- ✅ **Timeout fallback** - 1s timeout for stuck messages with sequence-based dequeue
 
-**Why This Matters:** These fixes eliminate race conditions in messaging and
-storage, improve reliability of cross-tab sync, and provide better recovery
-from Firefox background script lifecycle events.
+**Tab Affinity Diagnostics (Issue #10):**
+- ✅ **Age bucket logging** - Distribution logging (< 1h, 1-6h, 6-24h, > 24h)
+- ✅ **Defensive cleanup** - browser.tabs.query() validation for stale entries
+
+**Initialization Timing (Issue #11):**
+- ✅ **Start time tracking** - initializationStartTime for timing diagnostics
+- ✅ **Listener logging** - LISTENER_REGISTERED with timeSinceInitStartMs
+
+**Why This Matters:** These fixes resolve 6 critical state persistence issues,
+improving reliability of cross-tab sync and preventing data loss scenarios.
 
 ---
 
@@ -51,6 +54,7 @@ from Firefox background script lifecycle events.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v9** - Messaging hardening, unified keepalive, sequence tracking
 - **v1.6.3.7-v8** - Port resilience, performance modules, hybrid storage cache
 - **v1.6.3.7-v7** - BroadcastChannel from background, operation confirmations
 - **v1.6.3.7-v6** - Enhanced observability, unified channel logging, lifecycle
@@ -244,6 +248,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v9** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v10** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
