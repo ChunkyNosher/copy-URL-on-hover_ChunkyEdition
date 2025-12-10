@@ -1,0 +1,8 @@
+{
+  "id": "9a1c15e4-881c-4790-892d-d44cb915abc2",
+  "title": "v1.6.3.7-v9 Documentation Update",
+  "details": "Updated documentation from v1.6.3.7-v8 to v1.6.3.7-v9 with 11 new fixes:\n\nKey v9 Features:\n1. Unified Keepalive - Single 20s interval with correlation IDs\n2. Unified Logging - MESSAGE_RECEIVED format with [PORT], [BC], [RUNTIME] prefixes\n3. Unified Deduplication - saveId-based dedup\n4. Port Age Management - 90s max age, 30s stale timeout\n5. Storage Race Cooldown - 200ms cooldown\n6. Storage Ordering - sequenceId with event ordering validation\n7. BC Sequence Tracking - sequenceNumber with gap detection\n8. Storage Integrity - Write validation with sync backup\n9. Port Message Ordering - messageSequence with reorder buffer\n10. Tab Affinity Cleanup - 24h TTL with browser.tabs.onRemoved\n11. Initialization Barrier - initializationStarted/initializationComplete flags\n\nFiles Updated:\n- .github/copilot-instructions.md\n- .github/agents/copilot-docs-updater.md\n- .github/agents/quicktabs-unified-agent.md\n- .github/agents/quicktabs-cross-tab-agent.md\n- .github/agents/quicktabs-manager-agent.md\n- .github/agents/bug-fixer.md\n- .github/agents/bug-architect.md\n- .github/agents/feature-builder.md\n- .github/agents/master-orchestrator.md\n- README.md",
+  "category": "documentation",
+  "dateCreated": "2025-12-10T20:07:03.609Z",
+  "dateUpdated": "2025-12-10T20:07:03.609Z"
+}

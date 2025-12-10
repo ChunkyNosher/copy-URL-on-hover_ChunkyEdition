@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v8), BroadcastChannel from background, operation confirmations,
-  connection state tracking, zombie detection
+  (v1.6.3.7-v9), unified keepalive, sequence tracking, storage integrity,
+  initialization barrier, port age management
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -53,13 +53,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
 - **Operation Confirmations** - Closed-loop feedback for all operations (v7)
 
-**v1.6.3.7-v8 Features (NEW):**
+**v1.6.3.7-v9 Features (NEW):**
 
-- **BroadcastChannel from Background** - Tier 1 messaging now functional
-- **Full State Sync** - `handleBroadcastFullStateSync()` handler for BC messages
-- **Operation Confirmations** - `_handleOperationConfirmation()` for all ops
-- **`_isOperationConfirmation()`** - Type checking for confirmation messages
-- **DEBUG_MESSAGING Flags** - Toggle verbose messaging logs
+- **Unified Keepalive** - Single 20s interval with correlation IDs
+- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Port Age Management** - 90s max age, 30s stale timeout
+- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+
+**v1.6.3.7-v8 Features (Retained):**
+
+- **Port Message Queue** - Messages queued during reconnection
+- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
+- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
 
 **v1.6.3.7-v6 Features (Retained):**
 
@@ -100,13 +107,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   `sync-session-state`)
 - **DOM Reconciliation** - `_itemElements` Map for animation optimization
 
-**Key Functions (v1.6.3.7-v8):**
+**Key Functions (v1.6.3.7-v9):**
 
 | Function                       | Purpose                                  |
 | ------------------------------ | ---------------------------------------- |
-| `handleBroadcastFullStateSync()` | Handle full state from BC              |
-| `_handleOperationConfirmation()` | Confirmation handlers                  |
-| `_isOperationConfirmation()`   | Type checking for confirmations          |
+| `processOrderedPortMessage()`  | messageSequence reorder buffer           |
+| `validateSequenceNumber()`     | BC sequence gap detection                |
 | `scheduleRender(source)`       | Unified render entry point               |
 | `_transitionConnectionState()` | Connection state transitions (v5)        |
 | `_probeBackgroundHealth()`     | Circuit breaker health probe             |
@@ -136,15 +142,12 @@ for session tabs.
 
 ## Testing Requirements
 
-- [ ] BroadcastChannel from background works (v1.6.3.7-v8)
-- [ ] Full state sync via `handleBroadcastFullStateSync()` works (v1.6.3.7-v8)
-- [ ] Operation confirmations handled correctly (v1.6.3.7-v8)
+- [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
+- [ ] Sequence tracking works (messageSequence, sequenceNumber) (v1.6.3.7-v9)
+- [ ] Initialization barrier prevents race conditions (v1.6.3.7-v9)
+- [ ] Port message queue works during reconnection (v1.6.3.7-v8)
 - [ ] Initial state load wait works (2s before empty state) (v1.6.3.7-v6)
-- [ ] Unified channel logging works (`[BC]`, `[PORT]`, `[STORAGE]`) (v1.6.3.7-v6)
 - [ ] Connection state transitions work (connected→zombie→disconnected) (v1.6.3.7-v5)
-- [ ] Zombie detection triggers BroadcastChannel fallback (v1.6.3.7-v5)
-- [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
-- [ ] Close all shows error notification on failure (v1.6.3.7-v4)
 - [ ] Session Quick Tabs display with `permanent: false` indicator (v1.6.3.7-v3)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
@@ -153,6 +156,6 @@ for session tabs.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v8 BroadcastChannel from
-background, operation confirmations, v6 unified channel logging, v5 connection
-state tracking, zombie detection, v4 circuit breaker probing.**
+**Your strength: Manager coordination with v1.6.3.7-v9 unified keepalive,
+sequence tracking, initialization barrier, v8 port resilience, v6 unified
+channel logging, v5 connection state tracking.**

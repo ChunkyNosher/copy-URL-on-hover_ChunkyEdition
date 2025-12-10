@@ -65,11 +65,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.7-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v9 Features (NEW):**
+
+- **Unified Keepalive** - Single 20s interval with correlation IDs
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Port Age Management** - 90s max age, 30s stale timeout
+- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
   idle timer
@@ -372,86 +381,36 @@ browser.commands.onCommand.addListener(command => {
 
 ## Documentation Requirements
 
-**For Every Architectural Bug Fix:**
-
-1. **Root Cause Analysis Document**
-   - Save to `docs/manual/`
-   - Include: symptoms, root cause, architectural issue, solution rationale
-
-2. **Architectural Decision Record (ADR)**
-   - If fix changes architecture significantly
-   - Document: context, decision, consequences, alternatives considered
-
-3. **Update README.md** if:
-   - Bug affects user-facing features
-   - Known limitations changed
-   - New behavior differs from previous
-
-4. **Update Agent Files** if:
-   - Pattern changes affect multiple components
-   - New architectural constraint introduced
+**For Architectural Bug Fixes:**
+- Root cause analysis in `docs/manual/`
+- ADR if architecture changes significantly
+- Update README.md for user-facing impacts
+- Update Agent Files for pattern changes
 
 ---
 
-## Red Flags (Indicators of Bad Solutions)
+## Red Flags (Bad Solutions)
 
-**When you see these in your solution, STOP and reconsider:**
-
-❌ "This setTimeout should fix the race condition"  
-→ Fix the race condition properly (use promises, events, or state machine)
-
-❌ "I'll catch and ignore this error"  
-→ Fix the error source or handle it properly
-
-❌ "This flag will prevent the bug"  
-→ Why does the bug happen? Fix the architecture
-
-❌ "Let me add this check to prevent issues"  
-→ Why are issues possible? Fix the invariant violation
-
-❌ "This workaround is simpler"  
-→ Simple-but-wrong beats complex-but-correct only in emergency patches
-
-**Emergency Patches:**
-
-- Document as technical debt with GitHub issue
-- Include TODO comment with issue number
-- Set priority for proper fix
+❌ "setTimeout for race condition" → Use promises/events/state machine
+❌ "Catch and ignore error" → Fix source or handle properly
+❌ "Flag to prevent bug" → Fix the architecture
+❌ "Workaround is simpler" → Only for emergency patches with issue
 
 ---
 
-## Collaboration with Other Agents
+## Collaboration
 
-**When to delegate:**
-
-- **bug-fixer:** Simple, isolated bugs with no architectural implications
-- **refactor-specialist:** Large-scale refactoring beyond bug scope
-- **feature-builder:** If fix requires new abstraction or pattern
-- **master-orchestrator:** Complex bugs spanning multiple domains
-
-**Your unique value:** You see both the bug AND the architecture, fixing both
-simultaneously.
+- **bug-fixer:** Simple, isolated bugs
+- **refactor-specialist:** Large refactoring
+- **feature-builder:** New abstractions
+- **master-orchestrator:** Multi-domain bugs
 
 ---
 
 ## Success Metrics
 
-**Good Bug Fix (Architectural):**
-
-- ✅ Root cause eliminated, not masked
-- ✅ Entire bug class prevented
-- ✅ Technical debt reduced
-- ✅ Tests prove fix and prevent regression
-- ✅ Architecture boundaries respected
-- ✅ No new workarounds introduced
-
-**Bad Bug Fix (Band-aid):**
-
-- ❌ Symptom masked, root cause remains
-- ❌ Similar bugs still possible
-- ❌ Technical debt increased
-- ❌ Workaround introduced
-- ❌ Architecture boundaries weakened
+**Good Fix:** ✅ Root cause eliminated, bug class prevented, debt reduced, tests prove
+**Bad Fix:** ❌ Symptom masked, similar bugs possible, debt increased
 
 ---
 

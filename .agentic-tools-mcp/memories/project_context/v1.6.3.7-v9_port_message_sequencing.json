@@ -1,0 +1,8 @@
+{
+  "id": "7f8f044d-d25f-45e4-b10e-884f865ca41b",
+  "title": "v1.6.3.7-v9 port message sequencing",
+  "details": "Version 1.6.3.7-v9 implements port message sequencing with the following key components:\n\n1. **Port Message Sequence Counter (Issue #9)**\n- `portMessageSequenceCounter` in background.js for outgoing messages\n- `portSequenceTracking` Map for per-port sequence state\n- `_processPortMessageSequence()` for out-of-order detection\n- Reorder buffer with MAX_REORDER_BUFFER_SIZE = 10\n- `_forceFlushReorderBuffer()` for buffer overflow\n\n2. **BroadcastChannel Sequence Counter (Issue #7)**\n- `_broadcastSequenceCounter` for outgoing messages\n- `_lastReceivedSequenceNumber` for gap detection\n- `processReceivedSequence()` returns { hasGap, gapSize, isFirstMessage }\n- `_triggerStorageFallbackOnGap()` for storage recovery\n\n3. **Unified Keepalive (Issue #1)**\n- `UNIFIED_KEEPALIVE_INTERVAL_MS = 20000` (consolidated from 25s heartbeat + 20s keepalive)\n- `_generateKeepaliveCorrelationId()` for tracking\n- `consecutiveKeepaliveFailures` with KEEPALIVE_FAILURES_BEFORE_ZOMBIE = 3\n\n4. **Port Registry Age Threshold (Issue #4)**\n- `PORT_MAX_AGE_MS = 90000` (90 seconds max lifetime)\n- `PORT_STALE_TIMEOUT_MS = 30000` (30 seconds inactivity)\n- `windowId` tracking in port metadata",
+  "category": "project_context",
+  "dateCreated": "2025-12-10T18:04:16.042Z",
+  "dateUpdated": "2025-12-10T18:04:16.042Z"
+}

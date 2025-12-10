@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,39 +9,40 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v8 Status:** Performance optimizations, port resilience, hybrid
-storage cache ✅
+**🔧 v1.6.3.7-v9 Status:** Messaging hardening, storage integrity, unified
+keepalive ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v8
+## 🎉 What's New in v1.6.3.7-v9
 
-**🔧 Performance & Resilience Optimizations (December 2025) ✅**
+**🔧 Messaging & Storage Hardening (December 2025) ✅**
 
-**Port Resilience (Phase 2):**
-- ✅ **Port message queue** - Messages queued during reconnection
-- ✅ **Atomic reconnection guard** - `isReconnecting` flag prevents race conditions
-- ✅ **Heartbeat hysteresis** - 3 failures before ZOMBIE state transition
-- ✅ **Firefox termination detection** - 10s health check interval
+**Keepalive & Logging Unification:**
+- ✅ **Unified keepalive** - Single 20s interval (consolidated from 25s heartbeat + 20s keepalive)
+- ✅ **Correlation IDs** - Track keepalive round-trips with unique IDs
+- ✅ **MESSAGE_RECEIVED format** - Unified logging with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
 
-**Broadcast Enhancements:**
-- ✅ **VisibilityHandler broadcasts** - `broadcastQuickTabMinimized/Restored`
-- ✅ **Dynamic debounce** - 500ms Tier1, 200ms fallback
-- ✅ **EventBus to broadcast bridge** - Forward events via setTimeout
+**Sequence Tracking (Message Ordering):**
+- ✅ **Storage sequenceId** - Event ordering validation for storage writes
+- ✅ **Port messageSequence** - Reorder buffer for out-of-order port messages
+- ✅ **BC sequenceNumber** - Gap detection for BroadcastChannel coalescing
 
-**Performance Modules (Phase 3):**
-- ✅ **Hybrid storage cache** - StorageCache.js with read-through caching
-- ✅ **Memory monitoring** - MemoryMonitor.js for heap tracking
-- ✅ **Performance metrics** - PerformanceMetrics.js for timing collection
-- ✅ **Virtual scrolling** - VirtualScrollList.js for large lists
-- ✅ **Message batching** - MessageBatcher.js with adaptive windows
-- ✅ **Object pooling** - QuickTabUIObjectPool.js for UI elements
+**Port & Tab Management:**
+- ✅ **Port age metadata** - 90s max age, 30s stale timeout
+- ✅ **Tab affinity cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+- ✅ **Initialization barrier** - `initializationStarted`/`initializationComplete` flags
 
-**Why This Matters:** Improved port resilience ensures stable messaging during
-Firefox background script lifecycle events. Performance modules optimize memory
-usage and render performance for users with many Quick Tabs.
+**Storage Integrity:**
+- ✅ **Write validation** - Verify storage writes with sync backup
+- ✅ **Corruption recovery** - Detect and recover from IndexedDB corruption
+- ✅ **Race cooldown** - Single authoritative dedup with 200ms cooldown
+
+**Why This Matters:** These fixes eliminate race conditions in messaging and
+storage, improve reliability of cross-tab sync, and provide better recovery
+from Firefox background script lifecycle events.
 
 ---
 
@@ -50,6 +51,7 @@ usage and render performance for users with many Quick Tabs.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v8** - Port resilience, performance modules, hybrid storage cache
 - **v1.6.3.7-v7** - BroadcastChannel from background, operation confirmations
 - **v1.6.3.7-v6** - Enhanced observability, unified channel logging, lifecycle
 - **v1.6.3.7-v5** - Connection state tracking, zombie detection, deduplication
@@ -242,6 +244,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v8** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v9** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

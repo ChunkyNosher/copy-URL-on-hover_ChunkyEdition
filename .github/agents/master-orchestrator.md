@@ -60,12 +60,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v9 Features (NEW):**
+
+- **Unified Keepalive** - Single 20s interval with correlation IDs
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
   idle timer

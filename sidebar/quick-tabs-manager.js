@@ -2,6 +2,14 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v9 - FIX Issues #2, #10:
+ *   - FIX Issue #2: Unified MESSAGE_RECEIVED logging with [PORT], [BC], [RUNTIME] prefixes
+ *   - FIX Issue #2: Correlation ID tracking across all three message paths
+ *   - FIX Issue #2: Message entry/exit logging with duration for performance tracking
+ *   - FIX Issue #10: Tab affinity map (quickTabHostInfo) 24-hour TTL cleanup
+ *   - FIX Issue #10: browser.tabs.onRemoved listener to clean up closed tab entries
+ *   - FIX Issue #10: Diagnostic logging for quickTabHostInfo size and age stats (60s)
+ *
  * v1.6.3.7-v5 - FIX State Sync Issues #1-10 from quick-tabs-state-sync-issues.md
  *   - FIX Issue #1: Three explicit connection states (connected/zombie/disconnected)
  *   - FIX Issue #3: Unified message routing with logging for port vs runtime path
@@ -88,7 +96,12 @@ import {
   addBroadcastListener,
   removeBroadcastListener,
   closeBroadcastChannel,
-  isChannelAvailable as _isChannelAvailable
+  isChannelAvailable as _isChannelAvailable,
+  // v1.6.3.7-v9 - Issue #7: Import sequence tracking functions
+  setGapDetectionCallback,
+  processReceivedSequence,
+  resetSequenceTracking,
+  isBroadcastChannelStale
 } from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
@@ -105,6 +118,27 @@ const DOM_VERIFICATION_DELAY_MS = 500;
 // Issue #5: Feature flag for verbose message routing logs
 // Set to true to enable detailed logging of message routing at all tiers
 const DEBUG_MESSAGING = true;
+
+// ==================== v1.6.3.7-v9 Issue #10: TAB AFFINITY MAP CLEANUP ====================
+// Constants for quickTabHostInfo TTL-based cleanup and browser.tabs.onRemoved handling
+
+/**
+ * TTL for quickTabHostInfo entries (24 hours in milliseconds)
+ * v1.6.3.7-v9 - Issue #10: Remove stale entries older than this
+ */
+const HOST_INFO_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Cleanup interval for quickTabHostInfo stale entries (60 seconds)
+ * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
+ */
+const HOST_INFO_CLEANUP_INTERVAL_MS = 60000;
+
+/**
+ * Interval ID for quickTabHostInfo cleanup job
+ * v1.6.3.7-v9 - Issue #10: Track for potential cleanup
+ */
+let hostInfoCleanupIntervalId = null;
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
@@ -187,6 +221,46 @@ let stateLoadStartTime = 0;
  */
 let initialStateLoadComplete = false;
 
+// ==================== v1.6.3.7-v9 ISSUE #11: INITIALIZATION BARRIER ====================
+// FIX Issue #11: Prevent race conditions between initialization and listeners
+
+/**
+ * Flag indicating initialization has started (DOMContentLoaded fired)
+ * v1.6.3.7-v9 - FIX Issue #11: Part of initialization barrier
+ */
+let initializationStarted = false;
+
+/**
+ * Flag indicating all async initialization is complete
+ * v1.6.3.7-v9 - FIX Issue #11: Part of initialization barrier
+ */
+let initializationComplete = false;
+
+/**
+ * Check if sidebar is fully initialized
+ * v1.6.3.7-v9 - FIX Issue #11: Guard function for listeners
+ * @returns {boolean} True if initialization is complete
+ */
+function isFullyInitialized() {
+  return initializationStarted && initializationComplete;
+}
+
+/**
+ * Log listener entry with initialization status
+ * v1.6.3.7-v9 - FIX Issue #11: Diagnostic logging for race detection
+ * @param {string} listenerName - Name of the listener
+ * @param {Object} context - Additional context to log
+ */
+function logListenerEntry(listenerName, context = {}) {
+  const fullyInit = isFullyInitialized();
+  console.log(`[Manager] LISTENER_ENTRY [${listenerName}]:`, {
+    isFullyInitialized: fullyInit,
+    connectionState,
+    timestamp: Date.now(),
+    ...context
+  });
+}
+
 // ==================== v1.6.3.7-v5 SAVEID DEDUPLICATION ====================
 // FIX Issue #4: State versioning using saveId for deduplication
 /**
@@ -200,6 +274,26 @@ let lastProcessedSaveId = '';
  * v1.6.3.7-v5 - FIX Issue #4: Track when saveId was processed
  */
 let lastSaveIdProcessedAt = 0;
+
+// ==================== v1.6.3.7-v9 SEQUENCE ID EVENT ORDERING ====================
+// FIX Issue #6: Validate storage event ordering using sequence IDs
+/**
+ * Last applied sequence ID to validate event ordering
+ * v1.6.3.7-v9 - FIX Issue #6: Events with sequenceId <= lastAppliedSequenceId are rejected
+ */
+let lastAppliedSequenceId = 0;
+
+/**
+ * Watchdog timer ID for storage.onChanged verification
+ * v1.6.3.7-v9 - FIX Issue #6: If no event within 2s of expected write, re-read storage
+ */
+let storageWatchdogTimerId = null;
+
+/**
+ * Watchdog timeout duration (ms)
+ * v1.6.3.7-v9 - FIX Issue #6: 2 second timeout before explicit re-read
+ */
+const STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -334,12 +428,21 @@ const ACK_TIMEOUT_MS = 1000;
 
 // ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
 // FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
+// v1.6.3.7-v9 - Issue #1: Consolidated heartbeat (25s) and keepalive (20s) into unified 20s system
 
 /**
- * Heartbeat interval (25 seconds - Firefox idle timeout is 30s)
- * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * Unified keepalive interval (20 seconds - same as background keepalive)
+ * v1.6.3.7-v9 - Issue #1: Consolidated from separate 25s heartbeat and 20s keepalive
+ * Firefox idle timeout is 30s, so 20s gives ~10s safety margin
  */
-const HEARTBEAT_INTERVAL_MS = 25000;
+const UNIFIED_KEEPALIVE_INTERVAL_MS = 20000;
+
+/**
+ * Heartbeat interval - kept for backwards compatibility but now uses unified timing
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * v1.6.3.7-v9 - Issue #1: Now equals UNIFIED_KEEPALIVE_INTERVAL_MS
+ */
+const HEARTBEAT_INTERVAL_MS = UNIFIED_KEEPALIVE_INTERVAL_MS;
 
 /**
  * Heartbeat timeout (5 seconds)
@@ -365,6 +468,39 @@ let lastHeartbeatResponse = Date.now();
  */
 let consecutiveHeartbeatFailures = 0;
 const MAX_HEARTBEAT_FAILURES = 2;
+
+// ==================== v1.6.3.7-v9 UNIFIED KEEPALIVE STATE (Issue #1) ====================
+// Consolidated keepalive system with correlation IDs and immediate fallback
+
+/**
+ * Counter for keepalive correlation IDs
+ * v1.6.3.7-v9 - Issue #1: Track keepalive cycles for debugging
+ */
+let keepaliveCorrelationCounter = 0;
+
+/**
+ * Current keepalive cycle correlation ID
+ * v1.6.3.7-v9 - Issue #1: Unique ID per keepalive round
+ */
+let currentKeepaliveCorrelationId = null;
+
+/**
+ * Timestamp when current keepalive cycle started
+ * v1.6.3.7-v9 - Issue #1: Track round-trip time
+ */
+let currentKeepaliveStartTime = 0;
+
+/**
+ * Threshold for consecutive keepalive failures before ZOMBIE transition
+ * v1.6.3.7-v9 - Issue #1: Use same threshold as HEARTBEAT_FAILURES_BEFORE_ZOMBIE
+ */
+const KEEPALIVE_FAILURES_BEFORE_ZOMBIE = 3;
+
+/**
+ * Counter for consecutive keepalive failures (unified tracking)
+ * v1.6.3.7-v9 - Issue #1: Combined heartbeat + keepalive failure tracking
+ */
+let consecutiveKeepaliveFailures = 0;
 
 // ==================== v1.6.3.7 CIRCUIT BREAKER STATE ====================
 // FIX Issue #5: Port Reconnect Circuit Breaker to prevent thundering herd
@@ -1048,15 +1184,18 @@ function startHeartbeat() {
   // Clear any existing interval
   stopHeartbeat();
 
+  // v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
+  consecutiveKeepaliveFailures = 0;
+
   // Send initial heartbeat immediately
   sendHeartbeat();
 
-  // Start interval
+  // Start interval - v1.6.3.7-v9: Uses unified UNIFIED_KEEPALIVE_INTERVAL_MS (20s)
   heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
   console.log(
-    '[Manager] v1.6.3.6-v12 Heartbeat started (every',
+    '[Manager] v1.6.3.7-v9 Unified keepalive started (every',
     HEARTBEAT_INTERVAL_MS / 1000,
-    's)'
+    's) - consolidated heartbeat + keepalive'
   );
 }
 
@@ -1068,15 +1207,27 @@ function stopHeartbeat() {
   if (heartbeatIntervalId) {
     clearInterval(heartbeatIntervalId);
     heartbeatIntervalId = null;
-    console.log('[Manager] v1.6.3.6-v12 Heartbeat stopped');
+    console.log('[Manager] v1.6.3.7-v9 Unified keepalive stopped');
   }
 }
 
 /**
- * Send heartbeat message to background
+ * Generate keepalive correlation ID
+ * v1.6.3.7-v9 - Issue #1: Unique ID per keepalive round for tracing
+ * @private
+ * @returns {string} Correlation ID
+ */
+function _generateKeepaliveCorrelationId() {
+  keepaliveCorrelationCounter++;
+  return `ka-${Date.now()}-${keepaliveCorrelationCounter}`;
+}
+
+/**
+ * Send heartbeat message to background (unified keepalive)
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
  * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
  * v1.6.3.7-v4 - FIX Issue #1: Enhanced logging to distinguish port vs background state
+ * v1.6.3.7-v9 - Issue #1: Unified keepalive with correlation IDs and START/COMPLETE logs
  *
  * Three-tier communication architecture:
  * 1. BroadcastChannel (PRIMARY) - Instant cross-tab messaging
@@ -1084,26 +1235,98 @@ function stopHeartbeat() {
  * 3. storage.onChanged (TERTIARY) - Reliable fallback
  */
 async function sendHeartbeat() {
-  const heartbeatStartTime = Date.now();
+  // v1.6.3.7-v9 - Issue #1: Generate correlation ID for this keepalive round
+  currentKeepaliveCorrelationId = _generateKeepaliveCorrelationId();
+  currentKeepaliveStartTime = Date.now();
+
+  // v1.6.3.7-v9 - Issue #1: Log keepalive START with correlation ID
+  console.log('[Manager] [KEEPALIVE] START:', {
+    correlationId: currentKeepaliveCorrelationId,
+    portExists: backgroundPort !== null,
+    connectionState,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    timestamp: currentKeepaliveStartTime
+  });
 
   // v1.6.3.7-v4 - FIX Issue #1: Log heartbeat attempt with port state
   _logHeartbeatAttempt();
 
   if (!backgroundPort) {
     _handlePortDisconnected();
+    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (failed - no port)
+    _logKeepaliveComplete(false, 'port-disconnected');
     return;
   }
 
   try {
     // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
     const response = await sendPortMessageWithTimeout(
-      { type: 'HEARTBEAT', timestamp: Date.now(), source: 'sidebar' },
+      { 
+        type: 'HEARTBEAT', 
+        timestamp: Date.now(), 
+        source: 'sidebar',
+        correlationId: currentKeepaliveCorrelationId // v1.6.3.7-v9: Include correlation ID
+      },
       HEARTBEAT_TIMEOUT_MS
     );
 
-    _handleHeartbeatSuccess(response, heartbeatStartTime);
+    _handleHeartbeatSuccess(response, currentKeepaliveStartTime);
+    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (success)
+    _logKeepaliveComplete(true, 'success');
   } catch (err) {
     _handleHeartbeatFailure(err);
+    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (failed)
+    _logKeepaliveComplete(false, err.message);
+    // v1.6.3.7-v9 - Issue #1: Trigger immediate fallback on failure
+    _triggerKeepaliveFallback(err);
+  }
+}
+
+/**
+ * Log keepalive cycle completion
+ * v1.6.3.7-v9 - Issue #1: COMPLETE log with correlation ID
+ * @private
+ * @param {boolean} success - Whether keepalive succeeded
+ * @param {string} reason - Success/failure reason
+ */
+function _logKeepaliveComplete(success, reason) {
+  const duration = Date.now() - currentKeepaliveStartTime;
+  console.log('[Manager] [KEEPALIVE] COMPLETE:', {
+    correlationId: currentKeepaliveCorrelationId,
+    success,
+    reason,
+    durationMs: duration,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Trigger immediate fallback mechanism on keepalive failure
+ * v1.6.3.7-v9 - Issue #1: Backpressure detection with immediate fallback
+ * @private
+ * @param {Error} err - The error that caused failure
+ */
+function _triggerKeepaliveFallback(err) {
+  consecutiveKeepaliveFailures++;
+  
+  console.warn('[Manager] [KEEPALIVE] FALLBACK_TRIGGERED:', {
+    correlationId: currentKeepaliveCorrelationId,
+    error: err.message,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE,
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.7-v9 - Issue #1: Check if we should transition to ZOMBIE
+  if (consecutiveKeepaliveFailures >= KEEPALIVE_FAILURES_BEFORE_ZOMBIE) {
+    if (connectionState === CONNECTION_STATE.CONNECTED) {
+      console.warn('[Manager] [KEEPALIVE] ZOMBIE_TRANSITION: Consecutive failure threshold reached', {
+        consecutiveFailures: consecutiveKeepaliveFailures,
+        threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE
+      });
+      _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'keepalive-failure-threshold');
+    }
   }
 }
 
@@ -1111,15 +1334,18 @@ async function sendHeartbeat() {
  * Log heartbeat attempt details
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Added connectionState to logging
+ * v1.6.3.7-v9 - Issue #1: Added keepalive correlation ID
  * @private
  */
 function _logHeartbeatAttempt() {
   console.log('[Manager] HEARTBEAT_ATTEMPT:', {
+    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     portExists: backgroundPort !== null,
     portConnected: backgroundPort ? 'yes' : 'no',
     connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Explicit connection state
     circuitBreakerState,
     consecutiveFailures: consecutiveHeartbeatFailures,
+    consecutiveKeepaliveFailures, // v1.6.3.7-v9
     timeSinceLastSuccess: Date.now() - lastHeartbeatResponse
   });
 }
@@ -1128,10 +1354,12 @@ function _logHeartbeatAttempt() {
  * Handle case when port is disconnected
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state
+ * v1.6.3.7-v9 - Issue #1: Increment unified failure counter
  * @private
  */
 function _handlePortDisconnected() {
   console.warn('[Manager] HEARTBEAT_FAILED: port disconnected', {
+    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     status: 'PORT_DISCONNECTED',
     connectionState,
     circuitBreakerState,
@@ -1145,8 +1373,11 @@ function _handlePortDisconnected() {
   }
 
   consecutiveHeartbeatFailures++;
+  // v1.6.3.7-v9 - Issue #1: Also increment unified counter
+  consecutiveKeepaliveFailures++;
+  
   if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-    console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+    console.error('[Manager] v1.6.3.7-v9 Max heartbeat failures - triggering reconnect');
     scheduleReconnect();
   }
 }
@@ -1156,6 +1387,7 @@ function _handlePortDisconnected() {
  * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on success
  * v1.6.3.7-v8 - FIX Issue #13: Reset timeout counter on success
+ * v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
  * @private
  * @param {Object} response - Response from background
  * @param {number} startTime - When heartbeat was started
@@ -1164,6 +1396,8 @@ function _handleHeartbeatSuccess(response, startTime) {
   consecutiveHeartbeatFailures = 0;
   // v1.6.3.7-v8 - FIX Issue #13: Reset timeout-specific counter on success
   consecutiveHeartbeatTimeouts = 0;
+  // v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
+  consecutiveKeepaliveFailures = 0;
   lastHeartbeatResponse = Date.now();
 
   // v1.6.3.7-v5 - FIX Issue #1: Confirm we're in CONNECTED state (recovered from zombie)
@@ -1172,6 +1406,7 @@ function _handleHeartbeatSuccess(response, startTime) {
   }
 
   console.log('[Manager] [HEARTBEAT] SUCCESS:', {
+    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     status: 'BACKGROUND_ALIVE',
     connectionState,
     roundTripMs: Date.now() - startTime,
@@ -1179,6 +1414,7 @@ function _handleHeartbeatSuccess(response, startTime) {
     isInitialized: response?.isInitialized,
     circuitBreakerState,
     consecutiveTimeouts: consecutiveHeartbeatTimeouts,
+    consecutiveKeepaliveFailures, // v1.6.3.7-v9
     diagnosis: 'Background script is alive and responding'
   });
 }
@@ -1281,6 +1517,34 @@ function _processHeartbeatFailureRecovery(isTimeout) {
  * @param {number} timeoutMs - Timeout in milliseconds
  * @returns {Promise<Object>} Response from background
  */
+// ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
+// Monotonic sequence counter for outgoing port messages
+
+/**
+ * Monotonic sequence counter for outgoing port messages from Manager
+ * v1.6.3.7-v9 - Issue #9: Detect message reordering
+ */
+let _managerPortMessageSequence = 0;
+
+/**
+ * Get next message sequence number for port messages
+ * v1.6.3.7-v9 - Issue #9: Generate monotonically increasing sequence
+ * @private
+ * @returns {number} Next sequence number
+ */
+function _getNextManagerPortMessageSequence() {
+  _managerPortMessageSequence++;
+  return _managerPortMessageSequence;
+}
+
+/**
+ * Send a message via port with timeout and correlation ID
+ * v1.6.3.6-v12 - FIX Issue #4: Send messages with acknowledgment tracking
+ * v1.6.3.7-v9 - Issue #9: Added message sequence number for ordering
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} Response from background
+ */
 function sendPortMessageWithTimeout(message, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!backgroundPort) {
@@ -1289,7 +1553,13 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
     }
 
     const correlationId = generateCorrelationId();
-    const messageWithCorrelation = { ...message, correlationId };
+    // v1.6.3.7-v9 - Issue #9: Add message sequence number
+    const messageSequence = _getNextManagerPortMessageSequence();
+    const messageWithCorrelation = { 
+      ...message, 
+      correlationId,
+      messageSequence // v1.6.3.7-v9
+    };
 
     // Set up timeout
     const timeout = setTimeout(() => {
@@ -1302,12 +1572,23 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
       resolve,
       reject,
       timeout,
-      sentAt: Date.now()
+      sentAt: Date.now(),
+      messageSequence // v1.6.3.7-v9: Track sequence for debugging
     });
 
     // Send message
     try {
       backgroundPort.postMessage(messageWithCorrelation);
+      
+      // v1.6.3.7-v9 - Issue #9: Log sequence for debugging
+      if (DEBUG_MESSAGING) {
+        console.log('[Manager] [PORT] MESSAGE_SENT:', {
+          type: message.type,
+          correlationId,
+          messageSequence,
+          timestamp: Date.now()
+        });
+      }
     } catch (err) {
       clearTimeout(timeout);
       pendingAcks.delete(correlationId);
@@ -1625,6 +1906,9 @@ setInterval(_cleanupExpiredMessageIds, 5000);
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
+  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
+  const messageEntryTime = Date.now();
+  
   // v1.6.3.7-v4 - FIX Issue #9: Wrap in try-catch to handle corrupted messages gracefully
   try {
     // v1.6.3.7-v4 - FIX Issue #9: Validate message structure
@@ -1633,10 +1917,21 @@ function handlePortMessage(message) {
       return;
     }
 
-    _logPortMessageReceived(message);
+    _logPortMessageReceived(message, messageEntryTime);
 
     // Route message to appropriate handler
     _routePortMessage(message);
+    
+    // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+    const processingDurationMs = Date.now() - messageEntryTime;
+    if (DEBUG_MESSAGING) {
+      console.log(`[Manager] MESSAGE_PROCESSED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
+        quickTabId: message.quickTabId,
+        correlationId: message.correlationId,
+        durationMs: processingDurationMs,
+        timestamp: Date.now()
+      });
+    }
   } catch (err) {
     // v1.6.3.7-v4 - FIX Issue #9: Log error with context and continue
     console.error('[Manager] PORT_MESSAGE_ERROR: Error processing port message:', {
@@ -1655,26 +1950,31 @@ function handlePortMessage(message) {
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
  * v1.6.3.7-v5 - FIX Issue #3: Added path indicator for unified message routing logging
  * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
+ * v1.6.3.7-v9 - Issue #2: Added entryTime parameter for timing, generate correlationId if missing
  * @private
  * @param {Object} message - Message from background
+ * @param {number} entryTime - Timestamp when message was received
  */
-function _logPortMessageReceived(message) {
+function _logPortMessageReceived(message, entryTime) {
+  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
+  const correlationId = message.correlationId || `port-${entryTime}-${Math.random().toString(36).substring(2, 7)}`;
+  
   // v1.6.4.13 - Issue #5: Consolidated log with [PORT] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
     quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
-    correlationId: message.correlationId,
+    correlationId,
     from: 'background',
     path: 'port-connection',
     connectionState,
-    timestamp: Date.now()
+    timestamp: entryTime
   });
 
   logPortLifecycle('message', {
     type: message.type,
     action: message.action,
-    correlationId: message.correlationId
+    correlationId
   });
 }
 
@@ -1982,6 +2282,7 @@ let broadcastHandlerRef = null;
  * Initialize BroadcastChannel for real-time updates
  * v1.6.3.7-v3 - API #2: Setup channel and listener
  * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
+ * v1.6.3.7-v9 - Issue #7: Set up sequence gap detection callback
  */
 function initializeBroadcastChannel() {
   const initialized = initBroadcastChannel();
@@ -1989,6 +2290,15 @@ function initializeBroadcastChannel() {
     console.log('[Manager] BroadcastChannel not available, using storage.onChanged only');
     return;
   }
+
+  // v1.6.3.7-v9 - Issue #7: Reset sequence tracking on init
+  resetSequenceTracking();
+
+  // v1.6.3.7-v9 - Issue #7: Set up gap detection callback
+  setGapDetectionCallback((gapInfo) => {
+    console.warn('[Manager] [BC] GAP_DETECTION_CALLBACK:', gapInfo);
+    // The actual fallback is handled in handleBroadcastChannelMessage via _triggerStorageFallbackOnGap
+  });
 
   // Create handler function
   broadcastHandlerRef = handleBroadcastChannelMessage;
@@ -1999,9 +2309,10 @@ function initializeBroadcastChannel() {
     // v1.6.3.7-v6 - Gap #3: Log listener registration with details
     console.log('[Manager] LISTENER_REGISTERED: BroadcastChannel listener added', {
       channel: 'quick-tabs-updates',
+      sequenceTrackingEnabled: true, // v1.6.3.7-v9
       timestamp: Date.now()
     });
-    console.log('[Manager] v1.6.3.7-v3 BroadcastChannel listener added');
+    console.log('[Manager] v1.6.3.7-v9 BroadcastChannel listener added with sequence tracking');
   }
 }
 
@@ -2010,13 +2321,35 @@ function initializeBroadcastChannel() {
  * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
  * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
  * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
+ * v1.6.3.7-v9 - Issue #7: Added sequence number tracking for gap detection
+ * v1.6.3.7-v9 - Issue #2: Added entry/exit timing and correlation ID
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
+  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
+  const messageEntryTime = Date.now();
   const message = event.data;
 
   if (!message || !message.type) {
     return;
+  }
+
+  // v1.6.3.7-v9 - Issue #7: Check for sequence gap if sequenceNumber present
+  if (typeof message.sequenceNumber === 'number') {
+    const seqResult = processReceivedSequence(message.sequenceNumber);
+    if (seqResult.hasGap) {
+      // Calculate expected sequence: current - gap = what we expected
+      const expectedSeq = message.sequenceNumber - seqResult.gapSize;
+      console.warn('[Manager] [BC] SEQUENCE_GAP_DETECTED:', {
+        expectedSequence: expectedSeq,
+        receivedSequence: message.sequenceNumber,
+        gapSize: seqResult.gapSize,
+        type: message.type,
+        quickTabId: message.quickTabId
+      });
+      // Trigger storage fallback read to recover missed messages
+      _triggerStorageFallbackOnGap(seqResult.gapSize);
+    }
   }
 
   // v1.6.3.7-v4 - FIX Issue #4: Generate messageId from BroadcastChannel message for deduplication
@@ -2024,18 +2357,76 @@ function handleBroadcastChannelMessage(event) {
   // Added random component to ensure uniqueness even for rapid same-type messages
   const randomSuffix = Math.random().toString(36).substring(2, 7);
   const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+  
+  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
+  const correlationId = message.correlationId || `bc-${messageEntryTime}-${randomSuffix}`;
 
   // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
+  // v1.6.3.7-v9 - Issue #2: Added correlationId for tracking
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
     messageId: broadcastMessageId,
+    correlationId,
+    sequenceNumber: message.sequenceNumber, // v1.6.3.7-v9
     saveId: message.saveId,
     from: 'BroadcastChannel',
-    timestamp: Date.now()
+    timestamp: messageEntryTime
   });
 
   // v1.6.3.7-v4 - Route to handler based on message type
   _routeBroadcastMessage(message, broadcastMessageId);
+  
+  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+  const processingDurationMs = Date.now() - messageEntryTime;
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] MESSAGE_PROCESSED [BC] [${message.type}]:`, {
+      quickTabId: message.quickTabId,
+      correlationId,
+      durationMs: processingDurationMs,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Trigger storage fallback read when sequence gap is detected
+ * v1.6.3.7-v9 - Issue #7: Recover from message loss via storage read
+ * @private
+ * @param {number} gapSize - Number of missed messages
+ */
+async function _triggerStorageFallbackOnGap(gapSize) {
+  console.log('[Manager] [BC] STORAGE_FALLBACK_TRIGGERED:', {
+    reason: 'sequence-gap',
+    gapSize,
+    timestamp: Date.now()
+  });
+
+  try {
+    // Read full state from storage to recover any missed updates
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const state = result?.quick_tabs_state_v2;
+
+    if (state?.tabs) {
+      console.log('[Manager] [BC] STORAGE_FALLBACK_SUCCESS:', {
+        tabCount: state.tabs.length,
+        saveId: state.saveId
+      });
+
+      // Update local state
+      quickTabsState.tabs = [...state.tabs];
+      quickTabsState.saveId = state.saveId;
+      quickTabsState.timestamp = state.timestamp || Date.now();
+
+      // Update cache and trigger render
+      _updateInMemoryCache(state.tabs);
+      lastLocalUpdateTime = Date.now();
+      scheduleRender('storage-fallback');
+    }
+  } catch (err) {
+    console.error('[Manager] [BC] STORAGE_FALLBACK_FAILED:', {
+      error: err.message
+    });
+  }
 }
 
 /**
@@ -2466,50 +2857,74 @@ console.log('[Manager] LISTENER_REGISTERED: browser.runtime.onMessage listener a
  * @returns {boolean} True if message was handled asynchronously
  */
 function _processRuntimeMessage(message, sendResponse) {
+  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
+  const messageEntryTime = Date.now();
+  
   // v1.6.3.7-v5 - FIX Issue #9: Validate message structure
   if (!message || typeof message !== 'object') {
     console.warn('[Manager] RUNTIME_MESSAGE_INVALID: Received non-object message:', typeof message);
     return false;
   }
 
-  // v1.6.3.7-v5 - FIX Issue #3: Enhanced logging showing message path
-  console.log('[Manager] RUNTIME_MESSAGE_RECEIVED:', {
-    type: message.type,
+  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
+  const correlationId = message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // v1.6.3.7-v9 - Issue #2: Unified MESSAGE_RECEIVED logging with [RUNTIME] prefix
+  // Matches format of [PORT] and [BC] paths
+  console.log(`[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || 'UNKNOWN'}]:`, {
+    quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
-    path: 'runtime.onMessage',  // v1.6.3.7-v5 - FIX Issue #3: Explicit path indicator
-    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Include connection state
-    timestamp: Date.now()
+    correlationId,
+    from: 'runtime.onMessage',
+    path: 'runtime-onMessage',
+    timestamp: messageEntryTime
   });
 
+  let handled = false;
+  
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    _handleRuntimeStateUpdated(message, sendResponse);
-    return true;
+    _handleRuntimeStateUpdated(message, sendResponse, correlationId);
+    handled = true;
+  } else if (message.type === 'QUICK_TAB_DELETED') {
+    // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
+    _handleRuntimeDeleted(message, sendResponse, correlationId);
+    handled = true;
   }
 
-  // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
-  if (message.type === 'QUICK_TAB_DELETED') {
-    _handleRuntimeDeleted(message, sendResponse);
-    return true;
+  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+  const processingDurationMs = Date.now() - messageEntryTime;
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || 'UNKNOWN'}]:`, {
+      quickTabId: message.quickTabId,
+      correlationId,
+      handled,
+      durationMs: processingDurationMs,
+      timestamp: Date.now()
+    });
   }
 
-  return false;
+  return handled;
 }
 
 /**
  * Handle QUICK_TAB_STATE_UPDATED via runtime.onMessage
  * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
+ * v1.6.3.7-v9 - Issue #2: Added correlationId parameter for tracking
  * @private
  * @param {Object} message - State update message
  * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID for tracking
  */
-function _handleRuntimeStateUpdated(message, sendResponse) {
-  console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
+function _handleRuntimeStateUpdated(message, sendResponse, correlationId) {
+  // v1.6.3.7-v9 - Issue #2: Use [RUNTIME] prefix and include correlationId
+  console.log('[Manager] [RUNTIME] STATE_UPDATE_RECEIVED:', {
     quickTabId: message.quickTabId,
     changes: message.changes,
     source: message.originalSource,
     messageId: message.messageId,
-    path: 'runtime.onMessage'  // v1.6.3.7-v5 - FIX Issue #3
+    correlationId,
+    path: 'runtime-onMessage'
   });
 
   // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
@@ -2522,28 +2937,32 @@ function _handleRuntimeStateUpdated(message, sendResponse) {
 
   // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
   scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
-  sendResponse({ received: true });
+  sendResponse({ received: true, correlationId });
 }
 
 /**
  * Handle QUICK_TAB_DELETED via runtime.onMessage
  * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
+ * v1.6.3.7-v9 - Issue #2: Added correlationId parameter for tracking
  * @private
  * @param {Object} message - Deletion message
  * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID for tracking
  */
-function _handleRuntimeDeleted(message, sendResponse) {
-  console.log('[Manager] Received QUICK_TAB_DELETED:', {
+function _handleRuntimeDeleted(message, sendResponse, correlationId) {
+  // v1.6.3.7-v9 - Issue #2: Use [RUNTIME] prefix and include correlationId
+  console.log('[Manager] [RUNTIME] DELETE_RECEIVED:', {
     quickTabId: message.quickTabId,
     source: message.source,
     messageId: message.messageId,
-    path: 'runtime.onMessage'  // v1.6.3.7-v5 - FIX Issue #3
+    correlationId,
+    path: 'runtime-onMessage'
   });
 
   handleStateDeletedMessage(message.quickTabId);
   // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
   scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
-  sendResponse({ received: true });
+  sendResponse({ received: true, correlationId });
 }
 
 /**
@@ -2804,6 +3223,226 @@ function _removeFromHostInfo(quickTabId) {
   }
 }
 
+// ==================== v1.6.3.7-v9 Issue #10: TAB AFFINITY MAP CLEANUP ====================
+// Functions for TTL-based cleanup and browser.tabs.onRemoved handling
+
+/**
+ * Clean up stale quickTabHostInfo entries older than TTL
+ * v1.6.3.7-v9 - Issue #10: Remove entries older than 24 hours
+ * @private
+ */
+function _cleanupStaleHostInfoEntries() {
+  const now = Date.now();
+  const ttlThreshold = now - HOST_INFO_TTL_MS;
+  let removedCount = 0;
+  const removedEntries = [];
+
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    // Skip null entries (consistent with _getHostInfoAgeStats)
+    if (!entry || !entry.lastUpdate) continue;
+    
+    if (entry.lastUpdate < ttlThreshold) {
+      quickTabHostInfo.delete(quickTabId);
+      removedCount++;
+      removedEntries.push({
+        quickTabId,
+        hostTabId: entry.hostTabId,
+        ageHours: Math.round((now - entry.lastUpdate) / (1000 * 60 * 60))
+      });
+    }
+  }
+
+  if (removedCount > 0) {
+    console.log('[Manager] [HOST_INFO_CLEANUP] STALE_ENTRIES_REMOVED:', {
+      removedCount,
+      removedEntries,
+      remainingCount: quickTabHostInfo.size,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Get age statistics for quickTabHostInfo entries
+ * v1.6.3.7-v9 - Issue #10: Calculate min/max/avg age for diagnostics
+ * @private
+ * @returns {Object} Age statistics { minAgeMs, maxAgeMs, avgAgeMs, oldestEntry, newestEntry }
+ */
+function _getHostInfoAgeStats() {
+  const now = Date.now();
+  let minAgeMs = Infinity;
+  let maxAgeMs = 0;
+  let totalAgeMs = 0;
+  let oldestEntry = null;
+  let newestEntry = null;
+  let entryCount = 0;
+
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    // Skip entries without valid lastUpdate timestamp (consistent with _cleanupStaleHostInfoEntries)
+    if (!entry || !entry.lastUpdate) continue;
+    
+    const ageMs = now - entry.lastUpdate;
+    totalAgeMs += ageMs;
+    entryCount++;
+
+    // Update newest entry if this is newer (smaller age)
+    if (ageMs < minAgeMs) {
+      minAgeMs = ageMs;
+      newestEntry = { quickTabId, hostTabId: entry.hostTabId, ageMs };
+    }
+    // Update oldest entry if this is older (larger age)
+    if (ageMs > maxAgeMs) {
+      maxAgeMs = ageMs;
+      oldestEntry = { quickTabId, hostTabId: entry.hostTabId, ageMs };
+    }
+  }
+
+  return {
+    entryCount,
+    minAgeMs: entryCount > 0 ? minAgeMs : 0,
+    maxAgeMs: entryCount > 0 ? maxAgeMs : 0,
+    avgAgeMs: entryCount > 0 ? Math.round(totalAgeMs / entryCount) : 0,
+    oldestEntry,
+    newestEntry
+  };
+}
+
+/**
+ * Log quickTabHostInfo diagnostic statistics
+ * v1.6.3.7-v9 - Issue #10: Log size and age stats every 60 seconds
+ * @private
+ */
+function _logHostInfoDiagnostics() {
+  const stats = _getHostInfoAgeStats();
+  
+  // Convert ms to human-readable format
+  const msToTimeStr = (ms) => {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+    return `${(ms / 3600000).toFixed(1)}h`;
+  };
+
+  console.log('[Manager] [HOST_INFO_DIAGNOSTICS]:', {
+    mapSize: quickTabHostInfo.size,
+    entryCount: stats.entryCount,
+    minAge: msToTimeStr(stats.minAgeMs),
+    maxAge: msToTimeStr(stats.maxAgeMs),
+    avgAge: msToTimeStr(stats.avgAgeMs),
+    oldestEntry: stats.oldestEntry ? {
+      quickTabId: stats.oldestEntry.quickTabId,
+      hostTabId: stats.oldestEntry.hostTabId,
+      age: msToTimeStr(stats.oldestEntry.ageMs)
+    } : null,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Run cleanup job for quickTabHostInfo: remove stale entries and log diagnostics
+ * v1.6.3.7-v9 - Issue #10: Combined cleanup and diagnostic logging
+ * @private
+ */
+function _runHostInfoCleanupJob() {
+  // First log diagnostics
+  _logHostInfoDiagnostics();
+  
+  // Then clean up stale entries
+  _cleanupStaleHostInfoEntries();
+}
+
+/**
+ * Start the periodic cleanup job for quickTabHostInfo
+ * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
+ */
+function _startHostInfoCleanupInterval() {
+  // Don't start if already running
+  if (hostInfoCleanupIntervalId !== null) {
+    return;
+  }
+  
+  hostInfoCleanupIntervalId = setInterval(_runHostInfoCleanupJob, HOST_INFO_CLEANUP_INTERVAL_MS);
+  console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job started:', {
+    intervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
+    ttlMs: HOST_INFO_TTL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop the periodic cleanup job for quickTabHostInfo
+ * v1.6.3.7-v9 - Issue #10: Stop cleanup on unload
+ */
+function _stopHostInfoCleanupInterval() {
+  if (hostInfoCleanupIntervalId !== null) {
+    clearInterval(hostInfoCleanupIntervalId);
+    hostInfoCleanupIntervalId = null;
+    console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job stopped');
+  }
+}
+
+/**
+ * Remove quickTabHostInfo entries for a closed browser tab
+ * v1.6.3.7-v9 - Issue #10: Clean up entries when browser tab closes
+ * @param {number} closedTabId - ID of the closed browser tab
+ */
+function _cleanupHostInfoForClosedTab(closedTabId) {
+  const removedQuickTabIds = [];
+  
+  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
+    if (entry.hostTabId === closedTabId) {
+      quickTabHostInfo.delete(quickTabId);
+      removedQuickTabIds.push(quickTabId);
+    }
+  }
+  
+  if (removedQuickTabIds.length > 0) {
+    console.log('[Manager] [HOST_INFO_CLEANUP] BROWSER_TAB_CLOSED:', {
+      closedTabId,
+      removedQuickTabIds,
+      remainingCount: quickTabHostInfo.size,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Handler for browser.tabs.onRemoved event
+ * v1.6.3.7-v9 - Issue #10: Remove quickTabHostInfo entries for closed tabs
+ * @param {number} tabId - ID of the closed tab
+ * @param {Object} removeInfo - Information about the removal
+ */
+function _handleBrowserTabRemoved(tabId, removeInfo) {
+  // Clean up quickTabHostInfo entries for this tab
+  _cleanupHostInfoForClosedTab(tabId);
+  
+  // Also invalidate browser tab info cache
+  browserTabInfoCache.delete(tabId);
+  
+  if (DEBUG_MESSAGING) {
+    console.log('[Manager] [BROWSER_TAB_REMOVED]:', {
+      tabId,
+      windowClosing: removeInfo?.isWindowClosing,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Initialize browser.tabs.onRemoved listener
+ * v1.6.3.7-v9 - Issue #10: Listen for tab closures to clean up quickTabHostInfo
+ */
+function _initBrowserTabsOnRemovedListener() {
+  if (browser?.tabs?.onRemoved) {
+    browser.tabs.onRemoved.addListener(_handleBrowserTabRemoved);
+    console.log('[Manager] LISTENER_REGISTERED: browser.tabs.onRemoved listener added');
+  } else {
+    console.warn('[Manager] browser.tabs.onRemoved API not available');
+  }
+}
+
+// ==================== END v1.6.3.7-v9 Issue #10 ====================
+
 /**
  * Send MANAGER_COMMAND to background for remote Quick Tab control
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
@@ -2839,10 +3478,16 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // v1.6.3.7-v9 - FIX Issue #11: Mark initialization started
+  initializationStarted = true;
+  
   // v1.6.3.7-v6 - Gap #1: Log DOM_CONTENT_LOADED
+  // v1.6.3.7-v9 - FIX Issue #11: Include init flags in log
   console.log('[Manager] DOM_CONTENT_LOADED:', {
     timestamp: Date.now(),
-    url: window.location.href
+    url: window.location.href,
+    initializationStarted,
+    initializationComplete
   });
 
   // Cache DOM elements
@@ -2911,11 +3556,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Setup event listeners
+  // v1.6.3.7-v9 - FIX Issue #11: Listeners are registered here but have init guards
   setupEventListeners();
 
   // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
   // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
+
+  // v1.6.3.7-v9 - Issue #10: Setup browser.tabs.onRemoved listener for quickTabHostInfo cleanup
+  _initBrowserTabsOnRemovedListener();
+  
+  // v1.6.3.7-v9 - Issue #10: Start periodic cleanup job for quickTabHostInfo (every 60s)
+  _startHostInfoCleanupInterval();
 
   // v1.6.3.7-v4 - FIX Issue #7: Increased from 2s to 10s
   // BroadcastChannel is now PRIMARY for instant updates (fixed in Issue #2)
@@ -2925,22 +3577,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 10000);
 
-  console.log('[Manager] v1.6.3.7-v5 Port + BroadcastChannel + Message infrastructure initialized', {
+  // v1.6.3.7-v9 - FIX Issue #11: Mark initialization as fully complete
+  // This is set AFTER all async initialization is done
+  initializationComplete = true;
+  
+  console.log('[Manager] v1.6.3.7-v9 INITIALIZATION_COMPLETE:', {
+    initializationStarted,
+    initializationComplete,
     storagePollingMs: 10000,
     sessionId: currentSessionId,
-    connectionState
+    connectionState,
+    hostInfoCleanupIntervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
+    hostInfoTTLMs: HOST_INFO_TTL_MS,
+    timestamp: Date.now()
   });
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
+// v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
 window.addEventListener('unload', () => {
   // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
   cleanupBroadcastChannel();
 
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
+  
+  // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
+  _stopHostInfoCleanupInterval();
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -4960,14 +5625,35 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
+  // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
   browser.storage.onChanged.addListener((changes, areaName) => {
+    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
+    logListenerEntry('storage.onChanged', {
+      areaName,
+      hasStateKey: !!changes[STATE_KEY]
+    });
+    
+    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+    if (!isFullyInitialized()) {
+      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
+        initializationStarted,
+        initializationComplete,
+        areaName,
+        message: 'Skipping - sidebar not yet fully initialized',
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
   // v1.6.3.7-v6 - Gap #3: Log listener registration
+  // v1.6.3.7-v9 - FIX Issue #11: Note that listener has init guard
   console.log('[Manager] LISTENER_REGISTERED: storage.onChanged listener added', {
     storageArea: 'local',
     stateKey: STATE_KEY,
+    hasInitGuard: true,
     timestamp: Date.now()
   });
 }
@@ -4975,12 +5661,28 @@ function setupEventListeners() {
 /**
  * Setup browser tab activation listener for real-time context updates
  * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
+ * v1.6.3.7-v9 - FIX Issue #11: Add initialization guards
  * When user switches between browser tabs, update the Manager to show
  * context-relevant Quick Tabs (those with originTabId matching current tab)
  */
 function setupTabSwitchListener() {
   // Listen for tab activation (user switches to a different tab)
   browser.tabs.onActivated.addListener(activeInfo => {
+    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
+    logListenerEntry('tabs.onActivated', { tabId: activeInfo.tabId });
+    
+    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+    if (!isFullyInitialized()) {
+      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: tabs.onActivated', {
+        initializationStarted,
+        initializationComplete,
+        tabId: activeInfo.tabId,
+        message: 'Skipping - sidebar not yet fully initialized',
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
     const newTabId = activeInfo.tabId;
 
     // Only process if tab actually changed
@@ -5006,6 +5708,21 @@ function setupTabSwitchListener() {
 
   // Also listen for window focus changes (user switches browser windows)
   browser.windows.onFocusChanged.addListener(async windowId => {
+    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
+    logListenerEntry('windows.onFocusChanged', { windowId });
+    
+    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+    if (!isFullyInitialized()) {
+      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: windows.onFocusChanged', {
+        initializationStarted,
+        initializationComplete,
+        windowId,
+        message: 'Skipping - sidebar not yet fully initialized',
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
     if (windowId === browser.windows.WINDOW_ID_NONE) {
       return; // Window lost focus
     }
@@ -5030,7 +5747,7 @@ function setupTabSwitchListener() {
     }
   });
 
-  console.log('[Manager] Tab switch listener initialized');
+  console.log('[Manager] v1.6.3.7-v9 Tab switch listener initialized with init guards');
 }
 
 /**
@@ -5042,16 +5759,25 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.3.7-v6 - Gap #2 & Issue #7: Enhanced deduplication logging with channel source
+ * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId validation for event ordering
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
 
+  // v1.6.3.7-v9 - FIX Issue #6: Cancel any pending watchdog timer
+  _cancelStorageWatchdog();
+
   _logStorageMessageReceived(context);
   _logStorageChangeEvent(context);
   _logTabIdChanges(context);
   _logPositionSizeChanges(context);
+
+  // v1.6.3.7-v9 - FIX Issue #6: Validate sequence ID to ensure correct event ordering
+  if (!_validateSequenceId(context)) {
+    return; // Event is out of order, reject it
+  }
 
   // v1.6.3.7-v6 - Gap #2: Special case - if oldValue was empty and newValue has tabs
   if (_handleEmptyToPopulatedTransition(context)) {
@@ -5068,14 +5794,134 @@ function _handleStorageChange(change) {
 }
 
 /**
+ * Validate sequence ID for event ordering
+ * v1.6.3.7-v9 - FIX Issue #6: Reject updates with sequenceId <= lastAppliedSequenceId
+ * @private
+ * @param {Object} context - Storage change context
+ * @returns {boolean} True if valid (should process), false if out-of-order (reject)
+ */
+function _validateSequenceId(context) {
+  const newSequenceId = context.newValue?.sequenceId;
+
+  // If no sequenceId, process the event (backward compatibility)
+  if (newSequenceId === undefined || newSequenceId === null) {
+    console.log('[Manager] SEQUENCE_VALIDATION: No sequenceId present, processing event (backward compat)', {
+      saveId: context.newValue?.saveId,
+      timestamp: Date.now()
+    });
+    return true;
+  }
+
+  // Check if this is a newer event
+  if (newSequenceId <= lastAppliedSequenceId) {
+    console.warn('[Manager] SEQUENCE_VALIDATION_REJECTED: Out-of-order event detected', {
+      newSequenceId,
+      lastAppliedSequenceId,
+      saveId: context.newValue?.saveId,
+      decision: 'reject',
+      timestamp: Date.now()
+    });
+    return false;
+  }
+
+  // Valid sequence - update tracking and proceed
+  const previousSequenceId = lastAppliedSequenceId;
+  lastAppliedSequenceId = newSequenceId;
+
+  console.log('[Manager] SEQUENCE_VALIDATION_ACCEPTED:', {
+    previousSequenceId,
+    newSequenceId,
+    saveId: context.newValue?.saveId,
+    decision: 'process',
+    timestamp: Date.now()
+  });
+
+  return true;
+}
+
+/**
+ * Cancel the storage watchdog timer
+ * v1.6.3.7-v9 - FIX Issue #6: Helper function for watchdog management
+ * @private
+ */
+function _cancelStorageWatchdog() {
+  if (storageWatchdogTimerId !== null) {
+    clearTimeout(storageWatchdogTimerId);
+    storageWatchdogTimerId = null;
+  }
+}
+
+/**
+ * Apply state from watchdog recovery
+ * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
+ * @private
+ * @param {Object} currentState - State from storage
+ * @param {string} expectedSaveId - Expected save ID
+ */
+function _applyWatchdogRecoveryState(currentState, expectedSaveId) {
+  quickTabsState = currentState;
+  _updateInMemoryCache(currentState.tabs);
+  if (currentState.sequenceId) {
+    lastAppliedSequenceId = currentState.sequenceId;
+  }
+  scheduleRender('storage-watchdog-recovery', expectedSaveId);
+}
+
+/**
+ * Handle watchdog timeout and verify storage state
+ * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
+ * @private
+ * @param {string} expectedSaveId - Expected save ID
+ */
+async function _handleWatchdogTimeout(expectedSaveId) {
+  console.warn('[Manager] STORAGE_WATCHDOG_TIMEOUT: No storage.onChanged received within', STORAGE_WATCHDOG_TIMEOUT_MS, 'ms');
+  console.log('[Manager] STORAGE_WATCHDOG: Explicitly re-reading storage to verify state consistency');
+
+  try {
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const currentState = result?.quick_tabs_state_v2;
+
+    if (currentState?.saveId === expectedSaveId) {
+      console.log('[Manager] STORAGE_WATCHDOG: Storage matches expected state - event may have been lost');
+      _applyWatchdogRecoveryState(currentState, expectedSaveId);
+    } else {
+      console.log('[Manager] STORAGE_WATCHDOG: Storage state differs from expected', {
+        expectedSaveId,
+        actualSaveId: currentState?.saveId,
+        actualSequenceId: currentState?.sequenceId
+      });
+    }
+  } catch (err) {
+    console.error('[Manager] STORAGE_WATCHDOG: Failed to re-read storage:', err.message);
+  }
+
+  storageWatchdogTimerId = null;
+}
+
+/**
+ * Start watchdog timer for storage event verification
+ * v1.6.3.7-v9 - FIX Issue #6: If no storage.onChanged within timeout, re-read storage
+ * @param {string} expectedSaveId - Save ID we're expecting to receive
+ */
+function _startStorageWatchdog(expectedSaveId) {
+  _cancelStorageWatchdog();
+
+  storageWatchdogTimerId = setTimeout(() => {
+    _handleWatchdogTimeout(expectedSaveId);
+  }, STORAGE_WATCHDOG_TIMEOUT_MS);
+}
+
+/**
  * Log storage message received with channel source
  * v1.6.3.7-v6 - Issue #7: Extracted for complexity reduction
+ * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId to logging
  * @private
  * @param {Object} context - Storage change context
  */
 function _logStorageMessageReceived(context) {
   console.log('[Manager] MESSAGE_RECEIVED [STORAGE]:', {
     saveId: context.newValue?.saveId || 'none',
+    sequenceId: context.newValue?.sequenceId ?? 'none',
     oldTabCount: context.oldTabCount,
     newTabCount: context.newTabCount,
     timestamp: Date.now()
@@ -5085,6 +5931,9 @@ function _logStorageMessageReceived(context) {
     event: 'storage.onChanged',
     oldSaveId: context.oldValue?.saveId || 'none',
     newSaveId: context.newValue?.saveId || 'none',
+    oldSequenceId: context.oldValue?.sequenceId ?? 'none',
+    newSequenceId: context.newValue?.sequenceId ?? 'none',
+    lastAppliedSequenceId,
     timestamp: Date.now()
   });
 }
@@ -5366,7 +6215,7 @@ function _logStorageChangeEvent(context) {
 
   // v1.6.4.13 - Issue #5: Log MESSAGE_RECEIVED with [STORAGE] prefix
   if (DEBUG_MESSAGING) {
-    console.log(`[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:`, {
+    console.log('[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:', {
       saveId: context.newValue?.saveId,
       tabCount: context.newTabCount,
       delta: context.newTabCount - context.oldTabCount,

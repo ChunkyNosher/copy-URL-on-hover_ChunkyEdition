@@ -26,6 +26,10 @@ export class QuickTabHandler {
   // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat
   static DEDUP_TTL_MS = 10000;
 
+  // v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering
+  // Uses a static counter shared across all handler instances
+  static _sequenceId = 0;
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;
@@ -41,6 +45,16 @@ export class QuickTabHandler {
     // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
     this.processedMessages = new Map(); // messageKey -> timestamp
     this.lastCleanup = Date.now();
+  }
+
+  /**
+   * Get the next sequence ID for storage writes
+   * v1.6.3.7-v9 - FIX Issue #6: Monotonically increasing sequence ID
+   * @returns {number} Next sequence ID
+   */
+  static _getNextSequenceId() {
+    QuickTabHandler._sequenceId++;
+    return QuickTabHandler._sequenceId;
   }
 
   /**
@@ -641,6 +655,7 @@ export class QuickTabHandler {
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -648,10 +663,14 @@ export class QuickTabHandler {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
 
+    // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
+    const sequenceId = QuickTabHandler._getNextSequenceId();
+
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
       saveId: generatedSaveId,
+      sequenceId,
       timestamp: Date.now(),
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
@@ -694,16 +713,29 @@ export class QuickTabHandler {
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
+   * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+   * v1.6.3.7-v9 - FIX Issue #8: Add storage write validation
    */
   async saveStateToStorage() {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
     const tabCount = this.globalState.tabs?.length ?? 0;
     const saveTimestamp = Date.now();
+    // v1.6.3.7-v9 - FIX Issue #8: Generate unique operation ID for tracing
+    const operationId = `handler-${saveTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
+
+    // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
+    const sequenceId = QuickTabHandler._getNextSequenceId();
+    
+    // v1.6.3.7-v9 - FIX Issue #8: Generate saveId for validation
+    const saveId = `${saveTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
 
     // v1.6.3.6-v4 - FIX Issue #1: Log before storage write
     console.log('[QuickTabHandler] saveStateToStorage ENTRY:', {
+      operationId,
       writeSourceId,
+      saveId,
+      sequenceId,
       tabCount,
       timestamp: saveTimestamp
     });
@@ -711,6 +743,8 @@ export class QuickTabHandler {
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
+      saveId, // v1.6.3.7-v9 - FIX Issue #8: Add saveId for validation
+      sequenceId,
       timestamp: saveTimestamp,
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
@@ -722,10 +756,29 @@ export class QuickTabHandler {
         quick_tabs_state_v2: stateToSave
       });
 
+      // v1.6.3.7-v9 - FIX Issue #8: Validate the write by reading back
+      const validationResult = await this._validateStorageWrite(operationId, stateToSave, saveId);
+      
+      if (!validationResult.valid) {
+        console.error('[QuickTabHandler] STORAGE_VALIDATION_FAILED:', {
+          operationId,
+          saveId,
+          error: validationResult.error,
+          expectedTabCount: tabCount,
+          actualTabCount: validationResult.actualTabCount
+        });
+        // Note: We don't retry here as the background.js handles recovery
+        // This handler just reports the validation failure
+      }
+
       // v1.6.3.6-v4 - FIX Issue #1: Log successful completion (was missing before!)
       console.log('[QuickTabHandler] saveStateToStorage SUCCESS:', {
+        operationId,
         writeSourceId,
+        saveId,
+        sequenceId,
         tabCount,
+        validated: validationResult.valid,
         timestamp: saveTimestamp,
         tabIds: this.globalState.tabs.map(t => t.id).slice(0, 10) // First 10 IDs
       });
@@ -733,12 +786,62 @@ export class QuickTabHandler {
       // DOMException and browser-native errors don't serialize properly
       // Extract properties explicitly for proper logging
       console.error('[QuickTabHandler] Error saving state:', {
+        operationId,
         message: err?.message,
         name: err?.name,
         stack: err?.stack,
         code: err?.code,
         error: err
       });
+    }
+  }
+
+  /**
+   * Validate storage write by reading back and comparing
+   * v1.6.3.7-v9 - FIX Issue #8: Detect IndexedDB corruption
+   * @private
+   * @param {string} operationId - Operation ID for tracing
+   * @param {Object} expectedState - State that was written
+   * @param {string} saveId - SaveId to match
+   * @returns {Promise<{valid: boolean, error: string|null, actualTabCount: number}>}
+   */
+  async _validateStorageWrite(operationId, expectedState, saveId) {
+    try {
+      // Read back from storage
+      const result = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
+      const readBack = result?.quick_tabs_state_v2;
+      
+      // Check if data exists
+      if (!readBack) {
+        return { valid: false, error: 'READ_RETURNED_NULL', actualTabCount: 0 };
+      }
+      
+      // Check saveId matches
+      if (readBack.saveId !== saveId) {
+        return { valid: false, error: 'SAVEID_MISMATCH', actualTabCount: readBack?.tabs?.length || 0 };
+      }
+      
+      // Check tab count matches
+      const expectedCount = expectedState?.tabs?.length || 0;
+      const actualCount = readBack?.tabs?.length || 0;
+      
+      if (expectedCount !== actualCount) {
+        return { valid: false, error: 'TAB_COUNT_MISMATCH', actualTabCount: actualCount };
+      }
+      
+      console.log('[QuickTabHandler] STORAGE_VALIDATION_PASSED:', {
+        operationId,
+        saveId,
+        tabCount: actualCount
+      });
+      
+      return { valid: true, error: null, actualTabCount: actualCount };
+    } catch (err) {
+      console.error('[QuickTabHandler] STORAGE_VALIDATION_ERROR:', {
+        operationId,
+        error: err.message
+      });
+      return { valid: false, error: `VALIDATION_ERROR: ${err.message}`, actualTabCount: 0 };
     }
   }
 

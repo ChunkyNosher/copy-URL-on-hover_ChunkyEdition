@@ -37,11 +37,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.7-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.7-v9 Features (NEW):**
+
+- **Unified Keepalive** - Single 20s interval with correlation IDs
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Port Age Management** - 90s max age, 30s stale timeout
+- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Circuit Breaker Probing** - Early recovery with 500ms health probes
   (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)

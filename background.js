@@ -112,13 +112,29 @@ let lastBroadcastedStateHash = 0;
 // v1.6.1.6 - Memory leak fix: Window for ignoring self-triggered storage events (ms)
 const WRITE_IGNORE_WINDOW_MS = 100;
 
-// v1.6.3.4-v6 - FIX Issue #1: Track in-progress storage transactions
-// This prevents storage.onChanged from processing writes we just triggered
-const IN_PROGRESS_TRANSACTIONS = new Set();
+// v1.6.3.7-v9 - FIX Issue #3: REMOVED IN_PROGRESS_TRANSACTIONS (dead code)
+// The set was declared but NEVER populated anywhere in the codebase
+// Transaction-based dedup is replaced by unified saveId-based deduplication
+// See _multiMethodDeduplication() for the unified dedup strategy
 
-// v1.6.3.4-v6 - FIX Issue #5: Cooldown for storage.onChanged processing
-const STORAGE_CHANGE_COOLDOWN_MS = 50;
+// v1.6.3.7-v9 - FIX Issue #5: Increased cooldown from 50ms to 200ms
+// Cooldown is now applied conditionally only when dedup filter triggers
+const STORAGE_CHANGE_COOLDOWN_MS = 200;
 let lastStorageChangeProcessed = 0;
+
+// v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering validation
+// Incremented on every storage write to ensure Manager processes in correct order
+let storageWriteSequenceId = 0;
+
+/**
+ * Get the next sequence ID for storage writes
+ * v1.6.3.7-v9 - FIX Issue #6: Monotonically increasing sequence ID
+ * @returns {number} Next sequence ID
+ */
+function _getNextStorageSequenceId() {
+  storageWriteSequenceId++;
+  return storageWriteSequenceId;
+}
 
 // v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
 // Also track consecutive 0-tab reads to require confirmation before clearing
@@ -126,6 +142,62 @@ let lastNonEmptyStateTimestamp = Date.now();
 let consecutiveZeroTabReads = 0;
 const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
+
+// ==================== v1.6.3.7-v9 ISSUE #8: INDEXEDDB CORRUPTION DETECTION ====================
+// FIX Issue #8: Firefox bugs 1979997 and 1885297 cause silent IndexedDB corruption
+// Implement storage integrity validation with redundant backup to storage.sync
+
+/**
+ * Operation ID counter for storage operation tracing
+ * v1.6.3.7-v9 - FIX Issue #8: Unique operation IDs for all storage operations
+ */
+let storageOperationIdCounter = 0;
+
+/**
+ * Generate unique operation ID for storage operation tracing
+ * v1.6.3.7-v9 - FIX Issue #8: All storage operations have unique IDs
+ * @returns {string} Unique operation ID
+ */
+function _generateStorageOperationId() {
+  storageOperationIdCounter++;
+  return `storage-op-${Date.now()}-${storageOperationIdCounter}`;
+}
+
+/**
+ * Maximum retries for storage write validation
+ * v1.6.3.7-v9 - FIX Issue #8: Retry on validation failure
+ */
+const STORAGE_VALIDATION_MAX_RETRIES = 3;
+
+/**
+ * Delay between validation retries (ms)
+ * v1.6.3.7-v9 - FIX Issue #8: Give IndexedDB time to sync
+ */
+const STORAGE_VALIDATION_RETRY_DELAY_MS = 100;
+
+/**
+ * Flag to enable storage.sync redundant backup
+ * v1.6.3.7-v9 - FIX Issue #8: Optional recovery mechanism
+ */
+const ENABLE_SYNC_STORAGE_BACKUP = true;
+
+/**
+ * Key for redundant backup in storage.sync
+ * v1.6.3.7-v9 - FIX Issue #8: Uses separate IndexedDB instance
+ */
+const SYNC_BACKUP_KEY = 'quick_tabs_backup_v1';
+
+/**
+ * Timestamp of last corruption detection (for rate limiting recovery)
+ * v1.6.3.7-v9 - FIX Issue #8: Prevent recovery loops
+ */
+let lastCorruptionDetectedAt = 0;
+
+/**
+ * Minimum time between corruption recovery attempts (ms)
+ * v1.6.3.7-v9 - FIX Issue #8: 30 second cooldown
+ */
+const CORRUPTION_RECOVERY_COOLDOWN_MS = 30000;
 
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
@@ -153,7 +225,7 @@ let _lastCacheUpdateLog = null; // Track last cache state for before/after loggi
 
 // ==================== v1.6.4.9 LOGGING ENHANCEMENT TRACKING VARIABLES ====================
 // Issue #4: Deduplication Decision Logging
-// (Already tracked by IN_PROGRESS_TRANSACTIONS set)
+// v1.6.3.7-v9 - FIX Issue #3: Dedup now tracked via saveId in _multiMethodDeduplication()
 
 // Issue #5: Keepalive Health Monitoring
 let lastKeepaliveSuccessTime = Date.now(); // Track last successful keepalive reset
@@ -461,11 +533,14 @@ async function cleanupOrphanedQuickTabs() {
     globalQuickTabState.lastUpdate = Date.now();
 
     // Save to storage
+    // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
     const saveId = `cleanup-${Date.now()}`;
+    const sequenceId = _getNextStorageSequenceId();
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId,
+        sequenceId,
         timestamp: Date.now()
       }
     });
@@ -616,6 +691,463 @@ initializePhase3AOptimizations();
 // ==================== END PHASE 3A OPTIMIZATION INITIALIZATION ====================
 
 // ==================== END ALARMS MECHANISM ====================
+
+// ==================== v1.6.3.7-v9 ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
+// FIX Issue #8: Implement storage integrity validation to detect IndexedDB corruption
+
+/**
+ * Validate that storage write was successful by reading back and comparing
+ * v1.6.3.7-v9 - FIX Issue #8: Detect IndexedDB corruption after writes
+ * @param {string} operationId - Unique operation ID for tracing
+ * @param {Object} expectedData - Data that was written
+ * @param {string} storageKey - Storage key used
+ * @param {number} retryAttempt - Current retry attempt (0-based)
+ * @returns {Promise<{valid: boolean, readBack: Object|null, error: string|null}>}
+ */
+async function validateStorageWrite(operationId, expectedData, storageKey, retryAttempt = 0) {
+  const validationStart = Date.now();
+  
+  try {
+    // Read back the data immediately after write
+    const result = await browser.storage.local.get(storageKey);
+    const readBack = result?.[storageKey];
+    
+    // Check if data exists
+    if (!readBack) {
+      console.error('[Background] STORAGE_VALIDATION_FAILED: Read returned null/undefined', {
+        operationId,
+        storageKey,
+        retryAttempt,
+        expectedTabCount: expectedData?.tabs?.length || 0,
+        validationDurationMs: Date.now() - validationStart
+      });
+      return { valid: false, readBack: null, error: 'READ_RETURNED_NULL' };
+    }
+    
+    // Compare saveId (primary validation)
+    if (expectedData.saveId && readBack.saveId !== expectedData.saveId) {
+      console.error('[Background] STORAGE_VALIDATION_FAILED: SaveId mismatch', {
+        operationId,
+        expectedSaveId: expectedData.saveId,
+        actualSaveId: readBack.saveId,
+        retryAttempt,
+        validationDurationMs: Date.now() - validationStart
+      });
+      return { valid: false, readBack, error: 'SAVEID_MISMATCH' };
+    }
+    
+    // Compare tab count (secondary validation)
+    const expectedTabCount = expectedData?.tabs?.length || 0;
+    const actualTabCount = readBack?.tabs?.length || 0;
+    
+    if (expectedTabCount !== actualTabCount) {
+      console.error('[Background] STORAGE_VALIDATION_FAILED: Tab count mismatch', {
+        operationId,
+        expectedTabCount,
+        actualTabCount,
+        retryAttempt,
+        validationDurationMs: Date.now() - validationStart
+      });
+      return { valid: false, readBack, error: 'TAB_COUNT_MISMATCH' };
+    }
+    
+    // Validation passed
+    console.log('[Background] STORAGE_VALIDATION_PASSED:', {
+      operationId,
+      saveId: expectedData.saveId,
+      tabCount: actualTabCount,
+      retryAttempt,
+      validationDurationMs: Date.now() - validationStart
+    });
+    
+    return { valid: true, readBack, error: null };
+  } catch (err) {
+    console.error('[Background] STORAGE_VALIDATION_ERROR:', {
+      operationId,
+      error: err.message,
+      retryAttempt,
+      validationDurationMs: Date.now() - validationStart
+    });
+    return { valid: false, readBack: null, error: `VALIDATION_EXCEPTION: ${err.message}` };
+  }
+}
+
+/**
+ * Perform single write attempt with validation
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce writeStorageWithValidation complexity
+ * @private
+ * @param {Object} stateToWrite - State to write
+ * @param {string} storageKey - Storage key
+ * @param {string} operationId - Operation ID
+ * @param {number} attempt - Attempt number (0-based)
+ * @returns {Promise<{success: boolean, error: string|null}>}
+ */
+async function _performWriteAttempt(stateToWrite, storageKey, operationId, attempt) {
+  // Perform the write
+  await browser.storage.local.set({ [storageKey]: stateToWrite });
+  
+  // Wait a small delay before validation on retries
+  if (attempt > 0) {
+    await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS));
+  }
+  
+  // Validate the write
+  const validation = await validateStorageWrite(operationId, stateToWrite, storageKey, attempt);
+  return validation;
+}
+
+/**
+ * Handle successful write validation
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
+ * @private
+ */
+function _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite) {
+  console.log('[Background] STORAGE_WRITE_COMPLETE:', {
+    operationId,
+    success: true,
+    attempts: attempt + 1,
+    totalDurationMs: Date.now() - writeStart
+  });
+  
+  // Update redundant backup if enabled
+  if (ENABLE_SYNC_STORAGE_BACKUP) {
+    _updateSyncBackup(stateToWrite, operationId);
+  }
+}
+
+/**
+ * Write to storage with integrity validation and retry
+ * v1.6.3.7-v9 - FIX Issue #8: Validate writes and retry on failure
+ * @param {Object} stateToWrite - State object to write
+ * @param {string} storageKey - Storage key
+ * @returns {Promise<{success: boolean, operationId: string, retries: number, error: string|null}>}
+ */
+async function writeStorageWithValidation(stateToWrite, storageKey) {
+  const operationId = _generateStorageOperationId();
+  const writeStart = Date.now();
+  
+  console.log('[Background] STORAGE_WRITE_START:', {
+    operationId,
+    storageKey,
+    saveId: stateToWrite.saveId,
+    tabCount: stateToWrite?.tabs?.length || 0,
+    timestamp: writeStart
+  });
+  
+  for (let attempt = 0; attempt < STORAGE_VALIDATION_MAX_RETRIES; attempt++) {
+    const result = await _tryWriteAttempt(stateToWrite, storageKey, operationId, attempt, writeStart);
+    if (result.done) return result.value;
+  }
+  
+  // All retries failed - potential corruption
+  return _handleAllRetriesFailed(operationId, stateToWrite, writeStart);
+}
+
+/**
+ * Try a single write attempt
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce nesting in writeStorageWithValidation
+ * @private
+ */
+async function _tryWriteAttempt(stateToWrite, storageKey, operationId, attempt, writeStart) {
+  try {
+    const validation = await _performWriteAttempt(stateToWrite, storageKey, operationId, attempt);
+    
+    if (validation.valid) {
+      _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite);
+      return { done: true, value: { success: true, operationId, retries: attempt, error: null } };
+    }
+    
+    // Validation failed, log retry
+    console.warn('[Background] STORAGE_WRITE_RETRY:', {
+      operationId,
+      attempt: attempt + 1,
+      maxAttempts: STORAGE_VALIDATION_MAX_RETRIES,
+      error: validation.error
+    });
+  } catch (err) {
+    console.error('[Background] STORAGE_WRITE_ERROR:', { operationId, attempt, error: err.message });
+  }
+  
+  // Wait before next retry
+  await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS * (attempt + 1)));
+  return { done: false };
+}
+
+/**
+ * Handle case when all retries failed
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
+ * @private
+ */
+async function _handleAllRetriesFailed(operationId, stateToWrite, writeStart) {
+  console.error('[Background] CRITICAL: STORAGE_WRITE_ALL_RETRIES_FAILED:', {
+    operationId,
+    totalAttempts: STORAGE_VALIDATION_MAX_RETRIES,
+    totalDurationMs: Date.now() - writeStart,
+    action: 'TRIGGERING_CORRUPTION_RECOVERY'
+  });
+  
+  await handleStorageCorruption(operationId, stateToWrite);
+  
+  return { 
+    success: false, 
+    operationId, 
+    retries: STORAGE_VALIDATION_MAX_RETRIES, 
+    error: 'ALL_VALIDATION_RETRIES_FAILED' 
+  };
+}
+
+/**
+ * Update redundant backup in storage.sync
+ * v1.6.3.7-v9 - FIX Issue #8: Keep second copy for recovery
+ * @param {Object} stateToWrite - State to backup
+ * @param {string} operationId - Operation ID for tracing
+ */
+async function _updateSyncBackup(stateToWrite, operationId) {
+  try {
+    // storage.sync has lower quota limits, so we store essential data only
+    const backupData = {
+      tabs: stateToWrite.tabs,
+      timestamp: Date.now(),
+      saveId: stateToWrite.saveId,
+      backupOperationId: operationId
+    };
+    
+    await browser.storage.sync.set({ [SYNC_BACKUP_KEY]: backupData });
+    
+    console.log('[Background] SYNC_BACKUP_UPDATED:', {
+      operationId,
+      tabCount: backupData.tabs?.length || 0,
+      timestamp: backupData.timestamp
+    });
+  } catch (err) {
+    // storage.sync failures are non-critical (quota exceeded is common)
+    console.warn('[Background] SYNC_BACKUP_FAILED:', {
+      operationId,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Handle detected storage corruption
+ * v1.6.3.7-v9 - FIX Issue #8: Recovery mechanism using storage.sync backup
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ */
+async function handleStorageCorruption(operationId, intendedState) {
+  const now = Date.now();
+  
+  // Rate limit recovery attempts
+  if (now - lastCorruptionDetectedAt < CORRUPTION_RECOVERY_COOLDOWN_MS) {
+    console.warn('[Background] CORRUPTION_RECOVERY_RATE_LIMITED:', {
+      operationId,
+      timeSinceLastMs: now - lastCorruptionDetectedAt,
+      cooldownMs: CORRUPTION_RECOVERY_COOLDOWN_MS
+    });
+    return;
+  }
+  
+  lastCorruptionDetectedAt = now;
+  
+  console.error('[Background] CRITICAL: STORAGE_CORRUPTION_DETECTED:', {
+    operationId,
+    intendedTabCount: intendedState?.tabs?.length || 0,
+    timestamp: now
+  });
+  
+  // Try to recover from storage.sync backup
+  if (ENABLE_SYNC_STORAGE_BACKUP) {
+    await attemptRecoveryFromSyncBackup(operationId, intendedState);
+  }
+}
+
+/**
+ * Attempt to recover state from storage.sync backup
+ * v1.6.3.7-v9 - FIX Issue #8: Recovery from redundant backup
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ */
+/**
+ * Handle case when sync backup is empty
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
+ * @private
+ */
+function _handleEmptyBackup(operationId, backup, intendedState) {
+  console.warn('[Background] SYNC_BACKUP_EMPTY: No backup available for recovery', {
+    operationId,
+    hasBackup: !!backup,
+    backupTabCount: backup?.tabs?.length || 0
+  });
+  
+  // Fall back to intended state if we have it
+  if (intendedState?.tabs?.length > 0) {
+    console.log('[Background] USING_INTENDED_STATE_FOR_RECOVERY:', {
+      operationId,
+      tabCount: intendedState.tabs.length
+    });
+    globalQuickTabState.tabs = intendedState.tabs;
+    globalQuickTabState.lastUpdate = Date.now();
+  }
+}
+
+/**
+ * Write recovered state to local storage
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
+ * @private
+ */
+async function _writeRecoveredState(operationId, backup) {
+  const recoveredState = {
+    tabs: backup.tabs,
+    saveId: `recovered-${operationId}`,
+    sequenceId: _getNextStorageSequenceId(),
+    timestamp: Date.now(),
+    recoveredFrom: 'sync-backup'
+  };
+  
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: recoveredState });
+    console.log('[Background] RECOVERY_COMPLETE: State restored from backup', {
+      operationId,
+      tabCount: backup.tabs.length
+    });
+  } catch (writeErr) {
+    console.error('[Background] RECOVERY_WRITE_FAILED:', { operationId, error: writeErr.message });
+  }
+}
+
+/**
+ * Attempt to recover state from storage.sync backup
+ * v1.6.3.7-v9 - FIX Issue #8: Recovery from redundant backup
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ */
+async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
+  try {
+    console.log('[Background] ATTEMPTING_SYNC_BACKUP_RECOVERY:', { operationId });
+    
+    const result = await browser.storage.sync.get(SYNC_BACKUP_KEY);
+    const backup = result?.[SYNC_BACKUP_KEY];
+    
+    // Check if backup is valid
+    if (!backup || !backup.tabs || backup.tabs.length === 0) {
+      _handleEmptyBackup(operationId, backup, intendedState);
+      return;
+    }
+    
+    // Check backup age - don't restore very old backups (> 1 hour)
+    const backupAgeMs = Date.now() - backup.timestamp;
+    if (backupAgeMs > 3600000) {
+      console.warn('[Background] SYNC_BACKUP_TOO_OLD: Backup is over 1 hour old', {
+        operationId,
+        backupAgeMs,
+        backupTimestamp: backup.timestamp
+      });
+      return;
+    }
+    
+    // Restore from backup
+    console.log('[Background] RESTORING_FROM_SYNC_BACKUP:', {
+      operationId,
+      backupTabCount: backup.tabs.length,
+      backupSaveId: backup.saveId,
+      backupAgeMs
+    });
+    
+    // Update global state
+    globalQuickTabState.tabs = backup.tabs;
+    globalQuickTabState.lastUpdate = Date.now();
+    globalQuickTabState.saveId = backup.saveId;
+    
+    // Write recovered state to local storage
+    await _writeRecoveredState(operationId, backup);
+  } catch (err) {
+    console.error('[Background] SYNC_BACKUP_RECOVERY_ERROR:', { operationId, error: err.message });
+  }
+}
+
+/**
+ * Try to restore from sync backup on startup
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce checkStorageIntegrityOnStartup complexity
+ * @private
+ */
+async function _tryRestoreFromStartupBackup(operationId) {
+  const syncResult = await browser.storage.sync.get(SYNC_BACKUP_KEY);
+  const backup = syncResult?.[SYNC_BACKUP_KEY];
+  
+  if (!backup?.tabs || backup.tabs.length === 0) {
+    return { hasBackup: false, recovered: false };
+  }
+  
+  console.warn('[Background] STORAGE_INTEGRITY_MISMATCH: Local empty but backup has data', {
+    operationId,
+    localTabCount: 0,
+    backupTabCount: backup.tabs.length,
+    backupAge: Date.now() - backup.timestamp
+  });
+  
+  // Check if backup is recent enough to restore (< 24 hours)
+  const backupAgeMs = Date.now() - backup.timestamp;
+  if (backupAgeMs >= 86400000) {
+    console.warn('[Background] STARTUP_BACKUP_TOO_OLD:', {
+      operationId,
+      backupAgeHours: Math.round(backupAgeMs / 3600000)
+    });
+    return { hasBackup: true, recovered: false };
+  }
+  
+  console.log('[Background] RESTORING_FROM_STARTUP_BACKUP:', {
+    operationId,
+    backupTabCount: backup.tabs.length
+  });
+  
+  await attemptRecoveryFromSyncBackup(operationId, null);
+  return { hasBackup: true, recovered: true };
+}
+
+/**
+ * Check storage integrity on startup
+ * v1.6.3.7-v9 - FIX Issue #8: Verify storage.local data on initialization
+ * @returns {Promise<{healthy: boolean, recovered: boolean, error: string|null}>}
+ */
+async function checkStorageIntegrityOnStartup() {
+  const operationId = _generateStorageOperationId();
+  console.log('[Background] STORAGE_INTEGRITY_CHECK_START:', { operationId });
+  
+  try {
+    // Read from storage.local
+    const localResult = await browser.storage.local.get('quick_tabs_state_v2');
+    const localState = localResult?.quick_tabs_state_v2;
+    
+    // If local storage has data, we're good
+    if (localState?.tabs && localState.tabs.length > 0) {
+      console.log('[Background] STORAGE_INTEGRITY_CHECK_PASSED:', {
+        operationId,
+        localTabCount: localState.tabs.length,
+        saveId: localState.saveId
+      });
+      return { healthy: true, recovered: false, error: null };
+    }
+    
+    // Local storage is empty - check if we have a backup and try recovery
+    const backupResult = ENABLE_SYNC_STORAGE_BACKUP 
+      ? await _tryRestoreFromStartupBackup(operationId)
+      : { hasBackup: false, recovered: false };
+    
+    if (backupResult.recovered) {
+      return { healthy: false, recovered: true, error: null };
+    }
+    
+    // No data in either storage - this is expected for new installations
+    console.log('[Background] STORAGE_INTEGRITY_CHECK_COMPLETE: No existing data', { operationId });
+    return { healthy: true, recovered: false, error: null };
+    
+  } catch (err) {
+    console.error('[Background] STORAGE_INTEGRITY_CHECK_ERROR:', { operationId, error: err.message });
+    return { healthy: false, recovered: false, error: err.message };
+  }
+}
+
+// ==================== END ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
 
 /**
  * Valid URL protocols for Quick Tab creation
@@ -812,6 +1344,7 @@ const MAX_INITIALIZATION_RETRIES = 3;
  * v1.6.2.2 - Simplified for unified format
  * v1.6.3.6-v12 - FIX Issue #1: Proper error handling - don't set isInitialized on failure
  * v1.6.3.6-v12 - FIX Code Review: Added retry limit to prevent infinite loop
+ * v1.6.3.7-v9 - FIX Issue #8: Check storage integrity on startup
  */
 async function initializeGlobalState() {
   // Guard: Already initialized
@@ -824,6 +1357,25 @@ async function initializeGlobalState() {
   const initStartTime = Date.now();
 
   try {
+    // v1.6.3.7-v9 - FIX Issue #8: Check storage integrity before loading
+    const integrityResult = await checkStorageIntegrityOnStartup();
+    console.log('[Background] Storage integrity check result:', {
+      healthy: integrityResult.healthy,
+      recovered: integrityResult.recovered,
+      error: integrityResult.error
+    });
+    
+    // If we recovered from backup, our state is already populated
+    if (integrityResult.recovered && globalQuickTabState.tabs?.length > 0) {
+      initializationRetryCount = 0;
+      isInitialized = true;
+      console.log('[Background] v1.6.3.7-v9 Initialization complete from backup recovery:', {
+        tabCount: globalQuickTabState.tabs.length,
+        durationMs: Date.now() - initStartTime
+      });
+      return;
+    }
+    
     // Try session storage first (faster)
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
@@ -845,7 +1397,7 @@ async function initializeGlobalState() {
   } catch (err) {
     // v1.6.3.6-v12 - FIX Issue #1: Do NOT set isInitialized=true on error
     // This ensures handlers know state is not ready
-    console.error('[Background] v1.6.3.6-v12 INITIALIZATION FAILED:', {
+    console.error('[Background] v1.6.3.6-v12 INITIALIZATION_FAILED:', {
       error: err.message,
       durationMs: Date.now() - initStartTime,
       retryCount: initializationRetryCount,
@@ -1054,17 +1606,20 @@ async function tryLoadFromSyncStorage() {
 /**
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  *
  * @returns {Promise<void>}
  */
 async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sequenceId = _getNextStorageSequenceId();
 
   try {
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
+        sequenceId,
         timestamp: Date.now()
       }
     });
@@ -1151,6 +1706,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
 /**
  * Helper: Save migrated Quick Tab state to storage
  * v1.6.2.2 - Updated for unified format
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  *
  * @returns {Promise<void>}
  */
@@ -1160,6 +1716,7 @@ async function saveMigratedQuickTabState() {
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
     saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    sequenceId: _getNextStorageSequenceId(),
     timestamp: Date.now()
   };
 
@@ -1839,9 +2396,11 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
     return false;
   }
 
+  // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
     saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    sequenceId: _getNextStorageSequenceId(),
     timestamp: Date.now()
   };
 
@@ -2463,55 +3022,32 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
  * v1.6.4.9 - Issue #4: Enhanced logging with comparison values
+ * v1.6.3.7-v9 - FIX Issue #3: Unified dedup strategy - removed dead transactionId code
+ *   - PRIMARY: saveId + timestamp comparison (Method 1)
+ *   - SECONDARY: Content hash comparison for messages without saveId (Method 2)
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _multiMethodDeduplication(newValue, oldValue) {
-  // v1.6.4.9 - Issue #4: Log dedup check start with comparison values
+  // v1.6.3.7-v9 - FIX Issue #3: Log dedup check start with comparison values (removed transactionId)
   console.log('[Background] DEDUP_CHECK:', {
     newSaveId: newValue?.saveId,
     oldSaveId: oldValue?.saveId,
     newTimestamp: newValue?.timestamp,
     oldTimestamp: oldValue?.timestamp,
-    newTransactionId: newValue?.transactionId,
-    inProgressTransactionCount: IN_PROGRESS_TRANSACTIONS.size
+    newSequenceId: newValue?.sequenceId,
+    oldSequenceId: oldValue?.sequenceId
   });
 
-  // v1.6.4.9 - Issue #4: Periodically log transaction set size if > 5
-  if (IN_PROGRESS_TRANSACTIONS.size > 5) {
-    console.warn('[Background] DEDUP_CHECK: Large in-progress transaction set:', {
-      size: IN_PROGRESS_TRANSACTIONS.size,
-      transactions: Array.from(IN_PROGRESS_TRANSACTIONS).slice(0, 10) // Log first 10
-    });
-  }
-
-  // Method 1: transactionId (highest priority - deterministic)
-  // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
-  if (_isTransactionSelfWrite(newValue)) {
-    // v1.6.4.9 - Issue #4: Log elapsed time for transaction match
-    const transactionStartTime = _getTransactionStartTime(newValue.transactionId);
-    const result = {
-      shouldSkip: true,
-      method: 'transactionId',
-      reason: `Transaction ${newValue.transactionId} in progress`
-    };
-    console.log('[Background] DEDUP_RESULT:', {
-      ...result,
-      decision: 'skip',
-      elapsedMs: transactionStartTime ? Date.now() - transactionStartTime : 'unknown'
-    });
-    return result;
-  }
-
-  // Method 2: saveId + timestamp comparison (catches duplicates from same source)
+  // v1.6.3.7-v9 - FIX Issue #3: Method 1 (PRIMARY) - saveId + timestamp comparison
+  // This is the primary dedup method - every state update should have a saveId
   if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
     const result = {
       shouldSkip: true,
       method: 'saveId+timestamp',
       reason: 'Same saveId and timestamp within window'
     };
-    // v1.6.4.9 - Issue #4: Log comparison values
     console.log('[Background] DEDUP_RESULT:', {
       ...result,
       decision: 'skip',
@@ -2525,16 +3061,18 @@ function _multiMethodDeduplication(newValue, oldValue) {
     return result;
   }
 
-  // Method 3: Content hash comparison (catches Firefox spurious events)
+  // v1.6.3.7-v9 - FIX Issue #3: Method 2 (SECONDARY) - Content hash comparison
+  // Only used as secondary safeguard for messages without saveId or Firefox spurious events
   if (_isContentHashDuplicate(newValue, oldValue)) {
     const result = {
       shouldSkip: true,
       method: 'contentHash',
-      reason: 'Identical content with same saveId'
+      reason: 'Identical content (secondary safeguard for no-saveId messages)'
     };
     console.log('[Background] DEDUP_RESULT:', {
       ...result,
-      decision: 'skip'
+      decision: 'skip',
+      hasSaveId: !!newValue?.saveId
     });
     return result;
   }
@@ -2548,23 +3086,9 @@ function _multiMethodDeduplication(newValue, oldValue) {
 }
 
 /**
- * Get transaction start time from tracking (for elapsed time logging)
- * v1.6.4.9 - Issue #4: Helper for transaction timing
- * @private
- * @param {string} transactionId - Transaction ID
- * @returns {number|null} Start timestamp or null
- */
-function _getTransactionStartTime(transactionId) {
-  // Transaction IDs are often formatted as timestamp-based strings
-  // Try to extract timestamp from common formats like "bg-op-{timestamp}-{random}"
-  if (!transactionId) return null;
-  const match = transactionId.match(/-(\d{13})-/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-/**
  * Check if saveId + timestamp indicate a duplicate write
  * v1.6.3.6-v12 - FIX Issue #3: Second dedup method
+ * v1.6.3.7-v9 - FIX Issue #3: Now the PRIMARY dedup method
  * @private
  */
 function _isSaveIdTimestampDuplicate(newValue, oldValue) {
@@ -2578,50 +3102,78 @@ function _isSaveIdTimestampDuplicate(newValue, oldValue) {
 }
 
 /**
+ * Check if saveIds indicate different writes (not a duplicate)
+ * v1.6.3.7-v9 - FIX Issue #3: Extracted helper to reduce complexity
+ * @private
+ */
+function _areSaveIdsDifferent(newValue, oldValue) {
+  const newHasSaveId = !!newValue?.saveId;
+  const oldHasSaveId = !!oldValue?.saveId;
+
+  if (!newHasSaveId || !oldHasSaveId) {
+    return false; // Can't determine if different without both saveIds
+  }
+
+  return newValue.saveId !== oldValue.saveId;
+}
+
+/**
+ * Log content hash match details
+ * v1.6.3.7-v9 - FIX Issue #3: Extracted helper to reduce complexity
+ * @private
+ */
+function _logContentHashMatch(newHasSaveId, oldHasSaveId, saveIdMatch) {
+  const mode = (!newHasSaveId || !oldHasSaveId) ? 'secondary-no-saveId' : 'firefox-spurious';
+  console.log('[Background] v1.6.3.7-v9 Content hash match detected:', {
+    mode,
+    newHasSaveId,
+    oldHasSaveId,
+    saveIdMatch
+  });
+}
+
+/**
  * Check if content hash indicates a duplicate (Firefox spurious event)
  * v1.6.3.6-v12 - FIX Issue #3: Third dedup method (safe version)
- * Only skips if BOTH saveId matches AND content is identical
- * This prevents false negatives during rapid legitimate writes
+ * v1.6.3.7-v9 - FIX Issue #3: Updated as SECONDARY safeguard for messages without saveId
+ *   - If neither has saveId: use pure content comparison (secondary safeguard)
+ *   - If both have same saveId: check content to catch Firefox spurious events
+ *   - If saveIds differ: not a duplicate (different writes)
  * @private
  */
 function _isContentHashDuplicate(newValue, oldValue) {
   if (!newValue || !oldValue) return false;
 
-  // Only apply this check if saveId matches (same source)
-  if (newValue.saveId !== oldValue.saveId) return false;
+  // If saveIds differ, not a duplicate (different writes)
+  if (_areSaveIdsDifferent(newValue, oldValue)) {
+    return false;
+  }
 
   // Compute content keys
   const newContentKey = _computeQuickTabContentKey(newValue);
   const oldContentKey = _computeQuickTabContentKey(oldValue);
 
-  if (newContentKey === oldContentKey && newContentKey !== '') {
-    console.log('[Background] v1.6.3.6-v12 Content hash match detected (Firefox spurious event)');
-    return true;
+  // Check for content match
+  if (newContentKey !== oldContentKey || newContentKey === '') {
+    return false;
   }
 
-  return false;
+  // Content matches - this is a duplicate
+  const newHasSaveId = !!newValue?.saveId;
+  const oldHasSaveId = !!oldValue?.saveId;
+  const saveIdMatch = newHasSaveId && oldHasSaveId && newValue.saveId === oldValue.saveId;
+
+  _logContentHashMatch(newHasSaveId, oldHasSaveId, saveIdMatch);
+  return true;
 }
 
-/**
- * Check if this is a self-write via transaction ID
- * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
- * v1.6.3.6-v12 - Note: This is also called by _multiMethodDeduplication() as Method 1
- * Other self-write detection methods are handled by content scripts
- * @param {Object} newValue - New storage value
- * @returns {boolean} True if self-write
- */
-function _isTransactionSelfWrite(newValue) {
-  // Check transaction ID - the most deterministic method
-  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
-    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
-    return true;
-  }
-
-  return false;
-}
+// v1.6.3.7-v9 - FIX Issue #3: REMOVED _isTransactionSelfWrite function (dead code)
+// The IN_PROGRESS_TRANSACTIONS set was never populated, making this function useless
+// Transaction-based dedup is replaced by saveId-based deduplication
 
 /**
  * Check and log if storage change is within cooldown period
+ * v1.6.3.7-v9 - FIX Issue #5: Cooldown now applied conditionally only when dedup triggers
  * @private
  * @param {number} now - Current timestamp
  * @returns {boolean} True if within cooldown
@@ -2637,6 +3189,7 @@ function _checkAndLogCooldown(now) {
 
 /**
  * Build storage change comparison object for logging
+ * v1.6.3.7-v9 - FIX Issue #3, #6: Replaced transactionId with sequenceId for event ordering
  * @private
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
@@ -2648,7 +3201,8 @@ function _buildStorageChangeComparison(newValue, oldValue) {
     newTabCount: _getTabCount(newValue),
     oldSaveId: oldValue?.saveId,
     newSaveId: newValue?.saveId,
-    transactionId: newValue?.transactionId,
+    oldSequenceId: oldValue?.sequenceId,
+    newSequenceId: newValue?.sequenceId,
     writingInstanceId: newValue?.writingInstanceId,
     writingTabId: newValue?.writingTabId
   };
@@ -2860,8 +3414,33 @@ async function _handleSettingsChange(changes) {
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 // v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
-browser.storage.onChanged.addListener((changes, areaName) => {
-  console.log('[Background] Storage changed:', areaName, Object.keys(changes));
+// v1.6.3.7-v9 - FIX Issue #11: Add initialization guard to prevent race condition
+
+/**
+ * Handle storage.onChanged events with initialization guard
+ * v1.6.3.7-v9 - FIX Issue #11: Explicit initialization check before processing
+ * @param {Object} changes - Storage changes
+ * @param {string} areaName - Storage area name
+ */
+function _handleStorageOnChanged(changes, areaName) {
+  // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with initialization status
+  console.log('[Background] STORAGE_LISTENER_ENTRY:', {
+    areaName,
+    changedKeys: Object.keys(changes),
+    isInitialized,
+    timestamp: Date.now()
+  });
+  
+  // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+  if (!isInitialized) {
+    console.warn('[Background] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
+      areaName,
+      changedKeys: Object.keys(changes),
+      message: 'Skipping - background script not yet initialized',
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
   if (areaName !== 'local' && areaName !== 'sync') {
@@ -2877,7 +3456,12 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (changes.quick_tab_settings) {
     _handleSettingsChange(changes);
   }
-});
+}
+
+// Register storage.onChanged listener
+// v1.6.3.7-v9 - FIX Issue #11: Listener is registered at script load, but handler has init guard
+browser.storage.onChanged.addListener(_handleStorageOnChanged);
+console.log('[Background] v1.6.3.7-v9 storage.onChanged listener registered with init guard');
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
@@ -3208,6 +3792,74 @@ const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  */
 const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 
+// ==================== v1.6.3.7-v9 PORT AGE THRESHOLDS (Issue #4) ====================
+// Maximum age and inactivity thresholds for port cleanup
+
+/**
+ * Maximum port lifetime (90 seconds)
+ * v1.6.3.7-v9 - Issue #4: Ports older than this are removed regardless of activity
+ */
+const PORT_MAX_AGE_MS = 90 * 1000;
+
+/**
+ * Port inactivity timeout for stale marking (30 seconds)
+ * v1.6.3.7-v9 - Issue #4: Ports with no messages for this duration are marked stale
+ */
+const PORT_STALE_TIMEOUT_MS = 30 * 1000;
+
+// ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
+// Monotonic sequence counter for port messages to detect reordering
+
+/**
+ * Monotonic sequence counter for outgoing port messages
+ * v1.6.3.7-v9 - Issue #9: Detect message reordering
+ */
+let portMessageSequenceCounter = 0;
+
+/**
+ * Map of expected sequence numbers per port
+ * v1.6.3.7-v9 - Issue #9: Track expected sequence per port connection
+ * Key: portId, Value: { lastReceivedSeq: number, reorderBuffer: Map<seq, message> }
+ */
+const portSequenceTracking = new Map();
+
+/**
+ * Maximum reorder buffer size before forced flush
+ * v1.6.3.7-v9 - Issue #9: Prevent unbounded buffer growth
+ */
+const MAX_REORDER_BUFFER_SIZE = 10;
+
+/**
+ * Get next message sequence number for port messages
+ * v1.6.3.7-v9 - Issue #9: Generate monotonically increasing sequence
+ * @returns {number} Next sequence number
+ */
+function _getNextPortMessageSequence() {
+  portMessageSequenceCounter++;
+  return portMessageSequenceCounter;
+}
+
+/**
+ * Initialize sequence tracking for a new port
+ * v1.6.3.7-v9 - Issue #9: Set up tracking when port connects
+ * @param {string} portId - Port ID to track
+ */
+function _initPortSequenceTracking(portId) {
+  portSequenceTracking.set(portId, {
+    lastReceivedSeq: 0,
+    reorderBuffer: new Map()
+  });
+}
+
+/**
+ * Clean up sequence tracking for disconnected port
+ * v1.6.3.7-v9 - Issue #9: Remove tracking when port disconnects
+ * @param {string} portId - Port ID to clean up
+ */
+function _cleanupPortSequenceTracking(portId) {
+  portSequenceTracking.delete(portId);
+}
+
 /**
  * Generate unique port ID
  * v1.6.3.6-v11 - FIX Issue #12: Port identification
@@ -3242,21 +3894,29 @@ function logPortLifecycle(origin, event, details = {}) {
  * @param {string} origin - Origin identifier
  * @param {number|null} tabId - Tab ID (if from content script)
  * @param {string} type - Port type ('sidebar' or 'content')
+ * @param {number|null} windowId - Window ID for sidebar ports (v1.6.3.7-v9)
  * @returns {string} Generated port ID
  */
-function registerPort(port, origin, tabId, type) {
+function registerPort(port, origin, tabId, type, windowId = null) {
   const portId = generatePortId();
   const beforeCount = portRegistry.size;
+  const now = Date.now();
 
   portRegistry.set(portId, {
     port,
     origin,
     tabId,
     type,
-    connectedAt: Date.now(),
+    // v1.6.3.7-v9 - Issue #4: Enhanced metadata tracking
+    windowId: windowId || port.sender?.tab?.windowId || null,
+    connectedAt: now,
     lastMessageAt: null,
+    lastActivityTime: now, // v1.6.3.7-v9: Tracks both sent and received
     messageCount: 0
   });
+
+  // v1.6.3.7-v9 - Issue #9: Initialize sequence tracking for this port
+  _initPortSequenceTracking(portId);
 
   // v1.6.4.9 - Issue #6: Enhanced PORT_REGISTERED logging
   console.log('[Background] PORT_REGISTERED:', {
@@ -3264,6 +3924,7 @@ function registerPort(port, origin, tabId, type) {
     origin,
     tabId,
     type,
+    windowId: windowId || port.sender?.tab?.windowId || null, // v1.6.3.7-v9
     registrySize: portRegistry.size,
     previousSize: beforeCount
   });
@@ -3302,6 +3963,7 @@ function _checkPortRegistrySizeWarnings() {
  * Unregister a port connection
  * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
  * v1.6.4.9 - Issue #6: Enhanced PORT_UNREGISTERED logging
+ * v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
  * @param {string} portId - Port ID to unregister
  * @param {string} reason - Reason for disconnect
  */
@@ -3315,6 +3977,7 @@ function unregisterPort(portId, reason = 'disconnect') {
       portId,
       origin: portInfo.origin,
       tabId: portInfo.tabId,
+      windowId: portInfo.windowId, // v1.6.3.7-v9
       reason,
       messageCount: portInfo.messageCount,
       duration: Date.now() - portInfo.connectedAt,
@@ -3330,18 +3993,24 @@ function unregisterPort(portId, reason = 'disconnect') {
       duration: Date.now() - portInfo.connectedAt
     });
     portRegistry.delete(portId);
+    
+    // v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
+    _cleanupPortSequenceTracking(portId);
   }
 }
 
 /**
  * Update port activity timestamp
  * v1.6.3.6-v11 - FIX Issue #12: Track port activity
+ * v1.6.3.7-v9 - Issue #4: Update lastActivityTime
  * @param {string} portId - Port ID
  */
 function updatePortActivity(portId) {
   const portInfo = portRegistry.get(portId);
   if (portInfo) {
-    portInfo.lastMessageAt = Date.now();
+    const now = Date.now();
+    portInfo.lastMessageAt = now;
+    portInfo.lastActivityTime = now; // v1.6.3.7-v9
     portInfo.messageCount++;
   }
 }
@@ -3373,21 +4042,74 @@ async function _checkPortTabExists(portInfo) {
  * @param {string} portId - Port ID
  */
 function _checkPortInactivity(portInfo, now, portId) {
-  const lastActivity = portInfo.lastMessageAt || portInfo.connectedAt;
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
   if (now - lastActivity > PORT_INACTIVITY_THRESHOLD_MS) {
     console.warn('[Background] PORT_CLEANUP: Port has been inactive:', {
       portId,
       origin: portInfo.origin,
       tabId: portInfo.tabId,
+      windowId: portInfo.windowId, // v1.6.3.7-v9
       inactiveMs: now - lastActivity
     });
   }
 }
 
 /**
+ * Check if port exceeds maximum age threshold
+ * v1.6.3.7-v9 - Issue #4: Age-based cleanup
+ * @private
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID for logging
+ * @returns {boolean} True if port exceeds max age
+ */
+function _isPortTooOld(portInfo, now, portId) {
+  const age = now - portInfo.connectedAt;
+  if (age > PORT_MAX_AGE_MS) {
+    console.warn('[Background] [PORT] PORT_MAX_AGE_EXCEEDED:', {
+      portId,
+      origin: portInfo.origin,
+      ageMs: age,
+      maxAgeMs: PORT_MAX_AGE_MS,
+      windowId: portInfo.windowId
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if port is stale (no activity for timeout period)
+ * v1.6.3.7-v9 - Issue #4: Inactivity-based cleanup
+ * @private
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID for logging
+ * @returns {boolean} True if port is stale
+ */
+function _isPortStale(portInfo, now, portId) {
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+  const inactivityMs = now - lastActivity;
+  
+  if (inactivityMs > PORT_STALE_TIMEOUT_MS) {
+    console.warn('[Background] [PORT] PORT_STALE_DETECTED:', {
+      portId,
+      origin: portInfo.origin,
+      inactivityMs,
+      staleTimeoutMs: PORT_STALE_TIMEOUT_MS,
+      windowId: portInfo.windowId,
+      messageCount: portInfo.messageCount
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
  * Clean up stale ports (e.g., from closed tabs)
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
  * v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP logging with before/after counts
+ * v1.6.3.7-v9 - Issue #4: Added age-based and inactivity-based cleanup
  */
 async function cleanupStalePorts() {
   const beforeCount = portRegistry.size;
@@ -3395,6 +4117,8 @@ async function cleanupStalePorts() {
   // v1.6.4.9 - Issue #6: Log cleanup start
   console.log('[Background] PORT_CLEANUP_START:', {
     currentRegistrySize: beforeCount,
+    maxAgeMs: PORT_MAX_AGE_MS,
+    staleTimeoutMs: PORT_STALE_TIMEOUT_MS,
     timestamp: Date.now()
   });
 
@@ -3402,12 +4126,26 @@ async function cleanupStalePorts() {
   const stalePorts = [];
 
   for (const [portId, portInfo] of portRegistry.entries()) {
+    // v1.6.3.7-v9 - Issue #4: Check max age first (hard limit)
+    if (_isPortTooOld(portInfo, now, portId)) {
+      stalePorts.push({ portId, reason: 'max-age-exceeded' });
+      continue;
+    }
+
+    // Check if tab still exists
     const tabExists = await _checkPortTabExists(portInfo);
     if (!tabExists) {
       stalePorts.push({ portId, reason: 'tab-closed' });
       continue;
     }
 
+    // v1.6.3.7-v9 - Issue #4: Check inactivity (30s stale timeout)
+    if (_isPortStale(portInfo, now, portId)) {
+      stalePorts.push({ portId, reason: 'stale-inactivity' });
+      continue;
+    }
+
+    // Original inactivity check (logging only, 10 min threshold)
     _checkPortInactivity(portInfo, now, portId);
   }
 
@@ -3419,11 +4157,18 @@ async function cleanupStalePorts() {
   const afterCount = portRegistry.size;
 
   // v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP_COMPLETE logging
+  // v1.6.3.7-v9 - Issue #4: Enhanced with reason breakdown
+  const reasonCounts = {};
+  for (const { reason } of stalePorts) {
+    reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+  }
+
   console.log('[Background] PORT_CLEANUP_COMPLETE:', {
     beforeCount,
     afterCount,
     removedCount: stalePorts.length,
-    removedPorts: stalePorts.map(p => p.portId),
+    reasonBreakdown: reasonCounts, // v1.6.3.7-v9
+    removedPorts: stalePorts.map(p => ({ id: p.portId, reason: p.reason })),
     timestamp: Date.now()
   });
 }
@@ -3434,6 +4179,7 @@ setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 /**
  * Handle incoming port connection
  * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * v1.6.3.7-v9 - Issue #4: Extract window ID for sidebar tracking
  * @param {browser.runtime.Port} port - The connecting port
  */
 function handlePortConnect(port) {
@@ -3443,8 +4189,10 @@ function handlePortConnect(port) {
   const type = nameParts[1] || 'unknown';
   const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : port.sender?.tab?.id || null;
   const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+  // v1.6.3.7-v9 - Issue #4: Extract window ID for sidebar tracking
+  const windowId = port.sender?.tab?.windowId || null;
 
-  const portId = registerPort(port, origin, tabId, type);
+  const portId = registerPort(port, origin, tabId, type, windowId);
 
   // Store portId on the port for later reference
   port._portId = portId;
@@ -3467,6 +4215,7 @@ function handlePortConnect(port) {
 /**
  * Handle message received via port
  * v1.6.3.6-v11 - FIX Issue #10: Message acknowledgment system
+ * v1.6.3.7-v9 - Issue #9: Message sequence tracking and reordering
  * @param {browser.runtime.Port} port - The port that sent the message
  * @param {string} portId - Port ID
  * @param {Object} message - The message
@@ -3475,15 +4224,34 @@ async function handlePortMessage(port, portId, message) {
   const portInfo = portRegistry.get(portId);
   updatePortActivity(portId);
 
+  // v1.6.3.7-v9 - Issue #9: Check message sequence if present
+  if (typeof message.messageSequence === 'number') {
+    const sequenceResult = _processPortMessageSequence(portId, message);
+    if (sequenceResult.buffered) {
+      // Message was buffered for reordering, don't process yet
+      console.log('[Background] [PORT] MESSAGE_BUFFERED:', {
+        portId,
+        messageSequence: message.messageSequence,
+        expectedSequence: sequenceResult.expectedSequence,
+        bufferSize: sequenceResult.bufferSize
+      });
+      return;
+    }
+  }
+
   logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
     portId,
     tabId: portInfo?.tabId,
     messageType: message.type,
-    correlationId: message.correlationId
+    correlationId: message.correlationId,
+    messageSequence: message.messageSequence // v1.6.3.7-v9
   });
 
   // Route message based on type
   const response = await routePortMessage(message, portInfo);
+
+  // v1.6.3.7-v9 - Issue #9: Process any buffered messages that are now in order
+  _processBufferedMessages(port, portId);
 
   // Send acknowledgment if correlationId present
   if (message.correlationId) {
@@ -3493,6 +4261,8 @@ async function handlePortMessage(port, portId, message) {
       originalType: message.type,
       success: response?.success ?? true,
       timestamp: Date.now(),
+      // v1.6.3.7-v9 - Issue #9: Include sequence number for tracking
+      messageSequence: _getNextPortMessageSequence(),
       ...response
     };
 
@@ -3507,6 +4277,146 @@ async function handlePortMessage(port, portId, message) {
       console.error('[Background] Failed to send acknowledgment:', err.message);
     }
   }
+}
+
+/**
+ * Process port message sequence number for reordering
+ * v1.6.3.7-v9 - Issue #9: Track and buffer out-of-order messages
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} message - Message with messageSequence
+ * @returns {{ buffered: boolean, expectedSequence: number, bufferSize: number }}
+ */
+function _processPortMessageSequence(portId, message) {
+  let tracking = portSequenceTracking.get(portId);
+  if (!tracking) {
+    // Initialize if not exists (shouldn't happen but handle gracefully)
+    _initPortSequenceTracking(portId);
+    tracking = portSequenceTracking.get(portId);
+  }
+
+  const expectedSeq = tracking.lastReceivedSeq + 1;
+  const receivedSeq = message.messageSequence;
+
+  // Message is in order
+  if (receivedSeq === expectedSeq || tracking.lastReceivedSeq === 0) {
+    tracking.lastReceivedSeq = receivedSeq;
+    return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+  }
+
+  // Message is out of order - future message arrived early
+  if (receivedSeq > expectedSeq) {
+    console.warn('[Background] [PORT] OUT_OF_ORDER_MESSAGE:', {
+      portId,
+      expectedSequence: expectedSeq,
+      receivedSequence: receivedSeq,
+      gap: receivedSeq - expectedSeq
+    });
+
+    // Buffer it for later processing
+    tracking.reorderBuffer.set(receivedSeq, message);
+
+    // Check buffer size limit
+    if (tracking.reorderBuffer.size > MAX_REORDER_BUFFER_SIZE) {
+      console.warn('[Background] [PORT] REORDER_BUFFER_FLUSH:', {
+        portId,
+        bufferSize: tracking.reorderBuffer.size,
+        maxSize: MAX_REORDER_BUFFER_SIZE
+      });
+      // Force process oldest messages in buffer
+      _forceFlushReorderBuffer(portId, tracking);
+    }
+
+    return { buffered: true, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+  }
+
+  // receivedSeq < expectedSeq: Old/duplicate message, ignore
+  console.log('[Background] [PORT] DUPLICATE_MESSAGE_IGNORED:', {
+    portId,
+    receivedSequence: receivedSeq,
+    lastReceivedSequence: tracking.lastReceivedSeq
+  });
+  return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+}
+
+/**
+ * Process any buffered messages that are now in order
+ * v1.6.3.7-v9 - Issue #9: Drain buffer after processing a message
+ * @private
+ * @param {browser.runtime.Port} port - Port to process messages for
+ * @param {string} portId - Port ID
+ */
+async function _processBufferedMessages(port, portId) {
+  const tracking = portSequenceTracking.get(portId);
+  if (!tracking || tracking.reorderBuffer.size === 0) {
+    return;
+  }
+
+  let processedCount = 0;
+  // Process messages in sequence order
+  let hasMoreMessages = true;
+  while (hasMoreMessages) {
+    const nextExpected = tracking.lastReceivedSeq + 1;
+    const bufferedMessage = tracking.reorderBuffer.get(nextExpected);
+    
+    if (!bufferedMessage) {
+      hasMoreMessages = false;
+      continue;
+    }
+
+    // Remove from buffer and process
+    tracking.reorderBuffer.delete(nextExpected);
+    tracking.lastReceivedSeq = nextExpected;
+    processedCount++;
+
+    console.log('[Background] [PORT] BUFFERED_MESSAGE_PROCESSED:', {
+      portId,
+      messageSequence: nextExpected,
+      remainingBuffered: tracking.reorderBuffer.size
+    });
+
+    // Route the buffered message
+    const portInfo = portRegistry.get(portId);
+    await routePortMessage(bufferedMessage, portInfo);
+  }
+
+  if (processedCount > 0) {
+    console.log('[Background] [PORT] REORDER_BUFFER_DRAINED:', {
+      portId,
+      processedCount,
+      remainingBuffered: tracking.reorderBuffer.size
+    });
+  }
+}
+
+/**
+ * Force flush reorder buffer when it exceeds max size
+ * v1.6.3.7-v9 - Issue #9: Prevent unbounded buffer growth
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} tracking - Sequence tracking object
+ */
+function _forceFlushReorderBuffer(portId, tracking) {
+  // Get sorted sequence numbers
+  const sequences = Array.from(tracking.reorderBuffer.keys()).sort((a, b) => a - b);
+  
+  // Remove oldest half of buffer
+  const toRemove = Math.floor(sequences.length / 2);
+  for (let i = 0; i < toRemove; i++) {
+    tracking.reorderBuffer.delete(sequences[i]);
+  }
+
+  // Update lastReceivedSeq to skip the gap
+  if (sequences.length > toRemove) {
+    tracking.lastReceivedSeq = sequences[toRemove] - 1;
+  }
+
+  console.warn('[Background] [PORT] BUFFER_FORCE_FLUSHED:', {
+    portId,
+    removedCount: toRemove,
+    newLastReceivedSeq: tracking.lastReceivedSeq,
+    remainingBuffered: tracking.reorderBuffer.size
+  });
 }
 
 /**
@@ -3873,11 +4783,14 @@ async function handleAdoptAction(payload) {
   state.tabs[tabIndex].originTabId = targetTabId;
 
   // Single atomic write
+  // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
+  const sequenceId = _getNextStorageSequenceId();
   await browser.storage.local.set({
     quick_tabs_state_v2: {
       tabs: state.tabs,
       saveId,
+      sequenceId,
       timestamp: Date.now(),
       writingTabId: targetTabId,
       writingInstanceId: `background-adopt-${Date.now()}`
@@ -3905,7 +4818,7 @@ async function handleAdoptAction(payload) {
   _sendStateUpdateViaPorts(quickTabId, { originTabId: targetTabId }, 'adopt', corrId);
 
   // v1.6.4.13 - FIX Issue #6: Broadcast full state sync confirmation
-  _broadcastStorageWriteConfirmation({ tabs: state.tabs, saveId }, saveId);
+  _broadcastStorageWriteConfirmation({ tabs: state.tabs, saveId, sequenceId }, saveId);
 
   // v1.6.4.9 - Issue #9: Log successful adoption completion
   console.log('[Background] ADOPTION_COMPLETED:', {
@@ -3924,14 +4837,17 @@ async function handleAdoptAction(payload) {
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
  * v1.6.3.7-v7 - FIX Issue #6: Add BroadcastChannel confirmation after successful write
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
   const saveId = `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sequenceId = _getNextStorageSequenceId();
 
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
+    sequenceId,
     timestamp: Date.now()
   };
 
@@ -3955,6 +4871,7 @@ async function writeStateWithVerification() {
     } else {
       console.log('[Background] Storage write verified:', {
         saveId,
+        sequenceId,
         tabCount: stateToWrite.tabs.length
       });
 
@@ -3962,7 +4879,7 @@ async function writeStateWithVerification() {
       _broadcastStorageWriteConfirmation(stateToWrite, saveId);
     }
 
-    return { success: verified, saveId, verified };
+    return { success: verified, saveId, sequenceId, verified };
   } catch (err) {
     console.error('[Background] Storage write error:', err.message);
     return { success: false, error: err.message };
@@ -4496,6 +5413,7 @@ function _logStorageWriteFinalResult(result, saveId, operation, tabCount, stateH
 /**
  * Attempt a single storage write with verification
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -4504,9 +5422,11 @@ function _logStorageWriteFinalResult(result, saveId, operation, tabCount, stateH
  * @returns {Promise<{ success: boolean, verified: boolean, needsRetry: boolean, attempts?: number, saveId?: string }>}
  */
 async function _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs) {
+  const sequenceId = _getNextStorageSequenceId();
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
+    sequenceId,
     timestamp: Date.now()
   };
 
@@ -4515,6 +5435,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
     return await _verifyStorageWrite(
       operation,
       saveId,
+      sequenceId,
       stateToWrite.tabs.length,
       attempt,
       backoffMs
@@ -4528,9 +5449,10 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 /**
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId parameter
  * @private
  */
-async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoffMs) {
+async function _verifyStorageWrite(operation, saveId, sequenceId, tabCount, attempt, backoffMs) {
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
@@ -4539,13 +5461,14 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
     console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
       operation,
       saveId,
+      sequenceId,
       tabCount
     });
 
     // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel after verified write
     _broadcastStorageWriteConfirmation(readBack, saveId);
 
-    return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
+    return { success: true, saveId, sequenceId, verified: true, attempts: attempt, needsRetry: false };
   }
 
   console.warn(
