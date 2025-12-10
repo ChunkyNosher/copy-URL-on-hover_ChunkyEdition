@@ -221,6 +221,46 @@ let stateLoadStartTime = 0;
  */
 let initialStateLoadComplete = false;
 
+// ==================== v1.6.3.7-v9 ISSUE #11: INITIALIZATION BARRIER ====================
+// FIX Issue #11: Prevent race conditions between initialization and listeners
+
+/**
+ * Flag indicating initialization has started (DOMContentLoaded fired)
+ * v1.6.3.7-v9 - FIX Issue #11: Part of initialization barrier
+ */
+let initializationStarted = false;
+
+/**
+ * Flag indicating all async initialization is complete
+ * v1.6.3.7-v9 - FIX Issue #11: Part of initialization barrier
+ */
+let initializationComplete = false;
+
+/**
+ * Check if sidebar is fully initialized
+ * v1.6.3.7-v9 - FIX Issue #11: Guard function for listeners
+ * @returns {boolean} True if initialization is complete
+ */
+function isFullyInitialized() {
+  return initializationStarted && initializationComplete;
+}
+
+/**
+ * Log listener entry with initialization status
+ * v1.6.3.7-v9 - FIX Issue #11: Diagnostic logging for race detection
+ * @param {string} listenerName - Name of the listener
+ * @param {Object} context - Additional context to log
+ */
+function logListenerEntry(listenerName, context = {}) {
+  const fullyInit = isFullyInitialized();
+  console.log(`[Manager] LISTENER_ENTRY [${listenerName}]:`, {
+    isFullyInitialized: fullyInit,
+    connectionState,
+    timestamp: Date.now(),
+    ...context
+  });
+}
+
 // ==================== v1.6.3.7-v5 SAVEID DEDUPLICATION ====================
 // FIX Issue #4: State versioning using saveId for deduplication
 /**
@@ -3438,10 +3478,16 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // v1.6.3.7-v9 - FIX Issue #11: Mark initialization started
+  initializationStarted = true;
+  
   // v1.6.3.7-v6 - Gap #1: Log DOM_CONTENT_LOADED
+  // v1.6.3.7-v9 - FIX Issue #11: Include init flags in log
   console.log('[Manager] DOM_CONTENT_LOADED:', {
     timestamp: Date.now(),
-    url: window.location.href
+    url: window.location.href,
+    initializationStarted,
+    initializationComplete
   });
 
   // Cache DOM elements
@@ -3510,6 +3556,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Setup event listeners
+  // v1.6.3.7-v9 - FIX Issue #11: Listeners are registered here but have init guards
   setupEventListeners();
 
   // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
@@ -3530,12 +3577,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 10000);
 
-  console.log('[Manager] v1.6.3.7-v9 Port + BroadcastChannel + Message infrastructure initialized', {
+  // v1.6.3.7-v9 - FIX Issue #11: Mark initialization as fully complete
+  // This is set AFTER all async initialization is done
+  initializationComplete = true;
+  
+  console.log('[Manager] v1.6.3.7-v9 INITIALIZATION_COMPLETE:', {
+    initializationStarted,
+    initializationComplete,
     storagePollingMs: 10000,
     sessionId: currentSessionId,
     connectionState,
     hostInfoCleanupIntervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
-    hostInfoTTLMs: HOST_INFO_TTL_MS
+    hostInfoTTLMs: HOST_INFO_TTL_MS,
+    timestamp: Date.now()
   });
 });
 
@@ -5571,14 +5625,35 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
+  // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
   browser.storage.onChanged.addListener((changes, areaName) => {
+    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
+    logListenerEntry('storage.onChanged', {
+      areaName,
+      hasStateKey: !!changes[STATE_KEY]
+    });
+    
+    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+    if (!isFullyInitialized()) {
+      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
+        initializationStarted,
+        initializationComplete,
+        areaName,
+        message: 'Skipping - sidebar not yet fully initialized',
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
   // v1.6.3.7-v6 - Gap #3: Log listener registration
+  // v1.6.3.7-v9 - FIX Issue #11: Note that listener has init guard
   console.log('[Manager] LISTENER_REGISTERED: storage.onChanged listener added', {
     storageArea: 'local',
     stateKey: STATE_KEY,
+    hasInitGuard: true,
     timestamp: Date.now()
   });
 }
@@ -5586,12 +5661,28 @@ function setupEventListeners() {
 /**
  * Setup browser tab activation listener for real-time context updates
  * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
+ * v1.6.3.7-v9 - FIX Issue #11: Add initialization guards
  * When user switches between browser tabs, update the Manager to show
  * context-relevant Quick Tabs (those with originTabId matching current tab)
  */
 function setupTabSwitchListener() {
   // Listen for tab activation (user switches to a different tab)
   browser.tabs.onActivated.addListener(activeInfo => {
+    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
+    logListenerEntry('tabs.onActivated', { tabId: activeInfo.tabId });
+    
+    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+    if (!isFullyInitialized()) {
+      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: tabs.onActivated', {
+        initializationStarted,
+        initializationComplete,
+        tabId: activeInfo.tabId,
+        message: 'Skipping - sidebar not yet fully initialized',
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
     const newTabId = activeInfo.tabId;
 
     // Only process if tab actually changed
@@ -5617,6 +5708,21 @@ function setupTabSwitchListener() {
 
   // Also listen for window focus changes (user switches browser windows)
   browser.windows.onFocusChanged.addListener(async windowId => {
+    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
+    logListenerEntry('windows.onFocusChanged', { windowId });
+    
+    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+    if (!isFullyInitialized()) {
+      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: windows.onFocusChanged', {
+        initializationStarted,
+        initializationComplete,
+        windowId,
+        message: 'Skipping - sidebar not yet fully initialized',
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
     if (windowId === browser.windows.WINDOW_ID_NONE) {
       return; // Window lost focus
     }
@@ -5641,7 +5747,7 @@ function setupTabSwitchListener() {
     }
   });
 
-  console.log('[Manager] Tab switch listener initialized');
+  console.log('[Manager] v1.6.3.7-v9 Tab switch listener initialized with init guards');
 }
 
 /**

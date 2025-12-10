@@ -143,6 +143,62 @@ let consecutiveZeroTabReads = 0;
 const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
+// ==================== v1.6.3.7-v9 ISSUE #8: INDEXEDDB CORRUPTION DETECTION ====================
+// FIX Issue #8: Firefox bugs 1979997 and 1885297 cause silent IndexedDB corruption
+// Implement storage integrity validation with redundant backup to storage.sync
+
+/**
+ * Operation ID counter for storage operation tracing
+ * v1.6.3.7-v9 - FIX Issue #8: Unique operation IDs for all storage operations
+ */
+let storageOperationIdCounter = 0;
+
+/**
+ * Generate unique operation ID for storage operation tracing
+ * v1.6.3.7-v9 - FIX Issue #8: All storage operations have unique IDs
+ * @returns {string} Unique operation ID
+ */
+function _generateStorageOperationId() {
+  storageOperationIdCounter++;
+  return `storage-op-${Date.now()}-${storageOperationIdCounter}`;
+}
+
+/**
+ * Maximum retries for storage write validation
+ * v1.6.3.7-v9 - FIX Issue #8: Retry on validation failure
+ */
+const STORAGE_VALIDATION_MAX_RETRIES = 3;
+
+/**
+ * Delay between validation retries (ms)
+ * v1.6.3.7-v9 - FIX Issue #8: Give IndexedDB time to sync
+ */
+const STORAGE_VALIDATION_RETRY_DELAY_MS = 100;
+
+/**
+ * Flag to enable storage.sync redundant backup
+ * v1.6.3.7-v9 - FIX Issue #8: Optional recovery mechanism
+ */
+const ENABLE_SYNC_STORAGE_BACKUP = true;
+
+/**
+ * Key for redundant backup in storage.sync
+ * v1.6.3.7-v9 - FIX Issue #8: Uses separate IndexedDB instance
+ */
+const SYNC_BACKUP_KEY = 'quick_tabs_backup_v1';
+
+/**
+ * Timestamp of last corruption detection (for rate limiting recovery)
+ * v1.6.3.7-v9 - FIX Issue #8: Prevent recovery loops
+ */
+let lastCorruptionDetectedAt = 0;
+
+/**
+ * Minimum time between corruption recovery attempts (ms)
+ * v1.6.3.7-v9 - FIX Issue #8: 30 second cooldown
+ */
+const CORRUPTION_RECOVERY_COOLDOWN_MS = 30000;
+
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
@@ -636,6 +692,463 @@ initializePhase3AOptimizations();
 
 // ==================== END ALARMS MECHANISM ====================
 
+// ==================== v1.6.3.7-v9 ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
+// FIX Issue #8: Implement storage integrity validation to detect IndexedDB corruption
+
+/**
+ * Validate that storage write was successful by reading back and comparing
+ * v1.6.3.7-v9 - FIX Issue #8: Detect IndexedDB corruption after writes
+ * @param {string} operationId - Unique operation ID for tracing
+ * @param {Object} expectedData - Data that was written
+ * @param {string} storageKey - Storage key used
+ * @param {number} retryAttempt - Current retry attempt (0-based)
+ * @returns {Promise<{valid: boolean, readBack: Object|null, error: string|null}>}
+ */
+async function validateStorageWrite(operationId, expectedData, storageKey, retryAttempt = 0) {
+  const validationStart = Date.now();
+  
+  try {
+    // Read back the data immediately after write
+    const result = await browser.storage.local.get(storageKey);
+    const readBack = result?.[storageKey];
+    
+    // Check if data exists
+    if (!readBack) {
+      console.error('[Background] STORAGE_VALIDATION_FAILED: Read returned null/undefined', {
+        operationId,
+        storageKey,
+        retryAttempt,
+        expectedTabCount: expectedData?.tabs?.length || 0,
+        validationDurationMs: Date.now() - validationStart
+      });
+      return { valid: false, readBack: null, error: 'READ_RETURNED_NULL' };
+    }
+    
+    // Compare saveId (primary validation)
+    if (expectedData.saveId && readBack.saveId !== expectedData.saveId) {
+      console.error('[Background] STORAGE_VALIDATION_FAILED: SaveId mismatch', {
+        operationId,
+        expectedSaveId: expectedData.saveId,
+        actualSaveId: readBack.saveId,
+        retryAttempt,
+        validationDurationMs: Date.now() - validationStart
+      });
+      return { valid: false, readBack, error: 'SAVEID_MISMATCH' };
+    }
+    
+    // Compare tab count (secondary validation)
+    const expectedTabCount = expectedData?.tabs?.length || 0;
+    const actualTabCount = readBack?.tabs?.length || 0;
+    
+    if (expectedTabCount !== actualTabCount) {
+      console.error('[Background] STORAGE_VALIDATION_FAILED: Tab count mismatch', {
+        operationId,
+        expectedTabCount,
+        actualTabCount,
+        retryAttempt,
+        validationDurationMs: Date.now() - validationStart
+      });
+      return { valid: false, readBack, error: 'TAB_COUNT_MISMATCH' };
+    }
+    
+    // Validation passed
+    console.log('[Background] STORAGE_VALIDATION_PASSED:', {
+      operationId,
+      saveId: expectedData.saveId,
+      tabCount: actualTabCount,
+      retryAttempt,
+      validationDurationMs: Date.now() - validationStart
+    });
+    
+    return { valid: true, readBack, error: null };
+  } catch (err) {
+    console.error('[Background] STORAGE_VALIDATION_ERROR:', {
+      operationId,
+      error: err.message,
+      retryAttempt,
+      validationDurationMs: Date.now() - validationStart
+    });
+    return { valid: false, readBack: null, error: `VALIDATION_EXCEPTION: ${err.message}` };
+  }
+}
+
+/**
+ * Perform single write attempt with validation
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce writeStorageWithValidation complexity
+ * @private
+ * @param {Object} stateToWrite - State to write
+ * @param {string} storageKey - Storage key
+ * @param {string} operationId - Operation ID
+ * @param {number} attempt - Attempt number (0-based)
+ * @returns {Promise<{success: boolean, error: string|null}>}
+ */
+async function _performWriteAttempt(stateToWrite, storageKey, operationId, attempt) {
+  // Perform the write
+  await browser.storage.local.set({ [storageKey]: stateToWrite });
+  
+  // Wait a small delay before validation on retries
+  if (attempt > 0) {
+    await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS));
+  }
+  
+  // Validate the write
+  const validation = await validateStorageWrite(operationId, stateToWrite, storageKey, attempt);
+  return validation;
+}
+
+/**
+ * Handle successful write validation
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
+ * @private
+ */
+function _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite) {
+  console.log('[Background] STORAGE_WRITE_COMPLETE:', {
+    operationId,
+    success: true,
+    attempts: attempt + 1,
+    totalDurationMs: Date.now() - writeStart
+  });
+  
+  // Update redundant backup if enabled
+  if (ENABLE_SYNC_STORAGE_BACKUP) {
+    _updateSyncBackup(stateToWrite, operationId);
+  }
+}
+
+/**
+ * Write to storage with integrity validation and retry
+ * v1.6.3.7-v9 - FIX Issue #8: Validate writes and retry on failure
+ * @param {Object} stateToWrite - State object to write
+ * @param {string} storageKey - Storage key
+ * @returns {Promise<{success: boolean, operationId: string, retries: number, error: string|null}>}
+ */
+async function writeStorageWithValidation(stateToWrite, storageKey) {
+  const operationId = _generateStorageOperationId();
+  const writeStart = Date.now();
+  
+  console.log('[Background] STORAGE_WRITE_START:', {
+    operationId,
+    storageKey,
+    saveId: stateToWrite.saveId,
+    tabCount: stateToWrite?.tabs?.length || 0,
+    timestamp: writeStart
+  });
+  
+  for (let attempt = 0; attempt < STORAGE_VALIDATION_MAX_RETRIES; attempt++) {
+    const result = await _tryWriteAttempt(stateToWrite, storageKey, operationId, attempt, writeStart);
+    if (result.done) return result.value;
+  }
+  
+  // All retries failed - potential corruption
+  return _handleAllRetriesFailed(operationId, stateToWrite, writeStart);
+}
+
+/**
+ * Try a single write attempt
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce nesting in writeStorageWithValidation
+ * @private
+ */
+async function _tryWriteAttempt(stateToWrite, storageKey, operationId, attempt, writeStart) {
+  try {
+    const validation = await _performWriteAttempt(stateToWrite, storageKey, operationId, attempt);
+    
+    if (validation.valid) {
+      _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite);
+      return { done: true, value: { success: true, operationId, retries: attempt, error: null } };
+    }
+    
+    // Validation failed, log retry
+    console.warn('[Background] STORAGE_WRITE_RETRY:', {
+      operationId,
+      attempt: attempt + 1,
+      maxAttempts: STORAGE_VALIDATION_MAX_RETRIES,
+      error: validation.error
+    });
+  } catch (err) {
+    console.error('[Background] STORAGE_WRITE_ERROR:', { operationId, attempt, error: err.message });
+  }
+  
+  // Wait before next retry
+  await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS * (attempt + 1)));
+  return { done: false };
+}
+
+/**
+ * Handle case when all retries failed
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
+ * @private
+ */
+async function _handleAllRetriesFailed(operationId, stateToWrite, writeStart) {
+  console.error('[Background] CRITICAL: STORAGE_WRITE_ALL_RETRIES_FAILED:', {
+    operationId,
+    totalAttempts: STORAGE_VALIDATION_MAX_RETRIES,
+    totalDurationMs: Date.now() - writeStart,
+    action: 'TRIGGERING_CORRUPTION_RECOVERY'
+  });
+  
+  await handleStorageCorruption(operationId, stateToWrite);
+  
+  return { 
+    success: false, 
+    operationId, 
+    retries: STORAGE_VALIDATION_MAX_RETRIES, 
+    error: 'ALL_VALIDATION_RETRIES_FAILED' 
+  };
+}
+
+/**
+ * Update redundant backup in storage.sync
+ * v1.6.3.7-v9 - FIX Issue #8: Keep second copy for recovery
+ * @param {Object} stateToWrite - State to backup
+ * @param {string} operationId - Operation ID for tracing
+ */
+async function _updateSyncBackup(stateToWrite, operationId) {
+  try {
+    // storage.sync has lower quota limits, so we store essential data only
+    const backupData = {
+      tabs: stateToWrite.tabs,
+      timestamp: Date.now(),
+      saveId: stateToWrite.saveId,
+      backupOperationId: operationId
+    };
+    
+    await browser.storage.sync.set({ [SYNC_BACKUP_KEY]: backupData });
+    
+    console.log('[Background] SYNC_BACKUP_UPDATED:', {
+      operationId,
+      tabCount: backupData.tabs?.length || 0,
+      timestamp: backupData.timestamp
+    });
+  } catch (err) {
+    // storage.sync failures are non-critical (quota exceeded is common)
+    console.warn('[Background] SYNC_BACKUP_FAILED:', {
+      operationId,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Handle detected storage corruption
+ * v1.6.3.7-v9 - FIX Issue #8: Recovery mechanism using storage.sync backup
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ */
+async function handleStorageCorruption(operationId, intendedState) {
+  const now = Date.now();
+  
+  // Rate limit recovery attempts
+  if (now - lastCorruptionDetectedAt < CORRUPTION_RECOVERY_COOLDOWN_MS) {
+    console.warn('[Background] CORRUPTION_RECOVERY_RATE_LIMITED:', {
+      operationId,
+      timeSinceLastMs: now - lastCorruptionDetectedAt,
+      cooldownMs: CORRUPTION_RECOVERY_COOLDOWN_MS
+    });
+    return;
+  }
+  
+  lastCorruptionDetectedAt = now;
+  
+  console.error('[Background] CRITICAL: STORAGE_CORRUPTION_DETECTED:', {
+    operationId,
+    intendedTabCount: intendedState?.tabs?.length || 0,
+    timestamp: now
+  });
+  
+  // Try to recover from storage.sync backup
+  if (ENABLE_SYNC_STORAGE_BACKUP) {
+    await attemptRecoveryFromSyncBackup(operationId, intendedState);
+  }
+}
+
+/**
+ * Attempt to recover state from storage.sync backup
+ * v1.6.3.7-v9 - FIX Issue #8: Recovery from redundant backup
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ */
+/**
+ * Handle case when sync backup is empty
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
+ * @private
+ */
+function _handleEmptyBackup(operationId, backup, intendedState) {
+  console.warn('[Background] SYNC_BACKUP_EMPTY: No backup available for recovery', {
+    operationId,
+    hasBackup: !!backup,
+    backupTabCount: backup?.tabs?.length || 0
+  });
+  
+  // Fall back to intended state if we have it
+  if (intendedState?.tabs?.length > 0) {
+    console.log('[Background] USING_INTENDED_STATE_FOR_RECOVERY:', {
+      operationId,
+      tabCount: intendedState.tabs.length
+    });
+    globalQuickTabState.tabs = intendedState.tabs;
+    globalQuickTabState.lastUpdate = Date.now();
+  }
+}
+
+/**
+ * Write recovered state to local storage
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
+ * @private
+ */
+async function _writeRecoveredState(operationId, backup) {
+  const recoveredState = {
+    tabs: backup.tabs,
+    saveId: `recovered-${operationId}`,
+    sequenceId: _getNextStorageSequenceId(),
+    timestamp: Date.now(),
+    recoveredFrom: 'sync-backup'
+  };
+  
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: recoveredState });
+    console.log('[Background] RECOVERY_COMPLETE: State restored from backup', {
+      operationId,
+      tabCount: backup.tabs.length
+    });
+  } catch (writeErr) {
+    console.error('[Background] RECOVERY_WRITE_FAILED:', { operationId, error: writeErr.message });
+  }
+}
+
+/**
+ * Attempt to recover state from storage.sync backup
+ * v1.6.3.7-v9 - FIX Issue #8: Recovery from redundant backup
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ */
+async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
+  try {
+    console.log('[Background] ATTEMPTING_SYNC_BACKUP_RECOVERY:', { operationId });
+    
+    const result = await browser.storage.sync.get(SYNC_BACKUP_KEY);
+    const backup = result?.[SYNC_BACKUP_KEY];
+    
+    // Check if backup is valid
+    if (!backup || !backup.tabs || backup.tabs.length === 0) {
+      _handleEmptyBackup(operationId, backup, intendedState);
+      return;
+    }
+    
+    // Check backup age - don't restore very old backups (> 1 hour)
+    const backupAgeMs = Date.now() - backup.timestamp;
+    if (backupAgeMs > 3600000) {
+      console.warn('[Background] SYNC_BACKUP_TOO_OLD: Backup is over 1 hour old', {
+        operationId,
+        backupAgeMs,
+        backupTimestamp: backup.timestamp
+      });
+      return;
+    }
+    
+    // Restore from backup
+    console.log('[Background] RESTORING_FROM_SYNC_BACKUP:', {
+      operationId,
+      backupTabCount: backup.tabs.length,
+      backupSaveId: backup.saveId,
+      backupAgeMs
+    });
+    
+    // Update global state
+    globalQuickTabState.tabs = backup.tabs;
+    globalQuickTabState.lastUpdate = Date.now();
+    globalQuickTabState.saveId = backup.saveId;
+    
+    // Write recovered state to local storage
+    await _writeRecoveredState(operationId, backup);
+  } catch (err) {
+    console.error('[Background] SYNC_BACKUP_RECOVERY_ERROR:', { operationId, error: err.message });
+  }
+}
+
+/**
+ * Try to restore from sync backup on startup
+ * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce checkStorageIntegrityOnStartup complexity
+ * @private
+ */
+async function _tryRestoreFromStartupBackup(operationId) {
+  const syncResult = await browser.storage.sync.get(SYNC_BACKUP_KEY);
+  const backup = syncResult?.[SYNC_BACKUP_KEY];
+  
+  if (!backup?.tabs || backup.tabs.length === 0) {
+    return { hasBackup: false, recovered: false };
+  }
+  
+  console.warn('[Background] STORAGE_INTEGRITY_MISMATCH: Local empty but backup has data', {
+    operationId,
+    localTabCount: 0,
+    backupTabCount: backup.tabs.length,
+    backupAge: Date.now() - backup.timestamp
+  });
+  
+  // Check if backup is recent enough to restore (< 24 hours)
+  const backupAgeMs = Date.now() - backup.timestamp;
+  if (backupAgeMs >= 86400000) {
+    console.warn('[Background] STARTUP_BACKUP_TOO_OLD:', {
+      operationId,
+      backupAgeHours: Math.round(backupAgeMs / 3600000)
+    });
+    return { hasBackup: true, recovered: false };
+  }
+  
+  console.log('[Background] RESTORING_FROM_STARTUP_BACKUP:', {
+    operationId,
+    backupTabCount: backup.tabs.length
+  });
+  
+  await attemptRecoveryFromSyncBackup(operationId, null);
+  return { hasBackup: true, recovered: true };
+}
+
+/**
+ * Check storage integrity on startup
+ * v1.6.3.7-v9 - FIX Issue #8: Verify storage.local data on initialization
+ * @returns {Promise<{healthy: boolean, recovered: boolean, error: string|null}>}
+ */
+async function checkStorageIntegrityOnStartup() {
+  const operationId = _generateStorageOperationId();
+  console.log('[Background] STORAGE_INTEGRITY_CHECK_START:', { operationId });
+  
+  try {
+    // Read from storage.local
+    const localResult = await browser.storage.local.get('quick_tabs_state_v2');
+    const localState = localResult?.quick_tabs_state_v2;
+    
+    // If local storage has data, we're good
+    if (localState?.tabs && localState.tabs.length > 0) {
+      console.log('[Background] STORAGE_INTEGRITY_CHECK_PASSED:', {
+        operationId,
+        localTabCount: localState.tabs.length,
+        saveId: localState.saveId
+      });
+      return { healthy: true, recovered: false, error: null };
+    }
+    
+    // Local storage is empty - check if we have a backup and try recovery
+    const backupResult = ENABLE_SYNC_STORAGE_BACKUP 
+      ? await _tryRestoreFromStartupBackup(operationId)
+      : { hasBackup: false, recovered: false };
+    
+    if (backupResult.recovered) {
+      return { healthy: false, recovered: true, error: null };
+    }
+    
+    // No data in either storage - this is expected for new installations
+    console.log('[Background] STORAGE_INTEGRITY_CHECK_COMPLETE: No existing data', { operationId });
+    return { healthy: true, recovered: false, error: null };
+    
+  } catch (err) {
+    console.error('[Background] STORAGE_INTEGRITY_CHECK_ERROR:', { operationId, error: err.message });
+    return { healthy: false, recovered: false, error: err.message };
+  }
+}
+
+// ==================== END ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
+
 /**
  * Valid URL protocols for Quick Tab creation
  * @private
@@ -831,6 +1344,7 @@ const MAX_INITIALIZATION_RETRIES = 3;
  * v1.6.2.2 - Simplified for unified format
  * v1.6.3.6-v12 - FIX Issue #1: Proper error handling - don't set isInitialized on failure
  * v1.6.3.6-v12 - FIX Code Review: Added retry limit to prevent infinite loop
+ * v1.6.3.7-v9 - FIX Issue #8: Check storage integrity on startup
  */
 async function initializeGlobalState() {
   // Guard: Already initialized
@@ -843,6 +1357,25 @@ async function initializeGlobalState() {
   const initStartTime = Date.now();
 
   try {
+    // v1.6.3.7-v9 - FIX Issue #8: Check storage integrity before loading
+    const integrityResult = await checkStorageIntegrityOnStartup();
+    console.log('[Background] Storage integrity check result:', {
+      healthy: integrityResult.healthy,
+      recovered: integrityResult.recovered,
+      error: integrityResult.error
+    });
+    
+    // If we recovered from backup, our state is already populated
+    if (integrityResult.recovered && globalQuickTabState.tabs?.length > 0) {
+      initializationRetryCount = 0;
+      isInitialized = true;
+      console.log('[Background] v1.6.3.7-v9 Initialization complete from backup recovery:', {
+        tabCount: globalQuickTabState.tabs.length,
+        durationMs: Date.now() - initStartTime
+      });
+      return;
+    }
+    
     // Try session storage first (faster)
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
@@ -864,7 +1397,7 @@ async function initializeGlobalState() {
   } catch (err) {
     // v1.6.3.6-v12 - FIX Issue #1: Do NOT set isInitialized=true on error
     // This ensures handlers know state is not ready
-    console.error('[Background] v1.6.3.6-v12 INITIALIZATION FAILED:', {
+    console.error('[Background] v1.6.3.6-v12 INITIALIZATION_FAILED:', {
       error: err.message,
       durationMs: Date.now() - initStartTime,
       retryCount: initializationRetryCount,
@@ -2881,8 +3414,33 @@ async function _handleSettingsChange(changes) {
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 // v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
-browser.storage.onChanged.addListener((changes, areaName) => {
-  console.log('[Background] Storage changed:', areaName, Object.keys(changes));
+// v1.6.3.7-v9 - FIX Issue #11: Add initialization guard to prevent race condition
+
+/**
+ * Handle storage.onChanged events with initialization guard
+ * v1.6.3.7-v9 - FIX Issue #11: Explicit initialization check before processing
+ * @param {Object} changes - Storage changes
+ * @param {string} areaName - Storage area name
+ */
+function _handleStorageOnChanged(changes, areaName) {
+  // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with initialization status
+  console.log('[Background] STORAGE_LISTENER_ENTRY:', {
+    areaName,
+    changedKeys: Object.keys(changes),
+    isInitialized,
+    timestamp: Date.now()
+  });
+  
+  // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+  if (!isInitialized) {
+    console.warn('[Background] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
+      areaName,
+      changedKeys: Object.keys(changes),
+      message: 'Skipping - background script not yet initialized',
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
   if (areaName !== 'local' && areaName !== 'sync') {
@@ -2898,7 +3456,12 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (changes.quick_tab_settings) {
     _handleSettingsChange(changes);
   }
-});
+}
+
+// Register storage.onChanged listener
+// v1.6.3.7-v9 - FIX Issue #11: Listener is registered at script load, but handler has init guard
+browser.storage.onChanged.addListener(_handleStorageOnChanged);
+console.log('[Background] v1.6.3.7-v9 storage.onChanged listener registered with init guard');
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
