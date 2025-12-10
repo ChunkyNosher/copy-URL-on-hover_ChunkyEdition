@@ -21,6 +21,10 @@ import {
   broadcastQuickTabRestored,
   broadcastFullStateSync
 } from './src/features/quick-tabs/channels/BroadcastChannelManager.js';
+// v1.6.4.14 - Phase 3A Optimization imports
+import MemoryMonitor from './src/features/quick-tabs/MemoryMonitor.js';
+import PerformanceMetrics from './src/features/quick-tabs/PerformanceMetrics.js';
+import StorageCache from './src/features/quick-tabs/storage/StorageCache.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -556,6 +560,60 @@ browser.alarms.onAlarm.addListener(handleAlarm);
 
 // Initialize alarms on script load
 initializeAlarms();
+
+// ==================== v1.6.4.14 PHASE 3A OPTIMIZATION INITIALIZATION ====================
+
+/**
+ * Initialize Phase 3A optimization modules
+ * v1.6.4.14 - StorageCache, MemoryMonitor, PerformanceMetrics
+ */
+function initializePhase3AOptimizations() {
+  console.log('[Background] v1.6.4.14 Initializing Phase 3A optimizations...');
+
+  // 1. Initialize PerformanceMetrics collection
+  PerformanceMetrics.startCollection({ flushIntervalMs: 60000 }); // Flush every minute
+  console.log('[Background] PerformanceMetrics collection started');
+
+  // 2. Initialize MemoryMonitor with cleanup callbacks
+  const memoryOptions = {
+    memoryLimitMB: 150,
+    thresholdPercent: 0.8,
+    intervalMs: 60000 // Check every 60 seconds
+  };
+
+  // Register cleanup callbacks for when memory threshold is exceeded
+  MemoryMonitor.registerCleanupCallback('invalidate-storage-cache', snapshot => {
+    console.log('[Background] Memory cleanup: Invalidating storage cache', {
+      usedMB: snapshot.usedMB
+    });
+    StorageCache.clearCache();
+  });
+
+  MemoryMonitor.registerCleanupCallback('clear-performance-samples', snapshot => {
+    console.log('[Background] Memory cleanup: Clearing old performance samples', {
+      usedMB: snapshot.usedMB
+    });
+    // Log metrics count before clearing for visibility
+    const operationCount = Object.keys(PerformanceMetrics.getMetricsSummary()).length;
+    console.log('[Background] Clearing metrics for', operationCount, 'tracked operations');
+    PerformanceMetrics.clearMetrics();
+  });
+
+  MemoryMonitor.startMonitoring(memoryOptions);
+  console.log('[Background] MemoryMonitor started with', memoryOptions.memoryLimitMB, 'MB limit');
+
+  // 3. StorageCache is used on-demand (initialized in-module)
+  // Configure TTL
+  StorageCache.setTTL(30000); // 30 second TTL
+  console.log('[Background] StorageCache configured with 30s TTL');
+
+  console.log('[Background] v1.6.4.14 Phase 3A optimizations initialized');
+}
+
+// Initialize Phase 3A optimizations on script load
+initializePhase3AOptimizations();
+
+// ==================== END PHASE 3A OPTIMIZATION INITIALIZATION ====================
 
 // ==================== END ALARMS MECHANISM ====================
 

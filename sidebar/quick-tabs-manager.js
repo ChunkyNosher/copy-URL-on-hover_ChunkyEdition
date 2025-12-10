@@ -90,6 +90,8 @@ import {
   closeBroadcastChannel,
   isChannelAvailable as _isChannelAvailable
 } from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
+// v1.6.4.14 - Phase 3A Optimization: Performance metrics
+import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
