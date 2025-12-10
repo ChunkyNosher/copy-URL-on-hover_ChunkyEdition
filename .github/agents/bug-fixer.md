@@ -37,11 +37,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v3 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v3 Features (NEW):**
+**v1.6.3.7-v4 Features (NEW):**
+
+- **Circuit Breaker Probing** - Early recovery with 500ms health probes
+  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
+- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
+  errors
+- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
+- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
+  message after connection
+- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
+  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
+- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
+
+**v1.6.3.7-v3 Features (Retained):**
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
@@ -127,7 +140,72 @@ architecture, race conditions
 
 ---
 
-## v1.6.3.7-v3 Fix Patterns
+## v1.6.3.7-v4 Fix Patterns
+
+### Circuit Breaker Probing Pattern
+
+```javascript
+// Early recovery with health probes during open state
+CIRCUIT_BREAKER_OPEN_DURATION_MS = 2000; // Reduced from 10000
+CIRCUIT_BREAKER_PROBE_INTERVAL_MS = 500; // New probe interval
+
+function _startCircuitBreakerProbes() {
+  circuitBreakerProbeTimerId = setInterval(_probeBackgroundHealth, 500);
+}
+
+async function _probeBackgroundHealth() {
+  try {
+    const response = await browser.runtime.sendMessage({ type: 'HEALTH_PROBE' });
+    if (response?.healthy) {
+      // Immediate transition to half-open → reconnect
+      circuitBreaker.state = 'half-open';
+      _attemptReconnect();
+    }
+  } catch (e) {
+    /* probe failed, continue waiting */
+  }
+}
+```
+
+### Message Error Handling Pattern
+
+```javascript
+// Wrapped in try-catch with graceful degradation
+function handlePortMessage(message) {
+  try {
+    if (!message || typeof message !== 'object') {
+      console.warn('[Manager] Invalid message:', message);
+      return;
+    }
+    _logPortMessageReceived(message);
+    _routePortMessage(message);
+  } catch (error) {
+    console.error('[Manager] handlePortMessage error:', {
+      type: message?.type,
+      action: message?.action,
+      stack: error.stack,
+      timestamp: Date.now()
+    });
+    // Graceful degradation - doesn't rethrow
+  }
+}
+```
+
+### Close All Feedback Pattern
+
+```javascript
+// Show notification on background failure
+async function closeAllTabs() {
+  const response = await sendMessage({ action: 'CLEAR_ALL_QUICK_TABS' });
+  if (!response?.success) {
+    _showCloseAllErrorNotification();
+    return; // Don't reset local state on failure
+  }
+  // Success - proceed with local cleanup
+}
+```
+
+## v1.6.3.7-v3 Fix Patterns (Retained)
 
 ### BroadcastChannel Pattern
 
@@ -178,7 +256,7 @@ const storage =
     : browser.storage.local;
 ```
 
-## v1.6.3.7-v1/v2 Fix Patterns (Retained)
+## v1.6.3.7-v1/v2/v3 Fix Patterns (Retained)
 
 ### Background Keepalive Pattern
 

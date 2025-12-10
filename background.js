@@ -3196,6 +3196,7 @@ async function handlePortMessage(port, portId, message) {
  * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
  * v1.6.3.6-v12 - FIX Issue #2, #4: Added HEARTBEAT handling
  * v1.6.4.0 - FIX Issue E: Added REQUEST_FULL_STATE_SYNC handling
+ * v1.6.3.7-v4 - FIX Issue #8, #10: Added HEALTH_PROBE and LISTENER_VERIFICATION handling
  * @param {Object} message - Message to route
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
@@ -3209,12 +3210,16 @@ function routePortMessage(message, portInfo) {
     case 'HEARTBEAT':
       return handleHeartbeat(message, portInfo);
 
+    // v1.6.3.7-v4 - FIX Issue #8, #10: Health and verification probes
+    case 'HEALTH_PROBE':
+      return handleHealthProbe(message, portInfo);
+    case 'LISTENER_VERIFICATION':
+      return handleListenerVerification(message, portInfo);
+
     case 'ACTION_REQUEST':
       return handleActionRequest(message, portInfo);
-
     case 'STATE_UPDATE':
       return handleStateUpdate(message, portInfo);
-
     case 'BROADCAST':
       return handleBroadcastRequest(message, portInfo);
 
@@ -3227,13 +3232,70 @@ function routePortMessage(message, portInfo) {
       return handleFullStateSyncRequest(message, portInfo);
 
     default:
-      // Fallback to action-based routing for backwards compatibility
-      if (action) {
-        return handleLegacyAction(message, portInfo);
-      }
-      console.warn('[Background] Unknown message type:', type);
-      return Promise.resolve({ success: false, error: 'Unknown message type' });
+      return _handleUnknownPortMessage(type, action, message, portInfo);
   }
+}
+
+/**
+ * Handle unknown port message types
+ * v1.6.3.7-v4 - Extracted for complexity reduction
+ * @private
+ */
+function _handleUnknownPortMessage(type, action, message, portInfo) {
+  // Fallback to action-based routing for backwards compatibility
+  if (action) {
+    return handleLegacyAction(message, portInfo);
+  }
+  console.warn('[Background] Unknown message type:', type);
+  return Promise.resolve({ success: false, error: 'Unknown message type' });
+}
+
+/**
+ * Handle HEALTH_PROBE message for circuit breaker early recovery
+ * v1.6.3.7-v4 - FIX Issue #8: Lightweight probe to detect if background is responsive
+ * @param {Object} message - Health probe message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Health acknowledgment
+ */
+function handleHealthProbe(message, portInfo) {
+  console.log('[Background] HEALTH_PROBE received:', {
+    source: message.source || portInfo?.origin || 'unknown',
+    timestamp: message.timestamp,
+    portId: portInfo?.port?._portId
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'HEALTH_ACK',
+    healthy: true,
+    timestamp: Date.now(),
+    originalTimestamp: message.timestamp,
+    isInitialized,
+    cacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+}
+
+/**
+ * Handle LISTENER_VERIFICATION message to confirm port listener is working
+ * v1.6.3.7-v4 - FIX Issue #10: Test message to verify listener registration succeeded
+ * @param {Object} message - Verification message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Verification acknowledgment
+ */
+function handleListenerVerification(message, portInfo) {
+  console.log('[Background] LISTENER_VERIFICATION received:', {
+    source: message.source || portInfo?.origin || 'unknown',
+    timestamp: message.timestamp,
+    portId: portInfo?.port?._portId
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'LISTENER_VERIFICATION_ACK',
+    verified: true,
+    timestamp: Date.now(),
+    originalTimestamp: message.timestamp
+  });
 }
 
 /**
@@ -4282,6 +4344,8 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
+ * v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT when available (primary)
+ *              then fall back to runtime.sendMessage (secondary)
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -4324,12 +4388,31 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     triggerSource: source
   });
 
-  // Broadcast to Manager sidebar (if open)
-  try {
-    await browser.runtime.sendMessage(message);
-    console.log('[Background] Sent state update to sidebar/popup');
-  } catch (_err) {
-    // Sidebar may not be open - ignore
+  // v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT (primary)
+  // Port-based messaging is more reliable than runtime.sendMessage for sidebar
+  let sentViaPort = false;
+  const sidebarPortsSent = _broadcastToSidebarPorts(message);
+  if (sidebarPortsSent > 0) {
+    sentViaPort = true;
+    console.log('[Background] STATE_UPDATE sent via PORT to', sidebarPortsSent, 'sidebar(s):', {
+      messageId,
+      quickTabId
+    });
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #3: Fall back to runtime.sendMessage if no ports available
+  // This ensures sidebar gets the message even if port connection hasn't been established yet
+  if (!sentViaPort) {
+    try {
+      await browser.runtime.sendMessage(message);
+      console.log('[Background] STATE_UPDATE sent via runtime.sendMessage (no port available):', {
+        messageId,
+        quickTabId
+      });
+    } catch (_err) {
+      // Sidebar may not be open - ignore
+      console.log('[Background] No port or runtime listener available for state update');
+    }
   }
 
   // v1.6.3.7 - FIX Issue #3: For deletions, broadcast to ALL tabs (except sender)
@@ -4338,6 +4421,39 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
     await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId);
   }
+}
+
+/**
+ * Broadcast message to all connected sidebar ports
+ * v1.6.3.7-v4 - FIX Issue #3: Send state updates via port for reliable delivery
+ * @private
+ * @param {Object} message - Message to send
+ * @returns {number} Number of ports the message was sent to
+ */
+function _broadcastToSidebarPorts(message) {
+  let sentCount = 0;
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    // Only send to sidebar ports (not content script ports)
+    if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
+      continue;
+    }
+
+    try {
+      portInfo.port.postMessage(message);
+      sentCount++;
+      console.log('[Background] PORT_MESSAGE_SENT:', {
+        portId,
+        messageType: message.type,
+        messageId: message.messageId,
+        quickTabId: message.quickTabId
+      });
+    } catch (err) {
+      console.warn('[Background] Failed to send to port:', { portId, error: err.message });
+    }
+  }
+
+  return sentCount;
 }
 
 /**
@@ -4600,6 +4716,25 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
 // Register message handlers for Quick Tab coordination
 // This extends the existing runtime.onMessage listener
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // v1.6.3.7-v4 - FIX Issue #8: Handle HEALTH_PROBE for circuit breaker early recovery
+  // This handles probes sent via sendMessage when port is down
+  if (message.type === 'HEALTH_PROBE') {
+    console.log('[Background] HEALTH_PROBE via sendMessage received:', {
+      source: message.source,
+      timestamp: message.timestamp
+    });
+    sendResponse({
+      success: true,
+      type: 'HEALTH_ACK',
+      healthy: true,
+      timestamp: Date.now(),
+      originalTimestamp: message.timestamp,
+      isInitialized,
+      cacheTabCount: globalQuickTabState.tabs?.length || 0
+    });
+    return true;
+  }
+
   // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
   if (message.type === 'QUICK_TAB_STATE_CHANGE') {
     handleQuickTabStateChange(message, sender)

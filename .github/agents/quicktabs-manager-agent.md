@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v3), unified render pipeline, DOM reconciliation, BroadcastChannel,
-  session tabs, in-memory cache, orphaned tab recovery, cross-tab grouping UI
+  (v1.6.3.7-v4), unified render pipeline, DOM reconciliation, BroadcastChannel,
+  session tabs, circuit breaker probing, close all feedback, message error handling
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -51,8 +51,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
+- **Circuit Breaker Probing** - Early recovery with health probes (v4)
 
-**v1.6.3.7-v3 Features (NEW):**
+**v1.6.3.7-v4 Features (NEW):**
+
+- **Circuit Breaker Probing** - `_probeBackgroundHealth()` every 500ms during
+  open state (reduced open duration 10s→2s)
+- **Close All Feedback** - `_showCloseAllErrorNotification()` on background
+  failure
+- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch with
+  graceful degradation
+- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
+  message
+- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
+  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
+- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
+
+**v1.6.3.7-v3 Features (Retained):**
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`BroadcastChannelManager`)
@@ -73,13 +88,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Hydration keeps orphaned tabs with
   `orphaned: true` flag
 
-**Key Functions (v1.6.3.7-v3):**
+**Key Functions (v1.6.3.7-v4):**
 
-| Function                  | Purpose                    |
-| ------------------------- | -------------------------- |
-| `scheduleRender(source)`  | Unified render entry point |
-| `_itemElements`           | DOM reconciliation Map     |
-| `BroadcastChannelManager` | Real-time tab messaging    |
+| Function                   | Purpose                        |
+| -------------------------- | ------------------------------ |
+| `scheduleRender(source)`   | Unified render entry point     |
+| `_itemElements`            | DOM reconciliation Map         |
+| `_probeBackgroundHealth()` | Circuit breaker health probe   |
+| `_routePortMessage()`      | Message routing (refactored)   |
+| `BroadcastChannelManager`  | Real-time tab messaging        |
 
 **Manager as Pure Consumer:**
 
@@ -106,6 +123,9 @@ for session tabs.
 
 ## Testing Requirements
 
+- [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
+- [ ] Close all shows error notification on failure (v1.6.3.7-v4)
+- [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
 - [ ] Session Quick Tabs display with `permanent: false` indicator (v1.6.3.7-v3)
 - [ ] BroadcastChannel updates trigger render (v1.6.3.7-v3)
 - [ ] DOM reconciliation prevents full re-renders (v1.6.3.7-v3)
@@ -118,5 +138,6 @@ for session tabs.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v3 session tabs,
+**Your strength: Manager coordination with v1.6.3.7-v4 circuit breaker probing,
+close all feedback, message error handling, and v3 session tabs,
 BroadcastChannel, DOM reconciliation, and unified render pipeline.**

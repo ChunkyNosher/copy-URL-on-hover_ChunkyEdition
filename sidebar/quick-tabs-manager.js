@@ -97,7 +97,26 @@ const RENDER_DEBOUNCE_MS = 300;
 const RECONNECT_BACKOFF_INITIAL_MS = 100;
 const RECONNECT_BACKOFF_MAX_MS = 10000;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
-const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
+// v1.6.3.7-v4 - FIX Issue #8: Reduced from 10000ms to 2000ms
+// Shorter blackout period with early recovery probes
+const CIRCUIT_BREAKER_OPEN_DURATION_MS = 2000;
+// v1.6.3.7-v4 - FIX Issue #8: Probe interval for early recovery detection
+const CIRCUIT_BREAKER_PROBE_INTERVAL_MS = 500;
+
+// ==================== v1.6.3.7-v4 MESSAGE DEDUPLICATION ====================
+// FIX Issue #4: Prevent multiple renders from independent message listeners
+// Track processed state versions to avoid duplicate processing
+/**
+ * Set of recently processed message IDs (for correlation ID based dedup)
+ * v1.6.3.7-v4 - FIX Issue #4: Message deduplication
+ */
+const recentlyProcessedMessageIds = new Set();
+
+/**
+ * Max age for message ID tracking (ms)
+ * v1.6.3.7-v4 - FIX Issue #4: Cleanup old message IDs
+ */
+const MESSAGE_ID_MAX_AGE_MS = 5000;
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -137,9 +156,34 @@ let lastRenderedStateHash = 0;
 //   Recovery operation: Manager uses cache when storage returns suspicious 0-tab results
 //   The cache should NEVER be used to overwrite background's authoritative state.
 //   See v1.6.3.5-architectural-issues.md Architecture Issue #6 for context.
-let inMemoryTabsCache = [];
+// v1.6.3.7-v4 - FIX Issue #6: Added sessionId and timestamp to prevent restoring ghost tabs
+//   Cache now has structure: { tabs: [], timestamp: number, sessionId: string }
+//   On fallback, we validate that cache is from current session
+let inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
 let lastKnownGoodTabCount = 0;
 const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 tab
+
+// v1.6.3.7-v4 - FIX Issue #6: Session ID to identify current browser session
+// This prevents restoring cache from a previous browser session
+let currentSessionId = '';
+
+/**
+ * Generate a unique session ID for this browser session
+ * v1.6.3.7-v4 - FIX Issue #6: Session validation for cache
+ * @returns {string} Unique session identifier
+ */
+function _generateSessionId() {
+  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+/**
+ * Initialize session ID on sidebar load
+ * v1.6.3.7-v4 - FIX Issue #6: Must be called during DOMContentLoaded
+ */
+function _initializeSessionId() {
+  currentSessionId = _generateSessionId();
+  console.log('[Manager] v1.6.3.7-v4 Session initialized:', { sessionId: currentSessionId });
+}
 
 // UI Elements (cached for performance)
 let containersList;
@@ -244,12 +288,15 @@ const MAX_HEARTBEAT_FAILURES = 2;
 /**
  * Circuit breaker state
  * v1.6.3.7 - FIX Issue #5: Prevent thundering herd on reconnect
+ * v1.6.3.7-v4 - FIX Issue #8: Add probing for early recovery detection
  * States: 'closed' (connected), 'open' (not trying), 'half-open' (attempting)
  */
 let circuitBreakerState = 'closed';
 let circuitBreakerOpenTime = 0;
 let reconnectAttempts = 0;
 let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+// v1.6.3.7-v4 - FIX Issue #8: Timer for early recovery probes
+let circuitBreakerProbeTimerId = null;
 
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention
@@ -310,9 +357,12 @@ function connectToBackground() {
     logPortLifecycle('open', { portName: backgroundPort.name });
 
     // Handle messages from background
+    // v1.6.3.7-v4 - FIX Issue #10: Log listener registration
     backgroundPort.onMessage.addListener(handlePortMessage);
+    console.log('[Manager] LISTENER_REGISTERED: Port onMessage listener added');
 
     // Handle disconnect
+    // v1.6.3.7-v4 - FIX Issue #10: Log disconnect listener registration
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       logPortLifecycle('disconnect', { error: error?.message });
@@ -321,9 +371,13 @@ function connectToBackground() {
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
       stopHeartbeat();
 
+      // v1.6.3.7-v4 - FIX Issue #8: Stop circuit breaker probes on disconnect
+      _stopCircuitBreakerProbes();
+
       // v1.6.3.7 - FIX Issue #5: Implement exponential backoff reconnection
       scheduleReconnect();
     });
+    console.log('[Manager] LISTENER_REGISTERED: Port onDisconnect listener added');
 
     // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
     circuitBreakerState = 'closed';
@@ -337,6 +391,9 @@ function connectToBackground() {
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
 
+    // v1.6.3.7-v4 - FIX Issue #10: Send test message to verify listener works
+    _verifyPortListenerRegistration();
+
     console.log('[Manager] v1.6.3.6-v11 Port connection established');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
@@ -344,6 +401,27 @@ function connectToBackground() {
 
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
+  }
+}
+
+/**
+ * Verify port listener registration by sending a test message
+ * v1.6.3.7-v4 - FIX Issue #10: Confirm listener is actually receiving messages
+ * @private
+ */
+function _verifyPortListenerRegistration() {
+  if (!backgroundPort) return;
+
+  try {
+    // Send a ping message that should get an acknowledgment
+    backgroundPort.postMessage({
+      type: 'LISTENER_VERIFICATION',
+      timestamp: Date.now(),
+      source: 'sidebar'
+    });
+    console.log('[Manager] LISTENER_VERIFICATION: Test message sent to verify port listener');
+  } catch (err) {
+    console.error('[Manager] LISTENER_VERIFICATION_FAILED: Could not send test message:', err.message);
   }
 }
 
@@ -394,6 +472,7 @@ function handleConnectionFailure() {
 /**
  * Trip the circuit breaker to "open" state
  * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
+ * v1.6.3.7-v4 - FIX Issue #8: Add early recovery probes during open period
  */
 function tripCircuitBreaker() {
   circuitBreakerState = 'open';
@@ -402,17 +481,90 @@ function tripCircuitBreaker() {
   console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
     attempts: reconnectAttempts,
     cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
+    probeIntervalMs: CIRCUIT_BREAKER_PROBE_INTERVAL_MS,
     reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
   });
 
-  // Schedule attempt to reopen circuit breaker
+  // v1.6.3.7-v4 - FIX Issue #8: Start probing for early recovery
+  _startCircuitBreakerProbes();
+
+  // Schedule hard reopen at max cooldown time
   setTimeout(() => {
+    _stopCircuitBreakerProbes();
     console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
     circuitBreakerState = 'half-open';
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
     connectToBackground();
   }, CIRCUIT_BREAKER_OPEN_DURATION_MS);
+}
+
+/**
+ * Start periodic probes during circuit breaker open period
+ * v1.6.3.7-v4 - FIX Issue #8: Detect early background recovery
+ * @private
+ */
+function _startCircuitBreakerProbes() {
+  _stopCircuitBreakerProbes(); // Clear any existing probe timer
+
+  circuitBreakerProbeTimerId = setInterval(() => {
+    if (circuitBreakerState !== 'open') {
+      _stopCircuitBreakerProbes();
+      return;
+    }
+
+    const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
+    console.log('[Manager] CIRCUIT_BREAKER_PROBE:', {
+      state: circuitBreakerState,
+      timeSinceOpenMs: timeSinceOpen,
+      timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
+    });
+
+    // Attempt a lightweight probe to detect if background recovered
+    _probeBackgroundHealth().then(healthy => {
+      if (healthy && circuitBreakerState === 'open') {
+        console.log('[Manager] CIRCUIT_BREAKER_EARLY_RECOVERY: Background responding - transitioning to HALF-OPEN');
+        _stopCircuitBreakerProbes();
+        circuitBreakerState = 'half-open';
+        reconnectAttempts = 0;
+        reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+        connectToBackground();
+      }
+    }).catch(() => {
+      // Probe failed, continue waiting
+      console.log('[Manager] CIRCUIT_BREAKER_PROBE_FAILED: Background still unresponsive');
+    });
+  }, CIRCUIT_BREAKER_PROBE_INTERVAL_MS);
+}
+
+/**
+ * Stop circuit breaker probes
+ * v1.6.3.7-v4 - FIX Issue #8: Cleanup probe timer
+ * @private
+ */
+function _stopCircuitBreakerProbes() {
+  if (circuitBreakerProbeTimerId) {
+    clearInterval(circuitBreakerProbeTimerId);
+    circuitBreakerProbeTimerId = null;
+  }
+}
+
+/**
+ * Probe background health with a lightweight ping
+ * v1.6.3.7-v4 - FIX Issue #8: Quick check if background is responsive
+ * @private
+ * @returns {Promise<boolean>} True if background is healthy
+ */
+async function _probeBackgroundHealth() {
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage({ type: 'HEALTH_PROBE', timestamp: Date.now() }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
+    ]);
+    return response?.healthy === true || response?.type === 'HEALTH_ACK';
+  } catch {
+    return false;
+  }
 }
 
 // ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
@@ -453,71 +605,148 @@ function stopHeartbeat() {
  * Send heartbeat message to background
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
  * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
+ * v1.6.3.7-v4 - FIX Issue #1: Enhanced logging to distinguish port vs background state
+ *
+ * Three-tier communication architecture:
+ * 1. BroadcastChannel (PRIMARY) - Instant cross-tab messaging
+ * 2. Port messaging (SECONDARY) - Persistent connection to background
+ * 3. storage.onChanged (TERTIARY) - Reliable fallback
  */
 async function sendHeartbeat() {
+  const heartbeatStartTime = Date.now();
+
+  // v1.6.3.7-v4 - FIX Issue #1: Log heartbeat attempt with port state
+  _logHeartbeatAttempt();
+
   if (!backgroundPort) {
-    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected', {
-      circuitBreakerState,
-      reconnectAttempts
-    });
-    consecutiveHeartbeatFailures++;
-    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
-      scheduleReconnect();
-    }
+    _handlePortDisconnected();
     return;
   }
-
-  const timestamp = Date.now();
 
   try {
     // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
     const response = await sendPortMessageWithTimeout(
-      {
-        type: 'HEARTBEAT',
-        timestamp,
-        source: 'sidebar'
-      },
+      { type: 'HEARTBEAT', timestamp: Date.now(), source: 'sidebar' },
       HEARTBEAT_TIMEOUT_MS
     );
 
-    // Success - reset failure count
-    consecutiveHeartbeatFailures = 0;
-    lastHeartbeatResponse = Date.now();
-
-    console.log('[Manager] PORT_HEARTBEAT: success', {
-      roundTripMs: Date.now() - timestamp,
-      backgroundAlive: response?.backgroundAlive,
-      isInitialized: response?.isInitialized,
-      circuitBreakerState
-    });
+    _handleHeartbeatSuccess(response, heartbeatStartTime);
   } catch (err) {
-    consecutiveHeartbeatFailures++;
+    _handleHeartbeatFailure(err);
+  }
+}
 
-    // v1.6.3.7 - FIX Issue #2: Enhanced failure logging
-    console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
-      error: err.message,
-      failures: consecutiveHeartbeatFailures,
-      maxFailures: MAX_HEARTBEAT_FAILURES,
-      timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-      circuitBreakerState
-    });
+/**
+ * Log heartbeat attempt details
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _logHeartbeatAttempt() {
+  console.log('[Manager] HEARTBEAT_ATTEMPT:', {
+    portExists: backgroundPort !== null,
+    portConnected: backgroundPort ? 'yes' : 'no',
+    circuitBreakerState,
+    consecutiveFailures: consecutiveHeartbeatFailures,
+    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse
+  });
+}
 
-    // v1.6.3.6-v12 - FIX Issue #4: Treat port as dead after timeout
-    if (err.message === 'Heartbeat timeout') {
-      console.error(
-        '[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie'
-      );
-      backgroundPort = null;
-    }
+/**
+ * Handle case when port is disconnected
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _handlePortDisconnected() {
+  console.warn('[Manager] HEARTBEAT_FAILED: port disconnected', {
+    status: 'PORT_DISCONNECTED',
+    circuitBreakerState,
+    reconnectAttempts,
+    diagnosis: 'Port object is null - connection was closed or never established'
+  });
+  consecutiveHeartbeatFailures++;
+  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+    console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+    scheduleReconnect();
+  }
+}
 
-    // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
-    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
-      backgroundPort = null;
-      stopHeartbeat();
-      scheduleReconnect();
-    }
+/**
+ * Handle successful heartbeat response
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ * @param {Object} response - Response from background
+ * @param {number} startTime - When heartbeat was started
+ */
+function _handleHeartbeatSuccess(response, startTime) {
+  consecutiveHeartbeatFailures = 0;
+  lastHeartbeatResponse = Date.now();
+
+  console.log('[Manager] HEARTBEAT_SUCCESS:', {
+    status: 'BACKGROUND_ALIVE',
+    roundTripMs: Date.now() - startTime,
+    backgroundAlive: response?.backgroundAlive ?? true,
+    isInitialized: response?.isInitialized,
+    circuitBreakerState,
+    diagnosis: 'Background script is alive and responding'
+  });
+}
+
+/**
+ * Handle heartbeat failure
+ * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
+ * @private
+ * @param {Error} err - Error that occurred
+ */
+function _handleHeartbeatFailure(err) {
+  consecutiveHeartbeatFailures++;
+
+  const isTimeout = err.message === 'Heartbeat timeout';
+  const isPortClosed = err.message.includes('disconnected') || err.message.includes('closed');
+
+  console.warn('[Manager] HEARTBEAT_FAILED:', {
+    status: isTimeout ? 'BACKGROUND_DEAD' : isPortClosed ? 'PORT_CLOSED' : 'UNKNOWN_ERROR',
+    error: err.message,
+    failures: consecutiveHeartbeatFailures,
+    maxFailures: MAX_HEARTBEAT_FAILURES,
+    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+    circuitBreakerState,
+    diagnosis: _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed)
+  });
+
+  _processHeartbeatFailureRecovery(isTimeout);
+}
+
+/**
+ * Get diagnosis message for heartbeat failure
+ * v1.6.3.7-v4 - Extracted to reduce _handleHeartbeatFailure complexity
+ * @private
+ * @param {boolean} isTimeout - Whether failure was timeout
+ * @param {boolean} isPortClosed - Whether port was closed
+ * @returns {string} Diagnosis message
+ */
+function _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed) {
+  if (isTimeout) return 'Port is open but background script is not responding (Firefox 30s termination?)';
+  if (isPortClosed) return 'Port was closed by background script';
+  return 'Unknown heartbeat failure';
+}
+
+/**
+ * Process recovery actions after heartbeat failure
+ * v1.6.3.7-v4 - Extracted to reduce _handleHeartbeatFailure complexity
+ * @private
+ * @param {boolean} isTimeout - Whether failure was timeout
+ */
+function _processHeartbeatFailureRecovery(isTimeout) {
+  if (isTimeout) {
+    console.error('[Manager] v1.6.3.7 ZOMBIE_PORT_DETECTED: Port appears alive but background is dead');
+    backgroundPort = null;
+  }
+
+  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+    console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
+    backgroundPort = null;
+    stopHeartbeat();
+    scheduleReconnect();
   }
 }
 
@@ -676,10 +905,22 @@ function _handleStateSyncResponse(response) {
 /**
  * Unified render entry point - ALL render triggers go through here
  * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
+ * v1.6.3.7-v4 - FIX Issue #4: Enhanced deduplication with message ID tracking
  * @param {string} source - Source of render trigger for logging
+ * @param {string} [messageId] - Optional message ID for deduplication
  */
-function scheduleRender(source = 'unknown') {
+function scheduleRender(source = 'unknown', messageId = null) {
   const currentHash = computeStateHash(quickTabsState);
+
+  // v1.6.3.7-v4 - FIX Issue #4: Check message ID deduplication first
+  if (messageId && _isMessageAlreadyProcessed(messageId)) {
+    console.log('[Manager] RENDER_DEDUPLICATION: message already processed', {
+      source,
+      messageId,
+      hash: currentHash
+    });
+    return;
+  }
 
   // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
   if (currentHash === lastRenderedStateHash) {
@@ -690,8 +931,14 @@ function scheduleRender(source = 'unknown') {
     return;
   }
 
+  // v1.6.3.7-v4 - FIX Issue #4: Track this message as processed
+  if (messageId) {
+    _markMessageAsProcessed(messageId);
+  }
+
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
+    messageId,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
@@ -701,6 +948,55 @@ function scheduleRender(source = 'unknown') {
   renderUI();
 }
 
+/**
+ * Check if a message was already processed (deduplication)
+ * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
+ * @private
+ * @param {string} messageId - Message ID to check
+ * @returns {boolean} True if already processed
+ */
+function _isMessageAlreadyProcessed(messageId) {
+  if (!messageId) return false;
+  return recentlyProcessedMessageIds.has(messageId);
+}
+
+/**
+ * Map of processed message IDs with their timestamps
+ * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient cleanup
+ */
+const processedMessageTimestamps = new Map();
+
+/**
+ * Mark a message as processed for deduplication
+ * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
+ * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient memory management
+ * @private
+ * @param {string} messageId - Message ID to mark
+ */
+function _markMessageAsProcessed(messageId) {
+  if (!messageId) return;
+  recentlyProcessedMessageIds.add(messageId);
+  processedMessageTimestamps.set(messageId, Date.now());
+}
+
+/**
+ * Cleanup expired message IDs (called periodically)
+ * v1.6.3.7-v4 - FIX Code Review: Efficient periodic cleanup instead of per-message timers
+ * @private
+ */
+function _cleanupExpiredMessageIds() {
+  const now = Date.now();
+  for (const [messageId, timestamp] of processedMessageTimestamps) {
+    if (now - timestamp > MESSAGE_ID_MAX_AGE_MS) {
+      recentlyProcessedMessageIds.delete(messageId);
+      processedMessageTimestamps.delete(messageId);
+    }
+  }
+}
+
+// Start periodic cleanup interval (every 5 seconds)
+setInterval(_cleanupExpiredMessageIds, 5000);
+
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
 
 /**
@@ -708,23 +1004,68 @@ function scheduleRender(source = 'unknown') {
  * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
  * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
  * v1.6.4.0 - FIX Issue E: Handle FULL_STATE_SYNC response
+ * v1.6.3.7-v4 - FIX Issue #3: Handle STATE_UPDATE from port (not just runtime.onMessage)
+ * v1.6.3.7-v4 - FIX Issue #9: Wrapped in try-catch for error handling
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
+  // v1.6.3.7-v4 - FIX Issue #9: Wrap in try-catch to handle corrupted messages gracefully
+  try {
+    // v1.6.3.7-v4 - FIX Issue #9: Validate message structure
+    if (!message || typeof message !== 'object') {
+      console.warn('[Manager] PORT_MESSAGE_INVALID: Received non-object message:', typeof message);
+      return;
+    }
+
+    _logPortMessageReceived(message);
+
+    // Route message to appropriate handler
+    _routePortMessage(message);
+  } catch (err) {
+    // v1.6.3.7-v4 - FIX Issue #9: Log error with context and continue
+    console.error('[Manager] PORT_MESSAGE_ERROR: Error processing port message:', {
+      error: err.message,
+      stack: err.stack,
+      messageType: message?.type,
+      messageAction: message?.action,
+      timestamp: Date.now()
+    });
+    // Don't rethrow - graceful degradation
+  }
+}
+
+/**
+ * Log port message received with details
+ * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * @private
+ * @param {Object} message - Message from background
+ */
+function _logPortMessageReceived(message) {
+  console.log('[Manager] PORT_MESSAGE_RECEIVED:', {
+    type: message.type,
+    action: message.action,
+    messageId: message.messageId,
+    correlationId: message.correlationId,
+    source: 'port-connection',
+    timestamp: Date.now()
+  });
+
   logPortLifecycle('message', {
     type: message.type,
     action: message.action,
     correlationId: message.correlationId
   });
+}
 
+/**
+ * Route port message to appropriate handler
+ * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * @private
+ * @param {Object} message - Message to route
+ */
+function _routePortMessage(message) {
   // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment
-  if (message.type === 'HEARTBEAT_ACK') {
-    handleAcknowledgment(message);
-    return;
-  }
-
-  // Handle acknowledgment
-  if (message.type === 'ACKNOWLEDGMENT') {
+  if (message.type === 'HEARTBEAT_ACK' || message.type === 'ACKNOWLEDGMENT') {
     handleAcknowledgment(message);
     return;
   }
@@ -737,9 +1078,14 @@ function handlePortMessage(message) {
 
   // Handle state updates
   if (message.type === 'STATE_UPDATE') {
-    // v1.6.4.0 - FIX Issue B: Route through unified render entry point
     handleStateUpdateBroadcast(message);
-    scheduleRender('port-STATE_UPDATE');
+    scheduleRender('port-STATE_UPDATE', message.messageId);
+    return;
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #3: Handle QUICK_TAB_STATE_UPDATED via port
+  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
+    _handleQuickTabStateUpdate(message);
     return;
   }
 
@@ -748,6 +1094,24 @@ function handlePortMessage(message) {
     _handleStateSyncResponse(message);
     return;
   }
+}
+
+/**
+ * Handle QUICK_TAB_STATE_UPDATED message from port
+ * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
+ * @private
+ * @param {Object} message - State update message
+ */
+function _handleQuickTabStateUpdate(message) {
+  console.log('[Manager] PORT_STATE_UPDATE_RECEIVED:', {
+    quickTabId: message.quickTabId,
+    changes: message.changes,
+    messageId: message.messageId,
+    source: 'port'
+  });
+
+  handleStateUpdateBroadcast(message);
+  scheduleRender('port-QUICK_TAB_STATE_UPDATED', message.messageId);
 }
 
 /**
@@ -789,16 +1153,17 @@ function handleAcknowledgment(ack) {
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
  * v1.6.4.0 - FIX Issue B: Route all renders through scheduleRender()
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
  */
 function handleBroadcast(message) {
-  const { action } = message;
+  const { action, messageId } = message;
 
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Manager] Received visibility change broadcast:', message);
       // v1.6.4.0 - FIX Issue B: Route through unified entry point
-      scheduleRender('broadcast-VISIBILITY_CHANGE');
+      scheduleRender('broadcast-VISIBILITY_CHANGE', messageId);
       break;
 
     case 'TAB_LIFECYCLE_CHANGE':
@@ -808,7 +1173,7 @@ function handleBroadcast(message) {
         browserTabInfoCache.delete(message.tabId);
       }
       // v1.6.4.0 - FIX Issue B: Route through unified entry point
-      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE');
+      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE', messageId);
       break;
 
     default:
@@ -940,6 +1305,7 @@ function initializeBroadcastChannel() {
 /**
  * Handle messages from BroadcastChannel
  * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
+ * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
@@ -949,41 +1315,56 @@ function handleBroadcastChannelMessage(event) {
     return;
   }
 
-  console.log('[Manager] BROADCAST_RECEIVED:', {
+  // v1.6.3.7-v4 - FIX Issue #4: Generate messageId from BroadcastChannel message for deduplication
+  // BroadcastChannel messages don't have messageId, so we generate one from type+quickTabId+timestamp+random
+  // Added random component to ensure uniqueness even for rapid same-type messages
+  const randomSuffix = Math.random().toString(36).substring(2, 7);
+  const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+
+  console.log('[Manager] BROADCAST_CHANNEL_RECEIVED:', {
     type: message.type,
     quickTabId: message.quickTabId,
-    timestamp: message.timestamp
+    timestamp: message.timestamp,
+    messageId: broadcastMessageId,
+    source: 'BroadcastChannel'
   });
 
-  switch (message.type) {
-    case 'quick-tab-created':
-      handleBroadcastCreate(message);
-      break;
+  // v1.6.3.7-v4 - Route to handler based on message type
+  _routeBroadcastMessage(message, broadcastMessageId);
+}
 
-    case 'quick-tab-updated':
-      handleBroadcastUpdate(message);
-      break;
+/**
+ * Route broadcast message to appropriate handler
+ * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
+ * @private
+ * @param {Object} message - BroadcastChannel message
+ * @param {string} messageId - Generated message ID for deduplication
+ */
+function _routeBroadcastMessage(message, messageId) {
+  const handlers = {
+    'quick-tab-created': handleBroadcastCreate,
+    'quick-tab-updated': handleBroadcastUpdate,
+    'quick-tab-deleted': handleBroadcastDelete,
+    'quick-tab-minimized': handleBroadcastMinimizeRestore,
+    'quick-tab-restored': handleBroadcastMinimizeRestore
+  };
 
-    case 'quick-tab-deleted':
-      handleBroadcastDelete(message);
-      break;
-
-    case 'quick-tab-minimized':
-    case 'quick-tab-restored':
-      handleBroadcastMinimizeRestore(message);
-      break;
-
-    default:
-      console.log('[Manager] Unknown broadcast type:', message.type);
+  const handler = handlers[message.type];
+  if (handler) {
+    handler(message, messageId);
+  } else {
+    console.log('[Manager] Unknown broadcast type:', message.type);
   }
 }
 
 /**
  * Handle quick-tab-created broadcast
  * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message with data
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastCreate(message) {
+function handleBroadcastCreate(message, messageId) {
   const { quickTabId, data } = message;
 
   if (!quickTabId || !data) {
@@ -1010,16 +1391,18 @@ function handleBroadcastCreate(message) {
 
   console.log('[Manager] BROADCAST_CREATE: added Quick Tab:', quickTabId);
 
-  // Trigger targeted UI update
-  scheduleRender('broadcast-create');
+  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+  scheduleRender('broadcast-create', messageId);
 }
 
 /**
  * Handle quick-tab-updated broadcast
  * v1.6.3.7-v3 - API #2: Update existing Quick Tab
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message with changes
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastUpdate(message) {
+function handleBroadcastUpdate(message, messageId) {
   const { quickTabId, changes } = message;
 
   if (!quickTabId || !changes) {
@@ -1043,16 +1426,18 @@ function handleBroadcastUpdate(message) {
 
   console.log('[Manager] BROADCAST_UPDATE: updated Quick Tab:', quickTabId, changes);
 
-  // Trigger UI update
-  scheduleRender('broadcast-update');
+  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+  scheduleRender('broadcast-update', messageId);
 }
 
 /**
  * Handle quick-tab-deleted broadcast
  * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastDelete(message) {
+function handleBroadcastDelete(message, messageId) {
   const { quickTabId } = message;
 
   if (!quickTabId) {
@@ -1075,16 +1460,18 @@ function handleBroadcastDelete(message) {
 
   console.log('[Manager] BROADCAST_DELETE: removed Quick Tab:', quickTabId);
 
-  // Trigger UI update
-  scheduleRender('broadcast-delete');
+  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+  scheduleRender('broadcast-delete', messageId);
 }
 
 /**
  * Handle quick-tab-minimized and quick-tab-restored broadcasts
  * v1.6.3.7-v3 - API #2: Update minimized state
+ * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
+ * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastMinimizeRestore(message) {
+function handleBroadcastMinimizeRestore(message, messageId) {
   const { quickTabId, changes } = message;
 
   if (!quickTabId) {
@@ -1105,7 +1492,8 @@ function handleBroadcastMinimizeRestore(message) {
     lastLocalUpdateTime = Date.now();
 
     console.log('[Manager] BROADCAST_MINIMIZE:', quickTabId, 'minimized=', changes.minimized);
-    scheduleRender('broadcast-minimize');
+    // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+    scheduleRender('broadcast-minimize', messageId);
   }
 }
 
@@ -1280,12 +1668,22 @@ async function saveCollapseState(collapseState) {
 
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
 // v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
+// v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  // v1.6.3.7-v4 - FIX Issue #4: Log message source for debugging
+  console.log('[Manager] RUNTIME_MESSAGE_RECEIVED:', {
+    type: message.type,
+    messageId: message.messageId,
+    source: 'runtime.onMessage',
+    timestamp: Date.now()
+  });
+
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
     console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
       quickTabId: message.quickTabId,
       changes: message.changes,
-      source: message.originalSource
+      source: message.originalSource,
+      messageId: message.messageId
     });
 
     // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
@@ -1296,8 +1694,8 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       handleStateUpdateMessage(message.quickTabId, message.changes);
     }
 
-    // Re-render UI
-    renderUI();
+    // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
+    scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
     sendResponse({ received: true });
     return true;
   }
@@ -1306,11 +1704,13 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'QUICK_TAB_DELETED') {
     console.log('[Manager] Received QUICK_TAB_DELETED:', {
       quickTabId: message.quickTabId,
-      source: message.source
+      source: message.source,
+      messageId: message.messageId
     });
 
     handleStateDeletedMessage(message.quickTabId);
-    renderUI();
+    // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
+    scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
     sendResponse({ received: true });
     return true;
   }
@@ -1627,13 +2027,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
 
-  // Auto-refresh every 2 seconds
+  // v1.6.3.7-v4 - FIX Issue #7: Increased from 2s to 10s
+  // BroadcastChannel is now PRIMARY for instant updates (fixed in Issue #2)
+  // Storage polling is now a BACKUP fallback, so longer interval is acceptable
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
-  }, 2000);
+  }, 10000);
 
-  console.log('[Manager] v1.6.3.7-v3 Port + BroadcastChannel + Message infrastructure initialized');
+  console.log('[Manager] v1.6.3.7-v4 Port + BroadcastChannel + Message infrastructure initialized (storage poll: 10s)');
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
@@ -1761,27 +2163,44 @@ async function checkStorageDebounce() {
  * v1.6.3.5-v11 - FIX Issue #6: Clear cache when storage is legitimately empty
  *   If storage is empty and cache has only 1 tab, this is a legitimate single-tab deletion.
  *   Sets quickTabsState and logs appropriately - used as flow control signal
+ * v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache as fallback
  */
 function _handleEmptyStorageState() {
+  const cacheTabs = inMemoryTabsCache.tabs || [];
+  const cacheSessionId = inMemoryTabsCache.sessionId || '';
+  
   // v1.6.3.5-v11 - FIX Issue #6: Check if this is a legitimate single-tab deletion
-  if (inMemoryTabsCache.length === 1) {
+  if (cacheTabs.length === 1) {
     console.log(
       '[Manager] Storage empty with single-tab cache - clearing cache (legitimate deletion)'
     );
-    inMemoryTabsCache = [];
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
     quickTabsState = {};
     return;
   }
 
-  // Multiple tabs in cache but storage empty - use cache (potential storm protection)
-  if (inMemoryTabsCache.length > 1) {
+  // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache as fallback
+  if (cacheTabs.length > 1 && cacheSessionId === currentSessionId) {
     console.log(
       '[Manager] Storage returned empty but cache has',
-      inMemoryTabsCache.length,
-      'tabs - using cache'
+      cacheTabs.length,
+      'tabs - using cache (same session)'
     );
-    quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
+    quickTabsState = { tabs: cacheTabs, timestamp: Date.now() };
+  } else if (cacheTabs.length > 1 && cacheSessionId !== currentSessionId) {
+    // v1.6.3.7-v4 - FIX Issue #6: Cache from different session - reject with warning
+    console.warn('[Manager] ⚠️ STALE_CACHE_REJECTED: Cache is from different session', {
+      cacheSessionId,
+      currentSessionId,
+      cacheTabs: cacheTabs.length,
+      cacheTimestamp: inMemoryTabsCache.timestamp,
+      warning: 'Not restoring ghost tabs from previous session'
+    });
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    lastKnownGoodTabCount = 0;
+    quickTabsState = {};
+    console.log('[Manager] Loaded Quick Tabs state: empty (cache rejected)');
   } else {
     // Cache is empty too - normal empty state
     quickTabsState = {};
@@ -1796,11 +2215,14 @@ function _handleEmptyStorageState() {
  *   Storage storms are detected when MULTIPLE tabs vanish unexpectedly.
  *   A single tab going to 0 is legitimate user action.
  * v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation instead of silently using cache
+ * v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache in storm detection
  * @param {Object} state - Storage state
  * @returns {boolean} True if storm detected and handled
  */
 function _detectStorageStorm(state) {
   const storageTabs = state.tabs || [];
+  const cacheTabs = inMemoryTabsCache.tabs || [];
+  const cacheSessionId = inMemoryTabsCache.sessionId || '';
 
   // No storm if storage has tabs
   if (storageTabs.length !== 0) {
@@ -1808,18 +2230,31 @@ function _detectStorageStorm(state) {
   }
 
   // No cache to protect - no storm possible
-  if (inMemoryTabsCache.length < MIN_TABS_FOR_CACHE_PROTECTION) {
+  if (cacheTabs.length < MIN_TABS_FOR_CACHE_PROTECTION) {
     return false;
+  }
+
+  // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache
+  if (cacheSessionId !== currentSessionId) {
+    console.warn('[Manager] ⚠️ STALE_CACHE_IGNORED: Cache is from different session during storm detection', {
+      cacheSessionId,
+      currentSessionId,
+      cacheTabCount: cacheTabs.length,
+      warning: 'Not using stale cache for fallback'
+    });
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    lastKnownGoodTabCount = 0;
+    return false; // No valid cache to use
   }
 
   // v1.6.3.5-v11 - FIX Issue #6: Single tab deletion is legitimate, not a storm
   // If cache has exactly 1 tab and storage has 0, user closed the last Quick Tab
-  if (inMemoryTabsCache.length === 1) {
+  if (cacheTabs.length === 1) {
     console.log(
       '[Manager] Single tab→0 transition detected - clearing cache (legitimate deletion)'
     );
     // Clear the cache to accept the new 0-tab state
-    inMemoryTabsCache = [];
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
     return false; // Not a storm - proceed with normal update
   }
@@ -1827,16 +2262,26 @@ function _detectStorageStorm(state) {
   // v1.6.3.6-v12 - FIX Issue #5: CACHE_DIVERGENCE - trigger reconciliation
   console.warn('[Manager] v1.6.3.6-v12 CACHE_DIVERGENCE:', {
     storageTabCount: storageTabs.length,
-    cacheTabCount: inMemoryTabsCache.length,
+    cacheTabCount: cacheTabs.length,
     lastKnownGoodCount: lastKnownGoodTabCount,
-    saveId: state.saveId
+    saveId: state.saveId,
+    cacheSessionId,
+    currentSessionId
+  });
+
+  // v1.6.3.7-v4 - FIX Issue #6: Log fallback rescue with warning
+  console.warn('[Manager] ⚠️ FALLBACK_RESCUE_TRIGGERED:', {
+    reason: 'Storage shows 0 tabs but cache has valid data from current session',
+    cacheTabs: cacheTabs.length,
+    sessionMatch: cacheSessionId === currentSessionId,
+    action: 'Using cache temporarily while reconciling with content scripts'
   });
 
   // v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation with content scripts
   _triggerCacheReconciliation();
 
   // Temporarily use cache to prevent blank UI while reconciliation runs
-  quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
+  quickTabsState = { tabs: cacheTabs, timestamp: Date.now() };
   console.log('[Manager] Using in-memory cache temporarily during reconciliation');
   return true;
 }
@@ -1845,6 +2290,7 @@ function _detectStorageStorm(state) {
  * Trigger reconciliation with content scripts when cache diverges from storage
  * v1.6.3.6-v12 - FIX Issue #5: Query content scripts and restore to STORAGE if needed
  * v1.6.3.6-v12 - FIX Code Review: Use module-level imports instead of dynamic import
+ * v1.6.3.7-v4 - FIX Issue #6: Update cache with new object structure
  */
 async function _triggerCacheReconciliation() {
   console.log('[Manager] v1.6.3.6-v12 Starting cache reconciliation...');
@@ -1853,10 +2299,11 @@ async function _triggerCacheReconciliation() {
     // Query all content scripts for their Quick Tabs
     // v1.6.3.6-v12 - FIX Code Review: Using module-level import
     const contentScriptTabs = await queryAllContentScriptsForQuickTabs();
+    const cacheTabs = inMemoryTabsCache.tabs || [];
 
     console.log('[Manager] v1.6.3.6-v12 Reconciliation found:', {
       contentScriptTabCount: contentScriptTabs.length,
-      cacheTabCount: inMemoryTabsCache.length
+      cacheTabCount: cacheTabs.length
     });
 
     if (contentScriptTabs.length > 0) {
@@ -1868,7 +2315,12 @@ async function _triggerCacheReconciliation() {
 
       const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
       quickTabsState = restoredState;
-      inMemoryTabsCache = [...restoredState.tabs];
+      // v1.6.3.7-v4 - FIX Issue #6: Update cache with new object structure
+      inMemoryTabsCache = {
+        tabs: [...restoredState.tabs],
+        timestamp: Date.now(),
+        sessionId: currentSessionId
+      };
       lastKnownGoodTabCount = restoredState.tabs.length;
 
       console.log(
@@ -1880,7 +2332,8 @@ async function _triggerCacheReconciliation() {
     } else {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
       console.log('[Manager] v1.6.3.6-v12 Content scripts confirm 0 tabs - accepting empty state');
-      inMemoryTabsCache = [];
+      // v1.6.3.7-v4 - FIX Issue #6: Clear cache with new object structure
+      inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
       lastKnownGoodTabCount = 0;
       quickTabsState = { tabs: [], timestamp: Date.now() };
       renderUI();
@@ -1896,17 +2349,27 @@ async function _triggerCacheReconciliation() {
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
  * v1.6.3.5-v11 - FIX Issue #6: Also update cache when tabs.length is 0 (legitimate deletion)
  *   The cache must be cleared when tabs legitimately reach 0, not just updated when > 0.
+ * v1.6.3.7-v4 - FIX Issue #6: Added session ID and timestamp to cache structure
  * @param {Array} tabs - Tabs array from storage
  */
 function _updateInMemoryCache(tabs) {
   if (tabs.length > 0) {
-    inMemoryTabsCache = [...tabs];
+    // v1.6.3.7-v4 - FIX Issue #6: Store with session ID and timestamp
+    inMemoryTabsCache = {
+      tabs: [...tabs],
+      timestamp: Date.now(),
+      sessionId: currentSessionId
+    };
     lastKnownGoodTabCount = tabs.length;
-    console.log('[Manager] Updated in-memory cache:', { tabCount: tabs.length });
+    console.log('[Manager] Updated in-memory cache:', {
+      tabCount: tabs.length,
+      sessionId: currentSessionId,
+      timestamp: inMemoryTabsCache.timestamp
+    });
   } else if (lastKnownGoodTabCount === 1) {
     // v1.6.3.5-v11 - FIX Issue #6: Clear cache when going from 1→0 (single-tab deletion)
     console.log('[Manager] Clearing in-memory cache (single-tab deletion detected)');
-    inMemoryTabsCache = [];
+    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
   }
   // Note: If lastKnownGoodTabCount > 1 and tabs.length === 0, we don't clear the cache
@@ -4369,6 +4832,19 @@ async function closeAllTabs() {
     const response = await _sendClearAllMessage();
     _logClearAllResponse(response, startTime);
 
+    // v1.6.3.7-v4 - FIX Issue #5: Handle explicit failure response with user feedback
+    if (!response?.success) {
+      const errorReason = response?.error || response?.reason || 'Unknown error';
+      console.error('[Manager] Close All: Operation FAILED:', {
+        reason: errorReason,
+        response,
+        durationMs: Date.now() - startTime
+      });
+      // Show user-facing error notification
+      _showCloseAllErrorNotification(errorReason);
+      return; // Don't reset local state if operation failed
+    }
+
     const hostInfoBeforeClear = quickTabHostInfo.size;
     quickTabHostInfo.clear();
 
@@ -4378,7 +4854,33 @@ async function closeAllTabs() {
     console.log('[Manager] Close All: UI updated, operation complete');
   } catch (err) {
     _logCloseAllError(err, startTime);
+    // v1.6.3.7-v4 - FIX Issue #5: Show user-facing error notification
+    _showCloseAllErrorNotification(err.message);
   }
+}
+
+/**
+ * Show error notification to user when Close All fails
+ * v1.6.3.7-v4 - FIX Issue #5: User feedback for failed operations
+ * @private
+ * @param {string} reason - Reason for failure
+ */
+function _showCloseAllErrorNotification(reason) {
+  const notification = document.createElement('div');
+  notification.className = 'error-notification';
+  notification.textContent = `Close All failed: ${reason}`;
+  Object.assign(notification.style, ERROR_NOTIFICATION_STYLES);
+
+  document.body.appendChild(notification);
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.parentNode.removeChild(notification);
+    }
+  }, 5000);
+
+  console.log('[Manager] Close All: Error notification shown to user:', reason);
 }
 
 /**

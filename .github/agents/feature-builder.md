@@ -60,20 +60,28 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7-v4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v3 Features (NEW):**
+**v1.6.3.7-v4 Features (NEW):**
+
+- **Circuit Breaker Probing** - Early recovery with 500ms health probes
+- **Close All Feedback** - `_showCloseAllErrorNotification()` for errors
+- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
+- **Listener Verification** - `_verifyPortListenerRegistration()`
+- **Refactored Message Handling** - complexity 10→4
+- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
+
+**v1.6.3.7-v3 Features (Retained):**
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
 - **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
 - **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
-  `sync-session-state`)
-- **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
-- **notifications API** - System notifications (NotificationManager.js)
+- **browser.alarms API** - Scheduled tasks
+- **tabs.group() API** - Tab grouping (Firefox 138+)
+- **notifications API** - System notifications
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 
 **v1.6.3.7-v2 Features (Retained):**

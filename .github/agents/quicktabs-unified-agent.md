@@ -3,8 +3,9 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.7-v3), ownership validation, unified
-  render pipeline, orphaned tab recovery, session tabs, BroadcastChannel
+  sync with Single Writer Authority (v1.6.3.7-v4), ownership validation, unified
+  render pipeline, orphaned tab recovery, session tabs, BroadcastChannel, circuit
+  breaker probing
 tools: ['*']
 ---
 
@@ -36,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,7 +51,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.7-v3 Features (NEW):**
+**v1.6.3.7-v4 Features (NEW):**
+
+- **Circuit Breaker Probing** - Early recovery with 500ms health probes
+  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
+- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
+  errors
+- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
+- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
+  message
+- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
+  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
+- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
+
+**v1.6.3.7-v3 Features (Retained):**
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`,
   `session_quick_tabs` key)
@@ -79,15 +93,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   (100ms→10s)
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 
-**Key Functions (v1.6.3.7-v3):**
+**Key Functions (v1.6.3.7-v4):**
 
-| Function                  | Location    | Purpose                      |
-| ------------------------- | ----------- | ---------------------------- |
-| `scheduleRender(source)`  | Manager     | Unified render entry point   |
-| `_itemElements`           | Manager     | DOM reconciliation Map       |
-| `BroadcastChannelManager` | channels/   | Real-time tab messaging      |
-| `TabStateManager`         | core/       | Per-tab state (sessions API) |
-| `QuickTabGroupManager`    | quick-tabs/ | Tab grouping (Firefox 138+)  |
+| Function                   | Location    | Purpose                        |
+| -------------------------- | ----------- | ------------------------------ |
+| `scheduleRender(source)`   | Manager     | Unified render entry point     |
+| `_itemElements`            | Manager     | DOM reconciliation Map         |
+| `_probeBackgroundHealth()` | Manager     | Circuit breaker health probe   |
+| `BroadcastChannelManager`  | channels/   | Real-time tab messaging        |
+| `TabStateManager`          | core/       | Per-tab state (sessions API)   |
+| `QuickTabGroupManager`     | quick-tabs/ | Tab grouping (Firefox 138+)    |
 
 ---
 
@@ -104,6 +119,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
+- [ ] Close all shows error notification on failure (v1.6.3.7-v4)
+- [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
 - [ ] Session Quick Tabs clear on browser close (v1.6.3.7-v3)
 - [ ] BroadcastChannel delivers real-time updates (v1.6.3.7-v3)
 - [ ] Alarms trigger scheduled cleanup (v1.6.3.7-v3)
@@ -116,5 +134,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.7-v3 session tabs,
+**Your strength: Complete Quick Tab system with v1.6.3.7-v4 circuit breaker
+probing, close all feedback, message error handling, and v3 session tabs,
 BroadcastChannel, alarms, and DOM reconciliation.**
