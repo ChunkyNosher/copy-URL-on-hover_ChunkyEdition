@@ -99,6 +99,11 @@ const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 
+// ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
+// Issue #5: Feature flag for verbose message routing logs
+// Set to true to enable detailed logging of message routing at all tiers
+const DEBUG_MESSAGING = true;
+
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
 const RENDER_DEBOUNCE_MS = 300;
@@ -1334,25 +1339,20 @@ function handlePortMessage(message) {
  * Log port message received with details
  * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
  * v1.6.3.7-v5 - FIX Issue #3: Added path indicator for unified message routing logging
+ * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
  * @private
  * @param {Object} message - Message from background
  */
 function _logPortMessageReceived(message) {
-  // v1.6.3.7-v6 - Issue #7: Log message received with channel source
+  // v1.6.4.13 - Issue #5: Consolidated log with [PORT] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
-    messageId: message.messageId,
-    saveId: message.saveId,
-    correlationId: message.correlationId
-  });
-
-  console.log('[Manager] PORT_MESSAGE_RECEIVED:', {
-    type: message.type,
-    action: message.action,
+    quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
     correlationId: message.correlationId,
-    path: 'port-connection',  // v1.6.3.7-v5 - FIX Issue #3: Explicit path indicator
-    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Include connection state
+    from: 'background',
+    path: 'port-connection',
+    connectionState,
     timestamp: Date.now()
   });
 
@@ -1694,6 +1694,7 @@ function initializeBroadcastChannel() {
  * Handle messages from BroadcastChannel
  * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
  * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
+ * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
  * @param {MessageEvent} event - BroadcastChannel message event
  */
 function handleBroadcastChannelMessage(event) {
@@ -1709,19 +1710,13 @@ function handleBroadcastChannelMessage(event) {
   const randomSuffix = Math.random().toString(36).substring(2, 7);
   const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
 
-  // v1.6.3.7-v6 - Issue #7: Log message received with channel source
+  // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
-    timestamp: message.timestamp,
-    messageId: broadcastMessageId
-  });
-
-  console.log('[Manager] BROADCAST_CHANNEL_RECEIVED:', {
-    type: message.type,
-    quickTabId: message.quickTabId,
-    timestamp: message.timestamp,
     messageId: broadcastMessageId,
-    source: 'BroadcastChannel'
+    saveId: message.saveId,
+    from: 'BroadcastChannel',
+    timestamp: Date.now()
   });
 
   // v1.6.3.7-v4 - Route to handler based on message type
@@ -5020,6 +5015,7 @@ function _buildStorageChangeContext(change) {
  * Issue #8: Unified logStorageEvent() format for sequence analysis
  * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
  * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
+ * v1.6.4.13 - Issue #5: Added [STORAGE] prefix for message routing logging
  * @private
  * @param {Object} context - Storage change context
  */
@@ -5029,6 +5025,17 @@ function _logStorageChangeEvent(context) {
   const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
   const addedIds = [...newIds].filter(id => !oldIds.has(id));
   const removedIds = [...oldIds].filter(id => !newIds.has(id));
+
+  // v1.6.4.13 - Issue #5: Log MESSAGE_RECEIVED with [STORAGE] prefix
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:`, {
+      saveId: context.newValue?.saveId,
+      tabCount: context.newTabCount,
+      delta: context.newTabCount - context.oldTabCount,
+      source: `tab-${context.sourceTabId || 'unknown'}`,
+      timestamp: Date.now()
+    });
+  }
 
   // Issue #8: Unified format for storage event logging
   console.log(

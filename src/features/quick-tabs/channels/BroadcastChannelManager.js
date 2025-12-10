@@ -2,6 +2,7 @@
  * BroadcastChannelManager
  * Manages real-time messaging between tabs using BroadcastChannel API
  * v1.6.3.7-v3 - API #2: BroadcastChannel for instant sidebar updates
+ * v1.6.4.13 - Issue #5: Enhanced logging for broadcast operations
  *
  * Purpose: Provides instant messaging between tabs without full re-renders
  * BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
@@ -22,6 +23,9 @@ const CHANNEL_NAME = 'quick-tabs-updates';
 // Track whether BroadcastChannel is supported
 let channelSupported = false;
 let updateChannel = null;
+
+// v1.6.4.13 - Issue #5: Debug flag for verbose logging
+const DEBUG_BC_MESSAGING = true;
 
 /**
  * Initialize the BroadcastChannel
@@ -59,24 +63,53 @@ export function isChannelAvailable() {
 /**
  * Post a message to the BroadcastChannel
  * v1.6.3.7-v3 - API #2: Send targeted change events
+ * v1.6.4.13 - Issue #5: Consolidated logging with success/failure status (single log)
  * @param {Object} message - Message to broadcast
  * @returns {boolean} True if message was sent
  */
 function postMessage(message) {
   if (!isChannelAvailable()) {
-    console.warn('[BroadcastChannelManager] Cannot post - channel not available');
+    if (DEBUG_BC_MESSAGING) {
+      console.warn('[BroadcastChannelManager] [BC] POST_FAILED: Channel not available', {
+        type: message.type,
+        quickTabId: message.quickTabId,
+        success: false,
+        timestamp: Date.now()
+      });
+    }
     return false;
   }
 
   try {
-    updateChannel.postMessage({
+    const timestamp = Date.now();
+    const messageWithMeta = {
       ...message,
-      timestamp: Date.now(),
+      timestamp,
       source: 'BroadcastChannelManager'
-    });
+    };
+    updateChannel.postMessage(messageWithMeta);
+    
+    // v1.6.4.13 - Issue #5: Log POST_SUCCESS with message details (single consolidated log)
+    if (DEBUG_BC_MESSAGING) {
+      console.log('[BroadcastChannelManager] [BC] POST_SUCCESS:', {
+        type: message.type,
+        quickTabId: message.quickTabId,
+        success: true,
+        timestamp
+      });
+    }
     return true;
   } catch (err) {
-    console.error('[BroadcastChannelManager] Failed to post message:', err.message);
+    // v1.6.4.13 - Issue #5: Log POST_FAILED with error details
+    if (DEBUG_BC_MESSAGING) {
+      console.error('[BroadcastChannelManager] [BC] POST_FAILED:', {
+        type: message.type,
+        quickTabId: message.quickTabId,
+        error: err.message,
+        success: false,
+        timestamp: Date.now()
+      });
+    }
     return false;
   }
 }

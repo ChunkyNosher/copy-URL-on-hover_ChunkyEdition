@@ -164,6 +164,11 @@ let keepaliveHealthCheckIntervalId = null; // Health check interval ID
 const PORT_REGISTRY_WARN_THRESHOLD = 50; // Warn if registry exceeds 50 ports
 const PORT_REGISTRY_CRITICAL_THRESHOLD = 100; // Critical if exceeds 100 ports
 
+// ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
+// Issue #5: Feature flag for verbose message routing logs
+// Set to true to enable detailed logging of message routing at all tiers
+const DEBUG_MESSAGING = true;
+
 // ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
 const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
@@ -4101,64 +4106,115 @@ function _sendCloseMessageToTabs(tabs, quickTabId) {
  * Write state to storage with verification and exponential backoff retry
  * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
  * v1.6.4.9 - Issue #8: Enhanced logging with attempt numbers and success signals
+ * v1.6.4.13 - Issue #5: Added [STORAGE] prefix for consistent logging
  * @param {string} operation - Operation name for logging
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerificationAndRetry(operation) {
   const saveId = `bg-${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
+  const tabCount = globalQuickTabState.tabs?.length ?? 0;
+  const stateHash = computeStateHash({ tabs: globalQuickTabState.tabs, saveId });
+
+  // v1.6.4.13 - Issue #5: Log storage write start with [STORAGE] prefix
+  _logStorageWriteStarted(saveId, operation, tabCount, stateHash);
 
   // v1.6.4.9 - Issue #8: Log initial write attempt
   console.log('[Background] STORAGE_WRITE_ATTEMPT:', {
-    saveId,
-    operation,
-    attempt: `1/${STORAGE_WRITE_MAX_RETRIES}`,
-    tabCount: globalQuickTabState.tabs?.length ?? 0
+    saveId, operation, attempt: `1/${STORAGE_WRITE_MAX_RETRIES}`, tabCount
   });
 
+  const result = await _executeStorageWriteLoop(operation, saveId, tabCount, stateHash);
+
+  // Log final result
+  _logStorageWriteFinalResult(result, saveId, operation, tabCount, stateHash);
+
+  return result;
+}
+
+/**
+ * Log storage write start event
+ * v1.6.4.13 - Issue #5: Extracted to reduce complexity
+ * @private
+ */
+function _logStorageWriteStarted(saveId, operation, tabCount, stateHash) {
+  if (DEBUG_MESSAGING) {
+    console.log('[Background] [STORAGE] WRITE_STARTED:', {
+      saveId, operation, tabCount, stateHash, timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Execute the storage write retry loop
+ * v1.6.4.13 - Issue #5: Extracted to reduce complexity
+ * @private
+ */
+async function _executeStorageWriteLoop(operation, saveId, tabCount, stateHash) {
+  let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
+
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(
-      operation,
-      saveId,
-      attempt,
-      backoffMs
-    );
+    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
 
     if (result.success && result.verified) {
-      // v1.6.4.9 - Issue #8: Clear success signal
-      console.log('[Background] STORAGE_WRITE_SUCCESS:', {
-        saveId,
-        operation,
-        attemptNumber: attempt,
-        totalAttempts: STORAGE_WRITE_MAX_RETRIES,
-        tabCount: globalQuickTabState.tabs?.length ?? 0
-      });
+      _logStorageWriteSuccess(saveId, operation, tabCount, stateHash, attempt);
       return result;
     }
 
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
-      // v1.6.4.9 - Issue #8: Log each retry with clear attempt counter
-      console.log('[Background] STORAGE_WRITE_RETRY:', {
-        saveId,
-        operation,
-        attempt: `${attempt + 1}/${STORAGE_WRITE_MAX_RETRIES}`,
-        backoffMs,
-        reason: 'verification pending'
-      });
+      _logStorageWriteRetry(saveId, operation, attempt, backoffMs);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
     }
   }
 
-  // v1.6.4.9 - Issue #8: Clear failure signal when all retries exhausted
-  console.error('[Background] STORAGE_WRITE_FINAL_FAILURE:', {
-    operation,
-    saveId,
-    totalAttempts: STORAGE_WRITE_MAX_RETRIES,
-    tabCount: globalQuickTabState.tabs?.length ?? 0
+  return { success: false, saveId, verified: false, attempts: STORAGE_WRITE_MAX_RETRIES };
+}
+
+/**
+ * Log storage write success event
+ * v1.6.4.13 - Issue #5: Extracted to reduce complexity
+ * @private
+ */
+function _logStorageWriteSuccess(saveId, operation, tabCount, stateHash, attemptNumber) {
+  console.log('[Background] STORAGE_WRITE_SUCCESS:', {
+    saveId, operation, attemptNumber, totalAttempts: STORAGE_WRITE_MAX_RETRIES, tabCount
   });
 
-  return { success: false, saveId, verified: false, attempts: STORAGE_WRITE_MAX_RETRIES };
+  if (DEBUG_MESSAGING) {
+    console.log('[Background] [STORAGE] WRITE_SUCCESS:', {
+      saveId, operation, tabCount, stateHash, attemptNumber, timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Log storage write retry event
+ * v1.6.4.13 - Issue #5: Extracted to reduce complexity
+ * @private
+ */
+function _logStorageWriteRetry(saveId, operation, attempt, backoffMs) {
+  console.log('[Background] STORAGE_WRITE_RETRY:', {
+    saveId, operation, attempt: `${attempt + 1}/${STORAGE_WRITE_MAX_RETRIES}`, backoffMs, reason: 'verification pending'
+  });
+}
+
+/**
+ * Log final storage write result
+ * v1.6.4.13 - Issue #5: Extracted to reduce complexity
+ * @private
+ */
+function _logStorageWriteFinalResult(result, saveId, operation, tabCount, stateHash) {
+  if (result.success) return;
+
+  console.error('[Background] STORAGE_WRITE_FINAL_FAILURE:', {
+    operation, saveId, totalAttempts: STORAGE_WRITE_MAX_RETRIES, tabCount
+  });
+
+  if (DEBUG_MESSAGING) {
+    console.error('[Background] [STORAGE] WRITE_FAILED:', {
+      saveId, operation, tabCount, stateHash, totalAttempts: STORAGE_WRITE_MAX_RETRIES, timestamp: Date.now()
+    });
+  }
 }
 
 /**
@@ -4766,6 +4822,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
 /**
  * Broadcast state update via BroadcastChannel (Tier 1 - PRIMARY)
  * v1.6.3.7-v7 - FIX Issue #1 & #2: Use BroadcastChannel for instant Manager updates
+ * v1.6.4.13 - Issue #5: Enhanced BROADCAST_SENT logging with success/failure
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
@@ -4773,34 +4830,46 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
  */
 function _broadcastViaBroadcastChannel(quickTabId, changes, messageId) {
   if (!isBroadcastChannelAvailable()) {
-    console.log('[Background] [BC] BroadcastChannel not available, skipping BC broadcast');
+    // v1.6.4.13 - Issue #5: Log channel unavailable with [BC] prefix
+    if (DEBUG_MESSAGING) {
+      console.log('[Background] [BC] BROADCAST_SKIPPED: BroadcastChannel not available', {
+        quickTabId,
+        messageId,
+        timestamp: Date.now()
+      });
+    }
     return;
   }
 
   let bcSuccess = false;
+  let broadcastType = 'unknown';
 
   // Determine broadcast type based on changes
   if (changes?.deleted === true) {
-    // Deletion
+    broadcastType = 'quick-tab-deleted';
     bcSuccess = broadcastQuickTabDeleted(quickTabId);
-    console.log('[Background] [BC] Broadcast quick-tab-deleted:', { quickTabId, messageId, success: bcSuccess });
   } else if (changes?.minimized === true) {
-    // Minimize
+    broadcastType = 'quick-tab-minimized';
     bcSuccess = broadcastQuickTabMinimized(quickTabId);
-    console.log('[Background] [BC] Broadcast quick-tab-minimized:', { quickTabId, messageId, success: bcSuccess });
   } else if (changes?.minimized === false) {
-    // Restore from minimized
+    broadcastType = 'quick-tab-restored';
     bcSuccess = broadcastQuickTabRestored(quickTabId);
-    console.log('[Background] [BC] Broadcast quick-tab-restored:', { quickTabId, messageId, success: bcSuccess });
   } else if (changes?.url && !globalQuickTabState.tabs.find(t => t.id === quickTabId)) {
-    // New tab (has URL and not in cache yet)
+    broadcastType = 'quick-tab-created';
     bcSuccess = broadcastQuickTabCreated(quickTabId, changes);
-    console.log('[Background] [BC] Broadcast quick-tab-created:', { quickTabId, messageId, success: bcSuccess });
   } else {
-    // General update
+    broadcastType = 'quick-tab-updated';
     bcSuccess = broadcastQuickTabUpdated(quickTabId, changes);
-    console.log('[Background] [BC] Broadcast quick-tab-updated:', { quickTabId, messageId, success: bcSuccess });
   }
+
+  // v1.6.4.13 - Issue #5: Log BROADCAST_SENT with consistent format (single consolidated log)
+  console.log('[Background] [BC] BROADCAST_SENT:', {
+    type: broadcastType,
+    quickTabId,
+    messageId,
+    success: bcSuccess,
+    timestamp: Date.now()
+  });
 }
 
 /**
