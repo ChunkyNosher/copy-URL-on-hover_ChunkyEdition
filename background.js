@@ -1684,54 +1684,100 @@ function _logWriteValidationFailure(operationId, failureType, details) {
 }
 
 /**
+ * Build validation context metadata for logging
+ * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce _validateWriteReadback cc
+ * @private
+ */
+function _buildValidationMeta(context) {
+  return { durationMs: Date.now() - context.writeStart };
+}
+
+/**
+ * Check if readback data is null/undefined
+ * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
+ * @private
+ */
+function _checkNullReadback(readBack, stateToWrite, context) {
+  if (readBack) return null;
+  
+  _logWriteValidationFailure(context.operationId, 'READ_RETURNED_NULL', {
+    expectedTabs: context.expectedTabs, actualTabs: 0, saveId: stateToWrite.saveId,
+    ..._buildValidationMeta(context)
+  });
+  return { valid: false, failureType: 'READ_RETURNED_NULL' };
+}
+
+/**
+ * Check if saveId matches expected value
+ * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
+ * @private
+ */
+function _checkSaveIdMatch(readBack, stateToWrite, context) {
+  if (readBack.saveId === stateToWrite.saveId) return null;
+  
+  _logWriteValidationFailure(context.operationId, 'SAVEID_MISMATCH', {
+    expectedSaveId: stateToWrite.saveId, actualSaveId: readBack.saveId,
+    expectedTabs: context.expectedTabs, actualTabs: readBack?.tabs?.length || 0,
+    ..._buildValidationMeta(context)
+  });
+  return { valid: false, failureType: 'SAVEID_MISMATCH', readBack };
+}
+
+/**
+ * Check if tab count matches expected value
+ * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
+ * @private
+ */
+function _checkTabCountMatch(readBack, stateToWrite, context) {
+  const actualTabs = readBack?.tabs?.length || 0;
+  if (context.expectedTabs === actualTabs) return null;
+  
+  _logWriteValidationFailure(context.operationId, 'TAB_COUNT_MISMATCH', {
+    expectedTabs: context.expectedTabs, actualTabs, difference: context.expectedTabs - actualTabs,
+    saveId: stateToWrite.saveId, ..._buildValidationMeta(context)
+  });
+  return { valid: false, failureType: 'TAB_COUNT_MISMATCH' };
+}
+
+/**
+ * Check if checksum matches expected value
+ * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
+ * @private
+ */
+function _checkChecksumMatch(readBack, stateToWrite, context) {
+  const expectedChecksum = _computeStorageChecksum(stateToWrite);
+  const actualChecksum = _computeStorageChecksum(readBack);
+  if (expectedChecksum === actualChecksum) return null;
+  
+  const actualTabs = readBack?.tabs?.length || 0;
+  _logWriteValidationFailure(context.operationId, 'CHECKSUM_MISMATCH', {
+    expectedChecksum, actualChecksum, expectedTabs: context.expectedTabs, actualTabs,
+    saveId: stateToWrite.saveId, ..._buildValidationMeta(context)
+  });
+  return { valid: false, failureType: 'CHECKSUM_MISMATCH' };
+}
+
+/**
  * Validate readback data against expected state
  * v1.6.3.7-v13 - Issue #2: Helper to reduce _writeQuickTabStateWithValidation complexity
+ * v1.6.3.7-v14 - FIX Complexity: Extracted checks into separate functions
  * @private
  */
 function _validateWriteReadback(stateToWrite, readBack, context) {
-  const { operationId, expectedTabs, writeStart } = context;
+  // Run validation checks in order, return first failure
+  const nullCheck = _checkNullReadback(readBack, stateToWrite, context);
+  if (nullCheck) return nullCheck;
   
-  // Check for null read
-  if (!readBack) {
-    _logWriteValidationFailure(operationId, 'READ_RETURNED_NULL', {
-      expectedTabs, actualTabs: 0, saveId: stateToWrite.saveId,
-      durationMs: Date.now() - writeStart
-    });
-    return { valid: false, failureType: 'READ_RETURNED_NULL' };
-  }
+  const saveIdCheck = _checkSaveIdMatch(readBack, stateToWrite, context);
+  if (saveIdCheck) return saveIdCheck;
   
-  // Check saveId
-  if (readBack.saveId !== stateToWrite.saveId) {
-    _logWriteValidationFailure(operationId, 'SAVEID_MISMATCH', {
-      expectedSaveId: stateToWrite.saveId, actualSaveId: readBack.saveId,
-      expectedTabs, actualTabs: readBack?.tabs?.length || 0,
-      durationMs: Date.now() - writeStart
-    });
-    return { valid: false, failureType: 'SAVEID_MISMATCH', readBack };
-  }
+  const tabCountCheck = _checkTabCountMatch(readBack, stateToWrite, context);
+  if (tabCountCheck) return tabCountCheck;
   
-  // Check tab count
-  const actualTabs = readBack?.tabs?.length || 0;
-  if (expectedTabs !== actualTabs) {
-    _logWriteValidationFailure(operationId, 'TAB_COUNT_MISMATCH', {
-      expectedTabs, actualTabs, difference: expectedTabs - actualTabs,
-      saveId: stateToWrite.saveId, durationMs: Date.now() - writeStart
-    });
-    return { valid: false, failureType: 'TAB_COUNT_MISMATCH' };
-  }
+  const checksumCheck = _checkChecksumMatch(readBack, stateToWrite, context);
+  if (checksumCheck) return checksumCheck;
   
-  // Check checksum
-  const expectedChecksum = _computeStorageChecksum(stateToWrite);
-  const actualChecksum = _computeStorageChecksum(readBack);
-  if (expectedChecksum !== actualChecksum) {
-    _logWriteValidationFailure(operationId, 'CHECKSUM_MISMATCH', {
-      expectedChecksum, actualChecksum, expectedTabs, actualTabs,
-      saveId: stateToWrite.saveId, durationMs: Date.now() - writeStart
-    });
-    return { valid: false, failureType: 'CHECKSUM_MISMATCH' };
-  }
-  
-  return { valid: true, actualTabs };
+  return { valid: true, actualTabs: readBack?.tabs?.length || 0 };
 }
 
 /**
@@ -1801,6 +1847,22 @@ async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
  * @param {Object} [readBackState] - State read back from storage (if available)
  * @returns {Promise<{recovered: boolean, method: string, reason: string}>}
  */
+/**
+ * Map of recovery strategies by failure type
+ * v1.6.3.7-v14 - FIX Complexity: Strategy map to reduce switch complexity
+ * @private
+ */
+const RECOVERY_STRATEGIES = {
+  'READ_RETURNED_NULL': (operationId, intendedState) => 
+    _recoverFromNullRead(operationId, intendedState),
+  'TAB_COUNT_MISMATCH': (operationId, intendedState) => 
+    _recoverFromTabCountMismatch(operationId, intendedState),
+  'SAVEID_MISMATCH': (operationId, intendedState, readBackState) => 
+    _recoverFromSaveIdMismatch(operationId, intendedState, readBackState),
+  'CHECKSUM_MISMATCH': (operationId, intendedState) => 
+    _recoverFromChecksumMismatch(operationId, intendedState)
+};
+
 async function _attemptStorageWriteRecovery(operationId, intendedState, failureType, readBackState = null) {
   console.log('[Background] RECOVERY_ATTEMPT:', {
     operationId,
@@ -1810,27 +1872,12 @@ async function _attemptStorageWriteRecovery(operationId, intendedState, failureT
   });
   
   try {
-    switch (failureType) {
-      case 'READ_RETURNED_NULL':
-        // Quota likely exceeded - try clearing oldest Quick Tabs
-        return await _recoverFromNullRead(operationId, intendedState);
-        
-      case 'TAB_COUNT_MISMATCH':
-        // Corruption - re-write the entire state
-        return await _recoverFromTabCountMismatch(operationId, intendedState);
-        
-      case 'SAVEID_MISMATCH':
-        // Check if this is out-of-order event via sequence ID
-        return await _recoverFromSaveIdMismatch(operationId, intendedState, readBackState);
-        
-      case 'CHECKSUM_MISMATCH':
-        // Data corruption - re-write with verification
-        return await _recoverFromChecksumMismatch(operationId, intendedState);
-        
-      default:
-        console.warn('[Background] RECOVERY_UNKNOWN_FAILURE_TYPE:', { operationId, failureType });
-        return { recovered: false, method: 'none', reason: `Unknown failure type: ${failureType}` };
+    const strategy = RECOVERY_STRATEGIES[failureType];
+    if (!strategy) {
+      console.warn('[Background] RECOVERY_UNKNOWN_FAILURE_TYPE:', { operationId, failureType });
+      return { recovered: false, method: 'none', reason: `Unknown failure type: ${failureType}` };
     }
+    return await strategy(operationId, intendedState, readBackState);
   } catch (err) {
     console.error('[Background] RECOVERY_ERROR:', {
       operationId,
@@ -1920,45 +1967,91 @@ function _logRecoveryFailure(operationId, failureType, recommendation) {
 }
 
 /**
- * Recover from tab count mismatch (corruption)
- * v1.6.3.7-v13 - Issue #7: Re-write state with verification
+ * Generate recovery save ID with type prefix
+ * v1.6.3.7-v14 - FIX Duplication: Extracted common pattern
  * @private
  */
-async function _recoverFromTabCountMismatch(operationId, intendedState) {
-  console.log('[Background] RECOVERY_STRATEGY: Re-writing state (tab count mismatch corruption)');
-  
-  const recoverySaveId = `recovery-count-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = {
-    ...intendedState,
-    saveId: recoverySaveId,
-    sequenceId: _getNextStorageSequenceId(),
-    recoveredFrom: 'TAB_COUNT_MISMATCH',
-    recoveryTimestamp: Date.now()
-  };
-  
-  const writeResult = await _tryRecoveryWriteWithTabCount(operationId, recoveryState, recoverySaveId, intendedState?.tabs?.length);
-  if (!writeResult.success) {
-    return _logRecoveryFailure(operationId, 'TAB_COUNT_MISMATCH', 'state corruption persists - recommend clearing storage');
-  }
-  
-  console.log('[Background] RECOVERY_SUCCESS:', {
-    operationId, method: 're-write', tabCount: writeResult.tabCount,
-    recoverySaveId, timestamp: Date.now()
-  });
-  return { recovered: true, method: 're-write', reason: 'Successfully re-wrote state' };
+function _generateRecoverySaveId(type) {
+  return `recovery-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 /**
- * Try a recovery write and verify with tab count check
- * v1.6.3.7-v13 - Issue #7: Helper for tab count mismatch recovery
+ * Build recovery state from intended state
+ * v1.6.3.7-v14 - FIX Duplication: Extracted common pattern
  * @private
  */
-async function _tryRecoveryWriteWithTabCount(operationId, recoveryState, expectedSaveId, expectedTabCount) {
+function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
+  return {
+    ...intendedState,
+    saveId: recoverySaveId,
+    sequenceId: _getNextStorageSequenceId(),
+    recoveredFrom: failureType,
+    recoveryTimestamp: Date.now()
+  };
+}
+
+/**
+ * Log recovery success with details
+ * v1.6.3.7-v14 - FIX Duplication: Extracted common logging
+ * @private
+ */
+function _logRecoverySuccess(operationId, method, recoverySaveId, additionalDetails = {}) {
+  console.log('[Background] RECOVERY_SUCCESS:', {
+    operationId, method, recoverySaveId, ...additionalDetails, timestamp: Date.now()
+  });
+}
+
+/**
+ * Execute recovery with write and verification
+ * v1.6.3.7-v14 - FIX Duplication: Unified recovery execution pattern
+ * @private
+ */
+async function _executeRecoveryWithVerification(config) {
+  const { operationId, intendedState, failureType, saveIdPrefix, method, verifyFn, successDetails = {}, failureRecommendation } = config;
+  
+  console.log(`[Background] RECOVERY_STRATEGY: Re-writing state (${failureType.toLowerCase().replace('_', ' ')})`);
+  
+  const recoverySaveId = _generateRecoverySaveId(saveIdPrefix);
+  const recoveryState = _buildRecoveryState(intendedState, recoverySaveId, failureType);
+  
+  const writeResult = await _tryRecoveryWriteAndVerify(operationId, recoveryState, recoverySaveId, verifyFn);
+  if (!writeResult.success) {
+    return _logRecoveryFailure(operationId, failureType, failureRecommendation);
+  }
+  
+  _logRecoverySuccess(operationId, method, recoverySaveId, { ...successDetails, tabCount: writeResult.tabCount });
+  return { recovered: true, method, reason: `Successfully re-wrote state` };
+}
+
+/**
+ * Recover from tab count mismatch (corruption)
+ * v1.6.3.7-v13 - Issue #7: Re-write state with verification
+ * v1.6.3.7-v14 - FIX Duplication: Use unified recovery execution
+ * @private
+ */
+async function _recoverFromTabCountMismatch(operationId, intendedState) {
+  const expectedTabCount = intendedState?.tabs?.length;
+  return _executeRecoveryWithVerification({
+    operationId, intendedState,
+    failureType: 'TAB_COUNT_MISMATCH',
+    saveIdPrefix: 'count',
+    method: 're-write',
+    verifyFn: (_expected, actual) => actual?.tabs?.length === expectedTabCount,
+    failureRecommendation: 'state corruption persists - recommend clearing storage'
+  });
+}
+
+/**
+ * Unified recovery write and verify operation
+ * v1.6.3.7-v14 - FIX Duplication: Replaces _tryRecoveryWriteWithTabCount and _tryRecoveryWriteWithChecksum
+ * @private
+ */
+async function _tryRecoveryWriteAndVerify(operationId, recoveryState, expectedSaveId, verifyFn) {
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
     const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifyData = verifyResult?.quick_tabs_state_v2;
-    const success = verifyData?.saveId === expectedSaveId && verifyData?.tabs?.length === expectedTabCount;
+    const success = verifyData?.saveId === expectedSaveId && verifyFn(recoveryState, verifyData);
     return { success, tabCount: verifyData?.tabs?.length || 0 };
   } catch (err) {
     console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
@@ -1967,18 +2060,19 @@ async function _tryRecoveryWriteWithTabCount(operationId, recoveryState, expecte
 }
 
 /**
- * Recover from saveId mismatch (check sequence ID ordering)
- * v1.6.3.7-v13 - Issue #7: Verify sequence ID ordering
+ * Check if sequence ordering indicates write was superseded
+ * v1.6.3.7-v14 - FIX Complexity: Extracted from _recoverFromSaveIdMismatch
  * @private
  */
-async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackState) {
-  console.log('[Background] RECOVERY_STRATEGY: Checking sequence ID ordering (saveId mismatch)');
-  
+function _checkSequenceSuperseded(operationId, intendedState, readBackState) {
   const intendedSeqId = intendedState?.sequenceId;
   const actualSeqId = readBackState?.sequenceId;
   
-  // If both have sequence IDs, check ordering
-  if (typeof intendedSeqId === 'number' && typeof actualSeqId === 'number' && actualSeqId > intendedSeqId) {
+  if (typeof intendedSeqId !== 'number' || typeof actualSeqId !== 'number') {
+    return null;
+  }
+  
+  if (actualSeqId > intendedSeqId) {
     console.log('[Background] RECOVERY_OUT_OF_ORDER_EVENT:', {
       operationId, intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId,
       explanation: 'Storage contains newer write - our write was superseded, no recovery needed',
@@ -1987,81 +2081,54 @@ async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackSt
     return { recovered: true, method: 'sequence-superseded', reason: 'Storage has newer sequence ID - no action needed' };
   }
   
-  // Log out-of-order if applicable
-  if (typeof intendedSeqId === 'number' && typeof actualSeqId === 'number') {
-    console.log('[Background] OUT_OF_ORDER_EVENTS: Older sequence fired after newer', {
-      intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId, operationId
-    });
-  }
+  console.log('[Background] OUT_OF_ORDER_EVENTS: Older sequence fired after newer', {
+    intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId, operationId
+  });
+  return null;
+}
+
+/**
+ * Recover from saveId mismatch (check sequence ID ordering)
+ * v1.6.3.7-v13 - Issue #7: Verify sequence ID ordering
+ * v1.6.3.7-v14 - FIX Complexity: Extracted sequence check
+ * @private
+ */
+async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackState) {
+  console.log('[Background] RECOVERY_STRATEGY: Checking sequence ID ordering (saveId mismatch)');
+  
+  // Check if our write was superseded by a newer one
+  const supersededResult = _checkSequenceSuperseded(operationId, intendedState, readBackState);
+  if (supersededResult) return supersededResult;
   
   // Try re-writing with force
-  const recoverySaveId = `recovery-saveid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = {
-    ...intendedState,
-    saveId: recoverySaveId,
-    sequenceId: _getNextStorageSequenceId(),
-    recoveredFrom: 'SAVEID_MISMATCH',
-    recoveryTimestamp: Date.now()
-  };
+  const recoverySaveId = _generateRecoverySaveId('saveid');
+  const recoveryState = _buildRecoveryState(intendedState, recoverySaveId, 'SAVEID_MISMATCH');
   
   const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
   if (!writeResult.success) {
     return _logRecoveryFailure(operationId, 'SAVEID_MISMATCH', 'concurrent writes may be blocking');
   }
   
-  console.log('[Background] RECOVERY_SUCCESS:', {
-    operationId, method: 're-write-force', recoverySaveId, timestamp: Date.now()
-  });
+  _logRecoverySuccess(operationId, 're-write-force', recoverySaveId);
   return { recovered: true, method: 're-write-force', reason: 'Forced re-write with new saveId' };
 }
 
 /**
  * Recover from checksum mismatch (data corruption)
  * v1.6.3.7-v13 - Issue #7: Re-write with verification
+ * v1.6.3.7-v14 - FIX Duplication: Use unified recovery execution
  * @private
  */
 async function _recoverFromChecksumMismatch(operationId, intendedState) {
-  console.log('[Background] RECOVERY_STRATEGY: Re-writing state (checksum mismatch corruption)');
-  
-  const recoverySaveId = `recovery-checksum-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = {
-    ...intendedState,
-    saveId: recoverySaveId,
-    sequenceId: _getNextStorageSequenceId(),
-    recoveredFrom: 'CHECKSUM_MISMATCH',
-    recoveryTimestamp: Date.now()
-  };
-  
-  const writeResult = await _tryRecoveryWriteWithChecksum(operationId, recoveryState, recoverySaveId);
-  if (!writeResult.success) {
-    return _logRecoveryFailure(operationId, 'CHECKSUM_MISMATCH', 'persistent data corruption - recommend clearing storage');
-  }
-  
-  console.log('[Background] RECOVERY_SUCCESS:', {
-    operationId, method: 're-write-verified', tabCount: writeResult.tabCount,
-    checksumVerified: true, timestamp: Date.now()
+  return _executeRecoveryWithVerification({
+    operationId, intendedState,
+    failureType: 'CHECKSUM_MISMATCH',
+    saveIdPrefix: 'checksum',
+    method: 're-write-verified',
+    verifyFn: (expected, actual) => _computeStorageChecksum(expected) === _computeStorageChecksum(actual),
+    successDetails: { checksumVerified: true },
+    failureRecommendation: 'persistent data corruption - recommend clearing storage'
   });
-  return { recovered: true, method: 're-write-verified', reason: 'Successfully re-wrote state with checksum verification' };
-}
-
-/**
- * Try a recovery write and verify with checksum check
- * v1.6.3.7-v13 - Issue #7: Helper for checksum mismatch recovery
- * @private
- */
-async function _tryRecoveryWriteWithChecksum(operationId, recoveryState, expectedSaveId) {
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
-    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
-    const verifyData = verifyResult?.quick_tabs_state_v2;
-    const expectedChecksum = _computeStorageChecksum(recoveryState);
-    const actualChecksum = _computeStorageChecksum(verifyData);
-    const success = verifyData?.saveId === expectedSaveId && expectedChecksum === actualChecksum;
-    return { success, tabCount: verifyData?.tabs?.length || 0 };
-  } catch (err) {
-    console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
-    return { success: false };
-  }
 }
 
 /**
@@ -4552,25 +4619,52 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * @param {Object} logDetails - Additional details for logging
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
-function _createSkipResult(method, reason, logDetails = {}) {
-  // v1.6.3.7-v12 - Issue #6: Track skipped count
-  dedupStats.skipped++;
+/**
+ * Get current dedup stats snapshot
+ * v1.6.3.7-v14 - FIX Duplication: Extracted common stats getter
+ * @private
+ */
+function _getDedupStatsSnapshot() {
+  return {
+    skipped: dedupStats.skipped,
+    processed: dedupStats.processed,
+    total: dedupStats.skipped + dedupStats.processed
+  };
+}
+
+/**
+ * Create a dedup result with logging
+ * v1.6.3.7-v14 - FIX Duplication: Unified factory for skip/process results
+ * v1.6.3.7-v14 - FIX Excess Args: Use options object pattern
+ * @private
+ * @param {Object} options - Result configuration
+ * @param {boolean} options.shouldSkip - Whether to skip processing
+ * @param {string} options.method - Dedup method used
+ * @param {string} options.reason - Reason for decision
+ * @param {string} options.decision - Decision type (skip/process)
+ * @param {Object} options.logDetails - Additional logging details
+ */
+function _createDedupResult({ shouldSkip, method, reason, decision, logDetails = {} }) {
+  if (shouldSkip) {
+    dedupStats.skipped++;
+  } else {
+    dedupStats.processed++;
+  }
   
-  const result = { shouldSkip: true, method, reason };
+  const result = { shouldSkip, method, reason };
   
-  // v1.6.3.7-v12 - Issue #6: Always log dedup decisions regardless of DEBUG_MESSAGING
   console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
-    decision: 'skip',
-    dedupStatsSnapshot: {
-      skipped: dedupStats.skipped,
-      processed: dedupStats.processed,
-      total: dedupStats.skipped + dedupStats.processed
-    },
+    decision,
+    dedupStatsSnapshot: _getDedupStatsSnapshot(),
     ...logDetails,
     timestamp: Date.now()
   });
   return result;
+}
+
+function _createSkipResult(method, reason, logDetails = {}) {
+  return _createDedupResult({ shouldSkip: true, method, reason, decision: 'skip', logDetails });
 }
 
 /**
@@ -4578,30 +4672,13 @@ function _createSkipResult(method, reason, logDetails = {}) {
  * v1.6.4.13 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
  * v1.6.3.7-v12 - Issue #6: Track dedup statistics and log all decisions
  * v1.6.3.7-v13 - Issue #8: Add optional logDetails parameter for context
+ * v1.6.3.7-v14 - FIX Duplication: Delegates to unified factory
  * @private
  * @param {Object} logDetails - Optional details for logging (saveId, sequenceId, etc.)
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _createProcessResult(logDetails = {}) {
-  // v1.6.3.7-v12 - Issue #6: Track processed count
-  dedupStats.processed++;
-  
-  const result = { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
-  
-  // v1.6.3.7-v12 - Issue #6: Always log dedup decisions regardless of DEBUG_MESSAGING
-  // v1.6.3.7-v13 - Issue #8: Include context details for better debugging
-  console.log('[Background] [STORAGE] DEDUP_DECISION:', {
-    ...result,
-    decision: 'process',
-    dedupStatsSnapshot: {
-      skipped: dedupStats.skipped,
-      processed: dedupStats.processed,
-      total: dedupStats.skipped + dedupStats.processed
-    },
-    ...logDetails,
-    timestamp: Date.now()
-  });
-  return result;
+  return _createDedupResult({ shouldSkip: false, method: 'none', reason: 'Legitimate change', decision: 'process', logDetails });
 }
 
 // ==================== EVENT ORDERING ARCHITECTURE (v1.6.3.7-v9, v1.6.3.7-v13) ====================
@@ -4683,14 +4760,12 @@ function _buildSaveIdComparisonDetails(newValue, oldValue) {
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
-function _multiMethodDeduplication(newValue, oldValue) {
-  // v1.6.3.7-v9 - FIX Issue #3: Log dedup check start with comparison values
-  console.log('[Background] [STORAGE] DEDUP_CHECK:', _buildDedupLogDetails(newValue, oldValue));
-
-  // v1.6.3.7-v12 - Issue #9: Method 0 (PRIMARY) - Sequence ID ordering
-  // Sequence IDs are assigned at write time and provide stronger ordering guarantees
-  // than timestamp-based windows because Firefox's storage.onChanged events can fire
-  // out of order due to async listener processing
+/**
+ * Run sequence ID dedup check
+ * v1.6.3.7-v14 - FIX Complexity: Extracted dedup step
+ * @private
+ */
+function _runSequenceIdCheck(newValue, oldValue) {
   const sequenceResult = _checkSequenceIdOrdering(newValue, oldValue);
   if (sequenceResult.shouldSkip) {
     return _createSkipResult('sequenceId', sequenceResult.reason, {
@@ -4699,24 +4774,51 @@ function _multiMethodDeduplication(newValue, oldValue) {
       explanation: 'Sequence ID ordering: events with lower or equal sequenceId than already-processed events are duplicates'
     });
   }
+  return null;
+}
 
-  // v1.6.3.7-v9 - FIX Issue #3: Method 1 (SECONDARY) - saveId + timestamp comparison
-  // Fallback for writes without sequenceId (legacy or external)
+/**
+ * Run saveId + timestamp dedup check
+ * v1.6.3.7-v14 - FIX Complexity: Extracted dedup step
+ * @private
+ */
+function _runSaveIdTimestampCheck(newValue, oldValue) {
   if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
     return _createSkipResult('saveId+timestamp', 'Same saveId and timestamp within window', {
       comparison: _buildSaveIdComparisonDetails(newValue, oldValue),
       note: 'Fallback method - new writes should use sequenceId'
     });
   }
+  return null;
+}
 
-  // v1.6.3.7-v9 - FIX Issue #3: Method 2 (TERTIARY) - Content hash comparison
+/**
+ * Run content hash dedup check
+ * v1.6.3.7-v14 - FIX Complexity: Extracted dedup step
+ * @private
+ */
+function _runContentHashCheck(newValue, oldValue) {
   if (_isContentHashDuplicate(newValue, oldValue)) {
     return _createSkipResult('contentHash', 'Identical content (tertiary safeguard for no-saveId messages)', {
       hasSaveId: !!newValue?.saveId
     });
   }
+  return null;
+}
 
-  // v1.6.3.7-v13 - Issue #8: Pass context to _createProcessResult for debugging
+function _multiMethodDeduplication(newValue, oldValue) {
+  console.log('[Background] [STORAGE] DEDUP_CHECK:', _buildDedupLogDetails(newValue, oldValue));
+
+  // Run dedup checks in priority order, return first match
+  const sequenceCheck = _runSequenceIdCheck(newValue, oldValue);
+  if (sequenceCheck) return sequenceCheck;
+
+  const saveIdCheck = _runSaveIdTimestampCheck(newValue, oldValue);
+  if (saveIdCheck) return saveIdCheck;
+
+  const hashCheck = _runContentHashCheck(newValue, oldValue);
+  if (hashCheck) return hashCheck;
+
   return _createProcessResult({
     saveId: newValue?.saveId,
     sequenceId: newValue?.sequenceId,
@@ -4755,48 +4857,65 @@ function _multiMethodDeduplication(newValue, oldValue) {
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, reason: string }}
  */
-function _checkSequenceIdOrdering(newValue, oldValue) {
-  const newSeqId = newValue?.sequenceId;
-  const oldSeqId = oldValue?.sequenceId;
-  
-  // Can't use sequence ordering if either lacks sequenceId
-  if (typeof newSeqId !== 'number' || typeof oldSeqId !== 'number') {
-    if (DEBUG_DIAGNOSTICS) {
-      console.log('[Background] [STORAGE] SEQUENCE_ID_CHECK: Missing sequenceId, falling back to other methods', {
-        hasNewSeqId: typeof newSeqId === 'number',
-        hasOldSeqId: typeof oldSeqId === 'number'
-      });
-    }
-    return { shouldSkip: false, reason: 'No sequenceId available' };
-  }
-  
-  // If new event has same or lower sequence ID, it's a duplicate or out-of-order event
-  if (newSeqId <= oldSeqId) {
-    // v1.6.3.7-v13 - Issue #3: Log out-of-order events for diagnostics
-    const isOutOfOrder = newSeqId < oldSeqId;
-    if (isOutOfOrder) {
-      console.log('[Background] [STORAGE] OUT_OF_ORDER_EVENTS: Older sequence fired after newer sequence', {
-        olderSequenceId: newSeqId,
-        newerSequenceId: oldSeqId,
-        explanation: 'Firefox storage.onChanged events can fire in any order - this older write arrived late'
-      });
-    }
-    
-    console.log('[Background] [STORAGE] SEQUENCE_ID_SKIP: Old or duplicate event detected', {
-      newSequenceId: newSeqId,
-      oldSequenceId: oldSeqId,
-      isDuplicate: newSeqId === oldSeqId,
-      isOutOfOrder
+/**
+ * Check if both values have valid numeric sequence IDs
+ * v1.6.3.7-v14 - FIX Complexity: Extracted predicate to reduce cc
+ * @private
+ */
+function _hasValidSequenceIds(newValue, oldValue) {
+  return typeof newValue?.sequenceId === 'number' && typeof oldValue?.sequenceId === 'number';
+}
+
+/**
+ * Log missing sequence ID diagnostic
+ * v1.6.3.7-v14 - FIX Complexity: Extracted logger to reduce cc
+ * @private
+ */
+function _logMissingSequenceId(newSeqId, oldSeqId) {
+  if (DEBUG_DIAGNOSTICS) {
+    console.log('[Background] [STORAGE] SEQUENCE_ID_CHECK: Missing sequenceId, falling back to other methods', {
+      hasNewSeqId: typeof newSeqId === 'number',
+      hasOldSeqId: typeof oldSeqId === 'number'
     });
-    return { 
-      shouldSkip: true, 
-      reason: newSeqId === oldSeqId 
-        ? 'Same sequenceId (duplicate event)' 
-        : 'Lower sequenceId (out-of-order event from older write)'
-    };
+  }
+}
+
+/**
+ * Log and return skip result for stale/duplicate sequence
+ * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce cc and flatten conditionals
+ * @private
+ */
+function _handleStaleSequenceId(newSeqId, oldSeqId) {
+  const isDuplicate = newSeqId === oldSeqId;
+  const isOutOfOrder = newSeqId < oldSeqId;
+  
+  if (isOutOfOrder) {
+    console.log('[Background] [STORAGE] OUT_OF_ORDER_EVENTS: Older sequence fired after newer sequence', {
+      olderSequenceId: newSeqId,
+      newerSequenceId: oldSeqId,
+      explanation: 'Firefox storage.onChanged events can fire in any order - this older write arrived late'
+    });
   }
   
-  // New event has higher sequence ID - this is the expected case
+  console.log('[Background] [STORAGE] SEQUENCE_ID_SKIP: Old or duplicate event detected', {
+    newSequenceId: newSeqId,
+    oldSequenceId: oldSeqId,
+    isDuplicate,
+    isOutOfOrder
+  });
+  
+  const reason = isDuplicate 
+    ? 'Same sequenceId (duplicate event)' 
+    : 'Lower sequenceId (out-of-order event from older write)';
+  return { shouldSkip: true, reason };
+}
+
+/**
+ * Log valid sequence progression diagnostic
+ * v1.6.3.7-v14 - FIX Complexity: Extracted logger to reduce cc
+ * @private
+ */
+function _logValidSequenceProgression(newSeqId, oldSeqId) {
   if (DEBUG_DIAGNOSTICS) {
     console.log('[Background] [STORAGE] SEQUENCE_ID_PASS: Valid new event', {
       newSequenceId: newSeqId,
@@ -4804,6 +4923,25 @@ function _checkSequenceIdOrdering(newValue, oldValue) {
       increment: newSeqId - oldSeqId
     });
   }
+}
+
+function _checkSequenceIdOrdering(newValue, oldValue) {
+  const newSeqId = newValue?.sequenceId;
+  const oldSeqId = oldValue?.sequenceId;
+  
+  // Can't use sequence ordering if either lacks sequenceId
+  if (!_hasValidSequenceIds(newValue, oldValue)) {
+    _logMissingSequenceId(newSeqId, oldSeqId);
+    return { shouldSkip: false, reason: 'No sequenceId available' };
+  }
+  
+  // Stale or duplicate event - sequence ID is same or lower
+  if (newSeqId <= oldSeqId) {
+    return _handleStaleSequenceId(newSeqId, oldSeqId);
+  }
+  
+  // Valid sequence progression
+  _logValidSequenceProgression(newSeqId, oldSeqId);
   return { shouldSkip: false, reason: 'Valid sequence progression' };
 }
 

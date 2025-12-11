@@ -35,7 +35,8 @@ describe('EventManager', () => {
       expect(eventManager.boundHandlers).toEqual({
         visibilityChange: null,
         beforeUnload: null,
-        pageHide: null
+        pageHide: null,
+        pageShow: null
       });
     });
   });
@@ -176,14 +177,31 @@ describe('EventManager', () => {
   });
 
   describe('pagehide handler', () => {
-    test('should emit emergency-save when tabs exist', () => {
+    test('should emit bfcache-enter when page is persisted', () => {
       const emitSpy = jest.spyOn(eventBus, 'emit');
       quickTabsMap.set('qt-1', {});
 
       eventManager.setupEmergencySaveHandlers();
 
-      // Trigger pagehide
-      eventManager.boundHandlers.pageHide();
+      // Trigger pagehide with persisted = true (entering BFCache)
+      eventManager.boundHandlers.pageHide({ persisted: true });
+
+      expect(emitSpy).toHaveBeenCalledWith('event:bfcache-enter', {
+        trigger: 'pagehide',
+        persisted: true
+      });
+
+      emitSpy.mockRestore();
+    });
+
+    test('should emit emergency-save when tabs exist and not persisted', () => {
+      const emitSpy = jest.spyOn(eventBus, 'emit');
+      quickTabsMap.set('qt-1', {});
+
+      eventManager.setupEmergencySaveHandlers();
+
+      // Trigger pagehide with persisted = false (normal unload)
+      eventManager.boundHandlers.pageHide({ persisted: false });
 
       expect(emitSpy).toHaveBeenCalledWith('event:emergency-save', {
         trigger: 'pagehide'
@@ -192,13 +210,13 @@ describe('EventManager', () => {
       emitSpy.mockRestore();
     });
 
-    test('should not emit when no tabs exist', () => {
+    test('should not emit when no tabs exist and not persisted', () => {
       const emitSpy = jest.spyOn(eventBus, 'emit');
 
       eventManager.setupEmergencySaveHandlers();
 
-      // Trigger pagehide
-      eventManager.boundHandlers.pageHide();
+      // Trigger pagehide with persisted = false
+      eventManager.boundHandlers.pageHide({ persisted: false });
 
       expect(emitSpy).not.toHaveBeenCalled();
 
