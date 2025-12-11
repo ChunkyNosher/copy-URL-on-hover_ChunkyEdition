@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v12), fallback health monitoring, sidebar communication logging,
-  BC unavailable detection, 30s interval status logging
+  (v1.6.3.8), BC fallback detection, 30s health monitoring, sidebar communication,
+  initialization barriers
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v12 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -51,14 +51,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
-- **Operation Confirmations** - Closed-loop feedback for all operations (v7)
+- **Operation Confirmations** - Closed-loop feedback for all operations
 
-**v1.6.3.7-v12 Features (NEW):**
+**v1.6.3.8 Features (NEW):**
 
-- **Sidebar fallback communication logging** - Logs when BC unavailable
+- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE` activates storage polling
 - **Fallback health monitoring** - 30s interval status (message count, latency)
-- **_trackFallbackUpdate()** - Tracks state updates via fallback mechanisms
-- **_startFallbackHealthMonitoring()** - Periodic status logging
+- **BC verification** - `BC_VERIFICATION_STARTED/SUCCESS/FAILED` with 1s timeout
+- **Keepalive health reports** - 60s interval with success/failure percentages
+- **Code Health** - quick-tabs-manager.js (9.09)
+
+**v1.6.3.7-v12 Features (Retained):** Fallback logging, port thresholds.
 
 **v1.6.3.7-v11 Features (Retained):** Promise barrier, LRU dedup (1000),
 correlation ID echo, state machine timeouts (7s), deferred handlers.
@@ -78,20 +81,11 @@ correlation ID echo, state machine timeouts (7s), deferred handlers.
 
 ## Testing Requirements
 
-- [ ] Promise-based listener barrier replaces boolean flag (v1.6.3.7-v11)
-- [ ] LRU dedup eviction prevents memory bloat (max 1000) (v1.6.3.7-v11)
-- [ ] Correlation ID echo in HEARTBEAT_ACK (v1.6.3.7-v11)
-- [ ] State machine 7s timeout auto-recovery works (v1.6.3.7-v11)
-- [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
-- [ ] BC gap detection triggers storage fallback (v1.6.3.7-v10)
-- [ ] Port message reordering queue works (1s timeout) (v1.6.3.7-v10)
-- [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
-- [ ] Sequence tracking works (messageSequence, sequenceNumber) (v1.6.3.7-v9)
-- [ ] Initialization barrier prevents race conditions (v1.6.3.7-v9)
-- [ ] Port message queue works during reconnection (v1.6.3.7-v8)
-- [ ] Initial state load wait works (2s before empty state) (v1.6.3.7-v6)
-- [ ] Connection state transitions work (connected→zombie→disconnected) (v1.6.3.7-v5)
-- [ ] Session Quick Tabs display with `permanent: false` indicator (v1.6.3.7-v3)
+- [ ] BC fallback detection works (SIDEBAR_BC_UNAVAILABLE) (v1.6.3.8)
+- [ ] Fallback health monitoring works (30s interval) (v1.6.3.8)
+- [ ] Keepalive health reports work (60s interval) (v1.6.3.8)
+- [ ] Promise-based listener barrier works (v1.6.3.7-v11)
+- [ ] LRU dedup eviction works (max 1000) (v1.6.3.7-v11)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -99,6 +93,5 @@ correlation ID echo, state machine timeouts (7s), deferred handlers.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v11 promise barrier,
-LRU dedup eviction, correlation ID echo, state machine timeouts, v10 storage watchdog,
-BC gap detection, port message reordering, v9 unified keepalive, v8 port resilience.**
+**Your strength: Manager coordination with v1.6.3.8 BC fallback detection,
+health monitoring, v11 promise barrier, LRU dedup eviction.**

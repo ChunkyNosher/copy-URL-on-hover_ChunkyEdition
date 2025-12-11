@@ -60,19 +60,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.8 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.8 Features (NEW):**
+
+- **Initialization barriers** - Reliable URL detection on startup
+- **Centralized storage validation** - Recovery from corruption
+- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision logging.
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
   idle timer
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-
-**v1.6.3.6-v10 Build & Analysis (Retained):**
-
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking, Rollup cache
-- **CodeScene Analysis:** `content.js` 7.76 (close to target 8.75)
 
 **URL Detection Features:**
 

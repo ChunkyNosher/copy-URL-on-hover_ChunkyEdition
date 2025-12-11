@@ -1850,16 +1850,17 @@ async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
 /**
  * Map of recovery strategies by failure type
  * v1.6.3.7-v14 - FIX Complexity: Strategy map to reduce switch complexity
+ * Note: All strategies receive (operationId, intendedState, readBackState) but some ignore readBackState
  * @private
  */
 const RECOVERY_STRATEGIES = {
-  'READ_RETURNED_NULL': (operationId, intendedState) => 
+  'READ_RETURNED_NULL': (operationId, intendedState, _readBackState) => 
     _recoverFromNullRead(operationId, intendedState),
-  'TAB_COUNT_MISMATCH': (operationId, intendedState) => 
+  'TAB_COUNT_MISMATCH': (operationId, intendedState, _readBackState) => 
     _recoverFromTabCountMismatch(operationId, intendedState),
   'SAVEID_MISMATCH': (operationId, intendedState, readBackState) => 
     _recoverFromSaveIdMismatch(operationId, intendedState, readBackState),
-  'CHECKSUM_MISMATCH': (operationId, intendedState) => 
+  'CHECKSUM_MISMATCH': (operationId, intendedState, _readBackState) => 
     _recoverFromChecksumMismatch(operationId, intendedState)
 };
 

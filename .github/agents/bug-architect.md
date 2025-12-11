@@ -65,23 +65,29 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7-v11 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v11 Features (NEW):**
+**v1.6.3.8 Features (NEW):**
+
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
+- **Sidebar BC fallback** - Detection, activation, 30s health monitoring
+- **Storage tier probing** - 500ms latency measurement
+- **Keepalive health reports** - 60s interval with success/failure percentages
+- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging,
+keepalive health sampling, port registry thresholds.
+
+**v1.6.3.7-v11 Features (Retained):**
 
 - **Promise-based listener barrier** - Replaces boolean flag (quick-tabs-manager.js)
 - **LRU eviction** - Message dedup map capped at 1000 entries
 - **Correlation ID echo** - HEARTBEAT_ACK properly echoes correlationId
 - **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
-- **Deferred handlers** - UICoordinator.startRendering() for proper init order
-- **Cascading rollback** - LIFO rollback execution in transactions
-- **Write-ahead logging** - Checksum verification in DestroyHandler
-- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
-- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
-- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
 
 **v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
 IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
@@ -97,42 +103,9 @@ IndexedDB checksum, port message reordering (1s), tab affinity buckets, init tim
 
 **v1.6.3.7-v4 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
+- **Background Keepalive** - `_startKeepalive()` every 20s
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-  (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive
-  integers
-
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
-  exponential backoff retry
-- **Heartbeat** - Sidebar sends `HEARTBEAT` every 25s, background responds with
-  `HEARTBEAT_ACK`, 5s timeout
-- **Storage Deduplication** - Multi-method dedup: transactionId,
-  saveId+timestamp, content hash
-- **Cache Reconciliation** - `_triggerCacheReconciliation()` queries content
-  scripts for state recovery
-- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()` for
-  ordered deletion
-- **Architectural Resilience** - Coordinator is optimization, not requirement;
-  content scripts can write directly to storage
-
-**v1.6.3.6-v12 Features (Retained):**
-
-- Port-based messaging, animation lifecycle, atomic operations
-- Port registry, persistent connections, correlationId tracking
-
-**v1.6.3.6-v10 Build & Analysis (Retained):**
-
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking, Rollup cache, npm-run-all
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34 (needs refactoring to
-  8.75+), `storage-utils.js` 7.23, `background.js` 7.66
-- **Manager UI/UX Issues #1-12:** Enhanced headers, orphan detection, smooth
-  animations
+- **UI Performance** - Debounced renderUI (300ms)
 
 **Key Features:**
 
@@ -140,15 +113,6 @@ IndexedDB checksum, port message reordering (1s), tab affinity buckets, init tim
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
-- State hydration on page reload
-
-**Key Fixes (Summary):**
-
-- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined
-  originTabId
-- **Deletion State Machine** - DestroyHandler.\_destroyedIds prevents loops
-- **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
-- **Unified Deletion Path** - `initiateDestruction()` is single entry point
 
 **Architecture:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 UICoordinator

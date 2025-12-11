@@ -3,8 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.6-v12
-  port-based messaging, animation lifecycle, atomic operations
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.8
+  init barriers, BFCache handling, currentTabId detection
 tools: ['*']
 ---
 
@@ -37,9 +37,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.8 Features (NEW):**
+
+- **currentTabId barrier** - 2s exponential backoff before hydration
+- **BFCache handling** - pageshow/pagehide events for state restoration
+- **Code Health** - QuickTabHandler.js (9.41)
+
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision logging.
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Circuit Breaker Probing** - Early recovery with 500ms health probes
 - **Message Error Handling** - Graceful degradation in port message handlers
@@ -48,65 +56,34 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive
-  integers
-
-**v1.6.3.6-v12 Features (Retained):**
-
-- **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect`
-- **Message Types** - `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`,
-  `ERROR`, `BROADCAST`
-- **Animation Lifecycle Phases** - START → CALC → TRANSITION → COMPLETE
-- **State Constants** - `STATE_OPEN`, `STATE_CLOSED`
-- **Storage Write Verification** - Read-back after write
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
 
 **Key Quick Tab Features:**
 
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
 - **Mute Mode (🔇)** - Hide ONLY on specific browser tabs (mutedOnTabs array)
-- **Global Visibility** - Visible in all tabs by default (no container
-  isolation)
+- **Global Visibility** - Visible in all tabs by default (no container isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
-
-**v1.6.3.6-v5 Fixes (Retained):**
-
-- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined
-  originTabId
-- **Deletion State Machine** - DestroyHandler.\_destroyedIds prevents deletion
-  loops
-- **Unified Deletion Path** - `initiateDestruction()` is single entry point
 
 **State Machine:** States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 
 ---
 
-## MCP Server Integration
-
-**MANDATORY:** Context7, Perplexity, ESLint, CodeScene, Agentic-Tools
-
----
-
 ## Testing Requirements
 
+- [ ] currentTabId barrier works (2s exponential backoff) (v1.6.3.8)
+- [ ] BFCache handling restores state on back/forward (v1.6.3.8)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
-- [ ] Message error handling gracefully degrades (v1.6.3.7-v4)
-- [ ] `_isValidOriginTabId()` validates positive integers (v1.6.3.7-v1)
-- [ ] Port connections established
-- [ ] Message acknowledgments include correlationId
-- [ ] Animation lifecycle logged correctly
 - [ ] Strict tab isolation rejects null originTabId
-- [ ] Deletion state machine prevents loops
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
-- [ ] Global visibility correct (no container filtering)
 - [ ] originTabId set correctly on creation
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.7-v4 circuit breaker
-probing, message error handling, and v12 port-based messaging.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.8 currentTabId barrier,
+BFCache handling, and proper per-tab scoping.**

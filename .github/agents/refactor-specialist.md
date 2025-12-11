@@ -60,28 +60,25 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.8 Features (NEW):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.6-v10 Build & Analysis (Retained):**
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging.
 
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking (both modes), Rollup cache, npm-run-all
-- **CodeScene Analysis - Refactoring Targets:**
-  - `quick-tabs-manager.js` 5.34 (HIGH PRIORITY - needs 8.75+)
-  - `storage-utils.js` 7.23 (needs refactoring)
-  - `VisibilityHandler.js` 7.41 (needs refactoring)
-  - `background.js` 7.66 (needs refactoring)
-  - `content.js` 7.76 (close to target)
-  - `index.js` 8.69 (close to target)
+**CodeScene Analysis - Refactoring Targets:**
+
+- `quick-tabs-manager.js` 9.09 (✅ improved from 5.34)
+- `background.js` 9.09 (✅ improved from 4.89)
+- `QuickTabHandler.js` 9.41 (✅ improved from 6.83)
+- `storage-utils.js` 7.23 (needs refactoring)
+- `content.js` 7.76 (close to target)
 
 **v1.6.3.6 Fixes:**
 

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.7-v12  
+**Version:** 1.6.3.8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,41 +22,37 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.7-v12 Features (NEW):**
+**v1.6.3.8 Features (NEW):**
 
-- **DEBUG_DIAGNOSTICS flag** - Separate verbose diagnostics from DEBUG_MESSAGING
-- **BroadcastChannel fallback logging** - Logs when BC unavailable and sidebar activates fallback
-- **Keepalive health sampling** - First failure + 10% sampling for diagnostic visibility
-- **Port registry threshold monitoring** - Logs warnings at 50 ports, errors at 100 with cleanup
-- **Storage validation logging** - Structured logging for each validation stage
-- **Deduplication decision logging** - Every skip/process decision logged with reason
-- **Initialization race barrier** - async await with 10s timeout in handleGetQuickTabsState()
-- **Storage corruption recovery** - Re-write + verification when validation fails
-- **Sequence ID prioritization** - Uses sequenceId over arbitrary 50ms timestamp window
-- **Sidebar fallback health monitoring** - 30s interval status logging for fallback
-- **currentTabId barrier** - 2s timeout exponential backoff in content script init
-- **Centralized storage write validation** - Background direct writes now validated
+- **Initialization barriers** - QuickTabHandler (10s) and currentTabId (2s exponential backoff)
+- **Centralized storage validation** - Type-specific recovery strategies with re-write + verify
+- **Dedup decision logging** - All skip/process decisions with sequence ID prioritization
+- **Sidebar BC fallback** - Context detection, fallback activation, 30s health monitoring
+- **Active storage tier probing** - Latency measurement with 500ms timeout
+- **BFCache handling** - pageshow/pagehide events for proper state restoration
+- **Keepalive health reporting** - Every 60s with success rate percentage
+- **Port lifecycle metadata** - Activity logging with last message time tracking
+- **Code Health improvements** - background.js (9.09), QuickTabHandler.js (9.41)
+
+**v1.6.3.7-v12 Features (Retained):**
+
+- DEBUG_DIAGNOSTICS flag, BroadcastChannel fallback logging, keepalive health sampling
+- Port registry thresholds (50 warn, 100 critical), storage validation logging
+- Sequence ID prioritization over 50ms timestamp window
 
 **v1.6.3.7-v11 Features (Retained):**
 
 - Promise-based listener barrier, LRU eviction (1000 entries), correlation ID echo
 - State machine timeout watchers (7s), WeakRef callbacks, deferred handlers
 - Cascading rollback, write-ahead logging, timestamp cleanup (30s/60s)
-- ID pattern validation, CodeScene: background.js 9.09, quick-tabs-manager.js 9.09
 
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+**v1.6.3.7-v9-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
+IndexedDB checksum, port message reordering (1s), unified keepalive (20s),
+sequence tracking, storage integrity, port age management (90s max).
 
-**v1.6.3.7-v9 Features (Retained):** Unified keepalive (20s), correlation IDs,
-MESSAGE_RECEIVED logging, sequenceId/messageSequence/sequenceNumber tracking,
-storage integrity with sync backup, port age management (90s max, 30s stale),
-tab affinity cleanup (24h TTL), initialization barrier flags, race cooldown (200ms).
-
-**Legacy Features (v1-v8):** Port message queue (v8), heartbeat hysteresis (v8),
-BroadcastChannel from background (v7), full state sync (v7), operation confirmations (v7),
-connection state tracking (v5), zombie detection (v5), circuit breaker probing (v4),
-storage.session API (v3), DOM reconciliation (v3), Single Writer Authority (v2),
-background keepalive (v1), port circuit breaker (v1).
+**Legacy Features (v1-v8):** Port message queue, heartbeat hysteresis, full state sync,
+connection state tracking, zombie detection, circuit breaker probing, storage.session API,
+DOM reconciliation, Single Writer Authority, background keepalive, port circuit breaker.
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, BroadcastChannelManager, QuickTabGroupManager,
@@ -84,47 +80,36 @@ NotificationManager
 background:
 
 - `ADOPT_TAB` - Manager sends adoption request to background
-- `CLOSE_MINIMIZED_TABS` - Background handler
-  `handleCloseMinimizedTabsCommand()`
+- `CLOSE_MINIMIZED_TABS` - Background handler `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.7-v12: Logging & Diagnostics Improvements (NEW)
+### v1.6.3.8: Initialization & Diagnostics (NEW)
 
-- **BroadcastChannel fallback** - Context detection, fallback activation logging
-- **Keepalive health** - First failure + 10% sampling with context
-- **Port registry** - WARN at 50, CRITICAL at 100 with auto-cleanup
-- **Storage validation** - Each stage logged with expected vs actual
-- **Dedup visibility** - All skip/process decisions logged with reasons
-- **Init race barrier** - async await with 10s timeout in handleGetQuickTabsState()
-- **Sequence ID ordering** - Prioritized over 50ms timestamp window
-- **Sidebar fallback** - 30s interval health monitoring
-- **currentTabId barrier** - 2s exponential backoff before hydration
-- **Corruption recovery** - Re-write + verify on validation failure
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Dedup decision logging** - `DEDUP_DECISION: saveId=X, decision=[SKIP|PROCESS]`
+- **Sidebar BC fallback** - `SIDEBAR_BC_UNAVAILABLE`, `FALLBACK_HEALTH` logging
+- **Storage tier probing** - `BC_VERIFICATION_STARTED/SUCCESS/FAILED`, latency
+- **BFCache handling** - pageshow/pagehide events for state restoration
+- **Keepalive health reports** - `KEEPALIVE_HEALTH_REPORT: X successes, Y failures (Z%)`
+- **Port activity tracking** - `PORT_ACTIVITY: portId=X, lastMessageTime=NN ms ago`
+- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-### v1.6.3.7-v11: Architecture Fixes (Retained)
+### v1.6.3.7-v12: Logging & Diagnostics (Retained)
 
-- Promise-based listener barrier, LRU dedup (1000), correlation ID echo
-- State machine timeouts (7s), WeakRef callbacks, deferred handlers
-- Cascading rollback, write-ahead logging, timestamp cleanup
-- CodeScene: background.js 9.09, quick-tabs-manager.js 9.09
+- DEBUG_DIAGNOSTICS flag, BC fallback, keepalive sampling, port thresholds
+- Storage validation logging, sequence ID prioritization, corruption recovery
 
-### v1.6.3.7-v10: State Persistence (Retained)
+### v1.6.3.7-v9-v11: Architecture (Retained)
 
-Storage watchdog (2s), BC gap detection (5s), IndexedDB checksum,
-port message reordering (1s), tab affinity buckets, init timing.
-
-### v1.6.3.7-v9: Messaging Hardening (Retained)
-
-Unified keepalive (20s), correlation IDs, sequence tracking (storage/port/BC),
-port age (90s max), tab affinity cleanup (24h TTL), race cooldown (200ms).
+- **v11:** Promise barrier, LRU dedup (1000), correlation ID echo, state machine timeouts (7s)
+- **v10:** Storage watchdog (2s), BC gap detection, IndexedDB checksum, port reordering
+- **v9:** Unified keepalive (20s), sequence tracking, storage integrity, port age (90s)
 
 ### v1.6.3.7-v3-v8: Infrastructure (Retained)
 
-**v8:** Port queue, heartbeat hysteresis, StorageCache, MemoryMonitor.
-**v7:** BC from background, full state sync, confirmations.
-**v6:** Channel logging (`[BC]`, `[PORT]`, `[STORAGE]`).
-**v5:** Connection states (connected→zombie→disconnected).
-**v4:** Circuit breaker probing (500ms).
+**v8:** Port queue, heartbeat hysteresis. **v7:** BC from background, full state sync.
+**v6:** Channel logging. **v5:** Connection states. **v4:** Circuit breaker probing.
 **v3:** storage.session, BroadcastChannel, browser.alarms, DOM reconciliation.
 
 ---
@@ -144,57 +129,56 @@ port age (90s max), tab affinity cleanup (24h TTL), race cooldown (200ms).
 
 ---
 
-## 🆕 v1.6.3.7-v12 Patterns
+## 🆕 v1.6.3.8 Patterns
 
-- **DEBUG_DIAGNOSTICS flag** - Separate from DEBUG_MESSAGING for verbose diagnostics
-- **Keepalive first-failure logging** - Always log first failure, then sample 10%
-- **Port registry threshold checks** - 50 warn, 100 critical with auto-cleanup
-- **Dedup decision logging** - Skip/process with reason (saveId, timestamp, hash)
-- **Initialization barrier** - async await with timeout protection
-- **Storage validation symmetry** - All writes validated regardless of source
-- **Sequence ID ordering** - Prioritized over arbitrary timestamp windows
-- **Fallback health monitoring** - 30s interval status for sidebar
-- **currentTabId barrier** - Exponential backoff polling (2s max)
-- **Corruption recovery** - Re-write + verify on validation failure
+- **Initialization barriers** - QuickTabHandler (10s timeout), currentTabId (2s exponential backoff)
+- **Storage validation** - Centralized type-specific recovery with re-write + verify
+- **Dedup decision logging** - `DEDUP_DECISION` with saveId, decision, reason
+- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE` activates storage polling
+- **Fallback health monitoring** - 30s interval with message count and latency
+- **Storage tier probing** - `BC_VERIFICATION_STARTED/SUCCESS/FAILED` with timeout
+- **BFCache events** - pageshow/pagehide for browser back/forward navigation
+- **Keepalive health reports** - 60s interval with success/failure rate
+- **Port activity logging** - `PORT_ACTIVITY` with lastMessageTime tracking
+
+## v1.6.3.7-v12 Patterns (Retained)
+
+- DEBUG_DIAGNOSTICS flag, keepalive first-failure logging + 10% sampling
+- Port registry thresholds (50 warn, 100 critical), sequence ID ordering
 
 ## v1.6.3.7-v11 Patterns (Retained)
 
 - Promise-based barrier, LRU eviction (1000), correlation ID echo
 - State machine timeouts (7s), WeakRef callbacks, deferred handlers
 - Cascading rollback, write-ahead logging, timestamp cleanup (30s/60s)
-- ID validation (QUICK_TAB_ID_PATTERN constant)
 
 ## Prior Version Patterns (v1-v10)
 
-- **v10:** Storage watchdog (2s), BC gap detection, IndexedDB checksum, port reordering (1s)
-- **v9:** Unified keepalive (20s), sequence tracking, storage integrity, initialization barrier
-- **v8:** Port message queue, atomic reconnection, heartbeat hysteresis, dynamic debounce
+- **v10:** Storage watchdog (2s), BC gap detection, IndexedDB checksum, port reordering
+- **v9:** Unified keepalive (20s), sequence tracking, storage integrity, port age
+- **v8:** Port message queue, atomic reconnection, heartbeat hysteresis
 - **v7:** BC from background, full state sync, operation confirmations
-- **v6:** Channel logging (`[BC]`, `[PORT]`, `[STORAGE]`), keepalive health
-- **v5:** Connection states (connected→zombie→disconnected), deduplication
-- **v4:** Circuit breaker probing (500ms), close all feedback
+- **v6:** Channel logging (`[BC]`, `[PORT]`, `[STORAGE]`)
+- **v5:** Connection states (connected→zombie→disconnected)
+- **v4:** Circuit breaker probing (500ms)
 - **v3:** storage.session, BroadcastChannel, browser.alarms, DOM reconciliation
-- **v2:** Single Writer Authority, unified render pipeline, orphan recovery
-- **v1:** Background keepalive (20s), port circuit breaker (100ms→10s)
 
 ### Key Timing Constants
 
 | Constant                            | Value | Purpose                            |
 | ----------------------------------- | ----- | ---------------------------------- |
-| `INIT_BARRIER_TIMEOUT_MS`           | 10000 | Initialization race timeout (v12)  |
-| `CURRENTTABID_BARRIER_TIMEOUT_MS`   | 2000  | currentTabId detection (v12)       |
-| `FALLBACK_HEALTH_INTERVAL_MS`       | 30000 | Sidebar fallback status (v12)      |
-| `PORT_REGISTRY_WARN_THRESHOLD`      | 50    | Port warning threshold (v12)       |
-| `PORT_REGISTRY_CRITICAL_THRESHOLD`  | 100   | Port critical + cleanup (v12)      |
+| `INIT_BARRIER_TIMEOUT_MS`           | 10000 | QuickTabHandler init barrier (v8)  |
+| `CURRENTTABID_BARRIER_TIMEOUT_MS`   | 2000  | currentTabId detection (v8)        |
+| `BC_VERIFICATION_TIMEOUT_MS`        | 1000  | Sidebar BC verification (v8)       |
+| `STORAGE_PROBE_TIMEOUT_MS`          | 500   | Storage health probe (v8)          |
+| `FALLBACK_HEALTH_INTERVAL_MS`       | 30000 | Sidebar fallback status (v8)       |
+| `KEEPALIVE_HEALTH_REPORT_INTERVAL_MS` | 60000 | Keepalive health reports (v8)    |
+| `RECOVERY_KEEP_PERCENTAGE`          | 0.75  | Storage recovery threshold (v8)    |
 | `STATE_MACHINE_TIMEOUT_MS`          | 7000  | Auto-recovery timeout (v11)        |
-| `TIMESTAMP_CLEANUP_INTERVAL_MS`     | 30000 | Periodic cleanup interval (v11)    |
-| `TIMESTAMP_MAX_AGE_MS`              | 60000 | Max timestamp age (v11)            |
 | `DEDUP_MAP_MAX_SIZE`                | 1000  | LRU eviction threshold (v11)       |
 | `STORAGE_WATCHDOG_TIMEOUT_MS`       | 2000  | Watchdog timer for writes (v10)    |
-| `PORT_MESSAGE_QUEUE_TIMEOUT_MS`     | 1000  | Stuck message timeout (v10)        |
 | `KEEPALIVE_INTERVAL_MS`             | 20000 | Unified keepalive (v9)             |
 | `PORT_MAX_AGE_MS`                   | 90000 | Port registry max age (v9)         |
-| `STORAGE_COOLDOWN_MS`               | 200   | Storage race cooldown (v9)         |
 
 ---
 
@@ -224,16 +208,13 @@ port age (90s max), tab affinity cleanup (24h TTL), race cooldown (200ms).
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, coordinated clear, closeAll mutex,
-**v12:** DEBUG_DIAGNOSTICS, keepalive sampling, port threshold monitoring,
-dedup decision logging, init barrier timeout, storage validation symmetry,
-sequence ID prioritization, fallback health monitoring, currentTabId barrier,
-corruption recovery,
-**v11:** promise barrier, LRU eviction, correlation echo, state machine timeouts,
-WeakRef callbacks, cascading rollback,
-**v10:** storage watchdog, BC gap detection, IndexedDB checksum,
-**v9:** unified keepalive, port message queue,
-**v8:** hybrid storage cache,
-**v4:** circuit breaker.
+**v1.6.3.8:** init barriers, centralized storage validation, dedup decision logging,
+BC fallback detection, storage tier probing, BFCache handling, keepalive health reports,
+**v1.6.3.7-v12:** DEBUG_DIAGNOSTICS, keepalive sampling, port thresholds,
+**v1.6.3.7-v11:** promise barrier, LRU eviction, correlation echo, state machine timeouts,
+**v1.6.3.7-v10:** storage watchdog, BC gap detection, IndexedDB checksum,
+**v1.6.3.7-v9:** unified keepalive, port message queue,
+**v1.6.3.7-v4:** circuit breaker.
 
 ---
 
@@ -288,12 +269,12 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 | File                     | Features                                                        |
 | ------------------------ | --------------------------------------------------------------- |
-| `background.js`          | Port registry thresholds (v12), dedup logging (v12), keepalive sampling (v12) |
-| `quick-tabs-manager.js`  | Fallback health monitoring (v12), Promise barrier (v11)         |
-| `QuickTabHandler.js`     | Init barrier timeout (v12), corruption recovery (v12)           |
-| `index.js` (quick-tabs)  | currentTabId barrier (v12)                                      |
-| `BroadcastChannelManager.js` | Context detection (v12), fallback logging (v12)             |
-| `storage-utils.js`       | Validation logging (v12), checksum (v10), integrity (v9)        |
+| `background.js`          | Init barrier (v8), dedup logging (v8), keepalive health (v8)    |
+| `quick-tabs-manager.js`  | Fallback health monitoring (v8), Promise barrier (v11)          |
+| `QuickTabHandler.js`     | Init barrier timeout (v8), storage validation (v8), Code Health 9.41 |
+| `index.js` (quick-tabs)  | currentTabId barrier (v8), BFCache handling (v8)                |
+| `BroadcastChannelManager.js` | BC verification (v8), fallback detection (v8)               |
+| `storage-utils.js`       | Centralized validation (v8), checksum (v10), integrity (v9)     |
 | `TabStateManager.js`     | Per-tab state (sessions API, v3)                                |
 | `StorageCache.js`        | Hybrid read-through caching (v8)                                |
 | `MemoryMonitor.js`       | Heap usage tracking (v8)                                        |
