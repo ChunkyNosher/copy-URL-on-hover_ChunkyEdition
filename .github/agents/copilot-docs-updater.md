@@ -3,8 +3,8 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v10.
-tools: ['*']
+  documentation. Current version: v1.6.3.7-v11.
+tools: ['vscode', 'execute', 'read', 'agent', 'agentic-tools/*', 'codescene-mcp/*', 'perplexity/perplexity_reason', 'edit', 'search', 'web', 'io.github.upstash/context7/*', 'playwright/*', 'github/*', 'todo', 'github.vscode-pull-request-github/copilotCodingAgent', 'github.vscode-pull-request-github/issue_fetch', 'github.vscode-pull-request-github/suggest-fix', 'github.vscode-pull-request-github/searchSyntax', 'github.vscode-pull-request-github/doSearch', 'github.vscode-pull-request-github/renderIssues', 'github.vscode-pull-request-github/activePullRequest', 'github.vscode-pull-request-github/openPullRequest', 'ms-azuretools.vscode-azureresourcegroups/azureActivityLog', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_ai_model_guidance', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_model_code_sample', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_tracing_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_evaluation_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_convert_declarative_agent_to_code', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_agent_runner_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_planner']
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
@@ -69,16 +69,28 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v10)
+## Current Extension State (v1.6.3.7-v11)
 
-### v1.6.3.7-v10 Features (NEW)
+### v1.6.3.7-v11 Features (NEW)
+
+- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
+- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
+- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
+- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
+- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
+- **Deferred handlers** - UICoordinator.startRendering() for proper init order
+- **Cascading rollback** - LIFO rollback execution in transactions
+- **Write-ahead logging** - Checksum verification in DestroyHandler
+- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
+- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
+- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+
+### v1.6.3.7-v10 Features (Retained)
 
 - **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
 - **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
 - **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
 - **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
-- **Tab Affinity Diagnostics** - Age bucket logging, defensive cleanup
-- **Initialization Timing** - initializationStartTime with listener logging
 
 ### v1.6.3.7-v9 Features (Retained)
 
@@ -165,14 +177,15 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v10
+- [ ] Version numbers match 1.6.3.7-v11
+- [ ] **v1.6.3.7-v11:** Promise-based listener barrier documented
+- [ ] **v1.6.3.7-v11:** LRU dedup eviction documented (max 1000)
+- [ ] **v1.6.3.7-v11:** Correlation ID echo documented
+- [ ] **v1.6.3.7-v11:** State machine timeouts documented (7s)
+- [ ] **v1.6.3.7-v11:** CodeScene improvements documented
 - [ ] **v1.6.3.7-v10:** Storage watchdog documented
 - [ ] **v1.6.3.7-v10:** BC gap detection documented
-- [ ] **v1.6.3.7-v10:** IndexedDB checksum documented
-- [ ] **v1.6.3.7-v10:** Port message reordering documented
 - [ ] **v1.6.3.7-v9:** Unified keepalive documented
-- [ ] **v1.6.3.7-v9:** Sequence tracking documented
-- [ ] **v1.6.3.7-v8:** Port resilience documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -182,10 +195,10 @@ nothing.
 
 | Error                      | Fix                                    |
 | -------------------------- | -------------------------------------- |
-| v1.6.3.7-v9 or earlier     | Update to 1.6.3.7-v10                  |
+| v1.6.3.7-v10 or earlier    | Update to 1.6.3.7-v11                  |
 | "Pin to Page"              | Use "Solo/Mute"                        |
 | Direct storage writes      | Use Single Writer Authority            |
-| Missing storage watchdog   | Document 2s watchdog timer             |
+| Missing promise barrier    | Document Promise-based init barrier    |
 | Missing BC gap detection   | Document gap detection callback        |
 
 ---

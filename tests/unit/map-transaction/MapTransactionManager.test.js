@@ -119,21 +119,21 @@ describe('MapTransactionManager', () => {
   });
 
   describe('rollbackTransaction()', () => {
-    test('should restore Map to snapshot state', () => {
+    test('should restore Map to snapshot state', async () => {
       map.set('key1', 'value1');
       manager.beginTransaction();
       manager.deleteEntry('key1', 'test');
       manager.setEntry('key2', 'value2', 'test');
 
-      const rolled = manager.rollbackTransaction();
+      const rolled = await manager.rollbackTransaction();
 
       expect(rolled).toBe(true);
       expect(map.has('key1')).toBe(true);
       expect(map.has('key2')).toBe(false);
     });
 
-    test('should return false if no active transaction', () => {
-      const rolled = manager.rollbackTransaction();
+    test('should return false if no active transaction', async () => {
+      const rolled = await manager.rollbackTransaction();
 
       expect(rolled).toBe(false);
     });

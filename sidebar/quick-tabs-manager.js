@@ -174,6 +174,13 @@ const recentlyProcessedMessageIds = new Set();
  */
 const MESSAGE_ID_MAX_AGE_MS = 5000;
 
+/**
+ * Maximum deduplication entries before forced eviction
+ * v1.6.4.16 - FIX Issue #13: Prevent unbounded growth of dedup map
+ * 1000 entries * ~50 bytes per entry = ~50KB max memory
+ */
+const MESSAGE_DEDUP_MAX_SIZE = 1000;
+
 // ==================== v1.6.3.7-v5 CONNECTION STATE TRACKING ====================
 // FIX Issue #1: Three explicit connection states for background detection
 /**
@@ -545,10 +552,63 @@ let circuitBreakerProbeTimerId = null;
 let portMessageQueue = [];
 
 /**
- * Flag indicating if listener is fully registered
+ * Flag indicating if listener is fully registered (kept for backward compatibility)
  * v1.6.3.7-v8 - FIX Issue #9: Track listener registration state
+ * @deprecated Use listenerReadyPromise instead for async operations
  */
 let listenerFullyRegistered = false;
+
+/**
+ * Promise-based barrier for listener registration
+ * v1.6.4.16 - FIX Issue #9: Replace boolean with Promise for reliable race prevention
+ * Resolves when listener is fully registered and ready to process messages
+ */
+let listenerReadyPromise = null;
+let _listenerReadyResolve = null;
+let _listenerReadyReject = null;
+
+/**
+ * Initialize the listener ready promise
+ * v1.6.4.16 - FIX Issue #9: Create new promise barrier
+ * @private
+ */
+function _initListenerReadyPromise() {
+  listenerReadyPromise = new Promise((resolve, reject) => {
+    _listenerReadyResolve = resolve;
+    _listenerReadyReject = reject;
+  });
+  console.log('[Manager] [PORT] [PROMISE_BARRIER_INITIALIZED]:', {
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Mark listener as ready and resolve the promise barrier
+ * v1.6.4.16 - FIX Issue #9: Signal listener is ready
+ * @private
+ */
+function _markListenerReady() {
+  listenerFullyRegistered = true; // Maintain backward compatibility
+  if (_listenerReadyResolve) {
+    _listenerReadyResolve();
+    console.log('[Manager] [PORT] [PROMISE_BARRIER_RESOLVED]:', {
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Reset listener ready state (on disconnect)
+ * v1.6.4.16 - FIX Issue #9: Reset for reconnection
+ * @private
+ */
+function _resetListenerReadyState() {
+  listenerFullyRegistered = false;
+  _initListenerReadyPromise(); // Create new promise for next connection
+}
+
+// Initialize the promise barrier on module load
+_initListenerReadyPromise();
 
 // ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
 // FIX Issue #10: Prevent concurrent reconnection attempts
@@ -645,7 +705,13 @@ function _transitionConnectionState(newState, reason) {
   lastConnectionStateChange = now;
 
   _updateConsecutiveFailures(newState);
-  _logConnectionStateTransition(oldState, newState, reason, durationInPreviousState, now);
+  _logConnectionStateTransition({
+    oldState,
+    newState,
+    reason,
+    duration: durationInPreviousState,
+    timestamp: now
+  });
   _logFallbackModeIfNeeded(newState);
 }
 
@@ -666,9 +732,16 @@ function _updateConsecutiveFailures(newState) {
 /**
  * Log connection state transition with context
  * v1.6.3.7-v6 - Extracted to reduce _transitionConnectionState complexity
+ * v1.6.4.17 - Refactored to use options object (5 args → 1)
  * @private
+ * @param {Object} options - Transition options
+ * @param {string} options.oldState - Previous connection state
+ * @param {string} options.newState - New connection state
+ * @param {string} options.reason - Reason for transition
+ * @param {number} options.duration - Duration in previous state (ms)
+ * @param {number} options.timestamp - Current timestamp
  */
-function _logConnectionStateTransition(oldState, newState, reason, duration, now) {
+function _logConnectionStateTransition({ oldState, newState, reason, duration, timestamp }) {
   const isFallbackMode = newState === CONNECTION_STATE.ZOMBIE || newState === CONNECTION_STATE.DISCONNECTED;
   console.log('[Manager] CONNECTION_STATE_TRANSITION:', {
     previousState: oldState,
@@ -678,7 +751,7 @@ function _logConnectionStateTransition(oldState, newState, reason, duration, now
     consecutiveFailures: consecutiveConnectionFailures,
     fallbackModeActive: isFallbackMode,
     broadcastChannelAvailable: isFallbackMode ? _isChannelAvailable() : null,
-    timestamp: now
+    timestamp
   });
 }
 
@@ -782,8 +855,8 @@ function connectToBackground() {
       logPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
-      // v1.6.3.7-v8 - FIX Issue #9: Reset listener state on disconnect
-      listenerFullyRegistered = false;
+      // v1.6.4.16 - FIX Issue #9: Reset promise barrier on disconnect
+      _resetListenerReadyState();
 
       // v1.6.3.7-v5 - FIX Issue #1: Update connection state
       _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
@@ -805,8 +878,8 @@ function connectToBackground() {
       timestamp: Date.now()
     });
 
-    // v1.6.3.7-v8 - FIX Issue #9: Mark listener as fully registered and flush queue
-    listenerFullyRegistered = true;
+    // v1.6.4.16 - FIX Issue #9: Mark listener as ready via Promise barrier and flush queue
+    _markListenerReady();
     _flushPortMessageQueue();
 
     // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
@@ -1015,6 +1088,7 @@ async function _probeBackgroundHealth() {
 /**
  * Handle port message with queue support
  * v1.6.3.7-v8 - FIX Issue #9: Buffer messages if listener not fully registered
+ * v1.6.4.16 - FIX Issue #9: Use Promise barrier for reliable race prevention
  * @private
  * @param {Object} message - Message from background
  */
@@ -1022,12 +1096,13 @@ function _handlePortMessageWithQueue(message) {
   // v1.6.3.7-v8 - FIX Issue #14: Update last background message time
   lastBackgroundMessageTime = Date.now();
 
-  // v1.6.3.7-v8 - FIX Issue #9: If listener not fully registered, queue the message
+  // v1.6.4.16 - FIX Issue #9: Use boolean for sync check (Promise for async operations)
   if (!listenerFullyRegistered) {
     portMessageQueue.push(message);
     console.log('[Manager] [PORT] [MESSAGE_QUEUED]:', {
       type: message?.type || message?.action || 'unknown',
       queueSize: portMessageQueue.length,
+      listenerReady: listenerFullyRegistered,
       timestamp: Date.now()
     });
     return;
@@ -1035,6 +1110,34 @@ function _handlePortMessageWithQueue(message) {
 
   // Process message normally
   handlePortMessage(message);
+}
+
+/**
+ * Wait for listener to be ready before processing
+ * v1.6.4.16 - FIX Issue #9: Async barrier for operations that need listener ready
+ * @param {number} [timeoutMs=5000] - Timeout in milliseconds
+ * @returns {Promise<void>} Resolves when listener is ready
+ */
+async function waitForListenerReady(timeoutMs = 5000) {
+  if (listenerFullyRegistered) return;
+  
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Listener ready timeout')), timeoutMs);
+  });
+  
+  try {
+    await Promise.race([listenerReadyPromise, timeoutPromise]);
+    console.log('[Manager] [PORT] [LISTENER_READY_WAIT_RESOLVED]:', {
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('[Manager] [PORT] [LISTENER_READY_TIMEOUT]:', {
+      timeoutMs,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    throw err;
+  }
 }
 
 /**
@@ -1048,32 +1151,97 @@ function _flushPortMessageQueue() {
     return;
   }
 
+  const messagesToProcess = _extractQueuedMessages();
+  _processQueuedMessages(messagesToProcess);
+}
+
+/**
+ * Extract and clear queued messages
+ * v1.6.4.17 - Extracted to reduce _flushPortMessageQueue CC
+ * @private
+ * @returns {Array} Messages to process
+ */
+function _extractQueuedMessages() {
   console.log('[Manager] [PORT] [QUEUE_FLUSH_STARTED]:', {
     messageCount: portMessageQueue.length,
     timestamp: Date.now()
   });
 
-  const messagesToProcess = [...portMessageQueue];
+  const messages = [...portMessageQueue];
   portMessageQueue = [];
+  return messages;
+}
 
-  for (const message of messagesToProcess) {
-    try {
-      console.log('[Manager] [PORT] [QUEUE_MESSAGE_PROCESSING]:', {
-        type: message?.type || message?.action || 'unknown',
-        timestamp: Date.now()
-      });
-      handlePortMessage(message);
-    } catch (err) {
-      console.error('[Manager] [PORT] [QUEUE_MESSAGE_ERROR]:', {
-        type: message?.type || message?.action || 'unknown',
-        error: err.message,
-        timestamp: Date.now()
-      });
-    }
+/**
+ * Process a batch of queued messages
+ * v1.6.4.17 - Extracted to reduce _flushPortMessageQueue CC
+ * @private
+ * @param {Array} messages - Messages to process
+ */
+function _processQueuedMessages(messages) {
+  for (const message of messages) {
+    _processQueuedMessage(message);
   }
 
   console.log('[Manager] [PORT] [QUEUE_FLUSH_COMPLETED]:', {
-    processedCount: messagesToProcess.length,
+    processedCount: messages.length,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Process a single queued message with error handling
+ * v1.6.4.17 - Extracted to reduce _flushPortMessageQueue CC
+ * v1.6.4.17 - Refactored to reduce CC from 10 to ~3
+ * @private
+ * @param {Object} message - Message to process
+ */
+function _processQueuedMessage(message) {
+  const messageType = _getMessageType(message);
+  try {
+    _logQueuedMessageProcessing(messageType);
+    handlePortMessage(message);
+  } catch (err) {
+    _logQueuedMessageError(messageType, err);
+  }
+}
+
+/**
+ * Get message type for logging
+ * v1.6.4.17 - Extracted from _processQueuedMessage
+ * @private
+ * @param {Object} message - Message object
+ * @returns {string} Message type
+ */
+function _getMessageType(message) {
+  if (!message) return 'unknown';
+  return message.type || message.action || 'unknown';
+}
+
+/**
+ * Log queued message processing start
+ * v1.6.4.17 - Extracted from _processQueuedMessage
+ * @private
+ * @param {string} messageType - Message type
+ */
+function _logQueuedMessageProcessing(messageType) {
+  console.log('[Manager] [PORT] [QUEUE_MESSAGE_PROCESSING]:', {
+    type: messageType,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log queued message error
+ * v1.6.4.17 - Extracted from _processQueuedMessage
+ * @private
+ * @param {string} messageType - Message type
+ * @param {Error} err - Error object
+ */
+function _logQueuedMessageError(messageType, err) {
+  console.error('[Manager] [PORT] [QUEUE_MESSAGE_ERROR]:', {
+    type: messageType,
+    error: err.message,
     timestamp: Date.now()
   });
 }
@@ -1654,46 +1822,86 @@ async function _requestFullStateSync() {
   }
 
   const syncRequestTime = Date.now();
-  // v1.6.3.7-v6 - Gap #4: Log when sync request is sent with timestamp
+  _logStateSyncStart(syncRequestTime);
+
+  try {
+    const request = _buildStateSyncRequest(syncRequestTime);
+    const response = await sendPortMessageWithTimeout(request, STATE_SYNC_TIMEOUT_MS);
+
+    _processStateSyncResponse(response, syncRequestTime);
+  } catch (err) {
+    _logStateSyncTimeout(err);
+  }
+}
+
+/**
+ * Log state sync request start
+ * v1.6.4.17 - Extracted to reduce _requestFullStateSync CC
+ * @private
+ */
+function _logStateSyncStart(syncRequestTime) {
   console.log('[Manager] STATE_SYNC_REQUESTED:', {
     timestamp: syncRequestTime,
     timeoutMs: STATE_SYNC_TIMEOUT_MS,
     currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
   });
+}
 
-  try {
-    const response = await sendPortMessageWithTimeout(
-      {
-        type: 'REQUEST_FULL_STATE_SYNC',
-        timestamp: syncRequestTime,
-        source: 'sidebar',
-        currentCacheHash: computeStateHash(quickTabsState),
-        currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
-      },
-      STATE_SYNC_TIMEOUT_MS
-    );
+/**
+ * Build state sync request message
+ * v1.6.4.17 - Extracted to reduce _requestFullStateSync CC
+ * @private
+ */
+function _buildStateSyncRequest(syncRequestTime) {
+  return {
+    type: 'REQUEST_FULL_STATE_SYNC',
+    timestamp: syncRequestTime,
+    source: 'sidebar',
+    currentCacheHash: computeStateHash(quickTabsState),
+    currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
+  };
+}
 
-    if (response?.success && response?.state) {
-      // v1.6.3.7-v6 - Gap #4: Log response arrival with data count
-      const responseTime = Date.now();
-      console.log('[Manager] STATE_SYNC_RESPONSE_RECEIVED:', {
-        timestamp: responseTime,
-        roundTripMs: responseTime - syncRequestTime,
-        serverTabCount: response.state?.tabs?.length ?? 0
-      });
-      _handleStateSyncResponse(response);
-    } else {
-      console.warn('[Manager] State sync response did not include state:', response);
-    }
-  } catch (err) {
-    // v1.6.3.7-v6 - Gap #4: Log timeout with clear timeout indication
-    console.warn('[Manager] STATE_SYNC_TIMEOUT:', {
-      timestamp: Date.now(),
-      timeoutMs: STATE_SYNC_TIMEOUT_MS,
-      error: err.message,
-      message: `State sync did not complete within ${STATE_SYNC_TIMEOUT_MS}ms`
-    });
+/**
+ * Process state sync response
+ * v1.6.4.17 - Extracted to reduce _requestFullStateSync CC
+ * @private
+ */
+function _processStateSyncResponse(response, syncRequestTime) {
+  if (response?.success && response?.state) {
+    _logStateSyncSuccess(response, syncRequestTime);
+    _handleStateSyncResponse(response);
+  } else {
+    console.warn('[Manager] State sync response did not include state:', response);
   }
+}
+
+/**
+ * Log successful state sync response
+ * v1.6.4.17 - Extracted helper
+ * @private
+ */
+function _logStateSyncSuccess(response, syncRequestTime) {
+  const responseTime = Date.now();
+  console.log('[Manager] STATE_SYNC_RESPONSE_RECEIVED:', {
+    timestamp: responseTime,
+    roundTripMs: responseTime - syncRequestTime,
+    serverTabCount: response.state?.tabs?.length ?? 0
+  });
+}
+
+/**
+ * Log state sync timeout
+ * v1.6.4.17 - Extracted helper
+ * @private
+ */
+function _logStateSyncTimeout(err) {
+  console.warn('[Manager] STATE_SYNC_TIMEOUT:', {
+    timestamp: Date.now(),
+    timeoutMs: STATE_SYNC_TIMEOUT_MS,
+    error: err.message,
+    message: `State sync did not complete within ${STATE_SYNC_TIMEOUT_MS}ms`
+  });
 }
 
 /**
@@ -1747,65 +1955,140 @@ function _handleStateSyncResponse(response) {
  * v1.6.3.7-v4 - FIX Issue #4: Enhanced deduplication with message ID tracking
  * v1.6.3.7-v5 - FIX Issue #4: Added saveId-based deduplication
  * v1.6.3.7-v6 - Gap #5: Enhanced deduplication logging with reason codes
+ * v1.6.4.17 - Refactored to reduce CC from 11 to ~4
  * @param {string} source - Source of render trigger for logging
  * @param {string} [messageId] - Optional message ID for deduplication
  */
 function scheduleRender(source = 'unknown', messageId = null) {
-  const currentHash = computeStateHash(quickTabsState);
-  const currentTabCount = quickTabsState?.tabs?.length ?? 0;
-  // v1.6.3.7-v5 - FIX Code Review: Validate saveId is a non-empty string
-  const currentSaveId = _getValidSaveId(quickTabsState?.saveId);
+  const context = _buildRenderContext(source, messageId);
 
-  // v1.6.3.7-v6 - Gap #5: Special case - if previousHash was 0 (empty) and new has tabs, ALWAYS render
-  if (lastRenderedStateHash === 0 && currentTabCount > 0) {
-    console.log('[Manager] RENDER_SPECIAL_CASE: Previous state was empty, forcing render', {
-      source,
-      previousHash: lastRenderedStateHash,
-      currentHash,
-      currentTabCount
-    });
-    // Skip all deduplication checks and proceed to render
-    _proceedToRender(source, messageId, currentSaveId, currentHash);
+  if (_shouldForceRender(context)) {
+    _proceedToRender(source, messageId, context.currentSaveId, context.currentHash);
     return;
   }
 
-  // v1.6.3.7-v5 - FIX Issue #4: Check saveId deduplication first (state versioning)
-  if (currentSaveId && currentSaveId === lastProcessedSaveId) {
-    // v1.6.3.7-v6 - Gap #5: Log with reason code
-    console.log('[Manager] RENDER_SKIPPED:', {
-      reason: 'saveId_match',
-      source,
-      saveId: currentSaveId,
-      lastProcessedSaveId,
-      hash: currentHash
-    });
+  if (_shouldSkipRender(context, messageId)) {
     return;
   }
 
-  // v1.6.3.7-v4 - FIX Issue #4: Check message ID deduplication
-  if (messageId && _isMessageAlreadyProcessed(messageId)) {
-    // v1.6.3.7-v6 - Gap #5: Log with reason code
-    console.log('[Manager] RENDER_SKIPPED:', {
-      reason: 'message_dedup',
-      source,
-      messageId,
-      hash: currentHash
-    });
-    return;
+  _proceedToRender(source, messageId, context.currentSaveId, context.currentHash);
+}
+
+/**
+ * Build render context with computed values
+ * v1.6.4.17 - Extracted from scheduleRender
+ * @private
+ * @param {string} source - Render source
+ * @param {string} messageId - Message ID
+ * @returns {Object} Render context
+ */
+function _buildRenderContext(source, messageId) {
+  return {
+    source,
+    messageId,
+    currentHash: computeStateHash(quickTabsState),
+    currentTabCount: quickTabsState?.tabs?.length ?? 0,
+    currentSaveId: _getValidSaveId(quickTabsState?.saveId)
+  };
+}
+
+/**
+ * Check if render should be forced (empty→populated transition)
+ * v1.6.4.17 - Extracted from scheduleRender
+ * @private
+ * @param {Object} context - Render context
+ * @returns {boolean} True if render should be forced
+ */
+function _shouldForceRender(context) {
+  if (lastRenderedStateHash !== 0 || context.currentTabCount <= 0) {
+    return false;
   }
 
-  // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
-  if (currentHash === lastRenderedStateHash) {
-    // v1.6.3.7-v6 - Gap #5: Log with reason code
-    console.log('[Manager] RENDER_SKIPPED:', {
-      reason: 'hash_match',
-      source,
-      hash: currentHash
-    });
-    return;
+  console.log('[Manager] RENDER_SPECIAL_CASE: Previous state was empty, forcing render', {
+    source: context.source,
+    previousHash: lastRenderedStateHash,
+    currentHash: context.currentHash,
+    currentTabCount: context.currentTabCount
+  });
+  return true;
+}
+
+/**
+ * Check if render should be skipped due to deduplication
+ * v1.6.4.17 - Extracted from scheduleRender
+ * @private
+ * @param {Object} context - Render context
+ * @param {string} messageId - Message ID
+ * @returns {boolean} True if render should be skipped
+ */
+function _shouldSkipRender(context, messageId) {
+  return _checkSaveIdDedup(context) ||
+         _checkMessageIdDedup(context, messageId) ||
+         _checkHashDedup(context);
+}
+
+/**
+ * Check saveId-based deduplication
+ * v1.6.4.17 - Extracted from scheduleRender
+ * @private
+ * @param {Object} context - Render context
+ * @returns {boolean} True if should skip
+ */
+function _checkSaveIdDedup(context) {
+  if (!context.currentSaveId || context.currentSaveId !== lastProcessedSaveId) {
+    return false;
   }
 
-  _proceedToRender(source, messageId, currentSaveId, currentHash);
+  console.log('[Manager] RENDER_SKIPPED:', {
+    reason: 'saveId_match',
+    source: context.source,
+    saveId: context.currentSaveId,
+    lastProcessedSaveId,
+    hash: context.currentHash
+  });
+  return true;
+}
+
+/**
+ * Check message ID deduplication
+ * v1.6.4.17 - Extracted from scheduleRender
+ * @private
+ * @param {Object} context - Render context
+ * @param {string} messageId - Message ID
+ * @returns {boolean} True if should skip
+ */
+function _checkMessageIdDedup(context, messageId) {
+  if (!messageId || !_isMessageAlreadyProcessed(messageId)) {
+    return false;
+  }
+
+  console.log('[Manager] RENDER_SKIPPED:', {
+    reason: 'message_dedup',
+    source: context.source,
+    messageId,
+    hash: context.currentHash
+  });
+  return true;
+}
+
+/**
+ * Check hash-based deduplication
+ * v1.6.4.17 - Extracted from scheduleRender
+ * @private
+ * @param {Object} context - Render context
+ * @returns {boolean} True if should skip
+ */
+function _checkHashDedup(context) {
+  if (context.currentHash !== lastRenderedStateHash) {
+    return false;
+  }
+
+  console.log('[Manager] RENDER_SKIPPED:', {
+    reason: 'hash_match',
+    source: context.source,
+    hash: context.currentHash
+  });
+  return true;
 }
 
 /**
@@ -1886,11 +2169,18 @@ const processedMessageTimestamps = new Map();
  * Mark a message as processed for deduplication
  * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
  * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient memory management
+ * v1.6.4.16 - FIX Issue #13: Trigger cleanup if approaching max size
  * @private
  * @param {string} messageId - Message ID to mark
  */
 function _markMessageAsProcessed(messageId) {
   if (!messageId) return;
+  
+  // v1.6.4.16 - FIX Issue #13: Proactive cleanup when approaching max size
+  if (processedMessageTimestamps.size >= MESSAGE_DEDUP_MAX_SIZE * 0.9) {
+    _cleanupExpiredMessageIds();
+  }
+  
   recentlyProcessedMessageIds.add(messageId);
   processedMessageTimestamps.set(messageId, Date.now());
 }
@@ -1898,15 +2188,81 @@ function _markMessageAsProcessed(messageId) {
 /**
  * Cleanup expired message IDs (called periodically)
  * v1.6.3.7-v4 - FIX Code Review: Efficient periodic cleanup instead of per-message timers
+ * v1.6.4.16 - FIX Issue #13: Size-based eviction when over max capacity
+ * v1.6.4.17 - Refactored to flatten bumpy road (bumps=2)
  * @private
  */
 function _cleanupExpiredMessageIds() {
   const now = Date.now();
+  const expiredCount = _removeExpiredMessages(now);
+  _evictOldestIfOverCapacity(now);
+  _logExpiredCleanup(expiredCount, now);
+}
+
+/**
+ * Remove messages older than max age
+ * v1.6.4.17 - Extracted from _cleanupExpiredMessageIds
+ * @private
+ * @param {number} now - Current timestamp
+ * @returns {number} Number of expired messages removed
+ */
+function _removeExpiredMessages(now) {
+  let expiredCount = 0;
+  
   for (const [messageId, timestamp] of processedMessageTimestamps) {
     if (now - timestamp > MESSAGE_ID_MAX_AGE_MS) {
       recentlyProcessedMessageIds.delete(messageId);
       processedMessageTimestamps.delete(messageId);
+      expiredCount++;
     }
+  }
+  
+  return expiredCount;
+}
+
+/**
+ * Evict oldest messages if over capacity (LRU-style)
+ * v1.6.4.17 - Extracted from _cleanupExpiredMessageIds
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _evictOldestIfOverCapacity(now) {
+  if (processedMessageTimestamps.size <= MESSAGE_DEDUP_MAX_SIZE) {
+    return;
+  }
+
+  const evictCount = processedMessageTimestamps.size - MESSAGE_DEDUP_MAX_SIZE;
+  const sortedEntries = [...processedMessageTimestamps.entries()]
+    .sort((a, b) => a[1] - b[1]);
+  
+  for (let i = 0; i < evictCount; i++) {
+    const [messageId] = sortedEntries[i];
+    recentlyProcessedMessageIds.delete(messageId);
+    processedMessageTimestamps.delete(messageId);
+  }
+  
+  console.log('[Manager] [DEDUP] SIZE_EVICTION:', {
+    evictedCount: evictCount,
+    remainingSize: processedMessageTimestamps.size,
+    maxSize: MESSAGE_DEDUP_MAX_SIZE,
+    timestamp: now
+  });
+}
+
+/**
+ * Log expired message cleanup if any were removed
+ * v1.6.4.17 - Extracted from _cleanupExpiredMessageIds
+ * @private
+ * @param {number} expiredCount - Number of expired messages
+ * @param {number} now - Current timestamp
+ */
+function _logExpiredCleanup(expiredCount, now) {
+  if (expiredCount > 0) {
+    console.log('[Manager] [DEDUP] EXPIRED_CLEANUP:', {
+      expiredCount,
+      remainingSize: processedMessageTimestamps.size,
+      timestamp: now
+    });
   }
 }
 
@@ -2642,6 +2998,7 @@ function handleBroadcastFullStateSync(message, messageId) {
  * Handle quick-tab-created broadcast
  * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+ * v1.6.4.18 - Refactored to use shared helper to reduce code duplication
  * @param {Object} message - Broadcast message with data
  * @param {string} messageId - Message ID for deduplication
  */
@@ -2653,7 +3010,7 @@ function handleBroadcastCreate(message, messageId) {
   }
 
   // Check if already exists
-  const existingIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  const existingIdx = _findTabIndex(quickTabId);
   if (existingIdx >= 0) {
     console.log('[Manager] Quick Tab already exists, skipping create:', quickTabId);
     return;
@@ -2664,15 +3021,9 @@ function handleBroadcastCreate(message, messageId) {
     quickTabsState.tabs = [];
   }
   quickTabsState.tabs.push(data);
-  quickTabsState.timestamp = Date.now();
-
-  // Update cache
-  _updateInMemoryCache(quickTabsState.tabs);
-  lastLocalUpdateTime = Date.now();
+  _updateStateAfterMutation();
 
   console.log('[Manager] BROADCAST_CREATE: added Quick Tab:', quickTabId);
-
-  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
   scheduleRender('broadcast-create', messageId);
 }
 
@@ -2680,6 +3031,7 @@ function handleBroadcastCreate(message, messageId) {
  * Handle quick-tab-updated broadcast
  * v1.6.3.7-v3 - API #2: Update existing Quick Tab
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+ * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
  * @param {Object} message - Broadcast message with changes
  * @param {string} messageId - Message ID for deduplication
  */
@@ -2691,7 +3043,7 @@ function handleBroadcastUpdate(message, messageId) {
   }
 
   // Find the tab
-  const tabIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  const tabIdx = _findTabIndex(quickTabId);
   if (tabIdx < 0) {
     console.log('[Manager] Quick Tab not found for update:', quickTabId);
     return;
@@ -2699,15 +3051,9 @@ function handleBroadcastUpdate(message, messageId) {
 
   // Apply changes
   Object.assign(quickTabsState.tabs[tabIdx], changes);
-  quickTabsState.timestamp = Date.now();
-
-  // Update cache
-  _updateInMemoryCache(quickTabsState.tabs);
-  lastLocalUpdateTime = Date.now();
+  _updateStateAfterMutation();
 
   console.log('[Manager] BROADCAST_UPDATE: updated Quick Tab:', quickTabId, changes);
-
-  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
   scheduleRender('broadcast-update', messageId);
 }
 
@@ -2715,6 +3061,7 @@ function handleBroadcastUpdate(message, messageId) {
  * Handle quick-tab-deleted broadcast
  * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+ * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
  * @param {Object} message - Broadcast message
  * @param {string} messageId - Message ID for deduplication
  */
@@ -2726,23 +3073,39 @@ function handleBroadcastDelete(message, messageId) {
   }
 
   // Find and remove
-  const tabIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  const tabIdx = _findTabIndex(quickTabId);
   if (tabIdx < 0) {
     console.log('[Manager] Quick Tab not found for delete:', quickTabId);
     return;
   }
 
   quickTabsState.tabs.splice(tabIdx, 1);
-  quickTabsState.timestamp = Date.now();
-
-  // Update cache
-  _updateInMemoryCache(quickTabsState.tabs);
-  lastLocalUpdateTime = Date.now();
+  _updateStateAfterMutation();
 
   console.log('[Manager] BROADCAST_DELETE: removed Quick Tab:', quickTabId);
-
-  // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
   scheduleRender('broadcast-delete', messageId);
+}
+
+/**
+ * Find tab index by quickTabId
+ * v1.6.4.18 - Extracted to reduce code duplication in broadcast handlers
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {number} Tab index or -1 if not found
+ */
+function _findTabIndex(quickTabId) {
+  return quickTabsState.tabs?.findIndex(t => t.id === quickTabId) ?? -1;
+}
+
+/**
+ * Update state timestamps and cache after mutation
+ * v1.6.4.18 - Extracted to reduce code duplication in broadcast handlers
+ * @private
+ */
+function _updateStateAfterMutation() {
+  quickTabsState.timestamp = Date.now();
+  _updateInMemoryCache(quickTabsState.tabs);
+  lastLocalUpdateTime = Date.now();
 }
 
 /**
@@ -2759,7 +3122,7 @@ function handleBroadcastMinimizeRestore(message, messageId) {
     return;
   }
 
-  const tabIdx = quickTabsState.tabs?.findIndex(t => t.id === quickTabId);
+  const tabIdx = _findTabIndex(quickTabId);
   if (tabIdx < 0) {
     return;
   }
@@ -2767,13 +3130,9 @@ function handleBroadcastMinimizeRestore(message, messageId) {
   // Apply minimized state
   if (changes && 'minimized' in changes) {
     quickTabsState.tabs[tabIdx].minimized = changes.minimized;
-    quickTabsState.timestamp = Date.now();
-
-    _updateInMemoryCache(quickTabsState.tabs);
-    lastLocalUpdateTime = Date.now();
+    _updateStateAfterMutation();
 
     console.log('[Manager] BROADCAST_MINIMIZE:', quickTabId, 'minimized=', changes.minimized);
-    // v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
     scheduleRender('broadcast-minimize', messageId);
   }
 }
@@ -3094,56 +3453,112 @@ function _handleRuntimeDeleted(message, sendResponse, correlationId) {
  * v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ALL state changes (not just when originTabId provided)
  *   - Track last operation type (minimize/restore/update)
  *   - Validate and clean stale entries
+ * v1.6.4.17 - Refactored to flatten bumpy road (bumps=3)
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  */
 function handleStateUpdateMessage(quickTabId, changes) {
+  _ensureTabsArrayExists();
+  _applyStateChange(quickTabId, changes);
+  _updateQuickTabHostInfo(quickTabId, changes);
+  _updateStateTimestamps();
+}
+
+/**
+ * Ensure quickTabsState.tabs array exists
+ * v1.6.4.17 - Extracted from handleStateUpdateMessage to flatten bumpy road
+ * @private
+ */
+function _ensureTabsArrayExists() {
   if (!quickTabsState.tabs) {
     quickTabsState = { tabs: [] };
   }
+}
 
+/**
+ * Apply state change to tabs array (update, add, or skip)
+ * v1.6.4.17 - Extracted from handleStateUpdateMessage to flatten bumpy road
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ */
+function _applyStateChange(quickTabId, changes) {
   const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
+
   if (existingIndex >= 0) {
-    // Update existing tab
-    Object.assign(quickTabsState.tabs[existingIndex], changes);
-    // v1.6.4.13 - Issue #5: Structured logging for state updates
-    if (DEBUG_MESSAGING) {
-      console.log('[Manager] [STATE] TAB_UPDATED:', {
-        quickTabId,
-        changes,
-        timestamp: Date.now()
-      });
-    }
-  } else if (changes.url) {
-    // Add new tab
-    quickTabsState.tabs.push({ id: quickTabId, ...changes });
-    // v1.6.4.13 - Issue #5: Structured logging for state updates
-    if (DEBUG_MESSAGING) {
-      console.log('[Manager] [STATE] TAB_ADDED:', {
-        quickTabId,
-        changes,
-        timestamp: Date.now()
-      });
-    }
-  } else {
-    // v1.6.4.13 - Issue #5: Log when update skipped (tab not found and no URL)
-    if (DEBUG_MESSAGING) {
-      console.log('[Manager] [STATE] UPDATE_SKIPPED: Tab not found and no URL in changes', {
-        quickTabId,
-        changesKeys: Object.keys(changes),
-        timestamp: Date.now()
-      });
-    }
+    _updateExistingTab(existingIndex, quickTabId, changes);
+    return;
   }
 
-  // v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ANY state change
-  // This ensures the Map stays in sync even when operations originate from content scripts
-  _updateQuickTabHostInfo(quickTabId, changes);
+  if (changes.url) {
+    _addNewTab(quickTabId, changes);
+    return;
+  }
 
-  // Update timestamp
+  _logSkippedUpdate(quickTabId, changes);
+}
+
+/**
+ * Update an existing tab with new changes
+ * v1.6.4.17 - Extracted from handleStateUpdateMessage
+ * @private
+ * @param {number} index - Tab index in array
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ */
+function _updateExistingTab(index, quickTabId, changes) {
+  Object.assign(quickTabsState.tabs[index], changes);
+  if (DEBUG_MESSAGING) {
+    console.log('[Manager] [STATE] TAB_UPDATED:', {
+      quickTabId,
+      changes,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Add a new tab to state
+ * v1.6.4.17 - Extracted from handleStateUpdateMessage
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes including URL
+ */
+function _addNewTab(quickTabId, changes) {
+  quickTabsState.tabs.push({ id: quickTabId, ...changes });
+  if (DEBUG_MESSAGING) {
+    console.log('[Manager] [STATE] TAB_ADDED:', {
+      quickTabId,
+      changes,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Log when update is skipped (tab not found and no URL)
+ * v1.6.4.17 - Extracted from handleStateUpdateMessage
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - State changes
+ */
+function _logSkippedUpdate(quickTabId, changes) {
+  if (DEBUG_MESSAGING) {
+    console.log('[Manager] [STATE] UPDATE_SKIPPED: Tab not found and no URL in changes', {
+      quickTabId,
+      changesKeys: Object.keys(changes),
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Update state timestamps after state change
+ * v1.6.4.17 - Extracted from handleStateUpdateMessage
+ * @private
+ */
+function _updateStateTimestamps() {
   quickTabsState.timestamp = Date.now();
-
-  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
   lastLocalUpdateTime = Date.now();
 }
 
@@ -3778,31 +4193,62 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-  // v1.6.3.7-v9 - FIX Issue #11: Mark initialization started
+  _initializeManager();
+});
+
+/**
+ * Main initialization function for the Manager
+ * v1.6.4.17 - Extracted from DOMContentLoaded to reduce CC and line count
+ * @private
+ */
+async function _initializeManager() {
+  _initializeFlags();
+  _cacheDOMElements();
+  _initializeSessionId();
+
+  await _initializeCurrentTabId();
+  _initializeConnections();
+  await _initializeState();
+  _setupListeners();
+  _startPeriodicTasks();
+  _markInitializationComplete();
+}
+
+/**
+ * Initialize flags and timing
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _initializeFlags() {
   initializationStarted = true;
-  
-  // v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for time-since-init logging
   initializationStartTime = Date.now();
-  
-  // v1.6.3.7-v6 - Gap #1: Log DOM_CONTENT_LOADED
-  // v1.6.3.7-v9 - FIX Issue #11: Include init flags in log
+
   console.log('[Manager] DOM_CONTENT_LOADED:', {
     timestamp: initializationStartTime,
     url: window.location.href,
     initializationStarted,
     initializationComplete
   });
+}
 
-  // Cache DOM elements
+/**
+ * Cache DOM elements
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _cacheDOMElements() {
   containersList = document.getElementById('containersList');
   emptyState = document.getElementById('emptyState');
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
+}
 
-  // v1.6.3.7-v5 - FIX Issue #6: Initialize session ID for cache validation
-  _initializeSessionId();
-
-  // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
+/**
+ * Initialize current tab ID for origin filtering
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+async function _initializeCurrentTabId() {
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]) {
@@ -3812,76 +4258,114 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (err) {
     console.warn('[Manager] Could not get current tab ID:', err);
   }
+}
 
-  // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
+/**
+ * Initialize port and broadcast channel connections
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _initializeConnections() {
   connectToBackground();
-
-  // v1.6.3.7-v3 - API #2: Initialize BroadcastChannel for instant updates
   initializeBroadcastChannel();
+}
 
-  // Load container information from Firefox API
+/**
+ * Initialize state from storage and containers
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+async function _initializeState() {
   await loadContainerInfo();
-
-  // v1.6.3.7-v6 - Gap #1: Track state load start time
   stateLoadStartTime = Date.now();
 
-  // Load Quick Tabs state from storage
-  const loadedState = await loadQuickTabsState();
+  await loadQuickTabsState();
   const tabCount = quickTabsState?.tabs?.length ?? 0;
 
-  // v1.6.3.7-v6 - Gap #1: If initial load is empty, wait 2 seconds before rendering empty
+  _handleInitialLoadState(tabCount);
+}
+
+/**
+ * Handle initial load state - render or wait
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _handleInitialLoadState(tabCount) {
   if (tabCount === 0 && !initialStateLoadComplete) {
-    console.log('[Manager] INITIAL_LOAD_EMPTY: Waiting 2s for storage.onChanged before rendering empty', {
-      timestamp: Date.now()
-    });
-    
-    initialLoadTimeoutId = setTimeout(() => {
-      initialLoadTimeoutId = null;
-      initialStateLoadComplete = true;
-      const currentTabCount = quickTabsState?.tabs?.length ?? 0;
-      
-      if (currentTabCount === 0) {
-        console.log('[Manager] INITIAL_LOAD_TIMEOUT: No tabs received after 2s wait, rendering empty state', {
-          timestamp: Date.now()
-        });
-        renderUI();
-      } else {
-        console.log('[Manager] INITIAL_LOAD_TIMEOUT: Tabs received during wait period', {
-          tabCount: currentTabCount,
-          timestamp: Date.now()
-        });
-      }
-    }, 2000);
+    _setupInitialLoadTimeout();
   } else {
     initialStateLoadComplete = true;
-    // Render initial UI
     renderUI();
   }
+}
 
-  // Setup event listeners
-  // v1.6.3.7-v9 - FIX Issue #11: Listeners are registered here but have init guards
-  setupEventListeners();
-
-  // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
-  // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
-  setupTabSwitchListener();
-
-  // v1.6.3.7-v9 - Issue #10: Setup browser.tabs.onRemoved listener for quickTabHostInfo cleanup
-  _initBrowserTabsOnRemovedListener();
+/**
+ * Setup timeout for initial empty state
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _setupInitialLoadTimeout() {
+  console.log('[Manager] INITIAL_LOAD_EMPTY: Waiting 2s for storage.onChanged before rendering empty', {
+    timestamp: Date.now()
+  });
   
-  // v1.6.3.7-v9 - Issue #10: Start periodic cleanup job for quickTabHostInfo (every 60s)
-  _startHostInfoCleanupInterval();
+  initialLoadTimeoutId = setTimeout(_handleInitialLoadTimeout, 2000);
+}
 
-  // v1.6.3.7-v4 - FIX Issue #7: Increased from 2s to 10s
-  // BroadcastChannel is now PRIMARY for instant updates (fixed in Issue #2)
-  // Storage polling is now a BACKUP fallback, so longer interval is acceptable
+/**
+ * Handle initial load timeout callback
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _handleInitialLoadTimeout() {
+  initialLoadTimeoutId = null;
+  initialStateLoadComplete = true;
+  const currentTabCount = quickTabsState?.tabs?.length ?? 0;
+  
+  if (currentTabCount === 0) {
+    console.log('[Manager] INITIAL_LOAD_TIMEOUT: No tabs received after 2s wait, rendering empty state', {
+      timestamp: Date.now()
+    });
+    renderUI();
+  } else {
+    console.log('[Manager] INITIAL_LOAD_TIMEOUT: Tabs received during wait period', {
+      tabCount: currentTabCount,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Setup all event listeners
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _setupListeners() {
+  setupEventListeners();
+  setupTabSwitchListener();
+  _initBrowserTabsOnRemovedListener();
+}
+
+/**
+ * Start periodic background tasks
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _startPeriodicTasks() {
+  _startHostInfoCleanupInterval();
+  
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
   }, 10000);
+}
 
-  // v1.6.3.7-v9 - FIX Issue #11: Mark initialization as fully complete
-  // This is set AFTER all async initialization is done
+/**
+ * Mark initialization as complete and log
+ * v1.6.4.17 - Extracted from DOMContentLoaded
+ * @private
+ */
+function _markInitializationComplete() {
   initializationComplete = true;
   
   console.log('[Manager] v1.6.3.7-v9 INITIALIZATION_COMPLETE:', {
@@ -3894,7 +4378,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     hostInfoTTLMs: HOST_INFO_TTL_MS,
     timestamp: Date.now()
   });
-});
+}
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
@@ -4245,58 +4729,127 @@ function _updateInMemoryCache(tabs) {
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
  * v1.6.3.7-v6 - Gap #1: STATE_LOAD_STARTED and STATE_LOAD_COMPLETED logging
+ * v1.6.4.18 - Refactored to reduce CC from 10 to ~5
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
+  _logStateLoadStarted(loadStartTime);
 
-  // v1.6.3.7-v6 - Gap #1: Log state load start
+  try {
+    const state = await _fetchStorageState(loadStartTime);
+    _processStorageStateResult(state, loadStartTime);
+  } catch (err) {
+    _handleStateLoadError(err, loadStartTime);
+  }
+}
+
+/**
+ * Log state load started event
+ * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
+ * @private
+ * @param {number} loadStartTime - Load start timestamp
+ */
+function _logStateLoadStarted(loadStartTime) {
   console.log('[Manager] STATE_LOAD_STARTED:', {
     timestamp: loadStartTime,
     sessionId: currentSessionId,
     existingTabCount: quickTabsState?.tabs?.length ?? 0
   });
+}
 
-  try {
-    await checkStorageDebounce();
+/**
+ * Fetch state from storage with debounce check
+ * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
+ * @private
+ * @param {number} loadStartTime - Load start timestamp
+ * @returns {Promise<Object|null>} Storage state or null
+ */
+async function _fetchStorageState(loadStartTime) {
+  await checkStorageDebounce();
+  console.log('[Manager] Reading Quick Tab state from storage...');
 
-    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read start
-    console.log('[Manager] Reading Quick Tab state from storage...');
+  const result = await browser.storage.local.get(STATE_KEY);
+  const state = result?.[STATE_KEY];
 
-    const result = await browser.storage.local.get(STATE_KEY);
-    const state = result?.[STATE_KEY];
-
-    if (!state) {
-      _handleEmptyStorageState();
-      _logStateLoadCompleted('empty', 0, loadStartTime);
-      return;
-    }
-
-    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
-    console.log('[Manager] Storage read result:', {
-      tabCount: state.tabs?.length ?? 0,
-      saveId: state.saveId,
-      timestamp: state.timestamp,
-      source: 'storage.local',
-      durationMs: Date.now() - loadStartTime
-    });
-
-    // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
-    const newHash = computeStateHash(state);
-    if (newHash === lastRenderedStateHash) {
-      console.log('[Manager] Storage state unchanged (hash match), skipping update');
-      _logStateLoadCompleted('skipped-hash-match', state.tabs?.length ?? 0, loadStartTime);
-      return;
-    }
-
-    // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
-    if (_detectStorageStorm(state)) return;
-
-    _processLoadedState(state, loadStartTime);
-  } catch (err) {
-    _logStateLoadCompleted('error', 0, loadStartTime, err.message);
-    console.error('[Manager] Error loading Quick Tabs state:', err);
+  if (state) {
+    _logStorageReadResult(state, loadStartTime);
   }
+
+  return state;
+}
+
+/**
+ * Log storage read result
+ * v1.6.4.18 - Extracted from loadQuickTabsState
+ * @private
+ * @param {Object} state - Loaded state
+ * @param {number} loadStartTime - Load start timestamp
+ */
+function _logStorageReadResult(state, loadStartTime) {
+  console.log('[Manager] Storage read result:', {
+    tabCount: state.tabs?.length ?? 0,
+    saveId: state.saveId,
+    timestamp: state.timestamp,
+    source: 'storage.local',
+    durationMs: Date.now() - loadStartTime
+  });
+}
+
+/**
+ * Process storage state result
+ * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
+ * @private
+ * @param {Object|null} state - Loaded state or null
+ * @param {number} loadStartTime - Load start timestamp
+ */
+function _processStorageStateResult(state, loadStartTime) {
+  if (!state) {
+    _handleEmptyStorageState();
+    _logStateLoadCompleted('empty', 0, loadStartTime);
+    return;
+  }
+
+  if (_isStateUnchanged(state, loadStartTime)) {
+    return;
+  }
+
+  if (_detectStorageStorm(state)) {
+    return;
+  }
+
+  _processLoadedState(state, loadStartTime);
+}
+
+/**
+ * Check if state is unchanged (hash match)
+ * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
+ * @private
+ * @param {Object} state - Loaded state
+ * @param {number} loadStartTime - Load start timestamp
+ * @returns {boolean} True if unchanged
+ */
+function _isStateUnchanged(state, loadStartTime) {
+  const newHash = computeStateHash(state);
+  if (newHash !== lastRenderedStateHash) {
+    return false;
+  }
+
+  console.log('[Manager] Storage state unchanged (hash match), skipping update');
+  _logStateLoadCompleted('skipped-hash-match', state.tabs?.length ?? 0, loadStartTime);
+  return true;
+}
+
+/**
+ * Handle state load error
+ * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
+ * @private
+ * @param {Error} err - Error object
+ * @param {number} loadStartTime - Load start timestamp
+ */
+function _handleStateLoadError(err, loadStartTime) {
+  _logStateLoadCompleted('error', 0, loadStartTime, err.message);
+  console.error('[Manager] Error loading Quick Tabs state:', err);
 }
 
 /**
@@ -4657,6 +5210,7 @@ async function _buildGroupsContainer(groups, collapseState) {
 /**
  * Reconcile groups - differential update of the groups container
  * v1.6.3.7-v3 - FIX Issue #3: Main reconciliation entry point
+ * v1.6.4.17 - Refactored to flatten bumpy road (bumps=2)
  * @private
  * @param {Map} groups - Map of groupKey -> { quickTabs: [], tabInfo: {} }
  * @param {Object} collapseState - Collapse state for groups
@@ -4664,18 +5218,7 @@ async function _buildGroupsContainer(groups, collapseState) {
 async function _reconcileGroups(groups, collapseState) {
   const startTime = Date.now();
 
-  // Ensure we have a groups container
-  if (!_groupsContainer || !containersList.contains(_groupsContainer)) {
-    // First render or container was removed - create fresh
-    _groupsContainer = document.createElement('div');
-    _groupsContainer.className = 'tab-groups-container';
-    containersList.innerHTML = '';
-    containersList.appendChild(_groupsContainer);
-    _groupElements.clear();
-    _itemElements.clear();
-
-    console.log('[Manager] RECONCILE: Created fresh groups container');
-  }
+  _ensureGroupsContainerExists();
 
   const sortedGroupKeys = _getSortedGroupKeys(groups);
   await _fetchMissingTabInfo(sortedGroupKeys, groups);
@@ -4684,25 +5227,111 @@ async function _reconcileGroups(groups, collapseState) {
   const existingGroupKeys = new Set(_groupElements.keys());
   const newGroupKeys = new Set(sortedGroupKeys.map(k => String(k)));
 
-  // Calculate diff
-  const groupsToRemove = [...existingGroupKeys].filter(k => !newGroupKeys.has(k));
-  const groupsToAdd = sortedGroupKeys.filter(k => !existingGroupKeys.has(String(k)));
-  const groupsToUpdate = sortedGroupKeys.filter(k => existingGroupKeys.has(String(k)));
+  const diff = _calculateGroupsDiff(existingGroupKeys, newGroupKeys, sortedGroupKeys);
+  _logReconcileDiff(existingGroupKeys, newGroupKeys, diff);
+  _applyGroupsDiff(diff, groups, collapseState, sortedGroupKeys);
 
+  _reorderGroups(sortedGroupKeys);
+  attachCollapseEventListeners(_groupsContainer, collapseState);
+
+  console.log('[Manager] RECONCILE_COMPLETE:', {
+    durationMs: Date.now() - startTime,
+    finalGroupCount: _groupElements.size,
+    finalItemCount: _itemElements.size
+  });
+}
+
+/**
+ * Ensure groups container exists and is in DOM
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ */
+function _ensureGroupsContainerExists() {
+  if (_groupsContainer && containersList.contains(_groupsContainer)) {
+    return;
+  }
+
+  _groupsContainer = document.createElement('div');
+  _groupsContainer.className = 'tab-groups-container';
+  containersList.innerHTML = '';
+  containersList.appendChild(_groupsContainer);
+  _groupElements.clear();
+  _itemElements.clear();
+
+  console.log('[Manager] RECONCILE: Created fresh groups container');
+}
+
+/**
+ * Calculate diff between existing and new group keys
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ * @param {Set} existingGroupKeys - Keys currently in DOM
+ * @param {Set} newGroupKeys - Keys in new state
+ * @param {Array} sortedGroupKeys - Sorted array of group keys
+ * @returns {Object} Diff with toRemove, toAdd, toUpdate arrays
+ */
+function _calculateGroupsDiff(existingGroupKeys, newGroupKeys, sortedGroupKeys) {
+  return {
+    toRemove: [...existingGroupKeys].filter(k => !newGroupKeys.has(k)),
+    toAdd: sortedGroupKeys.filter(k => !existingGroupKeys.has(String(k))),
+    toUpdate: sortedGroupKeys.filter(k => existingGroupKeys.has(String(k)))
+  };
+}
+
+/**
+ * Log reconcile diff summary
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ * @param {Set} existingGroupKeys - Keys currently in DOM
+ * @param {Set} newGroupKeys - Keys in new state
+ * @param {Object} diff - Calculated diff
+ */
+function _logReconcileDiff(existingGroupKeys, newGroupKeys, diff) {
   console.log('[Manager] RECONCILE_GROUPS:', {
     existing: existingGroupKeys.size,
     incoming: newGroupKeys.size,
-    toRemove: groupsToRemove.length,
-    toAdd: groupsToAdd.length,
-    toUpdate: groupsToUpdate.length
+    toRemove: diff.toRemove.length,
+    toAdd: diff.toAdd.length,
+    toUpdate: diff.toUpdate.length
   });
+}
 
-  // 1. Remove deleted groups (with exit animation)
+/**
+ * Apply groups diff to DOM
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ * @param {Object} diff - Diff with toRemove, toAdd, toUpdate arrays
+ * @param {Map} groups - Groups map
+ * @param {Object} collapseState - Collapse state
+ * @param {Array} sortedGroupKeys - Sorted group keys
+ */
+function _applyGroupsDiff(diff, groups, collapseState, sortedGroupKeys) {
+  _removeDeletedGroups(diff.toRemove);
+  _updateExistingGroups(diff.toUpdate, groups, collapseState);
+  _addNewGroups(diff.toAdd, groups, collapseState, sortedGroupKeys);
+}
+
+/**
+ * Remove deleted groups with exit animation
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ * @param {Array} groupsToRemove - Group keys to remove
+ */
+function _removeDeletedGroups(groupsToRemove) {
   for (const groupKey of groupsToRemove) {
     _removeGroup(groupKey);
   }
+}
 
-  // 2. Update existing groups (in-place, no animation)
+/**
+ * Update existing groups in-place
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ * @param {Array} groupsToUpdate - Group keys to update
+ * @param {Map} groups - Groups map
+ * @param {Object} collapseState - Collapse state
+ */
+function _updateExistingGroups(groupsToUpdate, groups, collapseState) {
   for (const groupKey of groupsToUpdate) {
     const group = groups.get(groupKey);
     if (_shouldSkipGroup(group, groupKey)) {
@@ -4711,25 +5340,23 @@ async function _reconcileGroups(groups, collapseState) {
     }
     _updateGroup(String(groupKey), group, collapseState);
   }
+}
 
-  // 3. Add new groups (with entrance animation)
+/**
+ * Add new groups with entrance animation
+ * v1.6.4.17 - Extracted from _reconcileGroups
+ * @private
+ * @param {Array} groupsToAdd - Group keys to add
+ * @param {Map} groups - Groups map
+ * @param {Object} collapseState - Collapse state
+ * @param {Array} sortedGroupKeys - Sorted group keys for ordering
+ */
+function _addNewGroups(groupsToAdd, groups, collapseState, sortedGroupKeys) {
   for (const groupKey of groupsToAdd) {
     const group = groups.get(groupKey);
     if (_shouldSkipGroup(group, groupKey)) continue;
     _addGroup(groupKey, group, collapseState, sortedGroupKeys);
   }
-
-  // Ensure correct order of groups in DOM
-  _reorderGroups(sortedGroupKeys);
-
-  // Attach collapse event listeners for any new groups
-  attachCollapseEventListeners(_groupsContainer, collapseState);
-
-  console.log('[Manager] RECONCILE_COMPLETE:', {
-    durationMs: Date.now() - startTime,
-    finalGroupCount: _groupElements.size,
-    finalItemCount: _itemElements.size
-  });
 }
 
 /**
@@ -4825,23 +5452,54 @@ function _updateGroup(groupKey, group, _collapseState) {
  * @param {Object} group - Group data
  */
 function _updateGroupHeader(groupEl, groupKey, group) {
-  // Update count badge
+  _updateCountBadge(groupEl, groupKey, group);
+  _updateGroupTitle(groupEl, group);
+}
+
+/**
+ * Update count badge in group header
+ * v1.6.4.18 - Extracted from _updateGroupHeader to reduce CC
+ * @private
+ * @param {HTMLElement} groupEl - Group details element
+ * @param {string} groupKey - Group key
+ * @param {Object} group - Group data
+ */
+function _updateCountBadge(groupEl, groupKey, group) {
   const countEl = groupEl.querySelector('.tab-group-count');
-  if (countEl) {
-    const newCount = group.quickTabs?.length ?? 0;
-    if (countEl.textContent !== String(newCount)) {
-      animateCountBadgeIfChanged(groupKey, newCount, countEl);
-      countEl.textContent = String(newCount);
-      countEl.dataset.count = String(newCount);
-    }
+  if (!countEl) {
+    return;
   }
 
-  // Update title if tabInfo changed
-  const titleEl = groupEl.querySelector('.tab-group-title');
-  if (titleEl && group.tabInfo?.title && titleEl.textContent !== group.tabInfo.title) {
-    titleEl.textContent = group.tabInfo.title;
-    titleEl.title = group.tabInfo.url || '';
+  const newCount = group.quickTabs?.length ?? 0;
+  if (countEl.textContent === String(newCount)) {
+    return;
   }
+
+  animateCountBadgeIfChanged(groupKey, newCount, countEl);
+  countEl.textContent = String(newCount);
+  countEl.dataset.count = String(newCount);
+}
+
+/**
+ * Update title in group header
+ * v1.6.4.18 - Extracted from _updateGroupHeader to reduce CC
+ * @private
+ * @param {HTMLElement} groupEl - Group details element
+ * @param {Object} group - Group data
+ */
+function _updateGroupTitle(groupEl, group) {
+  const titleEl = groupEl.querySelector('.tab-group-title');
+  if (!titleEl) {
+    return;
+  }
+
+  const newTitle = group.tabInfo?.title;
+  if (!newTitle || titleEl.textContent === newTitle) {
+    return;
+  }
+
+  titleEl.textContent = newTitle;
+  titleEl.title = group.tabInfo.url || '';
 }
 
 /**
@@ -6224,27 +6882,55 @@ function _startStorageWatchdog(expectedSaveId) {
  * Log storage message received with channel source
  * v1.6.3.7-v6 - Issue #7: Extracted for complexity reduction
  * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId to logging
+ * v1.6.4.17 - Refactored to reduce CC from 10 to ~2
  * @private
  * @param {Object} context - Storage change context
  */
 function _logStorageMessageReceived(context) {
-  console.log('[Manager] MESSAGE_RECEIVED [STORAGE]:', {
-    saveId: context.newValue?.saveId || 'none',
-    sequenceId: context.newValue?.sequenceId ?? 'none',
+  const messageData = _extractStorageMessageData(context);
+  const listenerData = _extractStorageListenerData(context);
+
+  console.log('[Manager] MESSAGE_RECEIVED [STORAGE]:', messageData);
+  console.log('[Manager] STORAGE_LISTENER:', listenerData);
+}
+
+/**
+ * Extract data for MESSAGE_RECEIVED log
+ * v1.6.4.17 - Extracted from _logStorageMessageReceived
+ * @private
+ * @param {Object} context - Storage change context
+ * @returns {Object} Log data
+ */
+function _extractStorageMessageData(context) {
+  const newVal = context.newValue || {};
+  return {
+    saveId: newVal.saveId || 'none',
+    sequenceId: newVal.sequenceId ?? 'none',
     oldTabCount: context.oldTabCount,
     newTabCount: context.newTabCount,
     timestamp: Date.now()
-  });
+  };
+}
 
-  console.log('[Manager] STORAGE_LISTENER:', {
+/**
+ * Extract data for STORAGE_LISTENER log
+ * v1.6.4.17 - Extracted from _logStorageMessageReceived
+ * @private
+ * @param {Object} context - Storage change context
+ * @returns {Object} Log data
+ */
+function _extractStorageListenerData(context) {
+  const oldVal = context.oldValue || {};
+  const newVal = context.newValue || {};
+  return {
     event: 'storage.onChanged',
-    oldSaveId: context.oldValue?.saveId || 'none',
-    newSaveId: context.newValue?.saveId || 'none',
-    oldSequenceId: context.oldValue?.sequenceId ?? 'none',
-    newSequenceId: context.newValue?.sequenceId ?? 'none',
+    oldSaveId: oldVal.saveId || 'none',
+    newSaveId: newVal.saveId || 'none',
+    oldSequenceId: oldVal.sequenceId ?? 'none',
+    newSequenceId: newVal.sequenceId ?? 'none',
     lastAppliedSequenceId,
     timestamp: Date.now()
-  });
+  };
 }
 
 /**
@@ -6339,41 +7025,96 @@ function _analyzeStorageChange(oldValue, newValue) {
 
   // Tab count change always requires render
   if (oldTabs.length !== newTabs.length) {
-    return {
-      requiresRender: true,
-      hasDataChange: true,
-      changeType: 'tab-count',
-      changeReason: `Tab count changed: ${oldTabs.length} → ${newTabs.length}`,
-      skipReason: null
-    };
+    return _buildTabCountChangeResult(oldTabs, newTabs);
   }
 
   // Check for structural changes using helper
   const changeResults = _checkTabChanges(oldTabs, newTabs);
 
-  // If only z-index changed, skip render
+  return _buildChangeResultFromTabAnalysis(changeResults);
+}
+
+/**
+ * Build result for tab count change
+ * v1.6.4.18 - Extracted from _analyzeStorageChange to reduce CC
+ * @private
+ * @param {Array} oldTabs - Previous tabs
+ * @param {Array} newTabs - New tabs
+ * @returns {Object} Change analysis result
+ */
+function _buildTabCountChangeResult(oldTabs, newTabs) {
+  return {
+    requiresRender: true,
+    hasDataChange: true,
+    changeType: 'tab-count',
+    changeReason: `Tab count changed: ${oldTabs.length} → ${newTabs.length}`,
+    skipReason: null
+  };
+}
+
+/**
+ * Build change result from tab analysis
+ * v1.6.4.18 - Extracted from _analyzeStorageChange to reduce CC
+ * @private
+ * @param {Object} changeResults - Results from _checkTabChanges
+ * @returns {Object} Change analysis result
+ */
+function _buildChangeResultFromTabAnalysis(changeResults) {
+  // Metadata-only changes (z-index) don't require render
   if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
-    return {
-      requiresRender: false,
-      hasDataChange: false,
-      changeType: 'metadata-only',
-      changeReason: 'z-index only',
-      skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
-    };
+    return _buildMetadataOnlyResult(changeResults);
   }
 
-  // If there are data changes, render is required
+  // Data changes require render
   if (changeResults.hasDataChange) {
-    return {
-      requiresRender: true,
-      hasDataChange: true,
-      changeType: 'data',
-      changeReason: changeResults.dataChangeReasons.join('; '),
-      skipReason: null
-    };
+    return _buildDataChangeResult(changeResults);
   }
 
-  // No changes detected
+  // No changes
+  return _buildNoChangeResult();
+}
+
+/**
+ * Build result for metadata-only change
+ * v1.6.4.18 - Extracted from _analyzeStorageChange
+ * @private
+ * @param {Object} changeResults - Tab change analysis
+ * @returns {Object} Change analysis result
+ */
+function _buildMetadataOnlyResult(changeResults) {
+  return {
+    requiresRender: false,
+    hasDataChange: false,
+    changeType: 'metadata-only',
+    changeReason: 'z-index only',
+    skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
+  };
+}
+
+/**
+ * Build result for data change
+ * v1.6.4.18 - Extracted from _analyzeStorageChange
+ * @private
+ * @param {Object} changeResults - Tab change analysis
+ * @returns {Object} Change analysis result
+ */
+function _buildDataChangeResult(changeResults) {
+  return {
+    requiresRender: true,
+    hasDataChange: true,
+    changeType: 'data',
+    changeReason: changeResults.dataChangeReasons.join('; '),
+    skipReason: null
+  };
+}
+
+/**
+ * Build result for no change
+ * v1.6.4.18 - Extracted from _analyzeStorageChange
+ * @private
+ * @returns {Object} Change analysis result
+ */
+function _buildNoChangeResult() {
   return {
     requiresRender: false,
     hasDataChange: false,
@@ -6386,6 +7127,7 @@ function _analyzeStorageChange(oldValue, newValue) {
 /**
  * Check a single tab for data changes
  * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
+ * v1.6.4.17 - Refactored to reduce CC from 9 to ~2
  * @private
  * @param {Object} oldTab - Previous tab state
  * @param {Object} newTab - New tab state
@@ -6394,28 +7136,73 @@ function _analyzeStorageChange(oldValue, newValue) {
 function _checkSingleTabDataChanges(oldTab, newTab) {
   const reasons = [];
 
-  if (oldTab.originTabId !== newTab.originTabId) {
-    reasons.push(
-      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
-    );
-  }
-  if (oldTab.minimized !== newTab.minimized) {
-    reasons.push(`minimized changed for ${newTab.id}`);
-  }
-  if (oldTab.left !== newTab.left || oldTab.top !== newTab.top) {
-    reasons.push(`position changed for ${newTab.id}`);
-  }
-  if (oldTab.width !== newTab.width || oldTab.height !== newTab.height) {
-    reasons.push(`size changed for ${newTab.id}`);
-  }
-  if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
-    reasons.push(`title/url changed for ${newTab.id}`);
-  }
+  _checkOriginTabIdChange(oldTab, newTab, reasons);
+  _checkMinimizedChange(oldTab, newTab, reasons);
+  _checkPositionChange(oldTab, newTab, reasons);
+  _checkSizeChange(oldTab, newTab, reasons);
+  _checkTitleUrlChange(oldTab, newTab, reasons);
 
   return {
     hasDataChange: reasons.length > 0,
     reasons
   };
+}
+
+/**
+ * Check for originTabId change
+ * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
+ * @private
+ */
+function _checkOriginTabIdChange(oldTab, newTab, reasons) {
+  if (oldTab.originTabId !== newTab.originTabId) {
+    reasons.push(
+      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
+    );
+  }
+}
+
+/**
+ * Check for minimized change
+ * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
+ * @private
+ */
+function _checkMinimizedChange(oldTab, newTab, reasons) {
+  if (oldTab.minimized !== newTab.minimized) {
+    reasons.push(`minimized changed for ${newTab.id}`);
+  }
+}
+
+/**
+ * Check for position change
+ * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
+ * @private
+ */
+function _checkPositionChange(oldTab, newTab, reasons) {
+  if (oldTab.left !== newTab.left || oldTab.top !== newTab.top) {
+    reasons.push(`position changed for ${newTab.id}`);
+  }
+}
+
+/**
+ * Check for size change
+ * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
+ * @private
+ */
+function _checkSizeChange(oldTab, newTab, reasons) {
+  if (oldTab.width !== newTab.width || oldTab.height !== newTab.height) {
+    reasons.push(`size changed for ${newTab.id}`);
+  }
+}
+
+/**
+ * Check for title/url change
+ * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
+ * @private
+ */
+function _checkTitleUrlChange(oldTab, newTab, reasons) {
+  if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
+    reasons.push(`title/url changed for ${newTab.id}`);
+  }
 }
 
 /**
@@ -6512,38 +7299,74 @@ function _buildStorageChangeContext(change) {
  * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
  * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
  * v1.6.4.13 - Issue #5: Added [STORAGE] prefix for message routing logging
+ * v1.6.4.17 - Refactored to reduce CC from 10 to ~3
  * @private
  * @param {Object} context - Storage change context
  */
 function _logStorageChangeEvent(context) {
-  // Issue #8: Determine what changed (added/removed tab IDs)
+  const tabChanges = _calculateTabIdChanges(context);
+
+  _logStorageMessageReceived(context);
+  _logStorageChangedDetails(context, tabChanges);
+}
+
+/**
+ * Calculate added and removed tab IDs between old and new state
+ * v1.6.4.17 - Extracted from _logStorageChangeEvent
+ * @private
+ * @param {Object} context - Storage change context
+ * @returns {Object} Object with addedIds and removedIds arrays
+ */
+function _calculateTabIdChanges(context) {
   const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
   const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
-  const addedIds = [...newIds].filter(id => !oldIds.has(id));
-  const removedIds = [...oldIds].filter(id => !newIds.has(id));
+  
+  return {
+    addedIds: [...newIds].filter(id => !oldIds.has(id)),
+    removedIds: [...oldIds].filter(id => !newIds.has(id))
+  };
+}
 
-  // v1.6.4.13 - Issue #5: Log MESSAGE_RECEIVED with [STORAGE] prefix
-  if (DEBUG_MESSAGING) {
-    console.log('[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:', {
-      saveId: context.newValue?.saveId,
-      tabCount: context.newTabCount,
-      delta: context.newTabCount - context.oldTabCount,
-      source: `tab-${context.sourceTabId || 'unknown'}`,
-      timestamp: Date.now()
-    });
-  }
+/**
+ * Log MESSAGE_RECEIVED with [STORAGE] prefix
+ * v1.6.4.17 - Extracted from _logStorageChangeEvent
+ * @private
+ * @param {Object} context - Storage change context
+ */
+function _logStorageMessageReceivedPrefix(context) {
+  if (!DEBUG_MESSAGING) return;
 
-  // Issue #8: Unified format for storage event logging
+  console.log('[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:', {
+    saveId: context.newValue?.saveId,
+    tabCount: context.newTabCount,
+    delta: context.newTabCount - context.oldTabCount,
+    source: `tab-${context.sourceTabId || 'unknown'}`,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log detailed storage change information
+ * v1.6.4.17 - Extracted from _logStorageChangeEvent
+ * @private
+ * @param {Object} context - Storage change context
+ * @param {Object} tabChanges - Calculated tab changes
+ */
+function _logStorageChangedDetails(context, tabChanges) {
+  const delta = context.newTabCount - context.oldTabCount;
+  const saveId = context.newValue?.saveId || 'none';
+  const sourceTab = context.sourceTabId || 'unknown';
+
   console.log(
-    `[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${context.newTabCount - context.oldTabCount}), saveId: '${context.newValue?.saveId || 'none'}', source: tab-${context.sourceTabId || 'unknown'}`,
+    `[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${delta}), saveId: '${saveId}', source: tab-${sourceTab}`,
     {
       changes: {
-        added: addedIds,
-        removed: removedIds
+        added: tabChanges.addedIds,
+        removed: tabChanges.removedIds
       },
       oldTabCount: context.oldTabCount,
       newTabCount: context.newTabCount,
-      delta: context.newTabCount - context.oldTabCount,
+      delta,
       saveId: context.newValue?.saveId,
       transactionId: context.newValue?.transactionId,
       writingTabId: context.sourceTabId,
@@ -6898,28 +7721,55 @@ async function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
 
   try {
-    // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
     const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
       timestamp: Date.now()
     });
 
-    if (response?.success || response?.timedOut) {
-      console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
-        closedCount: response?.closedCount || 0,
-        closedIds: response?.closedIds || [],
-        timedOut: response?.timedOut || false
-      });
-
-      // Re-render UI to reflect the change
-      scheduleRender('close-minimized-success');
-    } else {
-      console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
-        error: response?.error || 'Unknown error'
-      });
-    }
+    _processCloseMinimizedResponse(response);
   } catch (err) {
     console.error('[Manager] Error sending close minimized command:', err);
   }
+}
+
+/**
+ * Process close minimized tabs response
+ * v1.6.4.17 - Extracted to reduce closeMinimizedTabs CC
+ * @private
+ * @param {Object} response - Response from background
+ */
+function _processCloseMinimizedResponse(response) {
+  const isSuccess = response?.success || response?.timedOut;
+
+  if (isSuccess) {
+    _logCloseMinimizedSuccess(response);
+    scheduleRender('close-minimized-success');
+  } else {
+    _logCloseMinimizedFailure(response);
+  }
+}
+
+/**
+ * Log close minimized success
+ * v1.6.4.17 - Extracted helper
+ * @private
+ */
+function _logCloseMinimizedSuccess(response) {
+  console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
+    closedCount: response?.closedCount || 0,
+    closedIds: response?.closedIds || [],
+    timedOut: response?.timedOut || false
+  });
+}
+
+/**
+ * Log close minimized failure
+ * v1.6.4.17 - Extracted helper
+ * @private
+ */
+function _logCloseMinimizedFailure(response) {
+  console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
+    error: response?.error || 'Unknown error'
+  });
 }
 
 /**
@@ -7701,36 +8551,68 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
  * @param {Object} response - Response from background
  */
 function _handleAdoptResponse(quickTabId, targetTabId, response) {
-  if (response?.success || response?.timedOut) {
-    // v1.6.4.0 - FIX Issue A: Command succeeded (or timed out with assumed success)
-    console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
-      quickTabId,
-      targetTabId,
-      oldOriginTabId: response?.oldOriginTabId,
-      timedOut: response?.timedOut || false
-    });
+  const isSuccess = response?.success || response?.timedOut;
 
-    // Update local tracking
-    quickTabHostInfo.set(quickTabId, {
-      hostTabId: targetTabId,
-      lastUpdate: Date.now(),
-      lastOperation: 'adopt',
-      confirmed: true
-    });
-
-    // Invalidate cache for old tab (if response has it)
-    if (response?.oldOriginTabId) {
-      browserTabInfoCache.delete(response.oldOriginTabId);
-    }
-
-    // Re-render UI to reflect the change
-    scheduleRender('adopt-success');
+  if (isSuccess) {
+    _handleAdoptSuccess(quickTabId, targetTabId, response);
   } else {
-    console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
-      quickTabId,
-      targetTabId,
-      error: response?.error || 'Unknown error'
-    });
+    _handleAdoptFailure(quickTabId, targetTabId, response);
+  }
+}
+
+/**
+ * Handle successful adoption
+ * v1.6.4.17 - Extracted to reduce _handleAdoptResponse CC
+ * @private
+ */
+function _handleAdoptSuccess(quickTabId, targetTabId, response) {
+  console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
+    quickTabId,
+    targetTabId,
+    oldOriginTabId: response?.oldOriginTabId,
+    timedOut: response?.timedOut || false
+  });
+
+  _updateHostInfoAfterAdopt(quickTabId, targetTabId);
+  _invalidateOldTabCache(response);
+  scheduleRender('adopt-success');
+}
+
+/**
+ * Handle failed adoption
+ * v1.6.4.17 - Extracted to reduce _handleAdoptResponse CC
+ * @private
+ */
+function _handleAdoptFailure(quickTabId, targetTabId, response) {
+  console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
+    quickTabId,
+    targetTabId,
+    error: response?.error || 'Unknown error'
+  });
+}
+
+/**
+ * Update host info after successful adoption
+ * v1.6.4.17 - Extracted helper
+ * @private
+ */
+function _updateHostInfoAfterAdopt(quickTabId, targetTabId) {
+  quickTabHostInfo.set(quickTabId, {
+    hostTabId: targetTabId,
+    lastUpdate: Date.now(),
+    lastOperation: 'adopt',
+    confirmed: true
+  });
+}
+
+/**
+ * Invalidate cache for old tab if response has it
+ * v1.6.4.17 - Extracted helper
+ * @private
+ */
+function _invalidateOldTabCache(response) {
+  if (response?.oldOriginTabId) {
+    browserTabInfoCache.delete(response.oldOriginTabId);
   }
 }
 
@@ -7799,13 +8681,13 @@ async function _performAdoption(quickTabId, targetTabId) {
   quickTab.originTabId = targetTabId;
   _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId);
 
-  const persistResult = await _persistAdoption(
+  const persistResult = await _persistAdoption({
     quickTabId,
     targetTabId,
     state,
     oldOriginTabId,
     writeStartTime
-  );
+  });
   return persistResult;
 }
 
@@ -7874,9 +8756,16 @@ function _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId) {
 /**
  * Persist adoption to storage
  * v1.6.3.7 - FIX Issue #7: Helper for adoption persistence with logging
+ * v1.6.4.17 - Refactored to use options object (5 args → 1)
  * @private
+ * @param {Object} options - Adoption options
+ * @param {string} options.quickTabId - Quick Tab ID
+ * @param {number} options.targetTabId - Target tab ID
+ * @param {Object} options.state - State to persist
+ * @param {number} options.oldOriginTabId - Previous origin tab ID
+ * @param {number} options.writeStartTime - Write start timestamp
  */
-async function _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime) {
+async function _persistAdoption({ quickTabId, targetTabId, state, oldOriginTabId, writeStartTime }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeTimestamp = Date.now();
   const stateToWrite = {

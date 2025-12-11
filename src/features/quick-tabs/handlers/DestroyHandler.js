@@ -46,6 +46,21 @@ const STORAGE_DEBOUNCE_DELAY = 150;
 const CLOSE_ALL_COOLDOWN_MS = 2000;
 
 /**
+ * v1.6.4.8 - Issue #5: Generate simple checksum for state verification
+ * @param {Object} state - State object to checksum
+ * @returns {string} Checksum string
+ */
+function generateStateChecksum(state) {
+  if (!state || !state.tabs) return 'empty';
+  // Simple checksum: tab count + first and last IDs + timestamp
+  const tabCount = state.tabs.length;
+  const firstId = state.tabs[0]?.id || 'none';
+  const lastId = state.tabs[state.tabs.length - 1]?.id || 'none';
+  const timestamp = state.timestamp || 0;
+  return `${tabCount}:${firstId}:${lastId}:${timestamp}`;
+}
+
+/**
  * DestroyHandler class
  * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
  * v1.6.3.4 - Now persists state to storage after destruction
@@ -86,6 +101,9 @@ export class DestroyHandler {
     // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Mutex flag to prevent closeAll duplicate execution
     this._closeAllInProgress = false;
     this._closeAllCooldownTimer = null;
+
+    // v1.6.4.8 - Issue #5: Write-ahead log for pending deletions
+    this._writeAheadLog = new Map(); // id -> { deletedAt: timestamp, state: 'pending'|'persisted' }
   }
 
   /**
@@ -97,6 +115,7 @@ export class DestroyHandler {
    * v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
    * v1.6.3.4 - FIX Issues #4, #6, #7: Add source parameter, enhanced logging
    * v1.6.3.4-v10 - FIX Issue #6: Check batch Set membership instead of boolean flag
+   * v1.6.4.8 - Issue #5: Write-ahead logging before Map deletion, immediate persist for single destroys
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
@@ -111,6 +130,14 @@ export class DestroyHandler {
 
     // v1.6.3.4 - FIX Issue #6: Log with source indication
     console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
+
+    // v1.6.4.8 - Issue #5: Write-ahead log BEFORE Map deletion
+    this._writeAheadLog.set(id, {
+      deletedAt: Date.now(),
+      state: 'pending',
+      source
+    });
+    console.log(`[DestroyHandler] Write-ahead log entry created (source: ${source}):`, id);
 
     // v1.6.3.4-v5 - FIX Bug #7: Mark as destroyed FIRST to prevent resurrection
     this._destroyedIds.add(id);
@@ -161,8 +188,10 @@ export class DestroyHandler {
       return;
     }
 
-    // v1.6.3.4-v5 - FIX Bug #8: Debounced persist to prevent write storms
-    this._debouncedPersistToStorage();
+    // v1.6.4.8 - Issue #5: For single destroys, persist IMMEDIATELY (no debounce)
+    // This eliminates the 150ms window where state is inconsistent
+    console.log(`[DestroyHandler] Single destroy - immediate persist (source: ${source}):`, id);
+    this._persistToStorageImmediate(id);
 
     console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, id);
   }
@@ -290,6 +319,7 @@ export class DestroyHandler {
   /**
    * Debounced persist to storage
    * v1.6.3.4-v5 - FIX Bug #8: Prevents storage write storms (8 writes in 38ms)
+   * v1.6.4.8 - Issue #5: Only used for closeAll batch operations now
    * @private
    */
   _debouncedPersistToStorage() {
@@ -303,6 +333,72 @@ export class DestroyHandler {
       this._storageDebounceTimer = null;
       this._persistToStorage();
     }, STORAGE_DEBOUNCE_DELAY);
+  }
+
+  /**
+   * Persist to storage immediately with checksum verification
+   * v1.6.4.8 - Issue #5: Immediate persist for single destroys with write-ahead log update
+   * @private
+   * @param {string} deletedId - ID that was deleted (for write-ahead log update)
+   */
+  async _persistToStorageImmediate(deletedId) {
+    const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+
+    if (!state) {
+      console.error('[DestroyHandler] Failed to build state for immediate storage');
+      return;
+    }
+
+    // v1.6.4.8 - Issue #5: Generate checksum BEFORE write
+    const checksumBefore = generateStateChecksum(state);
+    console.log('[DestroyHandler] Checksum BEFORE storage write:', {
+      checksum: checksumBefore,
+      tabCount: state.tabs?.length || 0,
+      deletedId
+    });
+
+    const success = await persistStateToStorage(state, '[DestroyHandler]');
+
+    if (success) {
+      // v1.6.4.8 - Issue #5: Verify checksum AFTER write by re-reading
+      try {
+        const result = await browser.storage.local.get('quick_tabs_state_v2');
+        const storedState = result.quick_tabs_state_v2;
+        const checksumAfter = generateStateChecksum(storedState);
+
+        if (checksumBefore !== checksumAfter) {
+          console.error('[DestroyHandler] ⚠️ Checksum MISMATCH after storage write:', {
+            checksumBefore,
+            checksumAfter,
+            deletedId,
+            expectedTabCount: state.tabs?.length || 0,
+            actualTabCount: storedState?.tabs?.length || 0
+          });
+        } else {
+          console.log('[DestroyHandler] ✓ Checksum verified AFTER storage write:', {
+            checksum: checksumAfter,
+            deletedId
+          });
+        }
+      } catch (verifyErr) {
+        console.warn('[DestroyHandler] Failed to verify storage checksum:', verifyErr.message);
+      }
+
+      // v1.6.4.8 - Issue #5: Update write-ahead log entry
+      const walEntry = this._writeAheadLog.get(deletedId);
+      if (walEntry) {
+        walEntry.state = 'persisted';
+        walEntry.persistedAt = Date.now();
+        console.log('[DestroyHandler] Write-ahead log updated to persisted:', deletedId);
+        
+        // Clean up old WAL entries (keep for 10 seconds for debugging)
+        setTimeout(() => {
+          this._writeAheadLog.delete(deletedId);
+        }, 10000);
+      }
+    } else {
+      console.error('[DestroyHandler] Immediate storage persist failed for:', deletedId);
+    }
   }
 
   /**

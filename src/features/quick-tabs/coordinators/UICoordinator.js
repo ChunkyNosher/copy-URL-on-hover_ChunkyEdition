@@ -85,6 +85,25 @@ const DOM_MONITORING_INTERVAL_MS = 500;
 // 400ms grace period allows for accidental double-clicks without losing snapshot
 const SNAPSHOT_CLEAR_DELAY_MS = 400;
 
+/**
+ * v1.6.4.8 - Issue #7: Quick Tab ID pattern for validation
+ * Format: qt-{tabId}-{timestamp}-{random}
+ * @constant {RegExp}
+ */
+const QUICK_TAB_ID_PATTERN = /^qt-(\d+)-\d+-[a-zA-Z0-9]+$/;
+
+/**
+ * v1.6.4.8 - Issue #6: Cleanup interval for stale timestamps (30 seconds)
+ * @constant {number}
+ */
+const TIMESTAMP_CLEANUP_INTERVAL_MS = 30000;
+
+/**
+ * v1.6.4.8 - Issue #6: Max age for timestamps before cleanup (60 seconds)
+ * @constant {number}
+ */
+const TIMESTAMP_MAX_AGE_MS = 60000;
+
 // v1.6.3.4-v6 - FIX Issue #4: Track restore operations to prevent duplicates
 const RESTORE_IN_PROGRESS = new Set();
 const RESTORE_LOCK_MS = 500;
@@ -143,14 +162,23 @@ export class UICoordinator {
     this.updateHandler = handlers.updateHandler || null;
     this.visibilityHandler = handlers.visibilityHandler || null;
     this.destroyHandler = handlers.destroyHandler || null;
+
+    // v1.6.4.8 - Issue #3: Track whether handlers are ready for rendering
+    this._handlersReady = false;
+
+    // v1.6.4.8 - Issue #6: Periodic timestamp cleanup timer
+    this._timestampCleanupTimer = null;
   }
 
   /**
    * Set handler references after construction (for deferred initialization)
    * v1.6.3.5-v10 - FIX Issue #1-2: Allow setting handlers after UICoordinator is created
+   * v1.6.4.8 - Issue #3: Mark handlers as ready and log timestamp
    * @param {Object} handlers - Handler references
    */
   setHandlers(handlers) {
+    const setHandlersTimestamp = Date.now();
+
     if (handlers.updateHandler) {
       this.updateHandler = handlers.updateHandler;
     }
@@ -160,11 +188,39 @@ export class UICoordinator {
     if (handlers.destroyHandler) {
       this.destroyHandler = handlers.destroyHandler;
     }
-    console.log(`${this._logPrefix} Handlers set:`, {
+
+    // v1.6.4.8 - Issue #3: Mark handlers as ready
+    this._handlersReady = true;
+
+    console.log(`${this._logPrefix} Handlers set (ready for rendering):`, {
       hasUpdateHandler: !!this.updateHandler,
       hasVisibilityHandler: !!this.visibilityHandler,
-      hasDestroyHandler: !!this.destroyHandler
+      hasDestroyHandler: !!this.destroyHandler,
+      setHandlersTimestamp,
+      handlersReady: this._handlersReady
     });
+  }
+
+  /**
+   * Start rendering after handlers are confirmed ready
+   * v1.6.4.8 - Issue #3: Explicit method to call after setHandlers() confirms handlers
+   */
+  startRendering() {
+    if (!this._handlersReady) {
+      console.warn(`${this._logPrefix} startRendering() called before handlers ready - deferring`);
+      return;
+    }
+
+    const renderStartTimestamp = Date.now();
+    console.log(`${this._logPrefix} startRendering() - handlers confirmed ready:`, {
+      renderStartTimestamp,
+      handlersReady: this._handlersReady
+    });
+
+    // Start periodic timestamp cleanup (Issue #6)
+    this._startTimestampCleanup();
+
+    this.renderAll();
   }
 
   /**
@@ -394,6 +450,74 @@ export class UICoordinator {
     } catch (err) {
       console.warn('[UICoordinator] Error querying DOM for Quick Tab:', quickTabId, err);
       return null;
+    }
+  }
+
+  /**
+   * Start periodic cleanup of stale timestamps
+   * v1.6.4.8 - Issue #6: Prevent unbounded Map accumulation
+   * @private
+   */
+  _startTimestampCleanup() {
+    // Clear any existing timer
+    if (this._timestampCleanupTimer) {
+      clearInterval(this._timestampCleanupTimer);
+    }
+
+    this._timestampCleanupTimer = setInterval(() => {
+      this._cleanupStaleTimestamps();
+    }, TIMESTAMP_CLEANUP_INTERVAL_MS);
+
+    console.log(`${this._logPrefix} Started timestamp cleanup timer (every ${TIMESTAMP_CLEANUP_INTERVAL_MS}ms)`);
+  }
+
+  /**
+   * Clean up stale timestamp entries from tracking Maps
+   * v1.6.4.8 - Issue #6: Remove entries older than TIMESTAMP_MAX_AGE_MS
+   * @private
+   */
+  _cleanupStaleTimestamps() {
+    const now = Date.now();
+    let renderTimestampsRemoved = 0;
+    let lastRenderTimeRemoved = 0;
+
+    // Clean up _renderTimestamps
+    for (const [id, timestamp] of this._renderTimestamps) {
+      if (now - timestamp > TIMESTAMP_MAX_AGE_MS) {
+        this._renderTimestamps.delete(id);
+        renderTimestampsRemoved++;
+      }
+    }
+
+    // Clean up _lastRenderTime
+    for (const [id, timestamp] of this._lastRenderTime) {
+      if (now - timestamp > TIMESTAMP_MAX_AGE_MS) {
+        this._lastRenderTime.delete(id);
+        lastRenderTimeRemoved++;
+      }
+    }
+
+    if (renderTimestampsRemoved > 0 || lastRenderTimeRemoved > 0) {
+      console.log(`${this._logPrefix} Cleaned up stale timestamps:`, {
+        renderTimestampsRemoved,
+        lastRenderTimeRemoved,
+        remainingRenderTimestamps: this._renderTimestamps.size,
+        remainingLastRenderTime: this._lastRenderTime.size,
+        cleanupTimestamp: now
+      });
+    }
+  }
+
+  /**
+   * Stop timestamp cleanup timer (for cleanup/destroy)
+   * v1.6.4.8 - Issue #6: Cleanup method
+   * @private
+   */
+  _stopTimestampCleanup() {
+    if (this._timestampCleanupTimer) {
+      clearInterval(this._timestampCleanupTimer);
+      this._timestampCleanupTimer = null;
+      console.log(`${this._logPrefix} Stopped timestamp cleanup timer`);
     }
   }
 
@@ -748,15 +872,55 @@ export class UICoordinator {
   /**
    * Extract browser tab ID from Quick Tab ID pattern
    * v1.6.3.6-v7 - FIX Issue #2: Fallback for Manager restore with null originTabId
+   * v1.6.4.8 - Issue #7: Add format validation with detailed diagnostic logging
    * Quick Tab ID format: qt-{tabId}-{timestamp}-{random}
    * @private
    * @param {string} quickTabId - Quick Tab ID to parse
    * @returns {number|null} Extracted tab ID or null if invalid format
    */
   _extractTabIdFromQuickTabId(quickTabId) {
-    if (!quickTabId || typeof quickTabId !== 'string') return null;
+    if (!quickTabId || typeof quickTabId !== 'string') {
+      console.warn(`${this._logPrefix} _extractTabIdFromQuickTabId: Invalid input:`, {
+        quickTabId,
+        type: typeof quickTabId
+      });
+      return null;
+    }
+
+    // v1.6.4.8 - Issue #7: Validate against named constant pattern
+    if (!QUICK_TAB_ID_PATTERN.test(quickTabId)) {
+      console.warn(`${this._logPrefix} _extractTabIdFromQuickTabId: ID format mismatch:`, {
+        quickTabId,
+        expectedPattern: QUICK_TAB_ID_PATTERN.toString(),
+        expectedFormat: 'qt-{tabId}-{timestamp}-{random}',
+        actualLength: quickTabId.length,
+        startsWithQt: quickTabId.startsWith('qt-')
+      });
+    }
+
+    // Attempt extraction regardless (for backward compatibility)
     const match = quickTabId.match(/^qt-(\d+)-/);
-    return match ? parseInt(match[1], 10) : null;
+    if (!match) {
+      console.warn(`${this._logPrefix} _extractTabIdFromQuickTabId: Failed to extract tab ID:`, {
+        quickTabId,
+        matchResult: null
+      });
+      return null;
+    }
+
+    const extractedTabId = parseInt(match[1], 10);
+
+    // v1.6.4.8 - Issue #7: Validate extracted ID is reasonable
+    if (isNaN(extractedTabId) || extractedTabId < 0) {
+      console.error(`${this._logPrefix} _extractTabIdFromQuickTabId: Invalid extracted tab ID:`, {
+        quickTabId,
+        extractedTabId,
+        isNaN: isNaN(extractedTabId)
+      });
+      return null;
+    }
+
+    return extractedTabId;
   }
 
   /**
@@ -1972,6 +2136,9 @@ export class UICoordinator {
     this._renderTimestamps.clear();
     this._lastRenderTime.clear();
 
+    // v1.6.4.8 - Issue #6: Stop timestamp cleanup timer
+    this._stopTimestampCleanup();
+
     // Reset z-index
     this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
 
@@ -2313,18 +2480,30 @@ export class UICoordinator {
   /**
    * Build callback options for window creation
    * v1.6.3.5-v10 - FIX Issue #1-2: Extracted to reduce _createWindow complexity
+   * v1.6.4.8 - Issue #3: Validate handler existence before wiring
    * Callbacks are bound to handler methods if handlers are available
    * @private
    * @param {string} quickTabId - Quick Tab ID for logging
    * @returns {Object} Callback options
    */
   _buildCallbackOptions(quickTabId) {
+    // v1.6.4.8 - Issue #3: Validate handlers are ready before building callbacks
+    if (!this._handlersReady) {
+      console.warn(`${this._logPrefix} _buildCallbackOptions called before handlers ready:`, {
+        quickTabId,
+        handlersReady: this._handlersReady,
+        hasUpdateHandler: !!this.updateHandler,
+        hasVisibilityHandler: !!this.visibilityHandler,
+        hasDestroyHandler: !!this.destroyHandler
+      });
+    }
+
     const callbacks = {};
 
-    // Build callbacks from each handler
-    this._addUpdateHandlerCallbacks(callbacks);
-    this._addVisibilityHandlerCallbacks(callbacks);
-    this._addDestroyHandlerCallbacks(callbacks);
+    // Build callbacks from each handler (with existence validation)
+    this._addUpdateHandlerCallbacks(callbacks, quickTabId);
+    this._addVisibilityHandlerCallbacks(callbacks, quickTabId);
+    this._addDestroyHandlerCallbacks(callbacks, quickTabId);
 
     // Log warnings for missing critical callbacks
     this._logMissingCallbacks(callbacks, quickTabId);
@@ -2335,11 +2514,18 @@ export class UICoordinator {
   /**
    * Add UpdateHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * v1.6.4.8 - Issue #3: Validate method existence before binding
    * @private
    * @param {Object} callbacks - Callbacks object to populate
+   * @param {string} quickTabId - Quick Tab ID for logging
    */
-  _addUpdateHandlerCallbacks(callbacks) {
-    if (!this.updateHandler) return;
+  _addUpdateHandlerCallbacks(callbacks, quickTabId) {
+    if (!this.updateHandler) {
+      if (this._handlersReady) {
+        console.warn(`${this._logPrefix} UpdateHandler not available for ${quickTabId}`);
+      }
+      return;
+    }
 
     const methods = [
       ['handlePositionChangeEnd', 'onPositionChangeEnd'],
@@ -2351,6 +2537,8 @@ export class UICoordinator {
     for (const [handlerMethod, callbackName] of methods) {
       if (typeof this.updateHandler[handlerMethod] === 'function') {
         callbacks[callbackName] = this.updateHandler[handlerMethod].bind(this.updateHandler);
+      } else if (this._handlersReady) {
+        console.debug(`${this._logPrefix} UpdateHandler.${handlerMethod} not available for ${quickTabId}`);
       }
     }
   }
@@ -2358,11 +2546,18 @@ export class UICoordinator {
   /**
    * Add VisibilityHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * v1.6.4.8 - Issue #3: Validate method existence before binding
    * @private
    * @param {Object} callbacks - Callbacks object to populate
+   * @param {string} quickTabId - Quick Tab ID for logging
    */
-  _addVisibilityHandlerCallbacks(callbacks) {
-    if (!this.visibilityHandler) return;
+  _addVisibilityHandlerCallbacks(callbacks, quickTabId) {
+    if (!this.visibilityHandler) {
+      if (this._handlersReady) {
+        console.warn(`${this._logPrefix} VisibilityHandler not available for ${quickTabId}`);
+      }
+      return;
+    }
 
     if (typeof this.visibilityHandler.handleFocus === 'function') {
       callbacks.onFocus = this.visibilityHandler.handleFocus.bind(this.visibilityHandler);
@@ -2375,11 +2570,18 @@ export class UICoordinator {
   /**
    * Add DestroyHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
+   * v1.6.4.8 - Issue #3: Validate method existence before binding
    * @private
    * @param {Object} callbacks - Callbacks object to populate
+   * @param {string} quickTabId - Quick Tab ID for logging
    */
-  _addDestroyHandlerCallbacks(callbacks) {
-    if (!this.destroyHandler) return;
+  _addDestroyHandlerCallbacks(callbacks, quickTabId) {
+    if (!this.destroyHandler) {
+      if (this._handlersReady) {
+        console.warn(`${this._logPrefix} DestroyHandler not available for ${quickTabId}`);
+      }
+      return;
+    }
 
     if (typeof this.destroyHandler.handleDestroy === 'function') {
       callbacks.onDestroy = id => this.destroyHandler.handleDestroy(id, 'UI');

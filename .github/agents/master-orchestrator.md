@@ -60,17 +60,24 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v10 Features (NEW):**
+**v1.6.3.7-v11 Features (NEW):**
 
-- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
-- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
-- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
-- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
+- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
+- **LRU dedup eviction** - Max 1000 entries prevents memory bloat
+- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
+- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
+- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
+- **Cascading rollback** - LIFO rollback execution in transactions
+- **Write-ahead logging** - Checksum verification in DestroyHandler
+- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+
+**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
+IndexedDB checksum, port message reordering (1s).
 
 **v1.6.3.7-v9 Features (Retained):**
 

@@ -4,7 +4,7 @@ description: |
   Specialist agent for building new features and capabilities for the
   copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension with emphasis
   on clean architecture, comprehensive testing, and maintainability
-tools: ['*']
+tools: ['vscode', 'execute', 'read', 'agent', 'agentic-tools/*', 'codescene-mcp/*', 'perplexity/perplexity_reason', 'edit', 'search', 'web', 'io.github.upstash/context7/*', 'playwright/*', 'github/*', 'todo', 'github.vscode-pull-request-github/copilotCodingAgent', 'github.vscode-pull-request-github/issue_fetch', 'github.vscode-pull-request-github/suggest-fix', 'github.vscode-pull-request-github/searchSyntax', 'github.vscode-pull-request-github/doSearch', 'github.vscode-pull-request-github/renderIssues', 'github.vscode-pull-request-github/activePullRequest', 'github.vscode-pull-request-github/openPullRequest', 'ms-azuretools.vscode-azureresourcegroups/azureActivityLog', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_ai_model_guidance', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_model_code_sample', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_tracing_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_evaluation_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_convert_declarative_agent_to_code', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_agent_runner_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_planner']
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
@@ -60,19 +60,27 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.7-v11 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v10 Features (NEW):**
+**v1.6.3.7-v11 Features (NEW):**
 
-- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
-- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
-- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
-- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
-- **Tab Affinity Diagnostics** - Age bucket logging, defensive cleanup
-- **Initialization Timing** - initializationStartTime with listener logging
+- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
+- **LRU dedup eviction** - Max 1000 entries prevents memory bloat
+- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
+- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
+- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
+- **Deferred handlers** - UICoordinator.startRendering() for proper init order
+- **Cascading rollback** - LIFO rollback execution in transactions
+- **Write-ahead logging** - Checksum verification in DestroyHandler
+- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
+- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
+- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+
+**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
+IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
 
 **v1.6.3.7-v9 Features (Retained):**
 

@@ -203,8 +203,15 @@ export class QuickTabHandler {
 
   /**
    * Handle batch Quick Tab update
+   * v1.6.4.13 - FIX Issue #16: Added initialization guard
    */
   async handleBatchUpdate(message, sender) {
+    // v1.6.4.13 - FIX Issue #16: Wait for initialization before processing batch updates
+    if (!this.isInitialized) {
+      console.log('[QuickTabHandler] handleBatchUpdate: Waiting for initialization');
+      await this.initializeFn();
+    }
+
     const tabId = sender.tab?.id;
     const result = await this.stateCoordinator.processBatchUpdate(
       tabId,

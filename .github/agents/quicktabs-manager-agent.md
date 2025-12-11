@@ -3,9 +3,9 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v10), storage watchdog, BC gap detection, IndexedDB checksum,
-  port message reordering, initialization timing
-tools: ['*']
+  (v1.6.3.7-v11), promise barrier, LRU dedup eviction, correlation ID echo,
+  state machine timeouts, storage watchdog, BC gap detection
+tools: ['vscode', 'execute', 'read', 'agent', 'agentic-tools/*', 'codescene-mcp/*', 'perplexity/perplexity_reason', 'edit', 'search', 'web', 'io.github.upstash/context7/*', 'playwright/*', 'github/*', 'todo', 'github.vscode-pull-request-github/copilotCodingAgent', 'github.vscode-pull-request-github/issue_fetch', 'github.vscode-pull-request-github/suggest-fix', 'github.vscode-pull-request-github/searchSyntax', 'github.vscode-pull-request-github/doSearch', 'github.vscode-pull-request-github/renderIssues', 'github.vscode-pull-request-github/activePullRequest', 'github.vscode-pull-request-github/openPullRequest', 'ms-azuretools.vscode-azureresourcegroups/azureActivityLog', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_ai_model_guidance', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_model_code_sample', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_tracing_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_evaluation_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_convert_declarative_agent_to_code', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_agent_runner_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_planner']
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v10 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v11 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -53,14 +53,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
 - **Operation Confirmations** - Closed-loop feedback for all operations (v7)
 
-**v1.6.3.7-v10 Features (NEW):**
+**v1.6.3.7-v11 Features (NEW):**
 
-- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
-- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
-- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
-- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
-- **Tab Affinity Diagnostics** - Age bucket logging, defensive cleanup
-- **Initialization Timing** - initializationStartTime with listener logging
+- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
+- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
+- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
+- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
+- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
+- **Deferred handlers** - UICoordinator.startRendering() for proper init order
+- **Cascading rollback** - LIFO rollback execution in transactions
+- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+
+**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
+IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
 
 **v1.6.3.7-v9 Features (Retained):**
 
@@ -116,10 +121,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   `sync-session-state`)
 - **DOM Reconciliation** - `_itemElements` Map for animation optimization
 
-**Key Functions (v1.6.3.7-v10):**
+**Key Functions (v1.6.3.7-v11):**
 
 | Function                       | Purpose                                  |
 | ------------------------------ | ---------------------------------------- |
+| `initializationBarrierPromise` | Promise-based init barrier (v11)         |
+| `evictLRUDedupEntry()`         | LRU dedup map eviction (v11)             |
+| `echoCorrelationId()`          | HEARTBEAT_ACK correlation (v11)          |
 | `processPortMessageReorder()`  | Port message queue with 1s timeout (v10) |
 | `handleBCGapDetection()`       | BC gap detection callback (v10)          |
 | `validateSequenceNumber()`     | BC sequence gap detection                |
@@ -152,6 +160,10 @@ for session tabs.
 
 ## Testing Requirements
 
+- [ ] Promise-based listener barrier replaces boolean flag (v1.6.3.7-v11)
+- [ ] LRU dedup eviction prevents memory bloat (max 1000) (v1.6.3.7-v11)
+- [ ] Correlation ID echo in HEARTBEAT_ACK (v1.6.3.7-v11)
+- [ ] State machine 7s timeout auto-recovery works (v1.6.3.7-v11)
 - [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
 - [ ] BC gap detection triggers storage fallback (v1.6.3.7-v10)
 - [ ] Port message reordering queue works (1s timeout) (v1.6.3.7-v10)
@@ -169,6 +181,6 @@ for session tabs.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.7-v10 storage watchdog,
-BC gap detection, port message reordering, v9 unified keepalive,
-sequence tracking, v8 port resilience, v5 connection state tracking.**
+**Your strength: Manager coordination with v1.6.3.7-v11 promise barrier,
+LRU dedup eviction, correlation ID echo, state machine timeouts, v10 storage watchdog,
+BC gap detection, port message reordering, v9 unified keepalive, v8 port resilience.**

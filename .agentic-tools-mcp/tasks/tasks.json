@@ -1,5 +1,13 @@
 {
-  "projects": [],
+  "projects": [
+    {
+      "id": "3f56f1fa-747d-4598-a8b1-0e63b67f7bb5",
+      "name": "Cross-Tab Sync Specialist Work",
+      "description": "Tracking cross-tab sync, messaging, and state persistence improvements for the Firefox extension",
+      "createdAt": "2025-12-10T23:59:08.391Z",
+      "updatedAt": "2025-12-10T23:59:08.391Z"
+    }
+  ],
   "tasks": [],
   "subtasks": [],
   "migration": {
