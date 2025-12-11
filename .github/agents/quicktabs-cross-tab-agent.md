@@ -5,7 +5,7 @@ description: |
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
   (v1.6.3.7-v11), promise barrier, LRU dedup eviction, correlation ID echo,
   state machine timeouts, storage watchdog, BC gap detection
-tools: ['vscode', 'execute', 'read', 'agent', 'agentic-tools/*', 'codescene-mcp/*', 'perplexity/perplexity_reason', 'edit', 'search', 'web', 'io.github.upstash/context7/*', 'playwright/*', 'github/*', 'todo', 'github.vscode-pull-request-github/copilotCodingAgent', 'github.vscode-pull-request-github/issue_fetch', 'github.vscode-pull-request-github/suggest-fix', 'github.vscode-pull-request-github/searchSyntax', 'github.vscode-pull-request-github/doSearch', 'github.vscode-pull-request-github/renderIssues', 'github.vscode-pull-request-github/activePullRequest', 'github.vscode-pull-request-github/openPullRequest', 'ms-azuretools.vscode-azureresourcegroups/azureActivityLog', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_ai_model_guidance', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_model_code_sample', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_tracing_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_evaluation_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_convert_declarative_agent_to_code', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_agent_runner_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_planner']
+tools: ['*']
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
