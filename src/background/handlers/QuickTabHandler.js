@@ -16,6 +16,9 @@
  * - GET_CURRENT_TAB_ID: Get current browser tab ID
  */
 
+// v1.6.3.7-v12 - Issue #7: Initialization barrier timeout constant (code review fix)
+const INIT_TIMEOUT_MS = 10000;
+
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
   // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
@@ -622,9 +625,6 @@ export class QuickTabHandler {
       timestamp: initStartTime
     });
     
-    // v1.6.3.7-v12 - Issue #7: Timeout protection (10 seconds) to prevent indefinite hangs
-    const INIT_TIMEOUT_MS = 10000;
-    
     try {
       // v1.6.3.7-v12 - Issue #7: Explicitly await initialization with timeout
       const initPromise = this.initializeFn();
@@ -1057,7 +1057,8 @@ export class QuickTabHandler {
   async _performRewriteRecovery(operationId, expectedState, failureType) {
     console.log('[QuickTabHandler] RECOVERY_STRATEGY: Re-write state to storage');
     
-    const recoverySaveId = `recovery-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // v1.6.3.7-v12 - FIX Code Review: Use slice() instead of deprecated substr()
+    const recoverySaveId = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const recoveryState = {
       ...expectedState,
       saveId: recoverySaveId,

@@ -32,6 +32,12 @@ import { QuickTabWindow } from './window.js'; // v1.6.3.4-v7 - FIX Issue #1: Imp
 import { CONSTANTS } from '../../core/config.js';
 import { STATE_KEY } from '../../utils/storage-utils.js';
 
+// v1.6.3.7-v12 - Issue #12: currentTabId barrier constants (code review fix)
+const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait
+const INITIAL_POLL_INTERVAL_MS = 50;
+const MAX_POLL_INTERVAL_MS = 200;
+const POLL_INTERVAL_MULTIPLIER = 1.5; // Exponential backoff factor
+
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
@@ -254,9 +260,6 @@ class QuickTabsManager {
    * @returns {Promise<{passed: boolean, reason: string}>}
    */
   async _checkCurrentTabIdBarrier() {
-    const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait
-    const INITIAL_POLL_INTERVAL_MS = 50;
-    const MAX_POLL_INTERVAL_MS = 200;
     const barrierStartTime = Date.now();
     
     // If currentTabId is already set, barrier passes
@@ -292,7 +295,7 @@ class QuickTabsManager {
       
       // Wait before next check with exponential backoff
       await new Promise(resolve => setTimeout(resolve, pollInterval));
-      pollInterval = Math.min(pollInterval * 1.5, MAX_POLL_INTERVAL_MS);
+      pollInterval = Math.min(pollInterval * POLL_INTERVAL_MULTIPLIER, MAX_POLL_INTERVAL_MS);
     }
     
     // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null

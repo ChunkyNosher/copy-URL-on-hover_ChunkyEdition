@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v11), promise barrier, LRU dedup eviction, correlation ID echo,
-  state machine timeouts, storage watchdog, BC gap detection
+  (v1.6.3.7-v12), fallback health monitoring, sidebar communication logging,
+  BC unavailable detection, 30s interval status logging
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v12 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -53,97 +53,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
 - **Operation Confirmations** - Closed-loop feedback for all operations (v7)
 
-**v1.6.3.7-v11 Features (NEW):**
+**v1.6.3.7-v12 Features (NEW):**
 
-- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
-- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
-- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
-- **Deferred handlers** - UICoordinator.startRendering() for proper init order
-- **Cascading rollback** - LIFO rollback execution in transactions
-- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+- **Sidebar fallback communication logging** - Logs when BC unavailable
+- **Fallback health monitoring** - 30s interval status (message count, latency)
+- **_trackFallbackUpdate()** - Tracks state updates via fallback mechanisms
+- **_startFallbackHealthMonitoring()** - Periodic status logging
 
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
-
-**v1.6.3.7-v9 Features (Retained):**
-
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
-
-**v1.6.3.7-v8 Features (Retained):**
-
-- **Port Message Queue** - Messages queued during reconnection
-- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
-- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
-
-**v1.6.3.7-v6 Features (Retained):**
-
-- **Initial State Load Wait** - 2-second wait before rendering empty state
-- **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
-- **Deduplication Visibility** - `RENDER_SKIPPED reason=saveId_match|hash_match`
-- **Clear All Tracing** - `CLEAR_ALL_COMMAND_INITIATED`, response with counts
-- **Keepalive Health** - 60s health check, consecutive failure tracking
-- **Connection State Enhancements** - Duration tracking, fallback status logging
-
-**v1.6.3.7-v5 Features (Retained):**
-
-- **Connection State Tracking** - `connectionState` variable with three states:
-  connected → zombie → disconnected, managed by `_transitionConnectionState()`
-- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
-- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Circuit Breaker Probing** - `_probeBackgroundHealth()` every 500ms during
-  open state (reduced open duration 10s→2s)
-- **Close All Feedback** - `_showCloseAllErrorNotification()` on background
-  failure
-- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch with
-  graceful degradation
-- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
-  message
-- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
-  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
-- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
-
-**v1.6.3.7-v3 Features (Retained):**
-
-- **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **BroadcastChannel API** - Real-time messaging (`BroadcastChannelManager`)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
-  `sync-session-state`)
-- **DOM Reconciliation** - `_itemElements` Map for animation optimization
-
-**Key Functions (v1.6.3.7-v11):**
-
-| Function                       | Purpose                                  |
-| ------------------------------ | ---------------------------------------- |
-| `initializationBarrierPromise` | Promise-based init barrier (v11)         |
-| `evictLRUDedupEntry()`         | LRU dedup map eviction (v11)             |
-| `echoCorrelationId()`          | HEARTBEAT_ACK correlation (v11)          |
-| `processPortMessageReorder()`  | Port message queue with 1s timeout (v10) |
-| `handleBCGapDetection()`       | BC gap detection callback (v10)          |
-| `validateSequenceNumber()`     | BC sequence gap detection                |
-| `scheduleRender(source)`       | Unified render entry point               |
-| `_transitionConnectionState()` | Connection state transitions (v5)        |
-| `_probeBackgroundHealth()`     | Circuit breaker health probe             |
-
-**Manager as Pure Consumer:**
-
-- `inMemoryTabsCache` is fallback protection only
-- All commands go through Background-as-Coordinator
-- `closeAllTabs()` uses `CLEAR_ALL_QUICK_TABS` message
-- Adoption uses `ADOPT_TAB` command to background
-
-**CRITICAL:** Use `storage.local` for permanent Quick Tabs, `storage.session`
-for session tabs.
+**v1.6.3.7-v11 Features (Retained):** Promise barrier, LRU dedup (1000),
+correlation ID echo, state machine timeouts (7s), deferred handlers.
 
 ---
 

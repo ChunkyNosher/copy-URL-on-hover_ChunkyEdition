@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v11.
+  documentation. Current version: v1.6.3.7-v12.
 tools: ['*']
 ---
 
@@ -69,28 +69,29 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v11)
+## Current Extension State (v1.6.3.7-v12)
 
-### v1.6.3.7-v11 Features (NEW)
+### v1.6.3.7-v12 Features (NEW)
 
-- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
-- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
-- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
-- **Deferred handlers** - UICoordinator.startRendering() for proper init order
-- **Cascading rollback** - LIFO rollback execution in transactions
-- **Write-ahead logging** - Checksum verification in DestroyHandler
-- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
-- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
-- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+- **DEBUG_DIAGNOSTICS flag** - Separate verbose diagnostics from DEBUG_MESSAGING
+- **BroadcastChannel fallback logging** - Context detection, fallback activation
+- **Keepalive health sampling** - First failure + 10% sampling for visibility
+- **Port registry thresholds** - WARN at 50, CRITICAL at 100 with auto-cleanup
+- **Dedup decision logging** - All skip/process decisions with reasons logged
+- **Init race barrier** - async await with 10s timeout in handleGetQuickTabsState()
+- **Sequence ID prioritization** - Uses sequenceId over 50ms timestamp window
+- **Sidebar fallback monitoring** - 30s interval status (count, latency)
+- **currentTabId barrier** - 2s exponential backoff before hydration
+- **Corruption recovery** - Re-write + verify on validation failure
+
+### v1.6.3.7-v11 Features (Retained)
+
+- Promise barrier, LRU dedup (1000), correlation ID echo, state machine timeouts (7s)
+- WeakRef callbacks, deferred handlers, cascading rollback, write-ahead logging
 
 ### v1.6.3.7-v10 Features (Retained)
 
-- **Storage Watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
-- **BC Gap Detection** - Storage fallback on sequence gap, 5s staleness check
-- **IndexedDB Checksum** - Checksum validation with auto-restore from sync backup
-- **Port Message Reordering** - Queue with 1s timeout, sequence-based dequeue
+- Storage watchdog (2s), BC gap detection (5s), IndexedDB checksum, port reordering (1s)
 
 ### v1.6.3.7-v9 Features (Retained)
 

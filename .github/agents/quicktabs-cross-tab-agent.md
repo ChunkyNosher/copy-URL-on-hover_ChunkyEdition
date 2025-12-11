@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v11), promise barrier, LRU dedup eviction, correlation ID echo,
-  state machine timeouts, storage watchdog, BC gap detection
+  (v1.6.3.7-v12), diagnostic logging, dedup decision logging, sequence ID ordering,
+  port registry thresholds, keepalive sampling, BC fallback logging
 tools: ['*']
 ---
 
@@ -38,19 +38,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.7-v12 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v11 Features (NEW):**
+**v1.6.3.7-v12 Features (NEW):**
 
-- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
-- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
-- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
-- **Cascading rollback** - LIFO rollback execution in transactions
-- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
-- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
-- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+- **DEBUG_DIAGNOSTICS flag** - Separate verbose diagnostics from DEBUG_MESSAGING
+- **Keepalive health sampling** - First failure + 10% sampling for visibility
+- **Port registry thresholds** - WARN at 50, CRITICAL at 100 with auto-cleanup
+- **Dedup decision logging** - All skip/process decisions with reasons logged
+- **Sequence ID prioritization** - Uses sequenceId over 50ms timestamp window
+- **BroadcastChannel fallback logging** - Context detection, fallback activation
+- **Storage validation logging** - Each stage logged with expected vs actual
+
+**v1.6.3.7-v11 Features (Retained):** Promise barrier, LRU dedup (1000),
+correlation ID echo, state machine timeouts (7s), WeakRef callbacks.
 
 **v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
 IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.

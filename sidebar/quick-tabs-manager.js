@@ -2799,10 +2799,10 @@ function _startFallbackHealthMonitoring() {
   
   fallbackHealthIntervalId = setInterval(() => {
     const elapsedMs = Date.now() - fallbackStats.startTime;
-    // v1.6.3.7-v12 - FIX Code Review: Renamed to clarify this is time between updates, not message latency
+    // v1.6.3.7-v12 - FIX Code Review: Return null instead of 'N/A' for type consistency
     const avgTimeBetweenUpdatesMs = fallbackStats.stateUpdatesReceived > 0
       ? Math.round((elapsedMs / fallbackStats.stateUpdatesReceived))
-      : 'N/A';
+      : null;
     
     console.log('[Manager] FALLBACK_STATUS:', {
       broadcastChannelAvailable: false,

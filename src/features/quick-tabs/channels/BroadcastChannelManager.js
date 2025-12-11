@@ -264,13 +264,15 @@ export function initBroadcastChannel() {
  * Detect the current execution context (background, content, sidebar, etc.)
  * v1.6.3.7-v12 - Issue #1: Helper for context-aware logging
  * v1.6.3.7-v12 - FIX ESLint: Reduced complexity and max-depth
+ * v1.6.3.7-v12 - FIX Code Review: Explicit null check for _getExecutionContextFromUrl()
  * @private
  * @returns {string} Execution context description
  */
 function _detectExecutionContext() {
   try {
     const urlContext = _getExecutionContextFromUrl();
-    if (urlContext) return urlContext;
+    // v1.6.3.7-v12 - FIX Code Review: Explicit null/undefined check
+    if (urlContext !== null && urlContext !== undefined) return urlContext;
     
     if (_isBackgroundScript()) return 'background';
     

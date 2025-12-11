@@ -255,9 +255,10 @@ const DEBUG_DIAGNOSTICS = true;
 
 // ==================== v1.6.3.7-v12 KEEPALIVE SAMPLING ====================
 // Issue #2: Keepalive health monitoring - log first failure + sample 10% thereafter
+// v1.6.3.7-v12 - FIX Code Review: Counter-based sampling instead of random for determinism
 // Track whether first failure has been logged in this session
 let firstKeepaliveFailureLogged = false;
-const KEEPALIVE_FAILURE_SAMPLE_RATE = 0.1; // 10% of failures after first
+const KEEPALIVE_FAILURE_LOG_EVERY_N = 10; // Log every Nth failure after first (deterministic)
 
 // ==================== v1.6.3.7-v12 PORT REGISTRY MONITORING ====================
 // Issue #3, #10: Port registry threshold monitoring interval
@@ -423,8 +424,10 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
 function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
   consecutiveKeepaliveFailures++;
   
-  // Issue #2: Always log first failure, then sample 10% thereafter
-  const shouldLogFailure = !firstKeepaliveFailureLogged || Math.random() < KEEPALIVE_FAILURE_SAMPLE_RATE;
+  // Issue #2: Always log first failure, then sample every Nth thereafter (deterministic)
+  // v1.6.3.7-v12 - FIX Code Review: Counter-based sampling for predictable, testable behavior
+  const shouldLogFailure = !firstKeepaliveFailureLogged || 
+    (consecutiveKeepaliveFailures % KEEPALIVE_FAILURE_LOG_EVERY_N === 0);
   
   if (shouldLogFailure) {
     console.error('[Background] KEEPALIVE_RESET_FAILED:', {
@@ -436,7 +439,7 @@ function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
       timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
       durationMs: Date.now() - attemptStartTime,
       isFirstFailure: !firstKeepaliveFailureLogged,
-      sampleRate: firstKeepaliveFailureLogged ? '10%' : '100%',
+      samplingStrategy: firstKeepaliveFailureLogged ? `every ${KEEPALIVE_FAILURE_LOG_EVERY_N}th` : 'first',
       timestamp: Date.now()
     });
     firstKeepaliveFailureLogged = true;
@@ -3864,7 +3867,7 @@ function _multiMethodDeduplication(newValue, oldValue) {
   // than timestamp-based windows because Firefox's storage.onChanged events can fire
   // out of order due to async listener processing
   const sequenceResult = _checkSequenceIdOrdering(newValue, oldValue);
-  if (sequenceResult.skip) {
+  if (sequenceResult.shouldSkip) {
     return _createSkipResult('sequenceId', sequenceResult.reason, {
       newSequenceId: newValue?.sequenceId,
       oldSequenceId: oldValue?.sequenceId,
@@ -3897,10 +3900,11 @@ function _multiMethodDeduplication(newValue, oldValue) {
  * Firefox's storage.onChanged provides no ordering guarantees, but sequence IDs
  * are assigned at write time (before storage.local.set is called), so comparing
  * sequence IDs provides reliable event ordering.
+ * v1.6.3.7-v12 - FIX Code Review: Renamed 'skip' to 'shouldSkip' for clarity
  * @private
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
- * @returns {{ skip: boolean, reason: string }}
+ * @returns {{ shouldSkip: boolean, reason: string }}
  */
 function _checkSequenceIdOrdering(newValue, oldValue) {
   const newSeqId = newValue?.sequenceId;
@@ -3914,7 +3918,7 @@ function _checkSequenceIdOrdering(newValue, oldValue) {
         hasOldSeqId: typeof oldSeqId === 'number'
       });
     }
-    return { skip: false, reason: 'No sequenceId available' };
+    return { shouldSkip: false, reason: 'No sequenceId available' };
   }
   
   // If new event has same or lower sequence ID, it's a duplicate or out-of-order event
@@ -3926,7 +3930,7 @@ function _checkSequenceIdOrdering(newValue, oldValue) {
       isOutOfOrder: newSeqId < oldSeqId
     });
     return { 
-      skip: true, 
+      shouldSkip: true, 
       reason: newSeqId === oldSeqId 
         ? 'Same sequenceId (duplicate event)' 
         : 'Lower sequenceId (out-of-order event from older write)'
@@ -3941,7 +3945,7 @@ function _checkSequenceIdOrdering(newValue, oldValue) {
       increment: newSeqId - oldSeqId
     });
   }
-  return { skip: false, reason: 'Valid sequence progression' };
+  return { shouldSkip: false, reason: 'Valid sequence progression' };
 }
 
 /**
