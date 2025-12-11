@@ -2,6 +2,19 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v13 - FIX Sidebar Communication Fallback Issues #5, #12, arch #1, #6:
+ *   - FIX Issue #5: Sidebar BroadcastChannel fallback logging with SIDEBAR_BC_UNAVAILABLE message
+ *   - FIX Issue #5: Explicit fallback mechanism type documentation (port-based + storage.onChanged)
+ *   - FIX Issue #12: Enhanced fallback health monitoring with stall detection (60s threshold)
+ *   - FIX Issue #12: Latency tracking in fallback stats (avgLatencyMs, lastLatencyMs)
+ *   - FIX Issue #12: FALLBACK_HEALTH log with expected messages per interval (~6 if state changes every 5s)
+ *   - FIX Issue #12: FALLBACK_STALLED warning when no updates for 60+ seconds
+ *   - FIX arch #1: BC verification handshake (PING/PONG) to detect if BC actually works in sidebar
+ *   - FIX arch #1: BC_VERIFICATION_FAILED log when messages don't cross sidebar boundary
+ *   - FIX arch #6: Storage health probe - write timestamp to _sidebar_health_ping key
+ *   - FIX arch #6: STORAGE_TIER_BROKEN log when onChanged doesn't fire within 500ms
+ *   - FIX arch #6: Storage tier latency measurement (healthy/acceptable/degraded classification)
+ *
  * v1.6.3.7-v10 - FIX Issue #10 (state-persistence-issues.md): Tab Affinity Map Desynchronization
  *   - FIX Issue #10: Enhanced cleanup job logging with before/after sizes and age bucket counts
  *   - FIX Issue #10: Age bucket distribution (< 1h, 1-6h, 6-24h, > 24h) in diagnostics
@@ -2720,9 +2733,14 @@ function _sendActionRequest(action, payload) {
 
 // ==================== END PORT CONNECTION ====================
 
-// ==================== v1.6.3.7-v3 BROADCAST CHANNEL ====================
+// ==================== v1.6.3.7-v3/v13 BROADCAST CHANNEL ====================
 // API #2: BroadcastChannel - Real-Time Tab Messaging
-// BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
+// 
+// ARCHITECTURE NOTE (v1.6.3.7-v13 - Issue #1 arch doc):
+// - BroadcastChannel works for tab-to-tab communication
+// - In Sidebar context, BroadcastChannel is NOT RELIABLE due to Firefox API constraints
+// - For Sidebar, Port-based messaging is the PRIMARY tier, storage.onChanged is SECONDARY
+// - This function attempts BC init but includes verification handshake to confirm it works
 
 /**
  * Handler function reference for cleanup
@@ -2731,17 +2749,32 @@ function _sendActionRequest(action, payload) {
 let broadcastHandlerRef = null;
 
 /**
+ * BC verification state
+ * v1.6.3.7-v13 - Issue #1 (arch): Track verification handshake
+ */
+let bcVerificationPending = false;
+let bcVerificationReceived = false;
+let bcVerificationTimeoutId = null;
+
+/**
+ * BC verification timeout (1 second)
+ * v1.6.3.7-v13 - Issue #1 (arch): Time to wait for BC verification response
+ */
+const BC_VERIFICATION_TIMEOUT_MS = 1000;
+
+/**
  * Initialize BroadcastChannel for real-time updates
  * v1.6.3.7-v3 - API #2: Setup channel and listener
  * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
  * v1.6.3.7-v9 - Issue #7: Set up sequence gap detection callback
  * v1.6.3.7-v12 - Issue #5, #11: Enhanced fallback logging when BC unavailable
+ * v1.6.3.7-v13 - Issue #1 (arch): Add verification handshake for sidebar context
  */
 function initializeBroadcastChannel() {
   const initialized = initBroadcastChannel();
   if (!initialized) {
     // v1.6.3.7-v12 - Issue #5, #11: Log explicit fallback activation
-    console.warn('[Manager] [BC] BROADCAST_CHANNEL_UNAVAILABLE:', {
+    console.warn('[Manager] SIDEBAR_BC_UNAVAILABLE: Activating fallback [port-based + storage.onChanged]', {
       reason: 'BroadcastChannel not available in sidebar context',
       firefoxConstraint: 'BroadcastChannel API is not available in sidebar/panel isolated contexts',
       fallbackActivated: true,
@@ -2782,11 +2815,110 @@ function initializeBroadcastChannel() {
       timestamp: Date.now()
     });
     console.log('[Manager] v1.6.3.7-v9 BroadcastChannel listener added with sequence tracking');
+    
+    // v1.6.3.7-v13 - Issue #1 (arch): Start verification handshake
+    _startBCVerificationHandshake();
   }
 }
 
-// ==================== v1.6.3.7-v12 FALLBACK HEALTH MONITORING ====================
+/**
+ * Start BroadcastChannel verification handshake
+ * v1.6.3.7-v13 - Issue #1 (arch): Verify BC actually delivers messages in sidebar context
+ * @private
+ */
+function _startBCVerificationHandshake() {
+  bcVerificationPending = true;
+  bcVerificationReceived = false;
+  
+  console.log('[Manager] BC_VERIFICATION_STARTED: Requesting PING from background', {
+    timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
+    timestamp: Date.now()
+  });
+  
+  // Request background to send a PING via BroadcastChannel
+  // We use port message to request this since port is more reliable
+  if (backgroundPort) {
+    backgroundPort.postMessage({
+      type: 'BC_VERIFICATION_REQUEST',
+      requestId: `bc-verify-${Date.now()}`,
+      timestamp: Date.now(),
+      source: 'sidebar'
+    });
+  } else {
+    // Fallback: use runtime.sendMessage
+    browser.runtime.sendMessage({
+      type: 'BC_VERIFICATION_REQUEST',
+      requestId: `bc-verify-${Date.now()}`,
+      timestamp: Date.now(),
+      source: 'sidebar'
+    }).catch(err => {
+      console.warn('[Manager] BC_VERIFICATION_REQUEST failed:', err.message);
+    });
+  }
+  
+  // Set timeout for verification
+  bcVerificationTimeoutId = setTimeout(() => {
+    _handleBCVerificationTimeout();
+  }, BC_VERIFICATION_TIMEOUT_MS);
+}
+
+/**
+ * Handle BC verification timeout
+ * v1.6.3.7-v13 - Issue #1 (arch): BC verification failed - activate fallback
+ * @private
+ */
+function _handleBCVerificationTimeout() {
+  bcVerificationPending = false;
+  bcVerificationTimeoutId = null;
+  
+  if (!bcVerificationReceived) {
+    console.warn('[Manager] BC_VERIFICATION_FAILED: Messages not crossing sidebar boundary', {
+      timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
+      bcApiAvailable: true,
+      sidebarContext: true,
+      diagnosis: 'BroadcastChannel API exists but messages do not reach sidebar',
+      recommendation: 'Port-based messaging is PRIMARY for Sidebar, BC only for tab-to-tab',
+      timestamp: Date.now()
+    });
+    
+    // Activate fallback monitoring even though BC API is "available"
+    console.log('[Manager] SIDEBAR_BC_UNRELIABLE: Activating fallback [port-based + storage.onChanged]');
+    _startFallbackHealthMonitoring();
+  }
+}
+
+/**
+ * Handle BC verification PONG received
+ * v1.6.3.7-v13 - Issue #1 (arch): Confirm BC is working
+ * @param {Object} message - PONG message from background
+ * @private
+ */
+function _handleBCVerificationPong(message) {
+  if (!bcVerificationPending) return;
+  
+  bcVerificationPending = false;
+  bcVerificationReceived = true;
+  
+  if (bcVerificationTimeoutId) {
+    clearTimeout(bcVerificationTimeoutId);
+    bcVerificationTimeoutId = null;
+  }
+  
+  const latencyMs = message.originalTimestamp 
+    ? Date.now() - message.originalTimestamp 
+    : null;
+  
+  console.log('[Manager] BC_VERIFICATION_SUCCESS: BroadcastChannel is delivering messages', {
+    latencyMs,
+    requestId: message.requestId,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== v1.6.3.7-v12/v13 FALLBACK HEALTH MONITORING ====================
 // Issue #5: Periodic fallback status logging when BC is unavailable
+// Issue #12: Enhanced health monitoring with stall detection and latency tracking
+// Issue #6 (arch): Storage tier health instrumentation
 
 /**
  * Fallback health monitoring interval ID
@@ -2795,15 +2927,41 @@ function initializeBroadcastChannel() {
 let fallbackHealthIntervalId = null;
 
 /**
+ * Storage health probe interval ID
+ * v1.6.3.7-v13 - Issue #6 (arch): Track storage probe interval
+ */
+let storageHealthProbeIntervalId = null;
+
+/**
  * Fallback statistics for health monitoring
  * v1.6.3.7-v12 - Issue #5: Track state updates received via fallback
+ * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
  */
 let fallbackStats = {
   stateUpdatesReceived: 0,
   lastUpdateTime: 0,
   portMessagesReceived: 0,
   storageEventsReceived: 0,
-  startTime: Date.now()
+  startTime: Date.now(),
+  // v1.6.3.7-v13 - Issue #12: Latency tracking
+  latencySum: 0,
+  latencyCount: 0,
+  lastLatencyMs: 0
+};
+
+/**
+ * Storage health probe statistics
+ * v1.6.3.7-v13 - Issue #6 (arch): Track storage tier health
+ */
+let storageHealthStats = {
+  probesSent: 0,
+  probesReceived: 0,
+  lastProbeTime: 0,
+  lastProbeLatencyMs: 0,
+  avgLatencyMs: 0,
+  latencySum: 0,
+  lastSuccessfulProbe: 0,
+  consecutiveFailures: 0
 };
 
 /**
@@ -2813,8 +2971,39 @@ let fallbackStats = {
 const FALLBACK_HEALTH_CHECK_INTERVAL_MS = 30000;
 
 /**
+ * Stall detection threshold (60 seconds)
+ * v1.6.3.7-v13 - Issue #12: Warn if no updates received for this long
+ */
+const FALLBACK_STALL_THRESHOLD_MS = 60000;
+
+/**
+ * Storage health probe interval (30 seconds)
+ * v1.6.3.7-v13 - Issue #6 (arch): Check storage tier health periodically
+ */
+const STORAGE_HEALTH_PROBE_INTERVAL_MS = 30000;
+
+/**
+ * Storage health probe timeout (500ms)
+ * v1.6.3.7-v13 - Issue #6 (arch): Max wait for probe response
+ */
+const STORAGE_HEALTH_PROBE_TIMEOUT_MS = 500;
+
+/**
+ * Storage health probe key
+ * v1.6.3.7-v13 - Issue #6 (arch): Dedicated key for health probes
+ */
+const STORAGE_HEALTH_PROBE_KEY = '_sidebar_health_ping';
+
+/**
+ * Track if fallback mode is active
+ * v1.6.3.7-v13 - Issue #5, #12: Used for UI badge display
+ */
+let fallbackModeActive = false;
+
+/**
  * Start fallback health monitoring
  * v1.6.3.7-v12 - Issue #5: Log periodic fallback status when BC unavailable
+ * v1.6.3.7-v13 - Issue #12: Enhanced with stall detection and degraded warnings
  * @private
  */
 function _startFallbackHealthMonitoring() {
@@ -2823,46 +3012,275 @@ function _startFallbackHealthMonitoring() {
   }
   
   fallbackStats.startTime = Date.now();
+  fallbackModeActive = true;
+  
+  // v1.6.3.7-v13 - Issue #6 (arch): Also start storage health probing
+  _startStorageHealthProbe();
   
   fallbackHealthIntervalId = setInterval(() => {
-    const elapsedMs = Date.now() - fallbackStats.startTime;
-    // v1.6.3.7-v12 - FIX Code Review: Return null instead of 'N/A' for type consistency
-    const avgTimeBetweenUpdatesMs = fallbackStats.stateUpdatesReceived > 0
-      ? Math.round((elapsedMs / fallbackStats.stateUpdatesReceived))
-      : null;
-    
-    console.log('[Manager] FALLBACK_STATUS:', {
-      broadcastChannelAvailable: false,
-      fallbackActive: true,
-      stateUpdatesReceived: fallbackStats.stateUpdatesReceived,
+    _logFallbackHealthStatus();
+  }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
+  
+  console.log('[Manager] FALLBACK_ACTIVATED: using [port-based + storage.onChanged], will check fallback health every 30s', {
+    healthCheckIntervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
+    stallThresholdMs: FALLBACK_STALL_THRESHOLD_MS,
+    storageProbeIntervalMs: STORAGE_HEALTH_PROBE_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log fallback health status with stall detection
+ * v1.6.3.7-v13 - Issue #12: Extracted for clarity with enhanced monitoring
+ * @private
+ */
+function _logFallbackHealthStatus() {
+  const now = Date.now();
+  const elapsedMs = now - fallbackStats.startTime;
+  const timeSinceLastUpdate = fallbackStats.lastUpdateTime > 0 
+    ? now - fallbackStats.lastUpdateTime 
+    : elapsedMs;
+  
+  // Calculate average time between updates
+  const avgTimeBetweenUpdatesMs = fallbackStats.stateUpdatesReceived > 0
+    ? Math.round(elapsedMs / fallbackStats.stateUpdatesReceived)
+    : null;
+  
+  // Calculate average latency
+  const avgLatencyMs = fallbackStats.latencyCount > 0
+    ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
+    : null;
+  
+  // Expected updates: ~6 per interval if state changes every 5s
+  const expectedUpdates = Math.floor(FALLBACK_HEALTH_CHECK_INTERVAL_MS / 5000);
+  
+  // v1.6.3.7-v13 - Issue #12: Detect stall condition
+  const isStalled = timeSinceLastUpdate >= FALLBACK_STALL_THRESHOLD_MS;
+  
+  if (isStalled) {
+    console.warn('[Manager] FALLBACK_STALLED: no state updates for 60+ seconds, fallback may be broken', {
+      timeSinceLastUpdateMs: timeSinceLastUpdate,
+      thresholdMs: FALLBACK_STALL_THRESHOLD_MS,
       portMessagesReceived: fallbackStats.portMessagesReceived,
       storageEventsReceived: fallbackStats.storageEventsReceived,
+      connectionState,
       lastUpdateTime: fallbackStats.lastUpdateTime > 0 
         ? new Date(fallbackStats.lastUpdateTime).toISOString() 
         : 'never',
-      avgTimeBetweenUpdatesMs,
-      uptimeMs: elapsedMs,
-      intervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
+      timestamp: now
+    });
+  }
+  
+  // v1.6.3.7-v13 - Issue #12: Log health status with all metrics
+  console.log('[Manager] FALLBACK_HEALTH:', {
+    receivedMessages: fallbackStats.stateUpdatesReceived,
+    expectedPerInterval: expectedUpdates,
+    avgLatencyMs,
+    lastLatencyMs: fallbackStats.lastLatencyMs,
+    lastUpdateAgoMs: timeSinceLastUpdate,
+    isStalled,
+    broadcastChannelAvailable: false,
+    fallbackActive: true,
+    portMessages: fallbackStats.portMessagesReceived,
+    storageEvents: fallbackStats.storageEventsReceived,
+    lastUpdateTime: fallbackStats.lastUpdateTime > 0 
+      ? new Date(fallbackStats.lastUpdateTime).toISOString() 
+      : 'never',
+    avgTimeBetweenUpdatesMs,
+    uptimeMs: elapsedMs,
+    storageHealthy: storageHealthStats.consecutiveFailures === 0,
+    timestamp: now
+  });
+}
+
+/**
+ * Stop fallback health monitoring
+ * v1.6.3.7-v13 - Issue #12: Cleanup on channel recovery
+ * @private
+ */
+function _stopFallbackHealthMonitoring() {
+  if (fallbackHealthIntervalId) {
+    clearInterval(fallbackHealthIntervalId);
+    fallbackHealthIntervalId = null;
+  }
+  _stopStorageHealthProbe();
+  fallbackModeActive = false;
+  console.log('[Manager] Fallback health monitoring stopped');
+}
+
+/**
+ * Start storage health probe
+ * v1.6.3.7-v13 - Issue #6 (arch): Periodic storage tier health check
+ * @private
+ */
+function _startStorageHealthProbe() {
+  if (storageHealthProbeIntervalId) {
+    clearInterval(storageHealthProbeIntervalId);
+  }
+  
+  // Set up listener for probe responses
+  _setupStorageHealthProbeListener();
+  
+  // Send initial probe
+  _sendStorageHealthProbe();
+  
+  // Schedule periodic probes
+  storageHealthProbeIntervalId = setInterval(() => {
+    _sendStorageHealthProbe();
+  }, STORAGE_HEALTH_PROBE_INTERVAL_MS);
+  
+  console.log(`[Manager] Storage health probe started (every ${STORAGE_HEALTH_PROBE_INTERVAL_MS / 1000}s)`);
+}
+
+/**
+ * Stop storage health probe
+ * v1.6.3.7-v13 - Issue #6 (arch): Cleanup
+ * @private
+ */
+function _stopStorageHealthProbe() {
+  if (storageHealthProbeIntervalId) {
+    clearInterval(storageHealthProbeIntervalId);
+    storageHealthProbeIntervalId = null;
+  }
+}
+
+/**
+ * Set up listener for storage health probe responses
+ * v1.6.3.7-v13 - Issue #6 (arch): Listen for our own probe writes
+ * @private
+ */
+function _setupStorageHealthProbeListener() {
+  // This is called once during init - the actual listener is in setupEventListeners
+  // We just track the state here
+  console.log('[Manager] Storage health probe listener ready');
+}
+
+/**
+ * Send a storage health probe
+ * v1.6.3.7-v13 - Issue #6 (arch): Write timestamp to storage and measure round-trip
+ * @private
+ */
+async function _sendStorageHealthProbe() {
+  const probeTimestamp = Date.now();
+  storageHealthStats.probesSent++;
+  storageHealthStats.lastProbeTime = probeTimestamp;
+  
+  // Set up timeout for probe response
+  const timeoutId = setTimeout(() => {
+    _handleStorageProbeTimeout(probeTimestamp);
+  }, STORAGE_HEALTH_PROBE_TIMEOUT_MS);
+  
+  try {
+    // Write probe timestamp to storage
+    await browser.storage.local.set({
+      [STORAGE_HEALTH_PROBE_KEY]: {
+        timestamp: probeTimestamp,
+        source: 'sidebar-health-probe'
+      }
+    });
+    
+    // Store timeout ID for cleanup
+    storageHealthStats._currentProbeTimeoutId = timeoutId;
+    
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] STORAGE_HEALTH_PROBE_SENT:', {
+        probeTimestamp,
+        probesSent: storageHealthStats.probesSent,
+        timestamp: Date.now()
+      });
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.error('[Manager] STORAGE_HEALTH_PROBE_FAILED:', {
+      error: err.message,
       timestamp: Date.now()
     });
-  }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
+    storageHealthStats.consecutiveFailures++;
+  }
+}
+
+/**
+ * Handle storage health probe response (called from storage.onChanged)
+ * v1.6.3.7-v13 - Issue #6 (arch): Measure round-trip latency
+ * @param {number} probeTimestamp - Original probe timestamp
+ * @private
+ */
+function _handleStorageProbeResponse(probeTimestamp) {
+  const now = Date.now();
+  const latencyMs = now - probeTimestamp;
   
-  console.log('[Manager] Fallback health monitoring started (every', FALLBACK_HEALTH_CHECK_INTERVAL_MS / 1000, 's)');
+  // Clear any pending timeout
+  if (storageHealthStats._currentProbeTimeoutId) {
+    clearTimeout(storageHealthStats._currentProbeTimeoutId);
+    storageHealthStats._currentProbeTimeoutId = null;
+  }
+  
+  storageHealthStats.probesReceived++;
+  storageHealthStats.lastProbeLatencyMs = latencyMs;
+  storageHealthStats.latencySum += latencyMs;
+  storageHealthStats.avgLatencyMs = Math.round(storageHealthStats.latencySum / storageHealthStats.probesReceived);
+  storageHealthStats.lastSuccessfulProbe = now;
+  storageHealthStats.consecutiveFailures = 0;
+  
+  // Classify health based on latency
+  const healthStatus = latencyMs < 100 ? 'healthy' : latencyMs < 500 ? 'acceptable' : 'degraded';
+  
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] Storage Tier Latency: ${latencyMs}ms (${healthStatus})`, {
+      probeTimestamp,
+      latencyMs,
+      avgLatencyMs: storageHealthStats.avgLatencyMs,
+      probesReceived: storageHealthStats.probesReceived,
+      healthStatus,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Handle storage probe timeout
+ * v1.6.3.7-v13 - Issue #6 (arch): storage.onChanged didn't fire in time
+ * @param {number} probeTimestamp - Original probe timestamp
+ * @private
+ */
+function _handleStorageProbeTimeout(probeTimestamp) {
+  storageHealthStats.consecutiveFailures++;
+  storageHealthStats._currentProbeTimeoutId = null;
+  
+  console.warn('[Manager] STORAGE_TIER_BROKEN: onChanged not firing', {
+    probeTimestamp,
+    timeoutMs: STORAGE_HEALTH_PROBE_TIMEOUT_MS,
+    consecutiveFailures: storageHealthStats.consecutiveFailures,
+    lastSuccessfulProbe: storageHealthStats.lastSuccessfulProbe > 0
+      ? new Date(storageHealthStats.lastSuccessfulProbe).toISOString()
+      : 'never',
+    timestamp: Date.now()
+  });
 }
 
 /**
  * Track fallback state update received
  * v1.6.3.7-v12 - Issue #5: Increment counters for health monitoring
+ * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
  * @param {string} source - Source of update ('port' or 'storage')
+ * @param {number} [latencyMs] - Optional latency measurement
  */
-function _trackFallbackUpdate(source) {
+function _trackFallbackUpdate(source, latencyMs = null) {
+  const now = Date.now();
   fallbackStats.stateUpdatesReceived++;
-  fallbackStats.lastUpdateTime = Date.now();
+  fallbackStats.lastUpdateTime = now;
   
   if (source === 'port') {
     fallbackStats.portMessagesReceived++;
   } else if (source === 'storage') {
     fallbackStats.storageEventsReceived++;
+  }
+  
+  // v1.6.3.7-v13 - Issue #12: Track latency if provided
+  if (latencyMs !== null && latencyMs >= 0) {
+    fallbackStats.latencySum += latencyMs;
+    fallbackStats.latencyCount++;
+    fallbackStats.lastLatencyMs = latencyMs;
   }
 }
 
@@ -3040,11 +3458,18 @@ async function _triggerStorageFallbackOnGap(gapSize) {
  * Route broadcast message to appropriate handler
  * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
  * v1.6.3.7-v7 - FIX Issue #6: Added full-state-sync handler
+ * v1.6.3.7-v13 - Issue #1 (arch): Added BC_VERIFICATION_PONG handling
  * @private
  * @param {Object} message - BroadcastChannel message
  * @param {string} messageId - Generated message ID for deduplication
  */
 function _routeBroadcastMessage(message, messageId) {
+  // v1.6.3.7-v13 - Issue #1 (arch): Handle verification PONG first
+  if (message.type === 'BC_VERIFICATION_PONG') {
+    _handleBCVerificationPong(message);
+    return;
+  }
+  
   const handlers = {
     'quick-tab-created': handleBroadcastCreate,
     'quick-tab-updated': handleBroadcastUpdate,
@@ -4513,6 +4938,7 @@ function _markInitializationComplete() {
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
 // v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
+// v1.6.3.7-v13 - Issue #12: Also stop fallback health monitoring
 window.addEventListener('unload', () => {
   // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
   cleanupBroadcastChannel();
@@ -4522,6 +4948,9 @@ window.addEventListener('unload', () => {
   
   // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
   _stopHostInfoCleanupInterval();
+  
+  // v1.6.3.7-v13 - Issue #12: Stop fallback health monitoring
+  _stopFallbackHealthMonitoring();
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -6717,12 +7146,23 @@ function setupEventListeners() {
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
   // v1.6.3.7-v10 - FIX Issue #11: Enhanced LISTENER_REGISTERED logging
+  // v1.6.3.7-v13 - Issue #6 (arch): Add storage health probe handling
   browser.storage.onChanged.addListener((changes, areaName) => {
     // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
     logListenerEntry('storage.onChanged', {
       areaName,
-      hasStateKey: !!changes[STATE_KEY]
+      hasStateKey: !!changes[STATE_KEY],
+      hasHealthProbeKey: !!changes[STORAGE_HEALTH_PROBE_KEY]
     });
+    
+    // v1.6.3.7-v13 - Issue #6 (arch): Handle storage health probe response
+    if (areaName === 'local' && changes[STORAGE_HEALTH_PROBE_KEY]) {
+      const probeData = changes[STORAGE_HEALTH_PROBE_KEY].newValue;
+      if (probeData?.timestamp) {
+        _handleStorageProbeResponse(probeData.timestamp);
+      }
+      return; // Don't process health probes as state changes
+    }
     
     // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
     if (!isFullyInitialized()) {

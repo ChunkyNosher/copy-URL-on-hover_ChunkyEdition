@@ -515,6 +515,46 @@ function initializeBackgroundBroadcastChannel() {
 // Initialize BroadcastChannel on script load
 initializeBackgroundBroadcastChannel();
 
+/**
+ * Send BC verification PONG via BroadcastChannel
+ * v1.6.3.7-v13 - Issue #1 (arch): Used to verify BC works in sidebar context
+ * @param {Object} request - The verification request message
+ * @private
+ */
+function _sendBCVerificationPong(request) {
+  if (!isBroadcastChannelAvailable()) {
+    console.warn('[Background] BC_VERIFICATION_PONG failed: BroadcastChannel not available');
+    return;
+  }
+  
+  try {
+    // Import is already done at top of file, use direct postMessage
+    // We need to get the channel reference - use the broadcastFullStateSync mechanism
+    // but with a special verification message type
+    const pongMessage = {
+      type: 'BC_VERIFICATION_PONG',
+      requestId: request.requestId,
+      originalTimestamp: request.timestamp,
+      timestamp: Date.now(),
+      source: 'background'
+    };
+    
+    // Use the BroadcastChannelManager's internal channel via a mini-broadcast
+    // We'll piggyback on the existing channel by calling broadcastFullStateSync with dummy data
+    // Actually, better to just create a temporary channel for the pong
+    const verifyChannel = new BroadcastChannel('quick-tabs-updates');
+    verifyChannel.postMessage(pongMessage);
+    verifyChannel.close();
+    
+    console.log('[Background] BC_VERIFICATION_PONG sent:', {
+      requestId: request.requestId,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error('[Background] BC_VERIFICATION_PONG failed:', err.message);
+  }
+}
+
 // ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
 
@@ -6013,6 +6053,7 @@ function _forceFlushReorderBuffer(portId, tracking) {
 /**
  * Port message handlers lookup table
  * v1.6.4.13 - FIX Complexity: Extracted from routePortMessage switch (cc=10 → cc=4)
+ * v1.6.3.7-v13 - Issue #1 (arch): Added BC_VERIFICATION_REQUEST handler
  * @private
  */
 const PORT_MESSAGE_HANDLERS = {
@@ -6023,7 +6064,8 @@ const PORT_MESSAGE_HANDLERS = {
   STATE_UPDATE: handleStateUpdate,
   BROADCAST: handleBroadcastRequest,
   DELETION_ACK: handleDeletionAck,
-  REQUEST_FULL_STATE_SYNC: handleFullStateSyncRequest
+  REQUEST_FULL_STATE_SYNC: handleFullStateSyncRequest,
+  BC_VERIFICATION_REQUEST: handleBCVerificationRequest
 };
 
 /**
@@ -6147,6 +6189,30 @@ function handleHeartbeat(message, portInfo) {
     latencyMs,
     backgroundAlive: true,
     isInitialized
+  });
+}
+
+/**
+ * Handle BC_VERIFICATION_REQUEST from sidebar
+ * v1.6.3.7-v13 - Issue #1 (arch): Respond to verify if BroadcastChannel works in sidebar
+ * @param {Object} message - Verification request
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Verification acknowledgment
+ */
+function handleBCVerificationRequest(message, portInfo) {
+  console.log('[Background] BC_VERIFICATION_REQUEST received via port:', {
+    requestId: message.requestId,
+    source: message.source || portInfo?.origin || 'unknown',
+    timestamp: message.timestamp
+  });
+
+  // Send PONG via BroadcastChannel
+  _sendBCVerificationPong(message);
+
+  return Promise.resolve({
+    success: true,
+    type: 'BC_VERIFICATION_REQUEST_ACK',
+    timestamp: Date.now()
   });
 }
 
@@ -8103,6 +8169,26 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       originalTimestamp: message.timestamp,
       isInitialized,
       cacheTabCount: globalQuickTabState.tabs?.length || 0
+    });
+    return true;
+  }
+
+  // v1.6.3.7-v13 - Issue #1 (arch): Handle BC verification request from sidebar
+  // Sidebar sends this to verify if BroadcastChannel actually works in its context
+  if (message.type === 'BC_VERIFICATION_REQUEST') {
+    console.log('[Background] BC_VERIFICATION_REQUEST received:', {
+      requestId: message.requestId,
+      source: message.source,
+      timestamp: message.timestamp
+    });
+    
+    // Send PONG via BroadcastChannel
+    _sendBCVerificationPong(message);
+    
+    sendResponse({
+      success: true,
+      type: 'BC_VERIFICATION_REQUEST_ACK',
+      timestamp: Date.now()
     });
     return true;
   }
