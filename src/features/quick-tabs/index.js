@@ -150,10 +150,18 @@ class QuickTabsManager {
   /**
    * STEP 1: Detect context (container, tab ID)
    * v1.6.3.5-v10 - FIX Issue #3: Accept options parameter for pre-fetched tab ID
+   * v1.6.3.7-v13 - Issue #6: Enhanced logging with INIT_STEP_1 format
    * @private
    * @param {Object} [_options={}] - Options including pre-fetched currentTabId (unused, kept for API consistency)
    */
   async _initStep1_Context(_options = {}) {
+    // v1.6.3.7-v13 - Issue #6: Log step entry with specific format
+    console.log('[QuickTabsManager] INIT_STEP_1: currentTabId detection started', {
+      currentTabId: this.currentTabId,
+      hasPreFetchedId: this.currentTabId !== null && this.currentTabId !== undefined,
+      timestamp: Date.now()
+    });
+    
     console.log('[QuickTabsManager] STEP 1: Detecting container context...');
     const containerDetected = await this.detectContainerContext();
     if (!containerDetected) {
@@ -171,6 +179,13 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
       await this.detectCurrentTabId();
     }
+    
+    // v1.6.3.7-v13 - Issue #6: Log step completion with specific format
+    console.log('[QuickTabsManager] INIT_STEP_1_COMPLETE:', {
+      currentTabId: this.currentTabId,
+      success: this.currentTabId !== null && this.currentTabId !== undefined,
+      timestamp: Date.now()
+    });
     console.log('[QuickTabsManager] STEP 1 Complete - currentTabId:', this.currentTabId);
   }
 
@@ -488,6 +503,14 @@ class QuickTabsManager {
 
       // Emit hydrated event for UICoordinator to render restored tabs
       this._emitHydratedEventIfNeeded(hydratedCount);
+
+      // v1.6.3.7-v13 - Issue #6: Log successful hydration completion with specific format
+      console.log('[QuickTabsManager] HYDRATION_COMPLETE:', {
+        loadedTabCount: hydratedCount,
+        totalInStorage: storedState.tabs.length,
+        currentTabId: this.currentTabId,
+        timestamp: Date.now()
+      });
 
       return { success: true, count: hydratedCount, reason: 'Success' };
     } catch (error) {

@@ -717,6 +717,7 @@ async function _performSessionSync() {
  * Log diagnostic snapshot of current state
  * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
  * v1.6.3.7-v12 - Issue #3, #10: Include port registry threshold check and trend
+ * v1.6.3.7-v13 - Issue #4: Enhanced format with "connectedPorts: N (STATUS, trend)"
  */
 function logDiagnosticSnapshot() {
   console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
@@ -729,13 +730,16 @@ function logDiagnosticSnapshot() {
   });
   
   // v1.6.3.7-v12 - Issue #3, #10: Enhanced port registry logging with thresholds
+  // v1.6.3.7-v13 - Issue #4: Format as "connectedPorts: N (STATUS, trend)"
   const portCount = portRegistry.size;
   const portTrend = _computePortRegistryTrend();
+  const portHealthStatus = _getPortRegistryThresholdStatus(portCount);
   console.log('[Background] Port registry:', {
+    summary: `connectedPorts: ${portCount} (${portHealthStatus}, ${portTrend} trend)`,
     connectedPorts: portCount,
     warnThreshold: PORT_REGISTRY_WARN_THRESHOLD,
     criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
-    thresholdStatus: _getPortRegistryThresholdStatus(portCount),
+    thresholdStatus: portHealthStatus,
     trend: portTrend,
     portIds: [...portRegistry.keys()]
   });
@@ -884,11 +888,15 @@ function _findStalePorts(now, thresholdMs) {
 /**
  * Check if a port is stale and return info if so
  * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
+ * v1.6.3.7-v13 - FIX Issue #4: Use correct property names (lastActivityTime, lastMessageAt)
+ *   Bug fix: was using non-existent lastMessageTime property
  * @private
  */
 function _checkPortStaleness(portId, portInfo, now, thresholdMs) {
-  const age = now - (portInfo.createdAt || portInfo.lastMessageTime || now);
-  const lastActivity = portInfo.lastMessageTime || portInfo.createdAt || now;
+  // v1.6.3.7-v13 - FIX: Use correct property names from port registry
+  const createdAt = portInfo.connectedAt || portInfo.createdAt || now;
+  const age = now - createdAt;
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || createdAt;
   const inactiveTime = now - lastActivity;
   
   if (inactiveTime > thresholdMs) {

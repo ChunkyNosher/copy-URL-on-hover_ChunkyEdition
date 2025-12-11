@@ -569,12 +569,28 @@ export class QuickTabHandler {
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
    * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    * v1.6.3.6-v12 - FIX Issue #1: Return explicit error when not initialized
+   * v1.6.3.7-v13 - Issue #1: Enhanced logging with message arrival, state transitions, and response timing
    */
   async handleGetQuickTabsState(message, _sender) {
+    const messageArrivalTime = Date.now();
+    
+    // v1.6.3.7-v13 - Issue #1: Log message arrival timestamp
+    console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Message arrived', {
+      messageArrivalTime,
+      isInitialized: this.isInitialized,
+      cookieStoreId: message.cookieStoreId || 'firefox-default'
+    });
+    
     try {
       // v1.6.3.6-v12 - FIX Issue #1: Check initialization and wait with timeout
       const initResult = await this._ensureInitialized();
       if (!initResult.success) {
+        // v1.6.3.7-v13 - Issue #1: Log failure response timing
+        console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Responding with init failure', {
+          error: initResult.error,
+          responseDelayMs: Date.now() - messageArrivalTime,
+          timestamp: Date.now()
+        });
         return initResult;
       }
 
@@ -582,6 +598,14 @@ export class QuickTabHandler {
 
       // v1.6.2.2 - Return all tabs from unified array for global visibility
       const allTabs = this.globalState.tabs || [];
+
+      // v1.6.3.7-v13 - Issue #1: Log successful response with tab count and timing
+      console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Responding with state', {
+        tabCount: allTabs.length,
+        responseDelayMs: Date.now() - messageArrivalTime,
+        lastUpdate: this.globalState.lastUpdate,
+        timestamp: Date.now()
+      });
 
       return {
         success: true,
@@ -595,7 +619,8 @@ export class QuickTabHandler {
         name: err?.name,
         stack: err?.stack,
         code: err?.code,
-        error: err
+        error: err,
+        responseDelayMs: Date.now() - messageArrivalTime
       });
       return {
         success: false,
@@ -609,6 +634,7 @@ export class QuickTabHandler {
    * Ensure handler is initialized before operations
    * v1.6.3.6-v12 - FIX Issue #1: Extracted to reduce nesting depth
    * v1.6.3.7-v12 - Issue #7: Add explicit async barrier with await and timeout protection
+   * v1.6.3.7-v13 - Issue #1: Enhanced logging with state transitions and recovery timing
    * @returns {Promise<Object>} Result with success flag
    * @private
    */
@@ -619,9 +645,10 @@ export class QuickTabHandler {
       return { success: true };
     }
 
-    // v1.6.3.7-v12 - Issue #7: Log initialization barrier entry
-    console.log('[QuickTabHandler] INIT_BARRIER_ENTRY:', {
+    // v1.6.3.7-v13 - Issue #1: Log AWAITING_INITIALIZATION state transition
+    console.log('[QuickTabHandler] AWAITING_INITIALIZATION:', {
       isInitialized: this.isInitialized,
+      initStartTime,
       timestamp: initStartTime
     });
     
@@ -652,30 +679,41 @@ export class QuickTabHandler {
         };
       }
       
-      // v1.6.3.7-v12 - Issue #7: Log successful initialization with timing
-      console.log('[QuickTabHandler] INIT_BARRIER_PASSED:', {
-        durationMs: initDurationMs,
+      // v1.6.3.7-v13 - Issue #1: Log INITIALIZATION_COMPLETE state transition with recovery timing
+      console.log('[QuickTabHandler] INITIALIZATION_COMPLETE:', {
+        recoveredAfterMs: initDurationMs,
         tabCount: this.globalState.tabs?.length || 0,
-        timestamp: Date.now()
+        initStartTime,
+        initEndTime: Date.now()
       });
       
       return { success: true };
     } catch (err) {
       const initDurationMs = Date.now() - initStartTime;
+      const isTimeout = err.message === 'Initialization timeout';
       
-      // v1.6.3.7-v12 - Issue #7: Log timeout or initialization error
-      console.error('[QuickTabHandler] INIT_BARRIER_ERROR:', {
-        error: err.message,
-        isTimeout: err.message === 'Initialization timeout',
-        durationMs: initDurationMs,
-        timeoutMs: INIT_TIMEOUT_MS,
-        timestamp: Date.now()
-      });
+      // v1.6.3.7-v13 - Issue #1: Log INIT_TIMEOUT with expected vs actual state
+      if (isTimeout) {
+        console.error('[QuickTabHandler] INIT_TIMEOUT:', {
+          durationMs: initDurationMs,
+          expectedIsInitialized: true,
+          actualIsInitialized: this.isInitialized,
+          timeoutMs: INIT_TIMEOUT_MS,
+          timestamp: Date.now()
+        });
+      } else {
+        console.error('[QuickTabHandler] INIT_BARRIER_ERROR:', {
+          error: err.message,
+          isTimeout: false,
+          durationMs: initDurationMs,
+          timestamp: Date.now()
+        });
+      }
       
       return {
         success: false,
-        error: err.message === 'Initialization timeout' ? 'INIT_TIMEOUT' : 'INIT_ERROR',
-        message: err.message === 'Initialization timeout' 
+        error: isTimeout ? 'INIT_TIMEOUT' : 'INIT_ERROR',
+        message: isTimeout 
           ? `Initialization timed out after ${INIT_TIMEOUT_MS}ms`
           : `Initialization error: ${err.message}`,
         retryable: true,
