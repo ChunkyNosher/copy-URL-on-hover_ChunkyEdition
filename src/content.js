@@ -606,13 +606,15 @@ function _disconnectPortForBFCache() {
 /**
  * Handle page entering BFCache (Back/Forward Cache)
  * v1.6.3.8 - Issue #4 (arch): Explicitly disconnect port to prevent zombie connections
+ * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_ENTER log event name
  * @param {PageTransitionEvent} event - The pagehide event
  */
 function _handleBFCachePageHide(event) {
   // event.persisted is true when page is being placed in BFCache
   if (!event.persisted) return;
 
-  console.log('[Content] BFCACHE_ENTER:', {
+  // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
+  console.log('[Content] PAGE_LIFECYCLE_BFCACHE_ENTER:', {
     reason: 'pagehide with persisted=true',
     tabId: cachedTabId,
     hadPort: !!backgroundPort,
@@ -626,12 +628,14 @@ function _handleBFCachePageHide(event) {
 /**
  * Handle page restored from BFCache
  * v1.6.3.8 - Issue #4 (arch): Request full state sync after BFCache restore
+ * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_RESTORE log event name
  * @param {PageTransitionEvent} event - The pageshow event
  */
 function _handleBFCachePageShow(event) {
   // event.persisted is true when page is restored from BFCache
   if (event.persisted) {
-    console.log('[Content] BFCACHE_RESTORE:', {
+    // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
+    console.log('[Content] PAGE_LIFECYCLE_BFCACHE_RESTORE:', {
       reason: 'pageshow with persisted=true',
       tabId: cachedTabId,
       hadPort: !!backgroundPort,

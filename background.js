@@ -5878,6 +5878,37 @@ const PORT_ZOMBIE_CHECK_INTERVAL_MS = 30 * 1000;
  */
 const pendingPortPings = new Map();
 
+// ==================== v1.6.3.8-v3 PORT REGISTRY MONITORING (Issue #4) ====================
+// Comprehensive port registry health monitoring and snapshot logging
+
+/**
+ * Interval for PORT_REGISTRY_SNAPSHOT logging (60 seconds)
+ * v1.6.3.8-v3 - Issue #4: Log registry state every 60 seconds
+ */
+const PORT_REGISTRY_SNAPSHOT_INTERVAL_MS = 60 * 1000;
+
+/**
+ * Port registry snapshot interval ID
+ * v1.6.3.8-v3 - Issue #4: Store interval ID for cleanup
+ */
+let _portRegistrySnapshotIntervalId = null;
+
+// ==================== v1.6.3.8-v3 PORT CIRCUIT BREAKER (Issue #9) ====================
+// Track message ACKs per port and circuit breaker for memory leak prevention
+
+/**
+ * Maximum pending ACKs before circuit breaker triggers
+ * v1.6.3.8-v3 - Issue #9: If pending ACKs exceed this, force-disconnect the port
+ */
+const PORT_CIRCUIT_BREAKER_ACK_THRESHOLD = 50;
+
+/**
+ * Track pending ACKs per port
+ * v1.6.3.8-v3 - Issue #9: Key = portId, Value = { sentCount, ackedCount, pendingACKs }
+ * @type {Map<string, { sentCount: number, ackedCount: number, pendingACKs: number }>}
+ */
+const portACKTracking = new Map();
+
 // ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
 // Monotonic sequence counter for port messages to detect reordering
 
@@ -6117,6 +6148,9 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
   // v1.6.3.7-v9 - Issue #9: Initialize sequence tracking for this port
   _initPortSequenceTracking(portId);
 
+  // v1.6.3.8-v3 - Issue #9: Initialize ACK tracking for circuit breaker
+  initPortACKTracking(portId);
+
   // v1.6.4.9 - Issue #6: Enhanced PORT_REGISTERED logging
   console.log('[Background] PORT_REGISTERED:', {
     portId,
@@ -6163,6 +6197,7 @@ function _checkPortRegistrySizeWarnings() {
  * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
  * v1.6.4.9 - Issue #6: Enhanced PORT_UNREGISTERED logging
  * v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
+ * v1.6.3.8-v3 - Issue #4, #9: Log PORT_EVICTED and clean up ACK tracking
  * @param {string} portId - Port ID to unregister
  * @param {string} reason - Reason for disconnect
  */
@@ -6171,6 +6206,11 @@ function unregisterPort(portId, reason = 'disconnect') {
   const beforeCount = portRegistry.size;
 
   if (portInfo) {
+    // v1.6.3.8-v3 - Issue #4: Log PORT_EVICTED with reason
+    logPortEvicted(portId, reason, {
+      duration: Date.now() - portInfo.connectedAt
+    });
+
     // v1.6.4.9 - Issue #6: Enhanced PORT_UNREGISTERED logging
     console.log('[Background] PORT_UNREGISTERED:', {
       portId,
@@ -6195,6 +6235,9 @@ function unregisterPort(portId, reason = 'disconnect') {
 
     // v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
     _cleanupPortSequenceTracking(portId);
+
+    // v1.6.3.8-v3 - Issue #9: Clean up ACK tracking
+    cleanupPortACKTracking(portId);
   }
 }
 
@@ -6513,6 +6556,210 @@ function _handlePortPong(portId) {
 
 // Start periodic zombie port check
 setInterval(_checkForZombiePorts, PORT_ZOMBIE_CHECK_INTERVAL_MS);
+
+// ==================== v1.6.3.8-v3 PORT REGISTRY SNAPSHOT LOGGING (Issue #4) ====================
+
+/**
+ * Classify port state for snapshot reporting
+ * v1.6.3.8-v3 - Issue #4: Categorize ports by activity state
+ * @private
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @returns {'active'|'idle'|'zombie'} Port state classification
+ */
+function _classifyPortState(portInfo, now) {
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+  const inactivityMs = now - lastActivity;
+
+  // Zombie: No activity for longer than ping threshold (likely BFCache)
+  if (inactivityMs >= PORT_PING_THRESHOLD_MS) {
+    return 'zombie';
+  }
+
+  // Idle: No activity for longer than stale timeout but less than ping threshold
+  if (inactivityMs >= PORT_STALE_TIMEOUT_MS) {
+    return 'idle';
+  }
+
+  // Active: Recent activity
+  return 'active';
+}
+
+/**
+ * Log port registry snapshot with state counts
+ * v1.6.3.8-v3 - Issue #4: Log registry state every 60 seconds
+ */
+function logPortRegistrySnapshot() {
+  const now = Date.now();
+  const counts = { active: 0, idle: 0, zombie: 0 };
+  const byType = { sidebar: 0, content: 0, unknown: 0 };
+  const portDetails = [];
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const state = _classifyPortState(portInfo, now);
+    counts[state]++;
+
+    const type = portInfo.type || 'unknown';
+    byType[type] = (byType[type] || 0) + 1;
+
+    // Include details for zombie ports for debugging
+    if (state === 'zombie') {
+      const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+      portDetails.push({
+        portId,
+        type,
+        origin: portInfo.origin,
+        tabId: portInfo.tabId,
+        inactiveSince: now - lastActivity,
+        messageCount: portInfo.messageCount || 0
+      });
+    }
+  }
+
+  console.log('[Background] PORT_REGISTRY_SNAPSHOT:', {
+    totalPorts: portRegistry.size,
+    activeCount: counts.active,
+    idleCount: counts.idle,
+    zombieCount: counts.zombie,
+    byType,
+    zombieDetails: portDetails.length > 0 ? portDetails : undefined,
+    timestamp: now
+  });
+}
+
+// Start periodic port registry snapshot logging
+_portRegistrySnapshotIntervalId = setInterval(logPortRegistrySnapshot, PORT_REGISTRY_SNAPSHOT_INTERVAL_MS);
+console.log('[Background] v1.6.3.8-v3 PORT_REGISTRY_SNAPSHOT logging started (every 60s)');
+
+// ==================== v1.6.3.8-v3 PORT ACK TRACKING & CIRCUIT BREAKER (Issue #9) ====================
+
+/**
+ * Initialize ACK tracking for a new port
+ * v1.6.3.8-v3 - Issue #9: Start tracking messages sent vs ACKs received
+ * @param {string} portId - Port ID
+ */
+function initPortACKTracking(portId) {
+  portACKTracking.set(portId, {
+    sentCount: 0,
+    ackedCount: 0,
+    pendingACKs: 0,
+    lastSentTimestamp: null,
+    lastAckTimestamp: null
+  });
+}
+
+/**
+ * Track message sent via port
+ * v1.6.3.8-v3 - Issue #9: Increment sent count and check circuit breaker
+ * Note: Prefixed with _ as currently available for integration but not actively called.
+ * To use: Call before postMessage(), returns false if circuit breaker tripped.
+ * @param {string} portId - Port ID
+ * @returns {boolean} True if message can be sent (circuit breaker not tripped)
+ */
+function _trackPortMessageSent(portId) {
+  const tracking = portACKTracking.get(portId);
+  if (!tracking) {
+    // Initialize if not present
+    initPortACKTracking(portId);
+    return _trackPortMessageSent(portId);
+  }
+
+  tracking.sentCount++;
+  tracking.pendingACKs++;
+  tracking.lastSentTimestamp = Date.now();
+
+  // Check circuit breaker threshold
+  if (tracking.pendingACKs > PORT_CIRCUIT_BREAKER_ACK_THRESHOLD) {
+    _triggerPortCircuitBreaker(portId, tracking);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Track ACK received for port
+ * v1.6.3.8-v3 - Issue #9: Decrement pending ACKs count
+ * Note: Prefixed with _ as currently available for integration but not actively called.
+ * To use: Call when ACK message received from port.
+ * @param {string} portId - Port ID
+ */
+function _trackPortACKReceived(portId) {
+  const tracking = portACKTracking.get(portId);
+  if (!tracking) return;
+
+  tracking.ackedCount++;
+  tracking.pendingACKs = Math.max(0, tracking.pendingACKs - 1);
+  tracking.lastAckTimestamp = Date.now();
+}
+
+/**
+ * Trigger circuit breaker for port
+ * v1.6.3.8-v3 - Issue #9: Force-disconnect port when pending ACKs exceed threshold
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} tracking - ACK tracking object
+ */
+function _triggerPortCircuitBreaker(portId, tracking) {
+  const portInfo = portRegistry.get(portId);
+
+  console.error('[Background] PORT_CIRCUIT_BREAKER_TRIGGERED:', {
+    portId,
+    origin: portInfo?.origin,
+    tabId: portInfo?.tabId,
+    pendingACKs: tracking.pendingACKs,
+    threshold: PORT_CIRCUIT_BREAKER_ACK_THRESHOLD,
+    sentCount: tracking.sentCount,
+    ackedCount: tracking.ackedCount,
+    reason: 'Too many unacknowledged messages - possible BFCache zombie',
+    action: 'Force-disconnecting port',
+    timestamp: Date.now()
+  });
+
+  // Force disconnect the port
+  if (portInfo?.port) {
+    try {
+      portInfo.port.disconnect();
+    } catch (_err) {
+      // Port may already be in bad state
+    }
+  }
+
+  // Clean up tracking
+  portACKTracking.delete(portId);
+  // Note: PORT_EVICTED will be logged by unregisterPort via logPortEvicted
+  unregisterPort(portId, 'circuit-breaker-ack-overflow');
+}
+
+/**
+ * Clean up ACK tracking for disconnected port
+ * v1.6.3.8-v3 - Issue #9: Called when port is unregistered
+ * @param {string} portId - Port ID
+ */
+function cleanupPortACKTracking(portId) {
+  portACKTracking.delete(portId);
+}
+
+/**
+ * Log PORT_EVICTED event
+ * v1.6.3.8-v3 - Issue #4: Central function for port eviction logging
+ * @param {string} portId - Port ID
+ * @param {string} reason - Eviction reason (timeout, disconnect, error, circuit-breaker)
+ * @param {Object} [details={}] - Additional details
+ */
+function logPortEvicted(portId, reason, details = {}) {
+  const portInfo = portRegistry.get(portId);
+
+  console.log('[Background] PORT_EVICTED:', {
+    portId,
+    origin: portInfo?.origin,
+    tabId: portInfo?.tabId,
+    reason,
+    messageCount: portInfo?.messageCount || 0,
+    ...details,
+    timestamp: Date.now()
+  });
+}
 
 /**
  * Parse port name to extract connection info
