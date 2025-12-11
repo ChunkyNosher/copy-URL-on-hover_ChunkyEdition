@@ -6549,6 +6549,7 @@ function _parsePortConnectionInfo(port) {
 /**
  * Handle port disconnect event
  * v1.6.4.13 - FIX Complexity: Extracted from handlePortConnect
+ * v1.6.3.8-v2 - Issue #1, #10: Also cleanup sidebar ready state
  * @private
  * @param {string} portId - Port ID
  * @param {number|null} tabId - Tab ID
@@ -6559,6 +6560,8 @@ function _handlePortDisconnect(portId, tabId, origin) {
   if (error) {
     logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
   }
+  // v1.6.3.8-v2 - Issue #1, #10: Clean up sidebar ready state if this was a sidebar
+  _cleanupSidebarReadyState(portId);
   unregisterPort(portId, 'client-disconnect');
 }
 
@@ -6838,6 +6841,7 @@ function _forceFlushReorderBuffer(portId, tracking) {
  * v1.6.4.13 - FIX Complexity: Extracted from routePortMessage switch (cc=10 → cc=4)
  * v1.6.3.7-v13 - Issue #1 (arch): Added BC_VERIFICATION_REQUEST handler
  * v1.6.3.8 - Issue #4 (arch): Added PORT_PONG handler for zombie detection
+ * v1.6.3.8-v2 - Issue #1, #10: Added SIDEBAR_READY and SIDEBAR_RELAY handlers
  * @private
  */
 const PORT_MESSAGE_HANDLERS = {
@@ -6850,7 +6854,9 @@ const PORT_MESSAGE_HANDLERS = {
   DELETION_ACK: handleDeletionAck,
   REQUEST_FULL_STATE_SYNC: handleFullStateSyncRequest,
   BC_VERIFICATION_REQUEST: handleBCVerificationRequest,
-  PORT_PONG: handlePortPong // v1.6.3.8 - Issue #4 (arch): Zombie port detection response
+  PORT_PONG: handlePortPong, // v1.6.3.8 - Issue #4 (arch): Zombie port detection response
+  SIDEBAR_READY: handleSidebarReady, // v1.6.3.8-v2 - Issue #1, #10: Sidebar ready handshake
+  RELAY_TO_SIDEBAR: handleRelayToSidebar // v1.6.3.8-v2 - Issue #1, #10: Content -> Sidebar relay
 };
 
 /**
@@ -7074,6 +7080,176 @@ function handlePortPong(message, portInfo) {
     type: 'PORT_PONG_ACK',
     timestamp: Date.now()
   });
+}
+
+// ==================== v1.6.3.8-v2 SIDEBAR RELAY PATTERN HANDLERS ====================
+// Issue #1, #10: Background Relay pattern for sidebar communication
+
+/**
+ * Track sidebar ready state
+ * v1.6.3.8-v2 - Issue #1, #10: Sidebar must signal ready before receiving relayed messages
+ */
+let _sidebarReadyPorts = new Set();
+
+/**
+ * Handle SIDEBAR_READY signal from sidebar
+ * v1.6.3.8-v2 - Issue #1 & #10: Sidebar signals it's ready to receive messages
+ * @param {Object} message - Ready signal message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Acknowledgment
+ */
+function handleSidebarReady(message, portInfo) {
+  const portId = portInfo?.port?._portId;
+  const origin = portInfo?.origin;
+
+  console.log('[Background] SIDEBAR_READY received:', {
+    portId,
+    origin,
+    timestamp: message.timestamp
+  });
+
+  // Mark this sidebar port as ready
+  if (portId) {
+    _sidebarReadyPorts.add(portId);
+  }
+
+  console.log('[Background] SIDEBAR_READY_REGISTERED:', {
+    readySidebarCount: _sidebarReadyPorts.size,
+    portId,
+    timestamp: Date.now()
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'SIDEBAR_READY_ACK',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle RELAY_TO_SIDEBAR request from content scripts
+ * v1.6.3.8-v2 - Issue #1 & #10: Content script requests background to relay to sidebar
+ * @param {Object} message - Relay request with payload
+ * @param {Object} portInfo - Port info (from content script)
+ * @returns {Promise<Object>} Delivery result
+ */
+function handleRelayToSidebar(message, portInfo) {
+  const { payload, requestId } = message;
+  const sourceTabId = portInfo?.tabId;
+
+  console.log('[Background] RELAY_TO_SIDEBAR received:', {
+    requestId,
+    payloadType: payload?.type,
+    quickTabId: payload?.quickTabId,
+    sourceTabId,
+    timestamp: Date.now()
+  });
+
+  // Find ready sidebar ports and relay to them
+  const { deliveredTo, failedPorts } = _relayToReadySidebars(requestId, payload, sourceTabId);
+  const delivered = deliveredTo.length > 0;
+
+  if (!delivered) {
+    console.warn('[Background] SIDEBAR_MESSAGE_DROPPED:', {
+      requestId,
+      reason: 'No ready sidebar ports available',
+      readySidebarCount: _sidebarReadyPorts.size,
+      totalSidebarPorts: [...portRegistry.entries()].filter(([_, i]) => _isSidebarPort(i)).length,
+      timestamp: Date.now()
+    });
+  }
+
+  return Promise.resolve({
+    success: delivered,
+    type: 'RELAY_TO_SIDEBAR_ACK',
+    requestId,
+    deliveredTo,
+    failedPorts,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Relay message to all ready sidebar ports
+ * v1.6.3.8-v2 - Issue #1, #10: Extracted to reduce handleRelayToSidebar nesting depth
+ * @private
+ * @param {string} requestId - Request ID for correlation
+ * @param {Object} payload - Payload to relay
+ * @param {number} sourceTabId - Source tab ID
+ * @returns {{ deliveredTo: string[], failedPorts: Object[] }} Delivery results
+ */
+function _relayToReadySidebars(requestId, payload, sourceTabId) {
+  const deliveredTo = [];
+  const failedPorts = [];
+
+  for (const [portId, info] of portRegistry.entries()) {
+    if (!_isSidebarPort(info) || !_sidebarReadyPorts.has(portId)) {
+      continue;
+    }
+    const result = _relaySingleMessage(portId, info, requestId, payload, sourceTabId);
+    if (result.success) {
+      deliveredTo.push(portId);
+    } else {
+      failedPorts.push(result.error);
+    }
+  }
+
+  return { deliveredTo, failedPorts };
+}
+
+/**
+ * Relay a single message to a sidebar port
+ * v1.6.3.8-v2 - Issue #1, #10: Extracted to reduce nesting depth
+ * @private
+ */
+function _relaySingleMessage(portId, info, requestId, payload, sourceTabId) {
+  try {
+    const relayedMessage = {
+      type: 'RELAYED_FROM_CONTENT',
+      payload,
+      requestId,
+      sourceTabId,
+      _relayTimestamp: Date.now()
+    };
+
+    info.port.postMessage(relayedMessage);
+
+    if (DEBUG_MESSAGING) {
+      console.log('[Background] SIDEBAR_MESSAGE_DELIVERED:', {
+        requestId,
+        portId,
+        payloadType: payload?.type,
+        method: 'background-relay',
+        timestamp: Date.now()
+      });
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('[Background] SIDEBAR_MESSAGE_DROPPED:', {
+      requestId,
+      portId,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    return { success: false, error: { portId, error: err.message } };
+  }
+}
+
+/**
+ * Clean up sidebar ready state when port disconnects
+ * v1.6.3.8-v2 - Issue #1, #10: Remove from ready set on disconnect
+ * @param {string} portId - Port ID that disconnected
+ */
+function _cleanupSidebarReadyState(portId) {
+  if (_sidebarReadyPorts.has(portId)) {
+    _sidebarReadyPorts.delete(portId);
+    console.log('[Background] SIDEBAR_READY_REMOVED:', {
+      portId,
+      remainingReadySidebars: _sidebarReadyPorts.size,
+      timestamp: Date.now()
+    });
+  }
 }
 
 /**

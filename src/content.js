@@ -234,6 +234,8 @@ import LinkVisibilityObserver from './features/url-handlers/LinkVisibilityObserv
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
+// v1.6.3.8-v2 - Issue #7: Import sendRequestWithTimeout for reliable message/response handling
+import { sendRequestWithTimeout } from './utils/message-utils.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 import { setWritingTabId } from './utils/storage-utils.js';
 
@@ -355,38 +357,50 @@ function logQuickTabsInitError(qtErr) {
  * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
+ * v1.6.3.8-v2 - Issue #7: Use sendRequestWithTimeout for reliable ACK handling
  *
  * @returns {Promise<number|null>} Current tab ID or null if unavailable
  */
 async function getCurrentTabIdFromBackground() {
-  try {
-    console.log('[Content] Requesting current tab ID from background...');
-    const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
+  console.log('[Content] Requesting current tab ID from background...');
 
-    // v1.6.3.6-v4 - FIX Issue #1: Enhanced validation logging
-    if (response?.success && typeof response.tabId === 'number') {
-      console.log('[Content] Got current tab ID from background:', {
-        tabId: response.tabId,
-        success: response.success
-      });
-      return response.tabId;
-    }
+  // v1.6.3.8-v2 - Issue #7: Use sendRequestWithTimeout for reliable response
+  const response = await sendRequestWithTimeout(
+    { action: 'GET_CURRENT_TAB_ID' },
+    { timeoutMs: 3000 } // 3 second timeout for tab ID request
+  );
 
-    // v1.6.3.6-v4 - Log detailed error information
-    console.warn('[Content] Background returned invalid tab ID response:', {
-      response,
-      success: response?.success,
-      tabId: response?.tabId,
-      error: response?.error
+  // Check for success with valid tab ID
+  if (response?.success && typeof response.data?.tabId === 'number') {
+    console.log('[Content] Got current tab ID from background:', {
+      tabId: response.data.tabId,
+      success: response.success,
+      requestId: response.requestId
     });
-    return null;
-  } catch (err) {
-    console.warn('[Content] Failed to get tab ID from background:', {
-      error: err.message,
-      stack: err.stack
-    });
-    return null;
+    return response.data.tabId;
   }
+
+  // v1.6.3.8-v2 - Handle legacy response format (tabId at root level)
+  // DEPRECATED: This format will be removed in v1.6.4. Use { success: true, data: { tabId } }
+  if (response?.success && typeof response.tabId === 'number') {
+    console.warn('[Content] DEPRECATED: Legacy response format detected. Migrate to { data: { tabId } }');
+    console.log('[Content] Got current tab ID from background (legacy format):', {
+      tabId: response.tabId,
+      success: response.success
+    });
+    return response.tabId;
+  }
+
+  // Log detailed error information
+  console.warn('[Content] Background returned invalid tab ID response:', {
+    response,
+    success: response?.success,
+    tabId: response?.tabId || response?.data?.tabId,
+    error: response?.error,
+    code: response?.code,
+    requestId: response?.requestId
+  });
+  return null;
 }
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
