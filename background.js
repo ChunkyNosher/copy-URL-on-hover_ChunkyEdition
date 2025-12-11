@@ -202,6 +202,13 @@ let lastCorruptionDetectedAt = 0;
  */
 const CORRUPTION_RECOVERY_COOLDOWN_MS = 30000;
 
+/**
+ * Percentage of Quick Tabs to keep during quota-exceeded recovery
+ * v1.6.3.7-v13 - Issue #7: Configurable recovery strategy
+ * When storage quota is exceeded, keep newest 75% of tabs (clear oldest 25%)
+ */
+const RECOVERY_KEEP_PERCENTAGE = 0.75;
+
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
@@ -1303,6 +1310,401 @@ async function _performWriteAttempt(stateToWrite, storageKey, operationId, attem
 }
 
 /**
+ * Log validation failure and return failure result
+ * v1.6.3.7-v13 - Issue #2: Helper for _writeQuickTabStateWithValidation
+ * @private
+ */
+function _logWriteValidationFailure(operationId, failureType, details) {
+  console.error('[Background] STORAGE_WRITE_VALIDATION:', {
+    operationId,
+    result: 'FAILED',
+    failureType,
+    ...details
+  });
+}
+
+/**
+ * Validate readback data against expected state
+ * v1.6.3.7-v13 - Issue #2: Helper to reduce _writeQuickTabStateWithValidation complexity
+ * @private
+ */
+function _validateWriteReadback(stateToWrite, readBack, context) {
+  const { operationId, expectedTabs, writeStart } = context;
+  
+  // Check for null read
+  if (!readBack) {
+    _logWriteValidationFailure(operationId, 'READ_RETURNED_NULL', {
+      expectedTabs, actualTabs: 0, saveId: stateToWrite.saveId,
+      durationMs: Date.now() - writeStart
+    });
+    return { valid: false, failureType: 'READ_RETURNED_NULL' };
+  }
+  
+  // Check saveId
+  if (readBack.saveId !== stateToWrite.saveId) {
+    _logWriteValidationFailure(operationId, 'SAVEID_MISMATCH', {
+      expectedSaveId: stateToWrite.saveId, actualSaveId: readBack.saveId,
+      expectedTabs, actualTabs: readBack?.tabs?.length || 0,
+      durationMs: Date.now() - writeStart
+    });
+    return { valid: false, failureType: 'SAVEID_MISMATCH', readBack };
+  }
+  
+  // Check tab count
+  const actualTabs = readBack?.tabs?.length || 0;
+  if (expectedTabs !== actualTabs) {
+    _logWriteValidationFailure(operationId, 'TAB_COUNT_MISMATCH', {
+      expectedTabs, actualTabs, difference: expectedTabs - actualTabs,
+      saveId: stateToWrite.saveId, durationMs: Date.now() - writeStart
+    });
+    return { valid: false, failureType: 'TAB_COUNT_MISMATCH' };
+  }
+  
+  // Check checksum
+  const expectedChecksum = _computeStorageChecksum(stateToWrite);
+  const actualChecksum = _computeStorageChecksum(readBack);
+  if (expectedChecksum !== actualChecksum) {
+    _logWriteValidationFailure(operationId, 'CHECKSUM_MISMATCH', {
+      expectedChecksum, actualChecksum, expectedTabs, actualTabs,
+      saveId: stateToWrite.saveId, durationMs: Date.now() - writeStart
+    });
+    return { valid: false, failureType: 'CHECKSUM_MISMATCH' };
+  }
+  
+  return { valid: true, actualTabs };
+}
+
+/**
+ * Centralized storage write with validation for direct writes in background.js
+ * v1.6.3.7-v13 - Issue #2: Centralize all storage writes through validated path
+ * @param {Object} stateToWrite - State object to write (must have saveId, tabs)
+ * @param {string} operationName - Name of the operation for logging
+ * @returns {Promise<{success: boolean, operationId: string, error: string|null, recovered: boolean}>}
+ */
+async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
+  const operationId = `${operationName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const storageKey = 'quick_tabs_state_v2';
+  const writeStart = Date.now();
+  const expectedTabs = stateToWrite?.tabs?.length || 0;
+  const context = { operationId, expectedTabs, writeStart };
+  
+  if (DEBUG_DIAGNOSTICS) {
+    console.log('[Background] STORAGE_WRITE_VALIDATION_START:', {
+      operationId, operationName, saveId: stateToWrite.saveId,
+      expectedTabs, sequenceId: stateToWrite.sequenceId, timestamp: writeStart
+    });
+  }
+  
+  try {
+    await browser.storage.local.set({ [storageKey]: stateToWrite });
+    const readResult = await browser.storage.local.get(storageKey);
+    const readBack = readResult?.[storageKey];
+    
+    const validation = _validateWriteReadback(stateToWrite, readBack, context);
+    
+    if (!validation.valid) {
+      const recoveryResult = await _attemptStorageWriteRecovery(
+        operationId, stateToWrite, validation.failureType, validation.readBack
+      );
+      return { success: false, operationId, error: validation.failureType, recovered: recoveryResult.recovered };
+    }
+    
+    console.log('[Background] STORAGE_WRITE_VALIDATION:', {
+      operationId, result: 'PASSED', saveId: stateToWrite.saveId,
+      expectedTabs, actualTabs: validation.actualTabs, checksumMatch: true,
+      durationMs: Date.now() - writeStart
+    });
+    return { success: true, operationId, error: null, recovered: false };
+    
+  } catch (err) {
+    console.error('[Background] STORAGE_WRITE_VALIDATION:', {
+      operationId, result: 'ERROR', error: err.message,
+      expectedTabs, saveId: stateToWrite.saveId, durationMs: Date.now() - writeStart
+    });
+    return { success: false, operationId, error: err.message, recovered: false };
+  }
+}
+
+/**
+ * Attempt recovery when storage write validation fails
+ * v1.6.3.7-v13 - Issue #7: Type-specific recovery strategies
+ * 
+ * Recovery strategies by failure type:
+ * - READ_RETURNED_NULL: Likely quota exceeded - clear oldest Quick Tabs and retry
+ * - TAB_COUNT_MISMATCH: Likely corruption - re-write state
+ * - SAVEID_MISMATCH: Check sequence ID ordering - may be out-of-order event
+ * - CHECKSUM_MISMATCH: Re-write state with new saveId
+ * 
+ * @param {string} operationId - Operation ID for tracing
+ * @param {Object} intendedState - State that failed to write
+ * @param {string} failureType - Type of failure
+ * @param {Object} [readBackState] - State read back from storage (if available)
+ * @returns {Promise<{recovered: boolean, method: string, reason: string}>}
+ */
+async function _attemptStorageWriteRecovery(operationId, intendedState, failureType, readBackState = null) {
+  console.log('[Background] RECOVERY_ATTEMPT:', {
+    operationId,
+    failureType,
+    intendedTabCount: intendedState?.tabs?.length || 0,
+    timestamp: Date.now()
+  });
+  
+  try {
+    switch (failureType) {
+      case 'READ_RETURNED_NULL':
+        // Quota likely exceeded - try clearing oldest Quick Tabs
+        return await _recoverFromNullRead(operationId, intendedState);
+        
+      case 'TAB_COUNT_MISMATCH':
+        // Corruption - re-write the entire state
+        return await _recoverFromTabCountMismatch(operationId, intendedState);
+        
+      case 'SAVEID_MISMATCH':
+        // Check if this is out-of-order event via sequence ID
+        return await _recoverFromSaveIdMismatch(operationId, intendedState, readBackState);
+        
+      case 'CHECKSUM_MISMATCH':
+        // Data corruption - re-write with verification
+        return await _recoverFromChecksumMismatch(operationId, intendedState);
+        
+      default:
+        console.warn('[Background] RECOVERY_UNKNOWN_FAILURE_TYPE:', { operationId, failureType });
+        return { recovered: false, method: 'none', reason: `Unknown failure type: ${failureType}` };
+    }
+  } catch (err) {
+    console.error('[Background] RECOVERY_ERROR:', {
+      operationId,
+      failureType,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    return { recovered: false, method: 'error', reason: err.message };
+  }
+}
+
+/**
+ * Recover from null read (likely quota exceeded)
+ * v1.6.3.7-v13 - Issue #7: Clear oldest Quick Tabs and retry
+ * @private
+ */
+async function _recoverFromNullRead(operationId, intendedState) {
+  console.log('[Background] RECOVERY_STRATEGY: Clearing oldest Quick Tabs (quota likely exceeded)');
+  
+  // If not enough tabs to clear, fail early
+  if (!intendedState?.tabs?.length || intendedState.tabs.length <= 1) {
+    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
+  }
+  
+  // Sort by creationTime and remove oldest tabs (keep RECOVERY_KEEP_PERCENTAGE)
+  const sortedTabs = [...intendedState.tabs].sort((a, b) => 
+    (a.creationTime || 0) - (b.creationTime || 0)
+  );
+  
+  const keepCount = Math.max(1, Math.floor(sortedTabs.length * RECOVERY_KEEP_PERCENTAGE));
+  const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
+  
+  const recoverySaveId = `recovery-null-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recoveryState = {
+    ...intendedState,
+    tabs: reducedTabs,
+    saveId: recoverySaveId,
+    recoveredFrom: 'READ_RETURNED_NULL',
+    recoveryTimestamp: Date.now()
+  };
+  
+  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
+  if (!writeResult.success) {
+    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
+  }
+  
+  console.log('[Background] RECOVERY_SUCCESS:', {
+    operationId,
+    method: 'clear-oldest-tabs',
+    originalTabCount: intendedState.tabs.length,
+    newTabCount: reducedTabs.length,
+    removedCount: intendedState.tabs.length - reducedTabs.length,
+    timestamp: Date.now()
+  });
+  return { recovered: true, method: 'clear-oldest-tabs', reason: 'Cleared oldest 25% of tabs' };
+}
+
+/**
+ * Try a recovery write and verify
+ * v1.6.3.7-v13 - Issue #7: Helper to reduce nesting depth in recovery functions
+ * @private
+ */
+async function _tryRecoveryWrite(operationId, recoveryState, expectedSaveId) {
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
+    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
+    return { success: verifyResult?.quick_tabs_state_v2?.saveId === expectedSaveId };
+  } catch (err) {
+    console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
+    return { success: false };
+  }
+}
+
+/**
+ * Log recovery failure and return failure result
+ * v1.6.3.7-v13 - Issue #7: Helper to reduce duplication in recovery functions
+ * @private
+ */
+function _logRecoveryFailure(operationId, failureType, recommendation) {
+  console.error('[Background] RECOVERY_FAILED:', {
+    operationId,
+    failureType,
+    recommendation: `Manual intervention required - ${recommendation}`,
+    timestamp: Date.now()
+  });
+  return { recovered: false, method: 'none', reason: `Unable to recover from ${failureType}` };
+}
+
+/**
+ * Recover from tab count mismatch (corruption)
+ * v1.6.3.7-v13 - Issue #7: Re-write state with verification
+ * @private
+ */
+async function _recoverFromTabCountMismatch(operationId, intendedState) {
+  console.log('[Background] RECOVERY_STRATEGY: Re-writing state (tab count mismatch corruption)');
+  
+  const recoverySaveId = `recovery-count-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recoveryState = {
+    ...intendedState,
+    saveId: recoverySaveId,
+    sequenceId: _getNextStorageSequenceId(),
+    recoveredFrom: 'TAB_COUNT_MISMATCH',
+    recoveryTimestamp: Date.now()
+  };
+  
+  const writeResult = await _tryRecoveryWriteWithTabCount(operationId, recoveryState, recoverySaveId, intendedState?.tabs?.length);
+  if (!writeResult.success) {
+    return _logRecoveryFailure(operationId, 'TAB_COUNT_MISMATCH', 'state corruption persists - recommend clearing storage');
+  }
+  
+  console.log('[Background] RECOVERY_SUCCESS:', {
+    operationId, method: 're-write', tabCount: writeResult.tabCount,
+    recoverySaveId, timestamp: Date.now()
+  });
+  return { recovered: true, method: 're-write', reason: 'Successfully re-wrote state' };
+}
+
+/**
+ * Try a recovery write and verify with tab count check
+ * v1.6.3.7-v13 - Issue #7: Helper for tab count mismatch recovery
+ * @private
+ */
+async function _tryRecoveryWriteWithTabCount(operationId, recoveryState, expectedSaveId, expectedTabCount) {
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
+    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
+    const verifyData = verifyResult?.quick_tabs_state_v2;
+    const success = verifyData?.saveId === expectedSaveId && verifyData?.tabs?.length === expectedTabCount;
+    return { success, tabCount: verifyData?.tabs?.length || 0 };
+  } catch (err) {
+    console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
+    return { success: false };
+  }
+}
+
+/**
+ * Recover from saveId mismatch (check sequence ID ordering)
+ * v1.6.3.7-v13 - Issue #7: Verify sequence ID ordering
+ * @private
+ */
+async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackState) {
+  console.log('[Background] RECOVERY_STRATEGY: Checking sequence ID ordering (saveId mismatch)');
+  
+  const intendedSeqId = intendedState?.sequenceId;
+  const actualSeqId = readBackState?.sequenceId;
+  
+  // If both have sequence IDs, check ordering
+  if (typeof intendedSeqId === 'number' && typeof actualSeqId === 'number' && actualSeqId > intendedSeqId) {
+    console.log('[Background] RECOVERY_OUT_OF_ORDER_EVENT:', {
+      operationId, intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId,
+      explanation: 'Storage contains newer write - our write was superseded, no recovery needed',
+      timestamp: Date.now()
+    });
+    return { recovered: true, method: 'sequence-superseded', reason: 'Storage has newer sequence ID - no action needed' };
+  }
+  
+  // Log out-of-order if applicable
+  if (typeof intendedSeqId === 'number' && typeof actualSeqId === 'number') {
+    console.log('[Background] OUT_OF_ORDER_EVENTS: Older sequence fired after newer', {
+      intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId, operationId
+    });
+  }
+  
+  // Try re-writing with force
+  const recoverySaveId = `recovery-saveid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recoveryState = {
+    ...intendedState,
+    saveId: recoverySaveId,
+    sequenceId: _getNextStorageSequenceId(),
+    recoveredFrom: 'SAVEID_MISMATCH',
+    recoveryTimestamp: Date.now()
+  };
+  
+  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
+  if (!writeResult.success) {
+    return _logRecoveryFailure(operationId, 'SAVEID_MISMATCH', 'concurrent writes may be blocking');
+  }
+  
+  console.log('[Background] RECOVERY_SUCCESS:', {
+    operationId, method: 're-write-force', recoverySaveId, timestamp: Date.now()
+  });
+  return { recovered: true, method: 're-write-force', reason: 'Forced re-write with new saveId' };
+}
+
+/**
+ * Recover from checksum mismatch (data corruption)
+ * v1.6.3.7-v13 - Issue #7: Re-write with verification
+ * @private
+ */
+async function _recoverFromChecksumMismatch(operationId, intendedState) {
+  console.log('[Background] RECOVERY_STRATEGY: Re-writing state (checksum mismatch corruption)');
+  
+  const recoverySaveId = `recovery-checksum-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recoveryState = {
+    ...intendedState,
+    saveId: recoverySaveId,
+    sequenceId: _getNextStorageSequenceId(),
+    recoveredFrom: 'CHECKSUM_MISMATCH',
+    recoveryTimestamp: Date.now()
+  };
+  
+  const writeResult = await _tryRecoveryWriteWithChecksum(operationId, recoveryState, recoverySaveId);
+  if (!writeResult.success) {
+    return _logRecoveryFailure(operationId, 'CHECKSUM_MISMATCH', 'persistent data corruption - recommend clearing storage');
+  }
+  
+  console.log('[Background] RECOVERY_SUCCESS:', {
+    operationId, method: 're-write-verified', tabCount: writeResult.tabCount,
+    checksumVerified: true, timestamp: Date.now()
+  });
+  return { recovered: true, method: 're-write-verified', reason: 'Successfully re-wrote state with checksum verification' };
+}
+
+/**
+ * Try a recovery write and verify with checksum check
+ * v1.6.3.7-v13 - Issue #7: Helper for checksum mismatch recovery
+ * @private
+ */
+async function _tryRecoveryWriteWithChecksum(operationId, recoveryState, expectedSaveId) {
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
+    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
+    const verifyData = verifyResult?.quick_tabs_state_v2;
+    const expectedChecksum = _computeStorageChecksum(recoveryState);
+    const actualChecksum = _computeStorageChecksum(verifyData);
+    const success = verifyData?.saveId === expectedSaveId && expectedChecksum === actualChecksum;
+    return { success, tabCount: verifyData?.tabs?.length || 0 };
+  } catch (err) {
+    console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
+    return { success: false };
+  }
+}
+
+/**
  * Handle successful write validation
  * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
  * @private
@@ -1506,6 +1908,7 @@ function _handleEmptyBackup(operationId, backup, intendedState) {
 /**
  * Write recovered state to local storage
  * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
+ * v1.6.3.7-v13 - Issue #2: Use centralized write validation
  * @private
  */
 async function _writeRecoveredState(operationId, backup) {
@@ -1517,14 +1920,21 @@ async function _writeRecoveredState(operationId, backup) {
     recoveredFrom: 'sync-backup'
   };
   
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: recoveredState });
+  // v1.6.3.7-v13 - Issue #2: Use centralized validation
+  const result = await _writeQuickTabStateWithValidation(recoveredState, 'sync-backup-recovery');
+  
+  if (result.success) {
     console.log('[Background] RECOVERY_COMPLETE: State restored from backup', {
       operationId,
-      tabCount: backup.tabs.length
+      tabCount: backup.tabs.length,
+      validated: true
     });
-  } catch (writeErr) {
-    console.error('[Background] RECOVERY_WRITE_FAILED:', { operationId, error: writeErr.message });
+  } else {
+    console.error('[Background] RECOVERY_WRITE_FAILED:', { 
+      operationId, 
+      error: result.error,
+      recovered: result.recovered
+    });
   }
 }
 
@@ -2339,7 +2749,7 @@ async function tryLoadFromSyncStorage() {
  * @returns {Promise<void>}
  */
 async function saveMigratedToUnifiedFormat() {
-  const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const saveId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sequenceId = _getNextStorageSequenceId();
 
   try {
@@ -2435,6 +2845,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
  * Helper: Save migrated Quick Tab state to storage
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.7-v13 - Issue #2: Use centralized write validation
  *
  * @returns {Promise<void>}
  */
@@ -2443,17 +2854,21 @@ async function saveMigratedQuickTabState() {
 
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
-    saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    saveId: `migration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sequenceId: _getNextStorageSequenceId(),
     timestamp: Date.now()
   };
 
-  try {
-    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
-    console.log('[Background Migration] ✓ Migration complete');
-  } catch (err) {
-    console.error('[Background Migration] Error saving migrated state:', err);
+  // v1.6.3.7-v13 - Issue #2: Use centralized validation
+  const result = await _writeQuickTabStateWithValidation(stateToSave, 'migration');
+  
+  if (result.success) {
+    console.log('[Background Migration] ✓ Migration complete (validated)');
+  } else {
+    console.error('[Background Migration] Error saving migrated state:', {
+      error: result.error,
+      recovered: result.recovered
+    });
   }
 }
 
@@ -3100,9 +3515,10 @@ function _removeTabFromQuickTab(quickTab, tabId) {
  * Helper: Clean up Quick Tab state after tab closes
  * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
  * v1.6.2.2 - Updated for unified format
+ * v1.6.3.7-v13 - Issue #2: Use centralized write validation
  *
  * @param {number} tabId - Tab ID that was closed
- * @returns {Promise<boolean>} True if state was changed and saved
+ * @returns {Promise<boolean>} True if state was changed and persisted (either validated or recovered)
  */
 async function _cleanupQuickTabStateAfterTabClose(tabId) {
   // Guard: Not initialized
@@ -3127,19 +3543,31 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
   // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
-    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sequenceId: _getNextStorageSequenceId(),
     timestamp: Date.now()
   };
 
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
-    console.log('[Background] Cleaned up Quick Tab state after tab closure');
-    return true;
-  } catch (err) {
-    console.error('[Background] Error saving cleaned up state:', err);
-    return false;
+  // v1.6.3.7-v13 - Issue #2: Use centralized validation
+  const result = await _writeQuickTabStateWithValidation(stateToSave, 'tab-cleanup');
+  
+  // Return true if write was validated OR if recovery succeeded
+  const persistedSuccessfully = result.success || result.recovered;
+  
+  if (persistedSuccessfully) {
+    console.log('[Background] Cleaned up Quick Tab state after tab closure', {
+      validated: result.success,
+      recovered: result.recovered
+    });
+  } else {
+    console.error('[Background] Error saving cleaned up state:', {
+      error: result.error,
+      recovered: result.recovered,
+      note: 'State may be inconsistent with storage'
+    });
   }
+  
+  return persistedSuccessfully;
 }
 
 // Clean up state when tab is closed
@@ -3905,10 +4333,29 @@ function _multiMethodDeduplication(newValue, oldValue) {
 /**
  * Check if sequence ID indicates this is an old/duplicate event
  * v1.6.3.7-v12 - Issue #9: Sequence ID-based ordering replaces arbitrary timestamp window
- * Firefox's storage.onChanged provides no ordering guarantees, but sequence IDs
- * are assigned at write time (before storage.local.set is called), so comparing
- * sequence IDs provides reliable event ordering.
  * v1.6.3.7-v12 - FIX Code Review: Renamed 'skip' to 'shouldSkip' for clarity
+ * v1.6.3.7-v13 - Issue #3: Added comprehensive explanation of ordering guarantees
+ * 
+ * IMPORTANT: Why Sequence IDs Provide Ordering Guarantees
+ * ========================================================
+ * Firefox's storage.onChanged provides NO ordering guarantees across multiple writes.
+ * Two writes made 100ms apart may have their storage.onChanged events fire in ANY order
+ * due to Firefox's async event processing, IndexedDB batching, and internal scheduling.
+ * 
+ * Sequence IDs solve this because they are assigned BEFORE the storage.local.set() call,
+ * during the same synchronous JS execution that initiates the write. This means:
+ * 
+ * 1. Write A gets sequenceId=5, then calls storage.local.set()
+ * 2. Write B gets sequenceId=6, then calls storage.local.set()
+ * 
+ * Even if B's storage.onChanged fires BEFORE A's (which Firefox allows), we can detect
+ * this because B will have sequenceId=6 and A will have sequenceId=5. If we've already
+ * processed sequenceId=6, we know sequenceId=5 is stale data from an older write.
+ * 
+ * The 50ms timestamp window (DEDUP_SAVEID_TIMESTAMP_WINDOW_MS) is kept as a SECONDARY
+ * fallback for legacy writes that don't have sequenceId, but it cannot reliably detect
+ * out-of-order events because timestamps are also assigned at write-time, not event-fire time.
+ * 
  * @private
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
@@ -3931,11 +4378,21 @@ function _checkSequenceIdOrdering(newValue, oldValue) {
   
   // If new event has same or lower sequence ID, it's a duplicate or out-of-order event
   if (newSeqId <= oldSeqId) {
+    // v1.6.3.7-v13 - Issue #3: Log out-of-order events for diagnostics
+    const isOutOfOrder = newSeqId < oldSeqId;
+    if (isOutOfOrder) {
+      console.log('[Background] [STORAGE] OUT_OF_ORDER_EVENTS: Older sequence fired after newer sequence', {
+        olderSequenceId: newSeqId,
+        newerSequenceId: oldSeqId,
+        explanation: 'Firefox storage.onChanged events can fire in any order - this older write arrived late'
+      });
+    }
+    
     console.log('[Background] [STORAGE] SEQUENCE_ID_SKIP: Old or duplicate event detected', {
       newSequenceId: newSeqId,
       oldSequenceId: oldSeqId,
       isDuplicate: newSeqId === oldSeqId,
-      isOutOfOrder: newSeqId < oldSeqId
+      isOutOfOrder
     });
     return { 
       shouldSkip: true, 
@@ -5838,24 +6295,42 @@ function _buildAdoptionError({ quickTabId, targetTabId, corrId, reason, extraInf
 /**
  * Perform adoption storage write
  * v1.6.4.14 - FIX Large Method: Extracted from handleAdoptAction
+ * v1.6.3.7-v13 - Issue #2: Add write validation
  * @private
+ * @param {Object} state - Current state with tabs array
+ * @param {string} quickTabId - Quick Tab being adopted
+ * @param {number} targetTabId - Target tab adopting the Quick Tab
+ * @returns {Promise<{saveId: string, sequenceId: number, validated: boolean, recovered: boolean}>}
+ *          - validated: true if write was verified successfully
+ *          - recovered: true if validation failed but recovery succeeded
+ *          - Caller should check `validated || recovered` to determine if state is consistent
  */
 async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const sequenceId = _getNextStorageSequenceId();
   
-  await browser.storage.local.set({
-    quick_tabs_state_v2: {
-      tabs: state.tabs,
-      saveId,
-      sequenceId,
-      timestamp: Date.now(),
-      writingTabId: targetTabId,
-      writingInstanceId: `background-adopt-${Date.now()}`
-    }
-  });
+  const stateToWrite = {
+    tabs: state.tabs,
+    saveId,
+    sequenceId,
+    timestamp: Date.now(),
+    writingTabId: targetTabId,
+    writingInstanceId: `background-adopt-${Date.now()}`
+  };
   
-  return { saveId, sequenceId };
+  // v1.6.3.7-v13 - Issue #2: Use centralized validation
+  const result = await _writeQuickTabStateWithValidation(stateToWrite, 'adoption');
+  
+  if (!result.success && !result.recovered) {
+    console.warn('[Background] ADOPTION_WRITE_INCONSISTENT:', {
+      quickTabId,
+      targetTabId,
+      error: result.error,
+      recommendation: 'State may be inconsistent - consider retrying adoption'
+    });
+  }
+  
+  return { saveId, sequenceId, validated: result.success, recovered: result.recovered };
 }
 
 /**
@@ -5940,7 +6415,7 @@ async function handleAdoptAction(payload) {
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
-  const saveId = `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const saveId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sequenceId = _getNextStorageSequenceId();
 
   const stateToWrite = {
