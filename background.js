@@ -248,6 +248,36 @@ const PORT_REGISTRY_CRITICAL_THRESHOLD = 100; // Critical if exceeds 100 ports
 // Set to true to enable detailed logging of message routing at all tiers
 const DEBUG_MESSAGING = true;
 
+// ==================== v1.6.3.7-v12 DEBUG DIAGNOSTICS FLAG ====================
+// Issue #6: Separate flag for verbose diagnostic logging (dedup decisions, validation, etc.)
+// Set to true to enable detailed diagnostic logging without affecting DEBUG_MESSAGING
+const DEBUG_DIAGNOSTICS = true;
+
+// ==================== v1.6.3.7-v12 KEEPALIVE SAMPLING ====================
+// Issue #2: Keepalive health monitoring - log first failure + sample 10% thereafter
+// v1.6.3.7-v12 - FIX Code Review: Counter-based sampling instead of random for determinism
+// Track whether first failure has been logged in this session
+let firstKeepaliveFailureLogged = false;
+const KEEPALIVE_FAILURE_LOG_EVERY_N = 10; // Log every Nth failure after first (deterministic)
+
+// ==================== v1.6.3.7-v12 PORT REGISTRY MONITORING ====================
+// Issue #3, #10: Port registry threshold monitoring interval
+const PORT_REGISTRY_CHECK_INTERVAL_MS = 30000; // Check every 30 seconds
+let portRegistryCheckIntervalId = null;
+// Track port registry size history for trend analysis
+const portRegistrySizeHistory = [];
+const PORT_REGISTRY_HISTORY_MAX = 5;
+
+// ==================== v1.6.3.7-v12 DEDUP STATISTICS ====================
+// Issue #6: Track deduplication statistics
+let dedupStats = {
+  skipped: 0,
+  processed: 0,
+  lastResetTime: Date.now()
+};
+const DEDUP_STATS_LOG_INTERVAL_MS = 60000; // Log stats every 60 seconds
+let dedupStatsIntervalId = null;
+
 // ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
 const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
@@ -319,49 +349,109 @@ function _startKeepaliveHealthCheck() {
  * Trigger idle timer reset using tabs.query and sendMessage
  * v1.6.3.7 - FIX Issue #1: Firefox treats tabs.query and runtime.sendMessage as activity
  * v1.6.4.9 - Issue #5: Added health tracking and rate-limited success logging
+ * v1.6.3.7-v12 - Issue #2: Log first failure + sample 10% thereafter instead of rate-limiting
+ * v1.6.3.7-v12 - FIX ESLint: Extracted helpers to reduce complexity (cc=10 → cc=5)
  */
 async function triggerIdleReset() {
+  const attemptStartTime = Date.now();
+  const context = { tabsQuerySuccess: false, sendMessageSuccess: false, tabCount: 0 };
+  
   try {
-    // Method 1: browser.tabs.query triggers event handlers which reset idle timer
-    const tabs = await browser.tabs.query({});
-
-    // Method 2: Self-send a message (this resets the idle timer)
-    // Note: This will be caught by our own listener but that's fine
-    try {
-      await browser.runtime.sendMessage({ type: 'KEEPALIVE_PING', timestamp: Date.now() });
-    } catch (_err) {
-      // Expected to fail if no listener, but the message send itself resets the timer
-    }
-
-    // v1.6.4.9 - Issue #5: Track success and reset failure counter
-    lastKeepaliveSuccessTime = Date.now();
-    consecutiveKeepaliveFailures = 0;
-    keepaliveSuccessCount++;
-
-    // v1.6.4.9 - Issue #5: Rate-limited success logging (every 10th success)
-    if (keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
-      console.log('[Background] KEEPALIVE_RESET_SUCCESS:', {
-        tabCount: tabs.length,
-        successCount: keepaliveSuccessCount,
-        timestamp: Date.now()
-      });
-    }
+    await _performKeepaliveQueries(context);
+    _handleKeepaliveSuccess(context, attemptStartTime);
   } catch (err) {
-    // v1.6.4.9 - Issue #5: Track failures and warn if consecutive
-    consecutiveKeepaliveFailures++;
+    _handleKeepaliveFailure(err, context.tabsQuerySuccess, attemptStartTime);
+  }
+}
+
+/**
+ * Perform keepalive queries (tabs.query and runtime.sendMessage)
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
+ * @private
+ * @param {Object} context - Context object to update with results
+ */
+async function _performKeepaliveQueries(context) {
+  // Method 1: browser.tabs.query triggers event handlers which reset idle timer
+  const tabs = await browser.tabs.query({});
+  context.tabsQuerySuccess = true;
+  context.tabCount = tabs.length;
+
+  // Method 2: Self-send a message (this resets the idle timer)
+  try {
+    await browser.runtime.sendMessage({ type: 'KEEPALIVE_PING', timestamp: Date.now() });
+    context.sendMessageSuccess = true;
+  } catch (_err) {
+    // Expected to fail if no listener, but the message send itself resets the timer
+    context.sendMessageSuccess = false;
+  }
+}
+
+/**
+ * Handle successful keepalive reset
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
+ * @private
+ * @param {Object} context - Keepalive context with results
+ * @param {number} attemptStartTime - When the attempt started
+ */
+function _handleKeepaliveSuccess(context, attemptStartTime) {
+  lastKeepaliveSuccessTime = Date.now();
+  consecutiveKeepaliveFailures = 0;
+  firstKeepaliveFailureLogged = false;
+  keepaliveSuccessCount++;
+
+  // Rate-limited success logging (every 10th success)
+  if (keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
+    console.log('[Background] KEEPALIVE_RESET_SUCCESS:', {
+      tabCount: context.tabCount,
+      successCount: keepaliveSuccessCount,
+      failureCount: consecutiveKeepaliveFailures,
+      tabsQuerySuccess: context.tabsQuerySuccess,
+      sendMessageSuccess: context.sendMessageSuccess,
+      durationMs: Date.now() - attemptStartTime,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Handle keepalive reset failure
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
+ * @private
+ * @param {Error} err - Error that occurred
+ * @param {boolean} tabsQuerySuccess - Whether tabs.query succeeded
+ * @param {number} attemptStartTime - When the attempt started
+ */
+function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
+  consecutiveKeepaliveFailures++;
+  
+  // Issue #2: Always log first failure, then sample every Nth thereafter (deterministic)
+  // v1.6.3.7-v12 - FIX Code Review: Counter-based sampling for predictable, testable behavior
+  const shouldLogFailure = !firstKeepaliveFailureLogged || 
+    (consecutiveKeepaliveFailures % KEEPALIVE_FAILURE_LOG_EVERY_N === 0);
+  
+  if (shouldLogFailure) {
     console.error('[Background] KEEPALIVE_RESET_FAILED:', {
       error: err.message,
+      failedApi: tabsQuerySuccess ? 'runtime.sendMessage' : 'tabs.query',
+      tabsQuerySuccess,
       consecutiveFailures: consecutiveKeepaliveFailures,
-      lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString()
+      lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString(),
+      timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
+      durationMs: Date.now() - attemptStartTime,
+      isFirstFailure: !firstKeepaliveFailureLogged,
+      samplingStrategy: firstKeepaliveFailureLogged ? `every ${KEEPALIVE_FAILURE_LOG_EVERY_N}th` : 'first',
+      timestamp: Date.now()
     });
+    firstKeepaliveFailureLogged = true;
+  }
 
-    // v1.6.4.9 - Issue #5: Warn if > 2 consecutive failures
-    if (consecutiveKeepaliveFailures > 2) {
-      console.warn('[Background] KEEPALIVE_CONSECUTIVE_FAILURES_WARNING:', {
-        failureCount: consecutiveKeepaliveFailures,
-        timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime
-      });
-    }
+  // Warn if > 2 consecutive failures
+  if (consecutiveKeepaliveFailures > 2) {
+    console.warn('[Background] KEEPALIVE_CONSECUTIVE_FAILURES_WARNING:', {
+      failureCount: consecutiveKeepaliveFailures,
+      timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
+      healthStatus: consecutiveKeepaliveFailures > 5 ? 'critical' : 'degraded'
+    });
   }
 }
 
@@ -626,6 +716,7 @@ async function _performSessionSync() {
 /**
  * Log diagnostic snapshot of current state
  * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
+ * v1.6.3.7-v12 - Issue #3, #10: Include port registry threshold check and trend
  */
 function logDiagnosticSnapshot() {
   console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
@@ -636,15 +727,289 @@ function logDiagnosticSnapshot() {
     saveId: globalQuickTabState.saveId,
     isInitialized
   });
+  
+  // v1.6.3.7-v12 - Issue #3, #10: Enhanced port registry logging with thresholds
+  const portCount = portRegistry.size;
+  const portTrend = _computePortRegistryTrend();
   console.log('[Background] Port registry:', {
-    connectedPorts: portRegistry.size,
+    connectedPorts: portCount,
+    warnThreshold: PORT_REGISTRY_WARN_THRESHOLD,
+    criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
+    thresholdStatus: _getPortRegistryThresholdStatus(portCount),
+    trend: portTrend,
     portIds: [...portRegistry.keys()]
   });
+  
   console.log('[Background] Quick Tab host tracking:', {
     trackedQuickTabs: quickTabHostTabs.size
   });
+  
+  // v1.6.3.7-v12 - Issue #6: Include dedup statistics
+  console.log('[Background] Dedup statistics:', {
+    skipped: dedupStats.skipped,
+    processed: dedupStats.processed,
+    totalSinceReset: dedupStats.skipped + dedupStats.processed,
+    skipRate: dedupStats.processed > 0 
+      ? ((dedupStats.skipped / (dedupStats.skipped + dedupStats.processed)) * 100).toFixed(1) + '%'
+      : 'N/A',
+    lastResetTime: new Date(dedupStats.lastResetTime).toISOString()
+  });
+  
   console.log('[Background] =================================================================');
 }
+
+/**
+ * Get port registry threshold status
+ * v1.6.3.7-v12 - Issue #3, #10: Helper for threshold status
+ * @private
+ * @param {number} count - Current port count
+ * @returns {string} Status string
+ */
+function _getPortRegistryThresholdStatus(count) {
+  if (count >= PORT_REGISTRY_CRITICAL_THRESHOLD) return 'CRITICAL';
+  if (count >= PORT_REGISTRY_WARN_THRESHOLD) return 'WARNING';
+  return 'OK';
+}
+
+/**
+ * Compute port registry trend from history
+ * v1.6.3.7-v12 - Issue #3, #10: Helper for trend analysis
+ * @private
+ * @returns {string} Trend description
+ */
+function _computePortRegistryTrend() {
+  if (portRegistrySizeHistory.length < 2) return 'insufficient_data';
+  
+  const oldest = portRegistrySizeHistory[0];
+  const newest = portRegistrySizeHistory[portRegistrySizeHistory.length - 1];
+  const diff = newest - oldest;
+  
+  if (diff > 5) return 'increasing';
+  if (diff < -5) return 'decreasing';
+  return 'stable';
+}
+
+/**
+ * Check port registry thresholds and log warnings
+ * v1.6.3.7-v12 - Issue #3, #10: Implement threshold monitoring
+ * Called periodically to check port registry health
+ */
+function checkPortRegistryThresholds() {
+  const count = portRegistry.size;
+  
+  // Update history for trend analysis
+  portRegistrySizeHistory.push(count);
+  if (portRegistrySizeHistory.length > PORT_REGISTRY_HISTORY_MAX) {
+    portRegistrySizeHistory.shift();
+  }
+  
+  const trend = _computePortRegistryTrend();
+  
+  // v1.6.3.7-v12 - Issue #10: Check CRITICAL threshold
+  if (count >= PORT_REGISTRY_CRITICAL_THRESHOLD) {
+    console.error('[Background] [PORT] PORT_REGISTRY_CRITICAL:', {
+      currentSize: count,
+      criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
+      trend,
+      recommendation: 'Attempting automatic cleanup of stale ports',
+      timestamp: Date.now()
+    });
+    
+    // Attempt automatic cleanup of stale ports
+    _attemptStalePortCleanup();
+    return;
+  }
+  
+  // v1.6.3.7-v12 - Issue #10: Check WARN threshold
+  if (count >= PORT_REGISTRY_WARN_THRESHOLD) {
+    console.warn('[Background] [PORT] PORT_REGISTRY_WARNING:', {
+      currentSize: count,
+      warnThreshold: PORT_REGISTRY_WARN_THRESHOLD,
+      criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
+      trend,
+      recommendation: 'Investigate stale ports - approaching critical threshold',
+      timestamp: Date.now()
+    });
+    return;
+  }
+  
+  // Log health snapshot (only when DEBUG_DIAGNOSTICS is enabled)
+  if (DEBUG_DIAGNOSTICS) {
+    console.log('[Background] [PORT] PORT_REGISTRY_HEALTH:', {
+      currentSize: count,
+      thresholdStatus: 'OK',
+      trend,
+      sizeHistory: [...portRegistrySizeHistory],
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Attempt to clean up stale ports (inactive for 60+ seconds)
+ * v1.6.3.7-v12 - Issue #3, #10: Automatic cleanup when critical threshold reached
+ * v1.6.3.7-v12 - FIX ESLint: Extracted helpers to reduce complexity (cc=10 → cc=5)
+ * @private
+ */
+function _attemptStalePortCleanup() {
+  const STALE_PORT_AGE_MS = 60000; // 60 seconds
+  const now = Date.now();
+  const beforeCount = portRegistry.size;
+  
+  const stalePorts = _findStalePorts(now, STALE_PORT_AGE_MS);
+  
+  _logStalePortCleanupAttempt(beforeCount, stalePorts, STALE_PORT_AGE_MS, now);
+  _removeStalePortsFromRegistry(stalePorts);
+  _logStalePortCleanupComplete(beforeCount);
+}
+
+/**
+ * Find all stale ports in the registry
+ * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
+ * @private
+ */
+function _findStalePorts(now, thresholdMs) {
+  const stalePorts = [];
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const stalePortInfo = _checkPortStaleness(portId, portInfo, now, thresholdMs);
+    if (stalePortInfo) {
+      stalePorts.push(stalePortInfo);
+    }
+  }
+  
+  return stalePorts;
+}
+
+/**
+ * Check if a port is stale and return info if so
+ * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
+ * @private
+ */
+function _checkPortStaleness(portId, portInfo, now, thresholdMs) {
+  const age = now - (portInfo.createdAt || portInfo.lastMessageTime || now);
+  const lastActivity = portInfo.lastMessageTime || portInfo.createdAt || now;
+  const inactiveTime = now - lastActivity;
+  
+  if (inactiveTime > thresholdMs) {
+    return { portId, age, inactiveTime, type: portInfo.type };
+  }
+  return null;
+}
+
+/**
+ * Log stale port cleanup attempt
+ * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
+ * @private
+ */
+function _logStalePortCleanupAttempt(beforeCount, stalePorts, thresholdMs, now) {
+  console.log('[Background] [PORT] STALE_PORT_CLEANUP_ATTEMPT:', {
+    beforeCount,
+    stalePortsFound: stalePorts.length,
+    stalePortDetails: stalePorts.slice(0, 5),
+    thresholdMs,
+    timestamp: now
+  });
+}
+
+/**
+ * Remove stale ports from the registry
+ * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
+ * @private
+ */
+function _removeStalePortsFromRegistry(stalePorts) {
+  for (const { portId } of stalePorts) {
+    _disconnectAndRemovePort(portId);
+  }
+}
+
+/**
+ * Disconnect and remove a single port from registry
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce nesting depth
+ * @private
+ */
+function _disconnectAndRemovePort(portId) {
+  try {
+    const port = portRegistry.get(portId)?.port;
+    if (port) {
+      port.disconnect();
+    }
+    portRegistry.delete(portId);
+  } catch (err) {
+    console.warn('[Background] [PORT] STALE_PORT_CLEANUP_ERROR:', {
+      portId,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Log stale port cleanup completion
+ * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
+ * @private
+ */
+function _logStalePortCleanupComplete(beforeCount) {
+  const afterCount = portRegistry.size;
+  console.log('[Background] [PORT] STALE_PORT_CLEANUP_COMPLETE:', {
+    beforeCount,
+    afterCount,
+    removed: beforeCount - afterCount,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Start port registry monitoring
+ * v1.6.3.7-v12 - Issue #3, #10: Periodic threshold checks
+ */
+function startPortRegistryMonitoring() {
+  if (portRegistryCheckIntervalId) {
+    clearInterval(portRegistryCheckIntervalId);
+  }
+  
+  portRegistryCheckIntervalId = setInterval(() => {
+    checkPortRegistryThresholds();
+  }, PORT_REGISTRY_CHECK_INTERVAL_MS);
+  
+  console.log('[Background] [PORT] Port registry monitoring started (every', PORT_REGISTRY_CHECK_INTERVAL_MS / 1000, 's)');
+}
+
+/**
+ * Start dedup statistics logging
+ * v1.6.3.7-v12 - Issue #6: Log dedup statistics every 60 seconds
+ */
+function startDedupStatsLogging() {
+  if (dedupStatsIntervalId) {
+    clearInterval(dedupStatsIntervalId);
+  }
+  
+  dedupStatsIntervalId = setInterval(() => {
+    const total = dedupStats.skipped + dedupStats.processed;
+    if (total > 0) {
+      console.log('[Background] [STORAGE] DEDUP_STATS:', {
+        skipped: dedupStats.skipped,
+        processed: dedupStats.processed,
+        total,
+        skipRate: ((dedupStats.skipped / total) * 100).toFixed(1) + '%',
+        intervalMs: DEDUP_STATS_LOG_INTERVAL_MS,
+        timestamp: Date.now()
+      });
+    }
+    
+    // Reset stats after logging
+    dedupStats = {
+      skipped: 0,
+      processed: 0,
+      lastResetTime: Date.now()
+    };
+  }, DEDUP_STATS_LOG_INTERVAL_MS);
+  
+  console.log('[Background] [STORAGE] Dedup stats logging started (every', DEDUP_STATS_LOG_INTERVAL_MS / 1000, 's)');
+}
+
+// Start port registry monitoring and dedup stats logging on script load
+startPortRegistryMonitoring();
+startDedupStatsLogging();
 
 // Register alarm listener
 browser.alarms.onAlarm.addListener(handleAlarm);
@@ -3384,6 +3749,7 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 /**
  * Create a dedup result indicating the change should be skipped
  * v1.6.4.13 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
+ * v1.6.3.7-v12 - Issue #6: Track dedup statistics and log all decisions
  * @private
  * @param {string} method - Dedup method that triggered the skip
  * @param {string} reason - Reason for skipping
@@ -3391,11 +3757,22 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _createSkipResult(method, reason, logDetails = {}) {
+  // v1.6.3.7-v12 - Issue #6: Track skipped count
+  dedupStats.skipped++;
+  
   const result = { shouldSkip: true, method, reason };
-  console.log('[Background] DEDUP_RESULT:', {
+  
+  // v1.6.3.7-v12 - Issue #6: Always log dedup decisions regardless of DEBUG_MESSAGING
+  console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
     decision: 'skip',
-    ...logDetails
+    dedupStatsSnapshot: {
+      skipped: dedupStats.skipped,
+      processed: dedupStats.processed,
+      total: dedupStats.skipped + dedupStats.processed
+    },
+    ...logDetails,
+    timestamp: Date.now()
   });
   return result;
 }
@@ -3403,12 +3780,27 @@ function _createSkipResult(method, reason, logDetails = {}) {
 /**
  * Create a dedup result indicating the change should be processed
  * v1.6.4.13 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
+ * v1.6.3.7-v12 - Issue #6: Track dedup statistics and log all decisions
  * @private
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _createProcessResult() {
+  // v1.6.3.7-v12 - Issue #6: Track processed count
+  dedupStats.processed++;
+  
   const result = { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
-  console.log('[Background] DEDUP_RESULT:', { ...result, decision: 'process' });
+  
+  // v1.6.3.7-v12 - Issue #6: Always log dedup decisions regardless of DEBUG_MESSAGING
+  console.log('[Background] [STORAGE] DEDUP_DECISION:', {
+    ...result,
+    decision: 'process',
+    dedupStatsSnapshot: {
+      skipped: dedupStats.skipped,
+      processed: dedupStats.processed,
+      total: dedupStats.skipped + dedupStats.processed
+    },
+    timestamp: Date.now()
+  });
   return result;
 }
 
@@ -3458,31 +3850,102 @@ function _buildSaveIdComparisonDetails(newValue, oldValue) {
  * v1.6.3.7-v9 - FIX Issue #3: Unified dedup strategy - removed dead transactionId code
  * v1.6.4.13 - FIX Complexity: Extracted result helpers (cc=17 → cc=7)
  * v1.6.4.14 - FIX Complexity: Extracted log builders (cc=17 → cc=4)
- *   - PRIMARY: saveId + timestamp comparison (Method 1)
- *   - SECONDARY: Content hash comparison for messages without saveId (Method 2)
+ * v1.6.3.7-v12 - Issue #9: Prioritize sequence ID ordering over arbitrary 50ms window
+ *   - PRIMARY: Sequence ID comparison (stronger ordering guarantee)
+ *   - SECONDARY: saveId + timestamp comparison (fallback for legacy writes)
+ *   - TERTIARY: Content hash comparison for messages without saveId
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _multiMethodDeduplication(newValue, oldValue) {
   // v1.6.3.7-v9 - FIX Issue #3: Log dedup check start with comparison values
-  console.log('[Background] DEDUP_CHECK:', _buildDedupLogDetails(newValue, oldValue));
+  console.log('[Background] [STORAGE] DEDUP_CHECK:', _buildDedupLogDetails(newValue, oldValue));
 
-  // v1.6.3.7-v9 - FIX Issue #3: Method 1 (PRIMARY) - saveId + timestamp comparison
-  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
-    return _createSkipResult('saveId+timestamp', 'Same saveId and timestamp within window', {
-      comparison: _buildSaveIdComparisonDetails(newValue, oldValue)
+  // v1.6.3.7-v12 - Issue #9: Method 0 (PRIMARY) - Sequence ID ordering
+  // Sequence IDs are assigned at write time and provide stronger ordering guarantees
+  // than timestamp-based windows because Firefox's storage.onChanged events can fire
+  // out of order due to async listener processing
+  const sequenceResult = _checkSequenceIdOrdering(newValue, oldValue);
+  if (sequenceResult.shouldSkip) {
+    return _createSkipResult('sequenceId', sequenceResult.reason, {
+      newSequenceId: newValue?.sequenceId,
+      oldSequenceId: oldValue?.sequenceId,
+      explanation: 'Sequence ID ordering: events with lower or equal sequenceId than already-processed events are duplicates'
     });
   }
 
-  // v1.6.3.7-v9 - FIX Issue #3: Method 2 (SECONDARY) - Content hash comparison
+  // v1.6.3.7-v9 - FIX Issue #3: Method 1 (SECONDARY) - saveId + timestamp comparison
+  // Fallback for writes without sequenceId (legacy or external)
+  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
+    return _createSkipResult('saveId+timestamp', 'Same saveId and timestamp within window', {
+      comparison: _buildSaveIdComparisonDetails(newValue, oldValue),
+      note: 'Fallback method - new writes should use sequenceId'
+    });
+  }
+
+  // v1.6.3.7-v9 - FIX Issue #3: Method 2 (TERTIARY) - Content hash comparison
   if (_isContentHashDuplicate(newValue, oldValue)) {
-    return _createSkipResult('contentHash', 'Identical content (secondary safeguard for no-saveId messages)', {
+    return _createSkipResult('contentHash', 'Identical content (tertiary safeguard for no-saveId messages)', {
       hasSaveId: !!newValue?.saveId
     });
   }
 
   return _createProcessResult();
+}
+
+/**
+ * Check if sequence ID indicates this is an old/duplicate event
+ * v1.6.3.7-v12 - Issue #9: Sequence ID-based ordering replaces arbitrary timestamp window
+ * Firefox's storage.onChanged provides no ordering guarantees, but sequence IDs
+ * are assigned at write time (before storage.local.set is called), so comparing
+ * sequence IDs provides reliable event ordering.
+ * v1.6.3.7-v12 - FIX Code Review: Renamed 'skip' to 'shouldSkip' for clarity
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @returns {{ shouldSkip: boolean, reason: string }}
+ */
+function _checkSequenceIdOrdering(newValue, oldValue) {
+  const newSeqId = newValue?.sequenceId;
+  const oldSeqId = oldValue?.sequenceId;
+  
+  // Can't use sequence ordering if either lacks sequenceId
+  if (typeof newSeqId !== 'number' || typeof oldSeqId !== 'number') {
+    if (DEBUG_DIAGNOSTICS) {
+      console.log('[Background] [STORAGE] SEQUENCE_ID_CHECK: Missing sequenceId, falling back to other methods', {
+        hasNewSeqId: typeof newSeqId === 'number',
+        hasOldSeqId: typeof oldSeqId === 'number'
+      });
+    }
+    return { shouldSkip: false, reason: 'No sequenceId available' };
+  }
+  
+  // If new event has same or lower sequence ID, it's a duplicate or out-of-order event
+  if (newSeqId <= oldSeqId) {
+    console.log('[Background] [STORAGE] SEQUENCE_ID_SKIP: Old or duplicate event detected', {
+      newSequenceId: newSeqId,
+      oldSequenceId: oldSeqId,
+      isDuplicate: newSeqId === oldSeqId,
+      isOutOfOrder: newSeqId < oldSeqId
+    });
+    return { 
+      shouldSkip: true, 
+      reason: newSeqId === oldSeqId 
+        ? 'Same sequenceId (duplicate event)' 
+        : 'Lower sequenceId (out-of-order event from older write)'
+    };
+  }
+  
+  // New event has higher sequence ID - this is the expected case
+  if (DEBUG_DIAGNOSTICS) {
+    console.log('[Background] [STORAGE] SEQUENCE_ID_PASS: Valid new event', {
+      newSequenceId: newSeqId,
+      oldSequenceId: oldSeqId,
+      increment: newSeqId - oldSeqId
+    });
+  }
+  return { shouldSkip: false, reason: 'Valid sequence progression' };
 }
 
 /**

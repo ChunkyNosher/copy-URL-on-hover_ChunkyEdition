@@ -215,12 +215,22 @@ const _backpressureMetrics = {
 /**
  * Initialize the BroadcastChannel
  * v1.6.3.7-v3 - API #2: Create channel for real-time updates
+ * v1.6.3.7-v12 - Issue #1: Enhanced logging when BC is unavailable with context
  * @returns {boolean} True if channel was created successfully
  */
 export function initBroadcastChannel() {
+  // v1.6.3.7-v12 - Issue #1: Detect execution context for better diagnostics
+  const executionContext = _detectExecutionContext();
+  
   // Check if BroadcastChannel is supported
   if (typeof BroadcastChannel === 'undefined') {
-    console.warn('[BroadcastChannelManager] BroadcastChannel not supported in this environment');
+    console.warn('[BroadcastChannelManager] [BC] INIT_UNAVAILABLE:', {
+      reason: 'BroadcastChannel API not defined',
+      context: executionContext,
+      fallbackActivated: true,
+      fallbackMechanism: 'port-based messaging and storage.onChanged polling',
+      timestamp: Date.now()
+    });
     channelSupported = false;
     return false;
   }
@@ -228,13 +238,85 @@ export function initBroadcastChannel() {
   try {
     updateChannel = new BroadcastChannel(CHANNEL_NAME);
     channelSupported = true;
-    console.log('[BroadcastChannelManager] BroadcastChannel created:', CHANNEL_NAME);
+    console.log('[BroadcastChannelManager] [BC] INIT_SUCCESS:', {
+      channelName: CHANNEL_NAME,
+      context: executionContext,
+      timestamp: Date.now()
+    });
     return true;
   } catch (err) {
-    console.error('[BroadcastChannelManager] Failed to create BroadcastChannel:', err.message);
+    // v1.6.3.7-v12 - Issue #1: Log failure with detailed context
+    console.error('[BroadcastChannelManager] [BC] INIT_FAILED:', {
+      error: err.message,
+      errorName: err.name,
+      context: executionContext,
+      channelName: CHANNEL_NAME,
+      fallbackActivated: true,
+      fallbackMechanism: 'port-based messaging and storage.onChanged polling',
+      timestamp: Date.now()
+    });
     channelSupported = false;
     return false;
   }
+}
+
+/**
+ * Detect the current execution context (background, content, sidebar, etc.)
+ * v1.6.3.7-v12 - Issue #1: Helper for context-aware logging
+ * v1.6.3.7-v12 - FIX ESLint: Reduced complexity and max-depth
+ * v1.6.3.7-v12 - FIX Code Review: Explicit null check for _getExecutionContextFromUrl()
+ * @private
+ * @returns {string} Execution context description
+ */
+function _detectExecutionContext() {
+  try {
+    const urlContext = _getExecutionContextFromUrl();
+    // v1.6.3.7-v12 - FIX Code Review: Explicit null/undefined check
+    if (urlContext !== null && urlContext !== undefined) return urlContext;
+    
+    if (_isBackgroundScript()) return 'background';
+    
+    return 'content-script';
+  } catch (_err) {
+    return 'unknown';
+  }
+}
+
+/**
+ * Get execution context from URL if window is available
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce _detectExecutionContext complexity
+ * @private
+ * @returns {string|null} Context string or null if not determinable from URL
+ */
+function _getExecutionContextFromUrl() {
+  if (typeof window === 'undefined') return null;
+  
+  const url = window.location?.href || '';
+  
+  if (url.includes('sidebar/')) return 'sidebar';
+  if (url.includes('popup')) return 'popup';
+  if (url.includes('options_page')) return 'options';
+  if (_isExtensionPageUrl(url)) return 'extension-page';
+  
+  return null;
+}
+
+/**
+ * Check if URL is an extension page
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce max-depth
+ * @private
+ */
+function _isExtensionPageUrl(url) {
+  return url.includes('moz-extension://') || url.includes('chrome-extension://');
+}
+
+/**
+ * Check if we're in a background script context
+ * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+ * @private
+ */
+function _isBackgroundScript() {
+  return typeof browser !== 'undefined' && browser.runtime && !window.document?.body;
 }
 
 /**

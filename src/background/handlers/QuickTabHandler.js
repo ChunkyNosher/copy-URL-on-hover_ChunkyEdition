@@ -16,6 +16,9 @@
  * - GET_CURRENT_TAB_ID: Get current browser tab ID
  */
 
+// v1.6.3.7-v12 - Issue #7: Initialization barrier timeout constant (code review fix)
+const INIT_TIMEOUT_MS = 10000;
+
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
   // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
@@ -605,29 +608,80 @@ export class QuickTabHandler {
   /**
    * Ensure handler is initialized before operations
    * v1.6.3.6-v12 - FIX Issue #1: Extracted to reduce nesting depth
+   * v1.6.3.7-v12 - Issue #7: Add explicit async barrier with await and timeout protection
    * @returns {Promise<Object>} Result with success flag
    * @private
    */
   async _ensureInitialized() {
+    const initStartTime = Date.now();
+    
     if (this.isInitialized) {
       return { success: true };
     }
 
-    console.log('[QuickTabHandler] v1.6.3.6-v12 Not initialized, attempting initialization...');
-    await this.initializeFn();
-
-    if (!this.isInitialized) {
-      console.warn('[QuickTabHandler] v1.6.3.6-v12 Initialization failed or still pending');
+    // v1.6.3.7-v12 - Issue #7: Log initialization barrier entry
+    console.log('[QuickTabHandler] INIT_BARRIER_ENTRY:', {
+      isInitialized: this.isInitialized,
+      timestamp: initStartTime
+    });
+    
+    try {
+      // v1.6.3.7-v12 - Issue #7: Explicitly await initialization with timeout
+      const initPromise = this.initializeFn();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Initialization timeout')), INIT_TIMEOUT_MS);
+      });
+      
+      await Promise.race([initPromise, timeoutPromise]);
+      
+      const initDurationMs = Date.now() - initStartTime;
+      
+      if (!this.isInitialized) {
+        // v1.6.3.7-v12 - Issue #7: Log explicit failure when initialization didn't complete
+        console.warn('[QuickTabHandler] INIT_BARRIER_FAILED:', {
+          reason: 'initializeFn completed but isInitialized still false',
+          durationMs: initDurationMs,
+          timestamp: Date.now()
+        });
+        return {
+          success: false,
+          error: 'NOT_INITIALIZED',
+          message: 'Background script still initializing. Please retry.',
+          retryable: true,
+          tabs: []
+        };
+      }
+      
+      // v1.6.3.7-v12 - Issue #7: Log successful initialization with timing
+      console.log('[QuickTabHandler] INIT_BARRIER_PASSED:', {
+        durationMs: initDurationMs,
+        tabCount: this.globalState.tabs?.length || 0,
+        timestamp: Date.now()
+      });
+      
+      return { success: true };
+    } catch (err) {
+      const initDurationMs = Date.now() - initStartTime;
+      
+      // v1.6.3.7-v12 - Issue #7: Log timeout or initialization error
+      console.error('[QuickTabHandler] INIT_BARRIER_ERROR:', {
+        error: err.message,
+        isTimeout: err.message === 'Initialization timeout',
+        durationMs: initDurationMs,
+        timeoutMs: INIT_TIMEOUT_MS,
+        timestamp: Date.now()
+      });
+      
       return {
         success: false,
-        error: 'NOT_INITIALIZED',
-        message: 'Background script still initializing. Please retry.',
+        error: err.message === 'Initialization timeout' ? 'INIT_TIMEOUT' : 'INIT_ERROR',
+        message: err.message === 'Initialization timeout' 
+          ? `Initialization timed out after ${INIT_TIMEOUT_MS}ms`
+          : `Initialization error: ${err.message}`,
         retryable: true,
         tabs: []
       };
     }
-
-    return { success: true };
   }
 
   /**
@@ -806,50 +860,272 @@ export class QuickTabHandler {
   /**
    * Validate storage write by reading back and comparing
    * v1.6.3.7-v9 - FIX Issue #8: Detect IndexedDB corruption
+   * v1.6.3.7-v12 - Issue #13: Add recovery strategy when validation fails
    * @private
    * @param {string} operationId - Operation ID for tracing
    * @param {Object} expectedState - State that was written
    * @param {string} saveId - SaveId to match
-   * @returns {Promise<{valid: boolean, error: string|null, actualTabCount: number}>}
+   * @returns {Promise<{valid: boolean, error: string|null, actualTabCount: number, recovered: boolean}>}
    */
   async _validateStorageWrite(operationId, expectedState, saveId) {
+    const validationStartTime = Date.now();
+    const context = { operationId, expectedState, saveId, validationStartTime };
+    
     try {
-      // Read back from storage
       const result = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
       const readBack = result?.quick_tabs_state_v2;
       
-      // Check if data exists
-      if (!readBack) {
-        return { valid: false, error: 'READ_RETURNED_NULL', actualTabCount: 0 };
-      }
-      
-      // Check saveId matches
-      if (readBack.saveId !== saveId) {
-        return { valid: false, error: 'SAVEID_MISMATCH', actualTabCount: readBack?.tabs?.length || 0 };
-      }
-      
-      // Check tab count matches
-      const expectedCount = expectedState?.tabs?.length || 0;
-      const actualCount = readBack?.tabs?.length || 0;
-      
-      if (expectedCount !== actualCount) {
-        return { valid: false, error: 'TAB_COUNT_MISMATCH', actualTabCount: actualCount };
-      }
-      
-      console.log('[QuickTabHandler] STORAGE_VALIDATION_PASSED:', {
-        operationId,
-        saveId,
-        tabCount: actualCount
-      });
-      
-      return { valid: true, error: null, actualTabCount: actualCount };
+      // Run validation checks and return appropriate result
+      return await this._runStorageValidationChecks(context, readBack);
     } catch (err) {
-      console.error('[QuickTabHandler] STORAGE_VALIDATION_ERROR:', {
-        operationId,
-        error: err.message
-      });
-      return { valid: false, error: `VALIDATION_ERROR: ${err.message}`, actualTabCount: 0 };
+      return this._handleStorageValidationError(context, err);
     }
+  }
+
+  /**
+   * Run storage validation checks and return result
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce _validateStorageWrite complexity
+   * @private
+   */
+  async _runStorageValidationChecks(context, readBack) {
+    const { operationId, expectedState, saveId, validationStartTime } = context;
+    
+    // Check if data exists
+    if (!readBack) {
+      return this._handleNullReadValidationFailure(context);
+    }
+    
+    // Check saveId matches
+    if (readBack.saveId !== saveId) {
+      return this._handleSaveIdMismatch(context, readBack);
+    }
+    
+    // Check tab count matches
+    const expectedCount = expectedState?.tabs?.length || 0;
+    const actualCount = readBack?.tabs?.length || 0;
+    
+    if (expectedCount !== actualCount) {
+      return this._handleTabCountMismatch(context, readBack, expectedCount, actualCount);
+    }
+    
+    // Validation passed
+    console.log('[QuickTabHandler] STORAGE_VALIDATION_PASSED:', {
+      operationId,
+      saveId,
+      tabCount: actualCount,
+      validationDurationMs: Date.now() - validationStartTime
+    });
+    
+    return { valid: true, error: null, actualTabCount: actualCount, recovered: false };
+  }
+
+  /**
+   * Handle null read validation failure
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * @private
+   */
+  async _handleNullReadValidationFailure(context) {
+    const { operationId, expectedState, validationStartTime } = context;
+    
+    console.error('[QuickTabHandler] VALIDATION_FAILED_NULL_READ:', {
+      operationId,
+      expectedTabCount: expectedState?.tabs?.length || 0,
+      validationDurationMs: Date.now() - validationStartTime,
+      timestamp: Date.now()
+    });
+    
+    const recoveryResult = await this._attemptRecoveryOnValidationFailure(
+      operationId, expectedState, 'READ_RETURNED_NULL'
+    );
+    
+    return { 
+      valid: false, 
+      error: 'READ_RETURNED_NULL', 
+      actualTabCount: 0,
+      recovered: recoveryResult.recovered
+    };
+  }
+
+  /**
+   * Handle saveId mismatch validation failure
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * @private
+   */
+  _handleSaveIdMismatch(context, readBack) {
+    const { operationId, expectedState, saveId, validationStartTime } = context;
+    
+    console.error('[QuickTabHandler] VALIDATION_FAILED_SAVEID_MISMATCH:', {
+      operationId,
+      expectedSaveId: saveId,
+      actualSaveId: readBack.saveId,
+      expectedTabCount: expectedState?.tabs?.length || 0,
+      actualTabCount: readBack?.tabs?.length || 0,
+      validationDurationMs: Date.now() - validationStartTime,
+      timestamp: Date.now()
+    });
+    
+    return { 
+      valid: false, 
+      error: 'SAVEID_MISMATCH', 
+      actualTabCount: readBack?.tabs?.length || 0,
+      recovered: false
+    };
+  }
+
+  /**
+   * Handle tab count mismatch validation failure
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * @private
+   */
+  async _handleTabCountMismatch(context, readBack, expectedCount, actualCount) {
+    const { operationId, expectedState, validationStartTime } = context;
+    
+    console.error('[QuickTabHandler] VALIDATION_FAILED_TAB_COUNT_MISMATCH:', {
+      operationId,
+      expectedTabCount: expectedCount,
+      actualTabCount: actualCount,
+      difference: expectedCount - actualCount,
+      validationDurationMs: Date.now() - validationStartTime,
+      timestamp: Date.now()
+    });
+    
+    const recoveryResult = await this._attemptRecoveryOnValidationFailure(
+      operationId, expectedState, 'TAB_COUNT_MISMATCH'
+    );
+    
+    return { 
+      valid: false, 
+      error: 'TAB_COUNT_MISMATCH', 
+      actualTabCount: actualCount,
+      recovered: recoveryResult.recovered
+    };
+  }
+
+  /**
+   * Handle storage validation error
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * @private
+   */
+  _handleStorageValidationError(context, err) {
+    const { operationId, validationStartTime } = context;
+    
+    console.error('[QuickTabHandler] STORAGE_VALIDATION_ERROR:', {
+      operationId,
+      error: err.message,
+      validationDurationMs: Date.now() - validationStartTime
+    });
+    return { valid: false, error: `VALIDATION_ERROR: ${err.message}`, actualTabCount: 0, recovered: false };
+  }
+
+  /**
+   * Attempt recovery when storage validation fails
+   * v1.6.3.7-v12 - Issue #13: Recovery strategy for validation failures
+   * v1.6.3.7-v12 - FIX ESLint: Reduced complexity via extracted helpers
+   * @private
+   */
+  async _attemptRecoveryOnValidationFailure(operationId, expectedState, failureType) {
+    console.log('[QuickTabHandler] RECOVERY_ATTEMPT_STARTED:', {
+      operationId,
+      failureType,
+      expectedTabCount: expectedState?.tabs?.length || 0,
+      timestamp: Date.now()
+    });
+    
+    try {
+      const needsRecovery = failureType === 'READ_RETURNED_NULL' || failureType === 'TAB_COUNT_MISMATCH';
+      if (needsRecovery) {
+        return await this._performRewriteRecovery(operationId, expectedState, failureType);
+      }
+      
+      return { recovered: false, method: 'none' };
+    } catch (recoveryErr) {
+      console.error('[QuickTabHandler] RECOVERY_ERROR:', {
+        operationId,
+        error: recoveryErr.message,
+        failureType,
+        timestamp: Date.now()
+      });
+      return { recovered: false, method: 'error' };
+    }
+  }
+
+  /**
+   * Perform re-write recovery strategy
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * @private
+   */
+  async _performRewriteRecovery(operationId, expectedState, failureType) {
+    console.log('[QuickTabHandler] RECOVERY_STRATEGY: Re-write state to storage');
+    
+    // v1.6.3.7-v12 - FIX Code Review: Use slice() instead of deprecated substr()
+    const recoverySaveId = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    const recoveryState = {
+      ...expectedState,
+      saveId: recoverySaveId,
+      recoveredFrom: failureType,
+      recoveryTimestamp: Date.now()
+    };
+    
+    await this.browserAPI.storage.local.set({
+      quick_tabs_state_v2: recoveryState
+    });
+    
+    const isRecovered = await this._verifyRecoveryWrite(operationId, recoverySaveId, expectedState);
+    
+    if (isRecovered) {
+      return { recovered: true, method: 're-write' };
+    }
+    
+    console.error('[QuickTabHandler] RECOVERY_FAILED:', {
+      operationId,
+      failureType,
+      recommendation: 'User may need to manually clear storage or re-create Quick Tabs',
+      timestamp: Date.now()
+    });
+    
+    return { recovered: false, method: 'none' };
+  }
+
+  /**
+   * Verify recovery write succeeded
+   * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * @private
+   */
+  async _verifyRecoveryWrite(operationId, recoverySaveId, expectedState) {
+    const verifyResult = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
+    const verifyData = verifyResult?.quick_tabs_state_v2;
+    
+    const saveIdMatches = verifyData && verifyData.saveId === recoverySaveId;
+    const tabCountMatches = verifyData?.tabs?.length === expectedState?.tabs?.length;
+    
+    // v1.6.3.7-v12 - FIX Code Review: Both conditions must match for verified recovery
+    if (saveIdMatches && tabCountMatches) {
+      console.log('[QuickTabHandler] RECOVERY_SUCCESS:', {
+        operationId,
+        method: 're-write',
+        recoverySaveId,
+        tabCount: verifyData?.tabs?.length || 0,
+        saveIdVerified: saveIdMatches,
+        tabCountVerified: tabCountMatches,
+        timestamp: Date.now()
+      });
+      return true;
+    }
+    
+    // Log partial verification failure for diagnostics
+    if (saveIdMatches || tabCountMatches) {
+      console.warn('[QuickTabHandler] RECOVERY_PARTIAL_VERIFICATION:', {
+        operationId,
+        recoverySaveId,
+        saveIdMatches,
+        tabCountMatches,
+        expectedTabCount: expectedState?.tabs?.length || 0,
+        actualTabCount: verifyData?.tabs?.length || 0,
+        timestamp: Date.now()
+      });
+    }
+    
+    return false;
   }
 
   /**

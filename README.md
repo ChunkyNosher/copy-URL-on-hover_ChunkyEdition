@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.7-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,43 +9,35 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v10 Status:** State persistence hardening, storage watchdog,
-BC gap detection, IndexedDB checksum validation ✅
+**🔧 v1.6.3.7-v12 Status:** Comprehensive logging, diagnostic instrumentation,
+13 issue fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v10
+## 🎉 What's New in v1.6.3.7-v12
 
-**🔧 State Persistence Hardening (December 2025) ✅**
+**🔧 Logging & Diagnostics Improvements (December 2025) ✅**
 
-**Storage Event Ordering (Issue #6):**
-- ✅ **Storage watchdog** - 2s timer triggers re-read if storage.onChanged doesn't fire
-- ✅ **Sequence validation gate** - lastAppliedSequenceId tracking for event ordering
+**Diagnostic Logging (Issues #1-6):**
+- ✅ **BroadcastChannel fallback** - Logs context detection and fallback activation
+- ✅ **Keepalive health sampling** - First failure + every 10th thereafter (deterministic)
+- ✅ **Port registry monitoring** - WARN at 50, CRITICAL at 100 with auto-cleanup
+- ✅ **Dedup decision logging** - All skip/process decisions logged with reasons
+- ✅ **Storage validation** - Each stage logged with expected vs actual values
+- ✅ **DEBUG_DIAGNOSTICS flag** - Separate from DEBUG_MESSAGING for verbose diagnostics
 
-**BroadcastChannel Gap Detection (Issue #7):**
-- ✅ **Gap callback wired** - Gap detection properly triggers storage fallback
-- ✅ **Staleness check** - 5s threshold for BroadcastChannel message freshness
+**Architecture Fixes (Issues #7-13):**
+- ✅ **Initialization race barrier** - async await with 10s timeout protection
+- ✅ **Sequence ID prioritization** - Uses sequenceId over arbitrary 50ms window
+- ✅ **Port threshold implementation** - Unused constants now actively monitored
+- ✅ **Sidebar fallback logging** - 30s interval health status monitoring
+- ✅ **currentTabId barrier** - 2s exponential backoff before hydration
+- ✅ **Corruption recovery** - Re-write + verify strategy on validation failure
 
-**IndexedDB Corruption Detection (Issue #8):**
-- ✅ **Checksum validation** - Compare local storage checksum with sync backup on startup
-- ✅ **Auto-restore** - Automatic recovery from sync backup on mismatch
-
-**Port Message Reordering (Issue #9):**
-- ✅ **Reorder queue** - Queue for out-of-order port messages
-- ✅ **Timeout fallback** - 1s timeout for stuck messages with sequence-based dequeue
-
-**Tab Affinity Diagnostics (Issue #10):**
-- ✅ **Age bucket logging** - Distribution logging (< 1h, 1-6h, 6-24h, > 24h)
-- ✅ **Defensive cleanup** - browser.tabs.query() validation for stale entries
-
-**Initialization Timing (Issue #11):**
-- ✅ **Start time tracking** - initializationStartTime for timing diagnostics
-- ✅ **Listener logging** - LISTENER_REGISTERED with timeSinceInitStartMs
-
-**Why This Matters:** These fixes resolve 6 critical state persistence issues,
-improving reliability of cross-tab sync and preventing data loss scenarios.
+**Why This Matters:** These fixes provide comprehensive observability into Quick
+Tab state management, making debugging significantly easier.
 
 ---
 
@@ -54,6 +46,8 @@ improving reliability of cross-tab sync and preventing data loss scenarios.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.7-v11** - Promise barrier, LRU eviction, state machine timeouts
+- **v1.6.3.7-v10** - State persistence hardening, storage watchdog, BC gap detection
 - **v1.6.3.7-v9** - Messaging hardening, unified keepalive, sequence tracking
 - **v1.6.3.7-v8** - Port resilience, performance modules, hybrid storage cache
 - **v1.6.3.7-v7** - BroadcastChannel from background, operation confirmations
@@ -63,9 +57,6 @@ including:
 - **v1.6.3.7-v3** - Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms
 - **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
 - **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
-- **v1.6.3.6-v5** - Cross-tab isolation fixes, deletion loop fixes
-- **v1.6.2** - Firefox sidebar integration with unified settings
-- **v1.6.0** - Domain-Driven Design architecture refactoring
 
 ---
 
@@ -248,6 +239,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v10** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.7-v12** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
