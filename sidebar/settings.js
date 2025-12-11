@@ -949,7 +949,9 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     _handleClearResponse(response, correlationId);
   } catch (err) {
     showStatus('✗ Error clearing storage: ' + err.message);
-    console.error(`[Settings] CLEAR_ALL_ERROR | correlationId=${correlationId} | error=${err.message}`);
+    console.error(
+      `[Settings] CLEAR_ALL_ERROR | correlationId=${correlationId} | error=${err.message}`
+    );
   }
 });
 

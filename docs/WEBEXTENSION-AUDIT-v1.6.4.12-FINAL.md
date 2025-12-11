@@ -1,17 +1,20 @@
 # WebExtension API Audit: Optimization & Best Practices Analysis
+
 ## FINAL COMPREHENSIVE REPORT
 
 **Extension**: Copy URL on Hover - ChunkyEdition  
 **Version Analyzed**: v1.6.4.12  
 **Date**: December 9, 2025  
-**Scope**: Complete WebExtension API audit with root cause analysis for Manager isolation issue
+**Scope**: Complete WebExtension API audit with root cause analysis for Manager
+isolation issue
 
 ---
 
 ## CRITICAL FINDING: Manager Isolation Issue
 
 **Issue**: Quick Tabs Manager receives no updates after initial state load  
-**Root Cause**: Background script implements "cache only" pattern - intentionally skips broadcasting to Manager sidebar after state changes
+**Root Cause**: Background script implements "cache only" pattern -
+intentionally skips broadcasting to Manager sidebar after state changes
 
 ### Communication Flow (BROKEN)
 
@@ -34,17 +37,20 @@
    Manager sees updates: ✓ But 10s delay + unreliable
 ```
 
-**Evidence**: Background.js contains pattern "Updating cache only (no broadcast)" with comment "Tabs sync independently via storage.onChanged"
+**Evidence**: Background.js contains pattern "Updating cache only (no
+broadcast)" with comment "Tabs sync independently via storage.onChanged"
 
 ---
 
 ## Executive Summary
 
-The extension uses **13+ major WebExtension APIs** across multiple scripts. The audit identifies:
+The extension uses **13+ major WebExtension APIs** across multiple scripts. The
+audit identifies:
 
 **API Usage**: ✅ EXCELLENT - All APIs chosen appropriately for use cases  
 **Performance**: ✅ EXCELLENT - Well-optimized message channel architecture  
-**Critical Issues**: ❌ 1 MAJOR - Manager isolation due to missing broadcast paths  
+**Critical Issues**: ❌ 1 MAJOR - Manager isolation due to missing broadcast
+paths  
 **Minor Optimizations**: ⚠️ 3 identified  
 **Architecture**: 📋 Generally sound but communication incomplete
 
@@ -55,16 +61,19 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 1. **browser.storage.local** (Storage)
 
 **Current Usage**: Main state storage for Quick Tabs
+
 - State keys: `globalQuickTabState`, `collapseState`
 - Polling: Every 10 seconds from Manager
-- Listeners: `storage.onChanged` 
+- Listeners: `storage.onChanged`
 
 **Performance Assessment**: ✅ OPTIMAL
+
 - Asynchronous (doesn't block main thread)
 - 10MB quota sufficient for extension
 - Proper awaiting in Manager
 
 **Issue**: No confirmation broadcasts from background when storage updated
+
 - Manager polls rather than receiving notifications
 - Background explicitly skips broadcasts ("cache only" pattern)
 
@@ -72,17 +81,20 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 
 ### 2. **browser.runtime.sendMessage** (One-shot Messaging)
 
-**Current Usage**: 
+**Current Usage**:
+
 - Manager sends commands: MINIMIZE, RESTORE, CLOSE, ADOPT
 - Content scripts receive state updates
 - Occasional messaging (low frequency)
 
 **Assessment**: ✅ OPTIMAL for command transmission
+
 - One-shot messaging appropriate for occasional commands
 - Not high-frequency traffic
 - Properly async-awaited
 
 **Suboptimal**: Used for `_requestFullStateSync()`
+
 - State sync sends large responses via one-shot messaging
 - Should use persistent Port instead
 
@@ -91,16 +103,19 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 3. **browser.runtime.connect** (Persistent Ports)
 
 **Current Usage**: Manager connects to background
+
 - Port name: `'quicktabs-sidebar'`
 - Used for: Heartbeat, state updates (theoretically)
 - Lifecycle: Tracks connection state (CONNECTED/ZOMBIE/DISCONNECTED)
 - Heartbeat: Every 25 seconds
 
 **Assessment**: ✅ OPTIMAL architecture, ⚠️ UNDERUTILIZED
+
 - Proper heartbeat detection
 - Correct timeout handling (5s threshold)
 
 **Missing**: Proactive state updates
+
 - Port used only for heartbeat, not for STATE_UPDATE messages
 - Should send updates after background state changes
 - Currently only sends initial sync on request
@@ -110,11 +125,13 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 4. **browser.tabs APIs** (Tab Queries)
 
 **Current Usage**:
+
 - `tabs.onActivated`: Detects tab switches
 - `tabs.query()`: Gets active tab with selective filters
 - Cache: 30-second TTL on browser tab info
 
 **Assessment**: ✅ OPTIMAL
+
 - Selective queries reduce filtering overhead
 - Proper listener registration
 - Could extend cache TTL (currently invalidates unnecessarily)
@@ -124,11 +141,13 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 5. **browser.contextualIdentities** (Containers)
 
 **Current Usage**: Loads container info for emoji icons
+
 - Called once on startup
 - Firefox-specific (Chrome gracefully degrades)
 - No cross-browser issues
 
 **Assessment**: ✅ OPTIMAL
+
 - Called only at initialization
 - Proper cross-browser fallback
 - No performance concerns
@@ -138,16 +157,19 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 6. **BroadcastChannel API** (Real-time Cross-Tab)
 
 **Current Usage**:
+
 - Channel: `'quick-tabs-channel'`
 - Messages: tab create/update/delete/minimize/restore events
 - Cleanup: On window unload
 
 **Assessment**: ⚠️ SUBOPTIMAL - Only half-implemented
+
 - Manager listens: ✓ BroadcastChannel listener set up
 - Content scripts send: ✓ Via BroadcastChannelManager functions
 - Background sends: ✗ **MISSING** - No broadcasts from background
 
 **Issue**: Background has no code path to post to BroadcastChannel
+
 - `BroadcastChannelManager.js` functions never imported in background.js
 - Content scripts use BroadcastChannel, background doesn't
 - Manager receives updates from content scripts but not background
@@ -157,11 +179,13 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 7. **browser.storage.onChanged Listener**
 
 **Current Usage**: Listens for any storage changes
+
 - Acts as tertiary fallback when BroadcastChannel fails
 - Deduplication logic: Multiple checks (saveId, messageId, hash)
 - Polling: Also runs 10-second poll as backup
 
 **Assessment**: ✅ OPTIMAL as fallback, ⚠️ OVERENGINEERED
+
 - Good reliability layer
 - Complex deduplication (5 nested checks)
 - Could simplify to 2-3 essential checks
@@ -171,16 +195,19 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 8. **browser.tabs.sendMessage** (Content Script Communication)
 
 **Current Usage**:
+
 - Background sends commands to content scripts
 - Routes through `QuickTabHandler.broadcastToContainer()`
 - Error handling for closed tabs
 
 **Assessment**: ✅ OPTIMAL
+
 - Used for occasional commands only
 - Proper error handling
 - Efficient targeting
 
 **Issue**: Manager not included in broadcast recipients
+
 - `broadcastToContainer()` iterates tabs only
 - Sidebar is not a tab, so excluded
 - Manager receives nothing from this broadcast
@@ -204,6 +231,7 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ### 11. **Manifest Permissions**
 
 **Current permissions**:
+
 ```json
 "permissions": [
   "storage",           // ✅ Used for state
@@ -245,11 +273,14 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 └──────────────────────────────────────────┘
 ```
 
-**Analysis**: 
-- Background → Content Scripts: ✅ Works (via tabs.sendMessage + BroadcastChannel)
+**Analysis**:
+
+- Background → Content Scripts: ✅ Works (via tabs.sendMessage +
+  BroadcastChannel)
 - Background → Manager: ❌ Broken (no broadcasts, only port heartbeats)
 - Manager → Background: ✅ Works (runtime.sendMessage + port)
-- Content Scripts ↔ Manager: ⚠️ Partial (BroadcastChannel for alerts, not state)
+- Content Scripts ↔ Manager: ⚠️ Partial (BroadcastChannel for alerts, not
+  state)
 
 ---
 
@@ -259,9 +290,11 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 
 **Severity**: HIGH - Manager shows stale state indefinitely  
 **Location**: background.js message routing logic  
-**Root Cause**: Background implements "cache only" pattern - writes to storage but skips broadcasts to Manager
+**Root Cause**: Background implements "cache only" pattern - writes to storage
+but skips broadcasts to Manager
 
 **Pattern in Code**:
+
 ```javascript
 // Pattern found in background state handlers:
 // "Updating cache only (no broadcast)"
@@ -274,17 +307,22 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 ```
 
 **Impact**:
+
 - Manager never learns about state changes after initial load
 - Cannot render operation confirmations
 - 10-second polling is only fallback
 - User sees frozen UI despite background working normally
 
 **Solution**: Implement one of three broadcast paths:
-1. **Tier 1 (BroadcastChannel)**: Background posts to channel after state changes
+
+1. **Tier 1 (BroadcastChannel)**: Background posts to channel after state
+   changes
 2. **Tier 2 (Port)**: Background sends STATE_UPDATE messages via port
-3. **Tier 3 (Storage)**: Background explicitly broadcasts via storage completion confirmations
+3. **Tier 3 (Storage)**: Background explicitly broadcasts via storage completion
+   confirmations
 
 **Files Involved**:
+
 - `background.js` - Missing broadcast logic after state updates
 - `QuickTabHandler.js` - `broadcastToContainer()` skips sidebar
 - `quick-tabs-manager.js` - No handlers for STATE_UPDATE messages
@@ -298,14 +336,17 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 **Problem**: Functions exist but background never calls them
 
 **Evidence**:
+
 - `BroadcastChannelManager.broadcastQuickTabCreated()` - Exported but unused
 - `BroadcastChannelManager.broadcastQuickTabUpdated()` - Exported but unused
 - No imports in background.js
 - Content scripts use these, background doesn't
 
-**Impact**: BroadcastChannel tier (PRIMARY in architecture) is non-functional from background
+**Impact**: BroadcastChannel tier (PRIMARY in architecture) is non-functional
+from background
 
-**Solution**: Import and call BroadcastChannelManager functions after state changes
+**Solution**: Import and call BroadcastChannelManager functions after state
+changes
 
 ---
 
@@ -315,6 +356,7 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 **Problem**: Port used only for heartbeat, not state updates
 
 **Current State**:
+
 - Port receives heartbeats ✓
 - Port sends initial state on request ✓
 - Port does NOT send incremental updates ✗
@@ -332,16 +374,19 @@ The extension uses **13+ major WebExtension APIs** across multiple scripts. The 
 **Problem**: 10-second polling interval is coarse-grained
 
 **Current**:
+
 ```javascript
 setInterval(async () => {
-    await loadQuickTabsState();
-    renderUI();
+  await loadQuickTabsState();
+  renderUI();
 }, 10000); // 10 seconds - too slow for UI responsiveness
 ```
 
-**Impact**: Users see 10-second delay in Manager updates (if BroadcastChannel broken)
+**Impact**: Users see 10-second delay in Manager updates (if BroadcastChannel
+broken)
 
-**Solution**: 
+**Solution**:
+
 - Reduce to 2-5 second interval if broadcasts broken
 - Implement smart backoff once broadcasts working
 - Or skip polling entirely once broadcasts implemented
@@ -382,15 +427,15 @@ setInterval(async () => {
 
 ## Performance Baselines
 
-| Operation | Latency | Throughput | Notes |
-|-----------|---------|-----------|-------|
-| storage.local.get() | 1-5ms | ~1000 ops/sec | Async, no block |
-| storage.local.set() | 5-20ms | ~100 ops/sec | Async, no block |
-| BroadcastChannel.postMessage() | 0.1-1ms | ~100k msgs/sec | Real-time |
-| runtime.sendMessage() | 1-10ms | ~1k msgs/sec | One-shot |
-| runtime.connect() port.postMessage() | 0.1-1ms | ~50k msgs/sec | Persistent |
-| localStorage (sync) | 0.017ms | ~60k ops/sec | **BLOCKS** |
-| IndexedDB.get() | 3-50ms | ~100-1k ops/sec | Complex |
+| Operation                            | Latency | Throughput      | Notes           |
+| ------------------------------------ | ------- | --------------- | --------------- |
+| storage.local.get()                  | 1-5ms   | ~1000 ops/sec   | Async, no block |
+| storage.local.set()                  | 5-20ms  | ~100 ops/sec    | Async, no block |
+| BroadcastChannel.postMessage()       | 0.1-1ms | ~100k msgs/sec  | Real-time       |
+| runtime.sendMessage()                | 1-10ms  | ~1k msgs/sec    | One-shot        |
+| runtime.connect() port.postMessage() | 0.1-1ms | ~50k msgs/sec   | Persistent      |
+| localStorage (sync)                  | 0.017ms | ~60k ops/sec    | **BLOCKS**      |
+| IndexedDB.get()                      | 3-50ms  | ~100-1k ops/sec | Complex         |
 
 **Current Extension Performance**: Well-optimized, no blocking operations ✓
 
@@ -398,11 +443,11 @@ setInterval(async () => {
 
 ## Cross-Browser Compatibility
 
-| Platform | Status | Notes |
-|----------|--------|-------|
-| **Firefox** | ✅ Full support | All APIs available, containers work |
-| **Chrome** | ⚠️ Graceful degradation | contextualIdentities unavailable (handled) |
-| **Edge** | ⚠️ Graceful degradation | Similar to Chrome |
+| Platform    | Status                  | Notes                                      |
+| ----------- | ----------------------- | ------------------------------------------ |
+| **Firefox** | ✅ Full support         | All APIs available, containers work        |
+| **Chrome**  | ⚠️ Graceful degradation | contextualIdentities unavailable (handled) |
+| **Edge**    | ⚠️ Graceful degradation | Similar to Chrome                          |
 
 **No breaking issues** - extension handles cross-browser differences properly
 
@@ -445,6 +490,7 @@ setInterval(async () => {
 **Overall Score**: 8/10 (GOOD, with critical communication issue)
 
 **Strengths**:
+
 - ✅ Multi-channel architecture is conceptually sound
 - ✅ APIs chosen appropriately for use cases
 - ✅ No blocking operations on main thread
@@ -452,14 +498,19 @@ setInterval(async () => {
 - ✅ Well-structured state management
 
 **Critical Issues**:
+
 - ❌ Manager completely isolated from background updates
 - ❌ BroadcastChannel tier not implemented from background
 - ❌ Port connection underutilized for state updates
 
 **Quick Wins**:
+
 - Reduce polling to 2-5 seconds (15 minutes)
 - Add port message handlers (1 hour)
 - Import and use BroadcastChannelManager (1 hour)
 
-**Conclusion**: Extension has solid architectural foundations but **Manager sidebar communication is broken** due to missing broadcast paths from background. The fix requires completing the three-tier messaging system by having the background actually broadcast to the Manager (not just internal caching).
-
+**Conclusion**: Extension has solid architectural foundations but **Manager
+sidebar communication is broken** due to missing broadcast paths from
+background. The fix requires completing the three-tier messaging system by
+having the background actually broadcast to the Manager (not just internal
+caching).

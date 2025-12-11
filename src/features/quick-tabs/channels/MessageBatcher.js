@@ -445,10 +445,9 @@ class MessageBatcher {
       currentQueueSize: this._queue.length,
       coalescingRatio:
         this._metrics.operationsQueued > 0
-          ? (
-              (this._metrics.operationsCoalesced / this._metrics.operationsQueued) *
-              100
-            ).toFixed(1) + '%'
+          ? ((this._metrics.operationsCoalesced / this._metrics.operationsQueued) * 100).toFixed(
+              1
+            ) + '%'
           : '0%'
     };
   }

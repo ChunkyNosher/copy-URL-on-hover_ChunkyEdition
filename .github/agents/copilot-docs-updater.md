@@ -73,10 +73,13 @@ nothing.
 
 ### v1.6.3.8 Features (NEW)
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
+  exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write +
+  verify
 - **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
-- **Sidebar BC fallback** - `SIDEBAR_BC_UNAVAILABLE`, activation, health monitoring
+- **Sidebar BC fallback** - `SIDEBAR_BC_UNAVAILABLE`, activation, health
+  monitoring
 - **Active storage tier probing** - Latency measurement with 500ms timeout
 - **BFCache handling** - pageshow/pagehide events for state restoration
 - **Keepalive health reports** - 60s interval with success/failure percentages
@@ -90,12 +93,14 @@ nothing.
 
 ### v1.6.3.7-v11 Features (Retained)
 
-- Promise barrier, LRU dedup (1000), correlation ID echo, state machine timeouts (7s)
+- Promise barrier, LRU dedup (1000), correlation ID echo, state machine timeouts
+  (7s)
 - WeakRef callbacks, deferred handlers, cascading rollback, write-ahead logging
 
 ### v1.6.3.7-v9-v10 Features (Retained)
 
-- Storage watchdog (2s), BC gap detection (5s), IndexedDB checksum, port reordering
+- Storage watchdog (2s), BC gap detection (5s), IndexedDB checksum, port
+  reordering
 - Unified keepalive (20s), sequence tracking, storage integrity, port age (90s)
 
 ### Architecture
@@ -106,15 +111,15 @@ nothing.
 
 ### Key Functions (v1.6.3.8)
 
-| Function                           | Location      | Purpose                          |
-| ---------------------------------- | ------------- | -------------------------------- |
-| `waitForInitialization()`          | QuickTabHandler | 10s init barrier (v8)          |
-| `waitForCurrentTabId()`            | index.js      | 2s exponential backoff (v8)      |
-| `validateAndRecoverStorage()`      | Storage utils | Centralized validation (v8)      |
-| `startKeepaliveHealthReporting()`  | Background    | 60s health reports (v8)          |
-| `verifyBroadcastChannel()`         | Manager       | 1s BC verification (v8)          |
-| `probeStorageTier()`               | Storage utils | 500ms latency probe (v8)         |
-| `scheduleRender(source)`           | Manager       | Unified render entry point       |
+| Function                          | Location        | Purpose                     |
+| --------------------------------- | --------------- | --------------------------- |
+| `waitForInitialization()`         | QuickTabHandler | 10s init barrier (v8)       |
+| `waitForCurrentTabId()`           | index.js        | 2s exponential backoff (v8) |
+| `validateAndRecoverStorage()`     | Storage utils   | Centralized validation (v8) |
+| `startKeepaliveHealthReporting()` | Background      | 60s health reports (v8)     |
+| `verifyBroadcastChannel()`        | Manager         | 1s BC verification (v8)     |
+| `probeStorageTier()`              | Storage utils   | 500ms latency probe (v8)    |
+| `scheduleRender(source)`          | Manager         | Unified render entry point  |
 
 ---
 
@@ -136,13 +141,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                      | Fix                                    |
-| -------------------------- | -------------------------------------- |
-| v1.6.3.7-v12 or earlier    | Update to 1.6.3.8                      |
-| "Pin to Page"              | Use "Solo/Mute"                        |
-| Direct storage writes      | Use Single Writer Authority            |
-| Missing init barriers      | Document QuickTabHandler + currentTabId|
-| Missing BC fallback        | Document sidebar fallback detection    |
+| Error                   | Fix                                     |
+| ----------------------- | --------------------------------------- |
+| v1.6.3.7-v12 or earlier | Update to 1.6.3.8                       |
+| "Pin to Page"           | Use "Solo/Mute"                         |
+| Direct storage writes   | Use Single Writer Authority             |
+| Missing init barriers   | Document QuickTabHandler + currentTabId |
+| Missing BC fallback     | Document sidebar fallback detection     |
 
 ---
 

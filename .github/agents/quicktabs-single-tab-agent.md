@@ -45,7 +45,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **BFCache handling** - pageshow/pagehide events for state restoration
 - **Code Health** - QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision logging.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision
+logging.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -56,13 +57,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive integers
+- **originTabId Validation** - `_isValidOriginTabId()` validates positive
+  integers
 
 **Key Quick Tab Features:**
 
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
 - **Mute Mode (🔇)** - Hide ONLY on specific browser tabs (mutedOnTabs array)
-- **Global Visibility** - Visible in all tabs by default (no container isolation)
+- **Global Visibility** - Visible in all tabs by default (no container
+  isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
@@ -85,5 +88,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.8 currentTabId barrier,
-BFCache handling, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.8 currentTabId
+barrier, BFCache handling, and proper per-tab scoping.**

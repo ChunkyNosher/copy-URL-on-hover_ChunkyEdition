@@ -68,13 +68,15 @@ export class EventManager {
 
     // v1.6.3.8 - Issue #4 (arch): Enhanced pagehide to detect BFCache entry
     // Emergency save before page is hidden (more reliable than beforeunload in some browsers)
-    this.boundHandlers.pageHide = (event) => {
+    this.boundHandlers.pageHide = event => {
       // Check if page is entering BFCache (persisted = true)
       if (event.persisted) {
-        console.log('[EventManager] Page entering BFCache - triggering emergency save and port cleanup');
+        console.log(
+          '[EventManager] Page entering BFCache - triggering emergency save and port cleanup'
+        );
         this.eventBus?.emit('event:bfcache-enter', { trigger: 'pagehide', persisted: true });
       }
-      
+
       if (this.quickTabsMap.size > 0) {
         console.log('[EventManager] Page hiding - triggering emergency save');
         this.eventBus?.emit('event:emergency-save', { trigger: 'pagehide' });
@@ -82,7 +84,7 @@ export class EventManager {
     };
 
     // v1.6.3.8 - Issue #4 (arch): Handle BFCache restoration
-    this.boundHandlers.pageShow = (event) => {
+    this.boundHandlers.pageShow = event => {
       // Check if page is restored from BFCache (persisted = true)
       if (event.persisted) {
         console.log('[EventManager] Page restored from BFCache - triggering full state sync');

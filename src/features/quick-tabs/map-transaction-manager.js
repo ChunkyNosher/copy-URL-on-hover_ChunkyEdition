@@ -155,7 +155,9 @@ export class MapTransactionManager {
    */
   registerRollbackCallback(step, rollbackFn, snapshot = null) {
     if (typeof rollbackFn !== 'function') {
-      console.warn('[MapTransactionManager] registerRollbackCallback: rollbackFn must be a function');
+      console.warn(
+        '[MapTransactionManager] registerRollbackCallback: rollbackFn must be a function'
+      );
       return;
     }
 
@@ -209,7 +211,10 @@ export class MapTransactionManager {
       } catch (err) {
         const errorMsg = `Step '${step}' failed: ${err.message}`;
         errors.push(errorMsg);
-        console.error('[MapTransactionManager] ✗ Rollback step failed:', { step, error: err.message });
+        console.error('[MapTransactionManager] ✗ Rollback step failed:', {
+          step,
+          error: err.message
+        });
         // Continue rolling back other steps even if one fails
       }
     }

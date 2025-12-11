@@ -417,7 +417,9 @@ export class QuickTabHandler {
    * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handlePinUpdate(message, _sender) {
-    this._logSimpleUpdate('Pin Update', 'UPDATE_QUICK_TAB_PIN', message, { pinnedToUrl: message.pinnedToUrl });
+    this._logSimpleUpdate('Pin Update', 'UPDATE_QUICK_TAB_PIN', message, {
+      pinnedToUrl: message.pinnedToUrl
+    });
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.pinnedToUrl = msg.pinnedToUrl;
     });
@@ -429,9 +431,9 @@ export class QuickTabHandler {
    * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleSoloUpdate(message, _sender) {
-    this._logSimpleUpdate('Solo Update', 'UPDATE_QUICK_TAB_SOLO', message, { 
-      soloedOnTabs: message.soloedOnTabs || [], 
-      tabCount: (message.soloedOnTabs || []).length 
+    this._logSimpleUpdate('Solo Update', 'UPDATE_QUICK_TAB_SOLO', message, {
+      soloedOnTabs: message.soloedOnTabs || [],
+      tabCount: (message.soloedOnTabs || []).length
     });
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.soloedOnTabs = msg.soloedOnTabs || [];
@@ -444,9 +446,9 @@ export class QuickTabHandler {
    * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleMuteUpdate(message, _sender) {
-    this._logSimpleUpdate('Mute Update', 'UPDATE_QUICK_TAB_MUTE', message, { 
-      mutedOnTabs: message.mutedOnTabs || [], 
-      tabCount: (message.mutedOnTabs || []).length 
+    this._logSimpleUpdate('Mute Update', 'UPDATE_QUICK_TAB_MUTE', message, {
+      mutedOnTabs: message.mutedOnTabs || [],
+      tabCount: (message.mutedOnTabs || []).length
     });
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.mutedOnTabs = msg.mutedOnTabs || [];
@@ -459,7 +461,9 @@ export class QuickTabHandler {
    * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleMinimizeUpdate(message, _sender) {
-    this._logSimpleUpdate('Minimize Update', 'UPDATE_QUICK_TAB_MINIMIZE', message, { minimized: message.minimized });
+    this._logSimpleUpdate('Minimize Update', 'UPDATE_QUICK_TAB_MINIMIZE', message, {
+      minimized: message.minimized
+    });
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.minimized = msg.minimized;
     });
@@ -472,7 +476,9 @@ export class QuickTabHandler {
    * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleZIndexUpdate(message, _sender) {
-    this._logSimpleUpdate('Z-Index Update', 'UPDATE_QUICK_TAB_ZINDEX', message, { zIndex: message.zIndex });
+    this._logSimpleUpdate('Z-Index Update', 'UPDATE_QUICK_TAB_ZINDEX', message, {
+      zIndex: message.zIndex
+    });
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.zIndex = msg.zIndex;
     });
@@ -563,13 +569,13 @@ export class QuickTabHandler {
    */
   async handleGetQuickTabsState(message, _sender) {
     const messageArrivalTime = Date.now();
-    
+
     console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Message arrived', {
       messageArrivalTime,
       isInitialized: this.isInitialized,
       cookieStoreId: message.cookieStoreId || 'firefox-default'
     });
-    
+
     try {
       const initResult = await this._ensureInitialized();
       if (!initResult.success) {
@@ -667,7 +673,10 @@ export class QuickTabHandler {
       durationMs: initDurationMs,
       timestamp: Date.now()
     });
-    return this._buildInitFailureResponse('NOT_INITIALIZED', 'Background script still initializing. Please retry.');
+    return this._buildInitFailureResponse(
+      'NOT_INITIALIZED',
+      'Background script still initializing. Please retry.'
+    );
   }
 
   /**
@@ -691,7 +700,7 @@ export class QuickTabHandler {
    */
   _handleInitError(err, initDurationMs) {
     const isTimeout = err.message === 'Initialization timeout';
-    
+
     if (isTimeout) {
       console.error('[QuickTabHandler] INIT_TIMEOUT:', {
         durationMs: initDurationMs,
@@ -708,9 +717,9 @@ export class QuickTabHandler {
         timestamp: Date.now()
       });
     }
-    
+
     const errorCode = isTimeout ? 'INIT_TIMEOUT' : 'INIT_ERROR';
-    const message = isTimeout 
+    const message = isTimeout
       ? `Initialization timed out after ${INIT_TIMEOUT_MS}ms`
       : `Initialization error: ${err.message}`;
     return this._buildInitFailureResponse(errorCode, message);
@@ -736,21 +745,21 @@ export class QuickTabHandler {
       initStartTime,
       timestamp: initStartTime
     });
-    
+
     try {
       const initPromise = this.initializeFn();
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Initialization timeout')), INIT_TIMEOUT_MS);
       });
-      
+
       await Promise.race([initPromise, timeoutPromise]);
-      
+
       const initDurationMs = Date.now() - initStartTime;
-      
+
       if (!this.isInitialized) {
         return this._handleBarrierFailed(initDurationMs);
       }
-      
+
       this._logInitComplete(initStartTime, initDurationMs);
       return { success: true };
     } catch (err) {
@@ -861,7 +870,7 @@ export class QuickTabHandler {
 
     // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
     const sequenceId = QuickTabHandler._getNextSequenceId();
-    
+
     // v1.6.3.7-v9 - FIX Issue #8: Generate saveId for validation
     const saveId = `${saveTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -893,7 +902,7 @@ export class QuickTabHandler {
 
       // v1.6.3.7-v9 - FIX Issue #8: Validate the write by reading back
       const validationResult = await this._validateStorageWrite(operationId, stateToSave, saveId);
-      
+
       if (!validationResult.valid) {
         console.error('[QuickTabHandler] STORAGE_VALIDATION_FAILED:', {
           operationId,
@@ -944,11 +953,11 @@ export class QuickTabHandler {
   async _validateStorageWrite(operationId, expectedState, saveId) {
     const validationStartTime = Date.now();
     const context = { operationId, expectedState, saveId, validationStartTime };
-    
+
     try {
       const result = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
       const readBack = result?.quick_tabs_state_v2;
-      
+
       // Run validation checks and return appropriate result
       return await this._runStorageValidationChecks(context, readBack);
     } catch (err) {
@@ -967,18 +976,23 @@ export class QuickTabHandler {
     if (!readBack) {
       return this._handleNullReadValidationFailure(context);
     }
-    
+
     // Check saveId matches
     if (readBack.saveId !== context.saveId) {
       return this._handleSaveIdMismatch(context, readBack);
     }
-    
+
     // Check tab count matches
     const actualCount = readBack?.tabs?.length || 0;
     if (context.expectedState?.tabs?.length !== actualCount) {
-      return this._handleTabCountMismatch(context, readBack, context.expectedState?.tabs?.length || 0, actualCount);
+      return this._handleTabCountMismatch(
+        context,
+        readBack,
+        context.expectedState?.tabs?.length || 0,
+        actualCount
+      );
     }
-    
+
     return this._handleValidationSuccess(context, actualCount);
   }
 
@@ -1004,21 +1018,23 @@ export class QuickTabHandler {
    */
   async _handleNullReadValidationFailure(context) {
     const { operationId, expectedState, validationStartTime } = context;
-    
+
     console.error('[QuickTabHandler] VALIDATION_FAILED_NULL_READ:', {
       operationId,
       expectedTabCount: expectedState?.tabs?.length || 0,
       validationDurationMs: Date.now() - validationStartTime,
       timestamp: Date.now()
     });
-    
+
     const recoveryResult = await this._attemptRecoveryOnValidationFailure(
-      operationId, expectedState, 'READ_RETURNED_NULL'
+      operationId,
+      expectedState,
+      'READ_RETURNED_NULL'
     );
-    
-    return { 
-      valid: false, 
-      error: 'READ_RETURNED_NULL', 
+
+    return {
+      valid: false,
+      error: 'READ_RETURNED_NULL',
       actualTabCount: 0,
       recovered: recoveryResult.recovered
     };
@@ -1068,7 +1084,7 @@ export class QuickTabHandler {
    */
   async _handleTabCountMismatch(context, readBack, expectedCount, actualCount) {
     const { operationId, expectedState, validationStartTime } = context;
-    
+
     console.error('[QuickTabHandler] VALIDATION_FAILED_TAB_COUNT_MISMATCH:', {
       operationId,
       expectedTabCount: expectedCount,
@@ -1077,14 +1093,16 @@ export class QuickTabHandler {
       validationDurationMs: Date.now() - validationStartTime,
       timestamp: Date.now()
     });
-    
+
     const recoveryResult = await this._attemptRecoveryOnValidationFailure(
-      operationId, expectedState, 'TAB_COUNT_MISMATCH'
+      operationId,
+      expectedState,
+      'TAB_COUNT_MISMATCH'
     );
-    
-    return { 
-      valid: false, 
-      error: 'TAB_COUNT_MISMATCH', 
+
+    return {
+      valid: false,
+      error: 'TAB_COUNT_MISMATCH',
       actualTabCount: actualCount,
       recovered: recoveryResult.recovered
     };
@@ -1097,13 +1115,18 @@ export class QuickTabHandler {
    */
   _handleStorageValidationError(context, err) {
     const { operationId, validationStartTime } = context;
-    
+
     console.error('[QuickTabHandler] STORAGE_VALIDATION_ERROR:', {
       operationId,
       error: err.message,
       validationDurationMs: Date.now() - validationStartTime
     });
-    return { valid: false, error: `VALIDATION_ERROR: ${err.message}`, actualTabCount: 0, recovered: false };
+    return {
+      valid: false,
+      error: `VALIDATION_ERROR: ${err.message}`,
+      actualTabCount: 0,
+      recovered: false
+    };
   }
 
   /**
@@ -1119,13 +1142,14 @@ export class QuickTabHandler {
       expectedTabCount: expectedState?.tabs?.length || 0,
       timestamp: Date.now()
     });
-    
+
     try {
-      const needsRecovery = failureType === 'READ_RETURNED_NULL' || failureType === 'TAB_COUNT_MISMATCH';
+      const needsRecovery =
+        failureType === 'READ_RETURNED_NULL' || failureType === 'TAB_COUNT_MISMATCH';
       if (needsRecovery) {
         return await this._performRewriteRecovery(operationId, expectedState, failureType);
       }
-      
+
       return { recovered: false, method: 'none' };
     } catch (recoveryErr) {
       console.error('[QuickTabHandler] RECOVERY_ERROR:', {
@@ -1145,7 +1169,7 @@ export class QuickTabHandler {
    */
   async _performRewriteRecovery(operationId, expectedState, failureType) {
     console.log('[QuickTabHandler] RECOVERY_STRATEGY: Re-write state to storage');
-    
+
     // v1.6.3.7-v12 - FIX Code Review: Use slice() instead of deprecated substr()
     const recoverySaveId = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const recoveryState = {
@@ -1154,24 +1178,24 @@ export class QuickTabHandler {
       recoveredFrom: failureType,
       recoveryTimestamp: Date.now()
     };
-    
+
     await this.browserAPI.storage.local.set({
       quick_tabs_state_v2: recoveryState
     });
-    
+
     const isRecovered = await this._verifyRecoveryWrite(operationId, recoverySaveId, expectedState);
-    
+
     if (isRecovered) {
       return { recovered: true, method: 're-write' };
     }
-    
+
     console.error('[QuickTabHandler] RECOVERY_FAILED:', {
       operationId,
       failureType,
       recommendation: 'User may need to manually clear storage or re-create Quick Tabs',
       timestamp: Date.now()
     });
-    
+
     return { recovered: false, method: 'none' };
   }
 
@@ -1183,15 +1207,22 @@ export class QuickTabHandler {
    */
   async _verifyRecoveryWrite(operationId, recoverySaveId, expectedState) {
     const verifyData = await this._fetchVerificationData();
-    
+
     const saveIdMatches = this._verifySaveId(verifyData, recoverySaveId);
     const tabCountMatches = this._verifyTabCount(verifyData, expectedState);
-    
+
     if (saveIdMatches && tabCountMatches) {
       return this._logRecoverySuccess(operationId, recoverySaveId, verifyData);
     }
-    
-    this._logPartialVerificationIfNeeded({ operationId, recoverySaveId, saveIdMatches, tabCountMatches, expectedState, verifyData });
+
+    this._logPartialVerificationIfNeeded({
+      operationId,
+      recoverySaveId,
+      saveIdMatches,
+      tabCountMatches,
+      expectedState,
+      verifyData
+    });
     return false;
   }
 
@@ -1250,10 +1281,17 @@ export class QuickTabHandler {
    * @param {Object} context - Verification context
    */
   _logPartialVerificationIfNeeded(context) {
-    const { operationId, recoverySaveId, saveIdMatches, tabCountMatches, expectedState, verifyData } = context;
+    const {
+      operationId,
+      recoverySaveId,
+      saveIdMatches,
+      tabCountMatches,
+      expectedState,
+      verifyData
+    } = context;
     const neitherMatched = !saveIdMatches && !tabCountMatches;
     if (neitherMatched) return;
-    
+
     console.warn('[QuickTabHandler] RECOVERY_PARTIAL_VERIFICATION:', {
       operationId,
       recoverySaveId,

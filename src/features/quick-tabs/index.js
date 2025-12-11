@@ -161,7 +161,7 @@ class QuickTabsManager {
       hasPreFetchedId: this.currentTabId !== null && this.currentTabId !== undefined,
       timestamp: Date.now()
     });
-    
+
     console.log('[QuickTabsManager] STEP 1: Detecting container context...');
     const containerDetected = await this.detectContainerContext();
     if (!containerDetected) {
@@ -179,7 +179,7 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
       await this.detectCurrentTabId();
     }
-    
+
     // v1.6.3.7-v13 - Issue #6: Log step completion with specific format
     console.log('[QuickTabsManager] INIT_STEP_1_COMPLETE:', {
       currentTabId: this.currentTabId,
@@ -238,7 +238,7 @@ class QuickTabsManager {
    */
   async _initStep6_Hydrate() {
     console.log('[QuickTabsManager] STEP 6: Attempting to hydrate state from storage...');
-    
+
     // v1.6.3.7-v12 - Issue #12: Check currentTabId barrier before hydration
     const barrierResult = await this._checkCurrentTabIdBarrier();
     if (!barrierResult.passed) {
@@ -251,7 +251,7 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] STEP 6 Complete (skipped - no currentTabId)');
       return;
     }
-    
+
     const hydrationResult = await this._hydrateStateFromStorage();
 
     if (hydrationResult.success) {
@@ -276,7 +276,7 @@ class QuickTabsManager {
    */
   async _checkCurrentTabIdBarrier() {
     const barrierStartTime = Date.now();
-    
+
     // If currentTabId is already set, barrier passes
     if (this.currentTabId !== null && this.currentTabId !== undefined) {
       console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Passed (already set)', {
@@ -285,7 +285,7 @@ class QuickTabsManager {
       });
       return { passed: true, reason: 'already_set' };
     }
-    
+
     // v1.6.3.7-v12 - Issue #12: Wait for currentTabId to be set with timeout
     // v1.6.3.7-v12 - FIX Code Review: Use exponential backoff for polling
     console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Waiting for currentTabId...', {
@@ -293,9 +293,9 @@ class QuickTabsManager {
       pollingStrategy: 'exponential-backoff',
       timestamp: Date.now()
     });
-    
+
     let pollInterval = INITIAL_POLL_INTERVAL_MS;
-    
+
     while (Date.now() - barrierStartTime < CURRENT_TAB_ID_WAIT_TIMEOUT_MS) {
       // Check if currentTabId was set by Step 1 or message handler
       if (this.currentTabId !== null && this.currentTabId !== undefined) {
@@ -307,12 +307,12 @@ class QuickTabsManager {
         });
         return { passed: true, reason: 'resolved_after_wait' };
       }
-      
+
       // Wait before next check with exponential backoff
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       pollInterval = Math.min(pollInterval * POLL_INTERVAL_MULTIPLIER, MAX_POLL_INTERVAL_MS);
     }
-    
+
     // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
     // Don't proceed with hydration to avoid filtering ALL tabs (because null !== any originTabId)
     console.error('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: FAILED - timeout reached', {
@@ -322,9 +322,9 @@ class QuickTabsManager {
       consequence: 'Hydration will be skipped to prevent filtering all tabs',
       timestamp: Date.now()
     });
-    
-    return { 
-      passed: false, 
+
+    return {
+      passed: false,
       reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait`
     };
   }

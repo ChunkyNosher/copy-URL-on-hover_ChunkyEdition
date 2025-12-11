@@ -71,33 +71,40 @@ const relevantMemories = await searchMemories({
 
 **v1.6.3.8 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
+  exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write +
+  verify
 - **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
 - **Sidebar BC fallback** - Detection, activation, 30s health monitoring
 - **Storage tier probing** - 500ms latency measurement
 - **Keepalive health reports** - 60s interval with success/failure percentages
 - **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging,
-keepalive health sampling, port registry thresholds.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
+logging, keepalive health sampling, port registry thresholds.
 
 **v1.6.3.7-v11 Features (Retained):**
 
-- **Promise-based listener barrier** - Replaces boolean flag (quick-tabs-manager.js)
+- **Promise-based listener barrier** - Replaces boolean flag
+  (quick-tabs-manager.js)
 - **LRU eviction** - Message dedup map capped at 1000 entries
 - **Correlation ID echo** - HEARTBEAT_ACK properly echoes correlationId
 - **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
 
 **v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+IndexedDB checksum, port message reordering (1s), tab affinity buckets, init
+timing.
 
 **v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port),
+  sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption
+  recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete`
+  flags
 - **Port Age Management** - 90s max age, 30s stale timeout
 - **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
 
@@ -363,6 +370,7 @@ browser.commands.onCommand.addListener(command => {
 ## Documentation Requirements
 
 **For Architectural Bug Fixes:**
+
 - Root cause analysis in `docs/manual/`
 - ADR if architecture changes significantly
 - Update README.md for user-facing impacts
@@ -372,10 +380,10 @@ browser.commands.onCommand.addListener(command => {
 
 ## Red Flags (Bad Solutions)
 
-❌ "setTimeout for race condition" → Use promises/events/state machine
-❌ "Catch and ignore error" → Fix source or handle properly
-❌ "Flag to prevent bug" → Fix the architecture
-❌ "Workaround is simpler" → Only for emergency patches with issue
+❌ "setTimeout for race condition" → Use promises/events/state machine ❌ "Catch
+and ignore error" → Fix source or handle properly ❌ "Flag to prevent bug" → Fix
+the architecture ❌ "Workaround is simpler" → Only for emergency patches with
+issue
 
 ---
 
@@ -390,8 +398,8 @@ browser.commands.onCommand.addListener(command => {
 
 ## Success Metrics
 
-**Good Fix:** ✅ Root cause eliminated, bug class prevented, debt reduced, tests prove
-**Bad Fix:** ❌ Symptom masked, similar bugs possible, debt increased
+**Good Fix:** ✅ Root cause eliminated, bug class prevented, debt reduced, tests
+prove **Bad Fix:** ❌ Symptom masked, similar bugs possible, debt increased
 
 ---
 

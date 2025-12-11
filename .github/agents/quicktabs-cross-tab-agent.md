@@ -42,44 +42,53 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.8 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
+  exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write +
+  verify
 - **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
-- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE`, activation, health monitoring
+- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE`, activation, health
+  monitoring
 - **Storage tier probing** - 500ms latency measurement
 - **BFCache handling** - pageshow/pagehide events for state restoration
 - **Keepalive health reports** - 60s interval with success/failure percentages
 - **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging,
-keepalive health sampling, port registry thresholds, sequence ID prioritization.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
+logging, keepalive health sampling, port registry thresholds, sequence ID
+prioritization.
 
 **v1.6.3.7-v11 Features (Retained):** Promise barrier, LRU dedup (1000),
 correlation ID echo, state machine timeouts (7s), WeakRef callbacks.
 
 **v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+IndexedDB checksum, port message reordering (1s), tab affinity buckets, init
+timing.
 
 **v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`,
+  `[RUNTIME]` prefixes
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port),
+  sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption
+  recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete`
+  flags
 - **Port Age Management** - 90s max age, 30s stale timeout
 - **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
 
 **Key Functions (v1.6.3.8):**
 
-| Function                       | Location   | Purpose                            |
-| ------------------------------ | ---------- | ---------------------------------- |
-| `waitForInitialization()`      | QuickTabHandler | 10s init barrier (v8)         |
-| `waitForCurrentTabId()`        | index.js   | 2s exponential backoff (v8)        |
-| `validateAndRecoverStorage()`  | Storage    | Centralized validation (v8)        |
-| `probeStorageTier()`           | Storage    | 500ms latency probe (v8)           |
-| `startStorageWatchdog()`       | Background | Watchdog timer for writes (v10)    |
-| `scheduleRender(source)`       | Manager    | Unified render entry point         |
+| Function                      | Location        | Purpose                         |
+| ----------------------------- | --------------- | ------------------------------- |
+| `waitForInitialization()`     | QuickTabHandler | 10s init barrier (v8)           |
+| `waitForCurrentTabId()`       | index.js        | 2s exponential backoff (v8)     |
+| `validateAndRecoverStorage()` | Storage         | Centralized validation (v8)     |
+| `probeStorageTier()`          | Storage         | 500ms latency probe (v8)        |
+| `startStorageWatchdog()`      | Background      | Watchdog timer for writes (v10) |
+| `scheduleRender(source)`      | Manager         | Unified render entry point      |
 
 **Storage Format:**
 
@@ -96,7 +105,8 @@ IndexedDB checksum, port message reordering (1s), tab affinity buckets, init tim
 
 ## Testing Requirements
 
-- [ ] Initialization barriers work (QuickTabHandler 10s, currentTabId 2s) (v1.6.3.8)
+- [ ] Initialization barriers work (QuickTabHandler 10s, currentTabId 2s)
+      (v1.6.3.8)
 - [ ] Centralized storage validation works (v1.6.3.8)
 - [ ] Dedup decision logging shows SKIP/PROCESS reasons (v1.6.3.8)
 - [ ] BC fallback detection works (SIDEBAR_BC_UNAVAILABLE) (v1.6.3.8)

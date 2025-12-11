@@ -390,7 +390,7 @@ export class DestroyHandler {
         walEntry.state = 'persisted';
         walEntry.persistedAt = Date.now();
         console.log('[DestroyHandler] Write-ahead log updated to persisted:', deletedId);
-        
+
         // Clean up old WAL entries (keep for 10 seconds for debugging)
         setTimeout(() => {
           this._writeAheadLog.delete(deletedId);

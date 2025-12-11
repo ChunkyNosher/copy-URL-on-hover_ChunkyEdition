@@ -43,32 +43,40 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.8 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
+  exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write +
+  verify
 - **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
-- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE`, activation, health monitoring
+- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE`, activation, health
+  monitoring
 - **Keepalive health reports** - 60s interval with success/failure percentages
 - **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging,
-keepalive health sampling, port registry thresholds.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
+logging, keepalive health sampling, port registry thresholds.
 
 **v1.6.3.7-v11 Features (Retained):**
 
-- **Promise-based listener barrier** - Replaces boolean flag (quick-tabs-manager.js)
+- **Promise-based listener barrier** - Replaces boolean flag
+  (quick-tabs-manager.js)
 - **LRU eviction** - Message dedup map capped at 1000 entries
 - **Correlation ID echo** - HEARTBEAT_ACK properly echoes correlationId
 - **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
 
 **v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+IndexedDB checksum, port message reordering (1s), tab affinity buckets, init
+timing.
 
 **v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port),
+  sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption
+  recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete`
+  flags
 - **Port Age Management** - 90s max age, 30s stale timeout
 - **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
 
@@ -186,7 +194,9 @@ function _startCircuitBreakerProbes() {
 
 async function _probeBackgroundHealth() {
   try {
-    const response = await browser.runtime.sendMessage({ type: 'HEALTH_PROBE' });
+    const response = await browser.runtime.sendMessage({
+      type: 'HEALTH_PROBE'
+    });
     if (response?.healthy) {
       // Immediate transition to half-open → reconnect
       circuitBreaker.state = 'half-open';

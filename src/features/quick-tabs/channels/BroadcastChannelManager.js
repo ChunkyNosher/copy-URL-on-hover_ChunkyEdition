@@ -121,7 +121,7 @@ function _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize
   if (!_gapDetectionCallback) {
     return;
   }
-  
+
   try {
     _gapDetectionCallback({
       expectedSeq: expectedSequence,
@@ -141,17 +141,17 @@ function _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize
  */
 export function processReceivedSequence(receivedSequence) {
   _lastBroadcastReceivedTime = Date.now();
-  
+
   // First message - no gap possible
   if (_lastReceivedSequenceNumber === 0) {
     _lastReceivedSequenceNumber = receivedSequence;
     return { hasGap: false, gapSize: 0, isFirstMessage: true };
   }
-  
+
   const expectedSequence = _lastReceivedSequenceNumber + 1;
   const hasGap = receivedSequence > expectedSequence;
   const gapSize = hasGap ? receivedSequence - expectedSequence : 0;
-  
+
   if (hasGap) {
     console.warn('[BroadcastChannelManager] [BC] SEQUENCE_GAP_DETECTED:', {
       expectedSequence,
@@ -160,11 +160,11 @@ export function processReceivedSequence(receivedSequence) {
       missedMessages: gapSize,
       timestamp: Date.now()
     });
-    
+
     // Notify listener of gap (extracted to reduce nesting)
     _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize);
   }
-  
+
   _lastReceivedSequenceNumber = receivedSequence;
   return { hasGap, gapSize, isFirstMessage: false };
 }
@@ -221,7 +221,7 @@ const _backpressureMetrics = {
 export function initBroadcastChannel() {
   // v1.6.3.7-v12 - Issue #1: Detect execution context for better diagnostics
   const executionContext = _detectExecutionContext();
-  
+
   // Check if BroadcastChannel is supported
   if (typeof BroadcastChannel === 'undefined') {
     console.warn('[BroadcastChannelManager] [BC] INIT_UNAVAILABLE:', {
@@ -273,9 +273,9 @@ function _detectExecutionContext() {
     const urlContext = _getExecutionContextFromUrl();
     // v1.6.3.7-v12 - FIX Code Review: Explicit null/undefined check
     if (urlContext !== null && urlContext !== undefined) return urlContext;
-    
+
     if (_isBackgroundScript()) return 'background';
-    
+
     return 'content-script';
   } catch (_err) {
     return 'unknown';
@@ -290,14 +290,14 @@ function _detectExecutionContext() {
  */
 function _getExecutionContextFromUrl() {
   if (typeof window === 'undefined') return null;
-  
+
   const url = window.location?.href || '';
-  
+
   if (url.includes('sidebar/')) return 'sidebar';
   if (url.includes('popup')) return 'popup';
   if (url.includes('options_page')) return 'options';
   if (_isExtensionPageUrl(url)) return 'extension-page';
-  
+
   return null;
 }
 
@@ -666,8 +666,10 @@ function _handleAckTimeout(messageId) {
 
   // Consider throttling if too many timeouts
   const timeoutCount = _backpressureMetrics.acksTimedOut;
-  if (timeoutCount > REPEATED_ACK_TIMEOUT_THRESHOLD &&
-      timeoutCount % REPEATED_ACK_TIMEOUT_THRESHOLD === 0) {
+  if (
+    timeoutCount > REPEATED_ACK_TIMEOUT_THRESHOLD &&
+    timeoutCount % REPEATED_ACK_TIMEOUT_THRESHOLD === 0
+  ) {
     _triggerThrottle('repeated_ack_timeouts');
   }
 }
@@ -819,7 +821,7 @@ function _postMessageWithBackpressure(message, requireAck = false) {
   const messageId = _generateMessageId();
   // v1.6.3.7-v9 - Issue #7: Add monotonic sequence number
   const sequenceNumber = _getNextSequenceNumber();
-  
+
   const messageWithMeta = {
     ...message,
     messageId,

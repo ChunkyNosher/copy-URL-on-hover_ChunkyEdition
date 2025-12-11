@@ -481,8 +481,4 @@ export default {
   prewarmPool
 };
 
-export {
-  DEFAULT_POOL_SIZE,
-  MIN_POOL_SIZE,
-  MAX_POOL_SIZE
-};
+export { DEFAULT_POOL_SIZE, MIN_POOL_SIZE, MAX_POOL_SIZE };

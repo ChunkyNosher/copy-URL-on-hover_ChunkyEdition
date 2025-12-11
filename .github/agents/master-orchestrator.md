@@ -67,18 +67,21 @@ UI)
 
 **v1.6.3.8 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
+  exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write +
+  verify
 - **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
 - **Keepalive health reports** - 60s interval with success/failure percentages
 - **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging,
-keepalive health sampling, port registry thresholds.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
+logging, keepalive health sampling, port registry thresholds.
 
 **v1.6.3.7-v11 Features (Retained):**
 
-- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
+- **Promise-based listener barrier** - Replaces boolean initializationComplete
+  flag
 - **LRU dedup eviction** - Max 1000 entries prevents memory bloat
 - **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
 - **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
@@ -89,9 +92,12 @@ IndexedDB checksum, port message reordering (1s).
 **v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port),
+  sequenceNumber (BC)
+- **Storage Integrity** - Write validation with sync backup and corruption
+  recovery
+- **Initialization Barrier** - `initializationStarted`/`initializationComplete`
+  flags
 
 **v1.6.3.7-v4 Features (Retained):**
 

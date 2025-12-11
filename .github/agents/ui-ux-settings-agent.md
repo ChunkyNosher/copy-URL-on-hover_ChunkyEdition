@@ -67,7 +67,8 @@ const relevantMemories = await searchMemories({
 - **Centralized storage validation** - Recovery from corruption
 - **Code Health improvements** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
+logging.
 
 **v1.6.3.7-v4 Features (Retained):**
 

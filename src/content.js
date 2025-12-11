@@ -476,7 +476,7 @@ function handleContentPortMessage(message) {
     _handlePortPingFromBackground(message);
     return;
   }
-  
+
   // v1.6.3.8 - Issue #2 (arch): Handle ALIVE_PING from background keepalive
   if (message.type === 'ALIVE_PING') {
     console.log('[Content] Received ALIVE_PING from background:', {
@@ -509,7 +509,7 @@ function _handlePortPingFromBackground(message) {
     portId: message.portId,
     timestamp: message.timestamp
   });
-  
+
   // Send pong response to confirm we're alive (not a BFCache zombie)
   if (backgroundPort) {
     try {
@@ -579,7 +579,7 @@ window.addEventListener('unload', () => {
  */
 function _disconnectPortForBFCache() {
   if (!backgroundPort) return;
-  
+
   logContentPortLifecycle('bfcache-enter', { reason: 'entering-bfcache' });
   try {
     backgroundPort.disconnect();
@@ -597,14 +597,14 @@ function _disconnectPortForBFCache() {
 function _handleBFCachePageHide(event) {
   // event.persisted is true when page is being placed in BFCache
   if (!event.persisted) return;
-  
+
   console.log('[Content] BFCACHE_ENTER:', {
     reason: 'pagehide with persisted=true',
     tabId: cachedTabId,
     hadPort: !!backgroundPort,
     timestamp: Date.now()
   });
-  
+
   // Explicitly disconnect port to prevent zombie connection
   _disconnectPortForBFCache();
 }
@@ -623,13 +623,13 @@ function _handleBFCachePageShow(event) {
       hadPort: !!backgroundPort,
       timestamp: Date.now()
     });
-    
+
     // Re-establish port connection
     if (cachedTabId !== null && !backgroundPort) {
       console.log('[Content] Re-establishing port connection after BFCache restore');
       connectContentToBackground(cachedTabId);
     }
-    
+
     // Trigger full state sync to get updates missed while in BFCache
     _triggerFullStateSyncAfterBFCache();
   }
@@ -642,7 +642,7 @@ function _handleBFCachePageShow(event) {
  */
 function _triggerFullStateSyncAfterBFCache() {
   console.log('[Content] Requesting full state sync after BFCache restore');
-  
+
   // Method 1: Send message via port if available
   if (backgroundPort) {
     try {
@@ -657,16 +657,18 @@ function _triggerFullStateSyncAfterBFCache() {
       console.warn('[Content] Port message failed, trying runtime.sendMessage:', err.message);
     }
   }
-  
+
   // Method 2: Fallback to runtime.sendMessage
-  browser.runtime.sendMessage({
-    action: 'REQUEST_FULL_STATE_SYNC',
-    source: 'content-bfcache-restore',
-    tabId: cachedTabId,
-    timestamp: Date.now()
-  }).catch(err => {
-    console.warn('[Content] Failed to request state sync after BFCache restore:', err.message);
-  });
+  browser.runtime
+    .sendMessage({
+      action: 'REQUEST_FULL_STATE_SYNC',
+      source: 'content-bfcache-restore',
+      tabId: cachedTabId,
+      timestamp: Date.now()
+    })
+    .catch(err => {
+      console.warn('[Content] Failed to request state sync after BFCache restore:', err.message);
+    });
 }
 
 // Register BFCache handlers

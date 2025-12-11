@@ -365,7 +365,7 @@ function startKeepalive() {
 
   // v1.6.4.9 - Issue #5: Start health check interval
   _startKeepaliveHealthCheck();
-  
+
   // v1.6.3.8 - Issue #9: Start health report interval
   _startKeepaliveHealthReport();
 
@@ -405,7 +405,7 @@ function _startKeepaliveHealthCheck() {
 async function triggerIdleReset() {
   const attemptStartTime = Date.now();
   const context = { tabsQuerySuccess: false, sendMessageSuccess: false, tabCount: 0 };
-  
+
   try {
     await _performKeepaliveQueries(context);
     _handleKeepaliveSuccess(context, attemptStartTime);
@@ -446,7 +446,7 @@ async function _performKeepaliveQueries(context) {
  */
 function _handleKeepaliveSuccess(context, attemptStartTime) {
   const durationMs = Date.now() - attemptStartTime;
-  
+
   lastKeepaliveSuccessTime = Date.now();
   consecutiveKeepaliveFailures = 0;
   firstKeepaliveFailureLogged = false;
@@ -483,15 +483,16 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
  */
 function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
   consecutiveKeepaliveFailures++;
-  
+
   // v1.6.3.8 - Issue #9: Update health stats for rate tracking
   keepaliveHealthStats.failureCount++;
-  
+
   // Issue #2: Always log first failure, then sample every Nth thereafter (deterministic)
   // v1.6.3.7-v12 - FIX Code Review: Counter-based sampling for predictable, testable behavior
-  const shouldLogFailure = !firstKeepaliveFailureLogged || 
-    (consecutiveKeepaliveFailures % KEEPALIVE_FAILURE_LOG_EVERY_N === 0);
-  
+  const shouldLogFailure =
+    !firstKeepaliveFailureLogged ||
+    consecutiveKeepaliveFailures % KEEPALIVE_FAILURE_LOG_EVERY_N === 0;
+
   if (shouldLogFailure) {
     console.error('[Background] KEEPALIVE_RESET_FAILED:', {
       error: err.message,
@@ -502,7 +503,9 @@ function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
       timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
       durationMs: Date.now() - attemptStartTime,
       isFirstFailure: !firstKeepaliveFailureLogged,
-      samplingStrategy: firstKeepaliveFailureLogged ? `every ${KEEPALIVE_FAILURE_LOG_EVERY_N}th` : 'first',
+      samplingStrategy: firstKeepaliveFailureLogged
+        ? `every ${KEEPALIVE_FAILURE_LOG_EVERY_N}th`
+        : 'first',
       timestamp: Date.now()
     });
     firstKeepaliveFailureLogged = true;
@@ -566,17 +569,18 @@ function _startKeepaliveHealthReport() {
  */
 function _logKeepaliveHealthReport() {
   const total = keepaliveHealthStats.successCount + keepaliveHealthStats.failureCount;
-  
+
   // Skip if no attempts in this window
   if (total === 0) {
     return;
   }
-  
+
   const successRate = (keepaliveHealthStats.successCount / total) * 100;
-  const averageMs = keepaliveHealthStats.successCount > 0 
-    ? keepaliveHealthStats.totalDurationMs / keepaliveHealthStats.successCount 
-    : 0;
-  
+  const averageMs =
+    keepaliveHealthStats.successCount > 0
+      ? keepaliveHealthStats.totalDurationMs / keepaliveHealthStats.successCount
+      : 0;
+
   // Determine health status based on success rate
   let healthStatus = 'excellent';
   if (successRate < 90) {
@@ -588,7 +592,7 @@ function _logKeepaliveHealthReport() {
   if (successRate < 50) {
     healthStatus = 'critical';
   }
-  
+
   // Log health report
   console.log('[Background] KEEPALIVE_HEALTH_REPORT:', {
     window: `last ${KEEPALIVE_HEALTH_REPORT_INTERVAL_MS / 1000}s`,
@@ -604,7 +608,7 @@ function _logKeepaliveHealthReport() {
     },
     timestamp: Date.now()
   });
-  
+
   // Log warning if success rate drops below 90%
   if (successRate < 90) {
     console.warn('[Background] KEEPALIVE_HEALTH_WARNING:', {
@@ -614,7 +618,7 @@ function _logKeepaliveHealthReport() {
       timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime
     });
   }
-  
+
   // Reset stats for next window
   keepaliveHealthStats = {
     successCount: 0,
@@ -636,13 +640,13 @@ function _getKeepaliveHealthSummary() {
   if (total === 0) {
     return 'no data';
   }
-  
+
   const successRate = (keepaliveHealthStats.successCount / total) * 100;
   let status = 'excellent';
   if (successRate < 90) status = 'degraded';
   if (successRate < 70) status = 'poor';
   if (successRate < 50) status = 'critical';
-  
+
   return `${successRate.toFixed(0)}% (${status})`;
 }
 
@@ -662,7 +666,9 @@ function initializeBackgroundBroadcastChannel() {
   if (initialized) {
     console.log('[Background] [BC] BroadcastChannel initialized for state broadcasts');
   } else {
-    console.warn('[Background] [BC] BroadcastChannel NOT available - Manager will use polling fallback');
+    console.warn(
+      '[Background] [BC] BroadcastChannel NOT available - Manager will use polling fallback'
+    );
   }
   return initialized;
 }
@@ -681,7 +687,7 @@ function _sendBCVerificationPong(request) {
     console.warn('[Background] BC_VERIFICATION_PONG failed: BroadcastChannel not available');
     return;
   }
-  
+
   try {
     // Import is already done at top of file, use direct postMessage
     // We need to get the channel reference - use the broadcastFullStateSync mechanism
@@ -693,14 +699,14 @@ function _sendBCVerificationPong(request) {
       timestamp: Date.now(),
       source: 'background'
     };
-    
+
     // Use the BroadcastChannelManager's internal channel via a mini-broadcast
     // We'll piggyback on the existing channel by calling broadcastFullStateSync with dummy data
     // Actually, better to just create a temporary channel for the pong
     const verifyChannel = new BroadcastChannel('quick-tabs-updates');
     verifyChannel.postMessage(pongMessage);
     verifyChannel.close();
-    
+
     console.log('[Background] BC_VERIFICATION_PONG sent:', {
       requestId: request.requestId,
       timestamp: Date.now()
@@ -828,15 +834,15 @@ async function _handleKeepaliveAlarm() {
   try {
     // Perform a lightweight API call to ensure activity is registered
     await browser.tabs.query({ active: true, currentWindow: true });
-    
+
     // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
     _sendAlivePingToSidebars();
-    
+
     // Update keepalive health stats (success via alarm)
     const now = Date.now();
     lastKeepaliveSuccessTime = now;
     keepaliveHealthStats.successCount++;
-    
+
     // Rate-limited logging (every 12th alarm = ~5 minutes)
     if (keepaliveSuccessCount % 12 === 0) {
       console.log('[Background] KEEPALIVE_ALARM_SUCCESS:', {
@@ -1041,7 +1047,7 @@ function logDiagnosticSnapshot() {
     saveId: globalQuickTabState.saveId,
     isInitialized
   });
-  
+
   // v1.6.3.8 - Issue #9: Include keepalive health in diagnostic snapshot
   console.log('[Background] Keepalive health:', {
     summary: `keepalive health: ${_getKeepaliveHealthSummary()}`,
@@ -1050,7 +1056,7 @@ function logDiagnosticSnapshot() {
     consecutiveFailures: consecutiveKeepaliveFailures,
     totalSuccessCount: keepaliveSuccessCount
   });
-  
+
   // v1.6.3.7-v12 - Issue #3, #10: Enhanced port registry logging with thresholds
   // v1.6.3.7-v13 - Issue #4: Format as "connectedPorts: N (STATUS, trend)"
   // v1.6.3.8 - Issue #10: Include port lifecycle details
@@ -1058,7 +1064,7 @@ function logDiagnosticSnapshot() {
   const portTrend = _computePortRegistryTrend();
   const portHealthStatus = _getPortRegistryThresholdStatus(portCount);
   const portLifecycleDetails = _getPortLifecycleDetails();
-  
+
   console.log('[Background] Port registry:', {
     summary: `connectedPorts: ${portCount} (${portHealthStatus}, ${portTrend} trend)`,
     connectedPorts: portCount,
@@ -1068,22 +1074,24 @@ function logDiagnosticSnapshot() {
     trend: portTrend,
     lifecycleDetails: portLifecycleDetails
   });
-  
+
   console.log('[Background] Quick Tab host tracking:', {
     trackedQuickTabs: quickTabHostTabs.size
   });
-  
+
   // v1.6.3.7-v12 - Issue #6: Include dedup statistics
   console.log('[Background] Dedup statistics:', {
     skipped: dedupStats.skipped,
     processed: dedupStats.processed,
     totalSinceReset: dedupStats.skipped + dedupStats.processed,
-    skipRate: dedupStats.processed > 0 
-      ? ((dedupStats.skipped / (dedupStats.skipped + dedupStats.processed)) * 100).toFixed(1) + '%'
-      : 'N/A',
+    skipRate:
+      dedupStats.processed > 0
+        ? ((dedupStats.skipped / (dedupStats.skipped + dedupStats.processed)) * 100).toFixed(1) +
+          '%'
+        : 'N/A',
     lastResetTime: new Date(dedupStats.lastResetTime).toISOString()
   });
-  
+
   console.log('[Background] =================================================================');
 }
 
@@ -1096,13 +1104,13 @@ function logDiagnosticSnapshot() {
 function _getPortLifecycleDetails() {
   const now = Date.now();
   const details = [];
-  
+
   for (const [portId, portInfo] of portRegistry.entries()) {
     const createdAt = portInfo.connectedAt || now;
     const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || createdAt;
     const ageMs = now - createdAt;
     const inactiveMs = now - lastActivity;
-    
+
     details.push({
       portId,
       origin: portInfo.origin,
@@ -1111,7 +1119,7 @@ function _getPortLifecycleDetails() {
       messageCount: portInfo.messageCount || 0
     });
   }
-  
+
   return details;
 }
 
@@ -1150,11 +1158,11 @@ function _getPortRegistryThresholdStatus(count) {
  */
 function _computePortRegistryTrend() {
   if (portRegistrySizeHistory.length < 2) return 'insufficient_data';
-  
+
   const oldest = portRegistrySizeHistory[0];
   const newest = portRegistrySizeHistory[portRegistrySizeHistory.length - 1];
   const diff = newest - oldest;
-  
+
   if (diff > 5) return 'increasing';
   if (diff < -5) return 'decreasing';
   return 'stable';
@@ -1167,15 +1175,15 @@ function _computePortRegistryTrend() {
  */
 function checkPortRegistryThresholds() {
   const count = portRegistry.size;
-  
+
   // Update history for trend analysis
   portRegistrySizeHistory.push(count);
   if (portRegistrySizeHistory.length > PORT_REGISTRY_HISTORY_MAX) {
     portRegistrySizeHistory.shift();
   }
-  
+
   const trend = _computePortRegistryTrend();
-  
+
   // v1.6.3.7-v12 - Issue #10: Check CRITICAL threshold
   if (count >= PORT_REGISTRY_CRITICAL_THRESHOLD) {
     console.error('[Background] [PORT] PORT_REGISTRY_CRITICAL:', {
@@ -1185,12 +1193,12 @@ function checkPortRegistryThresholds() {
       recommendation: 'Attempting automatic cleanup of stale ports',
       timestamp: Date.now()
     });
-    
+
     // Attempt automatic cleanup of stale ports
     _attemptStalePortCleanup();
     return;
   }
-  
+
   // v1.6.3.7-v12 - Issue #10: Check WARN threshold
   if (count >= PORT_REGISTRY_WARN_THRESHOLD) {
     console.warn('[Background] [PORT] PORT_REGISTRY_WARNING:', {
@@ -1203,7 +1211,7 @@ function checkPortRegistryThresholds() {
     });
     return;
   }
-  
+
   // Log health snapshot (only when DEBUG_DIAGNOSTICS is enabled)
   if (DEBUG_DIAGNOSTICS) {
     console.log('[Background] [PORT] PORT_REGISTRY_HEALTH:', {
@@ -1226,9 +1234,9 @@ function _attemptStalePortCleanup() {
   const STALE_PORT_AGE_MS = 60000; // 60 seconds
   const now = Date.now();
   const beforeCount = portRegistry.size;
-  
+
   const stalePorts = _findStalePorts(now, STALE_PORT_AGE_MS);
-  
+
   _logStalePortCleanupAttempt(beforeCount, stalePorts, STALE_PORT_AGE_MS, now);
   _removeStalePortsFromRegistry(stalePorts);
   _logStalePortCleanupComplete(beforeCount);
@@ -1241,14 +1249,14 @@ function _attemptStalePortCleanup() {
  */
 function _findStalePorts(now, thresholdMs) {
   const stalePorts = [];
-  
+
   for (const [portId, portInfo] of portRegistry.entries()) {
     const stalePortInfo = _checkPortStaleness(portId, portInfo, now, thresholdMs);
     if (stalePortInfo) {
       stalePorts.push(stalePortInfo);
     }
   }
-  
+
   return stalePorts;
 }
 
@@ -1265,7 +1273,7 @@ function _checkPortStaleness(portId, portInfo, now, thresholdMs) {
   const age = now - createdAt;
   const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || createdAt;
   const inactiveTime = now - lastActivity;
-  
+
   if (inactiveTime > thresholdMs) {
     return { portId, age, inactiveTime, type: portInfo.type };
   }
@@ -1341,12 +1349,16 @@ function startPortRegistryMonitoring() {
   if (portRegistryCheckIntervalId) {
     clearInterval(portRegistryCheckIntervalId);
   }
-  
+
   portRegistryCheckIntervalId = setInterval(() => {
     checkPortRegistryThresholds();
   }, PORT_REGISTRY_CHECK_INTERVAL_MS);
-  
-  console.log('[Background] [PORT] Port registry monitoring started (every', PORT_REGISTRY_CHECK_INTERVAL_MS / 1000, 's)');
+
+  console.log(
+    '[Background] [PORT] Port registry monitoring started (every',
+    PORT_REGISTRY_CHECK_INTERVAL_MS / 1000,
+    's)'
+  );
 }
 
 /**
@@ -1357,7 +1369,7 @@ function startDedupStatsLogging() {
   if (dedupStatsIntervalId) {
     clearInterval(dedupStatsIntervalId);
   }
-  
+
   dedupStatsIntervalId = setInterval(() => {
     const total = dedupStats.skipped + dedupStats.processed;
     if (total > 0) {
@@ -1370,7 +1382,7 @@ function startDedupStatsLogging() {
         timestamp: Date.now()
       });
     }
-    
+
     // Reset stats after logging
     dedupStats = {
       skipped: 0,
@@ -1378,8 +1390,12 @@ function startDedupStatsLogging() {
       lastResetTime: Date.now()
     };
   }, DEDUP_STATS_LOG_INTERVAL_MS);
-  
-  console.log('[Background] [STORAGE] Dedup stats logging started (every', DEDUP_STATS_LOG_INTERVAL_MS / 1000, 's)');
+
+  console.log(
+    '[Background] [STORAGE] Dedup stats logging started (every',
+    DEDUP_STATS_LOG_INTERVAL_MS / 1000,
+    's)'
+  );
 }
 
 // Start port registry monitoring and dedup stats logging on script load
@@ -1480,7 +1496,7 @@ function _runValidatorSequence(validators) {
  */
 function _runValidationChecks(validationContext, readBack, storageKey) {
   const { expectedData } = validationContext;
-  
+
   // Check if data exists
   if (!readBack) {
     const tabCount = expectedData?.tabs?.length || 0;
@@ -1491,16 +1507,17 @@ function _runValidationChecks(validationContext, readBack, storageKey) {
       extraInfo: { expectedTabCount: tabCount }
     });
   }
-  
+
   // Run validation sequence - return first failure or null
   return _runValidatorSequence([
     () => _validateSaveId({ ...validationContext, readBack }),
     () => _validateTabCount({ ...validationContext, readBack }),
-    () => _validateRuntimeChecksum({
-      ...validationContext,
-      readBack,
-      tabCount: readBack.tabs?.length || 0
-    })
+    () =>
+      _validateRuntimeChecksum({
+        ...validationContext,
+        readBack,
+        tabCount: readBack.tabs?.length || 0
+      })
   ]);
 }
 
@@ -1517,16 +1534,16 @@ function _runValidationChecks(validationContext, readBack, storageKey) {
 async function validateStorageWrite(operationId, expectedData, storageKey, retryAttempt = 0) {
   const validationStart = Date.now();
   const validationContext = { operationId, expectedData, retryAttempt, validationStart };
-  
+
   try {
     // Read back the data immediately after write
     const result = await browser.storage.local.get(storageKey);
     const readBack = result?.[storageKey];
-    
+
     // Run all validation checks
     const failureResult = _runValidationChecks(validationContext, readBack, storageKey);
     if (failureResult) return failureResult;
-    
+
     // Validation passed
     console.log('[Background] STORAGE_VALIDATION_PASSED:', {
       operationId,
@@ -1536,7 +1553,7 @@ async function validateStorageWrite(operationId, expectedData, storageKey, retry
       retryAttempt,
       validationDurationMs: Date.now() - validationStart
     });
-    
+
     return { valid: true, readBack, error: null };
   } catch (err) {
     console.error('[Background] STORAGE_VALIDATION_ERROR:', {
@@ -1562,7 +1579,14 @@ async function validateStorageWrite(operationId, expectedData, storageKey, retry
  * @param {number} options.validationStart - Validation start time
  * @param {Object} [options.extraInfo={}] - Extra info for logging
  */
-function _logValidationFailed({ operationId, errorCode, storageKey, retryAttempt, validationStart, extraInfo = {} }) {
+function _logValidationFailed({
+  operationId,
+  errorCode,
+  storageKey,
+  retryAttempt,
+  validationStart,
+  extraInfo = {}
+}) {
   console.error(`[Background] STORAGE_VALIDATION_FAILED: ${errorCode}`, {
     operationId,
     storageKey,
@@ -1604,7 +1628,7 @@ function _validateSaveId({ operationId, expectedData, readBack, retryAttempt, va
 function _validateTabCount({ operationId, expectedData, readBack, retryAttempt, validationStart }) {
   const expectedTabCount = expectedData?.tabs?.length || 0;
   const actualTabCount = readBack?.tabs?.length || 0;
-  
+
   if (expectedTabCount !== actualTabCount) {
     console.error('[Background] STORAGE_VALIDATION_FAILED: Tab count mismatch', {
       operationId,
@@ -1626,10 +1650,17 @@ function _validateTabCount({ operationId, expectedData, readBack, retryAttempt, 
  * @param {Object} options - Options object
  * @returns {Object|null} Error result if checksum mismatch, null if valid
  */
-function _validateRuntimeChecksum({ operationId, expectedData, readBack, tabCount, retryAttempt, validationStart }) {
+function _validateRuntimeChecksum({
+  operationId,
+  expectedData,
+  readBack,
+  tabCount,
+  retryAttempt,
+  validationStart
+}) {
   const expectedChecksum = _computeStorageChecksum(expectedData);
   const actualChecksum = _computeStorageChecksum(readBack);
-  
+
   if (expectedChecksum !== actualChecksum) {
     console.error('[Background] STORAGE_VALIDATION_FAILED: Checksum mismatch', {
       operationId,
@@ -1641,7 +1672,7 @@ function _validateRuntimeChecksum({ operationId, expectedData, readBack, tabCoun
     });
     return { valid: false, readBack, error: 'CHECKSUM_MISMATCH' };
   }
-  
+
   return null; // Checksum valid
 }
 
@@ -1658,12 +1689,12 @@ function _validateRuntimeChecksum({ operationId, expectedData, readBack, tabCoun
 async function _performWriteAttempt(stateToWrite, storageKey, operationId, attempt) {
   // Perform the write
   await browser.storage.local.set({ [storageKey]: stateToWrite });
-  
+
   // Wait a small delay before validation on retries
   if (attempt > 0) {
     await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS));
   }
-  
+
   // Validate the write
   const validation = await validateStorageWrite(operationId, stateToWrite, storageKey, attempt);
   return validation;
@@ -1699,9 +1730,11 @@ function _buildValidationMeta(context) {
  */
 function _checkNullReadback(readBack, stateToWrite, context) {
   if (readBack) return null;
-  
+
   _logWriteValidationFailure(context.operationId, 'READ_RETURNED_NULL', {
-    expectedTabs: context.expectedTabs, actualTabs: 0, saveId: stateToWrite.saveId,
+    expectedTabs: context.expectedTabs,
+    actualTabs: 0,
+    saveId: stateToWrite.saveId,
     ..._buildValidationMeta(context)
   });
   return { valid: false, failureType: 'READ_RETURNED_NULL' };
@@ -1714,10 +1747,12 @@ function _checkNullReadback(readBack, stateToWrite, context) {
  */
 function _checkSaveIdMatch(readBack, stateToWrite, context) {
   if (readBack.saveId === stateToWrite.saveId) return null;
-  
+
   _logWriteValidationFailure(context.operationId, 'SAVEID_MISMATCH', {
-    expectedSaveId: stateToWrite.saveId, actualSaveId: readBack.saveId,
-    expectedTabs: context.expectedTabs, actualTabs: readBack?.tabs?.length || 0,
+    expectedSaveId: stateToWrite.saveId,
+    actualSaveId: readBack.saveId,
+    expectedTabs: context.expectedTabs,
+    actualTabs: readBack?.tabs?.length || 0,
     ..._buildValidationMeta(context)
   });
   return { valid: false, failureType: 'SAVEID_MISMATCH', readBack };
@@ -1731,10 +1766,13 @@ function _checkSaveIdMatch(readBack, stateToWrite, context) {
 function _checkTabCountMatch(readBack, stateToWrite, context) {
   const actualTabs = readBack?.tabs?.length || 0;
   if (context.expectedTabs === actualTabs) return null;
-  
+
   _logWriteValidationFailure(context.operationId, 'TAB_COUNT_MISMATCH', {
-    expectedTabs: context.expectedTabs, actualTabs, difference: context.expectedTabs - actualTabs,
-    saveId: stateToWrite.saveId, ..._buildValidationMeta(context)
+    expectedTabs: context.expectedTabs,
+    actualTabs,
+    difference: context.expectedTabs - actualTabs,
+    saveId: stateToWrite.saveId,
+    ..._buildValidationMeta(context)
   });
   return { valid: false, failureType: 'TAB_COUNT_MISMATCH' };
 }
@@ -1748,11 +1786,15 @@ function _checkChecksumMatch(readBack, stateToWrite, context) {
   const expectedChecksum = _computeStorageChecksum(stateToWrite);
   const actualChecksum = _computeStorageChecksum(readBack);
   if (expectedChecksum === actualChecksum) return null;
-  
+
   const actualTabs = readBack?.tabs?.length || 0;
   _logWriteValidationFailure(context.operationId, 'CHECKSUM_MISMATCH', {
-    expectedChecksum, actualChecksum, expectedTabs: context.expectedTabs, actualTabs,
-    saveId: stateToWrite.saveId, ..._buildValidationMeta(context)
+    expectedChecksum,
+    actualChecksum,
+    expectedTabs: context.expectedTabs,
+    actualTabs,
+    saveId: stateToWrite.saveId,
+    ..._buildValidationMeta(context)
   });
   return { valid: false, failureType: 'CHECKSUM_MISMATCH' };
 }
@@ -1767,16 +1809,16 @@ function _validateWriteReadback(stateToWrite, readBack, context) {
   // Run validation checks in order, return first failure
   const nullCheck = _checkNullReadback(readBack, stateToWrite, context);
   if (nullCheck) return nullCheck;
-  
+
   const saveIdCheck = _checkSaveIdMatch(readBack, stateToWrite, context);
   if (saveIdCheck) return saveIdCheck;
-  
+
   const tabCountCheck = _checkTabCountMatch(readBack, stateToWrite, context);
   if (tabCountCheck) return tabCountCheck;
-  
+
   const checksumCheck = _checkChecksumMatch(readBack, stateToWrite, context);
   if (checksumCheck) return checksumCheck;
-  
+
   return { valid: true, actualTabs: readBack?.tabs?.length || 0 };
 }
 
@@ -1793,39 +1835,58 @@ async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
   const writeStart = Date.now();
   const expectedTabs = stateToWrite?.tabs?.length || 0;
   const context = { operationId, expectedTabs, writeStart };
-  
+
   if (DEBUG_DIAGNOSTICS) {
     console.log('[Background] STORAGE_WRITE_VALIDATION_START:', {
-      operationId, operationName, saveId: stateToWrite.saveId,
-      expectedTabs, sequenceId: stateToWrite.sequenceId, timestamp: writeStart
+      operationId,
+      operationName,
+      saveId: stateToWrite.saveId,
+      expectedTabs,
+      sequenceId: stateToWrite.sequenceId,
+      timestamp: writeStart
     });
   }
-  
+
   try {
     await browser.storage.local.set({ [storageKey]: stateToWrite });
     const readResult = await browser.storage.local.get(storageKey);
     const readBack = readResult?.[storageKey];
-    
+
     const validation = _validateWriteReadback(stateToWrite, readBack, context);
-    
+
     if (!validation.valid) {
       const recoveryResult = await _attemptStorageWriteRecovery(
-        operationId, stateToWrite, validation.failureType, validation.readBack
+        operationId,
+        stateToWrite,
+        validation.failureType,
+        validation.readBack
       );
-      return { success: false, operationId, error: validation.failureType, recovered: recoveryResult.recovered };
+      return {
+        success: false,
+        operationId,
+        error: validation.failureType,
+        recovered: recoveryResult.recovered
+      };
     }
-    
+
     console.log('[Background] STORAGE_WRITE_VALIDATION:', {
-      operationId, result: 'PASSED', saveId: stateToWrite.saveId,
-      expectedTabs, actualTabs: validation.actualTabs, checksumMatch: true,
+      operationId,
+      result: 'PASSED',
+      saveId: stateToWrite.saveId,
+      expectedTabs,
+      actualTabs: validation.actualTabs,
+      checksumMatch: true,
       durationMs: Date.now() - writeStart
     });
     return { success: true, operationId, error: null, recovered: false };
-    
   } catch (err) {
     console.error('[Background] STORAGE_WRITE_VALIDATION:', {
-      operationId, result: 'ERROR', error: err.message,
-      expectedTabs, saveId: stateToWrite.saveId, durationMs: Date.now() - writeStart
+      operationId,
+      result: 'ERROR',
+      error: err.message,
+      expectedTabs,
+      saveId: stateToWrite.saveId,
+      durationMs: Date.now() - writeStart
     });
     return { success: false, operationId, error: err.message, recovered: false };
   }
@@ -1834,13 +1895,13 @@ async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
 /**
  * Attempt recovery when storage write validation fails
  * v1.6.3.7-v13 - Issue #7: Type-specific recovery strategies
- * 
+ *
  * Recovery strategies by failure type:
  * - READ_RETURNED_NULL: Likely quota exceeded - clear oldest Quick Tabs and retry
  * - TAB_COUNT_MISMATCH: Likely corruption - re-write state
  * - SAVEID_MISMATCH: Check sequence ID ordering - may be out-of-order event
  * - CHECKSUM_MISMATCH: Re-write state with new saveId
- * 
+ *
  * @param {string} operationId - Operation ID for tracing
  * @param {Object} intendedState - State that failed to write
  * @param {string} failureType - Type of failure
@@ -1854,24 +1915,29 @@ async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
  * @private
  */
 const RECOVERY_STRATEGIES = {
-  'READ_RETURNED_NULL': (operationId, intendedState, _readBackState) => 
+  READ_RETURNED_NULL: (operationId, intendedState, _readBackState) =>
     _recoverFromNullRead(operationId, intendedState),
-  'TAB_COUNT_MISMATCH': (operationId, intendedState, _readBackState) => 
+  TAB_COUNT_MISMATCH: (operationId, intendedState, _readBackState) =>
     _recoverFromTabCountMismatch(operationId, intendedState),
-  'SAVEID_MISMATCH': (operationId, intendedState, readBackState) => 
+  SAVEID_MISMATCH: (operationId, intendedState, readBackState) =>
     _recoverFromSaveIdMismatch(operationId, intendedState, readBackState),
-  'CHECKSUM_MISMATCH': (operationId, intendedState, _readBackState) => 
+  CHECKSUM_MISMATCH: (operationId, intendedState, _readBackState) =>
     _recoverFromChecksumMismatch(operationId, intendedState)
 };
 
-async function _attemptStorageWriteRecovery(operationId, intendedState, failureType, readBackState = null) {
+async function _attemptStorageWriteRecovery(
+  operationId,
+  intendedState,
+  failureType,
+  readBackState = null
+) {
   console.log('[Background] RECOVERY_ATTEMPT:', {
     operationId,
     failureType,
     intendedTabCount: intendedState?.tabs?.length || 0,
     timestamp: Date.now()
   });
-  
+
   try {
     const strategy = RECOVERY_STRATEGIES[failureType];
     if (!strategy) {
@@ -1897,20 +1963,20 @@ async function _attemptStorageWriteRecovery(operationId, intendedState, failureT
  */
 async function _recoverFromNullRead(operationId, intendedState) {
   console.log('[Background] RECOVERY_STRATEGY: Clearing oldest Quick Tabs (quota likely exceeded)');
-  
+
   // If not enough tabs to clear, fail early
   if (!intendedState?.tabs?.length || intendedState.tabs.length <= 1) {
     return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
   }
-  
+
   // Sort by creationTime and remove oldest tabs (keep RECOVERY_KEEP_PERCENTAGE)
-  const sortedTabs = [...intendedState.tabs].sort((a, b) => 
-    (a.creationTime || 0) - (b.creationTime || 0)
+  const sortedTabs = [...intendedState.tabs].sort(
+    (a, b) => (a.creationTime || 0) - (b.creationTime || 0)
   );
-  
+
   const keepCount = Math.max(1, Math.floor(sortedTabs.length * RECOVERY_KEEP_PERCENTAGE));
   const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
-  
+
   const recoverySaveId = `recovery-null-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const recoveryState = {
     ...intendedState,
@@ -1919,12 +1985,12 @@ async function _recoverFromNullRead(operationId, intendedState) {
     recoveredFrom: 'READ_RETURNED_NULL',
     recoveryTimestamp: Date.now()
   };
-  
+
   const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
   if (!writeResult.success) {
     return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
   }
-  
+
   console.log('[Background] RECOVERY_SUCCESS:', {
     operationId,
     method: 'clear-oldest-tabs',
@@ -1998,7 +2064,11 @@ function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
  */
 function _logRecoverySuccess(operationId, method, recoverySaveId, additionalDetails = {}) {
   console.log('[Background] RECOVERY_SUCCESS:', {
-    operationId, method, recoverySaveId, ...additionalDetails, timestamp: Date.now()
+    operationId,
+    method,
+    recoverySaveId,
+    ...additionalDetails,
+    timestamp: Date.now()
   });
 }
 
@@ -2008,19 +2078,38 @@ function _logRecoverySuccess(operationId, method, recoverySaveId, additionalDeta
  * @private
  */
 async function _executeRecoveryWithVerification(config) {
-  const { operationId, intendedState, failureType, saveIdPrefix, method, verifyFn, successDetails = {}, failureRecommendation } = config;
-  
-  console.log(`[Background] RECOVERY_STRATEGY: Re-writing state (${failureType.toLowerCase().replace('_', ' ')})`);
-  
+  const {
+    operationId,
+    intendedState,
+    failureType,
+    saveIdPrefix,
+    method,
+    verifyFn,
+    successDetails = {},
+    failureRecommendation
+  } = config;
+
+  console.log(
+    `[Background] RECOVERY_STRATEGY: Re-writing state (${failureType.toLowerCase().replace('_', ' ')})`
+  );
+
   const recoverySaveId = _generateRecoverySaveId(saveIdPrefix);
   const recoveryState = _buildRecoveryState(intendedState, recoverySaveId, failureType);
-  
-  const writeResult = await _tryRecoveryWriteAndVerify(operationId, recoveryState, recoverySaveId, verifyFn);
+
+  const writeResult = await _tryRecoveryWriteAndVerify(
+    operationId,
+    recoveryState,
+    recoverySaveId,
+    verifyFn
+  );
   if (!writeResult.success) {
     return _logRecoveryFailure(operationId, failureType, failureRecommendation);
   }
-  
-  _logRecoverySuccess(operationId, method, recoverySaveId, { ...successDetails, tabCount: writeResult.tabCount });
+
+  _logRecoverySuccess(operationId, method, recoverySaveId, {
+    ...successDetails,
+    tabCount: writeResult.tabCount
+  });
   return { recovered: true, method, reason: `Successfully re-wrote state` };
 }
 
@@ -2033,7 +2122,8 @@ async function _executeRecoveryWithVerification(config) {
 async function _recoverFromTabCountMismatch(operationId, intendedState) {
   const expectedTabCount = intendedState?.tabs?.length;
   return _executeRecoveryWithVerification({
-    operationId, intendedState,
+    operationId,
+    intendedState,
     failureType: 'TAB_COUNT_MISMATCH',
     saveIdPrefix: 'count',
     method: 're-write',
@@ -2068,22 +2158,30 @@ async function _tryRecoveryWriteAndVerify(operationId, recoveryState, expectedSa
 function _checkSequenceSuperseded(operationId, intendedState, readBackState) {
   const intendedSeqId = intendedState?.sequenceId;
   const actualSeqId = readBackState?.sequenceId;
-  
+
   if (typeof intendedSeqId !== 'number' || typeof actualSeqId !== 'number') {
     return null;
   }
-  
+
   if (actualSeqId > intendedSeqId) {
     console.log('[Background] RECOVERY_OUT_OF_ORDER_EVENT:', {
-      operationId, intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId,
+      operationId,
+      intendedSequenceId: intendedSeqId,
+      actualSequenceId: actualSeqId,
       explanation: 'Storage contains newer write - our write was superseded, no recovery needed',
       timestamp: Date.now()
     });
-    return { recovered: true, method: 'sequence-superseded', reason: 'Storage has newer sequence ID - no action needed' };
+    return {
+      recovered: true,
+      method: 'sequence-superseded',
+      reason: 'Storage has newer sequence ID - no action needed'
+    };
   }
-  
+
   console.log('[Background] OUT_OF_ORDER_EVENTS: Older sequence fired after newer', {
-    intendedSequenceId: intendedSeqId, actualSequenceId: actualSeqId, operationId
+    intendedSequenceId: intendedSeqId,
+    actualSequenceId: actualSeqId,
+    operationId
   });
   return null;
 }
@@ -2096,20 +2194,20 @@ function _checkSequenceSuperseded(operationId, intendedState, readBackState) {
  */
 async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackState) {
   console.log('[Background] RECOVERY_STRATEGY: Checking sequence ID ordering (saveId mismatch)');
-  
+
   // Check if our write was superseded by a newer one
   const supersededResult = _checkSequenceSuperseded(operationId, intendedState, readBackState);
   if (supersededResult) return supersededResult;
-  
+
   // Try re-writing with force
   const recoverySaveId = _generateRecoverySaveId('saveid');
   const recoveryState = _buildRecoveryState(intendedState, recoverySaveId, 'SAVEID_MISMATCH');
-  
+
   const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
   if (!writeResult.success) {
     return _logRecoveryFailure(operationId, 'SAVEID_MISMATCH', 'concurrent writes may be blocking');
   }
-  
+
   _logRecoverySuccess(operationId, 're-write-force', recoverySaveId);
   return { recovered: true, method: 're-write-force', reason: 'Forced re-write with new saveId' };
 }
@@ -2122,11 +2220,13 @@ async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackSt
  */
 async function _recoverFromChecksumMismatch(operationId, intendedState) {
   return _executeRecoveryWithVerification({
-    operationId, intendedState,
+    operationId,
+    intendedState,
     failureType: 'CHECKSUM_MISMATCH',
     saveIdPrefix: 'checksum',
     method: 're-write-verified',
-    verifyFn: (expected, actual) => _computeStorageChecksum(expected) === _computeStorageChecksum(actual),
+    verifyFn: (expected, actual) =>
+      _computeStorageChecksum(expected) === _computeStorageChecksum(actual),
     successDetails: { checksumVerified: true },
     failureRecommendation: 'persistent data corruption - recommend clearing storage'
   });
@@ -2144,7 +2244,7 @@ function _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite) {
     attempts: attempt + 1,
     totalDurationMs: Date.now() - writeStart
   });
-  
+
   // Update redundant backup if enabled
   if (ENABLE_SYNC_STORAGE_BACKUP) {
     _updateSyncBackup(stateToWrite, operationId);
@@ -2161,7 +2261,7 @@ function _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite) {
 async function writeStorageWithValidation(stateToWrite, storageKey) {
   const operationId = _generateStorageOperationId();
   const writeStart = Date.now();
-  
+
   console.log('[Background] STORAGE_WRITE_START:', {
     operationId,
     storageKey,
@@ -2169,12 +2269,18 @@ async function writeStorageWithValidation(stateToWrite, storageKey) {
     tabCount: stateToWrite?.tabs?.length || 0,
     timestamp: writeStart
   });
-  
+
   for (let attempt = 0; attempt < STORAGE_VALIDATION_MAX_RETRIES; attempt++) {
-    const result = await _tryWriteAttempt({ stateToWrite, storageKey, operationId, attempt, writeStart });
+    const result = await _tryWriteAttempt({
+      stateToWrite,
+      storageKey,
+      operationId,
+      attempt,
+      writeStart
+    });
     if (result.done) return result.value;
   }
-  
+
   // All retries failed - potential corruption
   return _handleAllRetriesFailed(operationId, stateToWrite, writeStart);
 }
@@ -2194,12 +2300,12 @@ async function writeStorageWithValidation(stateToWrite, storageKey) {
 async function _tryWriteAttempt({ stateToWrite, storageKey, operationId, attempt, writeStart }) {
   try {
     const validation = await _performWriteAttempt(stateToWrite, storageKey, operationId, attempt);
-    
+
     if (validation.valid) {
       _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite);
       return { done: true, value: { success: true, operationId, retries: attempt, error: null } };
     }
-    
+
     // Validation failed, log retry
     console.warn('[Background] STORAGE_WRITE_RETRY:', {
       operationId,
@@ -2208,11 +2314,17 @@ async function _tryWriteAttempt({ stateToWrite, storageKey, operationId, attempt
       error: validation.error
     });
   } catch (err) {
-    console.error('[Background] STORAGE_WRITE_ERROR:', { operationId, attempt, error: err.message });
+    console.error('[Background] STORAGE_WRITE_ERROR:', {
+      operationId,
+      attempt,
+      error: err.message
+    });
   }
-  
+
   // Wait before next retry
-  await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS * (attempt + 1)));
+  await new Promise(resolve =>
+    setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS * (attempt + 1))
+  );
   return { done: false };
 }
 
@@ -2228,14 +2340,14 @@ async function _handleAllRetriesFailed(operationId, stateToWrite, writeStart) {
     totalDurationMs: Date.now() - writeStart,
     action: 'TRIGGERING_CORRUPTION_RECOVERY'
   });
-  
+
   await handleStorageCorruption(operationId, stateToWrite);
-  
-  return { 
-    success: false, 
-    operationId, 
-    retries: STORAGE_VALIDATION_MAX_RETRIES, 
-    error: 'ALL_VALIDATION_RETRIES_FAILED' 
+
+  return {
+    success: false,
+    operationId,
+    retries: STORAGE_VALIDATION_MAX_RETRIES,
+    error: 'ALL_VALIDATION_RETRIES_FAILED'
   };
 }
 
@@ -2254,9 +2366,9 @@ async function _updateSyncBackup(stateToWrite, operationId) {
       saveId: stateToWrite.saveId,
       backupOperationId: operationId
     };
-    
+
     await browser.storage.sync.set({ [SYNC_BACKUP_KEY]: backupData });
-    
+
     console.log('[Background] SYNC_BACKUP_UPDATED:', {
       operationId,
       tabCount: backupData.tabs?.length || 0,
@@ -2279,7 +2391,7 @@ async function _updateSyncBackup(stateToWrite, operationId) {
  */
 async function handleStorageCorruption(operationId, intendedState) {
   const now = Date.now();
-  
+
   // Rate limit recovery attempts
   if (now - lastCorruptionDetectedAt < CORRUPTION_RECOVERY_COOLDOWN_MS) {
     console.warn('[Background] CORRUPTION_RECOVERY_RATE_LIMITED:', {
@@ -2289,15 +2401,15 @@ async function handleStorageCorruption(operationId, intendedState) {
     });
     return;
   }
-  
+
   lastCorruptionDetectedAt = now;
-  
+
   console.error('[Background] CRITICAL: STORAGE_CORRUPTION_DETECTED:', {
     operationId,
     intendedTabCount: intendedState?.tabs?.length || 0,
     timestamp: now
   });
-  
+
   // Try to recover from storage.sync backup
   if (ENABLE_SYNC_STORAGE_BACKUP) {
     await attemptRecoveryFromSyncBackup(operationId, intendedState);
@@ -2321,7 +2433,7 @@ function _handleEmptyBackup(operationId, backup, intendedState) {
     hasBackup: !!backup,
     backupTabCount: backup?.tabs?.length || 0
   });
-  
+
   // Fall back to intended state if we have it
   if (intendedState?.tabs?.length > 0) {
     console.log('[Background] USING_INTENDED_STATE_FOR_RECOVERY:', {
@@ -2347,10 +2459,10 @@ async function _writeRecoveredState(operationId, backup) {
     timestamp: Date.now(),
     recoveredFrom: 'sync-backup'
   };
-  
+
   // v1.6.3.7-v13 - Issue #2: Use centralized validation
   const result = await _writeQuickTabStateWithValidation(recoveredState, 'sync-backup-recovery');
-  
+
   if (result.success) {
     console.log('[Background] RECOVERY_COMPLETE: State restored from backup', {
       operationId,
@@ -2358,8 +2470,8 @@ async function _writeRecoveredState(operationId, backup) {
       validated: true
     });
   } else {
-    console.error('[Background] RECOVERY_WRITE_FAILED:', { 
-      operationId, 
+    console.error('[Background] RECOVERY_WRITE_FAILED:', {
+      operationId,
       error: result.error,
       recovered: result.recovered
     });
@@ -2385,16 +2497,16 @@ function _isBackupValidForRecovery(backup) {
 async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
   try {
     console.log('[Background] ATTEMPTING_SYNC_BACKUP_RECOVERY:', { operationId });
-    
+
     const result = await browser.storage.sync.get(SYNC_BACKUP_KEY);
     const backup = result?.[SYNC_BACKUP_KEY];
-    
+
     // Check if backup is valid
     if (!_isBackupValidForRecovery(backup)) {
       _handleEmptyBackup(operationId, backup, intendedState);
       return;
     }
-    
+
     // Check backup age - don't restore very old backups (> 1 hour)
     const backupAgeMs = Date.now() - backup.timestamp;
     if (backupAgeMs > 3600000) {
@@ -2405,7 +2517,7 @@ async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
       });
       return;
     }
-    
+
     // Restore from backup
     console.log('[Background] RESTORING_FROM_SYNC_BACKUP:', {
       operationId,
@@ -2413,12 +2525,12 @@ async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
       backupSaveId: backup.saveId,
       backupAgeMs
     });
-    
+
     // Update global state
     globalQuickTabState.tabs = backup.tabs;
     globalQuickTabState.lastUpdate = Date.now();
     globalQuickTabState.saveId = backup.saveId;
-    
+
     // Write recovered state to local storage
     await _writeRecoveredState(operationId, backup);
   } catch (err) {
@@ -2434,18 +2546,18 @@ async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
 async function _tryRestoreFromStartupBackup(operationId) {
   const syncResult = await browser.storage.sync.get(SYNC_BACKUP_KEY);
   const backup = syncResult?.[SYNC_BACKUP_KEY];
-  
+
   if (!backup?.tabs || backup.tabs.length === 0) {
     return { hasBackup: false, recovered: false };
   }
-  
+
   console.warn('[Background] STORAGE_INTEGRITY_MISMATCH: Local empty but backup has data', {
     operationId,
     localTabCount: 0,
     backupTabCount: backup.tabs.length,
     backupAge: Date.now() - backup.timestamp
   });
-  
+
   // Check if backup is recent enough to restore (< 24 hours)
   const backupAgeMs = Date.now() - backup.timestamp;
   if (backupAgeMs >= 86400000) {
@@ -2455,12 +2567,12 @@ async function _tryRestoreFromStartupBackup(operationId) {
     });
     return { hasBackup: true, recovered: false };
   }
-  
+
   console.log('[Background] RESTORING_FROM_STARTUP_BACKUP:', {
     operationId,
     backupTabCount: backup.tabs.length
   });
-  
+
   await attemptRecoveryFromSyncBackup(operationId, null);
   return { hasBackup: true, recovered: true };
 }
@@ -2474,31 +2586,33 @@ async function _tryRestoreFromStartupBackup(operationId) {
 async function checkStorageIntegrityOnStartup() {
   const operationId = _generateStorageOperationId();
   console.log('[Background] STORAGE_INTEGRITY_CHECK_START:', { operationId });
-  
+
   try {
     // Read from storage.local
     const localResult = await browser.storage.local.get('quick_tabs_state_v2');
     const localState = localResult?.quick_tabs_state_v2;
-    
+
     // v1.6.3.7-v10 - FIX Issue #8: Compute checksums for comparison
     const localChecksum = _computeStorageChecksum(localState);
-    
+
     // If sync backup is enabled, compare checksums
     const checksumResult = await _performChecksumComparison(operationId, localState, localChecksum);
     if (checksumResult.shouldReturn) {
       return checksumResult.result;
     }
-    
+
     // If local storage has data, we're good
     if (_hasValidLocalState(localState)) {
       return _logAndReturnHealthy(operationId, localState, localChecksum);
     }
-    
+
     // Local storage is empty - check if we have a backup and try recovery
     return await _attemptBackupRecovery(operationId);
-    
   } catch (err) {
-    console.error('[Background] STORAGE_INTEGRITY_CHECK_ERROR:', { operationId, error: err.message });
+    console.error('[Background] STORAGE_INTEGRITY_CHECK_ERROR:', {
+      operationId,
+      error: err.message
+    });
     return { healthy: false, recovered: false, error: err.message };
   }
 }
@@ -2512,7 +2626,7 @@ async function _performChecksumComparison(operationId, localState, localChecksum
   if (!ENABLE_SYNC_STORAGE_BACKUP) {
     return { shouldReturn: false, result: null };
   }
-  
+
   const checksumResult = await _compareStorageChecksums(operationId, localState, localChecksum);
   if (checksumResult.mismatch && checksumResult.recovered) {
     return { shouldReturn: true, result: { healthy: false, recovered: true, error: null } };
@@ -2550,14 +2664,14 @@ function _logAndReturnHealthy(operationId, localState, localChecksum) {
  * @private
  */
 async function _attemptBackupRecovery(operationId) {
-  const backupResult = ENABLE_SYNC_STORAGE_BACKUP 
+  const backupResult = ENABLE_SYNC_STORAGE_BACKUP
     ? await _tryRestoreFromStartupBackup(operationId)
     : { hasBackup: false, recovered: false };
-  
+
   if (backupResult.recovered) {
     return { healthy: false, recovered: true, error: null };
   }
-  
+
   // No data in either storage - this is expected for new installations
   console.log('[Background] STORAGE_INTEGRITY_CHECK_COMPLETE: No existing data', { operationId });
   return { healthy: true, recovered: false, error: null };
@@ -2574,13 +2688,13 @@ function _computeStorageChecksum(state) {
   if (!state?.tabs || state.tabs.length === 0) {
     return 'empty';
   }
-  
+
   // Build a deterministic string from tab IDs and their minimized states
   const tabSignatures = state.tabs
     .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
     .sort()
     .join('|');
-  
+
   // v1.6.3.7-v10 - FIX Code Review: djb2-like hash algorithm explanation
   // hash = hash * 33 + char is equivalent to (hash << 5) - hash + char
   // This is a simple, fast string hash used for corruption detection (not crypto)
@@ -2588,7 +2702,7 @@ function _computeStorageChecksum(state) {
   for (let i = 0; i < tabSignatures.length; i++) {
     hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
   }
-  
+
   return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
 }
 
@@ -2618,28 +2732,39 @@ function _isSyncBackupValid(syncBackup) {
  */
 async function _compareStorageChecksums(operationId, localState, localChecksum) {
   const noMismatchResult = { mismatch: false, recovered: false };
-  
+
   try {
     const syncResult = await browser.storage.sync.get('quick_tabs_backup');
     const syncBackup = syncResult?.quick_tabs_backup;
-    
+
     // No sync backup to compare against
     if (!_isSyncBackupValid(syncBackup)) {
       return noMismatchResult;
     }
-    
+
     const syncChecksum = _computeStorageChecksum(syncBackup);
     const localTabCount = localState?.tabs?.length || 0;
     const syncTabCount = syncBackup.tabs.length;
-    
-    const mismatchResult = _detectChecksumMismatch(localChecksum, syncChecksum, localTabCount, syncTabCount);
-    
+
+    const mismatchResult = _detectChecksumMismatch(
+      localChecksum,
+      syncChecksum,
+      localTabCount,
+      syncTabCount
+    );
+
     if (!mismatchResult.hasMismatch) {
       return noMismatchResult;
     }
-    
+
     return await _handleChecksumMismatch({
-      operationId, localChecksum, syncChecksum, localTabCount, syncTabCount, mismatchResult, localState
+      operationId,
+      localChecksum,
+      syncChecksum,
+      localTabCount,
+      syncTabCount,
+      mismatchResult,
+      localState
     });
   } catch (err) {
     console.warn('[Background] STORAGE_CHECKSUM_COMPARISON_ERROR:', {
@@ -2657,8 +2782,9 @@ async function _compareStorageChecksums(operationId, localState, localChecksum) 
  */
 function _detectChecksumMismatch(localChecksum, syncChecksum, localTabCount, syncTabCount) {
   const countMismatch = localTabCount !== syncTabCount && localTabCount > 0 && syncTabCount > 0;
-  const checksumMismatch = localChecksum !== 'empty' && syncChecksum !== 'empty' && localChecksum !== syncChecksum;
-  
+  const checksumMismatch =
+    localChecksum !== 'empty' && syncChecksum !== 'empty' && localChecksum !== syncChecksum;
+
   return {
     hasMismatch: countMismatch || checksumMismatch,
     countMismatch,
@@ -2680,7 +2806,15 @@ function _detectChecksumMismatch(localChecksum, syncChecksum, localTabCount, syn
  * @param {Object} options.mismatchResult - Result of mismatch detection
  * @param {Object} options.localState - Local state for recovery
  */
-async function _handleChecksumMismatch({ operationId, localChecksum, syncChecksum, localTabCount, syncTabCount, mismatchResult, localState }) {
+async function _handleChecksumMismatch({
+  operationId,
+  localChecksum,
+  syncChecksum,
+  localTabCount,
+  syncTabCount,
+  mismatchResult,
+  localState
+}) {
   console.warn('[Background] STORAGE_INTEGRITY_CHECKSUM_MISMATCH:', {
     operationId,
     localChecksum,
@@ -2691,14 +2825,16 @@ async function _handleChecksumMismatch({ operationId, localChecksum, syncChecksu
     checksumMismatch: mismatchResult.checksumMismatch,
     timestamp: Date.now()
   });
-  
+
   // Determine which source to trust (prefer the one with more data)
   if (syncTabCount > localTabCount) {
-    console.log('[Background] STORAGE_INTEGRITY_RECOVERY: Restoring from sync backup (more complete)');
+    console.log(
+      '[Background] STORAGE_INTEGRITY_RECOVERY: Restoring from sync backup (more complete)'
+    );
     await attemptRecoveryFromSyncBackup(operationId, localState);
     return { mismatch: true, recovered: true };
   }
-  
+
   console.log('[Background] STORAGE_INTEGRITY_MISMATCH_KEPT_LOCAL: Local has more or equal data', {
     localTabCount,
     syncTabCount
@@ -2936,7 +3072,9 @@ function _handleInitializationError(err, initStartTime) {
     );
     setTimeout(() => initializeGlobalState(), backoffMs);
   } else {
-    console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+    console.error(
+      '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
+    );
     globalQuickTabState.tabs = [];
     globalQuickTabState.lastUpdate = Date.now();
     isInitialized = true;
@@ -2969,13 +3107,13 @@ async function initializeGlobalState() {
       recovered: integrityResult.recovered,
       error: integrityResult.error
     });
-    
+
     // If we recovered from backup, our state is already populated
     if (integrityResult.recovered && globalQuickTabState.tabs?.length > 0) {
       _logInitializationComplete('backup recovery', initStartTime);
       return;
     }
-    
+
     // Try session storage first (faster)
     if (await tryLoadFromSessionStorage()) {
       _logInitializationComplete('session storage', initStartTime);
@@ -3289,7 +3427,7 @@ async function saveMigratedQuickTabState() {
 
   // v1.6.3.7-v13 - Issue #2: Use centralized validation
   const result = await _writeQuickTabStateWithValidation(stateToSave, 'migration');
-  
+
   if (result.success) {
     console.log('[Background Migration] ✓ Migration complete (validated)');
   } else {
@@ -3978,10 +4116,10 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
 
   // v1.6.3.7-v13 - Issue #2: Use centralized validation
   const result = await _writeQuickTabStateWithValidation(stateToSave, 'tab-cleanup');
-  
+
   // Return true if write was validated OR if recovery succeeded
   const persistedSuccessfully = result.success || result.recovered;
-  
+
   if (persistedSuccessfully) {
     console.log('[Background] Cleaned up Quick Tab state after tab closure', {
       validated: result.success,
@@ -3994,7 +4132,7 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
       note: 'State may be inconsistent with storage'
     });
   }
-  
+
   return persistedSuccessfully;
 }
 
@@ -4651,9 +4789,9 @@ function _createDedupResult({ shouldSkip, method, reason, decision, logDetails =
   } else {
     dedupStats.processed++;
   }
-  
+
   const result = { shouldSkip, method, reason };
-  
+
   console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
     decision,
@@ -4679,37 +4817,43 @@ function _createSkipResult(method, reason, logDetails = {}) {
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _createProcessResult(logDetails = {}) {
-  return _createDedupResult({ shouldSkip: false, method: 'none', reason: 'Legitimate change', decision: 'process', logDetails });
+  return _createDedupResult({
+    shouldSkip: false,
+    method: 'none',
+    reason: 'Legitimate change',
+    decision: 'process',
+    logDetails
+  });
 }
 
 // ==================== EVENT ORDERING ARCHITECTURE (v1.6.3.7-v9, v1.6.3.7-v13) ====================
 /**
  * Event Ordering Architecture (v1.6.3.7-v9)
- * 
+ *
  * Firefox storage.onChanged provides NO ordering guarantees across multiple writes.
  * Two writes 100ms apart may have their onChanged events fire in any order.
  * MDN Reference: "The order in which listeners are called is not defined."
- * 
+ *
  * Sequence IDs (assigned at write-time, not event-fire time) provide reliable
  * ordering because Firefox does not reorder messages from same JS execution.
- * 
+ *
  * WHY SEQUENCE IDs WORK:
  * 1. Write A gets sequenceId=5, then calls storage.local.set()
  * 2. Write B gets sequenceId=6, then calls storage.local.set()
  * 3. Even if B's onChanged fires BEFORE A's, we detect this because:
  *    - B has sequenceId=6, A has sequenceId=5
  *    - If we've already processed sequenceId=6, sequenceId=5 is stale
- * 
+ *
  * WHY TIMESTAMPS ARE INSUFFICIENT:
  * 1. Timestamps are assigned at write-time, same as sequence IDs
  * 2. BUT: Two writes 100ms apart may fire in reverse order
  * 3. The 50ms timestamp window cannot detect 150ms+ delays
- * 
+ *
  * DEDUP PRIORITY ORDER:
  * 1. PRIMARY: Sequence ID comparison (strongest guarantee)
  * 2. SECONDARY: saveId + timestamp (50ms window, for legacy writes)
  * 3. TERTIARY: Content hash (for messages without saveId)
- * 
+ *
  * See: _getNextStorageSequenceId(), _checkSequenceIdOrdering()
  */
 // ==================== END EVENT ORDERING ARCHITECTURE ====================
@@ -4772,7 +4916,8 @@ function _runSequenceIdCheck(newValue, oldValue) {
     return _createSkipResult('sequenceId', sequenceResult.reason, {
       newSequenceId: newValue?.sequenceId,
       oldSequenceId: oldValue?.sequenceId,
-      explanation: 'Sequence ID ordering: events with lower or equal sequenceId than already-processed events are duplicates'
+      explanation:
+        'Sequence ID ordering: events with lower or equal sequenceId than already-processed events are duplicates'
     });
   }
   return null;
@@ -4800,9 +4945,13 @@ function _runSaveIdTimestampCheck(newValue, oldValue) {
  */
 function _runContentHashCheck(newValue, oldValue) {
   if (_isContentHashDuplicate(newValue, oldValue)) {
-    return _createSkipResult('contentHash', 'Identical content (tertiary safeguard for no-saveId messages)', {
-      hasSaveId: !!newValue?.saveId
-    });
+    return _createSkipResult(
+      'contentHash',
+      'Identical content (tertiary safeguard for no-saveId messages)',
+      {
+        hasSaveId: !!newValue?.saveId
+      }
+    );
   }
   return null;
 }
@@ -4832,27 +4981,27 @@ function _multiMethodDeduplication(newValue, oldValue) {
  * v1.6.3.7-v12 - Issue #9: Sequence ID-based ordering replaces arbitrary timestamp window
  * v1.6.3.7-v12 - FIX Code Review: Renamed 'skip' to 'shouldSkip' for clarity
  * v1.6.3.7-v13 - Issue #3: Added comprehensive explanation of ordering guarantees
- * 
+ *
  * IMPORTANT: Why Sequence IDs Provide Ordering Guarantees
  * ========================================================
  * Firefox's storage.onChanged provides NO ordering guarantees across multiple writes.
  * Two writes made 100ms apart may have their storage.onChanged events fire in ANY order
  * due to Firefox's async event processing, IndexedDB batching, and internal scheduling.
- * 
+ *
  * Sequence IDs solve this because they are assigned BEFORE the storage.local.set() call,
  * during the same synchronous JS execution that initiates the write. This means:
- * 
+ *
  * 1. Write A gets sequenceId=5, then calls storage.local.set()
  * 2. Write B gets sequenceId=6, then calls storage.local.set()
- * 
+ *
  * Even if B's storage.onChanged fires BEFORE A's (which Firefox allows), we can detect
  * this because B will have sequenceId=6 and A will have sequenceId=5. If we've already
  * processed sequenceId=6, we know sequenceId=5 is stale data from an older write.
- * 
+ *
  * The 50ms timestamp window (DEDUP_SAVEID_TIMESTAMP_WINDOW_MS) is kept as a SECONDARY
  * fallback for legacy writes that don't have sequenceId, but it cannot reliably detect
  * out-of-order events because timestamps are also assigned at write-time, not event-fire time.
- * 
+ *
  * @private
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
@@ -4874,10 +5023,13 @@ function _hasValidSequenceIds(newValue, oldValue) {
  */
 function _logMissingSequenceId(newSeqId, oldSeqId) {
   if (DEBUG_DIAGNOSTICS) {
-    console.log('[Background] [STORAGE] SEQUENCE_ID_CHECK: Missing sequenceId, falling back to other methods', {
-      hasNewSeqId: typeof newSeqId === 'number',
-      hasOldSeqId: typeof oldSeqId === 'number'
-    });
+    console.log(
+      '[Background] [STORAGE] SEQUENCE_ID_CHECK: Missing sequenceId, falling back to other methods',
+      {
+        hasNewSeqId: typeof newSeqId === 'number',
+        hasOldSeqId: typeof oldSeqId === 'number'
+      }
+    );
   }
 }
 
@@ -4889,24 +5041,28 @@ function _logMissingSequenceId(newSeqId, oldSeqId) {
 function _handleStaleSequenceId(newSeqId, oldSeqId) {
   const isDuplicate = newSeqId === oldSeqId;
   const isOutOfOrder = newSeqId < oldSeqId;
-  
+
   if (isOutOfOrder) {
-    console.log('[Background] [STORAGE] OUT_OF_ORDER_EVENTS: Older sequence fired after newer sequence', {
-      olderSequenceId: newSeqId,
-      newerSequenceId: oldSeqId,
-      explanation: 'Firefox storage.onChanged events can fire in any order - this older write arrived late'
-    });
+    console.log(
+      '[Background] [STORAGE] OUT_OF_ORDER_EVENTS: Older sequence fired after newer sequence',
+      {
+        olderSequenceId: newSeqId,
+        newerSequenceId: oldSeqId,
+        explanation:
+          'Firefox storage.onChanged events can fire in any order - this older write arrived late'
+      }
+    );
   }
-  
+
   console.log('[Background] [STORAGE] SEQUENCE_ID_SKIP: Old or duplicate event detected', {
     newSequenceId: newSeqId,
     oldSequenceId: oldSeqId,
     isDuplicate,
     isOutOfOrder
   });
-  
-  const reason = isDuplicate 
-    ? 'Same sequenceId (duplicate event)' 
+
+  const reason = isDuplicate
+    ? 'Same sequenceId (duplicate event)'
     : 'Lower sequenceId (out-of-order event from older write)';
   return { shouldSkip: true, reason };
 }
@@ -4929,18 +5085,18 @@ function _logValidSequenceProgression(newSeqId, oldSeqId) {
 function _checkSequenceIdOrdering(newValue, oldValue) {
   const newSeqId = newValue?.sequenceId;
   const oldSeqId = oldValue?.sequenceId;
-  
+
   // Can't use sequence ordering if either lacks sequenceId
   if (!_hasValidSequenceIds(newValue, oldValue)) {
     _logMissingSequenceId(newSeqId, oldSeqId);
     return { shouldSkip: false, reason: 'No sequenceId available' };
   }
-  
+
   // Stale or duplicate event - sequence ID is same or lower
   if (newSeqId <= oldSeqId) {
     return _handleStaleSequenceId(newSeqId, oldSeqId);
   }
-  
+
   // Valid sequence progression
   _logValidSequenceProgression(newSeqId, oldSeqId);
   return { shouldSkip: false, reason: 'Valid sequence progression' };
@@ -4984,7 +5140,7 @@ function _areSaveIdsDifferent(newValue, oldValue) {
  * @private
  */
 function _logContentHashMatch(newHasSaveId, oldHasSaveId, saveIdMatch) {
-  const mode = (!newHasSaveId || !oldHasSaveId) ? 'secondary-no-saveId' : 'firefox-spurious';
+  const mode = !newHasSaveId || !oldHasSaveId ? 'secondary-no-saveId' : 'firefox-spurious';
   console.log('[Background] v1.6.3.7-v9 Content hash match detected:', {
     mode,
     newHasSaveId,
@@ -5036,13 +5192,13 @@ function _isContentHashDuplicate(newValue, oldValue) {
   // Compute and compare content keys
   const newContentKey = _computeQuickTabContentKey(newValue);
   const oldContentKey = _computeQuickTabContentKey(oldValue);
-  
+
   if (!_doContentHashesMatch(newContentKey, oldContentKey)) return false;
 
   // Content matches - log and return true
   const saveIdMatch = _computeSaveIdMatch(newValue, oldValue);
   _logContentHashMatch(!!newValue?.saveId, !!oldValue?.saveId, saveIdMatch);
-  
+
   return true;
 }
 
@@ -5312,7 +5468,7 @@ function _handleStorageOnChanged(changes, areaName) {
     changedKeys: Object.keys(changes),
     timestamp: Date.now()
   });
-  
+
   // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
   if (!isInitialized) {
     console.warn('[Background] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
@@ -6036,7 +6192,7 @@ function unregisterPort(portId, reason = 'disconnect') {
       duration: Date.now() - portInfo.connectedAt
     });
     portRegistry.delete(portId);
-    
+
     // v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
     _cleanupPortSequenceTracking(portId);
   }
@@ -6053,13 +6209,14 @@ function updatePortActivity(portId) {
   const portInfo = portRegistry.get(portId);
   if (portInfo) {
     const now = Date.now();
-    const previousActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+    const previousActivity =
+      portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
     const timeSinceLastActivity = now - previousActivity;
-    
+
     portInfo.lastMessageAt = now;
     portInfo.lastActivityTime = now; // v1.6.3.7-v9
     portInfo.messageCount++;
-    
+
     // v1.6.3.8 - Issue #10: Log port activity when DEBUG_DIAGNOSTICS enabled
     if (DEBUG_DIAGNOSTICS) {
       console.log('[Background] PORT_ACTIVITY:', {
@@ -6149,7 +6306,7 @@ function _isPortTooOld(portInfo, now, portId) {
 function _isPortStale(portInfo, now, portId) {
   const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
   const inactivityMs = now - lastActivity;
-  
+
   if (inactivityMs > PORT_STALE_TIMEOUT_MS) {
     console.warn('[Background] [PORT] PORT_STALE_DETECTED:', {
       portId,
@@ -6244,16 +6401,17 @@ setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
  */
 function _checkForZombiePorts() {
   const now = Date.now();
-  
+
   for (const [portId, portInfo] of portRegistry.entries()) {
-    const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+    const lastActivity =
+      portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
     const inactivityMs = now - lastActivity;
-    
+
     // Skip if already waiting for ping response
     if (pendingPortPings.has(portId)) {
       continue;
     }
-    
+
     // If inactive for longer than threshold, send ping
     if (inactivityMs >= PORT_PING_THRESHOLD_MS) {
       _sendPortPing(portId, portInfo);
@@ -6274,22 +6432,22 @@ function _sendPortPing(portId, portInfo) {
     portId,
     timestamp: Date.now()
   };
-  
+
   try {
     portInfo.port.postMessage(pingMessage);
-    
+
     console.log('[Background] PORT_PING_SENT:', {
       portId,
       origin: portInfo.origin,
       tabId: portInfo.tabId,
       responseTimeoutMs: PORT_PING_RESPONSE_TIMEOUT_MS
     });
-    
+
     // Set timeout for response
     const timeoutId = setTimeout(() => {
       _handlePortPingTimeout(portId);
     }, PORT_PING_RESPONSE_TIMEOUT_MS);
-    
+
     pendingPortPings.set(portId, {
       sentAt: Date.now(),
       timeoutId
@@ -6314,9 +6472,9 @@ function _sendPortPing(portId, portInfo) {
 function _handlePortPingTimeout(portId) {
   const pendingPing = pendingPortPings.get(portId);
   if (!pendingPing) return;
-  
+
   const portInfo = portRegistry.get(portId);
-  
+
   console.warn('[Background] PORT_PING_TIMEOUT (zombie detected):', {
     portId,
     origin: portInfo?.origin,
@@ -6324,7 +6482,7 @@ function _handlePortPingTimeout(portId) {
     waitedMs: Date.now() - pendingPing.sentAt,
     reason: 'No response to ping - likely BFCache zombie'
   });
-  
+
   pendingPortPings.delete(portId);
   unregisterPort(portId, 'ping-timeout-zombie');
 }
@@ -6337,18 +6495,18 @@ function _handlePortPingTimeout(portId) {
 function _handlePortPong(portId) {
   const pendingPing = pendingPortPings.get(portId);
   if (!pendingPing) return;
-  
+
   clearTimeout(pendingPing.timeoutId);
   pendingPortPings.delete(portId);
-  
+
   const portInfo = portRegistry.get(portId);
-  
+
   console.log('[Background] PORT_PONG_RECEIVED:', {
     portId,
     origin: portInfo?.origin,
     roundTripMs: Date.now() - pendingPing.sentAt
   });
-  
+
   // Update activity since port responded
   updatePortActivity(portId);
 }
@@ -6534,7 +6692,11 @@ function _processPortMessageSequence(portId, message) {
     tracking.lastReceivedSeq = receivedSeq;
     // v1.6.3.7-v10 - FIX Issue #9: Clear timeout since we received expected message
     _clearPortBufferTimeout(portId);
-    return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+    return {
+      buffered: false,
+      expectedSequence: expectedSeq,
+      bufferSize: tracking.reorderBuffer.size
+    };
   }
 
   // Message is out of order - future message arrived early
@@ -6571,7 +6733,11 @@ function _processPortMessageSequence(portId, message) {
       _forceFlushReorderBuffer(portId, tracking);
     }
 
-    return { buffered: true, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+    return {
+      buffered: true,
+      expectedSequence: expectedSeq,
+      bufferSize: tracking.reorderBuffer.size
+    };
   }
 
   // receivedSeq < expectedSeq: Old/duplicate message, ignore
@@ -6580,7 +6746,11 @@ function _processPortMessageSequence(portId, message) {
     receivedSequence: receivedSeq,
     lastReceivedSequence: tracking.lastReceivedSeq
   });
-  return { buffered: false, expectedSequence: expectedSeq, bufferSize: tracking.reorderBuffer.size };
+  return {
+    buffered: false,
+    expectedSequence: expectedSeq,
+    bufferSize: tracking.reorderBuffer.size
+  };
 }
 
 /**
@@ -6602,7 +6772,7 @@ async function _processBufferedMessages(port, portId) {
   while (hasMoreMessages) {
     const nextExpected = tracking.lastReceivedSeq + 1;
     const bufferedMessage = tracking.reorderBuffer.get(nextExpected);
-    
+
     if (!bufferedMessage) {
       hasMoreMessages = false;
       continue;
@@ -6643,7 +6813,7 @@ async function _processBufferedMessages(port, portId) {
 function _forceFlushReorderBuffer(portId, tracking) {
   // Get sorted sequence numbers
   const sequences = Array.from(tracking.reorderBuffer.keys()).sort((a, b) => a - b);
-  
+
   // Remove oldest half of buffer
   const toRemove = Math.floor(sequences.length / 2);
   for (let i = 0; i < toRemove; i++) {
@@ -6886,19 +7056,19 @@ function handleDeletionAck(message, portInfo) {
  */
 function handlePortPong(message, portInfo) {
   const portId = portInfo?.port?._portId;
-  
+
   console.log('[Background] PORT_PONG received:', {
     portId,
     origin: portInfo?.origin,
     timestamp: message.timestamp,
     originalPingTimestamp: message.originalTimestamp
   });
-  
+
   // Cancel eviction timeout for this port
   if (portId) {
     _handlePortPong(portId);
   }
-  
+
   return Promise.resolve({
     success: true,
     type: 'PORT_PONG_ACK',
@@ -6913,10 +7083,13 @@ function handlePortPong(message, portInfo) {
  */
 const ACTION_REQUEST_HANDLERS = {
   TOGGLE_GROUP: () => ({ success: true }),
-  MINIMIZE_TAB: (payload, portInfo) => executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  RESTORE_TAB: (payload, portInfo) => executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  CLOSE_TAB: (payload, portInfo) => executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  ADOPT_TAB: (payload) => handleAdoptAction(payload),
+  MINIMIZE_TAB: (payload, portInfo) =>
+    executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  RESTORE_TAB: (payload, portInfo) =>
+    executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  CLOSE_TAB: (payload, portInfo) =>
+    executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  ADOPT_TAB: payload => handleAdoptAction(payload),
   CLOSE_MINIMIZED_TABS: () => handleCloseMinimizedTabsCommand(),
   DELETE_GROUP: () => ({ success: false, error: 'Not implemented' })
 };
@@ -7062,7 +7235,7 @@ function _buildAdoptionError({ quickTabId, targetTabId, corrId, reason, extraInf
 async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const sequenceId = _getNextStorageSequenceId();
-  
+
   const stateToWrite = {
     tabs: state.tabs,
     saveId,
@@ -7071,10 +7244,10 @@ async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
     writingTabId: targetTabId,
     writingInstanceId: `background-adopt-${Date.now()}`
   };
-  
+
   // v1.6.3.7-v13 - Issue #2: Use centralized validation
   const result = await _writeQuickTabStateWithValidation(stateToWrite, 'adoption');
-  
+
   if (!result.success && !result.recovered) {
     console.warn('[Background] ADOPTION_WRITE_INCONSISTENT:', {
       quickTabId,
@@ -7083,7 +7256,7 @@ async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
       recommendation: 'State may be inconsistent - consider retrying adoption'
     });
   }
-  
+
   return { saveId, sequenceId, validated: result.success, recovered: result.recovered };
 }
 
@@ -7113,21 +7286,33 @@ async function handleAdoptAction(payload) {
   const { quickTabId, targetTabId, correlationId } = payload;
   const corrId = correlationId || `adopt-${Date.now()}-${quickTabId?.substring(0, 8) || 'unknown'}`;
 
-  console.log('[Background] ADOPTION_STARTED:', { quickTabId, targetTabId, correlationId: corrId, timestamp: Date.now() });
+  console.log('[Background] ADOPTION_STARTED:', {
+    quickTabId,
+    targetTabId,
+    correlationId: corrId,
+    timestamp: Date.now()
+  });
 
   // Read entire state
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
 
   if (!state?.tabs) {
-    return _buildAdoptionError({ quickTabId, targetTabId, corrId, reason: 'No state to adopt from' });
+    return _buildAdoptionError({
+      quickTabId,
+      targetTabId,
+      corrId,
+      reason: 'No state to adopt from'
+    });
   }
 
   // Find and update the tab locally
   const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
   if (tabIndex === -1) {
     return _buildAdoptionError({
-      quickTabId, targetTabId, corrId,
+      quickTabId,
+      targetTabId,
+      corrId,
       reason: 'Quick Tab not found',
       extraInfo: { availableTabIds: state.tabs.map(t => t.id).slice(0, 10) }
     });
@@ -7155,7 +7340,12 @@ async function handleAdoptAction(payload) {
   _broadcastStorageWriteConfirmation({ tabs: state.tabs, saveId, sequenceId }, saveId);
 
   console.log('[Background] ADOPTION_COMPLETED:', {
-    quickTabId, url: adoptedTabUrl, oldOriginTabId, newOriginTabId: targetTabId, correlationId: corrId, timestamp: Date.now()
+    quickTabId,
+    url: adoptedTabUrl,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    correlationId: corrId,
+    timestamp: Date.now()
   });
 
   return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
@@ -7315,14 +7505,23 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
  * @param {string} options.saveId - Save ID for deduplication
  * @param {string} [options.correlationId] - Correlation ID for tracing
  */
-function _broadcastOperationConfirmation({ operationType, quickTabId, changes, saveId, correlationId }) {
+function _broadcastOperationConfirmation({
+  operationType,
+  quickTabId,
+  changes,
+  saveId,
+  correlationId
+}) {
   if (!isBroadcastChannelAvailable()) {
     if (DEBUG_MESSAGING) {
-      console.log('[Background] [BC] BROADCAST_SKIPPED: Channel not available for operation confirmation', {
-        operationType,
-        quickTabId,
-        timestamp: Date.now()
-      });
+      console.log(
+        '[Background] [BC] BROADCAST_SKIPPED: Channel not available for operation confirmation',
+        {
+          operationType,
+          quickTabId,
+          timestamp: Date.now()
+        }
+      );
     }
     return;
   }
@@ -7394,7 +7593,7 @@ function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlationId)
  * @private
  * @param {Object} message - Message to send
  * @param {string} quickTabId - Quick Tab ID for logging
- * @param {string} operation - Operation name for logging  
+ * @param {string} operation - Operation name for logging
  * @param {string} correlationId - Correlation ID for logging
  * @returns {{ sentCount: number, errorCount: number }} Send results
  */
@@ -7407,7 +7606,14 @@ function _sendMessageToSidebarPorts(message, quickTabId, operation, correlationI
       continue;
     }
 
-    const result = _trySendToPort({ port: portInfo.port, message, portId, quickTabId, operation, correlationId });
+    const result = _trySendToPort({
+      port: portInfo.port,
+      message,
+      portId,
+      quickTabId,
+      operation,
+      correlationId
+    });
     if (result.success) {
       sentCount++;
     } else {
@@ -7709,7 +7915,10 @@ async function writeStateWithVerificationAndRetry(operation) {
 
   // v1.6.4.9 - Issue #8: Log initial write attempt
   console.log('[Background] STORAGE_WRITE_ATTEMPT:', {
-    saveId, operation, attempt: `1/${STORAGE_WRITE_MAX_RETRIES}`, tabCount
+    saveId,
+    operation,
+    attempt: `1/${STORAGE_WRITE_MAX_RETRIES}`,
+    tabCount
   });
 
   const result = await _executeStorageWriteLoop(operation, saveId, tabCount, stateHash);
@@ -7728,7 +7937,11 @@ async function writeStateWithVerificationAndRetry(operation) {
 function _logStorageWriteStarted(saveId, operation, tabCount, stateHash) {
   if (DEBUG_MESSAGING) {
     console.log('[Background] [STORAGE] WRITE_STARTED:', {
-      saveId, operation, tabCount, stateHash, timestamp: Date.now()
+      saveId,
+      operation,
+      tabCount,
+      stateHash,
+      timestamp: Date.now()
     });
   }
 }
@@ -7742,7 +7955,12 @@ async function _executeStorageWriteLoop(operation, saveId, tabCount, stateHash) 
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
+    const result = await _attemptStorageWriteWithVerification(
+      operation,
+      saveId,
+      attempt,
+      backoffMs
+    );
 
     if (result.success && result.verified) {
       _logStorageWriteSuccess({ saveId, operation, tabCount, stateHash, attemptNumber: attempt });
@@ -7767,12 +7985,21 @@ async function _executeStorageWriteLoop(operation, saveId, tabCount, stateHash) 
  */
 function _logStorageWriteSuccess({ saveId, operation, tabCount, stateHash, attemptNumber }) {
   console.log('[Background] STORAGE_WRITE_SUCCESS:', {
-    saveId, operation, attemptNumber, totalAttempts: STORAGE_WRITE_MAX_RETRIES, tabCount
+    saveId,
+    operation,
+    attemptNumber,
+    totalAttempts: STORAGE_WRITE_MAX_RETRIES,
+    tabCount
   });
 
   if (DEBUG_MESSAGING) {
     console.log('[Background] [STORAGE] WRITE_SUCCESS:', {
-      saveId, operation, tabCount, stateHash, attemptNumber, timestamp: Date.now()
+      saveId,
+      operation,
+      tabCount,
+      stateHash,
+      attemptNumber,
+      timestamp: Date.now()
     });
   }
 }
@@ -7784,7 +8011,11 @@ function _logStorageWriteSuccess({ saveId, operation, tabCount, stateHash, attem
  */
 function _logStorageWriteRetry(saveId, operation, attempt, backoffMs) {
   console.log('[Background] STORAGE_WRITE_RETRY:', {
-    saveId, operation, attempt: `${attempt + 1}/${STORAGE_WRITE_MAX_RETRIES}`, backoffMs, reason: 'verification pending'
+    saveId,
+    operation,
+    attempt: `${attempt + 1}/${STORAGE_WRITE_MAX_RETRIES}`,
+    backoffMs,
+    reason: 'verification pending'
   });
 }
 
@@ -7798,12 +8029,20 @@ function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stat
   if (result.success) return;
 
   console.error('[Background] STORAGE_WRITE_FINAL_FAILURE:', {
-    operation, saveId, totalAttempts: STORAGE_WRITE_MAX_RETRIES, tabCount
+    operation,
+    saveId,
+    totalAttempts: STORAGE_WRITE_MAX_RETRIES,
+    tabCount
   });
 
   if (DEBUG_MESSAGING) {
     console.error('[Background] [STORAGE] WRITE_FAILED:', {
-      saveId, operation, tabCount, stateHash, totalAttempts: STORAGE_WRITE_MAX_RETRIES, timestamp: Date.now()
+      saveId,
+      operation,
+      tabCount,
+      stateHash,
+      totalAttempts: STORAGE_WRITE_MAX_RETRIES,
+      timestamp: Date.now()
     });
   }
 }
@@ -7872,7 +8111,14 @@ async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, at
     // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel after verified write
     _broadcastStorageWriteConfirmation(readBack, saveId);
 
-    return { success: true, saveId, sequenceId, verified: true, attempts: attempt, needsRetry: false };
+    return {
+      success: true,
+      saveId,
+      sequenceId,
+      verified: true,
+      attempts: attempt,
+      needsRetry: false
+    };
   }
 
   console.warn(
@@ -8099,10 +8345,15 @@ function _prepareStateChangeContext(message, sender) {
   const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
   const messageId = message.messageId || generateMessageId();
-  
+
   logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
-  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', { quickTabId, changes, source, sourceTabId });
-  
+  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
+    quickTabId,
+    changes,
+    source,
+    sourceTabId
+  });
+
   return { messageId, quickTabId, changes, source, sourceTabId };
 }
 
@@ -8457,18 +8708,33 @@ function _isQuickTabCreation(changes, quickTabId) {
 function _determineBroadcastTypeAndFn(quickTabId, changes) {
   // Priority-ordered checks for state changes
   if (changes?.deleted === true) {
-    return { broadcastType: 'quick-tab-deleted', broadcastFn: () => broadcastQuickTabDeleted(quickTabId) };
+    return {
+      broadcastType: 'quick-tab-deleted',
+      broadcastFn: () => broadcastQuickTabDeleted(quickTabId)
+    };
   }
   if (changes?.minimized === true) {
-    return { broadcastType: 'quick-tab-minimized', broadcastFn: () => broadcastQuickTabMinimized(quickTabId) };
+    return {
+      broadcastType: 'quick-tab-minimized',
+      broadcastFn: () => broadcastQuickTabMinimized(quickTabId)
+    };
   }
   if (changes?.minimized === false) {
-    return { broadcastType: 'quick-tab-restored', broadcastFn: () => broadcastQuickTabRestored(quickTabId) };
+    return {
+      broadcastType: 'quick-tab-restored',
+      broadcastFn: () => broadcastQuickTabRestored(quickTabId)
+    };
   }
   if (_isQuickTabCreation(changes, quickTabId)) {
-    return { broadcastType: 'quick-tab-created', broadcastFn: () => broadcastQuickTabCreated(quickTabId, changes) };
+    return {
+      broadcastType: 'quick-tab-created',
+      broadcastFn: () => broadcastQuickTabCreated(quickTabId, changes)
+    };
   }
-  return { broadcastType: 'quick-tab-updated', broadcastFn: () => broadcastQuickTabUpdated(quickTabId, changes) };
+  return {
+    broadcastType: 'quick-tab-updated',
+    broadcastFn: () => broadcastQuickTabUpdated(quickTabId, changes)
+  };
 }
 
 /**
@@ -8825,10 +9091,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       source: message.source,
       timestamp: message.timestamp
     });
-    
+
     // Send PONG via BroadcastChannel
     _sendBCVerificationPong(message);
-    
+
     sendResponse({
       success: true,
       type: 'BC_VERIFICATION_REQUEST_ACK',
@@ -9115,7 +9381,13 @@ async function notifyQuickTabCreated(quickTab) {
  * @param {number} [config.clearTimeoutMultiplier=1] - Multiplier for auto-clear timeout
  * @returns {Promise<string|null>} Notification ID or null on failure
  */
-async function _createNotification({ idPrefix, title, message, priority = 1, clearTimeoutMultiplier = 1 }) {
+async function _createNotification({
+  idPrefix,
+  title,
+  message,
+  priority = 1,
+  clearTimeoutMultiplier = 1
+}) {
   if (!isNotificationsAvailable()) {
     return null;
   }

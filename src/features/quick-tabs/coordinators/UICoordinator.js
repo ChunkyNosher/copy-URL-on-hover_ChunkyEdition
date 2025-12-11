@@ -468,7 +468,9 @@ export class UICoordinator {
       this._cleanupStaleTimestamps();
     }, TIMESTAMP_CLEANUP_INTERVAL_MS);
 
-    console.log(`${this._logPrefix} Started timestamp cleanup timer (every ${TIMESTAMP_CLEANUP_INTERVAL_MS}ms)`);
+    console.log(
+      `${this._logPrefix} Started timestamp cleanup timer (every ${TIMESTAMP_CLEANUP_INTERVAL_MS}ms)`
+    );
   }
 
   /**
@@ -2538,7 +2540,9 @@ export class UICoordinator {
       if (typeof this.updateHandler[handlerMethod] === 'function') {
         callbacks[callbackName] = this.updateHandler[handlerMethod].bind(this.updateHandler);
       } else if (this._handlersReady) {
-        console.debug(`${this._logPrefix} UpdateHandler.${handlerMethod} not available for ${quickTabId}`);
+        console.debug(
+          `${this._logPrefix} UpdateHandler.${handlerMethod} not available for ${quickTabId}`
+        );
       }
     }
   }

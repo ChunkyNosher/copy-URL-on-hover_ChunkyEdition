@@ -569,15 +569,12 @@ export class VisibilityHandler {
         setTimeout(() => {
           // v1.6.3.7-v8 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
           const broadcastSuccess = broadcastQuickTabMinimized(id);
-          console.log(
-            `${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`,
-            {
-              operation: 'minimize',
-              tabId: id,
-              success: broadcastSuccess,
-              timestamp: Date.now()
-            }
-          );
+          console.log(`${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`, {
+            operation: 'minimize',
+            tabId: id,
+            success: broadcastSuccess,
+            timestamp: Date.now()
+          });
         }, 0);
       }
 
@@ -1108,26 +1105,27 @@ export class VisibilityHandler {
 
     this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
     // v1.6.3.6-v6 - FIX: Include originTabId in emission log for debugging cross-tab validation
-    console.log(`${this._logPrefix} [EVENT] [INTERNAL_EMIT] state:updated for restore (source: ${source}):`, id, {
-      domVerified: isDOMRendered,
-      isRestoreOperation: true,
-      originTabId: tabWindow?.originTabId ?? 'N/A'
-    });
+    console.log(
+      `${this._logPrefix} [EVENT] [INTERNAL_EMIT] state:updated for restore (source: ${source}):`,
+      id,
+      {
+        domVerified: isDOMRendered,
+        isRestoreOperation: true,
+        originTabId: tabWindow?.originTabId ?? 'N/A'
+      }
+    );
 
     // v1.6.3.7-v8 - FIX Issue #15: Schedule cross-context broadcast after local processing
     // Use setTimeout to ensure local eventBus listeners process first
     setTimeout(() => {
       // v1.6.3.7-v8 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
       const broadcastSuccess = broadcastQuickTabRestored(id);
-      console.log(
-        `${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`,
-        {
-          operation: 'restore',
-          tabId: id,
-          success: broadcastSuccess,
-          timestamp: Date.now()
-        }
-      );
+      console.log(`${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`, {
+        operation: 'restore',
+        tabId: id,
+        success: broadcastSuccess,
+        timestamp: Date.now()
+      });
     }, 0);
   }
 

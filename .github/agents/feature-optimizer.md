@@ -67,14 +67,16 @@ const relevantMemories = await searchMemories({
 
 **v1.6.3.8 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write + verify
+- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
+  exponential backoff)
+- **Centralized storage validation** - Type-specific recovery with re-write +
+  verify
 - **Storage tier probing** - 500ms latency measurement
 - **Keepalive health reports** - 60s interval with success/failure percentages
 - **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback logging,
-keepalive health sampling, port registry thresholds.
+**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
+logging, keepalive health sampling, port registry thresholds.
 
 **v1.6.3.6 Fixes:**
 
