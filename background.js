@@ -215,7 +215,17 @@ const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s
 const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 
 // FIX Issue #3: Multi-method deduplication
-const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
+// v1.6.3.7-v13 - Issue #3: Documentation of 50ms window rationale
+// IMPORTANT: The 50ms timestamp window is a SECONDARY safety net, NOT the primary ordering mechanism.
+// Primary ordering uses sequence IDs (added v1.6.3.7-v9) which are assigned at write-time before
+// storage.local.set() call. Firefox does NOT reorder events from same JS execution, so sequence
+// IDs provide a reliable ordering guarantee that timestamps cannot provide.
+// Timestamp-based dedup alone is INSUFFICIENT because:
+//   1. Firefox storage.onChanged events can fire in any order (MDN: "The order listeners are called is not defined")
+//   2. Timestamps assigned at write-time, but events may fire out of order due to IndexedDB batching
+//   3. Two writes 100ms apart may have their onChanged events fire in reverse order
+// See _checkSequenceIdOrdering() for the primary ordering mechanism.
+const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison (SECONDARY fallback)
 
 // FIX Issue #6: Deletion acknowledgment tracking
 const DELETION_ACK_TIMEOUT_MS = 1000; // 1 second timeout for deletion acknowledgments
@@ -4217,16 +4227,19 @@ function _createSkipResult(method, reason, logDetails = {}) {
  * Create a dedup result indicating the change should be processed
  * v1.6.4.13 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
  * v1.6.3.7-v12 - Issue #6: Track dedup statistics and log all decisions
+ * v1.6.3.7-v13 - Issue #8: Add optional logDetails parameter for context
  * @private
+ * @param {Object} logDetails - Optional details for logging (saveId, sequenceId, etc.)
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
-function _createProcessResult() {
+function _createProcessResult(logDetails = {}) {
   // v1.6.3.7-v12 - Issue #6: Track processed count
   dedupStats.processed++;
   
   const result = { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
   
   // v1.6.3.7-v12 - Issue #6: Always log dedup decisions regardless of DEBUG_MESSAGING
+  // v1.6.3.7-v13 - Issue #8: Include context details for better debugging
   console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
     decision: 'process',
@@ -4235,18 +4248,44 @@ function _createProcessResult() {
       processed: dedupStats.processed,
       total: dedupStats.skipped + dedupStats.processed
     },
+    ...logDetails,
     timestamp: Date.now()
   });
   return result;
 }
 
+// ==================== EVENT ORDERING ARCHITECTURE (v1.6.3.7-v9, v1.6.3.7-v13) ====================
 /**
- * Multi-method deduplication for storage changes
- * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
- * v1.6.4.9 - Issue #4: Enhanced logging with comparison values
- * v1.6.3.7-v9 - FIX Issue #3: Unified dedup strategy - removed dead transactionId code
- * v1.6.4.13 - FIX Complexity: Extracted result helpers (cc=17 → cc=7)
- *   - PRIMARY: saveId + timestamp comparison (Method 1)
+ * Event Ordering Architecture (v1.6.3.7-v9)
+ * 
+ * Firefox storage.onChanged provides NO ordering guarantees across multiple writes.
+ * Two writes 100ms apart may have their onChanged events fire in any order.
+ * MDN Reference: "The order in which listeners are called is not defined."
+ * 
+ * Sequence IDs (assigned at write-time, not event-fire time) provide reliable
+ * ordering because Firefox does not reorder messages from same JS execution.
+ * 
+ * WHY SEQUENCE IDs WORK:
+ * 1. Write A gets sequenceId=5, then calls storage.local.set()
+ * 2. Write B gets sequenceId=6, then calls storage.local.set()
+ * 3. Even if B's onChanged fires BEFORE A's, we detect this because:
+ *    - B has sequenceId=6, A has sequenceId=5
+ *    - If we've already processed sequenceId=6, sequenceId=5 is stale
+ * 
+ * WHY TIMESTAMPS ARE INSUFFICIENT:
+ * 1. Timestamps are assigned at write-time, same as sequence IDs
+ * 2. BUT: Two writes 100ms apart may fire in reverse order
+ * 3. The 50ms timestamp window cannot detect 150ms+ delays
+ * 
+ * DEDUP PRIORITY ORDER:
+ * 1. PRIMARY: Sequence ID comparison (strongest guarantee)
+ * 2. SECONDARY: saveId + timestamp (50ms window, for legacy writes)
+ * 3. TERTIARY: Content hash (for messages without saveId)
+ * 
+ * See: _getNextStorageSequenceId(), _checkSequenceIdOrdering()
+ */
+// ==================== END EVENT ORDERING ARCHITECTURE ====================
+
 /**
  * Build deduplication check log details
  * v1.6.4.14 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
@@ -4327,7 +4366,12 @@ function _multiMethodDeduplication(newValue, oldValue) {
     });
   }
 
-  return _createProcessResult();
+  // v1.6.3.7-v13 - Issue #8: Pass context to _createProcessResult for debugging
+  return _createProcessResult({
+    saveId: newValue?.saveId,
+    sequenceId: newValue?.sequenceId,
+    tabCount: newValue?.tabs?.length
+  });
 }
 
 /**

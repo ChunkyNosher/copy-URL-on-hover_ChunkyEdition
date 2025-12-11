@@ -2269,6 +2269,33 @@ function _logExpiredCleanup(expiredCount, now) {
 // Start periodic cleanup interval (every 5 seconds)
 setInterval(_cleanupExpiredMessageIds, 5000);
 
+// ==================== v1.6.3.7-v13 DEDUP MAP SIZE LOGGING ====================
+// Issue #5: Periodic logging of dedup Map size for memory monitoring
+const DEDUP_MAP_SIZE_LOG_INTERVAL_MS = 60000; // Log every 60 seconds
+const ESTIMATED_BYTES_PER_ENTRY = 50; // Approximate memory per Map entry (key + value + overhead)
+
+/**
+ * Log the current size of the deduplication Map
+ * v1.6.3.7-v13 - Issue #5: Periodic memory monitoring for dedup map
+ * @private
+ */
+function _logDedupMapSize() {
+  const size = processedMessageTimestamps.size;
+  const estimatedKB = ((size * ESTIMATED_BYTES_PER_ENTRY) / 1024).toFixed(1);
+  const capacityPercent = ((size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1);
+  
+  console.log('[Manager] [DEDUP] DEDUP_MAP_SIZE:', {
+    entries: size,
+    maxSize: MESSAGE_DEDUP_MAX_SIZE,
+    capacityPercent: capacityPercent + '%',
+    estimatedMemoryKB: estimatedKB + 'KB',
+    timestamp: Date.now()
+  });
+}
+
+// Start periodic dedup map size logging (every 60 seconds)
+setInterval(_logDedupMapSize, DEDUP_MAP_SIZE_LOG_INTERVAL_MS);
+
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
 
 /**
