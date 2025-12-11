@@ -212,10 +212,25 @@ class QuickTabsManager {
   /**
    * STEP 6: Hydrate state from storage (v1.6.3.4 - FIX Issues #1, #8)
    * v1.6.3.4 - Added hydration step: reads stored Quick Tabs and repopulates local state
+   * v1.6.3.7-v12 - Issue #12: Add currentTabId barrier before hydration
    * @private
    */
   async _initStep6_Hydrate() {
     console.log('[QuickTabsManager] STEP 6: Attempting to hydrate state from storage...');
+    
+    // v1.6.3.7-v12 - Issue #12: Check currentTabId barrier before hydration
+    const barrierResult = await this._checkCurrentTabIdBarrier();
+    if (!barrierResult.passed) {
+      console.warn('[QuickTabsManager] STEP 6: ⚠️ WARNING - Hydration blocked:', {
+        reason: 'currentTabId barrier failed',
+        currentTabId: this.currentTabId,
+        barrierReason: barrierResult.reason,
+        timestamp: Date.now()
+      });
+      console.log('[QuickTabsManager] STEP 6 Complete (skipped - no currentTabId)');
+      return;
+    }
+    
     const hydrationResult = await this._hydrateStateFromStorage();
 
     if (hydrationResult.success) {
@@ -230,6 +245,70 @@ class QuickTabsManager {
       );
     }
     console.log('[QuickTabsManager] STEP 6 Complete');
+  }
+
+  /**
+   * Check currentTabId barrier before hydration
+   * v1.6.3.7-v12 - Issue #12: Ensure currentTabId is set before hydration to prevent filtering all tabs
+   * @private
+   * @returns {Promise<{passed: boolean, reason: string}>}
+   */
+  async _checkCurrentTabIdBarrier() {
+    const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait
+    const INITIAL_POLL_INTERVAL_MS = 50;
+    const MAX_POLL_INTERVAL_MS = 200;
+    const barrierStartTime = Date.now();
+    
+    // If currentTabId is already set, barrier passes
+    if (this.currentTabId !== null && this.currentTabId !== undefined) {
+      console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Passed (already set)', {
+        currentTabId: this.currentTabId,
+        timestamp: Date.now()
+      });
+      return { passed: true, reason: 'already_set' };
+    }
+    
+    // v1.6.3.7-v12 - Issue #12: Wait for currentTabId to be set with timeout
+    // v1.6.3.7-v12 - FIX Code Review: Use exponential backoff for polling
+    console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Waiting for currentTabId...', {
+      timeout: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
+      pollingStrategy: 'exponential-backoff',
+      timestamp: Date.now()
+    });
+    
+    let pollInterval = INITIAL_POLL_INTERVAL_MS;
+    
+    while (Date.now() - barrierStartTime < CURRENT_TAB_ID_WAIT_TIMEOUT_MS) {
+      // Check if currentTabId was set by Step 1 or message handler
+      if (this.currentTabId !== null && this.currentTabId !== undefined) {
+        const waitDurationMs = Date.now() - barrierStartTime;
+        console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Passed (after wait)', {
+          currentTabId: this.currentTabId,
+          waitDurationMs,
+          timestamp: Date.now()
+        });
+        return { passed: true, reason: 'resolved_after_wait' };
+      }
+      
+      // Wait before next check with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      pollInterval = Math.min(pollInterval * 1.5, MAX_POLL_INTERVAL_MS);
+    }
+    
+    // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
+    // Don't proceed with hydration to avoid filtering ALL tabs (because null !== any originTabId)
+    console.error('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: FAILED - timeout reached', {
+      currentTabId: this.currentTabId,
+      timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
+      elapsedMs: Date.now() - barrierStartTime,
+      consequence: 'Hydration will be skipped to prevent filtering all tabs',
+      timestamp: Date.now()
+    });
+    
+    return { 
+      passed: false, 
+      reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait`
+    };
   }
 
   /**

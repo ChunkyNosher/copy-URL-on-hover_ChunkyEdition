@@ -2421,6 +2421,7 @@ function _tryRoutePortMessageByType(message) {
 /**
  * Handle STATE_UPDATE message via port
  * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce _routePortMessage complexity
+ * v1.6.3.7-v12 - Issue #5: Track fallback updates for health monitoring
  * @private
  * @param {Object} message - State update message
  */
@@ -2433,6 +2434,9 @@ function _handlePortStateUpdate(message) {
   });
   handleStateUpdateBroadcast(message);
   scheduleRender('port-STATE_UPDATE', message.messageId);
+  
+  // v1.6.3.7-v12 - Issue #5: Track as port-based fallback update
+  _trackFallbackUpdate('port');
 }
 
 /**
@@ -2704,11 +2708,28 @@ let broadcastHandlerRef = null;
  * v1.6.3.7-v3 - API #2: Setup channel and listener
  * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
  * v1.6.3.7-v9 - Issue #7: Set up sequence gap detection callback
+ * v1.6.3.7-v12 - Issue #5, #11: Enhanced fallback logging when BC unavailable
  */
 function initializeBroadcastChannel() {
   const initialized = initBroadcastChannel();
   if (!initialized) {
-    console.log('[Manager] BroadcastChannel not available, using storage.onChanged only');
+    // v1.6.3.7-v12 - Issue #5, #11: Log explicit fallback activation
+    console.warn('[Manager] [BC] BROADCAST_CHANNEL_UNAVAILABLE:', {
+      reason: 'BroadcastChannel not available in sidebar context',
+      firefoxConstraint: 'BroadcastChannel API is not available in sidebar/panel isolated contexts',
+      fallbackActivated: true,
+      fallbackMechanism: 'port-based messaging + storage.onChanged polling',
+      fallbackDetails: {
+        primaryFallback: 'runtime.Port connection to background',
+        secondaryFallback: 'storage.onChanged event listener',
+        pollingInterval: 'Event-driven (no polling - relies on storage events)'
+      },
+      timestamp: Date.now()
+    });
+    console.log('[Manager] Sidebar: BroadcastChannel unavailable, activating fallback mechanism [port-based + storage.onChanged]');
+    
+    // v1.6.3.7-v12 - Issue #5: Start fallback health monitoring
+    _startFallbackHealthMonitoring();
     return;
   }
 
@@ -2734,6 +2755,87 @@ function initializeBroadcastChannel() {
       timestamp: Date.now()
     });
     console.log('[Manager] v1.6.3.7-v9 BroadcastChannel listener added with sequence tracking');
+  }
+}
+
+// ==================== v1.6.3.7-v12 FALLBACK HEALTH MONITORING ====================
+// Issue #5: Periodic fallback status logging when BC is unavailable
+
+/**
+ * Fallback health monitoring interval ID
+ * v1.6.3.7-v12 - Issue #5: Track interval for cleanup
+ */
+let fallbackHealthIntervalId = null;
+
+/**
+ * Fallback statistics for health monitoring
+ * v1.6.3.7-v12 - Issue #5: Track state updates received via fallback
+ */
+let fallbackStats = {
+  stateUpdatesReceived: 0,
+  lastUpdateTime: 0,
+  portMessagesReceived: 0,
+  storageEventsReceived: 0,
+  startTime: Date.now()
+};
+
+/**
+ * Fallback health check interval (30 seconds)
+ * v1.6.3.7-v12 - Issue #5: Log fallback status periodically
+ */
+const FALLBACK_HEALTH_CHECK_INTERVAL_MS = 30000;
+
+/**
+ * Start fallback health monitoring
+ * v1.6.3.7-v12 - Issue #5: Log periodic fallback status when BC unavailable
+ * @private
+ */
+function _startFallbackHealthMonitoring() {
+  if (fallbackHealthIntervalId) {
+    clearInterval(fallbackHealthIntervalId);
+  }
+  
+  fallbackStats.startTime = Date.now();
+  
+  fallbackHealthIntervalId = setInterval(() => {
+    const elapsedMs = Date.now() - fallbackStats.startTime;
+    // v1.6.3.7-v12 - FIX Code Review: Renamed to clarify this is time between updates, not message latency
+    const avgTimeBetweenUpdatesMs = fallbackStats.stateUpdatesReceived > 0
+      ? Math.round((elapsedMs / fallbackStats.stateUpdatesReceived))
+      : 'N/A';
+    
+    console.log('[Manager] FALLBACK_STATUS:', {
+      broadcastChannelAvailable: false,
+      fallbackActive: true,
+      stateUpdatesReceived: fallbackStats.stateUpdatesReceived,
+      portMessagesReceived: fallbackStats.portMessagesReceived,
+      storageEventsReceived: fallbackStats.storageEventsReceived,
+      lastUpdateTime: fallbackStats.lastUpdateTime > 0 
+        ? new Date(fallbackStats.lastUpdateTime).toISOString() 
+        : 'never',
+      avgTimeBetweenUpdatesMs,
+      uptimeMs: elapsedMs,
+      intervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
+      timestamp: Date.now()
+    });
+  }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
+  
+  console.log('[Manager] Fallback health monitoring started (every', FALLBACK_HEALTH_CHECK_INTERVAL_MS / 1000, 's)');
+}
+
+/**
+ * Track fallback state update received
+ * v1.6.3.7-v12 - Issue #5: Increment counters for health monitoring
+ * @param {string} source - Source of update ('port' or 'storage')
+ */
+function _trackFallbackUpdate(source) {
+  fallbackStats.stateUpdatesReceived++;
+  fallbackStats.lastUpdateTime = Date.now();
+  
+  if (source === 'port') {
+    fallbackStats.portMessagesReceived++;
+  } else if (source === 'storage') {
+    fallbackStats.storageEventsReceived++;
   }
 }
 
@@ -6740,6 +6842,9 @@ function _handleStorageChange(change) {
   _logStorageChangeEvent(context);
   _logTabIdChanges(context);
   _logPositionSizeChanges(context);
+  
+  // v1.6.3.7-v12 - Issue #5: Track as storage-based fallback update (when BC unavailable)
+  _trackFallbackUpdate('storage');
 
   // v1.6.3.7-v9 - FIX Issue #6: Validate sequence ID to ensure correct event ordering
   if (!_validateSequenceId(context)) {
