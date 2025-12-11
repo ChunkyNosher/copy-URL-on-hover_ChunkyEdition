@@ -256,6 +256,20 @@ const KEEPALIVE_HEALTH_CHECK_INTERVAL_MS = 60000; // Health check every 60 secon
 const KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS = 90000; // Warn if no success for 90+ seconds
 let keepaliveHealthCheckIntervalId = null; // Health check interval ID
 
+// ==================== v1.6.3.8 KEEPALIVE HEALTH TRACKING ====================
+// Issue #9: Comprehensive keepalive success/failure rate tracking
+// Track successes and failures within 60-second window for rate calculation
+const KEEPALIVE_HEALTH_REPORT_INTERVAL_MS = 60000; // Report every 60 seconds
+let keepaliveHealthReportIntervalId = null;
+let keepaliveHealthStats = {
+  successCount: 0,
+  failureCount: 0,
+  totalDurationMs: 0,
+  fastestMs: Infinity,
+  slowestMs: 0,
+  lastResetTime: Date.now()
+};
+
 // Issue #6: Port Registry Size Warnings
 const PORT_REGISTRY_WARN_THRESHOLD = 50; // Warn if registry exceeds 50 ports
 const PORT_REGISTRY_CRITICAL_THRESHOLD = 100; // Critical if exceeds 100 ports
@@ -300,11 +314,16 @@ let dedupStatsIntervalId = null;
 const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
 const ALARM_SYNC_SESSION_STATE = 'sync-session-state';
 const ALARM_DIAGNOSTIC_SNAPSHOT = 'diagnostic-snapshot';
+// v1.6.3.8 - Issue #2 (arch): Keepalive alarm as backup to interval-based keepalive
+const ALARM_KEEPALIVE_BACKUP = 'keepalive-backup';
 
 // Alarm intervals in minutes
 const ALARM_CLEANUP_INTERVAL_MIN = 60; // Hourly orphan cleanup
 const ALARM_SYNC_INTERVAL_MIN = 5; // Every 5 minutes sync
 const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120; // Every 2 hours diagnostic
+// v1.6.3.8 - Issue #2 (arch): Keepalive alarm every 25 seconds (0.42 min)
+// Firefox idle timer is 30s, so 25s gives us 5s buffer
+const ALARM_KEEPALIVE_INTERVAL_MIN = 25 / 60; // 25 seconds in minutes
 
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
@@ -315,6 +334,7 @@ let keepaliveIntervalId = null;
  * Start keepalive interval to reset Firefox's idle timer
  * v1.6.3.7 - FIX Issue #1: Use browser.runtime.sendMessage to reset idle timer
  * v1.6.4.9 - Issue #5: Added health monitoring with periodic health checks
+ * v1.6.3.8 - Issue #9: Added comprehensive health reporting every 60 seconds
  */
 function startKeepalive() {
   if (keepaliveIntervalId) {
@@ -326,6 +346,16 @@ function startKeepalive() {
   consecutiveKeepaliveFailures = 0;
   keepaliveSuccessCount = 0;
 
+  // v1.6.3.8 - Issue #9: Reset health stats
+  keepaliveHealthStats = {
+    successCount: 0,
+    failureCount: 0,
+    totalDurationMs: 0,
+    fastestMs: Infinity,
+    slowestMs: 0,
+    lastResetTime: Date.now()
+  };
+
   // Immediate ping to register activity
   triggerIdleReset();
 
@@ -335,6 +365,9 @@ function startKeepalive() {
 
   // v1.6.4.9 - Issue #5: Start health check interval
   _startKeepaliveHealthCheck();
+  
+  // v1.6.3.8 - Issue #9: Start health report interval
+  _startKeepaliveHealthReport();
 
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
 }
@@ -406,15 +439,24 @@ async function _performKeepaliveQueries(context) {
 /**
  * Handle successful keepalive reset
  * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
+ * v1.6.3.8 - Issue #9: Track comprehensive health stats for rate calculation
  * @private
  * @param {Object} context - Keepalive context with results
  * @param {number} attemptStartTime - When the attempt started
  */
 function _handleKeepaliveSuccess(context, attemptStartTime) {
+  const durationMs = Date.now() - attemptStartTime;
+  
   lastKeepaliveSuccessTime = Date.now();
   consecutiveKeepaliveFailures = 0;
   firstKeepaliveFailureLogged = false;
   keepaliveSuccessCount++;
+
+  // v1.6.3.8 - Issue #9: Update health stats for rate tracking
+  keepaliveHealthStats.successCount++;
+  keepaliveHealthStats.totalDurationMs += durationMs;
+  keepaliveHealthStats.fastestMs = Math.min(keepaliveHealthStats.fastestMs, durationMs);
+  keepaliveHealthStats.slowestMs = Math.max(keepaliveHealthStats.slowestMs, durationMs);
 
   // Rate-limited success logging (every 10th success)
   if (keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
@@ -424,7 +466,7 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
       failureCount: consecutiveKeepaliveFailures,
       tabsQuerySuccess: context.tabsQuerySuccess,
       sendMessageSuccess: context.sendMessageSuccess,
-      durationMs: Date.now() - attemptStartTime,
+      durationMs,
       timestamp: Date.now()
     });
   }
@@ -433,6 +475,7 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
 /**
  * Handle keepalive reset failure
  * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
+ * v1.6.3.8 - Issue #9: Track failures for rate calculation
  * @private
  * @param {Error} err - Error that occurred
  * @param {boolean} tabsQuerySuccess - Whether tabs.query succeeded
@@ -440,6 +483,9 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
  */
 function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
   consecutiveKeepaliveFailures++;
+  
+  // v1.6.3.8 - Issue #9: Update health stats for rate tracking
+  keepaliveHealthStats.failureCount++;
   
   // Issue #2: Always log first failure, then sample every Nth thereafter (deterministic)
   // v1.6.3.7-v12 - FIX Code Review: Counter-based sampling for predictable, testable behavior
@@ -476,6 +522,7 @@ function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
  * Stop keepalive interval
  * v1.6.3.7 - FIX Issue #1: Cleanup function
  * v1.6.4.9 - Issue #5: Also stop health check interval
+ * v1.6.3.8 - Issue #9: Also stop health report interval
  */
 function _stopKeepalive() {
   if (keepaliveIntervalId) {
@@ -489,6 +536,114 @@ function _stopKeepalive() {
     clearInterval(keepaliveHealthCheckIntervalId);
     keepaliveHealthCheckIntervalId = null;
   }
+
+  // v1.6.3.8 - Issue #9: Stop health report interval
+  if (keepaliveHealthReportIntervalId) {
+    clearInterval(keepaliveHealthReportIntervalId);
+    keepaliveHealthReportIntervalId = null;
+  }
+}
+
+/**
+ * Start periodic keepalive health reporting
+ * v1.6.3.8 - Issue #9: Log comprehensive success/failure rates every 60 seconds
+ * @private
+ */
+function _startKeepaliveHealthReport() {
+  if (keepaliveHealthReportIntervalId) {
+    clearInterval(keepaliveHealthReportIntervalId);
+  }
+
+  keepaliveHealthReportIntervalId = setInterval(() => {
+    _logKeepaliveHealthReport();
+  }, KEEPALIVE_HEALTH_REPORT_INTERVAL_MS);
+}
+
+/**
+ * Log keepalive health report with success/failure rates and timing metrics
+ * v1.6.3.8 - Issue #9: Comprehensive health metrics
+ * @private
+ */
+function _logKeepaliveHealthReport() {
+  const total = keepaliveHealthStats.successCount + keepaliveHealthStats.failureCount;
+  
+  // Skip if no attempts in this window
+  if (total === 0) {
+    return;
+  }
+  
+  const successRate = (keepaliveHealthStats.successCount / total) * 100;
+  const averageMs = keepaliveHealthStats.successCount > 0 
+    ? keepaliveHealthStats.totalDurationMs / keepaliveHealthStats.successCount 
+    : 0;
+  
+  // Determine health status based on success rate
+  let healthStatus = 'excellent';
+  if (successRate < 90) {
+    healthStatus = 'degraded';
+  }
+  if (successRate < 70) {
+    healthStatus = 'poor';
+  }
+  if (successRate < 50) {
+    healthStatus = 'critical';
+  }
+  
+  // Log health report
+  console.log('[Background] KEEPALIVE_HEALTH_REPORT:', {
+    window: `last ${KEEPALIVE_HEALTH_REPORT_INTERVAL_MS / 1000}s`,
+    successes: keepaliveHealthStats.successCount,
+    failures: keepaliveHealthStats.failureCount,
+    successRate: `${successRate.toFixed(1)}%`,
+    healthStatus,
+    averageMethod: 'tabs.query + runtime.sendMessage',
+    timing: {
+      fastestMs: keepaliveHealthStats.fastestMs === Infinity ? 0 : keepaliveHealthStats.fastestMs,
+      slowestMs: keepaliveHealthStats.slowestMs,
+      averageMs: averageMs.toFixed(1)
+    },
+    timestamp: Date.now()
+  });
+  
+  // Log warning if success rate drops below 90%
+  if (successRate < 90) {
+    console.warn('[Background] KEEPALIVE_HEALTH_WARNING:', {
+      successRate: `${successRate.toFixed(1)}%`,
+      recommendation: 'Inspect Firefox idle state or API availability',
+      consecutiveFailures: consecutiveKeepaliveFailures,
+      timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime
+    });
+  }
+  
+  // Reset stats for next window
+  keepaliveHealthStats = {
+    successCount: 0,
+    failureCount: 0,
+    totalDurationMs: 0,
+    fastestMs: Infinity,
+    slowestMs: 0,
+    lastResetTime: Date.now()
+  };
+}
+
+/**
+ * Get keepalive health summary for diagnostic snapshot
+ * v1.6.3.8 - Issue #9: Include in diagnostic snapshot
+ * @returns {string} Health summary string
+ */
+function _getKeepaliveHealthSummary() {
+  const total = keepaliveHealthStats.successCount + keepaliveHealthStats.failureCount;
+  if (total === 0) {
+    return 'no data';
+  }
+  
+  const successRate = (keepaliveHealthStats.successCount / total) * 100;
+  let status = 'excellent';
+  if (successRate < 90) status = 'degraded';
+  if (successRate < 70) status = 'poor';
+  if (successRate < 50) status = 'critical';
+  
+  return `${successRate.toFixed(0)}% (${status})`;
 }
 
 // Start keepalive on script load
@@ -561,11 +716,27 @@ function _sendBCVerificationPong(request) {
 /**
  * Initialize browser.alarms for scheduled cleanup tasks
  * v1.6.3.7-v3 - API #4: Create alarms on extension startup
+ * v1.6.3.8 - Issue #2 (arch): Add keepalive backup alarm
  */
 async function initializeAlarms() {
   console.log('[Background] v1.6.3.7-v3 Initializing browser.alarms...');
 
   try {
+    // v1.6.3.8 - Issue #2 (arch): Create keepalive-backup alarm - most reliable keepalive method
+    // This alarm fires every 25 seconds and resets Firefox's idle timer
+    // Even if setInterval-based keepalive fails, alarms will keep background alive
+    await browser.alarms.create(ALARM_KEEPALIVE_BACKUP, {
+      delayInMinutes: ALARM_KEEPALIVE_INTERVAL_MIN, // First run after 25 seconds
+      periodInMinutes: ALARM_KEEPALIVE_INTERVAL_MIN
+    });
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_KEEPALIVE_BACKUP,
+      '(every',
+      Math.round(ALARM_KEEPALIVE_INTERVAL_MIN * 60),
+      'sec) - backup keepalive'
+    );
+
     // Create cleanup-orphaned alarm - runs hourly
     await browser.alarms.create(ALARM_CLEANUP_ORPHANED, {
       delayInMinutes: 30, // First run after 30 minutes
@@ -614,9 +785,18 @@ async function initializeAlarms() {
 /**
  * Handle alarm events
  * v1.6.3.7-v3 - API #4: Route alarms to appropriate handlers
+ * v1.6.3.8 - Issue #2 (arch): Add keepalive backup alarm handler
  * @param {Object} alarm - Alarm info object
  */
 async function handleAlarm(alarm) {
+  // v1.6.3.8 - Issue #2 (arch): Keepalive alarm is high-frequency, reduce logging
+  if (alarm.name === ALARM_KEEPALIVE_BACKUP) {
+    // Simply receiving the alarm event resets Firefox's idle timer
+    // Also trigger our idle reset for consistency
+    await _handleKeepaliveAlarm();
+    return;
+  }
+
   console.log('[Background] ALARM_FIRED:', alarm.name, 'at', new Date().toISOString());
 
   switch (alarm.name) {
@@ -634,6 +814,80 @@ async function handleAlarm(alarm) {
 
     default:
       console.warn('[Background] Unknown alarm:', alarm.name);
+  }
+}
+
+/**
+ * Handle keepalive alarm event
+ * v1.6.3.8 - Issue #2 (arch): Backup keepalive mechanism via browser.alarms
+ * This is the most reliable way to keep MV2 background scripts alive in Firefox
+ * @private
+ */
+async function _handleKeepaliveAlarm() {
+  // Receiving alarm callback already resets idle timer, but also trigger our reset
+  try {
+    // Perform a lightweight API call to ensure activity is registered
+    await browser.tabs.query({ active: true, currentWindow: true });
+    
+    // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
+    _sendAlivePingToSidebars();
+    
+    // Update keepalive health stats (success via alarm)
+    const now = Date.now();
+    lastKeepaliveSuccessTime = now;
+    keepaliveHealthStats.successCount++;
+    
+    // Rate-limited logging (every 12th alarm = ~5 minutes)
+    if (keepaliveSuccessCount % 12 === 0) {
+      console.log('[Background] KEEPALIVE_ALARM_SUCCESS:', {
+        alarmCount: keepaliveSuccessCount,
+        timestamp: now
+      });
+    }
+    keepaliveSuccessCount++;
+  } catch (err) {
+    console.error('[Background] KEEPALIVE_ALARM_FAILED:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+    keepaliveHealthStats.failureCount++;
+  }
+}
+
+/**
+ * Send alive ping to a single sidebar port
+ * v1.6.3.8 - Issue #2 (arch): Extracted to reduce nesting depth
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} portInfo - Port info
+ * @param {Object} alivePing - Ping message to send
+ */
+function _sendAlivePingToPort(portId, portInfo, alivePing) {
+  try {
+    portInfo.port.postMessage(alivePing);
+    updatePortActivity(portId);
+  } catch (_err) {
+    // Port may be disconnected, will be cleaned up by stale port cleanup
+  }
+}
+
+/**
+ * Send proactive ALIVE ping to all connected sidebar ports
+ * v1.6.3.8 - Issue #2 (arch): Background sends periodic pings instead of waiting for sidebar requests
+ * @private
+ */
+function _sendAlivePingToSidebars() {
+  const alivePing = {
+    type: 'ALIVE_PING',
+    timestamp: Date.now(),
+    isInitialized,
+    cacheTabCount: globalQuickTabState.tabs?.length || 0
+  };
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.type === 'sidebar') {
+      _sendAlivePingToPort(portId, portInfo, alivePing);
+    }
   }
 }
 
@@ -775,6 +1029,8 @@ async function _performSessionSync() {
  * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
  * v1.6.3.7-v12 - Issue #3, #10: Include port registry threshold check and trend
  * v1.6.3.7-v13 - Issue #4: Enhanced format with "connectedPorts: N (STATUS, trend)"
+ * v1.6.3.8 - Issue #9: Include keepalive health summary
+ * v1.6.3.8 - Issue #10: Include port lifecycle details
  */
 function logDiagnosticSnapshot() {
   console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
@@ -786,11 +1042,23 @@ function logDiagnosticSnapshot() {
     isInitialized
   });
   
+  // v1.6.3.8 - Issue #9: Include keepalive health in diagnostic snapshot
+  console.log('[Background] Keepalive health:', {
+    summary: `keepalive health: ${_getKeepaliveHealthSummary()}`,
+    lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString(),
+    timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
+    consecutiveFailures: consecutiveKeepaliveFailures,
+    totalSuccessCount: keepaliveSuccessCount
+  });
+  
   // v1.6.3.7-v12 - Issue #3, #10: Enhanced port registry logging with thresholds
   // v1.6.3.7-v13 - Issue #4: Format as "connectedPorts: N (STATUS, trend)"
+  // v1.6.3.8 - Issue #10: Include port lifecycle details
   const portCount = portRegistry.size;
   const portTrend = _computePortRegistryTrend();
   const portHealthStatus = _getPortRegistryThresholdStatus(portCount);
+  const portLifecycleDetails = _getPortLifecycleDetails();
+  
   console.log('[Background] Port registry:', {
     summary: `connectedPorts: ${portCount} (${portHealthStatus}, ${portTrend} trend)`,
     connectedPorts: portCount,
@@ -798,7 +1066,7 @@ function logDiagnosticSnapshot() {
     criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
     thresholdStatus: portHealthStatus,
     trend: portTrend,
-    portIds: [...portRegistry.keys()]
+    lifecycleDetails: portLifecycleDetails
   });
   
   console.log('[Background] Quick Tab host tracking:', {
@@ -817,6 +1085,48 @@ function logDiagnosticSnapshot() {
   });
   
   console.log('[Background] =================================================================');
+}
+
+/**
+ * Get port lifecycle details for diagnostic snapshot
+ * v1.6.3.8 - Issue #10: Include port lifecycle details in diagnostic snapshot
+ * @private
+ * @returns {Array} Array of port lifecycle info
+ */
+function _getPortLifecycleDetails() {
+  const now = Date.now();
+  const details = [];
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const createdAt = portInfo.connectedAt || now;
+    const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || createdAt;
+    const ageMs = now - createdAt;
+    const inactiveMs = now - lastActivity;
+    
+    details.push({
+      portId,
+      origin: portInfo.origin,
+      createdAgo: _formatDuration(ageMs),
+      lastActiveAgo: _formatDuration(inactiveMs),
+      messageCount: portInfo.messageCount || 0
+    });
+  }
+  
+  return details;
+}
+
+/**
+ * Format milliseconds as human-readable duration
+ * v1.6.3.8 - Issue #10: Helper for formatting duration
+ * @private
+ * @param {number} ms - Duration in milliseconds
+ * @returns {string} Formatted duration string
+ */
+function _formatDuration(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
+  if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
+  return `${Math.floor(ms / 3600000)}h`;
 }
 
 /**
@@ -5246,6 +5556,33 @@ const PORT_MAX_AGE_MS = 90 * 1000;
  */
 const PORT_STALE_TIMEOUT_MS = 30 * 1000;
 
+// ==================== v1.6.3.8 PORT PING/EVICTION (Issue #4 arch) ====================
+// Zombie port detection via ping/response timeout
+
+/**
+ * Threshold before sending ping to potentially zombie port (60 seconds)
+ * v1.6.3.8 - Issue #4 (arch): If no messages received for this duration, send ping
+ */
+const PORT_PING_THRESHOLD_MS = 60 * 1000;
+
+/**
+ * Timeout for ping response before evicting port (5 seconds)
+ * v1.6.3.8 - Issue #4 (arch): If port doesn't respond to ping within this time, evict it
+ */
+const PORT_PING_RESPONSE_TIMEOUT_MS = 5 * 1000;
+
+/**
+ * Interval for zombie port detection checks (30 seconds)
+ * v1.6.3.8 - Issue #4 (arch): How often to check for zombie ports
+ */
+const PORT_ZOMBIE_CHECK_INTERVAL_MS = 30 * 1000;
+
+/**
+ * Set to track ports with pending pings (awaiting pong)
+ * v1.6.3.8 - Issue #4 (arch): Key = portId, Value = { sentAt, timeoutId }
+ */
+const pendingPortPings = new Map();
+
 // ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
 // Monotonic sequence counter for port messages to detect reordering
 
@@ -5570,15 +5907,31 @@ function unregisterPort(portId, reason = 'disconnect') {
  * Update port activity timestamp
  * v1.6.3.6-v11 - FIX Issue #12: Track port activity
  * v1.6.3.7-v9 - Issue #4: Update lastActivityTime
+ * v1.6.3.8 - Issue #10: Add PORT_ACTIVITY logging when DEBUG_DIAGNOSTICS enabled
  * @param {string} portId - Port ID
  */
 function updatePortActivity(portId) {
   const portInfo = portRegistry.get(portId);
   if (portInfo) {
     const now = Date.now();
+    const previousActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+    const timeSinceLastActivity = now - previousActivity;
+    
     portInfo.lastMessageAt = now;
     portInfo.lastActivityTime = now; // v1.6.3.7-v9
     portInfo.messageCount++;
+    
+    // v1.6.3.8 - Issue #10: Log port activity when DEBUG_DIAGNOSTICS enabled
+    if (DEBUG_DIAGNOSTICS) {
+      console.log('[Background] PORT_ACTIVITY:', {
+        portId,
+        origin: portInfo.origin,
+        tabId: portInfo.tabId,
+        lastMessageTimeAgo: `${timeSinceLastActivity}ms`,
+        messageCount: portInfo.messageCount,
+        timestamp: now
+      });
+    }
   }
 }
 
@@ -5742,6 +6095,127 @@ async function cleanupStalePorts() {
 
 // Start periodic cleanup
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
+
+// ==================== v1.6.3.8 ZOMBIE PORT DETECTION (Issue #4 arch) ====================
+
+/**
+ * Check for zombie ports and send pings to inactive ones
+ * v1.6.3.8 - Issue #4 (arch): Detect BFCache zombie ports via ping/response
+ * @private
+ */
+function _checkForZombiePorts() {
+  const now = Date.now();
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+    const inactivityMs = now - lastActivity;
+    
+    // Skip if already waiting for ping response
+    if (pendingPortPings.has(portId)) {
+      continue;
+    }
+    
+    // If inactive for longer than threshold, send ping
+    if (inactivityMs >= PORT_PING_THRESHOLD_MS) {
+      _sendPortPing(portId, portInfo);
+    }
+  }
+}
+
+/**
+ * Send ping to potentially zombie port
+ * v1.6.3.8 - Issue #4 (arch): If no response within timeout, evict port
+ * @private
+ * @param {string} portId - Port ID to ping
+ * @param {Object} portInfo - Port info object
+ */
+function _sendPortPing(portId, portInfo) {
+  const pingMessage = {
+    type: 'PORT_PING',
+    portId,
+    timestamp: Date.now()
+  };
+  
+  try {
+    portInfo.port.postMessage(pingMessage);
+    
+    console.log('[Background] PORT_PING_SENT:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      responseTimeoutMs: PORT_PING_RESPONSE_TIMEOUT_MS
+    });
+    
+    // Set timeout for response
+    const timeoutId = setTimeout(() => {
+      _handlePortPingTimeout(portId);
+    }, PORT_PING_RESPONSE_TIMEOUT_MS);
+    
+    pendingPortPings.set(portId, {
+      sentAt: Date.now(),
+      timeoutId
+    });
+  } catch (err) {
+    // Port is definitely dead
+    console.warn('[Background] PORT_PING_FAILED:', {
+      portId,
+      origin: portInfo.origin,
+      error: err.message
+    });
+    unregisterPort(portId, 'ping-send-failed');
+  }
+}
+
+/**
+ * Handle port ping timeout (no pong received)
+ * v1.6.3.8 - Issue #4 (arch): Evict zombie port
+ * @private
+ * @param {string} portId - Port ID that timed out
+ */
+function _handlePortPingTimeout(portId) {
+  const pendingPing = pendingPortPings.get(portId);
+  if (!pendingPing) return;
+  
+  const portInfo = portRegistry.get(portId);
+  
+  console.warn('[Background] PORT_PING_TIMEOUT (zombie detected):', {
+    portId,
+    origin: portInfo?.origin,
+    tabId: portInfo?.tabId,
+    waitedMs: Date.now() - pendingPing.sentAt,
+    reason: 'No response to ping - likely BFCache zombie'
+  });
+  
+  pendingPortPings.delete(portId);
+  unregisterPort(portId, 'ping-timeout-zombie');
+}
+
+/**
+ * Handle pong response from port
+ * v1.6.3.8 - Issue #4 (arch): Port is alive, cancel eviction timeout
+ * @param {string} portId - Port ID that responded
+ */
+function _handlePortPong(portId) {
+  const pendingPing = pendingPortPings.get(portId);
+  if (!pendingPing) return;
+  
+  clearTimeout(pendingPing.timeoutId);
+  pendingPortPings.delete(portId);
+  
+  const portInfo = portRegistry.get(portId);
+  
+  console.log('[Background] PORT_PONG_RECEIVED:', {
+    portId,
+    origin: portInfo?.origin,
+    roundTripMs: Date.now() - pendingPing.sentAt
+  });
+  
+  // Update activity since port responded
+  updatePortActivity(portId);
+}
+
+// Start periodic zombie port check
+setInterval(_checkForZombiePorts, PORT_ZOMBIE_CHECK_INTERVAL_MS);
 
 /**
  * Parse port name to extract connection info
@@ -6054,6 +6528,7 @@ function _forceFlushReorderBuffer(portId, tracking) {
  * Port message handlers lookup table
  * v1.6.4.13 - FIX Complexity: Extracted from routePortMessage switch (cc=10 → cc=4)
  * v1.6.3.7-v13 - Issue #1 (arch): Added BC_VERIFICATION_REQUEST handler
+ * v1.6.3.8 - Issue #4 (arch): Added PORT_PONG handler for zombie detection
  * @private
  */
 const PORT_MESSAGE_HANDLERS = {
@@ -6065,7 +6540,8 @@ const PORT_MESSAGE_HANDLERS = {
   BROADCAST: handleBroadcastRequest,
   DELETION_ACK: handleDeletionAck,
   REQUEST_FULL_STATE_SYNC: handleFullStateSyncRequest,
-  BC_VERIFICATION_REQUEST: handleBCVerificationRequest
+  BC_VERIFICATION_REQUEST: handleBCVerificationRequest,
+  PORT_PONG: handlePortPong // v1.6.3.8 - Issue #4 (arch): Zombie port detection response
 };
 
 /**
@@ -6260,6 +6736,35 @@ function handleDeletionAck(message, portInfo) {
   }
 
   return Promise.resolve({ success: true, recorded: true });
+}
+
+/**
+ * Handle PORT_PONG response for zombie port detection
+ * v1.6.3.8 - Issue #4 (arch): Response to PORT_PING, confirms port is alive
+ * @param {Object} message - Pong message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Acknowledgment
+ */
+function handlePortPong(message, portInfo) {
+  const portId = portInfo?.port?._portId;
+  
+  console.log('[Background] PORT_PONG received:', {
+    portId,
+    origin: portInfo?.origin,
+    timestamp: message.timestamp,
+    originalPingTimestamp: message.originalTimestamp
+  });
+  
+  // Cancel eviction timeout for this port
+  if (portId) {
+    _handlePortPong(portId);
+  }
+  
+  return Promise.resolve({
+    success: true,
+    type: 'PORT_PONG_ACK',
+    timestamp: Date.now()
+  });
 }
 
 /**

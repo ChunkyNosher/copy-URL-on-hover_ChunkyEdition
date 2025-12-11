@@ -462,6 +462,7 @@ function connectContentToBackground(tabId) {
 /**
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #11: Process messages from background
+ * v1.6.3.8 - Issue #4 (arch): Added PORT_PING handler for zombie detection
  * @param {Object} message - Message from background
  */
 function handleContentPortMessage(message) {
@@ -469,6 +470,21 @@ function handleContentPortMessage(message) {
     type: message.type,
     action: message.action
   });
+
+  // v1.6.3.8 - Issue #4 (arch): Handle PORT_PING for zombie port detection
+  if (message.type === 'PORT_PING') {
+    _handlePortPingFromBackground(message);
+    return;
+  }
+  
+  // v1.6.3.8 - Issue #2 (arch): Handle ALIVE_PING from background keepalive
+  if (message.type === 'ALIVE_PING') {
+    console.log('[Content] Received ALIVE_PING from background:', {
+      timestamp: message.timestamp,
+      isInitialized: message.isInitialized
+    });
+    return;
+  }
 
   // Handle broadcasts
   if (message.type === 'BROADCAST') {
@@ -479,6 +495,36 @@ function handleContentPortMessage(message) {
   // Handle acknowledgments (if content script sends requests)
   if (message.type === 'ACKNOWLEDGMENT') {
     console.log('[Content] Received acknowledgment:', message.correlationId);
+  }
+}
+
+/**
+ * Handle PORT_PING from background for zombie detection
+ * v1.6.3.8 - Issue #4 (arch): Respond with PORT_PONG to confirm alive
+ * @private
+ * @param {Object} message - Ping message from background
+ */
+function _handlePortPingFromBackground(message) {
+  console.log('[Content] PORT_PING received:', {
+    portId: message.portId,
+    timestamp: message.timestamp
+  });
+  
+  // Send pong response to confirm we're alive (not a BFCache zombie)
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'PORT_PONG',
+        originalTimestamp: message.timestamp,
+        timestamp: Date.now(),
+        tabId: cachedTabId
+      });
+      console.log('[Content] PORT_PONG sent');
+    } catch (err) {
+      console.error('[Content] Failed to send PORT_PONG:', err.message);
+    }
+  } else {
+    console.warn('[Content] Cannot send PORT_PONG - no backgroundPort');
   }
 }
 
@@ -521,7 +567,115 @@ window.addEventListener('unload', () => {
   }
 });
 
-// ==================== END PORT CONNECTION ====================
+// ==================== v1.6.3.8 BFCACHE HANDLING ====================
+// Issue #4 (arch): Handle BFCache "Zombie" Port Connections
+// When pages enter BFCache, ports remain open but cannot receive messages.
+// Explicitly disconnect port when entering BFCache and re-sync when restored.
+
+/**
+ * Disconnect port safely during BFCache entry
+ * v1.6.3.8 - Issue #4 (arch): Extracted to reduce nesting depth
+ * @private
+ */
+function _disconnectPortForBFCache() {
+  if (!backgroundPort) return;
+  
+  logContentPortLifecycle('bfcache-enter', { reason: 'entering-bfcache' });
+  try {
+    backgroundPort.disconnect();
+  } catch (_err) {
+    // Port may already be in bad state
+  }
+  backgroundPort = null;
+}
+
+/**
+ * Handle page entering BFCache (Back/Forward Cache)
+ * v1.6.3.8 - Issue #4 (arch): Explicitly disconnect port to prevent zombie connections
+ * @param {PageTransitionEvent} event - The pagehide event
+ */
+function _handleBFCachePageHide(event) {
+  // event.persisted is true when page is being placed in BFCache
+  if (!event.persisted) return;
+  
+  console.log('[Content] BFCACHE_ENTER:', {
+    reason: 'pagehide with persisted=true',
+    tabId: cachedTabId,
+    hadPort: !!backgroundPort,
+    timestamp: Date.now()
+  });
+  
+  // Explicitly disconnect port to prevent zombie connection
+  _disconnectPortForBFCache();
+}
+
+/**
+ * Handle page restored from BFCache
+ * v1.6.3.8 - Issue #4 (arch): Request full state sync after BFCache restore
+ * @param {PageTransitionEvent} event - The pageshow event
+ */
+function _handleBFCachePageShow(event) {
+  // event.persisted is true when page is restored from BFCache
+  if (event.persisted) {
+    console.log('[Content] BFCACHE_RESTORE:', {
+      reason: 'pageshow with persisted=true',
+      tabId: cachedTabId,
+      hadPort: !!backgroundPort,
+      timestamp: Date.now()
+    });
+    
+    // Re-establish port connection
+    if (cachedTabId !== null && !backgroundPort) {
+      console.log('[Content] Re-establishing port connection after BFCache restore');
+      connectContentToBackground(cachedTabId);
+    }
+    
+    // Trigger full state sync to get updates missed while in BFCache
+    _triggerFullStateSyncAfterBFCache();
+  }
+}
+
+/**
+ * Trigger full state sync after BFCache restoration
+ * v1.6.3.8 - Issue #4 (arch): Content script may have missed updates while in BFCache
+ * @private
+ */
+function _triggerFullStateSyncAfterBFCache() {
+  console.log('[Content] Requesting full state sync after BFCache restore');
+  
+  // Method 1: Send message via port if available
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'REQUEST_FULL_STATE_SYNC',
+        source: 'content-bfcache-restore',
+        tabId: cachedTabId,
+        timestamp: Date.now()
+      });
+      return;
+    } catch (err) {
+      console.warn('[Content] Port message failed, trying runtime.sendMessage:', err.message);
+    }
+  }
+  
+  // Method 2: Fallback to runtime.sendMessage
+  browser.runtime.sendMessage({
+    action: 'REQUEST_FULL_STATE_SYNC',
+    source: 'content-bfcache-restore',
+    tabId: cachedTabId,
+    timestamp: Date.now()
+  }).catch(err => {
+    console.warn('[Content] Failed to request state sync after BFCache restore:', err.message);
+  });
+}
+
+// Register BFCache handlers
+window.addEventListener('pagehide', _handleBFCachePageHide);
+window.addEventListener('pageshow', _handleBFCachePageShow);
+
+console.log('[Content] v1.6.3.8 BFCache handlers registered');
+
+// ==================== END BFCACHE HANDLING ====================
 
 /**
  * v1.6.0.3 - Helper to initialize Quick Tabs
