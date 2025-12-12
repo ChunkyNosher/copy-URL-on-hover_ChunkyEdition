@@ -104,6 +104,37 @@
  */
 
 // ==================== IMPORTS ====================
+// v1.6.3.8-v4 - Bundle size refactoring: Import utilities from sidebar modules
+// These modules contain shared constants and utility functions extracted for maintainability.
+// 
+// MIGRATION STRATEGY (v1.6.3.8-v4):
+// Phase 1 (Current): Modules export constants and stateless utility functions.
+//   - Main file (quick-tabs-manager.js) retains all state variables locally.
+//   - Module functions are available but not yet integrated.
+//   - No duplicate state - modules contain constants/functions only.
+// Phase 2 (Future): Gradually migrate local constants to module imports.
+// Phase 3 (Future): Migrate state management to modules with proper getters/setters.
+//
+// NOTE: The modules' state variables (e.g., in init-barrier.js) are NOT used yet.
+//       The local state in this file remains authoritative.
+import {
+  // Diagnostics utilities (non-conflicting)
+  generateCorrelationId as _generateCorrelationIdFromModule,
+  generateSessionId as _generateSessionIdFromModule,
+  formatDuration as _formatDuration,
+  getAgeBucket as _getAgeBucket,
+  // Health metrics utilities (non-conflicting) - NOT importing storageHealthStats as it's declared locally
+  canStartProbe as _canStartProbeFromModule,
+  startStorageProbe as _startStorageProbeFromModule,
+  completeStorageProbe as _completeStorageProbeFromModule,
+  getStorageSuccessRate as _getStorageSuccessRate,
+  getStorageHealthTier as _getStorageHealthTier,
+  getStorageHealthSnapshot as _getStorageHealthSnapshot,
+  recordFallbackMessage as _recordFallbackMessage,
+  checkFallbackStall as _checkFallbackStall,
+  getFallbackHealthSnapshot as _getFallbackHealthSnapshot,
+  generateHealthReport as _generateHealthReport
+} from './modules/index.js';
 import {
   computeStateHash,
   createFavicon,
@@ -152,6 +183,8 @@ import {
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
 // ==================== CONSTANTS ====================
+// v1.6.3.8-v4 - Bundle refactoring: Shared constants/utilities in ./modules/
+// Local constants remain here for now; modules provide a foundation for future refactoring.
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 const SAVEID_RECONCILED = 'reconciled';
