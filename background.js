@@ -106,7 +106,7 @@ const globalQuickTabState = {
 let isInitialized = false;
 
 // v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for listener entry logging
-let initializationStartTime = Date.now();
+const initializationStartTime = Date.now();
 
 // v1.6.1.6 - Memory leak fix: State hash for deduplication
 // Prevents redundant broadcasts when state hasn't actually changed
@@ -2110,7 +2110,7 @@ async function _executeRecoveryWithVerification(config) {
     ...successDetails,
     tabCount: writeResult.tabCount
   });
-  return { recovered: true, method, reason: `Successfully re-wrote state` };
+  return { recovered: true, method, reason: 'Successfully re-wrote state' };
 }
 
 /**
@@ -7336,7 +7336,7 @@ function handlePortPong(message, portInfo) {
  * Track sidebar ready state
  * v1.6.3.8-v2 - Issue #1, #10: Sidebar must signal ready before receiving relayed messages
  */
-let _sidebarReadyPorts = new Set();
+const _sidebarReadyPorts = new Set();
 
 /**
  * Handle SIDEBAR_READY signal from sidebar
@@ -9830,7 +9830,7 @@ async function _createNotification({
       browser.notifications.clear(notificationId).catch(() => {});
     }, NOTIFICATION_AUTO_CLEAR_MS * clearTimeoutMultiplier);
 
-    console.log(`[Background] Notification sent:`, { notificationId, title });
+    console.log('[Background] Notification sent:', { notificationId, title });
     return notificationId;
   } catch (err) {
     console.warn('[Background] Failed to send notification:', err.message);

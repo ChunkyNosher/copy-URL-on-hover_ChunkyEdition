@@ -3,9 +3,9 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v2), Background Relay, ACK-based messaging, WriteBuffer batching,
-  BFCache lifecycle, sequence rejection
-tools: ['*']
+  (v1.6.3.8-v3), Background Relay, ACK-based messaging, WriteBuffer batching,
+  BFCache lifecycle, sequence rejection, storage listener verification, tier hysteresis
+tools: ['vscode', 'execute', 'read', 'agent', 'edit', 'search', 'web', 'agentic-tools/*', 'codescene-mcp/*', 'perplexity/perplexity_reason', 'github/*', 'io.github.upstash/context7/*', 'playwright/*', 'todo', 'github.vscode-pull-request-github/copilotCodingAgent', 'github.vscode-pull-request-github/issue_fetch', 'github.vscode-pull-request-github/suggest-fix', 'github.vscode-pull-request-github/searchSyntax', 'github.vscode-pull-request-github/doSearch', 'github.vscode-pull-request-github/renderIssues', 'github.vscode-pull-request-github/activePullRequest', 'github.vscode-pull-request-github/openPullRequest', 'ms-azuretools.vscode-azureresourcegroups/azureActivityLog', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_ai_model_guidance', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_agent_model_code_sample', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_tracing_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_get_evaluation_code_gen_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_convert_declarative_agent_to_code', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_agent_runner_best_practices', 'ms-windows-ai-studio.windows-ai-studio/aitk_evaluation_planner']
 ---
 
 > **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
@@ -38,9 +38,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v3 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v3 Features (NEW):**
+
+- **Storage listener verification** - Test key write/read with 1000ms timeout
+- **Tier status hysteresis** - 3+ BC messages in 5s window before activation
+- **Concurrent probe guard** - `probeInProgress` flag prevents overlapping health probes
+- **Map memory cleanup** - `HOST_INFO_MAP_CLEARED` on window unload
+- **Fallback session stats** - `FALLBACK_SESSION_STARTED/ENDED` with message counts
+
+**v1.6.3.8-v2 Features (Retained):**
 
 - **Background Relay pattern** - Sidebar messages bypass BC origin isolation
 - **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery

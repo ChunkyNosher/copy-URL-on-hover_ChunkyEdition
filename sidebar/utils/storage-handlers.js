@@ -20,6 +20,7 @@ const SAVEID_CLEARED = 'cleared';
 
 // ==================== v1.6.3.7-v8 DYNAMIC DEBOUNCE ====================
 // FIX Issue #12: Context-dependent debounce timing based on active messaging tier
+// v1.6.3.8-v3 - FIX Issue #12: Added hysteresis to prevent single-message tier flips
 
 /**
  * Debounce timing when Tier 1 (BroadcastChannel) is active
@@ -53,31 +54,117 @@ let isTier1Active = false;
 let lastBroadcastMessageTime = 0;
 
 /**
- * Threshold for considering Tier 1 inactive (10 seconds without BC message)
+ * Threshold for considering Tier 1 inactive (15 seconds without BC message)
  * v1.6.3.7-v8 - FIX Issue #12: If no BC messages for this long, consider fallback
+ * v1.6.3.8-v3 - FIX Issue #12: Increased from 10s to 15s for hysteresis
  */
-const TIER1_INACTIVE_THRESHOLD_MS = 10000;
+const TIER1_INACTIVE_THRESHOLD_MS = 15000;
+
+// ==================== v1.6.3.8-v3 TIER STATUS HYSTERESIS ====================
+// FIX Issue #12: Require sustained BC message activity before setting tier active
+
+/**
+ * Minimum consecutive BC messages required before activating Tier 1
+ * v1.6.3.8-v3 - FIX Issue #12: Prevent single-message tier flip
+ */
+const BC_MESSAGES_REQUIRED_FOR_ACTIVE = 3;
+
+/**
+ * Time window for counting consecutive BC messages (ms)
+ * v1.6.3.8-v3 - FIX Issue #12: Messages must arrive within this window
+ */
+const BC_CONSECUTIVE_WINDOW_MS = 5000;
+
+/**
+ * Array of recent BC message timestamps for hysteresis tracking
+ * v1.6.3.8-v3 - FIX Issue #12: Track message arrival pattern
+ */
+let recentBCMessageTimes = [];
+
+/**
+ * Counter for consecutive BC messages in current window
+ * v1.6.3.8-v3 - FIX Issue #12: Track message count for confidence
+ * @private
+ */
+let _consecutiveBCMessageCount = 0;
 
 /**
  * Update Tier 1 status based on recent BroadcastChannel activity
  * v1.6.3.7-v8 - FIX Issue #12: Called when BC message is received
+ * v1.6.3.8-v3 - FIX Issue #12: Added hysteresis - require 3+ messages in 5s window
  */
 export function notifyBroadcastMessageReceived() {
-  lastBroadcastMessageTime = Date.now();
-  const wasActive = isTier1Active;
-  isTier1Active = true;
+  const now = Date.now();
+  lastBroadcastMessageTime = now;
 
-  if (!wasActive) {
-    // Tier 1 became active - increase debounce
-    STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS;
-    console.log('[POLLING] [TIER_STATUS]:', {
-      activeTier: 'BroadcastChannel',
-      debounceMs: STORAGE_READ_DEBOUNCE_MS,
-      previousDebounceMs: STORAGE_READ_DEBOUNCE_FALLBACK_MS,
-      reason: 'tier1_activated',
-      timestamp: Date.now()
+  // v1.6.3.8-v3 - FIX Issue #12: Track message timing for hysteresis
+  _updateBCMessageWindow(now);
+
+  const wasActive = isTier1Active;
+  const messageCount = recentBCMessageTimes.length;
+  const confidenceLevel = _calculateBCConfidence(messageCount);
+
+  // v1.6.3.8-v3 - FIX Issue #12: Only activate if we have sustained activity
+  if (messageCount >= BC_MESSAGES_REQUIRED_FOR_ACTIVE) {
+    isTier1Active = true;
+
+    if (!wasActive) {
+      // Tier 1 became active - increase debounce
+      STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS;
+      console.log('[POLLING] [TIER_STATUS]:', {
+        activeTier: 'BroadcastChannel',
+        debounceMs: STORAGE_READ_DEBOUNCE_MS,
+        previousDebounceMs: STORAGE_READ_DEBOUNCE_FALLBACK_MS,
+        reason: 'tier1_activated',
+        messageCount,
+        requiredMessages: BC_MESSAGES_REQUIRED_FOR_ACTIVE,
+        confidence: confidenceLevel,
+        timestamp: now
+      });
+    }
+  } else {
+    // v1.6.3.8-v3 - FIX Issue #12: Log low-confidence single message
+    console.log('[POLLING] [TIER_STATUS_PENDING]:', {
+      activeTier: isTier1Active ? 'BroadcastChannel' : 'storage-polling-fallback',
+      messageCount,
+      requiredMessages: BC_MESSAGES_REQUIRED_FOR_ACTIVE,
+      confidence: confidenceLevel,
+      message: `Waiting for ${BC_MESSAGES_REQUIRED_FOR_ACTIVE - messageCount} more messages`,
+      timestamp: now
     });
   }
+}
+
+/**
+ * Update the BC message time window, removing old entries
+ * v1.6.3.8-v3 - FIX Issue #12: Helper for hysteresis tracking
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _updateBCMessageWindow(now) {
+  // Add new message time
+  recentBCMessageTimes.push(now);
+
+  // Remove messages outside the window
+  const cutoff = now - BC_CONSECUTIVE_WINDOW_MS;
+  recentBCMessageTimes = recentBCMessageTimes.filter(t => t > cutoff);
+
+  // Update consecutive count
+  _consecutiveBCMessageCount = recentBCMessageTimes.length;
+}
+
+/**
+ * Calculate confidence level based on message count
+ * v1.6.3.8-v3 - FIX Issue #12: Helper for confidence reporting
+ * @private
+ * @param {number} messageCount - Number of messages in window
+ * @returns {string} Confidence level description
+ */
+function _calculateBCConfidence(messageCount) {
+  if (messageCount >= 5) return 'HIGH';
+  if (messageCount >= BC_MESSAGES_REQUIRED_FOR_ACTIVE) return 'MEDIUM';
+  if (messageCount >= 1) return 'LOW';
+  return 'NONE';
 }
 
 /**
@@ -110,16 +197,25 @@ export function getEffectiveDebounceMs() {
 /**
  * Get current tier status for diagnostics
  * v1.6.3.7-v8 - FIX Issue #12: Diagnostic helper
+ * v1.6.3.8-v3 - FIX Issue #12: Added hysteresis info
  * @returns {Object} Tier status information
  */
 export function getTierStatus() {
   const now = Date.now();
+  const messageCount = recentBCMessageTimes.length;
   return {
     isTier1Active,
     debounceMs: STORAGE_READ_DEBOUNCE_MS,
     lastBroadcastMessageTime,
     timeSinceLastBCMs: lastBroadcastMessageTime > 0 ? now - lastBroadcastMessageTime : -1,
-    tier1InactiveThresholdMs: TIER1_INACTIVE_THRESHOLD_MS
+    tier1InactiveThresholdMs: TIER1_INACTIVE_THRESHOLD_MS,
+    // v1.6.3.8-v3 - FIX Issue #12: Hysteresis info
+    hysteresis: {
+      recentMessageCount: messageCount,
+      requiredForActive: BC_MESSAGES_REQUIRED_FOR_ACTIVE,
+      windowMs: BC_CONSECUTIVE_WINDOW_MS,
+      confidence: _calculateBCConfidence(messageCount)
+    }
   };
 }
 

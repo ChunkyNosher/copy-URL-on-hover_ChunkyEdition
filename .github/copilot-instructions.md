@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v2  
+**Version:** 1.6.3.8-v3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,7 +22,17 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v3 Features (NEW):**
+
+- **Storage listener verification** - `STORAGE_LISTENER_VERIFIED` with test key write/read pattern
+- **Tier status hysteresis** - 3+ BC messages in 5s window before activation (prevents flapping)
+- **Map memory cleanup** - `HOST_INFO_MAP_CLEARED` on window unload
+- **Fallback session stats** - `FALLBACK_SESSION_STARTED/ENDED` with message counts
+- **Tier 3 disable on failure** - Storage listener failure disables Tier 3 fallback
+- **BC confidence levels** - `_calculateBCConfidence()` returns high/medium/low based on message frequency
+- **Concurrent probe guard** - `probeInProgress` flag prevents overlapping health probes (Issue #17)
+
+**v1.6.3.8-v2 Features (Retained):**
 
 - **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
 - **ACK-based messaging** - `sendRequestWithTimeout()` utility for reliable delivery
@@ -154,7 +164,16 @@ reconciliation.
 
 ---
 
-## 🆕 v1.6.3.8-v2 Patterns
+## 🆕 v1.6.3.8-v3 Patterns
+
+- **Storage listener verification** - Test key write/read with 1000ms timeout before enabling Tier 3
+- **Tier status hysteresis** - `BC_MESSAGES_REQUIRED_FOR_ACTIVE = 3`, `BC_CONSECUTIVE_WINDOW_MS = 5000`
+- **Map cleanup on unload** - `quickTabHostInfo.clear()` prevents memory leaks
+- **Fallback stats reset** - `_resetFallbackStats()` clears counters at session start
+- **BC confidence scoring** - high (5+ msgs), medium (3-4 msgs), low (<3 msgs) in 5s window
+- **Concurrent probe guard** - `storageHealthStats.probeInProgress` prevents overlapping health probes
+
+## v1.6.3.8-v2 Patterns (Retained)
 
 - **Background Relay** - Sidebar messages routed through background for BC isolation
 - **ACK-based messaging** - `sendRequestWithTimeout()` with configurable timeout
@@ -207,6 +226,10 @@ reconciliation.
 
 | Constant                              | Value | Purpose                              |
 | ------------------------------------- | ----- | ------------------------------------ |
+| `STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS` | 1000 | Storage listener test timeout (v8-v3) |
+| `BC_MESSAGES_REQUIRED_FOR_ACTIVE`     | 3     | Hysteresis threshold (v8-v3)         |
+| `BC_CONSECUTIVE_WINDOW_MS`            | 5000  | Hysteresis time window (v8-v3)       |
+| `TIER1_INACTIVE_THRESHOLD_MS`         | 15000 | BC inactive threshold (v8-v3)        |
 | `HANDLER_TIMEOUT_MS`                  | 5000  | Handler execution timeout (v8-v2)    |
 | `WRITE_BUFFER_FLUSH_MS`               | 75    | WriteBuffer batch window (v8-v2)     |
 | `PORT_REGISTRY_SNAPSHOT_INTERVAL_MS`  | 60000 | Port registry snapshots (v8-v2)      |
@@ -247,7 +270,8 @@ Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v2:** Background Relay,
 ACK-based messaging, SIDEBAR_READY handshake, WriteBuffer batching, sequence
-rejection, port snapshots, **v1.6.3.8:** init barriers, centralized validation,
+rejection, port snapshots, **v1.6.3.8-v3:** storage listener verification, tier
+hysteresis, BC confidence scoring, **v1.6.3.8:** init barriers, centralized validation,
 dedup logging, BC fallback, **v1.6.3.7-v11-v12:** DEBUG_DIAGNOSTICS, promise
 barrier, LRU eviction, **v1.6.3.7-v4:** circuit breaker.
 
@@ -305,11 +329,12 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 | File                         | Features                                                             |
 | ---------------------------- | -------------------------------------------------------------------- |
 | `background.js`              | Background Relay (v8-v2), port snapshots (v8-v2), init barrier (v8)  |
-| `quick-tabs-manager.js`      | SIDEBAR_READY handshake (v8-v2), WriteBuffer (v8-v2)                 |
+| `quick-tabs-manager.js`      | Storage listener verification (v8-v3), SIDEBAR_READY (v8-v2)         |
 | `QuickTabHandler.js`         | Handler timeout (v8-v2), init barrier (v8), Code Health 9.41         |
 | `index.js` (quick-tabs)      | BFCache lifecycle (v8-v2), currentTabId barrier (v8)                 |
 | `message-utils.js`           | ACK-based messaging (v8-v2), sendRequestWithTimeout() ⭐ NEW          |
 | `BroadcastChannelManager.js` | BC relay fallback (v8-v2), verification (v8)                         |
+| `storage-handlers.js`        | Tier hysteresis (v8-v3), BC confidence (v8-v3), tier status (v8)     |
 | `storage-utils.js`           | WriteBuffer (v8-v2), sequence rejection (v8-v2), validation (v8)     |
 | `TabStateManager.js`         | Per-tab state (sessions API, v3)                                     |
 

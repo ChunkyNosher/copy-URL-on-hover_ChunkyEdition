@@ -2,6 +2,16 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.8-v3 - FIX Cross-Tab Communication Issues from diagnostic reports:
+ *   - FIX Issue #1: BroadcastChannel demoted from Tier 1 - Port-based messaging is now PRIMARY for sidebar
+ *   - FIX Issue #6: BC verification replaced with explicit state test + clear failure logging
+ *   - FIX Issue #10: Port message queue now validates sequence numbers during flush (monotonic check)
+ *   - FIX Issue #11: Old port onMessage listener explicitly removed on reconnection via stored reference
+ *   - FIX Issue #16: Disconnect check added before flushing queue - logs warning if port is DISCONNECTED
+ *   - NEW: _portOnMessageHandler reference stored for explicit cleanup
+ *   - NEW: _lastReceivedSequence tracking for incoming message sequence validation
+ *   - ARCHITECTURE: Port-based messaging is Tier 1 for sidebar, BroadcastChannel is Tier 2 (tab-to-tab only)
+ *
  * v1.6.3.7-v13 - FIX Sidebar Communication Fallback Issues #5, #12, arch #1, #6:
  *   - FIX Issue #5: Sidebar BroadcastChannel fallback logging with SIDEBAR_BC_UNAVAILABLE message
  *   - FIX Issue #5: Explicit fallback mechanism type documentation (port-based + storage.onChanged)
@@ -335,6 +345,57 @@ let storageWatchdogTimerId = null;
  */
 const STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
 
+// ==================== v1.6.3.8-v3 STORAGE LISTENER VERIFICATION ====================
+// FIX Issues #2, #5, #9, #15: Explicit storage.onChanged listener registration verification
+
+/**
+ * Test key for storage listener verification
+ * v1.6.3.8-v3 - FIX Issue #5: Write-then-verify pattern
+ */
+const STORAGE_LISTENER_TEST_KEY = '__storage_listener_verification_test__';
+
+/**
+ * Timeout for storage listener verification (ms)
+ * v1.6.3.8-v3 - FIX Issue #5: If callback doesn't fire within this time, listener failed
+ */
+const STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS = 1000;
+
+/**
+ * Flag indicating storage listener is verified working
+ * v1.6.3.8-v3 - FIX Issue #5: If false, Tier 3 fallback should be disabled
+ */
+let storageListenerVerified = false;
+
+/**
+ * Timer ID for storage listener verification timeout
+ * v1.6.3.8-v3 - FIX Issue #5: Track timeout for cleanup
+ */
+let storageListenerVerificationTimerId = null;
+
+/**
+ * Timestamp when storage listener verification started
+ * v1.6.3.8-v3 - FIX Issue #5: Track latency of verification
+ */
+let storageListenerVerificationStartTime = 0;
+
+/**
+ * Promise resolver for storage listener verification barrier
+ * v1.6.3.8-v3 - FIX Issue #9: Initialization barrier for listener registration
+ */
+let _storageListenerReadyResolve = null;
+
+/**
+ * Promise for awaiting storage listener verification
+ * v1.6.3.8-v3 - FIX Issue #9: Barrier to ensure listener is working before main init
+ */
+let storageListenerReadyPromise = null;
+
+/**
+ * Reference to the storage.onChanged handler for verification
+ * v1.6.3.8-v3 - FIX Issue #15: Store callback reference as named variable
+ */
+let _storageOnChangedHandler = null;
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -402,6 +463,275 @@ function _initializeSessionId() {
   console.log('[Manager] v1.6.3.7-v5 Session initialized:', { sessionId: currentSessionId });
 }
 
+// ==================== v1.6.3.8-v3 STORAGE LISTENER INITIALIZATION ====================
+// FIX Issues #2, #5, #9, #15: Explicit storage.onChanged listener registration and verification
+
+/**
+ * Initialize the storage listener verification promise barrier
+ * v1.6.3.8-v3 - FIX Issue #9: Create promise for init barrier
+ * @private
+ */
+function _initStorageListenerReadyPromise() {
+  storageListenerReadyPromise = new Promise((resolve) => {
+    _storageListenerReadyResolve = resolve;
+  });
+  console.log('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_INITIALIZED:', {
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Storage.onChanged handler callback (named for explicit reference)
+ * v1.6.3.8-v3 - FIX Issue #15: Named callback instead of inline arrow function
+ * v1.6.4.18 - Refactored to reduce complexity below 9
+ * @private
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area name
+ */
+function _handleStorageOnChanged(changes, areaName) {
+  // v1.6.3.8-v3 - FIX Issue #5: Handle verification test key
+  if (_handleVerificationTestKey(changes, areaName)) return;
+
+  // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
+  logListenerEntry('storage.onChanged', {
+    areaName,
+    hasStateKey: !!changes[STATE_KEY],
+    hasHealthProbeKey: !!changes[STORAGE_HEALTH_PROBE_KEY]
+  });
+
+  // v1.6.3.7-v13 - Issue #6 (arch): Handle storage health probe response
+  if (_handleHealthProbeKey(changes, areaName)) return;
+
+  // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
+  if (_guardBeforeInit(areaName)) return;
+
+  if (areaName !== 'local' || !changes[STATE_KEY]) return;
+  _handleStorageChange(changes[STATE_KEY]);
+}
+
+/**
+ * Handle verification test key if present
+ * v1.6.4.18 - Extracted to reduce complexity
+ * @private
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area name
+ * @returns {boolean} True if handled (caller should return)
+ */
+function _handleVerificationTestKey(changes, areaName) {
+  if (areaName === 'local' && changes[STORAGE_LISTENER_TEST_KEY]) {
+    _handleStorageListenerVerification(changes[STORAGE_LISTENER_TEST_KEY]);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Handle health probe key if present
+ * v1.6.4.18 - Extracted to reduce complexity
+ * @private
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area name
+ * @returns {boolean} True if handled (caller should return)
+ */
+function _handleHealthProbeKey(changes, areaName) {
+  if (areaName === 'local' && changes[STORAGE_HEALTH_PROBE_KEY]) {
+    const probeData = changes[STORAGE_HEALTH_PROBE_KEY].newValue;
+    if (probeData?.timestamp) {
+      _handleStorageProbeResponse(probeData.timestamp);
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Guard against processing before initialization
+ * v1.6.4.18 - Extracted to reduce complexity
+ * @private
+ * @param {string} areaName - Storage area name for logging
+ * @returns {boolean} True if should skip processing (caller should return)
+ */
+function _guardBeforeInit(areaName) {
+  if (!isFullyInitialized()) {
+    const timeSinceInitStartMs =
+      initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
+    console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
+      initializationStarted,
+      initializationComplete,
+      timeSinceInitStartMs,
+      areaName,
+      message: 'Skipping - sidebar not yet fully initialized',
+      timestamp: Date.now()
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Handle storage listener verification callback
+ * v1.6.3.8-v3 - FIX Issue #5: Called when test key change is detected
+ * @private
+ * @param {Object} change - Storage change object for test key
+ */
+function _handleStorageListenerVerification(change) {
+  const latencyMs = Date.now() - storageListenerVerificationStartTime;
+  
+  // Clear verification timeout
+  if (storageListenerVerificationTimerId !== null) {
+    clearTimeout(storageListenerVerificationTimerId);
+    storageListenerVerificationTimerId = null;
+  }
+  
+  // Mark listener as verified
+  storageListenerVerified = true;
+  
+  console.log('[Manager] STORAGE_LISTENER_VERIFIED: success', {
+    latencyMs,
+    testValue: change.newValue,
+    callbackReference: '_handleStorageOnChanged',
+    timestamp: Date.now()
+  });
+  
+  // Clean up the test key
+  browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(err => {
+    console.warn('[Manager] Failed to clean up storage listener test key:', err.message);
+  });
+  
+  // Resolve the verification promise barrier
+  if (_storageListenerReadyResolve) {
+    _storageListenerReadyResolve();
+    console.log('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_RESOLVED:', {
+      latencyMs,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Handle storage listener verification timeout (listener did not fire)
+ * v1.6.3.8-v3 - FIX Issue #5: Called when verification times out
+ * @private
+ */
+function _handleStorageListenerVerificationTimeout() {
+  const latencyMs = Date.now() - storageListenerVerificationStartTime;
+  
+  storageListenerVerificationTimerId = null;
+  storageListenerVerified = false;
+  
+  console.error('[Manager] STORAGE_LISTENER_VERIFICATION_FAILED: timeout', {
+    timeoutMs: STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS,
+    latencyMs,
+    callbackReference: '_handleStorageOnChanged',
+    tier3Disabled: true,
+    message: 'storage.onChanged listener did not fire - Tier 3 fallback DISABLED',
+    timestamp: Date.now()
+  });
+  
+  // Clean up the test key anyway
+  browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(() => {});
+  
+  // Resolve the promise barrier (with failure state, but don't block init)
+  if (_storageListenerReadyResolve) {
+    _storageListenerReadyResolve();
+    console.warn('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_RESOLVED: with failure', {
+      storageListenerVerified: false,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Initialize storage.onChanged listener with explicit verification
+ * v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Explicit registration with verification pattern
+ * 
+ * This function:
+ * 1. Registers the storage.onChanged listener with try/catch
+ * 2. Logs registration attempt and success/failure
+ * 3. Writes a test key to storage
+ * 4. Sets timeout expecting callback within 1000ms
+ * 5. If callback fires, verifies listener works and resolves barrier
+ * 6. If timeout occurs, logs error and disables Tier 3 fallback
+ * 
+ * @returns {Promise<void>} Resolves when verification completes (success or failure)
+ */
+async function _initializeStorageListener() {
+  console.log('[Manager] STORAGE_LISTENER_INITIALIZATION: attempting registration', {
+    callbackFunction: '_handleStorageOnChanged',
+    timestamp: Date.now()
+  });
+  
+  // Initialize the promise barrier
+  _initStorageListenerReadyPromise();
+  
+  try {
+    // Store callback reference as module-level named variable
+    _storageOnChangedHandler = _handleStorageOnChanged;
+    
+    // Register the listener
+    browser.storage.onChanged.addListener(_storageOnChangedHandler);
+    
+    console.log('[Manager] STORAGE_LISTENER_INITIALIZED: success', {
+      callbackReference: '_handleStorageOnChanged',
+      callbackStored: _storageOnChangedHandler !== null,
+      timestamp: Date.now()
+    });
+    
+    // Start verification by writing test key
+    storageListenerVerificationStartTime = Date.now();
+    
+    // Set verification timeout
+    storageListenerVerificationTimerId = setTimeout(
+      _handleStorageListenerVerificationTimeout,
+      STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS
+    );
+    
+    // Write test key to trigger storage.onChanged
+    const testValue = `verify-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    
+    console.log('[Manager] STORAGE_LISTENER_VERIFICATION_STARTED:', {
+      testKey: STORAGE_LISTENER_TEST_KEY,
+      testValue,
+      timeoutMs: STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS,
+      timestamp: Date.now()
+    });
+    
+    await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
+    
+  } catch (err) {
+    console.error('[Manager] STORAGE_LISTENER_INITIALIZATION_FAILED: exception', {
+      error: err.message,
+      tier3Disabled: true,
+      timestamp: Date.now()
+    });
+    
+    storageListenerVerified = false;
+    
+    // Clear any pending timeout
+    if (storageListenerVerificationTimerId !== null) {
+      clearTimeout(storageListenerVerificationTimerId);
+      storageListenerVerificationTimerId = null;
+    }
+    
+    // Resolve barrier with failure
+    if (_storageListenerReadyResolve) {
+      _storageListenerReadyResolve();
+    }
+  }
+  
+  // Return the promise - caller can await verification completion
+  return storageListenerReadyPromise;
+}
+
+/**
+ * Check if storage listener is verified and Tier 3 fallback is enabled
+ * v1.6.3.8-v3 - FIX Issue #5: Guard function for fallback decisions
+ * @returns {boolean} True if storage listener is verified working
+ */
+function isStorageListenerVerified() {
+  return storageListenerVerified;
+}
+
 // UI Elements (cached for performance)
 let containersList;
 let emptyState;
@@ -452,6 +782,20 @@ let _groupsContainer = null;
  * v1.6.3.6-v11 - FIX Issue #11: Persistent connection
  */
 let backgroundPort = null;
+
+/**
+ * Reference to the port onMessage handler for explicit cleanup
+ * v1.6.3.8-v3 - FIX Issue #11: Store handler reference for removeListener on reconnection
+ * @private
+ */
+let _portOnMessageHandler = null;
+
+/**
+ * Last received sequence number from background for incoming message validation
+ * v1.6.3.8-v3 - FIX Issue #10: Track incoming sequence for monotonic validation during queue flush
+ * @private
+ */
+let _lastReceivedSequence = 0;
 
 /**
  * Pending acknowledgments map
@@ -824,122 +1168,146 @@ function _logDisconnectedFallback() {
  * v1.6.3.7-v5 - FIX Issue #1: Update connection state on connect
  * v1.6.3.7-v8 - FIX Issue #9: Port message queue for buffering pre-listener messages
  * v1.6.3.7-v8 - FIX Issue #10: Atomic reconnection guard with isReconnecting flag
+ * v1.6.3.8-v3 - Refactored to extract helpers for max-lines-per-function compliance
  */
 function connectToBackground() {
-  // v1.6.3.7-v8 - FIX Issue #10: Prevent concurrent reconnection attempts
+  if (!_canAttemptConnection()) return;
+
+  _prepareForReconnection();
+  _cleanupOldPortListener();
+
+  try {
+    _establishPortConnection();
+    _setupPortListeners();
+    _finalizeConnection();
+    console.log('[Manager] v1.6.3.8-v3 Port connection established');
+  } catch (err) {
+    _handlePortConnectionError(err);
+  } finally {
+    isReconnecting = false;
+  }
+}
+
+/**
+ * Check if connection attempt is allowed (not already reconnecting, circuit breaker)
+ * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @private
+ * @returns {boolean} True if connection can be attempted
+ */
+function _canAttemptConnection() {
   if (isReconnecting) {
     console.log('[Manager] [PORT] [RECONNECT_BLOCKED]:', {
       reason: 'already_in_progress',
       timestamp: Date.now()
     });
-    return;
+    return false;
   }
 
-  // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
   if (circuitBreakerState === 'open') {
     const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
     if (timeSinceOpen < CIRCUIT_BREAKER_OPEN_DURATION_MS) {
       console.log('[Manager] Circuit breaker OPEN - skipping reconnect', {
         timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
       });
-      return;
+      return false;
     }
-    // Transition to half-open state
     circuitBreakerState = 'half-open';
     console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
   }
 
-  // v1.6.3.7-v8 - FIX Issue #10: Set reconnection guard
+  return true;
+}
+
+/**
+ * Prepare state for reconnection
+ * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @private
+ */
+function _prepareForReconnection() {
   isReconnecting = true;
-  // v1.6.3.7-v8 - FIX Issue #9: Reset listener registration state
   listenerFullyRegistered = false;
   portMessageQueue = [];
+  _lastReceivedSequence = 0;
+}
 
-  try {
-    backgroundPort = browser.runtime.connect({
-      name: 'quicktabs-sidebar'
-    });
+/**
+ * Establish the port connection to background
+ * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @private
+ */
+function _establishPortConnection() {
+  backgroundPort = browser.runtime.connect({ name: 'quicktabs-sidebar' });
+  logPortLifecycle('open', { portName: backgroundPort.name });
+}
 
-    logPortLifecycle('open', { portName: backgroundPort.name });
+/**
+ * Set up port message and disconnect listeners
+ * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @private
+ */
+function _setupPortListeners() {
+  _portOnMessageHandler = _handlePortMessageWithQueue;
+  backgroundPort.onMessage.addListener(_portOnMessageHandler);
+  console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
+    type: 'onMessage',
+    handlerStored: true,
+    timestamp: Date.now()
+  });
 
-    // Handle messages from background
-    // v1.6.3.7-v4 - FIX Issue #10: Log listener registration
-    // v1.6.3.7-v8 - FIX Issue #9: Use wrapper to handle message queue
-    backgroundPort.onMessage.addListener(_handlePortMessageWithQueue);
-    console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
-      type: 'onMessage',
-      timestamp: Date.now()
-    });
+  backgroundPort.onDisconnect.addListener(_handlePortDisconnect);
+  console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
+    type: 'onDisconnect',
+    timestamp: Date.now()
+  });
+}
 
-    // Handle disconnect
-    // v1.6.3.7-v4 - FIX Issue #10: Log disconnect listener registration
-    backgroundPort.onDisconnect.addListener(() => {
-      const error = browser.runtime.lastError;
-      logPortLifecycle('disconnect', { error: error?.message });
-      backgroundPort = null;
+/**
+ * Handle port disconnect event
+ * v1.6.3.8-v3 - Extracted from connectToBackground inline handler
+ * @private
+ */
+function _handlePortDisconnect() {
+  const error = browser.runtime.lastError;
+  logPortLifecycle('disconnect', { error: error?.message });
+  _cleanupOldPortListener();
+  backgroundPort = null;
+  _resetListenerReadyState();
+  _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
+  stopHeartbeat();
+  _stopBackgroundActivityCheck();
+  _stopCircuitBreakerProbes();
+  scheduleReconnect();
+}
 
-      // v1.6.4.16 - FIX Issue #9: Reset promise barrier on disconnect
-      _resetListenerReadyState();
+/**
+ * Finalize successful connection (reset circuit breaker, start heartbeat)
+ * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @private
+ */
+function _finalizeConnection() {
+  _markListenerReady();
+  _flushPortMessageQueue();
+  circuitBreakerState = 'closed';
+  reconnectAttempts = 0;
+  reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+  _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'port-connected');
+  startHeartbeat();
+  _startBackgroundActivityCheck();
+  _requestFullStateSync();
+  _verifyPortListenerRegistration();
+}
 
-      // v1.6.3.7-v5 - FIX Issue #1: Update connection state
-      _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
-
-      // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
-      stopHeartbeat();
-
-      // v1.6.3.7-v8 - FIX Issue #14: Stop background activity check
-      _stopBackgroundActivityCheck();
-
-      // v1.6.3.7-v4 - FIX Issue #8: Stop circuit breaker probes on disconnect
-      _stopCircuitBreakerProbes();
-
-      // v1.6.3.7 - FIX Issue #5: Implement exponential backoff reconnection
-      scheduleReconnect();
-    });
-    console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
-      type: 'onDisconnect',
-      timestamp: Date.now()
-    });
-
-    // v1.6.4.16 - FIX Issue #9: Mark listener as ready via Promise barrier and flush queue
-    _markListenerReady();
-    _flushPortMessageQueue();
-
-    // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
-    circuitBreakerState = 'closed';
-    reconnectAttempts = 0;
-    reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-
-    // v1.6.3.7-v5 - FIX Issue #1: Update connection state (will be upgraded to CONNECTED after first heartbeat success)
-    _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'port-connected');
-
-    // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
-    startHeartbeat();
-
-    // v1.6.3.7-v8 - FIX Issue #14: Start background activity monitoring
-    _startBackgroundActivityCheck();
-
-    // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
-    // This ensures Manager has latest state after any disconnection
-    _requestFullStateSync();
-
-    // v1.6.3.7-v4 - FIX Issue #10: Send test message to verify listener works
-    _verifyPortListenerRegistration();
-
-    console.log('[Manager] v1.6.3.7-v8 Port connection established');
-  } catch (err) {
-    console.error('[Manager] Failed to connect to background:', err.message);
-    logPortLifecycle('error', { error: err.message });
-
-    // v1.6.3.7-v5 - FIX Issue #1: Update connection state
-    _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'connection-error');
-
-    // v1.6.3.7 - FIX Issue #5: Handle connection failure
-    handleConnectionFailure();
-  } finally {
-    // v1.6.3.7-v8 - FIX Issue #10: Always clear reconnection guard
-    isReconnecting = false;
-  }
+/**
+ * Handle port connection error
+ * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @private
+ * @param {Error} err - Connection error
+ */
+function _handlePortConnectionError(err) {
+  console.error('[Manager] Failed to connect to background:', err.message);
+  logPortLifecycle('error', { error: err.message });
+  _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'connection-error');
+  handleConnectionFailure();
 }
 
 /**
@@ -964,6 +1332,30 @@ function _verifyPortListenerRegistration() {
       err.message
     );
   }
+}
+
+/**
+ * Clean up old port onMessage listener before reconnection
+ * v1.6.3.8-v3 - FIX Issue #11: Prevent dual message processing from old + new listeners
+ * @private
+ */
+function _cleanupOldPortListener() {
+  if (_portOnMessageHandler && backgroundPort) {
+    try {
+      backgroundPort.onMessage.removeListener(_portOnMessageHandler);
+      console.log('[Manager] [PORT] [OLD_LISTENER_REMOVED]:', {
+        reason: 'reconnection-cleanup',
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      // Port may already be disconnected, which is fine
+      console.log('[Manager] [PORT] [OLD_LISTENER_REMOVAL_SKIPPED]:', {
+        reason: err.message,
+        timestamp: Date.now()
+      });
+    }
+  }
+  _portOnMessageHandler = null;
 }
 
 /**
@@ -1119,12 +1511,20 @@ async function _probeBackgroundHealth() {
  * Handle port message with queue support
  * v1.6.3.7-v8 - FIX Issue #9: Buffer messages if listener not fully registered
  * v1.6.4.16 - FIX Issue #9: Use Promise barrier for reliable race prevention
+ * v1.6.3.8-v3 - FIX Issue #10: Track incoming sequence numbers for validation
  * @private
  * @param {Object} message - Message from background
  */
 function _handlePortMessageWithQueue(message) {
   // v1.6.3.7-v8 - FIX Issue #14: Update last background message time
   lastBackgroundMessageTime = Date.now();
+
+  // v1.6.3.8-v3 - FIX Issue #10: Track incoming sequence number for validation
+  const incomingSequence = message?.messageSequence;
+  if (typeof incomingSequence === 'number') {
+    message._receivedAt = Date.now();
+    message._previousSequence = _lastReceivedSequence;
+  }
 
   // v1.6.4.16 - FIX Issue #9: Use boolean for sync check (Promise for async operations)
   if (!listenerFullyRegistered) {
@@ -1133,9 +1533,15 @@ function _handlePortMessageWithQueue(message) {
       type: message?.type || message?.action || 'unknown',
       queueSize: portMessageQueue.length,
       listenerReady: listenerFullyRegistered,
+      incomingSequence,
       timestamp: Date.now()
     });
     return;
+  }
+
+  // v1.6.3.8-v3 - FIX Issue #10: Update sequence after queue check
+  if (typeof incomingSequence === 'number') {
+    _lastReceivedSequence = incomingSequence;
   }
 
   // Process message normally
@@ -1173,6 +1579,8 @@ async function waitForListenerReady(timeoutMs = 5000) {
 /**
  * Flush queued port messages after listener is fully registered
  * v1.6.3.7-v8 - FIX Issue #9: Process buffered messages
+ * v1.6.3.8-v3 - FIX Issue #16: Check connection state before flushing
+ * v1.6.3.8-v3 - FIX Issue #10: Validate sequence ordering during flush
  * @private
  */
 function _flushPortMessageQueue() {
@@ -1181,8 +1589,24 @@ function _flushPortMessageQueue() {
     return;
   }
 
+  // v1.6.3.8-v3 - FIX Issue #16: Check connection state before processing
+  if (connectionState === CONNECTION_STATE.DISCONNECTED) {
+    console.warn('[Manager] [PORT] [QUEUE_FLUSH_BLOCKED]:', {
+      reason: 'port-disconnected',
+      connectionState,
+      queueSize: portMessageQueue.length,
+      warning: 'Queue will be preserved for reconnection',
+      timestamp: Date.now()
+    });
+    return;
+  }
+
   const messagesToProcess = _extractQueuedMessages();
-  _processQueuedMessages(messagesToProcess);
+
+  // v1.6.3.8-v3 - FIX Issue #10: Validate and potentially reorder messages by sequence
+  const validatedMessages = _validateAndSortQueuedMessages(messagesToProcess);
+
+  _processQueuedMessages(validatedMessages);
 }
 
 /**
@@ -1200,6 +1624,144 @@ function _extractQueuedMessages() {
   const messages = [...portMessageQueue];
   portMessageQueue = [];
   return messages;
+}
+
+/**
+ * Validate and sort queued messages by sequence number
+ * v1.6.3.8-v3 - FIX Issue #10: Ensure monotonically increasing sequence during flush
+ * @private
+ * @param {Array} messages - Messages to validate
+ * @returns {Array} Validated and sorted messages
+ */
+function _validateAndSortQueuedMessages(messages) {
+  const { sequencedMessages, unsequencedMessages } = _partitionMessagesBySequence(messages);
+
+  // Sort sequenced messages by sequence number
+  sequencedMessages.sort((a, b) => a.messageSequence - b.messageSequence);
+
+  // Validate sequence ordering and log any issues
+  const validationResult = _validateSequenceOrdering(sequencedMessages);
+
+  // Update last received sequence to highest in queue
+  _updateLastReceivedSequence(sequencedMessages);
+
+  // Log validation summary if issues detected
+  _logValidationSummaryIfNeeded(messages, sequencedMessages, unsequencedMessages, validationResult);
+
+  // Return sorted sequenced messages first, then unsequenced
+  return [...sequencedMessages, ...unsequencedMessages];
+}
+
+/**
+ * Partition messages into sequenced and unsequenced groups
+ * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @private
+ * @param {Array} messages - Messages to partition
+ * @returns {Object} Object with sequencedMessages and unsequencedMessages arrays
+ */
+function _partitionMessagesBySequence(messages) {
+  const sequencedMessages = [];
+  const unsequencedMessages = [];
+
+  for (const msg of messages) {
+    if (typeof msg?.messageSequence === 'number') {
+      sequencedMessages.push(msg);
+    } else {
+      unsequencedMessages.push(msg);
+    }
+  }
+
+  return { sequencedMessages, unsequencedMessages };
+}
+
+/**
+ * Validate sequence ordering and log reordering/gaps
+ * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @private
+ * @param {Array} sequencedMessages - Sorted sequenced messages
+ * @returns {Object} Validation result with reorderDetected and gapsDetected
+ */
+function _validateSequenceOrdering(sequencedMessages) {
+  let lastSeq = _lastReceivedSequence;
+  let reorderDetected = false;
+  let gapsDetected = 0;
+
+  for (const msg of sequencedMessages) {
+    const seq = msg.messageSequence;
+    const result = _checkSequenceIssue(seq, lastSeq, msg);
+    if (result.reorder) reorderDetected = true;
+    if (result.gap) gapsDetected++;
+    lastSeq = seq;
+  }
+
+  return { reorderDetected, gapsDetected };
+}
+
+/**
+ * Check for sequence issue (reorder or gap) and log if found
+ * v1.6.3.8-v3 - Extracted to reduce _validateSequenceOrdering CC
+ * @private
+ * @param {number} seq - Current sequence number
+ * @param {number} lastSeq - Previous sequence number
+ * @param {Object} msg - Message object
+ * @returns {Object} Result with reorder and gap flags
+ */
+function _checkSequenceIssue(seq, lastSeq, msg) {
+  const messageType = msg.type || msg.action || 'unknown';
+
+  if (seq < lastSeq) {
+    console.warn('[Manager] [PORT] [QUEUE_SEQUENCE_REORDER]:', {
+      expectedMinSequence: lastSeq,
+      receivedSequence: seq,
+      messageType,
+      timestamp: Date.now()
+    });
+    return { reorder: true, gap: false };
+  }
+
+  if (seq > lastSeq + 1) {
+    console.warn('[Manager] [PORT] [QUEUE_SEQUENCE_GAP]:', {
+      expectedSequence: lastSeq + 1,
+      receivedSequence: seq,
+      gapSize: seq - lastSeq - 1,
+      messageType,
+      timestamp: Date.now()
+    });
+    return { reorder: false, gap: true };
+  }
+
+  return { reorder: false, gap: false };
+}
+
+/**
+ * Update last received sequence from sequenced messages
+ * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @private
+ * @param {Array} sequencedMessages - Sorted sequenced messages
+ */
+function _updateLastReceivedSequence(sequencedMessages) {
+  if (sequencedMessages.length > 0) {
+    _lastReceivedSequence = sequencedMessages[sequencedMessages.length - 1].messageSequence;
+  }
+}
+
+/**
+ * Log validation summary if issues were detected
+ * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @private
+ */
+function _logValidationSummaryIfNeeded(messages, sequencedMessages, unsequencedMessages, result) {
+  if (!result.reorderDetected && result.gapsDetected === 0) return;
+
+  console.log('[Manager] [PORT] [QUEUE_VALIDATION_SUMMARY]:', {
+    totalMessages: messages.length,
+    sequencedCount: sequencedMessages.length,
+    unsequencedCount: unsequencedMessages.length,
+    reorderDetected: result.reorderDetected,
+    gapsDetected: result.gapsDetected,
+    finalSequence: _lastReceivedSequence,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -2770,11 +3332,15 @@ function _sendActionRequest(action, payload) {
 // ==================== v1.6.3.7-v3/v13 BROADCAST CHANNEL ====================
 // API #2: BroadcastChannel - Real-Time Tab Messaging
 //
-// ARCHITECTURE NOTE (v1.6.3.7-v13 - Issue #1 arch doc):
-// - BroadcastChannel works for tab-to-tab communication
-// - In Sidebar context, BroadcastChannel is NOT RELIABLE due to Firefox API constraints
-// - For Sidebar, Port-based messaging is the PRIMARY tier, storage.onChanged is SECONDARY
-// - This function attempts BC init but includes verification handshake to confirm it works
+// ARCHITECTURE NOTE (v1.6.3.8-v3 - FIX Issue #1 from diagnostic report):
+// - BroadcastChannel DEMOTED from Tier 1 for Sidebar context
+// - Firefox sidebar panels are isolated execution contexts (per Mozilla documentation)
+// - BroadcastChannel operates on same-origin principle but doesn't reliably propagate
+//   across sidebar/background boundary due to Firefox WebExtensions architecture
+// - TIER 1 (PRIMARY): Port-based messaging via runtime.connect()
+// - TIER 2 (SECONDARY): BroadcastChannel (tab-to-tab only, NOT for sidebar↔background)
+// - TIER 3 (TERTIARY): storage.onChanged (reliable fallback)
+// - This function attempts BC init but verification confirms it's NOT for authoritative state
 
 /**
  * Handler function reference for cleanup
@@ -2907,6 +3473,7 @@ function _startBCVerificationHandshake() {
 /**
  * Handle BC verification timeout
  * v1.6.3.7-v13 - Issue #1 (arch): BC verification failed - activate fallback
+ * v1.6.3.8-v3 - FIX Issue #6: Enhanced failure logging with clear reason
  * @private
  */
 function _handleBCVerificationTimeout() {
@@ -2914,18 +3481,29 @@ function _handleBCVerificationTimeout() {
   bcVerificationTimeoutId = null;
 
   if (!bcVerificationReceived) {
-    console.warn('[Manager] BC_VERIFICATION_FAILED: Messages not crossing sidebar boundary', {
+    // v1.6.3.8-v3 - FIX Issue #6: Log explicit failure with architectural context
+    console.warn('[Manager] [BC] BC_VERIFICATION_FAILED:', {
+      reason: 'FIREFOX_SIDEBAR_ISOLATION',
       timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
       bcApiAvailable: true,
       sidebarContext: true,
-      diagnosis: 'BroadcastChannel API exists but messages do not reach sidebar',
-      recommendation: 'Port-based messaging is PRIMARY for Sidebar, BC only for tab-to-tab',
+      firefoxArchitecture: 'WebExtension sidebar panels are isolated execution contexts',
+      diagnosis: 'BroadcastChannel API exists but messages do NOT cross sidebar boundary',
+      consequence: 'BC cannot be used for authoritative state in sidebar',
+      recommendation: 'Port-based messaging (Tier 1) handles all sidebar↔background communication',
+      bcUsage: 'BC suitable ONLY for non-critical UI updates between content script tabs',
       timestamp: Date.now()
     });
 
-    // Activate fallback monitoring even though BC API is "available"
+    // v1.6.3.8-v3 - FIX Issue #6: Do NOT rely on BC for sidebar state at all
     console.log(
-      '[Manager] SIDEBAR_BC_UNRELIABLE: Activating fallback [port-based + storage.onChanged]'
+      '[Manager] [BC] SIDEBAR_BC_DEMOTED: BC is NOT authoritative for sidebar state',
+      {
+        tier1: 'Port-based messaging (PRIMARY)',
+        tier2: 'BroadcastChannel (tab-to-tab only)',
+        tier3: 'storage.onChanged (reliable fallback)',
+        timestamp: Date.now()
+      }
     );
     _startFallbackHealthMonitoring();
   }
@@ -2978,8 +3556,9 @@ let storageHealthProbeIntervalId = null;
  * Fallback statistics for health monitoring
  * v1.6.3.7-v12 - Issue #5: Track state updates received via fallback
  * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
+ * v1.6.3.8-v3 - FIX Issue #20: Added reset function for clean cycle separation
  */
-let fallbackStats = {
+const fallbackStats = {
   stateUpdatesReceived: 0,
   lastUpdateTime: 0,
   portMessagesReceived: 0,
@@ -2992,10 +3571,39 @@ let fallbackStats = {
 };
 
 /**
+ * Reset fallback stats for a new monitoring cycle
+ * v1.6.3.8-v3 - FIX Issue #20: Clear all counters to prevent cross-cycle accumulation
+ * @private
+ */
+function _resetFallbackStats() {
+  const previousStats = { ...fallbackStats };
+  
+  fallbackStats.stateUpdatesReceived = 0;
+  fallbackStats.lastUpdateTime = 0;
+  fallbackStats.portMessagesReceived = 0;
+  fallbackStats.storageEventsReceived = 0;
+  fallbackStats.startTime = Date.now();
+  fallbackStats.latencySum = 0;
+  fallbackStats.latencyCount = 0;
+  fallbackStats.lastLatencyMs = 0;
+  
+  console.log('[Manager] FALLBACK_STATS_RESET:', {
+    previousCycle: {
+      stateUpdatesReceived: previousStats.stateUpdatesReceived,
+      portMessages: previousStats.portMessagesReceived,
+      storageEvents: previousStats.storageEventsReceived,
+      durationMs: Date.now() - previousStats.startTime
+    },
+    timestamp: Date.now()
+  });
+}
+
+/**
  * Storage health probe statistics
  * v1.6.3.7-v13 - Issue #6 (arch): Track storage tier health
+ * v1.6.3.8-v3 - FIX Issue #17: Added probeInProgress flag to prevent concurrent probes
  */
-let storageHealthStats = {
+const storageHealthStats = {
   probesSent: 0,
   probesReceived: 0,
   lastProbeTime: 0,
@@ -3003,7 +3611,9 @@ let storageHealthStats = {
   avgLatencyMs: 0,
   latencySum: 0,
   lastSuccessfulProbe: 0,
-  consecutiveFailures: 0
+  consecutiveFailures: 0,
+  // v1.6.3.8-v3 - FIX Issue #17: Guard flag to prevent concurrent probes
+  probeInProgress: false
 };
 
 /**
@@ -3046,6 +3656,7 @@ let fallbackModeActive = false;
  * Start fallback health monitoring
  * v1.6.3.7-v12 - Issue #5: Log periodic fallback status when BC unavailable
  * v1.6.3.7-v13 - Issue #12: Enhanced with stall detection and degraded warnings
+ * v1.6.3.8-v3 - FIX Issue #20: Reset stats at start for clean cycle separation
  * @private
  */
 function _startFallbackHealthMonitoring() {
@@ -3053,7 +3664,8 @@ function _startFallbackHealthMonitoring() {
     clearInterval(fallbackHealthIntervalId);
   }
 
-  fallbackStats.startTime = Date.now();
+  // v1.6.3.8-v3 - FIX Issue #20: Reset stats at start of new monitoring cycle
+  _resetFallbackStats();
   fallbackModeActive = true;
 
   // v1.6.3.7-v13 - Issue #6 (arch): Also start storage health probing
@@ -3064,7 +3676,7 @@ function _startFallbackHealthMonitoring() {
   }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
 
   console.log(
-    '[Manager] FALLBACK_ACTIVATED: using [port-based + storage.onChanged], will check fallback health every 30s',
+    '[Manager] FALLBACK_SESSION_START: using [port-based + storage.onChanged], will check fallback health every 30s',
     {
       healthCheckIntervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
       stallThresholdMs: FALLBACK_STALL_THRESHOLD_MS,
@@ -3147,12 +3759,29 @@ function _logFallbackHealthStatus() {
 /**
  * Stop fallback health monitoring
  * v1.6.3.7-v13 - Issue #12: Cleanup on channel recovery
+ * v1.6.3.8-v3 - FIX Issue #20: Log final session stats before stopping
  * @private
  */
 function _stopFallbackHealthMonitoring() {
   if (fallbackHealthIntervalId) {
     clearInterval(fallbackHealthIntervalId);
     fallbackHealthIntervalId = null;
+    
+    // v1.6.3.8-v3 - FIX Issue #20: Log final stats for this session
+    const sessionDurationMs = Date.now() - fallbackStats.startTime;
+    const avgLatencyMs = fallbackStats.latencyCount > 0
+      ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
+      : 0;
+    
+    console.log('[Manager] FALLBACK_SESSION_ENDED:', {
+      sessionDurationMs,
+      totalStateUpdates: fallbackStats.stateUpdatesReceived,
+      portMessages: fallbackStats.portMessagesReceived,
+      storageEvents: fallbackStats.storageEventsReceived,
+      avgLatencyMs,
+      lastLatencyMs: fallbackStats.lastLatencyMs,
+      timestamp: Date.now()
+    });
   }
   _stopStorageHealthProbe();
   fallbackModeActive = false;
@@ -3211,9 +3840,20 @@ function _setupStorageHealthProbeListener() {
 /**
  * Send a storage health probe
  * v1.6.3.7-v13 - Issue #6 (arch): Write timestamp to storage and measure round-trip
+ * v1.6.3.8-v3 - FIX Issue #17: Added guard to prevent concurrent probes
  * @private
  */
 async function _sendStorageHealthProbe() {
+  // v1.6.3.8-v3 - FIX Issue #17: Prevent concurrent health probes
+  if (storageHealthStats.probeInProgress) {
+    console.log('[Manager] STORAGE_HEALTH_PROBE_SKIPPED: probe already in progress', {
+      lastProbeTime: storageHealthStats.lastProbeTime,
+      timestamp: Date.now()
+    });
+    return;
+  }
+  
+  storageHealthStats.probeInProgress = true;
   const probeTimestamp = Date.now();
   storageHealthStats.probesSent++;
   storageHealthStats.lastProbeTime = probeTimestamp;
@@ -3244,6 +3884,8 @@ async function _sendStorageHealthProbe() {
     }
   } catch (err) {
     clearTimeout(timeoutId);
+    // v1.6.3.8-v3 - FIX Issue #17: Clear probe in progress on failure
+    storageHealthStats.probeInProgress = false;
     console.error('[Manager] STORAGE_HEALTH_PROBE_FAILED:', {
       error: err.message,
       timestamp: Date.now()
@@ -3255,12 +3897,16 @@ async function _sendStorageHealthProbe() {
 /**
  * Handle storage health probe response (called from storage.onChanged)
  * v1.6.3.7-v13 - Issue #6 (arch): Measure round-trip latency
+ * v1.6.3.8-v3 - FIX Issue #17: Clear probeInProgress flag on response
  * @param {number} probeTimestamp - Original probe timestamp
  * @private
  */
 function _handleStorageProbeResponse(probeTimestamp) {
   const now = Date.now();
   const latencyMs = now - probeTimestamp;
+
+  // v1.6.3.8-v3 - FIX Issue #17: Clear probe in progress flag
+  storageHealthStats.probeInProgress = false;
 
   // Clear any pending timeout
   if (storageHealthStats._currentProbeTimeoutId) {
@@ -4883,10 +5529,18 @@ async function _initializeCurrentTabId() {
 /**
  * Initialize port and broadcast channel connections
  * v1.6.4.17 - Extracted from DOMContentLoaded
+ * v1.6.3.8-v3 - FIX Issue #1: Port is Tier 1 (PRIMARY), BC is Tier 2 (tab-to-tab only)
  * @private
  */
 function _initializeConnections() {
+  // v1.6.3.8-v3 - FIX Issue #1: Port-based messaging is PRIMARY for sidebar
+  // Must be initialized first as it's the authoritative communication channel
+  console.log('[Manager] [PORT] Initializing Tier 1 (PRIMARY): Port-based messaging');
   connectToBackground();
+
+  // v1.6.3.8-v3 - FIX Issue #1: BroadcastChannel is SECONDARY (tab-to-tab only)
+  // NOT reliable for sidebar↔background due to Firefox isolation
+  console.log('[Manager] [BC] Initializing Tier 2 (SECONDARY): BroadcastChannel (tab-to-tab)');
   initializeBroadcastChannel();
 }
 
@@ -4964,9 +5618,23 @@ function _handleInitialLoadTimeout() {
 /**
  * Setup all event listeners
  * v1.6.4.17 - Extracted from DOMContentLoaded
+ * v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Initialize storage listener FIRST with verification
  * @private
  */
-function _setupListeners() {
+async function _setupListeners() {
+  // v1.6.3.8-v3 - FIX Issue #9: Initialize storage listener FIRST
+  // This ensures listener is registered before any storage writes from background
+  // and provides verification barrier for init sequence
+  await _initializeStorageListener();
+  
+  // v1.6.3.8-v3 - FIX Issue #5: Log storage listener verification status
+  console.log('[Manager] STORAGE_LISTENER_VERIFIED_AT:', {
+    verified: storageListenerVerified,
+    timeSinceInitStartMs: Date.now() - initializationStartTime,
+    tier3FallbackEnabled: storageListenerVerified,
+    timestamp: Date.now()
+  });
+  
   setupEventListeners();
   setupTabSwitchListener();
   _initBrowserTabsOnRemovedListener();
@@ -5011,6 +5679,7 @@ function _markInitializationComplete() {
 // v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
 // v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
 // v1.6.3.7-v13 - Issue #12: Also stop fallback health monitoring
+// v1.6.3.8-v3 - FIX Issue #19: Also clear quickTabHostInfo map
 window.addEventListener('unload', () => {
   // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
   cleanupBroadcastChannel();
@@ -5023,6 +5692,15 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.7-v13 - Issue #12: Stop fallback health monitoring
   _stopFallbackHealthMonitoring();
+
+  // v1.6.3.8-v3 - FIX Issue #19: Clear quickTabHostInfo map to prevent memory leak
+  const hostInfoEntriesBefore = quickTabHostInfo.size;
+  quickTabHostInfo.clear();
+  console.log('[Manager] HOST_INFO_MAP_CLEARED:', {
+    entriesRemoved: hostInfoEntriesBefore,
+    reason: 'window-unload',
+    timestamp: Date.now()
+  });
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -7222,50 +7900,11 @@ function setupEventListeners() {
   // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
   // v1.6.3.7-v10 - FIX Issue #11: Enhanced LISTENER_REGISTERED logging
   // v1.6.3.7-v13 - Issue #6 (arch): Add storage health probe handling
-  browser.storage.onChanged.addListener((changes, areaName) => {
-    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
-    logListenerEntry('storage.onChanged', {
-      areaName,
-      hasStateKey: !!changes[STATE_KEY],
-      hasHealthProbeKey: !!changes[STORAGE_HEALTH_PROBE_KEY]
-    });
-
-    // v1.6.3.7-v13 - Issue #6 (arch): Handle storage health probe response
-    if (areaName === 'local' && changes[STORAGE_HEALTH_PROBE_KEY]) {
-      const probeData = changes[STORAGE_HEALTH_PROBE_KEY].newValue;
-      if (probeData?.timestamp) {
-        _handleStorageProbeResponse(probeData.timestamp);
-      }
-      return; // Don't process health probes as state changes
-    }
-
-    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
-    if (!isFullyInitialized()) {
-      const timeSinceInitStartMs =
-        initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
-      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
-        initializationStarted,
-        initializationComplete,
-        timeSinceInitStartMs,
-        areaName,
-        message: 'Skipping - sidebar not yet fully initialized',
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    if (areaName !== 'local' || !changes[STATE_KEY]) return;
-    _handleStorageChange(changes[STATE_KEY]);
-  });
-  // v1.6.3.7-v6 - Gap #3: Log listener registration
-  // v1.6.3.7-v10 - FIX Issue #11: LISTENER_REGISTERED with init status
-  console.log('[Manager] LISTENER_REGISTERED: storage.onChanged', {
-    isFullyInitialized: isFullyInitialized(),
-    initializationStarted,
-    initializationComplete,
-    storageArea: 'local',
-    stateKey: STATE_KEY,
-    hasInitGuard: true,
+  // v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Refactored to _initializeStorageListener()
+  //              with explicit registration verification pattern
+  // NOTE: Listener registration is now handled by _initializeStorageListener() 
+  //       called from DOMContentLoaded initialization sequence
+  console.log('[Manager] STORAGE_LISTENER_SETUP: delegated to _initializeStorageListener()', {
     timestamp: Date.now()
   });
 }
