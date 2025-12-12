@@ -792,14 +792,27 @@ async function initializeAlarms() {
  * Handle alarm events
  * v1.6.3.7-v3 - API #4: Route alarms to appropriate handlers
  * v1.6.3.8 - Issue #2 (arch): Add keepalive backup alarm handler
+ * v1.6.3.8-v5 - FIX Issue #6: Add initialization guards to prevent race conditions
  * @param {Object} alarm - Alarm info object
  */
 async function handleAlarm(alarm) {
-  // v1.6.3.8 - Issue #2 (arch): Keepalive alarm is high-frequency, reduce logging
+  // v1.6.3.8-v5 - FIX Issue #6: Keepalive alarm can run without full init
+  // but must skip state-dependent operations until initialized
   if (alarm.name === ALARM_KEEPALIVE_BACKUP) {
     // Simply receiving the alarm event resets Firefox's idle timer
     // Also trigger our idle reset for consistency
     await _handleKeepaliveAlarm();
+    return;
+  }
+
+  // v1.6.3.8-v5 - FIX Issue #6: All non-keepalive alarms require initialization
+  // These alarms access globalQuickTabState and perform storage operations
+  if (!isInitialized) {
+    console.warn('[Background] v1.6.3.8-v5 ALARM_SKIPPED_NOT_INITIALIZED:', {
+      alarmName: alarm.name,
+      timestamp: Date.now(),
+      isInitialized: false
+    });
     return;
   }
 
@@ -826,6 +839,7 @@ async function handleAlarm(alarm) {
 /**
  * Handle keepalive alarm event
  * v1.6.3.8 - Issue #2 (arch): Backup keepalive mechanism via browser.alarms
+ * v1.6.3.8-v5 - FIX Issue #6: Skip sidebar pings during initialization
  * This is the most reliable way to keep MV2 background scripts alive in Firefox
  * @private
  */
@@ -835,8 +849,12 @@ async function _handleKeepaliveAlarm() {
     // Perform a lightweight API call to ensure activity is registered
     await browser.tabs.query({ active: true, currentWindow: true });
 
-    // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
-    _sendAlivePingToSidebars();
+    // v1.6.3.8-v5 - FIX Issue #6: Only send sidebar pings after initialization
+    // Sending pings before init could reference uninitialized state
+    if (isInitialized) {
+      // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
+      _sendAlivePingToSidebars();
+    }
 
     // Update keepalive health stats (success via alarm)
     const now = Date.now();
@@ -847,7 +865,8 @@ async function _handleKeepaliveAlarm() {
     if (keepaliveSuccessCount % 12 === 0) {
       console.log('[Background] KEEPALIVE_ALARM_SUCCESS:', {
         alarmCount: keepaliveSuccessCount,
-        timestamp: now
+        timestamp: now,
+        isInitialized
       });
     }
     keepaliveSuccessCount++;
@@ -880,14 +899,17 @@ function _sendAlivePingToPort(portId, portInfo, alivePing) {
 /**
  * Send proactive ALIVE ping to all connected sidebar ports
  * v1.6.3.8 - Issue #2 (arch): Background sends periodic pings instead of waiting for sidebar requests
+ * v1.6.3.8-v5 - FIX Issue #6: Add initialization guard (defensive)
  * @private
  */
 function _sendAlivePingToSidebars() {
+  // v1.6.3.8-v5 - FIX Issue #6: Defensive guard (caller should also check)
+  // Use optional chaining for globalQuickTabState.tabs as fallback
   const alivePing = {
     type: 'ALIVE_PING',
     timestamp: Date.now(),
     isInitialized,
-    cacheTabCount: globalQuickTabState.tabs?.length || 0
+    cacheTabCount: globalQuickTabState?.tabs?.length || 0
   };
 
   for (const [portId, portInfo] of portRegistry.entries()) {
@@ -2844,11 +2866,37 @@ async function _handleChecksumMismatch({
 
 // ==================== END ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
 
+// ==================== v1.6.3.8-v5 FIX Issue #7: ROBUST URL VALIDATION ====================
+
 /**
- * Valid URL protocols for Quick Tab creation
+ * Whitelisted URL protocols for Quick Tab creation
+ * v1.6.3.8-v5 - FIX Issue #7: Strictly whitelisted protocols only
+ * Note: chrome-extension:// included for Chromium compatibility but filtered in Firefox
  * @private
  */
-const VALID_QUICKTAB_PROTOCOLS = ['http://', 'https://', 'moz-extension://', 'chrome-extension://'];
+const VALID_QUICKTAB_PROTOCOLS = new Set(['http:', 'https:', 'moz-extension:', 'chrome-extension:']);
+
+/**
+ * Dangerous URL protocols that should always be rejected
+ * v1.6.3.8-v5 - FIX Issue #7: Explicit blocklist for security audit logging
+ * @private
+ */
+// eslint-disable-next-line no-script-url -- Used for validation/rejection, not execution
+const DANGEROUS_PROTOCOLS = new Set(['javascript:', 'data:', 'blob:', 'vbscript:', 'file:']);
+
+/**
+ * Maximum length for parsed URL logging (protocol + hostname + pathname)
+ * v1.6.3.8-v5 - FIX Issue #7: Named constant for URL logging truncation
+ * @private
+ */
+const URL_LOG_MAX_PARSED_LENGTH = 80;
+
+/**
+ * Maximum length for unparseable raw URL logging
+ * v1.6.3.8-v5 - FIX Issue #7: Named constant for raw URL logging truncation
+ * @private
+ */
+const URL_LOG_MAX_RAW_LENGTH = 50;
 
 /**
  * Check if URL is null, undefined, or empty
@@ -2872,27 +2920,125 @@ function _isUrlCorruptedWithUndefined(url) {
 }
 
 /**
- * Check if URL starts with a valid protocol
+ * Safely extract loggable parts from a URL for security audit
+ * v1.6.3.8-v5 - FIX Issue #7: Better URL sanitization for logging
+ * Preserves protocol and domain while safely truncating query/fragment
  * @private
- * @param {string} urlStr - URL string to check
- * @returns {boolean} True if URL has valid protocol
+ * @param {string} url - The URL to sanitize
+ * @returns {string} Sanitized URL safe for logging
  */
-function _hasValidProtocol(urlStr) {
-  return VALID_QUICKTAB_PROTOCOLS.some(proto => urlStr.startsWith(proto));
+function _sanitizeUrlForLogging(url) {
+  const urlStr = String(url);
+  try {
+    const parsed = new URL(urlStr);
+    // Keep protocol + hostname + pathname (truncated), remove query/fragment
+    const basePart = `${parsed.protocol}//${parsed.hostname}${parsed.pathname}`;
+    const truncated = basePart.substring(0, URL_LOG_MAX_PARSED_LENGTH);
+    return truncated.length < basePart.length ? truncated + '...[TRUNCATED]' : truncated;
+  } catch (_err) {
+    // If URL can't be parsed, just show first chars of raw string
+    const truncated = urlStr.substring(0, URL_LOG_MAX_RAW_LENGTH);
+    return truncated.length < urlStr.length ? truncated + '...[UNPARSEABLE]' : truncated;
+  }
+}
+
+/**
+ * Log rejected URL for security audit
+ * v1.6.3.8-v5 - FIX Issue #7: Security audit logging for rejected URLs
+ * @private
+ * @param {string} url - The URL that was rejected
+ * @param {string} reason - Reason for rejection
+ */
+function _logRejectedUrl(url, reason) {
+  console.warn('[Background] URL_VALIDATION_REJECTED:', {
+    url: _sanitizeUrlForLogging(url),
+    reason,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Parse and validate URL using URL constructor
+ * v1.6.3.8-v5 - FIX Issue #7: Robust URL validation using URL constructor
+ * @private
+ * @param {string} urlStr - URL string to validate
+ * @returns {{ valid: boolean, protocol: string|null, reason: string|null }} Validation result
+ */
+function _parseAndValidateUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+
+    // v1.6.3.8-v5 - FIX Issue #7: Check for dangerous protocols first (security audit)
+    if (DANGEROUS_PROTOCOLS.has(parsed.protocol)) {
+      return {
+        valid: false,
+        protocol: parsed.protocol,
+        reason: `DANGEROUS_PROTOCOL: ${parsed.protocol}`
+      };
+    }
+
+    // v1.6.3.8-v5 - FIX Issue #7: Strict whitelist enforcement
+    if (!VALID_QUICKTAB_PROTOCOLS.has(parsed.protocol)) {
+      return {
+        valid: false,
+        protocol: parsed.protocol,
+        reason: `PROTOCOL_NOT_WHITELISTED: ${parsed.protocol}`
+      };
+    }
+
+    // v1.6.3.8-v5 - FIX Issue #7: Additional validation - ensure hostname exists for http/https
+    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.hostname) {
+      return {
+        valid: false,
+        protocol: parsed.protocol,
+        reason: 'MISSING_HOSTNAME'
+      };
+    }
+
+    return { valid: true, protocol: parsed.protocol, reason: null };
+  } catch (err) {
+    // URL constructor throws on invalid URLs
+    // v1.6.3.8-v5: Log error type for debugging (but not the URL content for security)
+    return {
+      valid: false,
+      protocol: null,
+      reason: `INVALID_URL_FORMAT: ${err.name || 'TypeError'}`
+    };
+  }
 }
 
 /**
  * Check if a URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
  * v1.6.4.8 - Refactored: Extracted helpers to reduce complex conditionals
+ * v1.6.3.8-v5 - FIX Issue #7: Robust URL validation with URL constructor and security logging
  * @param {*} url - URL to validate
  * @returns {boolean} True if URL is valid
  */
 function isValidQuickTabUrl(url) {
-  if (_isUrlNullOrEmpty(url)) return false;
-  if (_isUrlCorruptedWithUndefined(url)) return false;
-  return _hasValidProtocol(String(url));
+  // Quick checks first
+  if (_isUrlNullOrEmpty(url)) {
+    return false;
+  }
+  if (_isUrlCorruptedWithUndefined(url)) {
+    _logRejectedUrl(url, 'CORRUPTED_UNDEFINED');
+    return false;
+  }
+
+  const urlStr = String(url);
+
+  // v1.6.3.8-v5 - FIX Issue #7: Use URL constructor for robust validation
+  const validation = _parseAndValidateUrl(urlStr);
+
+  if (!validation.valid) {
+    _logRejectedUrl(urlStr, validation.reason);
+    return false;
+  }
+
+  return true;
 }
+
+// ==================== END v1.6.3.8-v5 FIX Issue #7: ROBUST URL VALIDATION ====================
 
 /**
  * Filter out tabs with invalid URLs from state
