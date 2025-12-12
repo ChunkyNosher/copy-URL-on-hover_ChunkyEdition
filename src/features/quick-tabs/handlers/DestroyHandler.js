@@ -359,46 +359,71 @@ export class DestroyHandler {
 
     const success = await persistStateToStorage(state, '[DestroyHandler]');
 
-    if (success) {
-      // v1.6.4.8 - Issue #5: Verify checksum AFTER write by re-reading
-      try {
-        const result = await browser.storage.local.get('quick_tabs_state_v2');
-        const storedState = result.quick_tabs_state_v2;
-        const checksumAfter = generateStateChecksum(storedState);
-
-        if (checksumBefore !== checksumAfter) {
-          console.error('[DestroyHandler] ⚠️ Checksum MISMATCH after storage write:', {
-            checksumBefore,
-            checksumAfter,
-            deletedId,
-            expectedTabCount: state.tabs?.length || 0,
-            actualTabCount: storedState?.tabs?.length || 0
-          });
-        } else {
-          console.log('[DestroyHandler] ✓ Checksum verified AFTER storage write:', {
-            checksum: checksumAfter,
-            deletedId
-          });
-        }
-      } catch (verifyErr) {
-        console.warn('[DestroyHandler] Failed to verify storage checksum:', verifyErr.message);
-      }
-
-      // v1.6.4.8 - Issue #5: Update write-ahead log entry
-      const walEntry = this._writeAheadLog.get(deletedId);
-      if (walEntry) {
-        walEntry.state = 'persisted';
-        walEntry.persistedAt = Date.now();
-        console.log('[DestroyHandler] Write-ahead log updated to persisted:', deletedId);
-
-        // Clean up old WAL entries (keep for 10 seconds for debugging)
-        setTimeout(() => {
-          this._writeAheadLog.delete(deletedId);
-        }, 10000);
-      }
-    } else {
+    if (!success) {
       console.error('[DestroyHandler] Immediate storage persist failed for:', deletedId);
+      return;
     }
+
+    // v1.6.4.8 - Issue #5: Verify checksum AFTER write by re-reading
+    await this._verifyStorageChecksum(checksumBefore, state, deletedId);
+
+    // v1.6.4.8 - Issue #5: Update write-ahead log entry
+    this._updateWriteAheadLogAfterPersist(deletedId);
+  }
+
+  /**
+   * Verify storage checksum after write by re-reading from storage
+   * v1.6.3.8-v4 - Extracted to reduce nesting depth (max-depth lint rule)
+   * @private
+   * @param {string} checksumBefore - Checksum before write
+   * @param {Object} state - State that was written
+   * @param {string} deletedId - ID of deleted tab
+   */
+  async _verifyStorageChecksum(checksumBefore, state, deletedId) {
+    try {
+      const result = await browser.storage.local.get('quick_tabs_state_v2');
+      const storedState = result.quick_tabs_state_v2;
+      const checksumAfter = generateStateChecksum(storedState);
+
+      if (checksumBefore !== checksumAfter) {
+        console.error('[DestroyHandler] ⚠️ Checksum MISMATCH after storage write:', {
+          checksumBefore,
+          checksumAfter,
+          deletedId,
+          expectedTabCount: state.tabs?.length || 0,
+          actualTabCount: storedState?.tabs?.length || 0
+        });
+        return;
+      }
+      console.log('[DestroyHandler] ✓ Checksum verified AFTER storage write:', {
+        checksum: checksumAfter,
+        deletedId
+      });
+    } catch (verifyErr) {
+      console.warn('[DestroyHandler] Failed to verify storage checksum:', verifyErr.message);
+    }
+  }
+
+  /**
+   * Update write-ahead log entry after successful persist
+   * v1.6.3.8-v4 - Extracted to reduce nesting depth (max-depth lint rule)
+   * @private
+   * @param {string} deletedId - ID of deleted tab
+   */
+  _updateWriteAheadLogAfterPersist(deletedId) {
+    const walEntry = this._writeAheadLog.get(deletedId);
+    if (!walEntry) {
+      return;
+    }
+
+    walEntry.state = 'persisted';
+    walEntry.persistedAt = Date.now();
+    console.log('[DestroyHandler] Write-ahead log updated to persisted:', deletedId);
+
+    // Clean up old WAL entries (keep for 10 seconds for debugging)
+    setTimeout(() => {
+      this._writeAheadLog.delete(deletedId);
+    }, 10000);
   }
 
   /**
