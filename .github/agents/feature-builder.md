@@ -60,48 +60,24 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
-  exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write +
-  verify
-- **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
-- **Sidebar BC fallback** - Detection, activation, 30s health monitoring
-- **Keepalive health reports** - 60s interval with success/failure percentages
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
-logging, keepalive health sampling, port registry thresholds.
+**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
+storage validation, dedup decision logging, keepalive health reports.
 
-**v1.6.3.7-v11 Features (Retained):**
-
-- **Promise-based listener barrier** - Replaces boolean initializationComplete
-  flag
-- **LRU dedup eviction** - Max 1000 entries prevents memory bloat
-- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init
-timing.
-
-**v1.6.3.7-v9 Features (Retained):**
-
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port),
-  sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption
-  recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete`
-  flags
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
+listener barrier, LRU eviction (1000), correlation ID echo, state machine
+timeouts (7s).
 
 **v1.6.3.7-v4 Features (Retained):**
 

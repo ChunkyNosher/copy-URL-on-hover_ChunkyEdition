@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.8), init barriers, centralized validation,
-  BC fallback detection, keepalive health reports
+  sync with Single Writer Authority (v1.6.3.8-v2), Background Relay, ACK-based
+  messaging, WriteBuffer batching, BFCache lifecycle
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,46 +50,31 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
-  exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write +
-  verify
-- **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
-- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE`, activation, health
-  monitoring
-- **Storage tier probing** - 500ms latency measurement
-- **BFCache handling** - pageshow/pagehide events for state restoration
-- **Keepalive health reports** - 60s interval with success/failure percentages
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- **Background Relay pattern** - Sidebar messages bypass BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
+- **Port registry snapshots** - 60s interval with active/idle/zombie counts
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
-logging, keepalive health sampling, port registry thresholds, sequence ID
-prioritization.
+**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
+storage validation, dedup decision logging, BC fallback detection.
 
-**v1.6.3.7-v11 Features (Retained):**
+**v1.6.3.7-v11-v12 Features (Retained):** Promise-based listener barrier, LRU
+dedup (1000), correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTICS.
 
-- **Promise-based listener barrier** - Replaces boolean initializationComplete
-  flag
-- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
-- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
+**Key Functions (v1.6.3.8-v2):**
 
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init
-timing.
-
-**Key Functions (v1.6.3.8):**
-
-| Function                          | Location        | Purpose                         |
-| --------------------------------- | --------------- | ------------------------------- |
-| `waitForInitialization()`         | QuickTabHandler | 10s init barrier (v8)           |
-| `waitForCurrentTabId()`           | index.js        | 2s exponential backoff (v8)     |
-| `validateAndRecoverStorage()`     | Storage         | Centralized validation (v8)     |
-| `startKeepaliveHealthReporting()` | Background      | 60s health reports (v8)         |
-| `startStorageWatchdog()`          | Background      | Watchdog timer for writes (v10) |
-| `scheduleRender(source)`          | Manager         | Unified render entry point      |
+| Function                    | Location      | Purpose                            |
+| --------------------------- | ------------- | ---------------------------------- |
+| `sendRequestWithTimeout()`  | message-utils | ACK-based messaging (v8-v2)        |
+| `flushWriteBuffer()`        | storage-utils | WriteBuffer batch flush (v8-v2)    |
+| `waitForInitialization()`   | QuickTabHandler | 10s init barrier (v8)            |
+| `scheduleRender(source)`    | Manager       | Unified render entry point         |
 
 ---
 
@@ -106,18 +91,17 @@ timing.
 
 ## Testing Requirements
 
-- [ ] Initialization barriers work (QuickTabHandler 10s, currentTabId 2s)
-      (v1.6.3.8)
-- [ ] Centralized storage validation works (v1.6.3.8)
-- [ ] Dedup decision logging shows SKIP/PROCESS reasons (v1.6.3.8)
-- [ ] BC fallback detection works (SIDEBAR_BC_UNAVAILABLE) (v1.6.3.8)
-- [ ] Keepalive health reports work (60s interval) (v1.6.3.8)
-- [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
+- [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
+- [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
+- [ ] SIDEBAR_READY handshake works (v1.6.3.8-v2)
+- [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
+- [ ] BFCache lifecycle events work (v1.6.3.8-v2)
+- [ ] Initialization barriers work (10s/2s) (v1.6.3.8)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8 init barriers,
-centralized validation, BC fallback detection, keepalive health reports.**
+**Your strength: Complete Quick Tab system with v1.6.3.8-v2 Background Relay,
+ACK-based messaging, WriteBuffer batching, BFCache lifecycle.**

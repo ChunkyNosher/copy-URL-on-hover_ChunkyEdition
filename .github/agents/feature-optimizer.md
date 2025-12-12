@@ -61,22 +61,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
-  exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write +
-  verify
-- **Storage tier probing** - 500ms latency measurement
-- **Keepalive health reports** - 60s interval with success/failure percentages
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Write latency logging** - `STORAGE_WRITE_LATENCY` for monitoring
+- **Backpressure detection** - `STORAGE_BACKPRESSURE_DETECTED` logging
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
-logging, keepalive health sampling, port registry thresholds.
+**v1.6.3.8 Features (Retained):** Initialization barriers, centralized storage
+validation, storage tier probing, keepalive health reports, Code Health:
+background.js (9.09), QuickTabHandler.js (9.41).
 
 **v1.6.3.6 Fixes:**
 

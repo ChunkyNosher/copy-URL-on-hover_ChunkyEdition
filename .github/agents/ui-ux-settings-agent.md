@@ -59,16 +59,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.8-v2 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - Reliable startup sequence
-- **Centralized storage validation** - Recovery from corruption
-- **Code Health improvements** - background.js (9.09), QuickTabHandler.js (9.41)
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
-logging.
+**v1.6.3.8 Features (Retained):** Initialization barriers, centralized storage
+validation.
+
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag.
 
 **v1.6.3.7-v4 Features (Retained):**
 

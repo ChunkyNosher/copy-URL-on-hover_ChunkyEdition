@@ -60,15 +60,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - Reliable URL detection on startup
-- **Centralized storage validation** - Recovery from corruption
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision
+**v1.6.3.8 Features (Retained):** Initialization barriers for reliable URL
+detection, centralized storage validation, Code Health: background.js (9.09),
+QuickTabHandler.js (9.41).
+
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision
 logging.
 
 **v1.6.3.7-v4 Features (Retained):**

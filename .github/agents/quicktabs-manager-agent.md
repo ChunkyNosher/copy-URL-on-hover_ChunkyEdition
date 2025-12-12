@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8), BC fallback detection, 30s health monitoring, sidebar communication,
-  initialization barriers
+  (v1.6.3.8-v2), Background Relay, SIDEBAR_READY handshake, WriteBuffer batching,
+  ACK-based messaging
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -53,18 +53,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **BroadcastChannel** - Real-time sync via `quick-tabs-updates` channel
 - **Operation Confirmations** - Closed-loop feedback for all operations
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE` activates storage polling
-- **Fallback health monitoring** - 30s interval status (message count, latency)
-- **BC verification** - `BC_VERIFICATION_STARTED/SUCCESS/FAILED` with 1s timeout
-- **Keepalive health reports** - 60s interval with success/failure percentages
-- **Code Health** - quick-tabs-manager.js (9.09)
+- **Background Relay pattern** - `BC_SIDEBAR_RELAY_ACTIVE` bypasses BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **SIDEBAR_READY handshake** - Sidebar signals readiness before receiving messages
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v12 Features (Retained):** Fallback logging, port thresholds.
+**v1.6.3.8 Features (Retained):** Initialization barriers, BC fallback detection,
+keepalive health reports.
 
-**v1.6.3.7-v11 Features (Retained):** Promise barrier, LRU dedup (1000),
-correlation ID echo, state machine timeouts (7s), deferred handlers.
+**v1.6.3.7-v11-v12 Features (Retained):** Promise barrier, LRU dedup (1000),
+correlation ID echo, state machine timeouts (7s).
 
 ---
 
@@ -81,11 +82,11 @@ correlation ID echo, state machine timeouts (7s), deferred handlers.
 
 ## Testing Requirements
 
-- [ ] BC fallback detection works (SIDEBAR_BC_UNAVAILABLE) (v1.6.3.8)
-- [ ] Fallback health monitoring works (30s interval) (v1.6.3.8)
-- [ ] Keepalive health reports work (60s interval) (v1.6.3.8)
+- [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
+- [ ] SIDEBAR_READY handshake works (v1.6.3.8-v2)
+- [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
+- [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
 - [ ] Promise-based listener barrier works (v1.6.3.7-v11)
-- [ ] LRU dedup eviction works (max 1000) (v1.6.3.7-v11)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -93,5 +94,5 @@ correlation ID echo, state machine timeouts (7s), deferred handlers.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.8 BC fallback detection,
-health monitoring, v11 promise barrier, LRU dedup eviction.**
+**Your strength: Manager coordination with v1.6.3.8-v2 Background Relay,
+SIDEBAR_READY handshake, ACK-based messaging, WriteBuffer batching.**

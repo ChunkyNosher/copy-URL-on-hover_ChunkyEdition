@@ -37,36 +37,28 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
-  exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write +
-  verify
-- **Dedup decision logging** - `DEDUP_DECISION` with sequence ID prioritization
-- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE`, activation, health
-  monitoring
-- **Keepalive health reports** - 60s interval with success/failure percentages
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
-logging, keepalive health sampling, port registry thresholds.
+**v1.6.3.8 Features (Retained):**
 
-**v1.6.3.7-v11 Features (Retained):**
+- Initialization barriers (QuickTabHandler 10s, currentTabId 2s backoff)
+- Centralized storage validation with re-write + verify
+- Dedup decision logging, BC fallback detection, keepalive health reports
+- Code Health: background.js (9.09), QuickTabHandler.js (9.41)
 
-- **Promise-based listener barrier** - Replaces boolean flag
-  (quick-tabs-manager.js)
-- **LRU eviction** - Message dedup map capped at 1000 entries
-- **Correlation ID echo** - HEARTBEAT_ACK properly echoes correlationId
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init
-timing.
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
+listener barrier, LRU eviction (1000), correlation ID echo, state machine
+timeouts (7s), port registry thresholds.
 
 **v1.6.3.7-v9 Features (Retained):**
 

@@ -37,15 +37,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **currentTabId barrier** - 2s exponential backoff before hydration
-- **BFCache handling** - pageshow/pagehide events for state restoration
-- **Code Health** - QuickTabHandler.js (9.41)
+- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
+- **Background Relay** - Sidebar messages bypass BC origin isolation
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision
+**v1.6.3.8 Features (Retained):** currentTabId barrier (2s exponential backoff),
+BFCache handling (pageshow/pagehide), Code Health QuickTabHandler.js (9.41).
+
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision
 logging.
 
 **v1.6.3.7-v4 Features (Retained):**
@@ -76,8 +79,8 @@ logging.
 
 ## Testing Requirements
 
+- [ ] BFCache lifecycle events work (PAGE_LIFECYCLE_BFCACHE_*) (v1.6.3.8-v2)
 - [ ] currentTabId barrier works (2s exponential backoff) (v1.6.3.8)
-- [ ] BFCache handling restores state on back/forward (v1.6.3.8)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Strict tab isolation rejects null originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -88,5 +91,5 @@ logging.
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.8 currentTabId
-barrier, BFCache handling, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.8-v2 BFCache
+lifecycle, v1.6.3.8 currentTabId barrier, and proper per-tab scoping.**

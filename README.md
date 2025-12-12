@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.8-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
 control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
@@ -9,55 +9,58 @@ Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8 Status:** Initialization barriers, centralized storage validation,
-comprehensive diagnostics ✅
+**🔧 v1.6.3.8-v2 Status:** Background Relay, ACK-based messaging, WriteBuffer
+batching, BFCache lifecycle ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8
+## 🎉 What's New in v1.6.3.8-v2
 
-**🔧 Initialization & Diagnostics Improvements (December 2025) ✅**
+**🔧 Communication & Storage Layer Improvements (December 2025) ✅**
 
-**Initialization Barriers:**
+**Group A - Communication Layer:**
 
-- ✅ **QuickTabHandler init barrier** - 10s timeout with
-  `AWAITING_INITIALIZATION` / `INITIALIZATION_COMPLETE` logging
-- ✅ **currentTabId detection** - 2s exponential backoff with `INIT_STEP_1`
+- ✅ **Background Relay pattern** - Sidebar communication bypasses BC origin
+  isolation with `BC_SIDEBAR_RELAY_ACTIVE` logging
+- ✅ **ACK-based messaging** - `sendRequestWithTimeout()` utility for reliable
+  message delivery with `MESSAGE_ACK_RECEIVED` logging
+- ✅ **SIDEBAR_READY handshake** - Protocol ensures sidebar ready before routing
+  with `SIDEBAR_MESSAGE_DELIVERED` logging
+
+**Group B - BFCache & Port Lifecycle:**
+
+- ✅ **BFCache lifecycle events** - `PAGE_LIFECYCLE_BFCACHE_ENTER` and
+  `PAGE_LIFECYCLE_BFCACHE_RESTORE` for proper state handling
+- ✅ **Port registry snapshots** - Every 60s with `PORT_REGISTRY_SNAPSHOT`
+  showing active/idle/zombie counts
+- ✅ **Port eviction logging** - `PORT_EVICTED` with reason codes for debugging
+- ✅ **ACK circuit breaker** - `PORT_CIRCUIT_BREAKER_TRIGGERED` when pending
+  ACKs > 50
+
+**Group C - Storage & Transaction:**
+
+- ✅ **Sequence ID rejection** - `STORAGE_SEQUENCE_REJECTED` logs out-of-order
+  events
+- ✅ **Write latency logging** - `STORAGE_WRITE_LATENCY` and
+  `STORAGE_BACKPRESSURE_DETECTED` for monitoring
+- ✅ **WriteBuffer pattern** - 75ms batching to prevent IndexedDB deadlocks
+- ✅ **Version-based conflict resolution** - `STATE_CONFLICT_DETECTED` logging
+
+**Group D - Initialization & Timeout:**
+
+- ✅ **Message queuing** - `INIT_MESSAGE_QUEUED` and `INIT_MESSAGE_REPLAY` until
+  READY signal
+- ✅ **Handler timeout** - 5000ms with `HANDLER_TIMEOUT` / `HANDLER_COMPLETED`
   logging
-- ✅ **Hydration complete** - `HYDRATION_COMPLETE: loaded N tabs` logging
 
-**Storage Validation & Recovery:**
+**New Files:**
 
-- ✅ **Centralized validation** - `STORAGE_WRITE_VALIDATION: PASSED/FAILED`
-  logging
-- ✅ **Type-specific recovery** - `RECOVERY_ATTEMPT` / `RECOVERY_SUCCESS` /
-  `RECOVERY_FAILED`
-- ✅ **Recovery threshold** - 75% keep percentage for partial recovery
+- ✅ `src/utils/message-utils.js` - ACK-based messaging utilities
 
-**Diagnostics & Health Monitoring:**
-
-- ✅ **Dedup decision logging** -
-  `DEDUP_DECISION: saveId=X, decision=[SKIP|PROCESS], reason=...`
-- ✅ **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE: Activating fallback`
-- ✅ **Fallback health** - `FALLBACK_HEALTH` / `FALLBACK_STALLED` at 30s
-  intervals
-- ✅ **BC verification** - `BC_VERIFICATION_STARTED` / `SUCCESS` / `FAILED` with
-  1s timeout
-- ✅ **Storage tier probing** - `Storage Tier Latency: Xms` with 500ms timeout
-- ✅ **Keepalive health reports** -
-  `KEEPALIVE_HEALTH_REPORT: last 60s: X successes, Y failures (Z%)`
-- ✅ **Port activity logging** -
-  `PORT_ACTIVITY: portId=X, lastMessageTime=NN ms ago`
-
-**Code Health Improvements:**
-
-- ✅ **background.js** - Code Health 9.09 (extraction patterns)
-- ✅ **QuickTabHandler.js** - Code Health 9.41 (helper methods)
-
-**Why This Matters:** These fixes provide robust initialization, automatic
-recovery from storage corruption, and comprehensive observability for debugging.
+**Why This Matters:** These improvements provide reliable sidebar communication,
+prevent storage deadlocks, and add comprehensive observability for debugging.
 
 ---
 
@@ -66,18 +69,10 @@ recovery from storage corruption, and comprehensive observability for debugging.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8** - Initialization barriers, centralized storage validation
 - **v1.6.3.7-v12** - DEBUG_DIAGNOSTICS, dedup logging, port thresholds
 - **v1.6.3.7-v11** - Promise barrier, LRU eviction, state machine timeouts
-- **v1.6.3.7-v10** - State persistence hardening, storage watchdog, BC gap
-  detection
-- **v1.6.3.7-v8** - Port resilience, performance modules, hybrid storage cache
-- **v1.6.3.7-v7** - BroadcastChannel from background, operation confirmations
-- **v1.6.3.7-v6** - Enhanced observability, unified channel logging, lifecycle
-- **v1.6.3.7-v5** - Connection state tracking, zombie detection, deduplication
-- **v1.6.3.7-v4** - Circuit breaker probing, close all feedback, error handling
-- **v1.6.3.7-v3** - Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms
-- **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
-- **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
+- **v1.6.3.7-v1-v10** - Storage hardening, port resilience, lifecycle
 
 ---
 
@@ -260,6 +255,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

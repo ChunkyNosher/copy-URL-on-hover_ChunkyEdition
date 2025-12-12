@@ -60,20 +60,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s
-  exponential backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write +
-  verify
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
 
-**v1.6.3.7-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, BC fallback
-logging.
+**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
+storage validation, Code Health: background.js (9.09), QuickTabHandler.js (9.41).
 
 **CodeScene Analysis - Refactoring Targets:**
 
@@ -81,7 +79,7 @@ logging.
 - `background.js` 9.09 (✅ improved from 4.89)
 - `QuickTabHandler.js` 9.41 (✅ improved from 6.83)
 - `storage-utils.js` 7.23 (needs refactoring)
-- `content.js` 7.76 (close to target)
+- `message-utils.js` NEW (v1.6.3.8-v2)
 
 **v1.6.3.6 Fixes:**
 
