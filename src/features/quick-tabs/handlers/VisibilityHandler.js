@@ -66,7 +66,8 @@ import {
   getBrowserStorageAPI
 } from '@utils/storage-utils.js';
 
-// v1.6.3.7-v8 - FIX Issue #11: Import BroadcastChannelManager for cross-context notifications
+// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// Imports kept for backwards compatibility - all functions are now NO-OP stubs
 import {
   broadcastQuickTabMinimized,
   broadcastQuickTabRestored

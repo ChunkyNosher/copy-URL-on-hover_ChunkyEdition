@@ -178,14 +178,15 @@ import {
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
-// v1.6.3.7-v3 - API #2: BroadcastChannel for instant updates
+// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// Imports kept for backwards compatibility - all functions are now NO-OP stubs
+// eslint-disable-next-line no-unused-vars
 import {
   initBroadcastChannel,
   addBroadcastListener,
   removeBroadcastListener,
   closeBroadcastChannel,
   isChannelAvailable as _isChannelAvailable,
-  // v1.6.3.7-v9 - Issue #7: Import sequence tracking functions
   setGapDetectionCallback,
   processReceivedSequence,
   resetSequenceTracking,
@@ -4008,213 +4009,76 @@ function _sendActionRequest(action, payload) {
 
 // ==================== END PORT CONNECTION ====================
 
-// ==================== v1.6.3.7-v3/v13 BROADCAST CHANNEL ====================
-// API #2: BroadcastChannel - Real-Time Tab Messaging
+// ==================== v1.6.3.8-v5 BROADCAST CHANNEL REMOVED ====================
+// ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// The new architecture uses:
+// - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
+// - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
 //
-// ARCHITECTURE NOTE (v1.6.3.8-v3 - FIX Issue #1 from diagnostic report):
-// - BroadcastChannel DEMOTED from Tier 1 for Sidebar context
-// - Firefox sidebar panels are isolated execution contexts (per Mozilla documentation)
-// - BroadcastChannel operates on same-origin principle but doesn't reliably propagate
-//   across sidebar/background boundary due to Firefox WebExtensions architecture
-// - TIER 1 (PRIMARY): Port-based messaging via runtime.connect()
-// - TIER 2 (SECONDARY): BroadcastChannel (tab-to-tab only, NOT for sidebar↔background)
-// - TIER 3 (TERTIARY): storage.onChanged (reliable fallback)
-// - This function attempts BC init but verification confirms it's NOT for authoritative state
+// BroadcastChannel was removed because:
+// 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
+// 2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation
+// 3. Port-based messaging is more reliable and works across all contexts
+// 4. storage.onChanged provides reliable fallback for all scenarios
+//
+// All BC functions below are kept as NO-OP stubs for backwards compatibility.
 
-/**
- * Handler function reference for cleanup
- * v1.6.3.7-v3 - API #2: Track handler for removal
- */
+// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
 let broadcastHandlerRef = null;
 
-/**
- * BC verification state
- * v1.6.3.7-v13 - Issue #1 (arch): Track verification handshake
- */
+// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
 let bcVerificationPending = false;
+// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
 let bcVerificationReceived = false;
+// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
 let bcVerificationTimeoutId = null;
 
-/**
- * BC verification timeout (1 second)
- * v1.6.3.7-v13 - Issue #1 (arch): Time to wait for BC verification response
- */
+// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
 const BC_VERIFICATION_TIMEOUT_MS = 1000;
 
 /**
  * Initialize BroadcastChannel for real-time updates
- * v1.6.3.7-v3 - API #2: Setup channel and listener
- * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
- * v1.6.3.7-v9 - Issue #7: Set up sequence gap detection callback
- * v1.6.3.7-v12 - Issue #5, #11: Enhanced fallback logging when BC unavailable
- * v1.6.3.7-v13 - Issue #1 (arch): Add verification handshake for sidebar context
+ * v1.6.3.8-v5 - NO-OP STUB: BroadcastChannel removed per architecture-redesign.md
+ * The new architecture uses Port + storage.onChanged instead.
  */
 function initializeBroadcastChannel() {
-  const initialized = initBroadcastChannel();
-  if (!initialized) {
-    // v1.6.3.7-v12 - Issue #5, #11: Log explicit fallback activation
-    console.warn(
-      '[Manager] SIDEBAR_BC_UNAVAILABLE: Activating fallback [port-based + storage.onChanged]',
-      {
-        reason: 'BroadcastChannel not available in sidebar context',
-        firefoxConstraint:
-          'BroadcastChannel API is not available in sidebar/panel isolated contexts',
-        fallbackActivated: true,
-        fallbackMechanism: 'port-based messaging + storage.onChanged polling',
-        fallbackDetails: {
-          primaryFallback: 'runtime.Port connection to background',
-          secondaryFallback: 'storage.onChanged event listener',
-          pollingInterval: 'Event-driven (no polling - relies on storage events)'
-        },
-        timestamp: Date.now()
-      }
-    );
-    console.log(
-      '[Manager] Sidebar: BroadcastChannel unavailable, activating fallback mechanism [port-based + storage.onChanged]'
-    );
-
-    // v1.6.3.7-v12 - Issue #5: Start fallback health monitoring
-    _startFallbackHealthMonitoring();
-    return;
-  }
-
-  // v1.6.3.7-v9 - Issue #7: Reset sequence tracking on init
-  resetSequenceTracking();
-
-  // v1.6.3.7-v9 - Issue #7: Set up gap detection callback
-  setGapDetectionCallback(gapInfo => {
-    console.warn('[Manager] [BC] GAP_DETECTION_CALLBACK:', gapInfo);
-    // The actual fallback is handled in handleBroadcastChannelMessage via _triggerStorageFallbackOnGap
-  });
-
-  // Create handler function
-  broadcastHandlerRef = handleBroadcastChannelMessage;
-
-  // Add listener
-  const added = addBroadcastListener(broadcastHandlerRef);
-  if (added) {
-    // v1.6.3.7-v6 - Gap #3: Log listener registration with details
-    console.log('[Manager] LISTENER_REGISTERED: BroadcastChannel listener added', {
-      channel: 'quick-tabs-updates',
-      sequenceTrackingEnabled: true, // v1.6.3.7-v9
-      timestamp: Date.now()
-    });
-    console.log('[Manager] v1.6.3.7-v9 BroadcastChannel listener added with sequence tracking');
-
-    // v1.6.3.7-v13 - Issue #1 (arch): Start verification handshake
-    _startBCVerificationHandshake();
-  }
+  console.log('[Manager] [BC] DEPRECATED: initializeBroadcastChannel called - BC removed per architecture-redesign.md');
+  console.log('[Manager] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
+  // BC removed - just log and return
+  // All state sync now happens via Port + storage.onChanged
 }
 
 /**
  * Start BroadcastChannel verification handshake
- * v1.6.3.7-v13 - Issue #1 (arch): Verify BC actually delivers messages in sidebar context
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  * @private
  */
 function _startBCVerificationHandshake() {
-  bcVerificationPending = true;
-  bcVerificationReceived = false;
-
-  console.log('[Manager] BC_VERIFICATION_STARTED: Requesting PING from background', {
-    timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
-    timestamp: Date.now()
-  });
-
-  // Request background to send a PING via BroadcastChannel
-  // We use port message to request this since port is more reliable
-  if (backgroundPort) {
-    backgroundPort.postMessage({
-      type: 'BC_VERIFICATION_REQUEST',
-      requestId: `bc-verify-${Date.now()}`,
-      timestamp: Date.now(),
-      source: 'sidebar'
-    });
-  } else {
-    // Fallback: use runtime.sendMessage
-    browser.runtime
-      .sendMessage({
-        type: 'BC_VERIFICATION_REQUEST',
-        requestId: `bc-verify-${Date.now()}`,
-        timestamp: Date.now(),
-        source: 'sidebar'
-      })
-      .catch(err => {
-        console.warn('[Manager] BC_VERIFICATION_REQUEST failed:', err.message);
-      });
-  }
-
-  // Set timeout for verification
-  bcVerificationTimeoutId = setTimeout(() => {
-    _handleBCVerificationTimeout();
-  }, BC_VERIFICATION_TIMEOUT_MS);
+  // NO-OP - BC removed
+  console.log('[Manager] [BC] DEPRECATED: _startBCVerificationHandshake called - BC removed');
 }
 
 /**
  * Handle BC verification timeout
- * v1.6.3.7-v13 - Issue #1 (arch): BC verification failed - activate fallback
- * v1.6.3.8-v3 - FIX Issue #6: Enhanced failure logging with clear reason
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  * @private
  */
 function _handleBCVerificationTimeout() {
-  bcVerificationPending = false;
-  bcVerificationTimeoutId = null;
-
-  if (!bcVerificationReceived) {
-    // v1.6.3.8-v3 - FIX Issue #6: Log explicit failure with architectural context
-    console.warn('[Manager] [BC] BC_VERIFICATION_FAILED:', {
-      reason: 'FIREFOX_SIDEBAR_ISOLATION',
-      timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
-      bcApiAvailable: true,
-      sidebarContext: true,
-      firefoxArchitecture: 'WebExtension sidebar panels are isolated execution contexts',
-      diagnosis: 'BroadcastChannel API exists but messages do NOT cross sidebar boundary',
-      consequence: 'BC cannot be used for authoritative state in sidebar',
-      recommendation: 'Port-based messaging (Tier 1) handles all sidebar↔background communication',
-      bcUsage: 'BC suitable ONLY for non-critical UI updates between content script tabs',
-      timestamp: Date.now()
-    });
-
-    // v1.6.3.8-v3 - FIX Issue #6: Do NOT rely on BC for sidebar state at all
-    console.log(
-      '[Manager] [BC] SIDEBAR_BC_DEMOTED: BC is NOT authoritative for sidebar state',
-      {
-        tier1: 'Port-based messaging (PRIMARY)',
-        tier2: 'BroadcastChannel (tab-to-tab only)',
-        tier3: 'storage.onChanged (reliable fallback)',
-        timestamp: Date.now()
-      }
-    );
-    _startFallbackHealthMonitoring();
-  }
+  // NO-OP - BC removed
 }
 
 /**
  * Handle BC verification PONG received
- * v1.6.3.7-v13 - Issue #1 (arch): Confirm BC is working
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  * @param {Object} message - PONG message from background
  * @private
  */
-function _handleBCVerificationPong(message) {
-  if (!bcVerificationPending) return;
-
-  bcVerificationPending = false;
-  bcVerificationReceived = true;
-
-  if (bcVerificationTimeoutId) {
-    clearTimeout(bcVerificationTimeoutId);
-    bcVerificationTimeoutId = null;
-  }
-
-  const latencyMs = message.originalTimestamp ? Date.now() - message.originalTimestamp : null;
-
-  console.log('[Manager] BC_VERIFICATION_SUCCESS: BroadcastChannel is delivering messages', {
-    latencyMs,
-    requestId: message.requestId,
-    timestamp: Date.now()
-  });
+function _handleBCVerificationPong(_message) {
+  // NO-OP - BC removed
 }
 
 // ==================== v1.6.3.7-v12/v13 FALLBACK HEALTH MONITORING ====================
+// v1.6.3.8-v5 - NOTE: "Fallback" now refers to storage.onChanged (Port is PRIMARY)
 // Issue #5: Periodic fallback status logging when BC is unavailable
 // Issue #12: Enhanced health monitoring with stall detection and latency tracking
 // Issue #6 (arch): Storage tier health instrumentation
@@ -4704,49 +4568,15 @@ function _trackFallbackUpdate(source, latencyMs = null) {
 
 /**
  * Handle messages from BroadcastChannel
- * v1.6.3.7-v3 - API #2: Process targeted updates from other tabs
- * v1.6.3.7-v4 - FIX Issue #4: Extract messageId for deduplication
- * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
- * v1.6.3.7-v9 - Issue #7: Added sequence number tracking for gap detection
- * v1.6.3.7-v9 - Issue #2: Added entry/exit timing and correlation ID
- * v1.6.3.7-v10 - FIX Issue #7: Wire gap detection callback invocation, check for stale channel
- * v1.6.3.7-v10 - FIX ESLint: Extracted helpers to reduce complexity
- * @param {MessageEvent} event - BroadcastChannel message event
+ * v1.6.3.8-v5 - DEPRECATED: BC removed per architecture-redesign.md
+ * This function is kept for backwards compatibility but is never called.
+ * @param {MessageEvent} _event - BroadcastChannel message event
+ * @deprecated BC removed - function kept for backwards compatibility
  */
-function handleBroadcastChannelMessage(event) {
-  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
-  const messageEntryTime = Date.now();
-  const message = event.data;
-
-  if (!message || !message.type) {
-    return;
-  }
-
-  // v1.6.3.7-v10 - FIX Issue #7: Check for stale channel and sequence gaps
-  _checkBroadcastChannelHealth(message);
-
-  // v1.6.3.7-v10 - Generate IDs for dedup and correlation
-  const { broadcastMessageId, correlationId } = _generateBroadcastMessageIds(
-    message,
-    messageEntryTime
-  );
-
-  // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
-  console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
-    quickTabId: message.quickTabId,
-    messageId: broadcastMessageId,
-    correlationId,
-    sequenceNumber: message.sequenceNumber,
-    saveId: message.saveId,
-    from: 'BroadcastChannel',
-    timestamp: messageEntryTime
-  });
-
-  // v1.6.3.7-v4 - Route to handler based on message type
-  _routeBroadcastMessage(message, broadcastMessageId);
-
-  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
-  _logBroadcastMessageProcessed(message, correlationId, messageEntryTime);
+// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
+function handleBroadcastChannelMessage(_event) {
+  // NO-OP - BC removed
+  console.log('[Manager] [BC] DEPRECATED: handleBroadcastChannelMessage called - BC removed');
 }
 
 /**
@@ -5118,18 +4948,14 @@ function handleBroadcastMinimizeRestore(message, messageId) {
 
 /**
  * Cleanup BroadcastChannel on window unload
- * v1.6.3.7-v3 - API #2: Remove listener and close channel
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  */
 function cleanupBroadcastChannel() {
-  if (broadcastHandlerRef) {
-    removeBroadcastListener(broadcastHandlerRef);
-    broadcastHandlerRef = null;
-  }
-  closeBroadcastChannel();
-  console.log('[Manager] v1.6.3.7-v3 BroadcastChannel cleaned up');
+  // NO-OP - BC removed
+  console.log('[Manager] [BC] DEPRECATED: cleanupBroadcastChannel called - BC removed');
 }
 
-// ==================== END BROADCAST CHANNEL ====================
+// ==================== END BROADCAST CHANNEL (DEPRECATED) ====================
 
 // ==================== v1.6.3.6-v11 COUNT BADGE ANIMATION ====================
 // FIX Issue #20: Diff-based rendering for count badge animation

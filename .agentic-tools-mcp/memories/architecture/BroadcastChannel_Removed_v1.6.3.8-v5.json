@@ -1,0 +1,8 @@
+{
+  "id": "1d1753ba-252c-4b35-ad2f-f25399b87fd6",
+  "title": "BroadcastChannel Removed v1.6.3.8-v5",
+  "details": "v1.6.3.8-v5 ARCHITECTURE CHANGE: BroadcastChannel completely removed from the extension.\n\nREASON: BroadcastChannel doesn't work for Firefox sidebar/extension communication because:\n1. Firefox Sidebar runs in separate origin context - BC messages never arrive\n2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation\n3. Port-based messaging is more reliable and works across all contexts\n\nNEW ARCHITECTURE:\n- Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)\n- Layer 2: storage.local with revision versioning + storage.onChanged (FALLBACK)\n\nFILES CHANGED:\n- BroadcastChannelManager.js - Now exports NO-OP stubs only\n- background.js - BC initialization converted to no-ops\n- quick-tabs-manager.js - All BC code converted to no-ops\n- storage-handlers.js - Tier tracking removed, fixed debounce\n\nThe stubs return false/null for backwards compatibility. All tests pass.",
+  "category": "architecture",
+  "dateCreated": "2025-12-12T19:04:02.235Z",
+  "dateUpdated": "2025-12-12T19:04:02.235Z"
+}

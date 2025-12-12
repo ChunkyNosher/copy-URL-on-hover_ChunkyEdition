@@ -9,8 +9,9 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.3.7-v7 - FIX Communication Issue #1 & #2: Import BroadcastChannelManager
-// Background must broadcast state changes via BroadcastChannel for instant sidebar updates
+// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// Imports kept for backwards compatibility - all functions are now NO-OP stubs
+// eslint-disable-next-line no-unused-vars
 import {
   initBroadcastChannel as initBroadcastChannelManager,
   isChannelAvailable as isBroadcastChannelAvailable,
@@ -718,162 +719,68 @@ function _getKeepaliveHealthSummary() {
 // Start keepalive on script load
 startKeepalive();
 
-// ==================== v1.6.3.7-v7 BROADCASTCHANNEL INITIALIZATION ====================
-// FIX Communication Issue #1 & #2: Initialize BroadcastChannel for instant sidebar updates
-// This is Tier 1 (PRIMARY) messaging - instant cross-tab sync
+// ==================== v1.6.3.8-v5 BROADCASTCHANNEL REMOVED ====================
+// ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// The new architecture uses:
+// - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
+// - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
+//
+// BroadcastChannel was removed because:
+// 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
+// 2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation
+// 3. Port-based messaging is more reliable and works across all contexts
+// 4. storage.onChanged provides reliable fallback for all scenarios
+//
+// All BC functions below are kept as NO-OP stubs for backwards compatibility.
 
 /**
- * Background's BroadcastChannel for receiving messages
- * v1.6.3.8-v5 - Issue #2: Background needs to listen for iframe verification PINGs
+ * Background's BroadcastChannel for receiving messages (kept for compatibility)
+ * v1.6.3.8-v5 - DEPRECATED: BC removed
  */
 let _backgroundBroadcastChannel = null;
 
 /**
  * Initialize BroadcastChannel for background-to-Manager communication
- * v1.6.3.7-v7 - FIX Issue #1 & #2: Background must use BroadcastChannel
- * v1.6.3.8-v5 - Issue #2: Also set up listener for iframe verification PINGs
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  */
 function initializeBackgroundBroadcastChannel() {
-  const initialized = initBroadcastChannelManager();
-  if (initialized) {
-    console.log('[Background] [BC] BroadcastChannel initialized for state broadcasts');
-
-    // v1.6.3.8-v5 - Issue #2: Set up listener for iframe verification PINGs
-    _setupBackgroundBCListener();
-  } else {
-    console.warn(
-      '[Background] [BC] BroadcastChannel NOT available - Manager will use polling fallback'
-    );
-  }
-  return initialized;
+  console.log('[Background] [BC] DEPRECATED: initializeBackgroundBroadcastChannel called - BC removed per architecture-redesign.md');
+  console.log('[Background] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
+  return false;
 }
 
 /**
  * Set up BroadcastChannel listener in background for verification messages
- * v1.6.3.8-v5 - Issue #2: Listen for BC_IFRAME_VERIFICATION_PING from iframes
- * Cross-origin iframes send PINGs to verify BC connectivity; background responds with PONG
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  * @private
  */
 function _setupBackgroundBCListener() {
-  try {
-    // Create dedicated channel for receiving messages
-    _backgroundBroadcastChannel = new BroadcastChannel('quick-tabs-updates');
-
-    _backgroundBroadcastChannel.addEventListener('message', (event) => {
-      const data = event.data;
-      if (!data || !data.type) return;
-
-      // v1.6.3.8-v5 - Issue #2: Handle iframe verification PINGs
-      if (data.type === 'BC_IFRAME_VERIFICATION_PING') {
-        console.log('[Background] [BC] BC_IFRAME_VERIFICATION_PING received:', {
-          verificationId: data.verificationId,
-          iframeId: data.iframeId,
-          origin: data.origin,
-          timestamp: data.timestamp
-        });
-
-        // Respond with PONG to confirm BC connectivity
-        _sendBCIframeVerificationPong(data);
-      }
-    });
-
-    console.log('[Background] [BC] Background BC listener set up for iframe verification');
-  } catch (err) {
-    console.error('[Background] [BC] Failed to set up background BC listener:', err.message);
-  }
+  // NO-OP - BC removed
 }
 
-// Initialize BroadcastChannel on script load
+// v1.6.3.8-v5 - BC init call kept for compatibility (now a no-op)
 initializeBackgroundBroadcastChannel();
 
 /**
  * Send BC verification PONG via BroadcastChannel
- * v1.6.3.7-v13 - Issue #1 (arch): Used to verify BC works in sidebar context
- * @param {Object} request - The verification request message
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
+ * @param {Object} _request - The verification request message
  * @private
  */
-function _sendBCVerificationPong(request) {
-  if (!isBroadcastChannelAvailable()) {
-    console.warn('[Background] BC_VERIFICATION_PONG failed: BroadcastChannel not available');
-    return;
-  }
-
-  try {
-    // Import is already done at top of file, use direct postMessage
-    // We need to get the channel reference - use the broadcastFullStateSync mechanism
-    // but with a special verification message type
-    const pongMessage = {
-      type: 'BC_VERIFICATION_PONG',
-      requestId: request.requestId,
-      originalTimestamp: request.timestamp,
-      timestamp: Date.now(),
-      source: 'background'
-    };
-
-    // Use the BroadcastChannelManager's internal channel via a mini-broadcast
-    // We'll piggyback on the existing channel by calling broadcastFullStateSync with dummy data
-    // Actually, better to just create a temporary channel for the pong
-    const verifyChannel = new BroadcastChannel('quick-tabs-updates');
-    verifyChannel.postMessage(pongMessage);
-    verifyChannel.close();
-
-    console.log('[Background] BC_VERIFICATION_PONG sent:', {
-      requestId: request.requestId,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.error('[Background] BC_VERIFICATION_PONG failed:', err.message);
-  }
+function _sendBCVerificationPong(_request) {
+  // NO-OP - BC removed
+  console.log('[Background] [BC] DEPRECATED: _sendBCVerificationPong called - BC removed');
 }
 
 /**
  * Send BC iframe verification PONG via BroadcastChannel
- * v1.6.3.8-v5 - Issue #2: Used to verify BC works for cross-origin iframes
- * Cross-origin iframes (e.g., https://example.com) cannot receive BC messages
- * from moz-extension:// origin due to W3C BroadcastChannel origin isolation.
- * This function responds to verification PINGs to confirm BC connectivity.
- * @param {Object} request - The verification request message with verificationId and iframeId
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
+ * @param {Object} _request - The verification request message with verificationId and iframeId
  * @private
  */
-function _sendBCIframeVerificationPong(request) {
-  if (!isBroadcastChannelAvailable()) {
-    console.warn('[Background] BC_IFRAME_VERIFICATION_PONG failed: BroadcastChannel not available', {
-      verificationId: request.verificationId,
-      iframeId: request.iframeId
-    });
-    return;
-  }
-
-  try {
-    const pongMessage = {
-      type: 'BC_IFRAME_VERIFICATION_PONG',
-      verificationId: request.verificationId,
-      iframeId: request.iframeId,
-      originalOrigin: request.origin,
-      originalTimestamp: request.timestamp,
-      timestamp: Date.now(),
-      source: 'background'
-    };
-
-    // Create temporary channel to send PONG
-    const verifyChannel = new BroadcastChannel('quick-tabs-updates');
-    verifyChannel.postMessage(pongMessage);
-    verifyChannel.close();
-
-    console.log('[Background] BC_IFRAME_VERIFICATION_PONG sent:', {
-      verificationId: request.verificationId,
-      iframeId: request.iframeId,
-      originalOrigin: request.origin,
-      latencyMs: Date.now() - request.timestamp,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.error('[Background] BC_IFRAME_VERIFICATION_PONG failed:', {
-      error: err.message,
-      verificationId: request.verificationId,
-      iframeId: request.iframeId
-    });
-  }
+function _sendBCIframeVerificationPong(_request) {
+  // NO-OP - BC removed
+  console.log('[Background] [BC] DEPRECATED: _sendBCIframeVerificationPong called - BC removed');
 }
 
 // ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================

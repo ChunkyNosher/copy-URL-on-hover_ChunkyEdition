@@ -2,13 +2,18 @@
  * Storage Handlers Utility Module
  * Extracted from quick-tabs-manager.js to reduce code complexity
  *
+ * v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+ * The new architecture uses:
+ * - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
+ * - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
+ *
  * Handles:
  * - Storage change detection and handling
  * - Tab change identification
  * - Suspicious storage drop detection
  * - Reconciliation with content scripts
  *
- * @version 1.6.4.14
+ * @version 1.6.3.8-v5
  */
 
 // Storage keys
@@ -18,204 +23,54 @@ const STATE_KEY = 'quick_tabs_state_v2';
 const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 
-// ==================== v1.6.3.7-v8 DYNAMIC DEBOUNCE ====================
-// FIX Issue #12: Context-dependent debounce timing based on active messaging tier
-// v1.6.3.8-v3 - FIX Issue #12: Added hysteresis to prevent single-message tier flips
+// ==================== v1.6.3.8-v5 SIMPLIFIED DEBOUNCE ====================
+// BroadcastChannel removed - use fixed debounce timing for storage.onChanged
 
 /**
- * Debounce timing when Tier 1 (BroadcastChannel) is active
- * v1.6.3.7-v8 - FIX Issue #12: Higher debounce when instant messaging works
+ * Default debounce for storage.onChanged events
+ * v1.6.3.8-v5 - Fixed debounce since BC removed, using storage.onChanged as primary
  */
-const STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS = 500;
+const STORAGE_READ_DEBOUNCE_MS = 200;
 
 /**
- * Debounce timing when in fallback mode (Tier 1 inactive)
- * v1.6.3.7-v8 - FIX Issue #12: Lower debounce to compensate for slower sync
- */
-const STORAGE_READ_DEBOUNCE_FALLBACK_MS = 200;
-
-/**
- * Default debounce - use fallback value for safety
- * v1.6.3.7-v4 - FIX Issue #7: Increased from 50ms to 500ms
- * v1.6.3.7-v8 - FIX Issue #12: Now dynamic based on active tier
- */
-let STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_FALLBACK_MS;
-
-/**
- * Track whether Tier 1 (BroadcastChannel) is currently active
- * v1.6.3.7-v8 - FIX Issue #12: Runtime detection of active tier
- */
-let isTier1Active = false;
-
-/**
- * Timestamp of last BroadcastChannel message received
- * v1.6.3.7-v8 - FIX Issue #12: Track BC activity
- */
-let lastBroadcastMessageTime = 0;
-
-/**
- * Threshold for considering Tier 1 inactive (15 seconds without BC message)
- * v1.6.3.7-v8 - FIX Issue #12: If no BC messages for this long, consider fallback
- * v1.6.3.8-v3 - FIX Issue #12: Increased from 10s to 15s for hysteresis
- */
-const TIER1_INACTIVE_THRESHOLD_MS = 15000;
-
-// ==================== v1.6.3.8-v3 TIER STATUS HYSTERESIS ====================
-// FIX Issue #12: Require sustained BC message activity before setting tier active
-
-/**
- * Minimum consecutive BC messages required before activating Tier 1
- * v1.6.3.8-v3 - FIX Issue #12: Prevent single-message tier flip
- */
-const BC_MESSAGES_REQUIRED_FOR_ACTIVE = 3;
-
-/**
- * Time window for counting consecutive BC messages (ms)
- * v1.6.3.8-v3 - FIX Issue #12: Messages must arrive within this window
- */
-const BC_CONSECUTIVE_WINDOW_MS = 5000;
-
-/**
- * Array of recent BC message timestamps for hysteresis tracking
- * v1.6.3.8-v3 - FIX Issue #12: Track message arrival pattern
- */
-let recentBCMessageTimes = [];
-
-/**
- * Counter for consecutive BC messages in current window
- * v1.6.3.8-v3 - FIX Issue #12: Track message count for confidence
- * @private
- */
-let _consecutiveBCMessageCount = 0;
-
-/**
- * Update Tier 1 status based on recent BroadcastChannel activity
- * v1.6.3.7-v8 - FIX Issue #12: Called when BC message is received
- * v1.6.3.8-v3 - FIX Issue #12: Added hysteresis - require 3+ messages in 5s window
+ * Notify that a port message was received (for activity tracking)
+ * v1.6.3.8-v5 - Replaces notifyBroadcastMessageReceived() - NO-OP stub for compatibility
+ * @deprecated BC removed - use Port-based messaging (runtime.Port) or storage.onChanged instead
  */
 export function notifyBroadcastMessageReceived() {
-  const now = Date.now();
-  lastBroadcastMessageTime = now;
-
-  // v1.6.3.8-v3 - FIX Issue #12: Track message timing for hysteresis
-  _updateBCMessageWindow(now);
-
-  const wasActive = isTier1Active;
-  const messageCount = recentBCMessageTimes.length;
-  const confidenceLevel = _calculateBCConfidence(messageCount);
-
-  // v1.6.3.8-v3 - FIX Issue #12: Only activate if we have sustained activity
-  if (messageCount >= BC_MESSAGES_REQUIRED_FOR_ACTIVE) {
-    isTier1Active = true;
-
-    if (!wasActive) {
-      // Tier 1 became active - increase debounce
-      STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS;
-      console.log('[POLLING] [TIER_STATUS]:', {
-        activeTier: 'BroadcastChannel',
-        debounceMs: STORAGE_READ_DEBOUNCE_MS,
-        previousDebounceMs: STORAGE_READ_DEBOUNCE_FALLBACK_MS,
-        reason: 'tier1_activated',
-        messageCount,
-        requiredMessages: BC_MESSAGES_REQUIRED_FOR_ACTIVE,
-        confidence: confidenceLevel,
-        timestamp: now
-      });
-    }
-  } else {
-    // v1.6.3.8-v3 - FIX Issue #12: Log low-confidence single message
-    console.log('[POLLING] [TIER_STATUS_PENDING]:', {
-      activeTier: isTier1Active ? 'BroadcastChannel' : 'storage-polling-fallback',
-      messageCount,
-      requiredMessages: BC_MESSAGES_REQUIRED_FOR_ACTIVE,
-      confidence: confidenceLevel,
-      message: `Waiting for ${BC_MESSAGES_REQUIRED_FOR_ACTIVE - messageCount} more messages`,
-      timestamp: now
-    });
-  }
+  // NO-OP - BroadcastChannel removed per architecture-redesign.md
+  // Port-based messaging does not require tier tracking
 }
 
 /**
- * Update the BC message time window, removing old entries
- * v1.6.3.8-v3 - FIX Issue #12: Helper for hysteresis tracking
- * @private
- * @param {number} now - Current timestamp
- */
-function _updateBCMessageWindow(now) {
-  // Add new message time
-  recentBCMessageTimes.push(now);
-
-  // Remove messages outside the window
-  const cutoff = now - BC_CONSECUTIVE_WINDOW_MS;
-  recentBCMessageTimes = recentBCMessageTimes.filter(t => t > cutoff);
-
-  // Update consecutive count
-  _consecutiveBCMessageCount = recentBCMessageTimes.length;
-}
-
-/**
- * Calculate confidence level based on message count
- * v1.6.3.8-v3 - FIX Issue #12: Helper for confidence reporting
- * @private
- * @param {number} messageCount - Number of messages in window
- * @returns {string} Confidence level description
- */
-function _calculateBCConfidence(messageCount) {
-  if (messageCount >= 5) return 'HIGH';
-  if (messageCount >= BC_MESSAGES_REQUIRED_FOR_ACTIVE) return 'MEDIUM';
-  if (messageCount >= 1) return 'LOW';
-  return 'NONE';
-}
-
-/**
- * Check and update debounce based on Tier 1 activity
- * v1.6.3.7-v8 - FIX Issue #12: Called periodically to detect fallback mode
+ * Get effective debounce for storage operations
+ * v1.6.3.8-v5 - Fixed debounce since BC removed
  * @returns {number} Current debounce value in ms
  */
 export function getEffectiveDebounceMs() {
-  const now = Date.now();
-  const timeSinceLastBC = now - lastBroadcastMessageTime;
-
-  // Check if Tier 1 should be considered inactive
-  if (isTier1Active && timeSinceLastBC > TIER1_INACTIVE_THRESHOLD_MS) {
-    isTier1Active = false;
-    STORAGE_READ_DEBOUNCE_MS = STORAGE_READ_DEBOUNCE_FALLBACK_MS;
-    console.log('[POLLING] [TIER_STATUS]:', {
-      activeTier: 'storage-polling-fallback',
-      debounceMs: STORAGE_READ_DEBOUNCE_MS,
-      previousDebounceMs: STORAGE_READ_DEBOUNCE_TIER1_ACTIVE_MS,
-      reason: 'tier1_inactive',
-      timeSinceLastBCMs: timeSinceLastBC,
-      threshold: TIER1_INACTIVE_THRESHOLD_MS,
-      timestamp: now
-    });
-  }
-
   return STORAGE_READ_DEBOUNCE_MS;
 }
 
 /**
  * Get current tier status for diagnostics
- * v1.6.3.7-v8 - FIX Issue #12: Diagnostic helper
- * v1.6.3.8-v3 - FIX Issue #12: Added hysteresis info
+ * v1.6.3.8-v5 - Simplified since BC removed
  * @returns {Object} Tier status information
+ * @deprecated BC removed - returns stub data for compatibility
  */
 export function getTierStatus() {
-  const now = Date.now();
-  const messageCount = recentBCMessageTimes.length;
   return {
-    isTier1Active,
+    isTier1Active: false,
     debounceMs: STORAGE_READ_DEBOUNCE_MS,
-    lastBroadcastMessageTime,
-    timeSinceLastBCMs: lastBroadcastMessageTime > 0 ? now - lastBroadcastMessageTime : -1,
-    tier1InactiveThresholdMs: TIER1_INACTIVE_THRESHOLD_MS,
-    // v1.6.3.8-v3 - FIX Issue #12: Hysteresis info
+    lastBroadcastMessageTime: 0,
+    timeSinceLastBCMs: -1,
+    tier1InactiveThresholdMs: 0,
     hysteresis: {
-      recentMessageCount: messageCount,
-      requiredForActive: BC_MESSAGES_REQUIRED_FOR_ACTIVE,
-      windowMs: BC_CONSECUTIVE_WINDOW_MS,
-      confidence: _calculateBCConfidence(messageCount)
-    }
+      recentMessageCount: 0,
+      requiredForActive: 0,
+      windowMs: 0,
+      confidence: 'N/A'
+    },
+    note: 'BroadcastChannel removed per architecture-redesign.md - using Port + storage.onChanged'
   };
 }
 
