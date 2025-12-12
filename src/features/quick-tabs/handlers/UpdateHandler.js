@@ -31,6 +31,8 @@
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
+// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// Imports kept for backwards compatibility - all functions are now NO-OP stubs
 import {
   broadcastQuickTabUpdated,
   isChannelAvailable

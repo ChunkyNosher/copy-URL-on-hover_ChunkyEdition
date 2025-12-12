@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.8-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
 control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
@@ -9,45 +9,34 @@ Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v4 Status:** 9 Critical Sync Fixes, Sidebar Modules, Port-Based
-Hydration ✅
+**🔧 v1.6.3.8-v5 Status:** Architecture Redesign - BroadcastChannel REMOVED ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v4
+## 🎉 What's New in v1.6.3.8-v5
 
-**🔧 9 Critical Sidebar Sync Fixes (December 2025) ✅**
+**🔧 Architecture Redesign (December 2025) ✅**
 
-**Group A - Initialization & Hydration:**
+**BroadcastChannel REMOVED - New Port + Storage Architecture:**
 
-- ✅ **Issue #5:** Promise-based initialization barrier with 10s timeout
-- ✅ **Issue #4:** Exponential backoff retry for storage verification (1s, 2s, 4s)
-- ✅ **Issue #1:** Sequential barrier blocking for hydration race fix
-- ✅ **Issue #6:** Port-based hydration before storage fallback
+- ✅ **Layer 1a:** runtime.Port for real-time metadata sync
+- ✅ **Layer 1b:** storage.local with monotonic revision versioning
+- ✅ **Layer 2:** Robust fallback via storage.onChanged
 
-**Group B - State Synchronization:**
+**7 Critical Fixes:**
 
-- ✅ **Issue #2:** Listener registration guard for port message queue
-- ✅ **Issue #3:** Visibility change listener + 15s periodic state refresh
-- ✅ **Issue #9:** Enforcing initialization guard with message queuing
+- ✅ **Issue #1:** Storage event ordering - Monotonic revision versioning + buffering
+- ✅ **Issue #2:** BC origin isolation - SOLVED by BC removal (Port-based only)
+- ✅ **Issue #3:** Port disconnection - Consecutive failure tracking (3 failures → cleanup)
+- ✅ **Issue #4:** Storage quota recovery - Iterative 75%→50%→25%, exponential backoff
+- ✅ **Issue #5:** WebRequest API - declarativeNetRequest with webRequest fallback
+- ✅ **Issue #6:** Alarm ordering - Initialization guards for alarm handlers
+- ✅ **Issue #7:** URL validation - Block dangerous protocols (javascript:, data:, vbscript:)
 
-**Group C - Resource Management:**
-
-- ✅ **Issue #7:** Proactive dedup cleanup at 50%, sliding window at 95%
-- ✅ **Issue #8:** Probe queuing with 500ms min interval, 1s force-reset
-
-**New Sidebar Modules (`sidebar/modules/`):**
-
-- ✅ `init-barrier.js` - Initialization barrier logic
-- ✅ `state-sync.js` - Port/storage sync layer
-- ✅ `diagnostics.js` - Logging utilities
-- ✅ `health-metrics.js` - Health probes
-- ✅ `index.js` - Re-exports for convenience
-
-**Why This Matters:** These fixes eliminate race conditions during sidebar
-initialization, prevent hydration issues, and improve resource management.
+**Why This Matters:** Removes BC complexity and origin isolation issues, provides
+more reliable cross-tab sync with simpler architecture.
 
 ---
 
@@ -56,10 +45,10 @@ initialization, prevent hydration issues, and improve resource management.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v4** - 9 Critical Sync Fixes, Sidebar Modules
 - **v1.6.3.8-v3** - Storage listener verification, tier hysteresis
-- **v1.6.3.8-v2** - Background Relay, ACK-based messaging, WriteBuffer
+- **v1.6.3.8-v2** - ACK-based messaging, WriteBuffer
 - **v1.6.3.8** - Initialization barriers, centralized storage validation
-- **v1.6.3.7-v12** - DEBUG_DIAGNOSTICS, dedup logging, port thresholds
 
 ---
 
@@ -94,7 +83,7 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Tab Grouping** - tabs.group() API support, Firefox 138+ (v1.6.3.7-v3)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ **Cross-Tab Sync via storage.onChanged + BroadcastChannel**  
+✓ **Cross-Tab Sync via Port + storage.onChanged** (NO BroadcastChannel)  
 ✓ 100+ Site-Specific Handlers  
 ✓ Dark Mode support  
 ✓ Auto-Updates via GitHub releases
@@ -242,6 +231,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

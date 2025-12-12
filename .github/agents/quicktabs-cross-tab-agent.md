@@ -3,8 +3,9 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v4), initializationBarrier Promise, port-based hydration, visibility
-  change listener, proactive dedup cleanup, sidebar modules
+  (v1.6.3.8-v5), Port + storage.local architecture (NO BroadcastChannel),
+  initializationBarrier Promise, port-based hydration, monotonic revision versioning,
+  storage quota recovery, URL validation
 tools: ['*']
 ---
 
@@ -38,34 +39,31 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v4 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v5 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v4 Features (NEW) - 9 Critical Sync Fixes:**
+**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
 
-- **Issue #5:** `initializationBarrier` Promise - All async tasks complete before listeners
-- **Issue #4:** Exponential backoff retry for storage verification (1s, 2s, 4s)
-- **Issue #1:** Sequential hydration barrier - blocks render until all tiers verified
-- **Issue #2:** Listener registration guard for port message queue
-- **Issue #3:** `document.visibilitychange` listener + 15s state freshness check
-- **Issue #6:** `_hydrateStateFromBackground()` - Port-based hydration before storage
-- **Issue #7:** Proactive dedup cleanup at 50%, sliding window eviction at 95%
-- **Issue #8:** Probe queuing with 500ms min interval, 1000ms force-reset
-- **Issue #9:** `_queueMessageDuringInit()` - Message queuing until barrier resolves
+- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
+- **Layer 1a:** runtime.Port for real-time metadata sync (position, minimized, active)
+- **Layer 1b:** storage.local with monotonic revision versioning for persistent state
+- **Layer 2:** Robust fallback with state versioning via storage.onChanged
+- **Monotonic revision numbers** - `revisionId` for storage event ordering
+- **Event buffering** - Out-of-order storage events queued and replayed
+- **Port failure counting** - 3 consecutive failures triggers cleanup
+- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
+- **URL validation** - Block javascript:, data:, vbscript: protocols
 
-**New Sidebar Modules (`sidebar/modules/`):**
+**v1.6.3.8-v4 Features (Retained):**
 
-| Module              | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
-| `init-barrier.js`   | Initialization barrier, CONNECTION_STATE       |
-| `state-sync.js`     | Port/storage sync, SaveId dedup, sequence IDs  |
-| `diagnostics.js`    | Logging utilities, correlation IDs             |
-| `health-metrics.js` | Storage/fallback health, dedup map monitoring  |
+- **initializationBarrier Promise** - All async tasks complete before listeners
+- **Port-based hydration** - `_hydrateStateFromBackground()` before storage
+- **Visibility change listener** - State refresh when sidebar becomes visible
+- **Proactive dedup cleanup** - 50% threshold with sliding window at 95%
 
-**v1.6.3.8-v2/v3 Features (Retained):** Background Relay, ACK-based messaging,
-SIDEBAR_READY handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots,
-storage listener verification, tier hysteresis.
+**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, SIDEBAR_READY
+handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
 
-**Key Functions (v1.6.3.8-v4):**
+**Key Functions (v1.6.3.8-v5):**
 
 | Function                        | Location          | Purpose                         |
 | ------------------------------- | ----------------- | ------------------------------- |
@@ -79,7 +77,7 @@ storage listener verification, tier hysteresis.
 ```javascript
 {
   tabs: [{ id, originTabId, domVerified, zIndex, orphaned, ... }],
-  saveId: 'unique-id', timestamp: Date.now(), writingTabId: 12345
+  saveId: 'unique-id', timestamp: Date.now(), writingTabId: 12345, revisionId: 42
 }
 ```
 
@@ -89,18 +87,19 @@ storage listener verification, tier hysteresis.
 
 ## Testing Requirements
 
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v5)
+- [ ] Monotonic revision versioning works (`revisionId`) (v1.6.3.8-v5)
+- [ ] Port failure counting works (3 failures → cleanup) (v1.6.3.8-v5)
+- [ ] Storage quota recovery works (75%→50%→25%) (v1.6.3.8-v5)
 - [ ] initializationBarrier Promise resolves correctly (v1.6.3.8-v4)
 - [ ] Port-based hydration works (`_hydrateStateFromBackground`) (v1.6.3.8-v4)
-- [ ] Visibility change listener triggers state refresh (v1.6.3.8-v4)
-- [ ] Proactive dedup cleanup at 50% capacity (v1.6.3.8-v4)
-- [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
-- [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
-- [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
+- [ ] ACK-based messaging works (sendRequestWithTimeout)
+- [ ] WriteBuffer batching works (75ms)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.8-v4 initializationBarrier,
-port-based hydration, visibility change listener, proactive dedup cleanup.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v5 Port + storage.local
+architecture, monotonic revision versioning, port failure counting.**

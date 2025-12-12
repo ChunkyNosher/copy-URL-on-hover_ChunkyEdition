@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.8-v3.
+  documentation. Current version: v1.6.3.8-v5.
 tools: ['*']
 ---
 
@@ -69,31 +69,29 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.8-v2)
+## Current Extension State (v1.6.3.8-v5)
 
-### v1.6.3.8-v2 Features (NEW)
+### v1.6.3.8-v5 Features (NEW) - Architecture Redesign
 
-- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
-- **SIDEBAR_READY handshake** - Protocol before routing messages
-- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
-- **Port registry snapshots** - 60s interval with active/idle/zombie counts
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
-- **New file:** `src/utils/message-utils.js` - ACK-based messaging utilities
+- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
+- **Layer 1a:** runtime.Port for real-time metadata sync
+- **Layer 1b:** storage.local with monotonic revision versioning
+- **Layer 2:** Robust fallback via storage.onChanged
+- **Monotonic revision versioning** - `revisionId` for storage event ordering
+- **Port failure counting** - 3 consecutive failures triggers cleanup
+- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
+- **declarativeNetRequest** - Feature detection with webRequest fallback
+- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
 
-### v1.6.3.8 Features (Retained)
+### v1.6.3.8-v4 Features (Retained)
 
-- Initialization barriers (QuickTabHandler 10s, currentTabId 2s backoff)
-- Centralized storage validation with re-write + verify
-- Dedup decision logging, BC fallback detection, keepalive health reports
+- Initialization barriers (10s), exponential backoff retry
+- Port-based hydration, visibility change listener, proactive dedup cleanup
+
+### v1.6.3.8-v2/v3 Features (Retained)
+
+- ACK-based messaging, SIDEBAR_READY handshake, WriteBuffer (75ms)
 - Code Health: background.js (9.09), QuickTabHandler.js (9.41)
-
-### v1.6.3.7-v11-v12 Features (Retained)
-
-- DEBUG_DIAGNOSTICS flag, Promise barrier, LRU dedup (1000), correlation ID echo
-- State machine timeouts (7s), port registry thresholds
 
 ### Architecture
 
@@ -101,13 +99,13 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.8-v2)
+### Key Functions (v1.6.3.8-v5)
 
 | Function                   | Location       | Purpose                        |
 | -------------------------- | -------------- | ------------------------------ |
-| `sendRequestWithTimeout()` | message-utils  | ACK-based messaging (v8-v2)    |
-| `flushWriteBuffer()`       | storage-utils  | WriteBuffer batch flush (v8-v2)|
-| `waitForInitialization()`  | QuickTabHandler| 10s init barrier (v8)          |
+| `sendRequestWithTimeout()` | message-utils  | ACK-based messaging            |
+| `flushWriteBuffer()`       | storage-utils  | WriteBuffer batch flush        |
+| `waitForInitialization()`  | QuickTabHandler| 10s init barrier               |
 | `scheduleRender(source)`   | Manager        | Unified render entry point     |
 
 ---
@@ -115,13 +113,13 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.8-v2
-- [ ] **v1.6.3.8-v2:** Background Relay documented
-- [ ] **v1.6.3.8-v2:** ACK-based messaging documented
-- [ ] **v1.6.3.8-v2:** SIDEBAR_READY handshake documented
-- [ ] **v1.6.3.8-v2:** WriteBuffer pattern documented
-- [ ] **v1.6.3.8-v2:** BFCache lifecycle documented
-- [ ] **v1.6.3.8:** Initialization barriers documented
+- [ ] Version numbers match 1.6.3.8-v5
+- [ ] **v1.6.3.8-v5:** BroadcastChannel REMOVED documented
+- [ ] **v1.6.3.8-v5:** Port + storage.local architecture documented
+- [ ] **v1.6.3.8-v5:** Monotonic revision versioning documented
+- [ ] **v1.6.3.8-v5:** Storage quota recovery documented
+- [ ] **v1.6.3.8-v5:** declarativeNetRequest fallback documented
+- [ ] **v1.6.3.8-v5:** URL validation documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -131,11 +129,11 @@ nothing.
 
 | Error                      | Fix                                    |
 | -------------------------- | -------------------------------------- |
-| v1.6.3.8 or earlier        | Update to 1.6.3.8-v2                   |
+| v1.6.3.8-v4 or earlier     | Update to 1.6.3.8-v5                   |
 | "Pin to Page"              | Use "Solo/Mute"                        |
 | Direct storage writes      | Use Single Writer Authority            |
-| Missing Background Relay   | Document BC origin isolation bypass    |
-| Missing WriteBuffer        | Document 75ms batching pattern         |
+| BroadcastChannel refs      | REMOVE - BC is deprecated in v5        |
+| Missing Port architecture  | Document Port + storage.local layers   |
 
 ---
 

@@ -1,0 +1,8 @@
+{
+  "id": "b9a8ade8-4796-4012-a469-200ac525a290",
+  "title": "Alarm initialization guards pattern",
+  "details": "v1.6.3.8-v5 introduced initialization guards for browser.alarms handlers in background.js:\n\n1. All non-keepalive alarms (cleanup-orphaned, sync-session-state, diagnostic-snapshot) check `isInitialized` before execution and skip safely if false\n2. Keepalive alarm handler `_handleKeepaliveAlarm()` only sends sidebar pings after initialization\n3. `_sendAlivePingToSidebars()` uses optional chaining on globalQuickTabState for defensive safety\n4. Skipped alarms log with ALARM_SKIPPED_NOT_INITIALIZED for debugging\n\nPattern: Always check `isInitialized` in alarm handlers that access globalQuickTabState or perform storage operations.",
+  "category": "architecture",
+  "dateCreated": "2025-12-12T17:47:43.253Z",
+  "dateUpdated": "2025-12-12T17:47:43.253Z"
+}

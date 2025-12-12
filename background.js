@@ -1,7 +1,8 @@
 // Background script handles injecting content script into all tabs
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
-// Also handles webRequest to remove X-Frame-Options for Quick Tabs
+// Also handles webRequest/declarativeNetRequest to remove X-Frame-Options for Quick Tabs
+// v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
@@ -9,8 +10,9 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.3.7-v7 - FIX Communication Issue #1 & #2: Import BroadcastChannelManager
-// Background must broadcast state changes via BroadcastChannel for instant sidebar updates
+// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// Imports kept for backwards compatibility - all functions are now NO-OP stubs
+// eslint-disable-next-line no-unused-vars
 import {
   initBroadcastChannel as initBroadcastChannelManager,
   isChannelAvailable as isBroadcastChannelAvailable,
@@ -139,6 +141,39 @@ function _getNextStorageSequenceId() {
   return storageWriteSequenceId;
 }
 
+// ==================== v1.6.3.8-v5 MONOTONIC REVISION VERSIONING ====================
+// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
+// IndexedDB delivers storage.onChanged events in arbitrary order. Revision numbers
+// provide a definitive ordering mechanism that listeners can use to reject stale updates.
+
+/**
+ * Global revision counter for storage writes
+ * v1.6.3.8-v5 - FIX Issue #1: Monotonic counter that NEVER resets during session
+ * Initialized to Date.now() to ensure uniqueness across browser restarts
+ */
+let _globalRevisionCounter = Date.now();
+
+/**
+ * Get the next revision number for storage writes
+ * v1.6.3.8-v5 - FIX Issue #1: Always incrementing, never resets
+ * Each state snapshot includes this revision number. Listeners reject any update
+ * with revision ≤ their _lastAppliedRevision.
+ * @returns {number} Next revision number
+ */
+function _getNextRevision() {
+  _globalRevisionCounter++;
+  return _globalRevisionCounter;
+}
+
+/**
+ * Get current revision without incrementing (for diagnostic purposes)
+ * v1.6.3.8-v5 - FIX Issue #1: Used for logging/debugging
+ * @returns {number} Current revision number
+ */
+function _getCurrentRevision() {
+  return _globalRevisionCounter;
+}
+
 // v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
 // Also track consecutive 0-tab reads to require confirmation before clearing
 let lastNonEmptyStateTimestamp = Date.now();
@@ -206,8 +241,40 @@ const CORRUPTION_RECOVERY_COOLDOWN_MS = 30000;
  * Percentage of Quick Tabs to keep during quota-exceeded recovery
  * v1.6.3.7-v13 - Issue #7: Configurable recovery strategy
  * When storage quota is exceeded, keep newest 75% of tabs (clear oldest 25%)
+ * v1.6.3.8-v5 - Issue #4: DEPRECATED - Now superseded by RECOVERY_PERCENTAGES array
+ * Kept for documentation purposes only
  */
-const RECOVERY_KEEP_PERCENTAGE = 0.75;
+const _RECOVERY_KEEP_PERCENTAGE = 0.75;
+
+// ==================== v1.6.3.8-v5 ITERATIVE STORAGE RECOVERY (Issue #4) ====================
+// When storage quota is exceeded, progressively reduce data until write succeeds
+/**
+ * Iterative recovery percentages for storage quota recovery
+ * v1.6.3.8-v5 - Issue #4: Progressive reduction: 75% → 50% → 25%
+ * @type {number[]}
+ */
+const RECOVERY_PERCENTAGES = [0.75, 0.50, 0.25];
+
+/**
+ * Maximum number of recovery attempts before giving up
+ * v1.6.3.8-v5 - Issue #4: Prevent infinite loops
+ */
+const RECOVERY_MAX_ATTEMPTS = 3;
+
+/**
+ * Base delay for exponential backoff between recovery attempts (ms)
+ * v1.6.3.8-v5 - Issue #4: Exponential backoff: 500ms, 1000ms, 2000ms
+ */
+const RECOVERY_BACKOFF_BASE_MS = 500;
+
+// ==================== v1.6.3.8-v5 PORT DISCONNECTION DETECTION (Issue #3) ====================
+// Track consecutive postMessage failures to detect silent port disconnections
+/**
+ * Number of consecutive postMessage failures before evicting a port
+ * v1.6.3.8-v5 - Issue #3: After N failures, port is considered disconnected
+ * Firefox Bugzilla 1223425: onDisconnect may not fire for BFCache/navigation
+ */
+const PORT_CONSECUTIVE_FAILURE_THRESHOLD = 3;
 
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
@@ -653,67 +720,68 @@ function _getKeepaliveHealthSummary() {
 // Start keepalive on script load
 startKeepalive();
 
-// ==================== v1.6.3.7-v7 BROADCASTCHANNEL INITIALIZATION ====================
-// FIX Communication Issue #1 & #2: Initialize BroadcastChannel for instant sidebar updates
-// This is Tier 1 (PRIMARY) messaging - instant cross-tab sync
+// ==================== v1.6.3.8-v5 BROADCASTCHANNEL REMOVED ====================
+// ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// The new architecture uses:
+// - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
+// - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
+//
+// BroadcastChannel was removed because:
+// 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
+// 2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation
+// 3. Port-based messaging is more reliable and works across all contexts
+// 4. storage.onChanged provides reliable fallback for all scenarios
+//
+// All BC functions below are kept as NO-OP stubs for backwards compatibility.
+
+/**
+ * Background's BroadcastChannel for receiving messages (kept for compatibility)
+ * v1.6.3.8-v5 - DEPRECATED: BC removed
+ */
+let _backgroundBroadcastChannel = null;
 
 /**
  * Initialize BroadcastChannel for background-to-Manager communication
- * v1.6.3.7-v7 - FIX Issue #1 & #2: Background must use BroadcastChannel
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
  */
 function initializeBackgroundBroadcastChannel() {
-  const initialized = initBroadcastChannelManager();
-  if (initialized) {
-    console.log('[Background] [BC] BroadcastChannel initialized for state broadcasts');
-  } else {
-    console.warn(
-      '[Background] [BC] BroadcastChannel NOT available - Manager will use polling fallback'
-    );
-  }
-  return initialized;
+  console.log('[Background] [BC] DEPRECATED: initializeBackgroundBroadcastChannel called - BC removed per architecture-redesign.md');
+  console.log('[Background] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
+  return false;
 }
 
-// Initialize BroadcastChannel on script load
+/**
+ * Set up BroadcastChannel listener in background for verification messages
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
+ * @private
+ */
+function _setupBackgroundBCListener() {
+  // NO-OP - BC removed
+}
+
+// v1.6.3.8-v5 - BC init call kept for compatibility (now a no-op)
 initializeBackgroundBroadcastChannel();
 
 /**
  * Send BC verification PONG via BroadcastChannel
- * v1.6.3.7-v13 - Issue #1 (arch): Used to verify BC works in sidebar context
- * @param {Object} request - The verification request message
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
+ * @param {Object} _request - The verification request message
  * @private
  */
-function _sendBCVerificationPong(request) {
-  if (!isBroadcastChannelAvailable()) {
-    console.warn('[Background] BC_VERIFICATION_PONG failed: BroadcastChannel not available');
-    return;
-  }
+function _sendBCVerificationPong(_request) {
+  // NO-OP - BC removed
+  console.log('[Background] [BC] DEPRECATED: _sendBCVerificationPong called - BC removed');
+}
 
-  try {
-    // Import is already done at top of file, use direct postMessage
-    // We need to get the channel reference - use the broadcastFullStateSync mechanism
-    // but with a special verification message type
-    const pongMessage = {
-      type: 'BC_VERIFICATION_PONG',
-      requestId: request.requestId,
-      originalTimestamp: request.timestamp,
-      timestamp: Date.now(),
-      source: 'background'
-    };
-
-    // Use the BroadcastChannelManager's internal channel via a mini-broadcast
-    // We'll piggyback on the existing channel by calling broadcastFullStateSync with dummy data
-    // Actually, better to just create a temporary channel for the pong
-    const verifyChannel = new BroadcastChannel('quick-tabs-updates');
-    verifyChannel.postMessage(pongMessage);
-    verifyChannel.close();
-
-    console.log('[Background] BC_VERIFICATION_PONG sent:', {
-      requestId: request.requestId,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.error('[Background] BC_VERIFICATION_PONG failed:', err.message);
-  }
+/**
+ * Send BC iframe verification PONG via BroadcastChannel
+ * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
+ * @param {Object} _request - The verification request message with verificationId and iframeId
+ * @private
+ */
+function _sendBCIframeVerificationPong(_request) {
+  // NO-OP - BC removed
+  console.log('[Background] [BC] DEPRECATED: _sendBCIframeVerificationPong called - BC removed');
 }
 
 // ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
@@ -792,14 +860,27 @@ async function initializeAlarms() {
  * Handle alarm events
  * v1.6.3.7-v3 - API #4: Route alarms to appropriate handlers
  * v1.6.3.8 - Issue #2 (arch): Add keepalive backup alarm handler
+ * v1.6.3.8-v5 - FIX Issue #6: Add initialization guards to prevent race conditions
  * @param {Object} alarm - Alarm info object
  */
 async function handleAlarm(alarm) {
-  // v1.6.3.8 - Issue #2 (arch): Keepalive alarm is high-frequency, reduce logging
+  // v1.6.3.8-v5 - FIX Issue #6: Keepalive alarm can run without full init
+  // but must skip state-dependent operations until initialized
   if (alarm.name === ALARM_KEEPALIVE_BACKUP) {
     // Simply receiving the alarm event resets Firefox's idle timer
     // Also trigger our idle reset for consistency
     await _handleKeepaliveAlarm();
+    return;
+  }
+
+  // v1.6.3.8-v5 - FIX Issue #6: All non-keepalive alarms require initialization
+  // These alarms access globalQuickTabState and perform storage operations
+  if (!isInitialized) {
+    console.warn('[Background] v1.6.3.8-v5 ALARM_SKIPPED_NOT_INITIALIZED:', {
+      alarmName: alarm.name,
+      timestamp: Date.now(),
+      isInitialized: false
+    });
     return;
   }
 
@@ -826,6 +907,7 @@ async function handleAlarm(alarm) {
 /**
  * Handle keepalive alarm event
  * v1.6.3.8 - Issue #2 (arch): Backup keepalive mechanism via browser.alarms
+ * v1.6.3.8-v5 - FIX Issue #6: Skip sidebar pings during initialization
  * This is the most reliable way to keep MV2 background scripts alive in Firefox
  * @private
  */
@@ -835,8 +917,12 @@ async function _handleKeepaliveAlarm() {
     // Perform a lightweight API call to ensure activity is registered
     await browser.tabs.query({ active: true, currentWindow: true });
 
-    // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
-    _sendAlivePingToSidebars();
+    // v1.6.3.8-v5 - FIX Issue #6: Only send sidebar pings after initialization
+    // Sending pings before init could reference uninitialized state
+    if (isInitialized) {
+      // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
+      _sendAlivePingToSidebars();
+    }
 
     // Update keepalive health stats (success via alarm)
     const now = Date.now();
@@ -847,7 +933,8 @@ async function _handleKeepaliveAlarm() {
     if (keepaliveSuccessCount % 12 === 0) {
       console.log('[Background] KEEPALIVE_ALARM_SUCCESS:', {
         alarmCount: keepaliveSuccessCount,
-        timestamp: now
+        timestamp: now,
+        isInitialized
       });
     }
     keepaliveSuccessCount++;
@@ -863,34 +950,38 @@ async function _handleKeepaliveAlarm() {
 /**
  * Send alive ping to a single sidebar port
  * v1.6.3.8 - Issue #2 (arch): Extracted to reduce nesting depth
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {string} portId - Port ID
- * @param {Object} portInfo - Port info
+ * @param {Object} _portInfo - Port info (unused - kept for caller signature compatibility)
  * @param {Object} alivePing - Ping message to send
  */
-function _sendAlivePingToPort(portId, portInfo, alivePing) {
-  try {
-    portInfo.port.postMessage(alivePing);
-    updatePortActivity(portId);
-  } catch (_err) {
-    // Port may be disconnected, will be cleaned up by stale port cleanup
-  }
+function _sendAlivePingToPort(portId, _portInfo, alivePing) {
+  // v1.6.3.8-v5 - Issue #3: Use tracking for failure detection
+  _sendPortMessageWithTracking(portId, alivePing);
 }
 
 /**
  * Send proactive ALIVE ping to all connected sidebar ports
  * v1.6.3.8 - Issue #2 (arch): Background sends periodic pings instead of waiting for sidebar requests
+ * v1.6.3.8-v5 - FIX Issue #6: Add initialization guard (defensive)
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  */
 function _sendAlivePingToSidebars() {
+  // v1.6.3.8-v5 - FIX Issue #6: Defensive guard (caller should also check)
+  // Use optional chaining for globalQuickTabState.tabs as fallback
   const alivePing = {
     type: 'ALIVE_PING',
     timestamp: Date.now(),
     isInitialized,
-    cacheTabCount: globalQuickTabState.tabs?.length || 0
+    cacheTabCount: globalQuickTabState?.tabs?.length || 0
   };
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     if (portInfo.type === 'sidebar') {
       _sendAlivePingToPort(portId, portInfo, alivePing);
     }
@@ -944,13 +1035,16 @@ async function cleanupOrphanedQuickTabs() {
 
     // Save to storage
     // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+    // v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
     const saveId = `cleanup-${Date.now()}`;
     const sequenceId = _getNextStorageSequenceId();
+    const revision = _getNextRevision();
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId,
         sequenceId,
+        revision,
         timestamp: Date.now()
       }
     });
@@ -1959,47 +2053,242 @@ async function _attemptStorageWriteRecovery(
 /**
  * Recover from null read (likely quota exceeded)
  * v1.6.3.7-v13 - Issue #7: Clear oldest Quick Tabs and retry
+ * v1.6.3.8-v5 - Issue #4: Iterative recovery with progressive reduction (75% → 50% → 25%)
  * @private
  */
 async function _recoverFromNullRead(operationId, intendedState) {
-  console.log('[Background] RECOVERY_STRATEGY: Clearing oldest Quick Tabs (quota likely exceeded)');
+  console.log('[Background] RECOVERY_STRATEGY: Iterative quota recovery starting', {
+    operationId,
+    tabCount: intendedState?.tabs?.length || 0,
+    recoveryPercentages: RECOVERY_PERCENTAGES,
+    maxAttempts: RECOVERY_MAX_ATTEMPTS
+  });
 
   // If not enough tabs to clear, fail early
   if (!intendedState?.tabs?.length || intendedState.tabs.length <= 1) {
-    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
+    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted - insufficient tabs to clear');
   }
 
-  // Sort by creationTime and remove oldest tabs (keep RECOVERY_KEEP_PERCENTAGE)
+  // Sort by creationTime once (oldest first)
   const sortedTabs = [...intendedState.tabs].sort(
     (a, b) => (a.creationTime || 0) - (b.creationTime || 0)
   );
 
-  const keepCount = Math.max(1, Math.floor(sortedTabs.length * RECOVERY_KEEP_PERCENTAGE));
-  const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
+  // v1.6.3.8-v5 - Issue #4: Try each recovery percentage iteratively
+  for (let attempt = 0; attempt < RECOVERY_PERCENTAGES.length && attempt < RECOVERY_MAX_ATTEMPTS; attempt++) {
+    const result = await _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt);
+    if (result.success) {
+      return result.recoveryResult;
+    }
+  }
 
-  const recoverySaveId = `recovery-null-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = {
+  // All attempts failed
+  return _handleRecoveryExhausted(operationId, intendedState.tabs.length);
+}
+
+/**
+ * Try a single recovery attempt at a given percentage
+ * v1.6.3.8-v5 - Issue #4: Helper to reduce complexity in _recoverFromNullRead
+ * @private
+ */
+async function _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt) {
+  const keepPercentage = RECOVERY_PERCENTAGES[attempt];
+  const keepCount = Math.max(1, Math.floor(sortedTabs.length * keepPercentage));
+  const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
+  const removedCount = intendedState.tabs.length - reducedTabs.length;
+
+  _logRecoveryAttempt(operationId, attempt, keepPercentage, intendedState.tabs.length, keepCount, removedCount);
+
+  const recoverySaveId = `recovery-null-${attempt + 1}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recoveryState = _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId, attempt, keepPercentage);
+
+  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
+
+  if (writeResult.success) {
+    return {
+      success: true,
+      recoveryResult: _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, removedCount, attempt, keepPercentage)
+    };
+  }
+
+  // Apply backoff if more attempts remain
+  await _applyRecoveryBackoff(operationId, attempt);
+  return { success: false };
+}
+
+/**
+ * Log a recovery attempt
+ * v1.6.3.8-v5 - Issue #4: Helper for logging
+ * @private
+ */
+function _logRecoveryAttempt(operationId, attempt, keepPercentage, originalCount, keepCount, removedCount) {
+  console.log('[Background] RECOVERY_ATTEMPT:', {
+    operationId,
+    attempt: attempt + 1,
+    maxAttempts: RECOVERY_MAX_ATTEMPTS,
+    keepPercentage: `${keepPercentage * 100}%`,
+    originalTabCount: originalCount,
+    keepCount,
+    removedCount,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Build recovery state for iterative recovery
+ * v1.6.3.8-v5 - Issue #4: Helper to build state object
+ * @private
+ */
+function _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId, attempt, keepPercentage) {
+  return {
     ...intendedState,
     tabs: reducedTabs,
     saveId: recoverySaveId,
     recoveredFrom: 'READ_RETURNED_NULL',
-    recoveryTimestamp: Date.now()
+    recoveryTimestamp: Date.now(),
+    recoveryAttempt: attempt + 1,
+    recoveryKeepPercentage: keepPercentage
   };
+}
 
-  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
-  if (!writeResult.success) {
-    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
-  }
-
+/**
+ * Build success result and notify user if critical
+ * v1.6.3.8-v5 - Issue #4: Helper for success handling
+ * @private
+ */
+function _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, removedCount, attempt, keepPercentage) {
   console.log('[Background] RECOVERY_SUCCESS:', {
     operationId,
     method: 'clear-oldest-tabs',
+    attempt: attempt + 1,
+    keepPercentage: `${keepPercentage * 100}%`,
     originalTabCount: intendedState.tabs.length,
     newTabCount: reducedTabs.length,
-    removedCount: intendedState.tabs.length - reducedTabs.length,
+    removedCount,
     timestamp: Date.now()
   });
-  return { recovered: true, method: 'clear-oldest-tabs', reason: 'Cleared oldest 25% of tabs' };
+
+  // Notify user at critical pruning levels (50% or more removed)
+  if (keepPercentage <= 0.50) {
+    _notifyUserOfDataPruning(operationId, attempt + 1, removedCount, intendedState.tabs.length);
+  }
+
+  return {
+    recovered: true,
+    method: 'clear-oldest-tabs',
+    reason: `Cleared ${((1 - keepPercentage) * 100).toFixed(0)}% of oldest tabs (attempt ${attempt + 1})`,
+    attempt: attempt + 1,
+    keepPercentage,
+    removedCount
+  };
+}
+
+/**
+ * Apply exponential backoff between recovery attempts
+ * v1.6.3.8-v5 - Issue #4: Helper for backoff logic
+ * @private
+ */
+async function _applyRecoveryBackoff(operationId, attempt) {
+  if (attempt < RECOVERY_PERCENTAGES.length - 1) {
+    const backoffMs = RECOVERY_BACKOFF_BASE_MS * Math.pow(2, attempt);
+    console.log('[Background] RECOVERY_BACKOFF:', {
+      operationId,
+      attempt: attempt + 1,
+      backoffMs,
+      nextPercentage: `${RECOVERY_PERCENTAGES[attempt + 1] * 100}%`,
+      timestamp: Date.now()
+    });
+    await _sleepMs(backoffMs);
+  }
+}
+
+/**
+ * Handle when all recovery attempts are exhausted
+ * v1.6.3.8-v5 - Issue #4: Helper for exhausted handling
+ * @private
+ */
+function _handleRecoveryExhausted(operationId, originalTabCount) {
+  console.error('[Background] RECOVERY_EXHAUSTED:', {
+    operationId,
+    attemptsExhausted: RECOVERY_MAX_ATTEMPTS,
+    percentagesTried: RECOVERY_PERCENTAGES.map(p => `${p * 100}%`).join(', '),
+    timestamp: Date.now()
+  });
+
+  _notifyUserOfRecoveryFailure(operationId, originalTabCount);
+  return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota recovery exhausted all attempts');
+}
+
+/**
+ * Sleep for specified milliseconds
+ * v1.6.3.8-v5 - Issue #4: Helper for exponential backoff
+ * @private
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+function _sleepMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Notify user of significant data pruning during quota recovery
+ * v1.6.3.8-v5 - Issue #4: User notification at critical pruning levels
+ * @private
+ * @param {string} operationId - Operation ID for tracking
+ * @param {number} attempt - Recovery attempt number
+ * @param {number} removedCount - Number of tabs removed
+ * @param {number} originalCount - Original tab count
+ */
+function _notifyUserOfDataPruning(operationId, attempt, removedCount, originalCount) {
+  console.warn('[Background] RECOVERY_DATA_PRUNED:', {
+    operationId,
+    attempt,
+    removedCount,
+    originalCount,
+    remainingCount: originalCount - removedCount,
+    message: 'Significant Quick Tab data was pruned due to storage quota limits',
+    timestamp: Date.now()
+  });
+
+  // Create notification if API available
+  if (browser.notifications?.create) {
+    browser.notifications.create(`quota-recovery-${operationId}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('images/icon48.png'),
+      title: 'Quick Tabs Data Pruned',
+      message: `${removedCount} oldest Quick Tab(s) were removed due to storage limits. ${originalCount - removedCount} tabs remain.`
+    }).catch(err => {
+      console.warn('[Background] Failed to create notification:', err.message);
+    });
+  }
+}
+
+/**
+ * Notify user of complete quota recovery failure
+ * v1.6.3.8-v5 - Issue #4: User notification when all recovery attempts fail
+ * @private
+ * @param {string} operationId - Operation ID for tracking
+ * @param {number} originalCount - Original tab count before recovery attempts
+ */
+function _notifyUserOfRecoveryFailure(operationId, originalCount) {
+  console.error('[Background] RECOVERY_COMPLETE_FAILURE:', {
+    operationId,
+    originalCount,
+    message: 'All quota recovery attempts failed - manual intervention required',
+    timestamp: Date.now()
+  });
+
+  // Create notification if API available
+  if (browser.notifications?.create) {
+    browser.notifications.create(`quota-failure-${operationId}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('images/icon48.png'),
+      title: 'Quick Tabs Storage Error',
+      message: 'Storage quota exceeded and recovery failed. Please manually close some Quick Tabs to free space.'
+    }).catch(err => {
+      console.warn('[Background] Failed to create notification:', err.message);
+    });
+  }
 }
 
 /**
@@ -2045,6 +2334,7 @@ function _generateRecoverySaveId(type) {
 /**
  * Build recovery state from intended state
  * v1.6.3.7-v14 - FIX Duplication: Extracted common pattern
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  */
 function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
@@ -2052,6 +2342,7 @@ function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
     ...intendedState,
     saveId: recoverySaveId,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     recoveredFrom: failureType,
     recoveryTimestamp: Date.now()
   };
@@ -2449,6 +2740,7 @@ function _handleEmptyBackup(operationId, backup, intendedState) {
  * Write recovered state to local storage
  * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
  * v1.6.3.7-v13 - Issue #2: Use centralized write validation
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  */
 async function _writeRecoveredState(operationId, backup) {
@@ -2456,6 +2748,7 @@ async function _writeRecoveredState(operationId, backup) {
     tabs: backup.tabs,
     saveId: `recovered-${operationId}`,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     timestamp: Date.now(),
     recoveredFrom: 'sync-backup'
   };
@@ -2844,11 +3137,37 @@ async function _handleChecksumMismatch({
 
 // ==================== END ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
 
+// ==================== v1.6.3.8-v5 FIX Issue #7: ROBUST URL VALIDATION ====================
+
 /**
- * Valid URL protocols for Quick Tab creation
+ * Whitelisted URL protocols for Quick Tab creation
+ * v1.6.3.8-v5 - FIX Issue #7: Strictly whitelisted protocols only
+ * Note: chrome-extension:// included for Chromium compatibility but filtered in Firefox
  * @private
  */
-const VALID_QUICKTAB_PROTOCOLS = ['http://', 'https://', 'moz-extension://', 'chrome-extension://'];
+const VALID_QUICKTAB_PROTOCOLS = new Set(['http:', 'https:', 'moz-extension:', 'chrome-extension:']);
+
+/**
+ * Dangerous URL protocols that should always be rejected
+ * v1.6.3.8-v5 - FIX Issue #7: Explicit blocklist for security audit logging
+ * @private
+ */
+// eslint-disable-next-line no-script-url -- Used for validation/rejection, not execution
+const DANGEROUS_PROTOCOLS = new Set(['javascript:', 'data:', 'blob:', 'vbscript:', 'file:']);
+
+/**
+ * Maximum length for parsed URL logging (protocol + hostname + pathname)
+ * v1.6.3.8-v5 - FIX Issue #7: Named constant for URL logging truncation
+ * @private
+ */
+const URL_LOG_MAX_PARSED_LENGTH = 80;
+
+/**
+ * Maximum length for unparseable raw URL logging
+ * v1.6.3.8-v5 - FIX Issue #7: Named constant for raw URL logging truncation
+ * @private
+ */
+const URL_LOG_MAX_RAW_LENGTH = 50;
 
 /**
  * Check if URL is null, undefined, or empty
@@ -2872,27 +3191,125 @@ function _isUrlCorruptedWithUndefined(url) {
 }
 
 /**
- * Check if URL starts with a valid protocol
+ * Safely extract loggable parts from a URL for security audit
+ * v1.6.3.8-v5 - FIX Issue #7: Better URL sanitization for logging
+ * Preserves protocol and domain while safely truncating query/fragment
  * @private
- * @param {string} urlStr - URL string to check
- * @returns {boolean} True if URL has valid protocol
+ * @param {string} url - The URL to sanitize
+ * @returns {string} Sanitized URL safe for logging
  */
-function _hasValidProtocol(urlStr) {
-  return VALID_QUICKTAB_PROTOCOLS.some(proto => urlStr.startsWith(proto));
+function _sanitizeUrlForLogging(url) {
+  const urlStr = String(url);
+  try {
+    const parsed = new URL(urlStr);
+    // Keep protocol + hostname + pathname (truncated), remove query/fragment
+    const basePart = `${parsed.protocol}//${parsed.hostname}${parsed.pathname}`;
+    const truncated = basePart.substring(0, URL_LOG_MAX_PARSED_LENGTH);
+    return truncated.length < basePart.length ? truncated + '...[TRUNCATED]' : truncated;
+  } catch (_err) {
+    // If URL can't be parsed, just show first chars of raw string
+    const truncated = urlStr.substring(0, URL_LOG_MAX_RAW_LENGTH);
+    return truncated.length < urlStr.length ? truncated + '...[UNPARSEABLE]' : truncated;
+  }
+}
+
+/**
+ * Log rejected URL for security audit
+ * v1.6.3.8-v5 - FIX Issue #7: Security audit logging for rejected URLs
+ * @private
+ * @param {string} url - The URL that was rejected
+ * @param {string} reason - Reason for rejection
+ */
+function _logRejectedUrl(url, reason) {
+  console.warn('[Background] URL_VALIDATION_REJECTED:', {
+    url: _sanitizeUrlForLogging(url),
+    reason,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Parse and validate URL using URL constructor
+ * v1.6.3.8-v5 - FIX Issue #7: Robust URL validation using URL constructor
+ * @private
+ * @param {string} urlStr - URL string to validate
+ * @returns {{ valid: boolean, protocol: string|null, reason: string|null }} Validation result
+ */
+function _parseAndValidateUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+
+    // v1.6.3.8-v5 - FIX Issue #7: Check for dangerous protocols first (security audit)
+    if (DANGEROUS_PROTOCOLS.has(parsed.protocol)) {
+      return {
+        valid: false,
+        protocol: parsed.protocol,
+        reason: `DANGEROUS_PROTOCOL: ${parsed.protocol}`
+      };
+    }
+
+    // v1.6.3.8-v5 - FIX Issue #7: Strict whitelist enforcement
+    if (!VALID_QUICKTAB_PROTOCOLS.has(parsed.protocol)) {
+      return {
+        valid: false,
+        protocol: parsed.protocol,
+        reason: `PROTOCOL_NOT_WHITELISTED: ${parsed.protocol}`
+      };
+    }
+
+    // v1.6.3.8-v5 - FIX Issue #7: Additional validation - ensure hostname exists for http/https
+    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.hostname) {
+      return {
+        valid: false,
+        protocol: parsed.protocol,
+        reason: 'MISSING_HOSTNAME'
+      };
+    }
+
+    return { valid: true, protocol: parsed.protocol, reason: null };
+  } catch (err) {
+    // URL constructor throws on invalid URLs
+    // v1.6.3.8-v5: Log error type for debugging (but not the URL content for security)
+    return {
+      valid: false,
+      protocol: null,
+      reason: `INVALID_URL_FORMAT: ${err.name || 'TypeError'}`
+    };
+  }
 }
 
 /**
  * Check if a URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
  * v1.6.4.8 - Refactored: Extracted helpers to reduce complex conditionals
+ * v1.6.3.8-v5 - FIX Issue #7: Robust URL validation with URL constructor and security logging
  * @param {*} url - URL to validate
  * @returns {boolean} True if URL is valid
  */
 function isValidQuickTabUrl(url) {
-  if (_isUrlNullOrEmpty(url)) return false;
-  if (_isUrlCorruptedWithUndefined(url)) return false;
-  return _hasValidProtocol(String(url));
+  // Quick checks first
+  if (_isUrlNullOrEmpty(url)) {
+    return false;
+  }
+  if (_isUrlCorruptedWithUndefined(url)) {
+    _logRejectedUrl(url, 'CORRUPTED_UNDEFINED');
+    return false;
+  }
+
+  const urlStr = String(url);
+
+  // v1.6.3.8-v5 - FIX Issue #7: Use URL constructor for robust validation
+  const validation = _parseAndValidateUrl(urlStr);
+
+  if (!validation.valid) {
+    _logRejectedUrl(urlStr, validation.reason);
+    return false;
+  }
+
+  return true;
 }
+
+// ==================== END v1.6.3.8-v5 FIX Issue #7: ROBUST URL VALIDATION ====================
 
 /**
  * Filter out tabs with invalid URLs from state
@@ -3311,12 +3728,14 @@ async function tryLoadFromSyncStorage() {
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  *
  * @returns {Promise<void>}
  */
 async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
 
   try {
     await browser.storage.local.set({
@@ -3324,6 +3743,7 @@ async function saveMigratedToUnifiedFormat() {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
         sequenceId,
+        revision,
         timestamp: Date.now()
       }
     });
@@ -3412,6 +3832,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * v1.6.3.7-v13 - Issue #2: Use centralized write validation
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  *
  * @returns {Promise<void>}
  */
@@ -3422,6 +3843,7 @@ async function saveMigratedQuickTabState() {
     tabs: globalQuickTabState.tabs,
     saveId: `migration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     timestamp: Date.now()
   };
 
@@ -3816,14 +4238,176 @@ const stateCoordinator = new StateCoordinator();
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
-// Firefox Manifest V3 - Supports blocking webRequest
-// This allows Quick Tabs to load any website, bypassing clickjacking protection
+// v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
+// Firefox Manifest V2 currently supports blocking webRequest, but Mozilla may enforce MV3-only
+// in the future. This implementation provides future-proofing with declarativeNetRequest support.
 // Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
 // which normally prevent websites from being embedded in iframes. This makes
 // the extension potentially vulnerable to clickjacking attacks if a malicious
 // website tricks the user into clicking on a Quick Tab overlay. Use with caution.
 
-console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
+console.log('[Quick Tabs] Initializing X-Frame-Options bypass...');
+
+// ==================== v1.6.3.8-v5 DECLARATIVENETREQUEST FEATURE DETECTION ====================
+// Issue 5: Feature detection for MV3 compatibility
+
+/**
+ * Check if declarativeNetRequest API is available
+ * v1.6.3.8-v5 - Issue 5: Feature detection for MV3 future-proofing
+ * @returns {boolean} True if declarativeNetRequest API is available
+ */
+function isDeclarativeNetRequestAvailable() {
+  return (
+    typeof browser !== 'undefined' &&
+    typeof browser.declarativeNetRequest !== 'undefined' &&
+    typeof browser.declarativeNetRequest.updateSessionRules === 'function'
+  );
+}
+
+/**
+ * Track which API mode is being used for header modification
+ * v1.6.3.8-v5 - Issue 5: Logged at startup for diagnostics
+ * @type {'declarativeNetRequest' | 'webRequest' | 'none'}
+ */
+let headerModificationApiMode = 'none';
+
+/**
+ * Rule IDs for declarativeNetRequest session rules
+ * v1.6.3.8-v5 - Issue 5: Unique IDs for each header rule
+ */
+const DNR_RULE_IDS = {
+  REMOVE_X_FRAME_OPTIONS: 1,
+  REMOVE_CSP: 2,
+  REMOVE_CORP: 3
+};
+
+/**
+ * Array of our rule IDs for cleanup operations
+ * v1.6.3.8-v5 - Issue 5: Pre-computed to avoid repeated Object.values() calls
+ */
+const DNR_OUR_RULE_IDS = Object.values(DNR_RULE_IDS);
+
+/**
+ * Initialize declarativeNetRequest rules for iframe header modification
+ * v1.6.3.8-v5 - Issue 5: Uses session rules (cleared on browser restart)
+ * @returns {Promise<boolean>} True if initialization succeeded
+ */
+async function initializeDeclarativeNetRequest() {
+  if (!isDeclarativeNetRequestAvailable()) {
+    // v1.6.3.8-v5 - Issue 5: API not available, let caller handle fallback
+    return false;
+  }
+
+  console.log('[Quick Tabs] Attempting to initialize declarativeNetRequest rules...');
+
+  try {
+    // Define session rules to modify response headers for sub_frame requests
+    const rules = [
+      {
+        id: DNR_RULE_IDS.REMOVE_X_FRAME_OPTIONS,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          responseHeaders: [
+            {
+              header: 'X-Frame-Options',
+              operation: 'remove'
+            }
+          ]
+        },
+        condition: {
+          resourceTypes: ['sub_frame']
+        }
+      },
+      {
+        id: DNR_RULE_IDS.REMOVE_CSP,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          responseHeaders: [
+            {
+              header: 'Content-Security-Policy',
+              operation: 'remove'
+            }
+          ]
+        },
+        condition: {
+          resourceTypes: ['sub_frame']
+        }
+      },
+      {
+        id: DNR_RULE_IDS.REMOVE_CORP,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          responseHeaders: [
+            {
+              header: 'Cross-Origin-Resource-Policy',
+              operation: 'remove'
+            }
+          ]
+        },
+        condition: {
+          resourceTypes: ['sub_frame']
+        }
+      }
+    ];
+
+    // v1.6.3.8-v5 - Only remove our own rules to avoid interfering with other extensions
+    // Use pre-computed DNR_OUR_RULE_IDS rather than clearing all existing rules
+
+    await browser.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: DNR_OUR_RULE_IDS,
+      addRules: rules
+    });
+
+    // Verify rules were added
+    const addedRules = await browser.declarativeNetRequest.getSessionRules();
+    console.log('[Quick Tabs] declarativeNetRequest session rules registered:', {
+      ruleCount: addedRules.length,
+      ruleIds: addedRules.map(r => r.id)
+    });
+
+    headerModificationApiMode = 'declarativeNetRequest';
+    return true;
+  } catch (err) {
+    console.error('[Quick Tabs] Failed to initialize declarativeNetRequest:', {
+      error: err.message,
+      name: err.name
+    });
+    return false;
+  }
+}
+
+/**
+ * Initialize header modification using either declarativeNetRequest or webRequest
+ * v1.6.3.8-v5 - Issue 5: Feature detection with fallback
+ */
+async function initializeHeaderModification() {
+  // Try declarativeNetRequest first (MV3 future-proofing)
+  const dnrSuccess = await initializeDeclarativeNetRequest();
+
+  if (dnrSuccess) {
+    console.log('[Quick Tabs] WEBREQUEST_API_MODE: declarativeNetRequest');
+    console.log('[Quick Tabs] ✓ Using declarativeNetRequest for header modification (MV3-ready)');
+    return;
+  }
+
+  // Fall back to webRequest (current MV2 implementation)
+  // v1.6.3.8-v5 - Log why fallback is being used
+  console.log('[Quick Tabs] declarativeNetRequest not available, using webRequest fallback');
+  headerModificationApiMode = 'webRequest';
+  console.log('[Quick Tabs] WEBREQUEST_API_MODE: webRequest');
+  console.log('[Quick Tabs] ✓ Using webRequest for header modification (MV2 fallback)');
+  initializeWebRequestHeaderModification();
+}
+
+/**
+ * Initialize webRequest-based header modification (fallback)
+ * v1.6.3.8-v5 - Issue 5: Wrapped in function for conditional initialization
+ */
+function initializeWebRequestHeaderModification() {
+  console.log('[Quick Tabs] Initializing webRequest header modification...');
 
 // Track modified URLs for debugging
 const modifiedUrls = new Set();
@@ -3985,7 +4569,16 @@ browser.webRequest.onErrorOccurred.addListener(
   }
 );
 
-console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
+console.log('[Quick Tabs] ✓ webRequest header modification installed');
+} // End initializeWebRequestHeaderModification()
+
+// ==================== HEADER MODIFICATION INITIALIZATION ====================
+// v1.6.3.8-v5 - Issue 5: Initialize header modification with feature detection
+// Call the async initialization function - fallback is handled within initializeHeaderModification()
+initializeHeaderModification().catch(err => {
+  // Only log error - fallback is already handled in initializeHeaderModification()
+  console.error('[Quick Tabs] Header modification initialization error:', err?.message || String(err));
+});
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
@@ -4107,10 +4700,12 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
   }
 
   // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+  // v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
     saveId: `cleanup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     timestamp: Date.now()
   };
 
@@ -6142,7 +6737,10 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
     connectedAt: now,
     lastMessageAt: null,
     lastActivityTime: now, // v1.6.3.7-v9: Tracks both sent and received
-    messageCount: 0
+    messageCount: 0,
+    // v1.6.3.8-v5 - Issue #3: Port disconnection tracking
+    lastSuccessfulMessageTime: now,
+    consecutiveFailureCount: 0
   });
 
   // v1.6.3.7-v9 - Issue #9: Initialize sequence tracking for this port
@@ -6274,6 +6872,112 @@ function updatePortActivity(portId) {
   }
 }
 
+// ==================== v1.6.3.8-v5 PORT MESSAGE FAILURE TRACKING (Issue #3) ====================
+
+/**
+ * Track result of a port message send attempt
+ * v1.6.3.8-v5 - Issue #3: Detect silent port disconnections via consecutive failures
+ * @param {string} portId - Port ID
+ * @param {boolean} success - Whether the postMessage succeeded
+ * @returns {{ evicted: boolean }} Whether the port was evicted due to failures
+ */
+function _trackPortMessageResult(portId, success) {
+  const portInfo = portRegistry.get(portId);
+  if (!portInfo) {
+    return { evicted: false };
+  }
+
+  if (success) {
+    // Reset failure count on success
+    const previousFailures = portInfo.consecutiveFailureCount;
+    portInfo.consecutiveFailureCount = 0;
+    portInfo.lastSuccessfulMessageTime = Date.now();
+
+    if (previousFailures > 0) {
+      console.log('[Background] PORT_MESSAGE_RECOVERED:', {
+        portId,
+        origin: portInfo.origin,
+        previousFailureCount: previousFailures,
+        timestamp: Date.now()
+      });
+    }
+    return { evicted: false };
+  }
+
+  // Increment failure count
+  portInfo.consecutiveFailureCount++;
+  const failureCount = portInfo.consecutiveFailureCount;
+  const timeSinceLastSuccess = Date.now() - (portInfo.lastSuccessfulMessageTime || portInfo.connectedAt);
+
+  console.warn('[Background] PORT_MESSAGE_FAILURE:', {
+    portId,
+    origin: portInfo.origin,
+    tabId: portInfo.tabId,
+    consecutiveFailures: failureCount,
+    threshold: PORT_CONSECUTIVE_FAILURE_THRESHOLD,
+    timeSinceLastSuccessMs: timeSinceLastSuccess,
+    registrySize: portRegistry.size
+  });
+
+  // Check if threshold exceeded - evict port
+  if (failureCount >= PORT_CONSECUTIVE_FAILURE_THRESHOLD) {
+    console.warn('[Background] PORT_DISCONNECTION_DETECTED:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      windowId: portInfo.windowId,
+      consecutiveFailures: failureCount,
+      timeSinceLastSuccessMs: timeSinceLastSuccess,
+      reason: 'Firefox Bugzilla 1223425 - onDisconnect may not fire for BFCache/navigation',
+      registrySizeBefore: portRegistry.size
+    });
+
+    unregisterPort(portId, 'consecutive-message-failures');
+
+    console.log('[Background] PORT_EVICTED_FOR_FAILURES:', {
+      portId,
+      evictionReason: 'consecutive-message-failures',
+      failureCount,
+      registrySizeAfter: portRegistry.size,
+      timestamp: Date.now()
+    });
+
+    return { evicted: true };
+  }
+
+  return { evicted: false };
+}
+
+/**
+ * Send message to port with failure tracking
+ * v1.6.3.8-v5 - Issue #3: Wrapper that tracks postMessage failures
+ * @param {string} portId - Port ID
+ * @param {Object} message - Message to send
+ * @returns {{ success: boolean, evicted: boolean }} Result of send attempt
+ */
+function _sendPortMessageWithTracking(portId, message) {
+  const portInfo = portRegistry.get(portId);
+  if (!portInfo) {
+    return { success: false, evicted: false };
+  }
+
+  try {
+    portInfo.port.postMessage(message);
+    const trackResult = _trackPortMessageResult(portId, true);
+    updatePortActivity(portId);
+    return { success: true, evicted: trackResult.evicted };
+  } catch (err) {
+    const trackResult = _trackPortMessageResult(portId, false);
+    console.warn('[Background] PORT_POSTMESSAGE_EXCEPTION:', {
+      portId,
+      origin: portInfo?.origin,
+      error: err.message,
+      evicted: trackResult.evicted
+    });
+    return { success: false, evicted: trackResult.evicted };
+  }
+}
+
 /**
  * Check if a port's tab still exists
  * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting in cleanupStalePorts
@@ -6369,6 +7073,7 @@ function _isPortStale(portInfo, now, portId) {
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
  * v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP logging with before/after counts
  * v1.6.3.7-v9 - Issue #4: Added age-based and inactivity-based cleanup
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during async iteration
  */
 async function cleanupStalePorts() {
   const beforeCount = portRegistry.size;
@@ -6384,7 +7089,10 @@ async function cleanupStalePorts() {
   const now = Date.now();
   const stalePorts = [];
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during async iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     // v1.6.3.7-v9 - Issue #4: Check max age first (hard limit)
     if (_isPortTooOld(portInfo, now, portId)) {
       stalePorts.push({ portId, reason: 'max-age-exceeded' });
@@ -6440,12 +7148,16 @@ setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 /**
  * Check for zombie ports and send pings to inactive ones
  * v1.6.3.8 - Issue #4 (arch): Detect BFCache zombie ports via ping/response
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  */
 function _checkForZombiePorts() {
   const now = Date.now();
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     const lastActivity =
       portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
     const inactivityMs = now - lastActivity;
@@ -6465,6 +7177,7 @@ function _checkForZombiePorts() {
 /**
  * Send ping to potentially zombie port
  * v1.6.3.8 - Issue #4 (arch): If no response within timeout, evict port
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {string} portId - Port ID to ping
  * @param {Object} portInfo - Port info object
@@ -6476,9 +7189,10 @@ function _sendPortPing(portId, portInfo) {
     timestamp: Date.now()
   };
 
-  try {
-    portInfo.port.postMessage(pingMessage);
+  // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+  const result = _sendPortMessageWithTracking(portId, pingMessage);
 
+  if (result.success) {
     console.log('[Background] PORT_PING_SENT:', {
       portId,
       origin: portInfo.origin,
@@ -6495,14 +7209,18 @@ function _sendPortPing(portId, portInfo) {
       sentAt: Date.now(),
       timeoutId
     });
-  } catch (err) {
-    // Port is definitely dead
+  } else if (result.evicted) {
+    // Port was evicted due to consecutive failures - no need for timeout
+    console.log('[Background] PORT_PING_SKIPPED: Port evicted due to consecutive failures', {
+      portId
+    });
+  } else {
+    // Send failed but port not yet evicted
     console.warn('[Background] PORT_PING_FAILED:', {
       portId,
-      origin: portInfo.origin,
-      error: err.message
+      origin: portInfo?.origin,
+      reason: 'postMessage exception'
     });
-    unregisterPort(portId, 'ping-send-failed');
   }
 }
 
@@ -7419,48 +8137,57 @@ function handleRelayToSidebar(message, portInfo) {
 /**
  * Relay message to all ready sidebar ports
  * v1.6.3.8-v2 - Issue #1, #10: Extracted to reduce handleRelayToSidebar nesting depth
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  * @param {string} requestId - Request ID for correlation
  * @param {Object} payload - Payload to relay
  * @param {number} sourceTabId - Source tab ID
- * @returns {{ deliveredTo: string[], failedPorts: Object[] }} Delivery results
+ * @returns {{ deliveredTo: string[], failedPorts: Object[], evictedCount: number }} Delivery results
  */
 function _relayToReadySidebars(requestId, payload, sourceTabId) {
   const deliveredTo = [];
   const failedPorts = [];
+  let evictedCount = 0;
 
-  for (const [portId, info] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, info] of portEntries) {
     if (!_isSidebarPort(info) || !_sidebarReadyPorts.has(portId)) {
       continue;
     }
     const result = _relaySingleMessage(portId, info, requestId, payload, sourceTabId);
     if (result.success) {
       deliveredTo.push(portId);
-    } else {
-      failedPorts.push(result.error);
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    failedPorts.push(result.error);
+    evictedCount += result.evicted ? 1 : 0;
   }
 
-  return { deliveredTo, failedPorts };
+  return { deliveredTo, failedPorts, evictedCount };
 }
 
 /**
  * Relay a single message to a sidebar port
  * v1.6.3.8-v2 - Issue #1, #10: Extracted to reduce nesting depth
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  */
 function _relaySingleMessage(portId, info, requestId, payload, sourceTabId) {
-  try {
-    const relayedMessage = {
-      type: 'RELAYED_FROM_CONTENT',
-      payload,
-      requestId,
-      sourceTabId,
-      _relayTimestamp: Date.now()
-    };
+  const relayedMessage = {
+    type: 'RELAYED_FROM_CONTENT',
+    payload,
+    requestId,
+    sourceTabId,
+    _relayTimestamp: Date.now()
+  };
 
-    info.port.postMessage(relayedMessage);
+  // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+  const result = _sendPortMessageWithTracking(portId, relayedMessage);
 
+  if (result.success) {
     if (DEBUG_MESSAGING) {
       console.log('[Background] SIDEBAR_MESSAGE_DELIVERED:', {
         requestId,
@@ -7470,17 +8197,16 @@ function _relaySingleMessage(portId, info, requestId, payload, sourceTabId) {
         timestamp: Date.now()
       });
     }
-
     return { success: true };
-  } catch (err) {
-    console.error('[Background] SIDEBAR_MESSAGE_DROPPED:', {
-      requestId,
-      portId,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    return { success: false, error: { portId, error: err.message } };
   }
+
+  console.error('[Background] SIDEBAR_MESSAGE_DROPPED:', {
+    requestId,
+    portId,
+    evicted: result.evicted,
+    timestamp: Date.now()
+  });
+  return { success: false, error: { portId, evicted: result.evicted }, evicted: result.evicted };
 }
 
 /**
@@ -7646,11 +8372,12 @@ function _buildAdoptionError({ quickTabId, targetTabId, corrId, reason, extraInf
  * Perform adoption storage write
  * v1.6.4.14 - FIX Large Method: Extracted from handleAdoptAction
  * v1.6.3.7-v13 - Issue #2: Add write validation
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  * @param {Object} state - Current state with tabs array
  * @param {string} quickTabId - Quick Tab being adopted
  * @param {number} targetTabId - Target tab adopting the Quick Tab
- * @returns {Promise<{saveId: string, sequenceId: number, validated: boolean, recovered: boolean}>}
+ * @returns {Promise<{saveId: string, sequenceId: number, revision: number, validated: boolean, recovered: boolean}>}
  *          - validated: true if write was verified successfully
  *          - recovered: true if validation failed but recovery succeeded
  *          - Caller should check `validated || recovered` to determine if state is consistent
@@ -7658,11 +8385,13 @@ function _buildAdoptionError({ quickTabId, targetTabId, corrId, reason, extraInf
 async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
 
   const stateToWrite = {
     tabs: state.tabs,
     saveId,
     sequenceId,
+    revision,
     timestamp: Date.now(),
     writingTabId: targetTabId,
     writingInstanceId: `background-adopt-${Date.now()}`
@@ -7680,7 +8409,7 @@ async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
     });
   }
 
-  return { saveId, sequenceId, validated: result.success, recovered: result.recovered };
+  return { saveId, sequenceId, revision, validated: result.success, recovered: result.recovered };
 }
 
 /**
@@ -7779,16 +8508,19 @@ async function handleAdoptAction(payload) {
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
  * v1.6.3.7-v7 - FIX Issue #6: Add BroadcastChannel confirmation after successful write
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
   const saveId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
 
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
     sequenceId,
+    revision,
     timestamp: Date.now()
   };
 
@@ -7813,6 +8545,7 @@ async function writeStateWithVerification() {
       console.log('[Background] Storage write verified:', {
         saveId,
         sequenceId,
+        revision,
         tabCount: stateToWrite.tabs.length
       });
 
@@ -7820,7 +8553,7 @@ async function writeStateWithVerification() {
       _broadcastStorageWriteConfirmation(stateToWrite, saveId);
     }
 
-    return { success: verified, saveId, sequenceId, verified };
+    return { success: verified, saveId, sequenceId, revision, verified };
   } catch (err) {
     console.error('[Background] Storage write error:', err.message);
     return { success: false, error: err.message };
@@ -7865,6 +8598,7 @@ const BACKGROUND_STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
  * Notify Manager to start storage watchdog timer
  * v1.6.3.7-v10 - FIX Issue #6: Send PORT message to Manager to start 2s watchdog
  * If storage.onChanged doesn't fire within 2s, Manager will re-read storage
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {string} expectedSaveId - Save ID we expect Manager to receive
  * @param {number} sequenceId - Sequence ID for tracking
@@ -7879,14 +8613,20 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
   };
 
   let notifiedCount = 0;
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  let errorCount = 0;
+
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     // Only notify sidebar ports (Manager)
     if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
       continue;
     }
 
-    try {
-      portInfo.port.postMessage(watchdogMessage);
+    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+    const result = _sendPortMessageWithTracking(portId, watchdogMessage);
+    if (result.success) {
       notifiedCount++;
       console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SENT:', {
         portId,
@@ -7894,16 +8634,15 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
         sequenceId,
         timestamp: Date.now()
       });
-    } catch (err) {
-      console.warn('[Background] Failed to send watchdog notification:', {
-        portId,
-        error: err.message
-      });
+    } else {
+      errorCount++;
     }
   }
 
   if (notifiedCount === 0) {
-    console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SKIPPED: No sidebar ports connected');
+    console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SKIPPED: No sidebar ports connected', {
+      errorCount
+    });
   }
 }
 
@@ -8013,38 +8752,44 @@ function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlationId)
 /**
  * Send message to all sidebar ports and track results
  * v1.6.4.13 - Extracted to reduce nesting depth in _sendStateUpdateViaPorts
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  * @param {Object} message - Message to send
  * @param {string} quickTabId - Quick Tab ID for logging
  * @param {string} operation - Operation name for logging
  * @param {string} correlationId - Correlation ID for logging
- * @returns {{ sentCount: number, errorCount: number }} Send results
+ * @returns {{ sentCount: number, errorCount: number, evictedCount: number }} Send results
  */
 function _sendMessageToSidebarPorts(message, quickTabId, operation, correlationId) {
   let sentCount = 0;
   let errorCount = 0;
+  let evictedCount = 0;
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     if (!_isSidebarPort(portInfo)) {
       continue;
     }
 
     const result = _trySendToPort({
-      port: portInfo.port,
-      message,
       portId,
+      message,
       quickTabId,
       operation,
       correlationId
     });
     if (result.success) {
       sentCount++;
-    } else {
-      errorCount++;
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    errorCount++;
+    evictedCount += result.evicted ? 1 : 0;
   }
 
-  return { sentCount, errorCount };
+  return { sentCount, errorCount, evictedCount };
 }
 
 /**
@@ -8061,25 +8806,27 @@ function _isSidebarPort(portInfo) {
  * Try to send message to a port
  * v1.6.4.13 - Helper for _sendMessageToSidebarPorts
  * v1.6.4.14 - FIX Excess Args: Converted to options object
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {Object} options - Options object
- * @param {browser.runtime.Port} options.port - Port to send to
+ * @param {string} options.portId - Port ID for logging and tracking
  * @param {Object} options.message - Message to send
- * @param {string} options.portId - Port ID for logging
  * @param {string} options.quickTabId - Quick Tab ID for logging
  * @param {string} options.operation - Operation name for logging
  * @param {string} options.correlationId - Correlation ID for logging
- * @returns {{ success: boolean }} success: true if postMessage succeeded, false if an error was thrown
+ * @returns {{ success: boolean, evicted: boolean }} success: true if postMessage succeeded, false if an error was thrown
  */
-function _trySendToPort({ port, message, portId, quickTabId, operation, correlationId }) {
-  try {
-    port.postMessage(message);
+function _trySendToPort({ portId, message, quickTabId, operation, correlationId }) {
+  // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+  const result = _sendPortMessageWithTracking(portId, message);
+
+  if (result.success) {
     _logPortSendSuccess(portId, quickTabId, operation, correlationId);
-    return { success: true };
-  } catch (err) {
-    _logPortSendFailure(portId, quickTabId, err.message);
-    return { success: false };
+    return { success: true, evicted: false };
   }
+
+  _logPortSendFailure(portId, quickTabId, result.evicted ? 'port evicted' : 'postMessage failed');
+  return { success: false, evicted: result.evicted };
 }
 
 /**
@@ -8474,6 +9221,7 @@ function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stat
  * Attempt a single storage write with verification
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -8483,10 +9231,12 @@ function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stat
  */
 async function _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs) {
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
     sequenceId,
+    revision,
     timestamp: Date.now()
   };
 
@@ -8496,6 +9246,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
       operation,
       saveId,
       sequenceId,
+      revision,
       tabCount: stateToWrite.tabs.length,
       attempt
     });
@@ -8561,29 +9312,37 @@ async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, at
 /**
  * Broadcast message to all connected ports
  * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @param {Object} message - Message to broadcast
  * @param {string} excludePortId - Port ID to exclude from broadcast
  */
 function broadcastToAllPorts(message, excludePortId = null) {
   let sentCount = 0;
   let errorCount = 0;
+  let evictedCount = 0;
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, _portInfo] of portEntries) {
     if (portId === excludePortId) continue;
 
-    try {
-      portInfo.port.postMessage(message);
+    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+    const result = _sendPortMessageWithTracking(portId, message);
+    if (result.success) {
       sentCount++;
-    } catch (err) {
-      console.warn('[Background] Failed to broadcast to port:', { portId, error: err.message });
-      errorCount++;
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    errorCount++;
+    evictedCount += result.evicted ? 1 : 0;
   }
 
   console.log('[Background] Broadcast complete:', {
     action: message.action || message.type,
     sentCount,
     errorCount,
+    evictedCount, // v1.6.3.8-v5 - Issue #3
     excludedPortId: excludePortId
   });
 }
@@ -9197,21 +9956,28 @@ function _broadcastViaBroadcastChannel(quickTabId, changes, messageId) {
 /**
  * Broadcast message to all connected sidebar ports
  * v1.6.3.7-v4 - FIX Issue #3: Send state updates via port for reliable delivery
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {Object} message - Message to send
  * @returns {number} Number of ports the message was sent to
  */
 function _broadcastToSidebarPorts(message) {
   let sentCount = 0;
+  let errorCount = 0;
+  let evictedCount = 0;
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     // Only send to sidebar ports (not content script ports)
     if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
       continue;
     }
 
-    try {
-      portInfo.port.postMessage(message);
+    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+    const result = _sendPortMessageWithTracking(portId, message);
+    if (result.success) {
       sentCount++;
       console.log('[Background] PORT_MESSAGE_SENT:', {
         portId,
@@ -9219,9 +9985,21 @@ function _broadcastToSidebarPorts(message) {
         messageId: message.messageId,
         quickTabId: message.quickTabId
       });
-    } catch (err) {
-      console.warn('[Background] Failed to send to port:', { portId, error: err.message });
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    errorCount++;
+    evictedCount += result.evicted ? 1 : 0;
+  }
+
+  // v1.6.3.8-v5 - Issue #3: Log errors and evictions if any
+  if (errorCount > 0) {
+    console.log('[Background] SIDEBAR_BROADCAST_ERRORS:', {
+      errorCount,
+      evictedCount,
+      sentCount,
+      messageType: message.type
+    });
   }
 
   return sentCount;

@@ -1,0 +1,8 @@
+{
+  "id": "ca20570f-a762-44e4-adf7-997540067b25",
+  "title": "declarativeNetRequest feature detection",
+  "details": "Issue 5: WebRequest API Deprecation Fix - declarativeNetRequest Support (v1.6.3.8-v5)\n\nImplementation details:\n1. Feature detection via isDeclarativeNetRequestAvailable() checks for browser.declarativeNetRequest.updateSessionRules\n2. If available, uses session rules (DNR_RULE_IDS: 1, 2, 3) to remove X-Frame-Options, CSP, and CORP headers\n3. Falls back to webRequest.onHeadersReceived for MV2 compatibility\n4. Logs WEBREQUEST_API_MODE: 'declarativeNetRequest' | 'webRequest' at startup\n\nKey patterns:\n- Only remove our own rules using DNR_RULE_IDS to avoid interfering with other extensions\n- Session rules (updateSessionRules) are used instead of persistent rules - cleared on browser restart\n- Targets sub_frame resource type only for iframe embedding\n- Error handling consolidated in initializeHeaderModification(), not duplicated in caller\n\nFiles modified: background.js (lines 4251-4578)",
+  "category": "feature_implementation",
+  "dateCreated": "2025-12-12T20:16:18.531Z",
+  "dateUpdated": "2025-12-12T20:16:18.531Z"
+}

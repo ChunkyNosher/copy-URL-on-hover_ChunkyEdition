@@ -1,0 +1,8 @@
+{
+  "id": "7fb5ca69-6fef-4b47-bc55-b075d1794d31",
+  "title": "URL validation security pattern",
+  "details": "v1.6.3.8-v5 implemented robust URL validation in background.js:\n\n1. Use URL constructor to parse URLs (catches malformed URLs)\n2. VALID_QUICKTAB_PROTOCOLS Set: http:, https:, moz-extension:, chrome-extension:\n3. DANGEROUS_PROTOCOLS Set (blocklist): javascript:, data:, blob:, vbscript:, file:\n4. _parseAndValidateUrl() returns { valid, protocol, reason } for audit\n5. _sanitizeUrlForLogging() preserves protocol+hostname while truncating query/fragment\n6. _logRejectedUrl() logs with reason codes for security audit\n7. Additional check: http/https URLs must have valid hostname\n\nAll URLs logged with [Background] URL_VALIDATION_REJECTED: prefix for grep auditing.",
+  "category": "security",
+  "dateCreated": "2025-12-12T17:47:43.255Z",
+  "dateUpdated": "2025-12-12T17:47:43.255Z"
+}
