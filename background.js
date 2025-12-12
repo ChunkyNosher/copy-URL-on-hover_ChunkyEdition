@@ -2,6 +2,10 @@
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
 // Also handles webRequest/declarativeNetRequest to remove X-Frame-Options for Quick Tabs
+// v1.6.3.8-v6 - Core Architecture Fixes:
+//   - Issue #2: MessageBatcher queue size limits (MAX_QUEUE_SIZE=100) and TTL (MAX_MESSAGE_AGE_MS=30000)
+//   - Issue #4: Storage quota monitoring (every 5 min) with warnings at 50%, 75%, 90% thresholds
+//   - Issue #5: Enhanced correlation ID and timestamp tracing
 // v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
@@ -391,6 +395,54 @@ const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120; // Every 2 hours diagnostic
 // v1.6.3.8 - Issue #2 (arch): Keepalive alarm every 25 seconds (0.42 min)
 // Firefox idle timer is 30s, so 25s gives us 5s buffer
 const ALARM_KEEPALIVE_INTERVAL_MIN = 25 / 60; // 25 seconds in minutes
+
+// ==================== v1.6.3.8-v6 STORAGE QUOTA MONITORING ====================
+// FIX Issue #4: Monitor storage.local quota usage and log warnings at thresholds
+
+/**
+ * Alarm name for storage quota monitoring
+ * v1.6.3.8-v6 - Issue #4: Storage quota monitoring alarm
+ */
+const ALARM_STORAGE_QUOTA_CHECK = 'storage-quota-check';
+
+/**
+ * Interval for storage quota checks (5 minutes)
+ * v1.6.3.8-v6 - Issue #4: Every 5 minutes
+ */
+const ALARM_STORAGE_QUOTA_INTERVAL_MIN = 5;
+
+/**
+ * Storage quota warning thresholds (percentage of 10MB limit)
+ * v1.6.3.8-v6 - Issue #4: Log warnings at 50%, 75%, 90%
+ */
+const STORAGE_QUOTA_WARNING_THRESHOLDS = [
+  { percent: 0.5, level: 'INFO', message: '50% storage quota used' },
+  { percent: 0.75, level: 'WARN', message: '75% storage quota used - consider cleanup' },
+  { percent: 0.9, level: 'CRITICAL', message: '90% storage quota used - cleanup required' }
+];
+
+/**
+ * Firefox storage.local quota limit (10MB for MV2 extensions)
+ * v1.6.3.8-v6 - Issue #4: Used for percentage calculations
+ */
+const STORAGE_LOCAL_QUOTA_BYTES = 10 * 1024 * 1024; // 10MB
+
+/**
+ * Track last triggered threshold to avoid duplicate logs
+ * v1.6.3.8-v6 - Issue #4: Prevent repeated warnings at same level
+ */
+let _lastStorageQuotaThresholdLevel = null;
+
+/**
+ * Storage quota usage snapshot for diagnostic reports
+ * v1.6.3.8-v6 - Issue #4: Included in diagnostic snapshots
+ */
+let _lastStorageQuotaSnapshot = {
+  bytesInUse: 0,
+  percentUsed: 0,
+  lastChecked: 0,
+  thresholdLevel: null
+};
 
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
@@ -850,6 +902,19 @@ async function initializeAlarms() {
       'min)'
     );
 
+    // v1.6.3.8-v6 - Issue #4: Create storage-quota-check alarm - runs every 5 minutes
+    await browser.alarms.create(ALARM_STORAGE_QUOTA_CHECK, {
+      delayInMinutes: 1, // First run after 1 minute
+      periodInMinutes: ALARM_STORAGE_QUOTA_INTERVAL_MIN
+    });
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_STORAGE_QUOTA_CHECK,
+      '(every',
+      ALARM_STORAGE_QUOTA_INTERVAL_MIN,
+      'min) - storage quota monitoring'
+    );
+
     console.log('[Background] v1.6.3.7-v3 All alarms initialized successfully');
   } catch (err) {
     console.error('[Background] Failed to initialize alarms:', err.message);
@@ -897,6 +962,11 @@ async function handleAlarm(alarm) {
 
     case ALARM_DIAGNOSTIC_SNAPSHOT:
       logDiagnosticSnapshot();
+      break;
+
+    // v1.6.3.8-v6 - Issue #4: Storage quota monitoring
+    case ALARM_STORAGE_QUOTA_CHECK:
+      await checkStorageQuota();
       break;
 
     default:
@@ -1125,6 +1195,165 @@ async function _performSessionSync() {
 }
 
 /**
+ * Check storage.local quota usage and log warnings at thresholds
+ * v1.6.3.8-v6 - Issue #4: Storage quota monitoring
+ * Logs warnings at 50%, 75%, 90% of 10MB limit
+ */
+async function checkStorageQuota() {
+  console.log('[Background] v1.6.3.8-v6 Running storage quota check...');
+
+  try {
+    const bytesInUse = await _getStorageBytesInUse();
+    const percentUsed = bytesInUse / STORAGE_LOCAL_QUOTA_BYTES;
+    
+    _updateStorageQuotaSnapshot(bytesInUse, percentUsed);
+    _checkAndLogThresholdWarning(bytesInUse, percentUsed);
+    _checkThresholdRecovery(bytesInUse, percentUsed);
+    _logStorageQuotaStatus(bytesInUse, percentUsed);
+    
+  } catch (err) {
+    console.error('[Background] STORAGE_QUOTA_CHECK_FAILED:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Get storage bytes in use
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ * @returns {Promise<number>} Bytes in use
+ */
+async function _getStorageBytesInUse() {
+  if (typeof browser.storage.local.getBytesInUse === 'function') {
+    return browser.storage.local.getBytesInUse(null);
+  }
+  return _estimateStorageUsage();
+}
+
+/**
+ * Update storage quota snapshot
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _updateStorageQuotaSnapshot(bytesInUse, percentUsed) {
+  _lastStorageQuotaSnapshot = {
+    bytesInUse,
+    percentUsed,
+    lastChecked: Date.now(),
+    thresholdLevel: null
+  };
+}
+
+/**
+ * Check and log threshold warning if needed
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _checkAndLogThresholdWarning(bytesInUse, percentUsed) {
+  for (let i = STORAGE_QUOTA_WARNING_THRESHOLDS.length - 1; i >= 0; i--) {
+    const threshold = STORAGE_QUOTA_WARNING_THRESHOLDS[i];
+    if (percentUsed < threshold.percent) continue;
+    
+    _lastStorageQuotaSnapshot.thresholdLevel = threshold.level;
+    if (_lastStorageQuotaThresholdLevel !== threshold.level) {
+      _logStorageQuotaWarning(bytesInUse, percentUsed, threshold);
+      _lastStorageQuotaThresholdLevel = threshold.level;
+    }
+    break;
+  }
+}
+
+/**
+ * Check and log threshold recovery if needed
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _checkThresholdRecovery(bytesInUse, percentUsed) {
+  if (percentUsed >= STORAGE_QUOTA_WARNING_THRESHOLDS[0].percent) return;
+  if (_lastStorageQuotaThresholdLevel === null) return;
+  
+  console.log('[Background] STORAGE_QUOTA_RECOVERED:', {
+    bytesInUse,
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    previousLevel: _lastStorageQuotaThresholdLevel,
+    timestamp: Date.now()
+  });
+  _lastStorageQuotaThresholdLevel = null;
+}
+
+/**
+ * Log storage quota status
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _logStorageQuotaStatus(bytesInUse, percentUsed) {
+  console.log('[Background] STORAGE_QUOTA_STATUS:', {
+    bytesInUse,
+    bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
+    thresholdLevel: _lastStorageQuotaSnapshot.thresholdLevel || 'OK',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Estimate storage usage by serializing storage contents
+ * v1.6.3.8-v6 - Issue #4: Fallback for browsers without getBytesInUse
+ * @private
+ * @returns {Promise<number>} Estimated bytes in use
+ */
+async function _estimateStorageUsage() {
+  try {
+    const data = await browser.storage.local.get(null);
+    const serialized = JSON.stringify(data);
+    return new Blob([serialized]).size;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+/**
+ * Log storage quota warning at threshold level
+ * v1.6.3.8-v6 - Issue #4: Threshold-based logging
+ * @private
+ * @param {number} bytesInUse - Current bytes in use
+ * @param {number} percentUsed - Usage as decimal (0-1)
+ * @param {Object} threshold - Threshold config with level and message
+ */
+function _logStorageQuotaWarning(bytesInUse, percentUsed, threshold) {
+  const logData = {
+    bytesInUse,
+    bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    threshold: (threshold.percent * 100) + '%',
+    level: threshold.level,
+    message: threshold.message,
+    quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
+    timestamp: Date.now()
+  };
+  
+  if (threshold.level === 'CRITICAL') {
+    console.error('[Background] STORAGE_QUOTA_CRITICAL:', logData);
+  } else if (threshold.level === 'WARN') {
+    console.warn('[Background] STORAGE_QUOTA_WARNING:', logData);
+  } else {
+    console.info('[Background] STORAGE_QUOTA_INFO:', logData);
+  }
+}
+
+/**
+ * Get storage quota snapshot for diagnostic reports
+ * v1.6.3.8-v6 - Issue #4: Include in diagnostic snapshots
+ * @returns {Object} Storage quota snapshot
+ */
+function _getStorageQuotaSnapshot() {
+  return { ..._lastStorageQuotaSnapshot };
+}
+
+/**
  * Log diagnostic snapshot of current state
  * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
  * v1.6.3.7-v12 - Issue #3, #10: Include port registry threshold check and trend
@@ -1184,6 +1413,22 @@ function logDiagnosticSnapshot() {
           '%'
         : 'N/A',
     lastResetTime: new Date(dedupStats.lastResetTime).toISOString()
+  });
+
+  // v1.6.3.8-v6 - Issue #4: Include storage quota in diagnostic snapshot
+  const quotaSnapshot = _getStorageQuotaSnapshot();
+  console.log('[Background] Storage quota:', {
+    bytesInUse: quotaSnapshot.bytesInUse,
+    bytesInUseMB: quotaSnapshot.bytesInUse > 0 
+      ? (quotaSnapshot.bytesInUse / (1024 * 1024)).toFixed(2) + 'MB' 
+      : 'unknown',
+    percentUsed: quotaSnapshot.percentUsed > 0 
+      ? (quotaSnapshot.percentUsed * 100).toFixed(1) + '%'
+      : 'unknown',
+    thresholdLevel: quotaSnapshot.thresholdLevel || 'OK',
+    lastChecked: quotaSnapshot.lastChecked > 0 
+      ? new Date(quotaSnapshot.lastChecked).toISOString()
+      : 'never'
   });
 
   console.log('[Background] =================================================================');
