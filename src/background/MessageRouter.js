@@ -1,6 +1,7 @@
 /**
  * MessageRouter - Routes runtime.onMessage calls to appropriate handlers
  * v1.6.3.8-v2 - Issue #7: Enhanced with standardized response shapes and requestId support
+ * v1.6.3.8-v3 - Issue #11: Handler timeout with graceful degradation (5000ms)
  *
  * Reduces the monolithic message handler from 628 lines (cc=93) to a simple
  * routing table pattern. Each handler is responsible for one domain of operations.
@@ -14,10 +15,18 @@
  * - Standardized response shape: { success, data?, error?, requestId? }
  * - Echo requestId from incoming messages for ACK correlation
  * - Log MESSAGE_ACK_RECEIVED events
+ *
+ * v1.6.3.8-v3 Changes:
+ * - Issue #11: Wrap handler executions in 5000ms timeout using Promise.race
+ * - Log HANDLER_TIMEOUT when handler exceeds timeout
+ * - Log HANDLER_COMPLETED with execution time for successful handlers
  */
 
 // Debug flag for message routing logs
 const DEBUG_ROUTING = true;
+
+// v1.6.3.8-v3 - Issue #11: Handler timeout constant
+const HANDLER_TIMEOUT_MS = 5000;
 
 export class MessageRouter {
   constructor() {
@@ -133,8 +142,104 @@ export class MessageRouter {
   }
 
   /**
+   * Log handler timeout event
+   * v1.6.3.8-v3 - Issue #11: Log when handler exceeds timeout
+   * @private
+   */
+  _logHandlerTimeout(action, requestId, durationMs) {
+    if (!DEBUG_ROUTING) return;
+    console.error('[MessageRouter] HANDLER_TIMEOUT:', {
+      action,
+      requestId,
+      durationMs,
+      timeoutMs: HANDLER_TIMEOUT_MS,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Log handler completed event
+   * v1.6.3.8-v3 - Issue #11: Log successful handler completion with timing
+   * @private
+   */
+  _logHandlerCompleted(action, requestId, durationMs) {
+    if (!DEBUG_ROUTING) return;
+    console.log('[MessageRouter] HANDLER_COMPLETED:', {
+      action,
+      requestId,
+      durationMs,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Create timeout promise for handler execution
+   * v1.6.3.8-v3 - Issue #11: Graceful degradation when handler hangs
+   * @private
+   */
+  _createHandlerTimeout(action, timeoutMs) {
+    return new Promise((_, reject) => {
+      setTimeout(() => {
+        const error = new Error(`Handler timeout after ${timeoutMs}ms`);
+        error.code = 'HANDLER_TIMEOUT';
+        error.action = action;
+        reject(error);
+      }, timeoutMs);
+    });
+  }
+
+  /**
+   * Handle successful handler execution
+   * v1.6.3.8-v3 - Issue #11: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleSuccessfulExecution(message, requestId, result, startTime, sendResponse) {
+    const durationMs = Date.now() - startTime;
+    const normalizedResponse = this._normalizeResponse(result, requestId);
+
+    if (sendResponse) sendResponse(normalizedResponse);
+
+    // v1.6.3.8-v3 - Issue #11: Log HANDLER_COMPLETED with execution time
+    this._logHandlerCompleted(message.action, requestId, durationMs);
+    this._logAck(requestId, message.action, normalizedResponse.success, durationMs);
+
+    return true;
+  }
+
+  /**
+   * Handle handler timeout error
+   * v1.6.3.8-v3 - Issue #11: Extracted to reduce route() max-depth
+   * @private
+   */
+  _handleTimeoutError(message, requestId, durationMs, sendResponse) {
+    this._logHandlerTimeout(message.action, requestId, durationMs);
+    const timeoutResponse = this._normalizeResponse({
+      success: false,
+      error: 'HANDLER_TIMEOUT'
+    }, requestId);
+    if (sendResponse) sendResponse(timeoutResponse);
+    return true;
+  }
+
+  /**
+   * Handle general handler error
+   * v1.6.3.8-v3 - Issue #11: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleGeneralError(message, requestId, error, sendResponse) {
+    console.error(`[MessageRouter] Handler error for ${message.action}:`, error);
+    const errorResponse = this._normalizeResponse({
+      success: false,
+      error: error.message || 'Handler execution failed'
+    }, requestId);
+    if (sendResponse) sendResponse(errorResponse);
+    return true;
+  }
+
+  /**
    * Route message to appropriate handler
    * v1.6.3.8-v2 - Issue #7: Enhanced with requestId echo and standardized responses
+   * v1.6.3.8-v3 - Issue #11: Wrap handler execution in 5000ms timeout using Promise.race
    * @param {Object} message - Message object with action property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
@@ -155,15 +260,22 @@ export class MessageRouter {
     }
 
     try {
-      const result = await handler(message, sender);
-      const normalizedResponse = this._normalizeResponse(result, requestId);
-      if (sendResponse) sendResponse(normalizedResponse);
-      this._logAck(requestId, message.action, normalizedResponse.success, Date.now() - startTime);
-      return true;
+      // v1.6.3.8-v3 - Issue #11: Wrap handler execution in timeout using Promise.race
+      const result = await Promise.race([
+        handler(message, sender),
+        this._createHandlerTimeout(message.action, HANDLER_TIMEOUT_MS)
+      ]);
+
+      return this._handleSuccessfulExecution(message, requestId, result, startTime, sendResponse);
     } catch (error) {
-      console.error(`[MessageRouter] Handler error for ${message.action}:`, error);
-      if (sendResponse) sendResponse(this._normalizeResponse({ success: false, error: error.message || 'Handler execution failed' }, requestId));
-      return true;
+      const durationMs = Date.now() - startTime;
+
+      // v1.6.3.8-v3 - Issue #11: Check if this is a timeout error
+      if (error.code === 'HANDLER_TIMEOUT') {
+        return this._handleTimeoutError(message, requestId, durationMs, sendResponse);
+      }
+
+      return this._handleGeneralError(message, requestId, error, sendResponse);
     }
   }
 
