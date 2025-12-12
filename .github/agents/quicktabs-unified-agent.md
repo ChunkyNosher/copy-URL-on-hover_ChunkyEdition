@@ -3,9 +3,9 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.8-v3), Background Relay, ACK-based
-  messaging, WriteBuffer batching, BFCache lifecycle, storage listener verification,
-  tier hysteresis, concurrent probe guard
+  sync with Single Writer Authority (v1.6.3.8-v5), Port + storage.local architecture,
+  ACK-based messaging, WriteBuffer batching, BFCache lifecycle, storage quota
+  recovery, URL validation
 tools: ['*']
 ---
 
@@ -37,52 +37,42 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v5 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect`
+  `browser.runtime.onConnect` (PRIMARY)
 - **Single Writer Authority** - Manager sends commands, background writes
   storage
-- **Cross-Tab Sync** - storage.onChanged + BroadcastChannel + Per-Tab Ownership
-  Validation
+- **Cross-Tab Sync** - Port + storage.onChanged (NO BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8-v3 Features (NEW):**
+**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
 
-- **Storage listener verification** - Test key write/read with 1000ms timeout
-- **Tier status hysteresis** - 3+ BC messages in 5s window before activation
-- **Concurrent probe guard** - `probeInProgress` flag prevents overlapping health probes
-- **Map memory cleanup** - `HOST_INFO_MAP_CLEARED` on window unload
-- **Fallback session stats** - `FALLBACK_SESSION_STARTED/ENDED` with message counts
+- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
+- **Monotonic revision versioning** - `revisionId` for storage event ordering
+- **Port failure counting** - 3 consecutive failures triggers cleanup
+- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
+- **declarativeNetRequest** - Feature detection with webRequest fallback
+- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
 
-**v1.6.3.8-v2 Features (Retained):**
+**v1.6.3.8-v4 Features (Retained):** Initialization barriers (10s), exponential
+backoff retry, port-based hydration, visibility change listener, proactive dedup
+cleanup, probe queuing.
 
-- **Background Relay pattern** - Sidebar messages bypass BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
-- **SIDEBAR_READY handshake** - Protocol before routing messages
-- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
-- **Port registry snapshots** - 60s interval with active/idle/zombie counts
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, SIDEBAR_READY
+handshake, WriteBuffer (75ms), BFCache lifecycle.
 
-**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
-storage validation, dedup decision logging, BC fallback detection.
-
-**v1.6.3.7-v11-v12 Features (Retained):** Promise-based listener barrier, LRU
-dedup (1000), correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTICS.
-
-**Key Functions (v1.6.3.8-v2):**
+**Key Functions (v1.6.3.8-v5):**
 
 | Function                    | Location      | Purpose                            |
 | --------------------------- | ------------- | ---------------------------------- |
-| `sendRequestWithTimeout()`  | message-utils | ACK-based messaging (v8-v2)        |
-| `flushWriteBuffer()`        | storage-utils | WriteBuffer batch flush (v8-v2)    |
-| `waitForInitialization()`   | QuickTabHandler | 10s init barrier (v8)            |
+| `sendRequestWithTimeout()`  | message-utils | ACK-based messaging                |
+| `flushWriteBuffer()`        | storage-utils | WriteBuffer batch flush            |
+| `waitForInitialization()`   | QuickTabHandler | 10s init barrier                 |
 | `scheduleRender(source)`    | Manager       | Unified render entry point         |
 
 ---
@@ -100,17 +90,18 @@ dedup (1000), correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTIC
 
 ## Testing Requirements
 
-- [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
-- [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
-- [ ] SIDEBAR_READY handshake works (v1.6.3.8-v2)
-- [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
-- [ ] BFCache lifecycle events work (v1.6.3.8-v2)
-- [ ] Initialization barriers work (10s/2s) (v1.6.3.8)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v5)
+- [ ] Storage quota recovery works (75%→50%→25%) (v1.6.3.8-v5)
+- [ ] URL validation blocks dangerous protocols (v1.6.3.8-v5)
+- [ ] ACK-based messaging works (sendRequestWithTimeout)
+- [ ] SIDEBAR_READY handshake works
+- [ ] WriteBuffer batching works (75ms)
+- [ ] Initialization barriers work (10s)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8-v2 Background Relay,
-ACK-based messaging, WriteBuffer batching, BFCache lifecycle.**
+**Your strength: Complete Quick Tab system with v1.6.3.8-v5 Port + storage.local
+architecture, ACK-based messaging, WriteBuffer batching, BFCache lifecycle.**

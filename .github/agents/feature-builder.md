@@ -60,24 +60,26 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
 
-- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
+- **Monotonic revision versioning** - `revisionId` for storage event ordering
+- **Port failure counting** - 3 consecutive failures triggers cleanup
+- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
+- **declarativeNetRequest** - Feature detection with webRequest fallback
+- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
 
-**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
-storage validation, dedup decision logging, keepalive health reports.
+**v1.6.3.8-v4 Features (Retained):** Initialization barriers (10s), exponential
+backoff retry, port-based hydration, visibility change listener, proactive dedup
+cleanup, probe queuing.
 
-**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
-listener barrier, LRU eviction (1000), correlation ID echo, state machine
-timeouts (7s).
+**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, WriteBuffer (75ms),
+BFCache lifecycle.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -86,12 +88,10 @@ timeouts (7s).
 - **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
 - **Listener Verification** - `_verifyPortListenerRegistration()`
 - **Refactored Message Handling** - complexity 10→4
-- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
 
 **v1.6.3.7-v3 Features (Retained):**
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
 - **sessions API** - Per-tab state management (TabStateManager.js)
 - **browser.alarms API** - Scheduled tasks
 - **tabs.group() API** - Tab grouping (Firefox 138+)
@@ -274,12 +274,14 @@ handling
 
 See QuickTab domain for Solo/Mute implementation patterns.
 
-### BroadcastChannel Pattern (v1.6.3.7-v3)
+### Port-Based Messaging Pattern (v1.6.3.8-v5)
 
 ```javascript
-const channel = new BroadcastChannel('quick-tabs-updates');
-channel.postMessage({
-  type: 'quick-tab-created',
+// Primary cross-tab sync via runtime.Port
+const port = browser.runtime.connect({ name: 'sidebar' });
+port.postMessage({
+  type: 'ACTION_REQUEST',
+  action: 'TOGGLE_MINIMIZE',
   quickTabId: id,
   timestamp: Date.now()
 });

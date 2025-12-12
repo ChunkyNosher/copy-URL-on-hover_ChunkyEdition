@@ -37,23 +37,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8-v5 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
 
-- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
-- **SIDEBAR_READY handshake** - Protocol before routing messages
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
+- **Monotonic revision versioning** - `revisionId` for storage event ordering
+- **Port failure counting** - 3 consecutive failures triggers cleanup
+- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
+- **declarativeNetRequest** - Feature detection with webRequest fallback
+- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
 
-**v1.6.3.8 Features (Retained):**
+**v1.6.3.8-v4 Features (Retained):**
 
-- Initialization barriers (QuickTabHandler 10s, currentTabId 2s backoff)
-- Centralized storage validation with re-write + verify
-- Dedup decision logging, BC fallback detection, keepalive health reports
+- Initialization barriers (10s), exponential backoff retry
+- Port-based hydration, visibility change listener, proactive dedup cleanup
+
+**v1.6.3.8-v2/v3 Features (Retained):**
+
+- ACK-based messaging, SIDEBAR_READY handshake, WriteBuffer (75ms)
 - Code Health: background.js (9.09), QuickTabHandler.js (9.41)
 
 **v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
@@ -63,8 +67,7 @@ timeouts (7s), port registry thresholds.
 **v1.6.3.7-v9 Features (Retained):**
 
 - **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port),
-  sequenceNumber (BC)
+- **Sequence Tracking** - sequenceId (storage), messageSequence (port)
 - **Storage Integrity** - Write validation with sync backup and corruption
   recovery
 - **Initialization Barrier** - `initializationStarted`/`initializationComplete`
@@ -83,12 +86,10 @@ timeouts (7s), port registry thresholds.
   message after connection
 - **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
   `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
-- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
 
 **v1.6.3.7-v3 Features (Retained):**
 
 - **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates`)
 - **sessions API** - Per-tab state management (TabStateManager.js)
 - **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
   `sync-session-state`)
@@ -240,15 +241,15 @@ async function closeAllTabs() {
 
 ## v1.6.3.7-v3 Fix Patterns (Retained)
 
-### BroadcastChannel Pattern
+### Port-Based Messaging Pattern (v1.6.3.8-v5)
 
 ```javascript
-// Real-time cross-tab messaging
-const updateChannel = new BroadcastChannel('quick-tabs-updates');
-updateChannel.postMessage({
-  type: 'quick-tab-created|updated|deleted|minimized|restored',
+// Primary cross-tab sync via runtime.Port (NO BroadcastChannel)
+const port = browser.runtime.connect({ name: 'sidebar' });
+port.postMessage({
+  type: 'ACTION_REQUEST',
+  action: 'TOGGLE_MINIMIZE',
   quickTabId: id,
-  data: quickTab,
   timestamp: Date.now()
 });
 ```
