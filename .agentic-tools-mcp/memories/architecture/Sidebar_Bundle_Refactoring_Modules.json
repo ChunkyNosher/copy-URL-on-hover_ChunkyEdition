@@ -1,0 +1,8 @@
+{
+  "id": "bfa6ced6-05c1-44b4-8ba5-cbf6962a613c",
+  "title": "Sidebar Bundle Refactoring Modules",
+  "details": "v1.6.3.8-v4 Bundle Size Refactoring for sidebar/quick-tabs-manager.js\n\nCreated new ES modules in sidebar/modules/:\n1. init-barrier.js - Initialization barrier logic, constants (INIT_BARRIER_TIMEOUT_MS, CONNECTION_STATE, etc.), message queue management\n2. diagnostics.js - Logging utilities, correlation ID generation, state transition logging\n3. health-metrics.js - Storage health probes, dedup map management, fallback health monitoring\n4. state-sync.js - State sync constants, saveId deduplication, sequence tracking, pending acks\n5. index.js - Re-exports all module functions for convenient importing\n\nKey Pattern: Modules are imported with underscore prefix aliases to avoid conflicts with local declarations while preserving backward compatibility.\n\nImport example:\n```javascript\nimport {\n  generateCorrelationId as _generateCorrelationIdFromModule,\n  storageHealthStats // NOT imported - defined locally\n} from './modules/index.js';\n```\n\nFuture refactoring: Gradually migrate local state to module getters/setters to reduce quick-tabs-manager.js size further.",
+  "category": "architecture",
+  "dateCreated": "2025-12-12T05:09:54.204Z",
+  "dateUpdated": "2025-12-12T05:09:54.204Z"
+}

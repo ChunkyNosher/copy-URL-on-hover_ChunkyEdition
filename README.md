@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.8-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
 control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
@@ -9,58 +9,45 @@ Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v2 Status:** Background Relay, ACK-based messaging, WriteBuffer
-batching, BFCache lifecycle ✅
+**🔧 v1.6.3.8-v4 Status:** 9 Critical Sync Fixes, Sidebar Modules, Port-Based
+Hydration ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v2
+## 🎉 What's New in v1.6.3.8-v4
 
-**🔧 Communication & Storage Layer Improvements (December 2025) ✅**
+**🔧 9 Critical Sidebar Sync Fixes (December 2025) ✅**
 
-**Group A - Communication Layer:**
+**Group A - Initialization & Hydration:**
 
-- ✅ **Background Relay pattern** - Sidebar communication bypasses BC origin
-  isolation with `BC_SIDEBAR_RELAY_ACTIVE` logging
-- ✅ **ACK-based messaging** - `sendRequestWithTimeout()` utility for reliable
-  message delivery with `MESSAGE_ACK_RECEIVED` logging
-- ✅ **SIDEBAR_READY handshake** - Protocol ensures sidebar ready before routing
-  with `SIDEBAR_MESSAGE_DELIVERED` logging
+- ✅ **Issue #5:** Promise-based initialization barrier with 10s timeout
+- ✅ **Issue #4:** Exponential backoff retry for storage verification (1s, 2s, 4s)
+- ✅ **Issue #1:** Sequential barrier blocking for hydration race fix
+- ✅ **Issue #6:** Port-based hydration before storage fallback
 
-**Group B - BFCache & Port Lifecycle:**
+**Group B - State Synchronization:**
 
-- ✅ **BFCache lifecycle events** - `PAGE_LIFECYCLE_BFCACHE_ENTER` and
-  `PAGE_LIFECYCLE_BFCACHE_RESTORE` for proper state handling
-- ✅ **Port registry snapshots** - Every 60s with `PORT_REGISTRY_SNAPSHOT`
-  showing active/idle/zombie counts
-- ✅ **Port eviction logging** - `PORT_EVICTED` with reason codes for debugging
-- ✅ **ACK circuit breaker** - `PORT_CIRCUIT_BREAKER_TRIGGERED` when pending
-  ACKs > 50
+- ✅ **Issue #2:** Listener registration guard for port message queue
+- ✅ **Issue #3:** Visibility change listener + 15s periodic state refresh
+- ✅ **Issue #9:** Enforcing initialization guard with message queuing
 
-**Group C - Storage & Transaction:**
+**Group C - Resource Management:**
 
-- ✅ **Sequence ID rejection** - `STORAGE_SEQUENCE_REJECTED` logs out-of-order
-  events
-- ✅ **Write latency logging** - `STORAGE_WRITE_LATENCY` and
-  `STORAGE_BACKPRESSURE_DETECTED` for monitoring
-- ✅ **WriteBuffer pattern** - 75ms batching to prevent IndexedDB deadlocks
-- ✅ **Version-based conflict resolution** - `STATE_CONFLICT_DETECTED` logging
+- ✅ **Issue #7:** Proactive dedup cleanup at 50%, sliding window at 95%
+- ✅ **Issue #8:** Probe queuing with 500ms min interval, 1s force-reset
 
-**Group D - Initialization & Timeout:**
+**New Sidebar Modules (`sidebar/modules/`):**
 
-- ✅ **Message queuing** - `INIT_MESSAGE_QUEUED` and `INIT_MESSAGE_REPLAY` until
-  READY signal
-- ✅ **Handler timeout** - 5000ms with `HANDLER_TIMEOUT` / `HANDLER_COMPLETED`
-  logging
+- ✅ `init-barrier.js` - Initialization barrier logic
+- ✅ `state-sync.js` - Port/storage sync layer
+- ✅ `diagnostics.js` - Logging utilities
+- ✅ `health-metrics.js` - Health probes
+- ✅ `index.js` - Re-exports for convenience
 
-**New Files:**
-
-- ✅ `src/utils/message-utils.js` - ACK-based messaging utilities
-
-**Why This Matters:** These improvements provide reliable sidebar communication,
-prevent storage deadlocks, and add comprehensive observability for debugging.
+**Why This Matters:** These fixes eliminate race conditions during sidebar
+initialization, prevent hydration issues, and improve resource management.
 
 ---
 
@@ -69,10 +56,10 @@ prevent storage deadlocks, and add comprehensive observability for debugging.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v3** - Storage listener verification, tier hysteresis
+- **v1.6.3.8-v2** - Background Relay, ACK-based messaging, WriteBuffer
 - **v1.6.3.8** - Initialization barriers, centralized storage validation
 - **v1.6.3.7-v12** - DEBUG_DIAGNOSTICS, dedup logging, port thresholds
-- **v1.6.3.7-v11** - Promise barrier, LRU eviction, state machine timeouts
-- **v1.6.3.7-v1-v10** - Storage hardening, port resilience, lifecycle
 
 ---
 
@@ -255,6 +242,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v2** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
