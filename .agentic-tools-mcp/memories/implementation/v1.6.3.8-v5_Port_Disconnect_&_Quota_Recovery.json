@@ -1,0 +1,8 @@
+{
+  "id": "166667c4-e13d-45e1-9dc0-602ce098d2c8",
+  "title": "v1.6.3.8-v5 Port Disconnect & Quota Recovery",
+  "details": "v1.6.3.8-v5 implemented two critical fixes for port disconnection detection and storage quota recovery:\n\n**Issue #3: Port Disconnection Detection**\n- Added `lastSuccessfulMessageTime` and `consecutiveFailureCount` to port registry entries\n- Created `_trackPortMessageResult(portId, success)` to track consecutive failures\n- Created `_sendPortMessageWithTracking(portId, message)` wrapper for all postMessage calls\n- After `PORT_CONSECUTIVE_FAILURE_THRESHOLD` (3) consecutive failures, port is evicted\n- Addresses Firefox Bugzilla 1223425 where onDisconnect may not fire for BFCache/navigation\n- All broadcast functions now use copy-then-iterate pattern to avoid Map modification during iteration\n\n**Issue #4: Iterative Storage Quota Recovery**\n- `RECOVERY_PERCENTAGES = [0.75, 0.50, 0.25]` - Progressive reduction\n- `RECOVERY_MAX_ATTEMPTS = 3` - Prevent infinite loops\n- `RECOVERY_BACKOFF_BASE_MS = 500` - Exponential backoff (500ms, 1000ms, 2000ms)\n- Helper functions: `_tryRecoveryAttempt()`, `_buildIterativeRecoveryState()`, `_applyRecoveryBackoff()`, `_handleRecoveryExhausted()`\n- User notifications via browser.notifications API at critical levels (50%+) and on failure\n\n**Key Patterns:**\n- Copy array before iterating Map: `const portEntries = [...portRegistry.entries()]`\n- Tracking function returns `{ success, evicted }` for proper error counting\n- Use `continue` after success to avoid nested else blocks (ESLint max-depth compliance)",
+  "category": "implementation",
+  "dateCreated": "2025-12-12T18:08:07.395Z",
+  "dateUpdated": "2025-12-12T18:08:07.395Z"
+}

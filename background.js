@@ -206,8 +206,40 @@ const CORRUPTION_RECOVERY_COOLDOWN_MS = 30000;
  * Percentage of Quick Tabs to keep during quota-exceeded recovery
  * v1.6.3.7-v13 - Issue #7: Configurable recovery strategy
  * When storage quota is exceeded, keep newest 75% of tabs (clear oldest 25%)
+ * v1.6.3.8-v5 - Issue #4: DEPRECATED - Now superseded by RECOVERY_PERCENTAGES array
+ * Kept for documentation purposes only
  */
-const RECOVERY_KEEP_PERCENTAGE = 0.75;
+const _RECOVERY_KEEP_PERCENTAGE = 0.75;
+
+// ==================== v1.6.3.8-v5 ITERATIVE STORAGE RECOVERY (Issue #4) ====================
+// When storage quota is exceeded, progressively reduce data until write succeeds
+/**
+ * Iterative recovery percentages for storage quota recovery
+ * v1.6.3.8-v5 - Issue #4: Progressive reduction: 75% → 50% → 25%
+ * @type {number[]}
+ */
+const RECOVERY_PERCENTAGES = [0.75, 0.50, 0.25];
+
+/**
+ * Maximum number of recovery attempts before giving up
+ * v1.6.3.8-v5 - Issue #4: Prevent infinite loops
+ */
+const RECOVERY_MAX_ATTEMPTS = 3;
+
+/**
+ * Base delay for exponential backoff between recovery attempts (ms)
+ * v1.6.3.8-v5 - Issue #4: Exponential backoff: 500ms, 1000ms, 2000ms
+ */
+const RECOVERY_BACKOFF_BASE_MS = 500;
+
+// ==================== v1.6.3.8-v5 PORT DISCONNECTION DETECTION (Issue #3) ====================
+// Track consecutive postMessage failures to detect silent port disconnections
+/**
+ * Number of consecutive postMessage failures before evicting a port
+ * v1.6.3.8-v5 - Issue #3: After N failures, port is considered disconnected
+ * Firefox Bugzilla 1223425: onDisconnect may not fire for BFCache/navigation
+ */
+const PORT_CONSECUTIVE_FAILURE_THRESHOLD = 3;
 
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
@@ -882,24 +914,22 @@ async function _handleKeepaliveAlarm() {
 /**
  * Send alive ping to a single sidebar port
  * v1.6.3.8 - Issue #2 (arch): Extracted to reduce nesting depth
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {string} portId - Port ID
- * @param {Object} portInfo - Port info
+ * @param {Object} _portInfo - Port info (unused - kept for caller signature compatibility)
  * @param {Object} alivePing - Ping message to send
  */
-function _sendAlivePingToPort(portId, portInfo, alivePing) {
-  try {
-    portInfo.port.postMessage(alivePing);
-    updatePortActivity(portId);
-  } catch (_err) {
-    // Port may be disconnected, will be cleaned up by stale port cleanup
-  }
+function _sendAlivePingToPort(portId, _portInfo, alivePing) {
+  // v1.6.3.8-v5 - Issue #3: Use tracking for failure detection
+  _sendPortMessageWithTracking(portId, alivePing);
 }
 
 /**
  * Send proactive ALIVE ping to all connected sidebar ports
  * v1.6.3.8 - Issue #2 (arch): Background sends periodic pings instead of waiting for sidebar requests
  * v1.6.3.8-v5 - FIX Issue #6: Add initialization guard (defensive)
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  */
 function _sendAlivePingToSidebars() {
@@ -912,7 +942,10 @@ function _sendAlivePingToSidebars() {
     cacheTabCount: globalQuickTabState?.tabs?.length || 0
   };
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     if (portInfo.type === 'sidebar') {
       _sendAlivePingToPort(portId, portInfo, alivePing);
     }
@@ -1981,47 +2014,242 @@ async function _attemptStorageWriteRecovery(
 /**
  * Recover from null read (likely quota exceeded)
  * v1.6.3.7-v13 - Issue #7: Clear oldest Quick Tabs and retry
+ * v1.6.3.8-v5 - Issue #4: Iterative recovery with progressive reduction (75% → 50% → 25%)
  * @private
  */
 async function _recoverFromNullRead(operationId, intendedState) {
-  console.log('[Background] RECOVERY_STRATEGY: Clearing oldest Quick Tabs (quota likely exceeded)');
+  console.log('[Background] RECOVERY_STRATEGY: Iterative quota recovery starting', {
+    operationId,
+    tabCount: intendedState?.tabs?.length || 0,
+    recoveryPercentages: RECOVERY_PERCENTAGES,
+    maxAttempts: RECOVERY_MAX_ATTEMPTS
+  });
 
   // If not enough tabs to clear, fail early
   if (!intendedState?.tabs?.length || intendedState.tabs.length <= 1) {
-    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
+    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted - insufficient tabs to clear');
   }
 
-  // Sort by creationTime and remove oldest tabs (keep RECOVERY_KEEP_PERCENTAGE)
+  // Sort by creationTime once (oldest first)
   const sortedTabs = [...intendedState.tabs].sort(
     (a, b) => (a.creationTime || 0) - (b.creationTime || 0)
   );
 
-  const keepCount = Math.max(1, Math.floor(sortedTabs.length * RECOVERY_KEEP_PERCENTAGE));
-  const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
+  // v1.6.3.8-v5 - Issue #4: Try each recovery percentage iteratively
+  for (let attempt = 0; attempt < RECOVERY_PERCENTAGES.length && attempt < RECOVERY_MAX_ATTEMPTS; attempt++) {
+    const result = await _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt);
+    if (result.success) {
+      return result.recoveryResult;
+    }
+  }
 
-  const recoverySaveId = `recovery-null-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = {
+  // All attempts failed
+  return _handleRecoveryExhausted(operationId, intendedState.tabs.length);
+}
+
+/**
+ * Try a single recovery attempt at a given percentage
+ * v1.6.3.8-v5 - Issue #4: Helper to reduce complexity in _recoverFromNullRead
+ * @private
+ */
+async function _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt) {
+  const keepPercentage = RECOVERY_PERCENTAGES[attempt];
+  const keepCount = Math.max(1, Math.floor(sortedTabs.length * keepPercentage));
+  const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
+  const removedCount = intendedState.tabs.length - reducedTabs.length;
+
+  _logRecoveryAttempt(operationId, attempt, keepPercentage, intendedState.tabs.length, keepCount, removedCount);
+
+  const recoverySaveId = `recovery-null-${attempt + 1}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recoveryState = _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId, attempt, keepPercentage);
+
+  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
+
+  if (writeResult.success) {
+    return {
+      success: true,
+      recoveryResult: _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, removedCount, attempt, keepPercentage)
+    };
+  }
+
+  // Apply backoff if more attempts remain
+  await _applyRecoveryBackoff(operationId, attempt);
+  return { success: false };
+}
+
+/**
+ * Log a recovery attempt
+ * v1.6.3.8-v5 - Issue #4: Helper for logging
+ * @private
+ */
+function _logRecoveryAttempt(operationId, attempt, keepPercentage, originalCount, keepCount, removedCount) {
+  console.log('[Background] RECOVERY_ATTEMPT:', {
+    operationId,
+    attempt: attempt + 1,
+    maxAttempts: RECOVERY_MAX_ATTEMPTS,
+    keepPercentage: `${keepPercentage * 100}%`,
+    originalTabCount: originalCount,
+    keepCount,
+    removedCount,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Build recovery state for iterative recovery
+ * v1.6.3.8-v5 - Issue #4: Helper to build state object
+ * @private
+ */
+function _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId, attempt, keepPercentage) {
+  return {
     ...intendedState,
     tabs: reducedTabs,
     saveId: recoverySaveId,
     recoveredFrom: 'READ_RETURNED_NULL',
-    recoveryTimestamp: Date.now()
+    recoveryTimestamp: Date.now(),
+    recoveryAttempt: attempt + 1,
+    recoveryKeepPercentage: keepPercentage
   };
+}
 
-  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
-  if (!writeResult.success) {
-    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted');
-  }
-
+/**
+ * Build success result and notify user if critical
+ * v1.6.3.8-v5 - Issue #4: Helper for success handling
+ * @private
+ */
+function _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, removedCount, attempt, keepPercentage) {
   console.log('[Background] RECOVERY_SUCCESS:', {
     operationId,
     method: 'clear-oldest-tabs',
+    attempt: attempt + 1,
+    keepPercentage: `${keepPercentage * 100}%`,
     originalTabCount: intendedState.tabs.length,
     newTabCount: reducedTabs.length,
-    removedCount: intendedState.tabs.length - reducedTabs.length,
+    removedCount,
     timestamp: Date.now()
   });
-  return { recovered: true, method: 'clear-oldest-tabs', reason: 'Cleared oldest 25% of tabs' };
+
+  // Notify user at critical pruning levels (50% or more removed)
+  if (keepPercentage <= 0.50) {
+    _notifyUserOfDataPruning(operationId, attempt + 1, removedCount, intendedState.tabs.length);
+  }
+
+  return {
+    recovered: true,
+    method: 'clear-oldest-tabs',
+    reason: `Cleared ${((1 - keepPercentage) * 100).toFixed(0)}% of oldest tabs (attempt ${attempt + 1})`,
+    attempt: attempt + 1,
+    keepPercentage,
+    removedCount
+  };
+}
+
+/**
+ * Apply exponential backoff between recovery attempts
+ * v1.6.3.8-v5 - Issue #4: Helper for backoff logic
+ * @private
+ */
+async function _applyRecoveryBackoff(operationId, attempt) {
+  if (attempt < RECOVERY_PERCENTAGES.length - 1) {
+    const backoffMs = RECOVERY_BACKOFF_BASE_MS * Math.pow(2, attempt);
+    console.log('[Background] RECOVERY_BACKOFF:', {
+      operationId,
+      attempt: attempt + 1,
+      backoffMs,
+      nextPercentage: `${RECOVERY_PERCENTAGES[attempt + 1] * 100}%`,
+      timestamp: Date.now()
+    });
+    await _sleepMs(backoffMs);
+  }
+}
+
+/**
+ * Handle when all recovery attempts are exhausted
+ * v1.6.3.8-v5 - Issue #4: Helper for exhausted handling
+ * @private
+ */
+function _handleRecoveryExhausted(operationId, originalTabCount) {
+  console.error('[Background] RECOVERY_EXHAUSTED:', {
+    operationId,
+    attemptsExhausted: RECOVERY_MAX_ATTEMPTS,
+    percentagesTried: RECOVERY_PERCENTAGES.map(p => `${p * 100}%`).join(', '),
+    timestamp: Date.now()
+  });
+
+  _notifyUserOfRecoveryFailure(operationId, originalTabCount);
+  return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota recovery exhausted all attempts');
+}
+
+/**
+ * Sleep for specified milliseconds
+ * v1.6.3.8-v5 - Issue #4: Helper for exponential backoff
+ * @private
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+function _sleepMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Notify user of significant data pruning during quota recovery
+ * v1.6.3.8-v5 - Issue #4: User notification at critical pruning levels
+ * @private
+ * @param {string} operationId - Operation ID for tracking
+ * @param {number} attempt - Recovery attempt number
+ * @param {number} removedCount - Number of tabs removed
+ * @param {number} originalCount - Original tab count
+ */
+function _notifyUserOfDataPruning(operationId, attempt, removedCount, originalCount) {
+  console.warn('[Background] RECOVERY_DATA_PRUNED:', {
+    operationId,
+    attempt,
+    removedCount,
+    originalCount,
+    remainingCount: originalCount - removedCount,
+    message: 'Significant Quick Tab data was pruned due to storage quota limits',
+    timestamp: Date.now()
+  });
+
+  // Create notification if API available
+  if (browser.notifications?.create) {
+    browser.notifications.create(`quota-recovery-${operationId}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('images/icon48.png'),
+      title: 'Quick Tabs Data Pruned',
+      message: `${removedCount} oldest Quick Tab(s) were removed due to storage limits. ${originalCount - removedCount} tabs remain.`
+    }).catch(err => {
+      console.warn('[Background] Failed to create notification:', err.message);
+    });
+  }
+}
+
+/**
+ * Notify user of complete quota recovery failure
+ * v1.6.3.8-v5 - Issue #4: User notification when all recovery attempts fail
+ * @private
+ * @param {string} operationId - Operation ID for tracking
+ * @param {number} originalCount - Original tab count before recovery attempts
+ */
+function _notifyUserOfRecoveryFailure(operationId, originalCount) {
+  console.error('[Background] RECOVERY_COMPLETE_FAILURE:', {
+    operationId,
+    originalCount,
+    message: 'All quota recovery attempts failed - manual intervention required',
+    timestamp: Date.now()
+  });
+
+  // Create notification if API available
+  if (browser.notifications?.create) {
+    browser.notifications.create(`quota-failure-${operationId}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('images/icon48.png'),
+      title: 'Quick Tabs Storage Error',
+      message: 'Storage quota exceeded and recovery failed. Please manually close some Quick Tabs to free space.'
+    }).catch(err => {
+      console.warn('[Background] Failed to create notification:', err.message);
+    });
+  }
 }
 
 /**
@@ -6288,7 +6516,10 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
     connectedAt: now,
     lastMessageAt: null,
     lastActivityTime: now, // v1.6.3.7-v9: Tracks both sent and received
-    messageCount: 0
+    messageCount: 0,
+    // v1.6.3.8-v5 - Issue #3: Port disconnection tracking
+    lastSuccessfulMessageTime: now,
+    consecutiveFailureCount: 0
   });
 
   // v1.6.3.7-v9 - Issue #9: Initialize sequence tracking for this port
@@ -6420,6 +6651,112 @@ function updatePortActivity(portId) {
   }
 }
 
+// ==================== v1.6.3.8-v5 PORT MESSAGE FAILURE TRACKING (Issue #3) ====================
+
+/**
+ * Track result of a port message send attempt
+ * v1.6.3.8-v5 - Issue #3: Detect silent port disconnections via consecutive failures
+ * @param {string} portId - Port ID
+ * @param {boolean} success - Whether the postMessage succeeded
+ * @returns {{ evicted: boolean }} Whether the port was evicted due to failures
+ */
+function _trackPortMessageResult(portId, success) {
+  const portInfo = portRegistry.get(portId);
+  if (!portInfo) {
+    return { evicted: false };
+  }
+
+  if (success) {
+    // Reset failure count on success
+    const previousFailures = portInfo.consecutiveFailureCount;
+    portInfo.consecutiveFailureCount = 0;
+    portInfo.lastSuccessfulMessageTime = Date.now();
+
+    if (previousFailures > 0) {
+      console.log('[Background] PORT_MESSAGE_RECOVERED:', {
+        portId,
+        origin: portInfo.origin,
+        previousFailureCount: previousFailures,
+        timestamp: Date.now()
+      });
+    }
+    return { evicted: false };
+  }
+
+  // Increment failure count
+  portInfo.consecutiveFailureCount++;
+  const failureCount = portInfo.consecutiveFailureCount;
+  const timeSinceLastSuccess = Date.now() - (portInfo.lastSuccessfulMessageTime || portInfo.connectedAt);
+
+  console.warn('[Background] PORT_MESSAGE_FAILURE:', {
+    portId,
+    origin: portInfo.origin,
+    tabId: portInfo.tabId,
+    consecutiveFailures: failureCount,
+    threshold: PORT_CONSECUTIVE_FAILURE_THRESHOLD,
+    timeSinceLastSuccessMs: timeSinceLastSuccess,
+    registrySize: portRegistry.size
+  });
+
+  // Check if threshold exceeded - evict port
+  if (failureCount >= PORT_CONSECUTIVE_FAILURE_THRESHOLD) {
+    console.warn('[Background] PORT_DISCONNECTION_DETECTED:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      windowId: portInfo.windowId,
+      consecutiveFailures: failureCount,
+      timeSinceLastSuccessMs: timeSinceLastSuccess,
+      reason: 'Firefox Bugzilla 1223425 - onDisconnect may not fire for BFCache/navigation',
+      registrySizeBefore: portRegistry.size
+    });
+
+    unregisterPort(portId, 'consecutive-message-failures');
+
+    console.log('[Background] PORT_EVICTED_FOR_FAILURES:', {
+      portId,
+      evictionReason: 'consecutive-message-failures',
+      failureCount,
+      registrySizeAfter: portRegistry.size,
+      timestamp: Date.now()
+    });
+
+    return { evicted: true };
+  }
+
+  return { evicted: false };
+}
+
+/**
+ * Send message to port with failure tracking
+ * v1.6.3.8-v5 - Issue #3: Wrapper that tracks postMessage failures
+ * @param {string} portId - Port ID
+ * @param {Object} message - Message to send
+ * @returns {{ success: boolean, evicted: boolean }} Result of send attempt
+ */
+function _sendPortMessageWithTracking(portId, message) {
+  const portInfo = portRegistry.get(portId);
+  if (!portInfo) {
+    return { success: false, evicted: false };
+  }
+
+  try {
+    portInfo.port.postMessage(message);
+    const trackResult = _trackPortMessageResult(portId, true);
+    updatePortActivity(portId);
+    return { success: true, evicted: trackResult.evicted };
+  } catch (err) {
+    const trackResult = _trackPortMessageResult(portId, false);
+    console.warn('[Background] PORT_POSTMESSAGE_EXCEPTION:', {
+      portId,
+      origin: portInfo?.origin,
+      error: err.message,
+      evicted: trackResult.evicted
+    });
+    return { success: false, evicted: trackResult.evicted };
+  }
+}
+
 /**
  * Check if a port's tab still exists
  * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting in cleanupStalePorts
@@ -6515,6 +6852,7 @@ function _isPortStale(portInfo, now, portId) {
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
  * v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP logging with before/after counts
  * v1.6.3.7-v9 - Issue #4: Added age-based and inactivity-based cleanup
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during async iteration
  */
 async function cleanupStalePorts() {
   const beforeCount = portRegistry.size;
@@ -6530,7 +6868,10 @@ async function cleanupStalePorts() {
   const now = Date.now();
   const stalePorts = [];
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during async iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     // v1.6.3.7-v9 - Issue #4: Check max age first (hard limit)
     if (_isPortTooOld(portInfo, now, portId)) {
       stalePorts.push({ portId, reason: 'max-age-exceeded' });
@@ -6586,12 +6927,16 @@ setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 /**
  * Check for zombie ports and send pings to inactive ones
  * v1.6.3.8 - Issue #4 (arch): Detect BFCache zombie ports via ping/response
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  */
 function _checkForZombiePorts() {
   const now = Date.now();
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     const lastActivity =
       portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
     const inactivityMs = now - lastActivity;
@@ -6611,6 +6956,7 @@ function _checkForZombiePorts() {
 /**
  * Send ping to potentially zombie port
  * v1.6.3.8 - Issue #4 (arch): If no response within timeout, evict port
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {string} portId - Port ID to ping
  * @param {Object} portInfo - Port info object
@@ -6622,9 +6968,10 @@ function _sendPortPing(portId, portInfo) {
     timestamp: Date.now()
   };
 
-  try {
-    portInfo.port.postMessage(pingMessage);
+  // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+  const result = _sendPortMessageWithTracking(portId, pingMessage);
 
+  if (result.success) {
     console.log('[Background] PORT_PING_SENT:', {
       portId,
       origin: portInfo.origin,
@@ -6641,14 +6988,18 @@ function _sendPortPing(portId, portInfo) {
       sentAt: Date.now(),
       timeoutId
     });
-  } catch (err) {
-    // Port is definitely dead
+  } else if (result.evicted) {
+    // Port was evicted due to consecutive failures - no need for timeout
+    console.log('[Background] PORT_PING_SKIPPED: Port evicted due to consecutive failures', {
+      portId
+    });
+  } else {
+    // Send failed but port not yet evicted
     console.warn('[Background] PORT_PING_FAILED:', {
       portId,
-      origin: portInfo.origin,
-      error: err.message
+      origin: portInfo?.origin,
+      reason: 'postMessage exception'
     });
-    unregisterPort(portId, 'ping-send-failed');
   }
 }
 
@@ -7565,48 +7916,57 @@ function handleRelayToSidebar(message, portInfo) {
 /**
  * Relay message to all ready sidebar ports
  * v1.6.3.8-v2 - Issue #1, #10: Extracted to reduce handleRelayToSidebar nesting depth
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  * @param {string} requestId - Request ID for correlation
  * @param {Object} payload - Payload to relay
  * @param {number} sourceTabId - Source tab ID
- * @returns {{ deliveredTo: string[], failedPorts: Object[] }} Delivery results
+ * @returns {{ deliveredTo: string[], failedPorts: Object[], evictedCount: number }} Delivery results
  */
 function _relayToReadySidebars(requestId, payload, sourceTabId) {
   const deliveredTo = [];
   const failedPorts = [];
+  let evictedCount = 0;
 
-  for (const [portId, info] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, info] of portEntries) {
     if (!_isSidebarPort(info) || !_sidebarReadyPorts.has(portId)) {
       continue;
     }
     const result = _relaySingleMessage(portId, info, requestId, payload, sourceTabId);
     if (result.success) {
       deliveredTo.push(portId);
-    } else {
-      failedPorts.push(result.error);
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    failedPorts.push(result.error);
+    evictedCount += result.evicted ? 1 : 0;
   }
 
-  return { deliveredTo, failedPorts };
+  return { deliveredTo, failedPorts, evictedCount };
 }
 
 /**
  * Relay a single message to a sidebar port
  * v1.6.3.8-v2 - Issue #1, #10: Extracted to reduce nesting depth
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  */
 function _relaySingleMessage(portId, info, requestId, payload, sourceTabId) {
-  try {
-    const relayedMessage = {
-      type: 'RELAYED_FROM_CONTENT',
-      payload,
-      requestId,
-      sourceTabId,
-      _relayTimestamp: Date.now()
-    };
+  const relayedMessage = {
+    type: 'RELAYED_FROM_CONTENT',
+    payload,
+    requestId,
+    sourceTabId,
+    _relayTimestamp: Date.now()
+  };
 
-    info.port.postMessage(relayedMessage);
+  // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+  const result = _sendPortMessageWithTracking(portId, relayedMessage);
 
+  if (result.success) {
     if (DEBUG_MESSAGING) {
       console.log('[Background] SIDEBAR_MESSAGE_DELIVERED:', {
         requestId,
@@ -7616,17 +7976,16 @@ function _relaySingleMessage(portId, info, requestId, payload, sourceTabId) {
         timestamp: Date.now()
       });
     }
-
     return { success: true };
-  } catch (err) {
-    console.error('[Background] SIDEBAR_MESSAGE_DROPPED:', {
-      requestId,
-      portId,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    return { success: false, error: { portId, error: err.message } };
   }
+
+  console.error('[Background] SIDEBAR_MESSAGE_DROPPED:', {
+    requestId,
+    portId,
+    evicted: result.evicted,
+    timestamp: Date.now()
+  });
+  return { success: false, error: { portId, evicted: result.evicted }, evicted: result.evicted };
 }
 
 /**
@@ -8011,6 +8370,7 @@ const BACKGROUND_STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
  * Notify Manager to start storage watchdog timer
  * v1.6.3.7-v10 - FIX Issue #6: Send PORT message to Manager to start 2s watchdog
  * If storage.onChanged doesn't fire within 2s, Manager will re-read storage
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {string} expectedSaveId - Save ID we expect Manager to receive
  * @param {number} sequenceId - Sequence ID for tracking
@@ -8025,14 +8385,20 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
   };
 
   let notifiedCount = 0;
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  let errorCount = 0;
+
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     // Only notify sidebar ports (Manager)
     if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
       continue;
     }
 
-    try {
-      portInfo.port.postMessage(watchdogMessage);
+    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+    const result = _sendPortMessageWithTracking(portId, watchdogMessage);
+    if (result.success) {
       notifiedCount++;
       console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SENT:', {
         portId,
@@ -8040,16 +8406,15 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
         sequenceId,
         timestamp: Date.now()
       });
-    } catch (err) {
-      console.warn('[Background] Failed to send watchdog notification:', {
-        portId,
-        error: err.message
-      });
+    } else {
+      errorCount++;
     }
   }
 
   if (notifiedCount === 0) {
-    console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SKIPPED: No sidebar ports connected');
+    console.log('[Background] STORAGE_WATCHDOG_NOTIFICATION_SKIPPED: No sidebar ports connected', {
+      errorCount
+    });
   }
 }
 
@@ -8159,38 +8524,44 @@ function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlationId)
 /**
  * Send message to all sidebar ports and track results
  * v1.6.4.13 - Extracted to reduce nesting depth in _sendStateUpdateViaPorts
+ * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
  * @private
  * @param {Object} message - Message to send
  * @param {string} quickTabId - Quick Tab ID for logging
  * @param {string} operation - Operation name for logging
  * @param {string} correlationId - Correlation ID for logging
- * @returns {{ sentCount: number, errorCount: number }} Send results
+ * @returns {{ sentCount: number, errorCount: number, evictedCount: number }} Send results
  */
 function _sendMessageToSidebarPorts(message, quickTabId, operation, correlationId) {
   let sentCount = 0;
   let errorCount = 0;
+  let evictedCount = 0;
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     if (!_isSidebarPort(portInfo)) {
       continue;
     }
 
     const result = _trySendToPort({
-      port: portInfo.port,
-      message,
       portId,
+      message,
       quickTabId,
       operation,
       correlationId
     });
     if (result.success) {
       sentCount++;
-    } else {
-      errorCount++;
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    errorCount++;
+    evictedCount += result.evicted ? 1 : 0;
   }
 
-  return { sentCount, errorCount };
+  return { sentCount, errorCount, evictedCount };
 }
 
 /**
@@ -8207,25 +8578,27 @@ function _isSidebarPort(portInfo) {
  * Try to send message to a port
  * v1.6.4.13 - Helper for _sendMessageToSidebarPorts
  * v1.6.4.14 - FIX Excess Args: Converted to options object
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {Object} options - Options object
- * @param {browser.runtime.Port} options.port - Port to send to
+ * @param {string} options.portId - Port ID for logging and tracking
  * @param {Object} options.message - Message to send
- * @param {string} options.portId - Port ID for logging
  * @param {string} options.quickTabId - Quick Tab ID for logging
  * @param {string} options.operation - Operation name for logging
  * @param {string} options.correlationId - Correlation ID for logging
- * @returns {{ success: boolean }} success: true if postMessage succeeded, false if an error was thrown
+ * @returns {{ success: boolean, evicted: boolean }} success: true if postMessage succeeded, false if an error was thrown
  */
-function _trySendToPort({ port, message, portId, quickTabId, operation, correlationId }) {
-  try {
-    port.postMessage(message);
+function _trySendToPort({ portId, message, quickTabId, operation, correlationId }) {
+  // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+  const result = _sendPortMessageWithTracking(portId, message);
+
+  if (result.success) {
     _logPortSendSuccess(portId, quickTabId, operation, correlationId);
-    return { success: true };
-  } catch (err) {
-    _logPortSendFailure(portId, quickTabId, err.message);
-    return { success: false };
+    return { success: true, evicted: false };
   }
+
+  _logPortSendFailure(portId, quickTabId, result.evicted ? 'port evicted' : 'postMessage failed');
+  return { success: false, evicted: result.evicted };
 }
 
 /**
@@ -8707,29 +9080,37 @@ async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, at
 /**
  * Broadcast message to all connected ports
  * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @param {Object} message - Message to broadcast
  * @param {string} excludePortId - Port ID to exclude from broadcast
  */
 function broadcastToAllPorts(message, excludePortId = null) {
   let sentCount = 0;
   let errorCount = 0;
+  let evictedCount = 0;
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, _portInfo] of portEntries) {
     if (portId === excludePortId) continue;
 
-    try {
-      portInfo.port.postMessage(message);
+    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+    const result = _sendPortMessageWithTracking(portId, message);
+    if (result.success) {
       sentCount++;
-    } catch (err) {
-      console.warn('[Background] Failed to broadcast to port:', { portId, error: err.message });
-      errorCount++;
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    errorCount++;
+    evictedCount += result.evicted ? 1 : 0;
   }
 
   console.log('[Background] Broadcast complete:', {
     action: message.action || message.type,
     sentCount,
     errorCount,
+    evictedCount, // v1.6.3.8-v5 - Issue #3
     excludedPortId: excludePortId
   });
 }
@@ -9343,21 +9724,28 @@ function _broadcastViaBroadcastChannel(quickTabId, changes, messageId) {
 /**
  * Broadcast message to all connected sidebar ports
  * v1.6.3.7-v4 - FIX Issue #3: Send state updates via port for reliable delivery
+ * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
  * @private
  * @param {Object} message - Message to send
  * @returns {number} Number of ports the message was sent to
  */
 function _broadcastToSidebarPorts(message) {
   let sentCount = 0;
+  let errorCount = 0;
+  let evictedCount = 0;
 
-  for (const [portId, portInfo] of portRegistry.entries()) {
+  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
+  const portEntries = [...portRegistry.entries()];
+
+  for (const [portId, portInfo] of portEntries) {
     // Only send to sidebar ports (not content script ports)
     if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
       continue;
     }
 
-    try {
-      portInfo.port.postMessage(message);
+    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
+    const result = _sendPortMessageWithTracking(portId, message);
+    if (result.success) {
       sentCount++;
       console.log('[Background] PORT_MESSAGE_SENT:', {
         portId,
@@ -9365,9 +9753,21 @@ function _broadcastToSidebarPorts(message) {
         messageId: message.messageId,
         quickTabId: message.quickTabId
       });
-    } catch (err) {
-      console.warn('[Background] Failed to send to port:', { portId, error: err.message });
+      continue;
     }
+    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
+    errorCount++;
+    evictedCount += result.evicted ? 1 : 0;
+  }
+
+  // v1.6.3.8-v5 - Issue #3: Log errors and evictions if any
+  if (errorCount > 0) {
+    console.log('[Background] SIDEBAR_BROADCAST_ERRORS:', {
+      errorCount,
+      evictedCount,
+      sentCount,
+      messageType: message.type
+    });
   }
 
   return sentCount;
