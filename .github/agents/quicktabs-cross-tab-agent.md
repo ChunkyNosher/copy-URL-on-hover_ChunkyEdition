@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v3), Background Relay, ACK-based messaging, WriteBuffer batching,
-  BFCache lifecycle, sequence rejection, storage listener verification, tier hysteresis
+  (v1.6.3.8-v4), initializationBarrier Promise, port-based hydration, visibility
+  change listener, proactive dedup cleanup, sidebar modules
 tools: ['*']
 ---
 
@@ -38,41 +38,41 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v4 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v3 Features (NEW):**
+**v1.6.3.8-v4 Features (NEW) - 9 Critical Sync Fixes:**
 
-- **Storage listener verification** - Test key write/read with 1000ms timeout
-- **Tier status hysteresis** - 3+ BC messages in 5s window before activation
-- **Concurrent probe guard** - `probeInProgress` flag prevents overlapping health probes
-- **Map memory cleanup** - `HOST_INFO_MAP_CLEARED` on window unload
-- **Fallback session stats** - `FALLBACK_SESSION_STARTED/ENDED` with message counts
+- **Issue #5:** `initializationBarrier` Promise - All async tasks complete before listeners
+- **Issue #4:** Exponential backoff retry for storage verification (1s, 2s, 4s)
+- **Issue #1:** Sequential hydration barrier - blocks render until all tiers verified
+- **Issue #2:** Listener registration guard for port message queue
+- **Issue #3:** `document.visibilitychange` listener + 15s state freshness check
+- **Issue #6:** `_hydrateStateFromBackground()` - Port-based hydration before storage
+- **Issue #7:** Proactive dedup cleanup at 50%, sliding window eviction at 95%
+- **Issue #8:** Probe queuing with 500ms min interval, 1000ms force-reset
+- **Issue #9:** `_queueMessageDuringInit()` - Message queuing until barrier resolves
 
-**v1.6.3.8-v2 Features (Retained):**
+**New Sidebar Modules (`sidebar/modules/`):**
 
-- **Background Relay pattern** - Sidebar messages bypass BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
-- **SIDEBAR_READY handshake** - Protocol before routing messages
-- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
-- **Port registry snapshots** - 60s interval with active/idle/zombie counts
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+| Module              | Purpose                                        |
+| ------------------- | ---------------------------------------------- |
+| `init-barrier.js`   | Initialization barrier, CONNECTION_STATE       |
+| `state-sync.js`     | Port/storage sync, SaveId dedup, sequence IDs  |
+| `diagnostics.js`    | Logging utilities, correlation IDs             |
+| `health-metrics.js` | Storage/fallback health, dedup map monitoring  |
 
-**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
-storage validation, dedup decision logging, BC fallback detection.
+**v1.6.3.8-v2/v3 Features (Retained):** Background Relay, ACK-based messaging,
+SIDEBAR_READY handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots,
+storage listener verification, tier hysteresis.
 
-**v1.6.3.7-v11-v12 Features (Retained):** Promise barrier, LRU dedup (1000),
-correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTICS.
+**Key Functions (v1.6.3.8-v4):**
 
-**Key Functions (v1.6.3.8-v2):**
-
-| Function                   | Location       | Purpose                         |
-| -------------------------- | -------------- | ------------------------------- |
-| `sendRequestWithTimeout()` | message-utils  | ACK-based messaging (v8-v2)     |
-| `flushWriteBuffer()`       | storage-utils  | WriteBuffer batch flush (v8-v2) |
-| `waitForInitialization()`  | QuickTabHandler| 10s init barrier (v8)           |
-| `scheduleRender(source)`   | Manager        | Unified render entry point      |
+| Function                        | Location          | Purpose                         |
+| ------------------------------- | ----------------- | ------------------------------- |
+| `initializationBarrier`         | init-barrier.js   | Promise blocking all async init |
+| `_hydrateStateFromBackground()` | manager           | Port-based hydration            |
+| `sendRequestWithTimeout()`      | message-utils     | ACK-based messaging             |
+| `flushWriteBuffer()`            | storage-utils     | WriteBuffer batch flush         |
 
 **Storage Format:**
 
@@ -89,17 +89,18 @@ correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTICS.
 
 ## Testing Requirements
 
+- [ ] initializationBarrier Promise resolves correctly (v1.6.3.8-v4)
+- [ ] Port-based hydration works (`_hydrateStateFromBackground`) (v1.6.3.8-v4)
+- [ ] Visibility change listener triggers state refresh (v1.6.3.8-v4)
+- [ ] Proactive dedup cleanup at 50% capacity (v1.6.3.8-v4)
 - [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
 - [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
 - [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
-- [ ] Sequence rejection works (STORAGE_SEQUENCE_REJECTED) (v1.6.3.8-v2)
-- [ ] BFCache lifecycle events work (v1.6.3.8-v2)
-- [ ] Initialization barriers work (10s/2s) (v1.6.3.8)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.8-v2 Background Relay,
-ACK-based messaging, WriteBuffer batching, sequence rejection.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v4 initializationBarrier,
+port-based hydration, visibility change listener, proactive dedup cleanup.**

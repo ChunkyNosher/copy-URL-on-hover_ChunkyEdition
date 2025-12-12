@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v3  
+**Version:** 1.6.3.8-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -22,47 +22,30 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v3 Features (NEW):**
+**v1.6.3.8-v4 Features (NEW) - 9 Critical Sync Fixes:**
 
-- **Storage listener verification** - `STORAGE_LISTENER_VERIFIED` with test key write/read pattern
-- **Tier status hysteresis** - 3+ BC messages in 5s window before activation (prevents flapping)
-- **Map memory cleanup** - `HOST_INFO_MAP_CLEARED` on window unload
-- **Fallback session stats** - `FALLBACK_SESSION_STARTED/ENDED` with message counts
-- **Tier 3 disable on failure** - Storage listener failure disables Tier 3 fallback
-- **BC confidence levels** - `_calculateBCConfidence()` returns high/medium/low based on message frequency
-- **Concurrent probe guard** - `probeInProgress` flag prevents overlapping health probes (Issue #17)
+- **Issue #5:** Promise-based initialization barrier with 10s timeout
+- **Issue #4:** Exponential backoff retry for storage listener verification (1s, 2s, 4s)
+- **Issue #1:** Sequential barrier blocking for hydration race fix
+- **Issue #2:** Listener registration guard for port message queue
+- **Issue #3:** Visibility change listener + periodic state refresh (15s)
+- **Issue #6:** Port-based hydration before storage fallback
+- **Issue #7:** Proactive dedup cleanup at 50%, sliding window eviction at 95%
+- **Issue #8:** Probe queuing with min interval (500ms) and force-reset (1s)
+- **Issue #9:** Enforcing initialization guard with message queuing
+- **New sidebar modules:** `sidebar/modules/` (init-barrier, state-sync, diagnostics, health-metrics)
 
-**v1.6.3.8-v2 Features (Retained):**
+**v1.6.3.8-v3 Features (Retained):** Storage listener verification, tier hysteresis,
+BC confidence levels, concurrent probe guard.
 
-- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` utility for reliable delivery
-- **SIDEBAR_READY handshake** - Protocol before routing messages to sidebar
-- **BFCache lifecycle events** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE`
-- **Port registry snapshots** - Every 60s with active/idle/zombie counts
-- **Port eviction logging** - `PORT_EVICTED` with reason codes
-- **Circuit breaker for ACKs** - `PORT_CIRCUIT_BREAKER_TRIGGERED` when pending > 50
-- **Storage sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
-- **Write latency logging** - `STORAGE_WRITE_LATENCY`, `STORAGE_BACKPRESSURE_DETECTED`
-- **WriteBuffer pattern** - 75ms batching to prevent IndexedDB deadlocks
-- **Version-based conflict resolution** - `STATE_CONFLICT_DETECTED` logging
-- **Message queuing** - `INIT_MESSAGE_QUEUED/REPLAY` until READY signal
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
-- **New file:** `src/utils/message-utils.js` - ACK-based messaging utilities
+**v1.6.3.8-v2 Features (Retained):** Background Relay, ACK-based messaging,
+SIDEBAR_READY handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
 
-**v1.6.3.8 Features (Retained):**
+**v1.6.3.8 Features (Retained):** Init barriers (10s/2s), storage validation,
+dedup logging. Code Health: background.js (9.09), QuickTabHandler.js (9.41).
 
-- Initialization barriers (QuickTabHandler 10s, currentTabId 2s backoff)
-- Centralized storage validation with re-write + verify
-- Dedup decision logging, BC fallback detection, keepalive health reports
-- Code Health: background.js (9.09), QuickTabHandler.js (9.41)
-
-**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
-listener barrier, LRU eviction (1000 entries), correlation ID echo, state
-machine timeout watchers (7s), port registry thresholds.
-
-**Legacy Features (v1-v10):** Storage watchdog, BC gap detection, IndexedDB
-checksum, unified keepalive (20s), sequence tracking, port message queue,
-heartbeat hysteresis, circuit breaker probing, Single Writer Authority.
+**Legacy Features:** DEBUG_DIAGNOSTICS, LRU eviction (1000), state machine
+timeouts (7s), circuit breaker probing, Single Writer Authority.
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, BroadcastChannelManager, QuickTabGroupManager,
@@ -94,21 +77,21 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.8-v2: Communication & Storage Layer (NEW)
+### v1.6.3.8-v4: Sidebar Sync Fixes (NEW)
 
-- **Background Relay pattern** - `BC_SIDEBAR_RELAY_ACTIVE` bypasses BC origin isolation
-- **ACK-based messaging** - `MESSAGE_ACK_RECEIVED`, `SIDEBAR_MESSAGE_DELIVERED`
-- **SIDEBAR_READY handshake** - Protocol ensures sidebar is ready before messages
-- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
-- **Port registry snapshots** - 60s interval with active/idle/zombie counts
-- **Port eviction** - `PORT_EVICTED` with reason codes
-- **ACK circuit breaker** - `PORT_CIRCUIT_BREAKER_TRIGGERED` when pending > 50
-- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
-- **Write latency** - `STORAGE_WRITE_LATENCY`, `STORAGE_BACKPRESSURE_DETECTED`
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Conflict resolution** - `STATE_CONFLICT_DETECTED` version-based logging
-- **Message queuing** - `INIT_MESSAGE_QUEUED/REPLAY` until READY
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED`
+- **initializationBarrier Promise** - All async tasks complete before listeners
+- **`_hydrateStateFromBackground()`** - Port-based hydration before storage
+- **`document.visibilitychange`** - State refresh when sidebar becomes visible
+- **`_scheduleStateFreshnessCheck()`** - 15s periodic freshness check
+- **`sendPortMessageWithTimeout()`** - Listener registration guard
+- **Proactive dedup cleanup** - 50% threshold with sliding window at 95%
+- **Probe queuing** - `_queueProbe()` with min interval (500ms) and force-reset
+
+### v1.6.3.8-v2/v3: Communication Layer (Retained)
+
+- Background Relay, ACK-based messaging, SIDEBAR_READY handshake
+- BFCache lifecycle, port snapshots (60s), WriteBuffer (75ms)
+- Storage listener verification, tier hysteresis, BC confidence
 
 ### v1.6.3.8: Initialization & Diagnostics (Retained)
 
@@ -164,82 +147,64 @@ reconciliation.
 
 ---
 
-## 🆕 v1.6.3.8-v3 Patterns
+## 🆕 v1.6.3.8-v4 Patterns
 
-- **Storage listener verification** - Test key write/read with 1000ms timeout before enabling Tier 3
-- **Tier status hysteresis** - `BC_MESSAGES_REQUIRED_FOR_ACTIVE = 3`, `BC_CONSECUTIVE_WINDOW_MS = 5000`
-- **Map cleanup on unload** - `quickTabHostInfo.clear()` prevents memory leaks
-- **Fallback stats reset** - `_resetFallbackStats()` clears counters at session start
-- **BC confidence scoring** - high (5+ msgs), medium (3-4 msgs), low (<3 msgs) in 5s window
-- **Concurrent probe guard** - `storageHealthStats.probeInProgress` prevents overlapping health probes
+- **initializationBarrier Promise** - Single barrier blocking ALL async init
+- **Storage verification retry** - Exponential backoff [1s, 2s, 4s]
+- **Port-based hydration** - `_hydrateStateFromBackground()` before storage
+- **Visibility change listener** - `document.visibilitychange` → state refresh
+- **State freshness check** - 15s periodic via `_scheduleStateFreshnessCheck()`
+- **Listener registration guard** - `sendPortMessageWithTimeout()` with queue
+- **Proactive dedup cleanup** - 50% threshold, sliding window eviction at 95%
+- **Probe queuing** - Min interval 500ms, force-reset 1000ms
+- **Pre-init message queue** - `_queueMessageDuringInit()` with replay
+
+### New Sidebar Modules (`sidebar/modules/`)
+
+| Module              | Purpose                                        |
+| ------------------- | ---------------------------------------------- |
+| `init-barrier.js`   | Initialization barrier logic, CONNECTION_STATE |
+| `state-sync.js`     | Port/storage sync, SaveId dedup, sequence IDs  |
+| `diagnostics.js`    | Logging utilities, correlation IDs             |
+| `health-metrics.js` | Storage/fallback health, dedup map monitoring  |
+| `index.js`          | Re-exports for convenient importing            |
+
+## v1.6.3.8-v3 Patterns (Retained)
+
+- Storage listener verification, tier hysteresis, BC confidence scoring
+- Concurrent probe guard, map cleanup on unload, fallback stats reset
 
 ## v1.6.3.8-v2 Patterns (Retained)
 
-- **Background Relay** - Sidebar messages routed through background for BC isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` with configurable timeout
-- **SIDEBAR_READY handshake** - Sidebar sends READY signal before receiving messages
-- **BFCache lifecycle events** - pageshow/pagehide with persisted flag detection
-- **Port registry snapshots** - 60s interval logging with zombie detection
-- **Port eviction** - `PORT_EVICTED: reason=timeout|zombie|limit` codes
-- **ACK circuit breaker** - Triggers at 50 pending ACKs to prevent memory bloat
-- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED: expected=X, got=Y`
-- **Write latency tracking** - `STORAGE_WRITE_LATENCY: Xms` with backpressure detection
-- **WriteBuffer batching** - 75ms window to batch writes, prevents IndexedDB deadlocks
-- **Version-based conflicts** - `STATE_CONFLICT_DETECTED: local=X, remote=Y`
-- **Message queuing** - Queues messages during init, replays after READY
-- **Handler timeout** - 5000ms max with `HANDLER_TIMEOUT` if exceeded
+- Background Relay, ACK-based messaging, SIDEBAR_READY handshake
+- BFCache lifecycle, port snapshots (60s), WriteBuffer (75ms)
 
 ## v1.6.3.8 Patterns (Retained)
 
-- **Initialization barriers** - QuickTabHandler (10s timeout), currentTabId (2s
-  exponential backoff)
-- **Storage validation** - Centralized type-specific recovery with re-write +
-  verify
-- **Dedup decision logging** - `DEDUP_DECISION` with saveId, decision, reason
-- **BC fallback detection** - `SIDEBAR_BC_UNAVAILABLE` activates storage polling
-- **Fallback health monitoring** - 30s interval with message count and latency
-- **Storage tier probing** - `BC_VERIFICATION_STARTED/SUCCESS/FAILED` with
-  timeout
-- **BFCache events** - pageshow/pagehide for browser back/forward navigation
-- **Keepalive health reports** - 60s interval with success/failure rate
-- **Port activity logging** - `PORT_ACTIVITY` with lastMessageTime tracking
+- Init barriers (10s/2s), storage validation, dedup logging, BC fallback
+- Keepalive health reports (60s), port activity logging
 
-## v1.6.3.7-v11-v12 Patterns (Retained)
+## Prior Patterns (v1-v12)
 
-- DEBUG_DIAGNOSTICS flag, Promise-based barrier, LRU eviction (1000)
-- Correlation ID echo, state machine timeouts (7s), port registry thresholds
+- DEBUG_DIAGNOSTICS, LRU eviction (1000), state machine timeouts (7s)
+- Circuit breaker probing (500ms), storage watchdog, unified keepalive (20s)
 
-## Prior Version Patterns (v1-v10)
-
-- **v10:** Storage watchdog (2s), BC gap detection, IndexedDB checksum, port
-  reordering
-- **v9:** Unified keepalive (20s), sequence tracking, storage integrity, port
-  age
-- **v8:** Port message queue, atomic reconnection, heartbeat hysteresis
-- **v7:** BC from background, full state sync, operation confirmations
-- **v6:** Channel logging (`[BC]`, `[PORT]`, `[STORAGE]`)
-- **v5:** Connection states (connected→zombie→disconnected)
-- **v4:** Circuit breaker probing (500ms)
-- **v3:** storage.session, BroadcastChannel, browser.alarms, DOM reconciliation
-
-### Key Timing Constants
+### Key Timing Constants (v1.6.3.8-v4)
 
 | Constant                              | Value | Purpose                              |
 | ------------------------------------- | ----- | ------------------------------------ |
-| `STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS` | 1000 | Storage listener test timeout (v8-v3) |
-| `BC_MESSAGES_REQUIRED_FOR_ACTIVE`     | 3     | Hysteresis threshold (v8-v3)         |
-| `BC_CONSECUTIVE_WINDOW_MS`            | 5000  | Hysteresis time window (v8-v3)       |
-| `TIER1_INACTIVE_THRESHOLD_MS`         | 15000 | BC inactive threshold (v8-v3)        |
+| `INIT_BARRIER_TIMEOUT_MS`             | 10000 | Initialization barrier timeout (v8-v4) |
+| `STORAGE_VERIFICATION_RETRY_MS`       | [1s,2s,4s] | Exponential backoff (v8-v4)      |
+| `VISIBILITY_REFRESH_INTERVAL_MS`      | 15000 | State freshness check (v8-v4)        |
+| `DEDUP_CLEANUP_THRESHOLD`             | 0.5   | Proactive cleanup at 50% (v8-v4)     |
+| `DEDUP_EVICTION_THRESHOLD`            | 0.95  | Sliding window eviction (v8-v4)      |
+| `PROBE_MIN_INTERVAL_MS`               | 500   | Min probe interval (v8-v4)           |
+| `PROBE_FORCE_RESET_MS`                | 1000  | Force-reset stuck probe (v8-v4)      |
 | `HANDLER_TIMEOUT_MS`                  | 5000  | Handler execution timeout (v8-v2)    |
 | `WRITE_BUFFER_FLUSH_MS`               | 75    | WriteBuffer batch window (v8-v2)     |
-| `PORT_REGISTRY_SNAPSHOT_INTERVAL_MS`  | 60000 | Port registry snapshots (v8-v2)      |
-| `ACK_CIRCUIT_BREAKER_THRESHOLD`       | 50    | Pending ACK limit (v8-v2)            |
-| `INIT_BARRIER_TIMEOUT_MS`             | 10000 | QuickTabHandler init barrier (v8)    |
-| `CURRENTTABID_BARRIER_TIMEOUT_MS`     | 2000  | currentTabId detection (v8)          |
 | `STATE_MACHINE_TIMEOUT_MS`            | 7000  | Auto-recovery timeout (v11)          |
 | `DEDUP_MAP_MAX_SIZE`                  | 1000  | LRU eviction threshold (v11)         |
 | `KEEPALIVE_INTERVAL_MS`               | 20000 | Unified keepalive (v9)               |
-| `PORT_MAX_AGE_MS`                     | 90000 | Port registry max age (v9)           |
 
 ---
 
@@ -268,12 +233,10 @@ reconciliation.
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v2:** Background Relay,
-ACK-based messaging, SIDEBAR_READY handshake, WriteBuffer batching, sequence
-rejection, port snapshots, **v1.6.3.8-v3:** storage listener verification, tier
-hysteresis, BC confidence scoring, **v1.6.3.8:** init barriers, centralized validation,
-dedup logging, BC fallback, **v1.6.3.7-v11-v12:** DEBUG_DIAGNOSTICS, promise
-barrier, LRU eviction, **v1.6.3.7-v4:** circuit breaker.
+Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v4:** initializationBarrier
+Promise, port-based hydration, visibility change listener, proactive dedup cleanup,
+probe queuing, **v1.6.3.8-v2/v3:** Background Relay, WriteBuffer, tier hysteresis,
+**v1.6.3.7-v11-v12:** DEBUG_DIAGNOSTICS, LRU eviction.
 
 ---
 
@@ -328,15 +291,13 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 | File                         | Features                                                             |
 | ---------------------------- | -------------------------------------------------------------------- |
-| `background.js`              | Background Relay (v8-v2), port snapshots (v8-v2), init barrier (v8)  |
-| `quick-tabs-manager.js`      | Storage listener verification (v8-v3), SIDEBAR_READY (v8-v2)         |
+| `quick-tabs-manager.js`      | 9 sync fixes (v8-v4), initializationBarrier, port hydration          |
+| `sidebar/modules/index.js`   | Re-exports init-barrier, state-sync, diagnostics, health-metrics     |
+| `background.js`              | Background Relay (v8-v2), port snapshots, init barrier               |
 | `QuickTabHandler.js`         | Handler timeout (v8-v2), init barrier (v8), Code Health 9.41         |
-| `index.js` (quick-tabs)      | BFCache lifecycle (v8-v2), currentTabId barrier (v8)                 |
-| `message-utils.js`           | ACK-based messaging (v8-v2), sendRequestWithTimeout() ⭐ NEW          |
-| `BroadcastChannelManager.js` | BC relay fallback (v8-v2), verification (v8)                         |
-| `storage-handlers.js`        | Tier hysteresis (v8-v3), BC confidence (v8-v3), tier status (v8)     |
-| `storage-utils.js`           | WriteBuffer (v8-v2), sequence rejection (v8-v2), validation (v8)     |
-| `TabStateManager.js`         | Per-tab state (sessions API, v3)                                     |
+| `message-utils.js`           | ACK-based messaging (v8-v2), sendRequestWithTimeout()                |
+| `BroadcastChannelManager.js` | BC relay fallback (v8-v2), verification                              |
+| `storage-utils.js`           | WriteBuffer (v8-v2), sequence rejection, validation                  |
 
 ### Storage
 
