@@ -1,7 +1,8 @@
 // Background script handles injecting content script into all tabs
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
-// Also handles webRequest to remove X-Frame-Options for Quick Tabs
+// Also handles webRequest/declarativeNetRequest to remove X-Frame-Options for Quick Tabs
+// v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
@@ -4237,14 +4238,176 @@ const stateCoordinator = new StateCoordinator();
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
-// Firefox Manifest V3 - Supports blocking webRequest
-// This allows Quick Tabs to load any website, bypassing clickjacking protection
+// v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
+// Firefox Manifest V2 currently supports blocking webRequest, but Mozilla may enforce MV3-only
+// in the future. This implementation provides future-proofing with declarativeNetRequest support.
 // Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
 // which normally prevent websites from being embedded in iframes. This makes
 // the extension potentially vulnerable to clickjacking attacks if a malicious
 // website tricks the user into clicking on a Quick Tab overlay. Use with caution.
 
-console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
+console.log('[Quick Tabs] Initializing X-Frame-Options bypass...');
+
+// ==================== v1.6.3.8-v5 DECLARATIVENETREQUEST FEATURE DETECTION ====================
+// Issue 5: Feature detection for MV3 compatibility
+
+/**
+ * Check if declarativeNetRequest API is available
+ * v1.6.3.8-v5 - Issue 5: Feature detection for MV3 future-proofing
+ * @returns {boolean} True if declarativeNetRequest API is available
+ */
+function isDeclarativeNetRequestAvailable() {
+  return (
+    typeof browser !== 'undefined' &&
+    typeof browser.declarativeNetRequest !== 'undefined' &&
+    typeof browser.declarativeNetRequest.updateSessionRules === 'function'
+  );
+}
+
+/**
+ * Track which API mode is being used for header modification
+ * v1.6.3.8-v5 - Issue 5: Logged at startup for diagnostics
+ * @type {'declarativeNetRequest' | 'webRequest' | 'none'}
+ */
+let headerModificationApiMode = 'none';
+
+/**
+ * Rule IDs for declarativeNetRequest session rules
+ * v1.6.3.8-v5 - Issue 5: Unique IDs for each header rule
+ */
+const DNR_RULE_IDS = {
+  REMOVE_X_FRAME_OPTIONS: 1,
+  REMOVE_CSP: 2,
+  REMOVE_CORP: 3
+};
+
+/**
+ * Array of our rule IDs for cleanup operations
+ * v1.6.3.8-v5 - Issue 5: Pre-computed to avoid repeated Object.values() calls
+ */
+const DNR_OUR_RULE_IDS = Object.values(DNR_RULE_IDS);
+
+/**
+ * Initialize declarativeNetRequest rules for iframe header modification
+ * v1.6.3.8-v5 - Issue 5: Uses session rules (cleared on browser restart)
+ * @returns {Promise<boolean>} True if initialization succeeded
+ */
+async function initializeDeclarativeNetRequest() {
+  if (!isDeclarativeNetRequestAvailable()) {
+    // v1.6.3.8-v5 - Issue 5: API not available, let caller handle fallback
+    return false;
+  }
+
+  console.log('[Quick Tabs] Attempting to initialize declarativeNetRequest rules...');
+
+  try {
+    // Define session rules to modify response headers for sub_frame requests
+    const rules = [
+      {
+        id: DNR_RULE_IDS.REMOVE_X_FRAME_OPTIONS,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          responseHeaders: [
+            {
+              header: 'X-Frame-Options',
+              operation: 'remove'
+            }
+          ]
+        },
+        condition: {
+          resourceTypes: ['sub_frame']
+        }
+      },
+      {
+        id: DNR_RULE_IDS.REMOVE_CSP,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          responseHeaders: [
+            {
+              header: 'Content-Security-Policy',
+              operation: 'remove'
+            }
+          ]
+        },
+        condition: {
+          resourceTypes: ['sub_frame']
+        }
+      },
+      {
+        id: DNR_RULE_IDS.REMOVE_CORP,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          responseHeaders: [
+            {
+              header: 'Cross-Origin-Resource-Policy',
+              operation: 'remove'
+            }
+          ]
+        },
+        condition: {
+          resourceTypes: ['sub_frame']
+        }
+      }
+    ];
+
+    // v1.6.3.8-v5 - Only remove our own rules to avoid interfering with other extensions
+    // Use pre-computed DNR_OUR_RULE_IDS rather than clearing all existing rules
+
+    await browser.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: DNR_OUR_RULE_IDS,
+      addRules: rules
+    });
+
+    // Verify rules were added
+    const addedRules = await browser.declarativeNetRequest.getSessionRules();
+    console.log('[Quick Tabs] declarativeNetRequest session rules registered:', {
+      ruleCount: addedRules.length,
+      ruleIds: addedRules.map(r => r.id)
+    });
+
+    headerModificationApiMode = 'declarativeNetRequest';
+    return true;
+  } catch (err) {
+    console.error('[Quick Tabs] Failed to initialize declarativeNetRequest:', {
+      error: err.message,
+      name: err.name
+    });
+    return false;
+  }
+}
+
+/**
+ * Initialize header modification using either declarativeNetRequest or webRequest
+ * v1.6.3.8-v5 - Issue 5: Feature detection with fallback
+ */
+async function initializeHeaderModification() {
+  // Try declarativeNetRequest first (MV3 future-proofing)
+  const dnrSuccess = await initializeDeclarativeNetRequest();
+
+  if (dnrSuccess) {
+    console.log('[Quick Tabs] WEBREQUEST_API_MODE: declarativeNetRequest');
+    console.log('[Quick Tabs] ✓ Using declarativeNetRequest for header modification (MV3-ready)');
+    return;
+  }
+
+  // Fall back to webRequest (current MV2 implementation)
+  // v1.6.3.8-v5 - Log why fallback is being used
+  console.log('[Quick Tabs] declarativeNetRequest not available, using webRequest fallback');
+  headerModificationApiMode = 'webRequest';
+  console.log('[Quick Tabs] WEBREQUEST_API_MODE: webRequest');
+  console.log('[Quick Tabs] ✓ Using webRequest for header modification (MV2 fallback)');
+  initializeWebRequestHeaderModification();
+}
+
+/**
+ * Initialize webRequest-based header modification (fallback)
+ * v1.6.3.8-v5 - Issue 5: Wrapped in function for conditional initialization
+ */
+function initializeWebRequestHeaderModification() {
+  console.log('[Quick Tabs] Initializing webRequest header modification...');
 
 // Track modified URLs for debugging
 const modifiedUrls = new Set();
@@ -4406,7 +4569,16 @@ browser.webRequest.onErrorOccurred.addListener(
   }
 );
 
-console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
+console.log('[Quick Tabs] ✓ webRequest header modification installed');
+} // End initializeWebRequestHeaderModification()
+
+// ==================== HEADER MODIFICATION INITIALIZATION ====================
+// v1.6.3.8-v5 - Issue 5: Initialize header modification with feature detection
+// Call the async initialization function - fallback is handled within initializeHeaderModification()
+initializeHeaderModification().catch(err => {
+  // Only log error - fallback is already handled in initializeHeaderModification()
+  console.error('[Quick Tabs] Header modification initialization error:', err?.message || String(err));
+});
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
