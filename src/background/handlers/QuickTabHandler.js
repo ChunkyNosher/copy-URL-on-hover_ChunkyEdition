@@ -50,6 +50,14 @@ export class QuickTabHandler {
   // v1.6.3.8-v2 - Issue #3: Track highest processed sequence ID for rejection
   static _highestProcessedSequenceId = 0;
 
+  // v1.6.3.8-v5 - FIX Issue #1: Monotonic revision counter for storage event ordering
+  // Initialized to Date.now() to ensure uniqueness across browser restarts
+  // Each storage write increments this counter - listeners reject updates with revision ≤ their last
+  static _revisionCounter = Date.now();
+
+  // v1.6.3.8-v5 - FIX Issue #1: Track highest processed revision for rejection
+  static _highestProcessedRevision = 0;
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;
@@ -95,6 +103,60 @@ export class QuickTabHandler {
   static _getNextSequenceId() {
     QuickTabHandler._sequenceId++;
     return QuickTabHandler._sequenceId;
+  }
+
+  /**
+   * Get the next revision number for storage writes
+   * v1.6.3.8-v5 - FIX Issue #1: Monotonic revision counter for storage event ordering
+   * Each state snapshot includes this revision number. Listeners reject any update
+   * with revision ≤ their _lastAppliedRevision.
+   * @returns {number} Next revision number
+   */
+  static _getNextRevision() {
+    QuickTabHandler._revisionCounter++;
+    return QuickTabHandler._revisionCounter;
+  }
+
+  /**
+   * Check if incoming revision should be rejected (out-of-order)
+   * v1.6.3.8-v5 - FIX Issue #1: Reject updates with revision ≤ current highest
+   * @param {number} incomingRevision - Revision from incoming update
+   * @param {Object} context - Optional context for logging
+   * @returns {boolean} True if update should be rejected
+   */
+  static shouldRejectRevision(incomingRevision, context = {}) {
+    if (typeof incomingRevision !== 'number') {
+      // No revision - allow for backwards compatibility
+      return false;
+    }
+
+    const shouldReject = incomingRevision <= QuickTabHandler._highestProcessedRevision;
+
+    if (shouldReject && DEBUG_DIAGNOSTICS) {
+      console.warn('[QuickTabHandler] REVISION_REJECTED:', {
+        incomingRevision,
+        highestProcessedRevision: QuickTabHandler._highestProcessedRevision,
+        reason:
+          incomingRevision === QuickTabHandler._highestProcessedRevision
+            ? 'Duplicate revision'
+            : 'Out-of-order event (older revision arrived late)',
+        ...context,
+        timestamp: Date.now()
+      });
+    }
+
+    return shouldReject;
+  }
+
+  /**
+   * Update the highest processed revision
+   * v1.6.3.8-v5 - FIX Issue #1: Call after successfully processing an update
+   * @param {number} revision - Revision just processed
+   */
+  static updateHighestProcessedRevision(revision) {
+    if (typeof revision === 'number' && revision > QuickTabHandler._highestProcessedRevision) {
+      QuickTabHandler._highestProcessedRevision = revision;
+    }
   }
 
   /**
@@ -990,6 +1052,7 @@ export class QuickTabHandler {
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+   * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -999,12 +1062,15 @@ export class QuickTabHandler {
 
     // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
     const sequenceId = QuickTabHandler._getNextSequenceId();
+    // v1.6.3.8-v5 - FIX Issue #1: Get revision for monotonic versioning
+    const revision = QuickTabHandler._getNextRevision();
 
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
       saveId: generatedSaveId,
       sequenceId,
+      revision,
       timestamp: Date.now(),
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
@@ -1160,6 +1226,7 @@ export class QuickTabHandler {
    * Perform actual storage write with latency tracking
    * v1.6.3.8-v2 - FIX Issue #5: Log STORAGE_WRITE_LATENCY and STORAGE_BACKPRESSURE_DETECTED
    * v1.6.3.8-v2 - FIX Issue #3: Track highest processed sequenceId
+   * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
    * @private
    */
   async _performStorageWrite(tabs, batchedOperations = 1) {
@@ -1172,6 +1239,8 @@ export class QuickTabHandler {
 
     // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
     const sequenceId = QuickTabHandler._getNextSequenceId();
+    // v1.6.3.8-v5 - FIX Issue #1: Get revision for monotonic versioning
+    const revision = QuickTabHandler._getNextRevision();
 
     // v1.6.3.7-v9 - FIX Issue #8: Generate saveId for validation
     const saveId = `${saveTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
@@ -1185,6 +1254,7 @@ export class QuickTabHandler {
       writeSourceId,
       saveId,
       sequenceId,
+      revision,
       tabCount,
       batchedOperations, // v1.6.3.8-v2 - Issue #8: Log how many operations were batched
       pendingWrites: this._pendingWritesCount,
@@ -1196,6 +1266,7 @@ export class QuickTabHandler {
       tabs: tabs,
       saveId, // v1.6.3.7-v9 - FIX Issue #8: Add saveId for validation
       sequenceId,
+      revision,
       timestamp: saveTimestamp,
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
@@ -1550,9 +1621,14 @@ export class QuickTabHandler {
 
     // v1.6.3.7-v12 - FIX Code Review: Use slice() instead of deprecated substr()
     const recoverySaveId = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    // v1.6.3.8-v5 - FIX Issue #1: Add sequenceId and revision for monotonic versioning
+    const recoverySequenceId = QuickTabHandler._getNextSequenceId();
+    const recoveryRevision = QuickTabHandler._getNextRevision();
     const recoveryState = {
       ...expectedState,
       saveId: recoverySaveId,
+      sequenceId: recoverySequenceId,
+      revision: recoveryRevision,
       recoveredFrom: failureType,
       recoveryTimestamp: Date.now()
     };

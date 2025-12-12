@@ -139,6 +139,39 @@ function _getNextStorageSequenceId() {
   return storageWriteSequenceId;
 }
 
+// ==================== v1.6.3.8-v5 MONOTONIC REVISION VERSIONING ====================
+// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
+// IndexedDB delivers storage.onChanged events in arbitrary order. Revision numbers
+// provide a definitive ordering mechanism that listeners can use to reject stale updates.
+
+/**
+ * Global revision counter for storage writes
+ * v1.6.3.8-v5 - FIX Issue #1: Monotonic counter that NEVER resets during session
+ * Initialized to Date.now() to ensure uniqueness across browser restarts
+ */
+let _globalRevisionCounter = Date.now();
+
+/**
+ * Get the next revision number for storage writes
+ * v1.6.3.8-v5 - FIX Issue #1: Always incrementing, never resets
+ * Each state snapshot includes this revision number. Listeners reject any update
+ * with revision ≤ their _lastAppliedRevision.
+ * @returns {number} Next revision number
+ */
+function _getNextRevision() {
+  _globalRevisionCounter++;
+  return _globalRevisionCounter;
+}
+
+/**
+ * Get current revision without incrementing (for diagnostic purposes)
+ * v1.6.3.8-v5 - FIX Issue #1: Used for logging/debugging
+ * @returns {number} Current revision number
+ */
+function _getCurrentRevision() {
+  return _globalRevisionCounter;
+}
+
 // v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
 // Also track consecutive 0-tab reads to require confirmation before clearing
 let lastNonEmptyStateTimestamp = Date.now();
@@ -1094,13 +1127,16 @@ async function cleanupOrphanedQuickTabs() {
 
     // Save to storage
     // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+    // v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
     const saveId = `cleanup-${Date.now()}`;
     const sequenceId = _getNextStorageSequenceId();
+    const revision = _getNextRevision();
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId,
         sequenceId,
+        revision,
         timestamp: Date.now()
       }
     });
@@ -2390,6 +2426,7 @@ function _generateRecoverySaveId(type) {
 /**
  * Build recovery state from intended state
  * v1.6.3.7-v14 - FIX Duplication: Extracted common pattern
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  */
 function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
@@ -2397,6 +2434,7 @@ function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
     ...intendedState,
     saveId: recoverySaveId,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     recoveredFrom: failureType,
     recoveryTimestamp: Date.now()
   };
@@ -2794,6 +2832,7 @@ function _handleEmptyBackup(operationId, backup, intendedState) {
  * Write recovered state to local storage
  * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
  * v1.6.3.7-v13 - Issue #2: Use centralized write validation
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  */
 async function _writeRecoveredState(operationId, backup) {
@@ -2801,6 +2840,7 @@ async function _writeRecoveredState(operationId, backup) {
     tabs: backup.tabs,
     saveId: `recovered-${operationId}`,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     timestamp: Date.now(),
     recoveredFrom: 'sync-backup'
   };
@@ -3780,12 +3820,14 @@ async function tryLoadFromSyncStorage() {
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  *
  * @returns {Promise<void>}
  */
 async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
 
   try {
     await browser.storage.local.set({
@@ -3793,6 +3835,7 @@ async function saveMigratedToUnifiedFormat() {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
         sequenceId,
+        revision,
         timestamp: Date.now()
       }
     });
@@ -3881,6 +3924,7 @@ function migrateTabFromPinToSoloMute(quickTab) {
  * v1.6.2.2 - Updated for unified format
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * v1.6.3.7-v13 - Issue #2: Use centralized write validation
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  *
  * @returns {Promise<void>}
  */
@@ -3891,6 +3935,7 @@ async function saveMigratedQuickTabState() {
     tabs: globalQuickTabState.tabs,
     saveId: `migration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     timestamp: Date.now()
   };
 
@@ -4576,10 +4621,12 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
   }
 
   // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+  // v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
     saveId: `cleanup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sequenceId: _getNextStorageSequenceId(),
+    revision: _getNextRevision(),
     timestamp: Date.now()
   };
 
@@ -8246,11 +8293,12 @@ function _buildAdoptionError({ quickTabId, targetTabId, corrId, reason, extraInf
  * Perform adoption storage write
  * v1.6.4.14 - FIX Large Method: Extracted from handleAdoptAction
  * v1.6.3.7-v13 - Issue #2: Add write validation
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  * @param {Object} state - Current state with tabs array
  * @param {string} quickTabId - Quick Tab being adopted
  * @param {number} targetTabId - Target tab adopting the Quick Tab
- * @returns {Promise<{saveId: string, sequenceId: number, validated: boolean, recovered: boolean}>}
+ * @returns {Promise<{saveId: string, sequenceId: number, revision: number, validated: boolean, recovered: boolean}>}
  *          - validated: true if write was verified successfully
  *          - recovered: true if validation failed but recovery succeeded
  *          - Caller should check `validated || recovered` to determine if state is consistent
@@ -8258,11 +8306,13 @@ function _buildAdoptionError({ quickTabId, targetTabId, corrId, reason, extraInf
 async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
 
   const stateToWrite = {
     tabs: state.tabs,
     saveId,
     sequenceId,
+    revision,
     timestamp: Date.now(),
     writingTabId: targetTabId,
     writingInstanceId: `background-adopt-${Date.now()}`
@@ -8280,7 +8330,7 @@ async function _performAdoptionStorageWrite(state, quickTabId, targetTabId) {
     });
   }
 
-  return { saveId, sequenceId, validated: result.success, recovered: result.recovered };
+  return { saveId, sequenceId, revision, validated: result.success, recovered: result.recovered };
 }
 
 /**
@@ -8379,16 +8429,19 @@ async function handleAdoptAction(payload) {
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
  * v1.6.3.7-v7 - FIX Issue #6: Add BroadcastChannel confirmation after successful write
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
   const saveId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
 
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
     sequenceId,
+    revision,
     timestamp: Date.now()
   };
 
@@ -8413,6 +8466,7 @@ async function writeStateWithVerification() {
       console.log('[Background] Storage write verified:', {
         saveId,
         sequenceId,
+        revision,
         tabCount: stateToWrite.tabs.length
       });
 
@@ -8420,7 +8474,7 @@ async function writeStateWithVerification() {
       _broadcastStorageWriteConfirmation(stateToWrite, saveId);
     }
 
-    return { success: verified, saveId, sequenceId, verified };
+    return { success: verified, saveId, sequenceId, revision, verified };
   } catch (err) {
     console.error('[Background] Storage write error:', err.message);
     return { success: false, error: err.message };
@@ -9088,6 +9142,7 @@ function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stat
  * Attempt a single storage write with verification
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -9097,10 +9152,12 @@ function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stat
  */
 async function _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs) {
   const sequenceId = _getNextStorageSequenceId();
+  const revision = _getNextRevision();
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
     sequenceId,
+    revision,
     timestamp: Date.now()
   };
 
@@ -9110,6 +9167,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
       operation,
       saveId,
       sequenceId,
+      revision,
       tabCount: stateToWrite.tabs.length,
       attempt
     });

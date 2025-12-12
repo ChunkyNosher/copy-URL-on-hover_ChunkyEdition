@@ -2,6 +2,18 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.8-v5 - FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
+ *   - NEW: Monotonic revision versioning for storage event ordering
+ *   - NEW: _lastAppliedRevision tracking - listeners reject revision ≤ current
+ *   - NEW: _revisionEventBuffer for out-of-order event handling
+ *   - NEW: _validateRevision() - validates incoming revision numbers
+ *   - NEW: _bufferRevisionEvent() - buffers out-of-order events
+ *   - NEW: _processBufferedRevisionEvents() - applies buffered events in order
+ *   - NEW: _cleanupRevisionBuffer() - periodic cleanup of stale events
+ *   - NEW: REVISION_BUFFER_MAX_AGE_MS (5s) - max age for buffered events
+ *   - NEW: REVISION_BUFFER_MAX_SIZE (50) - max buffer size before cleanup
+ *   - ARCHITECTURE: Revision validation runs after sequence ID validation
+ *
  * v1.6.3.8-v4 - FIX 9 Critical Issues from quick-tabs-sync-critical.md:
  *   - FIX Issue #5: Initialization barrier Promise - ALL async tasks must complete before listeners process messages
  *   - FIX Issue #4: Storage listener verification with exponential backoff retry (1s, 2s, 4s)
@@ -708,6 +720,49 @@ async function _awaitInitBarrier() {
  * v1.6.3.7-v9 - FIX Issue #6: Events with sequenceId <= lastAppliedSequenceId are rejected
  */
 let lastAppliedSequenceId = 0;
+
+// ==================== v1.6.3.8-v5 MONOTONIC REVISION VERSIONING ====================
+// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
+// IndexedDB delivers storage.onChanged events in arbitrary order. Revision numbers
+// provide a definitive ordering mechanism - listeners reject updates with revision ≤ current.
+
+/**
+ * Last applied revision number
+ * v1.6.3.8-v5 - FIX Issue #1: Monotonic revision counter for storage event ordering
+ * All updates with revision ≤ _lastAppliedRevision are rejected as stale
+ */
+let _lastAppliedRevision = 0;
+
+/**
+ * Event buffer for out-of-order handling
+ * v1.6.3.8-v5 - FIX Issue #1: Buffer events keyed by revision when they arrive out of order
+ * Structure: Map<revision, { data, timestamp }>
+ */
+const _revisionEventBuffer = new Map();
+
+/**
+ * Maximum age for buffered events (5 seconds)
+ * v1.6.3.8-v5 - FIX Issue #1: Events older than this are discarded
+ */
+const REVISION_BUFFER_MAX_AGE_MS = 5000;
+
+/**
+ * Maximum buffer size before cleanup
+ * v1.6.3.8-v5 - FIX Issue #1: Prevent memory bloat from stuck events
+ */
+const REVISION_BUFFER_MAX_SIZE = 50;
+
+/**
+ * Interval for buffer cleanup (10 seconds)
+ * v1.6.3.8-v5 - FIX Issue #1: Periodic cleanup of stale buffered events
+ */
+const REVISION_BUFFER_CLEANUP_INTERVAL_MS = 10000;
+
+/**
+ * Timer ID for revision buffer cleanup
+ * v1.6.3.8-v5 - FIX Issue #1: Track cleanup interval
+ */
+let _revisionBufferCleanupTimerId = null;
 
 /**
  * Watchdog timer ID for storage.onChanged verification
@@ -6546,10 +6601,14 @@ async function _checkStateFreshness() {
 /**
  * Start periodic background tasks
  * v1.6.4.17 - Extracted from DOMContentLoaded
+ * v1.6.3.8-v5 - FIX Issue #1: Start revision buffer cleanup
  * @private
  */
 function _startPeriodicTasks() {
   _startHostInfoCleanupInterval();
+  
+  // v1.6.3.8-v5 - FIX Issue #1: Start revision buffer cleanup interval
+  _startRevisionBufferCleanup();
 
   setInterval(async () => {
     await loadQuickTabsState();
@@ -6602,6 +6661,9 @@ window.addEventListener('unload', () => {
   
   // v1.6.3.8-v4 - FIX Issue #3: Remove visibility change listener
   document.removeEventListener('visibilitychange', _handleVisibilityChange);
+
+  // v1.6.3.8-v5 - FIX Issue #1: Stop revision buffer cleanup interval
+  _stopRevisionBufferCleanup();
 
   // v1.6.3.8-v3 - FIX Issue #19: Clear quickTabHostInfo map to prevent memory leak
   const hostInfoEntriesBefore = quickTabHostInfo.size;
@@ -8921,6 +8983,7 @@ function setupTabSwitchListener() {
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.3.7-v6 - Gap #2 & Issue #7: Enhanced deduplication logging with channel source
  * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId validation for event ordering
+ * v1.6.3.8-v5 - FIX Issue #1: Added revision validation for monotonic ordering
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
@@ -8940,11 +9003,26 @@ function _handleStorageChange(change) {
 
   // v1.6.3.7-v9 - FIX Issue #6: Validate sequence ID to ensure correct event ordering
   if (!_validateSequenceId(context)) {
-    return; // Event is out of order, reject it
+    return; // Event is out of order (sequence ID), reject it
+  }
+
+  // v1.6.3.8-v5 - FIX Issue #1: Validate revision for monotonic ordering
+  const revisionResult = _validateRevision(context);
+  if (!revisionResult.valid) {
+    return; // Stale revision, reject it
+  }
+
+  // v1.6.3.8-v5 - FIX Issue #1: If gap detected, buffer the event and return
+  if (revisionResult.shouldBuffer) {
+    _bufferRevisionEvent(context.newValue.revision, context.newValue);
+    return; // Wait for missing events
   }
 
   // v1.6.3.7-v6 - Gap #2: Special case - if oldValue was empty and newValue has tabs
   if (_handleEmptyToPopulatedTransition(context)) {
+    // v1.6.3.8-v5 - FIX Issue #1: Process any buffered events after this one
+    const bufferedEvents = _processBufferedRevisionEvents();
+    _applyBufferedEvents(bufferedEvents);
     return;
   }
 
@@ -8955,6 +9033,41 @@ function _handleStorageChange(change) {
   }
 
   _processStorageChangeAnalysis(context);
+
+  // v1.6.3.8-v5 - FIX Issue #1: Process any buffered events after this one
+  const bufferedEvents = _processBufferedRevisionEvents();
+  _applyBufferedEvents(bufferedEvents);
+}
+
+/**
+ * Apply buffered events after processing the current event
+ * v1.6.3.8-v5 - FIX Issue #1: Process events that were buffered due to gaps
+ * @private
+ * @param {Array} bufferedEvents - Array of { revision, data } objects
+ */
+function _applyBufferedEvents(bufferedEvents) {
+  if (!bufferedEvents || bufferedEvents.length === 0) {
+    return;
+  }
+
+  const now = Date.now();
+  console.log('[Manager] APPLYING_BUFFERED_EVENTS:', {
+    count: bufferedEvents.length,
+    revisions: bufferedEvents.map(e => e.revision),
+    timestamp: now
+  });
+
+  for (const event of bufferedEvents) {
+    // Create a mock context for the buffered event
+    const context = _buildStorageChangeContext({
+      oldValue: quickTabsState, // Use current state as "old"
+      newValue: event.data
+    });
+
+    // Skip validation since we already did it when buffering
+    // Process the change directly
+    _processStorageChangeAnalysis(context);
+  }
 }
 
 /**
@@ -9006,6 +9119,229 @@ function _validateSequenceId(context) {
   return true;
 }
 
+// ==================== v1.6.3.8-v5 REVISION VALIDATION FUNCTIONS ====================
+// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
+
+/**
+ * Validate incoming revision number
+ * v1.6.3.8-v5 - FIX Issue #1: Reject stale updates with revision ≤ _lastAppliedRevision
+ * @private
+ * @param {Object} context - Storage change context containing newValue
+ * @returns {Object} { valid: boolean, shouldBuffer: boolean, reason: string }
+ */
+function _validateRevision(context) {
+  const newRevision = context.newValue?.revision;
+  const now = Date.now();
+
+  // If no revision, allow for backward compatibility
+  if (newRevision === undefined || newRevision === null) {
+    console.log('[Manager] REVISION_VALIDATION: No revision present, processing (backward compat)', {
+      saveId: context.newValue?.saveId,
+      sequenceId: context.newValue?.sequenceId,
+      timestamp: now
+    });
+    return { valid: true, shouldBuffer: false, reason: 'no_revision_backward_compat' };
+  }
+
+  // Check if this revision is stale (already processed or older)
+  if (newRevision <= _lastAppliedRevision) {
+    console.warn('[Manager] REVISION_REJECTED: Stale revision detected', {
+      incomingRevision: newRevision,
+      lastAppliedRevision: _lastAppliedRevision,
+      saveId: context.newValue?.saveId,
+      reason: newRevision === _lastAppliedRevision ? 'duplicate' : 'out_of_order',
+      timestamp: now
+    });
+    return { valid: false, shouldBuffer: false, reason: 'stale_revision' };
+  }
+
+  // Check if this revision is next in sequence
+  const expectedRevision = _lastAppliedRevision + 1;
+  if (newRevision > expectedRevision) {
+    // Gap detected - this event arrived out of order
+    // Buffer it and wait for the missing events
+    console.log('[Manager] REVISION_GAP_DETECTED: Buffering out-of-order event', {
+      incomingRevision: newRevision,
+      expectedRevision,
+      lastAppliedRevision: _lastAppliedRevision,
+      gapSize: newRevision - expectedRevision,
+      saveId: context.newValue?.saveId,
+      bufferSize: _revisionEventBuffer.size,
+      timestamp: now
+    });
+    return { valid: true, shouldBuffer: true, reason: 'gap_detected' };
+  }
+
+  // Valid revision - accept and update tracking
+  const previousRevision = _lastAppliedRevision;
+  _lastAppliedRevision = newRevision;
+
+  console.log('[Manager] REVISION_ACCEPTED:', {
+    previousRevision,
+    newRevision,
+    saveId: context.newValue?.saveId,
+    timestamp: now
+  });
+
+  return { valid: true, shouldBuffer: false, reason: 'valid_sequential' };
+}
+
+/**
+ * Buffer an out-of-order event for later processing
+ * v1.6.3.8-v5 - FIX Issue #1: Store events that arrive ahead of their expected order
+ * @private
+ * @param {number} revision - Revision number of the event
+ * @param {Object} data - Event data to buffer
+ */
+function _bufferRevisionEvent(revision, data) {
+  const now = Date.now();
+
+  // Check buffer size and cleanup if needed
+  if (_revisionEventBuffer.size >= REVISION_BUFFER_MAX_SIZE) {
+    _cleanupRevisionBuffer(true); // Force cleanup
+  }
+
+  _revisionEventBuffer.set(revision, {
+    data,
+    timestamp: now
+  });
+
+  console.log('[Manager] REVISION_EVENT_BUFFERED:', {
+    revision,
+    saveId: data?.saveId,
+    bufferSize: _revisionEventBuffer.size,
+    timestamp: now
+  });
+}
+
+/**
+ * Process buffered events in order after receiving expected revision
+ * v1.6.3.8-v5 - FIX Issue #1: Apply buffered events once gaps are filled
+ * @private
+ * @returns {Array} Array of processed events
+ */
+function _processBufferedRevisionEvents() {
+  const processed = [];
+  const now = Date.now();
+
+  // Process buffered events in order starting from current lastAppliedRevision + 1
+  let nextExpected = _lastAppliedRevision + 1;
+
+  while (_revisionEventBuffer.has(nextExpected)) {
+    const buffered = _revisionEventBuffer.get(nextExpected);
+    _revisionEventBuffer.delete(nextExpected);
+
+    // Skip if event is too old
+    if (now - buffered.timestamp > REVISION_BUFFER_MAX_AGE_MS) {
+      console.warn('[Manager] REVISION_BUFFER_EVENT_EXPIRED:', {
+        revision: nextExpected,
+        ageMs: now - buffered.timestamp,
+        maxAgeMs: REVISION_BUFFER_MAX_AGE_MS,
+        timestamp: now
+      });
+      nextExpected++;
+      continue;
+    }
+
+    _lastAppliedRevision = nextExpected;
+    processed.push({
+      revision: nextExpected,
+      data: buffered.data
+    });
+
+    console.log('[Manager] REVISION_BUFFER_EVENT_APPLIED:', {
+      revision: nextExpected,
+      saveId: buffered.data?.saveId,
+      ageMs: now - buffered.timestamp,
+      remainingBufferSize: _revisionEventBuffer.size,
+      timestamp: now
+    });
+
+    nextExpected++;
+  }
+
+  if (processed.length > 0) {
+    console.log('[Manager] REVISION_BUFFER_FLUSH_COMPLETE:', {
+      eventsProcessed: processed.length,
+      newLastAppliedRevision: _lastAppliedRevision,
+      remainingBufferSize: _revisionEventBuffer.size,
+      timestamp: now
+    });
+  }
+
+  return processed;
+}
+
+/**
+ * Clean up stale entries from the revision buffer
+ * v1.6.3.8-v5 - FIX Issue #1: Periodic cleanup of expired buffered events
+ * @private
+ * @param {boolean} force - Force cleanup regardless of age
+ */
+function _cleanupRevisionBuffer(force = false) {
+  const now = Date.now();
+  const initialSize = _revisionEventBuffer.size;
+  let removedCount = 0;
+
+  for (const [revision, buffered] of _revisionEventBuffer.entries()) {
+    const age = now - buffered.timestamp;
+    if (force || age > REVISION_BUFFER_MAX_AGE_MS) {
+      _revisionEventBuffer.delete(revision);
+      removedCount++;
+      console.log('[Manager] REVISION_BUFFER_CLEANUP: Removed stale event', {
+        revision,
+        ageMs: age,
+        reason: force ? 'forced_cleanup' : 'expired',
+        timestamp: now
+      });
+    }
+  }
+
+  if (removedCount > 0) {
+    console.log('[Manager] REVISION_BUFFER_CLEANUP_COMPLETE:', {
+      initialSize,
+      removedCount,
+      finalSize: _revisionEventBuffer.size,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Start the revision buffer cleanup interval
+ * v1.6.3.8-v5 - FIX Issue #1: Periodic cleanup to prevent memory bloat
+ * @private
+ */
+function _startRevisionBufferCleanup() {
+  if (_revisionBufferCleanupTimerId) {
+    clearInterval(_revisionBufferCleanupTimerId);
+  }
+
+  _revisionBufferCleanupTimerId = setInterval(() => {
+    _cleanupRevisionBuffer(false);
+  }, REVISION_BUFFER_CLEANUP_INTERVAL_MS);
+
+  console.log('[Manager] REVISION_BUFFER_CLEANUP_STARTED:', {
+    intervalMs: REVISION_BUFFER_CLEANUP_INTERVAL_MS,
+    maxAgeMs: REVISION_BUFFER_MAX_AGE_MS,
+    maxBufferSize: REVISION_BUFFER_MAX_SIZE,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop the revision buffer cleanup interval
+ * v1.6.3.8-v5 - FIX Issue #1: Cleanup on unload
+ * @private
+ */
+function _stopRevisionBufferCleanup() {
+  if (_revisionBufferCleanupTimerId) {
+    clearInterval(_revisionBufferCleanupTimerId);
+    _revisionBufferCleanupTimerId = null;
+    console.log('[Manager] REVISION_BUFFER_CLEANUP_STOPPED');
+  }
+}
+
 /**
  * Cancel the storage watchdog timer
  * v1.6.3.7-v9 - FIX Issue #6: Helper function for watchdog management
@@ -9021,6 +9357,7 @@ function _cancelStorageWatchdog() {
 /**
  * Apply state from watchdog recovery
  * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
+ * v1.6.3.8-v5 - FIX Issue #1: Also update revision tracking
  * @private
  * @param {Object} currentState - State from storage
  * @param {string} expectedSaveId - Expected save ID
@@ -9030,6 +9367,10 @@ function _applyWatchdogRecoveryState(currentState, expectedSaveId) {
   _updateInMemoryCache(currentState.tabs);
   if (currentState.sequenceId) {
     lastAppliedSequenceId = currentState.sequenceId;
+  }
+  // v1.6.3.8-v5 - FIX Issue #1: Also update revision tracking
+  if (currentState.revision) {
+    _lastAppliedRevision = currentState.revision;
   }
   scheduleRender('storage-watchdog-recovery', expectedSaveId);
 }
