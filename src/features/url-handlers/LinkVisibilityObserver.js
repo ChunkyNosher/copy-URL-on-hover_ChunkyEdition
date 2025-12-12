@@ -68,8 +68,7 @@ function _logVisibilityOperation(operation, details = {}) {
  */
 function _isIntersectionObserverAvailable() {
   return (
-    typeof IntersectionObserver !== 'undefined' &&
-    typeof IntersectionObserverEntry !== 'undefined'
+    typeof IntersectionObserver !== 'undefined' && typeof IntersectionObserverEntry !== 'undefined'
   );
 }
 

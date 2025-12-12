@@ -1,18 +1,25 @@
 # Quick Tabs: Complete Logic Flow and API Integration Timeline
 
-**Extension Version:** v1.6.3.7-v3 | **Date:** 2025-12-09 | **Focus:** End-to-end Quick Tab creation flow with all API integration points
+**Extension Version:** v1.6.3.7-v3 | **Date:** 2025-12-09 | **Focus:**
+End-to-end Quick Tab creation flow with all API integration points
 
 ---
 
 ## Overview: Multi-Process Architecture
 
-The Quick Tabs feature operates across three separate execution contexts that must coordinate:
+The Quick Tabs feature operates across three separate execution contexts that
+must coordinate:
 
-1. **Content Script** (`src/content.js`) - Runs on every browser tab, handles user actions
-2. **Background Script** (`src/background/`) - Shared across all tabs, handles persistence and cross-tab messaging
-3. **QuickTabsManager** (`src/features/quick-tabs/index.js`) - Facade coordinating all components
+1. **Content Script** (`src/content.js`) - Runs on every browser tab, handles
+   user actions
+2. **Background Script** (`src/background/`) - Shared across all tabs, handles
+   persistence and cross-tab messaging
+3. **QuickTabsManager** (`src/features/quick-tabs/index.js`) - Facade
+   coordinating all components
 
-Each context has different lifecycle, API access, and responsibilities. Quick Tab creation requires **11 distinct stages** across these contexts before user sees result.
+Each context has different lifecycle, API access, and responsibilities. Quick
+Tab creation requires **11 distinct stages** across these contexts before user
+sees result.
 
 ---
 
@@ -21,6 +28,7 @@ Each context has different lifecycle, API access, and responsibilities. Quick Ta
 **File:** `src/content.js`, lines 1056-1150 (`handleCreateQuickTab`)  
 **Triggered:** User hovers link and presses configured keyboard shortcut  
 **APIs Used:**
+
 - `eventBus.emit()` (internal event bus)
 - `browser.tabs.getCurrent()` (UNAVAILABLE - not accessible in content script)
 - `browser.runtime.sendMessage()` (cross-context messaging)
@@ -39,16 +47,22 @@ Each context has different lifecycle, API access, and responsibilities. Quick Ta
 
 ### Key Detail: Tab ID Problem
 
-Content scripts **cannot access** `browser.tabs.getCurrent()`. The Quick Tab ID **MUST** include the current tab ID for cross-tab isolation (pattern: `qt-{tabId}-...`). But how does content script know its own tab ID?
+Content scripts **cannot access** `browser.tabs.getCurrent()`. The Quick Tab ID
+**MUST** include the current tab ID for cross-tab isolation (pattern:
+`qt-{tabId}-...`). But how does content script know its own tab ID?
 
 **Solution (v1.6.3.5-v10):**
+
 1. Content script sends `GET_CURRENT_TAB_ID` message to background
 2. Background receives message with `sender.tab.id` and responds
 3. Content script stores `currentTabId` globally before initializing Quick Tabs
-4. Passes `currentTabId` as option to `initQuickTabs(eventBus, Events, { currentTabId })`
+4. Passes `currentTabId` as option to
+   `initQuickTabs(eventBus, Events, { currentTabId })`
 
 **Code Location:**
-- `src/content.js` lines 740-763: `getCurrentTabIdFromBackground()` fetches and caches tab ID
+
+- `src/content.js` lines 740-763: `getCurrentTabIdFromBackground()` fetches and
+  caches tab ID
 - `src/content.js` line 827: Passes `currentTabId` to `initQuickTabs()`
 
 ---
@@ -58,6 +72,7 @@ Content scripts **cannot access** `browser.tabs.getCurrent()`. The Quick Tab ID 
 **File:** `src/features/quick-tabs/index.js` (QuickTabsManager.init method)  
 **Called From:** Content script initialization  
 **APIs Used:**
+
 - EventEmitter (internal, for component communication)
 - `browser.runtime.sendMessage()` (for container detection)
 - `browser.storage.local.get()` (for state hydration)
@@ -65,19 +80,23 @@ Content scripts **cannot access** `browser.tabs.getCurrent()`. The Quick Tab ID 
 ### Seven Sequential Initialization Steps
 
 **STEP 1: Detect Context** (lines 1186-1208)
+
 - Detects Firefox container (Multi-Account Containers extension)
 - Sets `this.cookieStoreId` to container ID or 'firefox-default'
 - Detects or uses pre-fetched `currentTabId`
 
 **APIs:**
+
 - `browser.runtime.sendMessage()` → `GET_CONTAINER_CONTEXT` action to background
 
 **STEP 2: Initialize Managers** (lines 1209-1229)
+
 - Create StateManager (tracks state changes)
 - Create EventManager (coordinates events between components)
 - Create MemoryGuard (monitors memory usage, prevents crashes)
 
 **STEP 3: Initialize Handlers** (lines 1230-1248)
+
 - Create CreateHandler (handles Quick Tab creation)
 - Create UpdateHandler (handles position/size changes)
 - Create VisibilityHandler (handles minimize/restore/solo/mute)
@@ -86,18 +105,22 @@ Content scripts **cannot access** `browser.tabs.getCurrent()`. The Quick Tab ID 
 **APIs:** (None at this stage - all component initialization)
 
 **STEP 4: Initialize Coordinators** (lines 1249-1269)
+
 - Create UICoordinator (manages DOM rendering and updates)
 - Wire handlers to coordinator for callback routing
 
 **STEP 5: Setup Components** (lines 1270-1290)
+
 - Attach storage listeners (CreateHandler.init())
 - Initialize UICoordinator rendering
 - Setup event bridges between internal and external buses
 
 **APIs:**
+
 - `browser.storage.onChanged` listener (triggered when storage updates)
 
 **STEP 6: Hydrate State From Storage** (lines 1291-1363)
+
 - **Critical Stage:** Restores Quick Tabs from previous session
 - Reads `storage.local[STATE_KEY]` to get stored Quick Tab list
 - Filters by `originTabId` to prevent cross-tab contamination
@@ -105,18 +128,22 @@ Content scripts **cannot access** `browser.tabs.getCurrent()`. The Quick Tab ID 
 - Emits `state:hydrated` event to update sidebar
 
 **APIs:**
+
 - `browser.storage.local.get(STATE_KEY)` (read stored state)
 - Cross-tab scope validation (prevents ghost tabs)
 
 **STEP 7: Expose Manager** (lines 1364-1376)
+
 - Store manager reference globally as `window.quickTabsManager`
 - Ready for public API calls
 
 ### Critical Detail: Cross-Tab Isolation During Hydration
 
-**File:** `src/features/quick-tabs/index.js`, lines 1402-1515 (`_checkTabScopeWithReason`)
+**File:** `src/features/quick-tabs/index.js`, lines 1402-1515
+(`_checkTabScopeWithReason`)
 
 When hydrating stored Quick Tabs from previous session:
+
 1. Check stored tab's `originTabId` field
 2. Compare against manager's `currentTabId`
 3. Only render tab if `originTabId === currentTabId`
@@ -124,13 +151,15 @@ When hydrating stored Quick Tabs from previous session:
 5. If extraction succeeds and matches current tab, patch `originTabId` in-place
 6. Reject tabs from other browser tabs (prevent cross-tab ghost tabs)
 
-**Purpose:** Prevents a Quick Tab created in Tab A from appearing in Tab B when browser reloads.
+**Purpose:** Prevents a Quick Tab created in Tab A from appearing in Tab B when
+browser reloads.
 
 ---
 
 ## Stage 3: First Quick Tab Creation (Content Script → Manager)
 
-**File:** `src/content.js`, lines 1056-1167 (`handleCreateQuickTab` and `createQuickTabLocally`)  
+**File:** `src/content.js`, lines 1056-1167 (`handleCreateQuickTab` and
+`createQuickTabLocally`)  
 **Entry Point:** User presses keyboard shortcut while hovering link
 
 ### Phase 3A: Build Quick Tab Data
@@ -152,13 +181,15 @@ const quickTabData = buildQuickTabData({
 ```
 
 **Outputs:**
+
 - `quickTabId`: Unique identifier (e.g., `qt-42-1733826372421-a1b2c3d4`)
 - `saveId`: Correlation ID for tracking persistence (different from quickTabId)
 - `quickTabData`: Full Quick Tab configuration object
 
 ### Phase 3B: Create Locally in Content Script
 
-**File:** `src/features/quick-tabs/index.js`, lines 1693-1768 (`createQuickTab` method)
+**File:** `src/features/quick-tabs/index.js`, lines 1693-1768 (`createQuickTab`
+method)
 
 ```
 1. Call this.createHandler.create(optionsWithCallbacks)
@@ -169,9 +200,11 @@ const quickTabData = buildQuickTabData({
 ```
 
 **APIs Used:**
+
 - EventEmitter.emit() (internal component communication)
 
 **Inside CreateHandler.create():**
+
 - Create QuickTabWindow instance (DOM element)
 - Attach all UI event listeners (drag, resize, close, minimize, etc.)
 - Emit `state:created` event to UICoordinator
@@ -194,9 +227,11 @@ await sendMessageToBackground({
 ```
 
 **APIs:**
+
 - `browser.runtime.sendMessage()` (cross-context messaging to background script)
 
 **Message Format:**
+
 ```
 {
   action: 'CREATE_QUICK_TAB',
@@ -220,6 +255,7 @@ await sendMessageToBackground({
 **File:** `src/background/handlers/CreateHandler.js`  
 **Entry Point:** Message dispatched by background message router  
 **APIs Used:**
+
 - `browser.storage.local.set()` (persist to browser storage)
 - `browser.runtime.sendMessage()` (broadcast to all tabs)
 - BroadcastChannel (cross-tab messaging, currently NOT WIRED - Issue #2)
@@ -227,6 +263,7 @@ await sendMessageToBackground({
 ### Phase 4A: Validate and Store State
 
 Inside CreateHandler.handle():
+
 1. Validate message has required fields
 2. Apply default values (cookieStoreId, minimized=false, etc.)
 3. Create DomainTab model (internal representation)
@@ -237,14 +274,17 @@ Inside CreateHandler.handle():
 ### Phase 4B: Persist to Storage
 
 **Critical APIs:**
+
 - `browser.storage.local.set({ 'quick-tabs-state': { tabs: [...] } })`
 
 This persists the Quick Tab so it survives:
+
 - Page reload
 - Browser restart
 - Tab close and re-open
 
 **Storage Structure:**
+
 ```javascript
 {
   'quick-tabs-state': {
@@ -273,6 +313,7 @@ This persists the Quick Tab so it survives:
 **Current State:** CreateHandler has code to broadcast but never sends
 
 **What SHOULD happen:**
+
 ```javascript
 // Pseudo-code - currently missing
 const channel = new BroadcastChannel('quick-tabs-updates');
@@ -283,9 +324,11 @@ channel.postMessage({
 });
 ```
 
-**Purpose:** Notify all other tabs' sidebars that new Quick Tab was created, so they can update their UI if needed.
+**Purpose:** Notify all other tabs' sidebars that new Quick Tab was created, so
+they can update their UI if needed.
 
-**Current Workaround:** Sidebar polls storage every 2 seconds (Issue #7 - too slow)
+**Current Workaround:** Sidebar polls storage every 2 seconds (Issue #7 - too
+slow)
 
 ---
 
@@ -294,11 +337,13 @@ channel.postMessage({
 **File:** Multiple locations (UICoordinator, CreateHandler)  
 **Triggered:** After background writes to storage  
 **APIs Used:**
+
 - `browser.storage.onChanged` listener (browser API)
 
 ### What Gets Triggered
 
 In every tab with Quick Tabs:
+
 ```javascript
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes['quick-tabs-state']) {
@@ -309,9 +354,11 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 });
 ```
 
-**Problem:** This listener fires in background script context, which might be dead (Firefox kills background after 30 seconds - Issue #1)
+**Problem:** This listener fires in background script context, which might be
+dead (Firefox kills background after 30 seconds - Issue #1)
 
-**Result:** Storage listener fires but message never reaches sidebar (no port connection available)
+**Result:** Storage listener fires but message never reaches sidebar (no port
+connection available)
 
 ---
 
@@ -320,6 +367,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 **File:** Content scripts listening for storage changes  
 **Triggered:** Storage updated by background  
 **APIs Used:**
+
 - `browser.storage.onChanged` (browser API)
 
 ### What Happens
@@ -339,12 +387,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Path A: Port Connection (Intended but Currently Broken - Issue #3)
 
 **Expected Flow:**
+
 1. Background sends STATE_UPDATE through established port
 2. Sidebar's `port.onMessage` handler fires
 3. Handler updates internal state
 4. Calls `renderUI()` to update DOM
 
 **Current Reality:**
+
 - Background doesn't send through port
 - Handler never receives STATE_UPDATE
 - Port connection dies every 30 seconds anyway (Firefox timeout - Issue #1)
@@ -354,11 +404,13 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Path B: BroadcastChannel (Designed But Sender Never Implemented - Issue #2)
 
 **Expected Flow:**
+
 1. Background sends message to `'quick-tabs-updates'` BroadcastChannel
 2. Sidebar's `channel.onmessage` handler fires
 3. Updates state and renders
 
 **Current Reality:**
+
 - Sidebar listener is registered and waiting
 - Background never calls `channel.postMessage()`
 - Listener receives nothing
@@ -368,11 +420,13 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Path C: runtime.sendMessage (Currently Working But Dies With Background - Issue #3)
 
 **Working Flow:**
+
 1. Background sends message via `browser.runtime.sendMessage()`
 2. Sidebar's `browser.runtime.onMessage` handler fires
 3. Updates state and renders
 
 **Problem:**
+
 - Dies when background script is terminated (every 30 seconds - Issue #1)
 - Two-second latency possible during polling interval
 
@@ -381,12 +435,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Path D: Storage Polling (Slowest Fallback - Issue #7)
 
 **Current Flow:**
+
 1. Sidebar polls `browser.storage.local` every 2 seconds
 2. Reads stored Quick Tab list
 3. Debounces updates (50ms debounce at 2000ms interval - ineffective)
 4. Renders UI
 
 **Problem:**
+
 - 2-second latency unacceptable for rapid operations
 - User creates tab, sees nothing for 2 seconds, assumes broken
 - Debounce logic doesn't help at this timescale
@@ -400,6 +456,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 **File:** `sidebar/quick-tabs-manager.js`  
 **Triggered:** Via one of four paths above  
 **APIs Used:**
+
 - DOM manipulation (update sidebar HTML)
 - CSS animations (show/hide Quick Tab entry)
 
@@ -417,13 +474,15 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 ### Issue #4: Duplicate Renders
 
 **Problem:** Multiple listeners might fire for same update:
+
 - Port message received
 - RuntimeMessage received (same update)
 - BroadcastChannel message (same update)
 - Storage poll reads same state
 - **Result:** renderUI() called 4 times for 1 update
 
-**Current Behavior:** No deduplication, DOM remounts multiple times, visual flicker
+**Current Behavior:** No deduplication, DOM remounts multiple times, visual
+flicker
 
 ---
 
@@ -432,12 +491,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 **File:** `src/features/quick-tabs/coordinators/UICoordinator.js`  
 **Triggered:** State change detected  
 **APIs Used:**
+
 - DOM manipulation APIs
 - Browser CSS and layout APIs
 
 ### What Gets Rendered
 
 Sidebar HTML structure for each Quick Tab:
+
 ```html
 <div class="quick-tab" data-quick-tab-id="qt-42-...">
   <div class="quick-tab-header">
@@ -451,6 +512,7 @@ Sidebar HTML structure for each Quick Tab:
 ### UI Event Wiring
 
 Each rendered Quick Tab gets listeners for:
+
 - Click (focus/bring to front)
 - Close button (triggers DestroyHandler)
 - Minimize button (triggers VisibilityHandler)
@@ -466,6 +528,7 @@ Each rendered Quick Tab gets listeners for:
 **File:** `src/features/quick-tabs/window.js` (QuickTabWindow class)  
 **Entry Point:** Called from UICoordinator during rendering  
 **APIs Used:**
+
 - `document.createElement('iframe')`
 - `element.style.*` (CSS properties)
 - DOM event listeners
@@ -494,6 +557,7 @@ Each rendered Quick Tab gets listeners for:
 **File:** `sidebar/quick-tabs-manager.js` lines 733-835  
 **Triggered:** After sidebar updates state  
 **APIs Used:**
+
 - `runtime.connect()` port messaging
 - Heartbeat mechanism every 25 seconds
 
@@ -508,8 +572,9 @@ Each rendered Quick Tab gets listeners for:
 ### Current Problems
 
 **Issue #1:** Firefox terminates background after 30 seconds regardless of port
-**Issue #3:** State updates sent via separate runtime.sendMessage, not through port
-**Issue #8:** Circuit breaker blocks reconnection for 10 seconds after 5 failures
+**Issue #3:** State updates sent via separate runtime.sendMessage, not through
+port **Issue #8:** Circuit breaker blocks reconnection for 10 seconds after 5
+failures
 
 ### Heartbeat Timing
 
@@ -533,14 +598,14 @@ T+60s:  Sidebar connects via port again
 
 At each stage, QuickTabsManager emits events for component coordination:
 
-| Event | File | When | Data |
-|-------|------|------|------|
-| `state:created` | CreateHandler | Quick Tab created (before render) | `{ quickTab: {...} }` |
-| `state:added` | UICoordinator | Quick Tab added to DOM | `{ quickTab: {...} }` |
-| `state:updated` | UpdateHandler | Position/size changed | `{ quickTabId, changes: {...} }` |
-| `state:deleted` | DestroyHandler | Quick Tab destroyed | `{ quickTabId }` |
-| `state:hydrated` | QuickTabsManager | Restored from storage on startup | `{ count: number }` |
-| `QUICK_TAB_REQUESTED` | Content script | User requested Quick Tab creation | `{ url, element }` |
+| Event                 | File             | When                              | Data                             |
+| --------------------- | ---------------- | --------------------------------- | -------------------------------- |
+| `state:created`       | CreateHandler    | Quick Tab created (before render) | `{ quickTab: {...} }`            |
+| `state:added`         | UICoordinator    | Quick Tab added to DOM            | `{ quickTab: {...} }`            |
+| `state:updated`       | UpdateHandler    | Position/size changed             | `{ quickTabId, changes: {...} }` |
+| `state:deleted`       | DestroyHandler   | Quick Tab destroyed               | `{ quickTabId }`                 |
+| `state:hydrated`      | QuickTabsManager | Restored from storage on startup  | `{ count: number }`              |
+| `QUICK_TAB_REQUESTED` | Content script   | User requested Quick Tab creation | `{ url, element }`               |
 
 ---
 
@@ -575,11 +640,11 @@ At each stage, QuickTabsManager emits events for component coordination:
     }
     // ... more Quick Tabs
   ],
-  
+
   // Tracking fields
   saveId: '1733826372421-xyz',             // Correlation ID for this save
   transactionId: 'uuid-string',            // Transaction ID for integrity checking
-  
+
   // Metadata
   timestamp: 1733826372421,                // When state was saved
   version: 1                               // State schema version
@@ -590,21 +655,21 @@ At each stage, QuickTabsManager emits events for component coordination:
 
 ## API Reference: Browser APIs Used
 
-| API | Used By | Purpose | When Available |
-|-----|---------|---------|-----------------|
-| `browser.tabs.getCurrent()` | Background only | Identify current tab ID | Background context only |
-| `browser.tabs.query()` | Background | Find tabs by criteria | Background context only |
-| `browser.tabs.create()` | Background | Open new browser tab | Background context only |
-| `browser.runtime.sendMessage()` | Content/Background | Cross-context messaging | Always (except dead background) |
-| `browser.runtime.onMessage` | All contexts | Receive cross-context messages | Always |
-| `runtime.connect()` | Sidebar | Persistent port connection | Always (but dies every 30s) |
-| `port.onMessage` | Sidebar | Receive port messages | While port connected |
-| `browser.storage.local.get()` | All contexts | Read persistent state | Always |
-| `browser.storage.local.set()` | All contexts | Write persistent state | Always |
-| `browser.storage.onChanged` | All contexts | Listen for state changes | Always |
-| `BroadcastChannel` | Content scripts | Cross-tab messaging | Always (sender currently missing) |
-| `document.createElement()` | Content script | Create DOM elements | Always |
-| `element.addEventListener()` | Content script | Attach UI event listeners | Always |
+| API                             | Used By            | Purpose                        | When Available                    |
+| ------------------------------- | ------------------ | ------------------------------ | --------------------------------- |
+| `browser.tabs.getCurrent()`     | Background only    | Identify current tab ID        | Background context only           |
+| `browser.tabs.query()`          | Background         | Find tabs by criteria          | Background context only           |
+| `browser.tabs.create()`         | Background         | Open new browser tab           | Background context only           |
+| `browser.runtime.sendMessage()` | Content/Background | Cross-context messaging        | Always (except dead background)   |
+| `browser.runtime.onMessage`     | All contexts       | Receive cross-context messages | Always                            |
+| `runtime.connect()`             | Sidebar            | Persistent port connection     | Always (but dies every 30s)       |
+| `port.onMessage`                | Sidebar            | Receive port messages          | While port connected              |
+| `browser.storage.local.get()`   | All contexts       | Read persistent state          | Always                            |
+| `browser.storage.local.set()`   | All contexts       | Write persistent state         | Always                            |
+| `browser.storage.onChanged`     | All contexts       | Listen for state changes       | Always                            |
+| `BroadcastChannel`              | Content scripts    | Cross-tab messaging            | Always (sender currently missing) |
+| `document.createElement()`      | Content script     | Create DOM elements            | Always                            |
+| `element.addEventListener()`    | Content script     | Attach UI event listeners      | Always                            |
 
 ---
 
@@ -625,26 +690,29 @@ DESTROYED (removed from state, DOM cleaned up)
 ```
 
 **Storage Impact:**
+
 - VISIBLE: Stored in `storage.local['quick-tabs-state'].tabs`
 - MINIMIZED: Still in storage, but `minimized: true`
 - DESTROYED: Removed from storage
 
 **On Page Reload (Hydration):**
+
 - VISIBLE → recreated with DOM
-- MINIMIZED → recreated as real QuickTabWindow instance but no DOM (dormant mode)
+- MINIMIZED → recreated as real QuickTabWindow instance but no DOM (dormant
+  mode)
 - DESTROYED → not restored
 
 ---
 
 ## Timeout and Lifecycle Constraints
 
-| Component | Lifetime | Constraint | Impact |
-|-----------|----------|-----------|--------|
-| Background script | ~30 seconds | Firefox non-persistent context | State updates stop arriving |
-| Port connection | ~30 seconds | Dies when background dies | Sidebar can't use port path |
-| Content script | Duration of tab | Survives background death | Can receive broadcasts, read storage |
-| Sidebar script | Duration of sidebar | Always alive | Primary state sync target |
-| Storage | Indefinite | Persistent across browser restart | Ultimate source of truth |
+| Component         | Lifetime            | Constraint                        | Impact                               |
+| ----------------- | ------------------- | --------------------------------- | ------------------------------------ |
+| Background script | ~30 seconds         | Firefox non-persistent context    | State updates stop arriving          |
+| Port connection   | ~30 seconds         | Dies when background dies         | Sidebar can't use port path          |
+| Content script    | Duration of tab     | Survives background death         | Can receive broadcasts, read storage |
+| Sidebar script    | Duration of sidebar | Always alive                      | Primary state sync target            |
+| Storage           | Indefinite          | Persistent across browser restart | Ultimate source of truth             |
 
 ---
 
@@ -652,12 +720,13 @@ DESTROYED (removed from state, DOM cleaned up)
 
 For Quick Tab creation to succeed:
 
-1. **Content script must know its tab ID** (from background via GET_CURRENT_TAB_ID message)
+1. **Content script must know its tab ID** (from background via
+   GET_CURRENT_TAB_ID message)
 2. **QuickTabsManager must be initialized** (7-step process, includes hydration)
 3. **CreateHandler must be ready** (with all managers and coordinators)
 4. **Storage must be accessible** (for persistence and hydration)
 5. **UICoordinator must be initialized** (for rendering)
-6. **Sidebar port must be connected** (for state sync, though optional fallbacks exist)
+6. **Sidebar port must be connected** (for state sync, though optional fallbacks
+   exist)
 
 If any step fails, Quick Tab creation fails or state sync breaks.
-

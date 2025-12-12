@@ -19,6 +19,20 @@
 // v1.6.3.7-v12 - Issue #7: Initialization barrier timeout constant (code review fix)
 const INIT_TIMEOUT_MS = 10000;
 
+// v1.6.3.8-v2 - Issue #5: Backpressure threshold constant (100ms)
+const WRITE_BACKPRESSURE_THRESHOLD_MS = 100;
+
+// v1.6.3.8-v2 - Issue #8: WriteBuffer constants
+const WRITE_BUFFER_FLUSH_DELAY_MS = 75; // Accumulate changes for 50-100ms range (using 75ms midpoint)
+const WRITE_BUFFER_MAX_PENDING = 10; // Max pending operations before force flush
+
+// v1.6.3.8-v2 - Issue #8: Validation idle callback timeout
+const VALIDATION_IDLE_TIMEOUT_MS = 2000; // Max wait for idle callback
+
+// v1.6.3.8-v2 - Issue #12: Debug diagnostics flag (matches background.js)
+// Note: Import from background.js would create circular dependency, so we define locally
+let DEBUG_DIAGNOSTICS = true;
+
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
   // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
@@ -32,6 +46,9 @@ export class QuickTabHandler {
   // v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering
   // Uses a static counter shared across all handler instances
   static _sequenceId = 0;
+
+  // v1.6.3.8-v2 - Issue #3: Track highest processed sequence ID for rejection
+  static _highestProcessedSequenceId = 0;
 
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
@@ -48,6 +65,26 @@ export class QuickTabHandler {
     // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
     this.processedMessages = new Map(); // messageKey -> timestamp
     this.lastCleanup = Date.now();
+
+    // v1.6.3.8-v2 - Issue #5: Track pending writes count for backpressure detection
+    this._pendingWritesCount = 0;
+
+    // v1.6.3.8-v2 - Issue #8: WriteBuffer for batching storage operations
+    this._writeBuffer = {
+      pendingState: null, // Accumulated state to write
+      flushTimeoutId: null, // Timeout ID for delayed flush
+      pendingOperations: 0, // Count of pending operations
+      lastFlushTime: 0 // Timestamp of last flush
+    };
+  }
+
+  /**
+   * Set DEBUG_DIAGNOSTICS flag for conditional logging
+   * v1.6.3.8-v2 - Issue #12: Allow external configuration
+   * @param {boolean} value - Enable or disable diagnostics
+   */
+  static setDebugDiagnostics(value) {
+    DEBUG_DIAGNOSTICS = !!value;
   }
 
   /**
@@ -58,6 +95,66 @@ export class QuickTabHandler {
   static _getNextSequenceId() {
     QuickTabHandler._sequenceId++;
     return QuickTabHandler._sequenceId;
+  }
+
+  /**
+   * Check if incoming sequence ID should be rejected (out-of-order)
+   * v1.6.3.8-v2 - FIX Issue #3: Reject updates with lower sequenceId than current local state
+   * Call this method when processing storage.onChanged events to detect out-of-order updates
+   * @param {number} incomingSequenceId - Sequence ID from incoming update
+   * @param {Object} context - Optional context for logging (saveId, tabCount, etc.)
+   * @returns {boolean} True if update should be rejected
+   */
+  static shouldRejectSequenceId(incomingSequenceId, context = {}) {
+    if (typeof incomingSequenceId !== 'number') {
+      // No sequence ID - allow for backwards compatibility
+      return false;
+    }
+
+    const shouldReject = incomingSequenceId <= QuickTabHandler._highestProcessedSequenceId;
+
+    if (shouldReject && DEBUG_DIAGNOSTICS) {
+      console.warn('[QuickTabHandler] STORAGE_SEQUENCE_REJECTED:', {
+        incomingSequenceId,
+        highestProcessedSequenceId: QuickTabHandler._highestProcessedSequenceId,
+        reason:
+          incomingSequenceId === QuickTabHandler._highestProcessedSequenceId
+            ? 'Duplicate sequence ID'
+            : 'Out-of-order event (older sequence arrived late)',
+        ...context,
+        timestamp: Date.now()
+      });
+    }
+
+    return shouldReject;
+  }
+
+  /**
+   * Legacy alias for backwards compatibility
+   * @deprecated Use shouldRejectSequenceId instead
+   */
+  static _shouldRejectSequenceId(incomingSequenceId) {
+    return QuickTabHandler.shouldRejectSequenceId(incomingSequenceId);
+  }
+
+  /**
+   * Update highest processed sequence ID after successful write
+   * v1.6.3.8-v2 - FIX Issue #3: Track highest processed for rejection logic
+   * @param {number} sequenceId - Sequence ID that was successfully processed
+   */
+  static _updateHighestProcessedSequenceId(sequenceId) {
+    if (typeof sequenceId === 'number' && sequenceId > QuickTabHandler._highestProcessedSequenceId) {
+      QuickTabHandler._highestProcessedSequenceId = sequenceId;
+    }
+  }
+
+  /**
+   * Get current highest processed sequence ID
+   * v1.6.3.8-v2 - Issue #3: Getter for diagnostics
+   * @returns {number} Current highest processed sequence ID
+   */
+  static getHighestProcessedSequenceId() {
+    return QuickTabHandler._highestProcessedSequenceId;
   }
 
   /**
@@ -177,10 +274,13 @@ export class QuickTabHandler {
     console.log('[QuickTabHandler] updateQuickTabProperty: Tab FOUND:', {
       id: tab.id,
       currentPosition: { left: tab.left, top: tab.top },
-      currentSize: { width: tab.width, height: tab.height }
+      currentSize: { width: tab.width, height: tab.height },
+      currentVersion: tab.version || 0 // v1.6.3.8-v2 - Issue #12: Log version
     });
 
     updateFn(tab, message);
+    // v1.6.3.8-v2 - Issue #12: Increment version on any property update
+    tab.version = (tab.version || 0) + 1;
     this.globalState.lastUpdate = Date.now();
 
     if (shouldSave) {
@@ -202,6 +302,92 @@ export class QuickTabHandler {
       lastUpdate: this.globalState.lastUpdate
     });
     return { success: true };
+  }
+
+  /**
+   * Update a Quick Tab with version-based conflict resolution
+   * v1.6.3.8-v2 - FIX Issue #12: Conditional write with version checking
+   * @param {string} id - Quick Tab ID
+   * @param {number} version - Expected version of the Quick Tab
+   * @param {Object} changes - Changes to apply to the Quick Tab
+   * @returns {Object} Result with success flag and conflict info if applicable
+   */
+  async updateQuickTab(id, version, changes) {
+    // Wait for initialization if needed
+    if (!this.isInitialized) {
+      await this.initializeFn();
+    }
+
+    // Find the tab
+    const tab = this.globalState.tabs.find(t => t.id === id);
+    if (!tab) {
+      return {
+        success: false,
+        error: 'TAB_NOT_FOUND',
+        message: `Quick Tab with id ${id} not found`
+      };
+    }
+
+    // v1.6.3.8-v2 - Issue #12: Check version for conflict
+    const currentVersion = tab.version || 0;
+    if (typeof version === 'number' && version < currentVersion) {
+      // Conflict detected - stored version is newer than request version
+      if (DEBUG_DIAGNOSTICS) {
+        console.warn('[QuickTabHandler] STATE_CONFLICT_DETECTED:', {
+          quickTabId: id,
+          requestVersion: version,
+          storedVersion: currentVersion,
+          changes: Object.keys(changes),
+          resolution: 'REJECTED - stored version is newer',
+          timestamp: Date.now()
+        });
+      }
+      return {
+        success: false,
+        error: 'VERSION_CONFLICT',
+        message: `Version conflict: stored version ${currentVersion} > request version ${version}`,
+        currentVersion,
+        requestedVersion: version
+      };
+    }
+
+    // Apply changes and increment version
+    Object.assign(tab, changes);
+    tab.version = currentVersion + 1;
+    this.globalState.lastUpdate = Date.now();
+
+    // Log successful update
+    if (DEBUG_DIAGNOSTICS) {
+      console.log('[QuickTabHandler] VERSION_UPDATE_APPLIED:', {
+        quickTabId: id,
+        previousVersion: currentVersion,
+        newVersion: tab.version,
+        changes: Object.keys(changes),
+        timestamp: Date.now()
+      });
+    }
+
+    // Save to storage
+    await this.saveStateToStorage();
+
+    return {
+      success: true,
+      version: tab.version
+    };
+  }
+
+  /**
+   * Get the current version of a Quick Tab
+   * v1.6.3.8-v2 - Issue #12: Helper for version-based updates
+   * @param {string} id - Quick Tab ID
+   * @returns {number|null} Current version or null if not found
+   */
+  getQuickTabVersion(id) {
+    const tab = this.globalState.tabs.find(t => t.id === id);
+    if (!tab) {
+      return null;
+    }
+    return tab.version || 0;
   }
 
   /**
@@ -265,10 +451,14 @@ export class QuickTabHandler {
       pinnedToUrl: message.pinnedToUrl || null,
       title: message.title || 'Quick Tab',
       minimized: message.minimized || false,
-      cookieStoreId: cookieStoreId // v1.6.2.2 - Store container info on tab itself
+      cookieStoreId: cookieStoreId, // v1.6.2.2 - Store container info on tab itself
+      version: 1 // v1.6.3.8-v2 - Issue #12: Initialize version for conflict resolution
     };
 
     if (existingIndex !== -1) {
+      // v1.6.3.8-v2 - Issue #12: Preserve version when updating existing tab
+      const existingVersion = this.globalState.tabs[existingIndex].version || 0;
+      tabData.version = existingVersion + 1;
       this.globalState.tabs[existingIndex] = tabData;
     } else {
       this.globalState.tabs.push(tabData);
@@ -397,18 +587,29 @@ export class QuickTabHandler {
   }
 
   /**
+   * Generic logging for simple update handlers
+   * v1.6.3.7-v14 - FIX Duplication: Extracted common logging pattern
+   * @private
+   */
+  _logSimpleUpdate(handlerName, action, message, extraFields = {}) {
+    console.log(`[QuickTabHandler] ${handlerName}:`, {
+      action,
+      quickTabId: message.id,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      timestamp: Date.now(),
+      ...extraFields
+    });
+  }
+
+  /**
    * Handle pin update
    * v1.6.0.13 - Added logging
+   * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handlePinUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Pin Update:', {
-      action: 'UPDATE_QUICK_TAB_PIN',
-      quickTabId: message.id,
-      pinnedToUrl: message.pinnedToUrl,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
+    this._logSimpleUpdate('Pin Update', 'UPDATE_QUICK_TAB_PIN', message, {
+      pinnedToUrl: message.pinnedToUrl
     });
-
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.pinnedToUrl = msg.pinnedToUrl;
     });
@@ -417,17 +618,13 @@ export class QuickTabHandler {
   /**
    * Handle solo update
    * v1.6.0.13 - Added logging
+   * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleSoloUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Solo Update:', {
-      action: 'UPDATE_QUICK_TAB_SOLO',
-      quickTabId: message.id,
+    this._logSimpleUpdate('Solo Update', 'UPDATE_QUICK_TAB_SOLO', message, {
       soloedOnTabs: message.soloedOnTabs || [],
-      tabCount: (message.soloedOnTabs || []).length,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
+      tabCount: (message.soloedOnTabs || []).length
     });
-
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.soloedOnTabs = msg.soloedOnTabs || [];
     });
@@ -436,17 +633,13 @@ export class QuickTabHandler {
   /**
    * Handle mute update
    * v1.6.0.13 - Added logging
+   * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleMuteUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Mute Update:', {
-      action: 'UPDATE_QUICK_TAB_MUTE',
-      quickTabId: message.id,
+    this._logSimpleUpdate('Mute Update', 'UPDATE_QUICK_TAB_MUTE', message, {
       mutedOnTabs: message.mutedOnTabs || [],
-      tabCount: (message.mutedOnTabs || []).length,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
+      tabCount: (message.mutedOnTabs || []).length
     });
-
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.mutedOnTabs = msg.mutedOnTabs || [];
     });
@@ -455,16 +648,12 @@ export class QuickTabHandler {
   /**
    * Handle minimize update
    * v1.6.0.13 - Added logging
+   * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleMinimizeUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Minimize Update:', {
-      action: 'UPDATE_QUICK_TAB_MINIMIZE',
-      quickTabId: message.id,
-      minimized: message.minimized,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
+    this._logSimpleUpdate('Minimize Update', 'UPDATE_QUICK_TAB_MINIMIZE', message, {
+      minimized: message.minimized
     });
-
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.minimized = msg.minimized;
     });
@@ -474,16 +663,12 @@ export class QuickTabHandler {
    * Handle z-index update
    * v1.6.0.12 - NEW: Save z-index for cross-tab sync
    * v1.6.0.13 - Added logging
+   * v1.6.3.7-v14 - FIX Duplication: Use generic logger
    */
   handleZIndexUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Z-Index Update:', {
-      action: 'UPDATE_QUICK_TAB_ZINDEX',
-      quickTabId: message.id,
-      zIndex: message.zIndex,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
+    this._logSimpleUpdate('Z-Index Update', 'UPDATE_QUICK_TAB_ZINDEX', message, {
+      zIndex: message.zIndex
     });
-
     return this.updateQuickTabProperty(message, (tab, msg) => {
       tab.zIndex = msg.zIndex;
     });
@@ -569,118 +754,206 @@ export class QuickTabHandler {
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
    * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    * v1.6.3.6-v12 - FIX Issue #1: Return explicit error when not initialized
+   * v1.6.3.7-v13 - Issue #1: Enhanced logging with message arrival, state transitions, and response timing
+   * v1.6.3.7-v14 - FIX Complexity: Simplified with extracted helpers
    */
   async handleGetQuickTabsState(message, _sender) {
+    const messageArrivalTime = Date.now();
+
+    console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Message arrived', {
+      messageArrivalTime,
+      isInitialized: this.isInitialized,
+      cookieStoreId: message.cookieStoreId || 'firefox-default'
+    });
+
     try {
-      // v1.6.3.6-v12 - FIX Issue #1: Check initialization and wait with timeout
       const initResult = await this._ensureInitialized();
       if (!initResult.success) {
-        return initResult;
+        return this._logAndReturnInitFailure(initResult, messageArrivalTime);
       }
 
-      const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-      // v1.6.2.2 - Return all tabs from unified array for global visibility
-      const allTabs = this.globalState.tabs || [];
-
-      return {
-        success: true,
-        tabs: allTabs,
-        cookieStoreId: cookieStoreId,
-        lastUpdate: this.globalState.lastUpdate
-      };
+      return this._buildStateSuccessResponse(message, messageArrivalTime);
     } catch (err) {
-      console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack,
-        code: err?.code,
-        error: err
-      });
-      return {
-        success: false,
-        tabs: [],
-        error: err.message
-      };
+      return this._handleGetStateError(err, messageArrivalTime);
     }
+  }
+
+  /**
+   * Log and return initialization failure response
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from handleGetQuickTabsState
+   * @private
+   */
+  _logAndReturnInitFailure(initResult, messageArrivalTime) {
+    console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Responding with init failure', {
+      error: initResult.error,
+      responseDelayMs: Date.now() - messageArrivalTime,
+      timestamp: Date.now()
+    });
+    return initResult;
+  }
+
+  /**
+   * Build success response for getQuickTabsState
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from handleGetQuickTabsState
+   * @private
+   */
+  _buildStateSuccessResponse(message, messageArrivalTime) {
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    const allTabs = this.globalState.tabs || [];
+
+    console.log('[QuickTabHandler] GET_QUICK_TABS_STATE: Responding with state', {
+      tabCount: allTabs.length,
+      responseDelayMs: Date.now() - messageArrivalTime,
+      lastUpdate: this.globalState.lastUpdate,
+      timestamp: Date.now()
+    });
+
+    return {
+      success: true,
+      tabs: allTabs,
+      cookieStoreId,
+      lastUpdate: this.globalState.lastUpdate
+    };
+  }
+
+  /**
+   * Handle error in getQuickTabsState
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from handleGetQuickTabsState
+   * @private
+   */
+  _handleGetStateError(err, messageArrivalTime) {
+    console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
+      message: err?.message,
+      name: err?.name,
+      stack: err?.stack,
+      code: err?.code,
+      error: err,
+      responseDelayMs: Date.now() - messageArrivalTime
+    });
+    return {
+      success: false,
+      tabs: [],
+      error: err.message
+    };
+  }
+
+  /**
+   * Build initialization failure response
+   * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce _ensureInitialized cc
+   * @private
+   */
+  _buildInitFailureResponse(error, message) {
+    return {
+      success: false,
+      error,
+      message,
+      retryable: true,
+      tabs: []
+    };
+  }
+
+  /**
+   * Handle initialization barrier failure (completed but not initialized)
+   * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce _ensureInitialized cc
+   * @private
+   */
+  _handleBarrierFailed(initDurationMs) {
+    console.warn('[QuickTabHandler] INIT_BARRIER_FAILED:', {
+      reason: 'initializeFn completed but isInitialized still false',
+      durationMs: initDurationMs,
+      timestamp: Date.now()
+    });
+    return this._buildInitFailureResponse(
+      'NOT_INITIALIZED',
+      'Background script still initializing. Please retry.'
+    );
+  }
+
+  /**
+   * Log initialization success
+   * v1.6.3.7-v14 - FIX Complexity: Extracted logger
+   * @private
+   */
+  _logInitComplete(initStartTime, initDurationMs) {
+    console.log('[QuickTabHandler] INITIALIZATION_COMPLETE:', {
+      recoveredAfterMs: initDurationMs,
+      tabCount: this.globalState.tabs?.length || 0,
+      initStartTime,
+      initEndTime: Date.now()
+    });
+  }
+
+  /**
+   * Handle initialization error
+   * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce _ensureInitialized cc
+   * @private
+   */
+  _handleInitError(err, initDurationMs) {
+    const isTimeout = err.message === 'Initialization timeout';
+
+    if (isTimeout) {
+      console.error('[QuickTabHandler] INIT_TIMEOUT:', {
+        durationMs: initDurationMs,
+        expectedIsInitialized: true,
+        actualIsInitialized: this.isInitialized,
+        timeoutMs: INIT_TIMEOUT_MS,
+        timestamp: Date.now()
+      });
+    } else {
+      console.error('[QuickTabHandler] INIT_BARRIER_ERROR:', {
+        error: err.message,
+        isTimeout: false,
+        durationMs: initDurationMs,
+        timestamp: Date.now()
+      });
+    }
+
+    const errorCode = isTimeout ? 'INIT_TIMEOUT' : 'INIT_ERROR';
+    const message = isTimeout
+      ? `Initialization timed out after ${INIT_TIMEOUT_MS}ms`
+      : `Initialization error: ${err.message}`;
+    return this._buildInitFailureResponse(errorCode, message);
   }
 
   /**
    * Ensure handler is initialized before operations
    * v1.6.3.6-v12 - FIX Issue #1: Extracted to reduce nesting depth
    * v1.6.3.7-v12 - Issue #7: Add explicit async barrier with await and timeout protection
+   * v1.6.3.7-v13 - Issue #1: Enhanced logging with state transitions and recovery timing
+   * v1.6.3.7-v14 - FIX Complexity: Extracted helper functions
    * @returns {Promise<Object>} Result with success flag
    * @private
    */
   async _ensureInitialized() {
-    const initStartTime = Date.now();
-    
     if (this.isInitialized) {
       return { success: true };
     }
 
-    // v1.6.3.7-v12 - Issue #7: Log initialization barrier entry
-    console.log('[QuickTabHandler] INIT_BARRIER_ENTRY:', {
+    const initStartTime = Date.now();
+    console.log('[QuickTabHandler] AWAITING_INITIALIZATION:', {
       isInitialized: this.isInitialized,
+      initStartTime,
       timestamp: initStartTime
     });
-    
+
     try {
-      // v1.6.3.7-v12 - Issue #7: Explicitly await initialization with timeout
       const initPromise = this.initializeFn();
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Initialization timeout')), INIT_TIMEOUT_MS);
       });
-      
+
       await Promise.race([initPromise, timeoutPromise]);
-      
+
       const initDurationMs = Date.now() - initStartTime;
-      
+
       if (!this.isInitialized) {
-        // v1.6.3.7-v12 - Issue #7: Log explicit failure when initialization didn't complete
-        console.warn('[QuickTabHandler] INIT_BARRIER_FAILED:', {
-          reason: 'initializeFn completed but isInitialized still false',
-          durationMs: initDurationMs,
-          timestamp: Date.now()
-        });
-        return {
-          success: false,
-          error: 'NOT_INITIALIZED',
-          message: 'Background script still initializing. Please retry.',
-          retryable: true,
-          tabs: []
-        };
+        return this._handleBarrierFailed(initDurationMs);
       }
-      
-      // v1.6.3.7-v12 - Issue #7: Log successful initialization with timing
-      console.log('[QuickTabHandler] INIT_BARRIER_PASSED:', {
-        durationMs: initDurationMs,
-        tabCount: this.globalState.tabs?.length || 0,
-        timestamp: Date.now()
-      });
-      
+
+      this._logInitComplete(initStartTime, initDurationMs);
       return { success: true };
     } catch (err) {
-      const initDurationMs = Date.now() - initStartTime;
-      
-      // v1.6.3.7-v12 - Issue #7: Log timeout or initialization error
-      console.error('[QuickTabHandler] INIT_BARRIER_ERROR:', {
-        error: err.message,
-        isTimeout: err.message === 'Initialization timeout',
-        durationMs: initDurationMs,
-        timeoutMs: INIT_TIMEOUT_MS,
-        timestamp: Date.now()
-      });
-      
-      return {
-        success: false,
-        error: err.message === 'Initialization timeout' ? 'INIT_TIMEOUT' : 'INIT_ERROR',
-        message: err.message === 'Initialization timeout' 
-          ? `Initialization timed out after ${INIT_TIMEOUT_MS}ms`
-          : `Initialization error: ${err.message}`,
-        retryable: true,
-        tabs: []
-      };
+      return this._handleInitError(err, Date.now() - initStartTime);
     }
   }
 
@@ -776,20 +1049,135 @@ export class QuickTabHandler {
    * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
    * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
    * v1.6.3.7-v9 - FIX Issue #8: Add storage write validation
+   * v1.6.3.8-v2 - FIX Issue #5: Add STORAGE_WRITE_LATENCY and STORAGE_BACKPRESSURE_DETECTED logging
+   * v1.6.3.8-v2 - FIX Issue #8: Use WriteBuffer for batching (accumulate 50-100ms before write)
+   * @returns {Promise<void>} Resolves when state is buffered (actual write is deferred)
    */
-  async saveStateToStorage() {
+  saveStateToStorage() {
+    // v1.6.3.8-v2 - Issue #8: Buffer the state change instead of writing immediately
+    // Update local state immediately but defer storage persistence
+    // Returns synchronously since actual write is async and batched
+    this._bufferStateForWrite();
+    return Promise.resolve();
+  }
+
+  /**
+   * Save state to storage immediately (bypasses WriteBuffer)
+   * v1.6.3.8-v2 - FIX Issue #8: For callers who need to wait for actual write completion
+   * Use this for critical operations like tab close where you need confirmation
+   * @returns {Promise<void>} Resolves when storage write is complete
+   */
+  async saveStateToStorageImmediate() {
+    // Cancel any pending buffered write
+    if (this._writeBuffer.flushTimeoutId) {
+      clearTimeout(this._writeBuffer.flushTimeoutId);
+      this._writeBuffer.flushTimeoutId = null;
+    }
+
+    // Reset buffer state
+    this._writeBuffer.pendingState = null;
+    this._writeBuffer.pendingOperations = 0;
+
+    // Perform immediate write
+    await this._performStorageWrite(this.globalState.tabs, 1);
+  }
+
+  /**
+   * Force flush any pending buffered writes
+   * v1.6.3.8-v2 - Issue #8: For cleanup or ensuring writes complete before shutdown
+   * @returns {Promise<void>} Resolves when buffered write is complete
+   */
+  async forceFlushWrites() {
+    if (this._writeBuffer.pendingState) {
+      await this._flushWriteBuffer();
+    }
+  }
+
+  /**
+   * Buffer state change for batched write
+   * v1.6.3.8-v2 - FIX Issue #8: Accumulate changes over 50-100ms window
+   * @private
+   */
+  _bufferStateForWrite() {
+    // Increment pending operations count
+    this._writeBuffer.pendingOperations++;
+
+    // Store current state to write (overwrites previous pending state - we only need latest)
+    this._writeBuffer.pendingState = {
+      tabs: [...this.globalState.tabs] // Clone to capture current state
+    };
+
+    // If we've hit max pending operations, force flush immediately
+    if (this._writeBuffer.pendingOperations >= WRITE_BUFFER_MAX_PENDING) {
+      if (DEBUG_DIAGNOSTICS) {
+        console.log('[QuickTabHandler] WRITE_BUFFER_FORCE_FLUSH: Max pending reached', {
+          pendingOperations: this._writeBuffer.pendingOperations,
+          maxPending: WRITE_BUFFER_MAX_PENDING
+        });
+      }
+      this._flushWriteBuffer();
+      return;
+    }
+
+    // Clear existing timeout if any
+    if (this._writeBuffer.flushTimeoutId) {
+      clearTimeout(this._writeBuffer.flushTimeoutId);
+    }
+
+    // Schedule flush after delay
+    this._writeBuffer.flushTimeoutId = setTimeout(() => {
+      this._flushWriteBuffer();
+    }, WRITE_BUFFER_FLUSH_DELAY_MS);
+  }
+
+  /**
+   * Flush buffered state to storage
+   * v1.6.3.8-v2 - FIX Issue #8: Single atomic write for all accumulated changes
+   * v1.6.3.8-v2 - FIX Issue #5: Track write latency and detect backpressure
+   * @private
+   */
+  async _flushWriteBuffer() {
+    // Clear timeout reference
+    this._writeBuffer.flushTimeoutId = null;
+
+    // Get pending state
+    const pendingState = this._writeBuffer.pendingState;
+    if (!pendingState) {
+      return; // Nothing to write
+    }
+
+    // Reset buffer
+    const pendingOperationCount = this._writeBuffer.pendingOperations;
+    this._writeBuffer.pendingState = null;
+    this._writeBuffer.pendingOperations = 0;
+    this._writeBuffer.lastFlushTime = Date.now();
+
+    // Perform the actual write
+    await this._performStorageWrite(pendingState.tabs, pendingOperationCount);
+  }
+
+  /**
+   * Perform actual storage write with latency tracking
+   * v1.6.3.8-v2 - FIX Issue #5: Log STORAGE_WRITE_LATENCY and STORAGE_BACKPRESSURE_DETECTED
+   * v1.6.3.8-v2 - FIX Issue #3: Track highest processed sequenceId
+   * @private
+   */
+  async _performStorageWrite(tabs, batchedOperations = 1) {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
-    const tabCount = this.globalState.tabs?.length ?? 0;
+    const tabCount = tabs?.length ?? 0;
     const saveTimestamp = Date.now();
     // v1.6.3.7-v9 - FIX Issue #8: Generate unique operation ID for tracing
     const operationId = `handler-${saveTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
 
     // v1.6.3.7-v9 - FIX Issue #6: Get sequence ID for event ordering
     const sequenceId = QuickTabHandler._getNextSequenceId();
-    
+
     // v1.6.3.7-v9 - FIX Issue #8: Generate saveId for validation
     const saveId = `${saveTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
+
+    // v1.6.3.8-v2 - Issue #5: Track pending writes for backpressure detection
+    this._pendingWritesCount++;
 
     // v1.6.3.6-v4 - FIX Issue #1: Log before storage write
     console.log('[QuickTabHandler] saveStateToStorage ENTRY:', {
@@ -798,17 +1186,22 @@ export class QuickTabHandler {
       saveId,
       sequenceId,
       tabCount,
+      batchedOperations, // v1.6.3.8-v2 - Issue #8: Log how many operations were batched
+      pendingWrites: this._pendingWritesCount,
       timestamp: saveTimestamp
     });
 
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
-      tabs: this.globalState.tabs,
+      tabs: tabs,
       saveId, // v1.6.3.7-v9 - FIX Issue #8: Add saveId for validation
       sequenceId,
       timestamp: saveTimestamp,
       writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
     };
+
+    // v1.6.3.8-v2 - Issue #5: Record write start time for latency measurement
+    const writeStartTime = Date.now();
 
     try {
       // v1.6.0.12 - FIX: Use local storage to avoid quota errors
@@ -817,20 +1210,15 @@ export class QuickTabHandler {
         quick_tabs_state_v2: stateToSave
       });
 
-      // v1.6.3.7-v9 - FIX Issue #8: Validate the write by reading back
-      const validationResult = await this._validateStorageWrite(operationId, stateToSave, saveId);
-      
-      if (!validationResult.valid) {
-        console.error('[QuickTabHandler] STORAGE_VALIDATION_FAILED:', {
-          operationId,
-          saveId,
-          error: validationResult.error,
-          expectedTabCount: tabCount,
-          actualTabCount: validationResult.actualTabCount
-        });
-        // Note: We don't retry here as the background.js handles recovery
-        // This handler just reports the validation failure
-      }
+      // v1.6.3.8-v2 - Issue #5: Calculate and log write latency
+      const writeLatencyMs = Date.now() - writeStartTime;
+      this._logWriteLatency(operationId, writeLatencyMs, tabCount);
+
+      // v1.6.3.8-v2 - Issue #3: Update highest processed sequence ID
+      QuickTabHandler._updateHighestProcessedSequenceId(sequenceId);
+
+      // v1.6.3.8-v2 - Issue #8: Schedule validation via idle callback
+      this._scheduleValidation(operationId, stateToSave, saveId, tabCount);
 
       // v1.6.3.6-v4 - FIX Issue #1: Log successful completion (was missing before!)
       console.log('[QuickTabHandler] saveStateToStorage SUCCESS:', {
@@ -839,9 +1227,10 @@ export class QuickTabHandler {
         saveId,
         sequenceId,
         tabCount,
-        validated: validationResult.valid,
+        writeLatencyMs,
+        batchedOperations,
         timestamp: saveTimestamp,
-        tabIds: this.globalState.tabs.map(t => t.id).slice(0, 10) // First 10 IDs
+        tabIds: tabs.map(t => t.id).slice(0, 10) // First 10 IDs
       });
     } catch (err) {
       // DOMException and browser-native errors don't serialize properly
@@ -854,7 +1243,77 @@ export class QuickTabHandler {
         code: err?.code,
         error: err
       });
+    } finally {
+      // v1.6.3.8-v2 - Issue #5: Decrement pending writes count
+      this._pendingWritesCount--;
     }
+  }
+
+  /**
+   * Log write latency and detect backpressure
+   * v1.6.3.8-v2 - FIX Issue #5: STORAGE_WRITE_LATENCY and STORAGE_BACKPRESSURE_DETECTED
+   * @private
+   */
+  _logWriteLatency(operationId, writeLatencyMs, tabCount) {
+    // Always log latency when DEBUG_DIAGNOSTICS enabled
+    if (DEBUG_DIAGNOSTICS) {
+      console.log('[QuickTabHandler] STORAGE_WRITE_LATENCY:', {
+        operationId,
+        latencyMs: writeLatencyMs,
+        tabCount,
+        pendingWrites: this._pendingWritesCount,
+        timestamp: Date.now()
+      });
+    }
+
+    // Log backpressure warning if write took too long
+    if (writeLatencyMs > WRITE_BACKPRESSURE_THRESHOLD_MS) {
+      console.warn('[QuickTabHandler] STORAGE_BACKPRESSURE_DETECTED:', {
+        operationId,
+        latencyMs: writeLatencyMs,
+        thresholdMs: WRITE_BACKPRESSURE_THRESHOLD_MS,
+        tabCount,
+        pendingWrites: this._pendingWritesCount,
+        recommendation: 'Consider reducing write frequency or enabling write batching',
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Schedule storage validation via idle callback
+   * v1.6.3.8-v2 - FIX Issue #8: Move validation to low-priority idle callback
+   * @private
+   */
+  _scheduleValidation(operationId, stateToSave, saveId, tabCount) {
+    // Use requestIdleCallback if available, otherwise use setTimeout
+    const scheduleIdleTask =
+      typeof requestIdleCallback === 'function'
+        ? callback => requestIdleCallback(callback, { timeout: VALIDATION_IDLE_TIMEOUT_MS })
+        : callback => setTimeout(callback, 0);
+
+    scheduleIdleTask(async () => {
+      try {
+        const validationResult = await this._validateStorageWrite(operationId, stateToSave, saveId);
+
+        if (!validationResult.valid) {
+          console.error('[QuickTabHandler] STORAGE_VALIDATION_FAILED:', {
+            operationId,
+            saveId,
+            error: validationResult.error,
+            expectedTabCount: tabCount,
+            actualTabCount: validationResult.actualTabCount
+          });
+          // Note: We don't retry here as the background.js handles recovery
+          // This handler just reports the validation failure
+        }
+      } catch (err) {
+        console.error('[QuickTabHandler] VALIDATION_IDLE_CALLBACK_ERROR:', {
+          operationId,
+          error: err?.message
+        });
+      }
+    });
   }
 
   /**
@@ -870,11 +1329,11 @@ export class QuickTabHandler {
   async _validateStorageWrite(operationId, expectedState, saveId) {
     const validationStartTime = Date.now();
     const context = { operationId, expectedState, saveId, validationStartTime };
-    
+
     try {
       const result = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
       const readBack = result?.quick_tabs_state_v2;
-      
+
       // Run validation checks and return appropriate result
       return await this._runStorageValidationChecks(context, readBack);
     } catch (err) {
@@ -885,37 +1344,48 @@ export class QuickTabHandler {
   /**
    * Run storage validation checks and return result
    * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce _validateStorageWrite complexity
+   * v1.6.3.7-v14 - FIX Complexity: Extract success path
    * @private
    */
   async _runStorageValidationChecks(context, readBack) {
-    const { operationId, expectedState, saveId, validationStartTime } = context;
-    
     // Check if data exists
     if (!readBack) {
-      return this._handleNullReadValidationFailure(context);
+      const result = await this._handleNullReadValidationFailure(context);
+      return result;
     }
-    
+
     // Check saveId matches
-    if (readBack.saveId !== saveId) {
+    if (readBack.saveId !== context.saveId) {
       return this._handleSaveIdMismatch(context, readBack);
     }
-    
+
     // Check tab count matches
-    const expectedCount = expectedState?.tabs?.length || 0;
     const actualCount = readBack?.tabs?.length || 0;
-    
-    if (expectedCount !== actualCount) {
-      return this._handleTabCountMismatch(context, readBack, expectedCount, actualCount);
+    if (context.expectedState?.tabs?.length !== actualCount) {
+      const result = await this._handleTabCountMismatch(
+        context,
+        readBack,
+        context.expectedState?.tabs?.length || 0,
+        actualCount
+      );
+      return result;
     }
-    
-    // Validation passed
+
+    return this._handleValidationSuccess(context, actualCount);
+  }
+
+  /**
+   * Handle successful validation
+   * v1.6.3.7-v14 - FIX Complexity: Extracted success path
+   * @private
+   */
+  _handleValidationSuccess(context, actualCount) {
     console.log('[QuickTabHandler] STORAGE_VALIDATION_PASSED:', {
-      operationId,
-      saveId,
+      operationId: context.operationId,
+      saveId: context.saveId,
       tabCount: actualCount,
-      validationDurationMs: Date.now() - validationStartTime
+      validationDurationMs: Date.now() - context.validationStartTime
     });
-    
     return { valid: true, error: null, actualTabCount: actualCount, recovered: false };
   }
 
@@ -926,21 +1396,23 @@ export class QuickTabHandler {
    */
   async _handleNullReadValidationFailure(context) {
     const { operationId, expectedState, validationStartTime } = context;
-    
+
     console.error('[QuickTabHandler] VALIDATION_FAILED_NULL_READ:', {
       operationId,
       expectedTabCount: expectedState?.tabs?.length || 0,
       validationDurationMs: Date.now() - validationStartTime,
       timestamp: Date.now()
     });
-    
+
     const recoveryResult = await this._attemptRecoveryOnValidationFailure(
-      operationId, expectedState, 'READ_RETURNED_NULL'
+      operationId,
+      expectedState,
+      'READ_RETURNED_NULL'
     );
-    
-    return { 
-      valid: false, 
-      error: 'READ_RETURNED_NULL', 
+
+    return {
+      valid: false,
+      error: 'READ_RETURNED_NULL',
       actualTabCount: 0,
       recovered: recoveryResult.recovered
     };
@@ -949,27 +1421,38 @@ export class QuickTabHandler {
   /**
    * Handle saveId mismatch validation failure
    * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * v1.6.3.7-v14 - FIX Complexity: Simplified structure
    * @private
    */
   _handleSaveIdMismatch(context, readBack) {
-    const { operationId, expectedState, saveId, validationStartTime } = context;
-    
+    this._logSaveIdMismatchError(context, readBack);
+    return this._buildValidationFailure('SAVEID_MISMATCH', readBack?.tabs?.length || 0, false);
+  }
+
+  /**
+   * Log saveId mismatch error
+   * v1.6.3.7-v14 - FIX Complexity: Extracted logger
+   * @private
+   */
+  _logSaveIdMismatchError(context, readBack) {
     console.error('[QuickTabHandler] VALIDATION_FAILED_SAVEID_MISMATCH:', {
-      operationId,
-      expectedSaveId: saveId,
+      operationId: context.operationId,
+      expectedSaveId: context.saveId,
       actualSaveId: readBack.saveId,
-      expectedTabCount: expectedState?.tabs?.length || 0,
+      expectedTabCount: context.expectedState?.tabs?.length || 0,
       actualTabCount: readBack?.tabs?.length || 0,
-      validationDurationMs: Date.now() - validationStartTime,
+      validationDurationMs: Date.now() - context.validationStartTime,
       timestamp: Date.now()
     });
-    
-    return { 
-      valid: false, 
-      error: 'SAVEID_MISMATCH', 
-      actualTabCount: readBack?.tabs?.length || 0,
-      recovered: false
-    };
+  }
+
+  /**
+   * Build validation failure response
+   * v1.6.3.7-v14 - FIX Complexity: Unified failure builder
+   * @private
+   */
+  _buildValidationFailure(error, actualTabCount, recovered) {
+    return { valid: false, error, actualTabCount, recovered };
   }
 
   /**
@@ -979,7 +1462,7 @@ export class QuickTabHandler {
    */
   async _handleTabCountMismatch(context, readBack, expectedCount, actualCount) {
     const { operationId, expectedState, validationStartTime } = context;
-    
+
     console.error('[QuickTabHandler] VALIDATION_FAILED_TAB_COUNT_MISMATCH:', {
       operationId,
       expectedTabCount: expectedCount,
@@ -988,14 +1471,16 @@ export class QuickTabHandler {
       validationDurationMs: Date.now() - validationStartTime,
       timestamp: Date.now()
     });
-    
+
     const recoveryResult = await this._attemptRecoveryOnValidationFailure(
-      operationId, expectedState, 'TAB_COUNT_MISMATCH'
+      operationId,
+      expectedState,
+      'TAB_COUNT_MISMATCH'
     );
-    
-    return { 
-      valid: false, 
-      error: 'TAB_COUNT_MISMATCH', 
+
+    return {
+      valid: false,
+      error: 'TAB_COUNT_MISMATCH',
       actualTabCount: actualCount,
       recovered: recoveryResult.recovered
     };
@@ -1008,13 +1493,18 @@ export class QuickTabHandler {
    */
   _handleStorageValidationError(context, err) {
     const { operationId, validationStartTime } = context;
-    
+
     console.error('[QuickTabHandler] STORAGE_VALIDATION_ERROR:', {
       operationId,
       error: err.message,
       validationDurationMs: Date.now() - validationStartTime
     });
-    return { valid: false, error: `VALIDATION_ERROR: ${err.message}`, actualTabCount: 0, recovered: false };
+    return {
+      valid: false,
+      error: `VALIDATION_ERROR: ${err.message}`,
+      actualTabCount: 0,
+      recovered: false
+    };
   }
 
   /**
@@ -1030,13 +1520,14 @@ export class QuickTabHandler {
       expectedTabCount: expectedState?.tabs?.length || 0,
       timestamp: Date.now()
     });
-    
+
     try {
-      const needsRecovery = failureType === 'READ_RETURNED_NULL' || failureType === 'TAB_COUNT_MISMATCH';
+      const needsRecovery =
+        failureType === 'READ_RETURNED_NULL' || failureType === 'TAB_COUNT_MISMATCH';
       if (needsRecovery) {
         return await this._performRewriteRecovery(operationId, expectedState, failureType);
       }
-      
+
       return { recovered: false, method: 'none' };
     } catch (recoveryErr) {
       console.error('[QuickTabHandler] RECOVERY_ERROR:', {
@@ -1056,7 +1547,7 @@ export class QuickTabHandler {
    */
   async _performRewriteRecovery(operationId, expectedState, failureType) {
     console.log('[QuickTabHandler] RECOVERY_STRATEGY: Re-write state to storage');
-    
+
     // v1.6.3.7-v12 - FIX Code Review: Use slice() instead of deprecated substr()
     const recoverySaveId = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const recoveryState = {
@@ -1065,67 +1556,129 @@ export class QuickTabHandler {
       recoveredFrom: failureType,
       recoveryTimestamp: Date.now()
     };
-    
+
     await this.browserAPI.storage.local.set({
       quick_tabs_state_v2: recoveryState
     });
-    
+
     const isRecovered = await this._verifyRecoveryWrite(operationId, recoverySaveId, expectedState);
-    
+
     if (isRecovered) {
       return { recovered: true, method: 're-write' };
     }
-    
+
     console.error('[QuickTabHandler] RECOVERY_FAILED:', {
       operationId,
       failureType,
       recommendation: 'User may need to manually clear storage or re-create Quick Tabs',
       timestamp: Date.now()
     });
-    
+
     return { recovered: false, method: 'none' };
   }
 
   /**
    * Verify recovery write succeeded
    * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce complexity
+   * v1.6.3.7-v14 - FIX Complexity: Extracted helpers for verification
    * @private
    */
   async _verifyRecoveryWrite(operationId, recoverySaveId, expectedState) {
-    const verifyResult = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
-    const verifyData = verifyResult?.quick_tabs_state_v2;
-    
-    const saveIdMatches = verifyData && verifyData.saveId === recoverySaveId;
-    const tabCountMatches = verifyData?.tabs?.length === expectedState?.tabs?.length;
-    
-    // v1.6.3.7-v12 - FIX Code Review: Both conditions must match for verified recovery
+    const verifyData = await this._fetchVerificationData();
+
+    const saveIdMatches = this._verifySaveId(verifyData, recoverySaveId);
+    const tabCountMatches = this._verifyTabCount(verifyData, expectedState);
+
     if (saveIdMatches && tabCountMatches) {
-      console.log('[QuickTabHandler] RECOVERY_SUCCESS:', {
-        operationId,
-        method: 're-write',
-        recoverySaveId,
-        tabCount: verifyData?.tabs?.length || 0,
-        saveIdVerified: saveIdMatches,
-        tabCountVerified: tabCountMatches,
-        timestamp: Date.now()
-      });
-      return true;
+      return this._logRecoverySuccess(operationId, recoverySaveId, verifyData);
     }
-    
-    // Log partial verification failure for diagnostics
-    if (saveIdMatches || tabCountMatches) {
-      console.warn('[QuickTabHandler] RECOVERY_PARTIAL_VERIFICATION:', {
-        operationId,
-        recoverySaveId,
-        saveIdMatches,
-        tabCountMatches,
-        expectedTabCount: expectedState?.tabs?.length || 0,
-        actualTabCount: verifyData?.tabs?.length || 0,
-        timestamp: Date.now()
-      });
-    }
-    
+
+    this._logPartialVerificationIfNeeded({
+      operationId,
+      recoverySaveId,
+      saveIdMatches,
+      tabCountMatches,
+      expectedState,
+      verifyData
+    });
     return false;
+  }
+
+  /**
+   * Fetch verification data from storage
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from _verifyRecoveryWrite
+   * @private
+   */
+  async _fetchVerificationData() {
+    const verifyResult = await this.browserAPI.storage.local.get('quick_tabs_state_v2');
+    return verifyResult?.quick_tabs_state_v2;
+  }
+
+  /**
+   * Verify saveId matches expected value
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from _verifyRecoveryWrite
+   * @private
+   */
+  _verifySaveId(verifyData, recoverySaveId) {
+    return verifyData && verifyData.saveId === recoverySaveId;
+  }
+
+  /**
+   * Verify tab count matches expected value
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from _verifyRecoveryWrite
+   * @private
+   */
+  _verifyTabCount(verifyData, expectedState) {
+    return verifyData?.tabs?.length === expectedState?.tabs?.length;
+  }
+
+  /**
+   * Log and return recovery success
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from _verifyRecoveryWrite
+   * @private
+   */
+  _logRecoverySuccess(operationId, recoverySaveId, verifyData) {
+    console.log('[QuickTabHandler] RECOVERY_SUCCESS:', {
+      operationId,
+      method: 're-write',
+      recoverySaveId,
+      tabCount: verifyData?.tabs?.length || 0,
+      saveIdVerified: true,
+      tabCountVerified: true,
+      timestamp: Date.now()
+    });
+    return true;
+  }
+
+  /**
+   * Log partial verification failure if applicable
+   * v1.6.3.7-v14 - FIX Complexity: Extracted from _verifyRecoveryWrite
+   * v1.6.3.7-v14 - FIX Excess Args: Use context object pattern
+   * v1.6.3.7-v14 - FIX Code Review: Explicit boolean variable for clarity
+   * @private
+   * @param {Object} context - Verification context
+   */
+  _logPartialVerificationIfNeeded(context) {
+    const {
+      operationId,
+      recoverySaveId,
+      saveIdMatches,
+      tabCountMatches,
+      expectedState,
+      verifyData
+    } = context;
+    const neitherMatched = !saveIdMatches && !tabCountMatches;
+    if (neitherMatched) return;
+
+    console.warn('[QuickTabHandler] RECOVERY_PARTIAL_VERIFICATION:', {
+      operationId,
+      recoverySaveId,
+      saveIdMatches,
+      tabCountMatches,
+      expectedTabCount: expectedState?.tabs?.length || 0,
+      actualTabCount: verifyData?.tabs?.length || 0,
+      timestamp: Date.now()
+    });
   }
 
   /**

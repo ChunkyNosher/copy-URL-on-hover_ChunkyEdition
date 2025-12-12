@@ -284,7 +284,11 @@ export class QuickTabMediator {
         stepsRolledBack++;
         console.log('[QuickTabMediator] ✓ Rollback step succeeded:', { id, step });
       } catch (err) {
-        console.error('[QuickTabMediator] ✗ Rollback step failed:', { id, step, error: err.message });
+        console.error('[QuickTabMediator] ✗ Rollback step failed:', {
+          id,
+          step,
+          error: err.message
+        });
         lastError = err;
         // Continue rolling back other steps even if one fails
       }
@@ -356,7 +360,7 @@ export class QuickTabMediator {
       }
 
       // v1.6.4.8 - Issue #4: Register rollback step for state transition
-      this._registerRollbackStep(id, 'state-to-minimizing', preMinimizeSnapshot, async (snapshot) => {
+      this._registerRollbackStep(id, 'state-to-minimizing', preMinimizeSnapshot, async snapshot => {
         this._stateMachine.transition(id, snapshot.state, {
           source: 'mediator-rollback',
           metadata: { reason: 'minimize failed', originalState: snapshot.state }
@@ -442,7 +446,7 @@ export class QuickTabMediator {
       }
 
       // v1.6.4.8 - Issue #4: Register rollback step for state transition
-      this._registerRollbackStep(id, 'state-to-restoring', preRestoreSnapshot, async (snapshot) => {
+      this._registerRollbackStep(id, 'state-to-restoring', preRestoreSnapshot, async snapshot => {
         this._stateMachine.transition(id, snapshot.state, {
           source: 'mediator-rollback',
           metadata: { reason: 'restore failed', originalState: snapshot.state }
@@ -451,7 +455,7 @@ export class QuickTabMediator {
 
       // v1.6.4.8 - Issue #4: Register rollback step to re-save minimized snapshot if needed
       if (minimizedSnapshot) {
-        this._registerRollbackStep(id, 'minimized-snapshot', minimizedSnapshot, async (snapshot) => {
+        this._registerRollbackStep(id, 'minimized-snapshot', minimizedSnapshot, async snapshot => {
           if (this.minimizedManager?.saveSnapshot) {
             this.minimizedManager.saveSnapshot(id, snapshot);
             console.log('[QuickTabMediator] Restored minimized snapshot on rollback:', id);

@@ -65,74 +65,29 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7-v11 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v11 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Promise-based listener barrier** - Replaces boolean flag (quick-tabs-manager.js)
-- **LRU eviction** - Message dedup map capped at 1000 entries
-- **Correlation ID echo** - HEARTBEAT_ACK properly echoes correlationId
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
-- **Deferred handlers** - UICoordinator.startRendering() for proper init order
-- **Cascading rollback** - LIFO rollback execution in transactions
-- **Write-ahead logging** - Checksum verification in DestroyHandler
-- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
-- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
-- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
+storage validation, dedup decision logging, keepalive health reports.
 
-**v1.6.3.7-v9 Features (Retained):**
-
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
+listener barrier, LRU eviction (1000), correlation ID echo, state machine
+timeouts (7s), port registry thresholds.
 
 **v1.6.3.7-v4 Features (Retained):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
+- **Background Keepalive** - `_startKeepalive()` every 20s
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-  (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive
-  integers
-
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()` with
-  exponential backoff retry
-- **Heartbeat** - Sidebar sends `HEARTBEAT` every 25s, background responds with
-  `HEARTBEAT_ACK`, 5s timeout
-- **Storage Deduplication** - Multi-method dedup: transactionId,
-  saveId+timestamp, content hash
-- **Cache Reconciliation** - `_triggerCacheReconciliation()` queries content
-  scripts for state recovery
-- **Deletion Acks** - `handleDeletionAck()`, `_waitForDeletionAcks()` for
-  ordered deletion
-- **Architectural Resilience** - Coordinator is optimization, not requirement;
-  content scripts can write directly to storage
-
-**v1.6.3.6-v12 Features (Retained):**
-
-- Port-based messaging, animation lifecycle, atomic operations
-- Port registry, persistent connections, correlationId tracking
-
-**v1.6.3.6-v10 Build & Analysis (Retained):**
-
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking, Rollup cache, npm-run-all
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34 (needs refactoring to
-  8.75+), `storage-utils.js` 7.23, `background.js` 7.66
-- **Manager UI/UX Issues #1-12:** Enhanced headers, orphan detection, smooth
-  animations
+- **UI Performance** - Debounced renderUI (300ms)
 
 **Key Features:**
 
@@ -140,15 +95,6 @@ IndexedDB checksum, port message reordering (1s), tab affinity buckets, init tim
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - Cross-tab sync via storage.onChanged + Background-as-Coordinator
-- State hydration on page reload
-
-**Key Fixes (Summary):**
-
-- **Strict Tab Isolation** - `_shouldRenderOnThisTab()` REJECTS null/undefined
-  originTabId
-- **Deletion State Machine** - DestroyHandler.\_destroyedIds prevents loops
-- **Storage Circuit Breaker** - Blocks ALL writes when `pendingWriteCount >= 15`
-- **Unified Deletion Path** - `initiateDestruction()` is single entry point
 
 **Architecture:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 UICoordinator
@@ -399,6 +345,7 @@ browser.commands.onCommand.addListener(command => {
 ## Documentation Requirements
 
 **For Architectural Bug Fixes:**
+
 - Root cause analysis in `docs/manual/`
 - ADR if architecture changes significantly
 - Update README.md for user-facing impacts
@@ -408,10 +355,10 @@ browser.commands.onCommand.addListener(command => {
 
 ## Red Flags (Bad Solutions)
 
-❌ "setTimeout for race condition" → Use promises/events/state machine
-❌ "Catch and ignore error" → Fix source or handle properly
-❌ "Flag to prevent bug" → Fix the architecture
-❌ "Workaround is simpler" → Only for emergency patches with issue
+❌ "setTimeout for race condition" → Use promises/events/state machine ❌ "Catch
+and ignore error" → Fix source or handle properly ❌ "Flag to prevent bug" → Fix
+the architecture ❌ "Workaround is simpler" → Only for emergency patches with
+issue
 
 ---
 
@@ -426,8 +373,8 @@ browser.commands.onCommand.addListener(command => {
 
 ## Success Metrics
 
-**Good Fix:** ✅ Root cause eliminated, bug class prevented, debt reduced, tests prove
-**Bad Fix:** ❌ Symptom masked, similar bugs possible, debt increased
+**Good Fix:** ✅ Root cause eliminated, bug class prevented, debt reduced, tests
+prove **Bad Fix:** ❌ Symptom masked, similar bugs possible, debt increased
 
 ---
 

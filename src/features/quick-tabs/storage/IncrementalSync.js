@@ -300,7 +300,11 @@ function _validatePathParts(parts) {
  */
 function _ensurePropertyExists(target, key) {
   // Use hasOwn check to ensure we only access own properties
-  if (!Object.prototype.hasOwnProperty.call(target, key) || target[key] === null || target[key] === undefined) {
+  if (
+    !Object.prototype.hasOwnProperty.call(target, key) ||
+    target[key] === null ||
+    target[key] === undefined
+  ) {
     target[key] = {};
   }
   return target[key];

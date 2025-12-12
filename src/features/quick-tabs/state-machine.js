@@ -252,13 +252,16 @@ export class QuickTabStateMachine {
 
       // Only recover if still stuck in the intermediate state
       if (currentState === state) {
-        console.error('[QuickTabStateMachine] ⚠️ TIMEOUT: Stuck in intermediate state, recovering:', {
-          id,
-          stuckState: state,
-          stuckDurationMs: Date.now() - enteredAt,
-          fallbackState,
-          originalPreviousState: previousState
-        });
+        console.error(
+          '[QuickTabStateMachine] ⚠️ TIMEOUT: Stuck in intermediate state, recovering:',
+          {
+            id,
+            stuckState: state,
+            stuckDurationMs: Date.now() - enteredAt,
+            fallbackState,
+            originalPreviousState: previousState
+          }
+        );
 
         // Force transition back to stable state
         this._states.set(id, fallbackState);

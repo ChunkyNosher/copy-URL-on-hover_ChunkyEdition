@@ -494,8 +494,7 @@ class DOMUpdateBatcher {
       this._metrics.totalUpdatesProcessed += processedCount;
       this._metrics.totalFlushes++;
       this._metrics.lastFlushDuration = duration;
-      this._metrics.avgBatchSize =
-        this._metrics.totalUpdatesProcessed / this._metrics.totalFlushes;
+      this._metrics.avgBatchSize = this._metrics.totalUpdatesProcessed / this._metrics.totalFlushes;
     }
 
     // Callback
@@ -558,10 +557,4 @@ function destroyGlobalBatcher() {
 }
 
 export default DOMUpdateBatcher;
-export {
-  DOMUpdateBatcher,
-  UPDATE_TYPES,
-  PRIORITY,
-  getGlobalBatcher,
-  destroyGlobalBatcher
-};
+export { DOMUpdateBatcher, UPDATE_TYPES, PRIORITY, getGlobalBatcher, destroyGlobalBatcher };

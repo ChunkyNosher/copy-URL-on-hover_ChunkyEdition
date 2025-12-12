@@ -211,7 +211,7 @@ class VirtualScrollList {
     let scrollTop;
     switch (align) {
       case 'center':
-        scrollTop = itemTop - (viewportHeight / 2) + (this._config.itemHeight / 2);
+        scrollTop = itemTop - viewportHeight / 2 + this._config.itemHeight / 2;
         break;
       case 'end':
         scrollTop = itemTop - viewportHeight + this._config.itemHeight;
@@ -461,7 +461,7 @@ class VirtualScrollList {
       element.dataset.virtualIndex = index;
 
       if (this._onItemClick) {
-        element.addEventListener('click', (e) => {
+        element.addEventListener('click', e => {
           this._onItemClick(data, index, e);
         });
       }

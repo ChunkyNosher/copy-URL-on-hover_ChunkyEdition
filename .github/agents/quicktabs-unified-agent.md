@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.7-v11), promise barrier, LRU dedup,
-  state machine timeouts, storage watchdog, BC gap detection
+  sync with Single Writer Authority (v1.6.3.8-v2), Background Relay, ACK-based
+  messaging, WriteBuffer batching, BFCache lifecycle
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v11 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,95 +50,31 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Validation
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.7-v11 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Promise-based listener barrier** - Replaces boolean initializationComplete flag
-- **LRU dedup map eviction** - Max 1000 entries prevents memory bloat
-- **Correlation ID echo** - HEARTBEAT_ACK includes correlationId for matching
-- **State machine timeouts** - 7s auto-recovery from stuck MINIMIZING/RESTORING
-- **WeakRef callbacks** - Automatic cleanup via WeakRef in mediator
-- **Deferred handlers** - UICoordinator.startRendering() for proper init order
-- **Cascading rollback** - LIFO rollback execution in transactions
-- **Write-ahead logging** - Checksum verification in DestroyHandler
-- **Timestamp cleanup** - 30s interval, 60s max age for stale entries
-- **ID pattern validation** - QUICK_TAB_ID_PATTERN constant
-- **CodeScene improvements** - background.js: 4.89→9.09, quick-tabs-manager.js: 5.81→9.09
+- **Background Relay pattern** - Sidebar messages bypass BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
+- **Port registry snapshots** - 60s interval with active/idle/zombie counts
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
+storage validation, dedup decision logging, BC fallback detection.
 
-**v1.6.3.7-v9 Features (Retained):**
+**v1.6.3.7-v11-v12 Features (Retained):** Promise-based listener barrier, LRU
+dedup (1000), correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTICS.
 
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
+**Key Functions (v1.6.3.8-v2):**
 
-**v1.6.3.7-v8 Features (Retained):**
-
-- **Port Message Queue** - Messages queued during reconnection
-- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
-- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
-
-**v1.6.3.7-v6 Features (Retained):**
-
-- **Initial State Load Wait** - 2-second wait before rendering empty state
-- **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
-- **Deduplication Visibility** - `RENDER_SKIPPED reason=saveId_match|hash_match`
-- **Clear All Tracing** - `CLEAR_ALL_COMMAND_INITIATED`, response with counts
-- **Keepalive Health** - 60s health check, consecutive failure tracking
-- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
-- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
-- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED` logging
-
-**v1.6.3.7-v5 Features (Retained):**
-
-- **Connection State Tracking** - Three states: connected → zombie → disconnected
-- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
-- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Circuit Breaker Probing** - Early recovery with 500ms health probes
-  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
-- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
-  errors
-- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
-- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
-  message
-- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
-  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
-- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
-
-**v1.6.3.7-v3 Features (Retained):**
-
-- **storage.session API** - Session Quick Tabs (`permanent: false`,
-  `session_quick_tabs` key)
-- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
-- **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
-  `sync-session-state`)
-- **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
-- **DOM Reconciliation** - `_itemElements` Map for differential updates
-
-**Key Functions (v1.6.3.7-v10):**
-
-| Function                       | Location    | Purpose                            |
-| ------------------------------ | ----------- | ---------------------------------- |
-| `startStorageWatchdog()`       | Background  | Watchdog timer for writes (v10)    |
-| `handleBCGapDetection()`       | Manager     | BC gap detection callback (v10)    |
-| `validateChecksumOnStartup()`  | Storage     | IndexedDB corruption check (v10)   |
-| `processPortMessageReorder()`  | Manager     | Port message queue (v10)           |
-| `validateStorageIntegrity()`   | Storage     | Integrity check with backup        |
-| `processOrderedStorageEvent()` | Background  | sequenceId validation              |
-| `broadcastFullStateSync()`     | Background  | Full state sync via BC             |
-| `scheduleRender(source)`       | Manager     | Unified render entry point         |
-| `BroadcastChannelManager`      | channels/   | Real-time tab messaging            |
-| `TabStateManager`              | core/       | Per-tab state (sessions API)       |
+| Function                    | Location      | Purpose                            |
+| --------------------------- | ------------- | ---------------------------------- |
+| `sendRequestWithTimeout()`  | message-utils | ACK-based messaging (v8-v2)        |
+| `flushWriteBuffer()`        | storage-utils | WriteBuffer batch flush (v8-v2)    |
+| `waitForInitialization()`   | QuickTabHandler | 10s init barrier (v8)            |
+| `scheduleRender(source)`    | Manager       | Unified render entry point         |
 
 ---
 
@@ -155,24 +91,17 @@ IndexedDB checksum, port message reordering (1s), tab affinity buckets, init tim
 
 ## Testing Requirements
 
-- [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
-- [ ] BC gap detection triggers storage fallback (v1.6.3.7-v10)
-- [ ] IndexedDB checksum validation works on startup (v1.6.3.7-v10)
-- [ ] Port message reordering queue works (1s timeout) (v1.6.3.7-v10)
-- [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
-- [ ] Sequence tracking works (sequenceId, messageSequence, sequenceNumber) (v1.6.3.7-v9)
-- [ ] Storage integrity validation works (v1.6.3.7-v9)
-- [ ] Initialization barrier prevents race conditions (v1.6.3.7-v9)
-- [ ] Port age management works (90s max, 30s stale) (v1.6.3.7-v9)
-- [ ] Port message queue works during reconnection (v1.6.3.7-v8)
-- [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
-- [ ] Session Quick Tabs clear on browser close (v1.6.3.7-v3)
+- [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
+- [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
+- [ ] SIDEBAR_READY handshake works (v1.6.3.8-v2)
+- [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
+- [ ] BFCache lifecycle events work (v1.6.3.8-v2)
+- [ ] Initialization barriers work (10s/2s) (v1.6.3.8)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.7-v10 storage watchdog,
-BC gap detection, IndexedDB checksum, port message reordering, v9 unified keepalive,
-sequence tracking, storage integrity, v8 port resilience.**
+**Your strength: Complete Quick Tab system with v1.6.3.8-v2 Background Relay,
+ACK-based messaging, WriteBuffer batching, BFCache lifecycle.**

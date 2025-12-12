@@ -5,9 +5,18 @@
  * v1.6.4.13 - Issue #5: Enhanced logging for broadcast operations
  * v1.6.4.15 - Phase 3B Optimization #5: Backpressure protection
  * v1.6.3.7-v9 - Issue #7: Monotonic sequence counter for message loss detection
+ * v1.6.3.8-v2 - Issue #1, #10: Background Relay pattern for sidebar communication
  *
  * Purpose: Provides instant messaging between tabs without full re-renders
  * BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
+ *
+ * v1.6.3.8-v2 - Sidebar Relay Pattern:
+ * Firefox Sidebar runs in a separate origin context. BroadcastChannel messages
+ * sent from content scripts never arrive in the sidebar, causing silent failure.
+ * Solution: Background Relay (Content -> Background via Port -> Sidebar via Port)
+ * - SIDEBAR_READY handshake protocol before routing messages
+ * - BC_SIDEBAR_RELAY_ACTIVE log when relay pattern is active
+ * - SIDEBAR_MESSAGE_DELIVERED/DROPPED logs for delivery status
  *
  * Event Types:
  * - quick-tab-created: A new Quick Tab was created
@@ -121,7 +130,7 @@ function _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize
   if (!_gapDetectionCallback) {
     return;
   }
-  
+
   try {
     _gapDetectionCallback({
       expectedSeq: expectedSequence,
@@ -141,17 +150,17 @@ function _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize
  */
 export function processReceivedSequence(receivedSequence) {
   _lastBroadcastReceivedTime = Date.now();
-  
+
   // First message - no gap possible
   if (_lastReceivedSequenceNumber === 0) {
     _lastReceivedSequenceNumber = receivedSequence;
     return { hasGap: false, gapSize: 0, isFirstMessage: true };
   }
-  
+
   const expectedSequence = _lastReceivedSequenceNumber + 1;
   const hasGap = receivedSequence > expectedSequence;
   const gapSize = hasGap ? receivedSequence - expectedSequence : 0;
-  
+
   if (hasGap) {
     console.warn('[BroadcastChannelManager] [BC] SEQUENCE_GAP_DETECTED:', {
       expectedSequence,
@@ -160,11 +169,11 @@ export function processReceivedSequence(receivedSequence) {
       missedMessages: gapSize,
       timestamp: Date.now()
     });
-    
+
     // Notify listener of gap (extracted to reduce nesting)
     _invokeGapDetectionCallback(expectedSequence, receivedSequence, gapSize);
   }
-  
+
   _lastReceivedSequenceNumber = receivedSequence;
   return { hasGap, gapSize, isFirstMessage: false };
 }
@@ -221,7 +230,7 @@ const _backpressureMetrics = {
 export function initBroadcastChannel() {
   // v1.6.3.7-v12 - Issue #1: Detect execution context for better diagnostics
   const executionContext = _detectExecutionContext();
-  
+
   // Check if BroadcastChannel is supported
   if (typeof BroadcastChannel === 'undefined') {
     console.warn('[BroadcastChannelManager] [BC] INIT_UNAVAILABLE:', {
@@ -273,9 +282,9 @@ function _detectExecutionContext() {
     const urlContext = _getExecutionContextFromUrl();
     // v1.6.3.7-v12 - FIX Code Review: Explicit null/undefined check
     if (urlContext !== null && urlContext !== undefined) return urlContext;
-    
+
     if (_isBackgroundScript()) return 'background';
-    
+
     return 'content-script';
   } catch (_err) {
     return 'unknown';
@@ -290,14 +299,14 @@ function _detectExecutionContext() {
  */
 function _getExecutionContextFromUrl() {
   if (typeof window === 'undefined') return null;
-  
+
   const url = window.location?.href || '';
-  
+
   if (url.includes('sidebar/')) return 'sidebar';
   if (url.includes('popup')) return 'popup';
   if (url.includes('options_page')) return 'options';
   if (_isExtensionPageUrl(url)) return 'extension-page';
-  
+
   return null;
 }
 
@@ -531,6 +540,186 @@ export function closeBroadcastChannel() {
   }
 }
 
+// ==================== v1.6.3.8-v2 SIDEBAR RELAY PATTERN ====================
+// Issue #1 & #10: Firefox Sidebar runs in separate origin context
+// BroadcastChannel messages sent from content scripts never arrive in sidebar
+// Solution: Background Relay Pattern - Content -> Background -> Sidebar via Port
+
+/**
+ * Track sidebar ready state for relay routing
+ * v1.6.3.8-v2 - Issue #1: SIDEBAR_READY handshake protocol
+ */
+let _sidebarReady = false;
+
+/**
+ * Callback to send messages via background relay
+ * v1.6.3.8-v2 - Issue #1: Set by content script or sidebar
+ * @type {Function|null}
+ */
+let _backgroundRelayCallback = null;
+
+/**
+ * Track whether relay is active (BC failed verification)
+ * v1.6.3.8-v2 - Issue #1: Logged as BC_SIDEBAR_RELAY_ACTIVE
+ */
+let _sidebarRelayActive = false;
+
+/**
+ * Check if sidebar relay pattern is active
+ * v1.6.3.8-v2 - Issue #1: Returns true when using relay instead of direct BC
+ * @returns {boolean} True if relay pattern is active
+ */
+export function isSidebarRelayActive() {
+  return _sidebarRelayActive;
+}
+
+/**
+ * Mark sidebar as ready to receive messages
+ * v1.6.3.8-v2 - Issue #1 & #10: Called when sidebar sends SIDEBAR_READY signal
+ * @param {boolean} ready - Whether sidebar is ready
+ */
+export function setSidebarReady(ready) {
+  _sidebarReady = ready;
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] SIDEBAR_READY_STATE:', {
+      ready,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Check if sidebar is ready to receive messages
+ * v1.6.3.8-v2 - Issue #10: Used before routing messages
+ * @returns {boolean} True if sidebar has signaled ready
+ */
+export function isSidebarReady() {
+  return _sidebarReady;
+}
+
+/**
+ * Set callback for background relay messaging
+ * v1.6.3.8-v2 - Issue #1: Register relay function
+ * @param {Function} callback - Function to send message via background: (message) => Promise<void>
+ */
+export function setBackgroundRelayCallback(callback) {
+  _backgroundRelayCallback = callback;
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] RELAY_CALLBACK_SET:', {
+      hasCallback: !!callback,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Activate sidebar relay pattern
+ * v1.6.3.8-v2 - Issue #1: Called when BC verification fails
+ * Routes all sidebar-bound messages through background
+ */
+export function activateSidebarRelay() {
+  _sidebarRelayActive = true;
+  console.log('[BroadcastChannelManager] BC_SIDEBAR_RELAY_ACTIVE:', {
+    reason: 'BroadcastChannel cannot reach sidebar context',
+    fallback: 'Using Background Relay (Content -> Background -> Sidebar)',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Deactivate sidebar relay pattern
+ * v1.6.3.8-v2 - Issue #1: Called if BC starts working
+ */
+export function deactivateSidebarRelay() {
+  _sidebarRelayActive = false;
+  if (DEBUG_BC_MESSAGING) {
+    console.log('[BroadcastChannelManager] SIDEBAR_RELAY_DEACTIVATED:', {
+      reason: 'BroadcastChannel is working',
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Send message to sidebar via background relay
+ * v1.6.3.8-v2 - Issue #1 & #10: Used when BC cannot reach sidebar
+ * @param {Object} message - Message to send
+ * @returns {Promise<{ delivered: boolean, method: string }>} Delivery result
+ */
+export async function sendToSidebarViaRelay(message) {
+  if (!_backgroundRelayCallback) {
+    console.warn('[BroadcastChannelManager] SIDEBAR_MESSAGE_DROPPED:', {
+      reason: 'No relay callback registered',
+      messageType: message.type,
+      timestamp: Date.now()
+    });
+    return { delivered: false, method: 'none' };
+  }
+
+  // Check if sidebar is ready
+  if (!_sidebarReady) {
+    console.warn('[BroadcastChannelManager] SIDEBAR_MESSAGE_DROPPED:', {
+      reason: 'Sidebar not ready (no SIDEBAR_READY signal)',
+      messageType: message.type,
+      timestamp: Date.now()
+    });
+    return { delivered: false, method: 'none' };
+  }
+
+  try {
+    // Add relay metadata
+    const relayMessage = {
+      ...message,
+      _relayed: true,
+      _relayTimestamp: Date.now()
+    };
+
+    await _backgroundRelayCallback(relayMessage);
+
+    if (DEBUG_BC_MESSAGING) {
+      console.log('[BroadcastChannelManager] SIDEBAR_MESSAGE_DELIVERED:', {
+        messageType: message.type,
+        method: 'background-relay',
+        quickTabId: message.quickTabId,
+        timestamp: Date.now()
+      });
+    }
+
+    return { delivered: true, method: 'background-relay' };
+  } catch (err) {
+    console.error('[BroadcastChannelManager] SIDEBAR_MESSAGE_DROPPED:', {
+      reason: `Relay callback error: ${err.message}`,
+      messageType: message.type,
+      timestamp: Date.now()
+    });
+    return { delivered: false, method: 'none' };
+  }
+}
+
+/**
+ * Smart broadcast that uses relay for sidebar when needed
+ * v1.6.3.8-v2 - Issue #1 & #10: Hybrid broadcast with relay fallback
+ * @param {Object} message - Message to broadcast
+ * @param {boolean} [requireAck=false] - Whether to require ACK
+ * @returns {Promise<{ bcSent: boolean, relaySent: boolean }>} Broadcast result
+ */
+export async function smartBroadcast(message, requireAck = false) {
+  const result = { bcSent: false, relaySent: false };
+
+  // Always try BroadcastChannel for same-origin tabs
+  if (isChannelAvailable()) {
+    result.bcSent = _postMessageWithBackpressure(message, requireAck);
+  }
+
+  // Use relay for sidebar if relay is active
+  if (_sidebarRelayActive && _backgroundRelayCallback) {
+    const relayResult = await sendToSidebarViaRelay(message);
+    result.relaySent = relayResult.delivered;
+  }
+
+  return result;
+}
+
 // Export default object with all methods
 export default {
   initBroadcastChannel,
@@ -558,7 +747,16 @@ export default {
   isBroadcastChannelStale,
   setGapDetectionCallback,
   processReceivedSequence,
-  resetSequenceTracking
+  resetSequenceTracking,
+  // v1.6.3.8-v2 - Issue #1 & #10: Sidebar relay exports
+  isSidebarRelayActive,
+  setSidebarReady,
+  isSidebarReady,
+  setBackgroundRelayCallback,
+  activateSidebarRelay,
+  deactivateSidebarRelay,
+  sendToSidebarViaRelay,
+  smartBroadcast
 };
 
 // ==================== v1.6.4.15 BACKPRESSURE IMPLEMENTATION ====================
@@ -666,8 +864,10 @@ function _handleAckTimeout(messageId) {
 
   // Consider throttling if too many timeouts
   const timeoutCount = _backpressureMetrics.acksTimedOut;
-  if (timeoutCount > REPEATED_ACK_TIMEOUT_THRESHOLD &&
-      timeoutCount % REPEATED_ACK_TIMEOUT_THRESHOLD === 0) {
+  if (
+    timeoutCount > REPEATED_ACK_TIMEOUT_THRESHOLD &&
+    timeoutCount % REPEATED_ACK_TIMEOUT_THRESHOLD === 0
+  ) {
     _triggerThrottle('repeated_ack_timeouts');
   }
 }
@@ -819,7 +1019,7 @@ function _postMessageWithBackpressure(message, requireAck = false) {
   const messageId = _generateMessageId();
   // v1.6.3.7-v9 - Issue #7: Add monotonic sequence number
   const sequenceNumber = _getNextSequenceNumber();
-  
+
   const messageWithMeta = {
     ...message,
     messageId,

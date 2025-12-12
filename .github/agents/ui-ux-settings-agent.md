@@ -59,23 +59,24 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.8-v2 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
+
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+
+**v1.6.3.8 Features (Retained):** Initialization barriers, centralized storage
+validation.
+
+**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag.
+
+**v1.6.3.7-v4 Features (Retained):**
 
 - **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
   idle timer
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
-
-**v1.6.3.6-v10 Build & UI/UX (Retained):**
-
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking, Rollup cache
-- **Manager UI/UX Issues #1-12 (Reference for Settings UI):**
-  - Enhanced visual hierarchy (left border, background colors)
-  - Smooth animations (0.35s), responsive design (250-500px breakpoints)
-  - Favicon loading with 2s timeout and fallback
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34 (UI patterns to avoid)
 
 **Settings Sidebar Structure (Two-Layer System):**
 

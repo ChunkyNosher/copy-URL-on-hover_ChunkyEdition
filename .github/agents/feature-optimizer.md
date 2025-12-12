@@ -61,39 +61,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.7-v4 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Write latency logging** - `STORAGE_WRITE_LATENCY` for monitoring
+- **Backpressure detection** - `STORAGE_BACKPRESSURE_DETECTED` logging
 
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()`
-- **Heartbeat** - Keep background alive, 25s interval, 5s timeout
-- **Storage Deduplication** - Multi-method dedup
-- **Architectural Resilience** - Coordinator is optimization, not requirement
-
-**v1.6.3.6-v10 Build Optimizations (Retained):**
-
-- **`.buildconfig.json`** - Centralized bundle size thresholds
-- **Terser Minification:** Dev (beautify, 2 passes) vs Prod (no beautify, 3
-  passes)
-- **Tree-shaking:** Active in BOTH dev and production builds
-- **Rollup Cache:** Faster watch mode rebuilds
-- **Parallel Tasks:** `npm-run-all` for `npm run build:dev`
-- **Version Extraction:** release.yml uses Node.js JSON parsing
-
-**CodeScene Analysis - Optimization Targets:**
-
-- `quick-tabs-manager.js` 5.34 (needs 8.75+)
-- `storage-utils.js` 7.23 (optimization candidate)
-- `background.js` 7.66 (optimization candidate)
+**v1.6.3.8 Features (Retained):** Initialization barriers, centralized storage
+validation, storage tier probing, keepalive health reports, Code Health:
+background.js (9.09), QuickTabHandler.js (9.41).
 
 **v1.6.3.6 Fixes:**
 

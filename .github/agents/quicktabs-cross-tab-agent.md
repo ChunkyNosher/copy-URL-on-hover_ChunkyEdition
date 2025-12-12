@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.7-v12), diagnostic logging, dedup decision logging, sequence ID ordering,
-  port registry thresholds, keepalive sampling, BC fallback logging
+  (v1.6.3.8-v2), Background Relay, ACK-based messaging, WriteBuffer batching,
+  BFCache lifecycle, sequence rejection
 tools: ['*']
 ---
 
@@ -38,101 +38,33 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.7-v12 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.7-v12 Features (NEW):**
+**v1.6.3.8-v2 Features (NEW):**
 
-- **DEBUG_DIAGNOSTICS flag** - Separate verbose diagnostics from DEBUG_MESSAGING
-- **Keepalive health sampling** - First failure + 10% sampling for visibility
-- **Port registry thresholds** - WARN at 50, CRITICAL at 100 with auto-cleanup
-- **Dedup decision logging** - All skip/process decisions with reasons logged
-- **Sequence ID prioritization** - Uses sequenceId over 50ms timestamp window
-- **BroadcastChannel fallback logging** - Context detection, fallback activation
-- **Storage validation logging** - Each stage logged with expected vs actual
+- **Background Relay pattern** - Sidebar messages bypass BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
+- **Port registry snapshots** - 60s interval with active/idle/zombie counts
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
 
-**v1.6.3.7-v11 Features (Retained):** Promise barrier, LRU dedup (1000),
-correlation ID echo, state machine timeouts (7s), WeakRef callbacks.
+**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
+storage validation, dedup decision logging, BC fallback detection.
 
-**v1.6.3.7-v10 Features (Retained):** Storage watchdog (2s), BC gap detection,
-IndexedDB checksum, port message reordering (1s), tab affinity buckets, init timing.
+**v1.6.3.7-v11-v12 Features (Retained):** Promise barrier, LRU dedup (1000),
+correlation ID echo, state machine timeouts (7s), DEBUG_DIAGNOSTICS.
 
-**v1.6.3.7-v9 Features (Retained):**
+**Key Functions (v1.6.3.8-v2):**
 
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
-- **Race Cooldown** - Single authoritative dedup with 200ms cooldown
-
-**v1.6.3.7-v8 Features (Retained):**
-
-- **Port Message Queue** - Messages queued during reconnection
-- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
-- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
-
-**v1.6.3.7-v6 Features (Retained):**
-
-- **Unified Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes in logs
-- **Deduplication Visibility** - `RENDER_SKIPPED reason=...` logging
-- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
-- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
-- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED` logging
-- **Keepalive Health** - 60s health check, consecutive failure tracking
-
-**v1.6.3.7-v5 Features (Retained):**
-
-- **Connection State Tracking** - Three states: connected → zombie → disconnected
-- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
-- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Circuit Breaker Probing** - Early recovery with 500ms health probes
-  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
-- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
-- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
-- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
-  message
-
-**v1.6.3.7-v3 Features (Retained):**
-
-- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
-- **storage.session API** - Session Quick Tabs (`permanent: false`)
-
-**v1.6.3.7-v2 Features (Retained):**
-
-- **Single Writer Authority** - Manager sends commands, background writes
-  storage
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based dedup
-- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
-- **Port Reconnection Sync** - `REQUEST_FULL_STATE_SYNC` on reconnection
-
-**v1.6.3.7-v1 Features (Retained):**
-
-- **Background Keepalive** - `_startKeepalive()` every 20s
-- **Port Circuit Breaker** - closed→open→half-open (100ms→10s backoff)
-- **UI Performance** - Debounced renderUI (300ms)
-
-**Key Functions (v1.6.3.7-v11):**
-
-| Function                       | Location   | Purpose                            |
-| ------------------------------ | ---------- | ---------------------------------- |
-| `initializationBarrierPromise` | Manager    | Promise-based init barrier (v11)   |
-| `evictLRUDedupEntry()`         | Manager    | LRU dedup map eviction (v11)       |
-| `echoCorrelationId()`          | Background | HEARTBEAT_ACK correlation (v11)    |
-| `startStorageWatchdog()`       | Background | Watchdog timer for writes (v10)    |
-| `handleBCGapDetection()`       | Manager    | BC gap detection callback (v10)    |
-| `validateChecksumOnStartup()`  | Storage    | IndexedDB corruption check (v10)   |
-| `processPortMessageReorder()`  | Manager    | Port message queue (v10)           |
-| `validateStorageIntegrity()`   | Storage    | Integrity check with backup        |
-| `processOrderedStorageEvent()` | Background | sequenceId validation              |
-| `broadcastFullStateSync()`     | Background | Full state sync via BC             |
-| `scheduleRender(source)`       | Manager    | Unified render entry point         |
-| `handleFullStateSyncRequest()` | Background | State sync handler                 |
+| Function                   | Location       | Purpose                         |
+| -------------------------- | -------------- | ------------------------------- |
+| `sendRequestWithTimeout()` | message-utils  | ACK-based messaging (v8-v2)     |
+| `flushWriteBuffer()`       | storage-utils  | WriteBuffer batch flush (v8-v2) |
+| `waitForInitialization()`  | QuickTabHandler| 10s init barrier (v8)           |
+| `scheduleRender(source)`   | Manager        | Unified render entry point      |
 
 **Storage Format:**
 
@@ -149,29 +81,17 @@ IndexedDB checksum, port message reordering (1s), tab affinity buckets, init tim
 
 ## Testing Requirements
 
-- [ ] Promise-based listener barrier replaces boolean flag (v1.6.3.7-v11)
-- [ ] LRU dedup eviction prevents memory bloat (max 1000) (v1.6.3.7-v11)
-- [ ] Correlation ID echo in HEARTBEAT_ACK (v1.6.3.7-v11)
-- [ ] State machine 7s timeout auto-recovery works (v1.6.3.7-v11)
-- [ ] Storage watchdog triggers re-read after 2s (v1.6.3.7-v10)
-- [ ] BC gap detection triggers storage fallback (v1.6.3.7-v10)
-- [ ] IndexedDB checksum validation works on startup (v1.6.3.7-v10)
-- [ ] Port message reordering queue works (1s timeout) (v1.6.3.7-v10)
-- [ ] Unified keepalive works (20s interval with correlation IDs) (v1.6.3.7-v9)
-- [ ] Sequence tracking works (sequenceId, messageSequence, sequenceNumber) (v1.6.3.7-v9)
-- [ ] Storage integrity validation works (v1.6.3.7-v9)
-- [ ] Initialization barrier prevents race conditions (v1.6.3.7-v9)
-- [ ] Port age management works (90s max, 30s stale) (v1.6.3.7-v9)
-- [ ] Port message queue works during reconnection (v1.6.3.7-v8)
-- [ ] Connection state tracking works (connected→zombie→disconnected) (v1.6.3.7-v5)
-- [ ] BroadcastChannel delivers instant updates (v1.6.3.7-v3)
+- [ ] Background Relay works (BC_SIDEBAR_RELAY_ACTIVE) (v1.6.3.8-v2)
+- [ ] ACK-based messaging works (sendRequestWithTimeout) (v1.6.3.8-v2)
+- [ ] WriteBuffer batching works (75ms) (v1.6.3.8-v2)
+- [ ] Sequence rejection works (STORAGE_SEQUENCE_REJECTED) (v1.6.3.8-v2)
+- [ ] BFCache lifecycle events work (v1.6.3.8-v2)
+- [ ] Initialization barriers work (10s/2s) (v1.6.3.8)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
-- [ ] `scheduleRender()` prevents redundant renders via hash comparison
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.7-v11 promise barrier,
-LRU dedup eviction, correlation ID echo, state machine timeouts, v10 storage watchdog,
-BC gap detection, IndexedDB checksum, port message reordering, v9 unified keepalive.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v2 Background Relay,
+ACK-based messaging, WriteBuffer batching, sequence rejection.**

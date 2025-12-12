@@ -2,6 +2,19 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.7-v13 - FIX Sidebar Communication Fallback Issues #5, #12, arch #1, #6:
+ *   - FIX Issue #5: Sidebar BroadcastChannel fallback logging with SIDEBAR_BC_UNAVAILABLE message
+ *   - FIX Issue #5: Explicit fallback mechanism type documentation (port-based + storage.onChanged)
+ *   - FIX Issue #12: Enhanced fallback health monitoring with stall detection (60s threshold)
+ *   - FIX Issue #12: Latency tracking in fallback stats (avgLatencyMs, lastLatencyMs)
+ *   - FIX Issue #12: FALLBACK_HEALTH log with expected messages per interval (~6 if state changes every 5s)
+ *   - FIX Issue #12: FALLBACK_STALLED warning when no updates for 60+ seconds
+ *   - FIX arch #1: BC verification handshake (PING/PONG) to detect if BC actually works in sidebar
+ *   - FIX arch #1: BC_VERIFICATION_FAILED log when messages don't cross sidebar boundary
+ *   - FIX arch #6: Storage health probe - write timestamp to _sidebar_health_ping key
+ *   - FIX arch #6: STORAGE_TIER_BROKEN log when onChanged doesn't fire within 500ms
+ *   - FIX arch #6: Storage tier latency measurement (healthy/acceptable/degraded classification)
+ *
  * v1.6.3.7-v10 - FIX Issue #10 (state-persistence-issues.md): Tab Affinity Map Desynchronization
  *   - FIX Issue #10: Enhanced cleanup job logging with before/after sizes and age bucket counts
  *   - FIX Issue #10: Age bucket distribution (< 1h, 1-6h, 6-24h, > 24h) in diagnostics
@@ -275,7 +288,8 @@ const INIT_TIME_NOT_STARTED = -1;
  */
 function logListenerEntry(listenerName, context = {}) {
   const fullyInit = isFullyInitialized();
-  const timeSinceInitStartMs = initializationStartTime > 0 ? Date.now() - initializationStartTime : INIT_TIME_NOT_STARTED;
+  const timeSinceInitStartMs =
+    initializationStartTime > 0 ? Date.now() - initializationStartTime : INIT_TIME_NOT_STARTED;
   console.log(`[Manager] LISTENER_ENTRY: ${listenerName}`, {
     isFullyInitialized: fullyInit,
     initializationStarted,
@@ -699,7 +713,8 @@ function logPortLifecycle(event, details = {}) {
 function _transitionConnectionState(newState, reason) {
   const oldState = connectionState;
   const now = Date.now();
-  const durationInPreviousState = lastConnectionStateChange > 0 ? now - lastConnectionStateChange : 0;
+  const durationInPreviousState =
+    lastConnectionStateChange > 0 ? now - lastConnectionStateChange : 0;
 
   connectionState = newState;
   lastConnectionStateChange = now;
@@ -742,7 +757,8 @@ function _updateConsecutiveFailures(newState) {
  * @param {number} options.timestamp - Current timestamp
  */
 function _logConnectionStateTransition({ oldState, newState, reason, duration, timestamp }) {
-  const isFallbackMode = newState === CONNECTION_STATE.ZOMBIE || newState === CONNECTION_STATE.DISCONNECTED;
+  const isFallbackMode =
+    newState === CONNECTION_STATE.ZOMBIE || newState === CONNECTION_STATE.DISCONNECTED;
   console.log('[Manager] CONNECTION_STATE_TRANSITION:', {
     previousState: oldState,
     newState,
@@ -776,9 +792,13 @@ function _logFallbackModeIfNeeded(newState) {
 function _logZombieFallback() {
   console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to BroadcastChannel fallback immediately');
   if (_isChannelAvailable()) {
-    console.log('[Manager] FALLBACK_CHANNEL_ACTIVATED: BroadcastChannel is ACTIVE - will receive updates via broadcast');
+    console.log(
+      '[Manager] FALLBACK_CHANNEL_ACTIVATED: BroadcastChannel is ACTIVE - will receive updates via broadcast'
+    );
   } else {
-    console.warn('[Manager] FALLBACK_CHANNEL_UNAVAILABLE: BroadcastChannel NOT available - relying on storage polling only');
+    console.warn(
+      '[Manager] FALLBACK_CHANNEL_UNAVAILABLE: BroadcastChannel NOT available - relying on storage polling only'
+    );
   }
 }
 
@@ -787,10 +807,13 @@ function _logZombieFallback() {
  * @private
  */
 function _logDisconnectedFallback() {
-  console.log('[Manager] FALLBACK_MODE_ACTIVE: Port disconnected, using BroadcastChannel + storage polling', {
-    broadcastAvailable: _isChannelAvailable(),
-    storagePollingMs: 10000
-  });
+  console.log(
+    '[Manager] FALLBACK_MODE_ACTIVE: Port disconnected, using BroadcastChannel + storage polling',
+    {
+      broadcastAvailable: _isChannelAvailable(),
+      storagePollingMs: 10000
+    }
+  );
 }
 
 /**
@@ -936,7 +959,10 @@ function _verifyPortListenerRegistration() {
     });
     console.log('[Manager] LISTENER_VERIFICATION: Test message sent to verify port listener');
   } catch (err) {
-    console.error('[Manager] LISTENER_VERIFICATION_FAILED: Could not send test message:', err.message);
+    console.error(
+      '[Manager] LISTENER_VERIFICATION_FAILED: Could not send test message:',
+      err.message
+    );
   }
 }
 
@@ -1036,19 +1062,23 @@ function _startCircuitBreakerProbes() {
     });
 
     // Attempt a lightweight probe to detect if background recovered
-    _probeBackgroundHealth().then(healthy => {
-      if (healthy && circuitBreakerState === 'open') {
-        console.log('[Manager] CIRCUIT_BREAKER_EARLY_RECOVERY: Background responding - transitioning to HALF-OPEN');
-        _stopCircuitBreakerProbes();
-        circuitBreakerState = 'half-open';
-        reconnectAttempts = 0;
-        reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-        connectToBackground();
-      }
-    }).catch(() => {
-      // Probe failed, continue waiting
-      console.log('[Manager] CIRCUIT_BREAKER_PROBE_FAILED: Background still unresponsive');
-    });
+    _probeBackgroundHealth()
+      .then(healthy => {
+        if (healthy && circuitBreakerState === 'open') {
+          console.log(
+            '[Manager] CIRCUIT_BREAKER_EARLY_RECOVERY: Background responding - transitioning to HALF-OPEN'
+          );
+          _stopCircuitBreakerProbes();
+          circuitBreakerState = 'half-open';
+          reconnectAttempts = 0;
+          reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+          connectToBackground();
+        }
+      })
+      .catch(() => {
+        // Probe failed, continue waiting
+        console.log('[Manager] CIRCUIT_BREAKER_PROBE_FAILED: Background still unresponsive');
+      });
   }, CIRCUIT_BREAKER_PROBE_INTERVAL_MS);
 }
 
@@ -1120,11 +1150,11 @@ function _handlePortMessageWithQueue(message) {
  */
 async function waitForListenerReady(timeoutMs = 5000) {
   if (listenerFullyRegistered) return;
-  
+
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => reject(new Error('Listener ready timeout')), timeoutMs);
   });
-  
+
   try {
     await Promise.race([listenerReadyPromise, timeoutPromise]);
     console.log('[Manager] [PORT] [LISTENER_READY_WAIT_RESOLVED]:', {
@@ -1448,9 +1478,9 @@ async function sendHeartbeat() {
   try {
     // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
     const response = await sendPortMessageWithTimeout(
-      { 
-        type: 'HEARTBEAT', 
-        timestamp: Date.now(), 
+      {
+        type: 'HEARTBEAT',
+        timestamp: Date.now(),
         source: 'sidebar',
         correlationId: currentKeepaliveCorrelationId // v1.6.3.7-v9: Include correlation ID
       },
@@ -1496,7 +1526,7 @@ function _logKeepaliveComplete(success, reason) {
  */
 function _triggerKeepaliveFallback(err) {
   consecutiveKeepaliveFailures++;
-  
+
   console.warn('[Manager] [KEEPALIVE] FALLBACK_TRIGGERED:', {
     correlationId: currentKeepaliveCorrelationId,
     error: err.message,
@@ -1508,10 +1538,13 @@ function _triggerKeepaliveFallback(err) {
   // v1.6.3.7-v9 - Issue #1: Check if we should transition to ZOMBIE
   if (consecutiveKeepaliveFailures >= KEEPALIVE_FAILURES_BEFORE_ZOMBIE) {
     if (connectionState === CONNECTION_STATE.CONNECTED) {
-      console.warn('[Manager] [KEEPALIVE] ZOMBIE_TRANSITION: Consecutive failure threshold reached', {
-        consecutiveFailures: consecutiveKeepaliveFailures,
-        threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE
-      });
+      console.warn(
+        '[Manager] [KEEPALIVE] ZOMBIE_TRANSITION: Consecutive failure threshold reached',
+        {
+          consecutiveFailures: consecutiveKeepaliveFailures,
+          threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE
+        }
+      );
       _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'keepalive-failure-threshold');
     }
   }
@@ -1529,7 +1562,7 @@ function _logHeartbeatAttempt() {
     correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
     portExists: backgroundPort !== null,
     portConnected: backgroundPort ? 'yes' : 'no',
-    connectionState,  // v1.6.3.7-v5 - FIX Issue #1: Explicit connection state
+    connectionState, // v1.6.3.7-v5 - FIX Issue #1: Explicit connection state
     circuitBreakerState,
     consecutiveFailures: consecutiveHeartbeatFailures,
     consecutiveKeepaliveFailures, // v1.6.3.7-v9
@@ -1562,7 +1595,7 @@ function _handlePortDisconnected() {
   consecutiveHeartbeatFailures++;
   // v1.6.3.7-v9 - Issue #1: Also increment unified counter
   consecutiveKeepaliveFailures++;
-  
+
   if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
     console.error('[Manager] v1.6.3.7-v9 Max heartbeat failures - triggering reconnect');
     scheduleReconnect();
@@ -1645,10 +1678,13 @@ function _handleHeartbeatFailure(err) {
   // Instead of immediately transitioning on first timeout, require 2-3 consecutive timeouts
   if (isTimeout && connectionState === CONNECTION_STATE.CONNECTED) {
     if (consecutiveHeartbeatTimeouts >= HEARTBEAT_FAILURES_BEFORE_ZOMBIE) {
-      console.warn('[Manager] [HEARTBEAT] [ZOMBIE_TRANSITION]: Consecutive timeout threshold reached', {
-        consecutiveTimeouts: consecutiveHeartbeatTimeouts,
-        threshold: HEARTBEAT_FAILURES_BEFORE_ZOMBIE
-      });
+      console.warn(
+        '[Manager] [HEARTBEAT] [ZOMBIE_TRANSITION]: Consecutive timeout threshold reached',
+        {
+          consecutiveTimeouts: consecutiveHeartbeatTimeouts,
+          threshold: HEARTBEAT_FAILURES_BEFORE_ZOMBIE
+        }
+      );
       _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'heartbeat-timeout-zombie');
       // BroadcastChannel fallback is activated in _transitionConnectionState
     } else {
@@ -1672,7 +1708,8 @@ function _handleHeartbeatFailure(err) {
  * @returns {string} Diagnosis message
  */
 function _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed) {
-  if (isTimeout) return 'Port is open but background script is not responding (Firefox 30s termination?)';
+  if (isTimeout)
+    return 'Port is open but background script is not responding (Firefox 30s termination?)';
   if (isPortClosed) return 'Port was closed by background script';
   return 'Unknown heartbeat failure';
 }
@@ -1685,7 +1722,9 @@ function _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed) {
  */
 function _processHeartbeatFailureRecovery(isTimeout) {
   if (isTimeout) {
-    console.error('[Manager] v1.6.3.7 ZOMBIE_PORT_DETECTED: Port appears alive but background is dead');
+    console.error(
+      '[Manager] v1.6.3.7 ZOMBIE_PORT_DETECTED: Port appears alive but background is dead'
+    );
     backgroundPort = null;
   }
 
@@ -1742,8 +1781,8 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
     const correlationId = generateCorrelationId();
     // v1.6.3.7-v9 - Issue #9: Add message sequence number
     const messageSequence = _getNextManagerPortMessageSequence();
-    const messageWithCorrelation = { 
-      ...message, 
+    const messageWithCorrelation = {
+      ...message,
       correlationId,
       messageSequence // v1.6.3.7-v9
     };
@@ -1766,7 +1805,7 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
     // Send message
     try {
       backgroundPort.postMessage(messageWithCorrelation);
-      
+
       // v1.6.3.7-v9 - Issue #9: Log sequence for debugging
       if (DEBUG_MESSAGING) {
         console.log('[Manager] [PORT] MESSAGE_SENT:', {
@@ -2022,9 +2061,11 @@ function _shouldForceRender(context) {
  * @returns {boolean} True if render should be skipped
  */
 function _shouldSkipRender(context, messageId) {
-  return _checkSaveIdDedup(context) ||
-         _checkMessageIdDedup(context, messageId) ||
-         _checkHashDedup(context);
+  return (
+    _checkSaveIdDedup(context) ||
+    _checkMessageIdDedup(context, messageId) ||
+    _checkHashDedup(context)
+  );
 }
 
 /**
@@ -2175,12 +2216,12 @@ const processedMessageTimestamps = new Map();
  */
 function _markMessageAsProcessed(messageId) {
   if (!messageId) return;
-  
+
   // v1.6.4.16 - FIX Issue #13: Proactive cleanup when approaching max size
   if (processedMessageTimestamps.size >= MESSAGE_DEDUP_MAX_SIZE * 0.9) {
     _cleanupExpiredMessageIds();
   }
-  
+
   recentlyProcessedMessageIds.add(messageId);
   processedMessageTimestamps.set(messageId, Date.now());
 }
@@ -2208,7 +2249,7 @@ function _cleanupExpiredMessageIds() {
  */
 function _removeExpiredMessages(now) {
   let expiredCount = 0;
-  
+
   for (const [messageId, timestamp] of processedMessageTimestamps) {
     if (now - timestamp > MESSAGE_ID_MAX_AGE_MS) {
       recentlyProcessedMessageIds.delete(messageId);
@@ -2216,7 +2257,7 @@ function _removeExpiredMessages(now) {
       expiredCount++;
     }
   }
-  
+
   return expiredCount;
 }
 
@@ -2232,15 +2273,14 @@ function _evictOldestIfOverCapacity(now) {
   }
 
   const evictCount = processedMessageTimestamps.size - MESSAGE_DEDUP_MAX_SIZE;
-  const sortedEntries = [...processedMessageTimestamps.entries()]
-    .sort((a, b) => a[1] - b[1]);
-  
+  const sortedEntries = [...processedMessageTimestamps.entries()].sort((a, b) => a[1] - b[1]);
+
   for (let i = 0; i < evictCount; i++) {
     const [messageId] = sortedEntries[i];
     recentlyProcessedMessageIds.delete(messageId);
     processedMessageTimestamps.delete(messageId);
   }
-  
+
   console.log('[Manager] [DEDUP] SIZE_EVICTION:', {
     evictedCount: evictCount,
     remainingSize: processedMessageTimestamps.size,
@@ -2269,6 +2309,33 @@ function _logExpiredCleanup(expiredCount, now) {
 // Start periodic cleanup interval (every 5 seconds)
 setInterval(_cleanupExpiredMessageIds, 5000);
 
+// ==================== v1.6.3.7-v13 DEDUP MAP SIZE LOGGING ====================
+// Issue #5: Periodic logging of dedup Map size for memory monitoring
+const DEDUP_MAP_SIZE_LOG_INTERVAL_MS = 60000; // Log every 60 seconds
+const ESTIMATED_BYTES_PER_ENTRY = 50; // Approximate memory per Map entry (key + value + overhead)
+
+/**
+ * Log the current size of the deduplication Map
+ * v1.6.3.7-v13 - Issue #5: Periodic memory monitoring for dedup map
+ * @private
+ */
+function _logDedupMapSize() {
+  const size = processedMessageTimestamps.size;
+  const estimatedKB = ((size * ESTIMATED_BYTES_PER_ENTRY) / 1024).toFixed(1);
+  const capacityPercent = ((size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1);
+
+  console.log('[Manager] [DEDUP] DEDUP_MAP_SIZE:', {
+    entries: size,
+    maxSize: MESSAGE_DEDUP_MAX_SIZE,
+    capacityPercent: capacityPercent + '%',
+    estimatedMemoryKB: estimatedKB + 'KB',
+    timestamp: Date.now()
+  });
+}
+
+// Start periodic dedup map size logging (every 60 seconds)
+setInterval(_logDedupMapSize, DEDUP_MAP_SIZE_LOG_INTERVAL_MS);
+
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
 
 /**
@@ -2283,7 +2350,7 @@ setInterval(_cleanupExpiredMessageIds, 5000);
 function handlePortMessage(message) {
   // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
   const messageEntryTime = Date.now();
-  
+
   // v1.6.3.7-v4 - FIX Issue #9: Wrap in try-catch to handle corrupted messages gracefully
   try {
     // v1.6.3.7-v4 - FIX Issue #9: Validate message structure
@@ -2296,16 +2363,19 @@ function handlePortMessage(message) {
 
     // Route message to appropriate handler
     _routePortMessage(message);
-    
+
     // v1.6.3.7-v9 - Issue #2: Log message exit with duration
     const processingDurationMs = Date.now() - messageEntryTime;
     if (DEBUG_MESSAGING) {
-      console.log(`[Manager] MESSAGE_PROCESSED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
-        quickTabId: message.quickTabId,
-        correlationId: message.correlationId,
-        durationMs: processingDurationMs,
-        timestamp: Date.now()
-      });
+      console.log(
+        `[Manager] MESSAGE_PROCESSED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`,
+        {
+          quickTabId: message.quickTabId,
+          correlationId: message.correlationId,
+          durationMs: processingDurationMs,
+          timestamp: Date.now()
+        }
+      );
     }
   } catch (err) {
     // v1.6.3.7-v4 - FIX Issue #9: Log error with context and continue
@@ -2332,19 +2402,23 @@ function handlePortMessage(message) {
  */
 function _logPortMessageReceived(message, entryTime) {
   // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
-  const correlationId = message.correlationId || `port-${entryTime}-${Math.random().toString(36).substring(2, 7)}`;
-  
+  const correlationId =
+    message.correlationId || `port-${entryTime}-${Math.random().toString(36).substring(2, 7)}`;
+
   // v1.6.4.13 - Issue #5: Consolidated log with [PORT] prefix and all details
-  console.log(`[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`, {
-    quickTabId: message.quickTabId,
-    messageId: message.messageId,
-    saveId: message.saveId,
-    correlationId,
-    from: 'background',
-    path: 'port-connection',
-    connectionState,
-    timestamp: entryTime
-  });
+  console.log(
+    `[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`,
+    {
+      quickTabId: message.quickTabId,
+      messageId: message.messageId,
+      saveId: message.saveId,
+      correlationId,
+      from: 'background',
+      path: 'port-connection',
+      connectionState,
+      timestamp: entryTime
+    }
+  );
 
   logPortLifecycle('message', {
     type: message.type,
@@ -2397,10 +2471,10 @@ function _routePortMessage(message) {
  */
 function _tryRoutePortMessageByType(message) {
   const handlers = {
-    'START_STORAGE_WATCHDOG': _handleStartStorageWatchdog,
-    'BROADCAST': handleBroadcast,
-    'QUICK_TAB_STATE_UPDATED': _handleQuickTabStateUpdate,
-    'FULL_STATE_SYNC': _handleStateSyncResponse
+    START_STORAGE_WATCHDOG: _handleStartStorageWatchdog,
+    BROADCAST: handleBroadcast,
+    QUICK_TAB_STATE_UPDATED: _handleQuickTabStateUpdate,
+    FULL_STATE_SYNC: _handleStateSyncResponse
   };
 
   const handler = handlers[message.type];
@@ -2434,7 +2508,7 @@ function _handlePortStateUpdate(message) {
   });
   handleStateUpdateBroadcast(message);
   scheduleRender('port-STATE_UPDATE', message.messageId);
-  
+
   // v1.6.3.7-v12 - Issue #5: Track as port-based fallback update
   _trackFallbackUpdate('port');
 }
@@ -2448,7 +2522,7 @@ function _handlePortStateUpdate(message) {
  */
 function _handleStartStorageWatchdog(message) {
   const { expectedSaveId, sequenceId, timeoutMs } = message;
-  
+
   // Note: timeoutMs from message is logged for debugging, but timer uses local constant
   // STORAGE_WATCHDOG_TIMEOUT_MS (2000ms) to ensure consistent behavior
   console.log('[Manager] START_STORAGE_WATCHDOG received:', {
@@ -2458,7 +2532,7 @@ function _handleStartStorageWatchdog(message) {
     localTimeoutMs: STORAGE_WATCHDOG_TIMEOUT_MS,
     timestamp: Date.now()
   });
-  
+
   // Start the watchdog timer - if storage.onChanged doesn't arrive in time,
   // _handleWatchdogTimeout will re-read storage explicitly
   _startStorageWatchdog(expectedSaveId);
@@ -2529,7 +2603,7 @@ function _handleQuickTabStateUpdate(message) {
     changes: message.changes,
     messageId: message.messageId,
     saveId: message.saveId,
-    path: 'port-connection'  // v1.6.3.7-v5 - FIX Issue #3: Explicit path
+    path: 'port-connection' // v1.6.3.7-v5 - FIX Issue #3: Explicit path
   });
 
   handleStateUpdateBroadcast(message);
@@ -2693,9 +2767,14 @@ function _sendActionRequest(action, payload) {
 
 // ==================== END PORT CONNECTION ====================
 
-// ==================== v1.6.3.7-v3 BROADCAST CHANNEL ====================
+// ==================== v1.6.3.7-v3/v13 BROADCAST CHANNEL ====================
 // API #2: BroadcastChannel - Real-Time Tab Messaging
-// BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
+//
+// ARCHITECTURE NOTE (v1.6.3.7-v13 - Issue #1 arch doc):
+// - BroadcastChannel works for tab-to-tab communication
+// - In Sidebar context, BroadcastChannel is NOT RELIABLE due to Firefox API constraints
+// - For Sidebar, Port-based messaging is the PRIMARY tier, storage.onChanged is SECONDARY
+// - This function attempts BC init but includes verification handshake to confirm it works
 
 /**
  * Handler function reference for cleanup
@@ -2704,30 +2783,51 @@ function _sendActionRequest(action, payload) {
 let broadcastHandlerRef = null;
 
 /**
+ * BC verification state
+ * v1.6.3.7-v13 - Issue #1 (arch): Track verification handshake
+ */
+let bcVerificationPending = false;
+let bcVerificationReceived = false;
+let bcVerificationTimeoutId = null;
+
+/**
+ * BC verification timeout (1 second)
+ * v1.6.3.7-v13 - Issue #1 (arch): Time to wait for BC verification response
+ */
+const BC_VERIFICATION_TIMEOUT_MS = 1000;
+
+/**
  * Initialize BroadcastChannel for real-time updates
  * v1.6.3.7-v3 - API #2: Setup channel and listener
  * v1.6.3.7-v6 - Gap #3: Enhanced listener registration logging
  * v1.6.3.7-v9 - Issue #7: Set up sequence gap detection callback
  * v1.6.3.7-v12 - Issue #5, #11: Enhanced fallback logging when BC unavailable
+ * v1.6.3.7-v13 - Issue #1 (arch): Add verification handshake for sidebar context
  */
 function initializeBroadcastChannel() {
   const initialized = initBroadcastChannel();
   if (!initialized) {
     // v1.6.3.7-v12 - Issue #5, #11: Log explicit fallback activation
-    console.warn('[Manager] [BC] BROADCAST_CHANNEL_UNAVAILABLE:', {
-      reason: 'BroadcastChannel not available in sidebar context',
-      firefoxConstraint: 'BroadcastChannel API is not available in sidebar/panel isolated contexts',
-      fallbackActivated: true,
-      fallbackMechanism: 'port-based messaging + storage.onChanged polling',
-      fallbackDetails: {
-        primaryFallback: 'runtime.Port connection to background',
-        secondaryFallback: 'storage.onChanged event listener',
-        pollingInterval: 'Event-driven (no polling - relies on storage events)'
-      },
-      timestamp: Date.now()
-    });
-    console.log('[Manager] Sidebar: BroadcastChannel unavailable, activating fallback mechanism [port-based + storage.onChanged]');
-    
+    console.warn(
+      '[Manager] SIDEBAR_BC_UNAVAILABLE: Activating fallback [port-based + storage.onChanged]',
+      {
+        reason: 'BroadcastChannel not available in sidebar context',
+        firefoxConstraint:
+          'BroadcastChannel API is not available in sidebar/panel isolated contexts',
+        fallbackActivated: true,
+        fallbackMechanism: 'port-based messaging + storage.onChanged polling',
+        fallbackDetails: {
+          primaryFallback: 'runtime.Port connection to background',
+          secondaryFallback: 'storage.onChanged event listener',
+          pollingInterval: 'Event-driven (no polling - relies on storage events)'
+        },
+        timestamp: Date.now()
+      }
+    );
+    console.log(
+      '[Manager] Sidebar: BroadcastChannel unavailable, activating fallback mechanism [port-based + storage.onChanged]'
+    );
+
     // v1.6.3.7-v12 - Issue #5: Start fallback health monitoring
     _startFallbackHealthMonitoring();
     return;
@@ -2737,7 +2837,7 @@ function initializeBroadcastChannel() {
   resetSequenceTracking();
 
   // v1.6.3.7-v9 - Issue #7: Set up gap detection callback
-  setGapDetectionCallback((gapInfo) => {
+  setGapDetectionCallback(gapInfo => {
     console.warn('[Manager] [BC] GAP_DETECTION_CALLBACK:', gapInfo);
     // The actual fallback is handled in handleBroadcastChannelMessage via _triggerStorageFallbackOnGap
   });
@@ -2755,11 +2855,112 @@ function initializeBroadcastChannel() {
       timestamp: Date.now()
     });
     console.log('[Manager] v1.6.3.7-v9 BroadcastChannel listener added with sequence tracking');
+
+    // v1.6.3.7-v13 - Issue #1 (arch): Start verification handshake
+    _startBCVerificationHandshake();
   }
 }
 
-// ==================== v1.6.3.7-v12 FALLBACK HEALTH MONITORING ====================
+/**
+ * Start BroadcastChannel verification handshake
+ * v1.6.3.7-v13 - Issue #1 (arch): Verify BC actually delivers messages in sidebar context
+ * @private
+ */
+function _startBCVerificationHandshake() {
+  bcVerificationPending = true;
+  bcVerificationReceived = false;
+
+  console.log('[Manager] BC_VERIFICATION_STARTED: Requesting PING from background', {
+    timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
+    timestamp: Date.now()
+  });
+
+  // Request background to send a PING via BroadcastChannel
+  // We use port message to request this since port is more reliable
+  if (backgroundPort) {
+    backgroundPort.postMessage({
+      type: 'BC_VERIFICATION_REQUEST',
+      requestId: `bc-verify-${Date.now()}`,
+      timestamp: Date.now(),
+      source: 'sidebar'
+    });
+  } else {
+    // Fallback: use runtime.sendMessage
+    browser.runtime
+      .sendMessage({
+        type: 'BC_VERIFICATION_REQUEST',
+        requestId: `bc-verify-${Date.now()}`,
+        timestamp: Date.now(),
+        source: 'sidebar'
+      })
+      .catch(err => {
+        console.warn('[Manager] BC_VERIFICATION_REQUEST failed:', err.message);
+      });
+  }
+
+  // Set timeout for verification
+  bcVerificationTimeoutId = setTimeout(() => {
+    _handleBCVerificationTimeout();
+  }, BC_VERIFICATION_TIMEOUT_MS);
+}
+
+/**
+ * Handle BC verification timeout
+ * v1.6.3.7-v13 - Issue #1 (arch): BC verification failed - activate fallback
+ * @private
+ */
+function _handleBCVerificationTimeout() {
+  bcVerificationPending = false;
+  bcVerificationTimeoutId = null;
+
+  if (!bcVerificationReceived) {
+    console.warn('[Manager] BC_VERIFICATION_FAILED: Messages not crossing sidebar boundary', {
+      timeoutMs: BC_VERIFICATION_TIMEOUT_MS,
+      bcApiAvailable: true,
+      sidebarContext: true,
+      diagnosis: 'BroadcastChannel API exists but messages do not reach sidebar',
+      recommendation: 'Port-based messaging is PRIMARY for Sidebar, BC only for tab-to-tab',
+      timestamp: Date.now()
+    });
+
+    // Activate fallback monitoring even though BC API is "available"
+    console.log(
+      '[Manager] SIDEBAR_BC_UNRELIABLE: Activating fallback [port-based + storage.onChanged]'
+    );
+    _startFallbackHealthMonitoring();
+  }
+}
+
+/**
+ * Handle BC verification PONG received
+ * v1.6.3.7-v13 - Issue #1 (arch): Confirm BC is working
+ * @param {Object} message - PONG message from background
+ * @private
+ */
+function _handleBCVerificationPong(message) {
+  if (!bcVerificationPending) return;
+
+  bcVerificationPending = false;
+  bcVerificationReceived = true;
+
+  if (bcVerificationTimeoutId) {
+    clearTimeout(bcVerificationTimeoutId);
+    bcVerificationTimeoutId = null;
+  }
+
+  const latencyMs = message.originalTimestamp ? Date.now() - message.originalTimestamp : null;
+
+  console.log('[Manager] BC_VERIFICATION_SUCCESS: BroadcastChannel is delivering messages', {
+    latencyMs,
+    requestId: message.requestId,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== v1.6.3.7-v12/v13 FALLBACK HEALTH MONITORING ====================
 // Issue #5: Periodic fallback status logging when BC is unavailable
+// Issue #12: Enhanced health monitoring with stall detection and latency tracking
+// Issue #6 (arch): Storage tier health instrumentation
 
 /**
  * Fallback health monitoring interval ID
@@ -2768,15 +2969,41 @@ function initializeBroadcastChannel() {
 let fallbackHealthIntervalId = null;
 
 /**
+ * Storage health probe interval ID
+ * v1.6.3.7-v13 - Issue #6 (arch): Track storage probe interval
+ */
+let storageHealthProbeIntervalId = null;
+
+/**
  * Fallback statistics for health monitoring
  * v1.6.3.7-v12 - Issue #5: Track state updates received via fallback
+ * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
  */
 let fallbackStats = {
   stateUpdatesReceived: 0,
   lastUpdateTime: 0,
   portMessagesReceived: 0,
   storageEventsReceived: 0,
-  startTime: Date.now()
+  startTime: Date.now(),
+  // v1.6.3.7-v13 - Issue #12: Latency tracking
+  latencySum: 0,
+  latencyCount: 0,
+  lastLatencyMs: 0
+};
+
+/**
+ * Storage health probe statistics
+ * v1.6.3.7-v13 - Issue #6 (arch): Track storage tier health
+ */
+let storageHealthStats = {
+  probesSent: 0,
+  probesReceived: 0,
+  lastProbeTime: 0,
+  lastProbeLatencyMs: 0,
+  avgLatencyMs: 0,
+  latencySum: 0,
+  lastSuccessfulProbe: 0,
+  consecutiveFailures: 0
 };
 
 /**
@@ -2786,56 +3013,330 @@ let fallbackStats = {
 const FALLBACK_HEALTH_CHECK_INTERVAL_MS = 30000;
 
 /**
+ * Stall detection threshold (60 seconds)
+ * v1.6.3.7-v13 - Issue #12: Warn if no updates received for this long
+ */
+const FALLBACK_STALL_THRESHOLD_MS = 60000;
+
+/**
+ * Storage health probe interval (30 seconds)
+ * v1.6.3.7-v13 - Issue #6 (arch): Check storage tier health periodically
+ */
+const STORAGE_HEALTH_PROBE_INTERVAL_MS = 30000;
+
+/**
+ * Storage health probe timeout (500ms)
+ * v1.6.3.7-v13 - Issue #6 (arch): Max wait for probe response
+ */
+const STORAGE_HEALTH_PROBE_TIMEOUT_MS = 500;
+
+/**
+ * Storage health probe key
+ * v1.6.3.7-v13 - Issue #6 (arch): Dedicated key for health probes
+ */
+const STORAGE_HEALTH_PROBE_KEY = '_sidebar_health_ping';
+
+/**
+ * Track if fallback mode is active
+ * v1.6.3.7-v13 - Issue #5, #12: Used for UI badge display
+ */
+let fallbackModeActive = false;
+
+/**
  * Start fallback health monitoring
  * v1.6.3.7-v12 - Issue #5: Log periodic fallback status when BC unavailable
+ * v1.6.3.7-v13 - Issue #12: Enhanced with stall detection and degraded warnings
  * @private
  */
 function _startFallbackHealthMonitoring() {
   if (fallbackHealthIntervalId) {
     clearInterval(fallbackHealthIntervalId);
   }
-  
+
   fallbackStats.startTime = Date.now();
-  
+  fallbackModeActive = true;
+
+  // v1.6.3.7-v13 - Issue #6 (arch): Also start storage health probing
+  _startStorageHealthProbe();
+
   fallbackHealthIntervalId = setInterval(() => {
-    const elapsedMs = Date.now() - fallbackStats.startTime;
-    // v1.6.3.7-v12 - FIX Code Review: Return null instead of 'N/A' for type consistency
-    const avgTimeBetweenUpdatesMs = fallbackStats.stateUpdatesReceived > 0
-      ? Math.round((elapsedMs / fallbackStats.stateUpdatesReceived))
+    _logFallbackHealthStatus();
+  }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
+
+  console.log(
+    '[Manager] FALLBACK_ACTIVATED: using [port-based + storage.onChanged], will check fallback health every 30s',
+    {
+      healthCheckIntervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
+      stallThresholdMs: FALLBACK_STALL_THRESHOLD_MS,
+      storageProbeIntervalMs: STORAGE_HEALTH_PROBE_INTERVAL_MS,
+      timestamp: Date.now()
+    }
+  );
+}
+
+/**
+ * Log fallback health status with stall detection
+ * v1.6.3.7-v13 - Issue #12: Extracted for clarity with enhanced monitoring
+ * @private
+ */
+function _logFallbackHealthStatus() {
+  const now = Date.now();
+  const elapsedMs = now - fallbackStats.startTime;
+  const timeSinceLastUpdate =
+    fallbackStats.lastUpdateTime > 0 ? now - fallbackStats.lastUpdateTime : elapsedMs;
+
+  // Calculate average time between updates
+  const avgTimeBetweenUpdatesMs =
+    fallbackStats.stateUpdatesReceived > 0
+      ? Math.round(elapsedMs / fallbackStats.stateUpdatesReceived)
       : null;
-    
-    console.log('[Manager] FALLBACK_STATUS:', {
-      broadcastChannelAvailable: false,
-      fallbackActive: true,
-      stateUpdatesReceived: fallbackStats.stateUpdatesReceived,
-      portMessagesReceived: fallbackStats.portMessagesReceived,
-      storageEventsReceived: fallbackStats.storageEventsReceived,
-      lastUpdateTime: fallbackStats.lastUpdateTime > 0 
-        ? new Date(fallbackStats.lastUpdateTime).toISOString() 
+
+  // Calculate average latency
+  const avgLatencyMs =
+    fallbackStats.latencyCount > 0
+      ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
+      : null;
+
+  // Expected updates: ~6 per interval if state changes every 5s
+  const expectedUpdates = Math.floor(FALLBACK_HEALTH_CHECK_INTERVAL_MS / 5000);
+
+  // v1.6.3.7-v13 - Issue #12: Detect stall condition
+  const isStalled = timeSinceLastUpdate >= FALLBACK_STALL_THRESHOLD_MS;
+
+  if (isStalled) {
+    console.warn(
+      '[Manager] FALLBACK_STALLED: no state updates for 60+ seconds, fallback may be broken',
+      {
+        timeSinceLastUpdateMs: timeSinceLastUpdate,
+        thresholdMs: FALLBACK_STALL_THRESHOLD_MS,
+        portMessagesReceived: fallbackStats.portMessagesReceived,
+        storageEventsReceived: fallbackStats.storageEventsReceived,
+        connectionState,
+        lastUpdateTime:
+          fallbackStats.lastUpdateTime > 0
+            ? new Date(fallbackStats.lastUpdateTime).toISOString()
+            : 'never',
+        timestamp: now
+      }
+    );
+  }
+
+  // v1.6.3.7-v13 - Issue #12: Log health status with all metrics
+  console.log('[Manager] FALLBACK_HEALTH:', {
+    receivedMessages: fallbackStats.stateUpdatesReceived,
+    expectedPerInterval: expectedUpdates,
+    avgLatencyMs,
+    lastLatencyMs: fallbackStats.lastLatencyMs,
+    lastUpdateAgoMs: timeSinceLastUpdate,
+    isStalled,
+    broadcastChannelAvailable: false,
+    fallbackActive: true,
+    portMessages: fallbackStats.portMessagesReceived,
+    storageEvents: fallbackStats.storageEventsReceived,
+    lastUpdateTime:
+      fallbackStats.lastUpdateTime > 0
+        ? new Date(fallbackStats.lastUpdateTime).toISOString()
         : 'never',
-      avgTimeBetweenUpdatesMs,
-      uptimeMs: elapsedMs,
-      intervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
+    avgTimeBetweenUpdatesMs,
+    uptimeMs: elapsedMs,
+    storageHealthy: storageHealthStats.consecutiveFailures === 0,
+    timestamp: now
+  });
+}
+
+/**
+ * Stop fallback health monitoring
+ * v1.6.3.7-v13 - Issue #12: Cleanup on channel recovery
+ * @private
+ */
+function _stopFallbackHealthMonitoring() {
+  if (fallbackHealthIntervalId) {
+    clearInterval(fallbackHealthIntervalId);
+    fallbackHealthIntervalId = null;
+  }
+  _stopStorageHealthProbe();
+  fallbackModeActive = false;
+  console.log('[Manager] Fallback health monitoring stopped');
+}
+
+/**
+ * Start storage health probe
+ * v1.6.3.7-v13 - Issue #6 (arch): Periodic storage tier health check
+ * @private
+ */
+function _startStorageHealthProbe() {
+  if (storageHealthProbeIntervalId) {
+    clearInterval(storageHealthProbeIntervalId);
+  }
+
+  // Set up listener for probe responses
+  _setupStorageHealthProbeListener();
+
+  // Send initial probe
+  _sendStorageHealthProbe();
+
+  // Schedule periodic probes
+  storageHealthProbeIntervalId = setInterval(() => {
+    _sendStorageHealthProbe();
+  }, STORAGE_HEALTH_PROBE_INTERVAL_MS);
+
+  console.log(
+    `[Manager] Storage health probe started (every ${STORAGE_HEALTH_PROBE_INTERVAL_MS / 1000}s)`
+  );
+}
+
+/**
+ * Stop storage health probe
+ * v1.6.3.7-v13 - Issue #6 (arch): Cleanup
+ * @private
+ */
+function _stopStorageHealthProbe() {
+  if (storageHealthProbeIntervalId) {
+    clearInterval(storageHealthProbeIntervalId);
+    storageHealthProbeIntervalId = null;
+  }
+}
+
+/**
+ * Set up listener for storage health probe responses
+ * v1.6.3.7-v13 - Issue #6 (arch): Listen for our own probe writes
+ * @private
+ */
+function _setupStorageHealthProbeListener() {
+  // This is called once during init - the actual listener is in setupEventListeners
+  // We just track the state here
+  console.log('[Manager] Storage health probe listener ready');
+}
+
+/**
+ * Send a storage health probe
+ * v1.6.3.7-v13 - Issue #6 (arch): Write timestamp to storage and measure round-trip
+ * @private
+ */
+async function _sendStorageHealthProbe() {
+  const probeTimestamp = Date.now();
+  storageHealthStats.probesSent++;
+  storageHealthStats.lastProbeTime = probeTimestamp;
+
+  // Set up timeout for probe response
+  const timeoutId = setTimeout(() => {
+    _handleStorageProbeTimeout(probeTimestamp);
+  }, STORAGE_HEALTH_PROBE_TIMEOUT_MS);
+
+  try {
+    // Write probe timestamp to storage
+    await browser.storage.local.set({
+      [STORAGE_HEALTH_PROBE_KEY]: {
+        timestamp: probeTimestamp,
+        source: 'sidebar-health-probe'
+      }
+    });
+
+    // Store timeout ID for cleanup
+    storageHealthStats._currentProbeTimeoutId = timeoutId;
+
+    if (DEBUG_MESSAGING) {
+      console.log('[Manager] STORAGE_HEALTH_PROBE_SENT:', {
+        probeTimestamp,
+        probesSent: storageHealthStats.probesSent,
+        timestamp: Date.now()
+      });
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.error('[Manager] STORAGE_HEALTH_PROBE_FAILED:', {
+      error: err.message,
       timestamp: Date.now()
     });
-  }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
-  
-  console.log('[Manager] Fallback health monitoring started (every', FALLBACK_HEALTH_CHECK_INTERVAL_MS / 1000, 's)');
+    storageHealthStats.consecutiveFailures++;
+  }
+}
+
+/**
+ * Handle storage health probe response (called from storage.onChanged)
+ * v1.6.3.7-v13 - Issue #6 (arch): Measure round-trip latency
+ * @param {number} probeTimestamp - Original probe timestamp
+ * @private
+ */
+function _handleStorageProbeResponse(probeTimestamp) {
+  const now = Date.now();
+  const latencyMs = now - probeTimestamp;
+
+  // Clear any pending timeout
+  if (storageHealthStats._currentProbeTimeoutId) {
+    clearTimeout(storageHealthStats._currentProbeTimeoutId);
+    storageHealthStats._currentProbeTimeoutId = null;
+  }
+
+  storageHealthStats.probesReceived++;
+  storageHealthStats.lastProbeLatencyMs = latencyMs;
+  storageHealthStats.latencySum += latencyMs;
+  storageHealthStats.avgLatencyMs = Math.round(
+    storageHealthStats.latencySum / storageHealthStats.probesReceived
+  );
+  storageHealthStats.lastSuccessfulProbe = now;
+  storageHealthStats.consecutiveFailures = 0;
+
+  // Classify health based on latency
+  const healthStatus = latencyMs < 100 ? 'healthy' : latencyMs < 500 ? 'acceptable' : 'degraded';
+
+  if (DEBUG_MESSAGING) {
+    console.log(`[Manager] Storage Tier Latency: ${latencyMs}ms (${healthStatus})`, {
+      probeTimestamp,
+      latencyMs,
+      avgLatencyMs: storageHealthStats.avgLatencyMs,
+      probesReceived: storageHealthStats.probesReceived,
+      healthStatus,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Handle storage probe timeout
+ * v1.6.3.7-v13 - Issue #6 (arch): storage.onChanged didn't fire in time
+ * @param {number} probeTimestamp - Original probe timestamp
+ * @private
+ */
+function _handleStorageProbeTimeout(probeTimestamp) {
+  storageHealthStats.consecutiveFailures++;
+  storageHealthStats._currentProbeTimeoutId = null;
+
+  console.warn('[Manager] STORAGE_TIER_BROKEN: onChanged not firing', {
+    probeTimestamp,
+    timeoutMs: STORAGE_HEALTH_PROBE_TIMEOUT_MS,
+    consecutiveFailures: storageHealthStats.consecutiveFailures,
+    lastSuccessfulProbe:
+      storageHealthStats.lastSuccessfulProbe > 0
+        ? new Date(storageHealthStats.lastSuccessfulProbe).toISOString()
+        : 'never',
+    timestamp: Date.now()
+  });
 }
 
 /**
  * Track fallback state update received
  * v1.6.3.7-v12 - Issue #5: Increment counters for health monitoring
+ * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
  * @param {string} source - Source of update ('port' or 'storage')
+ * @param {number} [latencyMs] - Optional latency measurement
  */
-function _trackFallbackUpdate(source) {
+function _trackFallbackUpdate(source, latencyMs = null) {
+  const now = Date.now();
   fallbackStats.stateUpdatesReceived++;
-  fallbackStats.lastUpdateTime = Date.now();
-  
+  fallbackStats.lastUpdateTime = now;
+
   if (source === 'port') {
     fallbackStats.portMessagesReceived++;
   } else if (source === 'storage') {
     fallbackStats.storageEventsReceived++;
+  }
+
+  // v1.6.3.7-v13 - Issue #12: Track latency if provided
+  if (latencyMs !== null && latencyMs >= 0) {
+    fallbackStats.latencySum += latencyMs;
+    fallbackStats.latencyCount++;
+    fallbackStats.lastLatencyMs = latencyMs;
   }
 }
 
@@ -2863,7 +3364,10 @@ function handleBroadcastChannelMessage(event) {
   _checkBroadcastChannelHealth(message);
 
   // v1.6.3.7-v10 - Generate IDs for dedup and correlation
-  const { broadcastMessageId, correlationId } = _generateBroadcastMessageIds(message, messageEntryTime);
+  const { broadcastMessageId, correlationId } = _generateBroadcastMessageIds(
+    message,
+    messageEntryTime
+  );
 
   // v1.6.4.13 - Issue #5: Consolidated log with [BC] prefix and all details
   console.log(`[Manager] MESSAGE_RECEIVED [BC] [${message.type}]:`, {
@@ -2878,7 +3382,7 @@ function handleBroadcastChannelMessage(event) {
 
   // v1.6.3.7-v4 - Route to handler based on message type
   _routeBroadcastMessage(message, broadcastMessageId);
-  
+
   // v1.6.3.7-v9 - Issue #2: Log message exit with duration
   _logBroadcastMessageProcessed(message, correlationId, messageEntryTime);
 }
@@ -2892,7 +3396,9 @@ function handleBroadcastChannelMessage(event) {
 function _checkBroadcastChannelHealth(message) {
   // Check if BroadcastChannel is stale
   if (isBroadcastChannelStale()) {
-    console.warn('[Manager] [BC] STALE_CHANNEL_DETECTED: BroadcastChannel is stale, triggering storage fallback');
+    console.warn(
+      '[Manager] [BC] STALE_CHANNEL_DETECTED: BroadcastChannel is stale, triggering storage fallback'
+    );
     console.log('[Manager] STORAGE_FALLBACK_ACTIVATED:', {
       reason: 'stale-broadcast-channel',
       timestamp: Date.now()
@@ -2943,7 +3449,9 @@ function _checkSequenceGap(message) {
  */
 function _generateBroadcastMessageIds(message, messageEntryTime) {
   const randomSuffix = Math.random().toString(36).substring(2, 7);
-  const broadcastMessageId = message.messageId || `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
+  const broadcastMessageId =
+    message.messageId ||
+    `bc-${message.type}-${message.quickTabId}-${message.timestamp || Date.now()}-${randomSuffix}`;
   const correlationId = message.correlationId || `bc-${messageEntryTime}-${randomSuffix}`;
   return { broadcastMessageId, correlationId };
 }
@@ -2958,7 +3466,7 @@ function _generateBroadcastMessageIds(message, messageEntryTime) {
  */
 function _logBroadcastMessageProcessed(message, correlationId, messageEntryTime) {
   if (!DEBUG_MESSAGING) return;
-  
+
   const processingDurationMs = Date.now() - messageEntryTime;
   console.log(`[Manager] MESSAGE_PROCESSED [BC] [${message.type}]:`, {
     quickTabId: message.quickTabId,
@@ -3013,11 +3521,18 @@ async function _triggerStorageFallbackOnGap(gapSize) {
  * Route broadcast message to appropriate handler
  * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
  * v1.6.3.7-v7 - FIX Issue #6: Added full-state-sync handler
+ * v1.6.3.7-v13 - Issue #1 (arch): Added BC_VERIFICATION_PONG handling
  * @private
  * @param {Object} message - BroadcastChannel message
  * @param {string} messageId - Generated message ID for deduplication
  */
 function _routeBroadcastMessage(message, messageId) {
+  // v1.6.3.7-v13 - Issue #1 (arch): Handle verification PONG first
+  if (message.type === 'BC_VERIFICATION_PONG') {
+    _handleBCVerificationPong(message);
+    return;
+  }
+
   const handlers = {
     'quick-tab-created': handleBroadcastCreate,
     'quick-tab-updated': handleBroadcastUpdate,
@@ -3442,7 +3957,7 @@ console.log('[Manager] LISTENER_REGISTERED: browser.runtime.onMessage listener a
 function _processRuntimeMessage(message, sendResponse) {
   // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
   const messageEntryTime = Date.now();
-  
+
   // v1.6.3.7-v5 - FIX Issue #9: Validate message structure
   if (!message || typeof message !== 'object') {
     console.warn('[Manager] RUNTIME_MESSAGE_INVALID: Received non-object message:', typeof message);
@@ -3450,7 +3965,8 @@ function _processRuntimeMessage(message, sendResponse) {
   }
 
   // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
-  const correlationId = message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const correlationId =
+    message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   // v1.6.3.7-v9 - Issue #2: Unified MESSAGE_RECEIVED logging with [RUNTIME] prefix
   // Matches format of [PORT] and [BC] paths
@@ -3465,7 +3981,7 @@ function _processRuntimeMessage(message, sendResponse) {
   });
 
   let handled = false;
-  
+
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
     _handleRuntimeStateUpdated(message, sendResponse, correlationId);
     handled = true;
@@ -3875,7 +4391,7 @@ function _removeFromHostInfo(quickTabId) {
 function _cleanupStaleHostInfoEntries() {
   const now = Date.now();
   const ttlThreshold = now - HOST_INFO_TTL_MS;
-  
+
   // v1.6.3.7-v10 - FIX Issue #10: Track before size for logging
   const sizeBeforeCleanup = quickTabHostInfo.size;
   let removedCount = 0;
@@ -3884,7 +4400,7 @@ function _cleanupStaleHostInfoEntries() {
   for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
     // Skip null entries (consistent with _getHostInfoAgeStats)
     if (!entry || !entry.lastUpdate) continue;
-    
+
     if (entry.lastUpdate < ttlThreshold) {
       quickTabHostInfo.delete(quickTabId);
       removedCount++;
@@ -3906,7 +4422,7 @@ function _cleanupStaleHostInfoEntries() {
     ttlHours: HOST_INFO_TTL_MS / (1000 * 60 * 60),
     timestamp: now
   });
-  
+
   return { sizeBeforeCleanup, sizeAfterCleanup, removedCount, removedEntries };
 }
 
@@ -3964,7 +4480,7 @@ function _getHostInfoAgeStats() {
   };
   let totalAgeMs = 0;
   let entryCount = 0;
-  
+
   // v1.6.3.7-v10 - FIX Issue #10: Age bucket counts
   const ageBuckets = {
     lessThan1h: 0,
@@ -3975,14 +4491,14 @@ function _getHostInfoAgeStats() {
 
   for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
     if (!entry || !entry.lastUpdate) continue;
-    
+
     const ageMs = now - entry.lastUpdate;
     totalAgeMs += ageMs;
     entryCount++;
 
     // v1.6.3.7-v10 - FIX Issue #10: Categorize into age buckets
     ageBuckets[_getAgeBucketKey(ageMs)]++;
-    
+
     // Update min/max tracking
     _updateMinMaxEntries(ageMs, quickTabId, entry.hostTabId, stats);
   }
@@ -4007,9 +4523,9 @@ function _getHostInfoAgeStats() {
 function _logHostInfoDiagnostics() {
   const stats = _getHostInfoAgeStats();
   const now = Date.now();
-  
+
   // Convert ms to human-readable format
-  const msToTimeStr = (ms) => {
+  const msToTimeStr = ms => {
     if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
     if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
@@ -4032,11 +4548,13 @@ function _logHostInfoDiagnostics() {
     minAge: msToTimeStr(stats.minAgeMs),
     maxAge: msToTimeStr(stats.maxAgeMs),
     avgAge: msToTimeStr(stats.avgAgeMs),
-    oldestEntry: stats.oldestEntry ? {
-      quickTabId: stats.oldestEntry.quickTabId,
-      hostTabId: stats.oldestEntry.hostTabId,
-      age: msToTimeStr(stats.oldestEntry.ageMs)
-    } : null,
+    oldestEntry: stats.oldestEntry
+      ? {
+          quickTabId: stats.oldestEntry.quickTabId,
+          hostTabId: stats.oldestEntry.hostTabId,
+          age: msToTimeStr(stats.oldestEntry.ageMs)
+        }
+      : null,
     // v1.6.3.7-v10 - FIX Issue #10: Sample entries for diagnostics
     sampleEntries,
     timestamp: now
@@ -4055,11 +4573,11 @@ function _logHostInfoDiagnostics() {
 function _getSampleHostInfoEntries(count, now, msToTimeStr) {
   const samples = [];
   let i = 0;
-  
+
   for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
     if (i >= count) break;
     if (!entry || !entry.lastUpdate) continue;
-    
+
     const ageMs = now - entry.lastUpdate;
     samples.push({
       quickTabId,
@@ -4069,7 +4587,7 @@ function _getSampleHostInfoEntries(count, now, msToTimeStr) {
     });
     i++;
   }
-  
+
   return samples;
 }
 
@@ -4082,10 +4600,10 @@ function _getSampleHostInfoEntries(count, now, msToTimeStr) {
 async function _runHostInfoCleanupJob() {
   // First log diagnostics
   _logHostInfoDiagnostics();
-  
+
   // v1.6.3.7-v10 - FIX Issue #10: Defensive cleanup - cross-check against open tabs
   await _defensiveCleanupStaleHostInfo();
-  
+
   // Then clean up stale entries (TTL-based)
   _cleanupStaleHostInfoEntries();
 }
@@ -4099,7 +4617,7 @@ function _startHostInfoCleanupInterval() {
   if (hostInfoCleanupIntervalId !== null) {
     return;
   }
-  
+
   hostInfoCleanupIntervalId = setInterval(_runHostInfoCleanupJob, HOST_INFO_CLEANUP_INTERVAL_MS);
   console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job started:', {
     intervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
@@ -4127,14 +4645,14 @@ function _stopHostInfoCleanupInterval() {
  */
 function _cleanupHostInfoForClosedTab(closedTabId) {
   const removedQuickTabIds = [];
-  
+
   for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
     if (entry.hostTabId === closedTabId) {
       quickTabHostInfo.delete(quickTabId);
       removedQuickTabIds.push(quickTabId);
     }
   }
-  
+
   if (removedQuickTabIds.length > 0) {
     console.log('[Manager] [HOST_INFO_CLEANUP] BROWSER_TAB_CLOSED:', {
       closedTabId,
@@ -4168,7 +4686,7 @@ function _isStaleHostInfoEntry(entry, openTabIds) {
 function _removeStaleHostInfoEntries(openTabIds) {
   const removedEntries = [];
   const staleHostTabIds = new Set();
-  
+
   for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
     if (_isStaleHostInfoEntry(entry, openTabIds)) {
       staleHostTabIds.add(entry.hostTabId);
@@ -4180,7 +4698,7 @@ function _removeStaleHostInfoEntries(openTabIds) {
       });
     }
   }
-  
+
   return { removedEntries, staleHostTabIds };
 }
 
@@ -4193,15 +4711,15 @@ function _removeStaleHostInfoEntries(openTabIds) {
  */
 async function _defensiveCleanupStaleHostInfo() {
   const now = Date.now();
-  
+
   try {
     // Query all open tabs
     const openTabs = await browser.tabs.query({ status: 'complete' });
     const openTabIds = new Set(openTabs.map(tab => tab.id));
-    
+
     // v1.6.3.7-v10 - FIX Issue #10: Extracted to helper for reduced nesting
     const { removedEntries, staleHostTabIds } = _removeStaleHostInfoEntries(openTabIds);
-    
+
     if (removedEntries.length > 0) {
       console.log('[Manager] [HOST_INFO_CLEANUP] STALE_HOST_INFO_REMOVED:', {
         removedCount: removedEntries.length,
@@ -4212,7 +4730,7 @@ async function _defensiveCleanupStaleHostInfo() {
         timestamp: now
       });
     }
-    
+
     return { removedCount: removedEntries.length, removedEntries };
   } catch (error) {
     console.warn('[Manager] [HOST_INFO_CLEANUP] Defensive cleanup failed:', {
@@ -4232,10 +4750,10 @@ async function _defensiveCleanupStaleHostInfo() {
 function _handleBrowserTabRemoved(tabId, removeInfo) {
   // Clean up quickTabHostInfo entries for this tab
   _cleanupHostInfoForClosedTab(tabId);
-  
+
   // Also invalidate browser tab info cache
   browserTabInfoCache.delete(tabId);
-  
+
   if (DEBUG_MESSAGING) {
     console.log('[Manager] [BROWSER_TAB_REMOVED]:', {
       tabId,
@@ -4407,10 +4925,13 @@ function _handleInitialLoadState(tabCount) {
  * @private
  */
 function _setupInitialLoadTimeout() {
-  console.log('[Manager] INITIAL_LOAD_EMPTY: Waiting 2s for storage.onChanged before rendering empty', {
-    timestamp: Date.now()
-  });
-  
+  console.log(
+    '[Manager] INITIAL_LOAD_EMPTY: Waiting 2s for storage.onChanged before rendering empty',
+    {
+      timestamp: Date.now()
+    }
+  );
+
   initialLoadTimeoutId = setTimeout(_handleInitialLoadTimeout, 2000);
 }
 
@@ -4423,11 +4944,14 @@ function _handleInitialLoadTimeout() {
   initialLoadTimeoutId = null;
   initialStateLoadComplete = true;
   const currentTabCount = quickTabsState?.tabs?.length ?? 0;
-  
+
   if (currentTabCount === 0) {
-    console.log('[Manager] INITIAL_LOAD_TIMEOUT: No tabs received after 2s wait, rendering empty state', {
-      timestamp: Date.now()
-    });
+    console.log(
+      '[Manager] INITIAL_LOAD_TIMEOUT: No tabs received after 2s wait, rendering empty state',
+      {
+        timestamp: Date.now()
+      }
+    );
     renderUI();
   } else {
     console.log('[Manager] INITIAL_LOAD_TIMEOUT: Tabs received during wait period', {
@@ -4455,7 +4979,7 @@ function _setupListeners() {
  */
 function _startPeriodicTasks() {
   _startHostInfoCleanupInterval();
-  
+
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
@@ -4469,7 +4993,7 @@ function _startPeriodicTasks() {
  */
 function _markInitializationComplete() {
   initializationComplete = true;
-  
+
   console.log('[Manager] v1.6.3.7-v9 INITIALIZATION_COMPLETE:', {
     initializationStarted,
     initializationComplete,
@@ -4486,15 +5010,19 @@ function _markInitializationComplete() {
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
 // v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
+// v1.6.3.7-v13 - Issue #12: Also stop fallback health monitoring
 window.addEventListener('unload', () => {
   // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
   cleanupBroadcastChannel();
 
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
-  
+
   // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
   _stopHostInfoCleanupInterval();
+
+  // v1.6.3.7-v13 - Issue #12: Stop fallback health monitoring
+  _stopFallbackHealthMonitoring();
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -4616,7 +5144,7 @@ async function checkStorageDebounce() {
 function _handleEmptyStorageState() {
   const cacheTabs = inMemoryTabsCache.tabs || [];
   const cacheSessionId = inMemoryTabsCache.sessionId || '';
-  
+
   // v1.6.3.5-v11 - FIX Issue #6: Check if this is a legitimate single-tab deletion
   if (cacheTabs.length === 1) {
     console.log(
@@ -4684,12 +5212,15 @@ function _detectStorageStorm(state) {
 
   // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache
   if (cacheSessionId !== currentSessionId) {
-    console.warn('[Manager] ⚠️ STALE_CACHE_IGNORED: Cache is from different session during storm detection', {
-      cacheSessionId,
-      currentSessionId,
-      cacheTabCount: cacheTabs.length,
-      warning: 'Not using stale cache for fallback'
-    });
+    console.warn(
+      '[Manager] ⚠️ STALE_CACHE_IGNORED: Cache is from different session during storm detection',
+      {
+        cacheSessionId,
+        currentSessionId,
+        cacheTabCount: cacheTabs.length,
+        warning: 'Not using stale cache for fallback'
+      }
+    );
     inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
     lastKnownGoodTabCount = 0;
     return false; // No valid cache to use
@@ -6690,16 +7221,28 @@ function setupEventListeners() {
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
   // v1.6.3.7-v10 - FIX Issue #11: Enhanced LISTENER_REGISTERED logging
+  // v1.6.3.7-v13 - Issue #6 (arch): Add storage health probe handling
   browser.storage.onChanged.addListener((changes, areaName) => {
     // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
     logListenerEntry('storage.onChanged', {
       areaName,
-      hasStateKey: !!changes[STATE_KEY]
+      hasStateKey: !!changes[STATE_KEY],
+      hasHealthProbeKey: !!changes[STORAGE_HEALTH_PROBE_KEY]
     });
-    
+
+    // v1.6.3.7-v13 - Issue #6 (arch): Handle storage health probe response
+    if (areaName === 'local' && changes[STORAGE_HEALTH_PROBE_KEY]) {
+      const probeData = changes[STORAGE_HEALTH_PROBE_KEY].newValue;
+      if (probeData?.timestamp) {
+        _handleStorageProbeResponse(probeData.timestamp);
+      }
+      return; // Don't process health probes as state changes
+    }
+
     // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
     if (!isFullyInitialized()) {
-      const timeSinceInitStartMs = initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
+      const timeSinceInitStartMs =
+        initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
       console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
         initializationStarted,
         initializationComplete,
@@ -6710,7 +7253,7 @@ function setupEventListeners() {
       });
       return;
     }
-    
+
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
@@ -6739,7 +7282,7 @@ function setupTabSwitchListener() {
   browser.tabs.onActivated.addListener(activeInfo => {
     // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
     logListenerEntry('tabs.onActivated', { tabId: activeInfo.tabId });
-    
+
     // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
     if (!isFullyInitialized()) {
       console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: tabs.onActivated', {
@@ -6751,7 +7294,7 @@ function setupTabSwitchListener() {
       });
       return;
     }
-    
+
     const newTabId = activeInfo.tabId;
 
     // Only process if tab actually changed
@@ -6779,7 +7322,7 @@ function setupTabSwitchListener() {
   browser.windows.onFocusChanged.addListener(async windowId => {
     // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
     logListenerEntry('windows.onFocusChanged', { windowId });
-    
+
     // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
     if (!isFullyInitialized()) {
       console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: windows.onFocusChanged', {
@@ -6791,7 +7334,7 @@ function setupTabSwitchListener() {
       });
       return;
     }
-    
+
     if (windowId === browser.windows.WINDOW_ID_NONE) {
       return; // Window lost focus
     }
@@ -6842,7 +7385,7 @@ function _handleStorageChange(change) {
   _logStorageChangeEvent(context);
   _logTabIdChanges(context);
   _logPositionSizeChanges(context);
-  
+
   // v1.6.3.7-v12 - Issue #5: Track as storage-based fallback update (when BC unavailable)
   _trackFallbackUpdate('storage');
 
@@ -6877,10 +7420,13 @@ function _validateSequenceId(context) {
 
   // If no sequenceId, process the event (backward compatibility)
   if (newSequenceId === undefined || newSequenceId === null) {
-    console.log('[Manager] SEQUENCE_VALIDATION: No sequenceId present, processing event (backward compat)', {
-      saveId: context.newValue?.saveId,
-      timestamp: Date.now()
-    });
+    console.log(
+      '[Manager] SEQUENCE_VALIDATION: No sequenceId present, processing event (backward compat)',
+      {
+        saveId: context.newValue?.saveId,
+        timestamp: Date.now()
+      }
+    );
     return true;
   }
 
@@ -6946,15 +7492,23 @@ function _applyWatchdogRecoveryState(currentState, expectedSaveId) {
  * @param {string} expectedSaveId - Expected save ID
  */
 async function _handleWatchdogTimeout(expectedSaveId) {
-  console.warn('[Manager] STORAGE_WATCHDOG_TIMEOUT: No storage.onChanged received within', STORAGE_WATCHDOG_TIMEOUT_MS, 'ms');
-  console.log('[Manager] STORAGE_WATCHDOG: Explicitly re-reading storage to verify state consistency');
+  console.warn(
+    '[Manager] STORAGE_WATCHDOG_TIMEOUT: No storage.onChanged received within',
+    STORAGE_WATCHDOG_TIMEOUT_MS,
+    'ms'
+  );
+  console.log(
+    '[Manager] STORAGE_WATCHDOG: Explicitly re-reading storage to verify state consistency'
+  );
 
   try {
     const result = await browser.storage.local.get('quick_tabs_state_v2');
     const currentState = result?.quick_tabs_state_v2;
 
     if (currentState?.saveId === expectedSaveId) {
-      console.log('[Manager] STORAGE_WATCHDOG: Storage matches expected state - event may have been lost');
+      console.log(
+        '[Manager] STORAGE_WATCHDOG: Storage matches expected state - event may have been lost'
+      );
       _applyWatchdogRecoveryState(currentState, expectedSaveId);
     } else {
       console.log('[Manager] STORAGE_WATCHDOG: Storage state differs from expected', {
@@ -7052,12 +7606,15 @@ function _handleEmptyToPopulatedTransition(context) {
     return false;
   }
 
-  console.log('[Manager] STORAGE_SPECIAL_CASE: Old state was empty, new state has tabs - forcing render', {
-    oldTabCount: context.oldTabCount,
-    newTabCount: context.newTabCount,
-    saveId: context.newValue?.saveId,
-    channel: 'STORAGE'
-  });
+  console.log(
+    '[Manager] STORAGE_SPECIAL_CASE: Old state was empty, new state has tabs - forcing render',
+    {
+      oldTabCount: context.oldTabCount,
+      newTabCount: context.newTabCount,
+      saveId: context.newValue?.saveId,
+      channel: 'STORAGE'
+    }
+  );
 
   // Cancel pending initial load timeout since data arrived during wait period
   _cancelInitialLoadTimeout();
@@ -7425,7 +7982,7 @@ function _logStorageChangeEvent(context) {
 function _calculateTabIdChanges(context) {
   const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
   const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
-  
+
   return {
     addedIds: [...newIds].filter(id => !oldIds.has(id)),
     removedIds: [...oldIds].filter(id => !newIds.has(id))
@@ -8870,7 +9427,13 @@ function _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId) {
  * @param {number} options.oldOriginTabId - Previous origin tab ID
  * @param {number} options.writeStartTime - Write start timestamp
  */
-async function _persistAdoption({ quickTabId, targetTabId, state, oldOriginTabId, writeStartTime }) {
+async function _persistAdoption({
+  quickTabId,
+  targetTabId,
+  state,
+  oldOriginTabId,
+  writeStartTime
+}) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeTimestamp = Date.now();
   const stateToWrite = {

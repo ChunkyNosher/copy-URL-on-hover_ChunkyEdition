@@ -1,4 +1,5 @@
 # Audit Findings Summary
+
 ## Quick Reference for Developers & Copilot Agent
 
 **Date**: December 9-10, 2025  
@@ -10,21 +11,27 @@
 ## 🔴 CRITICAL ISSUE: Manager Sidebar Isolation
 
 ### What's Happening
-Manager sidebar shows **frozen/stale UI** after initial load. Despite background successfully processing operations and updating internal state, the Manager never receives confirmation or updates about those changes.
+
+Manager sidebar shows **frozen/stale UI** after initial load. Despite background
+successfully processing operations and updating internal state, the Manager
+never receives confirmation or updates about those changes.
 
 ### Root Cause
-**Background implements intentional "cache only" pattern** that skips broadcasting to Manager:
+
+**Background implements intentional "cache only" pattern** that skips
+broadcasting to Manager:
 
 ```javascript
 // In background.js state handlers:
 // Comment: "Updating cache only (no broadcast)"
-// Result: 
+// Result:
 //   ✓ globalQuickTabState updated
 //   ✓ storage.local written
 //   ✗ Broadcasts to Manager skipped
 ```
 
 ### Why This Matters
+
 The three-tier messaging architecture **should look like**:
 
 ```
@@ -43,6 +50,7 @@ Storage polling (10s)        → ✓ ONLY working mechanism (too slow)
 ```
 
 ### Impact
+
 - Manager never learns about operations it initiated
 - Manager never learns about state changes from other tabs
 - Manager only updates via 10-second polling (unreliable)
@@ -53,9 +61,11 @@ Storage polling (10s)        → ✓ ONLY working mechanism (too slow)
 ## 🔧 How to Fix (Priority Order)
 
 ### 1. Implement BroadcastChannel from Background (1 hour)
+
 **File**: `background.js` + `QuickTabHandler.js`
 
-Currently: BroadcastChannelManager functions exist but background never calls them
+Currently: BroadcastChannelManager functions exist but background never calls
+them
 
 Fix: After state operations, post to BroadcastChannel same as content scripts do
 
@@ -64,20 +74,25 @@ Fix: After state operations, post to BroadcastChannel same as content scripts do
 ---
 
 ### 2. Add Port STATE_UPDATE Messages (1 hour)
+
 **File**: `background.js` port connection handler
 
 Currently: Port only sends heartbeat messages
 
-Fix: Add STATE_UPDATE message sending after state changes, include message handlers
+Fix: Add STATE_UPDATE message sending after state changes, include message
+handlers
 
-**Result**: Manager has persistent bidirectional channel for updates (Tier 2 working)
+**Result**: Manager has persistent bidirectional channel for updates (Tier 2
+working)
 
 ---
 
 ### 3. Update Manager Event Handlers (30 minutes)
+
 **File**: `quick-tabs-manager.js`
 
-Currently: Manager listens to BroadcastChannel and waits for port updates but has no handlers
+Currently: Manager listens to BroadcastChannel and waits for port updates but
+has no handlers
 
 Fix: Add BroadcastChannel listener, add port message handlers for STATE_UPDATE
 
@@ -86,6 +101,7 @@ Fix: Add BroadcastChannel listener, add port message handlers for STATE_UPDATE
 ---
 
 ### 4. Reduce Polling Interval (15 minutes)
+
 **File**: `quick-tabs-manager.js` DOMContentLoaded
 
 Currently: `setInterval(loadQuickTabsState, 10000)` - 10 second delay
@@ -99,6 +115,7 @@ Fix: Reduce to 2-5 seconds OR disable polling once broadcasts working
 ## 📊 What Was Found
 
 ### Files Scanned ✅
+
 - ✅ background.js (12,000+ lines) - Core issue identified
 - ✅ QuickTabHandler.js - Broadcast pattern confirmed
 - ✅ BroadcastChannelManager.js - Functions exist but unused
@@ -108,14 +125,14 @@ Fix: Reduce to 2-5 seconds OR disable polling once broadcasts working
 
 ### Issues Found
 
-| Issue | Severity | Fix Time | Root File |
-|-------|----------|----------|----------|
-| Manager isolated from broadcasts | 🔴 CRITICAL | 2.5 hrs | background.js |
-| BroadcastChannel not from background | 🔴 CRITICAL | 1 hr | background.js |
-| Port underutilized for state updates | 🟡 HIGH | 1 hr | background.js |
-| Polling interval too slow (10s) | 🟡 HIGH | 15 min | quick-tabs-manager.js |
-| Deduplication logic complex | 🟢 LOW | 30 min | storage-handlers.js |
-| Unused webNavigation permission | 🟢 LOW | 5 min | manifest.json |
+| Issue                                | Severity    | Fix Time | Root File             |
+| ------------------------------------ | ----------- | -------- | --------------------- |
+| Manager isolated from broadcasts     | 🔴 CRITICAL | 2.5 hrs  | background.js         |
+| BroadcastChannel not from background | 🔴 CRITICAL | 1 hr     | background.js         |
+| Port underutilized for state updates | 🟡 HIGH     | 1 hr     | background.js         |
+| Polling interval too slow (10s)      | 🟡 HIGH     | 15 min   | quick-tabs-manager.js |
+| Deduplication logic complex          | 🟢 LOW      | 30 min   | storage-handlers.js   |
+| Unused webNavigation permission      | 🟢 LOW      | 5 min    | manifest.json         |
 
 ---
 
@@ -124,22 +141,27 @@ Fix: Reduce to 2-5 seconds OR disable polling once broadcasts working
 ### Current Three-Tier Design (Intent vs. Reality)
 
 #### Tier 1: BroadcastChannel API
+
 **Intent**: Real-time updates via broadcast channel  
 **Reality**: Content scripts use it, background doesn't  
 **Status**: ❌ Broken from background
 
-#### Tier 2: runtime.Port Connection  
+#### Tier 2: runtime.Port Connection
+
 **Intent**: Persistent bidirectional messaging  
 **Reality**: Used only for heartbeat, not state updates  
 **Status**: ⚠️ Partial - underutilized
 
 #### Tier 3: storage.onChanged Listener
+
 **Intent**: Reliable fallback polling  
 **Reality**: Storage written but confirmations skipped  
 **Status**: ⚠️ Partial - background avoids announcing updates
 
 ### Result
+
 Manager sidebar receives:
+
 - ✅ Initial state (on request via port)
 - ✅ Heartbeat (25-second keep-alive)
 - ✅ Storage events (10-second polls)
@@ -151,17 +173,23 @@ Manager sidebar receives:
 
 ## 🎯 Core Problem Summary
 
-**In One Sentence**: Background intentionally implements "cache only" pattern, writing to storage but skipping broadcasts to Manager, leaving Manager isolated from all state updates after initial load.
+**In One Sentence**: Background intentionally implements "cache only" pattern,
+writing to storage but skipping broadcasts to Manager, leaving Manager isolated
+from all state updates after initial load.
 
-**Why It Happened**: Comment in code: "Tabs sync independently via storage.onChanged" - background assumes Manager will poll storage rather than implementing real-time push.
+**Why It Happened**: Comment in code: "Tabs sync independently via
+storage.onChanged" - background assumes Manager will poll storage rather than
+implementing real-time push.
 
-**Why It's Wrong**: 
+**Why It's Wrong**:
+
 1. Manager designed to listen to three tiers (BC/Port/Storage)
 2. Background only implements storage tier
 3. Tiers 1 and 2 completely non-functional from background
 4. Manager forced into 10-second polling fallback
 
-**The Fix**: Complete the implementation - make background actually broadcast to Manager via BroadcastChannel or Port, not just write to storage.
+**The Fix**: Complete the implementation - make background actually broadcast to
+Manager via BroadcastChannel or Port, not just write to storage.
 
 ---
 
@@ -170,6 +198,7 @@ Manager sidebar receives:
 ### Code Locations
 
 **Background state update pattern**:
+
 ```
 File: background.js
 Pattern: Comment "Updating cache only (no broadcast)"
@@ -178,6 +207,7 @@ Action: Add broadcasts after each state change
 ```
 
 **BroadcastChannelManager export**:
+
 ```
 File: src/features/quick-tabs/channels/BroadcastChannelManager.js
 Functions: broadcastQuickTabCreated(), broadcastQuickTabUpdated(), etc.
@@ -186,6 +216,7 @@ Action: Import and call after background state changes
 ```
 
 **Port message handler**:
+
 ```
 File: background.js (search: "handlePortMessage")
 Current: Handles HEARTBEAT and initial STATE_SYNC_REQUEST
@@ -194,6 +225,7 @@ Action: Add port.postMessage() calls after state changes
 ```
 
 **Manager listeners**:
+
 ```
 File: sidebar/quick-tabs-manager.js (search: "DOMContentLoaded")
 Current: Sets up listeners for storage and port
@@ -202,6 +234,7 @@ Action: Add message handlers
 ```
 
 ### Testing After Fix
+
 1. Open Manager sidebar
 2. Edit Quick Tab in content script
 3. Observe Manager updates in real-time (not 10s later)
@@ -227,7 +260,7 @@ Action: Add message handlers
 ## 📚 Related Documents
 
 - **Full Audit**: `docs/WEBEXTENSION-AUDIT-v1.6.4.12-FINAL.md` (16KB)
-- **Root Cause Analysis**: `manager-isolation-root-cause-analysis.md` (12KB)  
+- **Root Cause Analysis**: `manager-isolation-root-cause-analysis.md` (12KB)
 - **Implementation Summary**: This document
 
 ---
@@ -235,6 +268,7 @@ Action: Add message handlers
 ## 🎬 Next Action
 
 Implement fixes in order:
+
 1. Background broadcasts (BroadcastChannel)
 2. Port state updates
 3. Manager handlers
@@ -242,4 +276,3 @@ Implement fixes in order:
 
 **Total Effort**: ~2.75 hours  
 **Expected Outcome**: Manager receives real-time updates, no more frozen UI
-

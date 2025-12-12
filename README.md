@@ -1,43 +1,66 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.7-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
-for quick URL copying and advanced Quick Tab management with **Solo/Mute
-visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
-Floating Panel Manager.
+**Version 1.6.3.8-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
+quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
+control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
+Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.7-v12 Status:** Comprehensive logging, diagnostic instrumentation,
-13 issue fixes ✅
+**🔧 v1.6.3.8-v2 Status:** Background Relay, ACK-based messaging, WriteBuffer
+batching, BFCache lifecycle ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.7-v12
+## 🎉 What's New in v1.6.3.8-v2
 
-**🔧 Logging & Diagnostics Improvements (December 2025) ✅**
+**🔧 Communication & Storage Layer Improvements (December 2025) ✅**
 
-**Diagnostic Logging (Issues #1-6):**
-- ✅ **BroadcastChannel fallback** - Logs context detection and fallback activation
-- ✅ **Keepalive health sampling** - First failure + every 10th thereafter (deterministic)
-- ✅ **Port registry monitoring** - WARN at 50, CRITICAL at 100 with auto-cleanup
-- ✅ **Dedup decision logging** - All skip/process decisions logged with reasons
-- ✅ **Storage validation** - Each stage logged with expected vs actual values
-- ✅ **DEBUG_DIAGNOSTICS flag** - Separate from DEBUG_MESSAGING for verbose diagnostics
+**Group A - Communication Layer:**
 
-**Architecture Fixes (Issues #7-13):**
-- ✅ **Initialization race barrier** - async await with 10s timeout protection
-- ✅ **Sequence ID prioritization** - Uses sequenceId over arbitrary 50ms window
-- ✅ **Port threshold implementation** - Unused constants now actively monitored
-- ✅ **Sidebar fallback logging** - 30s interval health status monitoring
-- ✅ **currentTabId barrier** - 2s exponential backoff before hydration
-- ✅ **Corruption recovery** - Re-write + verify strategy on validation failure
+- ✅ **Background Relay pattern** - Sidebar communication bypasses BC origin
+  isolation with `BC_SIDEBAR_RELAY_ACTIVE` logging
+- ✅ **ACK-based messaging** - `sendRequestWithTimeout()` utility for reliable
+  message delivery with `MESSAGE_ACK_RECEIVED` logging
+- ✅ **SIDEBAR_READY handshake** - Protocol ensures sidebar ready before routing
+  with `SIDEBAR_MESSAGE_DELIVERED` logging
 
-**Why This Matters:** These fixes provide comprehensive observability into Quick
-Tab state management, making debugging significantly easier.
+**Group B - BFCache & Port Lifecycle:**
+
+- ✅ **BFCache lifecycle events** - `PAGE_LIFECYCLE_BFCACHE_ENTER` and
+  `PAGE_LIFECYCLE_BFCACHE_RESTORE` for proper state handling
+- ✅ **Port registry snapshots** - Every 60s with `PORT_REGISTRY_SNAPSHOT`
+  showing active/idle/zombie counts
+- ✅ **Port eviction logging** - `PORT_EVICTED` with reason codes for debugging
+- ✅ **ACK circuit breaker** - `PORT_CIRCUIT_BREAKER_TRIGGERED` when pending
+  ACKs > 50
+
+**Group C - Storage & Transaction:**
+
+- ✅ **Sequence ID rejection** - `STORAGE_SEQUENCE_REJECTED` logs out-of-order
+  events
+- ✅ **Write latency logging** - `STORAGE_WRITE_LATENCY` and
+  `STORAGE_BACKPRESSURE_DETECTED` for monitoring
+- ✅ **WriteBuffer pattern** - 75ms batching to prevent IndexedDB deadlocks
+- ✅ **Version-based conflict resolution** - `STATE_CONFLICT_DETECTED` logging
+
+**Group D - Initialization & Timeout:**
+
+- ✅ **Message queuing** - `INIT_MESSAGE_QUEUED` and `INIT_MESSAGE_REPLAY` until
+  READY signal
+- ✅ **Handler timeout** - 5000ms with `HANDLER_TIMEOUT` / `HANDLER_COMPLETED`
+  logging
+
+**New Files:**
+
+- ✅ `src/utils/message-utils.js` - ACK-based messaging utilities
+
+**Why This Matters:** These improvements provide reliable sidebar communication,
+prevent storage deadlocks, and add comprehensive observability for debugging.
 
 ---
 
@@ -46,17 +69,10 @@ Tab state management, making debugging significantly easier.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8** - Initialization barriers, centralized storage validation
+- **v1.6.3.7-v12** - DEBUG_DIAGNOSTICS, dedup logging, port thresholds
 - **v1.6.3.7-v11** - Promise barrier, LRU eviction, state machine timeouts
-- **v1.6.3.7-v10** - State persistence hardening, storage watchdog, BC gap detection
-- **v1.6.3.7-v9** - Messaging hardening, unified keepalive, sequence tracking
-- **v1.6.3.7-v8** - Port resilience, performance modules, hybrid storage cache
-- **v1.6.3.7-v7** - BroadcastChannel from background, operation confirmations
-- **v1.6.3.7-v6** - Enhanced observability, unified channel logging, lifecycle
-- **v1.6.3.7-v5** - Connection state tracking, zombie detection, deduplication
-- **v1.6.3.7-v4** - Circuit breaker probing, close all feedback, error handling
-- **v1.6.3.7-v3** - Session Quick Tabs, BroadcastChannel, Tab Grouping, Alarms
-- **v1.6.3.7-v2** - Single Writer Authority, unified render, orphaned recovery
-- **v1.6.3.7-v1** - Firefox keepalive, port circuit breaker, UI performance
+- **v1.6.3.7-v1-v10** - Storage hardening, port resilience, lifecycle
 
 ---
 
@@ -239,6 +255,6 @@ for details.
 
 ---
 
-**Version 1.6.3.7-v12** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

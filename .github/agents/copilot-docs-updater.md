@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.7-v12.
+  documentation. Current version: v1.6.3.8-v2.
 tools: ['*']
 ---
 
@@ -69,90 +69,31 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.7-v12)
+## Current Extension State (v1.6.3.8-v2)
 
-### v1.6.3.7-v12 Features (NEW)
+### v1.6.3.8-v2 Features (NEW)
 
-- **DEBUG_DIAGNOSTICS flag** - Separate verbose diagnostics from DEBUG_MESSAGING
-- **BroadcastChannel fallback logging** - Context detection, fallback activation
-- **Keepalive health sampling** - First failure + 10% sampling for visibility
-- **Port registry thresholds** - WARN at 50, CRITICAL at 100 with auto-cleanup
-- **Dedup decision logging** - All skip/process decisions with reasons logged
-- **Init race barrier** - async await with 10s timeout in handleGetQuickTabsState()
-- **Sequence ID prioritization** - Uses sequenceId over 50ms timestamp window
-- **Sidebar fallback monitoring** - 30s interval status (count, latency)
-- **currentTabId barrier** - 2s exponential backoff before hydration
-- **Corruption recovery** - Re-write + verify on validation failure
+- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
+- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
+- **SIDEBAR_READY handshake** - Protocol before routing messages
+- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
+- **Port registry snapshots** - 60s interval with active/idle/zombie counts
+- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
+- **Sequence rejection** - `STORAGE_SEQUENCE_REJECTED` for out-of-order events
+- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+- **New file:** `src/utils/message-utils.js` - ACK-based messaging utilities
 
-### v1.6.3.7-v11 Features (Retained)
+### v1.6.3.8 Features (Retained)
 
-- Promise barrier, LRU dedup (1000), correlation ID echo, state machine timeouts (7s)
-- WeakRef callbacks, deferred handlers, cascading rollback, write-ahead logging
+- Initialization barriers (QuickTabHandler 10s, currentTabId 2s backoff)
+- Centralized storage validation with re-write + verify
+- Dedup decision logging, BC fallback detection, keepalive health reports
+- Code Health: background.js (9.09), QuickTabHandler.js (9.41)
 
-### v1.6.3.7-v10 Features (Retained)
+### v1.6.3.7-v11-v12 Features (Retained)
 
-- Storage watchdog (2s), BC gap detection (5s), IndexedDB checksum, port reordering (1s)
-
-### v1.6.3.7-v9 Features (Retained)
-
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Unified Logging** - MESSAGE_RECEIVED format with `[PORT]`, `[BC]`, `[RUNTIME]` prefixes
-- **Unified Deduplication** - saveId-based dedup, removed dead IN_PROGRESS_TRANSACTIONS
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Storage Integrity** - Write validation with sync backup and corruption recovery
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port), sequenceNumber (BC)
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete` flags
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
-- **Race Cooldown** - Single authoritative dedup with 200ms cooldown
-
-### v1.6.3.7-v8 Features (Retained)
-
-- **Port Message Queue** - Messages queued during reconnection
-- **Atomic Reconnection Guard** - `isReconnecting` flag prevents race conditions
-- **Heartbeat Hysteresis** - 3 failures before ZOMBIE state
-- **Firefox Termination Detection** - 10s health check interval
-
-### v1.6.3.7-v6 Features (Retained)
-
-- **Initial State Load Wait** - 2-second wait before rendering empty state
-- **Unified Message Channel Logging** - `[BC]`, `[PORT]`, `[STORAGE]` prefixes
-- **Deduplication Decision Visibility** - `RENDER_SKIPPED reason=...` logging
-- **Connection State Enhancements** - Duration tracking, fallback status logging
-- **Clear All Tracing** - Correlation ID for command tracking
-- **Keepalive Health Monitoring** - 60s health check, consecutive failure tracking
-- **Port Registry Lifecycle** - `PORT_REGISTERED`, `PORT_UNREGISTERED` logging
-- **Storage Write Lifecycle** - `STORAGE_WRITE_ATTEMPT/RETRY/SUCCESS`
-- **Adoption Lifecycle** - `ADOPTION_STARTED/COMPLETED/FAILED` logging
-
-### v1.6.3.7-v5 Features (Retained)
-
-- **Connection State Tracking** - Three states: connected → zombie → disconnected
-- **Zombie Detection** - 5s heartbeat timeout triggers BroadcastChannel fallback
-- **Listener Deduplication** - `lastProcessedSaveId` prevents duplicate renders
-- **Session Cache Validation** - `_initializeSessionId()` rejects cross-session
-
-### v1.6.3.7-v4 Features (Retained)
-
-- **Circuit Breaker Probing** - Early recovery with 500ms health probes
-  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
-- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
-  errors when background returns failure
-- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch with
-  graceful degradation
-- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
-  message after connection
-- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
-  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
-- **Storage Polling Backup** - Increased 2s→10s (BroadcastChannel is PRIMARY)
-
-### v1.6.3.7-v3 Features (Retained)
-
-- **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **BroadcastChannel API** - Real-time messaging (`quick-tabs-updates` channel)
-- **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks
-- **tabs.group() API** - Tab grouping (Firefox 138+)
-- **DOM Reconciliation** - Sidebar animation optimization
+- DEBUG_DIAGNOSTICS flag, Promise barrier, LRU dedup (1000), correlation ID echo
+- State machine timeouts (7s), port registry thresholds
 
 ### Architecture
 
@@ -160,33 +101,27 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.7-v10)
+### Key Functions (v1.6.3.8-v2)
 
-| Function                               | Location      | Purpose                          |
-| -------------------------------------- | ------------- | -------------------------------- |
-| `startStorageWatchdog()`               | Background    | Watchdog timer for writes (v10)  |
-| `validateChecksumOnStartup()`          | Storage utils | IndexedDB corruption check (v10) |
-| `processPortMessageWithReorder()`      | Manager       | Port message queue (v10)         |
-| `validateStorageIntegrity()`           | Storage utils | Integrity check with backup      |
-| `processOrderedStorageEvent()`         | Background    | sequenceId validation            |
-| `broadcastFullStateSync()`             | Background    | Full state sync via BC           |
-| `scheduleRender(source)`               | Manager       | Unified render entry point       |
-| `writeStateWithVerificationAndRetry()` | Storage utils | Write verification + lifecycle   |
+| Function                   | Location       | Purpose                        |
+| -------------------------- | -------------- | ------------------------------ |
+| `sendRequestWithTimeout()` | message-utils  | ACK-based messaging (v8-v2)    |
+| `flushWriteBuffer()`       | storage-utils  | WriteBuffer batch flush (v8-v2)|
+| `waitForInitialization()`  | QuickTabHandler| 10s init barrier (v8)          |
+| `scheduleRender(source)`   | Manager        | Unified render entry point     |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.7-v11
-- [ ] **v1.6.3.7-v11:** Promise-based listener barrier documented
-- [ ] **v1.6.3.7-v11:** LRU dedup eviction documented (max 1000)
-- [ ] **v1.6.3.7-v11:** Correlation ID echo documented
-- [ ] **v1.6.3.7-v11:** State machine timeouts documented (7s)
-- [ ] **v1.6.3.7-v11:** CodeScene improvements documented
-- [ ] **v1.6.3.7-v10:** Storage watchdog documented
-- [ ] **v1.6.3.7-v10:** BC gap detection documented
-- [ ] **v1.6.3.7-v9:** Unified keepalive documented
+- [ ] Version numbers match 1.6.3.8-v2
+- [ ] **v1.6.3.8-v2:** Background Relay documented
+- [ ] **v1.6.3.8-v2:** ACK-based messaging documented
+- [ ] **v1.6.3.8-v2:** SIDEBAR_READY handshake documented
+- [ ] **v1.6.3.8-v2:** WriteBuffer pattern documented
+- [ ] **v1.6.3.8-v2:** BFCache lifecycle documented
+- [ ] **v1.6.3.8:** Initialization barriers documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -196,11 +131,11 @@ nothing.
 
 | Error                      | Fix                                    |
 | -------------------------- | -------------------------------------- |
-| v1.6.3.7-v10 or earlier    | Update to 1.6.3.7-v11                  |
+| v1.6.3.8 or earlier        | Update to 1.6.3.8-v2                   |
 | "Pin to Page"              | Use "Solo/Mute"                        |
 | Direct storage writes      | Use Single Writer Authority            |
-| Missing promise barrier    | Document Promise-based init barrier    |
-| Missing BC gap detection   | Document gap detection callback        |
+| Missing Background Relay   | Document BC origin isolation bypass    |
+| Missing WriteBuffer        | Document 75ms batching pattern         |
 
 ---
 

@@ -133,7 +133,10 @@ class ManagedEventListeners {
     // Add AbortController if enabled
     if (this._useAbortController && typeof AbortController !== 'undefined') {
       listenerInfo.abortController = new AbortController();
-      const mergedOptions = this._mergeOptionsWithSignal(options, listenerInfo.abortController.signal);
+      const mergedOptions = this._mergeOptionsWithSignal(
+        options,
+        listenerInfo.abortController.signal
+      );
       element.addEventListener(type, handler, mergedOptions);
     } else {
       element.addEventListener(type, handler, options);
@@ -381,7 +384,7 @@ class ManagedEventListeners {
       containerMap.set(type, new Map());
 
       // Create the actual delegated handler
-      const delegatedHandler = (event) => {
+      const delegatedHandler = event => {
         this._handleDelegatedEvent(container, type, event);
       };
 
@@ -792,8 +795,4 @@ function destroyGlobalEventManager() {
 }
 
 export default ManagedEventListeners;
-export {
-  ManagedEventListeners,
-  getGlobalEventManager,
-  destroyGlobalEventManager
-};
+export { ManagedEventListeners, getGlobalEventManager, destroyGlobalEventManager };
