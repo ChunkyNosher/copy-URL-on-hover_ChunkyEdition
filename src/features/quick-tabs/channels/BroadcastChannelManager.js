@@ -6,9 +6,19 @@
  * v1.6.4.15 - Phase 3B Optimization #5: Backpressure protection
  * v1.6.3.7-v9 - Issue #7: Monotonic sequence counter for message loss detection
  * v1.6.3.8-v2 - Issue #1, #10: Background Relay pattern for sidebar communication
+ * v1.6.3.8-v5 - Issue #2: Cross-origin iframe BC verification and polling fallback
  *
  * Purpose: Provides instant messaging between tabs without full re-renders
  * BroadcastChannel is PRIMARY (fast), storage.onChanged is FALLBACK (reliable)
+ *
+ * v1.6.3.8-v5 - Cross-Origin Iframe Handling:
+ * BroadcastChannel explicitly isolates channels by origin per W3C spec.
+ * Cross-origin iframes (e.g., https://example.com) cannot receive BC messages
+ * from moz-extension:// origin. This module provides:
+ * - Per-iframe BC verification at initialization
+ * - Explicit polling fallback with configurable intervals
+ * - Polling success rate tracking
+ * - Clear logging when BC is unavailable vs working
  *
  * v1.6.3.8-v2 - Sidebar Relay Pattern:
  * Firefox Sidebar runs in a separate origin context. BroadcastChannel messages
@@ -38,6 +48,70 @@ let updateChannel = null;
 
 // v1.6.4.13 - Issue #5: Debug flag for verbose logging
 const DEBUG_BC_MESSAGING = true;
+
+// ==================== v1.6.3.8-v5 CROSS-ORIGIN IFRAME VERIFICATION ====================
+// Issue #2: BroadcastChannel origin isolation - cross-origin iframes need fallback
+
+/**
+ * BC verification timeout for iframes (ms)
+ * v1.6.3.8-v5 - Issue #2: Time to wait for iframe BC verification response
+ */
+const IFRAME_BC_VERIFICATION_TIMEOUT_MS = 1500;
+
+/**
+ * Polling fallback interval when BC unavailable (ms)
+ * v1.6.3.8-v5 - Issue #2: Aggressive polling for faster sync
+ */
+const POLLING_FALLBACK_INTERVAL_MS = 2000;
+
+/**
+ * Aggressive polling interval when stale (ms)
+ * v1.6.3.8-v5 - Issue #2: Even faster polling when channel appears stale
+ */
+const POLLING_AGGRESSIVE_INTERVAL_MS = 1000;
+
+/**
+ * Maximum polling retry count before giving up
+ * v1.6.3.8-v5 - Issue #2: Prevent infinite polling loops
+ */
+const POLLING_MAX_RETRIES = 100;
+
+/**
+ * Track per-iframe BC verification status
+ * v1.6.3.8-v5 - Issue #2: Map<iframeId, { verified: boolean, usingPolling: boolean, origin: string }>
+ */
+const _iframeVerificationStatus = new Map();
+
+/**
+ * Polling fallback state for cross-origin contexts
+ * v1.6.3.8-v5 - Issue #2: Track polling fallback metrics
+ */
+const _pollingFallbackState = {
+  active: false,
+  intervalId: null,
+  pollingCallback: null,
+  retryCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  lastPollTime: 0,
+  startTime: 0,
+  intervalMs: POLLING_FALLBACK_INTERVAL_MS
+};
+
+/**
+ * Polling metrics for success rate tracking
+ * v1.6.3.8-v5 - Issue #2: Track polling effectiveness
+ */
+const _pollingMetrics = {
+  totalPolls: 0,
+  successfulPolls: 0,
+  failedPolls: 0,
+  avgLatencyMs: 0,
+  latencySum: 0,
+  lastSuccessTime: 0,
+  lastFailureTime: 0,
+  lastFailureReason: null
+};
 
 // ==================== v1.6.3.7-v9 SEQUENCE COUNTER (Issue #7) ====================
 // Monotonic sequence counter for message loss detection
@@ -334,6 +408,614 @@ function _isBackgroundScript() {
  */
 export function isChannelAvailable() {
   return channelSupported && updateChannel !== null;
+}
+
+// ==================== v1.6.3.8-v5 CROSS-ORIGIN IFRAME BC VERIFICATION ====================
+// Issue #2: Per-iframe BC verification and polling fallback
+
+/**
+ * Get current origin for comparison
+ * v1.6.3.8-v5 - Issue #2: Helper to detect cross-origin scenarios
+ * @private
+ * @returns {string} Current window origin
+ */
+function _getCurrentOrigin() {
+  try {
+    return window.location?.origin || 'unknown';
+  } catch (_err) {
+    return 'unknown';
+  }
+}
+
+/**
+ * Check if current context is a cross-origin iframe
+ * v1.6.3.8-v5 - Issue #2: Detect cross-origin iframe scenario
+ * @returns {{ isCrossOrigin: boolean, parentOrigin: string|null, currentOrigin: string }}
+ */
+export function detectCrossOriginContext() {
+  const currentOrigin = _getCurrentOrigin();
+  const result = {
+    isCrossOrigin: false,
+    parentOrigin: null,
+    currentOrigin,
+    isIframe: false,
+    isExtensionContext: currentOrigin.includes('moz-extension://') ||
+                        currentOrigin.includes('chrome-extension://')
+  };
+
+  try {
+    // Check if we're in an iframe
+    result.isIframe = window.self !== window.top;
+    if (result.isIframe) {
+      _detectParentOrigin(result, currentOrigin);
+    }
+  } catch (_err) {
+    // Error detecting context - assume cross-origin for safety
+    result.isCrossOrigin = true;
+  }
+
+  return result;
+}
+
+/**
+ * Detect parent origin for iframe context
+ * v1.6.3.8-v5 - FIX ESLint: Extracted to reduce max-depth in detectCrossOriginContext
+ * @private
+ * @param {Object} result - Result object to update
+ * @param {string} currentOrigin - Current window origin
+ */
+function _detectParentOrigin(result, currentOrigin) {
+  try {
+    result.parentOrigin = window.parent.location.origin;
+    result.isCrossOrigin = result.parentOrigin !== currentOrigin;
+  } catch (_crossOriginErr) {
+    result.isCrossOrigin = true;
+    result.parentOrigin = 'cross-origin-blocked';
+  }
+}
+
+/**
+ * Create failed verification result
+ * v1.6.3.8-v5 - FIX ESLint: Helper to reduce verifyBroadcastChannelForIframe complexity
+ * @private
+ */
+function _createFailedVerificationResult(origin, startTime, reason, method = 'none') {
+  return {
+    verified: false,
+    origin,
+    method,
+    latencyMs: Date.now() - startTime,
+    reason
+  };
+}
+
+/**
+ * Update iframe verification status
+ * v1.6.3.8-v5 - FIX ESLint: Helper to reduce verifyBroadcastChannelForIframe complexity
+ * @private
+ */
+function _updateIframeVerificationStatus(iframeId, verified, origin) {
+  _iframeVerificationStatus.set(iframeId, {
+    verified,
+    usingPolling: !verified,
+    origin,
+    verifiedAt: Date.now()
+  });
+}
+
+/**
+ * Handle BC unavailable scenario
+ * v1.6.3.8-v5 - FIX ESLint: Extracted from verifyBroadcastChannelForIframe
+ * @private
+ */
+function _handleBCUnavailable(iframeId, contextInfo, startTime, onVerified) {
+  const result = _createFailedVerificationResult(
+    contextInfo.currentOrigin,
+    startTime,
+    'BroadcastChannel API not available'
+  );
+
+  _updateIframeVerificationStatus(iframeId, false, contextInfo.currentOrigin);
+
+  console.warn('[BroadcastChannelManager] [BC] IFRAME_BC_UNAVAILABLE:', {
+    iframeId,
+    ...result,
+    fallbackActivated: true,
+    fallbackMethod: 'polling',
+    timestamp: Date.now()
+  });
+
+  if (onVerified) onVerified(result);
+  return result;
+}
+
+/**
+ * Handle cross-origin iframe scenario
+ * v1.6.3.8-v5 - FIX ESLint: Extracted from verifyBroadcastChannelForIframe
+ * @private
+ */
+function _handleCrossOriginIframe(iframeId, contextInfo, startTime, onVerified) {
+  const result = _createFailedVerificationResult(
+    contextInfo.currentOrigin,
+    startTime,
+    'Cross-origin iframe cannot receive BC messages from extension context',
+    'polling-fallback'
+  );
+
+  _updateIframeVerificationStatus(iframeId, false, contextInfo.currentOrigin);
+
+  console.warn('[BroadcastChannelManager] [BC] IFRAME_CROSS_ORIGIN_DETECTED:', {
+    iframeId,
+    currentOrigin: contextInfo.currentOrigin,
+    parentOrigin: contextInfo.parentOrigin,
+    reason: 'W3C BroadcastChannel spec isolates channels by origin',
+    consequence: 'Messages from moz-extension:// cannot reach https:// iframes',
+    fallbackActivated: true,
+    fallbackMethod: 'polling',
+    pollingIntervalMs: POLLING_FALLBACK_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+
+  if (onVerified) onVerified(result);
+  return result;
+}
+
+/**
+ * Handle verification result
+ * v1.6.3.8-v5 - FIX ESLint: Extracted from verifyBroadcastChannelForIframe
+ * @private
+ */
+function _handleVerificationResult(iframeId, verificationResult, contextInfo, onVerified) {
+  _updateIframeVerificationStatus(iframeId, verificationResult.verified, contextInfo.currentOrigin);
+
+  if (verificationResult.verified) {
+    console.log('[BroadcastChannelManager] [BC] IFRAME_VERIFICATION_SUCCESS:', {
+      iframeId,
+      ...verificationResult,
+      timestamp: Date.now()
+    });
+  } else {
+    console.warn('[BroadcastChannelManager] [BC] IFRAME_VERIFICATION_FAILED:', {
+      iframeId,
+      ...verificationResult,
+      fallbackActivated: true,
+      fallbackMethod: 'polling',
+      timestamp: Date.now()
+    });
+  }
+
+  if (onVerified) onVerified(verificationResult);
+  return verificationResult;
+}
+
+/**
+ * Handle verification error
+ * v1.6.3.8-v5 - FIX ESLint: Extracted from verifyBroadcastChannelForIframe
+ * @private
+ */
+function _handleVerificationError(iframeId, err, contextInfo, startTime, onVerified) {
+  const result = _createFailedVerificationResult(
+    contextInfo.currentOrigin,
+    startTime,
+    `Verification error: ${err.message}`,
+    'polling-fallback'
+  );
+
+  _updateIframeVerificationStatus(iframeId, false, contextInfo.currentOrigin);
+
+  console.error('[BroadcastChannelManager] [BC] IFRAME_VERIFICATION_ERROR:', {
+    iframeId,
+    error: err.message,
+    fallbackActivated: true,
+    timestamp: Date.now()
+  });
+
+  if (onVerified) onVerified(result);
+  return result;
+}
+
+/**
+ * Verify BroadcastChannel connectivity for current iframe context
+ * v1.6.3.8-v5 - Issue #2: Verify BC works in this context before relying on it
+ * v1.6.3.8-v5 - FIX ESLint: Refactored to reduce complexity (cc=10 → cc=5)
+ * @param {string} iframeId - Unique identifier for this iframe/context
+ * @param {Function} [onVerified] - Callback when verification completes
+ * @returns {Promise<{ verified: boolean, origin: string, method: string, latencyMs: number }>}
+ */
+export async function verifyBroadcastChannelForIframe(iframeId, onVerified) {
+  const startTime = Date.now();
+  const contextInfo = detectCrossOriginContext();
+
+  console.log('[BroadcastChannelManager] [BC] IFRAME_VERIFICATION_STARTED:', {
+    iframeId,
+    currentOrigin: contextInfo.currentOrigin,
+    isIframe: contextInfo.isIframe,
+    isCrossOrigin: contextInfo.isCrossOrigin,
+    isExtensionContext: contextInfo.isExtensionContext,
+    timeoutMs: IFRAME_BC_VERIFICATION_TIMEOUT_MS,
+    timestamp: startTime
+  });
+
+  // If BC API not available, immediately fail verification
+  if (!isChannelAvailable()) {
+    return _handleBCUnavailable(iframeId, contextInfo, startTime, onVerified);
+  }
+
+  // If we're in a cross-origin iframe, BC won't work across origins
+  if (contextInfo.isCrossOrigin && !contextInfo.isExtensionContext) {
+    return _handleCrossOriginIframe(iframeId, contextInfo, startTime, onVerified);
+  }
+
+  // Attempt bidirectional BC verification via ping-pong
+  try {
+    const verificationResult = await _performBCVerificationPingPong(iframeId, startTime);
+    return _handleVerificationResult(iframeId, verificationResult, contextInfo, onVerified);
+  } catch (err) {
+    return _handleVerificationError(iframeId, err, contextInfo, startTime, onVerified);
+  }
+}
+
+/**
+ * Perform BC verification ping-pong with background
+ * v1.6.3.8-v5 - Issue #2: Verify bidirectional BC communication
+ * @private
+ * @param {string} iframeId - Iframe identifier
+ * @param {number} startTime - Verification start time
+ * @returns {Promise<{ verified: boolean, method: string, latencyMs: number }>}
+ */
+function _performBCVerificationPingPong(iframeId, startTime) {
+  return new Promise((resolve) => {
+    const verificationId = `bc-iframe-verify-${iframeId}-${Date.now()}`;
+    let timeoutId = null;
+    let messageHandler = null;
+
+    // Handler for verification response
+    messageHandler = (event) => {
+      const data = event.data;
+      if (data && data.type === 'BC_IFRAME_VERIFICATION_PONG' &&
+          data.verificationId === verificationId) {
+        clearTimeout(timeoutId);
+        if (updateChannel) {
+          updateChannel.removeEventListener('message', messageHandler);
+        }
+
+        resolve({
+          verified: true,
+          method: 'broadcast-channel',
+          latencyMs: Date.now() - startTime,
+          origin: _getCurrentOrigin()
+        });
+      }
+    };
+
+    // Set timeout for verification
+    timeoutId = setTimeout(() => {
+      if (updateChannel) {
+        updateChannel.removeEventListener('message', messageHandler);
+      }
+
+      resolve({
+        verified: false,
+        method: 'polling-fallback',
+        latencyMs: Date.now() - startTime,
+        reason: 'Verification timeout - no PONG received',
+        origin: _getCurrentOrigin()
+      });
+    }, IFRAME_BC_VERIFICATION_TIMEOUT_MS);
+
+    // Add listener and send verification ping
+    if (updateChannel) {
+      updateChannel.addEventListener('message', messageHandler);
+      updateChannel.postMessage({
+        type: 'BC_IFRAME_VERIFICATION_PING',
+        verificationId,
+        iframeId,
+        origin: _getCurrentOrigin(),
+        timestamp: Date.now()
+      });
+    } else {
+      clearTimeout(timeoutId);
+      resolve({
+        verified: false,
+        method: 'polling-fallback',
+        latencyMs: Date.now() - startTime,
+        reason: 'No update channel available',
+        origin: _getCurrentOrigin()
+      });
+    }
+  });
+}
+
+/**
+ * Get verification status for an iframe
+ * v1.6.3.8-v5 - Issue #2: Check if iframe has been verified
+ * @param {string} iframeId - Iframe identifier
+ * @returns {{ verified: boolean, usingPolling: boolean, origin: string }|null}
+ */
+export function getIframeVerificationStatus(iframeId) {
+  return _iframeVerificationStatus.get(iframeId) || null;
+}
+
+/**
+ * Check if an iframe is using polling fallback
+ * v1.6.3.8-v5 - Issue #2: Quick check for polling mode
+ * @param {string} iframeId - Iframe identifier
+ * @returns {boolean} True if using polling fallback
+ */
+export function isIframeUsingPolling(iframeId) {
+  const status = _iframeVerificationStatus.get(iframeId);
+  return status ? status.usingPolling : false;
+}
+
+// ==================== v1.6.3.8-v5 POLLING FALLBACK MECHANISM ====================
+// Issue #2: Aggressive polling fallback for cross-origin iframes
+
+/**
+ * Start polling fallback for state synchronization
+ * v1.6.3.8-v5 - Issue #2: Activate polling when BC unavailable
+ * @param {Function} pollCallback - Callback to execute on each poll: () => Promise<{ success: boolean, data?: any }>
+ * @param {Object} [options] - Polling options
+ * @param {number} [options.intervalMs] - Polling interval in milliseconds
+ * @param {boolean} [options.aggressive] - Use aggressive (faster) polling
+ * @returns {{ started: boolean, intervalMs: number }}
+ */
+export function startPollingFallback(pollCallback, options = {}) {
+  // Stop any existing polling
+  stopPollingFallback();
+
+  const intervalMs = options.aggressive
+    ? POLLING_AGGRESSIVE_INTERVAL_MS
+    : (options.intervalMs || POLLING_FALLBACK_INTERVAL_MS);
+
+  _pollingFallbackState.active = true;
+  _pollingFallbackState.pollingCallback = pollCallback;
+  _pollingFallbackState.retryCount = 0;
+  _pollingFallbackState.startTime = Date.now();
+  _pollingFallbackState.intervalMs = intervalMs;
+
+  console.log('[BroadcastChannelManager] [POLLING] FALLBACK_STARTED:', {
+    intervalMs,
+    aggressive: options.aggressive || false,
+    maxRetries: POLLING_MAX_RETRIES,
+    reason: 'BroadcastChannel unavailable for this context',
+    timestamp: Date.now()
+  });
+
+  // Start polling interval
+  _pollingFallbackState.intervalId = setInterval(async () => {
+    await _executePollCycle();
+  }, intervalMs);
+
+  // Execute first poll immediately
+  _executePollCycle();
+
+  return { started: true, intervalMs };
+}
+
+/**
+ * Handle successful poll result
+ * v1.6.3.8-v5 - FIX ESLint: Extracted to reduce _executePollCycle complexity
+ * @private
+ * @param {number} latencyMs - Poll latency in milliseconds
+ */
+function _handlePollSuccess(latencyMs) {
+  _pollingFallbackState.successCount++;
+  _pollingMetrics.successfulPolls++;
+  _pollingMetrics.lastSuccessTime = Date.now();
+  _pollingMetrics.latencySum += latencyMs;
+
+  // Update average latency
+  _pollingMetrics.avgLatencyMs = Math.round(
+    _pollingMetrics.latencySum / _pollingMetrics.successfulPolls
+  );
+
+  // Log every 10th successful poll to avoid spam
+  const shouldLog = DEBUG_BC_MESSAGING && _pollingMetrics.successfulPolls % 10 === 0;
+  if (shouldLog) {
+    console.log('[BroadcastChannelManager] [POLLING] POLL_HEALTH:', {
+      successfulPolls: _pollingMetrics.successfulPolls,
+      failedPolls: _pollingMetrics.failedPolls,
+      successRate: getPollingSuccessRate(),
+      avgLatencyMs: _pollingMetrics.avgLatencyMs,
+      intervalMs: _pollingFallbackState.intervalMs,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Handle failed poll result
+ * v1.6.3.8-v5 - FIX ESLint: Extracted to reduce _executePollCycle complexity
+ * @private
+ * @param {string} reason - Failure reason
+ * @param {number} latencyMs - Poll latency in milliseconds
+ */
+function _handlePollFailure(reason, latencyMs) {
+  _pollingFallbackState.failureCount++;
+  _pollingMetrics.failedPolls++;
+  _pollingMetrics.lastFailureTime = Date.now();
+  _pollingMetrics.lastFailureReason = reason;
+
+  console.warn('[BroadcastChannelManager] [POLLING] POLL_FAILED:', {
+    retryCount: _pollingFallbackState.retryCount,
+    failureCount: _pollingFallbackState.failureCount,
+    reason,
+    latencyMs,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Execute a single poll cycle
+ * v1.6.3.8-v5 - Issue #2: Individual poll execution with metrics
+ * v1.6.3.8-v5 - FIX ESLint: Refactored to reduce complexity (cc=10 → cc=6)
+ * @private
+ */
+async function _executePollCycle() {
+  if (!_pollingFallbackState.active || !_pollingFallbackState.pollingCallback) {
+    return;
+  }
+
+  // Check retry limit
+  if (_pollingFallbackState.retryCount >= POLLING_MAX_RETRIES) {
+    console.error('[BroadcastChannelManager] [POLLING] MAX_RETRIES_REACHED:', {
+      retryCount: _pollingFallbackState.retryCount,
+      maxRetries: POLLING_MAX_RETRIES,
+      successRate: getPollingSuccessRate(),
+      action: 'Stopping polling fallback',
+      timestamp: Date.now()
+    });
+    stopPollingFallback();
+    return;
+  }
+
+  const pollStartTime = Date.now();
+  _pollingFallbackState.lastPollTime = pollStartTime;
+  _pollingMetrics.totalPolls++;
+  _pollingFallbackState.retryCount++;
+
+  try {
+    const result = await _pollingFallbackState.pollingCallback();
+    const latencyMs = Date.now() - pollStartTime;
+
+    if (result && result.success) {
+      _handlePollSuccess(latencyMs);
+    } else {
+      _handlePollFailure(result?.error || 'Unknown error', latencyMs);
+    }
+  } catch (err) {
+    _handlePollFailure(err.message, Date.now() - pollStartTime);
+    console.error('[BroadcastChannelManager] [POLLING] POLL_ERROR:', {
+      error: err.message,
+      retryCount: _pollingFallbackState.retryCount,
+      failureCount: _pollingFallbackState.failureCount,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Stop polling fallback
+ * v1.6.3.8-v5 - Issue #2: Clean up polling resources
+ * @returns {{ stopped: boolean, stats: Object }}
+ */
+export function stopPollingFallback() {
+  if (!_pollingFallbackState.active) {
+    return { stopped: false, stats: null };
+  }
+
+  if (_pollingFallbackState.intervalId) {
+    clearInterval(_pollingFallbackState.intervalId);
+    _pollingFallbackState.intervalId = null;
+  }
+
+  const stats = {
+    durationMs: Date.now() - _pollingFallbackState.startTime,
+    totalPolls: _pollingFallbackState.retryCount,
+    successCount: _pollingFallbackState.successCount,
+    failureCount: _pollingFallbackState.failureCount,
+    successRate: getPollingSuccessRate(),
+    avgLatencyMs: _pollingMetrics.avgLatencyMs
+  };
+
+  console.log('[BroadcastChannelManager] [POLLING] FALLBACK_STOPPED:', {
+    ...stats,
+    timestamp: Date.now()
+  });
+
+  _pollingFallbackState.active = false;
+  _pollingFallbackState.pollingCallback = null;
+
+  return { stopped: true, stats };
+}
+
+/**
+ * Check if polling fallback is active
+ * v1.6.3.8-v5 - Issue #2: Query polling state
+ * @returns {boolean} True if polling is active
+ */
+export function isPollingFallbackActive() {
+  return _pollingFallbackState.active;
+}
+
+/**
+ * Get polling success rate
+ * v1.6.3.8-v5 - Issue #2: Calculate success percentage
+ * @returns {string} Success rate as percentage string (e.g., "95.5%")
+ */
+export function getPollingSuccessRate() {
+  if (_pollingMetrics.totalPolls === 0) return 'N/A';
+  const rate = (_pollingMetrics.successfulPolls / _pollingMetrics.totalPolls) * 100;
+  return `${rate.toFixed(1)}%`;
+}
+
+/**
+ * Get comprehensive polling metrics
+ * v1.6.3.8-v5 - Issue #2: Full metrics for diagnostics
+ * @returns {Object} Polling metrics object
+ */
+export function getPollingMetrics() {
+  return {
+    ..._pollingMetrics,
+    successRate: getPollingSuccessRate(),
+    isActive: _pollingFallbackState.active,
+    currentIntervalMs: _pollingFallbackState.intervalMs,
+    uptimeMs: _pollingFallbackState.active
+      ? Date.now() - _pollingFallbackState.startTime
+      : 0,
+    retryCount: _pollingFallbackState.retryCount,
+    maxRetries: POLLING_MAX_RETRIES
+  };
+}
+
+/**
+ * Reset polling metrics
+ * v1.6.3.8-v5 - Issue #2: Clear metrics for fresh start
+ */
+export function resetPollingMetrics() {
+  _pollingMetrics.totalPolls = 0;
+  _pollingMetrics.successfulPolls = 0;
+  _pollingMetrics.failedPolls = 0;
+  _pollingMetrics.avgLatencyMs = 0;
+  _pollingMetrics.latencySum = 0;
+  _pollingMetrics.lastSuccessTime = 0;
+  _pollingMetrics.lastFailureTime = 0;
+  _pollingMetrics.lastFailureReason = null;
+
+  console.log('[BroadcastChannelManager] [POLLING] METRICS_RESET:', {
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log current communication method being used
+ * v1.6.3.8-v5 - Issue #2: Clear indication of active method
+ * @param {string} contextId - Identifier for the context (iframe/sidebar)
+ */
+export function logCommunicationMethod(contextId) {
+  const status = _iframeVerificationStatus.get(contextId);
+  const contextInfo = detectCrossOriginContext();
+
+  const method = status?.verified
+    ? 'broadcast-channel'
+    : (_pollingFallbackState.active ? 'polling-fallback' : 'storage-events');
+
+  console.log('[BroadcastChannelManager] [BC] COMMUNICATION_METHOD:', {
+    contextId,
+    method,
+    bcVerified: status?.verified || false,
+    pollingActive: _pollingFallbackState.active,
+    isCrossOrigin: contextInfo.isCrossOrigin,
+    currentOrigin: contextInfo.currentOrigin,
+    pollingMetrics: _pollingFallbackState.active ? {
+      successRate: getPollingSuccessRate(),
+      intervalMs: _pollingFallbackState.intervalMs,
+      avgLatencyMs: _pollingMetrics.avgLatencyMs
+    } : null,
+    timestamp: Date.now()
+  });
+
+  return method;
 }
 
 /**
@@ -756,7 +1438,19 @@ export default {
   activateSidebarRelay,
   deactivateSidebarRelay,
   sendToSidebarViaRelay,
-  smartBroadcast
+  smartBroadcast,
+  // v1.6.3.8-v5 - Issue #2: Cross-origin iframe verification exports
+  detectCrossOriginContext,
+  verifyBroadcastChannelForIframe,
+  getIframeVerificationStatus,
+  isIframeUsingPolling,
+  startPollingFallback,
+  stopPollingFallback,
+  isPollingFallbackActive,
+  getPollingSuccessRate,
+  getPollingMetrics,
+  resetPollingMetrics,
+  logCommunicationMethod
 };
 
 // ==================== v1.6.4.15 BACKPRESSURE IMPLEMENTATION ====================
