@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.8-v6.
+  documentation. Current version: v1.6.3.8-v8.
 tools: ['*']
 ---
 
@@ -69,28 +69,28 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.8-v6)
+## Current Extension State (v1.6.3.8-v8)
 
-### v1.6.3.8-v6 Features (NEW) - Production Hardening
+### v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes
 
-- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
-- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
-- **Port reconnection** - Exponential backoff (100ms → 10s max)
-- **Circuit breaker** - 3 consecutive failures triggers cleanup
-- **Checksum validation** - djb2-like hash during hydration
-- **beforeunload cleanup** - CONTENT_UNLOADING message handler
-- **Enhanced logging** - Tier-based dedup stats, 5-min history
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- **Storage event ordering** - 300ms tolerance for Firefox latency
+- **DestroyHandler forceEmpty** - Properly allows empty state writes
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
 
-### v1.6.3.8-v5 Features (Retained)
+### v1.6.3.8-v7 Features (Retained)
 
-- Monotonic revision versioning, port failure counting
-- Storage quota recovery, declarativeNetRequest fallback, URL validation
+- Per-port sequence ID tracking, circuit breaker escalation, correlationId tracing
+- Adaptive quota monitoring, storage aggregation, content script unload
 
-### v1.6.3.8-v4 Features (Retained)
+### v1.6.3.8-v6 Features (Retained)
 
-- Initialization barriers (10s), exponential backoff retry
-- Port-based hydration, visibility change listener, proactive dedup cleanup
+- BroadcastChannelManager.js DELETED, storage quota monitoring
+- MessageBatcher queue limits (100), port reconnection backoff, checksum validation
 
 ### Architecture
 
@@ -98,7 +98,7 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.8-v6)
+### Key Functions (v1.6.3.8-v8)
 
 | Function                   | Location        | Purpose                    |
 | -------------------------- | --------------- | -------------------------- |
@@ -112,12 +112,11 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.8-v6
-- [ ] **v1.6.3.8-v6:** BroadcastChannelManager.js DELETED documented
-- [ ] **v1.6.3.8-v6:** Storage quota monitoring documented
-- [ ] **v1.6.3.8-v6:** MessageBatcher queue limits documented
-- [ ] **v1.6.3.8-v6:** Checksum validation documented
-- [ ] **v1.6.3.8-v6:** beforeunload cleanup documented
+- [ ] Version numbers match 1.6.3.8-v8
+- [ ] **v1.6.3.8-v8:** Self-write detection documented
+- [ ] **v1.6.3.8-v8:** Transaction timeout 1000ms documented
+- [ ] **v1.6.3.8-v8:** Port message queue documented
+- [ ] **v1.6.3.8-v8:** Extended dedup 10s documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -127,11 +126,11 @@ nothing.
 
 | Error                    | Fix                               |
 | ------------------------ | --------------------------------- |
-| v1.6.3.8-v5 or earlier   | Update to 1.6.3.8-v6              |
+| v1.6.3.8-v7 or earlier   | Update to 1.6.3.8-v8              |
 | "Pin to Page"            | Use "Solo/Mute"                   |
 | Direct storage writes    | Use Single Writer Authority       |
 | BroadcastChannel refs    | REMOVE - BC DELETED in v6         |
-| Missing quota monitoring | Document storage quota monitoring |
+| Missing self-write       | Document self-write detection     |
 
 ---
 

@@ -37,17 +37,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
+**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
 
-- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
-- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
-- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
 
-**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port
-failure counting, initialization barriers, BFCache lifecycle.
+**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
+escalation, correlationId tracing, adaptive quota monitoring.
+
+**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
+quota monitoring, MessageBatcher queue limits, circuit breaker.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -77,9 +81,12 @@ failure counting, initialization barriers, BFCache lifecycle.
 
 ## Testing Requirements
 
-- [ ] BFCache lifecycle events work (PAGE*LIFECYCLE_BFCACHE*\*) (v1.6.3.8-v2)
-- [ ] currentTabId barrier works (2s exponential backoff) (v1.6.3.8)
-- [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
+- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
+- [ ] Explicit tab ID barrier works (v1.6.3.8-v8)
+- [ ] BFCache session tabs work (document.wasDiscarded) (v1.6.3.8-v8)
+- [ ] BFCache lifecycle events work (PAGE*LIFECYCLE_BFCACHE*\*)
+- [ ] currentTabId barrier works (2s exponential backoff)
+- [ ] Circuit breaker probing recovers early
 - [ ] Strict tab isolation rejects null originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
@@ -89,5 +96,5 @@ failure counting, initialization barriers, BFCache lifecycle.
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.8-v2 BFCache
-lifecycle, v1.6.3.8 currentTabId barrier, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.8-v8 self-write
+detection, explicit tab ID barrier, BFCache session tabs, and proper per-tab scoping.**

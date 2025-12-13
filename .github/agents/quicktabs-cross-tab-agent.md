@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v6), Port + storage.local architecture (NO BroadcastChannel),
+  (v1.6.3.8-v8), Port + storage.local architecture (NO BroadcastChannel),
   initializationBarrier Promise, port-based hydration, storage quota monitoring,
   checksum validation
 tools: ['*']
@@ -39,28 +39,28 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
+**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
 
-- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized,
-  active)
-- **Layer 2:** storage.local with monotonic revision versioning +
-  storage.onChanged
-- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
-- **Port reconnection** - Exponential backoff (100ms → 10s max)
-- **Circuit breaker** - 3 consecutive failures triggers cleanup
-- **Checksum validation** - djb2-like hash during hydration
-- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- **Storage event ordering** - 300ms tolerance for Firefox latency
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
 
-**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery, URL validation.
+**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
+escalation, correlationId tracing, adaptive quota monitoring.
+
+**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
+quota monitoring, port reconnection backoff, checksum validation.
 
 **v1.6.3.8-v4 Features (Retained):** initializationBarrier Promise, port-based
 hydration, visibility change listener, proactive dedup cleanup.
 
-**Key Functions (v1.6.3.8-v6):**
+**Key Functions (v1.6.3.8-v8):**
 
 | Function                        | Location        | Purpose                         |
 | ------------------------------- | --------------- | ------------------------------- |
@@ -84,19 +84,20 @@ hydration, visibility change listener, proactive dedup cleanup.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v6)
-- [ ] Storage quota monitoring works (50%/75%/90%) (v1.6.3.8-v6)
-- [ ] Checksum validation works during hydration (v1.6.3.8-v6)
-- [ ] Port reconnection with exponential backoff works (v1.6.3.8-v6)
-- [ ] initializationBarrier Promise resolves correctly (v1.6.3.8-v4)
-- [ ] Port-based hydration works (`_hydrateStateFromBackground`) (v1.6.3.8-v4)
-- [ ] ACK-based messaging works (sendRequestWithTimeout)
-- [ ] WriteBuffer batching works (75ms)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v8)
+- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
+- [ ] Transaction timeout 1000ms (v1.6.3.8-v8)
+- [ ] Port message queue works (v1.6.3.8-v8)
+- [ ] Extended dedup 10s works (v1.6.3.8-v8)
+- [ ] Storage quota monitoring works (50%/75%/90%)
+- [ ] Checksum validation works during hydration
+- [ ] initializationBarrier Promise resolves correctly
+- [ ] Port-based hydration works (`_hydrateStateFromBackground`)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.8-v6 Port + storage.local
-architecture, storage quota monitoring, checksum validation.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v8 Port + storage.local
+architecture, self-write detection, transaction timeout, port message queue.**

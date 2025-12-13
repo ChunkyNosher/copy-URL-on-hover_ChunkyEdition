@@ -60,28 +60,24 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v8 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
+**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
 
-- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
-- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
-- **Port reconnection** - Exponential backoff (100ms → 10s max)
-- **Circuit breaker** - 3 consecutive failures triggers cleanup
-- **Checksum validation** - djb2-like hash during hydration
-- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
 
-**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery, declarativeNetRequest fallback, URL
-validation.
+**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
+escalation, correlationId tracing, adaptive quota monitoring.
 
-**v1.6.3.8-v4 Features (Retained):** Initialization barriers (10s), exponential
-backoff retry, port-based hydration, visibility change listener, proactive dedup
-cleanup, probe queuing.
+**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
+quota monitoring, MessageBatcher queue limits, checksum validation.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -276,7 +272,7 @@ handling
 
 See QuickTab domain for Solo/Mute implementation patterns.
 
-### Port-Based Messaging Pattern (v1.6.3.8-v6)
+### Port-Based Messaging Pattern (v1.6.3.8-v8)
 
 ```javascript
 // Primary cross-tab sync via runtime.Port
