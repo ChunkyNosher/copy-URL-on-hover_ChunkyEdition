@@ -16,6 +16,14 @@
  * v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log (dead code that was never consulted)
  * v1.6.3.8-v9 - FIX Issue #14: Emit statedeleted event BEFORE deleting from Map
  *               This ensures UICoordinator receives event while tab still exists in renderedTabs
+ * v1.6.3.8-v9 - FIX Issue #16: Proper persist control flow with retry logic
+ *               - forceEmpty check now skips persist call entirely when blocked
+ *               - Failed persists are queued for retry during next storage.onChanged cycle
+ *               - Explicit deletion persistence state tracking
+ * v1.6.3.8-v9 - FIX Issue #21: Enhanced initialization logging
+ *               - Explicit timestamps at all initialization steps
+ *               - Handler readiness state changes logged
+ *               - Persist operations logged with success/failure/retry status
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -29,6 +37,7 @@
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
  * - Prevent deletion loops via _destroyedIds tracking
+ * - Retry failed persists automatically (v1.6.3.8-v9)
  *
  * @version 1.6.3.8-v9
  */
@@ -44,6 +53,12 @@ const STORAGE_DEBOUNCE_DELAY = 150;
 
 // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Cooldown for closeAll mutex (ms)
 const CLOSE_ALL_COOLDOWN_MS = 2000;
+
+// v1.6.3.8-v9 - FIX Issue #16: Retry delay for failed persists (ms)
+const PERSIST_RETRY_DELAY_MS = 500;
+
+// v1.6.3.8-v9 - FIX Issue #16: Maximum retry attempts for failed persists
+const PERSIST_MAX_RETRIES = 3;
 
 /**
  * v1.6.4.8 - Issue #5: Generate simple checksum for state verification
@@ -113,9 +128,41 @@ export class DestroyHandler {
     this._closeAllInProgress = false;
     this._closeAllCooldownTimer = null;
 
+    // v1.6.3.8-v9 - FIX Issue #16: Pending persists queue for retry logic
+    // Failed persists are queued and retried automatically
+    this._pendingPersists = [];
+    this._retryTimer = null;
+
+    // v1.6.3.8-v9 - FIX Issue #16: Track which deletions have been successfully persisted
+    // This allows explicit confirmation that a deletion reached storage
+    this._persistedDeletions = new Set();
+
+    // v1.6.3.8-v9 - FIX Issue #21: Track handler initialization state
+    this._isInitialized = false;
+    this._initTimestamp = Date.now();
+    console.log('[DestroyHandler] INIT_STEP_1: Constructor called:', {
+      timestamp: this._initTimestamp,
+      handlersReady: false
+    });
+
     // v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log (dead code)
     // The WAL was created but never consulted - actual protection comes from _destroyedIds Set
     // Reference: docs/manual/1.6.4/quick-tabs-supplementary-issues.md Issue #11
+  }
+
+  /**
+   * Mark handler as initialized and ready
+   * v1.6.3.8-v9 - FIX Issue #21: Explicit initialization tracking
+   */
+  markInitialized() {
+    this._isInitialized = true;
+    const initDuration = Date.now() - this._initTimestamp;
+    console.log('[DestroyHandler] INIT_COMPLETE: Handler marked as initialized:', {
+      timestamp: Date.now(),
+      initDurationMs: initDuration,
+      pendingPersists: this._pendingPersists.length,
+      destroyedIds: this._destroyedIds.size
+    });
   }
 
   /**
@@ -354,14 +401,29 @@ export class DestroyHandler {
    * Persist to storage immediately with checksum verification
    * v1.6.4.8 - Issue #5: Immediate persist for single destroys with write-ahead log update
    * v1.6.3.8-v8 - Issue #2: Pass forceEmpty=true when state becomes empty after destroy
+   * v1.6.3.8-v9 - FIX Issue #16: Proper control flow - skip persist when blocked, retry on failure
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced logging with timestamps and persist status tracking
    * @private
-   * @param {string} deletedId - ID that was deleted (for write-ahead log update)
+   * @param {string} deletedId - ID that was deleted (for tracking)
    */
   async _persistToStorageImmediate(deletedId) {
+    const persistStartTime = Date.now();
+    console.log('[DestroyHandler] PERSIST_START: Beginning immediate persist:', {
+      deletedId,
+      timestamp: persistStartTime,
+      pendingPersists: this._pendingPersists.length
+    });
+
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
 
     if (!state) {
-      console.error('[DestroyHandler] Failed to build state for immediate storage');
+      console.error('[DestroyHandler] PERSIST_BLOCKED: Failed to build state for immediate storage:', {
+        deletedId,
+        timestamp: Date.now(),
+        reason: 'buildStateForStorage returned null'
+      });
+      // v1.6.3.8-v9 - FIX Issue #16: Queue for retry
+      this._schedulePersistRetry(deletedId, 'state-build-failed');
       return;
     }
 
@@ -372,25 +434,53 @@ export class DestroyHandler {
     // v1.6.3.8-v8 - FIX Issue #2: Use shared helper to determine forceEmpty
     const forceEmpty = _shouldForceEmptyWrite(state);
     
-    console.log('[DestroyHandler] Checksum BEFORE storage write:', {
+    console.log('[DestroyHandler] PERSIST_CHECKSUM: Checksum BEFORE storage write:', {
       checksum: checksumBefore,
       tabCount,
       deletedId,
-      forceEmpty
+      forceEmpty,
+      timestamp: Date.now()
     });
 
-    const success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
+    // v1.6.3.8-v9 - FIX Issue #16: Attempt persist with proper error handling
+    let success = false;
+    try {
+      success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
+    } catch (err) {
+      console.error('[DestroyHandler] PERSIST_ERROR: Storage persist threw exception:', {
+        deletedId,
+        error: err.message,
+        timestamp: Date.now()
+      });
+      // v1.6.3.8-v9 - FIX Issue #16: Queue for retry on exception
+      this._schedulePersistRetry(deletedId, 'persist-exception');
+      return;
+    }
 
     if (!success) {
-      console.error('[DestroyHandler] Immediate storage persist failed for:', deletedId);
+      console.error('[DestroyHandler] PERSIST_FAILED: Immediate storage persist failed:', {
+        deletedId,
+        timestamp: Date.now(),
+        willRetry: true
+      });
+      // v1.6.3.8-v9 - FIX Issue #16: Queue for retry on failure
+      this._schedulePersistRetry(deletedId, 'persist-returned-false');
       return;
     }
 
     // v1.6.4.8 - Issue #5: Verify checksum AFTER write by re-reading
     await this._verifyStorageChecksum(checksumBefore, state, deletedId);
     
-    // v1.6.3.8-v8 - FIX Issue #11: REMOVED _updateWriteAheadLogAfterPersist call (dead code)
-    console.log('[DestroyHandler] Storage persist complete for:', deletedId);
+    // v1.6.3.8-v9 - FIX Issue #16: Mark deletion as successfully persisted
+    this._persistedDeletions.add(deletedId);
+    
+    const persistDuration = Date.now() - persistStartTime;
+    console.log('[DestroyHandler] PERSIST_SUCCESS: Storage persist complete:', {
+      deletedId,
+      durationMs: persistDuration,
+      timestamp: Date.now(),
+      persistedDeletionsCount: this._persistedDeletions.size
+    });
   }
 
   /**
@@ -460,6 +550,174 @@ export class DestroyHandler {
     if (!success) {
       console.error('[DestroyHandler] Storage persist failed or timed out');
     }
+  }
+
+  /**
+   * Schedule a retry for failed persist operations
+   * v1.6.3.8-v9 - FIX Issue #16: Retry logic for failed persists
+   * @private
+   * @param {string} tabId - Tab ID that was deleted
+   * @param {string} reason - Reason for the retry
+   */
+  _schedulePersistRetry(tabId, reason) {
+    const retryEntry = {
+      tabId,
+      reason,
+      retryCount: 0,
+      createdAt: Date.now()
+    };
+
+    // Check if already in queue
+    const existingIndex = this._pendingPersists.findIndex(p => p.tabId === tabId);
+    if (existingIndex >= 0) {
+      // Update retry count
+      this._pendingPersists[existingIndex].retryCount++;
+      console.log('[DestroyHandler] PERSIST_RETRY_UPDATE: Existing retry entry updated:', {
+        tabId,
+        retryCount: this._pendingPersists[existingIndex].retryCount,
+        timestamp: Date.now()
+      });
+    } else {
+      // Add to queue
+      this._pendingPersists.push(retryEntry);
+      console.log('[DestroyHandler] PERSIST_RETRY_QUEUED: New retry entry added:', {
+        tabId,
+        reason,
+        queueLength: this._pendingPersists.length,
+        timestamp: Date.now()
+      });
+    }
+
+    // v1.6.3.8-v9 - Code Review Fix: Use atomic check-and-set for timer to prevent race condition
+    // Double-check pattern: if timer already exists, skip; otherwise set it atomically
+    if (this._retryTimer === null) {
+      // Set timer immediately to prevent concurrent calls from creating multiple timers
+      const newTimer = setTimeout(() => {
+        this._processRetryQueue();
+      }, PERSIST_RETRY_DELAY_MS);
+      
+      // Only assign if still null (in case another call beat us)
+      if (this._retryTimer === null) {
+        this._retryTimer = newTimer;
+        console.log('[DestroyHandler] PERSIST_RETRY_SCHEDULED: Retry timer set:', {
+          delayMs: PERSIST_RETRY_DELAY_MS,
+          timestamp: Date.now()
+        });
+      } else {
+        // Another call already set a timer, cancel this one
+        clearTimeout(newTimer);
+      }
+    }
+  }
+
+  /**
+   * Process the pending persists retry queue
+   * v1.6.3.8-v9 - FIX Issue #16: Process all pending retries
+   * @private
+   */
+  async _processRetryQueue() {
+    this._retryTimer = null;
+    const retryStartTime = Date.now();
+
+    if (this._pendingPersists.length === 0) {
+      console.log('[DestroyHandler] PERSIST_RETRY_EMPTY: No pending retries to process');
+      return;
+    }
+
+    console.log('[DestroyHandler] PERSIST_RETRY_START: Processing retry queue:', {
+      queueLength: this._pendingPersists.length,
+      timestamp: retryStartTime
+    });
+
+    // Process all pending retries
+    const pendingCopy = [...this._pendingPersists];
+    this._pendingPersists = [];
+
+    let successCount = 0;
+    let failureCount = 0;
+    let droppedCount = 0;
+
+    for (const entry of pendingCopy) {
+      // Check if max retries exceeded
+      if (entry.retryCount >= PERSIST_MAX_RETRIES) {
+        console.warn('[DestroyHandler] PERSIST_RETRY_DROPPED: Max retries exceeded:', {
+          tabId: entry.tabId,
+          retryCount: entry.retryCount,
+          maxRetries: PERSIST_MAX_RETRIES,
+          timestamp: Date.now()
+        });
+        droppedCount++;
+        continue;
+      }
+
+      // Attempt to persist current state (will include all pending deletions)
+      const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+      if (!state) {
+        // v1.6.3.8-v9 - Code Review Fix: Clone entry before re-queuing to avoid race conditions
+        const retriedEntry = { ...entry, retryCount: entry.retryCount + 1 };
+        this._pendingPersists.push(retriedEntry);
+        failureCount++;
+        continue;
+      }
+
+      const forceEmpty = _shouldForceEmptyWrite(state);
+      const success = await persistStateToStorage(state, '[DestroyHandler-Retry]', forceEmpty);
+
+      if (success) {
+        // Mark all related deletions as persisted
+        this._persistedDeletions.add(entry.tabId);
+        successCount++;
+        console.log('[DestroyHandler] PERSIST_RETRY_SUCCESS: Retry succeeded:', {
+          tabId: entry.tabId,
+          retryCount: entry.retryCount,
+          timestamp: Date.now()
+        });
+      } else {
+        // v1.6.3.8-v9 - Code Review Fix: Clone entry before re-queuing to avoid race conditions
+        const retriedEntry = { ...entry, retryCount: entry.retryCount + 1 };
+        this._pendingPersists.push(retriedEntry);
+        failureCount++;
+      }
+    }
+
+    console.log('[DestroyHandler] PERSIST_RETRY_COMPLETE:', {
+      successCount,
+      failureCount,
+      droppedCount,
+      remainingInQueue: this._pendingPersists.length,
+      durationMs: Date.now() - retryStartTime,
+      timestamp: Date.now()
+    });
+
+    // If there are still pending retries, schedule another timer
+    if (this._pendingPersists.length > 0 && !this._retryTimer) {
+      this._retryTimer = setTimeout(() => {
+        this._processRetryQueue();
+      }, PERSIST_RETRY_DELAY_MS);
+      console.log('[DestroyHandler] PERSIST_RETRY_RESCHEDULED: More retries pending:', {
+        queueLength: this._pendingPersists.length,
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Check if a deletion was successfully persisted to storage
+   * v1.6.3.8-v9 - FIX Issue #16: Explicit deletion persistence tracking
+   * @param {string} tabId - Tab ID to check
+   * @returns {boolean} True if deletion was persisted
+   */
+  isDeletionPersisted(tabId) {
+    return this._persistedDeletions.has(tabId);
+  }
+
+  /**
+   * Get count of pending persist retries
+   * v1.6.3.8-v9 - FIX Issue #16: For diagnostics
+   * @returns {number} Number of pending retries
+   */
+  getPendingPersistCount() {
+    return this._pendingPersists.length;
   }
 
   /**

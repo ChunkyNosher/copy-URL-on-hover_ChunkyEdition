@@ -140,6 +140,9 @@ export class UICoordinator {
     currentTabId = null,
     handlers = {}
   ) {
+    // v1.6.3.8-v9 - FIX Issue #21: Track constructor start time for initialization diagnostics
+    const constructorStartTime = Date.now();
+
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
@@ -181,6 +184,26 @@ export class UICoordinator {
 
     // v1.6.4.8 - Issue #6: Periodic timestamp cleanup timer
     this._timestampCleanupTimer = null;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Track initialization timestamps for diagnostics
+    this._constructorTimestamp = constructorStartTime;
+    this._initStartTimestamp = null;
+    this._initCompleteTimestamp = null;
+    this._firstEventReceived = {
+      stateAdded: null,
+      stateUpdated: null,
+      stateDeleted: null
+    };
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log constructor completion
+    console.log(`${this._logPrefix} CONSTRUCTOR_COMPLETE:`, {
+      timestamp: constructorStartTime,
+      handlersReady: this._handlersReady,
+      hasUpdateHandler: !!this.updateHandler,
+      hasVisibilityHandler: !!this.visibilityHandler,
+      hasDestroyHandler: !!this.destroyHandler,
+      currentTabId: this.currentTabId
+    });
   }
 
   /**
@@ -575,36 +598,75 @@ export class UICoordinator {
    *               This ensures _handlersReady validation and timestamp cleanup
    * v1.6.3.8-v9 - FIX Issue #15: Set _isInitializing flag during init to suppress
    *               orphaned window recovery (only for crash/BFCache scenarios)
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced initialization logging with timestamps
    */
   async init() {
     const initStartTime = Date.now();
-    console.log('[UICoordinator] Initializing...', { timestamp: initStartTime });
+    this._initStartTimestamp = initStartTime;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log initialization start with barrier status
+    console.log(`${this._logPrefix} INIT_START:`, {
+      timestamp: initStartTime,
+      prerequisite: '_handlersReady should be set before init()',
+      handlersReady: this._handlersReady,
+      constructorTimestamp: this._constructorTimestamp,
+      timeSinceConstructor: initStartTime - this._constructorTimestamp
+    });
 
     // v1.6.3.8-v9 - FIX Issue #15: Mark as initializing to suppress orphaned window recovery
     this._isInitializing = true;
+    console.log(`${this._logPrefix} INIT_STEP_1: Marked _isInitializing=true:`, {
+      timestamp: Date.now(),
+      purpose: 'Suppress orphaned window recovery during init'
+    });
 
     // v1.6.3.2 - Load showDebugId setting before rendering
+    console.log(`${this._logPrefix} INIT_STEP_2: Loading debug settings...`, { timestamp: Date.now() });
     await this._loadDebugIdSetting();
+    console.log(`${this._logPrefix} INIT_STEP_2_COMPLETE: Debug settings loaded:`, {
+      showDebugIdSetting: this.showDebugIdSetting,
+      timestamp: Date.now()
+    });
 
     // Setup state listeners
+    console.log(`${this._logPrefix} INIT_STEP_3: Setting up state listeners...`, { timestamp: Date.now() });
     this.setupStateListeners();
+    console.log(`${this._logPrefix} INIT_STEP_3_COMPLETE: State listeners registered:`, {
+      timestamp: Date.now(),
+      note: 'Listeners now active and can receive events'
+    });
 
     // v1.6.3.8-v9 - FIX Issue #17: Call startRendering() instead of renderAll()
     // startRendering() validates _handlersReady flag and starts timestamp cleanup
     // Previous code called renderAll() directly, bypassing handler readiness check
-    console.log('[UICoordinator] Calling startRendering() (not renderAll() directly):', {
+    console.log(`${this._logPrefix} INIT_STEP_4: Calling startRendering():`, {
       handlersReady: this._handlersReady,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      prerequisite: 'setHandlers() must have been called before init()'
     });
     this.startRendering();
+    console.log(`${this._logPrefix} INIT_STEP_4_COMPLETE: startRendering() finished:`, {
+      timestamp: Date.now(),
+      renderedTabsCount: this.renderedTabs.size
+    });
 
     // v1.6.3.8-v9 - FIX Issue #15: Clear initialization flag after all setup complete
     this._isInitializing = false;
+    this._initCompleteTimestamp = Date.now();
 
-    console.log('[UICoordinator] Initialized:', {
-      durationMs: Date.now() - initStartTime,
+    // v1.6.3.8-v9 - FIX Issue #21: Log initialization completion with full timing
+    console.log(`${this._logPrefix} INIT_COMPLETE:`, {
+      status: 'passed',
+      durationMs: this._initCompleteTimestamp - initStartTime,
+      timestamp: this._initCompleteTimestamp,
       handlersReady: this._handlersReady,
-      isInitializing: this._isInitializing
+      isInitializing: this._isInitializing,
+      renderedTabsCount: this.renderedTabs.size,
+      initSequence: {
+        constructorTimestamp: this._constructorTimestamp,
+        initStartTimestamp: this._initStartTimestamp,
+        initCompleteTimestamp: this._initCompleteTimestamp
+      }
     });
   }
 
@@ -2262,6 +2324,7 @@ export class UICoordinator {
    * v1.6.3.4-v2 - FIX Issue #6: Pass source and isRestoreOperation from events to update()
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Add window:created listener for Map registration
    * v1.6.3.8-v9 - FIX Issue #18: Enhanced logging with timestamps for order validation
+   * v1.6.3.8-v9 - FIX Issue #21: Track first event received with timing diagnostics
    */
   setupStateListeners() {
     const setupListenersTimestamp = Date.now();
@@ -2271,21 +2334,23 @@ export class UICoordinator {
       note: 'Listeners should be registered AFTER handlers are ready'
     });
 
-    // v1.6.3.8-v9 - FIX Issue #18: Track first event received for each listener type
-    let firstStateAddedReceived = false;
-    let firstStateUpdatedReceived = false;
+    // v1.6.3.8-v9 - FIX Issue #21: Track first event received for each listener type
+    // This helps diagnose timing issues between listener registration and first event fire
 
     // Listen to state changes and trigger UI updates
     this.eventBus.on('state:added', ({ quickTab }) => {
       const eventTimestamp = Date.now();
-      // v1.6.3.8-v9 - FIX Issue #18: Log first event with timestamp for order validation
-      if (!firstStateAddedReceived) {
-        firstStateAddedReceived = true;
-        console.log(`${this._logPrefix} FIRST_STATE_ADDED_EVENT:`, {
+      // v1.6.3.8-v9 - FIX Issue #21: Log first event with timestamp for order validation
+      if (!this._firstEventReceived.stateAdded) {
+        this._firstEventReceived.stateAdded = eventTimestamp;
+        console.log(`${this._logPrefix} FIRST_EVENT_RECEIVED (state:added):`, {
           quickTabId: quickTab.id,
           eventTimestamp,
+          timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
+          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null,
           handlersReady: this._handlersReady,
-          note: 'First state:added event received - handlers should already be ready'
+          prerequisite: 'handlersReady must be true for proper callback wiring',
+          result: this._handlersReady ? 'OK' : 'WARNING - handlers not ready'
         });
       } else {
         console.log('[UICoordinator] Received state:added event', { quickTabId: quickTab.id });
@@ -2299,16 +2364,19 @@ export class UICoordinator {
       // v1.6.3.4-v2 - FIX Issue #5: Extract isRestoreOperation flag if present
       const isRestoreOperation = quickTab.isRestoreOperation || false;
       const eventTimestamp = Date.now();
-      // v1.6.3.8-v9 - FIX Issue #18: Log first event with timestamp for order validation
-      if (!firstStateUpdatedReceived) {
-        firstStateUpdatedReceived = true;
-        console.log(`${this._logPrefix} FIRST_STATE_UPDATED_EVENT:`, {
+      // v1.6.3.8-v9 - FIX Issue #21: Log first event with timestamp for order validation
+      if (!this._firstEventReceived.stateUpdated) {
+        this._firstEventReceived.stateUpdated = eventTimestamp;
+        console.log(`${this._logPrefix} FIRST_EVENT_RECEIVED (state:updated):`, {
           quickTabId: quickTab.id,
           source: eventSource,
           isRestoreOperation,
           eventTimestamp,
+          timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
+          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null,
           handlersReady: this._handlersReady,
-          note: 'First state:updated event received - handlers should already be ready'
+          prerequisite: 'handlersReady must be true for proper callback wiring',
+          result: this._handlersReady ? 'OK' : 'WARNING - handlers not ready'
         });
       } else {
         console.log('[UICoordinator] Received state:updated event', {
@@ -2321,7 +2389,19 @@ export class UICoordinator {
     });
 
     this.eventBus.on('state:deleted', ({ id }) => {
-      console.log('[UICoordinator] Received state:deleted event', { quickTabId: id });
+      const eventTimestamp = Date.now();
+      // v1.6.3.8-v9 - FIX Issue #21: Log first state:deleted event
+      if (!this._firstEventReceived.stateDeleted) {
+        this._firstEventReceived.stateDeleted = eventTimestamp;
+        console.log(`${this._logPrefix} FIRST_EVENT_RECEIVED (state:deleted):`, {
+          quickTabId: id,
+          eventTimestamp,
+          timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
+          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null
+        });
+      } else {
+        console.log('[UICoordinator] Received state:deleted event', { quickTabId: id });
+      }
       this.destroy(id);
     });
 

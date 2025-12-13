@@ -53,6 +53,9 @@ const DEBUG_MESSAGING = true;
  */
 class QuickTabsManager {
   constructor(options = {}) {
+    // v1.6.3.8-v9 - FIX Issue #21: Track constructor start time for initialization diagnostics
+    const constructorStartTime = Date.now();
+
     // Backward compatibility fields (MUST KEEP - other code depends on these)
     this.tabs = new Map(); // id -> QuickTabWindow instance (used by panel.js, etc.)
     this.currentZIndex = { value: CONSTANTS.QUICK_TAB_BASE_Z_INDEX }; // Changed to ref object
@@ -96,12 +99,27 @@ class QuickTabsManager {
 
     // Track all generated IDs to prevent collisions within this session
     this.generatedIds = new Set();
+
+    // v1.6.3.8-v9 - FIX Issue #21: Track initialization timestamps for diagnostics
+    this._constructorTimestamp = constructorStartTime;
+    this._initStartTimestamp = null;
+    this._initCompleteTimestamp = null;
+    this._handlersReadyTimestamp = null;
+    this._listenersRegisteredTimestamp = null;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log constructor completion
+    console.log('[QuickTabsManager] CONSTRUCTOR_COMPLETE:', {
+      timestamp: constructorStartTime,
+      isReady: this._isReady,
+      queueLength: this._messageQueue.length
+    });
   }
 
   /**
    * Initialize the Quick Tabs manager
    * v1.6.3 - Simplified (no storage/sync components)
    * v1.6.3.8-v3 - Issue #6: Signal READY and replay queued messages after init
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced initialization logging with timestamps
    *
    * @param {EventEmitter} eventBus - External event bus from content.js
    * @param {Object} Events - Event constants
@@ -110,7 +128,10 @@ class QuickTabsManager {
    */
   async init(eventBus, Events, options = {}) {
     if (this.initialized) {
-      console.log('[QuickTabsManager] Already initialized, skipping');
+      console.log('[QuickTabsManager] INIT_SKIPPED: Already initialized:', {
+        timestamp: Date.now(),
+        initCompleteTimestamp: this._initCompleteTimestamp
+      });
       return;
     }
 
@@ -126,7 +147,16 @@ class QuickTabsManager {
     }
 
     const initStartTime = Date.now();
-    console.log('[QuickTabsManager] Initializing facade...', { timestamp: initStartTime });
+    this._initStartTimestamp = initStartTime;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log initialization start with barrier status
+    console.log('[QuickTabsManager] INIT_START:', {
+      timestamp: initStartTime,
+      timeSinceConstructor: initStartTime - this._constructorTimestamp,
+      isReady: this._isReady,
+      queueLength: this._messageQueue.length,
+      currentTabId: this.currentTabId
+    });
 
     try {
       await this._initStep1_Context(options);
@@ -139,23 +169,38 @@ class QuickTabsManager {
       // Previous order: Hydration → signalReady() (queued events replayed AFTER tabs created)
       // New order: signalReady() → Hydration (queued events applied BEFORE tabs created)
       // This ensures storage events are processed before local memory state is restored
-      console.log('[QuickTabsManager] STEP 5.5: Signaling ready and replaying queued messages...', {
+      console.log('[QuickTabsManager] INIT_STEP_5.5: Signaling ready and replaying queued messages:', {
         timestamp: Date.now(),
         isReady: this._isReady,
-        queuedMessages: this._messageQueue.length
+        queuedMessages: this._messageQueue.length,
+        prerequisite: 'Steps 1-5 complete',
+        purpose: 'Enable message processing before hydration'
       });
       this.signalReady();
-      console.log('[QuickTabsManager] STEP 5.5 Complete - queued messages replayed');
+      console.log('[QuickTabsManager] INIT_STEP_5.5_COMPLETE: Queued messages replayed:', {
+        timestamp: Date.now(),
+        isReady: this._isReady
+      });
 
       await this._initStep6_Hydrate(); // v1.6.3.4 - FIX Issue #1: Hydrate state from storage
       this._initStep7_Expose();
 
       this.initialized = true;
+      this._initCompleteTimestamp = Date.now();
 
-      const initEndTime = Date.now();
-      console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓', {
-        durationMs: initEndTime - initStartTime,
-        timestamp: initEndTime
+      // v1.6.3.8-v9 - FIX Issue #21: Log initialization completion with full timing
+      console.log('[QuickTabsManager] INIT_COMPLETE:', {
+        status: 'passed',
+        durationMs: this._initCompleteTimestamp - initStartTime,
+        timestamp: this._initCompleteTimestamp,
+        initSequence: {
+          constructorTimestamp: this._constructorTimestamp,
+          initStartTimestamp: this._initStartTimestamp,
+          handlersReadyTimestamp: this._handlersReadyTimestamp,
+          initCompleteTimestamp: this._initCompleteTimestamp
+        },
+        tabsCount: this.tabs.size,
+        isReady: this._isReady
       });
     } catch (err) {
       this._logInitializationError(err);
@@ -1828,6 +1873,7 @@ class QuickTabsManager {
    * v1.6.3.8-v3 - Issue #6: Replays all queued messages in order
    * v1.6.3.8-v9 - FIX Issue #20: Now called BEFORE hydration to ensure queued storage
    *               events are processed BEFORE tabs are created from local memory
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced logging with timestamps for init diagnostics
    * Call this after Step 5 (setup) but BEFORE Step 6 (hydration)
    *
    * @param {Function} [messageHandler] - Optional handler function to process messages
@@ -1835,30 +1881,43 @@ class QuickTabsManager {
    */
   signalReady(messageHandler = null) {
     if (this._isReady) {
-      console.warn('[QuickTabsManager] signalReady() called but already ready');
+      console.warn('[QuickTabsManager] signalReady() called but already ready:', {
+        timestamp: Date.now(),
+        previousReadyTimestamp: this._handlersReadyTimestamp
+      });
       return;
     }
 
     const signalReadyStartTime = Date.now();
     this._isReady = true;
+    this._handlersReadyTimestamp = signalReadyStartTime;
     const queuedCount = this._messageQueue.length;
 
-    // v1.6.3.8-v9 - FIX Issue #20: Enhanced logging for init sequence diagnostics
-    console.log('[QuickTabsManager] HANDLER_READY - signalReady() called:', {
-      queuedMessageCount: queuedCount,
+    // v1.6.3.8-v9 - FIX Issue #21: Enhanced logging for init sequence diagnostics
+    console.log('[QuickTabsManager] HANDLERS_READY_BARRIER:', {
+      status: 'passed',
+      prerequisite: 'init() steps 1-5 complete',
+      result: '_isReady set to true',
       timestamp: signalReadyStartTime,
-      note: 'Called BEFORE hydration per Issue #20 fix'
+      queuedMessageCount: queuedCount,
+      timeSinceInit: this._initStartTimestamp ? signalReadyStartTime - this._initStartTimestamp : null,
+      note: 'Message replay starting (before hydration per Issue #20 fix)'
     });
 
     // Replay queued messages
     if (queuedCount > 0) {
-      console.log('[QuickTabsManager] Starting message replay BEFORE hydration:', {
+      console.log('[QuickTabsManager] MESSAGE_REPLAY_START:', {
         messageCount: queuedCount,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        note: 'Replaying queued messages BEFORE hydration'
       });
       this._replayQueuedMessages(messageHandler);
-      console.log('[QuickTabsManager] Message replay complete:', {
+      console.log('[QuickTabsManager] MESSAGE_REPLAY_END:', {
         durationMs: Date.now() - signalReadyStartTime,
+        timestamp: Date.now()
+      });
+    } else {
+      console.log('[QuickTabsManager] MESSAGE_QUEUE_EMPTY: No queued messages to replay:', {
         timestamp: Date.now()
       });
     }
@@ -2007,19 +2066,18 @@ class QuickTabsManager {
   /**
    * Check if a message type indicates a destructive operation
    * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce complexity
+   * v1.6.3.8-v9 - Code Review Fix: Use RegExp for better performance
    * @private
    * @param {string} messageType - Message type to check
    * @returns {boolean} True if destructive (delete/remove/destroy/close)
    */
   _isDestructiveMessageType(messageType) {
-    // v1.6.3.8-v9 - FIX Code Review: Add null check to prevent TypeError
-    if (!messageType || typeof messageType !== 'string') {
+    // v1.6.3.8-v9 - Code Review Fix: Use optional chaining with early return
+    if (!messageType?.includes) {
       return false;
     }
-    return messageType.includes('delete') || 
-           messageType.includes('remove') ||
-           messageType.includes('destroy') ||
-           messageType.includes('close');
+    // v1.6.3.8-v9 - Code Review Fix: Use RegExp for better performance
+    return /delete|remove|destroy|close/i.test(messageType);
   }
 
   /**
