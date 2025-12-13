@@ -316,3 +316,288 @@ export function restoreStorageAfterRestart(tabs, persistedStorage) {
     });
   });
 }
+
+/**
+ * Creates a cross-tab simulator for comprehensive cross-tab testing
+ * v1.6.4 - New enhanced simulator API
+ * @returns {Object} Cross-tab simulator instance
+ */
+export function createCrossTabSimulator() {
+  const state = {
+    tabs: new Map(),
+    globalStorage: new Map(),
+    messageHistory: [],
+    closedTabs: []
+  };
+
+  /**
+   * Create a simulated tab
+   * @param {number} tabId - Tab ID
+   * @param {string} domain - Domain URL
+   * @param {string} container - Container ID (default: 'firefox-default')
+   * @returns {Object} Tab context
+   */
+  function createTab(tabId, domain, container = 'firefox-default') {
+    const tabStorage = new Map();
+
+    const tab = {
+      tabId,
+      domain,
+      container,
+      url: `https://${domain}/`,
+      active: true,
+      hidden: false,
+      visibilityState: 'visible',
+
+      // Per-tab storage (filtered view of global)
+      storage: {
+        get: jest.fn(async keys => {
+          const result = {};
+          const keysArray = keys === null || keys === undefined
+            ? Array.from(tabStorage.keys())
+            : Array.isArray(keys)
+            ? keys
+            : [keys];
+
+          for (const key of keysArray) {
+            if (tabStorage.has(key)) {
+              result[key] = JSON.parse(JSON.stringify(tabStorage.get(key)));
+            }
+          }
+          return result;
+        }),
+        set: jest.fn(async items => {
+          for (const [key, value] of Object.entries(items)) {
+            tabStorage.set(key, JSON.parse(JSON.stringify(value)));
+            state.globalStorage.set(key, JSON.parse(JSON.stringify(value)));
+          }
+        }),
+        remove: jest.fn(async keys => {
+          const keysArray = Array.isArray(keys) ? keys : [keys];
+          for (const key of keysArray) {
+            tabStorage.delete(key);
+          }
+        }),
+        clear: jest.fn(async () => {
+          tabStorage.clear();
+        })
+      },
+
+      // Mock DOM
+      document: {
+        hidden: false,
+        visibilityState: 'visible',
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn()
+      },
+
+      // Internal
+      _storage: tabStorage
+    };
+
+    state.tabs.set(tabId, tab);
+    return tab;
+  }
+
+  /**
+   * Get storage for a specific tab
+   * @param {number} tabId - Tab ID
+   * @returns {Object|null} Tab storage or null
+   */
+  function getTabStorage(tabId) {
+    const tab = state.tabs.get(tabId);
+    return tab ? tab.storage : null;
+  }
+
+  /**
+   * Simulate navigation to a new domain
+   * @param {number} tabId - Tab ID
+   * @param {string} newDomain - New domain
+   * @returns {boolean} True if successful
+   */
+  function simulateNavigation(tabId, newDomain) {
+    const tab = state.tabs.get(tabId);
+    if (!tab) return false;
+
+    tab.domain = newDomain;
+    tab.url = `https://${newDomain}/`;
+
+    // Trigger any navigation listeners
+    state.messageHistory.push({
+      type: 'navigation',
+      tabId,
+      newDomain,
+      timestamp: Date.now()
+    });
+
+    return true;
+  }
+
+  /**
+   * Simulate tab close
+   * @param {number} tabId - Tab ID
+   * @returns {boolean} True if closed
+   */
+  function closeTab(tabId) {
+    const tab = state.tabs.get(tabId);
+    if (!tab) return false;
+
+    state.closedTabs.push({
+      ...tab,
+      closedAt: Date.now()
+    });
+
+    state.tabs.delete(tabId);
+
+    state.messageHistory.push({
+      type: 'close',
+      tabId,
+      timestamp: Date.now()
+    });
+
+    return true;
+  }
+
+  /**
+   * Send a port message between tabs
+   * @param {number} fromTab - Source tab ID
+   * @param {number} toTab - Target tab ID
+   * @param {Object} message - Message to send
+   * @returns {boolean} True if delivered
+   */
+  function sendPortMessage(fromTab, toTab, message) {
+    const from = state.tabs.get(fromTab);
+    const to = state.tabs.get(toTab);
+
+    if (!from || !to) return false;
+
+    const entry = {
+      type: 'port_message',
+      fromTab,
+      toTab,
+      message: JSON.parse(JSON.stringify(message)),
+      timestamp: Date.now()
+    };
+
+    state.messageHistory.push(entry);
+    return true;
+  }
+
+  /**
+   * Get global storage (all tabs combined)
+   * @returns {Object} Global storage contents
+   */
+  function getGlobalStorage() {
+    return Object.fromEntries(state.globalStorage);
+  }
+
+  /**
+   * Check if a Quick Tab belongs to a specific tab
+   * @private
+   * @param {Object} qt - Quick Tab
+   * @param {number} tabId - Tab ID
+   * @returns {boolean} True if it belongs to a different tab
+   */
+  function isQuickTabFromDifferentTab(qt, tabId) {
+    return qt.originTabId && qt.originTabId !== tabId;
+  }
+
+  /**
+   * Verify tab isolation (each tab only sees its own data)
+   * @returns {{ isolated: boolean, violations: Array }}
+   */
+  function verifyIsolation() {
+    const violations = [];
+
+    // Check that each tab's quick tabs only belong to that tab
+    for (const [tabId, tab] of state.tabs) {
+      const quickTabState = tab._storage.get('quick_tabs_state_v2');
+      if (!quickTabState || !quickTabState.tabs) continue;
+
+      const tabViolations = quickTabState.tabs
+        .filter(qt => isQuickTabFromDifferentTab(qt, tabId))
+        .map(qt => ({
+          tabId,
+          quickTabId: qt.id,
+          expectedOriginTabId: tabId,
+          actualOriginTabId: qt.originTabId
+        }));
+
+      violations.push(...tabViolations);
+    }
+
+    return {
+      isolated: violations.length === 0,
+      violations
+    };
+  }
+
+  /**
+   * Get message history
+   * @returns {Array} Message history
+   */
+  function getMessageHistory() {
+    return [...state.messageHistory];
+  }
+
+  /**
+   * Get all tabs
+   * @returns {Map} All tabs
+   */
+  function getAllTabs() {
+    return new Map(state.tabs);
+  }
+
+  /**
+   * Get closed tabs
+   * @returns {Array} Closed tabs
+   */
+  function getClosedTabs() {
+    return [...state.closedTabs];
+  }
+
+  /**
+   * Reset simulator state
+   */
+  function reset() {
+    state.tabs.clear();
+    state.globalStorage.clear();
+    state.messageHistory.length = 0;
+    state.closedTabs.length = 0;
+  }
+
+  /**
+   * Sync storage change to all tabs
+   * @param {string} key - Storage key
+   * @param {*} value - New value
+   */
+  function syncStorageChange(key, value) {
+    state.globalStorage.set(key, JSON.parse(JSON.stringify(value)));
+
+    for (const tab of state.tabs.values()) {
+      tab._storage.set(key, JSON.parse(JSON.stringify(value)));
+    }
+
+    state.messageHistory.push({
+      type: 'storage_sync',
+      key,
+      timestamp: Date.now()
+    });
+  }
+
+  return {
+    createTab,
+    getTabStorage,
+    simulateNavigation,
+    closeTab,
+    sendPortMessage,
+    getGlobalStorage,
+    verifyIsolation,
+    getMessageHistory,
+    getAllTabs,
+    getClosedTabs,
+    reset,
+    syncStorageChange,
+    _state: state
+  };
+}
