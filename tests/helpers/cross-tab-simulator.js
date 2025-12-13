@@ -1,5 +1,6 @@
 /**
  * Cross-Tab Simulation Framework
+ * v1.6.3.8-v6 - BC REMOVED: Updated to use storage.onChanged for cross-tab sync
  *
  * Provides utilities for simulating multiple browser tabs in unit tests
  * to validate cross-tab synchronization behaviors.
@@ -12,7 +13,8 @@
  */
 
 /**
- * Creates a simulated browser tab context with isolated storage and broadcast channel
+ * Creates a simulated browser tab context with isolated storage
+ * v1.6.3.8-v6 - BC REMOVED: broadcastChannel field kept for backwards compat only
  * @param {string} url - URL for the simulated tab
  * @param {string} containerId - Firefox container ID (default: 'firefox-default')
  * @returns {Promise<Object>} Simulated tab context
@@ -42,7 +44,7 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
     }
   };
 
-  // Create isolated storage mock
+  // Create isolated storage mock for cross-tab sync via storage.onChanged
   const storage = new Map();
   const storageAPI = {
     sync: {
@@ -110,46 +112,21 @@ export async function createSimulatedTab(url, containerId = 'firefox-default') {
     }
   };
 
-  // Create isolated broadcast channel mock
+  // v1.6.3.8-v6 - BC REMOVED: Kept for backwards compatibility with existing tests
+  // Tests should migrate to storage.onChanged based sync testing
   const broadcastListeners = [];
   const broadcastChannel = {
-    postMessage: jest.fn(message => {
-      // Simulate async delivery with small delay
-      setTimeout(() => {
-        broadcastListeners.forEach(listener => listener({ data: message }));
-      }, 10);
+    postMessage: jest.fn(_message => {
+      // NO-OP - BC removed, but kept for test backwards compatibility
     }),
-    addEventListener: jest.fn((event, listener) => {
-      if (event === 'message') {
-        broadcastListeners.push(listener);
-      }
+    addEventListener: jest.fn((_event, _listener) => {
+      // NO-OP - BC removed
     }),
-    removeEventListener: jest.fn((event, listener) => {
-      const index = broadcastListeners.indexOf(listener);
-      if (index > -1) {
-        broadcastListeners.splice(index, 1);
-      }
+    removeEventListener: jest.fn((_event, _listener) => {
+      // NO-OP - BC removed
     }),
     close: jest.fn(),
-    // Support .onmessage setter (used by BroadcastManager)
-    _onmessageHandler: null,
-    set onmessage(handler) {
-      // Remove old handler if exists
-      if (this._onmessageHandler) {
-        const index = broadcastListeners.indexOf(this._onmessageHandler);
-        if (index > -1) {
-          broadcastListeners.splice(index, 1);
-        }
-      }
-      // Add new handler
-      this._onmessageHandler = handler;
-      if (handler) {
-        broadcastListeners.push(handler);
-      }
-    },
-    get onmessage() {
-      return this._onmessageHandler;
-    }
+    onmessage: null
   };
 
   // Mock browser.tabs API
@@ -256,37 +233,22 @@ export async function switchToTab(fromTab, toTab) {
 
 /**
  * Simulates broadcast message propagation between tabs
- * @param {Object} sourceTab - Tab sending the message
- * @param {Object} message - Message to broadcast
- * @param {Array<Object>} targetTabs - Tabs to receive the message
+ * v1.6.3.8-v6 - BC REMOVED: This function is now a no-op stub
+ * Tests should migrate to storage.onChanged based sync testing
+ * @param {Object} _sourceTab - Tab sending the message (unused)
+ * @param {Object} _message - Message to broadcast (unused)
+ * @param {Array<Object>} _targetTabs - Tabs to receive the message (unused)
  * @param {number} delay - Delivery delay in ms (default: 10)
  */
-export async function propagateBroadcast(sourceTab, message, targetTabs, delay = 10) {
-  // Send from source
-  sourceTab.broadcastChannel.postMessage(message);
-
-  // Deliver to targets after delay
+export async function propagateBroadcast(_sourceTab, _message, _targetTabs, delay = 10) {
+  // v1.6.3.8-v6 - BC removed, this function is now a no-op
+  // Tests should use storage.onChanged based sync testing
   await new Promise(resolve => setTimeout(resolve, delay));
-
-  targetTabs.forEach(targetTab => {
-    // Skip source tab (same-tab delivery depends on BroadcastChannel implementation)
-    if (targetTab.tabId === sourceTab.tabId) return;
-
-    // Respect container boundaries
-    if (targetTab.containerId !== sourceTab.containerId) return;
-
-    // Trigger listeners
-    targetTab._broadcastListeners.forEach(listener => {
-      listener({ data: message });
-    });
-  });
-
-  // Allow listeners to process
-  await new Promise(resolve => setTimeout(resolve, 50));
 }
 
 /**
  * Creates multi-tab test scenario
+ * v1.6.3.8-v6 - BC REMOVED: broadcastChannel setup simplified
  * @param {Array<Object>} configs - Array of {url, containerId} objects
  * @returns {Promise<Array<Object>>} Array of simulated tab contexts
  */
@@ -298,23 +260,8 @@ export async function createMultiTabScenario(configs) {
     tabs.push(tab);
   }
 
-  // Setup broadcast channel connections between tabs in same container
-  tabs.forEach((sourceTab, sourceIndex) => {
-    sourceTab.broadcastChannel.postMessage = jest.fn(message => {
-      setTimeout(() => {
-        tabs.forEach((targetTab, targetIndex) => {
-          // Skip self and different containers
-          if (sourceIndex === targetIndex) return;
-          if (targetTab.containerId !== sourceTab.containerId) return;
-
-          // Deliver message
-          targetTab._broadcastListeners.forEach(listener => {
-            listener({ data: message });
-          });
-        });
-      }, 10);
-    });
-  });
+  // v1.6.3.8-v6 - BC removed, broadcastChannel is now a no-op stub
+  // Tests should use storage.onChanged based sync testing
 
   return tabs;
 }

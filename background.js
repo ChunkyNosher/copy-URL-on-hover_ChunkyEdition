@@ -14,19 +14,8 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-// eslint-disable-next-line no-unused-vars
-import {
-  initBroadcastChannel as initBroadcastChannelManager,
-  isChannelAvailable as isBroadcastChannelAvailable,
-  broadcastQuickTabCreated,
-  broadcastQuickTabUpdated,
-  broadcastQuickTabDeleted,
-  broadcastQuickTabMinimized,
-  broadcastQuickTabRestored,
-  broadcastFullStateSync
-} from './src/features/quick-tabs/channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports removed per user request - Port + storage.onChanged only
 // v1.6.4.14 - Phase 3A Optimization imports
 import MemoryMonitor from './src/features/quick-tabs/MemoryMonitor.js';
 import PerformanceMetrics from './src/features/quick-tabs/PerformanceMetrics.js';
@@ -803,67 +792,11 @@ startKeepalive();
 
 // ==================== v1.6.3.8-v5 BROADCASTCHANNEL REMOVED ====================
 // ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC code removed per user request - Port + storage.onChanged only
 // The new architecture uses:
 // - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
 // - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
-//
-// BroadcastChannel was removed because:
-// 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
-// 2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation
-// 3. Port-based messaging is more reliable and works across all contexts
-// 4. storage.onChanged provides reliable fallback for all scenarios
-//
-// All BC functions below are kept as NO-OP stubs for backwards compatibility.
-
-/**
- * Background's BroadcastChannel for receiving messages (kept for compatibility)
- * v1.6.3.8-v5 - DEPRECATED: BC removed
- */
-let _backgroundBroadcastChannel = null;
-
-/**
- * Initialize BroadcastChannel for background-to-Manager communication
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- */
-function initializeBackgroundBroadcastChannel() {
-  console.log('[Background] [BC] DEPRECATED: initializeBackgroundBroadcastChannel called - BC removed per architecture-redesign.md');
-  console.log('[Background] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
-  return false;
-}
-
-/**
- * Set up BroadcastChannel listener in background for verification messages
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @private
- */
-function _setupBackgroundBCListener() {
-  // NO-OP - BC removed
-}
-
-// v1.6.3.8-v5 - BC init call kept for compatibility (now a no-op)
-initializeBackgroundBroadcastChannel();
-
-/**
- * Send BC verification PONG via BroadcastChannel
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @param {Object} _request - The verification request message
- * @private
- */
-function _sendBCVerificationPong(_request) {
-  // NO-OP - BC removed
-  console.log('[Background] [BC] DEPRECATED: _sendBCVerificationPong called - BC removed');
-}
-
-/**
- * Send BC iframe verification PONG via BroadcastChannel
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @param {Object} _request - The verification request message with verificationId and iframeId
- * @private
- */
-function _sendBCIframeVerificationPong(_request) {
-  // NO-OP - BC removed
-  console.log('[Background] [BC] DEPRECATED: _sendBCIframeVerificationPong called - BC removed');
-}
 
 // ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
@@ -8312,24 +8245,26 @@ function handleHeartbeat(message, portInfo) {
 
 /**
  * Handle BC_VERIFICATION_REQUEST from sidebar
- * v1.6.3.7-v13 - Issue #1 (arch): Respond to verify if BroadcastChannel works in sidebar
+ * v1.6.3.8-v6 - BC REMOVED: This handler now returns a deprecated response
  * @param {Object} message - Verification request
  * @param {Object} portInfo - Port info
- * @returns {Promise<Object>} Verification acknowledgment
+ * @returns {Promise<Object>} Verification acknowledgment (deprecated)
  */
 function handleBCVerificationRequest(message, portInfo) {
-  console.log('[Background] BC_VERIFICATION_REQUEST received via port:', {
+  console.log('[Background] BC_VERIFICATION_REQUEST received via port (BC REMOVED):', {
     requestId: message.requestId,
     source: message.source || portInfo?.origin || 'unknown',
-    timestamp: message.timestamp
+    timestamp: message.timestamp,
+    note: 'BroadcastChannel removed - use Port-based messaging'
   });
 
-  // Send PONG via BroadcastChannel
-  _sendBCVerificationPong(message);
-
+  // v1.6.3.8-v6 - BC removed, return response with bcAvailable: false
   return Promise.resolve({
     success: true,
     type: 'BC_VERIFICATION_REQUEST_ACK',
+    bcAvailable: false,
+    deprecated: true,
+    message: 'BroadcastChannel removed - use Port-based messaging',
     timestamp: Date.now()
   });
 }
@@ -8989,9 +8924,8 @@ async function writeStateWithVerification() {
 }
 
 /**
- * Broadcast storage write confirmation via BroadcastChannel
- * v1.6.3.7-v7 - FIX Issue #6: Notify Manager of successful storage writes
- * v1.6.3.7-v10 - FIX Issue #6: Also notify Manager to start watchdog timer via port
+ * Notify Manager of storage write confirmation
+ * v1.6.3.8-v6 - BC REMOVED: Now only uses port-based notification
  * @private
  * @param {Object} state - State that was written
  * @param {string} saveId - Save ID for deduplication
@@ -9000,19 +8934,11 @@ function _broadcastStorageWriteConfirmation(state, saveId) {
   // v1.6.3.7-v10 - FIX Issue #6: Notify Manager to start watchdog via port message
   _notifyManagerToStartWatchdog(saveId, state?.sequenceId);
 
-  if (!isBroadcastChannelAvailable()) {
-    if (DEBUG_MESSAGING) {
-      console.log('[Background] [BC] BroadcastChannel not available for write confirmation');
-    }
-    return;
-  }
-
-  const bcSuccess = broadcastFullStateSync(state, saveId);
+  // v1.6.3.8-v6 - BC removed, port-based notification is primary
   if (DEBUG_MESSAGING) {
-    console.log('[Background] [BC] Storage write confirmation broadcast:', {
+    console.log('[Background] Storage write confirmation (port-based only):', {
       saveId,
       tabCount: state?.tabs?.length || 0,
-      success: bcSuccess,
       timestamp: Date.now()
     });
   }
@@ -9076,17 +9002,11 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
 
 // ==================== v1.6.4.13 MESSAGING HELPER FUNCTIONS ====================
 // FIX Issues #1-8: Centralized messaging helpers for all state operations
+// v1.6.3.8-v6 - BC removed, port-based messaging is primary
 
 /**
- * Broadcast operation confirmation via BroadcastChannel (Tier 1)
- * v1.6.4.13 - FIX Issue #1 & #2: Background broadcasts state changes to Manager
- * @private
- * @param {string} operationType - Type of operation (e.g., 'MINIMIZE_CONFIRMED', 'RESTORE_CONFIRMED')
-/**
- * Broadcast operation confirmation via BroadcastChannel (Tier 1)
- * v1.6.4.13 - FIX Issue #1 & #2: Use BC for confirmations
- * v1.6.4.14 - FIX Complexity: Converted switch to lookup table
- * v1.6.4.14 - FIX Excess Args: Converted to options object
+ * Log operation confirmation (BC removed)
+ * v1.6.3.8-v6 - BC REMOVED: This function is now a no-op logging stub
  * @private
  * @param {Object} options - Broadcast options
  * @param {string} options.operationType - Operation type (e.g., 'MINIMIZE_CONFIRMED', 'RESTORE_CONFIRMED')
@@ -9102,41 +9022,14 @@ function _broadcastOperationConfirmation({
   saveId,
   correlationId
 }) {
-  if (!isBroadcastChannelAvailable()) {
-    if (DEBUG_MESSAGING) {
-      console.log(
-        '[Background] [BC] BROADCAST_SKIPPED: Channel not available for operation confirmation',
-        {
-          operationType,
-          quickTabId,
-          timestamp: Date.now()
-        }
-      );
-    }
-    return;
-  }
-
-  // v1.6.4.14 - FIX Complexity: Use lookup table for broadcast function selection
-  const OPERATION_BROADCAST_FNS = {
-    MINIMIZE_CONFIRMED: () => broadcastQuickTabMinimized(quickTabId),
-    RESTORE_CONFIRMED: () => broadcastQuickTabRestored(quickTabId),
-    DELETE_CONFIRMED: () => broadcastQuickTabDeleted(quickTabId),
-    ADOPT_CONFIRMED: () => broadcastQuickTabUpdated(quickTabId, changes),
-    UPDATE_CONFIRMED: () => broadcastQuickTabUpdated(quickTabId, changes)
-  };
-
-  const broadcastFn = OPERATION_BROADCAST_FNS[operationType];
-  const bcSuccess = broadcastFn
-    ? broadcastFn()
-    : broadcastFullStateSync({ tabs: globalQuickTabState.tabs, saveId }, saveId);
-
-  // Log broadcast result
+  // v1.6.3.8-v6 - BC removed, this is now a logging-only function
   if (DEBUG_MESSAGING) {
-    console.log('[Background] [BC] OPERATION_BROADCAST:', {
+    console.log('[Background] OPERATION_LOGGED (BC removed, port-based only):', {
       type: operationType,
       quickTabId,
       correlationId,
-      success: bcSuccess,
+      saveId,
+      changesKeys: changes ? Object.keys(changes) : [],
       timestamp: Date.now()
     });
   }
@@ -10255,11 +10148,10 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     triggerSource: source
   });
 
-  // v1.6.3.7-v7 - FIX Issue #1 & #2: Tier 1 (PRIMARY) - BroadcastChannel for instant updates
-  // BroadcastChannel provides instant cross-tab messaging without port connections
-  _broadcastViaBroadcastChannel(quickTabId, changes, messageId);
+  // v1.6.3.8-v6 - BC REMOVED: Skip BC broadcast, port-based messaging is primary
+  // _broadcastViaBroadcastChannel removed - just log for debugging
 
-  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 - Route state updates through PORT (secondary)
+  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 (now PRIMARY) - Route state updates through PORT
   // Port-based messaging is more reliable than runtime.sendMessage for sidebar
   let sentViaPort = false;
   const sidebarPortsSent = _broadcastToSidebarPorts(message);
@@ -10271,7 +10163,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     });
   }
 
-  // v1.6.3.7-v4 - FIX Issue #3: Tier 3 - Fall back to runtime.sendMessage if no ports available
+  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 (now fallback) - Fall back to runtime.sendMessage if no ports available
   // This ensures sidebar gets the message even if port connection hasn't been established yet
   if (!sentViaPort) {
     try {
@@ -10307,79 +10199,32 @@ function _isQuickTabCreation(changes, quickTabId) {
 }
 
 /**
- * Determine the broadcast type and function based on state changes
- * v1.6.4.13 - FIX Complexity: Extracted from _broadcastViaBroadcastChannel
- * v1.6.4.14 - FIX Complexity: Simplified conditionals (cc=10 → cc=4)
+ * Determine the broadcast type based on state changes (for logging)
+ * v1.6.3.8-v6 - BC REMOVED: Used only for logging, no BC function calls
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
- * @returns {{ broadcastType: string, broadcastFn: Function }}
+ * @returns {{ broadcastType: string }}
  */
-function _determineBroadcastTypeAndFn(quickTabId, changes) {
+function _determineBroadcastType(quickTabId, changes) {
   // Priority-ordered checks for state changes
   if (changes?.deleted === true) {
-    return {
-      broadcastType: 'quick-tab-deleted',
-      broadcastFn: () => broadcastQuickTabDeleted(quickTabId)
-    };
+    return { broadcastType: 'quick-tab-deleted' };
   }
   if (changes?.minimized === true) {
-    return {
-      broadcastType: 'quick-tab-minimized',
-      broadcastFn: () => broadcastQuickTabMinimized(quickTabId)
-    };
+    return { broadcastType: 'quick-tab-minimized' };
   }
   if (changes?.minimized === false) {
-    return {
-      broadcastType: 'quick-tab-restored',
-      broadcastFn: () => broadcastQuickTabRestored(quickTabId)
-    };
+    return { broadcastType: 'quick-tab-restored' };
   }
   if (_isQuickTabCreation(changes, quickTabId)) {
-    return {
-      broadcastType: 'quick-tab-created',
-      broadcastFn: () => broadcastQuickTabCreated(quickTabId, changes)
-    };
+    return { broadcastType: 'quick-tab-created' };
   }
-  return {
-    broadcastType: 'quick-tab-updated',
-    broadcastFn: () => broadcastQuickTabUpdated(quickTabId, changes)
-  };
+  return { broadcastType: 'quick-tab-updated' };
 }
 
-/**
- * Broadcast state update via BroadcastChannel (Tier 1 - PRIMARY)
- * v1.6.3.7-v7 - FIX Issue #1 & #2: Use BroadcastChannel for instant Manager updates
- * v1.6.4.13 - FIX Complexity: Extracted _determineBroadcastTypeAndFn (cc=12 → cc=4)
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes
- * @param {string} messageId - Message ID for correlation
- */
-function _broadcastViaBroadcastChannel(quickTabId, changes, messageId) {
-  if (!isBroadcastChannelAvailable()) {
-    if (DEBUG_MESSAGING) {
-      console.log('[Background] [BC] BROADCAST_SKIPPED: BroadcastChannel not available', {
-        quickTabId,
-        messageId,
-        timestamp: Date.now()
-      });
-    }
-    return;
-  }
-
-  const { broadcastType, broadcastFn } = _determineBroadcastTypeAndFn(quickTabId, changes);
-  const bcSuccess = broadcastFn();
-
-  // v1.6.4.13 - Issue #5: Log BROADCAST_SENT with consistent format
-  console.log('[Background] [BC] BROADCAST_SENT:', {
-    type: broadcastType,
-    quickTabId,
-    messageId,
-    success: bcSuccess,
-    timestamp: Date.now()
-  });
-}
+// v1.6.3.8-v6 - REMOVED: _broadcastViaBroadcastChannel function
+// BroadcastChannel removed - port-based messaging is now primary
 
 /**
  * Broadcast message to all connected sidebar ports
@@ -10712,21 +10557,21 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // v1.6.3.7-v13 - Issue #1 (arch): Handle BC verification request from sidebar
-  // Sidebar sends this to verify if BroadcastChannel actually works in its context
+  // v1.6.3.8-v6 - BC REMOVED: BC_VERIFICATION_REQUEST returns deprecated response
   if (message.type === 'BC_VERIFICATION_REQUEST') {
-    console.log('[Background] BC_VERIFICATION_REQUEST received:', {
+    console.log('[Background] BC_VERIFICATION_REQUEST received (BC REMOVED):', {
       requestId: message.requestId,
       source: message.source,
-      timestamp: message.timestamp
+      timestamp: message.timestamp,
+      note: 'BroadcastChannel removed - use Port-based messaging'
     });
-
-    // Send PONG via BroadcastChannel
-    _sendBCVerificationPong(message);
 
     sendResponse({
       success: true,
       type: 'BC_VERIFICATION_REQUEST_ACK',
+      bcAvailable: false,
+      deprecated: true,
+      message: 'BroadcastChannel removed - use Port-based messaging',
       timestamp: Date.now()
     });
     return true;

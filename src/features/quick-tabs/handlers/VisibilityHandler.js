@@ -66,12 +66,8 @@ import {
   getBrowserStorageAPI
 } from '@utils/storage-utils.js';
 
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-import {
-  broadcastQuickTabMinimized,
-  broadcastQuickTabRestored
-} from '../channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports and functions removed per user request - Port + storage.onChanged only
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
 // STATE_EMIT_DELAY_MS must be LESS THAN MINIMIZE_DEBOUNCE_MS to prevent race condition
@@ -565,18 +561,12 @@ export class VisibilityHandler {
           id
         );
 
-        // v1.6.3.7-v8 - FIX Issue #15: Schedule cross-context broadcast after local processing
-        // Use setTimeout to ensure local eventBus listeners process first
-        setTimeout(() => {
-          // v1.6.3.7-v8 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
-          const broadcastSuccess = broadcastQuickTabMinimized(id);
-          console.log(`${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`, {
-            operation: 'minimize',
-            tabId: id,
-            success: broadcastSuccess,
-            timestamp: Date.now()
-          });
-        }, 0);
+        // v1.6.3.8-v6 - BC REMOVED: Broadcast call removed, port-based messaging is primary
+        console.log(`${this._logPrefix} [VISIBILITY] MINIMIZE_EMITTED (port-based only):`, {
+          operation: 'minimize',
+          tabId: id,
+          timestamp: Date.now()
+        });
       }
 
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
@@ -1116,18 +1106,12 @@ export class VisibilityHandler {
       }
     );
 
-    // v1.6.3.7-v8 - FIX Issue #15: Schedule cross-context broadcast after local processing
-    // Use setTimeout to ensure local eventBus listeners process first
-    setTimeout(() => {
-      // v1.6.3.7-v8 - FIX Issue #11: Broadcast to content scripts via BroadcastChannel
-      const broadcastSuccess = broadcastQuickTabRestored(id);
-      console.log(`${this._logPrefix} [VISIBILITY] [BROADCAST_SENT]:`, {
-        operation: 'restore',
-        tabId: id,
-        success: broadcastSuccess,
-        timestamp: Date.now()
-      });
-    }, 0);
+    // v1.6.3.8-v6 - BC REMOVED: Broadcast call removed, port-based messaging is primary
+    console.log(`${this._logPrefix} [VISIBILITY] RESTORE_EMITTED (port-based only):`, {
+      operation: 'restore',
+      tabId: id,
+      timestamp: Date.now()
+    });
   }
 
   /**

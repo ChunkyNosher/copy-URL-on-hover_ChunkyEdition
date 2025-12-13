@@ -178,20 +178,8 @@ import {
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-// eslint-disable-next-line no-unused-vars
-import {
-  initBroadcastChannel,
-  addBroadcastListener,
-  removeBroadcastListener,
-  closeBroadcastChannel,
-  isChannelAvailable as _isChannelAvailable,
-  setGapDetectionCallback,
-  processReceivedSequence,
-  resetSequenceTracking,
-  isBroadcastChannelStale
-} from '../src/features/quick-tabs/channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports removed per user request - Port + storage.onChanged only
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
@@ -1701,7 +1689,6 @@ function _logConnectionStateTransition({ oldState, newState, reason, duration, t
     durationInPreviousStateMs: duration,
     consecutiveFailures: consecutiveConnectionFailures,
     fallbackModeActive: isFallbackMode,
-    broadcastChannelAvailable: isFallbackMode ? _isChannelAvailable() : null,
     timestamp
   });
 }
@@ -1709,6 +1696,7 @@ function _logConnectionStateTransition({ oldState, newState, reason, duration, t
 /**
  * Log fallback mode activation if entering zombie or disconnected state
  * v1.6.3.7-v6 - Extracted to reduce _transitionConnectionState complexity
+ * v1.6.3.8-v6 - BC REMOVED: Updated logs to indicate storage-only fallback
  * @private
  * @param {string} newState - New connection state
  */
@@ -1722,30 +1710,23 @@ function _logFallbackModeIfNeeded(newState) {
 
 /**
  * Log zombie state fallback
+ * v1.6.3.8-v6 - BC REMOVED: Updated log message
  * @private
  */
 function _logZombieFallback() {
-  console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to BroadcastChannel fallback immediately');
-  if (_isChannelAvailable()) {
-    console.log(
-      '[Manager] FALLBACK_CHANNEL_ACTIVATED: BroadcastChannel is ACTIVE - will receive updates via broadcast'
-    );
-  } else {
-    console.warn(
-      '[Manager] FALLBACK_CHANNEL_UNAVAILABLE: BroadcastChannel NOT available - relying on storage polling only'
-    );
-  }
+  console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to storage.onChanged fallback immediately');
+  console.log('[Manager] FALLBACK_MODE_ACTIVE: Using storage.onChanged for state updates (BC removed)');
 }
 
 /**
  * Log disconnected state fallback
+ * v1.6.3.8-v6 - BC REMOVED: Updated log message
  * @private
  */
 function _logDisconnectedFallback() {
   console.log(
-    '[Manager] FALLBACK_MODE_ACTIVE: Port disconnected, using BroadcastChannel + storage polling',
+    '[Manager] FALLBACK_MODE_ACTIVE: Port disconnected, using storage.onChanged only (BC removed)',
     {
-      broadcastAvailable: _isChannelAvailable(),
       storagePollingMs: 10000
     }
   );
@@ -4581,54 +4562,24 @@ function handleBroadcastChannelMessage(_event) {
 
 /**
  * Check BroadcastChannel health and trigger fallback if needed
- * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce handleBroadcastChannelMessage complexity
+ * v1.6.3.8-v6 - BC REMOVED: This function is now a no-op stub
  * @private
- * @param {Object} message - Message being processed
+ * @param {Object} _message - Message being processed (unused)
  */
-function _checkBroadcastChannelHealth(message) {
-  // Check if BroadcastChannel is stale
-  if (isBroadcastChannelStale()) {
-    console.warn(
-      '[Manager] [BC] STALE_CHANNEL_DETECTED: BroadcastChannel is stale, triggering storage fallback'
-    );
-    console.log('[Manager] STORAGE_FALLBACK_ACTIVATED:', {
-      reason: 'stale-broadcast-channel',
-      timestamp: Date.now()
-    });
-    _triggerStorageFallbackOnGap(0);
-    return;
-  }
-
-  // Check for sequence gap if sequenceNumber present
-  if (typeof message.sequenceNumber === 'number') {
-    _checkSequenceGap(message);
-  }
+function _checkBroadcastChannelHealth(_message) {
+  // v1.6.3.8-v6 - BC removed, this function is now a no-op
+  // Storage.onChanged is the primary fallback mechanism
 }
 
 /**
  * Check for sequence gap in message
- * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce complexity
+ * v1.6.3.8-v6 - BC REMOVED: This function is now a no-op stub
  * @private
- * @param {Object} message - Message with sequenceNumber
+ * @param {Object} _message - Message with sequenceNumber (unused)
  */
-function _checkSequenceGap(message) {
-  const seqResult = processReceivedSequence(message.sequenceNumber);
-  if (!seqResult.hasGap) return;
-
-  const expectedSeq = message.sequenceNumber - seqResult.gapSize;
-  console.warn('[Manager] [BC] SEQUENCE_GAP_DETECTED:', {
-    expectedSequence: expectedSeq,
-    receivedSequence: message.sequenceNumber,
-    gapSize: seqResult.gapSize,
-    type: message.type,
-    quickTabId: message.quickTabId
-  });
-  console.log('[Manager] STORAGE_FALLBACK_ACTIVATED:', {
-    reason: 'sequence-gap',
-    gapSize: seqResult.gapSize,
-    timestamp: Date.now()
-  });
-  _triggerStorageFallbackOnGap(seqResult.gapSize);
+function _checkSequenceGap(_message) {
+  // v1.6.3.8-v6 - BC removed, this function is now a no-op
+  // Storage.onChanged handles event ordering via revision numbers
 }
 
 /**
