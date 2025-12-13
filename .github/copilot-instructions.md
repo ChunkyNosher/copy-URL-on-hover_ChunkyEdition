@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v8  
+**Version:** 1.6.3.8-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,35 +21,30 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
+**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
 
-- **Self-write detection** - 50ms timestamp matching window
-- **Transaction timeout** - Increased from 500ms to 1000ms (Firefox listener delay)
-- **Storage event ordering** - 300ms tolerance window for Firefox latency
-- **DestroyHandler forceEmpty** - Properly allows empty state writes
-- **Synchronous Map ops** - During hydration (UICoordinator)
-- **Port message queue** - Events queued before port ready
-- **Queued storage events** - Processed when port connects
-- **Explicit tab ID barrier** - Before feature initialization
-- **Extended dedup window** - 10s (matches PORT_RECONNECT_MAX_DELAY_MS)
-- **BFCache reconciliation** - Session-only tabs detection via document.wasDiscarded
-- **Fallback storage polling** - Real retry with listener re-registration
-- **Dead WAL code removed** - DestroyHandler cleanup
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
+- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
+- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
+- **EventEmitter3 logging** - Timestamps for handler/listener registration order
+- **Message queue conflict** - `_checkMessageConflict()` deduplication
+- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
+- **INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
+- **Timestamp map limit** - Max 1000 entries with cleanup
+- **Event listener cleanup** - `cleanupStateListeners()` method
+- **Message queue limit** - Max 100 messages
+- **Tab ID timeout** - Increased to 5s with retry fallback
+
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
+timeout 1000ms, storage event ordering (300ms), port message queue, explicit
+tab ID barrier, extended dedup 10s, BFCache session tabs.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence ID tracking, circuit
-breaker escalation, correlationId tracing, adaptive quota monitoring, storage
-aggregation, content script unload, iframe port tracking, queue TTL (60s), max
-event age (5-min), port registry rotation.
+breaker escalation, correlationId tracing, adaptive quota monitoring.
 
 **v1.6.3.8-v6 Features (Retained):** Storage quota monitoring, MessageBatcher
-queue limits (100), TTL pruning (30s), port reconnection backoff, checksum
-validation, BroadcastChannelManager.js DELETED.
-
-**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery (75%→50%→25%), URL validation.
-
-**v1.6.3.8-v4 Features (Retained):** Initialization barrier (10s), port-based
-hydration, visibility change listener, proactive dedup cleanup, sidebar modules.
+queue limits (100), checksum validation, BroadcastChannelManager.js DELETED.
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager
@@ -80,7 +75,7 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.8-v8: Storage & Init Improvements (PRODUCTION)
+### v1.6.3.8-v9: Initialization & Event Fixes (PRODUCTION)
 
 **Two-layer architecture (NO BroadcastChannel):**
 
@@ -89,18 +84,20 @@ background:
 - **Layer 2:** storage.local with monotonic revision versioning +
   storage.onChanged fallback
 
-**Key Changes (v8):**
+**Key Changes (v9):**
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox latency
-- **Storage event ordering** - 300ms tolerance for Firefox event timing
-- **Port message queue** - Queues events until port connection ready
-- **Explicit tab ID barrier** - Ensures tab ID before feature initialization
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
-- **BFCache session tabs** - Reconciles via document.wasDiscarded + pagehide
-- **Fallback polling retry** - Re-registers storage listener on failure
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator init flag** - `_isInitializing` suppresses orphan recovery
+- **DestroyHandler retry** - `_pendingPersists` queue with max 3 retries (500ms delay)
+- **Handler readiness** - `startRendering()` from `UICoordinator.init()`
+- **EventEmitter3 logging** - Timestamps for handler/listener order validation
+- **Message conflict detection** - `_checkMessageConflict()` prevents duplicates
+- **Init sequence** - `signalReady()` moved BEFORE hydration (Step 5.5)
+- **Comprehensive logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
+- **Resource limits** - Timestamp map max 1000, message queue max 100
+- **Tab ID timeout** - Increased to 5s with retry fallback
 
-### v1.6.3.8-v4: Sidebar Sync Fixes (Retained)
+### v1.6.3.8-v8: Storage & Init Improvements (Retained)
 
 - **initializationBarrier Promise** - All async tasks complete before listeners
 - **`_hydrateStateFromBackground()`** - Port-based hydration before storage
@@ -137,19 +134,42 @@ background:
 
 ---
 
-## 🆕 v1.6.3.8-v8 Patterns
+## 🆕 v1.6.3.8-v9 Patterns
 
-- **Self-write detection** - 50ms timestamp window filters own storage writes
-- **Transaction timeout 1000ms** - Firefox listener delay accommodation
-- **Storage event ordering** - 300ms tolerance for Firefox latency
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
-- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
-- **Fallback polling retry** - Listener re-registration on failure
-- **DestroyHandler forceEmpty** - Allows empty state writes
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator `_isInitializing`** - Flag suppresses orphan recovery during init
+- **DestroyHandler retry logic** - `_pendingPersists` queue, 3 retries, 500ms delay
+- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
+- **EventEmitter3 logging** - Timestamps for handler/listener registration order
+- **Message conflict detection** - `_checkMessageConflict()` prevents duplicates
+- **Init sequence fix** - `signalReady()` BEFORE hydration (Step 5.5)
+- **INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
+- **Timestamp map limit** - Max 1000 entries with automatic cleanup
+- **Event listener cleanup** - `cleanupStateListeners()` method
+- **Message queue limit** - Max 100 messages
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
 
-### New Sidebar Modules (`sidebar/modules/`)
+### New Methods/Patterns (v1.6.3.8-v9)
+
+**UICoordinator:**
+- `_isInitializing` flag - tracks initialization phase
+- `cleanupStateListeners()` - removes registered event listeners
+- `_firstEventReceived` Map - tracks when events first fire
+- Callback error handling wraps all handler calls in try-catch
+
+**QuickTabsManager (index.js):**
+- `_checkMessageConflict()` - detects duplicate/stale messages
+- `_checkStaleDestructiveMessage()` - checks if delete message is stale
+- Step 5.5: Message replay BEFORE hydration
+- Delayed hydration retry if currentTabId barrier fails
+
+**DestroyHandler:**
+- `_pendingPersists` queue for retry logic
+- `_persistedDeletions` Set for tracking
+- `_schedulePersistRetry()` and `_processRetryQueue()` methods
+- Event emission order reversed (emit before delete)
+
+### v1.6.3.8-v8 Patterns (Retained)
 
 | Module              | Purpose                                        |
 | ------------------- | ---------------------------------------------- |
@@ -194,34 +214,35 @@ background:
   listener
 - Proactive dedup cleanup (50%), sliding window eviction (95%), probe queuing
 
-### Key Timing Constants (v1.6.3.8-v8)
+### Key Timing Constants (v1.6.3.8-v9)
 
 | Constant                               | Value    | Purpose                                   |
 | -------------------------------------- | -------- | ----------------------------------------- |
-| `TRANSACTION_FALLBACK_CLEANUP_MS`      | 1000     | Transaction timeout (was 500ms)           |
-| `ESCALATION_WARNING_MS`                | 500      | Escalation warning (was 250ms)            |
+| `CURRENT_TAB_ID_WAIT_TIMEOUT_MS`       | 5000     | Tab ID barrier timeout (was 2000ms)       |
+| `MAX_MESSAGE_QUEUE_SIZE`               | 100      | Message queue limit                       |
+| `MAX_MAP_ENTRIES`                      | 1000     | Timestamp map size limit                  |
+| `MAX_PERSIST_RETRY_ATTEMPTS`           | 3        | Persist retry limit                       |
+| `PERSIST_RETRY_DELAY_MS`               | 500      | Delay between persist retries             |
+| `TRANSACTION_FALLBACK_CLEANUP_MS`      | 1000     | Transaction timeout                       |
 | `SELF_WRITE_TIMESTAMP_WINDOW_MS`       | 50       | Self-write detection window               |
 | `STORAGE_EVENT_ORDER_TOLERANCE_MS`     | 300      | Firefox latency tolerance                 |
-| `RESTORE_DEDUP_WINDOW_MS`              | 10000    | Dedup window (was 2000ms)                 |
+| `RESTORE_DEDUP_WINDOW_MS`              | 10000    | Dedup window                              |
 | `PORT_CIRCUIT_STATES`                  | 4 states | HEALTHY, DEGRADED, CRITICAL, DISCONNECTED |
-| `PORT_CIRCUIT_BREAKER_WINDOW_MS`       | 5000     | Circuit breaker evaluation window         |
-| `PORT_CIRCUIT_BREAKER_MAX_DURATION_MS` | 10000    | Max circuit breaker duration              |
-| `DEAD_PORT_MESSAGE_TTL_MS`             | 60000    | Dead port message TTL                     |
-| `MAX_STATE_CHANGE_AGE_MS`              | 300000   | Max event age (5 min)                     |
-| `MAX_QUEUE_SIZE`                       | 100      | MessageBatcher queue limit                |
 | `INIT_BARRIER_TIMEOUT_MS`              | 10000    | Initialization barrier timeout            |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                            |
-| --------------------- | -------------------------------------------------- |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                  |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`             |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`        |
-| TabStateManager (v3)  | `getTabState()`, `setTabState()`                   |
-| Manager               | `scheduleRender()`, `_transitionConnectionState()` |
+| Class                 | Methods                                                      |
+| --------------------- | ------------------------------------------------------------ |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                            |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                       |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                  |
+| TabStateManager (v3)  | `getTabState()`, `setTabState()`                             |
+| Manager               | `scheduleRender()`, `_transitionConnectionState()`           |
+| UICoordinator         | `init()`, `cleanupStateListeners()`, `_isInitializing` flag  |
+| DestroyHandler        | `_pendingPersists`, `_schedulePersistRetry()`, emit-before-delete |
 
 ---
 
@@ -237,12 +258,11 @@ background:
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v8:** self-write
-detection, transaction timeout 1000ms, port message queue, explicit tab ID
-barrier, **v1.6.3.8-v7:** per-port sequence IDs, circuit breaker escalation,
-**v1.6.3.8-v6:** MessageBatcher limits, checksum validation,
-**v1.6.3.8-v5:** monotonic revision versioning, port failure counting,
-**v1.6.3.8-v4:** initializationBarrier Promise, port-based hydration.
+Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v9:** event emission
+before deletion, `_isInitializing` flag, persist retry queue, message conflict
+detection, init sequence reorder, **v1.6.3.8-v8:** self-write detection,
+transaction timeout 1000ms, port message queue, **v1.6.3.8-v7:** per-port
+sequence IDs, circuit breaker escalation.
 
 ---
 

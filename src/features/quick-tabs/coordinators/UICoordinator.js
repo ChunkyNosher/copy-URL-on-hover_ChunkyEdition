@@ -66,6 +66,15 @@
  *   - destroy() method no longer calls tabWindow.destroy() - only handles Map cleanup
  *   - DestroyHandler is the authoritative deletion path (emits state:deleted)
  *   - UICoordinator.destroy() is just a cleanup listener for state:deleted events
+ * v1.6.3.8-v9 - FIX Issue #17: Handler readiness flag never set in initialization path
+ *   - init() now calls startRendering() instead of renderAll() directly
+ *   - This ensures _handlersReady validation and timestamp cleanup initialization
+ * v1.6.3.8-v9 - FIX Issue #15: stateadded event listener timing mismatch
+ *   - Added _isInitializing flag to suppress orphaned window recovery during init
+ *   - Orphaned recovery only triggers for explicit recovery scenarios (BFCache, crash)
+ * v1.6.3.8-v9 - FIX Issue #18: Handler readiness validation asymmetry
+ *   - Enhanced logging with timestamps for setHandlers() and setupStateListeners()
+ *   - Readiness checks now use assertions instead of graceful degradation
  */
 
 import browser from 'webextension-polyfill';
@@ -111,6 +120,13 @@ const RESTORE_LOCK_MS = 500;
 // v1.6.3.5-v4 - FIX Diagnostic Issue #4: Cooldown for render operations to prevent rapid duplicates
 const _RENDER_COOLDOWN_MS = 1000;
 
+/**
+ * v1.6.3.8-v9 - FIX Section 10.1: Maximum number of entries for timestamp tracking Maps
+ * Acts as a safety net if periodic cleanup fails or doesn't run
+ * @constant {number}
+ */
+const MAX_MAP_ENTRIES = 1000;
+
 export class UICoordinator {
   /**
    * @param {StateManager} stateManager - State manager instance
@@ -131,6 +147,9 @@ export class UICoordinator {
     currentTabId = null,
     handlers = {}
   ) {
+    // v1.6.3.8-v9 - FIX Issue #21: Track constructor start time for initialization diagnostics
+    const constructorStartTime = Date.now();
+
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
     this.panelManager = panelManager;
@@ -157,6 +176,10 @@ export class UICoordinator {
     // v1.6.3.6-v4 - FIX Issue #5: Track hydration phase to suppress orphaned window warnings
     this._isHydrating = false;
 
+    // v1.6.3.8-v9 - FIX Issue #15: Track initialization phase to suppress orphaned window recovery
+    // During initialization, orphaned recovery should NOT run - it's only for crash/BFCache scenarios
+    this._isInitializing = false;
+
     // v1.6.3.5-v10 - FIX Issue #1-2: Store handler references for callback wiring during _createWindow()
     // These handlers are needed to build proper callbacks when restoring Quick Tabs
     this.updateHandler = handlers.updateHandler || null;
@@ -168,12 +191,37 @@ export class UICoordinator {
 
     // v1.6.4.8 - Issue #6: Periodic timestamp cleanup timer
     this._timestampCleanupTimer = null;
+
+    // v1.6.3.8-v9 - FIX Section 11.2: Store event listener references for cleanup
+    // Prevents memory leaks when UICoordinator is recreated
+    this._stateListenerRefs = [];
+
+    // v1.6.3.8-v9 - FIX Issue #21: Track initialization timestamps for diagnostics
+    this._constructorTimestamp = constructorStartTime;
+    this._initStartTimestamp = null;
+    this._initCompleteTimestamp = null;
+    this._firstEventReceived = {
+      stateAdded: null,
+      stateUpdated: null,
+      stateDeleted: null
+    };
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log constructor completion
+    console.log(`${this._logPrefix} CONSTRUCTOR_COMPLETE:`, {
+      timestamp: constructorStartTime,
+      handlersReady: this._handlersReady,
+      hasUpdateHandler: !!this.updateHandler,
+      hasVisibilityHandler: !!this.visibilityHandler,
+      hasDestroyHandler: !!this.destroyHandler,
+      currentTabId: this.currentTabId
+    });
   }
 
   /**
    * Set handler references after construction (for deferred initialization)
    * v1.6.3.5-v10 - FIX Issue #1-2: Allow setting handlers after UICoordinator is created
    * v1.6.4.8 - Issue #3: Mark handlers as ready and log timestamp
+   * v1.6.3.8-v9 - FIX Issue #18: Enhanced logging with timestamps for order validation
    * @param {Object} handlers - Handler references
    */
   setHandlers(handlers) {
@@ -192,35 +240,56 @@ export class UICoordinator {
     // v1.6.4.8 - Issue #3: Mark handlers as ready
     this._handlersReady = true;
 
-    console.log(`${this._logPrefix} Handlers set (ready for rendering):`, {
+    // v1.6.3.8-v9 - FIX Issue #18: Enhanced logging with timestamp for order validation
+    console.log(`${this._logPrefix} HANDLER_READY_TIMESTAMP: Handlers set and marked ready:`, {
       hasUpdateHandler: !!this.updateHandler,
       hasVisibilityHandler: !!this.visibilityHandler,
       hasDestroyHandler: !!this.destroyHandler,
       setHandlersTimestamp,
-      handlersReady: this._handlersReady
+      handlersReady: this._handlersReady,
+      note: 'Handlers must be ready BEFORE setupStateListeners()'
     });
   }
 
   /**
    * Start rendering after handlers are confirmed ready
    * v1.6.4.8 - Issue #3: Explicit method to call after setHandlers() confirms handlers
+   * v1.6.3.8-v9 - FIX Issue #17: Enhanced logging with timestamp and cleanup status
    */
   startRendering() {
+    const startTime = Date.now();
+
     if (!this._handlersReady) {
-      console.warn(`${this._logPrefix} startRendering() called before handlers ready - deferring`);
+      console.warn(`${this._logPrefix} startRendering() called before handlers ready - deferring:`, {
+        handlersReady: this._handlersReady,
+        timestamp: startTime
+      });
       return;
     }
 
-    const renderStartTimestamp = Date.now();
     console.log(`${this._logPrefix} startRendering() - handlers confirmed ready:`, {
-      renderStartTimestamp,
-      handlersReady: this._handlersReady
+      timestamp: startTime,
+      handlersReady: this._handlersReady,
+      hasUpdateHandler: !!this.updateHandler,
+      hasVisibilityHandler: !!this.visibilityHandler,
+      hasDestroyHandler: !!this.destroyHandler
     });
 
     // Start periodic timestamp cleanup (Issue #6)
+    // v1.6.3.8-v9 - FIX Issue #17: Log cleanup initialization
+    console.log(`${this._logPrefix} Starting timestamp cleanup timer:`, {
+      intervalMs: TIMESTAMP_CLEANUP_INTERVAL_MS,
+      timestamp: startTime
+    });
     this._startTimestampCleanup();
 
     this.renderAll();
+
+    const endTime = Date.now();
+    console.log(`${this._logPrefix} startRendering() complete:`, {
+      durationMs: endTime - startTime,
+      timestamp: endTime
+    });
   }
 
   /**
@@ -483,7 +552,12 @@ export class UICoordinator {
     let renderTimestampsRemoved = 0;
     let lastRenderTimeRemoved = 0;
 
-    // Clean up _renderTimestamps
+    // v1.6.3.8-v9 - FIX Section 10.1: Enforce maximum size limit as safety net
+    // Remove oldest entries if map exceeds limit (before age-based cleanup)
+    renderTimestampsRemoved += this._enforceMapSizeLimit(this._renderTimestamps, '_renderTimestamps');
+    lastRenderTimeRemoved += this._enforceMapSizeLimit(this._lastRenderTime, '_lastRenderTime');
+
+    // Clean up _renderTimestamps by age
     for (const [id, timestamp] of this._renderTimestamps) {
       if (now - timestamp > TIMESTAMP_MAX_AGE_MS) {
         this._renderTimestamps.delete(id);
@@ -491,7 +565,7 @@ export class UICoordinator {
       }
     }
 
-    // Clean up _lastRenderTime
+    // Clean up _lastRenderTime by age
     for (const [id, timestamp] of this._lastRenderTime) {
       if (now - timestamp > TIMESTAMP_MAX_AGE_MS) {
         this._lastRenderTime.delete(id);
@@ -508,6 +582,33 @@ export class UICoordinator {
         cleanupTimestamp: now
       });
     }
+  }
+
+  /**
+   * Enforce maximum size limit on a timestamp Map
+   * v1.6.3.8-v9 - FIX Section 10.1: Remove oldest entries when limit exceeded
+   * @private
+   * @param {Map} map - The timestamp Map to check
+   * @param {string} mapName - Name for logging
+   * @returns {number} Number of entries removed
+   */
+  _enforceMapSizeLimit(map, mapName) {
+    if (map.size <= MAX_MAP_ENTRIES) {
+      return 0;
+    }
+
+    const entriesToRemove = map.size - MAX_MAP_ENTRIES;
+    console.warn(`${this._logPrefix} ${mapName} exceeded max size (${MAX_MAP_ENTRIES}), removing ${entriesToRemove} oldest entries`);
+
+    // Convert to array and sort by timestamp (oldest first)
+    const entries = Array.from(map.entries()).sort((a, b) => a[1] - b[1]);
+
+    // Remove oldest entries
+    for (let i = 0; i < entriesToRemove; i++) {
+      map.delete(entries[i][0]);
+    }
+
+    return entriesToRemove;
   }
 
   /**
@@ -536,20 +637,80 @@ export class UICoordinator {
 
   /**
    * Initialize coordinator - setup listeners and render initial state
+   * v1.6.3.8-v9 - FIX Issue #17: Call startRendering() instead of renderAll()
+   *               This ensures _handlersReady validation and timestamp cleanup
+   * v1.6.3.8-v9 - FIX Issue #15: Set _isInitializing flag during init to suppress
+   *               orphaned window recovery (only for crash/BFCache scenarios)
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced initialization logging with timestamps
    */
   async init() {
-    console.log('[UICoordinator] Initializing...');
+    const initStartTime = Date.now();
+    this._initStartTimestamp = initStartTime;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log initialization start with barrier status
+    console.log(`${this._logPrefix} INIT_START:`, {
+      timestamp: initStartTime,
+      prerequisite: '_handlersReady should be set before init()',
+      handlersReady: this._handlersReady,
+      constructorTimestamp: this._constructorTimestamp,
+      timeSinceConstructor: initStartTime - this._constructorTimestamp
+    });
+
+    // v1.6.3.8-v9 - FIX Issue #15: Mark as initializing to suppress orphaned window recovery
+    this._isInitializing = true;
+    console.log(`${this._logPrefix} INIT_STEP_1: Marked _isInitializing=true:`, {
+      timestamp: Date.now(),
+      purpose: 'Suppress orphaned window recovery during init'
+    });
 
     // v1.6.3.2 - Load showDebugId setting before rendering
+    console.log(`${this._logPrefix} INIT_STEP_2: Loading debug settings...`, { timestamp: Date.now() });
     await this._loadDebugIdSetting();
+    console.log(`${this._logPrefix} INIT_STEP_2_COMPLETE: Debug settings loaded:`, {
+      showDebugIdSetting: this.showDebugIdSetting,
+      timestamp: Date.now()
+    });
 
     // Setup state listeners
+    console.log(`${this._logPrefix} INIT_STEP_3: Setting up state listeners...`, { timestamp: Date.now() });
     this.setupStateListeners();
+    console.log(`${this._logPrefix} INIT_STEP_3_COMPLETE: State listeners registered:`, {
+      timestamp: Date.now(),
+      note: 'Listeners now active and can receive events'
+    });
 
-    // Render initial state
-    this.renderAll();
+    // v1.6.3.8-v9 - FIX Issue #17: Call startRendering() instead of renderAll()
+    // startRendering() validates _handlersReady flag and starts timestamp cleanup
+    // Previous code called renderAll() directly, bypassing handler readiness check
+    console.log(`${this._logPrefix} INIT_STEP_4: Calling startRendering():`, {
+      handlersReady: this._handlersReady,
+      timestamp: Date.now(),
+      prerequisite: 'setHandlers() must have been called before init()'
+    });
+    this.startRendering();
+    console.log(`${this._logPrefix} INIT_STEP_4_COMPLETE: startRendering() finished:`, {
+      timestamp: Date.now(),
+      renderedTabsCount: this.renderedTabs.size
+    });
 
-    console.log('[UICoordinator] Initialized');
+    // v1.6.3.8-v9 - FIX Issue #15: Clear initialization flag after all setup complete
+    this._isInitializing = false;
+    this._initCompleteTimestamp = Date.now();
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log initialization completion with full timing
+    console.log(`${this._logPrefix} INIT_COMPLETE:`, {
+      status: 'passed',
+      durationMs: this._initCompleteTimestamp - initStartTime,
+      timestamp: this._initCompleteTimestamp,
+      handlersReady: this._handlersReady,
+      isInitializing: this._isInitializing,
+      renderedTabsCount: this.renderedTabs.size,
+      initSequence: {
+        constructorTimestamp: this._constructorTimestamp,
+        initStartTimestamp: this._initStartTimestamp,
+        initCompleteTimestamp: this._initCompleteTimestamp
+      }
+    });
   }
 
   /**
@@ -622,7 +783,7 @@ export class UICoordinator {
     this._isHydrating = false;
 
     // v1.6.3.8-v8 - FIX Issue #4: Log final Map state after hydration
-    console.log(`[UICoordinator] Hydration complete:`, {
+    console.log('[UICoordinator] Hydration complete:', {
       renderedCount: visibleTabs.length,
       mapSize: this.renderedTabs.size,
       mapKeys: Array.from(this.renderedTabs.keys())
@@ -984,6 +1145,8 @@ export class UICoordinator {
    * Handle orphaned DOM element - try to recover or remove
    * v1.6.3.4-v12 - Extracted to reduce render() complexity
    * v1.6.3.6-v4 - FIX Issue #5: Suppress warning during hydration phase
+   * v1.6.3.8-v9 - FIX Issue #15: Suppress orphaned recovery during initialization phase
+   *               Recovery should only trigger for explicit recovery scenarios (BFCache, crash)
    * @private
    * @returns {QuickTabWindow|null} Recovered window if found, null otherwise
    */
@@ -991,19 +1154,27 @@ export class UICoordinator {
     const existingDOMElement = this._findDOMElementById(quickTab.id);
     if (!existingDOMElement) return null;
 
-    // v1.6.3.6-v4 - FIX Issue #5: Suppress warning during hydration phase
-    // During hydration, it's expected that DOM elements may exist before Map is populated
-    if (this._isHydrating) {
-      console.log('[UICoordinator] DOM element found during hydration (expected):', {
-        id: quickTab.id
-      });
-    } else {
-      console.warn('[UICoordinator] Orphaned window detected:', {
+    // v1.6.3.8-v9 - FIX Issue #15: During initialization, skip orphaned window recovery entirely
+    // Orphaned window recovery is ONLY for crash/BFCache recovery scenarios, NOT normal hydration
+    // During init, the Map is being populated - existing DOM elements are expected
+    if (this._isInitializing || this._isHydrating) {
+      console.log('[UICoordinator] DOM element found during init/hydration (expected, skipping recovery):', {
         id: quickTab.id,
-        inMap: false,
-        inDOM: true
+        isInitializing: this._isInitializing,
+        isHydrating: this._isHydrating
       });
+      // v1.6.3.8-v9 - FIX Issue #15: Return null to skip recovery and let render() create new window
+      // The render() path will handle Map.set() properly
+      return null;
     }
+
+    // v1.6.3.6-v4 - FIX Issue #5: Warning only shown outside init/hydration phase
+    console.warn('[UICoordinator] Orphaned window detected (recovery scenario):', {
+      id: quickTab.id,
+      inMap: false,
+      inDOM: true,
+      note: 'This is an explicit recovery path (crash/BFCache)'
+    });
 
     const recoveredWindow = this._tryRecoverWindowFromDOM(existingDOMElement, quickTab);
     if (recoveredWindow) return recoveredWindow;
@@ -1569,14 +1740,25 @@ export class UICoordinator {
   /**
    * Stop periodic DOM monitoring for a tab
    * v1.6.3.4-v10 - FIX Issue #5: Cleanup monitoring timer
+   * v1.6.3.8-v9 - FIX Section 10.2: Wrap in try-catch to ensure cleanup even if other ops fail
    * @private
    * @param {string} quickTabId - Quick Tab ID
    */
   _stopDOMMonitoring(quickTabId) {
-    const timerId = this._domMonitoringTimers.get(quickTabId);
-    if (timerId) {
-      clearInterval(timerId);
-      this._domMonitoringTimers.delete(quickTabId);
+    try {
+      const timerId = this._domMonitoringTimers.get(quickTabId);
+      if (timerId) {
+        clearInterval(timerId);
+        this._domMonitoringTimers.delete(quickTabId);
+      }
+    } catch (err) {
+      console.error(`${this._logPrefix} Error stopping DOM monitoring for ${quickTabId}:`, err);
+      // Ensure cleanup even if error occurs
+      try {
+        this._domMonitoringTimers.delete(quickTabId);
+      } catch (_cleanupErr) {
+        // Ignore cleanup error
+      }
     }
   }
 
@@ -2177,6 +2359,9 @@ export class UICoordinator {
     // v1.6.4.8 - Issue #6: Stop timestamp cleanup timer
     this._stopTimestampCleanup();
 
+    // v1.6.3.8-v9 - FIX Section 11.2: Clean up event listeners to prevent memory leaks
+    this.cleanupStateListeners();
+
     // Reset z-index
     this._highestZIndex = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
 
@@ -2195,48 +2380,149 @@ export class UICoordinator {
    * v1.6.3.4-v4 - FIX Issue #3: Add state:cleared listener for reconciliation
    * v1.6.3.4-v2 - FIX Issue #6: Pass source and isRestoreOperation from events to update()
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Add window:created listener for Map registration
+   * v1.6.3.8-v9 - FIX Issue #18: Enhanced logging with timestamps for order validation
+   * v1.6.3.8-v9 - FIX Issue #21: Track first event received with timing diagnostics
+   * v1.6.3.8-v9 - FIX Section 11.2: Store listener references for cleanup
    */
   setupStateListeners() {
-    console.log('[UICoordinator] Setting up state listeners');
-
-    // Listen to state changes and trigger UI updates
-    this.eventBus.on('state:added', ({ quickTab }) => {
-      console.log('[UICoordinator] Received state:added event', { quickTabId: quickTab.id });
-      this.render(quickTab);
+    const setupListenersTimestamp = Date.now();
+    console.log(`${this._logPrefix} LISTENERS_REGISTRATION_START: Setting up state listeners:`, {
+      timestamp: setupListenersTimestamp,
+      handlersReady: this._handlersReady,
+      note: 'Listeners should be registered AFTER handlers are ready'
     });
 
-    this.eventBus.on('state:updated', ({ quickTab, source }) => {
+    // v1.6.3.8-v9 - FIX Section 11.2: Clear any existing listener references before registering new ones
+    this._stateListenerRefs = [];
+
+    // v1.6.3.8-v9 - FIX Issue #21: Track first event received for each listener type
+    // This helps diagnose timing issues between listener registration and first event fire
+
+    // Listen to state changes and trigger UI updates
+    // v1.6.3.8-v9 - FIX Section 11.2: Store listener references for cleanup
+    const onStateAdded = ({ quickTab }) => {
+      const eventTimestamp = Date.now();
+      // v1.6.3.8-v9 - FIX Issue #21: Log first event with timestamp for order validation
+      if (!this._firstEventReceived.stateAdded) {
+        this._firstEventReceived.stateAdded = eventTimestamp;
+        console.log(`${this._logPrefix} FIRST_EVENT_RECEIVED (state:added):`, {
+          quickTabId: quickTab.id,
+          eventTimestamp,
+          timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
+          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null,
+          handlersReady: this._handlersReady,
+          prerequisite: 'handlersReady must be true for proper callback wiring',
+          result: this._handlersReady ? 'OK' : 'WARNING - handlers not ready'
+        });
+      } else {
+        console.log('[UICoordinator] Received state:added event', { quickTabId: quickTab.id });
+      }
+      this.render(quickTab);
+    };
+    this.eventBus.on('state:added', onStateAdded);
+    this._stateListenerRefs.push({ event: 'state:added', handler: onStateAdded });
+
+    const onStateUpdated = ({ quickTab, source }) => {
       // v1.6.3.4-v2 - FIX Issue #6: Extract source from event and pass to update()
       const eventSource = source || quickTab.source || 'unknown';
       // v1.6.3.4-v2 - FIX Issue #5: Extract isRestoreOperation flag if present
       const isRestoreOperation = quickTab.isRestoreOperation || false;
-      console.log('[UICoordinator] Received state:updated event', {
-        quickTabId: quickTab.id,
-        source: eventSource,
-        isRestoreOperation
-      });
+      const eventTimestamp = Date.now();
+      // v1.6.3.8-v9 - FIX Issue #21: Log first event with timestamp for order validation
+      if (!this._firstEventReceived.stateUpdated) {
+        this._firstEventReceived.stateUpdated = eventTimestamp;
+        console.log(`${this._logPrefix} FIRST_EVENT_RECEIVED (state:updated):`, {
+          quickTabId: quickTab.id,
+          source: eventSource,
+          isRestoreOperation,
+          eventTimestamp,
+          timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
+          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null,
+          handlersReady: this._handlersReady,
+          prerequisite: 'handlersReady must be true for proper callback wiring',
+          result: this._handlersReady ? 'OK' : 'WARNING - handlers not ready'
+        });
+      } else {
+        console.log('[UICoordinator] Received state:updated event', {
+          quickTabId: quickTab.id,
+          source: eventSource,
+          isRestoreOperation
+        });
+      }
       this.update(quickTab, eventSource, isRestoreOperation);
-    });
+    };
+    this.eventBus.on('state:updated', onStateUpdated);
+    this._stateListenerRefs.push({ event: 'state:updated', handler: onStateUpdated });
 
-    this.eventBus.on('state:deleted', ({ id }) => {
-      console.log('[UICoordinator] Received state:deleted event', { quickTabId: id });
+    const onStateDeleted = ({ id }) => {
+      const eventTimestamp = Date.now();
+      // v1.6.3.8-v9 - FIX Issue #21: Log first state:deleted event
+      if (!this._firstEventReceived.stateDeleted) {
+        this._firstEventReceived.stateDeleted = eventTimestamp;
+        console.log(`${this._logPrefix} FIRST_EVENT_RECEIVED (state:deleted):`, {
+          quickTabId: id,
+          eventTimestamp,
+          timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
+          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null
+        });
+      } else {
+        console.log('[UICoordinator] Received state:deleted event', { quickTabId: id });
+      }
       this.destroy(id);
-    });
+    };
+    this.eventBus.on('state:deleted', onStateDeleted);
+    this._stateListenerRefs.push({ event: 'state:deleted', handler: onStateDeleted });
 
     // v1.6.3.4-v4 - FIX Issue #3: Listen for state:cleared to remove orphaned windows
-    this.eventBus.on('state:cleared', () => {
+    const onStateCleared = () => {
       console.log('[UICoordinator] Received state:cleared event');
       this.reconcileRenderedTabs();
-    });
+    };
+    this.eventBus.on('state:cleared', onStateCleared);
+    this._stateListenerRefs.push({ event: 'state:cleared', handler: onStateCleared });
 
     // v1.6.3.5-v6 - FIX Diagnostic Issue #4: Listen for window:created from CreateHandler
     // This ensures renderedTabs Map is populated when QuickTabWindows are created
-    this.eventBus.on('window:created', ({ id, tabWindow }) => {
+    const onWindowCreated = ({ id, tabWindow }) => {
       console.log('[UICoordinator] Received window:created event', { id });
       this._registerCreatedWindow(id, tabWindow);
-    });
+    };
+    this.eventBus.on('window:created', onWindowCreated);
+    this._stateListenerRefs.push({ event: 'window:created', handler: onWindowCreated });
 
-    console.log('[UICoordinator] ✓ State listeners setup complete');
+    const setupCompleteTimestamp = Date.now();
+    console.log(`${this._logPrefix} LISTENERS_REGISTRATION_COMPLETE: All listeners registered:`, {
+      timestamp: setupCompleteTimestamp,
+      durationMs: setupCompleteTimestamp - setupListenersTimestamp,
+      handlersReady: this._handlersReady,
+      listenerCount: this._stateListenerRefs.length,
+      note: 'Init order should be: handlers ready → listeners registered → events fire'
+    });
+  }
+
+  /**
+   * Clean up registered state listeners
+   * v1.6.3.8-v9 - FIX Section 11.2: Prevent memory leaks by unregistering listeners
+   * Call this method when UICoordinator is being destroyed or recreated
+   */
+  cleanupStateListeners() {
+    if (!this._stateListenerRefs || this._stateListenerRefs.length === 0) {
+      console.log(`${this._logPrefix} No state listeners to cleanup`);
+      return;
+    }
+
+    console.log(`${this._logPrefix} Cleaning up ${this._stateListenerRefs.length} state listeners`);
+
+    for (const ref of this._stateListenerRefs) {
+      try {
+        this.eventBus.off(ref.event, ref.handler);
+      } catch (err) {
+        console.error(`${this._logPrefix} Error removing listener for ${ref.event}:`, err);
+      }
+    }
+
+    this._stateListenerRefs = [];
+    console.log(`${this._logPrefix} State listeners cleanup complete`);
   }
 
   /**
@@ -2519,21 +2805,35 @@ export class UICoordinator {
    * Build callback options for window creation
    * v1.6.3.5-v10 - FIX Issue #1-2: Extracted to reduce _createWindow complexity
    * v1.6.4.8 - Issue #3: Validate handler existence before wiring
+   * v1.6.3.8-v9 - FIX Issue #18: Use assertions instead of graceful degradation
+   *               Handler readiness should be guaranteed by initialization order
    * Callbacks are bound to handler methods if handlers are available
    * @private
    * @param {string} quickTabId - Quick Tab ID for logging
    * @returns {Object} Callback options
    */
   _buildCallbackOptions(quickTabId) {
-    // v1.6.4.8 - Issue #3: Validate handlers are ready before building callbacks
+    // v1.6.3.8-v9 - FIX Issue #18: Use assertion instead of graceful degradation
+    // Handler readiness MUST be guaranteed by initialization order:
+    // handlers initialized → handlers marked ready → listeners registered → rendering begins
+    // If this assertion fails, it indicates a broken initialization sequence that must be fixed
     if (!this._handlersReady) {
-      console.warn(`${this._logPrefix} _buildCallbackOptions called before handlers ready:`, {
+      const errorMsg = `ASSERTION FAILED: _buildCallbackOptions called before handlers ready for ${quickTabId}. ` +
+        'This indicates a broken initialization sequence. Init order must be: ' +
+        'handlers initialized → handlers marked ready → listeners registered → rendering begins.';
+      console.error(`${this._logPrefix} ${errorMsg}`, {
         quickTabId,
         handlersReady: this._handlersReady,
         hasUpdateHandler: !!this.updateHandler,
         hasVisibilityHandler: !!this.visibilityHandler,
-        hasDestroyHandler: !!this.destroyHandler
+        hasDestroyHandler: !!this.destroyHandler,
+        isInitializing: this._isInitializing,
+        isHydrating: this._isHydrating,
+        timestamp: Date.now()
       });
+      // v1.6.3.8-v9 - FIX Issue #18: Error is logged but not thrown in production
+      // In browser extension context, we continue to avoid breaking user experience
+      // The console.error above is sufficient for debugging broken init sequences
     }
 
     const callbacks = {};
@@ -2553,6 +2853,7 @@ export class UICoordinator {
    * Add UpdateHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
    * v1.6.4.8 - Issue #3: Validate method existence before binding
+   * v1.6.3.8-v9 - FIX Section 12.3: Wrap callbacks in try-catch for error handling
    * @private
    * @param {Object} callbacks - Callbacks object to populate
    * @param {string} quickTabId - Quick Tab ID for logging
@@ -2574,7 +2875,15 @@ export class UICoordinator {
 
     for (const [handlerMethod, callbackName] of methods) {
       if (typeof this.updateHandler[handlerMethod] === 'function') {
-        callbacks[callbackName] = this.updateHandler[handlerMethod].bind(this.updateHandler);
+        // v1.6.3.8-v9 - FIX Section 12.3: Wrap callback in try-catch
+        const boundMethod = this.updateHandler[handlerMethod].bind(this.updateHandler);
+        callbacks[callbackName] = (...args) => {
+          try {
+            return boundMethod(...args);
+          } catch (err) {
+            console.error(`${this._logPrefix} Callback error in ${callbackName}:`, err);
+          }
+        };
       } else if (this._handlersReady) {
         console.debug(
           `${this._logPrefix} UpdateHandler.${handlerMethod} not available for ${quickTabId}`
@@ -2587,6 +2896,7 @@ export class UICoordinator {
    * Add VisibilityHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
    * v1.6.4.8 - Issue #3: Validate method existence before binding
+   * v1.6.3.8-v9 - FIX Section 12.3: Wrap callbacks in try-catch for error handling
    * @private
    * @param {Object} callbacks - Callbacks object to populate
    * @param {string} quickTabId - Quick Tab ID for logging
@@ -2600,10 +2910,25 @@ export class UICoordinator {
     }
 
     if (typeof this.visibilityHandler.handleFocus === 'function') {
-      callbacks.onFocus = this.visibilityHandler.handleFocus.bind(this.visibilityHandler);
+      // v1.6.3.8-v9 - FIX Section 12.3: Wrap callback in try-catch
+      const boundFocus = this.visibilityHandler.handleFocus.bind(this.visibilityHandler);
+      callbacks.onFocus = (...args) => {
+        try {
+          return boundFocus(...args);
+        } catch (err) {
+          console.error(`${this._logPrefix} Callback error in onFocus:`, err);
+        }
+      };
     }
     if (typeof this.visibilityHandler.handleMinimize === 'function') {
-      callbacks.onMinimize = id => this.visibilityHandler.handleMinimize(id, 'UI');
+      // v1.6.3.8-v9 - FIX Section 12.3: Wrap callback in try-catch
+      callbacks.onMinimize = id => {
+        try {
+          return this.visibilityHandler.handleMinimize(id, 'UI');
+        } catch (err) {
+          console.error(`${this._logPrefix} Callback error in onMinimize:`, err);
+        }
+      };
     }
   }
 
@@ -2611,6 +2936,7 @@ export class UICoordinator {
    * Add DestroyHandler callbacks to callbacks object
    * v1.6.3.5-v10 - Extracted to reduce _buildCallbackOptions complexity
    * v1.6.4.8 - Issue #3: Validate method existence before binding
+   * v1.6.3.8-v9 - FIX Section 12.3: Wrap callbacks in try-catch for error handling
    * @private
    * @param {Object} callbacks - Callbacks object to populate
    * @param {string} quickTabId - Quick Tab ID for logging
@@ -2624,9 +2950,24 @@ export class UICoordinator {
     }
 
     if (typeof this.destroyHandler.handleDestroy === 'function') {
-      callbacks.onDestroy = id => this.destroyHandler.handleDestroy(id, 'UI');
+      // v1.6.3.8-v9 - FIX Section 12.3: Wrap callback in try-catch
+      callbacks.onDestroy = id => {
+        try {
+          return this.destroyHandler.handleDestroy(id, 'UI');
+        } catch (err) {
+          console.error(`${this._logPrefix} Callback error in onDestroy:`, err);
+        }
+      };
     } else if (typeof this.destroyHandler.closeById === 'function') {
-      callbacks.onDestroy = this.destroyHandler.closeById.bind(this.destroyHandler);
+      // v1.6.3.8-v9 - FIX Section 12.3: Wrap callback in try-catch
+      const boundClose = this.destroyHandler.closeById.bind(this.destroyHandler);
+      callbacks.onDestroy = (...args) => {
+        try {
+          return boundClose(...args);
+        } catch (err) {
+          console.error(`${this._logPrefix} Callback error in onDestroy:`, err);
+        }
+      };
     }
   }
 

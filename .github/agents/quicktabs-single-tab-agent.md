@@ -37,21 +37,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
+**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
+- **EventEmitter3 logging** - Timestamps for handler/listener registration order
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
+timeout 1000ms, port message queue, explicit tab ID barrier, BFCache session tabs.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
 escalation, correlationId tracing, adaptive quota monitoring.
-
-**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
-quota monitoring, MessageBatcher queue limits, circuit breaker.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -81,11 +80,12 @@ quota monitoring, MessageBatcher queue limits, circuit breaker.
 
 ## Testing Requirements
 
-- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
-- [ ] Explicit tab ID barrier works (v1.6.3.8-v8)
-- [ ] BFCache session tabs work (document.wasDiscarded) (v1.6.3.8-v8)
-- [ ] BFCache lifecycle events work (PAGE*LIFECYCLE_BFCACHE*\*)
-- [ ] currentTabId barrier works (2s exponential backoff)
+- [ ] DestroyHandler event order works (emit before delete) (v1.6.3.8-v9)
+- [ ] Handler readiness works (`startRendering()` from init) (v1.6.3.8-v9)
+- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
+- [ ] Self-write detection works (50ms window)
+- [ ] Explicit tab ID barrier works
+- [ ] BFCache session tabs work (document.wasDiscarded)
 - [ ] Circuit breaker probing recovers early
 - [ ] Strict tab isolation rejects null originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
@@ -96,5 +96,5 @@ quota monitoring, MessageBatcher queue limits, circuit breaker.
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.8-v8 self-write
-detection, explicit tab ID barrier, BFCache session tabs, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.8-v9 DestroyHandler
+event order, handler readiness, and proper per-tab scoping.**

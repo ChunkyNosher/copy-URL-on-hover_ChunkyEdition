@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.8-v8.
+  documentation. Current version: v1.6.3.8-v9.
 tools: ['*']
 ---
 
@@ -69,28 +69,29 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.8-v8)
+## Current Extension State (v1.6.3.8-v9)
 
-### v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes
+### v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- **Storage event ordering** - 300ms tolerance for Firefox latency
-- **DestroyHandler forceEmpty** - Properly allows empty state writes
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
-- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
+- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
+- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
+- **Message queue conflict** - `_checkMessageConflict()` deduplication
+- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
+- **Comprehensive INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE
+- **Resource limits** - Timestamp map max 1000, message queue max 100
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+
+### v1.6.3.8-v8 Features (Retained)
+
+- Self-write detection (50ms), transaction timeout 1000ms, storage event ordering
+- Port message queue, explicit tab ID barrier, extended dedup 10s, BFCache
 
 ### v1.6.3.8-v7 Features (Retained)
 
 - Per-port sequence ID tracking, circuit breaker escalation, correlationId tracing
 - Adaptive quota monitoring, storage aggregation, content script unload
-
-### v1.6.3.8-v6 Features (Retained)
-
-- BroadcastChannelManager.js DELETED, storage quota monitoring
-- MessageBatcher queue limits (100), port reconnection backoff, checksum validation
 
 ### Architecture
 
@@ -98,25 +99,27 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.8-v8)
+### Key Functions (v1.6.3.8-v9)
 
-| Function                   | Location        | Purpose                    |
-| -------------------------- | --------------- | -------------------------- |
-| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging        |
-| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush    |
-| `waitForInitialization()`  | QuickTabHandler | 10s init barrier           |
-| `scheduleRender(source)`   | Manager         | Unified render entry point |
+| Function                   | Location        | Purpose                        |
+| -------------------------- | --------------- | ------------------------------ |
+| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging            |
+| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush        |
+| `waitForInitialization()`  | QuickTabHandler | 10s init barrier               |
+| `scheduleRender(source)`   | Manager         | Unified render entry point     |
+| `cleanupStateListeners()`  | UICoordinator   | Event listener cleanup         |
+| `_checkMessageConflict()`  | Manager         | Message deduplication          |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.8-v8
-- [ ] **v1.6.3.8-v8:** Self-write detection documented
-- [ ] **v1.6.3.8-v8:** Transaction timeout 1000ms documented
-- [ ] **v1.6.3.8-v8:** Port message queue documented
-- [ ] **v1.6.3.8-v8:** Extended dedup 10s documented
+- [ ] Version numbers match 1.6.3.8-v9
+- [ ] **v1.6.3.8-v9:** DestroyHandler event order documented
+- [ ] **v1.6.3.8-v9:** UICoordinator `_isInitializing` documented
+- [ ] **v1.6.3.8-v9:** Message conflict detection documented
+- [ ] **v1.6.3.8-v9:** Init sequence fix documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -124,13 +127,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                               |
-| ------------------------ | --------------------------------- |
-| v1.6.3.8-v7 or earlier   | Update to 1.6.3.8-v8              |
-| "Pin to Page"            | Use "Solo/Mute"                   |
-| Direct storage writes    | Use Single Writer Authority       |
-| BroadcastChannel refs    | REMOVE - BC DELETED in v6         |
-| Missing self-write       | Document self-write detection     |
+| Error                    | Fix                                 |
+| ------------------------ | ----------------------------------- |
+| v1.6.3.8-v8 or earlier   | Update to 1.6.3.8-v9                |
+| "Pin to Page"            | Use "Solo/Mute"                     |
+| Direct storage writes    | Use Single Writer Authority         |
+| BroadcastChannel refs    | REMOVE - BC DELETED in v6           |
+| Missing DestroyHandler   | Document event order fix            |
 
 ---
 

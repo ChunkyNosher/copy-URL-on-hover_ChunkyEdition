@@ -8,6 +8,10 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
+ * v1.6.3.8-v9 - FIX Issue #20: Restructure init sequence - signalReady() BEFORE hydration
+ *               This ensures queued messages are replayed BEFORE tabs created from storage
+ * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection in message replay to prevent duplicates
+ *               Queued messages that reference existing tabs are skipped (hydration has newer state)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -33,22 +37,33 @@ import { CONSTANTS } from '../../core/config.js';
 import { STATE_KEY } from '../../utils/storage-utils.js';
 
 // v1.6.3.7-v12 - Issue #12: currentTabId barrier constants (code review fix)
-const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait
+// v1.6.3.8-v9 - FIX Section 1.3: Increased timeout from 2s to 5s for slow devices
+const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 5000; // 5 second max wait
 const INITIAL_POLL_INTERVAL_MS = 50;
 const MAX_POLL_INTERVAL_MS = 200;
 const POLL_INTERVAL_MULTIPLIER = 1.5; // Exponential backoff factor
 
+// v1.6.3.8-v9 - FIX Section 1.3: Delayed retry interval for hydration fallback
+const HYDRATION_RETRY_DELAY_MS = 3000; // 3 second delay before retry
+
 // v1.6.3.8-v3 - Issue #6: Debug flag for message queueing (respects DEBUG_MESSAGING pattern)
 const DEBUG_MESSAGING = true;
+
+// v1.6.3.8-v9 - FIX Section 5.3: Maximum message queue size to prevent unbounded growth
+const MAX_MESSAGE_QUEUE_SIZE = 100;
 
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with logging
  * v1.6.3.8-v3 - FIX Issue #6: Add message queue for init race condition prevention
+ * v1.6.3.8-v9 - FIX Section 5.3: Add message queue size limit (100 messages)
  */
 class QuickTabsManager {
   constructor(options = {}) {
+    // v1.6.3.8-v9 - FIX Issue #21: Track constructor start time for initialization diagnostics
+    const constructorStartTime = Date.now();
+
     // Backward compatibility fields (MUST KEEP - other code depends on these)
     this.tabs = new Map(); // id -> QuickTabWindow instance (used by panel.js, etc.)
     this.currentZIndex = { value: CONSTANTS.QUICK_TAB_BASE_Z_INDEX }; // Changed to ref object
@@ -92,12 +107,27 @@ class QuickTabsManager {
 
     // Track all generated IDs to prevent collisions within this session
     this.generatedIds = new Set();
+
+    // v1.6.3.8-v9 - FIX Issue #21: Track initialization timestamps for diagnostics
+    this._constructorTimestamp = constructorStartTime;
+    this._initStartTimestamp = null;
+    this._initCompleteTimestamp = null;
+    this._handlersReadyTimestamp = null;
+    this._listenersRegisteredTimestamp = null;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log constructor completion
+    console.log('[QuickTabsManager] CONSTRUCTOR_COMPLETE:', {
+      timestamp: constructorStartTime,
+      isReady: this._isReady,
+      queueLength: this._messageQueue.length
+    });
   }
 
   /**
    * Initialize the Quick Tabs manager
    * v1.6.3 - Simplified (no storage/sync components)
    * v1.6.3.8-v3 - Issue #6: Signal READY and replay queued messages after init
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced initialization logging with timestamps
    *
    * @param {EventEmitter} eventBus - External event bus from content.js
    * @param {Object} Events - Event constants
@@ -106,7 +136,10 @@ class QuickTabsManager {
    */
   async init(eventBus, Events, options = {}) {
     if (this.initialized) {
-      console.log('[QuickTabsManager] Already initialized, skipping');
+      console.log('[QuickTabsManager] INIT_SKIPPED: Already initialized:', {
+        timestamp: Date.now(),
+        initCompleteTimestamp: this._initCompleteTimestamp
+      });
       return;
     }
 
@@ -121,7 +154,17 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] Using pre-fetched currentTabId:', this.currentTabId);
     }
 
-    console.log('[QuickTabsManager] Initializing facade...');
+    const initStartTime = Date.now();
+    this._initStartTimestamp = initStartTime;
+
+    // v1.6.3.8-v9 - FIX Issue #21: Log initialization start with barrier status
+    console.log('[QuickTabsManager] INIT_START:', {
+      timestamp: initStartTime,
+      timeSinceConstructor: initStartTime - this._constructorTimestamp,
+      isReady: this._isReady,
+      queueLength: this._messageQueue.length,
+      currentTabId: this.currentTabId
+    });
 
     try {
       await this._initStep1_Context(options);
@@ -129,16 +172,44 @@ class QuickTabsManager {
       await this._initStep3_Handlers(); // v1.6.3.2 - Made async for CreateHandler settings
       this._initStep4_Coordinators();
       await this._initStep5_Setup();
+
+      // v1.6.3.8-v9 - FIX Issue #20: Signal READY and replay queued messages BEFORE hydration
+      // Previous order: Hydration → signalReady() (queued events replayed AFTER tabs created)
+      // New order: signalReady() → Hydration (queued events applied BEFORE tabs created)
+      // This ensures storage events are processed before local memory state is restored
+      console.log('[QuickTabsManager] INIT_STEP_5.5: Signaling ready and replaying queued messages:', {
+        timestamp: Date.now(),
+        isReady: this._isReady,
+        queuedMessages: this._messageQueue.length,
+        prerequisite: 'Steps 1-5 complete',
+        purpose: 'Enable message processing before hydration'
+      });
+      this.signalReady();
+      console.log('[QuickTabsManager] INIT_STEP_5.5_COMPLETE: Queued messages replayed:', {
+        timestamp: Date.now(),
+        isReady: this._isReady
+      });
+
       await this._initStep6_Hydrate(); // v1.6.3.4 - FIX Issue #1: Hydrate state from storage
       this._initStep7_Expose();
 
       this.initialized = true;
+      this._initCompleteTimestamp = Date.now();
 
-      // v1.6.3.8-v3 - Issue #6: Signal READY and replay any queued messages
-      // This MUST be called after initialized=true and all handlers are registered
-      this.signalReady();
-
-      console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
+      // v1.6.3.8-v9 - FIX Issue #21: Log initialization completion with full timing
+      console.log('[QuickTabsManager] INIT_COMPLETE:', {
+        status: 'passed',
+        durationMs: this._initCompleteTimestamp - initStartTime,
+        timestamp: this._initCompleteTimestamp,
+        initSequence: {
+          constructorTimestamp: this._constructorTimestamp,
+          initStartTimestamp: this._initStartTimestamp,
+          handlersReadyTimestamp: this._handlersReadyTimestamp,
+          initCompleteTimestamp: this._initCompleteTimestamp
+        },
+        tabsCount: this.tabs.size,
+        isReady: this._isReady
+      });
     } catch (err) {
       this._logInitializationError(err);
       throw err;
@@ -286,6 +357,7 @@ class QuickTabsManager {
   /**
    * Check currentTabId barrier before hydration
    * v1.6.3.7-v12 - Issue #12: Ensure currentTabId is set before hydration to prevent filtering all tabs
+   * v1.6.3.8-v9 - FIX Section 1.3: Increased timeout to 5s, add fallback retry mechanism
    * @private
    * @returns {Promise<{passed: boolean, reason: string}>}
    */
@@ -303,6 +375,7 @@ class QuickTabsManager {
 
     // v1.6.3.7-v12 - Issue #12: Wait for currentTabId to be set with timeout
     // v1.6.3.7-v12 - FIX Code Review: Use exponential backoff for polling
+    // v1.6.3.8-v9 - FIX Section 1.3: Increased timeout to 5 seconds for slow devices
     console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Waiting for currentTabId...', {
       timeout: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
       pollingStrategy: 'exponential-backoff',
@@ -329,19 +402,60 @@ class QuickTabsManager {
     }
 
     // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
-    // Don't proceed with hydration to avoid filtering ALL tabs (because null !== any originTabId)
+    // v1.6.3.8-v9 - FIX Section 1.3: Schedule delayed retry instead of just failing
     console.error('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: FAILED - timeout reached', {
       currentTabId: this.currentTabId,
       timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
       elapsedMs: Date.now() - barrierStartTime,
-      consequence: 'Hydration will be skipped to prevent filtering all tabs',
+      consequence: 'Hydration will be skipped, scheduling delayed retry',
+      retryDelayMs: HYDRATION_RETRY_DELAY_MS,
       timestamp: Date.now()
     });
 
+    // v1.6.3.8-v9 - FIX Section 1.3: Schedule a delayed retry of hydration
+    // This gives background script more time to respond with currentTabId
+    this._scheduleDelayedHydrationRetry();
+
     return {
       passed: false,
-      reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait`
+      reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait (retry scheduled)`
     };
+  }
+
+  /**
+   * Schedule a delayed retry of hydration after barrier timeout
+   * v1.6.3.8-v9 - FIX Section 1.3: Fallback mechanism for slow devices
+   * @private
+   */
+  _scheduleDelayedHydrationRetry() {
+    console.log('[QuickTabsManager] HYDRATION_RETRY_SCHEDULED:', {
+      retryDelayMs: HYDRATION_RETRY_DELAY_MS,
+      timestamp: Date.now()
+    });
+
+    setTimeout(async () => {
+      // Check if currentTabId is now available
+      if (this.currentTabId !== null && this.currentTabId !== undefined) {
+        console.log('[QuickTabsManager] HYDRATION_RETRY_STARTED:', {
+          currentTabId: this.currentTabId,
+          timestamp: Date.now()
+        });
+
+        // Attempt hydration now that currentTabId is available
+        const hydrationResult = await this._hydrateStateFromStorage();
+        console.log('[QuickTabsManager] HYDRATION_RETRY_COMPLETE:', {
+          success: hydrationResult.success,
+          count: hydrationResult.count,
+          reason: hydrationResult.reason,
+          timestamp: Date.now()
+        });
+      } else {
+        console.warn('[QuickTabsManager] HYDRATION_RETRY_SKIPPED: currentTabId still null', {
+          currentTabId: this.currentTabId,
+          timestamp: Date.now()
+        });
+      }
+    }, HYDRATION_RETRY_DELAY_MS);
   }
 
   /**
@@ -1768,6 +1882,7 @@ class QuickTabsManager {
   /**
    * Queue a message for later processing
    * v1.6.3.8-v3 - Issue #6: Buffer messages until handler signals READY
+   * v1.6.3.8-v9 - FIX Section 5.3: Add maximum queue size limit (100 messages)
    * Messages received during initialization are queued and replayed later
    *
    * @param {Object} message - Message to queue
@@ -1780,6 +1895,19 @@ class QuickTabsManager {
     // If already ready, process immediately
     if (this._isReady) {
       return false;
+    }
+
+    // v1.6.3.8-v9 - FIX Section 5.3: Check queue size limit before adding
+    if (this._messageQueue.length >= MAX_MESSAGE_QUEUE_SIZE) {
+      // Drop oldest message to make room for new one
+      const droppedMessage = this._messageQueue.shift();
+      console.warn('[QuickTabsManager] MESSAGE_QUEUE_OVERFLOW: Dropping oldest message', {
+        droppedType: droppedMessage?.type,
+        droppedAt: droppedMessage?._queuedAt,
+        queueSize: MAX_MESSAGE_QUEUE_SIZE,
+        newMessageType: message.type,
+        timestamp: Date.now()
+      });
     }
 
     // Add timestamp and queue position for debugging
@@ -1798,6 +1926,7 @@ class QuickTabsManager {
         source: message.source || 'unknown',
         queuePosition: queuedMessage._queuePosition,
         queueLength: this._messageQueue.length,
+        maxQueueSize: MAX_MESSAGE_QUEUE_SIZE,
         timestamp: Date.now()
       });
     }
@@ -1808,34 +1937,62 @@ class QuickTabsManager {
   /**
    * Signal that the handler is ready to process messages
    * v1.6.3.8-v3 - Issue #6: Replays all queued messages in order
-   * Call this after initialization is complete and handlers are registered
+   * v1.6.3.8-v9 - FIX Issue #20: Now called BEFORE hydration to ensure queued storage
+   *               events are processed BEFORE tabs are created from local memory
+   * v1.6.3.8-v9 - FIX Issue #21: Enhanced logging with timestamps for init diagnostics
+   * Call this after Step 5 (setup) but BEFORE Step 6 (hydration)
    *
    * @param {Function} [messageHandler] - Optional handler function to process messages
    *                                       If not provided, emits 'message:received' events
    */
   signalReady(messageHandler = null) {
     if (this._isReady) {
-      console.warn('[QuickTabsManager] signalReady() called but already ready');
+      console.warn('[QuickTabsManager] signalReady() called but already ready:', {
+        timestamp: Date.now(),
+        previousReadyTimestamp: this._handlersReadyTimestamp
+      });
       return;
     }
 
+    const signalReadyStartTime = Date.now();
     this._isReady = true;
+    this._handlersReadyTimestamp = signalReadyStartTime;
     const queuedCount = this._messageQueue.length;
 
-    console.log('[QuickTabsManager] HANDLER_READY:', {
+    // v1.6.3.8-v9 - FIX Issue #21: Enhanced logging for init sequence diagnostics
+    console.log('[QuickTabsManager] HANDLERS_READY_BARRIER:', {
+      status: 'passed',
+      prerequisite: 'init() steps 1-5 complete',
+      result: '_isReady set to true',
+      timestamp: signalReadyStartTime,
       queuedMessageCount: queuedCount,
-      timestamp: Date.now()
+      timeSinceInit: this._initStartTimestamp ? signalReadyStartTime - this._initStartTimestamp : null,
+      note: 'Message replay starting (before hydration per Issue #20 fix)'
     });
 
     // Replay queued messages
     if (queuedCount > 0) {
+      console.log('[QuickTabsManager] MESSAGE_REPLAY_START:', {
+        messageCount: queuedCount,
+        timestamp: Date.now(),
+        note: 'Replaying queued messages BEFORE hydration'
+      });
       this._replayQueuedMessages(messageHandler);
+      console.log('[QuickTabsManager] MESSAGE_REPLAY_END:', {
+        durationMs: Date.now() - signalReadyStartTime,
+        timestamp: Date.now()
+      });
+    } else {
+      console.log('[QuickTabsManager] MESSAGE_QUEUE_EMPTY: No queued messages to replay:', {
+        timestamp: Date.now()
+      });
     }
   }
 
   /**
    * Replay queued messages after ready signal
    * v1.6.3.8-v3 - Issue #6: Process queued messages in order
+   * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection to skip messages for existing tabs
    * @private
    * @param {Function|null} messageHandler - Handler function or null to emit events
    */
@@ -1844,25 +2001,55 @@ class QuickTabsManager {
     this._messageQueue = []; // Clear queue before replay
 
     const replayStartTime = Date.now();
+    let replayedCount = 0;
+    let skippedDuplicates = 0;
+    let skippedConflicts = 0;
 
     for (const message of messagesToReplay) {
-      this._replaySingleMessage(message, messageHandler);
+      const replayResult = this._replaySingleMessage(message, messageHandler);
+      if (replayResult.replayed) {
+        replayedCount++;
+      } else if (replayResult.reason === 'duplicate') {
+        skippedDuplicates++;
+      } else if (replayResult.reason === 'conflict') {
+        skippedConflicts++;
+      }
     }
 
     console.log('[QuickTabsManager] INIT_MESSAGE_REPLAY_COMPLETE:', {
-      replayedCount: messagesToReplay.length,
+      totalQueued: messagesToReplay.length,
+      replayedCount,
+      skippedDuplicates,
+      skippedConflicts,
       totalReplayTimeMs: Date.now() - replayStartTime,
       timestamp: Date.now()
     });
   }
 
   /**
-   * Replay a single queued message
+   * Replay a single queued message with conflict detection
    * v1.6.3.8-v3 - Issue #6: Extracted to reduce _replayQueuedMessages max-depth
+   * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection for existing tabs
    * @private
+   * @returns {{replayed: boolean, reason: string}} Result of replay attempt
    */
   _replaySingleMessage(message, messageHandler) {
     const replayDelay = Date.now() - message._queuedAt;
+
+    // v1.6.3.8-v9 - FIX Issue #19: Check for conflicts with existing tabs
+    const conflictCheck = this._checkMessageConflict(message);
+    if (conflictCheck.hasConflict) {
+      if (DEBUG_MESSAGING) {
+        console.log('[QuickTabsManager] INIT_MESSAGE_SKIPPED (conflict):', {
+          type: message.type,
+          tabId: conflictCheck.tabId,
+          reason: conflictCheck.reason,
+          queuedAt: message._queuedAt,
+          timestamp: Date.now()
+        });
+      }
+      return { replayed: false, reason: conflictCheck.reason };
+    }
 
     // v1.6.3.8-v3 - Issue #6: Log message replay
     if (DEBUG_MESSAGING) {
@@ -1877,6 +2064,105 @@ class QuickTabsManager {
     }
 
     this._processMessageWithHandler(message, messageHandler);
+    return { replayed: true, reason: 'success' };
+  }
+
+  /**
+   * Check if a queued message conflicts with existing state
+   * v1.6.3.8-v9 - FIX Issue #19: Conflict detection for message replay
+   * @private
+   * @param {Object} message - Queued message to check
+   * @returns {{hasConflict: boolean, tabId: string|null, reason: string}}
+   */
+  _checkMessageConflict(message) {
+    // Extract tab ID from message based on message type
+    const tabId = this._extractTabIdFromMessage(message);
+    if (!tabId) {
+      // No tab ID in message, can't detect conflicts - allow replay
+      return { hasConflict: false, tabId: null, reason: 'no-tab-id' };
+    }
+
+    // v1.6.3.8-v9 - FIX Issue #19: Check if tab already exists in local state
+    // If tab exists in this.tabs Map, hydration created it with newer state
+    const existsInTabs = this.tabs.has(tabId);
+    if (existsInTabs) {
+      // v1.6.3.8-v9 - FIX Issue #19: Tab exists - compare message timestamp with hydration
+      // Queued messages are from BEFORE signalReady(), hydration happens AFTER signalReady()
+      // Therefore, hydration state is always newer than queued messages - skip the message
+      return { 
+        hasConflict: true, 
+        tabId, 
+        reason: 'duplicate',
+        note: 'Tab already exists in tabs Map - hydration has newer state'
+      };
+    }
+
+    // v1.6.3.8-v9 - FIX Issue #19: Check for stale destructive operations
+    return this._checkStaleDestructiveMessage(message, tabId, existsInTabs);
+  }
+
+  /**
+   * Check if a message is a stale destructive operation
+   * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce _checkMessageConflict complexity
+   * @private
+   * @param {Object} message - Message to check
+   * @param {string} tabId - Extracted tab ID
+   * @param {boolean} existsInTabs - Whether tab exists in tabs Map
+   * @returns {{hasConflict: boolean, tabId: string, reason: string}}
+   */
+  _checkStaleDestructiveMessage(message, tabId, existsInTabs) {
+    // v1.6.3.8-v9 - FIX Issue #19: Check for contradictory operations
+    // If message is trying to update/delete a tab that doesn't exist, it's stale
+    const messageType = message.type || message.action || '';
+    const isDestructiveMessage = this._isDestructiveMessageType(messageType);
+    
+    if (isDestructiveMessage && !existsInTabs) {
+      // Trying to delete a tab that doesn't exist - message is stale
+      return { 
+        hasConflict: true, 
+        tabId, 
+        reason: 'conflict',
+        note: 'Delete message for non-existent tab - message is stale'
+      };
+    }
+
+    return { hasConflict: false, tabId, reason: 'no-conflict' };
+  }
+
+  /**
+   * Check if a message type indicates a destructive operation
+   * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce complexity
+   * v1.6.3.8-v9 - Code Review Fix: Use RegExp for better performance
+   * @private
+   * @param {string} messageType - Message type to check
+   * @returns {boolean} True if destructive (delete/remove/destroy/close)
+   */
+  _isDestructiveMessageType(messageType) {
+    // v1.6.3.8-v9 - Code Review Fix: Use optional chaining with early return
+    if (!messageType?.includes) {
+      return false;
+    }
+    // v1.6.3.8-v9 - Code Review Fix: Use RegExp for better performance
+    return /delete|remove|destroy|close/i.test(messageType);
+  }
+
+  /**
+   * Extract tab ID from a message object
+   * v1.6.3.8-v9 - FIX Issue #19: Helper for conflict detection
+   * @private
+   * @param {Object} message - Message to extract tab ID from
+   * @returns {string|null} Tab ID or null if not found
+   */
+  _extractTabIdFromMessage(message) {
+    // Try various common locations for tab ID in messages
+    if (message.data?.id) return message.data.id;
+    if (message.data?.tabId) return message.data.tabId;
+    if (message.data?.quickTabId) return message.data.quickTabId;
+    if (message.data?.quickTab?.id) return message.data.quickTab.id;
+    if (message.id) return message.id;
+    if (message.tabId) return message.tabId;
+    if (message.quickTabId) return message.quickTabId;
+    return null;
   }
 
   /**

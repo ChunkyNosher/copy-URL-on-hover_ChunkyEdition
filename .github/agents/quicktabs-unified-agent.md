@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.8-v8), Port + storage.local architecture,
+  sync with Single Writer Authority (v1.6.3.8-v9), Port + storage.local architecture,
   ACK-based messaging, WriteBuffer batching, BFCache lifecycle, storage quota
   monitoring, checksum validation
 tools: ['*']
@@ -37,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,22 +50,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Cross-Tab Sync** - Port + storage.onChanged (NO BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
+**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- **Storage event ordering** - 300ms tolerance for Firefox latency
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
+- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
+- **Message queue conflict** - `_checkMessageConflict()` deduplication
+- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
+timeout 1000ms, storage event ordering (300ms), port message queue, explicit
+tab ID barrier, extended dedup 10s.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
 escalation, correlationId tracing, adaptive quota monitoring.
 
-**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
-quota monitoring, MessageBatcher queue limits, checksum validation.
-
-**Key Functions (v1.6.3.8-v8):**
+**Key Functions (v1.6.3.8-v9):**
 
 | Function                   | Location        | Purpose                    |
 | -------------------------- | --------------- | -------------------------- |
@@ -89,19 +90,20 @@ quota monitoring, MessageBatcher queue limits, checksum validation.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v8)
-- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
-- [ ] Transaction timeout 1000ms (v1.6.3.8-v8)
-- [ ] Port message queue works (v1.6.3.8-v8)
-- [ ] Storage quota monitoring works (50%/75%/90%)
-- [ ] MessageBatcher queue limits work (100 max)
-- [ ] ACK-based messaging works (sendRequestWithTimeout)
-- [ ] SIDEBAR_READY handshake works
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v9)
+- [ ] DestroyHandler event order works (emit before delete) (v1.6.3.8-v9)
+- [ ] UICoordinator `_isInitializing` works (v1.6.3.8-v9)
+- [ ] DestroyHandler retry logic works (v1.6.3.8-v9)
+- [ ] Message conflict detection works (`_checkMessageConflict`) (v1.6.3.8-v9)
+- [ ] Init sequence works (`signalReady()` before hydration) (v1.6.3.8-v9)
+- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
+- [ ] Self-write detection works (50ms window)
+- [ ] Transaction timeout 1000ms
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8-v8 Port + storage.local
-architecture, self-write detection, transaction timeout, port message queue.**
+**Your strength: Complete Quick Tab system with v1.6.3.8-v9 Port + storage.local
+architecture, DestroyHandler event order, `_isInitializing` flag, message conflict detection.**
