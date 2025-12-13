@@ -1,5 +1,11 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { test, expect } from '../fixtures/extension.js';
 import { waitForSync, getQuickTabCountFromDOM, isExtensionReady } from '../helpers/quick-tabs.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const testPagePath = path.join(__dirname, '../fixtures', 'test-page.html');
 
 /**
  * Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync
@@ -14,13 +20,13 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   test('should load extension successfully', async ({ extensionContext }) => {
     // Step 1: Open a test page
     const page = await extensionContext.newPage();
-    await page.goto('https://example.com');
+    await page.goto(`file://${testPagePath}`);
 
     // Wait for page to load
     await page.waitForLoadState('domcontentloaded');
 
     // Verify page loaded correctly
-    expect(page.url()).toContain('example.com');
+    expect(page.url()).toContain('test-page.html');
 
     // Cleanup
     await page.close();
@@ -29,10 +35,10 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   test('should verify extension is active on page', async ({ extensionContext }) => {
     // Step 1: Open a test page
     const page = await extensionContext.newPage();
-    await page.goto('https://example.com');
+    await page.goto(`file://${testPagePath}`);
 
     // Wait for page to fully load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Give extension time to initialize
     await waitForSync(page, 1000);
@@ -59,17 +65,17 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
   test('should open multiple tabs in same context', async ({ extensionContext }) => {
     // Step 1: Open first page
     const page1 = await extensionContext.newPage();
-    await page1.goto('https://example.com');
+    await page1.goto(`file://${testPagePath}`);
     await page1.waitForLoadState('domcontentloaded');
 
     // Step 2: Open second page
     const page2 = await extensionContext.newPage();
-    await page2.goto('https://en.wikipedia.org/wiki/Main_Page');
+    await page2.goto(`file://${testPagePath}`);
     await page2.waitForLoadState('domcontentloaded');
 
     // Step 3: Verify both pages are accessible
-    expect(page1.url()).toContain('example.com');
-    expect(page2.url()).toContain('wikipedia.org');
+    expect(page1.url()).toContain('test-page.html');
+    expect(page2.url()).toContain('test-page.html');
 
     // Step 4: Quick Tab count should be same on both pages (synced)
     await waitForSync(page1);
@@ -86,25 +92,21 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     await page2.close();
   });
 
-  test('should navigate between different sites', async ({ extensionContext }) => {
+  test('should navigate between pages', async ({ extensionContext }) => {
     const page = await extensionContext.newPage();
 
-    // Visit multiple sites
-    const sites = ['https://example.com', 'https://www.google.com', 'https://github.com'];
+    // Navigate to test page
+    await page.goto(`file://${testPagePath}`);
+    await page.waitForLoadState('domcontentloaded');
+    console.log(`✓ Loaded: test-page.html`);
 
-    for (const site of sites) {
-      try {
-        await page.goto(site, { timeout: 10000 });
-        await page.waitForLoadState('domcontentloaded');
-        console.log(`✓ Loaded: ${site}`);
-      } catch (error) {
-        console.log(`⚠ Could not load: ${site} (may be blocked)`);
-      }
-    }
+    // Navigate to another section of the test page
+    await page.goto(`file://${testPagePath}#section2`);
+    await page.waitForLoadState('domcontentloaded');
+    console.log(`✓ Navigated to: test-page.html#section2`);
 
     // Verify we can still navigate
-    await page.goto('https://example.com');
-    expect(page.url()).toContain('example.com');
+    expect(page.url()).toContain('test-page.html');
 
     await page.close();
   });

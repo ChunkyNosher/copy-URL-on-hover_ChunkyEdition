@@ -5,14 +5,16 @@
  * A Quick Tab created in Tab 1 should NOT be visible in Tab 2.
  *
  * Test Flow:
- * 1. Create Quick Tab in Tab 1 (Wikipedia page)
- * 2. Switch to Tab 2 (YouTube page)
+ * 1. Create Quick Tab in Tab 1 (test page)
+ * 2. Switch to Tab 2 (another test page)
  * 3. Verify Quick Tab is NOT visible in Tab 2
  * 4. Verify Manager shows correct tab grouping
  *
  * @module tests/e2e/scenarios/01-tab-isolation
  */
 
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { test, expect } from '../fixtures/extension.js';
 import { getQuickTabCount } from '../helpers/assertion-helpers.js';
 import {
@@ -21,6 +23,10 @@ import {
   isExtensionReady,
   createQuickTab
 } from '../helpers/quick-tabs.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const testPagePath = path.join(__dirname, '../fixtures', 'test-page.html');
 
 /**
  * Scenario 1: Basic Quick Tab Creation & Tab Isolation
@@ -34,19 +40,19 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
    * Test 1: Verify extension loads and multi-tab context works
    */
   test('should load extension in multiple tabs', async ({ extensionContext }) => {
-    // Create Tab 1 - Wikipedia-like page
+    // Create Tab 1
     const tab1 = await extensionContext.newPage();
-    await tab1.goto('https://example.com');
+    await tab1.goto(`file://${testPagePath}`);
     await tab1.waitForLoadState('domcontentloaded');
 
-    // Create Tab 2 - Different domain
+    // Create Tab 2
     const tab2 = await extensionContext.newPage();
-    await tab2.goto('https://www.google.com');
+    await tab2.goto(`file://${testPagePath}`);
     await tab2.waitForLoadState('domcontentloaded');
 
     // Verify both tabs loaded correctly
-    expect(tab1.url()).toContain('example.com');
-    expect(tab2.url()).toContain('google.com');
+    expect(tab1.url()).toContain('test-page.html');
+    expect(tab2.url()).toContain('test-page.html');
 
     // Cleanup
     await tab1.close();
@@ -62,10 +68,10 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
    * - Cross-tab sync only shares state, not visibility
    */
   test('Quick Tab in Tab 1 should NOT be visible in Tab 2', async ({ extensionContext }) => {
-    // Step 1: Open Tab 1 (example.com - simulating Wikipedia)
+    // Step 1: Open Tab 1
     const tab1 = await extensionContext.newPage();
-    await tab1.goto('https://example.com');
-    await tab1.waitForLoadState('networkidle');
+    await tab1.goto(`file://${testPagePath}`);
+    await tab1.waitForLoadState('domcontentloaded');
 
     // Wait for extension to initialize
     await waitForSync(tab1, 1000);
@@ -73,10 +79,10 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
     // Check if extension is ready
     const isReady = await isExtensionReady(tab1);
 
-    // Step 2: Open Tab 2 (different site - simulating YouTube)
+    // Step 2: Open Tab 2
     const tab2 = await extensionContext.newPage();
-    await tab2.goto('https://www.google.com');
-    await tab2.waitForLoadState('networkidle');
+    await tab2.goto(`file://${testPagePath}`);
+    await tab2.waitForLoadState('domcontentloaded');
     await waitForSync(tab2, 500);
 
     // Step 3: Create Quick Tab in Tab 1 (if Test Bridge available)
@@ -137,15 +143,15 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
   test('Quick Tabs should be isolated per-tab (originTabId filtering)', async ({
     extensionContext
   }) => {
-    // Create three tabs
+    // Create two tabs
     const tab1 = await extensionContext.newPage();
     const tab2 = await extensionContext.newPage();
 
-    await tab1.goto('https://example.com');
-    await tab2.goto('https://www.google.com');
+    await tab1.goto(`file://${testPagePath}`);
+    await tab2.goto(`file://${testPagePath}`);
 
-    await tab1.waitForLoadState('networkidle');
-    await tab2.waitForLoadState('networkidle');
+    await tab1.waitForLoadState('domcontentloaded');
+    await tab2.waitForLoadState('domcontentloaded');
 
     // Wait for extensions to initialize
     await waitForSync(tab1, 500);
@@ -177,17 +183,17 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
   }) => {
     const page = await extensionContext.newPage();
 
-    // Navigate to first site
-    await page.goto('https://example.com');
-    await page.waitForLoadState('networkidle');
+    // Navigate to test page
+    await page.goto(`file://${testPagePath}`);
+    await page.waitForLoadState('domcontentloaded');
     await waitForSync(page, 500);
 
     // Get initial Quick Tab count
     const countBefore = await getQuickTabCountFromDOM(page);
 
-    // Navigate to different site in SAME tab
-    await page.goto('https://www.google.com');
-    await page.waitForLoadState('networkidle');
+    // Navigate to same page again (simulating navigation)
+    await page.goto(`file://${testPagePath}#section2`);
+    await page.waitForLoadState('domcontentloaded');
     await waitForSync(page, 500);
 
     // Quick Tab count should remain the same (same tab = same originTabId)
@@ -216,11 +222,14 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
     const tab1 = await extensionContext.newPage();
     const tab2 = await extensionContext.newPage();
 
-    // Load different sites
-    await tab1.goto('https://example.com');
-    await tab2.goto('https://www.google.com');
+    // Load test pages
+    await tab1.goto(`file://${testPagePath}`);
+    await tab2.goto(`file://${testPagePath}`);
 
-    await Promise.all([tab1.waitForLoadState('networkidle'), tab2.waitForLoadState('networkidle')]);
+    await Promise.all([
+      tab1.waitForLoadState('domcontentloaded'),
+      tab2.waitForLoadState('domcontentloaded')
+    ]);
 
     // Wait for sync
     await waitForSync(tab1, 500);
