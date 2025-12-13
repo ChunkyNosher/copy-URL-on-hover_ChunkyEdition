@@ -795,6 +795,163 @@ document.addEventListener('visibilitychange', () => {
 // Issue #4 (arch): Handle BFCache "Zombie" Port Connections
 // When pages enter BFCache, ports remain open but cannot receive messages.
 // Explicitly disconnect port when entering BFCache and re-sync when restored.
+//
+// v1.6.3.8-v7 - Issue #1: Enhanced BFCache restoration with checksum validation
+// v1.6.3.8-v7 - Issue #2: Add checksum validation during hydration
+// v1.6.3.8-v7 - Issue #3: SessionStorage vs LocalStorage conflict resolution
+// v1.6.3.8-v7 - Issue #4: Iframe beforeunload cleanup (simplified with all_frames=false)
+
+/**
+ * Compute djb2-like checksum for state validation
+ * v1.6.3.8-v7 - Issue #2: Same algorithm as background.js _computeStorageChecksum
+ * IMPORTANT: Must match background.js exactly to ensure checksums are comparable
+ * @param {Object} state - State object with tabs array
+ * @returns {string} Checksum string (e.g., 'chk-3-a1b2c3d4') or 'empty'
+ */
+function _computeStateChecksum(state) {
+  if (!state?.tabs || !Array.isArray(state.tabs) || state.tabs.length === 0) {
+    return 'empty';
+  }
+
+  // Build a deterministic string from tab IDs and their minimized states
+  // MUST match background.js: ${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}
+  const tabSignatures = state.tabs
+    .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
+    .sort()
+    .join('|');
+
+  // djb2-like hash: hash = hash * 33 + char
+  let hash = state.tabs.length;
+  for (let i = 0; i < tabSignatures.length; i++) {
+    hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
+  }
+
+  return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
+}
+
+/**
+ * Validate checksum during hydration
+ * v1.6.3.8-v7 - Issue #2: Detect corruption by comparing checksums
+ * @param {Object} state - State to validate
+ * @param {string} expectedChecksum - Expected checksum from metadata (if available)
+ * @returns {{valid: boolean, computed: string, reason: string}}
+ */
+function _validateHydrationChecksum(state, expectedChecksum = null) {
+  const computed = _computeStateChecksum(state);
+  
+  // If no expected checksum, assume valid but log for diagnostics
+  if (!expectedChecksum) {
+    console.log('[Content] CHECKSUM_VALIDATION: No expected checksum, computed:', computed);
+    return { valid: true, computed, reason: 'no-expected-checksum' };
+  }
+
+  if (computed === expectedChecksum) {
+    console.log('[Content] CHECKSUM_VALIDATION: Match', { computed, expected: expectedChecksum });
+    return { valid: true, computed, reason: 'match' };
+  }
+
+  console.error('[Content] CHECKSUM_VALIDATION_FAILED:', {
+    computed,
+    expected: expectedChecksum,
+    tabCount: state?.tabs?.length || 0
+  });
+  return { valid: false, computed, reason: 'mismatch' };
+}
+
+/**
+ * Compare SessionStorage vs LocalStorage revision and resolve conflict
+ * v1.6.3.8-v7 - Issue #3: Prefer storage.local as source of truth
+ * @param {Object} sessionState - State from SessionStorage (if available)
+ * @param {Object} localState - State from storage.local
+ * @returns {{source: string, state: Object, discarded: boolean, reason: string}}
+ */
+function _resolveStorageConflict(sessionState, localState) {
+  // If no SessionStorage state, use local
+  if (!sessionState) {
+    return { 
+      source: 'local', 
+      state: localState, 
+      discarded: false, 
+      reason: 'no-session-state' 
+    };
+  }
+
+  // If no local state, use session (shouldn't happen in normal flow)
+  if (!localState) {
+    console.warn('[Content] STORAGE_CONFLICT: No local state, using session');
+    return { 
+      source: 'session', 
+      state: sessionState, 
+      discarded: false, 
+      reason: 'no-local-state' 
+    };
+  }
+
+  const sessionRevision = sessionState.revision || 0;
+  const localRevision = localState.revision || 0;
+
+  // v1.6.3.8-v7 - Issue #3: Prefer storage.local as source of truth
+  // SessionStorage is stale if its revision is lower than local
+  if (sessionRevision < localRevision) {
+    console.log('[Content] STORAGE_CONFLICT_RESOLVED:', {
+      decision: 'discard-session-use-local',
+      sessionRevision,
+      localRevision,
+      sessionTabCount: sessionState.tabs?.length || 0,
+      localTabCount: localState.tabs?.length || 0,
+      reason: 'session-stale'
+    });
+    return { 
+      source: 'local', 
+      state: localState, 
+      discarded: true, 
+      reason: 'session-stale' 
+    };
+  }
+
+  // SessionStorage has same or higher revision - could be a race condition
+  // Still prefer local as the authoritative source
+  if (sessionRevision === localRevision) {
+    return { 
+      source: 'local', 
+      state: localState, 
+      discarded: false, 
+      reason: 'revision-equal-prefer-local' 
+    };
+  }
+
+  // Session has higher revision (unusual - might be from previous browser session)
+  console.warn('[Content] STORAGE_CONFLICT_UNUSUAL:', {
+    decision: 'prefer-local-despite-higher-session',
+    sessionRevision,
+    localRevision,
+    reason: 'local-is-source-of-truth'
+  });
+  return { 
+    source: 'local', 
+    state: localState, 
+    discarded: true, 
+    reason: 'prefer-local-authority' 
+  };
+}
+
+/**
+ * Try to get Quick Tab state from SessionStorage
+ * v1.6.3.8-v7 - Issue #3: Extracted to reduce nesting depth in _validateAndSyncStateAfterBFCache
+ * @private
+ * @returns {Object|null} Session state or null if unavailable
+ */
+function _tryGetSessionState() {
+  try {
+    const sessionKey = 'quicktabs_session_state';
+    const sessionData = sessionStorage.getItem(sessionKey);
+    if (!sessionData) return null;
+    return JSON.parse(sessionData);
+  } catch (_err) {
+    // SessionStorage access may fail
+    return null;
+  }
+}
 
 /**
  * Disconnect port safely during BFCache entry
@@ -839,32 +996,105 @@ function _handleBFCachePageHide(event) {
  * Handle page restored from BFCache
  * v1.6.3.8 - Issue #4 (arch): Request full state sync after BFCache restore
  * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_RESTORE log event name
+ * v1.6.3.8-v7 - Issue #1: Re-establish port with checksum validation
+ * v1.6.3.8-v7 - Issue #3: Validate SessionStorage vs LocalStorage
  * @param {PageTransitionEvent} event - The pageshow event
  */
 function _handleBFCachePageShow(event) {
   // event.persisted is true when page is restored from BFCache
-  if (event.persisted) {
-    // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
-    console.log('[Content] PAGE_LIFECYCLE_BFCACHE_RESTORE:', {
-      reason: 'pageshow with persisted=true',
-      tabId: cachedTabId,
-      hadPort: !!backgroundPort,
+  if (!event.persisted) return;
+
+  const correlationId = `bfcache-restore-${Date.now()}-${cachedTabId || 'unknown'}`;
+
+  // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
+  console.log('[Content] PAGE_LIFECYCLE_BFCACHE_RESTORE:', {
+    reason: 'pageshow with persisted=true',
+    tabId: cachedTabId,
+    hadPort: !!backgroundPort,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Re-establish port connection
+  if (cachedTabId !== null && !backgroundPort) {
+    console.log('[Content] Re-establishing port connection after BFCache restore', { correlationId });
+    connectContentToBackground(cachedTabId);
+  }
+
+  // v1.6.3.8-v7 - Issue #3: Validate and sync state after BFCache restore
+  // Prefer storage.local over SessionStorage for freshness
+  _validateAndSyncStateAfterBFCache(correlationId);
+}
+
+/**
+ * Validate and sync state after BFCache restoration
+ * v1.6.3.8-v7 - Issue #1, #2, #3: Comprehensive BFCache state recovery
+ * @param {string} correlationId - Correlation ID for tracing
+ * @private
+ */
+async function _validateAndSyncStateAfterBFCache(correlationId) {
+  console.log('[Content] BFCACHE_STATE_VALIDATION_START:', { correlationId, timestamp: Date.now() });
+
+  try {
+    // Read from storage.local (source of truth)
+    const localResult = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const localState = localResult?.[CONTENT_STATE_KEY];
+
+    if (!localState) {
+      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', { correlationId });
+      return;
+    }
+
+    // v1.6.3.8-v7 - Issue #2: Validate checksum
+    const checksumResult = _validateHydrationChecksum(localState, localState.checksum);
+    if (!checksumResult.valid) {
+      // Checksum mismatch - request fresh state from background
+      console.error('[Content] BFCACHE_CHECKSUM_MISMATCH: Requesting fresh state', {
+        correlationId,
+        computed: checksumResult.computed,
+        expected: localState.checksum
+      });
+      _requestStateRecovery('bfcache-checksum-mismatch');
+      return;
+    }
+
+    // v1.6.3.8-v7 - Issue #3: Compare with any cached session state
+    // Note: SessionStorage typically loses data on BFCache restoration in Firefox
+    // but we check anyway for completeness
+    const sessionState = _tryGetSessionState();
+
+    const conflictResult = _resolveStorageConflict(sessionState, localState);
+    
+    console.log('[Content] BFCACHE_STATE_VALIDATION_COMPLETE:', {
+      correlationId,
+      source: conflictResult.source,
+      tabCount: conflictResult.state?.tabs?.length || 0,
+      revision: conflictResult.state?.revision,
+      sessionDiscarded: conflictResult.discarded,
+      reason: conflictResult.reason,
+      checksum: checksumResult.computed,
       timestamp: Date.now()
     });
 
-    // Re-establish port connection
-    if (cachedTabId !== null && !backgroundPort) {
-      console.log('[Content] Re-establishing port connection after BFCache restore');
-      connectContentToBackground(cachedTabId);
-    }
+    // Update ordering state with the resolved state
+    _updateAppliedOrderingState(conflictResult.state);
 
-    // Trigger full state sync to get updates missed while in BFCache
+    // Notify QuickTabsManager with the validated state
+    _notifyManagerOfStorageUpdate(conflictResult.state, 'bfcache-restore');
+
+  } catch (err) {
+    console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', {
+      correlationId,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    // Fall back to requesting full sync
     _triggerFullStateSyncAfterBFCache();
   }
 }
 
 /**
- * Trigger full state sync after BFCache restoration
+ * Trigger full state sync after BFCache restoration (fallback)
  * v1.6.3.8 - Issue #4 (arch): Content script may have missed updates while in BFCache
  * @private
  */
@@ -903,7 +1133,31 @@ function _triggerFullStateSyncAfterBFCache() {
 window.addEventListener('pagehide', _handleBFCachePageHide);
 window.addEventListener('pageshow', _handleBFCachePageShow);
 
-console.log('[Content] v1.6.3.8 BFCache handlers registered');
+// v1.6.3.8-v7 - Issue #4: Iframe port lifecycle cleanup
+// Since all_frames=false (v1.6.3.8-v6), this only runs in main frame
+// Add beforeunload to signal background for port cleanup
+window.addEventListener('beforeunload', () => {
+  console.log('[Content] PAGE_LIFECYCLE_BEFOREUNLOAD:', {
+    tabId: cachedTabId,
+    hasPort: !!backgroundPort,
+    timestamp: Date.now()
+  });
+  
+  // Attempt to notify background of impending unload for port cleanup
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'CONTENT_UNLOADING',
+        tabId: cachedTabId,
+        timestamp: Date.now()
+      });
+    } catch (_err) {
+      // Port may already be disconnected
+    }
+  }
+});
+
+console.log('[Content] v1.6.3.8-v7 BFCache handlers registered (with checksum validation)');
 
 // ==================== END BFCACHE HANDLING ====================
 
@@ -1113,36 +1367,79 @@ function _handleStorageChange(changes, areaName) {
 }
 
 /**
+ * Try to send a single message via port
+ * v1.6.3.8-v7 - Extracted to reduce sendPortMessageWithFallback complexity
+ * @private
+ * @param {Object} message - Message to send
+ * @param {number} attempt - Current attempt number
+ * @returns {{success: boolean, error: Error|null}} Result
+ */
+function _tryPortMessageSend(message, attempt) {
+  if (!backgroundPort) {
+    return { success: false, error: new Error('No port available') };
+  }
+  
+  try {
+    backgroundPort.postMessage(message);
+    console.log('[Content] PORT_MESSAGE_SENT:', {
+      type: message.type || message.action,
+      attempt: attempt + 1
+    });
+    return { success: true, error: null };
+  } catch (err) {
+    console.warn('[Content] PORT_MESSAGE_FAILED:', {
+      attempt: attempt + 1,
+      error: err.message
+    });
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Try to read state from storage as fallback
+ * v1.6.3.8-v7 - Extracted to reduce sendPortMessageWithFallback complexity
+ * @private
+ * @returns {Promise<{success: boolean, state: Object|null}>} Result
+ */
+async function _tryStorageFallbackRead() {
+  try {
+    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const state = result?.[CONTENT_STATE_KEY];
+
+    if (state) {
+      console.log('[Content] PORT_FALLBACK_STORAGE_SUCCESS:', {
+        tabCount: state.tabs?.length || 0,
+        revision: state.revision
+      });
+      return { success: true, state };
+    }
+    return { success: false, state: null };
+  } catch (storageErr) {
+    console.error('[Content] PORT_FALLBACK_STORAGE_ERROR:', storageErr.message);
+    return { success: false, state: null };
+  }
+}
+
+/**
  * Send message via port with fallback to storage.local.get
  * v1.6.3.8-v6 - Issue #4: Graceful fallback when port fails
+ * v1.6.3.8-v7 - Refactored: Extracted helpers to reduce complexity
  * @param {Object} message - Message to send
  * @param {Object} options - Options for sending
  * @param {number} [options.maxRetries=3] - Max retry attempts
  * @param {number} [options.retryDelayMs=100] - Initial retry delay
  * @returns {Promise<Object>} Response or fallback result
  */
-async function sendPortMessageWithFallback(message, options = {}) {
+async function _sendPortMessageWithFallback(message, options = {}) {
   const { maxRetries = 3, retryDelayMs = 100 } = options;
   let lastError = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    // Try port if available
-    if (backgroundPort) {
-      try {
-        backgroundPort.postMessage(message);
-        console.log('[Content] PORT_MESSAGE_SENT:', {
-          type: message.type || message.action,
-          attempt: attempt + 1
-        });
-        return { success: true, method: 'port', attempt: attempt + 1 };
-      } catch (err) {
-        lastError = err;
-        console.warn('[Content] PORT_MESSAGE_FAILED:', {
-          attempt: attempt + 1,
-          error: err.message
-        });
-      }
+    const result = _tryPortMessageSend(message, attempt);
+    if (result.success) {
+      return { success: true, method: 'port', attempt: attempt + 1 };
     }
+    lastError = result.error;
 
     // Wait before retry with exponential backoff
     if (attempt < maxRetries - 1) {
@@ -1159,19 +1456,9 @@ async function sendPortMessageWithFallback(message, options = {}) {
   });
 
   // Fallback: read from storage.local
-  try {
-    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
-    const state = result?.[CONTENT_STATE_KEY];
-
-    if (state) {
-      console.log('[Content] PORT_FALLBACK_STORAGE_SUCCESS:', {
-        tabCount: state.tabs?.length || 0,
-        revision: state.revision
-      });
-      return { success: true, method: 'storage-fallback', state };
-    }
-  } catch (storageErr) {
-    console.error('[Content] PORT_FALLBACK_STORAGE_ERROR:', storageErr.message);
+  const fallbackResult = await _tryStorageFallbackRead();
+  if (fallbackResult.success) {
+    return { success: true, method: 'storage-fallback', state: fallbackResult.state };
   }
 
   return { success: false, method: 'none', error: lastError?.message || 'Port unavailable' };

@@ -8066,7 +8066,8 @@ const PORT_MESSAGE_HANDLERS = {
   BC_VERIFICATION_REQUEST: handleBCVerificationRequest,
   PORT_PONG: handlePortPong, // v1.6.3.8 - Issue #4 (arch): Zombie port detection response
   SIDEBAR_READY: handleSidebarReady, // v1.6.3.8-v2 - Issue #1, #10: Sidebar ready handshake
-  RELAY_TO_SIDEBAR: handleRelayToSidebar // v1.6.3.8-v2 - Issue #1, #10: Content -> Sidebar relay
+  RELAY_TO_SIDEBAR: handleRelayToSidebar, // v1.6.3.8-v2 - Issue #1, #10: Content -> Sidebar relay
+  CONTENT_UNLOADING: handleContentUnloading // v1.6.3.8-v7 - Issue #4: Content script unload cleanup
 };
 
 /**
@@ -8289,6 +8290,72 @@ function handlePortPong(message, portInfo) {
     success: true,
     type: 'PORT_PONG_ACK',
     timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle CONTENT_UNLOADING signal from content script
+ * v1.6.3.8-v7 - Issue #4: Clean up port when content script is about to unload
+ * This handles the beforeunload event from content.js
+ * @param {Object} message - Unload signal message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Acknowledgment
+ */
+function handleContentUnloading(message, portInfo) {
+  const portId = portInfo?.port?._portId;
+  const tabId = message.tabId || portInfo?.tabId;
+
+  console.log('[Background] CONTENT_UNLOADING received:', {
+    portId,
+    tabId,
+    timestamp: message.timestamp,
+    origin: portInfo?.origin
+  });
+
+  // Proactively clean up the port
+  if (portId) {
+    console.log('[Background] CONTENT_UNLOADING: Cleaning up port', {
+      portId,
+      tabId,
+      reason: 'content-script-unloading'
+    });
+    
+    // Use existing port cleanup mechanism
+    unregisterPort(portId, 'content-unloading');
+  }
+
+  // Also clean up any Quick Tab host tracking for this tab
+  _cleanupQuickTabHostTracking(tabId);
+
+  return Promise.resolve({
+    success: true,
+    type: 'CONTENT_UNLOADING_ACK',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Clean up Quick Tab host tracking for a specific tab
+ * v1.6.3.8-v7 - Issue #4: Extracted to reduce handleContentUnloading nesting
+ * @private
+ * @param {number} tabId - Tab ID to clean up
+ */
+function _cleanupQuickTabHostTracking(tabId) {
+  if (!tabId) return;
+
+  const cleanedUpQuickTabs = [];
+  for (const [quickTabId, hostTabId] of quickTabHostTabs.entries()) {
+    if (hostTabId !== tabId) continue;
+    quickTabHostTabs.delete(quickTabId);
+    cleanedUpQuickTabs.push(quickTabId);
+  }
+  
+  if (cleanedUpQuickTabs.length === 0) return;
+  
+  console.log('[Background] CONTENT_UNLOADING: Cleaned up Quick Tab host tracking', {
+    tabId,
+    cleanedUpQuickTabs,
+    remainingHostTabs: quickTabHostTabs.size
   });
 }
 

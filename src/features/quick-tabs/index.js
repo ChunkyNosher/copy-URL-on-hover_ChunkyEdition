@@ -487,10 +487,103 @@ class QuickTabsManager {
   }
 
   /**
+   * Compute djb2-like checksum for state validation
+   * v1.6.3.8-v7 - Issue #2: Same algorithm as background.js _computeStorageChecksum
+   * IMPORTANT: Must match background.js exactly to ensure checksums are comparable
+   * @private
+   * @param {Object} state - State object with tabs array
+   * @returns {string} Checksum string (e.g., 'chk-3-a1b2c3d4') or 'empty'
+   */
+  _computeStateChecksum(state) {
+    if (!state?.tabs || !Array.isArray(state.tabs) || state.tabs.length === 0) {
+      return 'empty';
+    }
+
+    // Build a deterministic string from tab IDs and their minimized states
+    // MUST match background.js: ${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}
+    const tabSignatures = state.tabs
+      .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
+      .sort()
+      .join('|');
+
+    // djb2-like hash: hash = hash * 33 + char
+    let hash = state.tabs.length;
+    for (let i = 0; i < tabSignatures.length; i++) {
+      hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
+    }
+
+    return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
+  }
+
+  /**
+   * Validate checksum during hydration
+   * v1.6.3.8-v7 - Issue #2: Detect corruption by comparing computed vs expected checksum
+   * @private
+   * @param {Object} storedState - State from storage
+   * @returns {{valid: boolean, computed: string, reason: string}}
+   */
+  _validateHydrationChecksum(storedState) {
+    const computed = this._computeStateChecksum(storedState);
+    const expected = storedState?.checksum;
+
+    // Log checksum validation for diagnostics
+    console.log('[QuickTabsManager] CHECKSUM_VALIDATION:', {
+      computed,
+      expected: expected || 'none',
+      tabCount: storedState?.tabs?.length || 0,
+      hasExpected: !!expected
+    });
+
+    // If no expected checksum in stored state, assume valid (backwards compatibility)
+    if (!expected) {
+      return { valid: true, computed, reason: 'no-expected-checksum' };
+    }
+
+    if (computed === expected) {
+      return { valid: true, computed, reason: 'match' };
+    }
+
+    console.error('[QuickTabsManager] CHECKSUM_MISMATCH:', {
+      computed,
+      expected,
+      tabCount: storedState?.tabs?.length || 0,
+      recommendation: 'Request fresh state from background'
+    });
+    return { valid: false, computed, reason: 'mismatch' };
+  }
+
+  /**
+   * Request fresh state from background when checksum validation fails
+   * v1.6.3.8-v7 - Issue #2: Recovery mechanism for corrupted state
+   * @private
+   * @param {string} reason - Reason for requesting fresh state
+   */
+  async _requestFreshStateFromBackground(reason) {
+    console.log('[QuickTabsManager] REQUESTING_FRESH_STATE:', {
+      reason,
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
+    });
+
+    try {
+      await browser.runtime.sendMessage({
+        action: 'REQUEST_FULL_STATE_SYNC',
+        source: 'quicktabs-manager-checksum-recovery',
+        reason,
+        tabId: this.currentTabId,
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      console.warn('[QuickTabsManager] Failed to request fresh state:', err.message);
+    }
+  }
+
+  /**
    * Hydrate Quick Tab state from browser.storage.local
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
+   * v1.6.3.8-v7 - Issue #2: Add checksum validation during hydration
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
@@ -509,6 +602,18 @@ class QuickTabsManager {
         return { success: false, count: 0, reason: validation.reason };
       }
 
+      // v1.6.3.8-v7 - Issue #2: Validate checksum before hydrating
+      const checksumResult = this._validateHydrationChecksum(storedState);
+      if (!checksumResult.valid) {
+        // Checksum mismatch - request fresh state and skip hydration
+        await this._requestFreshStateFromBackground('hydration-checksum-mismatch');
+        return { 
+          success: false, 
+          count: 0, 
+          reason: `Checksum mismatch: computed=${checksumResult.computed}, expected=${storedState.checksum}` 
+        };
+      }
+
       console.log(
         `[QuickTabsManager] Found ${storedState.tabs.length} Quick Tab(s) in storage to hydrate`
       );
@@ -520,10 +625,13 @@ class QuickTabsManager {
       this._emitHydratedEventIfNeeded(hydratedCount);
 
       // v1.6.3.7-v13 - Issue #6: Log successful hydration completion with specific format
+      // v1.6.3.8-v7 - Issue #2: Include checksum in completion log
       console.log('[QuickTabsManager] HYDRATION_COMPLETE:', {
         loadedTabCount: hydratedCount,
         totalInStorage: storedState.tabs.length,
         currentTabId: this.currentTabId,
+        checksum: checksumResult.computed,
+        checksumValid: true,
         timestamp: Date.now()
       });
 
