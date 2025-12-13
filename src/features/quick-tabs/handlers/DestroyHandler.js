@@ -12,6 +12,7 @@
  * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
  * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
  * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
+ * v1.6.3.8-v8 - FIX Issue #2: Pass forceEmpty=true when state becomes empty after destroy
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -26,7 +27,7 @@
  * - Log all destroy operations with source indication
  * - Prevent deletion loops via _destroyedIds tracking
  *
- * @version 1.6.3.7-v4
+ * @version 1.6.3.8-v8
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -54,6 +55,17 @@ function generateStateChecksum(state) {
   const lastId = state.tabs[state.tabs.length - 1]?.id || 'none';
   const timestamp = state.timestamp || 0;
   return `${tabCount}:${firstId}:${lastId}:${timestamp}`;
+}
+
+/**
+ * Determine if forceEmpty should be set for a storage write
+ * v1.6.3.8-v8 - Issue #2: Extracted to reduce duplication between persistence methods
+ * @param {Object} state - State object to check
+ * @returns {boolean} True if forceEmpty should be passed
+ */
+function _shouldForceEmptyWrite(state) {
+  const tabCount = state?.tabs?.length || 0;
+  return tabCount === 0;
 }
 
 /**
@@ -319,6 +331,7 @@ export class DestroyHandler {
   /**
    * Persist to storage immediately with checksum verification
    * v1.6.4.8 - Issue #5: Immediate persist for single destroys with write-ahead log update
+   * v1.6.3.8-v8 - Issue #2: Pass forceEmpty=true when state becomes empty after destroy
    * @private
    * @param {string} deletedId - ID that was deleted (for write-ahead log update)
    */
@@ -332,13 +345,19 @@ export class DestroyHandler {
 
     // v1.6.4.8 - Issue #5: Generate checksum BEFORE write
     const checksumBefore = generateStateChecksum(state);
+    const tabCount = state.tabs?.length || 0;
+    
+    // v1.6.3.8-v8 - FIX Issue #2: Use shared helper to determine forceEmpty
+    const forceEmpty = _shouldForceEmptyWrite(state);
+    
     console.log('[DestroyHandler] Checksum BEFORE storage write:', {
       checksum: checksumBefore,
-      tabCount: state.tabs?.length || 0,
-      deletedId
+      tabCount,
+      deletedId,
+      forceEmpty
     });
 
-    const success = await persistStateToStorage(state, '[DestroyHandler]');
+    const success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
 
     if (!success) {
       console.error('[DestroyHandler] Immediate storage persist failed for:', deletedId);
@@ -411,6 +430,7 @@ export class DestroyHandler {
    * Persist current state to browser.storage.local
    * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.8-v8 - FIX Issue #2: Pass forceEmpty=true when state becomes empty
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
@@ -424,8 +444,13 @@ export class DestroyHandler {
       return;
     }
 
-    console.debug('[DestroyHandler] Persisting state with', state.tabs?.length || 0, 'tabs');
-    const success = await persistStateToStorage(state, '[DestroyHandler]');
+    const tabCount = state.tabs?.length || 0;
+    
+    // v1.6.3.8-v8 - FIX Issue #2: Use shared helper to determine forceEmpty
+    const forceEmpty = _shouldForceEmptyWrite(state);
+    
+    console.debug('[DestroyHandler] Persisting state with', tabCount, 'tabs', { forceEmpty });
+    const success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
     if (!success) {
       console.error('[DestroyHandler] Storage persist failed or timed out');
     }

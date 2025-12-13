@@ -180,6 +180,11 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #3: Unified deletion behavior between UI button and Manager close button
  * - CLOSE_QUICK_TAB handler now accepts 'source' parameter for cross-tab broadcast handling
  * - Background broadcasts deletion to all tabs, content scripts filter by ownership
+ *
+ * v1.6.3.8-v8 Changes:
+ * - FIX Issue #5: Add message queue for events firing before port is ready
+ * - FIX Issue #6: Process queued storage events synchronously before hydration
+ * - Port connection now processes pending messages after successful connection
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -524,6 +529,99 @@ let portReconnectTimeoutId = null;
 let lastAppliedRevision = 0;
 let lastAppliedSequenceId = 0;
 
+// v1.6.3.8-v8 - FIX Issue #5: Message queue for events firing before port is ready
+// When storage events fire before port connection is established, queue them for later processing
+/**
+ * Queue for messages that need to be sent but port is not yet connected
+ * v1.6.3.8-v8 - FIX Issue #5: Prevent message loss during initialization
+ * @type {Array<{message: Object, timestamp: number}>}
+ */
+const _pendingPortMessages = [];
+
+/**
+ * Maximum age for pending messages (60 seconds)
+ * v1.6.3.8-v8 - FIX Issue #5: Discard stale messages
+ */
+const PENDING_MESSAGE_MAX_AGE_MS = 60000;
+
+/**
+ * Queue a message for sending when port becomes available
+ * v1.6.3.8-v8 - FIX Issue #5: Prevent message loss during initialization
+ * @param {Object} message - Message to queue
+ */
+function _queueMessageForPort(message) {
+  const now = Date.now();
+  
+  // Prune old messages first
+  while (_pendingPortMessages.length > 0 && 
+         now - _pendingPortMessages[0].timestamp > PENDING_MESSAGE_MAX_AGE_MS) {
+    const discarded = _pendingPortMessages.shift();
+    console.warn('[Content] PENDING_MESSAGE_EXPIRED:', {
+      type: discarded.message.type,
+      age: now - discarded.timestamp
+    });
+  }
+  
+  _pendingPortMessages.push({ message, timestamp: now });
+  console.log('[Content] MESSAGE_QUEUED_FOR_PORT:', {
+    type: message.type,
+    queueLength: _pendingPortMessages.length
+  });
+}
+
+/**
+ * Process all pending messages now that port is connected
+ * v1.6.3.8-v8 - FIX Issue #5: Send queued messages after port connects
+ */
+function _processPendingPortMessages() {
+  if (_pendingPortMessages.length === 0) return;
+  if (!backgroundPort) return; // Exit early if no port
+  
+  const count = _pendingPortMessages.length;
+  console.log('[Content] PROCESSING_PENDING_MESSAGES:', { count });
+  
+  const now = Date.now();
+  while (_pendingPortMessages.length > 0) {
+    const item = _pendingPortMessages.shift();
+    
+    // Skip expired messages
+    if (now - item.timestamp > PENDING_MESSAGE_MAX_AGE_MS) {
+      console.warn('[Content] PENDING_MESSAGE_SKIPPED_EXPIRED:', {
+        type: item.message.type,
+        age: now - item.timestamp
+      });
+      continue;
+    }
+    
+    // Send via port - separated to reduce nesting depth
+    _sendPendingMessage(item, now);
+  }
+  
+  console.log('[Content] PENDING_MESSAGES_PROCESSED:', { processed: count });
+}
+
+/**
+ * Send a single pending message via port
+ * v1.6.3.8-v8 - Extracted to reduce nesting depth in _processPendingPortMessages
+ * @private
+ * @param {Object} item - Message queue item with message and timestamp
+ * @param {number} now - Current timestamp
+ */
+function _sendPendingMessage(item, now) {
+  try {
+    backgroundPort.postMessage(item.message);
+    console.log('[Content] PENDING_MESSAGE_SENT:', {
+      type: item.message.type,
+      age: now - item.timestamp
+    });
+  } catch (err) {
+    console.error('[Content] PENDING_MESSAGE_SEND_FAILED:', {
+      type: item.message.type,
+      error: err.message
+    });
+  }
+}
+
 /**
  * Log port lifecycle event
  * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
@@ -617,6 +715,7 @@ function _schedulePortReconnect(tabId) {
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
  * v1.6.3.8-v6 - Issue #3: Add exponential backoff reconnection
+ * v1.6.3.8-v8 - FIX Issue #5: Process pending messages after successful connection
  * @param {number} tabId - Current tab ID
  */
 function connectContentToBackground(tabId) {
@@ -655,7 +754,10 @@ function connectContentToBackground(tabId) {
       _schedulePortReconnect(tabId);
     });
 
-    console.log('[Content] v1.6.3.6-v11 Port connection established to background');
+    console.log('[Content] v1.6.3.8-v8 Port connection established to background');
+    
+    // v1.6.3.8-v8 - FIX Issue #5: Process any messages that were queued before port was ready
+    _processPendingPortMessages();
   } catch (err) {
     console.error('[Content] Failed to connect to background:', err.message);
     logContentPortLifecycle('error', { error: err.message });

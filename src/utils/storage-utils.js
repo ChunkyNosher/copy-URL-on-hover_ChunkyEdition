@@ -24,6 +24,9 @@
  *   - Added routeTabToStorage() for permanent/session routing
  *   - Added loadAllQuickTabs() to load from both storage layers
  *   - Added saveSessionQuickTabs() for session storage writes
+ * v1.6.3.8-v8 - FIX Critical Issues from diagnostic reports:
+ *   - Issue #3: Increased transaction timeout from 500ms to 1000ms for Firefox listener delay
+ *   - Firefox fires storage.onChanged 100-250ms AFTER write (Bugzilla #1554088)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -143,11 +146,13 @@ const TRANSACTION_CLEANUP_TIMEOUTS = new Map();
 const TRANSACTION_WARNING_TIMEOUTS = new Map();
 // v1.6.3.6 - FIX Issue #4: Reduced from 5000ms to 2000ms to prevent transaction backlog
 // v1.6.3.6-v3 - FIX Issue #5: Reduced from 2000ms to 500ms for faster loop detection
-// Fallback cleanup delay - only used if storage.onChanged never fires
-// Normal writes complete in 50-100ms; 500ms catches loops before browser freezes
-const TRANSACTION_FALLBACK_CLEANUP_MS = 500;
-// v1.6.3.6-v3 - FIX Issue #3: Intermediate warning at 250ms (half of TRANSACTION_FALLBACK_CLEANUP_MS)
-const ESCALATION_WARNING_MS = 250;
+// v1.6.3.8-v8 - FIX Issue #3: Increased from 500ms to 1000ms for Firefox's 100-250ms listener delay
+// Firefox fires storage.onChanged 100-250ms AFTER write completes (per Bugzilla #1554088)
+// Setting to 1000ms provides 750ms buffer for normal delays and avoids false timeouts
+const TRANSACTION_FALLBACK_CLEANUP_MS = 1000;
+// v1.6.3.6-v3 - FIX Issue #3: Intermediate warning at 500ms (half of TRANSACTION_FALLBACK_CLEANUP_MS)
+// v1.6.3.8-v8 - FIX Issue #3: Increased from 250ms to 500ms to match new timeout
+const ESCALATION_WARNING_MS = 500;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades
