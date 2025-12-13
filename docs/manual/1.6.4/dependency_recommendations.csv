@@ -1,0 +1,13 @@
+Package Name,Category,Status,Priority,Purpose,GitHub Copilot Impact,Installation Command
+typescript,Type Safety,Missing,CRITICAL,TypeScript compiler for type checking .js files via JSDoc and type inference,HIGH - Enables type-aware code generation,npm install --save-dev typescript
+@typescript-eslint/eslint-plugin,Linting,Missing,CRITICAL,Type-aware ESLint rules that catch unsafe patterns and forgotten awaits,HIGH - Better code quality rules,npm install --save-dev @typescript-eslint/eslint-plugin @typescript-eslint/parser
+@typescript-eslint/parser,Linting,Missing,CRITICAL,TypeScript parser for ESLint,HIGH - Required by @typescript-eslint/eslint-plugin,npm install --save-dev @typescript-eslint/parser
+eslint-config-prettier,Linting,Missing,CRITICAL,Disables ESLint rules that conflict with Prettier formatting,MEDIUM - Prevents conflicting generated code,npm install --save-dev eslint-config-prettier
+vitest,Testing,Missing,RECOMMENDED,Modern test runner 10-15x faster than Jest with better ESM support,MEDIUM - Faster test feedback during code generation,npm install --save-dev vitest @vitest/ui
+dotenv,Utilities,Missing,RECOMMENDED,Load environment variables from .env files,MEDIUM - Better configuration management patterns,npm install --save-dev dotenv
+eslint-plugin-unicorn,Linting,Missing,RECOMMENDED,100+ rules enforcing modern JavaScript patterns and preventing subtle bugs,MEDIUM - Copilot learns modern patterns,npm install --save-dev eslint-plugin-unicorn
+eslint-plugin-sonarjs,Linting,Missing,OPTIONAL,Code smell detection and cognitive complexity analysis,LOW - Better quality analysis,npm install --save-dev eslint-plugin-sonarjs
+debug,Utilities,Missing,OPTIONAL,Conditional debug logging without console.log clutter,LOW - Better debugging patterns,npm install --save-dev debug
+chalk,Utilities,Missing,OPTIONAL,Colored terminal output for better readability,LOW - Improved developer experience,npm install --save-dev chalk
+rollup-plugin-visualizer,Build,Missing,OPTIONAL,Bundle size visualization and analysis,LOW - Helps optimize extension size,npm install --save-dev rollup-plugin-visualizer
+@rollup/plugin-json,Build,Missing,OPTIONAL,Allow importing JSON files in bundles,LOW - Better JSON import patterns,npm install --save-dev @rollup/plugin-json
