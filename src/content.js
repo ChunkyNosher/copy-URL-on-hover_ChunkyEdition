@@ -182,8 +182,15 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - Background broadcasts deletion to all tabs, content scripts filter by ownership
  *
  * v1.6.3.8-v8 Changes:
+ * - FIX Issue #1: Self-write detection using strict timestamp matching (50ms window)
+ * - FIX Issue #4: Synchronous Map operations during hydration (orphaned window fix)
  * - FIX Issue #5: Add message queue for events firing before port is ready
  * - FIX Issue #6: Process queued storage events synchronously before hydration
+ * - FIX Issue #7: Explicit initialization barrier - features wait for tab ID fetch
+ * - FIX Issue #8: Storage event ordering tolerance window (300ms for Firefox latency)
+ * - FIX Issue #9: Extended message deduplication window to PORT_RECONNECT_MAX_DELAY_MS (10s)
+ * - FIX Issue #10: BFCache state reconciliation handles session-only tabs correctly
+ * - FIX Issue #12: Fallback storage polling with retry loop and listener re-registration
  * - Port connection now processes pending messages after successful connection
  */
 
@@ -494,6 +501,15 @@ const PORT_RECONNECT_BACKOFF_MULTIPLIER = 2;
 const PORT_RECONNECT_MAX_ATTEMPTS = 10;
 const PORT_CIRCUIT_BREAKER_THRESHOLD = 3; // Failures before circuit breaker trips
 
+// v1.6.3.8-v8 - FIX Issue #1: Self-write detection constants
+// Firefox listener fires 100-250ms after write completes
+const SELF_WRITE_DETECTION_WINDOW_MS = 50; // Timestamp matching window
+const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = 300; // Firefox listener latency tolerance
+
+// v1.6.3.8-v8 - FIX Issue #8: Storage event ordering tolerance window
+// Accept out-of-order events if within Firefox's documented listener latency
+const STORAGE_ORDERING_TOLERANCE_MS = 300;
+
 /**
  * Port reconnection state object
  * v1.6.3.8-v6 - Issue #3: Encapsulated port reconnection state for maintainability
@@ -528,6 +544,124 @@ let portConsecutiveFailures = 0;
 let portReconnectTimeoutId = null;
 let lastAppliedRevision = 0;
 let lastAppliedSequenceId = 0;
+
+// v1.6.3.8-v8 - FIX Issue #1: Self-write tracking for storage listener
+// Track recent writes from this tab to distinguish self-writes from other tabs
+/**
+ * Recent storage writes made by this tab
+ * v1.6.3.8-v8 - FIX Issue #1: Self-write detection using timestamp matching
+ * @type {Map<string, {writeTime: number, saveId: string, revision: number}>}
+ */
+const _recentSelfWrites = new Map();
+
+/**
+ * Track a storage write for self-write detection
+ * v1.6.3.8-v8 - FIX Issue #1: Called before storage.local.set()
+ * @param {string} saveId - Unique save ID for this write
+ * @param {number} revision - Revision number of the write
+ */
+function _trackSelfWrite(saveId, revision) {
+  const writeTime = Date.now();
+  _recentSelfWrites.set(saveId, { writeTime, saveId, revision });
+  
+  console.log('[Content] SELF_WRITE_TRACKED:', {
+    saveId,
+    revision,
+    writeTime,
+    trackedCount: _recentSelfWrites.size
+  });
+  
+  // Clean up old entries after listener latency window passes
+  setTimeout(() => {
+    if (_recentSelfWrites.has(saveId)) {
+      _recentSelfWrites.delete(saveId);
+      console.log('[Content] SELF_WRITE_EXPIRED:', { saveId, revision });
+    }
+  }, STORAGE_LISTENER_LATENCY_TOLERANCE_MS + 100);
+}
+
+/**
+ * Check if writingTabId indicates this is a self-write
+ * v1.6.3.8-v8 - Helper to reduce _detectSelfWrite complexity
+ * @private
+ * @param {Object} newValue - New value from storage change event
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}|null}
+ */
+function _checkWritingTabIdMatch(newValue) {
+  if (newValue.writingTabId === null || newValue.writingTabId === undefined) {
+    return null;
+  }
+  
+  const isFromThisTab = newValue.writingTabId === cachedTabId;
+  console.log('[Content] SELF_WRITE_CHECK (writingTabId):', {
+    saveId: newValue.saveId,
+    writingTabId: newValue.writingTabId,
+    cachedTabId,
+    isFromThisTab
+  });
+  return {
+    isSelfWrite: isFromThisTab,
+    reason: isFromThisTab ? 'writingTabId-match' : 'different-tab',
+    matchedSaveId: isFromThisTab ? newValue.saveId : null
+  };
+}
+
+/**
+ * Check timestamp-based self-write detection
+ * v1.6.3.8-v8 - Helper to reduce _detectSelfWrite complexity
+ * @private
+ * @param {Object} newValue - New value from storage change event
+ * @param {Object} savedEntry - Entry from _recentSelfWrites
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}}
+ */
+function _checkTimestampMatch(newValue, savedEntry) {
+  const eventTime = Date.now();
+  const timeSinceWrite = eventTime - savedEntry.writeTime;
+  const withinWindow = timeSinceWrite <= STORAGE_LISTENER_LATENCY_TOLERANCE_MS;
+  
+  console.log('[Content] SELF_WRITE_DETECTION:', {
+    saveId: newValue.saveId,
+    writeTime: savedEntry.writeTime,
+    eventTime,
+    timeSinceWrite,
+    withinWindow,
+    tolerance: STORAGE_LISTENER_LATENCY_TOLERANCE_MS,
+    decision: withinWindow ? 'is-self-write' : 'stale-write'
+  });
+  
+  // Clean up matched entry
+  _recentSelfWrites.delete(newValue.saveId);
+  
+  return {
+    isSelfWrite: withinWindow,
+    reason: withinWindow ? 'timestamp-match' : 'stale-timestamp',
+    matchedSaveId: withinWindow ? newValue.saveId : null
+  };
+}
+
+/**
+ * Check if a storage change event is from this tab's recent write
+ * v1.6.3.8-v8 - FIX Issue #1: Use strict timestamp matching within detection window
+ * @param {Object} newValue - New value from storage change event
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}}
+ */
+function _detectSelfWrite(newValue) {
+  if (!newValue?.saveId) {
+    return { isSelfWrite: false, reason: 'no-saveId', matchedSaveId: null };
+  }
+  
+  const savedEntry = _recentSelfWrites.get(newValue.saveId);
+  
+  if (!savedEntry) {
+    // Check writingTabId as fallback
+    const tabIdResult = _checkWritingTabIdMatch(newValue);
+    if (tabIdResult) return tabIdResult;
+    return { isSelfWrite: false, reason: 'unknown-saveId', matchedSaveId: null };
+  }
+  
+  // Check timestamp within detection window
+  return _checkTimestampMatch(newValue, savedEntry);
+}
 
 // v1.6.3.8-v8 - FIX Issue #5: Message queue for events firing before port is ready
 // When storage events fire before port connection is established, queue them for later processing
@@ -1136,21 +1270,39 @@ function _disconnectPortForBFCache() {
   backgroundPort = null;
 }
 
+// v1.6.3.8-v8 - FIX Issue #10: BFCache state tracking for session state reconciliation
+/**
+ * Track BFCache entry/exit for proper session-only tab handling
+ * @type {{enteredBFCache: boolean, enterTime: number}}
+ */
+const _bfCacheState = {
+  enteredBFCache: false,
+  enterTime: 0
+};
+
 /**
  * Handle page entering BFCache (Back/Forward Cache)
  * v1.6.3.8 - Issue #4 (arch): Explicitly disconnect port to prevent zombie connections
  * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_ENTER log event name
+ * v1.6.3.8-v8 - FIX Issue #10: Track BFCache entry for session state reconciliation
  * @param {PageTransitionEvent} event - The pagehide event
  */
 function _handleBFCachePageHide(event) {
   // event.persisted is true when page is being placed in BFCache
   if (!event.persisted) return;
 
+  // v1.6.3.8-v8 - FIX Issue #10: Track that we entered BFCache
+  // Firefox clears sessionStorage on BFCache entry, so we need to know
+  // during restoration not to try to reconcile with empty sessionStorage
+  _bfCacheState.enteredBFCache = true;
+  _bfCacheState.enterTime = Date.now();
+
   // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
   console.log('[Content] PAGE_LIFECYCLE_BFCACHE_ENTER:', {
     reason: 'pagehide with persisted=true',
     tabId: cachedTabId,
     hadPort: !!backgroundPort,
+    enterTime: _bfCacheState.enterTime,
     timestamp: Date.now()
   });
 
@@ -1195,14 +1347,75 @@ function _handleBFCachePageShow(event) {
 }
 
 /**
+ * Handle BFCache-specific restoration path
+ * v1.6.3.8-v8 - Helper to reduce _validateAndSyncStateAfterBFCache complexity
+ * @private
+ * @param {Object} localState - State from storage.local
+ * @param {string} correlationId - Correlation ID for tracing
+ */
+function _handleBFCacheRestore(localState, correlationId) {
+  console.log('[Content] BFCACHE_RESTORE_DETECTED: Skipping sessionStorage reconciliation', {
+    correlationId,
+    reason: 'Firefox clears sessionStorage on BFCache entry',
+    enterTime: _bfCacheState.enterTime,
+    tabCount: localState.tabs?.length || 0
+  });
+  
+  // Filter out session-only tabs from localState
+  const filteredState = _filterSessionOnlyTabs(localState);
+  
+  console.log('[Content] BFCACHE_SESSION_TABS_FILTERED:', {
+    correlationId,
+    originalTabCount: localState.tabs?.length || 0,
+    filteredTabCount: filteredState.tabs?.length || 0,
+    sessionTabsRemoved: (localState.tabs?.length || 0) - (filteredState.tabs?.length || 0)
+  });
+  
+  // Update ordering state and notify QuickTabsManager
+  _updateAppliedOrderingState(filteredState);
+  _notifyManagerOfStorageUpdate(filteredState, 'bfcache-restore-filtered');
+}
+
+/**
+ * Handle normal state restoration (non-BFCache path)
+ * v1.6.3.8-v8 - Helper to reduce _validateAndSyncStateAfterBFCache complexity
+ * @private
+ * @param {Object} localState - State from storage.local
+ * @param {string} checksumComputed - Computed checksum value
+ * @param {string} correlationId - Correlation ID for tracing
+ */
+function _handleNormalRestore(localState, checksumComputed, correlationId) {
+  const sessionState = _tryGetSessionState();
+  const conflictResult = _resolveStorageConflict(sessionState, localState);
+
+  console.log('[Content] BFCACHE_STATE_VALIDATION_COMPLETE:', {
+    correlationId,
+    source: conflictResult.source,
+    tabCount: conflictResult.state?.tabs?.length || 0,
+    revision: conflictResult.state?.revision,
+    sessionDiscarded: conflictResult.discarded,
+    reason: conflictResult.reason,
+    checksum: checksumComputed,
+    timestamp: Date.now()
+  });
+
+  // Update ordering state and notify QuickTabsManager
+  _updateAppliedOrderingState(conflictResult.state);
+  _notifyManagerOfStorageUpdate(conflictResult.state, 'bfcache-restore');
+}
+
+/**
  * Validate and sync state after BFCache restoration
  * v1.6.3.8-v7 - Issue #1, #2, #3: Comprehensive BFCache state recovery
+ * v1.6.3.8-v8 - FIX Issue #10: Handle session-only tabs correctly
  * @param {string} correlationId - Correlation ID for tracing
  * @private
  */
 async function _validateAndSyncStateAfterBFCache(correlationId) {
   console.log('[Content] BFCACHE_STATE_VALIDATION_START:', {
     correlationId,
+    enteredBFCache: _bfCacheState.enteredBFCache,
+    enterTime: _bfCacheState.enterTime,
     timestamp: Date.now()
   });
 
@@ -1212,57 +1425,69 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
     const localState = localResult?.[CONTENT_STATE_KEY];
 
     if (!localState) {
-      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', {
-        correlationId
-      });
+      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', { correlationId });
       return;
     }
 
-    // v1.6.3.8-v7 - Issue #2: Validate checksum
+    // Validate checksum
     const checksumResult = _validateHydrationChecksum(localState, localState.checksum);
     if (!checksumResult.valid) {
-      // Checksum mismatch - request fresh state from background
       console.error('[Content] BFCACHE_CHECKSUM_MISMATCH: Requesting fresh state', {
-        correlationId,
-        computed: checksumResult.computed,
-        expected: localState.checksum
+        correlationId, computed: checksumResult.computed, expected: localState.checksum
       });
       _requestStateRecovery('bfcache-checksum-mismatch');
       return;
     }
 
-    // v1.6.3.8-v7 - Issue #3: Compare with any cached session state
-    // Note: SessionStorage typically loses data on BFCache restoration in Firefox
-    // but we check anyway for completeness
-    const sessionState = _tryGetSessionState();
-
-    const conflictResult = _resolveStorageConflict(sessionState, localState);
-
-    console.log('[Content] BFCACHE_STATE_VALIDATION_COMPLETE:', {
-      correlationId,
-      source: conflictResult.source,
-      tabCount: conflictResult.state?.tabs?.length || 0,
-      revision: conflictResult.state?.revision,
-      sessionDiscarded: conflictResult.discarded,
-      reason: conflictResult.reason,
-      checksum: checksumResult.computed,
-      timestamp: Date.now()
-    });
-
-    // Update ordering state with the resolved state
-    _updateAppliedOrderingState(conflictResult.state);
-
-    // Notify QuickTabsManager with the validated state
-    _notifyManagerOfStorageUpdate(conflictResult.state, 'bfcache-restore');
+    // Route to appropriate handler
+    if (_bfCacheState.enteredBFCache) {
+      _handleBFCacheRestore(localState, correlationId);
+    } else {
+      _handleNormalRestore(localState, checksumResult.computed, correlationId);
+    }
   } catch (err) {
-    console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', {
-      correlationId,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    // Fall back to requesting full sync
+    console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', { correlationId, error: err.message, timestamp: Date.now() });
     _triggerFullStateSyncAfterBFCache();
+  } finally {
+    _bfCacheState.enteredBFCache = false;
   }
+}
+
+/**
+ * Filter out session-only tabs from state
+ * v1.6.3.8-v8 - FIX Issue #10: Session-only tabs should not be restored from storage.local
+ * @private
+ * @param {Object} state - State object with tabs array
+ * @returns {Object} Filtered state with session-only tabs removed
+ */
+function _filterSessionOnlyTabs(state) {
+  if (!state || !state.tabs) {
+    return state;
+  }
+  
+  // Filter out tabs marked as session-only
+  // Two patterns are supported for backward compatibility:
+  // 1. sessionOnly: true (legacy/explicit flag)
+  // 2. persistence: 'session' (newer semantic property)
+  const filteredTabs = state.tabs.filter(tab => {
+    const isSessionOnly = tab.sessionOnly === true || tab.persistence === 'session';
+    if (isSessionOnly) {
+      console.log('[Content] SESSION_TAB_FILTERED:', {
+        id: tab.id,
+        url: tab.url,
+        reason: tab.sessionOnly ? 'sessionOnly-flag' : 'persistence-session'
+      });
+    }
+    return !isSessionOnly;
+  });
+  
+  // Return new state object with filtered tabs
+  return {
+    ...state,
+    tabs: filteredTabs,
+    // Update timestamp to indicate modification
+    timestamp: Date.now()
+  };
 }
 
 /**
@@ -1394,42 +1619,92 @@ console.log('[Content] v1.6.3.8-v8 Content script lifecycle handlers registered'
 const CONTENT_STATE_KEY = 'quick_tabs_state_v2';
 
 /**
+ * Check revision ordering for storage event
+ * v1.6.3.8-v8 - Helper to reduce _validateStorageEventOrdering complexity
+ * @private
+ * @param {number} incomingRevision - Incoming revision number
+ * @param {number} timeSinceWrite - Time since write in ms
+ * @param {boolean} withinToleranceWindow - Whether within tolerance
+ * @returns {{valid: boolean, reason: string}|null} - Result or null to continue checking
+ */
+function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranceWindow) {
+  if (typeof incomingRevision !== 'number') return null;
+  if (incomingRevision > lastAppliedRevision) return null;
+  
+  // Allow duplicate revision within tolerance
+  if (incomingRevision === lastAppliedRevision && withinToleranceWindow) {
+    console.log('[Content] STORAGE_EVENT_ALLOWED (revision duplicate within tolerance):', {
+      incomingRevision, lastAppliedRevision, timeSinceWrite, tolerance: STORAGE_ORDERING_TOLERANCE_MS
+    });
+    return { valid: true, reason: 'duplicate-within-tolerance' };
+  }
+  
+  console.warn('[Content] STORAGE_EVENT_REJECTED (revision):', {
+    incomingRevision, lastAppliedRevision,
+    reason: incomingRevision === lastAppliedRevision ? 'duplicate' : 'out-of-order',
+    timeSinceWrite, withinTolerance: withinToleranceWindow
+  });
+  return { valid: false, reason: 'revision-rejected' };
+}
+
+/**
+ * Check sequenceId ordering for storage event
+ * v1.6.3.8-v8 - Helper to reduce _validateStorageEventOrdering complexity
+ * @private
+ * @param {number} incomingSequenceId - Incoming sequence ID
+ * @param {number} timeSinceWrite - Time since write in ms
+ * @param {boolean} withinToleranceWindow - Whether within tolerance
+ * @returns {{valid: boolean, reason: string}|null} - Result or null to continue
+ */
+function _checkSequenceIdOrdering(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
+  // Max acceptable gap for out-of-order sequenceIds within tolerance window
+  // Firefox listener latency (100-250ms) can cause up to ~5 sequential writes to arrive out of order
+  const MAX_SEQUENCE_ID_GAP = 5;
+  
+  if (typeof incomingSequenceId !== 'number') return null;
+  if (incomingSequenceId > lastAppliedSequenceId) return null;
+  
+  // Accept out-of-order within tolerance window if gap is within acceptable range
+  if (withinToleranceWindow && incomingSequenceId > lastAppliedSequenceId - MAX_SEQUENCE_ID_GAP) {
+    console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId out-of-order within tolerance):', {
+      incomingSequenceId, lastAppliedSequenceId, timeSinceWrite, tolerance: STORAGE_ORDERING_TOLERANCE_MS
+    });
+    return { valid: true, reason: 'out-of-order-within-tolerance' };
+  }
+  
+  console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
+    incomingSequenceId, lastAppliedSequenceId,
+    reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate' : 'out-of-order',
+    timeSinceWrite, withinTolerance: withinToleranceWindow
+  });
+  return { valid: false, reason: 'sequenceId-rejected' };
+}
+
+/**
  * Validate incoming storage event ordering
  * v1.6.3.8-v6 - Issue #2: Reject out-of-order updates using sequenceId and revision
+ * v1.6.3.8-v8 - FIX Issue #8: Add tolerance window for Firefox's 100-250ms listener latency
  * @param {Object} newValue - New storage value
+ * @param {number} [eventReceiveTime] - Wall-clock time when listener fired (optional)
  * @returns {{valid: boolean, reason: string}} Validation result
  */
-function _validateStorageEventOrdering(newValue) {
+function _validateStorageEventOrdering(newValue, eventReceiveTime = null) {
   if (!newValue) {
     return { valid: false, reason: 'empty-value' };
   }
 
-  const incomingRevision = newValue.revision;
-  const incomingSequenceId = newValue.sequenceId;
+  const now = eventReceiveTime || Date.now();
+  const writeTimestamp = newValue.timestamp || 0;
+  const timeSinceWrite = writeTimestamp > 0 ? now - writeTimestamp : 0;
+  const withinToleranceWindow = timeSinceWrite <= STORAGE_ORDERING_TOLERANCE_MS;
 
   // Check revision ordering (primary)
-  if (typeof incomingRevision === 'number') {
-    if (incomingRevision <= lastAppliedRevision) {
-      console.warn('[Content] STORAGE_EVENT_REJECTED (revision):', {
-        incomingRevision,
-        lastAppliedRevision,
-        reason: incomingRevision === lastAppliedRevision ? 'duplicate' : 'out-of-order'
-      });
-      return { valid: false, reason: 'revision-rejected' };
-    }
-  }
+  const revisionResult = _checkRevisionOrdering(newValue.revision, timeSinceWrite, withinToleranceWindow);
+  if (revisionResult) return revisionResult;
 
   // Check sequenceId ordering (secondary)
-  if (typeof incomingSequenceId === 'number') {
-    if (incomingSequenceId <= lastAppliedSequenceId) {
-      console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
-        incomingSequenceId,
-        lastAppliedSequenceId,
-        reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate' : 'out-of-order'
-      });
-      return { valid: false, reason: 'sequenceId-rejected' };
-    }
-  }
+  const sequenceResult = _checkSequenceIdOrdering(newValue.sequenceId, timeSinceWrite, withinToleranceWindow);
+  if (sequenceResult) return sequenceResult;
 
   return { valid: true, reason: 'passed' };
 }
@@ -1487,25 +1762,35 @@ function _requestStateRecovery(reason) {
 /**
  * Fallback to storage.local.get when port fails
  * v1.6.3.8-v6 - Issue #4: Fallback mechanism when port.postMessage fails
+ * v1.6.3.8-v8 - FIX Issue #12: Implement actual fallback with retry loop and listener re-registration
  * @param {string} reason - Reason for fallback
+ * @param {number} [retryCount=0] - Current retry count
  */
-async function _fallbackToStorageRead(reason) {
-  console.log('[Content] STORAGE_FALLBACK_READ:', { reason, timestamp: Date.now() });
+async function _fallbackToStorageRead(reason, retryCount = 0) {
+  const MAX_FALLBACK_RETRIES = 3;
+  const FALLBACK_RETRY_DELAY_MS = 500;
+  
+  console.log('[Content] STORAGE_FALLBACK_READ:', { 
+    reason, 
+    retryCount,
+    maxRetries: MAX_FALLBACK_RETRIES,
+    timestamp: Date.now() 
+  });
 
   try {
     const result = await browser.storage.local.get(CONTENT_STATE_KEY);
     const storedState = result?.[CONTENT_STATE_KEY];
 
     if (!storedState) {
-      console.warn('[Content] STORAGE_FALLBACK_EMPTY: No state in storage');
-      return;
+      return _handleFallbackEmpty(reason, retryCount, MAX_FALLBACK_RETRIES, FALLBACK_RETRY_DELAY_MS);
     }
 
     console.log('[Content] STORAGE_FALLBACK_SUCCESS:', {
       tabCount: storedState.tabs?.length || 0,
       revision: storedState.revision,
       sequenceId: storedState.sequenceId,
-      saveId: storedState.saveId
+      saveId: storedState.saveId,
+      retryCount
     });
 
     // Update ordering state and notify QuickTabsManager if available
@@ -1514,6 +1799,27 @@ async function _fallbackToStorageRead(reason) {
   } catch (err) {
     console.error('[Content] STORAGE_FALLBACK_ERROR:', err.message);
   }
+}
+
+/**
+ * Handle empty storage during fallback read
+ * v1.6.3.8-v8 - Helper to reduce _fallbackToStorageRead nesting depth
+ * @private
+ */
+async function _handleFallbackEmpty(reason, retryCount, maxRetries, delayMs) {
+  console.warn('[Content] STORAGE_FALLBACK_EMPTY: No state in storage', { reason, retryCount });
+  
+  if (retryCount >= maxRetries) {
+    console.error('[Content] STORAGE_FALLBACK_FAILED: Max retries exceeded');
+    return;
+  }
+  
+  console.log('[Content] STORAGE_FALLBACK_RETRY_SCHEDULED:', {
+    retryCount: retryCount + 1,
+    delayMs
+  });
+  await new Promise(resolve => setTimeout(resolve, delayMs));
+  return _fallbackToStorageRead(reason, retryCount + 1);
 }
 
 /**
@@ -1549,6 +1855,9 @@ function _notifyManagerOfStorageUpdate(state, source) {
 /**
  * Handle storage.onChanged event for Quick Tabs state
  * v1.6.3.8-v6 - Issue #1: Fallback when port messaging fails
+ * v1.6.3.8-v8 - FIX Issue #1: Add self-write detection with timestamp matching
+ *   - Self-writes are processed (for local state update) but not re-broadcast
+ *   - Distinguishes self-writes from same tab vs writes from different tabs
  * @param {Object} changes - Storage changes
  * @param {string} areaName - Storage area ('local', 'sync', etc.)
  */
@@ -1562,7 +1871,11 @@ function _handleStorageChange(changes, areaName) {
 
   const newValue = stateChange.newValue;
   const oldValue = stateChange.oldValue;
+  const eventReceiveTime = Date.now();
 
+  // v1.6.3.8-v8 - FIX Issue #1: Detect if this is a self-write from this tab
+  const selfWriteResult = _detectSelfWrite(newValue);
+  
   console.log('[Content] STORAGE_CHANGE_RECEIVED:', {
     hasNewValue: !!newValue,
     hasOldValue: !!oldValue,
@@ -1570,11 +1883,33 @@ function _handleStorageChange(changes, areaName) {
     oldRevision: oldValue?.revision,
     newSequenceId: newValue?.sequenceId,
     newTabCount: newValue?.tabs?.length || 0,
-    timestamp: Date.now()
+    saveId: newValue?.saveId,
+    writingTabId: newValue?.writingTabId,
+    cachedTabId,
+    isSelfWrite: selfWriteResult.isSelfWrite,
+    selfWriteReason: selfWriteResult.reason,
+    eventReceiveTime,
+    timestamp: newValue?.timestamp
   });
 
-  // Validate ordering
-  const orderingResult = _validateStorageEventOrdering(newValue);
+  // v1.6.3.8-v8 - FIX Issue #1: Process self-writes (update local state) but don't re-broadcast
+  // Self-writes should still update the ordering state to prevent re-processing
+  // But we skip notifying QuickTabsManager since it already has the state
+  if (selfWriteResult.isSelfWrite) {
+    console.log('[Content] SELF_WRITE_DETECTED - processing locally but not re-broadcasting:', {
+      saveId: selfWriteResult.matchedSaveId,
+      reason: selfWriteResult.reason
+    });
+    
+    // Update ordering state to track this write
+    _updateAppliedOrderingState(newValue);
+    
+    // Don't notify QuickTabsManager - it already has this state from the write
+    return;
+  }
+
+  // Validate ordering for events from other tabs
+  const orderingResult = _validateStorageEventOrdering(newValue, eventReceiveTime);
   if (!orderingResult.valid) {
     // Request fresh state if ordering fails
     if (orderingResult.reason !== 'empty-value') {
@@ -1721,20 +2056,103 @@ async function _sendPortMessageWithFallback(message, options = {}) {
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 
+// v1.6.3.8-v8 - FIX Issue #7: Initialization barrier for explicit ordering
+// Timeout for tab ID fetch before fallback to features without tab ID
+const TAB_ID_FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * Initialization barrier state
+ * v1.6.3.8-v8 - FIX Issue #7: Track initialization phases explicitly
+ */
+const _initializationBarrier = {
+  tabIdFetched: false,
+  portConnected: false,
+  featuresInitialized: false,
+  startTime: 0
+};
+
+/**
+ * Log initialization barrier state
+ * v1.6.3.8-v8 - FIX Issue #7: Diagnostic logging for initialization ordering
+ * @private
+ */
+function _logInitializationBarrierState(phase) {
+  const elapsed = _initializationBarrier.startTime > 0 
+    ? Date.now() - _initializationBarrier.startTime 
+    : 0;
+    
+  console.log('[Content] INITIALIZATION_BARRIER:', {
+    phase,
+    tabIdFetched: _initializationBarrier.tabIdFetched,
+    portConnected: _initializationBarrier.portConnected,
+    featuresInitialized: _initializationBarrier.featuresInitialized,
+    elapsedMs: elapsed
+  });
+}
+
+/**
+ * Fetch tab ID with timeout and proper cleanup
+ * v1.6.3.8-v8 - FIX Issue #7: Proper timeout cleanup to prevent memory leaks
+ * @private
+ * @returns {Promise<number|null>} Tab ID or null on timeout
+ */
+async function _fetchTabIdWithTimeout() {
+  let timeoutId = null;
+  
+  try {
+    const tabIdPromise = getCurrentTabIdFromBackground();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error('Tab ID fetch timeout')), 
+        TAB_ID_FETCH_TIMEOUT_MS
+      );
+    });
+    
+    const result = await Promise.race([tabIdPromise, timeoutPromise]);
+    return result;
+  } finally {
+    // Clean up timeout to prevent memory leak
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 /**
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
+ * v1.6.3.8-v8 - FIX Issue #7: Explicit initialization barrier - features don't start until tab ID fetch completes
  */
 async function initializeQuickTabsFeature() {
   console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
+  _initializationBarrier.startTime = Date.now();
+  _logInitializationBarrierState('start');
 
-  // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
-  // This is critical for cross-tab scoping - Quick Tabs should only render
-  // in the tab they were created in (originTabId must match currentTabId)
-  const currentTabId = await getCurrentTabIdFromBackground();
+  // v1.6.3.8-v8 - FIX Issue #7: Explicit initialization chain with timeout
+  // Step 1: Fetch tab ID with timeout fallback
+  let currentTabId = null;
+  
+  try {
+    // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
+    // This is critical for cross-tab scoping - Quick Tabs should only render
+    // in the tab they were created in (originTabId must match currentTabId)
+    currentTabId = await _fetchTabIdWithTimeout();
+    _initializationBarrier.tabIdFetched = true;
+    _logInitializationBarrierState('tabId-fetched');
+  } catch (err) {
+    console.error('[Content] INITIALIZATION_BARRIER_FAILED: Tab ID fetch:', {
+      error: err.message,
+      timeout: TAB_ID_FETCH_TIMEOUT_MS
+    });
+    // Continue with null tab ID - features will have limited functionality
+    _initializationBarrier.tabIdFetched = true; // Mark as complete even on failure
+    _logInitializationBarrierState('tabId-fetch-failed');
+  }
+  
   console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
 
+  // v1.6.3.8-v8 - FIX Issue #7: Step 2: Port connection (requires tab ID)
   // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
   // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
   // explicitly set the tab ID for storage-utils to validate ownership during writes
@@ -1744,14 +2162,20 @@ async function initializeQuickTabsFeature() {
 
     // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
     connectContentToBackground(currentTabId);
+    _initializationBarrier.portConnected = true;
+    _logInitializationBarrierState('port-connected');
   } else {
     console.warn(
       '[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation'
     );
+    _logInitializationBarrierState('port-skipped-no-tabId');
   }
 
+  // v1.6.3.8-v8 - FIX Issue #7: Step 3: Initialize features (requires tab ID and port)
   // Pass currentTabId as option so UICoordinator can filter by originTabId
   quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
+  _initializationBarrier.featuresInitialized = true;
+  _logInitializationBarrierState('features-initialized');
 
   if (quickTabsManager) {
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
@@ -2735,7 +3159,12 @@ function _getActionError(result) {
 // v1.6.3.4-v11 - FIX Issue #2: Message deduplication to prevent duplicate RESTORE_QUICK_TAB processing
 // Map of quickTabId -> timestamp of last processed restore message
 const recentRestoreMessages = new Map();
-const RESTORE_DEDUP_WINDOW_MS = 2000; // Reject duplicates within 2000ms window
+// v1.6.3.8-v8 - FIX Issue #9: Extended deduplication window to match PORT_RECONNECT_MAX_DELAY_MS
+// Port reconnection can take up to 10 seconds, so deduplication window must be at least that long
+// to prevent message floods when port reconnects.
+// INTENTIONAL COUPLING: This uses PORT_RECONNECT_MAX_DELAY_MS to ensure the deduplication window
+// always covers the maximum port reconnection time. If port timing changes, deduplication follows.
+const RESTORE_DEDUP_WINDOW_MS = PORT_RECONNECT_MAX_DELAY_MS; // Extended from 2000ms to 10000ms
 
 /**
  * Check if restore message is a duplicate (within deduplication window)

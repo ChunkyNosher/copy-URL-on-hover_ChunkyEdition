@@ -13,6 +13,7 @@
  * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
  * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
  * v1.6.3.8-v8 - FIX Issue #2: Pass forceEmpty=true when state becomes empty after destroy
+ * v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log (dead code that was never consulted)
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -110,8 +111,9 @@ export class DestroyHandler {
     this._closeAllInProgress = false;
     this._closeAllCooldownTimer = null;
 
-    // v1.6.4.8 - Issue #5: Write-ahead log for pending deletions
-    this._writeAheadLog = new Map(); // id -> { deletedAt: timestamp, state: 'pending'|'persisted' }
+    // v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log (dead code)
+    // The WAL was created but never consulted - actual protection comes from _destroyedIds Set
+    // Reference: docs/manual/1.6.4/quick-tabs-supplementary-issues.md Issue #11
   }
 
   /**
@@ -139,13 +141,8 @@ export class DestroyHandler {
     // v1.6.3.4 - FIX Issue #6: Log with source indication
     console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
 
-    // v1.6.4.8 - Issue #5: Write-ahead log BEFORE Map deletion
-    this._writeAheadLog.set(id, {
-      deletedAt: Date.now(),
-      state: 'pending',
-      source
-    });
-    console.log(`[DestroyHandler] Write-ahead log entry created (source: ${source}):`, id);
+    // v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log entry creation (dead code)
+    // The WAL was never consulted - _destroyedIds Set provides the actual protection
 
     // v1.6.3.4-v5 - FIX Bug #7: Mark as destroyed FIRST to prevent resurrection
     this._destroyedIds.add(id);
@@ -366,9 +363,9 @@ export class DestroyHandler {
 
     // v1.6.4.8 - Issue #5: Verify checksum AFTER write by re-reading
     await this._verifyStorageChecksum(checksumBefore, state, deletedId);
-
-    // v1.6.4.8 - Issue #5: Update write-ahead log entry
-    this._updateWriteAheadLogAfterPersist(deletedId);
+    
+    // v1.6.3.8-v8 - FIX Issue #11: REMOVED _updateWriteAheadLogAfterPersist call (dead code)
+    console.log('[DestroyHandler] Storage persist complete for:', deletedId);
   }
 
   /**
@@ -405,26 +402,10 @@ export class DestroyHandler {
   }
 
   /**
-   * Update write-ahead log entry after successful persist
-   * v1.6.3.8-v4 - Extracted to reduce nesting depth (max-depth lint rule)
-   * @private
-   * @param {string} deletedId - ID of deleted tab
+   * v1.6.3.8-v8 - FIX Issue #11: REMOVED _updateWriteAheadLogAfterPersist function
+   * The write-ahead log was never consulted - it was dead code.
+   * _destroyedIds Set provides the actual deletion protection.
    */
-  _updateWriteAheadLogAfterPersist(deletedId) {
-    const walEntry = this._writeAheadLog.get(deletedId);
-    if (!walEntry) {
-      return;
-    }
-
-    walEntry.state = 'persisted';
-    walEntry.persistedAt = Date.now();
-    console.log('[DestroyHandler] Write-ahead log updated to persisted:', deletedId);
-
-    // Clean up old WAL entries (keep for 10 seconds for debugging)
-    setTimeout(() => {
-      this._writeAheadLog.delete(deletedId);
-    }, 10000);
-  }
 
   /**
    * Persist current state to browser.storage.local
