@@ -44,8 +44,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
 - **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized, active)
-- **Layer 2:** storage.local with monotonic revision versioning + storage.onChanged
+- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized,
+  active)
+- **Layer 2:** storage.local with monotonic revision versioning +
+  storage.onChanged
 - **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
 - **Port reconnection** - Exponential backoff (100ms → 10s max)
 - **Circuit breaker** - 3 consecutive failures triggers cleanup
@@ -60,12 +62,12 @@ hydration, visibility change listener, proactive dedup cleanup.
 
 **Key Functions (v1.6.3.8-v6):**
 
-| Function                        | Location          | Purpose                         |
-| ------------------------------- | ----------------- | ------------------------------- |
-| `initializationBarrier`         | init-barrier.js   | Promise blocking all async init |
-| `_hydrateStateFromBackground()` | manager           | Port-based hydration            |
-| `sendRequestWithTimeout()`      | message-utils     | ACK-based messaging             |
-| `flushWriteBuffer()`            | storage-utils     | WriteBuffer batch flush         |
+| Function                        | Location        | Purpose                         |
+| ------------------------------- | --------------- | ------------------------------- |
+| `initializationBarrier`         | init-barrier.js | Promise blocking all async init |
+| `_hydrateStateFromBackground()` | manager         | Port-based hydration            |
+| `sendRequestWithTimeout()`      | message-utils   | ACK-based messaging             |
+| `flushWriteBuffer()`            | storage-utils   | WriteBuffer batch flush         |
 
 **Storage Format:**
 

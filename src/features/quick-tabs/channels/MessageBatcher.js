@@ -159,7 +159,7 @@ class MessageBatcher {
       quickTabId,
       type,
       queueSize: this._queue.length,
-      queueCapacity: (this._queue.length / this._maxQueueSize * 100).toFixed(1) + '%'
+      queueCapacity: ((this._queue.length / this._maxQueueSize) * 100).toFixed(1) + '%'
     });
 
     // Start window if not already started
@@ -538,7 +538,7 @@ class MessageBatcher {
       ...this._metrics,
       currentQueueSize: this._queue.length,
       maxQueueSize: this._maxQueueSize,
-      queueCapacity: (this._queue.length / this._maxQueueSize * 100).toFixed(1) + '%',
+      queueCapacity: ((this._queue.length / this._maxQueueSize) * 100).toFixed(1) + '%',
       coalescingRatio:
         this._metrics.operationsQueued > 0
           ? ((this._metrics.operationsCoalesced / this._metrics.operationsQueued) * 100).toFixed(

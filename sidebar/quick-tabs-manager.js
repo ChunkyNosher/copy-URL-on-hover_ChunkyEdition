@@ -118,7 +118,7 @@
 // ==================== IMPORTS ====================
 // v1.6.3.8-v4 - Bundle size refactoring: Import utilities from sidebar modules
 // These modules contain shared constants and utility functions extracted for maintainability.
-// 
+//
 // MIGRATION STRATEGY (v1.6.3.8-v4):
 // Phase 1 (Current): Modules export constants and stateless utility functions.
 //   - Main file (quick-tabs-manager.js) retains all state variables locally.
@@ -494,12 +494,12 @@ function _initializeBarrier() {
     _initBarrierResolve = resolve;
     _initBarrierReject = reject;
   });
-  
+
   // Set timeout for barrier
   initBarrierTimeoutId = setTimeout(() => {
     _handleInitBarrierTimeout();
   }, INIT_BARRIER_TIMEOUT_MS);
-  
+
   console.log('[Manager] INITIALIZATION_BARRIER: phase=created', {
     timeoutMs: INIT_BARRIER_TIMEOUT_MS,
     timestamp: Date.now()
@@ -513,7 +513,7 @@ function _initializeBarrier() {
  */
 function _handleInitBarrierTimeout() {
   const elapsed = initializationStartTime > 0 ? Date.now() - initializationStartTime : 0;
-  
+
   console.error('[Manager] INITIALIZATION_BARRIER: phase=TIMEOUT', {
     elapsedMs: elapsed,
     timeoutMs: INIT_BARRIER_TIMEOUT_MS,
@@ -523,7 +523,7 @@ function _handleInitBarrierTimeout() {
     message: `Initialization did not complete within ${INIT_BARRIER_TIMEOUT_MS}ms - proceeding with partial state`,
     timestamp: Date.now()
   });
-  
+
   // Resolve barrier anyway to unblock listeners (with warning logged)
   // This prevents permanent lockup while still flagging the issue
   if (_initBarrierResolve) {
@@ -534,7 +534,7 @@ function _handleInitBarrierTimeout() {
     initializationComplete = true;
     _replayQueuedMessages();
   }
-  
+
   initBarrierTimeoutId = null;
 }
 
@@ -548,11 +548,11 @@ function _resolveInitBarrier() {
     clearTimeout(initBarrierTimeoutId);
     initBarrierTimeoutId = null;
   }
-  
+
   const elapsed = initializationStartTime > 0 ? Date.now() - initializationStartTime : 0;
-  
+
   currentInitPhase = 'complete';
-  
+
   console.log('[Manager] INITIALIZATION_BARRIER: phase=resolved', {
     elapsedMs: elapsed,
     storageListenerVerified,
@@ -560,15 +560,15 @@ function _resolveInitBarrier() {
     queuedMessagesCount: preInitMessageQueue.length,
     timestamp: Date.now()
   });
-  
+
   // v1.6.3.8-v4 - FIX: Resolve barrier BEFORE setting initializationComplete
   // to prevent race condition where code sees init as complete but barrier not resolved
   if (_initBarrierResolve) {
     _initBarrierResolve();
   }
-  
+
   initializationComplete = true;
-  
+
   // Replay any queued messages
   _replayQueuedMessages();
 }
@@ -586,7 +586,7 @@ function _queueMessageDuringInit(source, message) {
     message,
     timestamp: Date.now()
   });
-  
+
   console.log('[Manager] INIT_MESSAGE_QUEUED:', {
     source,
     messageType: message?.type || message?.action || 'unknown',
@@ -608,19 +608,19 @@ function _replayQueuedMessages() {
     });
     return;
   }
-  
+
   console.log('[Manager] INIT_MESSAGE_REPLAY: starting', {
     count: preInitMessageQueue.length,
     timestamp: Date.now()
   });
-  
+
   const messages = [...preInitMessageQueue];
   preInitMessageQueue.length = 0; // Clear queue
-  
+
   for (const item of messages) {
     _processQueuedInitMessage(item);
   }
-  
+
   console.log('[Manager] INIT_MESSAGE_REPLAY: completed', {
     processedCount: messages.length,
     timestamp: Date.now()
@@ -640,7 +640,7 @@ function _processQueuedInitMessage(item) {
     queuedAt: item.timestamp,
     delayMs: Date.now() - item.timestamp
   });
-  
+
   try {
     _routeInitMessage(item);
   } catch (err) {
@@ -677,19 +677,19 @@ async function _awaitInitBarrier() {
   if (initializationComplete) {
     return true;
   }
-  
+
   if (!initializationBarrier) {
     console.warn('[Manager] INIT_BARRIER_MISSING: barrier not created, allowing through', {
       timestamp: Date.now()
     });
     return true;
   }
-  
+
   console.log('[Manager] INIT_BARRIER_WAITING: listener waiting for barrier', {
     currentPhase: currentInitPhase,
     timestamp: Date.now()
   });
-  
+
   try {
     await initializationBarrier;
     return true;
@@ -892,7 +892,7 @@ function _initializeSessionId() {
  * @private
  */
 function _initStorageListenerReadyPromise() {
-  storageListenerReadyPromise = new Promise((resolve) => {
+  storageListenerReadyPromise = new Promise(resolve => {
     _storageListenerReadyResolve = resolve;
   });
   console.log('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_INITIALIZED:', {
@@ -979,7 +979,7 @@ function _guardBeforeInit(areaName, changeData = null) {
   if (!isFullyInitialized()) {
     const timeSinceInitStartMs =
       initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
-    
+
     // v1.6.3.8-v4 - FIX Issue #9: Queue the message for later processing instead of dropping
     if (changeData) {
       _queueMessageDuringInit('storage', changeData);
@@ -1015,28 +1015,28 @@ function _guardBeforeInit(areaName, changeData = null) {
  */
 function _handleStorageListenerVerification(change) {
   const latencyMs = Date.now() - storageListenerVerificationStartTime;
-  
+
   // Clear verification timeout
   if (storageListenerVerificationTimerId !== null) {
     clearTimeout(storageListenerVerificationTimerId);
     storageListenerVerificationTimerId = null;
   }
-  
+
   // Mark listener as verified
   storageListenerVerified = true;
-  
+
   console.log('[Manager] STORAGE_LISTENER_VERIFIED: success', {
     latencyMs,
     testValue: change.newValue,
     callbackReference: '_handleStorageOnChanged',
     timestamp: Date.now()
   });
-  
+
   // Clean up the test key
   browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(err => {
     console.warn('[Manager] Failed to clean up storage listener test key:', err.message);
   });
-  
+
   // Resolve the verification promise barrier
   if (_storageListenerReadyResolve) {
     _storageListenerReadyResolve();
@@ -1055,14 +1055,14 @@ function _handleStorageListenerVerification(change) {
  */
 function _handleStorageListenerVerificationTimeout() {
   const latencyMs = Date.now() - storageListenerVerificationStartTime;
-  
+
   storageListenerVerificationTimerId = null;
-  
+
   // v1.6.3.8-v4 - FIX Issue #4: Check if we should retry with exponential backoff
   if (storageVerificationRetryCount < STORAGE_VERIFICATION_RETRY_MS.length) {
     const retryDelay = STORAGE_VERIFICATION_RETRY_MS[storageVerificationRetryCount];
     storageVerificationRetryCount++;
-    
+
     console.warn('[Manager] STORAGE_VERIFICATION: status=retry', {
       attempt: storageVerificationRetryCount,
       totalAttempts: STORAGE_VERIFICATION_RETRY_MS.length,
@@ -1071,34 +1071,35 @@ function _handleStorageListenerVerificationTimeout() {
       message: `Verification timeout - retrying in ${retryDelay}ms`,
       timestamp: Date.now()
     });
-    
+
     // Clean up the test key before retry
     browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(() => {});
-    
+
     // Schedule retry
     setTimeout(() => {
       _retryStorageListenerVerification();
     }, retryDelay);
-    
+
     return; // Don't resolve barrier yet - wait for retry
   }
-  
+
   // All retries exhausted - mark as unverified but don't permanently disable
   storageListenerVerified = false;
-  
+
   console.error('[Manager] STORAGE_LISTENER_VERIFICATION_FAILED: all retries exhausted', {
     timeoutMs: STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS,
     latencyMs,
     retryAttempts: storageVerificationRetryCount,
     callbackReference: '_handleStorageOnChanged',
     tier3Status: 'unverified-but-available-on-demand',
-    message: 'storage.onChanged listener verification failed - Tier 3 marked UNVERIFIED (will retry on port failure)',
+    message:
+      'storage.onChanged listener verification failed - Tier 3 marked UNVERIFIED (will retry on port failure)',
     timestamp: Date.now()
   });
-  
+
   // Clean up the test key anyway
   browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(() => {});
-  
+
   // Resolve the promise barrier (with failure state, but don't block init)
   if (_storageListenerReadyResolve) {
     _storageListenerReadyResolve();
@@ -1121,23 +1122,23 @@ async function _retryStorageListenerVerification() {
     attempt: storageVerificationRetryCount,
     timestamp: Date.now()
   });
-  
+
   try {
     // Start verification by writing test key
     storageListenerVerificationStartTime = Date.now();
-    
+
     // Use dynamic timeout based on observed latency
     const dynamicTimeout = _calculateDynamicVerificationTimeout();
-    
+
     // Set verification timeout
     storageListenerVerificationTimerId = setTimeout(
       _handleStorageListenerVerificationTimeout,
       dynamicTimeout
     );
-    
+
     // Write test key to trigger storage.onChanged
     const testValue = `verify-retry-${storageVerificationRetryCount}-${Date.now()}`;
-    
+
     console.log('[Manager] STORAGE_LISTENER_VERIFICATION_RETRY:', {
       testKey: STORAGE_LISTENER_TEST_KEY,
       testValue,
@@ -1145,16 +1146,15 @@ async function _retryStorageListenerVerification() {
       attempt: storageVerificationRetryCount,
       timestamp: Date.now()
     });
-    
+
     await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
-    
   } catch (err) {
     console.error('[Manager] STORAGE_LISTENER_VERIFICATION_RETRY_FAILED:', {
       error: err.message,
       attempt: storageVerificationRetryCount,
       timestamp: Date.now()
     });
-    
+
     // Continue to next retry or fail
     _handleStorageListenerVerificationTimeout();
   }
@@ -1186,32 +1186,31 @@ async function _attemptTier3FallbackOnPortFailure() {
     storageListenerVerified,
     timestamp: Date.now()
   });
-  
+
   // If already verified, nothing special needed
   if (storageListenerVerified) {
     return;
   }
-  
+
   // Try to verify now - port has failed so we need Tier 3
   storageVerificationRetryCount = 0; // Reset retry count for this attempt
-  
+
   try {
     storageListenerVerificationStartTime = Date.now();
-    
+
     const testValue = `fallback-verify-${Date.now()}`;
     await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
-    
+
     // Wait briefly for verification
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     console.log('[Manager] TIER3_FALLBACK_VERIFICATION:', {
       verified: storageListenerVerified,
-      message: storageListenerVerified 
+      message: storageListenerVerified
         ? 'Tier 3 now verified and active'
         : 'Tier 3 still unverified but will be used as last resort',
       timestamp: Date.now()
     });
-    
   } catch (err) {
     console.error('[Manager] TIER3_FALLBACK_VERIFICATION_FAILED:', {
       error: err.message,
@@ -1223,7 +1222,7 @@ async function _attemptTier3FallbackOnPortFailure() {
 /**
  * Initialize storage.onChanged listener with explicit verification
  * v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Explicit registration with verification pattern
- * 
+ *
  * This function:
  * 1. Registers the storage.onChanged listener with try/catch
  * 2. Logs registration attempt and success/failure
@@ -1231,7 +1230,7 @@ async function _attemptTier3FallbackOnPortFailure() {
  * 4. Sets timeout expecting callback within 1000ms
  * 5. If callback fires, verifies listener works and resolves barrier
  * 6. If timeout occurs, logs error and disables Tier 3 fallback
- * 
+ *
  * @returns {Promise<void>} Resolves when verification completes (success or failure)
  */
 async function _initializeStorageListener() {
@@ -1239,65 +1238,64 @@ async function _initializeStorageListener() {
     callbackFunction: '_handleStorageOnChanged',
     timestamp: Date.now()
   });
-  
+
   // Initialize the promise barrier
   _initStorageListenerReadyPromise();
-  
+
   try {
     // Store callback reference as module-level named variable
     _storageOnChangedHandler = _handleStorageOnChanged;
-    
+
     // Register the listener
     browser.storage.onChanged.addListener(_storageOnChangedHandler);
-    
+
     console.log('[Manager] STORAGE_LISTENER_INITIALIZED: success', {
       callbackReference: '_handleStorageOnChanged',
       callbackStored: _storageOnChangedHandler !== null,
       timestamp: Date.now()
     });
-    
+
     // Start verification by writing test key
     storageListenerVerificationStartTime = Date.now();
-    
+
     // Set verification timeout
     storageListenerVerificationTimerId = setTimeout(
       _handleStorageListenerVerificationTimeout,
       STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS
     );
-    
+
     // Write test key to trigger storage.onChanged
     const testValue = `verify-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    
+
     console.log('[Manager] STORAGE_LISTENER_VERIFICATION_STARTED:', {
       testKey: STORAGE_LISTENER_TEST_KEY,
       testValue,
       timeoutMs: STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS,
       timestamp: Date.now()
     });
-    
+
     await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
-    
   } catch (err) {
     console.error('[Manager] STORAGE_LISTENER_INITIALIZATION_FAILED: exception', {
       error: err.message,
       tier3Disabled: true,
       timestamp: Date.now()
     });
-    
+
     storageListenerVerified = false;
-    
+
     // Clear any pending timeout
     if (storageListenerVerificationTimerId !== null) {
       clearTimeout(storageListenerVerificationTimerId);
       storageListenerVerificationTimerId = null;
     }
-    
+
     // Resolve barrier with failure
     if (_storageListenerReadyResolve) {
       _storageListenerReadyResolve();
     }
   }
-  
+
   // Return the promise - caller can await verification completion
   return storageListenerReadyPromise;
 }
@@ -1714,8 +1712,12 @@ function _logFallbackModeIfNeeded(newState) {
  * @private
  */
 function _logZombieFallback() {
-  console.log('[Manager] ZOMBIE_STATE_ENTERED: Switching to storage.onChanged fallback immediately');
-  console.log('[Manager] FALLBACK_MODE_ACTIVE: Using storage.onChanged for state updates (BC removed)');
+  console.log(
+    '[Manager] ZOMBIE_STATE_ENTERED: Switching to storage.onChanged fallback immediately'
+  );
+  console.log(
+    '[Manager] FALLBACK_MODE_ACTIVE: Using storage.onChanged for state updates (BC removed)'
+  );
 }
 
 /**
@@ -2927,13 +2929,16 @@ async function sendPortMessageWithTimeout(message, timeoutMs) {
       type: message.type,
       timestamp: Date.now()
     });
-    
+
     try {
       // Wait for listener registration with a timeout
       await Promise.race([
         listenerReadyPromise,
-        new Promise((_, timeoutReject) => 
-          setTimeout(() => timeoutReject(new Error('Listener registration timeout')), LISTENER_REGISTRATION_TIMEOUT_MS)
+        new Promise((_, timeoutReject) =>
+          setTimeout(
+            () => timeoutReject(new Error('Listener registration timeout')),
+            LISTENER_REGISTRATION_TIMEOUT_MS
+          )
         )
       ]);
     } catch (err) {
@@ -3395,7 +3400,7 @@ function _markMessageAsProcessed(messageId) {
 
   // v1.6.3.8-v4 - FIX Issue #7: Proactive cleanup at 50% capacity
   const currentCapacity = processedMessageTimestamps.size / MESSAGE_DEDUP_MAX_SIZE;
-  
+
   if (currentCapacity >= DEDUP_EVICTION_THRESHOLD) {
     // v1.6.3.8-v4 - At 95% capacity, use sliding window eviction (remove oldest 10%)
     _slidingWindowEviction();
@@ -3416,24 +3421,25 @@ function _markMessageAsProcessed(messageId) {
 function _slidingWindowEviction() {
   const currentSize = processedMessageTimestamps.size;
   const evictCount = Math.ceil(currentSize * 0.1); // Remove oldest 10%
-  
+
   if (evictCount === 0) return;
-  
+
   // Sort by timestamp (oldest first)
   const sortedEntries = [...processedMessageTimestamps.entries()].sort((a, b) => a[1] - b[1]);
-  
+
   for (let i = 0; i < evictCount && i < sortedEntries.length; i++) {
     const [messageId] = sortedEntries[i];
     recentlyProcessedMessageIds.delete(messageId);
     processedMessageTimestamps.delete(messageId);
   }
-  
+
   console.log('[Manager] [DEDUP] SLIDING_WINDOW_EVICTION:', {
     evictedCount: evictCount,
     previousSize: currentSize,
     remainingSize: processedMessageTimestamps.size,
     capacityBefore: ((currentSize / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
-    capacityAfter: ((processedMessageTimestamps.size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
+    capacityAfter:
+      ((processedMessageTimestamps.size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
     timestamp: Date.now()
   });
 }
@@ -3450,10 +3456,10 @@ function _cleanupExpiredMessageIds() {
   const now = Date.now();
   const sizeBefore = processedMessageTimestamps.size;
   const expiredCount = _removeExpiredMessages(now);
-  
+
   // v1.6.3.8-v4 - FIX Issue #7: Also check size-based eviction after age-based cleanup
   _evictOldestIfOverCapacity(now);
-  
+
   _logExpiredCleanup(expiredCount, sizeBefore, now);
 }
 
@@ -4023,7 +4029,9 @@ const BC_VERIFICATION_TIMEOUT_MS = 1000;
  * The new architecture uses Port + storage.onChanged instead.
  */
 function initializeBroadcastChannel() {
-  console.log('[Manager] [BC] DEPRECATED: initializeBroadcastChannel called - BC removed per architecture-redesign.md');
+  console.log(
+    '[Manager] [BC] DEPRECATED: initializeBroadcastChannel called - BC removed per architecture-redesign.md'
+  );
   console.log('[Manager] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
   // BC removed - just log and return
   // All state sync now happens via Port + storage.onChanged
@@ -4101,7 +4109,7 @@ const fallbackStats = {
  */
 function _resetFallbackStats() {
   const previousStats = { ...fallbackStats };
-  
+
   fallbackStats.stateUpdatesReceived = 0;
   fallbackStats.lastUpdateTime = 0;
   fallbackStats.portMessagesReceived = 0;
@@ -4110,7 +4118,7 @@ function _resetFallbackStats() {
   fallbackStats.latencySum = 0;
   fallbackStats.latencyCount = 0;
   fallbackStats.lastLatencyMs = 0;
-  
+
   console.log('[Manager] FALLBACK_STATS_RESET:', {
     previousCycle: {
       stateUpdatesReceived: previousStats.stateUpdatesReceived,
@@ -4290,13 +4298,14 @@ function _stopFallbackHealthMonitoring() {
   if (fallbackHealthIntervalId) {
     clearInterval(fallbackHealthIntervalId);
     fallbackHealthIntervalId = null;
-    
+
     // v1.6.3.8-v3 - FIX Issue #20: Log final stats for this session
     const sessionDurationMs = Date.now() - fallbackStats.startTime;
-    const avgLatencyMs = fallbackStats.latencyCount > 0
-      ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
-      : 0;
-    
+    const avgLatencyMs =
+      fallbackStats.latencyCount > 0
+        ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
+        : 0;
+
     console.log('[Manager] FALLBACK_SESSION_ENDED:', {
       sessionDurationMs,
       totalStateUpdates: fallbackStats.stateUpdatesReceived,
@@ -4370,9 +4379,10 @@ function _setupStorageHealthProbeListener() {
  */
 async function _sendStorageHealthProbe() {
   const now = Date.now();
-  
+
   // v1.6.3.8-v4 - FIX Issue #8: Enforce minimum interval between probes
-  const timeSinceLastProbe = lastProbeStartTime > 0 ? now - lastProbeStartTime : PROBE_MIN_INTERVAL_MS + 1;
+  const timeSinceLastProbe =
+    lastProbeStartTime > 0 ? now - lastProbeStartTime : PROBE_MIN_INTERVAL_MS + 1;
   if (timeSinceLastProbe < PROBE_MIN_INTERVAL_MS) {
     console.log('[Manager] STORAGE_HEALTH_PROBE_THROTTLED: too soon since last probe', {
       lastProbeTime: lastProbeStartTime,
@@ -4384,7 +4394,7 @@ async function _sendStorageHealthProbe() {
     setTimeout(_sendStorageHealthProbe, PROBE_MIN_INTERVAL_MS - timeSinceLastProbe + 100);
     return;
   }
-  
+
   // v1.6.3.8-v3 - FIX Issue #17: Prevent concurrent health probes
   if (storageHealthStats.probeInProgress) {
     // v1.6.3.8-v4 - FIX Issue #8: Check if probe is stuck and force-reset if needed
@@ -4409,7 +4419,7 @@ async function _sendStorageHealthProbe() {
       return;
     }
   }
-  
+
   storageHealthStats.probeInProgress = true;
   lastProbeStartTime = now;
   const probeTimestamp = now;
@@ -5965,7 +5975,7 @@ async function _initializeManager() {
   // v1.6.3.8-v4 - FIX Issue #5: Create initialization barrier FIRST
   _initializeBarrier();
   currentInitPhase = 'flags';
-  
+
   _initializeFlags();
   _cacheDOMElements();
   _initializeSessionId();
@@ -5973,31 +5983,31 @@ async function _initializeManager() {
   // v1.6.3.8-v4 - FIX Issue #1: Sequential initialization - port must connect first
   currentInitPhase = 'tab-id';
   await _initializeCurrentTabId();
-  
+
   // v1.6.3.8-v4 - FIX Issue #1: Establish port connection before anything else
   currentInitPhase = 'port-connection';
   _initializeConnections();
-  
+
   // v1.6.3.8-v4 - FIX Issue #6: Query background for state via port BEFORE storage read
   currentInitPhase = 'hydration';
   await _hydrateStateFromBackground();
-  
+
   // v1.6.3.8-v4 - FIX Issue #1: Storage listener must be verified before state load
   currentInitPhase = 'storage-listener';
   await _initializeState();
-  
+
   currentInitPhase = 'listeners';
   await _setupListeners();
-  
+
   currentInitPhase = 'periodic-tasks';
   _startPeriodicTasks();
-  
+
   // v1.6.3.8-v4 - FIX Issue #3: Setup visibility change listener
   _setupVisibilityChangeListener();
-  
+
   // v1.6.3.8-v4 - FIX Issue #5: Resolve initialization barrier AFTER all async init complete
   _resolveInitBarrier();
-  
+
   _markInitializationComplete();
 }
 
@@ -6008,20 +6018,20 @@ async function _initializeManager() {
  */
 async function _hydrateStateFromBackground() {
   const hydrationStart = Date.now();
-  
+
   console.log('[Manager] STATE_HYDRATION: source=port, starting', {
     timestamp: hydrationStart,
     portConnected: backgroundPort !== null,
     connectionState
   });
-  
+
   if (!backgroundPort) {
     console.warn('[Manager] STATE_HYDRATION: port not connected, will use storage fallback', {
       elapsed: Date.now() - hydrationStart
     });
     return;
   }
-  
+
   try {
     // Request full state from background with timeout
     const response = await sendPortMessageWithTimeout(
@@ -6033,23 +6043,23 @@ async function _hydrateStateFromBackground() {
       },
       STATE_SYNC_TIMEOUT_MS
     );
-    
+
     if (response?.success && response?.state) {
       const tabCount = response.state?.tabs?.length ?? 0;
-      
+
       console.log('[Manager] STATE_HYDRATION: source=port, success', {
         tabCount,
         elapsed: Date.now() - hydrationStart + 'ms',
         saveId: response.state?.saveId,
         timestamp: Date.now()
       });
-      
+
       // Update local state from background's authoritative state
       quickTabsState = response.state;
       _updateInMemoryCache(response.state.tabs || []);
       lastKnownGoodTabCount = tabCount;
       lastLocalUpdateTime = Date.now();
-      
+
       // Mark initial state load complete since we got state from port
       initialStateLoadComplete = true;
     } else {
@@ -6213,7 +6223,7 @@ async function _setupListeners() {
   // This ensures listener is registered before any storage writes from background
   // and provides verification barrier for init sequence
   await _initializeStorageListener();
-  
+
   // v1.6.3.8-v3 - FIX Issue #5: Log storage listener verification status
   console.log('[Manager] STORAGE_LISTENER_VERIFIED_AT:', {
     verified: storageListenerVerified,
@@ -6221,7 +6231,7 @@ async function _setupListeners() {
     tier3FallbackEnabled: storageListenerVerified,
     timestamp: Date.now()
   });
-  
+
   setupEventListeners();
   setupTabSwitchListener();
   _initBrowserTabsOnRemovedListener();
@@ -6234,7 +6244,7 @@ async function _setupListeners() {
  */
 function _setupVisibilityChangeListener() {
   document.addEventListener('visibilitychange', _handleVisibilityChange);
-  
+
   console.log('[Manager] VISIBILITY_LISTENER_REGISTERED:', {
     initialVisibility: document.visibilityState,
     refreshIntervalMs: VISIBILITY_REFRESH_INTERVAL_MS,
@@ -6249,14 +6259,14 @@ function _setupVisibilityChangeListener() {
  */
 function _handleVisibilityChange() {
   const isVisible = document.visibilityState === 'visible';
-  
+
   console.log('[Manager] VISIBILITY_CHANGE:', {
     state: document.visibilityState,
     isVisible,
     wasHidden: !isVisible,
     timestamp: Date.now()
   });
-  
+
   if (isVisible) {
     // Sidebar became visible - trigger active state refresh
     _onSidebarBecameVisible();
@@ -6275,18 +6285,18 @@ function _handleVisibilityChange() {
  */
 async function _onSidebarBecameVisible() {
   const refreshStart = Date.now();
-  
+
   console.log('[Manager] VISIBILITY_REFRESH: hidden→visible, requesting state', {
     timestamp: refreshStart,
     connectionState,
     lastLocalUpdateTime,
     timeSinceLastUpdate: lastLocalUpdateTime > 0 ? refreshStart - lastLocalUpdateTime : -1
   });
-  
+
   // Request fresh state from background
   try {
     await _requestFullStateSync();
-    
+
     console.log('[Manager] VISIBILITY_REFRESH: completed', {
       durationMs: Date.now() - refreshStart,
       tabCount: quickTabsState?.tabs?.length ?? 0,
@@ -6298,7 +6308,7 @@ async function _onSidebarBecameVisible() {
       durationMs: Date.now() - refreshStart,
       timestamp: Date.now()
     });
-    
+
     // Fallback to storage read
     await loadQuickTabsState();
     renderUI();
@@ -6312,11 +6322,11 @@ async function _onSidebarBecameVisible() {
  */
 function _startVisibilityRefreshInterval() {
   _stopVisibilityRefreshInterval(); // Clear any existing interval
-  
+
   visibilityRefreshIntervalId = setInterval(async () => {
     await _checkStateFreshness();
   }, VISIBILITY_REFRESH_INTERVAL_MS);
-  
+
   console.log('[Manager] VISIBILITY_REFRESH_INTERVAL_STARTED:', {
     intervalMs: VISIBILITY_REFRESH_INTERVAL_MS,
     timestamp: Date.now()
@@ -6332,7 +6342,7 @@ function _stopVisibilityRefreshInterval() {
   if (visibilityRefreshIntervalId) {
     clearInterval(visibilityRefreshIntervalId);
     visibilityRefreshIntervalId = null;
-    
+
     console.log('[Manager] VISIBILITY_REFRESH_INTERVAL_STOPPED:', {
       timestamp: Date.now()
     });
@@ -6347,17 +6357,17 @@ function _stopVisibilityRefreshInterval() {
 async function _checkStateFreshness() {
   const now = Date.now();
   const timeSinceLastUpdate = lastLocalUpdateTime > 0 ? now - lastLocalUpdateTime : -1;
-  
+
   // If state is older than 30 seconds, request fresh state
   const STALE_THRESHOLD_MS = 30000;
-  
+
   if (timeSinceLastUpdate < 0 || timeSinceLastUpdate > STALE_THRESHOLD_MS) {
     console.log('[Manager] STATE_FRESHNESS_CHECK: state is stale, refreshing', {
       timeSinceLastUpdateMs: timeSinceLastUpdate,
       staleThresholdMs: STALE_THRESHOLD_MS,
       timestamp: now
     });
-    
+
     try {
       await _requestFullStateSync();
     } catch (err) {
@@ -6383,7 +6393,7 @@ async function _checkStateFreshness() {
  */
 function _startPeriodicTasks() {
   _startHostInfoCleanupInterval();
-  
+
   // v1.6.3.8-v5 - FIX Issue #1: Start revision buffer cleanup interval
   _startRevisionBufferCleanup();
 
@@ -6435,7 +6445,7 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.8-v4 - FIX Issue #3: Stop visibility refresh interval
   _stopVisibilityRefreshInterval();
-  
+
   // v1.6.3.8-v4 - FIX Issue #3: Remove visibility change listener
   document.removeEventListener('visibilitychange', _handleVisibilityChange);
 
@@ -8651,7 +8661,7 @@ function setupEventListeners() {
   // v1.6.3.7-v13 - Issue #6 (arch): Add storage health probe handling
   // v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Refactored to _initializeStorageListener()
   //              with explicit registration verification pattern
-  // NOTE: Listener registration is now handled by _initializeStorageListener() 
+  // NOTE: Listener registration is now handled by _initializeStorageListener()
   //       called from DOMContentLoaded initialization sequence
   console.log('[Manager] STORAGE_LISTENER_SETUP: delegated to _initializeStorageListener()', {
     timestamp: Date.now()
@@ -8912,11 +8922,14 @@ function _validateRevision(context) {
 
   // If no revision, allow for backward compatibility
   if (newRevision === undefined || newRevision === null) {
-    console.log('[Manager] REVISION_VALIDATION: No revision present, processing (backward compat)', {
-      saveId: context.newValue?.saveId,
-      sequenceId: context.newValue?.sequenceId,
-      timestamp: now
-    });
+    console.log(
+      '[Manager] REVISION_VALIDATION: No revision present, processing (backward compat)',
+      {
+        saveId: context.newValue?.saveId,
+        sequenceId: context.newValue?.sequenceId,
+        timestamp: now
+      }
+    );
     return { valid: true, shouldBuffer: false, reason: 'no_revision_backward_compat' };
   }
 

@@ -24,7 +24,8 @@ Tabs Manager
 **v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
 - **Storage quota monitoring** - 5-minute intervals, warnings at 50%, 75%, 90%
-- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS (30s)
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS
+  (30s)
 - **Queue overflow handling** - Drop oldest 10% when queue full
 - **TTL-based message pruning** - Remove messages older than TTL before flush
 - **storage.onChanged listener** - Fallback sync path in content script
@@ -33,10 +34,13 @@ Tabs Manager
 - **Ordering validation** - sequenceId/revision tracking in content script
 - **BFCache handlers** - Enhanced pageshow/pagehide with state validation
 - **Checksum validation** - djb2-like hash during hydration
-- **SessionStorage conflict resolution** - Prefer storage.local as source of truth
+- **SessionStorage conflict resolution** - Prefer storage.local as source of
+  truth
 - **beforeunload cleanup** - CONTENT_UNLOADING message handler
-- **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab filtering
-- **BroadcastChannelManager.js DELETED** - Port + storage.local architecture ONLY
+- **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab
+  filtering
+- **BroadcastChannelManager.js DELETED** - Port + storage.local architecture
+  ONLY
 
 **v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
 counting, storage quota recovery (75%→50%→25%), declarativeNetRequest fallback,
@@ -82,8 +86,10 @@ background:
 
 **Two-layer architecture (NO BroadcastChannel):**
 
-- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized, active)
-- **Layer 2:** storage.local with monotonic revision versioning + storage.onChanged fallback
+- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized,
+  active)
+- **Layer 2:** storage.local with monotonic revision versioning +
+  storage.onChanged fallback
 
 **Key Changes (v6):**
 
@@ -134,7 +140,8 @@ background:
 
 ## 🆕 v1.6.3.8-v6 Patterns
 
-- **Port-based messaging PRIMARY** - Port + storage.local only (NO BroadcastChannel)
+- **Port-based messaging PRIMARY** - Port + storage.local only (NO
+  BroadcastChannel)
 - **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
 - **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
 - **Port reconnection** - Exponential backoff (100ms → 10s max)
@@ -159,33 +166,34 @@ background:
 
 ## v1.6.3.8-v4 Patterns (Retained)
 
-- initializationBarrier Promise, port-based hydration, visibility change listener
+- initializationBarrier Promise, port-based hydration, visibility change
+  listener
 - Proactive dedup cleanup (50%), sliding window eviction (95%), probe queuing
 
 ### Key Timing Constants (v1.6.3.8-v6)
 
-| Constant                         | Value     | Purpose                                |
-| -------------------------------- | --------- | -------------------------------------- |
-| `PORT_FAILURE_THRESHOLD`         | 3         | Consecutive failures before cleanup    |
-| `STORAGE_QUOTA_CHECK_INTERVAL`   | 300000    | 5-minute quota monitoring interval     |
-| `MAX_QUEUE_SIZE`                 | 100       | MessageBatcher queue limit             |
-| `MAX_MESSAGE_AGE_MS`             | 30000     | TTL for message pruning                |
-| `PORT_RECONNECT_BASE_MS`         | 100       | Initial reconnection delay             |
-| `PORT_RECONNECT_MAX_MS`          | 10000     | Maximum reconnection delay             |
-| `INIT_BARRIER_TIMEOUT_MS`        | 10000     | Initialization barrier timeout         |
-| `WRITE_BUFFER_FLUSH_MS`          | 75        | WriteBuffer batch window               |
+| Constant                       | Value  | Purpose                             |
+| ------------------------------ | ------ | ----------------------------------- |
+| `PORT_FAILURE_THRESHOLD`       | 3      | Consecutive failures before cleanup |
+| `STORAGE_QUOTA_CHECK_INTERVAL` | 300000 | 5-minute quota monitoring interval  |
+| `MAX_QUEUE_SIZE`               | 100    | MessageBatcher queue limit          |
+| `MAX_MESSAGE_AGE_MS`           | 30000  | TTL for message pruning             |
+| `PORT_RECONNECT_BASE_MS`       | 100    | Initial reconnection delay          |
+| `PORT_RECONNECT_MAX_MS`        | 10000  | Maximum reconnection delay          |
+| `INIT_BARRIER_TIMEOUT_MS`      | 10000  | Initialization barrier timeout      |
+| `WRITE_BUFFER_FLUSH_MS`        | 75     | WriteBuffer batch window            |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                   | Methods                                            |
-| ----------------------- | -------------------------------------------------- |
-| QuickTabStateMachine    | `canTransition()`, `transition()`                  |
-| QuickTabMediator        | `minimize()`, `restore()`, `destroy()`             |
-| MapTransactionManager   | `beginTransaction()`, `commitTransaction()`        |
-| TabStateManager (v3)    | `getTabState()`, `setTabState()`                   |
-| Manager                 | `scheduleRender()`, `_transitionConnectionState()` |
+| Class                 | Methods                                            |
+| --------------------- | -------------------------------------------------- |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                  |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`             |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`        |
+| TabStateManager (v3)  | `getTabState()`, `setTabState()`                   |
+| Manager               | `scheduleRender()`, `_transitionConnectionState()` |
 
 ---
 
@@ -257,14 +265,14 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ### Key Files
 
-| File                         | Features                                                        |
-| ---------------------------- | --------------------------------------------------------------- |
-| `quick-tabs-manager.js`      | Port-based sync, initializationBarrier, port hydration          |
-| `sidebar/modules/index.js`   | Re-exports init-barrier, state-sync, diagnostics, health-metrics|
-| `background.js`              | Port registry, storage versioning, quota monitoring             |
-| `QuickTabHandler.js`         | Handler timeout, init barrier, Code Health 9.41                 |
-| `message-utils.js`           | ACK-based messaging, MessageBatcher with queue limits           |
-| `storage-utils.js`           | WriteBuffer, sequence rejection, checksum validation            |
+| File                       | Features                                                         |
+| -------------------------- | ---------------------------------------------------------------- |
+| `quick-tabs-manager.js`    | Port-based sync, initializationBarrier, port hydration           |
+| `sidebar/modules/index.js` | Re-exports init-barrier, state-sync, diagnostics, health-metrics |
+| `background.js`            | Port registry, storage versioning, quota monitoring              |
+| `QuickTabHandler.js`       | Handler timeout, init barrier, Code Health 9.41                  |
+| `message-utils.js`         | ACK-based messaging, MessageBatcher with queue limits            |
+| `storage-utils.js`         | WriteBuffer, sequence rejection, checksum validation             |
 
 ### Storage
 

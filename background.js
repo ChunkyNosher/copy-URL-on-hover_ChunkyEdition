@@ -246,7 +246,7 @@ const _RECOVERY_KEEP_PERCENTAGE = 0.75;
  * v1.6.3.8-v5 - Issue #4: Progressive reduction: 75% → 50% → 25%
  * @type {number[]}
  */
-const RECOVERY_PERCENTAGES = [0.75, 0.50, 0.25];
+const RECOVERY_PERCENTAGES = [0.75, 0.5, 0.25];
 
 /**
  * Maximum number of recovery attempts before giving up
@@ -371,10 +371,10 @@ let dedupStats = {
   lastResetTime: Date.now(),
   // v1.6.3.8-v6 - Issue #11: Track which dedup tier was reached
   tierCounts: {
-    saveId: 0,       // Tier 1: saveId match
-    sequenceId: 0,   // Tier 2: sequenceId ordering
-    revision: 0,     // Tier 3: revision check
-    contentHash: 0   // Tier 4: content hash
+    saveId: 0, // Tier 1: saveId match
+    sequenceId: 0, // Tier 2: sequenceId ordering
+    revision: 0, // Tier 3: revision check
+    contentHash: 0 // Tier 4: content hash
   }
 };
 // v1.6.3.8-v6 - Issue #11: Longer-lived dedup history (last 5 minutes in 60s buckets)
@@ -385,9 +385,9 @@ let dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCou
 // v1.6.3.8-v6 - Issue #7: Map dedup method names to tier count keys
 const DEDUP_TIER_MAP = {
   'saveId-timestamp': 'saveId',
-  'sequenceId': 'sequenceId',
-  'revision': 'revision',
-  'contentHash': 'contentHash'
+  sequenceId: 'sequenceId',
+  revision: 'revision',
+  contentHash: 'contentHash'
 };
 
 // ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
@@ -1167,12 +1167,11 @@ async function checkStorageQuota() {
   try {
     const bytesInUse = await _getStorageBytesInUse();
     const percentUsed = bytesInUse / STORAGE_LOCAL_QUOTA_BYTES;
-    
+
     _updateStorageQuotaSnapshot(bytesInUse, percentUsed);
     _checkAndLogThresholdWarning(bytesInUse, percentUsed);
     _checkThresholdRecovery(bytesInUse, percentUsed);
     _logStorageQuotaStatus(bytesInUse, percentUsed);
-    
   } catch (err) {
     console.error('[Background] STORAGE_QUOTA_CHECK_FAILED:', {
       error: err.message,
@@ -1217,7 +1216,7 @@ function _checkAndLogThresholdWarning(bytesInUse, percentUsed) {
   for (let i = STORAGE_QUOTA_WARNING_THRESHOLDS.length - 1; i >= 0; i--) {
     const threshold = STORAGE_QUOTA_WARNING_THRESHOLDS[i];
     if (percentUsed < threshold.percent) continue;
-    
+
     _lastStorageQuotaSnapshot.thresholdLevel = threshold.level;
     if (_lastStorageQuotaThresholdLevel !== threshold.level) {
       _logStorageQuotaWarning(bytesInUse, percentUsed, threshold);
@@ -1235,7 +1234,7 @@ function _checkAndLogThresholdWarning(bytesInUse, percentUsed) {
 function _checkThresholdRecovery(bytesInUse, percentUsed) {
   if (percentUsed >= STORAGE_QUOTA_WARNING_THRESHOLDS[0].percent) return;
   if (_lastStorageQuotaThresholdLevel === null) return;
-  
+
   console.log('[Background] STORAGE_QUOTA_RECOVERED:', {
     bytesInUse,
     percentUsed: (percentUsed * 100).toFixed(1) + '%',
@@ -1290,13 +1289,13 @@ function _logStorageQuotaWarning(bytesInUse, percentUsed, threshold) {
     bytesInUse,
     bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
     percentUsed: (percentUsed * 100).toFixed(1) + '%',
-    threshold: (threshold.percent * 100) + '%',
+    threshold: threshold.percent * 100 + '%',
     level: threshold.level,
     message: threshold.message,
     quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
     timestamp: Date.now()
   };
-  
+
   if (threshold.level === 'CRITICAL') {
     console.error('[Background] STORAGE_QUOTA_CRITICAL:', logData);
   } else if (threshold.level === 'WARN') {
@@ -1371,9 +1370,7 @@ function logDiagnosticSnapshot() {
     skipped: dedupStats.skipped,
     processed: dedupStats.processed,
     totalSinceReset: total,
-    skipRate: total > 0
-      ? ((dedupStats.skipped / total) * 100).toFixed(1) + '%'
-      : 'N/A',
+    skipRate: total > 0 ? ((dedupStats.skipped / total) * 100).toFixed(1) + '%' : 'N/A',
     tierCounts: dedupStats.tierCounts,
     historyBuckets: dedupStatsHistory.length,
     // v1.6.3.8-v6 - Issue #11: Include 5-minute average skip rate
@@ -1385,16 +1382,17 @@ function logDiagnosticSnapshot() {
   const quotaSnapshot = _getStorageQuotaSnapshot();
   console.log('[Background] Storage quota:', {
     bytesInUse: quotaSnapshot.bytesInUse,
-    bytesInUseMB: quotaSnapshot.bytesInUse > 0 
-      ? (quotaSnapshot.bytesInUse / (1024 * 1024)).toFixed(2) + 'MB' 
-      : 'unknown',
-    percentUsed: quotaSnapshot.percentUsed > 0 
-      ? (quotaSnapshot.percentUsed * 100).toFixed(1) + '%'
-      : 'unknown',
+    bytesInUseMB:
+      quotaSnapshot.bytesInUse > 0
+        ? (quotaSnapshot.bytesInUse / (1024 * 1024)).toFixed(2) + 'MB'
+        : 'unknown',
+    percentUsed:
+      quotaSnapshot.percentUsed > 0
+        ? (quotaSnapshot.percentUsed * 100).toFixed(1) + '%'
+        : 'unknown',
     thresholdLevel: quotaSnapshot.thresholdLevel || 'OK',
-    lastChecked: quotaSnapshot.lastChecked > 0 
-      ? new Date(quotaSnapshot.lastChecked).toISOString()
-      : 'never'
+    lastChecked:
+      quotaSnapshot.lastChecked > 0 ? new Date(quotaSnapshot.lastChecked).toISOString() : 'never'
   });
 
   console.log('[Background] =================================================================');
@@ -1698,14 +1696,15 @@ function startDedupStatsLogging() {
     if (total > 0) {
       // v1.6.3.8-v6 - Issue #11: Calculate skip rate for correlation
       const skipRate = ((dedupStats.skipped / total) * 100).toFixed(1);
-      
+
       // v1.6.3.8-v6 - Issue #11: Correlate with port failures
-      const portFailureCorrelation = consecutiveKeepaliveFailures > 2 
-        ? 'HIGH_PORT_FAILURES' 
-        : consecutiveKeepaliveFailures > 0 
-          ? 'SOME_PORT_FAILURES' 
-          : 'HEALTHY';
-      
+      const portFailureCorrelation =
+        consecutiveKeepaliveFailures > 2
+          ? 'HIGH_PORT_FAILURES'
+          : consecutiveKeepaliveFailures > 0
+            ? 'SOME_PORT_FAILURES'
+            : 'HEALTHY';
+
       console.log('[Background] [STORAGE] DEDUP_STATS:', {
         skipped: dedupStats.skipped,
         processed: dedupStats.processed,
@@ -2329,7 +2328,11 @@ async function _recoverFromNullRead(operationId, intendedState) {
 
   // If not enough tabs to clear, fail early
   if (!intendedState?.tabs?.length || intendedState.tabs.length <= 1) {
-    return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota may be exhausted - insufficient tabs to clear');
+    return _logRecoveryFailure(
+      operationId,
+      'READ_RETURNED_NULL',
+      'storage quota may be exhausted - insufficient tabs to clear'
+    );
   }
 
   // Sort by creationTime once (oldest first)
@@ -2338,7 +2341,11 @@ async function _recoverFromNullRead(operationId, intendedState) {
   );
 
   // v1.6.3.8-v5 - Issue #4: Try each recovery percentage iteratively
-  for (let attempt = 0; attempt < RECOVERY_PERCENTAGES.length && attempt < RECOVERY_MAX_ATTEMPTS; attempt++) {
+  for (
+    let attempt = 0;
+    attempt < RECOVERY_PERCENTAGES.length && attempt < RECOVERY_MAX_ATTEMPTS;
+    attempt++
+  ) {
     const result = await _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt);
     if (result.success) {
       return result.recoveryResult;
@@ -2360,17 +2367,37 @@ async function _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attem
   const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
   const removedCount = intendedState.tabs.length - reducedTabs.length;
 
-  _logRecoveryAttempt(operationId, attempt, keepPercentage, intendedState.tabs.length, keepCount, removedCount);
+  _logRecoveryAttempt(
+    operationId,
+    attempt,
+    keepPercentage,
+    intendedState.tabs.length,
+    keepCount,
+    removedCount
+  );
 
   const recoverySaveId = `recovery-null-${attempt + 1}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId, attempt, keepPercentage);
+  const recoveryState = _buildIterativeRecoveryState(
+    intendedState,
+    reducedTabs,
+    recoverySaveId,
+    attempt,
+    keepPercentage
+  );
 
   const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
 
   if (writeResult.success) {
     return {
       success: true,
-      recoveryResult: _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, removedCount, attempt, keepPercentage)
+      recoveryResult: _buildRecoverySuccessResult(
+        operationId,
+        intendedState,
+        reducedTabs,
+        removedCount,
+        attempt,
+        keepPercentage
+      )
     };
   }
 
@@ -2384,7 +2411,14 @@ async function _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attem
  * v1.6.3.8-v5 - Issue #4: Helper for logging
  * @private
  */
-function _logRecoveryAttempt(operationId, attempt, keepPercentage, originalCount, keepCount, removedCount) {
+function _logRecoveryAttempt(
+  operationId,
+  attempt,
+  keepPercentage,
+  originalCount,
+  keepCount,
+  removedCount
+) {
   console.log('[Background] RECOVERY_ATTEMPT:', {
     operationId,
     attempt: attempt + 1,
@@ -2402,7 +2436,13 @@ function _logRecoveryAttempt(operationId, attempt, keepPercentage, originalCount
  * v1.6.3.8-v5 - Issue #4: Helper to build state object
  * @private
  */
-function _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId, attempt, keepPercentage) {
+function _buildIterativeRecoveryState(
+  intendedState,
+  reducedTabs,
+  recoverySaveId,
+  attempt,
+  keepPercentage
+) {
   return {
     ...intendedState,
     tabs: reducedTabs,
@@ -2419,7 +2459,14 @@ function _buildIterativeRecoveryState(intendedState, reducedTabs, recoverySaveId
  * v1.6.3.8-v5 - Issue #4: Helper for success handling
  * @private
  */
-function _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, removedCount, attempt, keepPercentage) {
+function _buildRecoverySuccessResult(
+  operationId,
+  intendedState,
+  reducedTabs,
+  removedCount,
+  attempt,
+  keepPercentage
+) {
   console.log('[Background] RECOVERY_SUCCESS:', {
     operationId,
     method: 'clear-oldest-tabs',
@@ -2432,7 +2479,7 @@ function _buildRecoverySuccessResult(operationId, intendedState, reducedTabs, re
   });
 
   // Notify user at critical pruning levels (50% or more removed)
-  if (keepPercentage <= 0.50) {
+  if (keepPercentage <= 0.5) {
     _notifyUserOfDataPruning(operationId, attempt + 1, removedCount, intendedState.tabs.length);
   }
 
@@ -2479,7 +2526,11 @@ function _handleRecoveryExhausted(operationId, originalTabCount) {
   });
 
   _notifyUserOfRecoveryFailure(operationId, originalTabCount);
-  return _logRecoveryFailure(operationId, 'READ_RETURNED_NULL', 'storage quota recovery exhausted all attempts');
+  return _logRecoveryFailure(
+    operationId,
+    'READ_RETURNED_NULL',
+    'storage quota recovery exhausted all attempts'
+  );
 }
 
 /**
@@ -2515,14 +2566,16 @@ function _notifyUserOfDataPruning(operationId, attempt, removedCount, originalCo
 
   // Create notification if API available
   if (browser.notifications?.create) {
-    browser.notifications.create(`quota-recovery-${operationId}`, {
-      type: 'basic',
-      iconUrl: browser.runtime.getURL('images/icon48.png'),
-      title: 'Quick Tabs Data Pruned',
-      message: `${removedCount} oldest Quick Tab(s) were removed due to storage limits. ${originalCount - removedCount} tabs remain.`
-    }).catch(err => {
-      console.warn('[Background] Failed to create notification:', err.message);
-    });
+    browser.notifications
+      .create(`quota-recovery-${operationId}`, {
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('images/icon48.png'),
+        title: 'Quick Tabs Data Pruned',
+        message: `${removedCount} oldest Quick Tab(s) were removed due to storage limits. ${originalCount - removedCount} tabs remain.`
+      })
+      .catch(err => {
+        console.warn('[Background] Failed to create notification:', err.message);
+      });
   }
 }
 
@@ -2543,14 +2596,17 @@ function _notifyUserOfRecoveryFailure(operationId, originalCount) {
 
   // Create notification if API available
   if (browser.notifications?.create) {
-    browser.notifications.create(`quota-failure-${operationId}`, {
-      type: 'basic',
-      iconUrl: browser.runtime.getURL('images/icon48.png'),
-      title: 'Quick Tabs Storage Error',
-      message: 'Storage quota exceeded and recovery failed. Please manually close some Quick Tabs to free space.'
-    }).catch(err => {
-      console.warn('[Background] Failed to create notification:', err.message);
-    });
+    browser.notifications
+      .create(`quota-failure-${operationId}`, {
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('images/icon48.png'),
+        title: 'Quick Tabs Storage Error',
+        message:
+          'Storage quota exceeded and recovery failed. Please manually close some Quick Tabs to free space.'
+      })
+      .catch(err => {
+        console.warn('[Background] Failed to create notification:', err.message);
+      });
   }
 }
 
@@ -3408,7 +3464,12 @@ async function _handleChecksumMismatch({
  * Note: chrome-extension:// included for Chromium compatibility but filtered in Firefox
  * @private
  */
-const VALID_QUICKTAB_PROTOCOLS = new Set(['http:', 'https:', 'moz-extension:', 'chrome-extension:']);
+const VALID_QUICKTAB_PROTOCOLS = new Set([
+  'http:',
+  'https:',
+  'moz-extension:',
+  'chrome-extension:'
+]);
 
 /**
  * Dangerous URL protocols that should always be rejected
@@ -4672,167 +4733,167 @@ async function initializeHeaderModification() {
 function initializeWebRequestHeaderModification() {
   console.log('[Quick Tabs] Initializing webRequest header modification...');
 
-// Track modified URLs for debugging
-const modifiedUrls = new Set();
+  // Track modified URLs for debugging
+  const modifiedUrls = new Set();
 
-// v1.6.3.4-v11 - FIX Issue #6: Track recently processed iframe URLs to prevent spam logging
-const recentlyProcessedIframes = new Map(); // url -> timestamp
-const IFRAME_DEDUP_WINDOW_MS = 200; // Skip logging if same URL processed within 200ms
+  // v1.6.3.4-v11 - FIX Issue #6: Track recently processed iframe URLs to prevent spam logging
+  const recentlyProcessedIframes = new Map(); // url -> timestamp
+  const IFRAME_DEDUP_WINDOW_MS = 200; // Skip logging if same URL processed within 200ms
 
-/**
- * Clean up old entries from recentlyProcessedIframes Map
- * v1.6.3.4-v11 - FIX Issue #6: Extracted to reduce nesting depth
- * @private
- * @param {number} now - Current timestamp
- */
-function _cleanupOldIframeEntries(now) {
-  const cutoff = now - IFRAME_DEDUP_WINDOW_MS * 10;
-  for (const [url, timestamp] of recentlyProcessedIframes) {
-    if (timestamp < cutoff) {
-      recentlyProcessedIframes.delete(url);
+  /**
+   * Clean up old entries from recentlyProcessedIframes Map
+   * v1.6.3.4-v11 - FIX Issue #6: Extracted to reduce nesting depth
+   * @private
+   * @param {number} now - Current timestamp
+   */
+  function _cleanupOldIframeEntries(now) {
+    const cutoff = now - IFRAME_DEDUP_WINDOW_MS * 10;
+    for (const [url, timestamp] of recentlyProcessedIframes) {
+      if (timestamp < cutoff) {
+        recentlyProcessedIframes.delete(url);
+      }
     }
   }
-}
 
-/**
- * Handle X-Frame-Options header removal
- * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
- * @param {Object} header - HTTP header object
- * @param {string} url - Request URL for logging
- * @returns {boolean} false to remove header, true to keep
- */
-function _handleXFrameOptionsHeader(header, url) {
-  console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${url}`);
-  modifiedUrls.add(url);
-  return false;
-}
-
-/**
- * Handle CSP header modification
- * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
- * @param {Object} header - HTTP header object (modified in place)
- * @param {string} url - Request URL for logging
- * @returns {boolean} false to remove header, true to keep
- */
-function _handleCSPHeader(header, url) {
-  const originalValue = header.value;
-  header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
-
-  // If CSP is now empty, remove the header entirely
-  const trimmedValue = header.value.trim();
-  if (trimmedValue === '' || trimmedValue === ';') {
-    console.log(`[Quick Tabs] ✓ Removed empty CSP from ${url}`);
+  /**
+   * Handle X-Frame-Options header removal
+   * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
+   * @param {Object} header - HTTP header object
+   * @param {string} url - Request URL for logging
+   * @returns {boolean} false to remove header, true to keep
+   */
+  function _handleXFrameOptionsHeader(header, url) {
+    console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${url}`);
     modifiedUrls.add(url);
     return false;
   }
 
-  // Log if we modified it
-  if (header.value !== originalValue) {
-    console.log(`[Quick Tabs] ✓ Modified CSP for ${url}`);
-    modifiedUrls.add(url);
-  }
-  return true;
-}
+  /**
+   * Handle CSP header modification
+   * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
+   * @param {Object} header - HTTP header object (modified in place)
+   * @param {string} url - Request URL for logging
+   * @returns {boolean} false to remove header, true to keep
+   */
+  function _handleCSPHeader(header, url) {
+    const originalValue = header.value;
+    header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
 
-/**
- * Handle CORP header removal
- * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
- * @param {Object} header - HTTP header object
- * @param {string} url - Request URL for logging
- * @returns {boolean} false to remove header, true to keep
- */
-function _handleCORPHeader(header, url) {
-  const value = header.value.toLowerCase();
-  if (value === 'same-origin' || value === 'same-site') {
-    console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${url}`);
-    modifiedUrls.add(url);
-    return false;
-  }
-  return true;
-}
-
-/**
- * Filter security headers for Quick Tab iframe embedding
- * v1.6.3.4-v11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
- * @param {Object} header - HTTP header object
- * @param {string} url - Request URL for logging
- * @returns {boolean} false to remove header, true to keep
- */
-function _filterSecurityHeader(header, url) {
-  const name = header.name.toLowerCase();
-
-  if (name === 'x-frame-options') {
-    return _handleXFrameOptionsHeader(header, url);
-  }
-  if (name === 'content-security-policy') {
-    return _handleCSPHeader(header, url);
-  }
-  if (name === 'cross-origin-resource-policy') {
-    return _handleCORPHeader(header, url);
-  }
-  return true;
-}
-
-browser.webRequest.onHeadersReceived.addListener(
-  details => {
-    // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
-    const now = Date.now();
-    const lastProcessed = recentlyProcessedIframes.get(details.url);
-    const shouldLog = !lastProcessed || now - lastProcessed >= IFRAME_DEDUP_WINDOW_MS;
-
-    if (shouldLog) {
-      console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
-      recentlyProcessedIframes.set(details.url, now);
-
-      // Clean up old entries to prevent memory leak
-      if (recentlyProcessedIframes.size > 100) {
-        _cleanupOldIframeEntries(now);
-      }
+    // If CSP is now empty, remove the header entirely
+    const trimmedValue = header.value.trim();
+    if (trimmedValue === '' || trimmedValue === ';') {
+      console.log(`[Quick Tabs] ✓ Removed empty CSP from ${url}`);
+      modifiedUrls.add(url);
+      return false;
     }
 
-    const modifiedHeaders = details.responseHeaders.filter(header =>
-      _filterSecurityHeader(header, details.url)
-    );
-
-    return { responseHeaders: modifiedHeaders };
-  },
-  {
-    urls: ['<all_urls>'],
-    types: ['sub_frame'] // Only iframes - filter at registration for better performance
-  },
-  ['blocking', 'responseHeaders'] // Firefox MV3 allows 'blocking'
-);
-
-// Log successful iframe loads
-browser.webRequest.onCompleted.addListener(
-  details => {
-    if (modifiedUrls.has(details.url)) {
-      console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
-      // Clean up old URLs to prevent memory leak
-      if (modifiedUrls.size > 100) {
-        modifiedUrls.clear();
-      }
+    // Log if we modified it
+    if (header.value !== originalValue) {
+      console.log(`[Quick Tabs] ✓ Modified CSP for ${url}`);
+      modifiedUrls.add(url);
     }
-  },
-  {
-    urls: ['<all_urls>'],
-    types: ['sub_frame']
+    return true;
   }
-);
 
-// Log failed iframe loads
-browser.webRequest.onErrorOccurred.addListener(
-  details => {
-    console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
-    console.error(`[Quick Tabs] Error: ${details.error}`);
-  },
-  {
-    urls: ['<all_urls>'],
-    types: ['sub_frame']
+  /**
+   * Handle CORP header removal
+   * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
+   * @param {Object} header - HTTP header object
+   * @param {string} url - Request URL for logging
+   * @returns {boolean} false to remove header, true to keep
+   */
+  function _handleCORPHeader(header, url) {
+    const value = header.value.toLowerCase();
+    if (value === 'same-origin' || value === 'same-site') {
+      console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${url}`);
+      modifiedUrls.add(url);
+      return false;
+    }
+    return true;
   }
-);
 
-console.log('[Quick Tabs] ✓ webRequest header modification installed');
+  /**
+   * Filter security headers for Quick Tab iframe embedding
+   * v1.6.3.4-v11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
+   * @param {Object} header - HTTP header object
+   * @param {string} url - Request URL for logging
+   * @returns {boolean} false to remove header, true to keep
+   */
+  function _filterSecurityHeader(header, url) {
+    const name = header.name.toLowerCase();
+
+    if (name === 'x-frame-options') {
+      return _handleXFrameOptionsHeader(header, url);
+    }
+    if (name === 'content-security-policy') {
+      return _handleCSPHeader(header, url);
+    }
+    if (name === 'cross-origin-resource-policy') {
+      return _handleCORPHeader(header, url);
+    }
+    return true;
+  }
+
+  browser.webRequest.onHeadersReceived.addListener(
+    details => {
+      // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
+      const now = Date.now();
+      const lastProcessed = recentlyProcessedIframes.get(details.url);
+      const shouldLog = !lastProcessed || now - lastProcessed >= IFRAME_DEDUP_WINDOW_MS;
+
+      if (shouldLog) {
+        console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
+        recentlyProcessedIframes.set(details.url, now);
+
+        // Clean up old entries to prevent memory leak
+        if (recentlyProcessedIframes.size > 100) {
+          _cleanupOldIframeEntries(now);
+        }
+      }
+
+      const modifiedHeaders = details.responseHeaders.filter(header =>
+        _filterSecurityHeader(header, details.url)
+      );
+
+      return { responseHeaders: modifiedHeaders };
+    },
+    {
+      urls: ['<all_urls>'],
+      types: ['sub_frame'] // Only iframes - filter at registration for better performance
+    },
+    ['blocking', 'responseHeaders'] // Firefox MV3 allows 'blocking'
+  );
+
+  // Log successful iframe loads
+  browser.webRequest.onCompleted.addListener(
+    details => {
+      if (modifiedUrls.has(details.url)) {
+        console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
+        // Clean up old URLs to prevent memory leak
+        if (modifiedUrls.size > 100) {
+          modifiedUrls.clear();
+        }
+      }
+    },
+    {
+      urls: ['<all_urls>'],
+      types: ['sub_frame']
+    }
+  );
+
+  // Log failed iframe loads
+  browser.webRequest.onErrorOccurred.addListener(
+    details => {
+      console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
+      console.error(`[Quick Tabs] Error: ${details.error}`);
+    },
+    {
+      urls: ['<all_urls>'],
+      types: ['sub_frame']
+    }
+  );
+
+  console.log('[Quick Tabs] ✓ webRequest header modification installed');
 } // End initializeWebRequestHeaderModification()
 
 // ==================== HEADER MODIFICATION INITIALIZATION ====================
@@ -4840,7 +4901,10 @@ console.log('[Quick Tabs] ✓ webRequest header modification installed');
 // Call the async initialization function - fallback is handled within initializeHeaderModification()
 initializeHeaderModification().catch(err => {
   // Only log error - fallback is already handled in initializeHeaderModification()
-  console.error('[Quick Tabs] Header modification initialization error:', err?.message || String(err));
+  console.error(
+    '[Quick Tabs] Header modification initialization error:',
+    err?.message || String(err)
+  );
 });
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
@@ -5637,7 +5701,7 @@ function _getDedupStatsSnapshot() {
  */
 function _incrementDedupTierCount(method) {
   if (!dedupStats.tierCounts) return;
-  
+
   const tierKey = DEDUP_TIER_MAP[method];
   if (tierKey) {
     dedupStats.tierCounts[tierKey]++;
@@ -5669,7 +5733,8 @@ function _createDedupResult({ shouldSkip, method, reason, decision, logDetails =
   const result = { shouldSkip, method, reason };
 
   // v1.6.3.8-v6 - Issue #7: Enhanced logging with tier and correlation ID
-  const correlationId = logDetails.correlationId || `dedup-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const correlationId =
+    logDetails.correlationId || `dedup-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
   console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
     decision,
@@ -6281,7 +6346,7 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
 function _processStorageUpdate(newValue) {
   // v1.6.3.8-v6 - Issue #7: Generate correlation ID for tracking this storage event
   const correlationId = `storage-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-  
+
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
     _clearCacheForEmptyStorage(newValue);
@@ -7201,7 +7266,8 @@ function _trackPortMessageResult(portId, success) {
   // Increment failure count
   portInfo.consecutiveFailureCount++;
   const failureCount = portInfo.consecutiveFailureCount;
-  const timeSinceLastSuccess = Date.now() - (portInfo.lastSuccessfulMessageTime || portInfo.connectedAt);
+  const timeSinceLastSuccess =
+    Date.now() - (portInfo.lastSuccessfulMessageTime || portInfo.connectedAt);
 
   console.warn('[Background] PORT_MESSAGE_FAILURE:', {
     portId,
@@ -7616,7 +7682,8 @@ function logPortRegistrySnapshot() {
 
     // Include details for zombie ports for debugging
     if (state === 'zombie') {
-      const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+      const lastActivity =
+        portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
       portDetails.push({
         portId,
         type,
@@ -7640,7 +7707,10 @@ function logPortRegistrySnapshot() {
 }
 
 // Start periodic port registry snapshot logging
-_portRegistrySnapshotIntervalId = setInterval(logPortRegistrySnapshot, PORT_REGISTRY_SNAPSHOT_INTERVAL_MS);
+_portRegistrySnapshotIntervalId = setInterval(
+  logPortRegistrySnapshot,
+  PORT_REGISTRY_SNAPSHOT_INTERVAL_MS
+);
 console.log('[Background] v1.6.3.8-v3 PORT_REGISTRY_SNAPSHOT logging started (every 60s)');
 
 // ==================== v1.6.3.8-v3 PORT ACK TRACKING & CIRCUIT BREAKER (Issue #9) ====================
@@ -8370,7 +8440,7 @@ function handleContentUnloading(message, portInfo) {
       tabId,
       reason: 'content-script-unloading'
     });
-    
+
     // Use existing port cleanup mechanism
     unregisterPort(portId, 'content-unloading');
   }
@@ -8400,9 +8470,9 @@ function _cleanupQuickTabHostTracking(tabId) {
     quickTabHostTabs.delete(quickTabId);
     cleanedUpQuickTabs.push(quickTabId);
   }
-  
+
   if (cleanedUpQuickTabs.length === 0) return;
-  
+
   console.log('[Background] CONTENT_UNLOADING: Cleaned up Quick Tab host tracking', {
     tabId,
     cleanedUpQuickTabs,

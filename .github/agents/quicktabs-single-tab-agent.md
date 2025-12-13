@@ -46,8 +46,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
 - **Circuit breaker** - 3 consecutive failures triggers cleanup
 
-**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port failure
-counting, initialization barriers, BFCache lifecycle.
+**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port
+failure counting, initialization barriers, BFCache lifecycle.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -77,7 +77,7 @@ counting, initialization barriers, BFCache lifecycle.
 
 ## Testing Requirements
 
-- [ ] BFCache lifecycle events work (PAGE_LIFECYCLE_BFCACHE_*) (v1.6.3.8-v2)
+- [ ] BFCache lifecycle events work (PAGE*LIFECYCLE_BFCACHE*\*) (v1.6.3.8-v2)
 - [ ] currentTabId barrier works (2s exponential backoff) (v1.6.3.8)
 - [ ] Circuit breaker probing recovers early (v1.6.3.7-v4)
 - [ ] Strict tab isolation rejects null originTabId

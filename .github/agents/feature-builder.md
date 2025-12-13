@@ -76,7 +76,8 @@ UI)
 - **beforeunload cleanup** - CONTENT_UNLOADING message handler
 
 **v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery, declarativeNetRequest fallback, URL validation.
+counting, storage quota recovery, declarativeNetRequest fallback, URL
+validation.
 
 **v1.6.3.8-v4 Features (Retained):** Initialization barriers (10s), exponential
 backoff retry, port-based hydration, visibility change listener, proactive dedup

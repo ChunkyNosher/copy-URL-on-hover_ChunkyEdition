@@ -3,7 +3,8 @@
 **Document Version:** 1.0  
 **Date:** December 13, 2025  
 **Scope:** Playwright end-to-end testing for Quick Tabs Extension v1.6.3.8  
-**Target:** Browser extension E2E testing, cross-tab scenarios, and container isolation validation
+**Target:** Browser extension E2E testing, cross-tab scenarios, and container
+isolation validation
 
 ---
 
@@ -27,12 +28,14 @@
 ### Existing Infrastructure
 
 ✅ **Configuration Files Present:**
+
 - `.playwright-mcp-firefox-config.json` - Firefox extension config
 - `.playwright-mcp-chrome-config.json` - Chrome extension config
 - `playwright.config.firefox.js` - Firefox test configuration (referenced)
 - `playwright.config.chrome.js` - Chrome test configuration (referenced)
 
 ✅ **Package.json Scripts Defined:**
+
 ```json
 "test:extension": "playwright test --config=playwright.config.firefox.js",
 "test:extension:chrome": "playwright test --config=playwright.config.chrome.js --project=chromium-extension",
@@ -46,10 +49,12 @@
 ```
 
 ✅ **Dependencies Installed:**
+
 - `@playwright/test@1.57.0` - Latest stable
 - `@playwright/mcp@0.0.47` - MCP integration for extensions
 
 ❌ **Critical Gap: Test Files Missing**
+
 - `tests/e2e/` directory exists but appears empty
 - `tests/extension/` directory exists but appears empty
 - No actual E2E test implementations
@@ -60,16 +65,20 @@
 
 ### Challenge: Firefox Container Support
 
-Firefox Multi-Account Containers are not extensions running in the extension context. They're a separate Firefox feature that isolates cookies, site data, and tracking data. This means:
+Firefox Multi-Account Containers are not extensions running in the extension
+context. They're a separate Firefox feature that isolates cookies, site data,
+and tracking data. This means:
 
 **Architecture:**
+
 - Extension context: Your extension (`moz-extension://UUID/*`)
 - Container context: Browser-level isolation (no special API for extensions)
 - Separation: Containers are completely isolated at browser level
 
-**Testing Implication:**
-When testing container isolation:
-1. Quick Tabs created in Container 1 must NOT appear when switching to Container 2
+**Testing Implication:** When testing container isolation:
+
+1. Quick Tabs created in Container 1 must NOT appear when switching to Container
+   2
 2. Storage per container is handled by Firefox transparently
 3. Extension must respect Firefox container boundaries automatically
 4. No special container API calls needed in extension code
@@ -81,9 +90,11 @@ When testing container isolation:
 **Process:**
 
 1. **Build Test Extension**
+
    ```bash
    npm run build:test
    ```
+
    This enables TEST_MODE and injects test-bridge.js
 
 2. **Extension Output Location**
@@ -93,6 +104,7 @@ When testing container isolation:
 3. **Playwright Configuration**
 
    The `.playwright-mcp-firefox-config.json` should specify:
+
    ```json
    {
      "browserName": "firefox",
@@ -101,24 +113,26 @@ When testing container isolation:
    }
    ```
 
-**Critical Configuration Detail:**
-Firefox needs a profile directory for containers to work. Playwright MCP should manage this.
+**Critical Configuration Detail:** Firefox needs a profile directory for
+containers to work. Playwright MCP should manage this.
 
 ---
 
 ### Key Assertions for Firefox Extension Testing
 
 **1. Extension Window Accessibility**
+
 ```javascript
 // Extension background pages
-const extensionPageURL = await context.pages()[0].evaluate(() => 
-  window.location.href
-);
-// Should be moz-extension://UUID/... 
+const extensionPageURL = await context
+  .pages()[0]
+  .evaluate(() => window.location.href);
+// Should be moz-extension://UUID/...
 expect(extensionPageURL).toMatch(/^moz-extension:\/\/[\w-]+\//);
 ```
 
 **2. Cross-Tab Message Passing**
+
 ```javascript
 // Quick Tabs must communicate through port API
 // Messages should flow:
@@ -126,6 +140,7 @@ expect(extensionPageURL).toMatch(/^moz-extension:\/\/[\w-]+\//);
 ```
 
 **3. Storage Isolation by Container**
+
 ```javascript
 // When tab is in Container 1, Quick Tabs visible
 // When same domain in Container 2, Quick Tabs NOT visible
@@ -138,10 +153,13 @@ expect(extensionPageURL).toMatch(/^moz-extension:\/\/[\w-]+\//);
 ### Challenge: Playwright Cross-Tab Limitations
 
 **Official Limitation:**
-> "Playwright does not support cross-page interactions directly. Each page is isolated."
 
-**Our Workaround:**
-Since Quick Tabs communicate via `browser.runtime.port`, we can:
+> "Playwright does not support cross-page interactions directly. Each page is
+> isolated."
+
+**Our Workaround:** Since Quick Tabs communicate via `browser.runtime.port`, we
+can:
+
 1. Create multiple pages (simulating multiple tabs)
 2. Let them communicate through the shared background script
 3. Verify state synchronization
@@ -152,18 +170,18 @@ Since Quick Tabs communicate via `browser.runtime.port`, we can:
 async function createMultiTabTestContext() {
   const browser = await firefox.launch();
   const context = await browser.newContext();
-  
+
   // These pages represent different browser tabs
   const tab1 = await context.newPage();
   const tab2 = await context.newPage();
-  
+
   // Both tabs load the same domain (or different domains)
   await tab1.goto('https://example.com/page1');
   await tab2.goto('https://example.com/page2');
-  
+
   // Background script is shared between all pages
   // Communication happens through browser.runtime
-  
+
   return { tab1, tab2, context, browser };
 }
 ```
@@ -177,7 +195,7 @@ async function createMultiTabTestContext() {
 ```javascript
 test('Quick Tab created in Tab 1 not visible in Tab 2', async () => {
   const { tab1, tab2 } = await createMultiTabTestContext();
-  
+
   // Step 1: Create Quick Tab in Tab 1
   await tab1.evaluate(() => {
     window.__COPILOT_TEST_BRIDGE__.createQuickTab({
@@ -185,14 +203,14 @@ test('Quick Tab created in Tab 1 not visible in Tab 2', async () => {
       position: { x: 100, y: 100 }
     });
   });
-  
+
   // Verify created in Tab 1
-  await expect(tab1.locator('[data-testid="quick-tab"]'))
-    .toBeVisible();
-  
+  await expect(tab1.locator('[data-testid="quick-tab"]')).toBeVisible();
+
   // Step 2: Switch to Tab 2
   // Verify NOT visible
-  const quickTabsInTab2 = await tab2.locator('[data-testid="quick-tab"]')
+  const quickTabsInTab2 = await tab2
+    .locator('[data-testid="quick-tab"]')
     .count();
   expect(quickTabsInTab2).toBe(0);
 });
@@ -202,33 +220,31 @@ test('Quick Tab created in Tab 1 not visible in Tab 2', async () => {
 
 ### Hydration Testing (Scenario 11)
 
-**Scenario:**
-Quick Tab persists after page reload (hydration filtered by originTabId)
+**Scenario:** Quick Tab persists after page reload (hydration filtered by
+originTabId)
 
 **Implementation:**
 
 ```javascript
 test('Scenario 11: Hydration filters by originTabId', async () => {
   const { tab1, tab2 } = await createMultiTabTestContext();
-  
+
   // Tab 1 creates Quick Tab
   await tab1.evaluate(() => {
     window.__COPILOT_TEST_BRIDGE__.createQuickTab({
       url: 'https://example.com'
     });
   });
-  
+
   // Verify visible in Tab 1
-  await expect(tab1.locator('[data-testid="quick-tab"]'))
-    .toBeVisible();
-  
+  await expect(tab1.locator('[data-testid="quick-tab"]')).toBeVisible();
+
   // Reload Tab 1 (triggers hydration)
   await tab1.reload();
-  
+
   // Verify Quick Tab restores (hydration with originTabId filter)
-  await expect(tab1.locator('[data-testid="quick-tab"]'))
-    .toBeVisible();
-  
+  await expect(tab1.locator('[data-testid="quick-tab"]')).toBeVisible();
+
   // Verify NOT in Tab 2 (hydration filtered correctly)
   const count = await tab2.locator('[data-testid="quick-tab"]').count();
   expect(count).toBe(0);
@@ -241,9 +257,11 @@ test('Scenario 11: Hydration filters by originTabId', async () => {
 
 ### Setup: Firefox Container Profiles
 
-Firefox containers require profile management. Playwright needs profiles with containers pre-configured.
+Firefox containers require profile management. Playwright needs profiles with
+containers pre-configured.
 
 **Profile Setup Script:**
+
 ```javascript
 // tests/e2e/helpers/create-container-profiles.js
 // Creates Firefox profiles with containers:
@@ -258,8 +276,9 @@ Firefox containers require profile management. Playwright needs profiles with co
 
 ### Container Testing Pattern
 
-**Challenge:** 
-Firefox containers are transparent. Extension gets no API notification of container switch. Storage is automatically isolated per-container.
+**Challenge:** Firefox containers are transparent. Extension gets no API
+notification of container switch. Storage is automatically isolated
+per-container.
 
 **Testing Strategy:**
 
@@ -272,27 +291,27 @@ test('Scenario 14: Container Isolation', async ({ firefox }) => {
     // This varies based on how containers are configured
   });
   const page1 = await context1.newPage();
-  
+
   const browser2 = await firefox.launch();
   const context2 = await browser2.newContext({
     // Different container
   });
   const page2 = await context2.newPage();
-  
+
   await page1.goto('https://example.com');
   await page2.goto('https://example.com');
-  
+
   // Create Quick Tab in Container 1
   await page1.evaluate(() => {
     window.__COPILOT_TEST_BRIDGE__.createQuickTab({});
   });
-  
+
   // Verify NOT visible in Container 2
   // (Storage is isolated per-container by Firefox)
   const qtsInContext2 = await page2.evaluate(() => {
     return window.__COPILOT_TEST_BRIDGE__.getQuickTabsInCurrentTab().length;
   });
-  
+
   expect(qtsInContext2).toBe(0);
 });
 ```
@@ -304,8 +323,9 @@ test('Scenario 14: Container Isolation', async ({ firefox }) => {
 Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 
 ### Scenario 1: Basic Quick Tab Creation & Tab Isolation
-**File:** `tests/e2e/scenarios/01-tab-isolation.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/01-tab-isolation.spec.js` **What to Test:**
+
 - Quick Tab created in Tab 1 (WP 1)
 - Switch to Tab 2 (YT 1)
 - Verify Quick Tab NOT visible in Tab 2
@@ -314,8 +334,10 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 2: Multiple Quick Tabs in Single Tab (No Cross-Tab Sync)
-**File:** `tests/e2e/scenarios/02-multiple-tabs-no-sync.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/02-multiple-tabs-no-sync.spec.js` **What to
+Test:**
+
 - Create 2 Quick Tabs in WP 1
 - Open YT 1
 - Verify neither Quick Tab visible in YT 1
@@ -324,8 +346,10 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 3: Position/Size Persistence Within Single Tab
-**File:** `tests/e2e/scenarios/03-position-size-persistence.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/03-position-size-persistence.spec.js` **What to
+Test:**
+
 - Create Quick Tab at (100, 100)
 - Drag to (300, 200), resize to 600×400
 - Reload page (Ctrl+Shift+R)
@@ -335,8 +359,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 4: Quick Tabs Manager - Display Grouped by Origin Tab
-**File:** `tests/e2e/scenarios/04-manager-grouping.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/04-manager-grouping.spec.js` **What to Test:**
+
 - Create QT 1 & 2 in WP 1
 - Create QT 3 in YT 1
 - Open Manager
@@ -347,8 +372,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 5: Minimize Quick Tab in Single Tab
-**File:** `tests/e2e/scenarios/05-minimize-restore.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/05-minimize-restore.spec.js` **What to Test:**
+
 - Create Quick Tab in WP 1
 - Click minimize button
 - Quick Tab disappears from viewport
@@ -359,8 +385,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 6: Close Single Quick Tab
-**File:** `tests/e2e/scenarios/06-close-single-tab.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/06-close-single-tab.spec.js` **What to Test:**
+
 - Create QT 1 & 2 in WP 1
 - Close QT 1
 - QT 1 removed from viewport
@@ -370,8 +397,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 7: Close All Quick Tabs via Manager
-**File:** `tests/e2e/scenarios/07-close-all.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/07-close-all.spec.js` **What to Test:**
+
 - Create Quick Tabs across multiple tabs
 - Open Manager
 - Click "Close All"
@@ -381,8 +409,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 8: Close All Minimized Quick Tabs via Manager
-**File:** `tests/e2e/scenarios/08-close-minimized.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/08-close-minimized.spec.js` **What to Test:**
+
 - Create and minimize some Quick Tabs
 - Keep others visible
 - Click "Close Minimized"
@@ -392,8 +421,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 9: Quick Tab Limit Enforcement Per Tab
-**File:** `tests/e2e/scenarios/09-limit-enforcement.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/09-limit-enforcement.spec.js` **What to Test:**
+
 - Set max Quick Tabs to 2 in settings
 - Create 2 in WP 1
 - Try to create 3rd
@@ -405,8 +435,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 10: Quick Tab Persistence Across Browser Restart
-**File:** `tests/e2e/scenarios/10-persistence-restart.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/10-persistence-restart.spec.js` **What to Test:**
+
 - Create Quick Tab at (200, 300), size 700×500
 - Create minimized Quick Tab in another tab
 - Close browser completely
@@ -417,8 +448,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 11: Hydration on Page Reload (originTabId Filtering)
-**File:** `tests/e2e/scenarios/11-hydration-filtering.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/11-hydration-filtering.spec.js` **What to Test:**
+
 - WP 1 creates Quick Tab
 - YT 1 open, no Quick Tabs visible
 - Reload WP 1
@@ -428,8 +460,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 12: Tab Closure and State Management
-**File:** `tests/e2e/scenarios/12-tab-closure.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/12-tab-closure.spec.js` **What to Test:**
+
 - Create Quick Tabs in WP 1, YT 1, GH 1
 - Manager shows all three
 - Close YT 1 tab
@@ -439,8 +472,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 13: Position/Size Changes Don't Affect Other Tabs
-**File:** `tests/e2e/scenarios/13-position-per-tab.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/13-position-per-tab.spec.js` **What to Test:**
+
 - WP 1 create QT 1 at (100, 100)
 - YT 1 create QT 2 at (200, 200)
 - Move QT 1 to (500, 500)
@@ -450,8 +484,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 14: Container Isolation (Firefox Multi-Account Container)
-**File:** `tests/e2e/scenarios/14-container-isolation.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/14-container-isolation.spec.js` **What to Test:**
+
 - WP in FX 1 (default) create QT 1
 - WP in FX 2 (Personal) create QT 2
 - Manager in FX 1 shows only QT 1
@@ -461,8 +496,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 15: Multiple Quick Tabs with Dragging & Layering
-**File:** `tests/e2e/scenarios/15-dragging-layering.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/15-dragging-layering.spec.js` **What to Test:**
+
 - Create QT 1, 2, 3
 - QT 3 on top (created last)
 - Click QT 1, moves to front
@@ -472,8 +508,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 16: Manager Panel Position Persistence
-**File:** `tests/e2e/scenarios/16-manager-position.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/16-manager-position.spec.js` **What to Test:**
+
 - Open Manager at default position
 - Move to bottom-left, resize to 450×600
 - Switch to another tab (Manager stays open)
@@ -483,8 +520,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 17: Rapid Tab Switching with Quick Tab State
-**File:** `tests/e2e/scenarios/17-rapid-switching.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/17-rapid-switching.spec.js` **What to Test:**
+
 - Create Quick Tabs in multiple tabs
 - Start dragging QT in WP 1
 - Rapidly switch tabs within 100ms
@@ -494,8 +532,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 18: Quick Tab Visibility Across Container Context
-**File:** `tests/e2e/scenarios/18-container-context.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/18-container-context.spec.js` **What to Test:**
+
 - GH in FX 1 create QT 1
 - GH in FX 2 create QT 2
 - Manager in FX 1 shows separate "GitHub Tab" section with only QT 1
@@ -504,8 +543,10 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 19: Minimize and Restore Cycle in One Tab
-**File:** `tests/e2e/scenarios/19-minimize-restore-cycle.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/19-minimize-restore-cycle.spec.js` **What to
+Test:**
+
 - Create Quick Tab
 - Minimize (disappears)
 - Restore (reappears)
@@ -515,8 +556,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 20: Cross-Domain Navigation in Same Tab
-**File:** `tests/e2e/scenarios/20-cross-domain-nav.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/20-cross-domain-nav.spec.js` **What to Test:**
+
 - WP 1 create Quick Tab at (100, 100)
 - Navigate to YouTube in same tab
 - Quick Tab remains visible during navigation
@@ -525,8 +567,9 @@ Map all 21 Comprehensive Behavior Scenarios to E2E tests:
 ---
 
 ### Scenario 21: Memory and Storage Impact of Multiple Quick Tabs
-**File:** `tests/e2e/scenarios/21-memory-storage.spec.js`
-**What to Test:**
+
+**File:** `tests/e2e/scenarios/21-memory-storage.spec.js` **What to Test:**
+
 - Create 10 Quick Tabs
 - Manager shows all 10
 - Monitor memory usage (should be reasonable)
@@ -598,14 +641,14 @@ const { defineConfig, devices } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.spec.js',
-  
+
   // Run tests in parallel
   fullyParallel: true,
-  
+
   // Fail on console errors
   use: {
     trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    screenshot: 'only-on-failure'
   },
 
   // Firefox project for extension testing
@@ -615,21 +658,21 @@ module.exports = defineConfig({
       use: {
         ...devices['Desktop Firefox'],
         // Extension testing specific options
-        headless: false,  // Extensions don't work in headless
+        headless: false, // Extensions don't work in headless
         launchArgs: [
           // Allow extension installation
           '-new-instance'
-        ],
-      },
-    },
+        ]
+      }
+    }
   ],
 
   webServer: {
     // If needed, start a test server
     command: 'npm run build:test',
     url: 'about:blank',
-    reuseExistingServer: !process.env.CI,
-  },
+    reuseExistingServer: !process.env.CI
+  }
 });
 ```
 
@@ -649,20 +692,21 @@ export const multiTabTest = base.extend({
     const tab1 = await context.newPage();
     const tab2 = await context.newPage();
     const tab3 = await context.newPage();
-    
+
     await use({ tab1, tab2, tab3, context });
-    
+
     // Cleanup
     await tab1.close();
     await tab2.close();
     await tab3.close();
-  },
+  }
 });
 
 export const expect = base.expect;
 ```
 
 **Usage in Tests:**
+
 ```javascript
 import { multiTabTest as test } from './helpers/multi-tab-fixture.js';
 
@@ -681,6 +725,7 @@ test('multi-tab scenario', async ({ multiTab }) => {
 **File:** `tests/e2e/helpers/event-tracking.js`
 
 Track extension lifecycle events:
+
 - Quick Tab creation
 - Quick Tab destruction
 - Manager open/close
@@ -693,11 +738,11 @@ export class EventTracker {
     this.page = page;
     this.events = [];
   }
-  
+
   async startTracking() {
     await this.page.evaluate(() => {
       window.__eventLog = [];
-      
+
       // Hook into test bridge for events
       const originalCreate = window.__COPILOT_TEST_BRIDGE__.createQuickTab;
       window.__COPILOT_TEST_BRIDGE__.createQuickTab = async (...args) => {
@@ -706,7 +751,7 @@ export class EventTracker {
       };
     });
   }
-  
+
   getEvents() {
     return this.page.evaluate(() => window.__eventLog);
   }
@@ -721,27 +766,32 @@ export class EventTracker {
 
 ```javascript
 export async function assertQuickTabVisible(page, testId) {
-  await expect(page.locator(`[data-testid="${testId}"]`))
-    .toBeVisible();
+  await expect(page.locator(`[data-testid="${testId}"]`)).toBeVisible();
 }
 
 export async function assertQuickTabNotVisible(page, testId) {
-  await expect(page.locator(`[data-testid="${testId}"]`))
-    .not.toBeVisible();
+  await expect(page.locator(`[data-testid="${testId}"]`)).not.toBeVisible();
 }
 
 export async function assertManagerShowing(page, groupName, qtCount) {
   const group = page.locator(`[data-testid="manager-group-${groupName}"]`);
   await expect(group).toBeVisible();
-  
-  const items = page.locator(`[data-testid="manager-group-${groupName}"] [data-testid="quick-tab-item"]`);
+
+  const items = page.locator(
+    `[data-testid="manager-group-${groupName}"] [data-testid="quick-tab-item"]`
+  );
   await expect(items).toHaveCount(qtCount);
 }
 
-export async function assertQuickTabPosition(page, testId, expectedX, expectedY) {
+export async function assertQuickTabPosition(
+  page,
+  testId,
+  expectedX,
+  expectedY
+) {
   const element = page.locator(`[data-testid="${testId}"]`);
   const boundingBox = await element.boundingBox();
-  
+
   expect(Math.abs(boundingBox.x - expectedX)).toBeLessThan(5);
   expect(Math.abs(boundingBox.y - expectedY)).toBeLessThan(5);
 }
@@ -760,20 +810,20 @@ export class PerformanceMonitor {
   constructor(page) {
     this.page = page;
   }
-  
+
   async getMemoryUsage() {
     return await this.page.evaluate(() => {
       if (performance.memory) {
         return {
           usedJSHeapSize: performance.memory.usedJSHeapSize,
           totalJSHeapSize: performance.memory.totalJSHeapSize,
-          jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+          jsHeapSizeLimit: performance.memory.jsHeapSizeLimit
         };
       }
       return null;
     });
   }
-  
+
   async getStorageUsage() {
     return await this.page.evaluate(async () => {
       if (navigator.storage && navigator.storage.estimate) {
@@ -782,7 +832,7 @@ export class PerformanceMonitor {
       return null;
     });
   }
-  
+
   async assertMemoryReasonable(maxMB) {
     const memory = await this.getMemoryUsage();
     const usedMB = memory.usedJSHeapSize / (1024 * 1024);
@@ -800,14 +850,15 @@ export class PerformanceMonitor {
 **1. Extension Not Loading**
 
 **Symptom:**
+
 ```
 Error: Protocol error (Target.attachToTarget): Unknown session id
 ```
 
-**Cause:**
-Extension didn't build properly or TEST_MODE not enabled
+**Cause:** Extension didn't build properly or TEST_MODE not enabled
 
 **Fix:**
+
 ```bash
 npm run clean
 npm run build:test
@@ -818,24 +869,23 @@ npm run test:extension:debug  # Run with --debug flag
 
 **2. Cross-Tab Communication Not Working**
 
-**Symptom:**
-Quick Tabs created in one tab appear in another tab
+**Symptom:** Quick Tabs created in one tab appear in another tab
 
-**Cause:**
-originTabId filtering not working in storage layer
+**Cause:** originTabId filtering not working in storage layer
 
 **Debug:**
+
 ```javascript
 test.only('debug cross-tab', async ({ tab1, tab2 }) => {
   // Check storage in each tab
   const storage1 = await tab1.evaluate(() => {
     return browser.storage.local.get();
   });
-  
+
   const storage2 = await tab2.evaluate(() => {
     return browser.storage.local.get();
   });
-  
+
   console.log('Tab 1 Storage:', storage1);
   console.log('Tab 2 Storage:', storage2);
   // Verify originTabId filtering
@@ -846,20 +896,18 @@ test.only('debug cross-tab', async ({ tab1, tab2 }) => {
 
 **3. Container Tests Failing**
 
-**Symptom:**
-Container-specific tests pass locally but fail in CI
+**Symptom:** Container-specific tests pass locally but fail in CI
 
-**Cause:**
-Firefox containers not pre-configured in CI environment
+**Cause:** Firefox containers not pre-configured in CI environment
 
-**Fix:**
-Create container profile in CI setup or use separate browser instances
+**Fix:** Create container profile in CI setup or use separate browser instances
 
 ---
 
 ### Debug Commands
 
 **1. UI Mode (Step Through Tests)**
+
 ```bash
 npm run test:extension:ui
 # Opens Playwright Inspector
@@ -867,6 +915,7 @@ npm run test:extension:ui
 ```
 
 **2. Headed Mode (See Browser)**
+
 ```bash
 npm run test:extension:debug --headed
 # Shows browser during test execution
@@ -874,11 +923,13 @@ npm run test:extension:debug --headed
 ```
 
 **3. Specific Test**
+
 ```bash
 npx playwright test tests/e2e/scenarios/01-tab-isolation.spec.js --debug
 ```
 
 **4. Generate Trace for Debugging**
+
 ```javascript
 test('scenario with trace', async ({ page }) => {
   await page.context().tracing.start({ screenshots: true, snapshots: true });
@@ -896,12 +947,14 @@ test('scenario with trace', async ({ page }) => {
 ### Phase 1: Test Infrastructure (Week 1)
 
 **Create Essential Files:**
+
 1. ✅ `tests/e2e/helpers/multi-tab-fixture.js`
 2. ✅ `tests/e2e/helpers/event-tracking.js`
 3. ✅ `tests/e2e/helpers/assertion-helpers.js`
 4. ✅ `tests/e2e/helpers/performance-monitor.js`
 
 **Setup Playwright Configuration:**
+
 1. ✅ Verify `.playwright-mcp-firefox-config.json`
 2. ✅ Create/update `playwright.config.firefox.js`
 3. ✅ Create/update `playwright.config.chrome.js`
@@ -914,6 +967,7 @@ test('scenario with trace', async ({ page }) => {
 ### Phase 2: Core Scenarios (Week 2)
 
 **Implement Scenarios 1-7:**
+
 1. ✅ Tab Isolation (Scenario 1)
 2. ✅ Multiple Tabs No Sync (Scenario 2)
 3. ✅ Position/Size Persistence (Scenario 3)
@@ -929,6 +983,7 @@ test('scenario with trace', async ({ page }) => {
 ### Phase 3: Advanced Scenarios (Week 3)
 
 **Implement Scenarios 8-14:**
+
 1. ✅ Close Minimized (Scenario 8)
 2. ✅ Limit Enforcement (Scenario 9)
 3. ✅ Persistence Restart (Scenario 10)
@@ -944,6 +999,7 @@ test('scenario with trace', async ({ page }) => {
 ### Phase 4: Complex Scenarios (Week 4)
 
 **Implement Scenarios 15-21:**
+
 1. ✅ Dragging/Layering (Scenario 15)
 2. ✅ Manager Position (Scenario 16)
 3. ✅ Rapid Switching (Scenario 17)
@@ -959,6 +1015,7 @@ test('scenario with trace', async ({ page }) => {
 ### Phase 5: CI/CD Integration (Week 5)
 
 **Setup Continuous Testing:**
+
 1. ✅ GitHub Actions workflow for E2E tests
 2. ✅ Docker container for Firefox with containers support
 3. ✅ Test result reporting
@@ -971,16 +1028,16 @@ test('scenario with trace', async ({ page }) => {
 
 ## Key Differences: Jest vs. Playwright E2E
 
-| Aspect | Jest Unit/Integration | Playwright E2E |
-|--------|----------------------|----------------|
-| **Speed** | <5 seconds for 100 tests | 30+ seconds per test |
-| **Isolation** | Perfect (mocks) | Real browser state |
-| **Coverage** | Branches, functions, lines | User workflows |
+| Aspect         | Jest Unit/Integration        | Playwright E2E            |
+| -------------- | ---------------------------- | ------------------------- |
+| **Speed**      | <5 seconds for 100 tests     | 30+ seconds per test      |
+| **Isolation**  | Perfect (mocks)              | Real browser state        |
+| **Coverage**   | Branches, functions, lines   | User workflows            |
 | **What Tests** | Logic, functions, components | Full application behavior |
-| **Debugging** | Console logs, debugger | Inspector UI, traces |
-| **Cross-Tab** | Mocked via helpers | Real port communication |
-| **Storage** | Mocked in setup | Real browser storage |
-| **Extensions** | Test bridge APIs | Full extension runtime |
+| **Debugging**  | Console logs, debugger       | Inspector UI, traces      |
+| **Cross-Tab**  | Mocked via helpers           | Real port communication   |
+| **Storage**    | Mocked in setup              | Real browser storage      |
+| **Extensions** | Test bridge APIs             | Full extension runtime    |
 
 ---
 
@@ -994,19 +1051,22 @@ E2E testing is complete when:
 ✅ Performance acceptable (<50ms per operation)  
 ✅ CI/CD pipeline runs E2E tests on every PR  
 ✅ Trace artifacts captured for failed tests  
-✅ Test execution time <10 minutes total  
+✅ Test execution time <10 minutes total
 
 ---
 
 ## Conclusion
 
-Playwright E2E tests validate the extension works correctly in real Firefox browsers with actual:
+Playwright E2E tests validate the extension works correctly in real Firefox
+browsers with actual:
+
 - Port communication
 - Storage persistence
 - Cross-tab synchronization
 - Container isolation
 - State restoration
 
-Combined with Jest unit tests, Playwright E2E tests provide complete confidence in the Quick Tabs extension.
+Combined with Jest unit tests, Playwright E2E tests provide complete confidence
+in the Quick Tabs extension.
 
 **Total Estimated Effort for E2E Testing:** 70-90 hours (2-3 weeks at full-time)

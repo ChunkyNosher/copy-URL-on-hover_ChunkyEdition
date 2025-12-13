@@ -383,7 +383,9 @@ async function getCurrentTabIdFromBackground() {
   // v1.6.3.8-v2 - Handle legacy response format (tabId at root level)
   // DEPRECATED: This format will be removed in v1.6.4. Use { success: true, data: { tabId } }
   if (response?.success && typeof response.tabId === 'number') {
-    console.warn('[Content] DEPRECATED: Legacy response format detected. Migrate to { data: { tabId } }');
+    console.warn(
+      '[Content] DEPRECATED: Legacy response format detected. Migrate to { data: { tabId } }'
+    );
     console.log('[Content] Got current tab ID from background (legacy format):', {
       tabId: response.tabId,
       success: response.success
@@ -546,7 +548,10 @@ function _schedulePortReconnect(tabId) {
   }, delay);
 
   // Update delay for next attempt (exponential backoff)
-  portCurrentDelay = Math.min(portCurrentDelay * PORT_RECONNECT_BACKOFF_MULTIPLIER, PORT_RECONNECT_MAX_DELAY_MS);
+  portCurrentDelay = Math.min(
+    portCurrentDelay * PORT_RECONNECT_BACKOFF_MULTIPLIER,
+    PORT_RECONNECT_MAX_DELAY_MS
+  );
 }
 
 /**
@@ -838,7 +843,7 @@ function _computeStateChecksum(state) {
  */
 function _validateHydrationChecksum(state, expectedChecksum = null) {
   const computed = _computeStateChecksum(state);
-  
+
   // If no expected checksum, assume valid but log for diagnostics
   if (!expectedChecksum) {
     console.log('[Content] CHECKSUM_VALIDATION: No expected checksum, computed:', computed);
@@ -868,22 +873,22 @@ function _validateHydrationChecksum(state, expectedChecksum = null) {
 function _resolveStorageConflict(sessionState, localState) {
   // If no SessionStorage state, use local
   if (!sessionState) {
-    return { 
-      source: 'local', 
-      state: localState, 
-      discarded: false, 
-      reason: 'no-session-state' 
+    return {
+      source: 'local',
+      state: localState,
+      discarded: false,
+      reason: 'no-session-state'
     };
   }
 
   // If no local state, use session (shouldn't happen in normal flow)
   if (!localState) {
     console.warn('[Content] STORAGE_CONFLICT: No local state, using session');
-    return { 
-      source: 'session', 
-      state: sessionState, 
-      discarded: false, 
-      reason: 'no-local-state' 
+    return {
+      source: 'session',
+      state: sessionState,
+      discarded: false,
+      reason: 'no-local-state'
     };
   }
 
@@ -901,22 +906,22 @@ function _resolveStorageConflict(sessionState, localState) {
       localTabCount: localState.tabs?.length || 0,
       reason: 'session-stale'
     });
-    return { 
-      source: 'local', 
-      state: localState, 
-      discarded: true, 
-      reason: 'session-stale' 
+    return {
+      source: 'local',
+      state: localState,
+      discarded: true,
+      reason: 'session-stale'
     };
   }
 
   // SessionStorage has same or higher revision - could be a race condition
   // Still prefer local as the authoritative source
   if (sessionRevision === localRevision) {
-    return { 
-      source: 'local', 
-      state: localState, 
-      discarded: false, 
-      reason: 'revision-equal-prefer-local' 
+    return {
+      source: 'local',
+      state: localState,
+      discarded: false,
+      reason: 'revision-equal-prefer-local'
     };
   }
 
@@ -927,11 +932,11 @@ function _resolveStorageConflict(sessionState, localState) {
     localRevision,
     reason: 'local-is-source-of-truth'
   });
-  return { 
-    source: 'local', 
-    state: localState, 
-    discarded: true, 
-    reason: 'prefer-local-authority' 
+  return {
+    source: 'local',
+    state: localState,
+    discarded: true,
+    reason: 'prefer-local-authority'
   };
 }
 
@@ -1017,7 +1022,9 @@ function _handleBFCachePageShow(event) {
 
   // Re-establish port connection
   if (cachedTabId !== null && !backgroundPort) {
-    console.log('[Content] Re-establishing port connection after BFCache restore', { correlationId });
+    console.log('[Content] Re-establishing port connection after BFCache restore', {
+      correlationId
+    });
     connectContentToBackground(cachedTabId);
   }
 
@@ -1033,7 +1040,10 @@ function _handleBFCachePageShow(event) {
  * @private
  */
 async function _validateAndSyncStateAfterBFCache(correlationId) {
-  console.log('[Content] BFCACHE_STATE_VALIDATION_START:', { correlationId, timestamp: Date.now() });
+  console.log('[Content] BFCACHE_STATE_VALIDATION_START:', {
+    correlationId,
+    timestamp: Date.now()
+  });
 
   try {
     // Read from storage.local (source of truth)
@@ -1041,7 +1051,9 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
     const localState = localResult?.[CONTENT_STATE_KEY];
 
     if (!localState) {
-      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', { correlationId });
+      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', {
+        correlationId
+      });
       return;
     }
 
@@ -1064,7 +1076,7 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
     const sessionState = _tryGetSessionState();
 
     const conflictResult = _resolveStorageConflict(sessionState, localState);
-    
+
     console.log('[Content] BFCACHE_STATE_VALIDATION_COMPLETE:', {
       correlationId,
       source: conflictResult.source,
@@ -1081,7 +1093,6 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
 
     // Notify QuickTabsManager with the validated state
     _notifyManagerOfStorageUpdate(conflictResult.state, 'bfcache-restore');
-
   } catch (err) {
     console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', {
       correlationId,
@@ -1142,7 +1153,7 @@ window.addEventListener('beforeunload', () => {
     hasPort: !!backgroundPort,
     timestamp: Date.now()
   });
-  
+
   // Attempt to notify background of impending unload for port cleanup
   if (backgroundPort) {
     try {
@@ -1378,7 +1389,7 @@ function _tryPortMessageSend(message, attempt) {
   if (!backgroundPort) {
     return { success: false, error: new Error('No port available') };
   }
-  
+
   try {
     backgroundPort.postMessage(message);
     console.log('[Content] PORT_MESSAGE_SENT:', {

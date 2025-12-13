@@ -61,16 +61,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **beforeunload cleanup** - CONTENT_UNLOADING message handler
 
 **v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery, declarativeNetRequest fallback, URL validation.
+counting, storage quota recovery, declarativeNetRequest fallback, URL
+validation.
 
 **Key Functions (v1.6.3.8-v6):**
 
-| Function                    | Location      | Purpose                            |
-| --------------------------- | ------------- | ---------------------------------- |
-| `sendRequestWithTimeout()`  | message-utils | ACK-based messaging                |
-| `flushWriteBuffer()`        | storage-utils | WriteBuffer batch flush            |
-| `waitForInitialization()`   | QuickTabHandler | 10s init barrier                 |
-| `scheduleRender(source)`    | Manager       | Unified render entry point         |
+| Function                   | Location        | Purpose                    |
+| -------------------------- | --------------- | -------------------------- |
+| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging        |
+| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush    |
+| `waitForInitialization()`  | QuickTabHandler | 10s init barrier           |
+| `scheduleRender(source)`   | Manager         | Unified render entry point |
 
 ---
 

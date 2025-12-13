@@ -68,8 +68,8 @@ const relevantMemories = await searchMemories({
 - **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
 - **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
 
-**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port failure
-counting, initialization barriers.
+**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port
+failure counting, initialization barriers.
 
 **v1.6.3.7-v4 Features (Retained):**
 

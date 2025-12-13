@@ -583,7 +583,7 @@ indefinitely until TTL expiration.
 
 - quickTabHostInfo Map declared with no size limits
 - TTL cleanup job runs every 60 seconds (600000ms cleanup interval)
-- HOST_INFO_TTL_MS = 24 _ 60 _ 60 \* 1000 (86400000ms)
+- HOST*INFO_TTL_MS = 24 * 60 \_ 60 \* 1000 (86400000ms)
 - No browser.tabs.onRemoved cleanup for quickTabHostInfo entries
 - No logging of Map size or cleanup results
 
