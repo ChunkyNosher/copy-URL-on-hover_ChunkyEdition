@@ -1,9 +1,9 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v6** - A feature-rich **Firefox/Chrome/Chromium** extension for
-quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
-control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
-Panel Manager.
+**Version 1.6.3.8-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
+for quick URL copying and advanced Quick Tab management with **Solo/Mute
+visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
+Floating Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
@@ -27,8 +27,10 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **13 Architecture Fixes:**
 
-- ✅ **Storage quota monitoring** - 5-minute intervals, warnings at 50%, 75%, 90%
-- ✅ **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS (30s)
+- ✅ **Storage quota monitoring** - 5-minute intervals, warnings at 50%, 75%,
+  90%
+- ✅ **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS
+  (30s)
 - ✅ **Queue overflow handling** - Drop oldest 10% when queue full
 - ✅ **TTL-based message pruning** - Remove messages older than TTL before flush
 - ✅ **storage.onChanged listener** - Fallback sync path in content script
@@ -37,9 +39,11 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Ordering validation** - sequenceId/revision tracking in content script
 - ✅ **BFCache handlers** - Enhanced pageshow/pagehide with state validation
 - ✅ **Checksum validation** - djb2-like hash during hydration
-- ✅ **SessionStorage conflict resolution** - Prefer storage.local as source of truth
+- ✅ **SessionStorage conflict resolution** - Prefer storage.local as source of
+  truth
 - ✅ **beforeunload cleanup** - CONTENT_UNLOADING message handler
-- ✅ **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab filtering
+- ✅ **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab
+  filtering
 
 **Why This Matters:** Complete removal of BroadcastChannel eliminates all origin
 isolation issues, simplifies architecture, and provides more reliable sync.

@@ -5,7 +5,7 @@ module.exports = {
     node: true,
     webextensions: true
   },
-  extends: ['eslint:recommended'],
+  extends: ['eslint:recommended', 'prettier'],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module'

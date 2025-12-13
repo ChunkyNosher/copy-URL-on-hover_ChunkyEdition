@@ -2,8 +2,10 @@
 
 **Document Version:** 1.0  
 **Date:** December 13, 2025  
-**Scope:** Jest unit and integration testing infrastructure for Quick Tabs Extension v1.6.3.8  
-**Target:** Proper test coverage organization, architecture-aware testing patterns, and scalable infrastructure
+**Scope:** Jest unit and integration testing infrastructure for Quick Tabs
+Extension v1.6.3.8  
+**Target:** Proper test coverage organization, architecture-aware testing
+patterns, and scalable infrastructure
 
 ---
 
@@ -27,19 +29,25 @@
 ### Strengths
 
 ✅ **Solid Foundation:**
+
 - Jest properly configured with JSDOM environment
 - Module aliasing correctly set up for path resolution
-- Coverage thresholds defined by layer (domain: 100%, storage: 90%, features: 80%, global: 80%)
-- Good baseline test setup with `requestAnimationFrame`, `PointerEvent`, `TextEncoder` polyfills
-- Browser API mocking in place (`browser.storage`, `browser.runtime`, `browser.tabs`)
+- Coverage thresholds defined by layer (domain: 100%, storage: 90%, features:
+  80%, global: 80%)
+- Good baseline test setup with `requestAnimationFrame`, `PointerEvent`,
+  `TextEncoder` polyfills
+- Browser API mocking in place (`browser.storage`, `browser.runtime`,
+  `browser.tabs`)
 - Test infrastructure exists (`test-bridge.js`, handlers, page proxy)
 
 ✅ **Existing Test Coverage:**
+
 - Domain layer well-tested (100% threshold enforced)
 - QuickTab and ReactiveQuickTab domain models have comprehensive tests
 - Basic test examples and fixtures available
 
 ✅ **DevDependencies Good:**
+
 - Jest 29.7.0 (current, stable)
 - Babel Jest for ES6 transpilation
 - Testing Library utilities installed
@@ -50,7 +58,9 @@
 ### Critical Gaps
 
 ❌ **Architecture Not Accounted For:**
-- No tests for new managers (QuickTabGroupManager, MemoryMonitor, PerformanceMetrics)
+
+- No tests for new managers (QuickTabGroupManager, MemoryMonitor,
+  PerformanceMetrics)
 - No tests for transaction manager (map-transaction-manager.js)
 - No tests for minimized-manager.js (separate state management)
 - No coordinator/channel pattern tests
@@ -59,6 +69,7 @@
 - Schemas directory untested
 
 ❌ **Test Infrastructure Missing:**
+
 - No comprehensive mock factory for managers
 - No cross-tab state simulator
 - No port communication simulator
@@ -67,12 +78,14 @@
 - No coordinator test helpers
 
 ❌ **Integration Test Infrastructure Absent:**
+
 - No manager-to-manager interaction tests
 - No cross-component message flow tests
 - No event coordination tests
 - No storage consistency tests
 
 ❌ **Coverage Gaps:**
+
 - Background script (370KB) likely <10% covered
 - Window.js (53KB) likely partially covered
 - Sidebar components untested
@@ -84,16 +97,18 @@
 
 ### Gap 1: No Manager Mock Factory
 
-**Problem:**
-Managers (QuickTabGroupManager, MemoryMonitor, PerformanceMetrics, map-transaction-manager) have complex initialization and state. Each test that needs a manager must manually construct mocks.
+**Problem:** Managers (QuickTabGroupManager, MemoryMonitor, PerformanceMetrics,
+map-transaction-manager) have complex initialization and state. Each test that
+needs a manager must manually construct mocks.
 
 **Impact:**
+
 - Test code is repetitive and error-prone
 - Managers have interdependencies not easily testable
 - State consistency not validated across manager interactions
 
-**Solution Needed:**
-Create a manager mock factory that:
+**Solution Needed:** Create a manager mock factory that:
+
 - Provides pre-configured mock managers with sane defaults
 - Maintains manager interdependencies
 - Supports partial mocking (mock some methods, real others)
@@ -102,6 +117,7 @@ Create a manager mock factory that:
 **File to Create:** `tests/helpers/manager-factory.js`
 
 **Implementation Pattern:**
+
 ```javascript
 // Should export factory functions like:
 // - createMockMemoryMonitor(overrides)
@@ -119,20 +135,22 @@ Create a manager mock factory that:
 
 ### Gap 2: No Cross-Tab State Simulator
 
-**Problem:**
-Quick Tabs operate across multiple tabs with shared storage. Unit tests can't verify:
+**Problem:** Quick Tabs operate across multiple tabs with shared storage. Unit
+tests can't verify:
+
 - Storage consistency across originTabId boundaries
 - Hydration filtering (loading only relevant Quick Tabs per tab)
 - Cross-tab message synchronization
 - Tab closure cleanup
 
 **Impact:**
+
 - Scenario 11 (Hydration on Page Reload) can't be tested properly
 - Scenario 12 (Tab Closure State Management) untestable in isolation
 - Cross-tab sync behavior verification missing
 
-**Solution Needed:**
-Create a cross-tab state simulator that:
+**Solution Needed:** Create a cross-tab state simulator that:
+
 - Simulates multiple browser tabs in a single test
 - Manages separate storage per tab (by originTabId)
 - Tracks message passing between tabs
@@ -142,6 +160,7 @@ Create a cross-tab state simulator that:
 **File to Create:** `tests/helpers/cross-tab-simulator.js`
 
 **Implementation Pattern:**
+
 ```javascript
 // Should export a class like:
 class CrossTabSimulator {
@@ -161,8 +180,9 @@ class CrossTabSimulator {
 
 ### Gap 3: No Port Communication Test Helper
 
-**Problem:**
-Handlers communicate via Chrome `runtime.connect` ports. Tests need to:
+**Problem:** Handlers communicate via Chrome `runtime.connect` ports. Tests need
+to:
+
 - Simulate port connections
 - Mock port lifecycle (connect, disconnect)
 - Track port messages
@@ -170,12 +190,13 @@ Handlers communicate via Chrome `runtime.connect` ports. Tests need to:
 - Test circuit breaker logic
 
 **Impact:**
+
 - Handler port communication untestable
 - Reconnection/error recovery logic can't be validated
 - Message formatting/parsing errors not caught in tests
 
-**Solution Needed:**
-Create a port communication simulator that:
+**Solution Needed:** Create a port communication simulator that:
+
 - Mocks Chrome port API
 - Tracks all messages sent/received
 - Allows simulating connection failures
@@ -185,6 +206,7 @@ Create a port communication simulator that:
 **File to Create:** `tests/helpers/port-simulator.js`
 
 **Implementation Pattern:**
+
 ```javascript
 // Should export a class/object like:
 class PortSimulator {
@@ -204,8 +226,9 @@ class PortSimulator {
 
 ### Gap 4: No State Machine Test Utilities
 
-**Problem:**
-`state-machine.js` (13KB) manages Quick Tab state transitions. Tests need:
+**Problem:** `state-machine.js` (13KB) manages Quick Tab state transitions.
+Tests need:
+
 - Verify all valid transitions
 - Catch invalid transitions
 - Test guard conditions
@@ -213,13 +236,14 @@ class PortSimulator {
 - Track state change history
 
 **Impact:**
+
 - State transition logic bugs not caught
 - Invalid state transitions allowed
 - Guard conditions not verified
 - Scenario 5 (minimize) and Scenario 19 (minimize/restore cycle) incomplete
 
-**Solution Needed:**
-Create state machine test utilities that:
+**Solution Needed:** Create state machine test utilities that:
+
 - Provide assertions for state transitions
 - Track transition history
 - Support transition guards verification
@@ -229,6 +253,7 @@ Create state machine test utilities that:
 **File to Create:** `tests/helpers/state-machine-utils.js`
 
 **Implementation Pattern:**
+
 ```javascript
 // Should export utilities like:
 // - assertValidTransition(machine, fromState, toState, action)
@@ -243,8 +268,8 @@ Create state machine test utilities that:
 
 ### Gap 5: No Storage Persistence Helper
 
-**Problem:**
-Storage operations are async and must be tested for:
+**Problem:** Storage operations are async and must be tested for:
+
 - Checksum validation
 - Key format/versioning
 - originTabId filtering
@@ -252,13 +277,14 @@ Storage operations are async and must be tested for:
 - Storage quota handling
 
 **Impact:**
+
 - Storage consistency bugs in production
 - Scenario 11 (hydration filtering) incomplete
 - Scenario 12 (tab closure cleanup) incomplete
 - Migration bugs between storage versions
 
-**Solution Needed:**
-Create storage test helper that:
+**Solution Needed:** Create storage test helper that:
+
 - Mocks browser.storage with full tracking
 - Validates storage key formats
 - Checks originTabId filtering
@@ -268,6 +294,7 @@ Create storage test helper that:
 **File to Create:** `tests/helpers/storage-test-helper.js`
 
 **Implementation Pattern:**
+
 ```javascript
 // Should export utilities/class like:
 class StorageTestHelper {
@@ -287,21 +314,23 @@ class StorageTestHelper {
 
 ### Gap 6: No Coordinator Test Utilities
 
-**Problem:**
-Coordinators orchestrate complex multi-step operations (create, update, destroy). Tests need:
+**Problem:** Coordinators orchestrate complex multi-step operations (create,
+update, destroy). Tests need:
+
 - Verify operation sequencing
 - Check error handling/rollback
 - Validate event emission
 - Test lifecycle hooks
 
 **Impact:**
+
 - Coordinator orchestration bugs not caught
 - Operation sequencing errors silent
 - Rollback logic untested
 - Event firing inconsistencies missed
 
-**Solution Needed:**
-Create coordinator test utilities that:
+**Solution Needed:** Create coordinator test utilities that:
+
 - Mock subordinate components
 - Track operation sequence
 - Verify event emission
@@ -310,6 +339,7 @@ Create coordinator test utilities that:
 **File to Create:** `tests/helpers/coordinator-utils.js`
 
 **Implementation Pattern:**
+
 ```javascript
 // Should export utilities like:
 // - createCoordinatorTestBed(coordinator, dependencies)
@@ -323,8 +353,9 @@ Create coordinator test utilities that:
 
 ### Gap 7: No Mock Setup Reset Pattern
 
-**Problem:**
-Tests share mock setup but don't properly reset between tests. Current `jest.config.cjs` has:
+**Problem:** Tests share mock setup but don't properly reset between tests.
+Current `jest.config.cjs` has:
+
 ```javascript
 clearMocks: true,
 resetMocks: true,
@@ -332,6 +363,7 @@ restoreMocks: true,
 ```
 
 But this doesn't handle:
+
 - Storage state between tests
 - Port simulator state
 - Cross-tab simulator state
@@ -339,18 +371,20 @@ But this doesn't handle:
 - Event listener registration
 
 **Impact:**
+
 - Test pollution and false failures
 - Flaky tests depending on execution order
 - State leakage between test suites
 
-**Solution Needed:**
-Create a test setup/teardown pattern that:
+**Solution Needed:** Create a test setup/teardown pattern that:
+
 - Resets all helpers before each test
 - Clears all global mocks
 - Restores original implementations
 - Validates clean state at start of each test
 
 **Implementation Pattern:**
+
 ```javascript
 // In tests/setup.js, add:
 // - Helper registration and tracking
@@ -369,7 +403,8 @@ Create a test setup/teardown pattern that:
 
 **New Pattern:**
 
-Managers are state-holding components with methods that modify state. Tests should:
+Managers are state-holding components with methods that modify state. Tests
+should:
 
 1. **Separate Unit Tests (tests/unit/managers/)**
    - Test each manager in isolation
@@ -384,21 +419,22 @@ Managers are state-holding components with methods that modify state. Tests shou
    - Test shared state access
 
 **Example Test Structure:**
+
 ```javascript
 // tests/unit/managers/MemoryMonitor.test.js
 describe('MemoryMonitor', () => {
   let monitor;
-  
+
   beforeEach(() => {
     monitor = new MemoryMonitor();
   });
-  
+
   describe('Threshold Tracking', () => {
     it('should track memory usage');
     it('should emit warning below threshold');
     it('should emit critical above threshold');
   });
-  
+
   describe('Cleanup Triggers', () => {
     it('should trigger cleanup on high memory');
   });
@@ -408,12 +444,12 @@ describe('MemoryMonitor', () => {
 describe('MemoryMonitor + QuickTabGroupManager Interaction', () => {
   let memoryMonitor;
   let groupManager;
-  
+
   beforeEach(() => {
     memoryMonitor = createMockMemoryMonitor();
     groupManager = createMockQuickTabGroupManager();
   });
-  
+
   it('should coordinate cleanup on memory threshold');
 });
 ```
@@ -445,6 +481,7 @@ Handlers test should cover:
    - Check error responses
 
 **Example Test Structure:**
+
 ```javascript
 // tests/unit/handlers/CreateQuickTabHandler.test.js
 describe('CreateQuickTabHandler', () => {
@@ -452,26 +489,26 @@ describe('CreateQuickTabHandler', () => {
   let mockPort;
   let mockStorage;
   let mockManagers;
-  
+
   beforeEach(() => {
     mockManagers = {
       quickTabGroupManager: createMockQuickTabGroupManager(),
-      memoryMonitor: createMockMemoryMonitor(),
+      memoryMonitor: createMockMemoryMonitor()
     };
     handler = new CreateQuickTabHandler(mockManagers);
   });
-  
+
   describe('Message Reception', () => {
     it('should parse create message');
     it('should reject invalid message format');
   });
-  
+
   describe('Operation Execution', () => {
     it('should create Quick Tab with correct parameters');
     it('should check memory limits before creation');
     it('should update group manager on success');
   });
-  
+
   describe('Error Handling', () => {
     it('should handle memory exceeded error');
     it('should handle storage error');
@@ -506,18 +543,19 @@ State machine tests should:
    - Check rollback on action failure
 
 **Example Test Structure:**
+
 ```javascript
 // tests/unit/state-machine/QuickTabStateMachine.test.js
 const VALID_TRANSITIONS = [
   { from: 'UNKNOWN', to: 'VISIBLE', action: 'create' },
   { from: 'VISIBLE', to: 'MINIMIZED', action: 'minimize' },
-  { from: 'MINIMIZED', to: 'VISIBLE', action: 'restore' },
+  { from: 'MINIMIZED', to: 'VISIBLE', action: 'restore' }
   // ... all valid transitions
 ];
 
 const INVALID_TRANSITIONS = [
   { from: 'MINIMIZED', to: 'MINIMIZED', action: 'minimize' },
-  { from: 'VISIBLE', to: 'UNKNOWN', action: 'unknown' },
+  { from: 'VISIBLE', to: 'UNKNOWN', action: 'unknown' }
   // ... all invalid transitions
 ];
 
@@ -529,7 +567,7 @@ describe('QuickTabStateMachine', () => {
       });
     });
   });
-  
+
   describe('Invalid Transitions', () => {
     INVALID_TRANSITIONS.forEach(({ from, to, action }) => {
       it(`should reject ${from} -> ${to} on ${action}`, () => {
@@ -566,29 +604,30 @@ Storage tests should verify:
    - Recovery from partial failures
 
 **Example Test Structure:**
+
 ```javascript
 // tests/unit/storage/QuickTabStorage.test.js
 describe('QuickTabStorage', () => {
   let storage;
   let storageHelper;
-  
+
   beforeEach(() => {
     storage = new QuickTabStorage();
     storageHelper = new StorageTestHelper();
   });
-  
+
   describe('Key Format', () => {
     it('should use correct key format with version');
     it('should include originTabId in key');
     it('should support key migration');
   });
-  
+
   describe('OriginTabId Filtering', () => {
     it('should load only Quick Tabs for current tab');
     it('should filter out other tabs Quick Tabs');
     it('should handle container-scoped originTabIds');
   });
-  
+
   describe('Checksum Validation', () => {
     it('should generate checksum on write');
     it('should validate checksum on read');
@@ -611,7 +650,7 @@ Tests use mocks at different levels. Establish clear hierarchy:
    - Scope: Global, used by all tests
    - Status: ✅ Exists, needs enhancement
 
-2. **Level 2: Feature-Specific Mocks** (tests/__mocks__/)
+2. **Level 2: Feature-Specific Mocks** (tests/**mocks**/)
    - Purpose: Mock entire feature modules
    - Example: Mock webext-storage-cache behavior
    - Scope: Used when feature not under test
@@ -625,22 +664,23 @@ Tests use mocks at different levels. Establish clear hierarchy:
 
 **Required Mock Factories:**
 
-| Mock Type | Location | Priority | Status |
-|-----------|----------|----------|--------|
-| Manager Mocks | `tests/helpers/manager-factory.js` | CRITICAL | ❌ Missing |
-| Port Simulator | `tests/helpers/port-simulator.js` | CRITICAL | ❌ Missing |
-| Storage Helper | `tests/helpers/storage-test-helper.js` | CRITICAL | ❌ Missing |
-| Cross-Tab Simulator | `tests/helpers/cross-tab-simulator.js` | HIGH | ❌ Missing |
-| State Machine Utils | `tests/helpers/state-machine-utils.js` | HIGH | ❌ Missing |
-| Coordinator Utils | `tests/helpers/coordinator-utils.js` | HIGH | ❌ Missing |
-| Event Tracker | `tests/helpers/event-tracker.js` | MEDIUM | ❌ Missing |
-| Timer Mocks | `tests/helpers/timer-mocks.js` | MEDIUM | ⚠️ Partial |
+| Mock Type           | Location                               | Priority | Status     |
+| ------------------- | -------------------------------------- | -------- | ---------- |
+| Manager Mocks       | `tests/helpers/manager-factory.js`     | CRITICAL | ❌ Missing |
+| Port Simulator      | `tests/helpers/port-simulator.js`      | CRITICAL | ❌ Missing |
+| Storage Helper      | `tests/helpers/storage-test-helper.js` | CRITICAL | ❌ Missing |
+| Cross-Tab Simulator | `tests/helpers/cross-tab-simulator.js` | HIGH     | ❌ Missing |
+| State Machine Utils | `tests/helpers/state-machine-utils.js` | HIGH     | ❌ Missing |
+| Coordinator Utils   | `tests/helpers/coordinator-utils.js`   | HIGH     | ❌ Missing |
+| Event Tracker       | `tests/helpers/event-tracker.js`       | MEDIUM   | ❌ Missing |
+| Timer Mocks         | `tests/helpers/timer-mocks.js`         | MEDIUM   | ⚠️ Partial |
 
 ---
 
 ### Mock Anti-Patterns to Avoid
 
 ❌ **Anti-Pattern 1: Over-Mocking**
+
 ```javascript
 // DON'T: Mock everything, even the code under test
 jest.mock('./QuickTab.js');
@@ -649,6 +689,7 @@ const QuickTab = require('./QuickTab.js');
 ```
 
 ✅ **CORRECT: Mock only dependencies**
+
 ```javascript
 jest.mock('./storage.js');
 const QuickTab = require('./QuickTab.js');
@@ -658,6 +699,7 @@ const QuickTab = require('./QuickTab.js');
 ---
 
 ❌ **Anti-Pattern 2: Fragile Mocks**
+
 ```javascript
 // DON'T: Tightly couple to implementation details
 jest.mock('./internal-helper.js', () => ({
@@ -666,6 +708,7 @@ jest.mock('./internal-helper.js', () => ({
 ```
 
 ✅ **CORRECT: Mock public API**
+
 ```javascript
 jest.mock('./API.js', () => ({
   publicMethod: jest.fn().mockResolvedValue({ success: true })
@@ -675,27 +718,33 @@ jest.mock('./API.js', () => ({
 ---
 
 ❌ **Anti-Pattern 3: Mock State Leakage**
+
 ```javascript
 // DON'T: Reuse mock state across tests
 const mockStorage = jest.fn();
 
 describe('Tests', () => {
   test('1', () => mockStorage.mockReturnValue(data));
-  test('2', () => { /* uses same mock! */ });
+  test('2', () => {
+    /* uses same mock! */
+  });
 });
 ```
 
 ✅ **CORRECT: Fresh mocks per test**
+
 ```javascript
 describe('Tests', () => {
   let mockStorage;
-  
+
   beforeEach(() => {
     mockStorage = jest.fn();
   });
-  
+
   test('1', () => mockStorage.mockReturnValue(data));
-  test('2', () => { /* fresh mock */ });
+  test('2', () => {
+    /* fresh mock */
+  });
 });
 ```
 
@@ -782,6 +831,7 @@ tests/unit/[module-name]/
 ### Current Coverage Configuration (jest.config.cjs)
 
 **Current Thresholds:**
+
 ```javascript
 coverageThreshold: {
   './src/domain/': { branches: 100, functions: 100, lines: 100, statements: 100 },
@@ -803,21 +853,21 @@ coverageThreshold: {
   './src/domain/': { branches: 100, functions: 100, lines: 100, statements: 100 },
   './src/features/quick-tabs/state-machine.js': { branches: 95, functions: 95, lines: 95, statements: 95 },
   './src/features/quick-tabs/map-transaction-manager.js': { branches: 90, functions: 90, lines: 90, statements: 90 },
-  
+
   // Tier 2: High coverage (managers, handlers, coordinators)
   './src/features/quick-tabs/managers/': { branches: 85, functions: 85, lines: 85, statements: 85 },
   './src/features/quick-tabs/handlers/': { branches: 85, functions: 85, lines: 85, statements: 85 },
   './src/features/quick-tabs/coordinators/': { branches: 85, functions: 85, lines: 85, statements: 85 },
   './src/storage/': { branches: 85, functions: 90, lines: 90, statements: 90 },
-  
+
   // Tier 3: Good coverage (UI, utilities)
   './src/features/quick-tabs/window/': { branches: 75, functions: 80, lines: 80, statements: 80 },
   './src/ui/': { branches: 75, functions: 80, lines: 80, statements: 80 },
   './src/utils/': { branches: 80, functions: 85, lines: 85, statements: 85 },
-  
+
   // Tier 4: Baseline coverage (content, notifications)
   './src/features/notifications/': { branches: 70, functions: 75, lines: 75, statements: 75 },
-  
+
   global: { branches: 78, functions: 80, lines: 80, statements: 80 }
 }
 ```
@@ -829,10 +879,10 @@ collectCoverageFrom: [
   // Core domain and logic
   'src/domain/**/*.js',
   'src/core/**/*.js',
-  
+
   // Storage layer
   'src/storage/**/*.js',
-  
+
   // Feature implementations (critical)
   'src/features/quick-tabs/state-machine.js',
   'src/features/quick-tabs/map-transaction-manager.js',
@@ -845,18 +895,18 @@ collectCoverageFrom: [
   'src/features/quick-tabs/QuickTabGroupManager.js',
   'src/features/quick-tabs/MemoryMonitor.js',
   'src/features/quick-tabs/PerformanceMetrics.js',
-  
+
   // Feature support
   'src/features/quick-tabs/storage/**/*.js',
   'src/features/quick-tabs/channels/**/*.js',
   'src/features/quick-tabs/window.js',
   'src/features/notifications/**/*.js',
   'src/features/url-handlers/**/*.js',
-  
+
   // UI and utilities
   'src/ui/**/*.js',
   'src/utils/**/*.js',
-  
+
   // Exclusions
   '!src/**/*.test.js',
   '!src/**/*.spec.js',
@@ -864,20 +914,20 @@ collectCoverageFrom: [
   '!src/**/__mocks__/**',
   '!**/node_modules/**',
   '!**/dist/**'
-]
+];
 ```
 
 **Refinement 3: Coverage Reporting**
 
 ```javascript
 coverageReporters: [
-  'text',              // Console output
-  'text-summary',      // Summary in console
-  'lcov',              // For CI/CD tools
-  'html',              // Human-readable HTML
-  'json',              // Machine-readable
-  'cobertura'          // XML for CI tools
-]
+  'text', // Console output
+  'text-summary', // Summary in console
+  'lcov', // For CI/CD tools
+  'html', // Human-readable HTML
+  'json', // Machine-readable
+  'cobertura' // XML for CI tools
+];
 ```
 
 ---
@@ -891,6 +941,7 @@ coverageReporters: [
 **Purpose:** Provide consistent mocks for all manager classes
 
 **Exports:**
+
 - `createMockMemoryMonitor(overrides)`
 - `createMockPerformanceMetrics(overrides)`
 - `createMockQuickTabGroupManager(overrides)`
@@ -898,12 +949,14 @@ coverageReporters: [
 - `createMockMinimizedManager(overrides)`
 
 **Key Methods to Mock:**
+
 - State getters (all public state accessors)
 - Event emitters (on, off, emit)
 - Operation methods (create, update, destroy)
 - Query methods (get, find, filter)
 
 **Validation Helpers:**
+
 - `getManagerCallHistory(manager)` - Track all calls
 - `assertManagerStateConsistent(manager)` - Verify internal consistency
 - `resetManagerMock(manager)` - Clean state between tests
@@ -917,6 +970,7 @@ coverageReporters: [
 **Purpose:** Simulate Chrome port API for handler testing
 
 **Exports:**
+
 - `createPortSimulator()`
 - Returns object with methods:
   - `createPort(name, initialHandler)` - Create mock port
@@ -928,6 +982,7 @@ coverageReporters: [
   - `resetPort(portName)` - Clear port state
 
 **Features:**
+
 - Automatic message ID tracking
 - Message format validation (by schema)
 - Connection state tracking
@@ -942,6 +997,7 @@ coverageReporters: [
 **Purpose:** Validate storage operations and consistency
 
 **Exports:**
+
 - `createStorageTestHelper()`
 - Returns object with methods:
   - `getSnapshot()` - Current storage state
@@ -953,6 +1009,7 @@ coverageReporters: [
   - `getChangeHistory()` - Track all storage changes
 
 **Key Validations:**
+
 - Key format: `quick_tabs_state_v2:originTabId:quickTabId`
 - Checksum validation
 - OriginTabId filtering
@@ -967,6 +1024,7 @@ coverageReporters: [
 **Purpose:** Simulate multiple browser tabs in single test
 
 **Exports:**
+
 - `createCrossTabSimulator()`
 - Returns object with methods:
   - `createTab(tabId, domain, container)` - Create simulated tab
@@ -978,6 +1036,7 @@ coverageReporters: [
   - `verifyIsolation()` - Verify tab isolation
 
 **Features:**
+
 - Separate storage per originTabId
 - Container-aware filtering
 - Message routing between tabs
@@ -992,6 +1051,7 @@ coverageReporters: [
 **Purpose:** Testing utilities for finite state machines
 
 **Exports:**
+
 - `assertValidTransition(machine, from, to, action)` - Verify transition
 - `assertInvalidTransition(machine, from, to, action)` - Verify rejection
 - `recordTransitions(machine)` - Track all transitions
@@ -1008,6 +1068,7 @@ coverageReporters: [
 **Purpose:** Test coordination between components
 
 **Exports:**
+
 - `createCoordinatorTestBed(coordinator, dependencies)` - Set up test
 - `recordOperation(testBed, operation)` - Execute operation
 - `verifySequence(recorded, expected)` - Verify order
@@ -1024,6 +1085,7 @@ coverageReporters: [
 **Location:** `tests/integration/manager-interactions/`
 
 **Pattern:**
+
 1. Create multiple real (not mocked) managers
 2. Set up event listeners between them
 3. Execute operation on one manager
@@ -1031,6 +1093,7 @@ coverageReporters: [
 5. Validate no data loss or inconsistency
 
 **Example Suite:**
+
 ```javascript
 // Tests for:
 // - Memory threshold triggers group cleanup
@@ -1046,6 +1109,7 @@ coverageReporters: [
 **Location:** `tests/integration/handler-storage/`
 
 **Pattern:**
+
 1. Create real handler with mocked port
 2. Send message to handler
 3. Verify storage updated correctly
@@ -1053,6 +1117,7 @@ coverageReporters: [
 5. Simulate error scenarios
 
 **Example Suite:**
+
 ```javascript
 // Tests for:
 // - CreateHandler creates Quick Tab, updates storage, notifies managers
@@ -1068,6 +1133,7 @@ coverageReporters: [
 **Location:** `tests/integration/cross-tab-sync/`
 
 **Pattern:**
+
 1. Create multiple simulated tabs
 2. Create Quick Tab in tab 1
 3. Verify NOT visible in tab 2
@@ -1075,6 +1141,7 @@ coverageReporters: [
 5. Close tab 1, verify cleanup
 
 **Example Suite:**
+
 ```javascript
 // Tests for Scenarios:
 // - Scenario 1: Tab Isolation
@@ -1093,6 +1160,7 @@ coverageReporters: [
 **Priority: BLOCKING for proper testing to proceed**
 
 Create essential helpers:
+
 1. ✅ Manager mock factory (`tests/helpers/manager-factory.js`)
 2. ✅ Port simulator (`tests/helpers/port-simulator.js`)
 3. ✅ Storage test helper (`tests/helpers/storage-test-helper.js`)
@@ -1100,6 +1168,7 @@ Create essential helpers:
 Expected Effort: 8-12 hours
 
 **Validation:**
+
 - Each helper has 100% test coverage
 - Factory creates valid mocks matching real interfaces
 - Simulators pass validation tests
@@ -1111,6 +1180,7 @@ Expected Effort: 8-12 hours
 **Priority: HIGH - Close major coverage gaps**
 
 Create unit tests for architectural components:
+
 1. ✅ Handlers (`tests/unit/handlers/`)
 2. ✅ Managers (`tests/unit/managers/`)
 3. ✅ Coordinators (`tests/unit/coordinators/`)
@@ -1120,6 +1190,7 @@ Create unit tests for architectural components:
 Expected Effort: 20-30 hours
 
 **Coverage Targets:**
+
 - Handlers: 85% branches
 - Managers: 85% branches
 - Coordinators: 85% branches
@@ -1133,6 +1204,7 @@ Expected Effort: 20-30 hours
 **Priority: MEDIUM - Validate component interactions**
 
 Create integration tests:
+
 1. ✅ Manager interactions (`tests/integration/manager-interactions/`)
 2. ✅ Handler-storage coordination (`tests/integration/handler-storage/`)
 3. ✅ Cross-tab sync (`tests/integration/cross-tab-sync/`)
@@ -1141,6 +1213,7 @@ Create integration tests:
 Expected Effort: 25-35 hours
 
 **Coverage:**
+
 - Each scenario mapped to integration test
 - Manager interactions validated
 - Storage consistency verified
@@ -1152,6 +1225,7 @@ Expected Effort: 25-35 hours
 **Priority: MEDIUM - Coverage of presentation layer**
 
 Complete UI test coverage:
+
 1. ✅ Window tests (`tests/unit/window/`)
 2. ✅ Sidebar tests (`tests/unit/sidebar/`)
 3. ✅ Notification tests (`tests/unit/notifications/`)
@@ -1159,6 +1233,7 @@ Complete UI test coverage:
 Expected Effort: 20-30 hours
 
 **Coverage Targets:**
+
 - Window: 80% branches
 - Sidebar: 80% branches
 - Notifications: 75% branches
@@ -1170,6 +1245,7 @@ Expected Effort: 20-30 hours
 **Priority: HIGH - 370KB monolith needs coverage**
 
 Background script testing strategy:
+
 1. ✅ Analyze current structure (`src/background/`)
 2. ✅ Identify testable units
 3. ✅ Create unit tests for each unit
@@ -1186,6 +1262,7 @@ Expected Effort: 30-40 hours
 **Priority: MEDIUM - Make standards stick**
 
 Setup automated coverage checking:
+
 1. ✅ CI/CD integration
 2. ✅ Pre-commit hooks
 3. ✅ Coverage badges
@@ -1200,6 +1277,7 @@ Expected Effort: 8-12 hours
 ### Jest Configuration Best Practices
 
 **1. Module Resolution**
+
 ```javascript
 moduleNameMapper: {
   '^@domain/(.*)$': '<rootDir>/src/domain/$1',
@@ -1208,20 +1286,22 @@ moduleNameMapper: {
 ```
 
 **2. Transform Configuration**
+
 ```javascript
 transformIgnorePatterns: [
   'node_modules/(?!(lodash-es|uuid|eventemitter3)/)'
   // Only transform ES6 modules that need it
-]
+];
 ```
 
 **3. Coverage Collection**
+
 ```javascript
 collectCoverageFrom: [
   'src/**/*.js',
   '!src/**/*.test.js',
   '!src/**/__mocks__/**'
-]
+];
 ```
 
 ---
@@ -1229,6 +1309,7 @@ collectCoverageFrom: [
 ### Mock Best Practices
 
 **1. Mock Only Dependencies**
+
 ```javascript
 // Test the code under test, mock its dependencies
 jest.mock('./dependency.js');
@@ -1236,15 +1317,20 @@ const codeUnderTest = require('./code-under-test.js');
 ```
 
 **2. Use jest-mock-extended for Complex Mocks**
+
 ```javascript
 import { createMock } from 'jest-mock-extended';
 
-const mockManager = createMock<Manager>({
-  method: jest.fn().mockResolvedValue(value)
-});
+const mockManager =
+  createMock <
+  Manager >
+  {
+    method: jest.fn().mockResolvedValue(value)
+  };
 ```
 
 **3. Reset Mocks Between Tests**
+
 ```javascript
 beforeEach(() => {
   jest.clearAllMocks();
@@ -1256,15 +1342,16 @@ beforeEach(() => {
 ### Test Structure Best Practices
 
 **1. Arrange-Act-Assert Pattern**
+
 ```javascript
 describe('Feature', () => {
   it('should do X', () => {
     // Arrange
     const input = setupTestData();
-    
+
     // Act
     const result = functionUnderTest(input);
-    
+
     // Assert
     expect(result).toBe(expectedValue);
   });
@@ -1272,6 +1359,7 @@ describe('Feature', () => {
 ```
 
 **2. Descriptive Test Names**
+
 ```javascript
 // ❌ Bad
 it('works', () => {});
@@ -1281,6 +1369,7 @@ it('should throw error if password is less than 8 characters', () => {});
 ```
 
 **3. Single Responsibility Per Test**
+
 ```javascript
 // ❌ Bad: Tests multiple behaviors
 it('should handle create and update', () => {});
@@ -1302,6 +1391,7 @@ it('should update Quick Tab position on drag', () => {});
 - **Lines:** % of lines with code executed
 
 **Strategy:**
+
 - 100% statement coverage ≠ 100% bug coverage
 - Focus on critical paths and error scenarios
 - High branch coverage catches edge cases
@@ -1312,17 +1402,20 @@ it('should update Quick Tab position on drag', () => {});
 ### Debugging Tests
 
 **1. Run Single Test**
+
 ```bash
 npm test -- --testNamePattern="test name"
 npm test -- --testPathPattern="path/to/test"
 ```
 
 **2. Watch Mode**
+
 ```bash
 npm test -- --watch
 ```
 
 **3. Debug in VS Code**
+
 ```json
 {
   "type": "node",
@@ -1334,6 +1427,7 @@ npm test -- --watch
 ```
 
 **4. Verbose Output**
+
 ```bash
 npm test -- --verbose
 ```
@@ -1343,12 +1437,14 @@ npm test -- --verbose
 ### Coverage Reporting
 
 **Generate HTML Report:**
+
 ```bash
 npm run test:coverage
 # Open coverage/lcov-report/index.html in browser
 ```
 
 **Key Insights from Report:**
+
 - Red lines: Not executed
 - Yellow lines: Partially executed (branches)
 - Green lines: Fully executed
@@ -1357,19 +1453,22 @@ npm run test:coverage
 
 ## Conclusion
 
-The extension's testing infrastructure requires significant development to match the architectural sophistication of the codebase. The recommended implementation roadmap addresses critical gaps systematically, prioritizing infrastructure that unblocks testing the complex new architecture (managers, coordinators, handlers, state machines).
+The extension's testing infrastructure requires significant development to match
+the architectural sophistication of the codebase. The recommended implementation
+roadmap addresses critical gaps systematically, prioritizing infrastructure that
+unblocks testing the complex new architecture (managers, coordinators, handlers,
+state machines).
 
 Following this guide will result in:
 
-✅ Proper mocking strategy matching architecture
-✅ Systematic coverage of all components
-✅ Integration tests validating cross-component interaction
-✅ Maintainable test infrastructure
-✅ Sustainable coverage standards
-✅ Fast test execution (<5 seconds for unit tests)
+✅ Proper mocking strategy matching architecture ✅ Systematic coverage of all
+components ✅ Integration tests validating cross-component interaction ✅
+Maintainable test infrastructure ✅ Sustainable coverage standards ✅ Fast test
+execution (<5 seconds for unit tests)
 
 **Total Estimated Effort:** 100-150 hours (3-4 weeks at full-time)
 
 **Expected Coverage:** Domain 100%, Features 80%, Global 80%
 
-**Result:** Production-ready test infrastructure supporting feature development and refactoring with confidence.
+**Result:** Production-ready test infrastructure supporting feature development
+and refactoring with confidence.

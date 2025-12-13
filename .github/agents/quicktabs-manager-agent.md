@@ -51,7 +51,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   sections
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **DOM Reconciliation** - `_itemElements` Map for differential updates
-- **Port + Storage Sync** - Real-time sync via Port, fallback via storage.onChanged
+- **Port + Storage Sync** - Real-time sync via Port, fallback via
+  storage.onChanged
 - **Operation Confirmations** - Closed-loop feedback for all operations
 
 **v1.6.3.8-v6 Features (NEW) - Production Hardening:**
@@ -64,7 +65,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Checksum validation** - djb2-like hash during hydration
 
 **v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery, declarativeNetRequest fallback, URL validation.
+counting, storage quota recovery, declarativeNetRequest fallback, URL
+validation.
 
 **Key Logging Events (v1.6.3.8-v6):**
 

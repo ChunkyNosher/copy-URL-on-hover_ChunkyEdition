@@ -1,5 +1,6 @@
 import path from 'path';
 import playwright from 'playwright/test';
+import { withExtension } from 'playwright-webextext';
 import { fileURLToPath } from 'url';
 
 // Destructure from the default import to work around ESM resolution issues
@@ -11,41 +12,33 @@ const __dirname = path.dirname(__filename);
 /**
  * Loads the extension in Firefox for E2E testing
  *
+ * Uses playwright-webextext for proper Firefox extension loading.
+ *
  * @param {Object} options - Configuration options
- * @param {boolean} options.headless - Whether to run headless (default: false)
+ * @param {boolean} options.headless - Whether to run headless (default: true for CI)
  * @returns {Promise<{context: BrowserContext, extensionId: string}>}
  */
-export async function loadExtensionInFirefox({ headless = false } = {}) {
+export async function loadExtensionInFirefox({ headless = true } = {}) {
   const extensionPath = path.join(__dirname, '../../../dist');
 
-  // Launch Firefox with extension
-  const context = await firefox.launchPersistentContext('', {
+  // Create Firefox browser with extension loaded using playwright-webextext
+  const browserTypeWithExt = withExtension(firefox, extensionPath);
+
+  // Launch browser in headless mode (works without display)
+  const browser = await browserTypeWithExt.launch({
     headless,
-    args: [`--load-extension=${extensionPath}`],
-    firefoxUserPrefs: {
-      // Disable extension signing requirement
-      'xpinstall.signatures.required': false,
-      // Enable all extension scopes
-      'extensions.autoDisableScopes': 0,
-      'extensions.enabledScopes': 15,
-      // Enable devtools
-      'devtools.chrome.enabled': true,
-      'devtools.debugger.remote-enabled': true,
-      // Allow clipboard access
-      'dom.events.testing.asyncClipboard': true,
-      // Disable first-run pages
-      'browser.startup.homepage_override.mstone': 'ignore',
-      // Disable about:welcome
-      'trailhead.firstrun.didSeeAboutWelcome': true
-    },
-    permissions: ['clipboard-read', 'clipboard-write', 'notifications']
+    args: ['--no-sandbox', '--disable-dev-shm-usage']
   });
 
-  // Get extension ID from background service worker
-  // Firefox extensions use a different URL scheme
-  const extensionId = 'copy-url-on-hover-chunkyedition@example.com';
+  // Create new context
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 }
+  });
 
-  return { context, extensionId };
+  // Extension ID from manifest
+  const extensionId = 'copy-url-hover@chunkynosher.github.io';
+
+  return { context, extensionId, browser };
 }
 
 /**

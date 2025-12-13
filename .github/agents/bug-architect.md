@@ -76,8 +76,8 @@ const relevantMemories = await searchMemories({
 - **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
 - **Circuit breaker** - 3 consecutive failures triggers cleanup
 
-**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port failure
-counting, initialization barriers, exponential backoff.
+**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port
+failure counting, initialization barriers, exponential backoff.
 
 **v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
 listener barrier, LRU eviction (1000), correlation ID echo, state machine

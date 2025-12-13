@@ -97,12 +97,22 @@ export class MessageRouter {
 
     // Already has success field - augment with requestId
     if (typeof result.success === 'boolean') {
-      return { ...result, requestId: result.requestId || requestId, timestamp: result.timestamp || Date.now() };
+      return {
+        ...result,
+        requestId: result.requestId || requestId,
+        timestamp: result.timestamp || Date.now()
+      };
     }
 
     // Handle error objects
     if (result.error) {
-      return { success: false, error: result.error, data: result, requestId, timestamp: Date.now() };
+      return {
+        success: false,
+        error: result.error,
+        data: result,
+        requestId,
+        timestamp: Date.now()
+      };
     }
 
     // Wrap other objects as success
@@ -116,7 +126,9 @@ export class MessageRouter {
    */
   _handleInvalidMessage(message, sendResponse, requestId) {
     console.error('[MessageRouter] Invalid message format:', message);
-    sendResponse(this._normalizeResponse({ success: false, error: 'Invalid message format' }, requestId));
+    sendResponse(
+      this._normalizeResponse({ success: false, error: 'Invalid message format' }, requestId)
+    );
     return false;
   }
 
@@ -127,7 +139,9 @@ export class MessageRouter {
    */
   _handleUnknownAction(action, sendResponse, requestId) {
     console.warn(`[MessageRouter] No handler for action: ${action}`);
-    sendResponse(this._normalizeResponse({ success: false, error: `Unknown action: ${action}` }, requestId));
+    sendResponse(
+      this._normalizeResponse({ success: false, error: `Unknown action: ${action}` }, requestId)
+    );
     return false;
   }
 
@@ -138,7 +152,13 @@ export class MessageRouter {
    */
   _logAck(requestId, action, success, durationMs) {
     if (!DEBUG_ROUTING || !requestId) return;
-    console.log('[MessageRouter] MESSAGE_ACK_RECEIVED:', { requestId, action, success, durationMs, timestamp: Date.now() });
+    console.log('[MessageRouter] MESSAGE_ACK_RECEIVED:', {
+      requestId,
+      action,
+      success,
+      durationMs,
+      timestamp: Date.now()
+    });
   }
 
   /**
@@ -213,10 +233,13 @@ export class MessageRouter {
    */
   _handleTimeoutError(message, requestId, durationMs, sendResponse) {
     this._logHandlerTimeout(message.action, requestId, durationMs);
-    const timeoutResponse = this._normalizeResponse({
-      success: false,
-      error: 'HANDLER_TIMEOUT'
-    }, requestId);
+    const timeoutResponse = this._normalizeResponse(
+      {
+        success: false,
+        error: 'HANDLER_TIMEOUT'
+      },
+      requestId
+    );
     if (sendResponse) sendResponse(timeoutResponse);
     return true;
   }
@@ -228,10 +251,13 @@ export class MessageRouter {
    */
   _handleGeneralError(message, requestId, error, sendResponse) {
     console.error(`[MessageRouter] Handler error for ${message.action}:`, error);
-    const errorResponse = this._normalizeResponse({
-      success: false,
-      error: error.message || 'Handler execution failed'
-    }, requestId);
+    const errorResponse = this._normalizeResponse(
+      {
+        success: false,
+        error: error.message || 'Handler execution failed'
+      },
+      requestId
+    );
     if (sendResponse) sendResponse(errorResponse);
     return true;
   }
@@ -290,4 +316,3 @@ export class MessageRouter {
     };
   }
 }
-

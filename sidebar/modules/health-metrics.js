@@ -240,7 +240,7 @@ export function logDedupMapSize() {
   console.log('[Manager] DEDUP_MAP_SIZE:', {
     size: recentlyProcessedMessageIds.size,
     maxSize: MESSAGE_DEDUP_MAX_SIZE,
-    capacity: (recentlyProcessedMessageIds.size / MESSAGE_DEDUP_MAX_SIZE * 100).toFixed(1) + '%',
+    capacity: ((recentlyProcessedMessageIds.size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
     timestamp: Date.now()
   });
 }
@@ -398,8 +398,7 @@ export function recordFallbackMessage(latency = 0) {
     fallbackStats.lastLatencyMs = latency;
     // Update rolling average
     const count = fallbackStats.messageCount;
-    fallbackStats.avgLatencyMs =
-      (fallbackStats.avgLatencyMs * (count - 1) + latency) / count;
+    fallbackStats.avgLatencyMs = (fallbackStats.avgLatencyMs * (count - 1) + latency) / count;
   }
 }
 
@@ -427,9 +426,8 @@ export function checkFallbackStall() {
 export function getFallbackHealthSnapshot() {
   return {
     ...fallbackStats,
-    timeSinceLastMessage: fallbackStats.lastMessageTime > 0
-      ? Date.now() - fallbackStats.lastMessageTime
-      : null,
+    timeSinceLastMessage:
+      fallbackStats.lastMessageTime > 0 ? Date.now() - fallbackStats.lastMessageTime : null,
     isStalled: checkFallbackStall()
   };
 }

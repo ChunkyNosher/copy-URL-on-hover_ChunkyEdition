@@ -355,7 +355,7 @@ entry persists indefinitely until TTL expiration.
 
 - `quickTabHostInfo` Map declared (sidebar/quick-tabs-manager.js, line ~1200)
 - TTL cleanup job runs every 60s (line ~3550)
-- HOST_INFO_TTL_MS = 24 _ 60 _ 60 \* 1000 (line ~565)
+- HOST*INFO_TTL_MS = 24 * 60 \_ 60 \* 1000 (line ~565)
 - browser.tabs.onRemoved listener exists (implied in codebase, not found in
   sidebar scan)
 - **Issue:** Entry removal on tab close may not be guaranteed to execute before

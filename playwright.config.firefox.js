@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
  * in a real Firefox browser with the extension installed.
  */
 export default {
-  testDir: './tests/extension',
+  testDir: './tests/e2e',
   testMatch: '**/*.spec.js',
 
   /* Maximum time one test can run for */

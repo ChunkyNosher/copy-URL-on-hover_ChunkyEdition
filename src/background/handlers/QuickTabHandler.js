@@ -205,7 +205,10 @@ export class QuickTabHandler {
    * @param {number} sequenceId - Sequence ID that was successfully processed
    */
   static _updateHighestProcessedSequenceId(sequenceId) {
-    if (typeof sequenceId === 'number' && sequenceId > QuickTabHandler._highestProcessedSequenceId) {
+    if (
+      typeof sequenceId === 'number' &&
+      sequenceId > QuickTabHandler._highestProcessedSequenceId
+    ) {
       QuickTabHandler._highestProcessedSequenceId = sequenceId;
     }
   }

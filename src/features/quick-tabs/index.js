@@ -403,7 +403,7 @@ class QuickTabsManager {
     for (const tabData of tabs) {
       const result = this._safeHydrateTabWithReason(tabData, filterReasons);
       if (!result.success) continue;
-      
+
       hydratedCount++;
       // v1.6.3.8-v6: Track if this was a recovered tab
       const wasRecovered = result.reason === 'recoveredFromIdPattern';
@@ -639,10 +639,10 @@ class QuickTabsManager {
       if (!checksumResult.valid) {
         // Checksum mismatch - request fresh state and skip hydration
         await this._requestFreshStateFromBackground('hydration-checksum-mismatch');
-        return { 
-          success: false, 
-          count: 0, 
-          reason: `Checksum mismatch: computed=${checksumResult.computed}, expected=${storedState.checksum}` 
+        return {
+          success: false,
+          count: 0,
+          reason: `Checksum mismatch: computed=${checksumResult.computed}, expected=${storedState.checksum}`
         };
       }
 
@@ -897,7 +897,7 @@ class QuickTabsManager {
       shouldRender,
       reason: shouldRender ? 'passed' : 'differentTab'
     });
-    
+
     if (!shouldRender) {
       console.log('[QuickTabsManager] Skipping hydration - tab originated from different tab:', {
         id: tabData.id,

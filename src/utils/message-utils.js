@@ -175,7 +175,13 @@ function _logRequestSent(requestId, message, timeoutMs, requireAck, startTime) {
  */
 function _logRequestSuccess(requestId, action, success, durationMs) {
   if (!DEBUG_MESSAGING) return;
-  console.log('[MessageUtils] MESSAGE_ACK_RECEIVED:', { requestId, action, success, durationMs, timestamp: Date.now() });
+  console.log('[MessageUtils] MESSAGE_ACK_RECEIVED:', {
+    requestId,
+    action,
+    success,
+    durationMs,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -185,9 +191,20 @@ function _logRequestSuccess(requestId, action, success, durationMs) {
  */
 function _handleRequestError(err, requestId, action, durationMs) {
   if (err.code === 'TIMEOUT') {
-    console.warn('[MessageUtils] MESSAGE_TIMEOUT:', { requestId, action, durationMs, timestamp: Date.now() });
+    console.warn('[MessageUtils] MESSAGE_TIMEOUT:', {
+      requestId,
+      action,
+      durationMs,
+      timestamp: Date.now()
+    });
   } else {
-    console.error('[MessageUtils] MESSAGE_ERROR:', { requestId, action, error: err.message, durationMs, timestamp: Date.now() });
+    console.error('[MessageUtils] MESSAGE_ERROR:', {
+      requestId,
+      action,
+      error: err.message,
+      durationMs,
+      timestamp: Date.now()
+    });
   }
   return { success: false, error: err.message, requestId, code: err.code || 'ERROR' };
 }

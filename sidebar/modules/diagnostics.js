@@ -215,11 +215,14 @@ export function logKeepaliveHealthReport(successes, failures) {
   const total = successes + failures;
   const successRate = total > 0 ? Math.round((successes / total) * 100) : 100;
 
-  console.log(`[Manager] KEEPALIVE_HEALTH_REPORT: ${successes} successes, ${failures} failures (${successRate}%)`, {
-    successRate,
-    total,
-    timestamp: Date.now()
-  });
+  console.log(
+    `[Manager] KEEPALIVE_HEALTH_REPORT: ${successes} successes, ${failures} failures (${successRate}%)`,
+    {
+      successRate,
+      total,
+      timestamp: Date.now()
+    }
+  );
 }
 
 /**
@@ -229,9 +232,12 @@ export function logKeepaliveHealthReport(successes, failures) {
  * @param {number} lastMessageTime - Time since last message
  */
 export function logPortActivity(portId, lastMessageTime) {
-  console.log(`[Manager] PORT_ACTIVITY: portId=${portId}, lastMessageTime=${lastMessageTime} ms ago`, {
-    timestamp: Date.now()
-  });
+  console.log(
+    `[Manager] PORT_ACTIVITY: portId=${portId}, lastMessageTime=${lastMessageTime} ms ago`,
+    {
+      timestamp: Date.now()
+    }
+  );
 }
 
 /**

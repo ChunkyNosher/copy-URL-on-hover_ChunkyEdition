@@ -100,12 +100,12 @@ nothing.
 
 ### Key Functions (v1.6.3.8-v6)
 
-| Function                   | Location       | Purpose                        |
-| -------------------------- | -------------- | ------------------------------ |
-| `sendRequestWithTimeout()` | message-utils  | ACK-based messaging            |
-| `flushWriteBuffer()`       | storage-utils  | WriteBuffer batch flush        |
-| `waitForInitialization()`  | QuickTabHandler| 10s init barrier               |
-| `scheduleRender(source)`   | Manager        | Unified render entry point     |
+| Function                   | Location        | Purpose                    |
+| -------------------------- | --------------- | -------------------------- |
+| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging        |
+| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush    |
+| `waitForInitialization()`  | QuickTabHandler | 10s init barrier           |
+| `scheduleRender(source)`   | Manager         | Unified render entry point |
 
 ---
 
@@ -125,13 +125,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                      | Fix                                    |
-| -------------------------- | -------------------------------------- |
-| v1.6.3.8-v5 or earlier     | Update to 1.6.3.8-v6                   |
-| "Pin to Page"              | Use "Solo/Mute"                        |
-| Direct storage writes      | Use Single Writer Authority            |
-| BroadcastChannel refs      | REMOVE - BC DELETED in v6              |
-| Missing quota monitoring   | Document storage quota monitoring      |
+| Error                    | Fix                               |
+| ------------------------ | --------------------------------- |
+| v1.6.3.8-v5 or earlier   | Update to 1.6.3.8-v6              |
+| "Pin to Page"            | Use "Solo/Mute"                   |
+| Direct storage writes    | Use Single Writer Authority       |
+| BroadcastChannel refs    | REMOVE - BC DELETED in v6         |
+| Missing quota monitoring | Document storage quota monitoring |
 
 ---
 
