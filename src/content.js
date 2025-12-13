@@ -407,6 +407,7 @@ async function getCurrentTabIdFromBackground() {
 // FIX Issue #11: Persistent port connection to background script
 // FIX Issue #12: Port lifecycle logging
 // FIX Issue #17: Port cleanup on tab close
+// v1.6.3.8-v6 - Issue #1-4: Cross-tab sync improvements with storage.onChanged fallback
 
 /**
  * Port connection to background script
@@ -419,6 +420,48 @@ let backgroundPort = null;
  * v1.6.3.6-v11 - Used for port name and logging
  */
 let cachedTabId = null;
+
+// v1.6.3.8-v6 - Issue #3: Port reconnection constants (exponential backoff)
+const PORT_RECONNECT_INITIAL_DELAY_MS = 100;
+const PORT_RECONNECT_MAX_DELAY_MS = 10000;
+const PORT_RECONNECT_BACKOFF_MULTIPLIER = 2;
+const PORT_RECONNECT_MAX_ATTEMPTS = 10;
+const PORT_CIRCUIT_BREAKER_THRESHOLD = 3; // Failures before circuit breaker trips
+
+/**
+ * Port reconnection state object
+ * v1.6.3.8-v6 - Issue #3: Encapsulated port reconnection state for maintainability
+ * @type {Object}
+ */
+const portReconnectState = {
+  attempts: 0,
+  currentDelay: PORT_RECONNECT_INITIAL_DELAY_MS,
+  circuitBreakerTripped: false,
+  consecutiveFailures: 0,
+  timeoutId: null
+};
+
+/**
+ * State ordering tracking object
+ * v1.6.3.8-v6 - Issue #2: Encapsulated ordering state for cross-tab sync validation
+ * Tracks the highest applied revision/sequenceId to reject out-of-order or duplicate events.
+ * NOTE: Using <= comparison is intentional - we reject BOTH duplicates (==) AND out-of-order (<)
+ * events. This prevents re-application of the same state which could cause UI flicker.
+ * @type {Object}
+ */
+const orderingState = {
+  lastAppliedRevision: 0,
+  lastAppliedSequenceId: 0
+};
+
+// Legacy variable references for backward compatibility (will be removed in future)
+let portReconnectAttempts = 0;
+let portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
+let portCircuitBreakerTripped = false;
+let portConsecutiveFailures = 0;
+let portReconnectTimeoutId = null;
+let lastAppliedRevision = 0;
+let lastAppliedSequenceId = 0;
 
 /**
  * Log port lifecycle event
@@ -435,8 +478,81 @@ function logContentPortLifecycle(event, details = {}) {
 }
 
 /**
+ * Reset port reconnection state
+ * v1.6.3.8-v6 - Issue #3: Reset backoff after successful connection
+ * @private
+ */
+function _resetPortReconnectState() {
+  portReconnectAttempts = 0;
+  portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
+  portConsecutiveFailures = 0;
+  if (portReconnectTimeoutId) {
+    clearTimeout(portReconnectTimeoutId);
+    portReconnectTimeoutId = null;
+  }
+}
+
+/**
+ * Schedule port reconnection with exponential backoff
+ * v1.6.3.8-v6 - Issue #3: Implement reconnection with backoff and circuit breaker
+ * @private
+ * @param {number} tabId - Tab ID to reconnect
+ */
+function _schedulePortReconnect(tabId) {
+  // Guard: Circuit breaker check
+  if (portCircuitBreakerTripped) {
+    console.warn('[Content] PORT_RECONNECT_BLOCKED: Circuit breaker tripped', {
+      consecutiveFailures: portConsecutiveFailures,
+      threshold: PORT_CIRCUIT_BREAKER_THRESHOLD
+    });
+    return;
+  }
+
+  // Guard: Max attempts check
+  if (portReconnectAttempts >= PORT_RECONNECT_MAX_ATTEMPTS) {
+    console.error('[Content] PORT_RECONNECT_MAX_ATTEMPTS_REACHED:', {
+      attempts: portReconnectAttempts,
+      maxAttempts: PORT_RECONNECT_MAX_ATTEMPTS
+    });
+    portCircuitBreakerTripped = true;
+    return;
+  }
+
+  // Guard: Don't reconnect if page is hidden
+  if (document.visibilityState === 'hidden') {
+    console.log('[Content] PORT_RECONNECT_DEFERRED: Page hidden');
+    return;
+  }
+
+  // Clear any existing timeout
+  if (portReconnectTimeoutId) {
+    clearTimeout(portReconnectTimeoutId);
+  }
+
+  const delay = portCurrentDelay;
+  portReconnectAttempts++;
+
+  console.log('[Content] PORT_RECONNECT_SCHEDULED:', {
+    attempt: portReconnectAttempts,
+    delayMs: delay,
+    nextDelayMs: Math.min(delay * PORT_RECONNECT_BACKOFF_MULTIPLIER, PORT_RECONNECT_MAX_DELAY_MS)
+  });
+
+  portReconnectTimeoutId = setTimeout(() => {
+    portReconnectTimeoutId = null;
+    if (!backgroundPort && document.visibilityState !== 'hidden') {
+      connectContentToBackground(tabId);
+    }
+  }, delay);
+
+  // Update delay for next attempt (exponential backoff)
+  portCurrentDelay = Math.min(portCurrentDelay * PORT_RECONNECT_BACKOFF_MULTIPLIER, PORT_RECONNECT_MAX_DELAY_MS);
+}
+
+/**
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ * v1.6.3.8-v6 - Issue #3: Add exponential backoff reconnection
  * @param {number} tabId - Current tab ID
  */
 function connectContentToBackground(tabId) {
@@ -449,6 +565,9 @@ function connectContentToBackground(tabId) {
 
     logContentPortLifecycle('open', { portName: backgroundPort.name });
 
+    // v1.6.3.8-v6 - Issue #3: Reset reconnect state on successful connection
+    _resetPortReconnectState();
+
     // Handle messages from background
     backgroundPort.onMessage.addListener(handleContentPortMessage);
 
@@ -458,18 +577,28 @@ function connectContentToBackground(tabId) {
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
-      // Attempt reconnection after delay (only if tab still active)
-      setTimeout(() => {
-        if (!backgroundPort && document.visibilityState !== 'hidden') {
-          connectContentToBackground(tabId);
-        }
-      }, 2000);
+      // v1.6.3.8-v6 - Issue #3: Track consecutive failures for circuit breaker
+      portConsecutiveFailures++;
+      if (portConsecutiveFailures >= PORT_CIRCUIT_BREAKER_THRESHOLD) {
+        portCircuitBreakerTripped = true;
+        console.error('[Content] PORT_CIRCUIT_BREAKER_TRIPPED:', {
+          consecutiveFailures: portConsecutiveFailures,
+          threshold: PORT_CIRCUIT_BREAKER_THRESHOLD
+        });
+      }
+
+      // v1.6.3.8-v6 - Issue #3: Schedule reconnection with exponential backoff
+      _schedulePortReconnect(tabId);
     });
 
     console.log('[Content] v1.6.3.6-v11 Port connection established to background');
   } catch (err) {
     console.error('[Content] Failed to connect to background:', err.message);
     logContentPortLifecycle('error', { error: err.message });
+
+    // v1.6.3.8-v6 - Issue #3: Track failure and schedule reconnection
+    portConsecutiveFailures++;
+    _schedulePortReconnect(tabId);
   }
 }
 
@@ -477,6 +606,7 @@ function connectContentToBackground(tabId) {
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #11: Process messages from background
  * v1.6.3.8 - Issue #4 (arch): Added PORT_PING handler for zombie detection
+ * v1.6.3.8-v6 - Issue #2: Added STATE_UPDATE handler with ordering validation
  * @param {Object} message - Message from background
  */
 function handleContentPortMessage(message) {
@@ -484,6 +614,9 @@ function handleContentPortMessage(message) {
     type: message.type,
     action: message.action
   });
+
+  // v1.6.3.8-v6 - Reset consecutive failures on successful message
+  portConsecutiveFailures = 0;
 
   // v1.6.3.8 - Issue #4 (arch): Handle PORT_PING for zombie port detection
   if (message.type === 'PORT_PING') {
@@ -500,6 +633,12 @@ function handleContentPortMessage(message) {
     return;
   }
 
+  // v1.6.3.8-v6 - Issue #2: Handle STATE_UPDATE with ordering validation
+  if (message.type === 'STATE_UPDATE') {
+    _handleStateUpdateFromPort(message);
+    return;
+  }
+
   // Handle broadcasts
   if (message.type === 'BROADCAST') {
     handleContentBroadcast(message);
@@ -510,6 +649,45 @@ function handleContentPortMessage(message) {
   if (message.type === 'ACKNOWLEDGMENT') {
     console.log('[Content] Received acknowledgment:', message.correlationId);
   }
+}
+
+/**
+ * Handle STATE_UPDATE message from background via port
+ * v1.6.3.8-v6 - Issue #2: Validate ordering before applying
+ * @private
+ * @param {Object} message - State update message
+ */
+function _handleStateUpdateFromPort(message) {
+  const { state, sequenceId, revision } = message;
+
+  console.log('[Content] STATE_UPDATE received via port:', {
+    sequenceId,
+    revision,
+    tabCount: state?.tabs?.length || 0,
+    lastAppliedSequenceId,
+    lastAppliedRevision
+  });
+
+  // Validate ordering
+  const stateWithMeta = { ...state, sequenceId, revision };
+  const orderingResult = _validateStorageEventOrdering(stateWithMeta);
+
+  if (!orderingResult.valid) {
+    console.warn('[Content] STATE_UPDATE rejected (ordering):', {
+      reason: orderingResult.reason,
+      sequenceId,
+      revision
+    });
+    // Request fresh state on ordering failure
+    _requestStateRecovery(`port-${orderingResult.reason}`);
+    return;
+  }
+
+  // Update ordering state
+  _updateAppliedOrderingState(stateWithMeta);
+
+  // Notify QuickTabsManager
+  _notifyManagerOfStorageUpdate(state, 'port-state-update');
 }
 
 /**
@@ -578,6 +756,38 @@ window.addEventListener('unload', () => {
     logContentPortLifecycle('unload', { reason: 'window-unload' });
     backgroundPort.disconnect();
     backgroundPort = null;
+  }
+  // v1.6.3.8-v6 - Clear reconnect timeout on unload
+  if (portReconnectTimeoutId) {
+    clearTimeout(portReconnectTimeoutId);
+    portReconnectTimeoutId = null;
+  }
+});
+
+// v1.6.3.8-v6 - Issue #3: Reset circuit breaker when tab becomes visible
+// This allows reconnection attempts when user returns to the tab
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    console.log('[Content] TAB_VISIBILITY_VISIBLE:', {
+      hasPort: !!backgroundPort,
+      circuitBreakerTripped: portCircuitBreakerTripped,
+      consecutiveFailures: portConsecutiveFailures
+    });
+
+    // Reset circuit breaker when tab becomes visible
+    if (portCircuitBreakerTripped) {
+      console.log('[Content] CIRCUIT_BREAKER_RESET: Tab became visible');
+      portCircuitBreakerTripped = false;
+      portConsecutiveFailures = 0;
+      portReconnectAttempts = 0;
+      portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
+    }
+
+    // Attempt reconnection if port is dead
+    if (!backgroundPort && cachedTabId !== null) {
+      console.log('[Content] ATTEMPTING_RECONNECT: Tab visible, no port');
+      connectContentToBackground(cachedTabId);
+    }
   }
 });
 
@@ -696,6 +906,282 @@ window.addEventListener('pageshow', _handleBFCachePageShow);
 console.log('[Content] v1.6.3.8 BFCache handlers registered');
 
 // ==================== END BFCACHE HANDLING ====================
+
+// ==================== v1.6.3.8-v6 STORAGE FALLBACK & ORDERING ====================
+// Issue #1: storage.onChanged listener as fallback when port messaging fails
+// Issue #2: Storage event ordering validation using sequenceId and revision
+// Issue #4: Fallback when port.postMessage fails
+
+// Storage key for Quick Tabs state (must match storage-utils.js)
+const CONTENT_STATE_KEY = 'quick_tabs_state_v2';
+
+/**
+ * Validate incoming storage event ordering
+ * v1.6.3.8-v6 - Issue #2: Reject out-of-order updates using sequenceId and revision
+ * @param {Object} newValue - New storage value
+ * @returns {{valid: boolean, reason: string}} Validation result
+ */
+function _validateStorageEventOrdering(newValue) {
+  if (!newValue) {
+    return { valid: false, reason: 'empty-value' };
+  }
+
+  const incomingRevision = newValue.revision;
+  const incomingSequenceId = newValue.sequenceId;
+
+  // Check revision ordering (primary)
+  if (typeof incomingRevision === 'number') {
+    if (incomingRevision <= lastAppliedRevision) {
+      console.warn('[Content] STORAGE_EVENT_REJECTED (revision):', {
+        incomingRevision,
+        lastAppliedRevision,
+        reason: incomingRevision === lastAppliedRevision ? 'duplicate' : 'out-of-order'
+      });
+      return { valid: false, reason: 'revision-rejected' };
+    }
+  }
+
+  // Check sequenceId ordering (secondary)
+  if (typeof incomingSequenceId === 'number') {
+    if (incomingSequenceId <= lastAppliedSequenceId) {
+      console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
+        incomingSequenceId,
+        lastAppliedSequenceId,
+        reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate' : 'out-of-order'
+      });
+      return { valid: false, reason: 'sequenceId-rejected' };
+    }
+  }
+
+  return { valid: true, reason: 'passed' };
+}
+
+/**
+ * Update ordering tracking after applying state
+ * v1.6.3.8-v6 - Issue #2: Track highest applied revision/sequenceId
+ * @param {Object} newValue - Applied storage value
+ */
+function _updateAppliedOrderingState(newValue) {
+  if (typeof newValue.revision === 'number' && newValue.revision > lastAppliedRevision) {
+    lastAppliedRevision = newValue.revision;
+  }
+  if (typeof newValue.sequenceId === 'number' && newValue.sequenceId > lastAppliedSequenceId) {
+    lastAppliedSequenceId = newValue.sequenceId;
+  }
+}
+
+/**
+ * Request fresh state from background when ordering fails
+ * v1.6.3.8-v6 - Issue #2: Recovery mechanism for out-of-order events
+ * @param {string} reason - Reason for recovery request
+ */
+function _requestStateRecovery(reason) {
+  console.log('[Content] STORAGE_STATE_RECOVERY_REQUESTED:', {
+    reason,
+    lastAppliedRevision,
+    lastAppliedSequenceId,
+    hasPort: !!backgroundPort,
+    timestamp: Date.now()
+  });
+
+  // Try port first
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'REQUEST_FULL_STATE_SYNC',
+        source: 'content-ordering-recovery',
+        reason,
+        tabId: cachedTabId,
+        lastAppliedRevision,
+        lastAppliedSequenceId,
+        timestamp: Date.now()
+      });
+      return;
+    } catch (err) {
+      console.warn('[Content] Port recovery request failed:', err.message);
+    }
+  }
+
+  // Fallback to storage.local.get
+  _fallbackToStorageRead(reason);
+}
+
+/**
+ * Fallback to storage.local.get when port fails
+ * v1.6.3.8-v6 - Issue #4: Fallback mechanism when port.postMessage fails
+ * @param {string} reason - Reason for fallback
+ */
+async function _fallbackToStorageRead(reason) {
+  console.log('[Content] STORAGE_FALLBACK_READ:', { reason, timestamp: Date.now() });
+
+  try {
+    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const storedState = result?.[CONTENT_STATE_KEY];
+
+    if (!storedState) {
+      console.warn('[Content] STORAGE_FALLBACK_EMPTY: No state in storage');
+      return;
+    }
+
+    console.log('[Content] STORAGE_FALLBACK_SUCCESS:', {
+      tabCount: storedState.tabs?.length || 0,
+      revision: storedState.revision,
+      sequenceId: storedState.sequenceId,
+      saveId: storedState.saveId
+    });
+
+    // Update ordering state and notify QuickTabsManager if available
+    _updateAppliedOrderingState(storedState);
+    _notifyManagerOfStorageUpdate(storedState, 'storage-fallback');
+  } catch (err) {
+    console.error('[Content] STORAGE_FALLBACK_ERROR:', err.message);
+  }
+}
+
+/**
+ * Notify QuickTabsManager of storage update
+ * v1.6.3.8-v6 - Issue #1: Bridge storage events to QuickTabsManager
+ * @param {Object} state - State from storage
+ * @param {string} source - Source of the update
+ */
+function _notifyManagerOfStorageUpdate(state, source) {
+  // Check if QuickTabsManager is available and initialized
+  if (!quickTabsManager?.internalEventBus) {
+    console.log('[Content] STORAGE_UPDATE_DEFERRED: QuickTabsManager not ready');
+    return;
+  }
+
+  // Emit internal event for QuickTabsManager to handle
+  quickTabsManager.internalEventBus.emit('storage:updated', {
+    state,
+    source,
+    tabCount: state.tabs?.length || 0,
+    revision: state.revision,
+    sequenceId: state.sequenceId,
+    timestamp: Date.now()
+  });
+
+  console.log('[Content] STORAGE_UPDATE_NOTIFIED:', {
+    source,
+    tabCount: state.tabs?.length || 0,
+    revision: state.revision
+  });
+}
+
+/**
+ * Handle storage.onChanged event for Quick Tabs state
+ * v1.6.3.8-v6 - Issue #1: Fallback when port messaging fails
+ * @param {Object} changes - Storage changes
+ * @param {string} areaName - Storage area ('local', 'sync', etc.)
+ */
+function _handleStorageChange(changes, areaName) {
+  // Only handle local storage changes
+  if (areaName !== 'local') return;
+
+  // Only handle Quick Tabs state changes
+  const stateChange = changes[CONTENT_STATE_KEY];
+  if (!stateChange) return;
+
+  const newValue = stateChange.newValue;
+  const oldValue = stateChange.oldValue;
+
+  console.log('[Content] STORAGE_CHANGE_RECEIVED:', {
+    hasNewValue: !!newValue,
+    hasOldValue: !!oldValue,
+    newRevision: newValue?.revision,
+    oldRevision: oldValue?.revision,
+    newSequenceId: newValue?.sequenceId,
+    newTabCount: newValue?.tabs?.length || 0,
+    timestamp: Date.now()
+  });
+
+  // Validate ordering
+  const orderingResult = _validateStorageEventOrdering(newValue);
+  if (!orderingResult.valid) {
+    // Request fresh state if ordering fails
+    if (orderingResult.reason !== 'empty-value') {
+      _requestStateRecovery(orderingResult.reason);
+    }
+    return;
+  }
+
+  // Update ordering state
+  _updateAppliedOrderingState(newValue);
+
+  // Notify QuickTabsManager
+  _notifyManagerOfStorageUpdate(newValue, 'storage.onChanged');
+}
+
+/**
+ * Send message via port with fallback to storage.local.get
+ * v1.6.3.8-v6 - Issue #4: Graceful fallback when port fails
+ * @param {Object} message - Message to send
+ * @param {Object} options - Options for sending
+ * @param {number} [options.maxRetries=3] - Max retry attempts
+ * @param {number} [options.retryDelayMs=100] - Initial retry delay
+ * @returns {Promise<Object>} Response or fallback result
+ */
+async function sendPortMessageWithFallback(message, options = {}) {
+  const { maxRetries = 3, retryDelayMs = 100 } = options;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Try port if available
+    if (backgroundPort) {
+      try {
+        backgroundPort.postMessage(message);
+        console.log('[Content] PORT_MESSAGE_SENT:', {
+          type: message.type || message.action,
+          attempt: attempt + 1
+        });
+        return { success: true, method: 'port', attempt: attempt + 1 };
+      } catch (err) {
+        lastError = err;
+        console.warn('[Content] PORT_MESSAGE_FAILED:', {
+          attempt: attempt + 1,
+          error: err.message
+        });
+      }
+    }
+
+    // Wait before retry with exponential backoff
+    if (attempt < maxRetries - 1) {
+      const delay = retryDelayMs * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // All retries failed - fallback to storage read
+  console.warn('[Content] PORT_MESSAGE_ALL_RETRIES_FAILED:', {
+    totalAttempts: maxRetries,
+    lastError: lastError?.message,
+    fallbackAction: 'storage.local.get'
+  });
+
+  // Fallback: read from storage.local
+  try {
+    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const state = result?.[CONTENT_STATE_KEY];
+
+    if (state) {
+      console.log('[Content] PORT_FALLBACK_STORAGE_SUCCESS:', {
+        tabCount: state.tabs?.length || 0,
+        revision: state.revision
+      });
+      return { success: true, method: 'storage-fallback', state };
+    }
+  } catch (storageErr) {
+    console.error('[Content] PORT_FALLBACK_STORAGE_ERROR:', storageErr.message);
+  }
+
+  return { success: false, method: 'none', error: lastError?.message || 'Port unavailable' };
+}
+
+// v1.6.3.8-v6 - Issue #1: Register storage.onChanged listener as fallback
+browser.storage.onChanged.addListener(_handleStorageChange);
+console.log('[Content] v1.6.3.8-v6 storage.onChanged listener registered');
+
+// ==================== END STORAGE FALLBACK & ORDERING ====================
 
 /**
  * v1.6.0.3 - Helper to initialize Quick Tabs
