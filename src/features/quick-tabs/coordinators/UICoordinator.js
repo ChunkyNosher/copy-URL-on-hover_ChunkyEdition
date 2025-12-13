@@ -644,6 +644,12 @@ export class UICoordinator {
 
     const existingWindow = this.renderedTabs.get(quickTab.id);
 
+    // v1.6.3.8-v8 - FIX: Handle null placeholder from renderAll() batch hydration
+    // During init, renderAll() sets null placeholders before calling render() to prevent races
+    if (!existingWindow) {
+      return null; // Placeholder entry, needs fresh render
+    }
+
     // v1.6.3.4-v7 - FIX Issue #3: Validate DOM is actually attached
     if (existingWindow.isRendered()) {
       console.log('[UICoordinator] Tab already rendered and DOM attached:', quickTab.id);
