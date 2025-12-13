@@ -2491,13 +2491,32 @@ export class UICoordinator {
     this._stateListenerRefs.push({ event: 'window:created', handler: onWindowCreated });
 
     const setupCompleteTimestamp = Date.now();
-    console.log(`${this._logPrefix} LISTENERS_REGISTRATION_COMPLETE: All listeners registered:`, {
+    
+    // v1.6.3.8-v10 - FIX Issue #3, #8: Log listener count and emit LISTENERS_READY event
+    // EventEmitter3 fires listeners in registration order (FIFO), but we log for verification
+    const registeredListeners = this._stateListenerRefs.length;
+    console.log(`${this._logPrefix} LISTENERS_REGISTERED:`, {
+      count: registeredListeners,
+      events: this._stateListenerRefs.map(ref => ref.event),
+      timestamp: setupCompleteTimestamp,
+      note: 'EventEmitter3 guarantees FIFO listener order - first registered fires first'
+    });
+    
+    console.log(`${this._logPrefix} LISTENERS_READY:`, {
       timestamp: setupCompleteTimestamp,
       durationMs: setupCompleteTimestamp - setupListenersTimestamp,
       handlersReady: this._handlersReady,
-      listenerCount: this._stateListenerRefs.length,
-      note: 'Init order should be: handlers ready → listeners registered → events fire'
+      listenerCount: registeredListeners,
+      note: 'Init order: handlers ready → listeners registered → events fire'
     });
+    
+    // v1.6.3.8-v10 - FIX Issue #8: Emit listeners:ready event for components that need to defer hydration
+    if (this.eventBus) {
+      this.eventBus.emit('listeners:ready', {
+        timestamp: setupCompleteTimestamp,
+        listenerCount: registeredListeners
+      });
+    }
   }
 
   /**

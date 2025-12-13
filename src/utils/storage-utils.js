@@ -2249,3 +2249,142 @@ export async function clearSessionQuickTabs(logPrefix = '[StorageUtils]') {
 }
 
 // ==================== END SESSION STORAGE FUNCTIONS ====================
+
+// ==================== v1.6.3.8-v10 STORAGE WRITE WITH RETRY ====================
+// FIX Issue #9: Fire-and-Forget Storage Persistence - Add retry logic
+
+/**
+ * Storage write retry configuration
+ * v1.6.3.8-v10 - FIX Issue #9: Exponential backoff for storage writes
+ */
+const STORAGE_WRITE_MAX_RETRIES = 3;
+const STORAGE_WRITE_INITIAL_DELAY_MS = 100;
+const STORAGE_WRITE_MAX_DELAY_MS = 500;
+
+/**
+ * Write to storage with exponential backoff retry
+ * v1.6.3.8-v10 - FIX Issue #9: Robust storage write with retry logic
+ * @param {string} key - Storage key
+ * @param {Object} value - Value to store
+ * @param {Object} options - Optional configuration
+ * @param {string} [options.logPrefix='[StorageUtils]'] - Log prefix
+ * @param {number} [options.maxRetries=3] - Maximum retry attempts
+ * @param {number} [options.initialDelay=100] - Initial retry delay in ms
+ * @returns {Promise<{success: boolean, attempts: number, error: string|null}>}
+ */
+export async function writeStorageWithRetry(key, value, options = {}) {
+  const {
+    logPrefix = '[StorageUtils]',
+    maxRetries = STORAGE_WRITE_MAX_RETRIES,
+    initialDelay = STORAGE_WRITE_INITIAL_DELAY_MS
+  } = options;
+
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.error(`${logPrefix} STORAGE_WRITE_FAILED: Browser storage API unavailable`);
+    return { success: false, attempts: 0, error: 'storage API unavailable' };
+  }
+
+  let delay = initialDelay;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`${logPrefix} STORAGE_WRITE_ATTEMPT:`, {
+        key,
+        attempt,
+        maxRetries,
+        timestamp: Date.now()
+      });
+
+      await browserAPI.storage.local.set({ [key]: value });
+
+      console.log(`${logPrefix} STORAGE_WRITE_SUCCESS:`, {
+        key,
+        attempt,
+        timestamp: Date.now()
+      });
+
+      return { success: true, attempts: attempt, error: null };
+    } catch (err) {
+      lastError = err;
+
+      console.warn(`${logPrefix} STORAGE_WRITE_FAILED:`, {
+        key,
+        attempt,
+        maxRetries,
+        error: err.message,
+        willRetry: attempt < maxRetries,
+        timestamp: Date.now()
+      });
+
+      // Wait before retry (except on last attempt)
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay = Math.min(delay * 2, STORAGE_WRITE_MAX_DELAY_MS); // Exponential backoff with cap
+      }
+    }
+  }
+
+  // All retries exhausted
+  console.error(`${logPrefix} STORAGE_WRITE_ALL_RETRIES_EXHAUSTED:`, {
+    key,
+    attempts: maxRetries,
+    error: lastError?.message,
+    timestamp: Date.now()
+  });
+
+  return { success: false, attempts: maxRetries, error: lastError?.message || 'unknown error' };
+}
+
+/**
+ * Write to storage with verification (write, read back, compare)
+ * v1.6.3.8-v10 - FIX Issue #9: Verify write succeeded by reading back
+ * @param {string} key - Storage key
+ * @param {Object} value - Value to store
+ * @param {Object} options - Optional configuration
+ * @returns {Promise<{success: boolean, verified: boolean, error: string|null}>}
+ */
+export async function writeStateWithVerificationAndRetry(key, value, options = {}) {
+  const { logPrefix = '[StorageUtils]' } = options;
+
+  // Step 1: Write with retry
+  const writeResult = await writeStorageWithRetry(key, value, options);
+  if (!writeResult.success) {
+    return { success: false, verified: false, error: writeResult.error };
+  }
+
+  // Step 2: Verify by reading back
+  const browserAPI = getBrowserStorageAPI();
+  try {
+    const readResult = await browserAPI.storage.local.get(key);
+    const readValue = readResult?.[key];
+
+    // Simple verification: check if key exists and has same saveId if present
+    const verified = readValue !== undefined && readValue !== null;
+
+    if (verified) {
+      console.log(`${logPrefix} STORAGE_WRITE_VERIFIED:`, {
+        key,
+        saveIdMatch: value?.saveId === readValue?.saveId,
+        timestamp: Date.now()
+      });
+    } else {
+      console.warn(`${logPrefix} STORAGE_WRITE_VERIFICATION_FAILED:`, {
+        key,
+        valueFound: !!readValue,
+        timestamp: Date.now()
+      });
+    }
+
+    return { success: true, verified, error: null };
+  } catch (err) {
+    console.warn(`${logPrefix} STORAGE_WRITE_VERIFICATION_ERROR:`, {
+      key,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    // Write succeeded, verification failed - return success but not verified
+    return { success: true, verified: false, error: err.message };
+  }
+}

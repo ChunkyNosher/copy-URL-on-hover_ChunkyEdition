@@ -501,10 +501,13 @@ const PORT_RECONNECT_BACKOFF_MULTIPLIER = 2;
 const PORT_RECONNECT_MAX_ATTEMPTS = 10;
 const PORT_CIRCUIT_BREAKER_THRESHOLD = 3; // Failures before circuit breaker trips
 
-// v1.6.3.8-v8 - FIX Issue #1: Self-write detection constants
+// v1.6.3.8-v10 - FIX Issue #4: Self-write detection constants aligned
 // Firefox listener fires 100-250ms after write completes
-const SELF_WRITE_DETECTION_WINDOW_MS = 50; // Timestamp matching window
+// CRITICAL: SELF_WRITE_DETECTION_WINDOW_MS MUST be >= STORAGE_LISTENER_LATENCY_TOLERANCE_MS
+// Previous bug: 50ms detection window vs 300ms tolerance caused false negatives
+// A self-write at T+100ms was missed (outside 50ms window) but accepted (within 300ms tolerance)
 const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = 300; // Firefox listener latency tolerance
+const SELF_WRITE_DETECTION_WINDOW_MS = STORAGE_LISTENER_LATENCY_TOLERANCE_MS; // Must match for correct detection
 
 // v1.6.3.8-v8 - FIX Issue #8: Storage event ordering tolerance window
 // Accept out-of-order events if within Firefox's documented listener latency
@@ -736,12 +739,21 @@ function _processPendingPortMessages() {
 
 /**
  * Send a single pending message via port
- * v1.6.3.8-v8 - Extracted to reduce nesting depth in _processPendingPortMessages
+ * v1.6.3.8-v10 - FIX Issue #5: Add port validity guard before sending
  * @private
  * @param {Object} item - Message queue item with message and timestamp
  * @param {number} now - Current timestamp
  */
 function _sendPendingMessage(item, now) {
+  // v1.6.3.8-v10 - FIX Issue #5: Guard against zombie port
+  if (!backgroundPort) {
+    console.warn('[Content] PORT_ZOMBIE_AVOIDED: Skipping pending message - port is null:', {
+      type: item.message.type,
+      age: now - item.timestamp
+    });
+    return;
+  }
+  
   try {
     backgroundPort.postMessage(item.message);
     console.log('[Content] PENDING_MESSAGE_SENT:', {
@@ -1255,19 +1267,36 @@ function _tryGetSessionState() {
 
 /**
  * Disconnect port safely during BFCache entry
- * v1.6.3.8 - Issue #4 (arch): Extracted to reduce nesting depth
+ * v1.6.3.8-v10 - FIX Issue #5: Enhanced with pending message flush and logging
  * @private
  */
 function _disconnectPortForBFCache() {
+  // v1.6.3.8-v10 - FIX Issue #5: Clear pending messages queue on BFCache entry
+  // Messages queued for the zombie port should not be sent later
+  const pendingCount = _pendingPortMessages.length;
+  if (pendingCount > 0) {
+    console.log('[Content] PORT_ZOMBIE_AVOIDED: Flushing pending messages on BFCache entry:', {
+      flushedCount: pendingCount,
+      reason: 'BFCache entry - port will be zombie'
+    });
+    _pendingPortMessages.length = 0; // Clear the queue
+  }
+
   if (!backgroundPort) return;
 
   logContentPortLifecycle('bfcache-enter', { reason: 'entering-bfcache' });
+  
+  // v1.6.3.8-v10 - FIX Issue #5: Set port to null SYNCHRONOUSLY before disconnect
+  // This prevents any code from trying to use the port during disconnect
+  const portRef = backgroundPort;
+  backgroundPort = null; // Null first to prevent zombie usage
+  
   try {
-    backgroundPort.disconnect();
+    portRef.disconnect();
   } catch (_err) {
     // Port may already be in bad state
+    console.log('[Content] PORT_DISCONNECT_FAILED_SILENT: Port may already be closed');
   }
-  backgroundPort = null;
 }
 
 // v1.6.3.8-v8 - FIX Issue #10: BFCache state tracking for session state reconciliation
@@ -1540,6 +1569,13 @@ window.addEventListener('pageshow', _handleBFCachePageShow);
  * @private
  * @param {string} reason - Reason for unload
  */
+/**
+ * Send unload signal to background via multiple channels for reliability
+ * v1.6.3.8-v10 - FIX Issue #10: Multiple channels ensure message reaches background
+ *               Add brief timeout before final cleanup to allow messages to queue
+ * @private
+ * @param {string} reason - Reason for unload
+ */
 function _sendContentScriptUnloadSignal(reason) {
   const unloadMessage = {
     type: 'CONTENT_SCRIPT_UNLOAD',
@@ -1548,25 +1584,27 @@ function _sendContentScriptUnloadSignal(reason) {
     timestamp: Date.now()
   };
 
-  console.log('[Content] PAGE_LIFECYCLE_UNLOAD_SIGNAL:', {
+  console.log('[Content] CONTENT_SCRIPT_UNLOAD_SIGNAL_SENT:', {
     tabId: cachedTabId,
     hasPort: !!backgroundPort,
     reason,
+    channels: ['port', 'runtime.sendMessage'],
     timestamp: Date.now()
   });
 
-  // v1.6.3.8-v8 - Issue #19: Try port first (synchronous, most reliable)
+  // v1.6.3.8-v10 - FIX Issue #10: Try port first (synchronous, most reliable)
   if (backgroundPort) {
     try {
       backgroundPort.postMessage(unloadMessage);
       console.log('[Content] CONTENT_SCRIPT_UNLOAD sent via port');
     } catch (_err) {
       // Port may already be disconnected
+      console.log('[Content] Port send failed (expected during unload) - trying fallback');
     }
   }
 
-  // v1.6.3.8-v8 - Issue #19: Also try runtime.sendMessage as fallback
-  // This may not always succeed but provides redundancy
+  // v1.6.3.8-v10 - FIX Issue #10: Also try runtime.sendMessage as fallback
+  // This provides redundancy in case port is already zombie
   try {
     browser.runtime
       .sendMessage({
@@ -1576,6 +1614,7 @@ function _sendContentScriptUnloadSignal(reason) {
       .catch(() => {
         // Expected to fail if background not ready - ignore
       });
+    console.log('[Content] CONTENT_SCRIPT_UNLOAD sent via runtime.sendMessage (fallback)');
   } catch (_err) {
     // Ignore - best effort
   }
@@ -2023,27 +2062,43 @@ async function _sendPortMessageWithFallback(message, options = {}) {
   return { success: false, method: 'none', error: lastError?.message || 'Port unavailable' };
 }
 
-// v1.6.3.8-v8 - Issue #15: Process early queued storage changes and set up fallback polling
+// v1.6.3.8-v10 - FIX Issue #2: Process early queued storage changes and set up fallback polling
 // The early listener was registered at script load, now connect it to actual handler
+// CRITICAL: Ensure queue is flushed BEFORE hydration starts
 (function _connectEarlyStorageListener() {
-  console.log('[Content] v1.6.3.8-v8 Connecting early storage listener:', {
+  console.log('[Content] v1.6.3.8-v10 Connecting early storage listener:', {
     registrationTime: _storageListenerRegistrationTime,
     listenerHasFired: _storageListenerHasFired,
     queuedEventsCount: _earlyStorageChangeQueue.length,
     timeSinceRegistration: Date.now() - _storageListenerRegistrationTime
   });
 
-  // Process any queued events
+  // v1.6.3.8-v10 - FIX Issue #2: Process any queued events BEFORE hydration
+  // This ensures early storage events are handled before UI hydration begins
   if (_earlyStorageChangeQueue.length > 0) {
-    console.log('[Content] Processing queued storage events:', _earlyStorageChangeQueue.length);
+    console.log('[Content] EARLY_STORAGE_QUEUE_PROCESSING: Flushing queued storage events:', {
+      eventCount: _earlyStorageChangeQueue.length,
+      timestamp: Date.now()
+    });
     for (const queuedEvent of _earlyStorageChangeQueue) {
       _handleStorageChange(queuedEvent.changes, queuedEvent.areaName);
     }
+    // v1.6.3.8-v10 - FIX Issue #2: Log queue flush completion
+    console.log('[Content] EARLY_STORAGE_QUEUE_FLUSHED:', {
+      eventCount: _earlyStorageChangeQueue.length,
+      timestamp: Date.now()
+    });
     // Clear the queue
     _earlyStorageChangeQueue.length = 0;
+  } else {
+    console.log('[Content] EARLY_STORAGE_QUEUE_FLUSHED:', {
+      eventCount: 0,
+      note: 'No events were queued',
+      timestamp: Date.now()
+    });
   }
 
-  // v1.6.3.8-v8 - Issue #15: Set up fallback polling if listener hasn't fired within 1 second
+  // v1.6.3.8-v10 - FIX Issue #2: Set up fallback polling if listener hasn't fired within 1 second
   setTimeout(() => {
     if (!_storageListenerHasFired) {
       console.warn(
@@ -2056,9 +2111,11 @@ async function _sendPortMessageWithFallback(message, options = {}) {
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 
-// v1.6.3.8-v8 - FIX Issue #7: Initialization barrier for explicit ordering
-// Timeout for tab ID fetch before fallback to features without tab ID
-const TAB_ID_FETCH_TIMEOUT_MS = 5000;
+// v1.6.3.8-v10 - FIX Issue #6: Initialization barrier for explicit ordering
+// Increased timeout for slow devices and added retry logic
+const TAB_ID_FETCH_TIMEOUT_MS = 10000; // Increased from 5s to 10s for slow devices
+const TAB_ID_FETCH_MAX_RETRIES = 3; // Maximum retry attempts
+const TAB_ID_FETCH_RETRY_DELAY_MS = 500; // Initial delay between retries
 
 /**
  * Initialization barrier state
@@ -2092,7 +2149,7 @@ function _logInitializationBarrierState(phase) {
 
 /**
  * Fetch tab ID with timeout and proper cleanup
- * v1.6.3.8-v8 - FIX Issue #7: Proper timeout cleanup to prevent memory leaks
+ * v1.6.3.8-v10 - FIX Issue #6: Increased timeout to 10s and added retry logic with exponential backoff
  * @private
  * @returns {Promise<number|null>} Tab ID or null on timeout
  */
@@ -2119,34 +2176,99 @@ async function _fetchTabIdWithTimeout() {
 }
 
 /**
+ * Fetch tab ID with retries and exponential backoff
+ * v1.6.3.8-v10 - FIX Issue #6: Retry logic for slow background script scenarios
+ * @private
+ * @returns {Promise<number|null>} Tab ID or null after all retries exhausted
+ */
+async function _fetchTabIdWithRetry() {
+  let lastError = null;
+  let delay = TAB_ID_FETCH_RETRY_DELAY_MS;
+  
+  for (let attempt = 1; attempt <= TAB_ID_FETCH_MAX_RETRIES; attempt++) {
+    try {
+      console.log('[Content] TAB_ID_FETCH_ATTEMPT:', {
+        attempt,
+        maxRetries: TAB_ID_FETCH_MAX_RETRIES,
+        timeout: TAB_ID_FETCH_TIMEOUT_MS,
+        timestamp: Date.now()
+      });
+      
+      const tabId = await _fetchTabIdWithTimeout();
+      
+      if (tabId !== null && tabId !== undefined) {
+        console.log('[Content] TAB_ID_FETCH_SUCCESS:', {
+          tabId,
+          attempt,
+          timestamp: Date.now()
+        });
+        return tabId;
+      }
+      
+      // Tab ID came back as null - log and retry
+      console.warn('[Content] TAB_ID_FETCH_NULL_RESPONSE:', {
+        attempt,
+        willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
+        timestamp: Date.now()
+      });
+      
+    } catch (err) {
+      lastError = err;
+      console.warn('[Content] TAB_ID_FETCH_TIMEOUT:', {
+        attempt,
+        error: err.message,
+        willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
+        timestamp: Date.now()
+      });
+    }
+    
+    // Wait before retry (except on last attempt)
+    if (attempt < TAB_ID_FETCH_MAX_RETRIES) {
+      console.log('[Content] TAB_ID_FETCH_RETRYING:', {
+        attempt: attempt + 1,
+        delayMs: delay,
+        timestamp: Date.now()
+      });
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2; // Exponential backoff
+    }
+  }
+  
+  // All retries exhausted
+  console.error('[Content] TAB_ID_FETCH_ALL_RETRIES_EXHAUSTED:', {
+    attempts: TAB_ID_FETCH_MAX_RETRIES,
+    lastError: lastError?.message,
+    consequence: 'Proceeding with null tabId - graceful degradation',
+    timestamp: Date.now()
+  });
+  
+  return null;
+}
+
+/**
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
- * v1.6.3.8-v8 - FIX Issue #7: Explicit initialization barrier - features don't start until tab ID fetch completes
+ * v1.6.3.8-v10 - FIX Issue #6: Use retry logic instead of single timeout for tab ID fetch
  */
 async function initializeQuickTabsFeature() {
-  console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
+  console.log('[Copy-URL-on-Hover] INIT_START: About to initialize Quick Tabs...');
   _initializationBarrier.startTime = Date.now();
   _logInitializationBarrierState('start');
 
-  // v1.6.3.8-v8 - FIX Issue #7: Explicit initialization chain with timeout
-  // Step 1: Fetch tab ID with timeout fallback
+  // v1.6.3.8-v10 - FIX Issue #6: Explicit initialization chain with retry logic
+  // Step 1: Fetch tab ID with retry and exponential backoff
   let currentTabId = null;
   
-  try {
-    // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
-    // This is critical for cross-tab scoping - Quick Tabs should only render
-    // in the tab they were created in (originTabId must match currentTabId)
-    currentTabId = await _fetchTabIdWithTimeout();
-    _initializationBarrier.tabIdFetched = true;
+  // v1.6.3.8-v10 - FIX Issue #6: Use retry function instead of single timeout
+  console.log('[Content] INIT_STEP_1: Fetching tab ID with retry logic');
+  currentTabId = await _fetchTabIdWithRetry();
+  _initializationBarrier.tabIdFetched = true;
+  
+  if (currentTabId !== null) {
     _logInitializationBarrierState('tabId-fetched');
-  } catch (err) {
-    console.error('[Content] INITIALIZATION_BARRIER_FAILED: Tab ID fetch:', {
-      error: err.message,
-      timeout: TAB_ID_FETCH_TIMEOUT_MS
-    });
-    // Continue with null tab ID - features will have limited functionality
-    _initializationBarrier.tabIdFetched = true; // Mark as complete even on failure
+  } else {
+    console.warn('[Content] INIT_STEP_1_WARNING: Proceeding without tab ID - graceful degradation');
     _logInitializationBarrierState('tabId-fetch-failed');
   }
   
