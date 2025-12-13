@@ -61,19 +61,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Write latency logging** - `STORAGE_WRITE_LATENCY` for monitoring
-- **Backpressure detection** - `STORAGE_BACKPRESSURE_DETECTED` logging
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
 
-**v1.6.3.8 Features (Retained):** Initialization barriers, centralized storage
-validation, storage tier probing, keepalive health reports, Code Health:
-background.js (9.09), QuickTabHandler.js (9.41).
+**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port failure
+counting, initialization barriers, WriteBuffer (75ms).
 
 **v1.6.3.6 Fixes:**
 

@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.8-v6** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
 control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
@@ -9,34 +9,40 @@ Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v5 Status:** Architecture Redesign - BroadcastChannel REMOVED ✅
+**🔧 v1.6.3.8-v6 Status:** Production Hardening - BroadcastChannel DELETED ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v5
+## 🎉 What's New in v1.6.3.8-v6
 
-**🔧 Architecture Redesign (December 2025) ✅**
+**🔧 Production Hardening (December 2025) ✅**
 
-**BroadcastChannel REMOVED - New Port + Storage Architecture:**
+**BroadcastChannel COMPLETELY REMOVED - Port + Storage Architecture:**
 
-- ✅ **Layer 1a:** runtime.Port for real-time metadata sync
-- ✅ **Layer 1b:** storage.local with monotonic revision versioning
-- ✅ **Layer 2:** Robust fallback via storage.onChanged
+- ✅ **BroadcastChannelManager.js DELETED** from codebase
+- ✅ **BC removed from all handlers** (Create, Update, Visibility, Destroy)
+- ✅ **Tests updated** to use storage-based sync simulation
 
-**7 Critical Fixes:**
+**13 Architecture Fixes:**
 
-- ✅ **Issue #1:** Storage event ordering - Monotonic revision versioning + buffering
-- ✅ **Issue #2:** BC origin isolation - SOLVED by BC removal (Port-based only)
-- ✅ **Issue #3:** Port disconnection - Consecutive failure tracking (3 failures → cleanup)
-- ✅ **Issue #4:** Storage quota recovery - Iterative 75%→50%→25%, exponential backoff
-- ✅ **Issue #5:** WebRequest API - declarativeNetRequest with webRequest fallback
-- ✅ **Issue #6:** Alarm ordering - Initialization guards for alarm handlers
-- ✅ **Issue #7:** URL validation - Block dangerous protocols (javascript:, data:, vbscript:)
+- ✅ **Storage quota monitoring** - 5-minute intervals, warnings at 50%, 75%, 90%
+- ✅ **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS (30s)
+- ✅ **Queue overflow handling** - Drop oldest 10% when queue full
+- ✅ **TTL-based message pruning** - Remove messages older than TTL before flush
+- ✅ **storage.onChanged listener** - Fallback sync path in content script
+- ✅ **Port reconnection** - Exponential backoff (100ms → 10s max)
+- ✅ **Circuit breaker** - Prevents connection storms (3 consecutive failures)
+- ✅ **Ordering validation** - sequenceId/revision tracking in content script
+- ✅ **BFCache handlers** - Enhanced pageshow/pagehide with state validation
+- ✅ **Checksum validation** - djb2-like hash during hydration
+- ✅ **SessionStorage conflict resolution** - Prefer storage.local as source of truth
+- ✅ **beforeunload cleanup** - CONTENT_UNLOADING message handler
+- ✅ **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab filtering
 
-**Why This Matters:** Removes BC complexity and origin isolation issues, provides
-more reliable cross-tab sync with simpler architecture.
+**Why This Matters:** Complete removal of BroadcastChannel eliminates all origin
+isolation issues, simplifies architecture, and provides more reliable sync.
 
 ---
 
@@ -45,6 +51,7 @@ more reliable cross-tab sync with simpler architecture.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v5** - Architecture Redesign, BC removal begun
 - **v1.6.3.8-v4** - 9 Critical Sync Fixes, Sidebar Modules
 - **v1.6.3.8-v3** - Storage listener verification, tier hysteresis
 - **v1.6.3.8-v2** - ACK-based messaging, WriteBuffer
@@ -231,6 +238,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v5** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v6** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

@@ -37,28 +37,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v5 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
-- **Monotonic revision versioning** - `revisionId` for storage event ordering
-- **Port failure counting** - 3 consecutive failures triggers cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
-- **declarativeNetRequest** - Feature detection with webRequest fallback
-- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+
+**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
+counting, storage quota recovery, declarativeNetRequest fallback, URL validation.
 
 **v1.6.3.8-v4 Features (Retained):**
 
 - Initialization barriers (10s), exponential backoff retry
 - Port-based hydration, visibility change listener, proactive dedup cleanup
-
-**v1.6.3.8-v2/v3 Features (Retained):**
-
-- ACK-based messaging, SIDEBAR_READY handshake, WriteBuffer (75ms)
-- Code Health: background.js (9.09), QuickTabHandler.js (9.41)
 
 **v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
 listener barrier, LRU eviction (1000), correlation ID echo, state machine
@@ -241,7 +240,7 @@ async function closeAllTabs() {
 
 ## v1.6.3.7-v3 Fix Patterns (Retained)
 
-### Port-Based Messaging Pattern (v1.6.3.8-v5)
+### Port-Based Messaging Pattern (v1.6.3.8-v6)
 
 ```javascript
 // Primary cross-tab sync via runtime.Port (NO BroadcastChannel)

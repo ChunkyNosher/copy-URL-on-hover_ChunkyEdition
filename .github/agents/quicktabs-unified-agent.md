@@ -3,9 +3,9 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.8-v5), Port + storage.local architecture,
+  sync with Single Writer Authority (v1.6.3.8-v6), Port + storage.local architecture,
   ACK-based messaging, WriteBuffer batching, BFCache lifecycle, storage quota
-  recovery, URL validation
+  monitoring, checksum validation
 tools: ['*']
 ---
 
@@ -37,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator
 
 **Complete Quick Tab System:**
 
@@ -50,23 +50,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Cross-Tab Sync** - Port + storage.onChanged (NO BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
-- **Monotonic revision versioning** - `revisionId` for storage event ordering
-- **Port failure counting** - 3 consecutive failures triggers cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
-- **declarativeNetRequest** - Feature detection with webRequest fallback
-- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
 
-**v1.6.3.8-v4 Features (Retained):** Initialization barriers (10s), exponential
-backoff retry, port-based hydration, visibility change listener, proactive dedup
-cleanup, probe queuing.
+**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
+counting, storage quota recovery, declarativeNetRequest fallback, URL validation.
 
-**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, SIDEBAR_READY
-handshake, WriteBuffer (75ms), BFCache lifecycle.
-
-**Key Functions (v1.6.3.8-v5):**
+**Key Functions (v1.6.3.8-v6):**
 
 | Function                    | Location      | Purpose                            |
 | --------------------------- | ------------- | ---------------------------------- |
@@ -90,9 +87,10 @@ handshake, WriteBuffer (75ms), BFCache lifecycle.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v5)
-- [ ] Storage quota recovery works (75%→50%→25%) (v1.6.3.8-v5)
-- [ ] URL validation blocks dangerous protocols (v1.6.3.8-v5)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v6)
+- [ ] Storage quota monitoring works (50%/75%/90%) (v1.6.3.8-v6)
+- [ ] MessageBatcher queue limits work (100 max) (v1.6.3.8-v6)
+- [ ] Checksum validation works during hydration (v1.6.3.8-v6)
 - [ ] ACK-based messaging works (sendRequestWithTimeout)
 - [ ] SIDEBAR_READY handshake works
 - [ ] WriteBuffer batching works (75ms)
@@ -103,5 +101,5 @@ handshake, WriteBuffer (75ms), BFCache lifecycle.
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8-v5 Port + storage.local
-architecture, ACK-based messaging, WriteBuffer batching, BFCache lifecycle.**
+**Your strength: Complete Quick Tab system with v1.6.3.8-v6 Port + storage.local
+architecture, storage quota monitoring, MessageBatcher queue limits.**
