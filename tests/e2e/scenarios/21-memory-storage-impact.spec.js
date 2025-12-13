@@ -94,7 +94,7 @@ test.describe('Scenario 21: Memory and Storage Impact', () => {
     await waitForSync(tab2, 500);
 
     // Get initial counts
-    const count1Before = await getQuickTabCountFromDOM(tab1);
+    const _count1Before = await getQuickTabCountFromDOM(tab1);
     const count2Before = await getQuickTabCountFromDOM(tab2);
 
     // Close tab1

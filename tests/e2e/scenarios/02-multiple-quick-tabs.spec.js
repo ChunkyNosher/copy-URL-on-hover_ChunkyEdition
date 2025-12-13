@@ -11,7 +11,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { test, expect } from '../fixtures/extension.js';
-import { getQuickTabCount } from '../helpers/assertion-helpers.js';
 import { waitForSync, getQuickTabCountFromDOM } from '../helpers/quick-tabs.js';
 
 const __filename = fileURLToPath(import.meta.url);
