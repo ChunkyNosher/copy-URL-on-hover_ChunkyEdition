@@ -4011,14 +4011,14 @@ function _sendActionRequest(action, payload) {
 // All BC functions below are kept as NO-OP stubs for backwards compatibility.
 
 // eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-let broadcastHandlerRef = null;
+const broadcastHandlerRef = null;
 
 // eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-let bcVerificationPending = false;
+const bcVerificationPending = false;
 // eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-let bcVerificationReceived = false;
+const bcVerificationReceived = false;
 // eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-let bcVerificationTimeoutId = null;
+const bcVerificationTimeoutId = null;
 
 // eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
 const BC_VERIFICATION_TIMEOUT_MS = 1000;

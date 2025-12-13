@@ -1,5 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 import { test, expect } from '../fixtures/extension.js';
 import { waitForSync, getQuickTabCountFromDOM, isExtensionReady } from '../helpers/quick-tabs.js';
 
@@ -98,12 +99,12 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Cross-Tab Sync', () => {
     // Navigate to test page
     await page.goto(`file://${testPagePath}`);
     await page.waitForLoadState('domcontentloaded');
-    console.log(`✓ Loaded: test-page.html`);
+    console.log('✓ Loaded: test-page.html');
 
     // Navigate to another section of the test page
     await page.goto(`file://${testPagePath}#section2`);
     await page.waitForLoadState('domcontentloaded');
-    console.log(`✓ Navigated to: test-page.html#section2`);
+    console.log('✓ Navigated to: test-page.html#section2');
 
     // Verify we can still navigate
     expect(page.url()).toContain('test-page.html');

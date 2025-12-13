@@ -437,7 +437,7 @@ let dedupStats = {
 const DEDUP_HISTORY_BUCKETS = 5;
 const DEDUP_STATS_LOG_INTERVAL_MS = 60000; // Log stats every 60 seconds
 let dedupStatsIntervalId = null;
-let dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCounts }
+const dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCounts }
 // v1.6.3.8-v6 - Issue #7: Map dedup method names to tier count keys
 // v1.6.3.8-v8 - Issue #18: Added staleEventAge mapping
 const DEDUP_TIER_MAP = {

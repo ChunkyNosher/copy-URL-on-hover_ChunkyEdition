@@ -1,5 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 import { test, expect } from './fixtures/extension.js';
 import { isExtensionReady } from './helpers/quick-tabs.js';
 

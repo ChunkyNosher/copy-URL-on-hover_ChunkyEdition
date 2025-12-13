@@ -12,6 +12,7 @@
 
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 import { test, expect } from './fixtures/extension.js';
 
 const __filename = fileURLToPath(import.meta.url);
