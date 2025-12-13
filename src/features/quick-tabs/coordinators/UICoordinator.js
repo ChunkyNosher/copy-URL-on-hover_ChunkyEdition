@@ -644,7 +644,8 @@ export class UICoordinator {
 
     const existingWindow = this.renderedTabs.get(quickTab.id);
 
-    // v1.6.3.8-v8 - FIX: Handle null placeholder from synchronous Map initialization
+    // v1.6.3.8-v8 - FIX: Handle null placeholder from renderAll() batch hydration
+    // During init, renderAll() sets null placeholders before calling render() to prevent races
     if (!existingWindow) {
       return null; // Placeholder entry, needs fresh render
     }
