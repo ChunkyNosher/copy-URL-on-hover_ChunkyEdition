@@ -244,8 +244,8 @@ export class CreateHandler {
     // This allows UICoordinator to register the window in its renderedTabs Map
     this._emitWindowCreatedEvent(id, tabWindow);
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast creation via BroadcastChannel
-    this._broadcastCreation(id, tabOptions, options);
+    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
+    // Port-based messaging via storage.onChanged is now the primary sync mechanism
 
     console.log('[CreateHandler] Quick Tab created successfully:', id);
 

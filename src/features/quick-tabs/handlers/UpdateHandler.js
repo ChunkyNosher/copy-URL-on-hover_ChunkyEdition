@@ -168,8 +168,8 @@ export class UpdateHandler {
       top: roundedTop
     });
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast position update via BroadcastChannel
-    this._broadcastUpdate(id, { left: roundedLeft, top: roundedTop });
+    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
+    // Port-based messaging via storage.onChanged is now the primary sync mechanism
 
     // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
@@ -306,8 +306,8 @@ export class UpdateHandler {
       height: roundedHeight
     });
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast size update via BroadcastChannel
-    this._broadcastUpdate(id, { width: roundedWidth, height: roundedHeight });
+    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
+    // Port-based messaging via storage.onChanged is now the primary sync mechanism
 
     // v1.6.3.4 - FIX Issue #3: Persist to storage after resize ends
     console.log('[UpdateHandler] Scheduling storage persist after size change');

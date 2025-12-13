@@ -1,27 +1,35 @@
 /**
- * BroadcastManager Mock - NO-OP STUB
- * v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+ * BroadcastManager Mock - Test Cross-Tab Simulation
+ * v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel removed from PRODUCTION code
  *
- * This mock provides backward compatibility for tests that were written
- * for the old BroadcastChannel-based architecture. All methods are now no-ops.
- * The new architecture uses Port + storage.onChanged exclusively.
+ * This mock simulates cross-tab sync for integration tests. While BC is removed
+ * from production (replaced by Port + storage.onChanged), tests use mock
+ * BroadcastChannels wired together by test setup to simulate message delivery.
  */
 
 export class BroadcastManager {
   constructor(eventBus, _cookieStoreId = 'firefox-default') {
     this.eventBus = eventBus;
     this.messageHistory = [];
+    this._channel = null;
   }
 
   /**
-   * Setup broadcast channel - NO-OP (BC removed)
+   * Setup broadcast channel - stores channel reference for cross-tab delivery
    */
   setupBroadcastChannel() {
-    // NO-OP - BC removed
+    // Tests mock global.BroadcastChannel - use it if available
+    if (typeof BroadcastChannel !== 'undefined') {
+      this._channel = new BroadcastChannel('quick-tabs-sync');
+      // Wire up onmessage handler to emit broadcast:received
+      this._channel.onmessage = event => {
+        this.eventBus?.emit('broadcast:received', event.data);
+      };
+    }
   }
 
   /**
-   * Broadcast message - NO-OP, stores for test verification only
+   * Broadcast message - delivers to all tabs via mock channel
    * @param {string} type - Message type
    * @param {Object} data - Message data
    * @returns {Promise} Always resolves
@@ -30,35 +38,41 @@ export class BroadcastManager {
     const message = { type, data, timestamp: Date.now() };
     this.messageHistory.push(message);
     this.eventBus?.emit('broadcast:sent', message);
+
+    // Use the channel to deliver to other tabs (test setup wires these together)
+    if (this._channel && typeof this._channel.postMessage === 'function') {
+      this._channel.postMessage(message);
+    }
+
     return Promise.resolve();
   }
 
   notifyPositionUpdate(id, left, top) {
-    this.broadcast('UPDATE_POSITION', { id, left, top });
+    return this.broadcast('UPDATE_POSITION', { id, left, top });
   }
 
   notifySizeUpdate(id, width, height) {
-    this.broadcast('UPDATE_SIZE', { id, width, height });
+    return this.broadcast('UPDATE_SIZE', { id, width, height });
   }
 
   notifySolo(id, soloedOnTabs) {
-    this.broadcast('SOLO', { id, soloedOnTabs });
+    return this.broadcast('SOLO', { id, soloedOnTabs });
   }
 
   notifyMute(id, mutedOnTabs) {
-    this.broadcast('MUTE', { id, mutedOnTabs });
+    return this.broadcast('MUTE', { id, mutedOnTabs });
   }
 
   notifyMinimize(id) {
-    this.broadcast('MINIMIZE', { id });
+    return this.broadcast('MINIMIZE', { id });
   }
 
   notifyRestore(id) {
-    this.broadcast('RESTORE', { id });
+    return this.broadcast('RESTORE', { id });
   }
 
   notifyClose(id) {
-    this.broadcast('CLOSE', { id });
+    return this.broadcast('CLOSE', { id });
   }
 
   startPeriodicSnapshots() {
@@ -86,6 +100,10 @@ export class BroadcastManager {
   }
 
   close() {
+    if (this._channel && typeof this._channel.close === 'function') {
+      this._channel.close();
+    }
+    this._channel = null;
     this.messageHistory = [];
   }
 
