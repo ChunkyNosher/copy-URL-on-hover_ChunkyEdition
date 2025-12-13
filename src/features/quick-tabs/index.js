@@ -10,6 +10,8 @@
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
  * v1.6.3.8-v9 - FIX Issue #20: Restructure init sequence - signalReady() BEFORE hydration
  *               This ensures queued messages are replayed BEFORE tabs created from storage
+ * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection in message replay to prevent duplicates
+ *               Queued messages that reference existing tabs are skipped (hydration has newer state)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -1865,6 +1867,7 @@ class QuickTabsManager {
   /**
    * Replay queued messages after ready signal
    * v1.6.3.8-v3 - Issue #6: Process queued messages in order
+   * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection to skip messages for existing tabs
    * @private
    * @param {Function|null} messageHandler - Handler function or null to emit events
    */
@@ -1873,25 +1876,55 @@ class QuickTabsManager {
     this._messageQueue = []; // Clear queue before replay
 
     const replayStartTime = Date.now();
+    let replayedCount = 0;
+    let skippedDuplicates = 0;
+    let skippedConflicts = 0;
 
     for (const message of messagesToReplay) {
-      this._replaySingleMessage(message, messageHandler);
+      const replayResult = this._replaySingleMessage(message, messageHandler);
+      if (replayResult.replayed) {
+        replayedCount++;
+      } else if (replayResult.reason === 'duplicate') {
+        skippedDuplicates++;
+      } else if (replayResult.reason === 'conflict') {
+        skippedConflicts++;
+      }
     }
 
     console.log('[QuickTabsManager] INIT_MESSAGE_REPLAY_COMPLETE:', {
-      replayedCount: messagesToReplay.length,
+      totalQueued: messagesToReplay.length,
+      replayedCount,
+      skippedDuplicates,
+      skippedConflicts,
       totalReplayTimeMs: Date.now() - replayStartTime,
       timestamp: Date.now()
     });
   }
 
   /**
-   * Replay a single queued message
+   * Replay a single queued message with conflict detection
    * v1.6.3.8-v3 - Issue #6: Extracted to reduce _replayQueuedMessages max-depth
+   * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection for existing tabs
    * @private
+   * @returns {{replayed: boolean, reason: string}} Result of replay attempt
    */
   _replaySingleMessage(message, messageHandler) {
     const replayDelay = Date.now() - message._queuedAt;
+
+    // v1.6.3.8-v9 - FIX Issue #19: Check for conflicts with existing tabs
+    const conflictCheck = this._checkMessageConflict(message);
+    if (conflictCheck.hasConflict) {
+      if (DEBUG_MESSAGING) {
+        console.log('[QuickTabsManager] INIT_MESSAGE_SKIPPED (conflict):', {
+          type: message.type,
+          tabId: conflictCheck.tabId,
+          reason: conflictCheck.reason,
+          queuedAt: message._queuedAt,
+          timestamp: Date.now()
+        });
+      }
+      return { replayed: false, reason: conflictCheck.reason };
+    }
 
     // v1.6.3.8-v3 - Issue #6: Log message replay
     if (DEBUG_MESSAGING) {
@@ -1906,6 +1939,106 @@ class QuickTabsManager {
     }
 
     this._processMessageWithHandler(message, messageHandler);
+    return { replayed: true, reason: 'success' };
+  }
+
+  /**
+   * Check if a queued message conflicts with existing state
+   * v1.6.3.8-v9 - FIX Issue #19: Conflict detection for message replay
+   * @private
+   * @param {Object} message - Queued message to check
+   * @returns {{hasConflict: boolean, tabId: string|null, reason: string}}
+   */
+  _checkMessageConflict(message) {
+    // Extract tab ID from message based on message type
+    const tabId = this._extractTabIdFromMessage(message);
+    if (!tabId) {
+      // No tab ID in message, can't detect conflicts - allow replay
+      return { hasConflict: false, tabId: null, reason: 'no-tab-id' };
+    }
+
+    // v1.6.3.8-v9 - FIX Issue #19: Check if tab already exists in local state
+    // If tab exists in this.tabs Map, hydration created it with newer state
+    const existsInTabs = this.tabs.has(tabId);
+    if (existsInTabs) {
+      // v1.6.3.8-v9 - FIX Issue #19: Tab exists - compare message timestamp with hydration
+      // Queued messages are from BEFORE signalReady(), hydration happens AFTER signalReady()
+      // Therefore, hydration state is always newer than queued messages - skip the message
+      return { 
+        hasConflict: true, 
+        tabId, 
+        reason: 'duplicate',
+        note: 'Tab already exists in tabs Map - hydration has newer state'
+      };
+    }
+
+    // v1.6.3.8-v9 - FIX Issue #19: Check for stale destructive operations
+    return this._checkStaleDestructiveMessage(message, tabId, existsInTabs);
+  }
+
+  /**
+   * Check if a message is a stale destructive operation
+   * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce _checkMessageConflict complexity
+   * @private
+   * @param {Object} message - Message to check
+   * @param {string} tabId - Extracted tab ID
+   * @param {boolean} existsInTabs - Whether tab exists in tabs Map
+   * @returns {{hasConflict: boolean, tabId: string, reason: string}}
+   */
+  _checkStaleDestructiveMessage(message, tabId, existsInTabs) {
+    // v1.6.3.8-v9 - FIX Issue #19: Check for contradictory operations
+    // If message is trying to update/delete a tab that doesn't exist, it's stale
+    const messageType = message.type || message.action || '';
+    const isDestructiveMessage = this._isDestructiveMessageType(messageType);
+    
+    if (isDestructiveMessage && !existsInTabs) {
+      // Trying to delete a tab that doesn't exist - message is stale
+      return { 
+        hasConflict: true, 
+        tabId, 
+        reason: 'conflict',
+        note: 'Delete message for non-existent tab - message is stale'
+      };
+    }
+
+    return { hasConflict: false, tabId, reason: 'no-conflict' };
+  }
+
+  /**
+   * Check if a message type indicates a destructive operation
+   * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce complexity
+   * @private
+   * @param {string} messageType - Message type to check
+   * @returns {boolean} True if destructive (delete/remove/destroy/close)
+   */
+  _isDestructiveMessageType(messageType) {
+    // v1.6.3.8-v9 - FIX Code Review: Add null check to prevent TypeError
+    if (!messageType || typeof messageType !== 'string') {
+      return false;
+    }
+    return messageType.includes('delete') || 
+           messageType.includes('remove') ||
+           messageType.includes('destroy') ||
+           messageType.includes('close');
+  }
+
+  /**
+   * Extract tab ID from a message object
+   * v1.6.3.8-v9 - FIX Issue #19: Helper for conflict detection
+   * @private
+   * @param {Object} message - Message to extract tab ID from
+   * @returns {string|null} Tab ID or null if not found
+   */
+  _extractTabIdFromMessage(message) {
+    // Try various common locations for tab ID in messages
+    if (message.data?.id) return message.data.id;
+    if (message.data?.tabId) return message.data.tabId;
+    if (message.data?.quickTabId) return message.data.quickTabId;
+    if (message.data?.quickTab?.id) return message.data.quickTab.id;
+    if (message.id) return message.id;
+    if (message.tabId) return message.tabId;
+    if (message.quickTabId) return message.quickTabId;
+    return null;
   }
 
   /**
