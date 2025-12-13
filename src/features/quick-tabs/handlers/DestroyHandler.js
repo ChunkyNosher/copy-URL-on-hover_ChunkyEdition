@@ -258,17 +258,31 @@ export class DestroyHandler {
    * @returns {Promise<void>}
    */
   async _notifyBackgroundOfDeletion(id, source) {
+    // v1.6.3.8-v7 - Issue #9: Generate correlationId for deletion tracing
+    const correlationId = `op-${Date.now()}-${id.substring(0, 8)}-${Math.random().toString(36).substring(2, 6)}`;
+    
     try {
       await browser.runtime.sendMessage({
         type: 'QUICK_TAB_STATE_CHANGE',
         quickTabId: id,
         changes: { deleted: true },
-        source: source || 'destroy'
+        source: source || 'destroy',
+        // v1.6.3.8-v7 - Issue #9: Include correlationId for tracing
+        correlationId,
+        // v1.6.3.8-v7 - Issue #12: Include clientTimestamp for ordering
+        clientTimestamp: Date.now()
       });
-      console.log(`[DestroyHandler] Notified background of deletion (source: ${source}):`, id);
+      console.log(`[DestroyHandler] Notified background of deletion (source: ${source}):`, {
+        id,
+        correlationId
+      });
     } catch (err) {
       // Background may not be available - this is expected in some edge cases
-      console.debug('[DestroyHandler] Could not notify background:', err.message);
+      console.debug('[DestroyHandler] Could not notify background:', {
+        id,
+        correlationId,
+        error: err.message
+      });
     }
   }
 
@@ -481,27 +495,42 @@ export class DestroyHandler {
   /**
    * Request cross-tab broadcast of deletion via background script
    * v1.6.3.7 - FIX Issue #3: Explicit cross-tab broadcast request
+   * v1.6.3.8-v7 - Issue #9: Include correlationId for tracing
    * @private
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of deletion
    * @returns {Promise<void>}
    */
   async _requestCrossTabBroadcast(id, source) {
+    // v1.6.3.8-v7 - Issue #9: Generate correlationId for cross-tab broadcast tracing
+    const correlationId = `op-${Date.now()}-${id.substring(0, 8)}-${Math.random().toString(36).substring(2, 6)}`;
+    
     try {
       await browser.runtime.sendMessage({
         type: 'QUICK_TAB_STATE_CHANGE',
         quickTabId: id,
         changes: { deleted: true },
         source: source || 'destroy',
-        requestBroadcast: true // Explicit flag to request cross-tab broadcast
+        requestBroadcast: true, // Explicit flag to request cross-tab broadcast
+        // v1.6.3.8-v7 - Issue #9: Include correlationId for tracing
+        correlationId,
+        // v1.6.3.8-v7 - Issue #12: Include clientTimestamp for ordering
+        clientTimestamp: Date.now()
       });
       console.log(
         `[DestroyHandler] Requested cross-tab broadcast for deletion (source: ${source}):`,
-        id
+        {
+          id,
+          correlationId
+        }
       );
     } catch (err) {
       // Background may not be available
-      console.debug('[DestroyHandler] Could not request cross-tab broadcast:', err.message);
+      console.debug('[DestroyHandler] Could not request cross-tab broadcast:', {
+        id,
+        correlationId,
+        error: err.message
+      });
     }
   }
 

@@ -269,6 +269,31 @@ const RECOVERY_BACKOFF_BASE_MS = 500;
  */
 const PORT_CONSECUTIVE_FAILURE_THRESHOLD = 3;
 
+// ==================== v1.6.3.8-v7 CIRCUIT BREAKER ENHANCEMENTS (Issue #14) ====================
+// Time-based escalation for dead port detection
+/**
+ * Port circuit breaker states for time-based escalation
+ * v1.6.3.8-v7 - Issue #14: States for circuit breaker state machine
+ */
+const PORT_CIRCUIT_STATES = {
+  HEALTHY: 'healthy',
+  DEGRADED: 'degraded',
+  CRITICAL: 'critical',
+  DISCONNECTED: 'disconnected'
+};
+
+/**
+ * Time window for consecutive failure tracking (ms)
+ * v1.6.3.8-v7 - Issue #14: 2nd failure within this window triggers CRITICAL
+ */
+const PORT_CIRCUIT_BREAKER_WINDOW_MS = 5000;
+
+/**
+ * Maximum duration before forced disconnection (ms)
+ * v1.6.3.8-v7 - Issue #14: 10 seconds elapsed from first failure triggers DISCONNECTED
+ */
+const PORT_CIRCUIT_BREAKER_MAX_DURATION_MS = 10000;
+
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
@@ -6895,6 +6920,47 @@ function _getNextPortMessageSequence() {
   return portMessageSequenceCounter;
 }
 
+// ==================== v1.6.3.8-v7 PER-PORT SEQUENCE ID TRACKING (Issue #2) ====================
+// Per-port sequence counters for concurrent message ordering validation
+
+/**
+ * Per-port sequence counters for tracking message ordering within each port
+ * v1.6.3.8-v7 - Issue #2: Each port maintains its own monotonic counter
+ * Key: portId, Value: current sequence counter for that port
+ */
+const perPortSequenceCounters = new Map();
+
+/**
+ * Get the next sequence ID for a specific port
+ * v1.6.3.8-v7 - Issue #2: Per-port sequence tracking for concurrent ports
+ * @param {string} portId - Port ID to get sequence for
+ * @returns {number} Next sequence ID for this port
+ */
+function _getNextPortSequenceId(portId) {
+  const currentSeq = perPortSequenceCounters.get(portId) || 0;
+  const nextSeq = currentSeq + 1;
+  perPortSequenceCounters.set(portId, nextSeq);
+  return nextSeq;
+}
+
+/**
+ * Initialize per-port sequence counter for a new port
+ * v1.6.3.8-v7 - Issue #2: Called when port is registered
+ * @param {string} portId - Port ID to initialize
+ */
+function _initPerPortSequenceCounter(portId) {
+  perPortSequenceCounters.set(portId, 0);
+}
+
+/**
+ * Clean up per-port sequence counter when port disconnects
+ * v1.6.3.8-v7 - Issue #2: Prevent memory leak
+ * @param {string} portId - Port ID to clean up
+ */
+function _cleanupPerPortSequenceCounter(portId) {
+  perPortSequenceCounters.delete(portId);
+}
+
 // v1.6.3.7-v10 - FIX Issue #9: Timeout for stuck queue messages (1 second)
 // v1.6.3.7-v10 - FIX Code Review: Different timeouts for different scenarios:
 //   - PORT_MESSAGE_QUEUE_TIMEOUT_MS (1s): Port messages need faster recovery since ports
@@ -7099,11 +7165,19 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
     messageCount: 0,
     // v1.6.3.8-v5 - Issue #3: Port disconnection tracking
     lastSuccessfulMessageTime: now,
-    consecutiveFailureCount: 0
+    consecutiveFailureCount: 0,
+    // v1.6.3.8-v7 - Issue #2: Per-port sequence ID tracking
+    portSequenceId: 0,
+    // v1.6.3.8-v7 - Issue #14: Circuit breaker state tracking
+    circuitBreakerState: PORT_CIRCUIT_STATES.HEALTHY,
+    firstFailureTime: null
   });
 
   // v1.6.3.7-v9 - Issue #9: Initialize sequence tracking for this port
   _initPortSequenceTracking(portId);
+
+  // v1.6.3.8-v7 - Issue #2: Initialize per-port sequence counter
+  _initPerPortSequenceCounter(portId);
 
   // v1.6.3.8-v3 - Issue #9: Initialize ACK tracking for circuit breaker
   initPortACKTracking(portId);
@@ -7193,6 +7267,9 @@ function unregisterPort(portId, reason = 'disconnect') {
     // v1.6.3.7-v9 - Issue #9: Clean up sequence tracking
     _cleanupPortSequenceTracking(portId);
 
+    // v1.6.3.8-v7 - Issue #2: Clean up per-port sequence counter
+    _cleanupPerPortSequenceCounter(portId);
+
     // v1.6.3.8-v3 - Issue #9: Clean up ACK tracking
     cleanupPortACKTracking(portId);
   }
@@ -7234,8 +7311,114 @@ function updatePortActivity(portId) {
 // ==================== v1.6.3.8-v5 PORT MESSAGE FAILURE TRACKING (Issue #3) ====================
 
 /**
+ * Log circuit breaker state transition
+ * v1.6.3.8-v7 - Issue #14: Extracted for reuse and complexity reduction
+ * @private
+ */
+function _logCircuitBreakerTransition(portInfo, previousState, newState, reason, extraDetails = {}) {
+  console.log('[Background] CIRCUIT_BREAKER_TRANSITION:', {
+    portId: portInfo.origin,
+    previousState,
+    newState,
+    reason,
+    timestamp: Date.now(),
+    ...extraDetails
+  });
+}
+
+/**
+ * Check if circuit breaker should transition to DISCONNECTED due to max duration
+ * v1.6.3.8-v7 - Issue #14: Extracted to reduce complexity
+ * @private
+ */
+function _checkMaxDurationDisconnect(portInfo, currentState, timeSinceFirstFailure, failureCount) {
+  if (!portInfo.firstFailureTime) return null;
+  if (timeSinceFirstFailure < PORT_CIRCUIT_BREAKER_MAX_DURATION_MS) return null;
+  
+  _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.DISCONNECTED, '10 seconds elapsed since first failure', {
+    timeSinceFirstFailureMs: timeSinceFirstFailure,
+    failureCount: failureCount + 1
+  });
+  return { newState: PORT_CIRCUIT_STATES.DISCONNECTED, shouldEvict: true };
+}
+
+/**
+ * Check if circuit breaker should transition to DISCONNECTED due to 3rd failure
+ * v1.6.3.8-v7 - Issue #14: Extracted to reduce complexity
+ * @private
+ */
+function _checkThirdFailureDisconnect(portInfo, currentState, failureCount) {
+  if (failureCount < 2) return null;
+  
+  _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.DISCONNECTED, '3rd consecutive failure', {
+    failureCount: failureCount + 1
+  });
+  return { newState: PORT_CIRCUIT_STATES.DISCONNECTED, shouldEvict: true };
+}
+
+/**
+ * Check if circuit breaker should transition to CRITICAL due to 2nd failure in window
+ * v1.6.3.8-v7 - Issue #14: Extracted to reduce complexity
+ * @private
+ */
+function _checkSecondFailureCritical(portInfo, currentState, failureCount, timeSinceFirstFailure) {
+  const isSecondFailure = failureCount === 1 && portInfo.firstFailureTime;
+  const isInWindow = timeSinceFirstFailure <= PORT_CIRCUIT_BREAKER_WINDOW_MS;
+  if (!isSecondFailure || !isInWindow) return null;
+  
+  _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.CRITICAL, '2nd failure within 5-second window', {
+    timeSinceFirstFailureMs: timeSinceFirstFailure,
+    windowMs: PORT_CIRCUIT_BREAKER_WINDOW_MS,
+    failureCount: failureCount + 1
+  });
+  return { newState: PORT_CIRCUIT_STATES.CRITICAL, shouldEvict: false };
+}
+
+/**
+ * Compute circuit breaker state based on failure history
+ * v1.6.3.8-v7 - Issue #14: Time-based escalation for dead port detection
+ * @param {Object} portInfo - Port info object from registry
+ * @param {boolean} isFailure - Whether the current operation is a failure
+ * @returns {{ newState: string, shouldEvict: boolean }} New state and eviction flag
+ */
+function _computeCircuitBreakerState(portInfo, isFailure) {
+  const currentState = portInfo.circuitBreakerState || PORT_CIRCUIT_STATES.HEALTHY;
+  const failureCount = portInfo.consecutiveFailureCount || 0;
+
+  // Success - reset to HEALTHY
+  if (!isFailure) {
+    return { newState: PORT_CIRCUIT_STATES.HEALTHY, shouldEvict: false };
+  }
+
+  // Calculate time since first failure
+  const timeSinceFirstFailure = portInfo.firstFailureTime ? Date.now() - portInfo.firstFailureTime : 0;
+
+  // Check escalation rules in priority order
+  const maxDurationResult = _checkMaxDurationDisconnect(portInfo, currentState, timeSinceFirstFailure, failureCount);
+  if (maxDurationResult) return maxDurationResult;
+
+  const thirdFailureResult = _checkThirdFailureDisconnect(portInfo, currentState, failureCount);
+  if (thirdFailureResult) return thirdFailureResult;
+
+  const secondFailureResult = _checkSecondFailureCritical(portInfo, currentState, failureCount, timeSinceFirstFailure);
+  if (secondFailureResult) return secondFailureResult;
+
+  // 1st failure - DEGRADED
+  if (failureCount === 0) {
+    _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.DEGRADED, '1st failure', {
+      failureCount: failureCount + 1
+    });
+    return { newState: PORT_CIRCUIT_STATES.DEGRADED, shouldEvict: false };
+  }
+
+  // Default: stay in current state
+  return { newState: currentState, shouldEvict: false };
+}
+
+/**
  * Track result of a port message send attempt
  * v1.6.3.8-v5 - Issue #3: Detect silent port disconnections via consecutive failures
+ * v1.6.3.8-v7 - Issue #14: Use circuit breaker state machine for time-based escalation
  * @param {string} portId - Port ID
  * @param {boolean} success - Whether the postMessage succeeded
  * @returns {{ evicted: boolean }} Whether the port was evicted due to failures
@@ -7246,25 +7429,38 @@ function _trackPortMessageResult(portId, success) {
     return { evicted: false };
   }
 
+  // v1.6.3.8-v7 - Issue #14: Compute new circuit breaker state
+  const { newState, shouldEvict } = _computeCircuitBreakerState(portInfo, !success);
+
   if (success) {
-    // Reset failure count on success
+    // Reset failure count and circuit breaker state on success
     const previousFailures = portInfo.consecutiveFailureCount;
+    const previousState = portInfo.circuitBreakerState;
     portInfo.consecutiveFailureCount = 0;
     portInfo.lastSuccessfulMessageTime = Date.now();
+    portInfo.circuitBreakerState = newState;
+    portInfo.firstFailureTime = null;
 
-    if (previousFailures > 0) {
+    if (previousFailures > 0 || previousState !== PORT_CIRCUIT_STATES.HEALTHY) {
       console.log('[Background] PORT_MESSAGE_RECOVERED:', {
         portId,
         origin: portInfo.origin,
         previousFailureCount: previousFailures,
+        previousState,
+        newState,
         timestamp: Date.now()
       });
     }
     return { evicted: false };
   }
 
-  // Increment failure count
+  // Increment failure count and update circuit breaker state
+  if (portInfo.consecutiveFailureCount === 0) {
+    // Record first failure time
+    portInfo.firstFailureTime = Date.now();
+  }
   portInfo.consecutiveFailureCount++;
+  portInfo.circuitBreakerState = newState;
   const failureCount = portInfo.consecutiveFailureCount;
   const timeSinceLastSuccess =
     Date.now() - (portInfo.lastSuccessfulMessageTime || portInfo.connectedAt);
@@ -7275,29 +7471,33 @@ function _trackPortMessageResult(portId, success) {
     tabId: portInfo.tabId,
     consecutiveFailures: failureCount,
     threshold: PORT_CONSECUTIVE_FAILURE_THRESHOLD,
+    circuitBreakerState: newState,
     timeSinceLastSuccessMs: timeSinceLastSuccess,
     registrySize: portRegistry.size
   });
 
-  // Check if threshold exceeded - evict port
-  if (failureCount >= PORT_CONSECUTIVE_FAILURE_THRESHOLD) {
+  // v1.6.3.8-v7 - Issue #14: Use circuit breaker shouldEvict instead of simple threshold
+  if (shouldEvict) {
     console.warn('[Background] PORT_DISCONNECTION_DETECTED:', {
       portId,
       origin: portInfo.origin,
       tabId: portInfo.tabId,
       windowId: portInfo.windowId,
       consecutiveFailures: failureCount,
+      circuitBreakerState: newState,
+      timeSinceFirstFailureMs: portInfo.firstFailureTime ? Date.now() - portInfo.firstFailureTime : 0,
       timeSinceLastSuccessMs: timeSinceLastSuccess,
-      reason: 'Firefox Bugzilla 1223425 - onDisconnect may not fire for BFCache/navigation',
+      reason: 'Circuit breaker triggered - Firefox Bugzilla 1223425',
       registrySizeBefore: portRegistry.size
     });
 
-    unregisterPort(portId, 'consecutive-message-failures');
+    unregisterPort(portId, 'circuit-breaker-disconnected');
 
     console.log('[Background] PORT_EVICTED_FOR_FAILURES:', {
       portId,
-      evictionReason: 'consecutive-message-failures',
+      evictionReason: 'circuit-breaker-disconnected',
       failureCount,
+      finalState: newState,
       registrySizeAfter: portRegistry.size,
       timestamp: Date.now()
     });
@@ -9827,6 +10027,27 @@ function generateMessageId() {
 }
 
 /**
+ * Correlation ID counter for state change operations
+ * v1.6.3.8-v7 - Issue #9: Unique correlation IDs for full state change tracing
+ */
+let _correlationIdCounter = 0;
+
+/**
+ * Generate unique correlation ID for state change tracing
+ * v1.6.3.8-v7 - Issue #9: Format: op-{timestamp}-{id_short}-{random}
+ * Used to trace state changes from origin through background to all contexts
+ * @param {string} [quickTabId=''] - Optional Quick Tab ID to include in correlation ID
+ * @returns {string} Unique correlation ID
+ */
+function generateCorrelationId(quickTabId = '') {
+  _correlationIdCounter++;
+  const timestamp = Date.now();
+  const idShort = quickTabId ? quickTabId.substring(0, 8) : 'gen';
+  const random = Math.random().toString(36).substring(2, 6);
+  return `op-${timestamp}-${idShort}-${random}`;
+}
+
+/**
  * Log message dispatch (outgoing)
  * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
  * Logs sender tab ID, message type, timestamp (no payloads)
@@ -9911,23 +10132,31 @@ const quickTabHostTabs = new Map();
 /**
  * Validate and log Quick Tab state change message
  * v1.6.4.14 - FIX Complexity: Extracted to reduce handleQuickTabStateChange cc
+ * v1.6.3.8-v7 - Issue #9: Include correlationId for full state change tracing
+ * v1.6.3.8-v7 - Issue #12: Include clientTimestamp for rapid operation ordering
  * @private
- * @returns {{ messageId: string, quickTabId: string, changes: Object, source: string, sourceTabId: number }}
+ * @returns {{ messageId: string, quickTabId: string, changes: Object, source: string, sourceTabId: number, correlationId: string, clientTimestamp: number|null }}
  */
 function _prepareStateChangeContext(message, sender) {
-  const { quickTabId, changes, source } = message;
+  const { quickTabId, changes, source, clientTimestamp } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
   const messageId = message.messageId || generateMessageId();
+  // v1.6.3.8-v7 - Issue #9: Generate correlationId if not provided
+  const correlationId = message.correlationId || generateCorrelationId(quickTabId);
 
   logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
   console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
     quickTabId,
     changes,
     source,
-    sourceTabId
+    sourceTabId,
+    // v1.6.3.8-v7 - Issue #9: Log correlationId for tracing
+    correlationId,
+    // v1.6.3.8-v7 - Issue #12: Log clientTimestamp for ordering validation
+    clientTimestamp: clientTimestamp || null
   });
 
-  return { messageId, quickTabId, changes, source, sourceTabId };
+  return { messageId, quickTabId, changes, source, sourceTabId, correlationId, clientTimestamp: clientTimestamp || null };
 }
 
 /**
@@ -9961,24 +10190,28 @@ async function handleQuickTabStateChange(message, sender) {
     }
   }
 
-  const { quickTabId, changes, source, sourceTabId } = _prepareStateChangeContext(message, sender);
+  // v1.6.3.8-v7 - Issue #9, #12: Include correlationId and clientTimestamp
+  const { quickTabId, changes, source, sourceTabId, correlationId, clientTimestamp } = _prepareStateChangeContext(message, sender);
 
   // Track which tab hosts this Quick Tab
   _updateQuickTabHostTracking(quickTabId, sourceTabId);
 
   // v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes
   if (_isDeletionChange(changes, source)) {
-    await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
-    return { success: true };
+    // v1.6.3.8-v7 - Issue #9: Pass correlationId for deletion tracing
+    await _handleQuickTabDeletion(quickTabId, source, sourceTabId, correlationId);
+    return { success: true, correlationId };
   }
 
   // Update globalQuickTabState cache
-  _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
+  // v1.6.3.8-v7 - Issue #12: Pass clientTimestamp for rapid operation ordering
+  _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId, clientTimestamp);
 
   // Broadcast to all interested parties
-  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
+  // v1.6.3.8-v7 - Issue #9: Pass correlationId for tracing
+  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId, correlationId);
 
-  return { success: true };
+  return { success: true, correlationId };
 }
 
 /**
@@ -10002,13 +10235,15 @@ function _updateQuickTabHostTracking(quickTabId, sourceTabId) {
  * Handle Quick Tab deletion
  * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging
+ * v1.6.3.8-v7 - Issue #9: Accept correlationId parameter for tracing
  * @param {string} quickTabId - Quick Tab ID
  * @param {string} source - Source of deletion
  * @param {number} sourceTabId - Source browser tab ID
+ * @param {string} [providedCorrelationId] - Optional correlation ID from caller
  */
-async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
-  // v1.6.3.6-v5 - FIX Issue #4e: Generate correlation ID for deletion tracing
-  const correlationId = `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
+async function _handleQuickTabDeletion(quickTabId, source, sourceTabId, providedCorrelationId = null) {
+  // v1.6.3.8-v7 - Issue #9: Use provided correlationId or generate one
+  const correlationId = providedCorrelationId || generateCorrelationId(quickTabId);
 
   // v1.6.3.6-v5 - Log deletion submission
   logDeletionPropagation(correlationId, 'submit', quickTabId, {
@@ -10016,7 +10251,10 @@ async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
     excludeTabId: sourceTabId
   });
 
-  console.log('[Background] Processing deletion for:', quickTabId);
+  console.log('[Background] Processing deletion for:', quickTabId, {
+    correlationId,
+    source
+  });
   const beforeCount = globalQuickTabState.tabs.length;
   globalQuickTabState.tabs = globalQuickTabState.tabs.filter(t => t.id !== quickTabId);
   globalQuickTabState.lastUpdate = Date.now();
@@ -10036,35 +10274,76 @@ async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
     quickTabId,
     { deleted: true, correlationId },
     source,
-    sourceTabId
+    sourceTabId,
+    correlationId
   );
+}
+
+/**
+ * Check if client timestamp should skip this update (stale operation)
+ * v1.6.3.8-v7 - Issue #12: Extracted to reduce max-depth
+ * @private
+ * @param {Object} existingTab - Existing tab in cache
+ * @param {number|null} clientTimestamp - Client-side timestamp
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} changes - Changes being applied
+ * @returns {boolean} True if should skip this update
+ */
+function _shouldSkipStaleUpdate(existingTab, clientTimestamp, quickTabId, changes) {
+  if (!clientTimestamp || !existingTab._lastClientTimestamp) return false;
+  if (clientTimestamp >= existingTab._lastClientTimestamp) return false;
+  
+  console.warn('[Background] RAPID_OPERATION_ORDERING_SKIP:', {
+    quickTabId,
+    reason: 'clientTimestamp is older than last applied operation',
+    incomingTimestamp: clientTimestamp,
+    lastAppliedTimestamp: existingTab._lastClientTimestamp,
+    changes
+  });
+  return true;
 }
 
 /**
  * Update global Quick Tab state cache
  * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
+ * v1.6.3.8-v7 - Issue #12: Add clientTimestamp validation for rapid operation ordering
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {number} sourceTabId - Source browser tab ID
+ * @param {number|null} clientTimestamp - Client-side timestamp for ordering validation
  */
-function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
+function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId, clientTimestamp = null) {
   if (!changes || !quickTabId) return;
 
   const existingTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (existingTab) {
+    // v1.6.3.8-v7 - Issue #12: Validate timestamp ordering for rapid operations
+    if (_shouldSkipStaleUpdate(existingTab, clientTimestamp, quickTabId, changes)) {
+      return; // Skip stale operation
+    }
+    
     Object.assign(existingTab, changes);
+    // v1.6.3.8-v7 - Issue #12: Track last applied client timestamp
+    if (clientTimestamp) {
+      existingTab._lastClientTimestamp = clientTimestamp;
+    }
     globalQuickTabState.lastUpdate = Date.now();
     console.log('[Background] Updated cache for:', quickTabId, changes);
-  } else if (changes.url) {
-    // New Quick Tab
-    globalQuickTabState.tabs.push({
-      id: quickTabId,
-      ...changes,
-      originTabId: sourceTabId
-    });
-    globalQuickTabState.lastUpdate = Date.now();
-    console.log('[Background] Added new tab to cache:', quickTabId);
+    return;
   }
+  
+  // New Quick Tab (only create if has url)
+  if (!changes.url) return;
+  
+  globalQuickTabState.tabs.push({
+    id: quickTabId,
+    ...changes,
+    originTabId: sourceTabId,
+    // v1.6.3.8-v7 - Issue #12: Initialize client timestamp tracking
+    _lastClientTimestamp: clientTimestamp || Date.now()
+  });
+  globalQuickTabState.lastUpdate = Date.now();
+  console.log('[Background] Added new tab to cache:', quickTabId);
 }
 
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #4: Broadcast deduplication and circuit breaker
@@ -10176,29 +10455,36 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT when available (primary)
  *              then fall back to runtime.sendMessage (secondary)
  * v1.6.3.7-v7 - FIX Issue #1 & #2: Added BroadcastChannel as Tier 1 (PRIMARY) messaging
+ * v1.6.3.8-v7 - Issue #9: Include correlationId in broadcast messages for tracing
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
  * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
+ * @param {string} [correlationId] - Optional correlation ID for tracing
  */
-async function broadcastQuickTabStateUpdate(quickTabId, changes, source, excludeTabId) {
+async function broadcastQuickTabStateUpdate(quickTabId, changes, source, excludeTabId, correlationId = null) {
   // v1.6.3.6-v4 - FIX Issue #4: Check broadcast limits
   const broadcastCheck = _shouldAllowBroadcast(quickTabId, changes);
   if (!broadcastCheck.allowed) {
     console.log('[Background] Broadcast BLOCKED:', {
       quickTabId,
       reason: broadcastCheck.reason,
-      source
+      source,
+      correlationId
     });
     return;
   }
 
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
+  // v1.6.3.8-v7 - Issue #9: Generate correlationId if not provided
+  const effectiveCorrelationId = correlationId || generateCorrelationId(quickTabId);
 
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
+    // v1.6.3.8-v7 - Issue #9: Include correlationId for full tracing
+    correlationId: effectiveCorrelationId,
     quickTabId,
     changes,
     source: 'background',
@@ -10215,7 +10501,9 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     changes,
     source,
     excludeTabId,
-    triggerSource: source
+    triggerSource: source,
+    // v1.6.3.8-v7 - Issue #9: Log correlationId for tracing
+    correlationId: effectiveCorrelationId
   });
 
   // v1.6.3.8-v6 - BC REMOVED: Skip BC broadcast, port-based messaging is primary
@@ -10229,7 +10517,8 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     sentViaPort = true;
     console.log('[Background] [PORT] STATE_UPDATE sent to', sidebarPortsSent, 'sidebar(s):', {
       messageId,
-      quickTabId
+      quickTabId,
+      correlationId: effectiveCorrelationId
     });
   }
 
@@ -10240,7 +10529,8 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
       await browser.runtime.sendMessage(message);
       console.log('[Background] STATE_UPDATE sent via runtime.sendMessage (no port available):', {
         messageId,
-        quickTabId
+        quickTabId,
+        correlationId: effectiveCorrelationId
       });
     } catch (_err) {
       // Sidebar may not be open - ignore
@@ -10252,7 +10542,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
   // This ensures UI button and Manager button produce identical cross-tab results
   if (changes?.deleted === true) {
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
-    await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId);
+    await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId || effectiveCorrelationId);
   }
 }
 

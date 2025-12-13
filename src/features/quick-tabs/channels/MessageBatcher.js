@@ -2,6 +2,7 @@
  * MessageBatcher - Message Batching with Adaptive Windows
  * v1.6.4.15 - Phase 3B Optimization #4: Batch rapid operations into single messages
  * v1.6.3.8-v6 - Issue #2: Added queue size limits and TTL-based pruning
+ * v1.6.3.8-v7 - Issue #7: Added comprehensive logging with correlationId tracking
  *
  * Purpose: Reduce message count by 50-70% during batch operations by collecting
  * rapid operations and sending them as a single batch message.
@@ -13,6 +14,7 @@
  * - Configurable window size and max batch size
  * - v1.6.3.8-v6: Queue size limits with overflow handling (drop oldest)
  * - v1.6.3.8-v6: TTL-based message pruning before flush
+ * - v1.6.3.8-v7: Comprehensive logging with enqueue/flush/failure events
  *
  * Architecture:
  * - Operations are queued with timestamps
@@ -35,8 +37,8 @@ const DEFAULT_EXTENSION_THRESHOLD_MS = 20; // Extend if op arrives within this t
 const DEFAULT_MAX_QUEUE_SIZE = 100; // Max queue size before overflow handling
 const DEFAULT_MAX_MESSAGE_AGE_MS = 30000; // 30 seconds TTL for messages
 
-// Debug flag
-const DEBUG_BATCHER = false;
+// v1.6.3.8-v7 - Issue #7: Debug flag for enhanced logging
+const DEBUG_BATCHER = true;
 
 /**
  * Batched operation structure
@@ -137,10 +139,19 @@ class MessageBatcher {
    */
   queue(quickTabId, type, data, correlationId = null) {
     const now = Date.now();
+    
+    // v1.6.3.8-v7 - Issue #7: Determine queue reason for logging
+    let queueReason = 'window_active';
+    if (this._windowStartTime === null) {
+      queueReason = 'new_window';
+    } else if (this._queue.length >= this._maxQueueSize - 1) {
+      queueReason = 'near_capacity';
+    }
 
     // v1.6.3.8-v6 - Issue #2: Handle queue overflow (drop oldest)
     if (this._queue.length >= this._maxQueueSize) {
       this._handleQueueOverflow();
+      queueReason = 'overflow_handled';
     }
 
     const operation = {
@@ -155,11 +166,17 @@ class MessageBatcher {
     this._metrics.operationsQueued++;
     this._lastOperationTime = now;
 
-    this._log('OPERATION_QUEUED', {
+    // v1.6.3.8-v7 - Issue #7: Enhanced logging with reason and correlationId
+    this._log('BATCHER_ENQUEUE', {
       quickTabId,
       type,
-      queueSize: this._queue.length,
-      queueCapacity: ((this._queue.length / this._maxQueueSize) * 100).toFixed(1) + '%'
+      // v1.6.3.8-v7 - Issue #7: Include reason for queueing
+      reason: queueReason,
+      queueDepth: this._queue.length,
+      queueCapacity: ((this._queue.length / this._maxQueueSize) * 100).toFixed(1) + '%',
+      // v1.6.3.8-v7 - Issue #7: Include correlationId for tracing
+      correlationId: correlationId || 'none',
+      windowOpen: this._windowStartTime !== null
     });
 
     // Start window if not already started
@@ -375,8 +392,43 @@ class MessageBatcher {
   }
 
   /**
+   * Update metrics after flush
+   * v1.6.3.8-v7 - Issue #7: Extracted to reduce _flushBatch complexity
+   * @private
+   */
+  _updateFlushMetrics(validOpsLength, coalescedOpsLength, windowDuration) {
+    this._metrics.batchesSent++;
+    this._metrics.operationsCoalesced += validOpsLength - coalescedOpsLength;
+    this._metrics.totalWindowDuration += windowDuration;
+    this._metrics.avgBatchSize =
+      this._metrics.operationsQueued / Math.max(1, this._metrics.batchesSent);
+  }
+
+  /**
+   * Build flush result object
+   * v1.6.3.8-v7 - Issue #7: Extracted to reduce _flushBatch complexity
+   * @private
+   */
+  _buildFlushResult(coalescedOps, originalCount, windowDuration, prunedCount) {
+    const correlationIds = coalescedOps
+      .map(op => op.correlationId)
+      .filter(id => id != null);
+
+    return {
+      operations: coalescedOps,
+      originalCount,
+      coalescedCount: coalescedOps.length,
+      windowDuration,
+      extensions: this._extensionCount,
+      prunedCount,
+      correlationIds
+    };
+  }
+
+  /**
    * Flush the batch and invoke callback
    * v1.6.3.8-v6 - Issue #2: Add TTL-based pruning before flush
+   * v1.6.3.8-v7 - Issue #7: Enhanced logging with message count and target channel
    * @private
    */
   _flushBatch() {
@@ -398,7 +450,7 @@ class MessageBatcher {
     this._queue = [];
 
     if (originalOps.length === 0) {
-      this._log('FLUSH_SKIP', { reason: 'empty queue' });
+      this._log('BATCHER_FLUSH_SKIP', { reason: 'empty_queue', windowDuration });
       return;
     }
 
@@ -406,48 +458,54 @@ class MessageBatcher {
     const { validOps, prunedCount } = this._pruneExpiredMessages(originalOps);
 
     if (validOps.length === 0) {
-      this._log('FLUSH_SKIP', { reason: 'all messages expired', prunedCount });
+      this._log('BATCHER_FLUSH_SKIP', { reason: 'all_messages_expired', prunedCount, originalCount: originalOps.length });
       return;
     }
 
-    // Coalesce operations
+    // Coalesce operations and update metrics
     const coalescedOps = this._coalesceOperations(validOps);
+    this._updateFlushMetrics(validOps.length, coalescedOps.length, windowDuration);
 
-    // Update metrics
-    this._metrics.batchesSent++;
-    this._metrics.operationsCoalesced += validOps.length - coalescedOps.length;
-    this._metrics.totalWindowDuration += windowDuration;
-    this._metrics.avgBatchSize =
-      this._metrics.operationsQueued / Math.max(1, this._metrics.batchesSent);
+    // Build result
+    const result = this._buildFlushResult(coalescedOps, originalOps.length, windowDuration, prunedCount);
 
-    const result = {
-      operations: coalescedOps,
-      originalCount: originalOps.length,
-      coalescedCount: coalescedOps.length,
-      windowDuration,
-      extensions: this._extensionCount,
-      // v1.6.3.8-v6 - Issue #2: Include pruned count in result
-      prunedCount
-    };
-
-    this._log('BATCH_FLUSHED', {
+    // Log flush
+    this._log('BATCHER_FLUSH', {
+      messageCount: coalescedOps.length,
       originalCount: originalOps.length,
       validCount: validOps.length,
       coalescedCount: coalescedOps.length,
       prunedCount,
       windowDuration,
-      extensions: this._extensionCount
+      extensions: this._extensionCount,
+      correlationIds: result.correlationIds.length > 0 ? result.correlationIds : 'none',
+      targetChannel: this._onBatchReady ? 'callback' : 'none'
     });
 
     this._extensionCount = 0;
 
     // Invoke callback
-    if (this._onBatchReady) {
-      try {
-        this._onBatchReady(result);
-      } catch (err) {
-        console.error('[MessageBatcher] Error in onBatchReady callback:', err.message);
-      }
+    this._invokeFlushCallback(result);
+  }
+
+  /**
+   * Invoke flush callback safely
+   * v1.6.3.8-v7 - Issue #7: Extracted to reduce _flushBatch complexity
+   * @private
+   */
+  _invokeFlushCallback(result) {
+    if (!this._onBatchReady) return;
+    
+    try {
+      this._onBatchReady(result);
+    } catch (err) {
+      console.error('[MessageBatcher] BATCHER_FLUSH_FAILED:', {
+        reason: 'callback_error',
+        error: err.message,
+        messageCount: result.operations.length,
+        correlationIds: result.correlationIds.length > 0 ? result.correlationIds : 'none',
+        timestamp: Date.now()
+      });
     }
   }
 
