@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v8), Port + storage.local architecture (NO BroadcastChannel),
+  (v1.6.3.8-v9), Port + storage.local architecture (NO BroadcastChannel),
   initializationBarrier Promise, port-based hydration, storage quota monitoring,
   checksum validation
 tools: ['*']
@@ -37,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -55,27 +55,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   storage.onChanged
 - **Operation Confirmations** - Closed-loop feedback for all operations
 
-**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
+**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
+- **Message queue conflict** - `_checkMessageConflict()` deduplication
+- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
+- **Event listener cleanup** - `cleanupStateListeners()` method
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
+timeout 1000ms, port message queue, explicit tab ID barrier, extended dedup 10s.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
 escalation, correlationId tracing, adaptive quota monitoring.
 
-**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
-quota monitoring, MessageBatcher queue limits, checksum validation.
+**Key Logging Events (v1.6.3.8-v9):**
 
-**Key Logging Events (v1.6.3.8-v8):**
-
-- `[Manager] INITIALIZATION_BARRIER: phase=X, elapsed=Yms`
-- `[Manager] STATE_HYDRATION: source=port|storage|cache, tabCount=N, checksum=X`
-- `[Manager] VISIBILITY_CHANGE: previousState=X, currentState=Y`
-- `[Manager] PORT_RECONNECT: attempt=N, delay=Xms`
-- `[Manager] STORAGE_QUOTA_WARNING: usage=X%, threshold=Y%`
+- `[Manager] INIT_START: timestamp=X`
+- `[Manager] INIT_STEP_N: phase=X, elapsed=Yms`
+- `[Manager] INIT_COMPLETE: duration=Xms`
+- `[Manager] BARRIER_CHECK: phase=X`
+- `[Manager] STATE_HYDRATION: source=port|storage|cache, tabCount=N`
 
 ---
 
@@ -92,16 +92,14 @@ quota monitoring, MessageBatcher queue limits, checksum validation.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v8)
-- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
-- [ ] Transaction timeout 1000ms (v1.6.3.8-v8)
-- [ ] Port message queue works (v1.6.3.8-v8)
-- [ ] Extended dedup 10s works (v1.6.3.8-v8)
-- [ ] Storage quota monitoring works (50%/75%/90%)
-- [ ] MessageBatcher queue limits work (100 max)
-- [ ] Checksum validation works during hydration
-- [ ] initializationBarrier Promise resolves correctly
-- [ ] Port-based hydration works (`_hydrateStateFromBackground`)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v9)
+- [ ] UICoordinator `_isInitializing` works (v1.6.3.8-v9)
+- [ ] Message conflict detection works (`_checkMessageConflict`) (v1.6.3.8-v9)
+- [ ] Init sequence works (`signalReady()` before hydration) (v1.6.3.8-v9)
+- [ ] Event listener cleanup works (`cleanupStateListeners`) (v1.6.3.8-v9)
+- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
+- [ ] Self-write detection works (50ms window)
+- [ ] Transaction timeout 1000ms
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -109,5 +107,5 @@ quota monitoring, MessageBatcher queue limits, checksum validation.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.8-v8 Port + storage.local
-architecture, self-write detection, transaction timeout, port message queue.**
+**Your strength: Manager coordination with v1.6.3.8-v9 Port + storage.local
+architecture, `_isInitializing` flag, message conflict detection.**

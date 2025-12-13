@@ -65,17 +65,22 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
+**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
+- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
+- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
+- **Message queue conflict** - `_checkMessageConflict()` deduplication
+- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
+timeout 1000ms, port message queue, explicit tab ID barrier, extended dedup 10s.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
 escalation, correlationId tracing, adaptive quota monitoring.

@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.8-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,42 +9,39 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v8 Status:** Storage, Handler & Init Fixes ✅
+**🔧 v1.6.3.8-v9 Status:** Initialization & Event Fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v8
+## 🎉 What's New in v1.6.3.8-v9
 
-**🔧 Storage, Handler & Init Fixes (December 2025) ✅**
+**🔧 Initialization & Event Fixes (December 2025) ✅**
 
-**Storage & Transaction Improvements:**
+**Event & Handler Fixes:**
 
-- ✅ **Self-write detection** - 50ms timestamp window for filtering own writes
-- ✅ **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- ✅ **Storage event ordering** - 300ms tolerance for Firefox latency
+- ✅ **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- ✅ **UICoordinator init flag** - `_isInitializing` suppresses orphan recovery
+- ✅ **DestroyHandler retry** - `_pendingPersists` queue with max 3 retries
+- ✅ **Handler readiness** - `startRendering()` from `UICoordinator.init()`
 
-**Handler & Safety Fixes:**
+**Initialization & Logging:**
 
-- ✅ **DestroyHandler forceEmpty** - Properly allows empty state writes
-- ✅ **Synchronous Map ops** - During hydration (UICoordinator)
-- ✅ **Dead WAL code removed** - DestroyHandler cleanup
+- ✅ **EventEmitter3 logging** - Timestamps for handler/listener order
+- ✅ **Message conflict detection** - `_checkMessageConflict()` deduplication
+- ✅ **Init sequence fix** - `signalReady()` BEFORE hydration (Step 5.5)
+- ✅ **INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
 
-**Communication & Initialization:**
+**Resource Management:**
 
-- ✅ **Port message queue** - Events queued before port ready
-- ✅ **Queued storage events** - Processed when port connects
-- ✅ **Explicit tab ID barrier** - Tab ID fetch before features
+- ✅ **Timestamp map limit** - Max 1000 entries with cleanup
+- ✅ **Event listener cleanup** - `cleanupStateListeners()` method
+- ✅ **Message queue limit** - Max 100 messages
+- ✅ **Tab ID timeout 5s** - Increased from 2s with retry fallback
 
-**Validation & State:**
-
-- ✅ **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
-- ✅ **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
-- ✅ **Fallback polling retry** - Listener re-registration on failure
-
-**Why This Matters:** Resolves Firefox-specific timing issues and improves
-reliability of state synchronization across browser tabs.
+**Why This Matters:** Resolves critical initialization timing issues and event
+ordering problems that could cause Quick Tabs to not render correctly.
 
 ---
 
@@ -53,6 +50,7 @@ reliability of state synchronization across browser tabs.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v8** - Storage, Handler & Init Fixes
 - **v1.6.3.8-v7** - Communication & Storage Fixes
 - **v1.6.3.8-v6** - Production Hardening, BC removal complete
 - **v1.6.3.8-v5** - Architecture Redesign, BC removal begun
@@ -242,6 +240,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v8** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v9** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

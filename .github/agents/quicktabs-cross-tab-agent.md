@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v8), Port + storage.local architecture (NO BroadcastChannel),
+  (v1.6.3.8-v9), Port + storage.local architecture (NO BroadcastChannel),
   initializationBarrier Promise, port-based hydration, storage quota monitoring,
   checksum validation
 tools: ['*']
@@ -39,28 +39,25 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
+**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
 
-- **Self-write detection** - 50ms timestamp window for filtering own writes
-- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
-- **Storage event ordering** - 300ms tolerance for Firefox latency
-- **Port message queue** - Events queued before port ready
-- **Explicit tab ID barrier** - Tab ID fetch before features
-- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
-- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
+- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
+- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
+- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
+- **Message queue conflict** - `_checkMessageConflict()` deduplication
+- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
+- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
+timeout 1000ms, storage event ordering (300ms), port message queue, explicit
+tab ID barrier, extended dedup 10s, BFCache session tabs.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
 escalation, correlationId tracing, adaptive quota monitoring.
 
-**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
-quota monitoring, port reconnection backoff, checksum validation.
-
-**v1.6.3.8-v4 Features (Retained):** initializationBarrier Promise, port-based
-hydration, visibility change listener, proactive dedup cleanup.
-
-**Key Functions (v1.6.3.8-v8):**
+**Key Functions (v1.6.3.8-v9):**
 
 | Function                        | Location        | Purpose                         |
 | ------------------------------- | --------------- | ------------------------------- |
@@ -84,20 +81,20 @@ hydration, visibility change listener, proactive dedup cleanup.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v8)
-- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
-- [ ] Transaction timeout 1000ms (v1.6.3.8-v8)
-- [ ] Port message queue works (v1.6.3.8-v8)
-- [ ] Extended dedup 10s works (v1.6.3.8-v8)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v9)
+- [ ] DestroyHandler event order works (emit before delete) (v1.6.3.8-v9)
+- [ ] Message conflict detection works (`_checkMessageConflict`) (v1.6.3.8-v9)
+- [ ] Init sequence works (`signalReady()` before hydration) (v1.6.3.8-v9)
+- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
+- [ ] Self-write detection works (50ms window)
+- [ ] Transaction timeout 1000ms
 - [ ] Storage quota monitoring works (50%/75%/90%)
 - [ ] Checksum validation works during hydration
-- [ ] initializationBarrier Promise resolves correctly
-- [ ] Port-based hydration works (`_hydrateStateFromBackground`)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.8-v8 Port + storage.local
-architecture, self-write detection, transaction timeout, port message queue.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v9 Port + storage.local
+architecture, DestroyHandler event order, message conflict detection.**
