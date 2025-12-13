@@ -14,7 +14,6 @@
  * v1.6.3.5-v8 - FIX Diagnostic Issue #3:
  *   - Re-wire window reference after restore using eventBus
  *   - Enhanced tab recovery for post-restore updates
- * v1.6.3.7-v4 - FIX Issue #2: Add BroadcastChannel integration for cross-tab sync
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -24,19 +23,14 @@
  * - Handle z-index updates on focus
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
- * - Broadcast updates to other tabs via BroadcastChannel
  *
  * @version 1.6.3.7-v4
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-import {
-  broadcastQuickTabUpdated,
-  isChannelAvailable
-} from '../channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports and functions removed per user request - Port + storage.onChanged only
 
 // v1.6.3.4 - FIX Issue #2: Debounce delay (Mozilla best practice: 200-350ms)
 const DEBOUNCE_DELAY_MS = 300;
@@ -174,8 +168,8 @@ export class UpdateHandler {
       top: roundedTop
     });
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast position update via BroadcastChannel
-    this._broadcastUpdate(id, { left: roundedLeft, top: roundedTop });
+    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
+    // Port-based messaging via storage.onChanged is now the primary sync mechanism
 
     // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
@@ -312,39 +306,16 @@ export class UpdateHandler {
       height: roundedHeight
     });
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast size update via BroadcastChannel
-    this._broadcastUpdate(id, { width: roundedWidth, height: roundedHeight });
+    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
+    // Port-based messaging via storage.onChanged is now the primary sync mechanism
 
     // v1.6.3.4 - FIX Issue #3: Persist to storage after resize ends
     console.log('[UpdateHandler] Scheduling storage persist after size change');
     this._persistToStorage();
   }
 
-  /**
-   * Broadcast Quick Tab update to other tabs
-   * v1.6.3.7-v4 - FIX Issue #2: BroadcastChannel integration
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {Object} changes - Changes to broadcast
-   */
-  _broadcastUpdate(id, changes) {
-    try {
-      if (!isChannelAvailable()) {
-        console.log('[UpdateHandler] BroadcastChannel not available, skipping broadcast');
-        return;
-      }
-
-      const success = broadcastQuickTabUpdated(id, changes);
-      console.log('[UpdateHandler] BROADCAST_SENT: quick-tab-updated', {
-        id,
-        changes,
-        success,
-        channelAvailable: isChannelAvailable()
-      });
-    } catch (err) {
-      console.warn('[UpdateHandler] Failed to broadcast update:', err.message);
-    }
-  }
+  // v1.6.3.8-v6 - REMOVED: _broadcastUpdate method
+  // BroadcastChannel removed - port-based messaging is now primary
 
   /**
    * Persist current state to browser.storage.local (debounced with change detection)

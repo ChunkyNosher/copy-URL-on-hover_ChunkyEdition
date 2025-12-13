@@ -2,6 +2,10 @@
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
 // Also handles webRequest/declarativeNetRequest to remove X-Frame-Options for Quick Tabs
+// v1.6.3.8-v6 - Core Architecture Fixes:
+//   - Issue #2: MessageBatcher queue size limits (MAX_QUEUE_SIZE=100) and TTL (MAX_MESSAGE_AGE_MS=30000)
+//   - Issue #4: Storage quota monitoring (every 5 min) with warnings at 50%, 75%, 90% thresholds
+//   - Issue #5: Enhanced correlation ID and timestamp tracing
 // v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
@@ -10,19 +14,8 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-// eslint-disable-next-line no-unused-vars
-import {
-  initBroadcastChannel as initBroadcastChannelManager,
-  isChannelAvailable as isBroadcastChannelAvailable,
-  broadcastQuickTabCreated,
-  broadcastQuickTabUpdated,
-  broadcastQuickTabDeleted,
-  broadcastQuickTabMinimized,
-  broadcastQuickTabRestored,
-  broadcastFullStateSync
-} from './src/features/quick-tabs/channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports removed per user request - Port + storage.onChanged only
 // v1.6.4.14 - Phase 3A Optimization imports
 import MemoryMonitor from './src/features/quick-tabs/MemoryMonitor.js';
 import PerformanceMetrics from './src/features/quick-tabs/PerformanceMetrics.js';
@@ -326,6 +319,7 @@ let keepaliveHealthCheckIntervalId = null; // Health check interval ID
 // ==================== v1.6.3.8 KEEPALIVE HEALTH TRACKING ====================
 // Issue #9: Comprehensive keepalive success/failure rate tracking
 // Track successes and failures within 60-second window for rate calculation
+// v1.6.3.8-v6 - Issue #9: Added first keepalive logging flag
 const KEEPALIVE_HEALTH_REPORT_INTERVAL_MS = 60000; // Report every 60 seconds
 let keepaliveHealthReportIntervalId = null;
 let keepaliveHealthStats = {
@@ -336,6 +330,8 @@ let keepaliveHealthStats = {
   slowestMs: 0,
   lastResetTime: Date.now()
 };
+// v1.6.3.8-v6 - Issue #9: Track first keepalive for unconditional logging
+let firstKeepaliveLogged = false;
 
 // Issue #6: Port Registry Size Warnings
 const PORT_REGISTRY_WARN_THRESHOLD = 50; // Warn if registry exceeds 50 ports
@@ -368,13 +364,31 @@ const PORT_REGISTRY_HISTORY_MAX = 5;
 
 // ==================== v1.6.3.7-v12 DEDUP STATISTICS ====================
 // Issue #6: Track deduplication statistics
+// v1.6.3.8-v6 - Issue #11: Enhanced dedup stats with tier tracking and longer history
 let dedupStats = {
   skipped: 0,
   processed: 0,
-  lastResetTime: Date.now()
+  lastResetTime: Date.now(),
+  // v1.6.3.8-v6 - Issue #11: Track which dedup tier was reached
+  tierCounts: {
+    saveId: 0,       // Tier 1: saveId match
+    sequenceId: 0,   // Tier 2: sequenceId ordering
+    revision: 0,     // Tier 3: revision check
+    contentHash: 0   // Tier 4: content hash
+  }
 };
+// v1.6.3.8-v6 - Issue #11: Longer-lived dedup history (last 5 minutes in 60s buckets)
+const DEDUP_HISTORY_BUCKETS = 5;
 const DEDUP_STATS_LOG_INTERVAL_MS = 60000; // Log stats every 60 seconds
 let dedupStatsIntervalId = null;
+let dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCounts }
+// v1.6.3.8-v6 - Issue #7: Map dedup method names to tier count keys
+const DEDUP_TIER_MAP = {
+  'saveId-timestamp': 'saveId',
+  'sequenceId': 'sequenceId',
+  'revision': 'revision',
+  'contentHash': 'contentHash'
+};
 
 // ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
@@ -391,6 +405,54 @@ const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120; // Every 2 hours diagnostic
 // v1.6.3.8 - Issue #2 (arch): Keepalive alarm every 25 seconds (0.42 min)
 // Firefox idle timer is 30s, so 25s gives us 5s buffer
 const ALARM_KEEPALIVE_INTERVAL_MIN = 25 / 60; // 25 seconds in minutes
+
+// ==================== v1.6.3.8-v6 STORAGE QUOTA MONITORING ====================
+// FIX Issue #4: Monitor storage.local quota usage and log warnings at thresholds
+
+/**
+ * Alarm name for storage quota monitoring
+ * v1.6.3.8-v6 - Issue #4: Storage quota monitoring alarm
+ */
+const ALARM_STORAGE_QUOTA_CHECK = 'storage-quota-check';
+
+/**
+ * Interval for storage quota checks (5 minutes)
+ * v1.6.3.8-v6 - Issue #4: Every 5 minutes
+ */
+const ALARM_STORAGE_QUOTA_INTERVAL_MIN = 5;
+
+/**
+ * Storage quota warning thresholds (percentage of 10MB limit)
+ * v1.6.3.8-v6 - Issue #4: Log warnings at 50%, 75%, 90%
+ */
+const STORAGE_QUOTA_WARNING_THRESHOLDS = [
+  { percent: 0.5, level: 'INFO', message: '50% storage quota used' },
+  { percent: 0.75, level: 'WARN', message: '75% storage quota used - consider cleanup' },
+  { percent: 0.9, level: 'CRITICAL', message: '90% storage quota used - cleanup required' }
+];
+
+/**
+ * Firefox storage.local quota limit (10MB for MV2 extensions)
+ * v1.6.3.8-v6 - Issue #4: Used for percentage calculations
+ */
+const STORAGE_LOCAL_QUOTA_BYTES = 10 * 1024 * 1024; // 10MB
+
+/**
+ * Track last triggered threshold to avoid duplicate logs
+ * v1.6.3.8-v6 - Issue #4: Prevent repeated warnings at same level
+ */
+let _lastStorageQuotaThresholdLevel = null;
+
+/**
+ * Storage quota usage snapshot for diagnostic reports
+ * v1.6.3.8-v6 - Issue #4: Included in diagnostic snapshots
+ */
+let _lastStorageQuotaSnapshot = {
+  bytesInUse: 0,
+  percentUsed: 0,
+  lastChecked: 0,
+  thresholdLevel: null
+};
 
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
@@ -507,6 +569,7 @@ async function _performKeepaliveQueries(context) {
  * Handle successful keepalive reset
  * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
  * v1.6.3.8 - Issue #9: Track comprehensive health stats for rate calculation
+ * v1.6.3.8-v6 - Issue #9: Log first keepalive unconditionally
  * @private
  * @param {Object} context - Keepalive context with results
  * @param {number} attemptStartTime - When the attempt started
@@ -525,9 +588,16 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
   keepaliveHealthStats.fastestMs = Math.min(keepaliveHealthStats.fastestMs, durationMs);
   keepaliveHealthStats.slowestMs = Math.max(keepaliveHealthStats.slowestMs, durationMs);
 
-  // Rate-limited success logging (every 10th success)
-  if (keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
+  // v1.6.3.8-v6 - Issue #9: Log first keepalive unconditionally
+  const isFirst = !firstKeepaliveLogged;
+  if (isFirst) {
+    firstKeepaliveLogged = true;
+  }
+
+  // Log first success unconditionally, then rate-limited (every 10th success)
+  if (isFirst || keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
     console.log('[Background] KEEPALIVE_RESET_SUCCESS:', {
+      isFirstKeepalive: isFirst,
       tabCount: context.tabCount,
       successCount: keepaliveSuccessCount,
       failureCount: consecutiveKeepaliveFailures,
@@ -722,67 +792,11 @@ startKeepalive();
 
 // ==================== v1.6.3.8-v5 BROADCASTCHANNEL REMOVED ====================
 // ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC code removed per user request - Port + storage.onChanged only
 // The new architecture uses:
 // - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
 // - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
-//
-// BroadcastChannel was removed because:
-// 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
-// 2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation
-// 3. Port-based messaging is more reliable and works across all contexts
-// 4. storage.onChanged provides reliable fallback for all scenarios
-//
-// All BC functions below are kept as NO-OP stubs for backwards compatibility.
-
-/**
- * Background's BroadcastChannel for receiving messages (kept for compatibility)
- * v1.6.3.8-v5 - DEPRECATED: BC removed
- */
-let _backgroundBroadcastChannel = null;
-
-/**
- * Initialize BroadcastChannel for background-to-Manager communication
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- */
-function initializeBackgroundBroadcastChannel() {
-  console.log('[Background] [BC] DEPRECATED: initializeBackgroundBroadcastChannel called - BC removed per architecture-redesign.md');
-  console.log('[Background] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
-  return false;
-}
-
-/**
- * Set up BroadcastChannel listener in background for verification messages
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @private
- */
-function _setupBackgroundBCListener() {
-  // NO-OP - BC removed
-}
-
-// v1.6.3.8-v5 - BC init call kept for compatibility (now a no-op)
-initializeBackgroundBroadcastChannel();
-
-/**
- * Send BC verification PONG via BroadcastChannel
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @param {Object} _request - The verification request message
- * @private
- */
-function _sendBCVerificationPong(_request) {
-  // NO-OP - BC removed
-  console.log('[Background] [BC] DEPRECATED: _sendBCVerificationPong called - BC removed');
-}
-
-/**
- * Send BC iframe verification PONG via BroadcastChannel
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @param {Object} _request - The verification request message with verificationId and iframeId
- * @private
- */
-function _sendBCIframeVerificationPong(_request) {
-  // NO-OP - BC removed
-  console.log('[Background] [BC] DEPRECATED: _sendBCIframeVerificationPong called - BC removed');
-}
 
 // ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
@@ -850,6 +864,19 @@ async function initializeAlarms() {
       'min)'
     );
 
+    // v1.6.3.8-v6 - Issue #4: Create storage-quota-check alarm - runs every 5 minutes
+    await browser.alarms.create(ALARM_STORAGE_QUOTA_CHECK, {
+      delayInMinutes: 1, // First run after 1 minute
+      periodInMinutes: ALARM_STORAGE_QUOTA_INTERVAL_MIN
+    });
+    console.log(
+      '[Background] Created alarm:',
+      ALARM_STORAGE_QUOTA_CHECK,
+      '(every',
+      ALARM_STORAGE_QUOTA_INTERVAL_MIN,
+      'min) - storage quota monitoring'
+    );
+
     console.log('[Background] v1.6.3.7-v3 All alarms initialized successfully');
   } catch (err) {
     console.error('[Background] Failed to initialize alarms:', err.message);
@@ -897,6 +924,11 @@ async function handleAlarm(alarm) {
 
     case ALARM_DIAGNOSTIC_SNAPSHOT:
       logDiagnosticSnapshot();
+      break;
+
+    // v1.6.3.8-v6 - Issue #4: Storage quota monitoring
+    case ALARM_STORAGE_QUOTA_CHECK:
+      await checkStorageQuota();
       break;
 
     default:
@@ -1125,6 +1157,165 @@ async function _performSessionSync() {
 }
 
 /**
+ * Check storage.local quota usage and log warnings at thresholds
+ * v1.6.3.8-v6 - Issue #4: Storage quota monitoring
+ * Logs warnings at 50%, 75%, 90% of 10MB limit
+ */
+async function checkStorageQuota() {
+  console.log('[Background] v1.6.3.8-v6 Running storage quota check...');
+
+  try {
+    const bytesInUse = await _getStorageBytesInUse();
+    const percentUsed = bytesInUse / STORAGE_LOCAL_QUOTA_BYTES;
+    
+    _updateStorageQuotaSnapshot(bytesInUse, percentUsed);
+    _checkAndLogThresholdWarning(bytesInUse, percentUsed);
+    _checkThresholdRecovery(bytesInUse, percentUsed);
+    _logStorageQuotaStatus(bytesInUse, percentUsed);
+    
+  } catch (err) {
+    console.error('[Background] STORAGE_QUOTA_CHECK_FAILED:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Get storage bytes in use
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ * @returns {Promise<number>} Bytes in use
+ */
+async function _getStorageBytesInUse() {
+  if (typeof browser.storage.local.getBytesInUse === 'function') {
+    return browser.storage.local.getBytesInUse(null);
+  }
+  return _estimateStorageUsage();
+}
+
+/**
+ * Update storage quota snapshot
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _updateStorageQuotaSnapshot(bytesInUse, percentUsed) {
+  _lastStorageQuotaSnapshot = {
+    bytesInUse,
+    percentUsed,
+    lastChecked: Date.now(),
+    thresholdLevel: null
+  };
+}
+
+/**
+ * Check and log threshold warning if needed
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _checkAndLogThresholdWarning(bytesInUse, percentUsed) {
+  for (let i = STORAGE_QUOTA_WARNING_THRESHOLDS.length - 1; i >= 0; i--) {
+    const threshold = STORAGE_QUOTA_WARNING_THRESHOLDS[i];
+    if (percentUsed < threshold.percent) continue;
+    
+    _lastStorageQuotaSnapshot.thresholdLevel = threshold.level;
+    if (_lastStorageQuotaThresholdLevel !== threshold.level) {
+      _logStorageQuotaWarning(bytesInUse, percentUsed, threshold);
+      _lastStorageQuotaThresholdLevel = threshold.level;
+    }
+    break;
+  }
+}
+
+/**
+ * Check and log threshold recovery if needed
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _checkThresholdRecovery(bytesInUse, percentUsed) {
+  if (percentUsed >= STORAGE_QUOTA_WARNING_THRESHOLDS[0].percent) return;
+  if (_lastStorageQuotaThresholdLevel === null) return;
+  
+  console.log('[Background] STORAGE_QUOTA_RECOVERED:', {
+    bytesInUse,
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    previousLevel: _lastStorageQuotaThresholdLevel,
+    timestamp: Date.now()
+  });
+  _lastStorageQuotaThresholdLevel = null;
+}
+
+/**
+ * Log storage quota status
+ * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * @private
+ */
+function _logStorageQuotaStatus(bytesInUse, percentUsed) {
+  console.log('[Background] STORAGE_QUOTA_STATUS:', {
+    bytesInUse,
+    bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
+    thresholdLevel: _lastStorageQuotaSnapshot.thresholdLevel || 'OK',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Estimate storage usage by serializing storage contents
+ * v1.6.3.8-v6 - Issue #4: Fallback for browsers without getBytesInUse
+ * @private
+ * @returns {Promise<number>} Estimated bytes in use
+ */
+async function _estimateStorageUsage() {
+  try {
+    const data = await browser.storage.local.get(null);
+    const serialized = JSON.stringify(data);
+    return new Blob([serialized]).size;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+/**
+ * Log storage quota warning at threshold level
+ * v1.6.3.8-v6 - Issue #4: Threshold-based logging
+ * @private
+ * @param {number} bytesInUse - Current bytes in use
+ * @param {number} percentUsed - Usage as decimal (0-1)
+ * @param {Object} threshold - Threshold config with level and message
+ */
+function _logStorageQuotaWarning(bytesInUse, percentUsed, threshold) {
+  const logData = {
+    bytesInUse,
+    bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    threshold: (threshold.percent * 100) + '%',
+    level: threshold.level,
+    message: threshold.message,
+    quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
+    timestamp: Date.now()
+  };
+  
+  if (threshold.level === 'CRITICAL') {
+    console.error('[Background] STORAGE_QUOTA_CRITICAL:', logData);
+  } else if (threshold.level === 'WARN') {
+    console.warn('[Background] STORAGE_QUOTA_WARNING:', logData);
+  } else {
+    console.info('[Background] STORAGE_QUOTA_INFO:', logData);
+  }
+}
+
+/**
+ * Get storage quota snapshot for diagnostic reports
+ * v1.6.3.8-v6 - Issue #4: Include in diagnostic snapshots
+ * @returns {Object} Storage quota snapshot
+ */
+function _getStorageQuotaSnapshot() {
+  return { ..._lastStorageQuotaSnapshot };
+}
+
+/**
  * Log diagnostic snapshot of current state
  * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
  * v1.6.3.7-v12 - Issue #3, #10: Include port registry threshold check and trend
@@ -1174,19 +1365,56 @@ function logDiagnosticSnapshot() {
   });
 
   // v1.6.3.7-v12 - Issue #6: Include dedup statistics
+  // v1.6.3.8-v6 - Issue #11: Enhanced with tier counts and history
+  const total = dedupStats.skipped + dedupStats.processed;
   console.log('[Background] Dedup statistics:', {
     skipped: dedupStats.skipped,
     processed: dedupStats.processed,
-    totalSinceReset: dedupStats.skipped + dedupStats.processed,
-    skipRate:
-      dedupStats.processed > 0
-        ? ((dedupStats.skipped / (dedupStats.skipped + dedupStats.processed)) * 100).toFixed(1) +
-          '%'
-        : 'N/A',
+    totalSinceReset: total,
+    skipRate: total > 0
+      ? ((dedupStats.skipped / total) * 100).toFixed(1) + '%'
+      : 'N/A',
+    tierCounts: dedupStats.tierCounts,
+    historyBuckets: dedupStatsHistory.length,
+    // v1.6.3.8-v6 - Issue #11: Include 5-minute average skip rate
+    avgSkipRateLast5Min: _calculateAvgSkipRate(),
     lastResetTime: new Date(dedupStats.lastResetTime).toISOString()
   });
 
+  // v1.6.3.8-v6 - Issue #4: Include storage quota in diagnostic snapshot
+  const quotaSnapshot = _getStorageQuotaSnapshot();
+  console.log('[Background] Storage quota:', {
+    bytesInUse: quotaSnapshot.bytesInUse,
+    bytesInUseMB: quotaSnapshot.bytesInUse > 0 
+      ? (quotaSnapshot.bytesInUse / (1024 * 1024)).toFixed(2) + 'MB' 
+      : 'unknown',
+    percentUsed: quotaSnapshot.percentUsed > 0 
+      ? (quotaSnapshot.percentUsed * 100).toFixed(1) + '%'
+      : 'unknown',
+    thresholdLevel: quotaSnapshot.thresholdLevel || 'OK',
+    lastChecked: quotaSnapshot.lastChecked > 0 
+      ? new Date(quotaSnapshot.lastChecked).toISOString()
+      : 'never'
+  });
+
   console.log('[Background] =================================================================');
+}
+
+/**
+ * Calculate average skip rate from dedup history
+ * v1.6.3.8-v6 - Issue #11: Helper for 5-minute average skip rate
+ * @private
+ * @returns {string} Average skip rate or 'N/A' if no history
+ */
+function _calculateAvgSkipRate() {
+  if (!dedupStatsHistory || dedupStatsHistory.length === 0) {
+    return 'N/A';
+  }
+  const totalSkipped = dedupStatsHistory.reduce((sum, h) => sum + h.skipped, 0);
+  const totalProcessed = dedupStatsHistory.reduce((sum, h) => sum + h.processed, 0);
+  const total = totalSkipped + totalProcessed;
+  if (total === 0) return 'N/A';
+  return ((totalSkipped / total) * 100).toFixed(1) + '%';
 }
 
 /**
@@ -1458,6 +1686,7 @@ function startPortRegistryMonitoring() {
 /**
  * Start dedup statistics logging
  * v1.6.3.7-v12 - Issue #6: Log dedup statistics every 60 seconds
+ * v1.6.3.8-v6 - Issue #11: Include tier counts, longer history, and port failure correlation
  */
 function startDedupStatsLogging() {
   if (dedupStatsIntervalId) {
@@ -1467,21 +1696,55 @@ function startDedupStatsLogging() {
   dedupStatsIntervalId = setInterval(() => {
     const total = dedupStats.skipped + dedupStats.processed;
     if (total > 0) {
+      // v1.6.3.8-v6 - Issue #11: Calculate skip rate for correlation
+      const skipRate = ((dedupStats.skipped / total) * 100).toFixed(1);
+      
+      // v1.6.3.8-v6 - Issue #11: Correlate with port failures
+      const portFailureCorrelation = consecutiveKeepaliveFailures > 2 
+        ? 'HIGH_PORT_FAILURES' 
+        : consecutiveKeepaliveFailures > 0 
+          ? 'SOME_PORT_FAILURES' 
+          : 'HEALTHY';
+      
       console.log('[Background] [STORAGE] DEDUP_STATS:', {
         skipped: dedupStats.skipped,
         processed: dedupStats.processed,
         total,
-        skipRate: ((dedupStats.skipped / total) * 100).toFixed(1) + '%',
+        skipRate: skipRate + '%',
+        tierCounts: dedupStats.tierCounts,
+        portFailureCorrelation,
+        consecutivePortFailures: consecutiveKeepaliveFailures,
+        historyBuckets: dedupStatsHistory.length,
         intervalMs: DEDUP_STATS_LOG_INTERVAL_MS,
         timestamp: Date.now()
       });
+
+      // v1.6.3.8-v6 - Issue #11: Add to longer-lived history
+      dedupStatsHistory.push({
+        timestamp: Date.now(),
+        skipped: dedupStats.skipped,
+        processed: dedupStats.processed,
+        tierCounts: { ...dedupStats.tierCounts },
+        skipRate: parseFloat(skipRate)
+      });
+
+      // Keep only last N buckets
+      if (dedupStatsHistory.length > DEDUP_HISTORY_BUCKETS) {
+        dedupStatsHistory.shift();
+      }
     }
 
-    // Reset stats after logging
+    // Reset stats after logging (but keep history)
     dedupStats = {
       skipped: 0,
       processed: 0,
-      lastResetTime: Date.now()
+      lastResetTime: Date.now(),
+      tierCounts: {
+        saveId: 0,
+        sequenceId: 0,
+        revision: 0,
+        contentHash: 0
+      }
     };
   }, DEDUP_STATS_LOG_INTERVAL_MS);
 
@@ -5367,9 +5630,25 @@ function _getDedupStatsSnapshot() {
 }
 
 /**
+ * Update dedup tier counts based on the method used
+ * v1.6.3.8-v6 - Issue #7: Extracted to reduce _createDedupResult complexity
+ * @private
+ * @param {string} method - Dedup method used
+ */
+function _incrementDedupTierCount(method) {
+  if (!dedupStats.tierCounts) return;
+  
+  const tierKey = DEDUP_TIER_MAP[method];
+  if (tierKey) {
+    dedupStats.tierCounts[tierKey]++;
+  }
+}
+
+/**
  * Create a dedup result with logging
  * v1.6.3.7-v14 - FIX Duplication: Unified factory for skip/process results
  * v1.6.3.7-v14 - FIX Excess Args: Use options object pattern
+ * v1.6.3.8-v6 - Issue #7: Log dedup tier reached (saveId/sequenceId/revision/contentHash)
  * @private
  * @param {Object} options - Result configuration
  * @param {boolean} options.shouldSkip - Whether to skip processing
@@ -5381,16 +5660,23 @@ function _getDedupStatsSnapshot() {
 function _createDedupResult({ shouldSkip, method, reason, decision, logDetails = {} }) {
   if (shouldSkip) {
     dedupStats.skipped++;
+    // v1.6.3.8-v6 - Issue #7: Track tier reached
+    _incrementDedupTierCount(method);
   } else {
     dedupStats.processed++;
   }
 
   const result = { shouldSkip, method, reason };
 
+  // v1.6.3.8-v6 - Issue #7: Enhanced logging with tier and correlation ID
+  const correlationId = logDetails.correlationId || `dedup-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
   console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
     decision,
+    tierReached: method,
+    correlationId,
     dedupStatsSnapshot: _getDedupStatsSnapshot(),
+    tierCounts: dedupStats.tierCounts,
     ...logDetails,
     timestamp: Date.now()
   });
@@ -5989,9 +6275,13 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * Process storage update and update global cache
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
+ * v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID
  * @param {Object} newValue - New storage value
  */
 function _processStorageUpdate(newValue) {
+  // v1.6.3.8-v6 - Issue #7: Generate correlation ID for tracking this storage event
+  const correlationId = `storage-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
     _clearCacheForEmptyStorage(newValue);
@@ -6013,9 +6303,13 @@ function _processStorageUpdate(newValue) {
   // v1.6.3.4-v11 - Background caches state for popup/sidebar queries
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
   // v1.6.4.13 - FIX Issue #1 & #2: ALSO broadcast to BroadcastChannel for Manager updates
+  // v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID and sequenceId
   console.log('[Background] [STORAGE] STATE_CHANGE_DETECTED:', {
     tabCount: filteredValue.tabs?.length || 0,
     saveId: filteredValue.saveId,
+    sequenceId: filteredValue.sequenceId,
+    revisionId: filteredValue.revisionId,
+    correlationId,
     timestamp: Date.now()
   });
   _updateGlobalStateFromStorage(filteredValue);
@@ -7821,7 +8115,8 @@ const PORT_MESSAGE_HANDLERS = {
   BC_VERIFICATION_REQUEST: handleBCVerificationRequest,
   PORT_PONG: handlePortPong, // v1.6.3.8 - Issue #4 (arch): Zombie port detection response
   SIDEBAR_READY: handleSidebarReady, // v1.6.3.8-v2 - Issue #1, #10: Sidebar ready handshake
-  RELAY_TO_SIDEBAR: handleRelayToSidebar // v1.6.3.8-v2 - Issue #1, #10: Content -> Sidebar relay
+  RELAY_TO_SIDEBAR: handleRelayToSidebar, // v1.6.3.8-v2 - Issue #1, #10: Content -> Sidebar relay
+  CONTENT_UNLOADING: handleContentUnloading // v1.6.3.8-v7 - Issue #4: Content script unload cleanup
 };
 
 /**
@@ -7950,24 +8245,26 @@ function handleHeartbeat(message, portInfo) {
 
 /**
  * Handle BC_VERIFICATION_REQUEST from sidebar
- * v1.6.3.7-v13 - Issue #1 (arch): Respond to verify if BroadcastChannel works in sidebar
+ * v1.6.3.8-v6 - BC REMOVED: This handler now returns a deprecated response
  * @param {Object} message - Verification request
  * @param {Object} portInfo - Port info
- * @returns {Promise<Object>} Verification acknowledgment
+ * @returns {Promise<Object>} Verification acknowledgment (deprecated)
  */
 function handleBCVerificationRequest(message, portInfo) {
-  console.log('[Background] BC_VERIFICATION_REQUEST received via port:', {
+  console.log('[Background] BC_VERIFICATION_REQUEST received via port (BC REMOVED):', {
     requestId: message.requestId,
     source: message.source || portInfo?.origin || 'unknown',
-    timestamp: message.timestamp
+    timestamp: message.timestamp,
+    note: 'BroadcastChannel removed - use Port-based messaging'
   });
 
-  // Send PONG via BroadcastChannel
-  _sendBCVerificationPong(message);
-
+  // v1.6.3.8-v6 - BC removed, return response with bcAvailable: false
   return Promise.resolve({
     success: true,
     type: 'BC_VERIFICATION_REQUEST_ACK',
+    bcAvailable: false,
+    deprecated: true,
+    message: 'BroadcastChannel removed - use Port-based messaging',
     timestamp: Date.now()
   });
 }
@@ -8044,6 +8341,72 @@ function handlePortPong(message, portInfo) {
     success: true,
     type: 'PORT_PONG_ACK',
     timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle CONTENT_UNLOADING signal from content script
+ * v1.6.3.8-v7 - Issue #4: Clean up port when content script is about to unload
+ * This handles the beforeunload event from content.js
+ * @param {Object} message - Unload signal message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Acknowledgment
+ */
+function handleContentUnloading(message, portInfo) {
+  const portId = portInfo?.port?._portId;
+  const tabId = message.tabId || portInfo?.tabId;
+
+  console.log('[Background] CONTENT_UNLOADING received:', {
+    portId,
+    tabId,
+    timestamp: message.timestamp,
+    origin: portInfo?.origin
+  });
+
+  // Proactively clean up the port
+  if (portId) {
+    console.log('[Background] CONTENT_UNLOADING: Cleaning up port', {
+      portId,
+      tabId,
+      reason: 'content-script-unloading'
+    });
+    
+    // Use existing port cleanup mechanism
+    unregisterPort(portId, 'content-unloading');
+  }
+
+  // Also clean up any Quick Tab host tracking for this tab
+  _cleanupQuickTabHostTracking(tabId);
+
+  return Promise.resolve({
+    success: true,
+    type: 'CONTENT_UNLOADING_ACK',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Clean up Quick Tab host tracking for a specific tab
+ * v1.6.3.8-v7 - Issue #4: Extracted to reduce handleContentUnloading nesting
+ * @private
+ * @param {number} tabId - Tab ID to clean up
+ */
+function _cleanupQuickTabHostTracking(tabId) {
+  if (!tabId) return;
+
+  const cleanedUpQuickTabs = [];
+  for (const [quickTabId, hostTabId] of quickTabHostTabs.entries()) {
+    if (hostTabId !== tabId) continue;
+    quickTabHostTabs.delete(quickTabId);
+    cleanedUpQuickTabs.push(quickTabId);
+  }
+  
+  if (cleanedUpQuickTabs.length === 0) return;
+  
+  console.log('[Background] CONTENT_UNLOADING: Cleaned up Quick Tab host tracking', {
+    tabId,
+    cleanedUpQuickTabs,
+    remainingHostTabs: quickTabHostTabs.size
   });
 }
 
@@ -8561,9 +8924,8 @@ async function writeStateWithVerification() {
 }
 
 /**
- * Broadcast storage write confirmation via BroadcastChannel
- * v1.6.3.7-v7 - FIX Issue #6: Notify Manager of successful storage writes
- * v1.6.3.7-v10 - FIX Issue #6: Also notify Manager to start watchdog timer via port
+ * Notify Manager of storage write confirmation
+ * v1.6.3.8-v6 - BC REMOVED: Now only uses port-based notification
  * @private
  * @param {Object} state - State that was written
  * @param {string} saveId - Save ID for deduplication
@@ -8572,19 +8934,11 @@ function _broadcastStorageWriteConfirmation(state, saveId) {
   // v1.6.3.7-v10 - FIX Issue #6: Notify Manager to start watchdog via port message
   _notifyManagerToStartWatchdog(saveId, state?.sequenceId);
 
-  if (!isBroadcastChannelAvailable()) {
-    if (DEBUG_MESSAGING) {
-      console.log('[Background] [BC] BroadcastChannel not available for write confirmation');
-    }
-    return;
-  }
-
-  const bcSuccess = broadcastFullStateSync(state, saveId);
+  // v1.6.3.8-v6 - BC removed, port-based notification is primary
   if (DEBUG_MESSAGING) {
-    console.log('[Background] [BC] Storage write confirmation broadcast:', {
+    console.log('[Background] Storage write confirmation (port-based only):', {
       saveId,
       tabCount: state?.tabs?.length || 0,
-      success: bcSuccess,
       timestamp: Date.now()
     });
   }
@@ -8648,17 +9002,11 @@ function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
 
 // ==================== v1.6.4.13 MESSAGING HELPER FUNCTIONS ====================
 // FIX Issues #1-8: Centralized messaging helpers for all state operations
+// v1.6.3.8-v6 - BC removed, port-based messaging is primary
 
 /**
- * Broadcast operation confirmation via BroadcastChannel (Tier 1)
- * v1.6.4.13 - FIX Issue #1 & #2: Background broadcasts state changes to Manager
- * @private
- * @param {string} operationType - Type of operation (e.g., 'MINIMIZE_CONFIRMED', 'RESTORE_CONFIRMED')
-/**
- * Broadcast operation confirmation via BroadcastChannel (Tier 1)
- * v1.6.4.13 - FIX Issue #1 & #2: Use BC for confirmations
- * v1.6.4.14 - FIX Complexity: Converted switch to lookup table
- * v1.6.4.14 - FIX Excess Args: Converted to options object
+ * Log operation confirmation (BC removed)
+ * v1.6.3.8-v6 - BC REMOVED: This function is now a no-op logging stub
  * @private
  * @param {Object} options - Broadcast options
  * @param {string} options.operationType - Operation type (e.g., 'MINIMIZE_CONFIRMED', 'RESTORE_CONFIRMED')
@@ -8674,41 +9022,14 @@ function _broadcastOperationConfirmation({
   saveId,
   correlationId
 }) {
-  if (!isBroadcastChannelAvailable()) {
-    if (DEBUG_MESSAGING) {
-      console.log(
-        '[Background] [BC] BROADCAST_SKIPPED: Channel not available for operation confirmation',
-        {
-          operationType,
-          quickTabId,
-          timestamp: Date.now()
-        }
-      );
-    }
-    return;
-  }
-
-  // v1.6.4.14 - FIX Complexity: Use lookup table for broadcast function selection
-  const OPERATION_BROADCAST_FNS = {
-    MINIMIZE_CONFIRMED: () => broadcastQuickTabMinimized(quickTabId),
-    RESTORE_CONFIRMED: () => broadcastQuickTabRestored(quickTabId),
-    DELETE_CONFIRMED: () => broadcastQuickTabDeleted(quickTabId),
-    ADOPT_CONFIRMED: () => broadcastQuickTabUpdated(quickTabId, changes),
-    UPDATE_CONFIRMED: () => broadcastQuickTabUpdated(quickTabId, changes)
-  };
-
-  const broadcastFn = OPERATION_BROADCAST_FNS[operationType];
-  const bcSuccess = broadcastFn
-    ? broadcastFn()
-    : broadcastFullStateSync({ tabs: globalQuickTabState.tabs, saveId }, saveId);
-
-  // Log broadcast result
+  // v1.6.3.8-v6 - BC removed, this is now a logging-only function
   if (DEBUG_MESSAGING) {
-    console.log('[Background] [BC] OPERATION_BROADCAST:', {
+    console.log('[Background] OPERATION_LOGGED (BC removed, port-based only):', {
       type: operationType,
       quickTabId,
       correlationId,
-      success: bcSuccess,
+      saveId,
+      changesKeys: changes ? Object.keys(changes) : [],
       timestamp: Date.now()
     });
   }
@@ -9827,11 +10148,10 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     triggerSource: source
   });
 
-  // v1.6.3.7-v7 - FIX Issue #1 & #2: Tier 1 (PRIMARY) - BroadcastChannel for instant updates
-  // BroadcastChannel provides instant cross-tab messaging without port connections
-  _broadcastViaBroadcastChannel(quickTabId, changes, messageId);
+  // v1.6.3.8-v6 - BC REMOVED: Skip BC broadcast, port-based messaging is primary
+  // _broadcastViaBroadcastChannel removed - just log for debugging
 
-  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 - Route state updates through PORT (secondary)
+  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 (now PRIMARY) - Route state updates through PORT
   // Port-based messaging is more reliable than runtime.sendMessage for sidebar
   let sentViaPort = false;
   const sidebarPortsSent = _broadcastToSidebarPorts(message);
@@ -9843,7 +10163,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     });
   }
 
-  // v1.6.3.7-v4 - FIX Issue #3: Tier 3 - Fall back to runtime.sendMessage if no ports available
+  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 (now fallback) - Fall back to runtime.sendMessage if no ports available
   // This ensures sidebar gets the message even if port connection hasn't been established yet
   if (!sentViaPort) {
     try {
@@ -9879,79 +10199,32 @@ function _isQuickTabCreation(changes, quickTabId) {
 }
 
 /**
- * Determine the broadcast type and function based on state changes
- * v1.6.4.13 - FIX Complexity: Extracted from _broadcastViaBroadcastChannel
- * v1.6.4.14 - FIX Complexity: Simplified conditionals (cc=10 → cc=4)
+ * Determine the broadcast type based on state changes (for logging)
+ * v1.6.3.8-v6 - BC REMOVED: Used only for logging, no BC function calls
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
- * @returns {{ broadcastType: string, broadcastFn: Function }}
+ * @returns {{ broadcastType: string }}
  */
-function _determineBroadcastTypeAndFn(quickTabId, changes) {
+function _determineBroadcastType(quickTabId, changes) {
   // Priority-ordered checks for state changes
   if (changes?.deleted === true) {
-    return {
-      broadcastType: 'quick-tab-deleted',
-      broadcastFn: () => broadcastQuickTabDeleted(quickTabId)
-    };
+    return { broadcastType: 'quick-tab-deleted' };
   }
   if (changes?.minimized === true) {
-    return {
-      broadcastType: 'quick-tab-minimized',
-      broadcastFn: () => broadcastQuickTabMinimized(quickTabId)
-    };
+    return { broadcastType: 'quick-tab-minimized' };
   }
   if (changes?.minimized === false) {
-    return {
-      broadcastType: 'quick-tab-restored',
-      broadcastFn: () => broadcastQuickTabRestored(quickTabId)
-    };
+    return { broadcastType: 'quick-tab-restored' };
   }
   if (_isQuickTabCreation(changes, quickTabId)) {
-    return {
-      broadcastType: 'quick-tab-created',
-      broadcastFn: () => broadcastQuickTabCreated(quickTabId, changes)
-    };
+    return { broadcastType: 'quick-tab-created' };
   }
-  return {
-    broadcastType: 'quick-tab-updated',
-    broadcastFn: () => broadcastQuickTabUpdated(quickTabId, changes)
-  };
+  return { broadcastType: 'quick-tab-updated' };
 }
 
-/**
- * Broadcast state update via BroadcastChannel (Tier 1 - PRIMARY)
- * v1.6.3.7-v7 - FIX Issue #1 & #2: Use BroadcastChannel for instant Manager updates
- * v1.6.4.13 - FIX Complexity: Extracted _determineBroadcastTypeAndFn (cc=12 → cc=4)
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes
- * @param {string} messageId - Message ID for correlation
- */
-function _broadcastViaBroadcastChannel(quickTabId, changes, messageId) {
-  if (!isBroadcastChannelAvailable()) {
-    if (DEBUG_MESSAGING) {
-      console.log('[Background] [BC] BROADCAST_SKIPPED: BroadcastChannel not available', {
-        quickTabId,
-        messageId,
-        timestamp: Date.now()
-      });
-    }
-    return;
-  }
-
-  const { broadcastType, broadcastFn } = _determineBroadcastTypeAndFn(quickTabId, changes);
-  const bcSuccess = broadcastFn();
-
-  // v1.6.4.13 - Issue #5: Log BROADCAST_SENT with consistent format
-  console.log('[Background] [BC] BROADCAST_SENT:', {
-    type: broadcastType,
-    quickTabId,
-    messageId,
-    success: bcSuccess,
-    timestamp: Date.now()
-  });
-}
+// v1.6.3.8-v6 - REMOVED: _broadcastViaBroadcastChannel function
+// BroadcastChannel removed - port-based messaging is now primary
 
 /**
  * Broadcast message to all connected sidebar ports
@@ -10284,21 +10557,21 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // v1.6.3.7-v13 - Issue #1 (arch): Handle BC verification request from sidebar
-  // Sidebar sends this to verify if BroadcastChannel actually works in its context
+  // v1.6.3.8-v6 - BC REMOVED: BC_VERIFICATION_REQUEST returns deprecated response
   if (message.type === 'BC_VERIFICATION_REQUEST') {
-    console.log('[Background] BC_VERIFICATION_REQUEST received:', {
+    console.log('[Background] BC_VERIFICATION_REQUEST received (BC REMOVED):', {
       requestId: message.requestId,
       source: message.source,
-      timestamp: message.timestamp
+      timestamp: message.timestamp,
+      note: 'BroadcastChannel removed - use Port-based messaging'
     });
-
-    // Send PONG via BroadcastChannel
-    _sendBCVerificationPong(message);
 
     sendResponse({
       success: true,
       type: 'BC_VERIFICATION_REQUEST_ACK',
+      bcAvailable: false,
+      deprecated: true,
+      message: 'BroadcastChannel removed - use Port-based messaging',
       timestamp: Date.now()
     });
     return true;

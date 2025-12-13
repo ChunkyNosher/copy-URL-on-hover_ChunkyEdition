@@ -371,12 +371,22 @@ class QuickTabsManager {
    * Hydrate tabs from stored state
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Add comprehensive init logging
+   * v1.6.3.8-v6 - Issue #10: Enhanced logging for cross-tab filtering diagnostics
    * @private
    * @param {Array} tabs - Array of tab data from storage
    * @returns {number} Count of successfully hydrated tabs
    */
   _hydrateTabsFromStorage(tabs) {
+    // v1.6.3.8-v6 - Issue #10: Log tab count before filtering
+    console.log('[QuickTabsManager] HYDRATION_FILTER_START:', {
+      tabCountBeforeFilter: tabs.length,
+      currentTabId: this.currentTabId,
+      originTabIds: tabs.map(t => ({ id: t.id, originTabId: t.originTabId })),
+      timestamp: Date.now()
+    });
+
     // v1.6.3.6-v5 - FIX: Track validation results for comprehensive logging
+    // v1.6.3.8-v6: Track both filtered and recovered tabs for diagnostics
     const filterReasons = {
       invalidData: 0,
       noOriginTabId: 0,
@@ -386,22 +396,39 @@ class QuickTabsManager {
       noHandler: 0,
       error: 0
     };
+    // v1.6.3.8-v6: Track successful recoveries separately (not filtered)
+    let recoveredFromIdPattern = 0;
 
     let hydratedCount = 0;
     for (const tabData of tabs) {
       const result = this._safeHydrateTabWithReason(tabData, filterReasons);
-      if (result.success) {
-        hydratedCount++;
-      }
+      if (!result.success) continue;
+      
+      hydratedCount++;
+      // v1.6.3.8-v6: Track if this was a recovered tab
+      const wasRecovered = result.reason === 'recoveredFromIdPattern';
+      recoveredFromIdPattern += wasRecovered ? 1 : 0;
     }
 
     // v1.6.3.6-v5 - FIX: Comprehensive init logging (single structured log)
+    // v1.6.3.8-v6 - Issue #10: Enhanced with before/after counts
     console.log('[QuickTabsManager] TAB SCOPE ISOLATION VALIDATION:', {
       total: tabs.length,
       passed: hydratedCount,
       filtered: tabs.length - hydratedCount,
       currentTabId: this.currentTabId,
-      filterReasons
+      filterReasons,
+      recoveredFromIdPattern
+    });
+
+    // v1.6.3.8-v6 - Issue #10: Log final render count after filtering
+    console.log('[QuickTabsManager] HYDRATION_FILTER_COMPLETE:', {
+      tabCountBeforeFilter: tabs.length,
+      tabCountAfterFilter: hydratedCount,
+      filteredOutCount: tabs.length - hydratedCount,
+      recoveredCount: recoveredFromIdPattern,
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
     });
 
     return hydratedCount;
@@ -410,6 +437,7 @@ class QuickTabsManager {
   /**
    * Safely hydrate a single tab with error handling and reason tracking
    * v1.6.3.6-v5 - FIX: Added reason tracking for comprehensive logging
+   * v1.6.3.8-v6 - Issue #10: Track recoveredFromIdPattern as success reason
    * @private
    * @param {Object} tabData - Tab data from storage
    * @param {Object} filterReasons - Object to track filter reasons
@@ -429,6 +457,9 @@ class QuickTabsManager {
         filterReasons[skipResult.reason]++;
         return { success: false, reason: skipResult.reason };
       }
+
+      // v1.6.3.8-v6: Track if this was a recovered tab (for diagnostics)
+      const wasRecovered = skipResult.reason === 'recoveredFromIdPattern';
 
       // Skip if tab already exists
       if (this.tabs.has(tabData.id)) {
@@ -456,7 +487,8 @@ class QuickTabsManager {
       } else {
         this._hydrateVisibleTab(optionsWithCallbacks);
       }
-      return { success: true, reason: 'hydrated' };
+      // v1.6.3.8-v6: Return recoveredFromIdPattern reason if applicable
+      return { success: true, reason: wasRecovered ? 'recoveredFromIdPattern' : 'hydrated' };
     } catch (tabError) {
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
@@ -487,10 +519,103 @@ class QuickTabsManager {
   }
 
   /**
+   * Compute djb2-like checksum for state validation
+   * v1.6.3.8-v7 - Issue #2: Same algorithm as background.js _computeStorageChecksum
+   * IMPORTANT: Must match background.js exactly to ensure checksums are comparable
+   * @private
+   * @param {Object} state - State object with tabs array
+   * @returns {string} Checksum string (e.g., 'chk-3-a1b2c3d4') or 'empty'
+   */
+  _computeStateChecksum(state) {
+    if (!state?.tabs || !Array.isArray(state.tabs) || state.tabs.length === 0) {
+      return 'empty';
+    }
+
+    // Build a deterministic string from tab IDs and their minimized states
+    // MUST match background.js: ${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}
+    const tabSignatures = state.tabs
+      .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
+      .sort()
+      .join('|');
+
+    // djb2-like hash: hash = hash * 33 + char
+    let hash = state.tabs.length;
+    for (let i = 0; i < tabSignatures.length; i++) {
+      hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
+    }
+
+    return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
+  }
+
+  /**
+   * Validate checksum during hydration
+   * v1.6.3.8-v7 - Issue #2: Detect corruption by comparing computed vs expected checksum
+   * @private
+   * @param {Object} storedState - State from storage
+   * @returns {{valid: boolean, computed: string, reason: string}}
+   */
+  _validateHydrationChecksum(storedState) {
+    const computed = this._computeStateChecksum(storedState);
+    const expected = storedState?.checksum;
+
+    // Log checksum validation for diagnostics
+    console.log('[QuickTabsManager] CHECKSUM_VALIDATION:', {
+      computed,
+      expected: expected || 'none',
+      tabCount: storedState?.tabs?.length || 0,
+      hasExpected: !!expected
+    });
+
+    // If no expected checksum in stored state, assume valid (backwards compatibility)
+    if (!expected) {
+      return { valid: true, computed, reason: 'no-expected-checksum' };
+    }
+
+    if (computed === expected) {
+      return { valid: true, computed, reason: 'match' };
+    }
+
+    console.error('[QuickTabsManager] CHECKSUM_MISMATCH:', {
+      computed,
+      expected,
+      tabCount: storedState?.tabs?.length || 0,
+      recommendation: 'Request fresh state from background'
+    });
+    return { valid: false, computed, reason: 'mismatch' };
+  }
+
+  /**
+   * Request fresh state from background when checksum validation fails
+   * v1.6.3.8-v7 - Issue #2: Recovery mechanism for corrupted state
+   * @private
+   * @param {string} reason - Reason for requesting fresh state
+   */
+  async _requestFreshStateFromBackground(reason) {
+    console.log('[QuickTabsManager] REQUESTING_FRESH_STATE:', {
+      reason,
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
+    });
+
+    try {
+      await browser.runtime.sendMessage({
+        action: 'REQUEST_FULL_STATE_SYNC',
+        source: 'quicktabs-manager-checksum-recovery',
+        reason,
+        tabId: this.currentTabId,
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      console.warn('[QuickTabsManager] Failed to request fresh state:', err.message);
+    }
+  }
+
+  /**
    * Hydrate Quick Tab state from browser.storage.local
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
+   * v1.6.3.8-v7 - Issue #2: Add checksum validation during hydration
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
@@ -509,6 +634,18 @@ class QuickTabsManager {
         return { success: false, count: 0, reason: validation.reason };
       }
 
+      // v1.6.3.8-v7 - Issue #2: Validate checksum before hydrating
+      const checksumResult = this._validateHydrationChecksum(storedState);
+      if (!checksumResult.valid) {
+        // Checksum mismatch - request fresh state and skip hydration
+        await this._requestFreshStateFromBackground('hydration-checksum-mismatch');
+        return { 
+          success: false, 
+          count: 0, 
+          reason: `Checksum mismatch: computed=${checksumResult.computed}, expected=${storedState.checksum}` 
+        };
+      }
+
       console.log(
         `[QuickTabsManager] Found ${storedState.tabs.length} Quick Tab(s) in storage to hydrate`
       );
@@ -520,10 +657,13 @@ class QuickTabsManager {
       this._emitHydratedEventIfNeeded(hydratedCount);
 
       // v1.6.3.7-v13 - Issue #6: Log successful hydration completion with specific format
+      // v1.6.3.8-v7 - Issue #2: Include checksum in completion log
       console.log('[QuickTabsManager] HYDRATION_COMPLETE:', {
         loadedTabCount: hydratedCount,
         totalInStorage: storedState.tabs.length,
         currentTabId: this.currentTabId,
+        checksum: checksumResult.computed,
+        checksumValid: true,
         timestamp: Date.now()
       });
 
@@ -676,6 +816,7 @@ class QuickTabsManager {
    *              Consolidated to single implementation that tracks reasons
    * v1.6.3.6-v7 - FIX Issue #1: Add fallback to extract tab ID from Quick Tab ID pattern
    *              when originTabId is null but ID pattern matches current tab
+   * v1.6.3.8-v6 - Issue #10: Enhanced logging for cross-tab filtering diagnostics
    * @private
    * @param {Object} tabData - Stored tab data
    * @returns {{skip: boolean, reason: string}} Result with skip flag and reason
@@ -683,6 +824,16 @@ class QuickTabsManager {
   _checkTabScopeWithReason(tabData) {
     const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
     const hasCurrentTabId = this.currentTabId !== null && this.currentTabId !== undefined;
+
+    // v1.6.3.8-v6 - Issue #10: Log originTabId matching decision
+    console.log('[QuickTabsManager] CROSS_TAB_FILTER_CHECK:', {
+      quickTabId: tabData.id,
+      originTabId: tabData.originTabId,
+      currentTabId: this.currentTabId,
+      hasOriginTabId,
+      hasCurrentTabId,
+      timestamp: Date.now()
+    });
 
     // v1.6.3.6-v5 - FIX: If we don't have currentTabId, we CANNOT safely filter
     // Reject all tabs until we know our tab ID to prevent cross-tab contamination
@@ -738,6 +889,15 @@ class QuickTabsManager {
     }
 
     const shouldRender = this._shouldRenderOnThisTab(tabData);
+    // v1.6.3.8-v6 - Issue #10: Log final filtering decision
+    console.log('[QuickTabsManager] CROSS_TAB_FILTER_RESULT:', {
+      quickTabId: tabData.id,
+      originTabId: tabData.originTabId,
+      currentTabId: this.currentTabId,
+      shouldRender,
+      reason: shouldRender ? 'passed' : 'differentTab'
+    });
+    
     if (!shouldRender) {
       console.log('[QuickTabsManager] Skipping hydration - tab originated from different tab:', {
         id: tabData.id,

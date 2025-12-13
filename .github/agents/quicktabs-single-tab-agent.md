@@ -37,19 +37,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v2 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **BFCache lifecycle** - `PAGE_LIFECYCLE_BFCACHE_ENTER/RESTORE` events
-- **Background Relay** - Sidebar messages bypass BC origin isolation
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
 
-**v1.6.3.8 Features (Retained):** currentTabId barrier (2s exponential backoff),
-BFCache handling (pageshow/pagehide), Code Health QuickTabHandler.js (9.41).
-
-**v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, dedup decision
-logging.
+**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port failure
+counting, initialization barriers, BFCache lifecycle.
 
 **v1.6.3.7-v4 Features (Retained):**
 

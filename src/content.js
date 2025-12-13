@@ -407,6 +407,7 @@ async function getCurrentTabIdFromBackground() {
 // FIX Issue #11: Persistent port connection to background script
 // FIX Issue #12: Port lifecycle logging
 // FIX Issue #17: Port cleanup on tab close
+// v1.6.3.8-v6 - Issue #1-4: Cross-tab sync improvements with storage.onChanged fallback
 
 /**
  * Port connection to background script
@@ -419,6 +420,48 @@ let backgroundPort = null;
  * v1.6.3.6-v11 - Used for port name and logging
  */
 let cachedTabId = null;
+
+// v1.6.3.8-v6 - Issue #3: Port reconnection constants (exponential backoff)
+const PORT_RECONNECT_INITIAL_DELAY_MS = 100;
+const PORT_RECONNECT_MAX_DELAY_MS = 10000;
+const PORT_RECONNECT_BACKOFF_MULTIPLIER = 2;
+const PORT_RECONNECT_MAX_ATTEMPTS = 10;
+const PORT_CIRCUIT_BREAKER_THRESHOLD = 3; // Failures before circuit breaker trips
+
+/**
+ * Port reconnection state object
+ * v1.6.3.8-v6 - Issue #3: Encapsulated port reconnection state for maintainability
+ * @type {Object}
+ */
+const portReconnectState = {
+  attempts: 0,
+  currentDelay: PORT_RECONNECT_INITIAL_DELAY_MS,
+  circuitBreakerTripped: false,
+  consecutiveFailures: 0,
+  timeoutId: null
+};
+
+/**
+ * State ordering tracking object
+ * v1.6.3.8-v6 - Issue #2: Encapsulated ordering state for cross-tab sync validation
+ * Tracks the highest applied revision/sequenceId to reject out-of-order or duplicate events.
+ * NOTE: Using <= comparison is intentional - we reject BOTH duplicates (==) AND out-of-order (<)
+ * events. This prevents re-application of the same state which could cause UI flicker.
+ * @type {Object}
+ */
+const orderingState = {
+  lastAppliedRevision: 0,
+  lastAppliedSequenceId: 0
+};
+
+// Legacy variable references for backward compatibility (will be removed in future)
+let portReconnectAttempts = 0;
+let portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
+let portCircuitBreakerTripped = false;
+let portConsecutiveFailures = 0;
+let portReconnectTimeoutId = null;
+let lastAppliedRevision = 0;
+let lastAppliedSequenceId = 0;
 
 /**
  * Log port lifecycle event
@@ -435,8 +478,81 @@ function logContentPortLifecycle(event, details = {}) {
 }
 
 /**
+ * Reset port reconnection state
+ * v1.6.3.8-v6 - Issue #3: Reset backoff after successful connection
+ * @private
+ */
+function _resetPortReconnectState() {
+  portReconnectAttempts = 0;
+  portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
+  portConsecutiveFailures = 0;
+  if (portReconnectTimeoutId) {
+    clearTimeout(portReconnectTimeoutId);
+    portReconnectTimeoutId = null;
+  }
+}
+
+/**
+ * Schedule port reconnection with exponential backoff
+ * v1.6.3.8-v6 - Issue #3: Implement reconnection with backoff and circuit breaker
+ * @private
+ * @param {number} tabId - Tab ID to reconnect
+ */
+function _schedulePortReconnect(tabId) {
+  // Guard: Circuit breaker check
+  if (portCircuitBreakerTripped) {
+    console.warn('[Content] PORT_RECONNECT_BLOCKED: Circuit breaker tripped', {
+      consecutiveFailures: portConsecutiveFailures,
+      threshold: PORT_CIRCUIT_BREAKER_THRESHOLD
+    });
+    return;
+  }
+
+  // Guard: Max attempts check
+  if (portReconnectAttempts >= PORT_RECONNECT_MAX_ATTEMPTS) {
+    console.error('[Content] PORT_RECONNECT_MAX_ATTEMPTS_REACHED:', {
+      attempts: portReconnectAttempts,
+      maxAttempts: PORT_RECONNECT_MAX_ATTEMPTS
+    });
+    portCircuitBreakerTripped = true;
+    return;
+  }
+
+  // Guard: Don't reconnect if page is hidden
+  if (document.visibilityState === 'hidden') {
+    console.log('[Content] PORT_RECONNECT_DEFERRED: Page hidden');
+    return;
+  }
+
+  // Clear any existing timeout
+  if (portReconnectTimeoutId) {
+    clearTimeout(portReconnectTimeoutId);
+  }
+
+  const delay = portCurrentDelay;
+  portReconnectAttempts++;
+
+  console.log('[Content] PORT_RECONNECT_SCHEDULED:', {
+    attempt: portReconnectAttempts,
+    delayMs: delay,
+    nextDelayMs: Math.min(delay * PORT_RECONNECT_BACKOFF_MULTIPLIER, PORT_RECONNECT_MAX_DELAY_MS)
+  });
+
+  portReconnectTimeoutId = setTimeout(() => {
+    portReconnectTimeoutId = null;
+    if (!backgroundPort && document.visibilityState !== 'hidden') {
+      connectContentToBackground(tabId);
+    }
+  }, delay);
+
+  // Update delay for next attempt (exponential backoff)
+  portCurrentDelay = Math.min(portCurrentDelay * PORT_RECONNECT_BACKOFF_MULTIPLIER, PORT_RECONNECT_MAX_DELAY_MS);
+}
+
+/**
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ * v1.6.3.8-v6 - Issue #3: Add exponential backoff reconnection
  * @param {number} tabId - Current tab ID
  */
 function connectContentToBackground(tabId) {
@@ -449,6 +565,9 @@ function connectContentToBackground(tabId) {
 
     logContentPortLifecycle('open', { portName: backgroundPort.name });
 
+    // v1.6.3.8-v6 - Issue #3: Reset reconnect state on successful connection
+    _resetPortReconnectState();
+
     // Handle messages from background
     backgroundPort.onMessage.addListener(handleContentPortMessage);
 
@@ -458,18 +577,28 @@ function connectContentToBackground(tabId) {
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
-      // Attempt reconnection after delay (only if tab still active)
-      setTimeout(() => {
-        if (!backgroundPort && document.visibilityState !== 'hidden') {
-          connectContentToBackground(tabId);
-        }
-      }, 2000);
+      // v1.6.3.8-v6 - Issue #3: Track consecutive failures for circuit breaker
+      portConsecutiveFailures++;
+      if (portConsecutiveFailures >= PORT_CIRCUIT_BREAKER_THRESHOLD) {
+        portCircuitBreakerTripped = true;
+        console.error('[Content] PORT_CIRCUIT_BREAKER_TRIPPED:', {
+          consecutiveFailures: portConsecutiveFailures,
+          threshold: PORT_CIRCUIT_BREAKER_THRESHOLD
+        });
+      }
+
+      // v1.6.3.8-v6 - Issue #3: Schedule reconnection with exponential backoff
+      _schedulePortReconnect(tabId);
     });
 
     console.log('[Content] v1.6.3.6-v11 Port connection established to background');
   } catch (err) {
     console.error('[Content] Failed to connect to background:', err.message);
     logContentPortLifecycle('error', { error: err.message });
+
+    // v1.6.3.8-v6 - Issue #3: Track failure and schedule reconnection
+    portConsecutiveFailures++;
+    _schedulePortReconnect(tabId);
   }
 }
 
@@ -477,6 +606,7 @@ function connectContentToBackground(tabId) {
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #11: Process messages from background
  * v1.6.3.8 - Issue #4 (arch): Added PORT_PING handler for zombie detection
+ * v1.6.3.8-v6 - Issue #2: Added STATE_UPDATE handler with ordering validation
  * @param {Object} message - Message from background
  */
 function handleContentPortMessage(message) {
@@ -484,6 +614,9 @@ function handleContentPortMessage(message) {
     type: message.type,
     action: message.action
   });
+
+  // v1.6.3.8-v6 - Reset consecutive failures on successful message
+  portConsecutiveFailures = 0;
 
   // v1.6.3.8 - Issue #4 (arch): Handle PORT_PING for zombie port detection
   if (message.type === 'PORT_PING') {
@@ -500,6 +633,12 @@ function handleContentPortMessage(message) {
     return;
   }
 
+  // v1.6.3.8-v6 - Issue #2: Handle STATE_UPDATE with ordering validation
+  if (message.type === 'STATE_UPDATE') {
+    _handleStateUpdateFromPort(message);
+    return;
+  }
+
   // Handle broadcasts
   if (message.type === 'BROADCAST') {
     handleContentBroadcast(message);
@@ -510,6 +649,45 @@ function handleContentPortMessage(message) {
   if (message.type === 'ACKNOWLEDGMENT') {
     console.log('[Content] Received acknowledgment:', message.correlationId);
   }
+}
+
+/**
+ * Handle STATE_UPDATE message from background via port
+ * v1.6.3.8-v6 - Issue #2: Validate ordering before applying
+ * @private
+ * @param {Object} message - State update message
+ */
+function _handleStateUpdateFromPort(message) {
+  const { state, sequenceId, revision } = message;
+
+  console.log('[Content] STATE_UPDATE received via port:', {
+    sequenceId,
+    revision,
+    tabCount: state?.tabs?.length || 0,
+    lastAppliedSequenceId,
+    lastAppliedRevision
+  });
+
+  // Validate ordering
+  const stateWithMeta = { ...state, sequenceId, revision };
+  const orderingResult = _validateStorageEventOrdering(stateWithMeta);
+
+  if (!orderingResult.valid) {
+    console.warn('[Content] STATE_UPDATE rejected (ordering):', {
+      reason: orderingResult.reason,
+      sequenceId,
+      revision
+    });
+    // Request fresh state on ordering failure
+    _requestStateRecovery(`port-${orderingResult.reason}`);
+    return;
+  }
+
+  // Update ordering state
+  _updateAppliedOrderingState(stateWithMeta);
+
+  // Notify QuickTabsManager
+  _notifyManagerOfStorageUpdate(state, 'port-state-update');
 }
 
 /**
@@ -579,12 +757,201 @@ window.addEventListener('unload', () => {
     backgroundPort.disconnect();
     backgroundPort = null;
   }
+  // v1.6.3.8-v6 - Clear reconnect timeout on unload
+  if (portReconnectTimeoutId) {
+    clearTimeout(portReconnectTimeoutId);
+    portReconnectTimeoutId = null;
+  }
+});
+
+// v1.6.3.8-v6 - Issue #3: Reset circuit breaker when tab becomes visible
+// This allows reconnection attempts when user returns to the tab
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    console.log('[Content] TAB_VISIBILITY_VISIBLE:', {
+      hasPort: !!backgroundPort,
+      circuitBreakerTripped: portCircuitBreakerTripped,
+      consecutiveFailures: portConsecutiveFailures
+    });
+
+    // Reset circuit breaker when tab becomes visible
+    if (portCircuitBreakerTripped) {
+      console.log('[Content] CIRCUIT_BREAKER_RESET: Tab became visible');
+      portCircuitBreakerTripped = false;
+      portConsecutiveFailures = 0;
+      portReconnectAttempts = 0;
+      portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
+    }
+
+    // Attempt reconnection if port is dead
+    if (!backgroundPort && cachedTabId !== null) {
+      console.log('[Content] ATTEMPTING_RECONNECT: Tab visible, no port');
+      connectContentToBackground(cachedTabId);
+    }
+  }
 });
 
 // ==================== v1.6.3.8 BFCACHE HANDLING ====================
 // Issue #4 (arch): Handle BFCache "Zombie" Port Connections
 // When pages enter BFCache, ports remain open but cannot receive messages.
 // Explicitly disconnect port when entering BFCache and re-sync when restored.
+//
+// v1.6.3.8-v7 - Issue #1: Enhanced BFCache restoration with checksum validation
+// v1.6.3.8-v7 - Issue #2: Add checksum validation during hydration
+// v1.6.3.8-v7 - Issue #3: SessionStorage vs LocalStorage conflict resolution
+// v1.6.3.8-v7 - Issue #4: Iframe beforeunload cleanup (simplified with all_frames=false)
+
+/**
+ * Compute djb2-like checksum for state validation
+ * v1.6.3.8-v7 - Issue #2: Same algorithm as background.js _computeStorageChecksum
+ * IMPORTANT: Must match background.js exactly to ensure checksums are comparable
+ * @param {Object} state - State object with tabs array
+ * @returns {string} Checksum string (e.g., 'chk-3-a1b2c3d4') or 'empty'
+ */
+function _computeStateChecksum(state) {
+  if (!state?.tabs || !Array.isArray(state.tabs) || state.tabs.length === 0) {
+    return 'empty';
+  }
+
+  // Build a deterministic string from tab IDs and their minimized states
+  // MUST match background.js: ${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}
+  const tabSignatures = state.tabs
+    .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
+    .sort()
+    .join('|');
+
+  // djb2-like hash: hash = hash * 33 + char
+  let hash = state.tabs.length;
+  for (let i = 0; i < tabSignatures.length; i++) {
+    hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
+  }
+
+  return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
+}
+
+/**
+ * Validate checksum during hydration
+ * v1.6.3.8-v7 - Issue #2: Detect corruption by comparing checksums
+ * @param {Object} state - State to validate
+ * @param {string} expectedChecksum - Expected checksum from metadata (if available)
+ * @returns {{valid: boolean, computed: string, reason: string}}
+ */
+function _validateHydrationChecksum(state, expectedChecksum = null) {
+  const computed = _computeStateChecksum(state);
+  
+  // If no expected checksum, assume valid but log for diagnostics
+  if (!expectedChecksum) {
+    console.log('[Content] CHECKSUM_VALIDATION: No expected checksum, computed:', computed);
+    return { valid: true, computed, reason: 'no-expected-checksum' };
+  }
+
+  if (computed === expectedChecksum) {
+    console.log('[Content] CHECKSUM_VALIDATION: Match', { computed, expected: expectedChecksum });
+    return { valid: true, computed, reason: 'match' };
+  }
+
+  console.error('[Content] CHECKSUM_VALIDATION_FAILED:', {
+    computed,
+    expected: expectedChecksum,
+    tabCount: state?.tabs?.length || 0
+  });
+  return { valid: false, computed, reason: 'mismatch' };
+}
+
+/**
+ * Compare SessionStorage vs LocalStorage revision and resolve conflict
+ * v1.6.3.8-v7 - Issue #3: Prefer storage.local as source of truth
+ * @param {Object} sessionState - State from SessionStorage (if available)
+ * @param {Object} localState - State from storage.local
+ * @returns {{source: string, state: Object, discarded: boolean, reason: string}}
+ */
+function _resolveStorageConflict(sessionState, localState) {
+  // If no SessionStorage state, use local
+  if (!sessionState) {
+    return { 
+      source: 'local', 
+      state: localState, 
+      discarded: false, 
+      reason: 'no-session-state' 
+    };
+  }
+
+  // If no local state, use session (shouldn't happen in normal flow)
+  if (!localState) {
+    console.warn('[Content] STORAGE_CONFLICT: No local state, using session');
+    return { 
+      source: 'session', 
+      state: sessionState, 
+      discarded: false, 
+      reason: 'no-local-state' 
+    };
+  }
+
+  const sessionRevision = sessionState.revision || 0;
+  const localRevision = localState.revision || 0;
+
+  // v1.6.3.8-v7 - Issue #3: Prefer storage.local as source of truth
+  // SessionStorage is stale if its revision is lower than local
+  if (sessionRevision < localRevision) {
+    console.log('[Content] STORAGE_CONFLICT_RESOLVED:', {
+      decision: 'discard-session-use-local',
+      sessionRevision,
+      localRevision,
+      sessionTabCount: sessionState.tabs?.length || 0,
+      localTabCount: localState.tabs?.length || 0,
+      reason: 'session-stale'
+    });
+    return { 
+      source: 'local', 
+      state: localState, 
+      discarded: true, 
+      reason: 'session-stale' 
+    };
+  }
+
+  // SessionStorage has same or higher revision - could be a race condition
+  // Still prefer local as the authoritative source
+  if (sessionRevision === localRevision) {
+    return { 
+      source: 'local', 
+      state: localState, 
+      discarded: false, 
+      reason: 'revision-equal-prefer-local' 
+    };
+  }
+
+  // Session has higher revision (unusual - might be from previous browser session)
+  console.warn('[Content] STORAGE_CONFLICT_UNUSUAL:', {
+    decision: 'prefer-local-despite-higher-session',
+    sessionRevision,
+    localRevision,
+    reason: 'local-is-source-of-truth'
+  });
+  return { 
+    source: 'local', 
+    state: localState, 
+    discarded: true, 
+    reason: 'prefer-local-authority' 
+  };
+}
+
+/**
+ * Try to get Quick Tab state from SessionStorage
+ * v1.6.3.8-v7 - Issue #3: Extracted to reduce nesting depth in _validateAndSyncStateAfterBFCache
+ * @private
+ * @returns {Object|null} Session state or null if unavailable
+ */
+function _tryGetSessionState() {
+  try {
+    const sessionKey = 'quicktabs_session_state';
+    const sessionData = sessionStorage.getItem(sessionKey);
+    if (!sessionData) return null;
+    return JSON.parse(sessionData);
+  } catch (_err) {
+    // SessionStorage access may fail
+    return null;
+  }
+}
 
 /**
  * Disconnect port safely during BFCache entry
@@ -629,32 +996,105 @@ function _handleBFCachePageHide(event) {
  * Handle page restored from BFCache
  * v1.6.3.8 - Issue #4 (arch): Request full state sync after BFCache restore
  * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_RESTORE log event name
+ * v1.6.3.8-v7 - Issue #1: Re-establish port with checksum validation
+ * v1.6.3.8-v7 - Issue #3: Validate SessionStorage vs LocalStorage
  * @param {PageTransitionEvent} event - The pageshow event
  */
 function _handleBFCachePageShow(event) {
   // event.persisted is true when page is restored from BFCache
-  if (event.persisted) {
-    // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
-    console.log('[Content] PAGE_LIFECYCLE_BFCACHE_RESTORE:', {
-      reason: 'pageshow with persisted=true',
-      tabId: cachedTabId,
-      hadPort: !!backgroundPort,
+  if (!event.persisted) return;
+
+  const correlationId = `bfcache-restore-${Date.now()}-${cachedTabId || 'unknown'}`;
+
+  // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
+  console.log('[Content] PAGE_LIFECYCLE_BFCACHE_RESTORE:', {
+    reason: 'pageshow with persisted=true',
+    tabId: cachedTabId,
+    hadPort: !!backgroundPort,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Re-establish port connection
+  if (cachedTabId !== null && !backgroundPort) {
+    console.log('[Content] Re-establishing port connection after BFCache restore', { correlationId });
+    connectContentToBackground(cachedTabId);
+  }
+
+  // v1.6.3.8-v7 - Issue #3: Validate and sync state after BFCache restore
+  // Prefer storage.local over SessionStorage for freshness
+  _validateAndSyncStateAfterBFCache(correlationId);
+}
+
+/**
+ * Validate and sync state after BFCache restoration
+ * v1.6.3.8-v7 - Issue #1, #2, #3: Comprehensive BFCache state recovery
+ * @param {string} correlationId - Correlation ID for tracing
+ * @private
+ */
+async function _validateAndSyncStateAfterBFCache(correlationId) {
+  console.log('[Content] BFCACHE_STATE_VALIDATION_START:', { correlationId, timestamp: Date.now() });
+
+  try {
+    // Read from storage.local (source of truth)
+    const localResult = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const localState = localResult?.[CONTENT_STATE_KEY];
+
+    if (!localState) {
+      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', { correlationId });
+      return;
+    }
+
+    // v1.6.3.8-v7 - Issue #2: Validate checksum
+    const checksumResult = _validateHydrationChecksum(localState, localState.checksum);
+    if (!checksumResult.valid) {
+      // Checksum mismatch - request fresh state from background
+      console.error('[Content] BFCACHE_CHECKSUM_MISMATCH: Requesting fresh state', {
+        correlationId,
+        computed: checksumResult.computed,
+        expected: localState.checksum
+      });
+      _requestStateRecovery('bfcache-checksum-mismatch');
+      return;
+    }
+
+    // v1.6.3.8-v7 - Issue #3: Compare with any cached session state
+    // Note: SessionStorage typically loses data on BFCache restoration in Firefox
+    // but we check anyway for completeness
+    const sessionState = _tryGetSessionState();
+
+    const conflictResult = _resolveStorageConflict(sessionState, localState);
+    
+    console.log('[Content] BFCACHE_STATE_VALIDATION_COMPLETE:', {
+      correlationId,
+      source: conflictResult.source,
+      tabCount: conflictResult.state?.tabs?.length || 0,
+      revision: conflictResult.state?.revision,
+      sessionDiscarded: conflictResult.discarded,
+      reason: conflictResult.reason,
+      checksum: checksumResult.computed,
       timestamp: Date.now()
     });
 
-    // Re-establish port connection
-    if (cachedTabId !== null && !backgroundPort) {
-      console.log('[Content] Re-establishing port connection after BFCache restore');
-      connectContentToBackground(cachedTabId);
-    }
+    // Update ordering state with the resolved state
+    _updateAppliedOrderingState(conflictResult.state);
 
-    // Trigger full state sync to get updates missed while in BFCache
+    // Notify QuickTabsManager with the validated state
+    _notifyManagerOfStorageUpdate(conflictResult.state, 'bfcache-restore');
+
+  } catch (err) {
+    console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', {
+      correlationId,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    // Fall back to requesting full sync
     _triggerFullStateSyncAfterBFCache();
   }
 }
 
 /**
- * Trigger full state sync after BFCache restoration
+ * Trigger full state sync after BFCache restoration (fallback)
  * v1.6.3.8 - Issue #4 (arch): Content script may have missed updates while in BFCache
  * @private
  */
@@ -693,9 +1133,342 @@ function _triggerFullStateSyncAfterBFCache() {
 window.addEventListener('pagehide', _handleBFCachePageHide);
 window.addEventListener('pageshow', _handleBFCachePageShow);
 
-console.log('[Content] v1.6.3.8 BFCache handlers registered');
+// v1.6.3.8-v7 - Issue #4: Iframe port lifecycle cleanup
+// Since all_frames=false (v1.6.3.8-v6), this only runs in main frame
+// Add beforeunload to signal background for port cleanup
+window.addEventListener('beforeunload', () => {
+  console.log('[Content] PAGE_LIFECYCLE_BEFOREUNLOAD:', {
+    tabId: cachedTabId,
+    hasPort: !!backgroundPort,
+    timestamp: Date.now()
+  });
+  
+  // Attempt to notify background of impending unload for port cleanup
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'CONTENT_UNLOADING',
+        tabId: cachedTabId,
+        timestamp: Date.now()
+      });
+    } catch (_err) {
+      // Port may already be disconnected
+    }
+  }
+});
+
+console.log('[Content] v1.6.3.8-v7 BFCache handlers registered (with checksum validation)');
 
 // ==================== END BFCACHE HANDLING ====================
+
+// ==================== v1.6.3.8-v6 STORAGE FALLBACK & ORDERING ====================
+// Issue #1: storage.onChanged listener as fallback when port messaging fails
+// Issue #2: Storage event ordering validation using sequenceId and revision
+// Issue #4: Fallback when port.postMessage fails
+
+// Storage key for Quick Tabs state (must match storage-utils.js)
+const CONTENT_STATE_KEY = 'quick_tabs_state_v2';
+
+/**
+ * Validate incoming storage event ordering
+ * v1.6.3.8-v6 - Issue #2: Reject out-of-order updates using sequenceId and revision
+ * @param {Object} newValue - New storage value
+ * @returns {{valid: boolean, reason: string}} Validation result
+ */
+function _validateStorageEventOrdering(newValue) {
+  if (!newValue) {
+    return { valid: false, reason: 'empty-value' };
+  }
+
+  const incomingRevision = newValue.revision;
+  const incomingSequenceId = newValue.sequenceId;
+
+  // Check revision ordering (primary)
+  if (typeof incomingRevision === 'number') {
+    if (incomingRevision <= lastAppliedRevision) {
+      console.warn('[Content] STORAGE_EVENT_REJECTED (revision):', {
+        incomingRevision,
+        lastAppliedRevision,
+        reason: incomingRevision === lastAppliedRevision ? 'duplicate' : 'out-of-order'
+      });
+      return { valid: false, reason: 'revision-rejected' };
+    }
+  }
+
+  // Check sequenceId ordering (secondary)
+  if (typeof incomingSequenceId === 'number') {
+    if (incomingSequenceId <= lastAppliedSequenceId) {
+      console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
+        incomingSequenceId,
+        lastAppliedSequenceId,
+        reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate' : 'out-of-order'
+      });
+      return { valid: false, reason: 'sequenceId-rejected' };
+    }
+  }
+
+  return { valid: true, reason: 'passed' };
+}
+
+/**
+ * Update ordering tracking after applying state
+ * v1.6.3.8-v6 - Issue #2: Track highest applied revision/sequenceId
+ * @param {Object} newValue - Applied storage value
+ */
+function _updateAppliedOrderingState(newValue) {
+  if (typeof newValue.revision === 'number' && newValue.revision > lastAppliedRevision) {
+    lastAppliedRevision = newValue.revision;
+  }
+  if (typeof newValue.sequenceId === 'number' && newValue.sequenceId > lastAppliedSequenceId) {
+    lastAppliedSequenceId = newValue.sequenceId;
+  }
+}
+
+/**
+ * Request fresh state from background when ordering fails
+ * v1.6.3.8-v6 - Issue #2: Recovery mechanism for out-of-order events
+ * @param {string} reason - Reason for recovery request
+ */
+function _requestStateRecovery(reason) {
+  console.log('[Content] STORAGE_STATE_RECOVERY_REQUESTED:', {
+    reason,
+    lastAppliedRevision,
+    lastAppliedSequenceId,
+    hasPort: !!backgroundPort,
+    timestamp: Date.now()
+  });
+
+  // Try port first
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'REQUEST_FULL_STATE_SYNC',
+        source: 'content-ordering-recovery',
+        reason,
+        tabId: cachedTabId,
+        lastAppliedRevision,
+        lastAppliedSequenceId,
+        timestamp: Date.now()
+      });
+      return;
+    } catch (err) {
+      console.warn('[Content] Port recovery request failed:', err.message);
+    }
+  }
+
+  // Fallback to storage.local.get
+  _fallbackToStorageRead(reason);
+}
+
+/**
+ * Fallback to storage.local.get when port fails
+ * v1.6.3.8-v6 - Issue #4: Fallback mechanism when port.postMessage fails
+ * @param {string} reason - Reason for fallback
+ */
+async function _fallbackToStorageRead(reason) {
+  console.log('[Content] STORAGE_FALLBACK_READ:', { reason, timestamp: Date.now() });
+
+  try {
+    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const storedState = result?.[CONTENT_STATE_KEY];
+
+    if (!storedState) {
+      console.warn('[Content] STORAGE_FALLBACK_EMPTY: No state in storage');
+      return;
+    }
+
+    console.log('[Content] STORAGE_FALLBACK_SUCCESS:', {
+      tabCount: storedState.tabs?.length || 0,
+      revision: storedState.revision,
+      sequenceId: storedState.sequenceId,
+      saveId: storedState.saveId
+    });
+
+    // Update ordering state and notify QuickTabsManager if available
+    _updateAppliedOrderingState(storedState);
+    _notifyManagerOfStorageUpdate(storedState, 'storage-fallback');
+  } catch (err) {
+    console.error('[Content] STORAGE_FALLBACK_ERROR:', err.message);
+  }
+}
+
+/**
+ * Notify QuickTabsManager of storage update
+ * v1.6.3.8-v6 - Issue #1: Bridge storage events to QuickTabsManager
+ * @param {Object} state - State from storage
+ * @param {string} source - Source of the update
+ */
+function _notifyManagerOfStorageUpdate(state, source) {
+  // Check if QuickTabsManager is available and initialized
+  if (!quickTabsManager?.internalEventBus) {
+    console.log('[Content] STORAGE_UPDATE_DEFERRED: QuickTabsManager not ready');
+    return;
+  }
+
+  // Emit internal event for QuickTabsManager to handle
+  quickTabsManager.internalEventBus.emit('storage:updated', {
+    state,
+    source,
+    tabCount: state.tabs?.length || 0,
+    revision: state.revision,
+    sequenceId: state.sequenceId,
+    timestamp: Date.now()
+  });
+
+  console.log('[Content] STORAGE_UPDATE_NOTIFIED:', {
+    source,
+    tabCount: state.tabs?.length || 0,
+    revision: state.revision
+  });
+}
+
+/**
+ * Handle storage.onChanged event for Quick Tabs state
+ * v1.6.3.8-v6 - Issue #1: Fallback when port messaging fails
+ * @param {Object} changes - Storage changes
+ * @param {string} areaName - Storage area ('local', 'sync', etc.)
+ */
+function _handleStorageChange(changes, areaName) {
+  // Only handle local storage changes
+  if (areaName !== 'local') return;
+
+  // Only handle Quick Tabs state changes
+  const stateChange = changes[CONTENT_STATE_KEY];
+  if (!stateChange) return;
+
+  const newValue = stateChange.newValue;
+  const oldValue = stateChange.oldValue;
+
+  console.log('[Content] STORAGE_CHANGE_RECEIVED:', {
+    hasNewValue: !!newValue,
+    hasOldValue: !!oldValue,
+    newRevision: newValue?.revision,
+    oldRevision: oldValue?.revision,
+    newSequenceId: newValue?.sequenceId,
+    newTabCount: newValue?.tabs?.length || 0,
+    timestamp: Date.now()
+  });
+
+  // Validate ordering
+  const orderingResult = _validateStorageEventOrdering(newValue);
+  if (!orderingResult.valid) {
+    // Request fresh state if ordering fails
+    if (orderingResult.reason !== 'empty-value') {
+      _requestStateRecovery(orderingResult.reason);
+    }
+    return;
+  }
+
+  // Update ordering state
+  _updateAppliedOrderingState(newValue);
+
+  // Notify QuickTabsManager
+  _notifyManagerOfStorageUpdate(newValue, 'storage.onChanged');
+}
+
+/**
+ * Try to send a single message via port
+ * v1.6.3.8-v7 - Extracted to reduce sendPortMessageWithFallback complexity
+ * @private
+ * @param {Object} message - Message to send
+ * @param {number} attempt - Current attempt number
+ * @returns {{success: boolean, error: Error|null}} Result
+ */
+function _tryPortMessageSend(message, attempt) {
+  if (!backgroundPort) {
+    return { success: false, error: new Error('No port available') };
+  }
+  
+  try {
+    backgroundPort.postMessage(message);
+    console.log('[Content] PORT_MESSAGE_SENT:', {
+      type: message.type || message.action,
+      attempt: attempt + 1
+    });
+    return { success: true, error: null };
+  } catch (err) {
+    console.warn('[Content] PORT_MESSAGE_FAILED:', {
+      attempt: attempt + 1,
+      error: err.message
+    });
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Try to read state from storage as fallback
+ * v1.6.3.8-v7 - Extracted to reduce sendPortMessageWithFallback complexity
+ * @private
+ * @returns {Promise<{success: boolean, state: Object|null}>} Result
+ */
+async function _tryStorageFallbackRead() {
+  try {
+    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
+    const state = result?.[CONTENT_STATE_KEY];
+
+    if (state) {
+      console.log('[Content] PORT_FALLBACK_STORAGE_SUCCESS:', {
+        tabCount: state.tabs?.length || 0,
+        revision: state.revision
+      });
+      return { success: true, state };
+    }
+    return { success: false, state: null };
+  } catch (storageErr) {
+    console.error('[Content] PORT_FALLBACK_STORAGE_ERROR:', storageErr.message);
+    return { success: false, state: null };
+  }
+}
+
+/**
+ * Send message via port with fallback to storage.local.get
+ * v1.6.3.8-v6 - Issue #4: Graceful fallback when port fails
+ * v1.6.3.8-v7 - Refactored: Extracted helpers to reduce complexity
+ * @param {Object} message - Message to send
+ * @param {Object} options - Options for sending
+ * @param {number} [options.maxRetries=3] - Max retry attempts
+ * @param {number} [options.retryDelayMs=100] - Initial retry delay
+ * @returns {Promise<Object>} Response or fallback result
+ */
+async function _sendPortMessageWithFallback(message, options = {}) {
+  const { maxRetries = 3, retryDelayMs = 100 } = options;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const result = _tryPortMessageSend(message, attempt);
+    if (result.success) {
+      return { success: true, method: 'port', attempt: attempt + 1 };
+    }
+    lastError = result.error;
+
+    // Wait before retry with exponential backoff
+    if (attempt < maxRetries - 1) {
+      const delay = retryDelayMs * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // All retries failed - fallback to storage read
+  console.warn('[Content] PORT_MESSAGE_ALL_RETRIES_FAILED:', {
+    totalAttempts: maxRetries,
+    lastError: lastError?.message,
+    fallbackAction: 'storage.local.get'
+  });
+
+  // Fallback: read from storage.local
+  const fallbackResult = await _tryStorageFallbackRead();
+  if (fallbackResult.success) {
+    return { success: true, method: 'storage-fallback', state: fallbackResult.state };
+  }
+
+  return { success: false, method: 'none', error: lastError?.message || 'Port unavailable' };
+}
+
+// v1.6.3.8-v6 - Issue #1: Register storage.onChanged listener as fallback
+browser.storage.onChanged.addListener(_handleStorageChange);
+console.log('[Content] v1.6.3.8-v6 storage.onChanged listener registered');
+
+// ==================== END STORAGE FALLBACK & ORDERING ====================
 
 /**
  * v1.6.0.3 - Helper to initialize Quick Tabs

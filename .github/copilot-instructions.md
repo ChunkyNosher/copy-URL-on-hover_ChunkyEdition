@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v5  
+**Version:** 1.6.3.8-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,23 +21,30 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
-- **Issue #1:** Monotonic revision versioning for storage event ordering
-- **Issue #2:** BC origin isolation solved by removal (Port-based messaging only)
-- **Issue #3:** Port disconnection - consecutive failure tracking, cleanup after 3 failures
-- **Issue #4:** Storage quota recovery - iterative (75%→50%→25%), exponential backoff
-- **Issue #5:** declarativeNetRequest with webRequest fallback for header modification
-- **Issue #6:** Alarm initialization guards for proper ordering
-- **Issue #7:** Robust URL validation with URL constructor, block dangerous protocols
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%, 75%, 90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS (30s)
+- **Queue overflow handling** - Drop oldest 10% when queue full
+- **TTL-based message pruning** - Remove messages older than TTL before flush
+- **storage.onChanged listener** - Fallback sync path in content script
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - Prevents connection storms (3 consecutive failures)
+- **Ordering validation** - sequenceId/revision tracking in content script
+- **BFCache handlers** - Enhanced pageshow/pagehide with state validation
+- **Checksum validation** - djb2-like hash during hydration
+- **SessionStorage conflict resolution** - Prefer storage.local as source of truth
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+- **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab filtering
+- **BroadcastChannelManager.js DELETED** - Port + storage.local architecture ONLY
+
+**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
+counting, storage quota recovery (75%→50%→25%), declarativeNetRequest fallback,
+URL validation (block dangerous protocols).
 
 **v1.6.3.8-v4 Features (Retained):** Initialization barrier (10s), exponential
 backoff retry, port-based hydration, visibility change listener, proactive dedup
 cleanup, probe queuing, sidebar modules.
-
-**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, SIDEBAR_READY
-handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
 
 **Legacy Features:** DEBUG_DIAGNOSTICS, LRU eviction (1000), state machine
 timeouts (7s), circuit breaker probing, Single Writer Authority.
@@ -46,7 +53,7 @@ timeouts (7s), circuit breaker probing, Single Writer Authority.
 TabStateManager, QuickTabGroupManager, NotificationManager
 
 **Deprecated:** `setPosition()`, `setSize()`, `updateQuickTabPosition()`,
-`updateQuickTabSize()`, `BroadcastChannelManager` (REMOVED in v5)
+`updateQuickTabSize()`, `BroadcastChannelManager` (DELETED in v6)
 
 ---
 
@@ -71,22 +78,22 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.8-v5: Port + Storage Architecture (NEW)
+### v1.6.3.8-v6: Port + Storage Architecture (PRODUCTION)
 
-**BroadcastChannel REMOVED** - New two-layer architecture:
+**Two-layer architecture (NO BroadcastChannel):**
 
-- **Layer 1a:** runtime.Port for real-time metadata sync (position, minimized, active)
-- **Layer 1b:** storage.local with monotonic revision versioning for persistent state
-- **Layer 2:** Robust fallback with state versioning via storage.onChanged
+- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized, active)
+- **Layer 2:** storage.local with monotonic revision versioning + storage.onChanged fallback
 
-**Key Changes:**
+**Key Changes (v6):**
 
-- **Monotonic revision numbers** - `revisionId` increments on every state change
-- **Event buffering** - Out-of-order storage events queued and replayed
-- **Port failure counting** - 3 consecutive failures triggers cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
-- **declarativeNetRequest** - Feature detection with webRequest fallback
-- **URL validation** - URL constructor, block javascript:, data:, vbscript: protocols
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+- **BroadcastChannelManager.js** - DELETED from codebase
 
 ### v1.6.3.8-v4: Sidebar Sync Fixes (Retained)
 
@@ -125,15 +132,15 @@ background:
 
 ---
 
-## 🆕 v1.6.3.8-v5 Patterns
+## 🆕 v1.6.3.8-v6 Patterns
 
-- **Port-based messaging PRIMARY** - No BroadcastChannel, Port + storage.local only
-- **Monotonic revision versioning** - `revisionId` for storage event ordering
-- **Event buffering** - Queue out-of-order events for replay
-- **Port failure counting** - 3 consecutive failures triggers reconnect/cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25% with exponential backoff
-- **declarativeNetRequest** - Feature detection with webRequest fallback
-- **URL validation** - Block javascript:, data:, vbscript: protocols
+- **Port-based messaging PRIMARY** - Port + storage.local only (NO BroadcastChannel)
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
 
 ### New Sidebar Modules (`sidebar/modules/`)
 
@@ -145,26 +152,28 @@ background:
 | `health-metrics.js` | Storage/fallback health, dedup map monitoring  |
 | `index.js`          | Re-exports for convenient importing            |
 
+## v1.6.3.8-v5 Patterns (Retained)
+
+- Monotonic revision versioning, port failure counting, storage quota recovery
+- declarativeNetRequest fallback, URL validation
+
 ## v1.6.3.8-v4 Patterns (Retained)
 
 - initializationBarrier Promise, port-based hydration, visibility change listener
 - Proactive dedup cleanup (50%), sliding window eviction (95%), probe queuing
 
-## v1.6.3.8-v2/v3 Patterns (Retained)
-
-- ACK-based messaging, SIDEBAR_READY handshake
-- BFCache lifecycle, port snapshots (60s), WriteBuffer (75ms)
-
-### Key Timing Constants (v1.6.3.8-v5)
+### Key Timing Constants (v1.6.3.8-v6)
 
 | Constant                         | Value     | Purpose                                |
 | -------------------------------- | --------- | -------------------------------------- |
 | `PORT_FAILURE_THRESHOLD`         | 3         | Consecutive failures before cleanup    |
-| `STORAGE_QUOTA_RECOVERY`         | 75/50/25% | Iterative quota recovery thresholds    |
+| `STORAGE_QUOTA_CHECK_INTERVAL`   | 300000    | 5-minute quota monitoring interval     |
+| `MAX_QUEUE_SIZE`                 | 100       | MessageBatcher queue limit             |
+| `MAX_MESSAGE_AGE_MS`             | 30000     | TTL for message pruning                |
+| `PORT_RECONNECT_BASE_MS`         | 100       | Initial reconnection delay             |
+| `PORT_RECONNECT_MAX_MS`          | 10000     | Maximum reconnection delay             |
 | `INIT_BARRIER_TIMEOUT_MS`        | 10000     | Initialization barrier timeout         |
-| `HANDLER_TIMEOUT_MS`             | 5000      | Handler execution timeout              |
 | `WRITE_BUFFER_FLUSH_MS`          | 75        | WriteBuffer batch window               |
-| `KEEPALIVE_INTERVAL_MS`          | 20000     | Unified keepalive                      |
 
 ---
 
@@ -192,10 +201,10 @@ background:
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v5:** monotonic revision
-versioning, port failure counting, storage quota recovery, declarativeNetRequest
-fallback, URL validation, **v1.6.3.8-v4:** initializationBarrier Promise,
-port-based hydration, visibility change listener, proactive dedup cleanup.
+Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v6:** storage quota
+monitoring, MessageBatcher queue limits, checksum validation, beforeunload
+cleanup, **v1.6.3.8-v5:** monotonic revision versioning, port failure counting,
+**v1.6.3.8-v4:** initializationBarrier Promise, port-based hydration.
 
 ---
 
@@ -250,18 +259,18 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 | File                         | Features                                                        |
 | ---------------------------- | --------------------------------------------------------------- |
-| `quick-tabs-manager.js`      | Port-based sync (v8-v5), initializationBarrier, port hydration  |
+| `quick-tabs-manager.js`      | Port-based sync, initializationBarrier, port hydration          |
 | `sidebar/modules/index.js`   | Re-exports init-barrier, state-sync, diagnostics, health-metrics|
-| `background.js`              | Port registry, storage versioning, declarativeNetRequest        |
+| `background.js`              | Port registry, storage versioning, quota monitoring             |
 | `QuickTabHandler.js`         | Handler timeout, init barrier, Code Health 9.41                 |
-| `message-utils.js`           | ACK-based messaging, sendRequestWithTimeout()                   |
-| `storage-utils.js`           | WriteBuffer, sequence rejection, quota recovery                 |
+| `message-utils.js`           | ACK-based messaging, MessageBatcher with queue limits           |
+| `storage-utils.js`           | WriteBuffer, sequence rejection, checksum validation            |
 
 ### Storage
 
 **Permanent State Key:** `quick_tabs_state_v2` (storage.local)  
 **Session State Key:** `session_quick_tabs` (storage.session, v3)  
-**Format:** `{ tabs: [...], saveId, timestamp, writingTabId, revisionId }`
+**Format:** `{ tabs: [...], saveId, timestamp, writingTabId, revisionId, checksum }`
 
 ### Messages
 

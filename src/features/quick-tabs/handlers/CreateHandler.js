@@ -3,7 +3,6 @@
  * Handles Quick Tab creation logic
  * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
  * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created event for UICoordinator
- * v1.6.3.7-v4 - FIX Issue #2: Add BroadcastChannel integration for cross-tab sync
  *
  * Extracted from QuickTabsManager to reduce complexity
  * Lines 903-992 from original index.js
@@ -11,12 +10,8 @@
 
 import browser from 'webextension-polyfill';
 
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-import {
-  broadcastQuickTabCreated,
-  isChannelAvailable
-} from '../channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports and functions removed per user request - Port + storage.onChanged only
 import { createQuickTabWindow } from '../window.js';
 
 /**
@@ -33,7 +28,6 @@ import { createQuickTabWindow } from '../window.js';
  * - Store in tabs Map
  * - Emit QUICK_TAB_CREATED event
  * - Emit window:created event for UICoordinator registration
- * - Broadcast creation to other tabs via BroadcastChannel
  * - Load debug settings from storage
  */
 export class CreateHandler {
@@ -250,8 +244,8 @@ export class CreateHandler {
     // This allows UICoordinator to register the window in its renderedTabs Map
     this._emitWindowCreatedEvent(id, tabWindow);
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast creation via BroadcastChannel
-    this._broadcastCreation(id, tabOptions, options);
+    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
+    // Port-based messaging via storage.onChanged is now the primary sync mechanism
 
     console.log('[CreateHandler] Quick Tab created successfully:', id);
 
@@ -261,48 +255,8 @@ export class CreateHandler {
     };
   }
 
-  /**
-   * Broadcast Quick Tab creation to other tabs
-   * v1.6.3.7-v4 - FIX Issue #2: BroadcastChannel integration
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {Object} tabOptions - Tab options used to create the window
-   * @param {Object} options - Original options passed to create()
-   */
-  _broadcastCreation(id, tabOptions, options) {
-    try {
-      if (!isChannelAvailable()) {
-        console.log('[CreateHandler] BroadcastChannel not available, skipping broadcast');
-        return;
-      }
-
-      // Build broadcast data from options
-      const broadcastData = {
-        id,
-        url: options.url,
-        title: tabOptions.title,
-        left: tabOptions.left,
-        top: tabOptions.top,
-        width: tabOptions.width,
-        height: tabOptions.height,
-        zIndex: tabOptions.zIndex,
-        minimized: tabOptions.minimized || false,
-        originTabId: tabOptions.originTabId,
-        cookieStoreId: tabOptions.cookieStoreId,
-        permanent: tabOptions.permanent,
-        timestamp: Date.now()
-      };
-
-      const success = broadcastQuickTabCreated(id, broadcastData);
-      console.log('[CreateHandler] BROADCAST_SENT: quick-tab-created', {
-        id,
-        success,
-        channelAvailable: isChannelAvailable()
-      });
-    } catch (err) {
-      console.warn('[CreateHandler] Failed to broadcast creation:', err.message);
-    }
-  }
+  // v1.6.3.8-v6 - REMOVED: _broadcastCreation method
+  // BroadcastChannel removed - port-based messaging is now primary
 
   /**
    * Get default option values

@@ -3,9 +3,9 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port-based messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v5), Port + storage.local architecture (NO BroadcastChannel),
-  initializationBarrier Promise, port-based hydration, monotonic revision versioning,
-  storage quota recovery, URL validation
+  (v1.6.3.8-v6), Port + storage.local architecture (NO BroadcastChannel),
+  initializationBarrier Promise, port-based hydration, storage quota monitoring,
+  checksum validation
 tools: ['*']
 ---
 
@@ -39,31 +39,26 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v5 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
-- **Layer 1a:** runtime.Port for real-time metadata sync (position, minimized, active)
-- **Layer 1b:** storage.local with monotonic revision versioning for persistent state
-- **Layer 2:** Robust fallback with state versioning via storage.onChanged
-- **Monotonic revision numbers** - `revisionId` for storage event ordering
-- **Event buffering** - Out-of-order storage events queued and replayed
-- **Port failure counting** - 3 consecutive failures triggers cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
-- **URL validation** - Block javascript:, data:, vbscript: protocols
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized, active)
+- **Layer 2:** storage.local with monotonic revision versioning + storage.onChanged
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
 
-**v1.6.3.8-v4 Features (Retained):**
+**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
+counting, storage quota recovery, URL validation.
 
-- **initializationBarrier Promise** - All async tasks complete before listeners
-- **Port-based hydration** - `_hydrateStateFromBackground()` before storage
-- **Visibility change listener** - State refresh when sidebar becomes visible
-- **Proactive dedup cleanup** - 50% threshold with sliding window at 95%
+**v1.6.3.8-v4 Features (Retained):** initializationBarrier Promise, port-based
+hydration, visibility change listener, proactive dedup cleanup.
 
-**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, SIDEBAR_READY
-handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
-
-**Key Functions (v1.6.3.8-v5):**
+**Key Functions (v1.6.3.8-v6):**
 
 | Function                        | Location          | Purpose                         |
 | ------------------------------- | ----------------- | ------------------------------- |
@@ -77,7 +72,7 @@ handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
 ```javascript
 {
   tabs: [{ id, originTabId, domVerified, zIndex, orphaned, ... }],
-  saveId: 'unique-id', timestamp: Date.now(), writingTabId: 12345, revisionId: 42
+  saveId: 'unique-id', timestamp: Date.now(), writingTabId: 12345, revisionId: 42, checksum: 'abc123'
 }
 ```
 
@@ -87,10 +82,10 @@ handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v5)
-- [ ] Monotonic revision versioning works (`revisionId`) (v1.6.3.8-v5)
-- [ ] Port failure counting works (3 failures → cleanup) (v1.6.3.8-v5)
-- [ ] Storage quota recovery works (75%→50%→25%) (v1.6.3.8-v5)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v6)
+- [ ] Storage quota monitoring works (50%/75%/90%) (v1.6.3.8-v6)
+- [ ] Checksum validation works during hydration (v1.6.3.8-v6)
+- [ ] Port reconnection with exponential backoff works (v1.6.3.8-v6)
 - [ ] initializationBarrier Promise resolves correctly (v1.6.3.8-v4)
 - [ ] Port-based hydration works (`_hydrateStateFromBackground`) (v1.6.3.8-v4)
 - [ ] ACK-based messaging works (sendRequestWithTimeout)
@@ -101,5 +96,5 @@ handshake, BFCache lifecycle, WriteBuffer (75ms), port snapshots.
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.8-v5 Port + storage.local
-architecture, monotonic revision versioning, port failure counting.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v6 Port + storage.local
+architecture, storage quota monitoring, checksum validation.**

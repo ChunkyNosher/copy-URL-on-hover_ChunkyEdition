@@ -12,7 +12,6 @@
  * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
  * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
  * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
- * v1.6.3.7-v4 - FIX Issue #2: Add BroadcastChannel integration for cross-tab sync
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -23,7 +22,6 @@
  * - Reset z-index when all tabs closed
  * - Emit destruction events
  * - Notify background of deletions for Manager sidebar update
- * - Broadcast deletions to other tabs via BroadcastChannel
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
  * - Prevent deletion loops via _destroyedIds tracking
@@ -34,12 +32,8 @@
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
 
-// v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// Imports kept for backwards compatibility - all functions are now NO-OP stubs
-import {
-  broadcastQuickTabDeleted,
-  isChannelAvailable
-} from '../channels/BroadcastChannelManager.js';
+// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports and functions removed per user request - Port + storage.onChanged only
 
 // v1.6.3.4-v5 - FIX Bug #8: Debounce delay for storage writes (ms)
 const STORAGE_DEBOUNCE_DELAY = 150;
@@ -170,9 +164,6 @@ export class DestroyHandler {
     // v1.6.3.2 - FIX Bug #4: Emit state:deleted for PanelContentManager to update
     this._emitStateDeletedEvent(id, tabWindow, source);
 
-    // v1.6.3.7-v4 - FIX Issue #2: Broadcast deletion via BroadcastChannel
-    this._broadcastDeletion(id, source);
-
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
 
@@ -196,32 +187,6 @@ export class DestroyHandler {
     this._persistToStorageImmediate(id);
 
     console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, id);
-  }
-
-  /**
-   * Broadcast Quick Tab deletion to other tabs
-   * v1.6.3.7-v4 - FIX Issue #2: BroadcastChannel integration
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {string} source - Source of deletion
-   */
-  _broadcastDeletion(id, source) {
-    try {
-      if (!isChannelAvailable()) {
-        console.log('[DestroyHandler] BroadcastChannel not available, skipping broadcast');
-        return;
-      }
-
-      const success = broadcastQuickTabDeleted(id);
-      console.log('[DestroyHandler] BROADCAST_SENT: quick-tab-deleted', {
-        id,
-        source,
-        success,
-        channelAvailable: isChannelAvailable()
-      });
-    } catch (err) {
-      console.warn('[DestroyHandler] Failed to broadcast deletion:', err.message);
-    }
   }
 
   /**

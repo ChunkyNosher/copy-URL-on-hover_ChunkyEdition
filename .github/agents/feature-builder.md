@@ -60,26 +60,27 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v5 Features (NEW) - Architecture Redesign:**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
-- **Monotonic revision versioning** - `revisionId` for storage event ordering
-- **Port failure counting** - 3 consecutive failures triggers cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
-- **declarativeNetRequest** - Feature detection with webRequest fallback
-- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+
+**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
+counting, storage quota recovery, declarativeNetRequest fallback, URL validation.
 
 **v1.6.3.8-v4 Features (Retained):** Initialization barriers (10s), exponential
 backoff retry, port-based hydration, visibility change listener, proactive dedup
 cleanup, probe queuing.
-
-**v1.6.3.8-v2/v3 Features (Retained):** ACK-based messaging, WriteBuffer (75ms),
-BFCache lifecycle.
 
 **v1.6.3.7-v4 Features (Retained):**
 
@@ -274,7 +275,7 @@ handling
 
 See QuickTab domain for Solo/Mute implementation patterns.
 
-### Port-Based Messaging Pattern (v1.6.3.8-v5)
+### Port-Based Messaging Pattern (v1.6.3.8-v6)
 
 ```javascript
 // Primary cross-tab sync via runtime.Port

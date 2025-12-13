@@ -1,6 +1,7 @@
 /**
  * MessageBatcher - Message Batching with Adaptive Windows
  * v1.6.4.15 - Phase 3B Optimization #4: Batch rapid operations into single messages
+ * v1.6.3.8-v6 - Issue #2: Added queue size limits and TTL-based pruning
  *
  * Purpose: Reduce message count by 50-70% during batch operations by collecting
  * rapid operations and sending them as a single batch message.
@@ -10,6 +11,8 @@
  * - Adaptive window that extends if operations keep arriving
  * - Coalesce multiple updates to the same Quick Tab
  * - Configurable window size and max batch size
+ * - v1.6.3.8-v6: Queue size limits with overflow handling (drop oldest)
+ * - v1.6.3.8-v6: TTL-based message pruning before flush
  *
  * Architecture:
  * - Operations are queued with timestamps
@@ -27,6 +30,10 @@ const DEFAULT_INITIAL_WINDOW_MS = 50; // Initial batch window
 const DEFAULT_MAX_WINDOW_MS = 100; // Maximum window extension
 const DEFAULT_MAX_BATCH_SIZE = 100; // Max operations per batch
 const DEFAULT_EXTENSION_THRESHOLD_MS = 20; // Extend if op arrives within this threshold
+
+// v1.6.3.8-v6 - Issue #2: Queue size limits and TTL
+const DEFAULT_MAX_QUEUE_SIZE = 100; // Max queue size before overflow handling
+const DEFAULT_MAX_MESSAGE_AGE_MS = 30000; // 30 seconds TTL for messages
 
 // Debug flag
 const DEBUG_BATCHER = false;
@@ -64,6 +71,8 @@ class MessageBatcher {
    * @param {number} [options.maxWindowMs=100] - Maximum window duration in ms
    * @param {number} [options.maxBatchSize=100] - Maximum operations per batch
    * @param {number} [options.extensionThresholdMs=20] - Window extension threshold
+   * @param {number} [options.maxQueueSize=100] - Maximum queue size before overflow (v1.6.3.8-v6)
+   * @param {number} [options.maxMessageAgeMs=30000] - Maximum message age before pruning (v1.6.3.8-v6)
    * @param {Function} [options.onBatchReady] - Callback when batch is ready to send
    */
   constructor(options = {}) {
@@ -71,6 +80,9 @@ class MessageBatcher {
     this._maxWindowMs = options.maxWindowMs || DEFAULT_MAX_WINDOW_MS;
     this._maxBatchSize = options.maxBatchSize || DEFAULT_MAX_BATCH_SIZE;
     this._extensionThresholdMs = options.extensionThresholdMs || DEFAULT_EXTENSION_THRESHOLD_MS;
+    // v1.6.3.8-v6 - Issue #2: Queue size limits and TTL
+    this._maxQueueSize = options.maxQueueSize || DEFAULT_MAX_QUEUE_SIZE;
+    this._maxMessageAgeMs = options.maxMessageAgeMs || DEFAULT_MAX_MESSAGE_AGE_MS;
     this._onBatchReady = options.onBatchReady || null;
 
     // State
@@ -86,13 +98,18 @@ class MessageBatcher {
       batchesSent: 0,
       operationsCoalesced: 0,
       totalWindowDuration: 0,
-      avgBatchSize: 0
+      avgBatchSize: 0,
+      // v1.6.3.8-v6 - Issue #2: Track overflow and TTL pruning
+      overflowDropped: 0,
+      ttlPruned: 0
     };
 
     this._log('BATCHER_CREATED', {
       initialWindowMs: this._initialWindowMs,
       maxWindowMs: this._maxWindowMs,
-      maxBatchSize: this._maxBatchSize
+      maxBatchSize: this._maxBatchSize,
+      maxQueueSize: this._maxQueueSize,
+      maxMessageAgeMs: this._maxMessageAgeMs
     });
   }
 
@@ -121,6 +138,11 @@ class MessageBatcher {
   queue(quickTabId, type, data, correlationId = null) {
     const now = Date.now();
 
+    // v1.6.3.8-v6 - Issue #2: Handle queue overflow (drop oldest)
+    if (this._queue.length >= this._maxQueueSize) {
+      this._handleQueueOverflow();
+    }
+
     const operation = {
       quickTabId,
       type,
@@ -136,7 +158,8 @@ class MessageBatcher {
     this._log('OPERATION_QUEUED', {
       quickTabId,
       type,
-      queueSize: this._queue.length
+      queueSize: this._queue.length,
+      queueCapacity: (this._queue.length / this._maxQueueSize * 100).toFixed(1) + '%'
     });
 
     // Start window if not already started
@@ -154,6 +177,29 @@ class MessageBatcher {
     }
 
     return true;
+  }
+
+  /**
+   * Handle queue overflow by dropping oldest messages
+   * v1.6.3.8-v6 - Issue #2: Queue overflow strategy
+   * @private
+   */
+  _handleQueueOverflow() {
+    // Drop oldest 10% of queue
+    const dropCount = Math.max(1, Math.ceil(this._queue.length * 0.1));
+    const droppedOps = this._queue.splice(0, dropCount);
+
+    this._metrics.overflowDropped += dropCount;
+
+    console.warn('[MessageBatcher] QUEUE_OVERFLOW:', {
+      droppedCount: dropCount,
+      maxQueueSize: this._maxQueueSize,
+      queueSizeBefore: this._queue.length + dropCount,
+      queueSizeAfter: this._queue.length,
+      droppedTypes: droppedOps.map(op => op.type),
+      totalOverflowDropped: this._metrics.overflowDropped,
+      timestamp: Date.now()
+    });
   }
 
   /**
@@ -294,7 +340,43 @@ class MessageBatcher {
   }
 
   /**
+   * Prune messages that have exceeded TTL
+   * v1.6.3.8-v6 - Issue #2: TTL-based message pruning
+   * @private
+   * @param {BatchedOperation[]} operations - Operations to prune
+   * @returns {{ validOps: BatchedOperation[], prunedCount: number }}
+   */
+  _pruneExpiredMessages(operations) {
+    const now = Date.now();
+    const validOps = [];
+    let prunedCount = 0;
+
+    for (const op of operations) {
+      const age = now - op.timestamp;
+      if (age > this._maxMessageAgeMs) {
+        prunedCount++;
+      } else {
+        validOps.push(op);
+      }
+    }
+
+    if (prunedCount > 0) {
+      this._metrics.ttlPruned += prunedCount;
+      console.warn('[MessageBatcher] TTL_PRUNED:', {
+        prunedCount,
+        maxMessageAgeMs: this._maxMessageAgeMs,
+        validCount: validOps.length,
+        totalTtlPruned: this._metrics.ttlPruned,
+        timestamp: now
+      });
+    }
+
+    return { validOps, prunedCount };
+  }
+
+  /**
    * Flush the batch and invoke callback
+   * v1.6.3.8-v6 - Issue #2: Add TTL-based pruning before flush
    * @private
    */
   _flushBatch() {
@@ -320,12 +402,20 @@ class MessageBatcher {
       return;
     }
 
+    // v1.6.3.8-v6 - Issue #2: Prune expired messages by TTL before processing
+    const { validOps, prunedCount } = this._pruneExpiredMessages(originalOps);
+
+    if (validOps.length === 0) {
+      this._log('FLUSH_SKIP', { reason: 'all messages expired', prunedCount });
+      return;
+    }
+
     // Coalesce operations
-    const coalescedOps = this._coalesceOperations(originalOps);
+    const coalescedOps = this._coalesceOperations(validOps);
 
     // Update metrics
     this._metrics.batchesSent++;
-    this._metrics.operationsCoalesced += originalOps.length - coalescedOps.length;
+    this._metrics.operationsCoalesced += validOps.length - coalescedOps.length;
     this._metrics.totalWindowDuration += windowDuration;
     this._metrics.avgBatchSize =
       this._metrics.operationsQueued / Math.max(1, this._metrics.batchesSent);
@@ -335,12 +425,16 @@ class MessageBatcher {
       originalCount: originalOps.length,
       coalescedCount: coalescedOps.length,
       windowDuration,
-      extensions: this._extensionCount
+      extensions: this._extensionCount,
+      // v1.6.3.8-v6 - Issue #2: Include pruned count in result
+      prunedCount
     };
 
     this._log('BATCH_FLUSHED', {
       originalCount: originalOps.length,
+      validCount: validOps.length,
       coalescedCount: coalescedOps.length,
+      prunedCount,
       windowDuration,
       extensions: this._extensionCount
     });
@@ -436,13 +530,15 @@ class MessageBatcher {
 
   /**
    * Get batcher metrics
-   *
+   * v1.6.3.8-v6 - Issue #2: Include overflow and TTL metrics
    * @returns {Object} Metrics object
    */
   getMetrics() {
     return {
       ...this._metrics,
       currentQueueSize: this._queue.length,
+      maxQueueSize: this._maxQueueSize,
+      queueCapacity: (this._queue.length / this._maxQueueSize * 100).toFixed(1) + '%',
       coalescingRatio:
         this._metrics.operationsQueued > 0
           ? ((this._metrics.operationsCoalesced / this._metrics.operationsQueued) * 100).toFixed(
@@ -454,6 +550,7 @@ class MessageBatcher {
 
   /**
    * Reset metrics
+   * v1.6.3.8-v6 - Issue #2: Include overflow and TTL metrics in reset
    */
   resetMetrics() {
     this._metrics = {
@@ -461,13 +558,15 @@ class MessageBatcher {
       batchesSent: 0,
       operationsCoalesced: 0,
       totalWindowDuration: 0,
-      avgBatchSize: 0
+      avgBatchSize: 0,
+      overflowDropped: 0,
+      ttlPruned: 0
     };
   }
 
   /**
    * Update configuration
-   *
+   * v1.6.3.8-v6 - Issue #2: Support configuring queue size and TTL
    * @param {Object} options - New configuration options
    */
   configure(options = {}) {
@@ -482,6 +581,13 @@ class MessageBatcher {
     }
     if (options.extensionThresholdMs !== undefined) {
       this._extensionThresholdMs = options.extensionThresholdMs;
+    }
+    // v1.6.3.8-v6 - Issue #2: Support queue size and TTL configuration
+    if (options.maxQueueSize !== undefined) {
+      this._maxQueueSize = options.maxQueueSize;
+    }
+    if (options.maxMessageAgeMs !== undefined) {
+      this._maxMessageAgeMs = options.maxMessageAgeMs;
     }
     if (options.onBatchReady !== undefined) {
       this._onBatchReady = options.onBatchReady;

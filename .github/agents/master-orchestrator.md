@@ -60,20 +60,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v2 Features (NEW):**
+**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
 
-- **Background Relay pattern** - Sidebar communication bypasses BC origin isolation
-- **ACK-based messaging** - `sendRequestWithTimeout()` for reliable delivery
-- **WriteBuffer pattern** - 75ms batching prevents IndexedDB deadlocks
-- **Handler timeout** - 5000ms with `HANDLER_TIMEOUT/COMPLETED` logging
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
 
-**v1.6.3.8 Features (Retained):** Initialization barriers (10s/2s), centralized
-storage validation, dedup decision logging, keepalive health reports.
+**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port failure
+counting, initialization barriers (10s), WriteBuffer (75ms).
 
 **v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
 listener barrier, LRU dedup eviction (1000), correlation ID echo, state machine

@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.8-v5.
+  documentation. Current version: v1.6.3.8-v6.
 tools: ['*']
 ---
 
@@ -69,29 +69,28 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.8-v5)
+## Current Extension State (v1.6.3.8-v6)
 
-### v1.6.3.8-v5 Features (NEW) - Architecture Redesign
+### v1.6.3.8-v6 Features (NEW) - Production Hardening
 
-- **BroadcastChannel REMOVED** - Port + storage.local replaces BC entirely
-- **Layer 1a:** runtime.Port for real-time metadata sync
-- **Layer 1b:** storage.local with monotonic revision versioning
-- **Layer 2:** Robust fallback via storage.onChanged
-- **Monotonic revision versioning** - `revisionId` for storage event ordering
-- **Port failure counting** - 3 consecutive failures triggers cleanup
-- **Storage quota recovery** - Iterative 75%→50%→25%, exponential backoff
-- **declarativeNetRequest** - Feature detection with webRequest fallback
-- **URL validation** - Block dangerous protocols (javascript:, data:, vbscript:)
+- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
+- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
+- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
+- **Port reconnection** - Exponential backoff (100ms → 10s max)
+- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Checksum validation** - djb2-like hash during hydration
+- **beforeunload cleanup** - CONTENT_UNLOADING message handler
+- **Enhanced logging** - Tier-based dedup stats, 5-min history
+
+### v1.6.3.8-v5 Features (Retained)
+
+- Monotonic revision versioning, port failure counting
+- Storage quota recovery, declarativeNetRequest fallback, URL validation
 
 ### v1.6.3.8-v4 Features (Retained)
 
 - Initialization barriers (10s), exponential backoff retry
 - Port-based hydration, visibility change listener, proactive dedup cleanup
-
-### v1.6.3.8-v2/v3 Features (Retained)
-
-- ACK-based messaging, SIDEBAR_READY handshake, WriteBuffer (75ms)
-- Code Health: background.js (9.09), QuickTabHandler.js (9.41)
 
 ### Architecture
 
@@ -99,7 +98,7 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.8-v5)
+### Key Functions (v1.6.3.8-v6)
 
 | Function                   | Location       | Purpose                        |
 | -------------------------- | -------------- | ------------------------------ |
@@ -113,13 +112,12 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.8-v5
-- [ ] **v1.6.3.8-v5:** BroadcastChannel REMOVED documented
-- [ ] **v1.6.3.8-v5:** Port + storage.local architecture documented
-- [ ] **v1.6.3.8-v5:** Monotonic revision versioning documented
-- [ ] **v1.6.3.8-v5:** Storage quota recovery documented
-- [ ] **v1.6.3.8-v5:** declarativeNetRequest fallback documented
-- [ ] **v1.6.3.8-v5:** URL validation documented
+- [ ] Version numbers match 1.6.3.8-v6
+- [ ] **v1.6.3.8-v6:** BroadcastChannelManager.js DELETED documented
+- [ ] **v1.6.3.8-v6:** Storage quota monitoring documented
+- [ ] **v1.6.3.8-v6:** MessageBatcher queue limits documented
+- [ ] **v1.6.3.8-v6:** Checksum validation documented
+- [ ] **v1.6.3.8-v6:** beforeunload cleanup documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -129,11 +127,11 @@ nothing.
 
 | Error                      | Fix                                    |
 | -------------------------- | -------------------------------------- |
-| v1.6.3.8-v4 or earlier     | Update to 1.6.3.8-v5                   |
+| v1.6.3.8-v5 or earlier     | Update to 1.6.3.8-v6                   |
 | "Pin to Page"              | Use "Solo/Mute"                        |
 | Direct storage writes      | Use Single Writer Authority            |
-| BroadcastChannel refs      | REMOVE - BC is deprecated in v5        |
-| Missing Port architecture  | Document Port + storage.local layers   |
+| BroadcastChannel refs      | REMOVE - BC DELETED in v6              |
+| Missing quota monitoring   | Document storage quota monitoring      |
 
 ---
 
