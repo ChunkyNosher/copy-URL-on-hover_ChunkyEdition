@@ -4465,6 +4465,11 @@ if (IS_TEST_MODE) {
       _testHandleClearAllQuickTabs(sendResponse);
       return true;
     },
+    // v1.6.4 - FIX: Alias for TEST_CLEAR_ALL_QUICK_TABS (test-bridge.js uses plural form)
+    TEST_CLEAR_ALL_QUICK_TABS: (message, sendResponse) => {
+      _testHandleClearAllQuickTabs(sendResponse);
+      return true;
+    },
     TEST_TOGGLE_SOLO: (message, sendResponse) => {
       _testHandleToggleSolo(message.data, sendResponse);
       return true;
