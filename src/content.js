@@ -190,6 +190,65 @@ import { getConsoleLogs, getBufferStats, clearConsoleLogs } from './utils/consol
 // CRITICAL: Early detection marker - must execute first
 console.log('[Copy-URL-on-Hover] Script loaded! @', new Date().toISOString());
 
+// ==================== v1.6.3.8-v8 EARLY STORAGE LISTENER REGISTRATION (Issue #15) ====================
+// Issue #15: Register storage.onChanged listener synchronously at content script load
+// This MUST happen before any async operations to ensure we don't miss state writes
+// The actual handler (_handleStorageChange) is defined later but registered here
+
+/**
+ * Timestamp of storage.onChanged listener registration
+ * v1.6.3.8-v8 - Issue #15: Track when listener was registered for diagnostics
+ */
+const _storageListenerRegistrationTime = Date.now();
+
+/**
+ * Flag to track if early storage listener fired (for fallback mechanism)
+ * v1.6.3.8-v8 - Issue #15: If no event within 1 second, poll storage
+ */
+let _storageListenerHasFired = false;
+
+/**
+ * Early storage change handler - forwards to _handleStorageChange once defined
+ * v1.6.3.8-v8 - Issue #15: Registered synchronously at script load
+ * @param {Object} changes - Storage changes
+ * @param {string} areaName - Storage area name
+ */
+function _earlyStorageChangeHandler(changes, areaName) {
+  _storageListenerHasFired = true;
+
+  // Forward to actual handler if defined, otherwise log and queue
+  if (typeof _handleStorageChange === 'function') {
+    _handleStorageChange(changes, areaName);
+  } else {
+    console.log('[Content] EARLY_STORAGE_CHANGE: Handler not yet defined, storing event:', {
+      areaName,
+      keys: Object.keys(changes),
+      timestamp: Date.now()
+    });
+    // Queue for later processing (if handler isn't defined yet - edge case)
+    _earlyStorageChangeQueue.push({ changes, areaName, timestamp: Date.now() });
+  }
+}
+
+/**
+ * Queue for storage changes received before handler is defined
+ * v1.6.3.8-v8 - Issue #15: Edge case handling
+ */
+const _earlyStorageChangeQueue = [];
+
+// Register storage.onChanged listener immediately at script load
+try {
+  browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
+  console.log('[Content] v1.6.3.8-v8 storage.onChanged listener registered EARLY:', {
+    registrationTime: _storageListenerRegistrationTime,
+    timestamp: Date.now()
+  });
+} catch (err) {
+  console.error('[Content] CRITICAL: Failed to register early storage listener:', err.message);
+}
+
+// ==================== END EARLY STORAGE LISTENER REGISTRATION ====================
+
 try {
   window.CUO_debug_marker = 'JS executed to top of file!';
   console.log('[Copy-URL-on-Hover] Debug marker set successfully');
@@ -1144,31 +1203,81 @@ function _triggerFullStateSyncAfterBFCache() {
 window.addEventListener('pagehide', _handleBFCachePageHide);
 window.addEventListener('pageshow', _handleBFCachePageShow);
 
-// v1.6.3.8-v7 - Issue #4: Iframe port lifecycle cleanup
-// Since all_frames=false (v1.6.3.8-v6), this only runs in main frame
-// Add beforeunload to signal background for port cleanup
-window.addEventListener('beforeunload', () => {
-  console.log('[Content] PAGE_LIFECYCLE_BEFOREUNLOAD:', {
+// v1.6.3.8-v8 - Issue #19: Explicit content script lifecycle handlers
+// Send CONTENT_SCRIPT_UNLOAD to background on pagehide (BFCache enter) and beforeunload
+// This provides a more reliable cleanup signal than port.onDisconnect (Firefox bug 1223425)
+
+/**
+ * Send unload signal to background via multiple channels for reliability
+ * v1.6.3.8-v8 - Issue #19: Multiple channels ensure message reaches background
+ * @private
+ * @param {string} reason - Reason for unload
+ */
+function _sendContentScriptUnloadSignal(reason) {
+  const unloadMessage = {
+    type: 'CONTENT_SCRIPT_UNLOAD',
+    tabId: cachedTabId,
+    reason,
+    timestamp: Date.now()
+  };
+
+  console.log('[Content] PAGE_LIFECYCLE_UNLOAD_SIGNAL:', {
     tabId: cachedTabId,
     hasPort: !!backgroundPort,
+    reason,
     timestamp: Date.now()
   });
 
-  // Attempt to notify background of impending unload for port cleanup
+  // v1.6.3.8-v8 - Issue #19: Try port first (synchronous, most reliable)
   if (backgroundPort) {
     try {
-      backgroundPort.postMessage({
-        type: 'CONTENT_UNLOADING',
-        tabId: cachedTabId,
-        timestamp: Date.now()
-      });
+      backgroundPort.postMessage(unloadMessage);
+      console.log('[Content] CONTENT_SCRIPT_UNLOAD sent via port');
     } catch (_err) {
       // Port may already be disconnected
     }
   }
+
+  // v1.6.3.8-v8 - Issue #19: Also try runtime.sendMessage as fallback
+  // This may not always succeed but provides redundancy
+  try {
+    browser.runtime.sendMessage({
+      action: 'CONTENT_SCRIPT_UNLOAD',
+      ...unloadMessage
+    }).catch(() => {
+      // Expected to fail if background not ready - ignore
+    });
+  } catch (_err) {
+    // Ignore - best effort
+  }
+}
+
+// v1.6.3.8-v8 - Issue #19: Handle pagehide for BFCache entry and navigation
+window.addEventListener('pagehide', (event) => {
+  console.log('[Content] PAGE_LIFECYCLE_PAGEHIDE:', {
+    tabId: cachedTabId,
+    hasPort: !!backgroundPort,
+    persisted: event.persisted,
+    timestamp: Date.now()
+  });
+
+  // Send unload signal regardless of persisted state
+  // If persisted=true, we're entering BFCache (handled separately)
+  // If persisted=false, we're navigating away
+  if (!event.persisted) {
+    _sendContentScriptUnloadSignal('pagehide-navigation');
+  }
 });
 
-console.log('[Content] v1.6.3.8-v7 BFCache handlers registered (with checksum validation)');
+// v1.6.3.8-v7 - Issue #4: Iframe port lifecycle cleanup
+// v1.6.3.8-v8 - Issue #19: Enhanced beforeunload with explicit unload message
+// Since all_frames=false (v1.6.3.8-v6), this only runs in main frame
+// Add beforeunload to signal background for port cleanup
+window.addEventListener('beforeunload', () => {
+  _sendContentScriptUnloadSignal('beforeunload');
+});
+
+console.log('[Content] v1.6.3.8-v8 Content script lifecycle handlers registered');
 
 // ==================== END BFCACHE HANDLING ====================
 
@@ -1475,9 +1584,34 @@ async function _sendPortMessageWithFallback(message, options = {}) {
   return { success: false, method: 'none', error: lastError?.message || 'Port unavailable' };
 }
 
-// v1.6.3.8-v6 - Issue #1: Register storage.onChanged listener as fallback
-browser.storage.onChanged.addListener(_handleStorageChange);
-console.log('[Content] v1.6.3.8-v6 storage.onChanged listener registered');
+// v1.6.3.8-v8 - Issue #15: Process early queued storage changes and set up fallback polling
+// The early listener was registered at script load, now connect it to actual handler
+(function _connectEarlyStorageListener() {
+  console.log('[Content] v1.6.3.8-v8 Connecting early storage listener:', {
+    registrationTime: _storageListenerRegistrationTime,
+    listenerHasFired: _storageListenerHasFired,
+    queuedEventsCount: _earlyStorageChangeQueue.length,
+    timeSinceRegistration: Date.now() - _storageListenerRegistrationTime
+  });
+
+  // Process any queued events
+  if (_earlyStorageChangeQueue.length > 0) {
+    console.log('[Content] Processing queued storage events:', _earlyStorageChangeQueue.length);
+    for (const queuedEvent of _earlyStorageChangeQueue) {
+      _handleStorageChange(queuedEvent.changes, queuedEvent.areaName);
+    }
+    // Clear the queue
+    _earlyStorageChangeQueue.length = 0;
+  }
+
+  // v1.6.3.8-v8 - Issue #15: Set up fallback polling if listener hasn't fired within 1 second
+  setTimeout(() => {
+    if (!_storageListenerHasFired) {
+      console.warn('[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received within 1s, polling storage');
+      _fallbackToStorageRead('listener-no-fire');
+    }
+  }, 1000);
+})();
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 

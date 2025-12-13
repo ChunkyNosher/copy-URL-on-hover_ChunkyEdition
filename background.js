@@ -441,10 +441,34 @@ const ALARM_KEEPALIVE_INTERVAL_MIN = 25 / 60; // 25 seconds in minutes
 const ALARM_STORAGE_QUOTA_CHECK = 'storage-quota-check';
 
 /**
- * Interval for storage quota checks (5 minutes)
+ * Interval for storage quota checks (5 minutes - normal)
  * v1.6.3.8-v6 - Issue #4: Every 5 minutes
  */
 const ALARM_STORAGE_QUOTA_INTERVAL_MIN = 5;
+
+/**
+ * Interval for storage quota checks (1 minute - fast mode when quota high)
+ * v1.6.3.8-v8 - Issue #4: Adaptive monitoring - switch to 1 minute when quota > 50%
+ */
+const ALARM_STORAGE_QUOTA_INTERVAL_FAST_MIN = 1;
+
+/**
+ * Threshold to switch to fast monitoring (50%)
+ * v1.6.3.8-v8 - Issue #4: Adaptive monitoring threshold
+ */
+const STORAGE_QUOTA_HIGH_USAGE_THRESHOLD = 0.5;
+
+/**
+ * Threshold to switch back to normal monitoring (40%)
+ * v1.6.3.8-v8 - Issue #4: Hysteresis to prevent oscillation
+ */
+const STORAGE_QUOTA_LOW_USAGE_THRESHOLD = 0.4;
+
+/**
+ * Track current monitoring mode for adaptive frequency
+ * v1.6.3.8-v8 - Issue #4: 'normal' (5 min) or 'fast' (1 min)
+ */
+let _storageQuotaMonitoringMode = 'normal';
 
 /**
  * Storage quota warning thresholds (percentage of 10MB limit)
@@ -471,12 +495,18 @@ let _lastStorageQuotaThresholdLevel = null;
 /**
  * Storage quota usage snapshot for diagnostic reports
  * v1.6.3.8-v6 - Issue #4: Included in diagnostic snapshots
+ * v1.6.3.8-v8 - Issue #17: Added aggregated storage tracking
  */
 let _lastStorageQuotaSnapshot = {
   bytesInUse: 0,
   percentUsed: 0,
   lastChecked: 0,
-  thresholdLevel: null
+  thresholdLevel: null,
+  // v1.6.3.8-v8 - Issue #17: Per-area usage tracking
+  localBytes: 0,
+  syncBytes: 0,
+  sessionBytes: 0,
+  aggregatedBytes: 0
 };
 
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
@@ -1184,19 +1214,26 @@ async function _performSessionSync() {
 /**
  * Check storage.local quota usage and log warnings at thresholds
  * v1.6.3.8-v6 - Issue #4: Storage quota monitoring
+ * v1.6.3.8-v8 - Issue #4: Adaptive monitoring frequency
+ * v1.6.3.8-v8 - Issue #17: Aggregated storage usage tracking
  * Logs warnings at 50%, 75%, 90% of 10MB limit
  */
 async function checkStorageQuota() {
-  console.log('[Background] v1.6.3.8-v6 Running storage quota check...');
+  console.log('[Background] v1.6.3.8-v8 Running storage quota check...');
 
   try {
-    const bytesInUse = await _getStorageBytesInUse();
-    const percentUsed = bytesInUse / STORAGE_LOCAL_QUOTA_BYTES;
+    // v1.6.3.8-v8 - Issue #17: Get aggregated usage across all storage areas
+    const aggregatedUsage = await _getAggregatedStorageUsage();
+    const bytesInUse = aggregatedUsage.localBytes;
+    const percentUsed = aggregatedUsage.aggregatedBytes / STORAGE_LOCAL_QUOTA_BYTES;
 
-    _updateStorageQuotaSnapshot(bytesInUse, percentUsed);
+    _updateStorageQuotaSnapshot(bytesInUse, percentUsed, aggregatedUsage);
     _checkAndLogThresholdWarning(bytesInUse, percentUsed);
     _checkThresholdRecovery(bytesInUse, percentUsed);
-    _logStorageQuotaStatus(bytesInUse, percentUsed);
+    _logStorageQuotaStatus(bytesInUse, percentUsed, aggregatedUsage);
+
+    // v1.6.3.8-v8 - Issue #4: Adjust monitoring frequency based on usage
+    await _adjustStorageQuotaMonitoringFrequency(percentUsed);
   } catch (err) {
     console.error('[Background] STORAGE_QUOTA_CHECK_FAILED:', {
       error: err.message,
@@ -1221,14 +1258,23 @@ async function _getStorageBytesInUse() {
 /**
  * Update storage quota snapshot
  * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * v1.6.3.8-v8 - Issue #17: Include aggregated usage details
  * @private
+ * @param {number} bytesInUse - Local storage bytes
+ * @param {number} percentUsed - Usage percentage (0-1)
+ * @param {Object} [aggregatedUsage] - Per-area usage breakdown
  */
-function _updateStorageQuotaSnapshot(bytesInUse, percentUsed) {
+function _updateStorageQuotaSnapshot(bytesInUse, percentUsed, aggregatedUsage = null) {
   _lastStorageQuotaSnapshot = {
     bytesInUse,
     percentUsed,
     lastChecked: Date.now(),
-    thresholdLevel: null
+    thresholdLevel: null,
+    // v1.6.3.8-v8 - Issue #17: Per-area usage tracking
+    localBytes: aggregatedUsage?.localBytes || bytesInUse,
+    syncBytes: aggregatedUsage?.syncBytes || 0,
+    sessionBytes: aggregatedUsage?.sessionBytes || 0,
+    aggregatedBytes: aggregatedUsage?.aggregatedBytes || bytesInUse
   };
 }
 
@@ -1272,15 +1318,27 @@ function _checkThresholdRecovery(bytesInUse, percentUsed) {
 /**
  * Log storage quota status
  * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
+ * v1.6.3.8-v8 - Issue #17: Include per-area usage breakdown
  * @private
+ * @param {number} bytesInUse - Local storage bytes
+ * @param {number} percentUsed - Usage percentage (0-1)
+ * @param {Object} [aggregatedUsage] - Per-area usage breakdown
  */
-function _logStorageQuotaStatus(bytesInUse, percentUsed) {
+function _logStorageQuotaStatus(bytesInUse, percentUsed, aggregatedUsage = null) {
   console.log('[Background] STORAGE_QUOTA_STATUS:', {
     bytesInUse,
     bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
     percentUsed: (percentUsed * 100).toFixed(1) + '%',
     quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
     thresholdLevel: _lastStorageQuotaSnapshot.thresholdLevel || 'OK',
+    // v1.6.3.8-v8 - Issue #17: Per-area usage breakdown
+    perAreaUsage: aggregatedUsage ? {
+      localMB: (aggregatedUsage.localBytes / (1024 * 1024)).toFixed(3) + 'MB',
+      syncMB: (aggregatedUsage.syncBytes / (1024 * 1024)).toFixed(3) + 'MB',
+      sessionMB: (aggregatedUsage.sessionBytes / (1024 * 1024)).toFixed(3) + 'MB',
+      aggregatedMB: (aggregatedUsage.aggregatedBytes / (1024 * 1024)).toFixed(3) + 'MB'
+    } : null,
+    monitoringMode: _storageQuotaMonitoringMode,
     timestamp: Date.now()
   });
 }
@@ -1299,6 +1357,187 @@ async function _estimateStorageUsage() {
   } catch (_err) {
     return 0;
   }
+}
+
+/**
+ * Get aggregated storage usage across all storage areas
+ * v1.6.3.8-v8 - Issue #17: Track usage across local, sync, and session storage
+ * Firefox MV2 extensions have a shared 10MB quota for storage.local
+ * storage.sync has a 5KB item limit and 100KB total limit
+ * storage.session has variable limits
+ * @private
+ * @returns {Promise<Object>} Per-area and aggregated usage
+ */
+async function _getAggregatedStorageUsage() {
+  const usage = {
+    localBytes: 0,
+    syncBytes: 0,
+    sessionBytes: 0,
+    aggregatedBytes: 0
+  };
+
+  try {
+    // Get storage.local usage (primary)
+    usage.localBytes = await _getLocalStorageBytes();
+
+    // Get storage.sync usage
+    usage.syncBytes = await _getSyncStorageBytes();
+
+    // Estimate storage.session usage (Firefox 115+)
+    usage.sessionBytes = await _getSessionStorageBytes();
+
+    // Calculate aggregated total
+    usage.aggregatedBytes = usage.localBytes + usage.syncBytes + usage.sessionBytes;
+
+    console.log('[Background] STORAGE_USAGE_AGGREGATED:', {
+      localBytes: usage.localBytes,
+      syncBytes: usage.syncBytes,
+      sessionBytes: usage.sessionBytes,
+      aggregatedBytes: usage.aggregatedBytes,
+      timestamp: Date.now()
+    });
+
+    return usage;
+  } catch (err) {
+    console.error('[Background] _getAggregatedStorageUsage error:', err.message);
+    // Fall back to local-only usage
+    usage.aggregatedBytes = usage.localBytes;
+    return usage;
+  }
+}
+
+/**
+ * Get storage.local bytes in use
+ * v1.6.3.8-v8 - Issue #17: Extracted to reduce nesting
+ * @private
+ * @returns {Promise<number>} Bytes in use
+ */
+async function _getLocalStorageBytes() {
+  if (typeof browser.storage.local.getBytesInUse === 'function') {
+    return browser.storage.local.getBytesInUse(null);
+  }
+  return _estimateStorageUsage();
+}
+
+/**
+ * Get storage.sync bytes in use
+ * v1.6.3.8-v8 - Issue #17: Extracted to reduce nesting
+ * @private
+ * @returns {Promise<number>} Bytes in use
+ */
+async function _getSyncStorageBytes() {
+  try {
+    if (typeof browser.storage.sync?.getBytesInUse === 'function') {
+      return browser.storage.sync.getBytesInUse(null);
+    }
+    if (browser.storage.sync) {
+      // Estimate sync storage size
+      const syncData = await browser.storage.sync.get(null);
+      return new Blob([JSON.stringify(syncData)]).size;
+    }
+    return 0;
+  } catch (_syncErr) {
+    // storage.sync may not be available or may throw
+    return 0;
+  }
+}
+
+/**
+ * Get storage.session bytes in use (Firefox 115+)
+ * v1.6.3.8-v8 - Issue #17: Extracted to reduce nesting
+ * @private
+ * @returns {Promise<number>} Estimated bytes in use
+ */
+async function _getSessionStorageBytes() {
+  try {
+    if (!browser.storage.session) return 0;
+    const sessionData = await browser.storage.session.get(null);
+    const sessionKeys = Object.keys(sessionData);
+    if (sessionKeys.length === 0) return 0;
+    return new Blob([JSON.stringify(sessionData)]).size;
+  } catch (_sessionErr) {
+    // storage.session may not be available
+    return 0;
+  }
+}
+
+/**
+ * Check if storage quota is in high usage state (>50%)
+ * v1.6.3.8-v8 - Issue #4: Helper for adaptive monitoring decision
+ * @private
+ * @param {number} percentUsed - Usage percentage (0-1)
+ * @returns {boolean} True if quota exceeds high usage threshold
+ */
+function _isQuotaHighUsage(percentUsed) {
+  return percentUsed >= STORAGE_QUOTA_HIGH_USAGE_THRESHOLD;
+}
+
+/**
+ * Determine target monitoring mode based on usage with hysteresis
+ * v1.6.3.8-v8 - Issue #4: Extracted to reduce complexity
+ * @private
+ * @param {number} percentUsed - Usage percentage (0-1)
+ * @returns {string} Target mode ('fast' or 'normal')
+ */
+function _determineTargetMonitoringMode(percentUsed) {
+  const wasHighUsage = _storageQuotaMonitoringMode === 'fast';
+  const isHighUsage = _isQuotaHighUsage(percentUsed);
+  const isLowUsage = percentUsed < STORAGE_QUOTA_LOW_USAGE_THRESHOLD;
+
+  // Apply hysteresis to prevent oscillation
+  if (isHighUsage && !wasHighUsage) return 'fast';
+  if (isLowUsage && wasHighUsage) return 'normal';
+  return _storageQuotaMonitoringMode;
+}
+
+/**
+ * Update storage quota alarm with new interval
+ * v1.6.3.8-v8 - Issue #4: Extracted to reduce complexity
+ * @private
+ * @param {string} targetMode - Target monitoring mode
+ * @param {number} percentUsed - Current usage percentage
+ */
+async function _updateStorageQuotaAlarm(targetMode, percentUsed) {
+  const wasHighUsage = _storageQuotaMonitoringMode === 'fast';
+  _storageQuotaMonitoringMode = targetMode;
+
+  const newInterval = targetMode === 'fast'
+    ? ALARM_STORAGE_QUOTA_INTERVAL_FAST_MIN
+    : ALARM_STORAGE_QUOTA_INTERVAL_MIN;
+
+  console.log('[Background] STORAGE_QUOTA_MONITORING_MODE_CHANGED:', {
+    previousMode: wasHighUsage ? 'fast' : 'normal',
+    newMode: targetMode,
+    newIntervalMin: newInterval,
+    percentUsed: (percentUsed * 100).toFixed(1) + '%',
+    timestamp: Date.now()
+  });
+
+  try {
+    await browser.alarms.clear(ALARM_STORAGE_QUOTA_CHECK);
+    await browser.alarms.create(ALARM_STORAGE_QUOTA_CHECK, {
+      delayInMinutes: newInterval,
+      periodInMinutes: newInterval
+    });
+  } catch (err) {
+    console.error('[Background] Failed to update storage quota alarm:', err.message);
+  }
+}
+
+/**
+ * Adjust storage quota monitoring frequency based on usage level
+ * v1.6.3.8-v8 - Issue #4: Adaptive monitoring - fast (1 min) when >50%, normal (5 min) when <40%
+ * Uses hysteresis (50%/40%) to prevent oscillation between modes
+ * @private
+ * @param {number} percentUsed - Current usage percentage (0-1)
+ */
+async function _adjustStorageQuotaMonitoringFrequency(percentUsed) {
+  const targetMode = _determineTargetMonitoringMode(percentUsed);
+
+  // Only update alarm if mode changed
+  if (targetMode === _storageQuotaMonitoringMode) return;
+
+  await _updateStorageQuotaAlarm(targetMode, percentUsed);
 }
 
 /**
@@ -7276,6 +7515,35 @@ function unregisterPort(portId, reason = 'disconnect') {
 }
 
 /**
+ * Clean up all ports associated with a specific tab
+ * v1.6.3.8-v8 - Issue #19: Clean up ports when content script unloads
+ * @param {number} tabId - Tab ID to clean up ports for
+ */
+function _cleanupPortsForTab(tabId) {
+  if (tabId == null) return;
+
+  const portsToCleanup = [];
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.tabId === tabId) {
+      portsToCleanup.push(portId);
+    }
+  }
+
+  if (portsToCleanup.length === 0) return;
+
+  console.log('[Background] CLEANUP_PORTS_FOR_TAB:', {
+    tabId,
+    portCount: portsToCleanup.length,
+    portIds: portsToCleanup,
+    timestamp: Date.now()
+  });
+
+  for (const portId of portsToCleanup) {
+    unregisterPort(portId, 'tab-unload');
+  }
+}
+
+/**
  * Update port activity timestamp
  * v1.6.3.6-v11 - FIX Issue #12: Track port activity
  * v1.6.3.7-v9 - Issue #4: Update lastActivityTime
@@ -10949,6 +11217,31 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleManagerCommand(message)
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  // v1.6.3.8-v8 - Issue #19: Handle CONTENT_SCRIPT_UNLOAD from content script
+  // This provides explicit cleanup when content script is about to unload
+  if (message.action === 'CONTENT_SCRIPT_UNLOAD' || message.type === 'CONTENT_SCRIPT_UNLOAD') {
+    const tabId = message.tabId || sender?.tab?.id;
+    console.log('[Background] CONTENT_SCRIPT_UNLOAD received:', {
+      tabId,
+      reason: message.reason,
+      timestamp: message.timestamp,
+      senderTabId: sender?.tab?.id
+    });
+
+    // Clean up any port associated with this tab
+    _cleanupPortsForTab(tabId);
+
+    // Clean up Quick Tab host tracking
+    _cleanupQuickTabHostTracking(tabId);
+
+    sendResponse({
+      success: true,
+      type: 'CONTENT_SCRIPT_UNLOAD_ACK',
+      timestamp: Date.now()
+    });
     return true;
   }
 
