@@ -37,19 +37,27 @@ import { CONSTANTS } from '../../core/config.js';
 import { STATE_KEY } from '../../utils/storage-utils.js';
 
 // v1.6.3.7-v12 - Issue #12: currentTabId barrier constants (code review fix)
-const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait
+// v1.6.3.8-v9 - FIX Section 1.3: Increased timeout from 2s to 5s for slow devices
+const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 5000; // 5 second max wait
 const INITIAL_POLL_INTERVAL_MS = 50;
 const MAX_POLL_INTERVAL_MS = 200;
 const POLL_INTERVAL_MULTIPLIER = 1.5; // Exponential backoff factor
 
+// v1.6.3.8-v9 - FIX Section 1.3: Delayed retry interval for hydration fallback
+const HYDRATION_RETRY_DELAY_MS = 3000; // 3 second delay before retry
+
 // v1.6.3.8-v3 - Issue #6: Debug flag for message queueing (respects DEBUG_MESSAGING pattern)
 const DEBUG_MESSAGING = true;
+
+// v1.6.3.8-v9 - FIX Section 5.3: Maximum message queue size to prevent unbounded growth
+const MAX_MESSAGE_QUEUE_SIZE = 100;
 
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with logging
  * v1.6.3.8-v3 - FIX Issue #6: Add message queue for init race condition prevention
+ * v1.6.3.8-v9 - FIX Section 5.3: Add message queue size limit (100 messages)
  */
 class QuickTabsManager {
   constructor(options = {}) {
@@ -349,6 +357,7 @@ class QuickTabsManager {
   /**
    * Check currentTabId barrier before hydration
    * v1.6.3.7-v12 - Issue #12: Ensure currentTabId is set before hydration to prevent filtering all tabs
+   * v1.6.3.8-v9 - FIX Section 1.3: Increased timeout to 5s, add fallback retry mechanism
    * @private
    * @returns {Promise<{passed: boolean, reason: string}>}
    */
@@ -366,6 +375,7 @@ class QuickTabsManager {
 
     // v1.6.3.7-v12 - Issue #12: Wait for currentTabId to be set with timeout
     // v1.6.3.7-v12 - FIX Code Review: Use exponential backoff for polling
+    // v1.6.3.8-v9 - FIX Section 1.3: Increased timeout to 5 seconds for slow devices
     console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Waiting for currentTabId...', {
       timeout: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
       pollingStrategy: 'exponential-backoff',
@@ -392,19 +402,60 @@ class QuickTabsManager {
     }
 
     // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
-    // Don't proceed with hydration to avoid filtering ALL tabs (because null !== any originTabId)
+    // v1.6.3.8-v9 - FIX Section 1.3: Schedule delayed retry instead of just failing
     console.error('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: FAILED - timeout reached', {
       currentTabId: this.currentTabId,
       timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
       elapsedMs: Date.now() - barrierStartTime,
-      consequence: 'Hydration will be skipped to prevent filtering all tabs',
+      consequence: 'Hydration will be skipped, scheduling delayed retry',
+      retryDelayMs: HYDRATION_RETRY_DELAY_MS,
       timestamp: Date.now()
     });
 
+    // v1.6.3.8-v9 - FIX Section 1.3: Schedule a delayed retry of hydration
+    // This gives background script more time to respond with currentTabId
+    this._scheduleDelayedHydrationRetry();
+
     return {
       passed: false,
-      reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait`
+      reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait (retry scheduled)`
     };
+  }
+
+  /**
+   * Schedule a delayed retry of hydration after barrier timeout
+   * v1.6.3.8-v9 - FIX Section 1.3: Fallback mechanism for slow devices
+   * @private
+   */
+  _scheduleDelayedHydrationRetry() {
+    console.log('[QuickTabsManager] HYDRATION_RETRY_SCHEDULED:', {
+      retryDelayMs: HYDRATION_RETRY_DELAY_MS,
+      timestamp: Date.now()
+    });
+
+    setTimeout(async () => {
+      // Check if currentTabId is now available
+      if (this.currentTabId !== null && this.currentTabId !== undefined) {
+        console.log('[QuickTabsManager] HYDRATION_RETRY_STARTED:', {
+          currentTabId: this.currentTabId,
+          timestamp: Date.now()
+        });
+
+        // Attempt hydration now that currentTabId is available
+        const hydrationResult = await this._hydrateStateFromStorage();
+        console.log('[QuickTabsManager] HYDRATION_RETRY_COMPLETE:', {
+          success: hydrationResult.success,
+          count: hydrationResult.count,
+          reason: hydrationResult.reason,
+          timestamp: Date.now()
+        });
+      } else {
+        console.warn('[QuickTabsManager] HYDRATION_RETRY_SKIPPED: currentTabId still null', {
+          currentTabId: this.currentTabId,
+          timestamp: Date.now()
+        });
+      }
+    }, HYDRATION_RETRY_DELAY_MS);
   }
 
   /**
@@ -1831,6 +1882,7 @@ class QuickTabsManager {
   /**
    * Queue a message for later processing
    * v1.6.3.8-v3 - Issue #6: Buffer messages until handler signals READY
+   * v1.6.3.8-v9 - FIX Section 5.3: Add maximum queue size limit (100 messages)
    * Messages received during initialization are queued and replayed later
    *
    * @param {Object} message - Message to queue
@@ -1843,6 +1895,19 @@ class QuickTabsManager {
     // If already ready, process immediately
     if (this._isReady) {
       return false;
+    }
+
+    // v1.6.3.8-v9 - FIX Section 5.3: Check queue size limit before adding
+    if (this._messageQueue.length >= MAX_MESSAGE_QUEUE_SIZE) {
+      // Drop oldest message to make room for new one
+      const droppedMessage = this._messageQueue.shift();
+      console.warn('[QuickTabsManager] MESSAGE_QUEUE_OVERFLOW: Dropping oldest message', {
+        droppedType: droppedMessage?.type,
+        droppedAt: droppedMessage?._queuedAt,
+        queueSize: MAX_MESSAGE_QUEUE_SIZE,
+        newMessageType: message.type,
+        timestamp: Date.now()
+      });
     }
 
     // Add timestamp and queue position for debugging
@@ -1861,6 +1926,7 @@ class QuickTabsManager {
         source: message.source || 'unknown',
         queuePosition: queuedMessage._queuePosition,
         queueLength: this._messageQueue.length,
+        maxQueueSize: MAX_MESSAGE_QUEUE_SIZE,
         timestamp: Date.now()
       });
     }
