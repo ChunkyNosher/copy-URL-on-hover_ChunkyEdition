@@ -65,19 +65,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
+**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
 
-- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
-- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
-- **Circuit breaker** - 3 consecutive failures triggers cleanup
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
 
-**v1.6.3.8-v5/v4 Features (Retained):** Monotonic revision versioning, port
-failure counting, initialization barriers, exponential backoff.
+**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
+escalation, correlationId tracing, adaptive quota monitoring.
+
+**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
+quota monitoring, MessageBatcher queue limits, circuit breaker.
 
 **v1.6.3.7-v11-v12 Features (Retained):** DEBUG_DIAGNOSTICS flag, Promise-based
 listener barrier, LRU eviction (1000), correlation ID echo, state machine

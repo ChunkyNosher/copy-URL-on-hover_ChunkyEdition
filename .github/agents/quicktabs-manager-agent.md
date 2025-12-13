@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v6), Port + storage.local architecture (NO BroadcastChannel),
+  (v1.6.3.8-v8), Port + storage.local architecture (NO BroadcastChannel),
   initializationBarrier Promise, port-based hydration, storage quota monitoring,
   checksum validation
 tools: ['*']
@@ -37,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v6 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v8 - Domain-Driven Design with Background-as-Coordinator
 
 **Key Manager Features:**
 
@@ -55,20 +55,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   storage.onChanged
 - **Operation Confirmations** - Closed-loop feedback for all operations
 
-**v1.6.3.8-v6 Features (NEW) - Production Hardening:**
+**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
 
-- **BroadcastChannelManager.js DELETED** - Port + storage.local ONLY
-- **Storage quota monitoring** - 5-minute intervals, warnings at 50%/75%/90%
-- **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), TTL pruning (30s)
-- **Port reconnection** - Exponential backoff (100ms → 10s max)
-- **Circuit breaker** - 3 consecutive failures triggers cleanup
-- **Checksum validation** - djb2-like hash during hydration
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
 
-**v1.6.3.8-v5 Features (Retained):** Monotonic revision versioning, port failure
-counting, storage quota recovery, declarativeNetRequest fallback, URL
-validation.
+**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
+escalation, correlationId tracing, adaptive quota monitoring.
 
-**Key Logging Events (v1.6.3.8-v6):**
+**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
+quota monitoring, MessageBatcher queue limits, checksum validation.
+
+**Key Logging Events (v1.6.3.8-v8):**
 
 - `[Manager] INITIALIZATION_BARRIER: phase=X, elapsed=Yms`
 - `[Manager] STATE_HYDRATION: source=port|storage|cache, tabCount=N, checksum=X`
@@ -91,13 +92,16 @@ validation.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v6)
-- [ ] Storage quota monitoring works (50%/75%/90%) (v1.6.3.8-v6)
-- [ ] MessageBatcher queue limits work (100 max) (v1.6.3.8-v6)
-- [ ] Checksum validation works during hydration (v1.6.3.8-v6)
-- [ ] initializationBarrier Promise resolves correctly (v1.6.3.8-v4)
-- [ ] Port-based hydration works (`_hydrateStateFromBackground`) (v1.6.3.8-v4)
-- [ ] Visibility change listener triggers state refresh (v1.6.3.8-v4)
+- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v8)
+- [ ] Self-write detection works (50ms window) (v1.6.3.8-v8)
+- [ ] Transaction timeout 1000ms (v1.6.3.8-v8)
+- [ ] Port message queue works (v1.6.3.8-v8)
+- [ ] Extended dedup 10s works (v1.6.3.8-v8)
+- [ ] Storage quota monitoring works (50%/75%/90%)
+- [ ] MessageBatcher queue limits work (100 max)
+- [ ] Checksum validation works during hydration
+- [ ] initializationBarrier Promise resolves correctly
+- [ ] Port-based hydration works (`_hydrateStateFromBackground`)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -105,5 +109,5 @@ validation.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.8-v6 Port + storage.local
-architecture, storage quota monitoring, checksum validation.**
+**Your strength: Manager coordination with v1.6.3.8-v8 Port + storage.local
+architecture, self-write detection, transaction timeout, port message queue.**

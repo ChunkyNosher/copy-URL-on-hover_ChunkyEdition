@@ -2,6 +2,9 @@
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
 // Also handles webRequest/declarativeNetRequest to remove X-Frame-Options for Quick Tabs
+// v1.6.3.8-v8 - Critical Bug Fixes:
+//   - Transaction timeout: Increased from 500ms to 1000ms for Firefox listener delay
+//   - BroadcastChannel: Completely removed - port + storage.onChanged only
 // v1.6.3.8-v6 - Core Architecture Fixes:
 //   - Issue #2: MessageBatcher queue size limits (MAX_QUEUE_SIZE=100) and TTL (MAX_MESSAGE_AGE_MS=30000)
 //   - Issue #4: Storage quota monitoring (every 5 min) with warnings at 50%, 75%, 90% thresholds
@@ -14,8 +17,9 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
-// All BC imports removed per user request - Port + storage.onChanged only
+// v1.6.3.8-v8 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
+// All BC imports and functions removed - Port + storage.onChanged ONLY
+// See Issue #13: Any remaining BC references are comments for historical context
 // v1.6.4.14 - Phase 3A Optimization imports
 import MemoryMonitor from './src/features/quick-tabs/MemoryMonitor.js';
 import PerformanceMetrics from './src/features/quick-tabs/PerformanceMetrics.js';
@@ -878,10 +882,10 @@ function _getKeepaliveHealthSummary() {
 // Start keepalive on script load
 startKeepalive();
 
-// ==================== v1.6.3.8-v5 BROADCASTCHANNEL REMOVED ====================
-// ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
-// All BC code removed per user request - Port + storage.onChanged only
+// ==================== v1.6.3.8-v8 BROADCASTCHANNEL REMOVED ====================
+// ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED per architecture-redesign.md
+// v1.6.3.8-v8 - Issue #13: BroadcastChannel removal complete
+// All BC code removed - Port + storage.onChanged ONLY
 // The new architecture uses:
 // - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
 // - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
@@ -6713,7 +6717,7 @@ function _processStorageUpdate(newValue) {
 
   // v1.6.3.4-v11 - Background caches state for popup/sidebar queries
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
-  // v1.6.4.13 - FIX Issue #1 & #2: ALSO broadcast to BroadcastChannel for Manager updates
+  // v1.6.3.8-v8 - Issue #13: BC removed, port-based notification only
   // v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID and sequenceId
   console.log('[Background] [STORAGE] STATE_CHANGE_DETECTED:', {
     tabCount: filteredValue.tabs?.length || 0,
@@ -6725,7 +6729,7 @@ function _processStorageUpdate(newValue) {
   });
   _updateGlobalStateFromStorage(filteredValue);
 
-  // v1.6.4.13 - FIX Issue #1 & #2: Broadcast state change via BroadcastChannel (Tier 1)
+  // v1.6.3.8-v8 - Issue #13: Broadcast via port-based messaging (BC removed)
   // This ensures Manager receives instant updates when storage changes
   _broadcastStorageWriteConfirmation(filteredValue, filteredValue.saveId);
 }
@@ -9677,9 +9681,9 @@ async function handleAdoptAction(payload) {
 /**
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
- * v1.6.3.7-v7 - FIX Issue #6: Add BroadcastChannel confirmation after successful write
  * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
  * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
+ * v1.6.3.8-v8 - Issue #13: BC removed, port-based notification only
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
@@ -9720,7 +9724,7 @@ async function writeStateWithVerification() {
         tabCount: stateToWrite.tabs.length
       });
 
-      // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel
+      // v1.6.3.8-v8 - Issue #13: Broadcast via port-based notification (BC removed)
       _broadcastStorageWriteConfirmation(stateToWrite, saveId);
     }
 
@@ -10411,7 +10415,7 @@ async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, at
       tabCount
     });
 
-    // v1.6.3.7-v7 - FIX Issue #6: Broadcast confirmation via BroadcastChannel after verified write
+    // v1.6.3.8-v8 - Issue #13: Broadcast via port-based notification (BC removed)
     _broadcastStorageWriteConfirmation(readBack, saveId);
 
     return {
@@ -11006,8 +11010,8 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
  * v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT when available (primary)
  *              then fall back to runtime.sendMessage (secondary)
- * v1.6.3.7-v7 - FIX Issue #1 & #2: Added BroadcastChannel as Tier 1 (PRIMARY) messaging
  * v1.6.3.8-v7 - Issue #9: Include correlationId in broadcast messages for tracing
+ * v1.6.3.8-v8 - Issue #13: BC removed, port-based messaging is now PRIMARY
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change

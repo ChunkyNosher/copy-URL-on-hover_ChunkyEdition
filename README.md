@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.8-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,44 +9,42 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v6 Status:** Production Hardening - BroadcastChannel DELETED ✅
+**🔧 v1.6.3.8-v8 Status:** Storage, Handler & Init Fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v6
+## 🎉 What's New in v1.6.3.8-v8
 
-**🔧 Production Hardening (December 2025) ✅**
+**🔧 Storage, Handler & Init Fixes (December 2025) ✅**
 
-**BroadcastChannel COMPLETELY REMOVED - Port + Storage Architecture:**
+**Storage & Transaction Improvements:**
 
-- ✅ **BroadcastChannelManager.js DELETED** from codebase
-- ✅ **BC removed from all handlers** (Create, Update, Visibility, Destroy)
-- ✅ **Tests updated** to use storage-based sync simulation
+- ✅ **Self-write detection** - 50ms timestamp window for filtering own writes
+- ✅ **Transaction timeout 1000ms** - Increased from 500ms for Firefox delay
+- ✅ **Storage event ordering** - 300ms tolerance for Firefox latency
 
-**13 Architecture Fixes:**
+**Handler & Safety Fixes:**
 
-- ✅ **Storage quota monitoring** - 5-minute intervals, warnings at 50%, 75%,
-  90%
-- ✅ **MessageBatcher queue limits** - MAX_QUEUE_SIZE (100), MAX_MESSAGE_AGE_MS
-  (30s)
-- ✅ **Queue overflow handling** - Drop oldest 10% when queue full
-- ✅ **TTL-based message pruning** - Remove messages older than TTL before flush
-- ✅ **storage.onChanged listener** - Fallback sync path in content script
-- ✅ **Port reconnection** - Exponential backoff (100ms → 10s max)
-- ✅ **Circuit breaker** - Prevents connection storms (3 consecutive failures)
-- ✅ **Ordering validation** - sequenceId/revision tracking in content script
-- ✅ **BFCache handlers** - Enhanced pageshow/pagehide with state validation
-- ✅ **Checksum validation** - djb2-like hash during hydration
-- ✅ **SessionStorage conflict resolution** - Prefer storage.local as source of
-  truth
-- ✅ **beforeunload cleanup** - CONTENT_UNLOADING message handler
-- ✅ **Enhanced logging** - Tier-based dedup stats, 5-min history, cross-tab
-  filtering
+- ✅ **DestroyHandler forceEmpty** - Properly allows empty state writes
+- ✅ **Synchronous Map ops** - During hydration (UICoordinator)
+- ✅ **Dead WAL code removed** - DestroyHandler cleanup
 
-**Why This Matters:** Complete removal of BroadcastChannel eliminates all origin
-isolation issues, simplifies architecture, and provides more reliable sync.
+**Communication & Initialization:**
+
+- ✅ **Port message queue** - Events queued before port ready
+- ✅ **Queued storage events** - Processed when port connects
+- ✅ **Explicit tab ID barrier** - Tab ID fetch before features
+
+**Validation & State:**
+
+- ✅ **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- ✅ **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
+- ✅ **Fallback polling retry** - Listener re-registration on failure
+
+**Why This Matters:** Resolves Firefox-specific timing issues and improves
+reliability of state synchronization across browser tabs.
 
 ---
 
@@ -55,6 +53,8 @@ isolation issues, simplifies architecture, and provides more reliable sync.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v7** - Communication & Storage Fixes
+- **v1.6.3.8-v6** - Production Hardening, BC removal complete
 - **v1.6.3.8-v5** - Architecture Redesign, BC removal begun
 - **v1.6.3.8-v4** - 9 Critical Sync Fixes, Sidebar Modules
 - **v1.6.3.8-v3** - Storage listener verification, tier hysteresis
@@ -242,6 +242,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v6** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v8** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

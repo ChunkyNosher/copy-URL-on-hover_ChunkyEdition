@@ -579,24 +579,54 @@ export class UICoordinator {
   /**
    * Render all visible Quick Tabs from state
    * v1.6.3.6-v4 - FIX Issue #5: Set hydration flag to suppress orphaned window warnings
+   * v1.6.3.8-v8 - FIX Issue #4: Ensure synchronous Map operations during hydration
+   *   Windows appear in Map BEFORE 'stateadded' event fires
+   *   Recovery logic should only be for catastrophic failures, not normal flow
    */
   renderAll() {
-    console.log('[UICoordinator] Rendering all visible tabs');
+    console.log('[UICoordinator] Rendering all visible tabs (hydration start)');
 
     // v1.6.3.6-v4 - FIX Issue #5: Mark as hydrating to suppress orphaned window warnings
     // During hydration, it's expected that DOM elements may exist before Map is populated
     this._isHydrating = true;
 
     const visibleTabs = this.stateManager.getVisible();
+    
+    // v1.6.3.8-v8 - FIX Issue #4: Track tabs we're about to render for synchronous processing
+    const hydrationTabIds = new Set(visibleTabs.map(qt => qt.id));
+    
+    console.log('[UICoordinator] Hydration batch:', {
+      tabCount: visibleTabs.length,
+      tabIds: Array.from(hydrationTabIds)
+    });
 
+    // v1.6.3.8-v8 - FIX Issue #4: Render ALL tabs synchronously in a batch
+    // This ensures Map.set() completes BEFORE any async event processing
     for (const quickTab of visibleTabs) {
-      this.render(quickTab);
+      // Synchronously add to Map placeholder BEFORE render to prevent race
+      // This ensures the window appears in Map before 'stateadded' event listener fires
+      if (!this.renderedTabs.has(quickTab.id)) {
+        // Create a placeholder entry that will be replaced by actual window
+        this.renderedTabs.set(quickTab.id, null);
+      }
+      
+      const window = this.render(quickTab);
+      
+      if (window) {
+        // v1.6.3.8-v8 - FIX Issue #4: Synchronous Map update with actual window
+        this.renderedTabs.set(quickTab.id, window);
+      }
     }
 
     // v1.6.3.6-v4 - FIX Issue #5: Clear hydration flag after all tabs are rendered
     this._isHydrating = false;
 
-    console.log(`[UICoordinator] Rendered ${visibleTabs.length} tabs`);
+    // v1.6.3.8-v8 - FIX Issue #4: Log final Map state after hydration
+    console.log(`[UICoordinator] Hydration complete:`, {
+      renderedCount: visibleTabs.length,
+      mapSize: this.renderedTabs.size,
+      mapKeys: Array.from(this.renderedTabs.keys())
+    });
   }
 
   /**

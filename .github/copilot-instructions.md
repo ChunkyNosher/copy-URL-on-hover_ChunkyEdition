@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v7  
+**Version:** 1.6.3.8-v8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,21 +21,25 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v7 Features (NEW) - Communication & Storage Fixes:**
+**v1.6.3.8-v8 Features (NEW) - Storage, Handler & Init Fixes:**
 
-- **Per-port sequence ID tracking** - Concurrent message ordering per port
-- **Enhanced circuit breaker** - Time-based escalation
-  (HEALTHY→DEGRADED→CRITICAL→DISCONNECTED)
-- **CorrelationId tracing** - End-to-end state change tracking
-- **Client-side timestamp** - Rapid operations ordering
-- **Adaptive quota monitoring** - 1-min when >50%, 5-min otherwise
-- **Storage quota aggregation** - Across local, sync, session areas
-- **Early storage.onChanged** - 1-second fallback registration
-- **Content script unload** - pagehide/beforeunload → CONTENT_SCRIPT_UNLOAD
-- **Iframe port tracking** - Frame ID-based port management
-- **Queue TTL (60s)** - Dead port message flood prevention
-- **Max event age (5-min)** - Stale event enforcement
-- **Port registry rotation** - 24h diagnostic data cleanup
+- **Self-write detection** - 50ms timestamp matching window
+- **Transaction timeout** - Increased from 500ms to 1000ms (Firefox listener delay)
+- **Storage event ordering** - 300ms tolerance window for Firefox latency
+- **DestroyHandler forceEmpty** - Properly allows empty state writes
+- **Synchronous Map ops** - During hydration (UICoordinator)
+- **Port message queue** - Events queued before port ready
+- **Queued storage events** - Processed when port connects
+- **Explicit tab ID barrier** - Before feature initialization
+- **Extended dedup window** - 10s (matches PORT_RECONNECT_MAX_DELAY_MS)
+- **BFCache reconciliation** - Session-only tabs detection via document.wasDiscarded
+- **Fallback storage polling** - Real retry with listener re-registration
+- **Dead WAL code removed** - DestroyHandler cleanup
+
+**v1.6.3.8-v7 Features (Retained):** Per-port sequence ID tracking, circuit
+breaker escalation, correlationId tracing, adaptive quota monitoring, storage
+aggregation, content script unload, iframe port tracking, queue TTL (60s), max
+event age (5-min), port registry rotation.
 
 **v1.6.3.8-v6 Features (Retained):** Storage quota monitoring, MessageBatcher
 queue limits (100), TTL pruning (30s), port reconnection backoff, checksum
@@ -76,7 +80,7 @@ background:
   `handleCloseMinimizedTabsCommand()`
 - `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
 
-### v1.6.3.8-v7: Port + Storage Architecture (PRODUCTION)
+### v1.6.3.8-v8: Storage & Init Improvements (PRODUCTION)
 
 **Two-layer architecture (NO BroadcastChannel):**
 
@@ -85,17 +89,16 @@ background:
 - **Layer 2:** storage.local with monotonic revision versioning +
   storage.onChanged fallback
 
-**Key Changes (v7):**
+**Key Changes (v8):**
 
-- **Per-port sequence IDs** - Concurrent message ordering per port connection
-- **Circuit breaker escalation** - HEALTHY→DEGRADED→CRITICAL→DISCONNECTED states
-- **CorrelationId tracing** - End-to-end state change tracking
-- **Adaptive quota monitoring** - 1-min at >50% usage, 5-min otherwise
-- **Storage aggregation** - Quota across local, sync, session areas
-- **Iframe frame ID tracking** - Port management by frame ID
-- **Queue TTL (60s)** - Dead port message flood prevention
-- **Max event age (5-min)** - Stale state change rejection
-- **Port registry cleanup** - 24h diagnostic data rotation
+- **Self-write detection** - 50ms timestamp window for filtering own writes
+- **Transaction timeout 1000ms** - Increased from 500ms for Firefox latency
+- **Storage event ordering** - 300ms tolerance for Firefox event timing
+- **Port message queue** - Queues events until port connection ready
+- **Explicit tab ID barrier** - Ensures tab ID before feature initialization
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **BFCache session tabs** - Reconciles via document.wasDiscarded + pagehide
+- **Fallback polling retry** - Re-registers storage listener on failure
 
 ### v1.6.3.8-v4: Sidebar Sync Fixes (Retained)
 
@@ -134,17 +137,17 @@ background:
 
 ---
 
-## 🆕 v1.6.3.8-v7 Patterns
+## 🆕 v1.6.3.8-v8 Patterns
 
-- **Per-port sequence IDs** - Concurrent message ordering per port
-- **Circuit breaker escalation** - HEALTHY→DEGRADED→CRITICAL→DISCONNECTED
-- **CorrelationId tracing** - End-to-end state change tracking
-- **Adaptive quota monitoring** - 1-min at >50%, 5-min otherwise
-- **Storage aggregation** - Quota across all storage areas
-- **Iframe frame ID tracking** - Port management by frame ID
-- **Queue TTL (60s)** - Dead port message flood prevention
-- **Max event age (5-min)** - Stale state change rejection
-- **Content script unload** - CONTENT_SCRIPT_UNLOAD on pagehide/beforeunload
+- **Self-write detection** - 50ms timestamp window filters own storage writes
+- **Transaction timeout 1000ms** - Firefox listener delay accommodation
+- **Storage event ordering** - 300ms tolerance for Firefox latency
+- **Port message queue** - Events queued before port ready
+- **Explicit tab ID barrier** - Tab ID fetch before features
+- **Extended dedup 10s** - Matches PORT_RECONNECT_MAX_DELAY_MS
+- **BFCache session tabs** - document.wasDiscarded + pagehide reconciliation
+- **Fallback polling retry** - Listener re-registration on failure
+- **DestroyHandler forceEmpty** - Allows empty state writes
 
 ### New Sidebar Modules (`sidebar/modules/`)
 
@@ -156,7 +159,7 @@ background:
 | `health-metrics.js` | Storage/fallback health, dedup map monitoring  |
 | `index.js`          | Re-exports for convenient importing            |
 
-### Test Helpers (v1.6.3.8-v7)
+### Test Helpers (v1.6.3.8-v8)
 
 | Helper                                   | Purpose                             |
 | ---------------------------------------- | ----------------------------------- |
@@ -168,6 +171,12 @@ background:
 | `tests/helpers/coordinator-utils.js`     | Background coordinator helpers      |
 | `tests/e2e/helpers/multi-tab-fixture.js` | Multi-tab E2E fixtures              |
 | `tests/e2e/helpers/assertion-helpers.js` | E2E assertion utilities             |
+
+## v1.6.3.8-v7 Patterns (Retained)
+
+- Per-port sequence IDs, circuit breaker escalation, correlationId tracing
+- Adaptive quota monitoring, storage aggregation, iframe port tracking
+- Queue TTL (60s), max event age (5-min), content script unload
 
 ## v1.6.3.8-v6 Patterns (Retained)
 
@@ -185,22 +194,22 @@ background:
   listener
 - Proactive dedup cleanup (50%), sliding window eviction (95%), probe queuing
 
-### Key Timing Constants (v1.6.3.8-v7)
+### Key Timing Constants (v1.6.3.8-v8)
 
 | Constant                               | Value    | Purpose                                   |
 | -------------------------------------- | -------- | ----------------------------------------- |
+| `TRANSACTION_FALLBACK_CLEANUP_MS`      | 1000     | Transaction timeout (was 500ms)           |
+| `ESCALATION_WARNING_MS`                | 500      | Escalation warning (was 250ms)            |
+| `SELF_WRITE_TIMESTAMP_WINDOW_MS`       | 50       | Self-write detection window               |
+| `STORAGE_EVENT_ORDER_TOLERANCE_MS`     | 300      | Firefox latency tolerance                 |
+| `RESTORE_DEDUP_WINDOW_MS`              | 10000    | Dedup window (was 2000ms)                 |
 | `PORT_CIRCUIT_STATES`                  | 4 states | HEALTHY, DEGRADED, CRITICAL, DISCONNECTED |
 | `PORT_CIRCUIT_BREAKER_WINDOW_MS`       | 5000     | Circuit breaker evaluation window         |
 | `PORT_CIRCUIT_BREAKER_MAX_DURATION_MS` | 10000    | Max circuit breaker duration              |
 | `DEAD_PORT_MESSAGE_TTL_MS`             | 60000    | Dead port message TTL                     |
 | `MAX_STATE_CHANGE_AGE_MS`              | 300000   | Max event age (5 min)                     |
-| `MAX_MESSAGE_COUNT_TRACKED`            | 999999   | Sequence ID max before reset              |
-| `PORT_IDLE_CLEANUP_MS`                 | 86400000 | Port registry cleanup (24h)               |
-| `PORT_FAILURE_THRESHOLD`               | 3        | Consecutive failures before cleanup       |
 | `MAX_QUEUE_SIZE`                       | 100      | MessageBatcher queue limit                |
-| `MAX_MESSAGE_AGE_MS`                   | 30000    | TTL for message pruning                   |
 | `INIT_BARRIER_TIMEOUT_MS`              | 10000    | Initialization barrier timeout            |
-| `WRITE_BUFFER_FLUSH_MS`                | 75       | WriteBuffer batch window                  |
 
 ---
 
@@ -228,9 +237,10 @@ background:
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v7:** per-port sequence
-IDs, circuit breaker escalation, correlationId tracing, adaptive quota
-monitoring, **v1.6.3.8-v6:** MessageBatcher limits, checksum validation,
+Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v8:** self-write
+detection, transaction timeout 1000ms, port message queue, explicit tab ID
+barrier, **v1.6.3.8-v7:** per-port sequence IDs, circuit breaker escalation,
+**v1.6.3.8-v6:** MessageBatcher limits, checksum validation,
 **v1.6.3.8-v5:** monotonic revision versioning, port failure counting,
 **v1.6.3.8-v4:** initializationBarrier Promise, port-based hydration.
 
