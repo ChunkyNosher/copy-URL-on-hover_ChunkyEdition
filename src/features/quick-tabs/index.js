@@ -8,6 +8,8 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
+ * v1.6.3.8-v9 - FIX Issue #20: Restructure init sequence - signalReady() BEFORE hydration
+ *               This ensures queued messages are replayed BEFORE tabs created from storage
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -121,7 +123,8 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] Using pre-fetched currentTabId:', this.currentTabId);
     }
 
-    console.log('[QuickTabsManager] Initializing facade...');
+    const initStartTime = Date.now();
+    console.log('[QuickTabsManager] Initializing facade...', { timestamp: initStartTime });
 
     try {
       await this._initStep1_Context(options);
@@ -129,16 +132,29 @@ class QuickTabsManager {
       await this._initStep3_Handlers(); // v1.6.3.2 - Made async for CreateHandler settings
       this._initStep4_Coordinators();
       await this._initStep5_Setup();
+
+      // v1.6.3.8-v9 - FIX Issue #20: Signal READY and replay queued messages BEFORE hydration
+      // Previous order: Hydration → signalReady() (queued events replayed AFTER tabs created)
+      // New order: signalReady() → Hydration (queued events applied BEFORE tabs created)
+      // This ensures storage events are processed before local memory state is restored
+      console.log('[QuickTabsManager] STEP 5.5: Signaling ready and replaying queued messages...', {
+        timestamp: Date.now(),
+        isReady: this._isReady,
+        queuedMessages: this._messageQueue.length
+      });
+      this.signalReady();
+      console.log('[QuickTabsManager] STEP 5.5 Complete - queued messages replayed');
+
       await this._initStep6_Hydrate(); // v1.6.3.4 - FIX Issue #1: Hydrate state from storage
       this._initStep7_Expose();
 
       this.initialized = true;
 
-      // v1.6.3.8-v3 - Issue #6: Signal READY and replay any queued messages
-      // This MUST be called after initialized=true and all handlers are registered
-      this.signalReady();
-
-      console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
+      const initEndTime = Date.now();
+      console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓', {
+        durationMs: initEndTime - initStartTime,
+        timestamp: initEndTime
+      });
     } catch (err) {
       this._logInitializationError(err);
       throw err;
@@ -1808,7 +1824,9 @@ class QuickTabsManager {
   /**
    * Signal that the handler is ready to process messages
    * v1.6.3.8-v3 - Issue #6: Replays all queued messages in order
-   * Call this after initialization is complete and handlers are registered
+   * v1.6.3.8-v9 - FIX Issue #20: Now called BEFORE hydration to ensure queued storage
+   *               events are processed BEFORE tabs are created from local memory
+   * Call this after Step 5 (setup) but BEFORE Step 6 (hydration)
    *
    * @param {Function} [messageHandler] - Optional handler function to process messages
    *                                       If not provided, emits 'message:received' events
@@ -1819,17 +1837,28 @@ class QuickTabsManager {
       return;
     }
 
+    const signalReadyStartTime = Date.now();
     this._isReady = true;
     const queuedCount = this._messageQueue.length;
 
-    console.log('[QuickTabsManager] HANDLER_READY:', {
+    // v1.6.3.8-v9 - FIX Issue #20: Enhanced logging for init sequence diagnostics
+    console.log('[QuickTabsManager] HANDLER_READY - signalReady() called:', {
       queuedMessageCount: queuedCount,
-      timestamp: Date.now()
+      timestamp: signalReadyStartTime,
+      note: 'Called BEFORE hydration per Issue #20 fix'
     });
 
     // Replay queued messages
     if (queuedCount > 0) {
+      console.log('[QuickTabsManager] Starting message replay BEFORE hydration:', {
+        messageCount: queuedCount,
+        timestamp: Date.now()
+      });
       this._replayQueuedMessages(messageHandler);
+      console.log('[QuickTabsManager] Message replay complete:', {
+        durationMs: Date.now() - signalReadyStartTime,
+        timestamp: Date.now()
+      });
     }
   }
 

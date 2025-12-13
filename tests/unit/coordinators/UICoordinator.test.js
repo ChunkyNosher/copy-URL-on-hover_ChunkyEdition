@@ -101,6 +101,13 @@ describe('UICoordinator', () => {
         mockEventBus,
         MOCK_TAB_ID
       );
+      // v1.6.3.8-v9 - FIX: setHandlers() must be called before init() for rendering
+      // This matches the real initialization order in index.js
+      uiCoordinator.setHandlers({
+        updateHandler: {},
+        visibilityHandler: {},
+        destroyHandler: {}
+      });
     });
 
     test('should setup state listeners', async () => {
@@ -554,6 +561,14 @@ describe('UICoordinator', () => {
         mockEventBus,
         MOCK_TAB_ID
       );
+
+      // v1.6.3.8-v9 - FIX: setHandlers() must be called before init() for rendering
+      // This matches the real initialization order in index.js
+      uiCoordinator.setHandlers({
+        updateHandler: {},
+        visibilityHandler: {},
+        destroyHandler: {}
+      });
 
       // v1.6.3.6-v5 - FIX: Add originTabId for cross-tab filtering
       const quickTab = createQuickTabWithOriginTabId({

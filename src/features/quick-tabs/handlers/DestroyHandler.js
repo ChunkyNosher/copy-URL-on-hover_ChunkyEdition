@@ -14,6 +14,8 @@
  * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
  * v1.6.3.8-v8 - FIX Issue #2: Pass forceEmpty=true when state becomes empty after destroy
  * v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log (dead code that was never consulted)
+ * v1.6.3.8-v9 - FIX Issue #14: Emit statedeleted event BEFORE deleting from Map
+ *               This ensures UICoordinator receives event while tab still exists in renderedTabs
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -28,7 +30,7 @@
  * - Log all destroy operations with source indication
  * - Prevent deletion loops via _destroyedIds tracking
  *
- * @version 1.6.3.8-v8
+ * @version 1.6.3.8-v9
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -139,7 +141,10 @@ export class DestroyHandler {
     }
 
     // v1.6.3.4 - FIX Issue #6: Log with source indication
-    console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
+    const destroyStartTime = Date.now();
+    console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source}):`, {
+      timestamp: destroyStartTime
+    });
 
     // v1.6.3.8-v8 - FIX Issue #11: REMOVED write-ahead log entry creation (dead code)
     // The WAL was never consulted - _destroyedIds Set provides the actual protection
@@ -155,10 +160,33 @@ export class DestroyHandler {
       console.warn(`[DestroyHandler] Tab not found in Map (source: ${source}):`, id);
     }
 
+    // v1.6.3.8-v9 - FIX Issue #14: Emit state:deleted BEFORE Map.delete()
+    // This ensures UICoordinator receives event while tab still exists in renderedTabs Map
+    // Previous order caused "Tab not found for destruction" warnings in UICoordinator
+    const emitTimestamp = Date.now();
+    console.log(`[DestroyHandler] Emitting state:deleted BEFORE Map.delete (source: ${source}):`, {
+      id,
+      tabWindowExists: !!tabWindow,
+      timestamp: emitTimestamp
+    });
+
+    // Emit destruction event (legacy)
+    this._emitDestructionEvent(id);
+
+    // v1.6.3.2 - FIX Bug #4: Emit state:deleted for PanelContentManager to update
+    // v1.6.3.8-v9 - MOVED UP: Now emits BEFORE Map.delete() per Issue #14
+    this._emitStateDeletedEvent(id, tabWindow, source);
+
+    // v1.6.3.8-v9 - FIX Issue #14: NOW delete from Map (after event emission)
     // v1.6.3.4-v5 - FIX Bug #7: Atomic cleanup - delete from ALL references
     // v1.6.3.4 - FIX Issue #5: Log Map deletion
     const wasInMap = this.quickTabsMap.delete(id);
-    console.log(`[DestroyHandler] Map.delete result (source: ${source}):`, { id, wasInMap });
+    const deleteTimestamp = Date.now();
+    console.log(`[DestroyHandler] Map.delete result (source: ${source}):`, {
+      id,
+      wasInMap,
+      timestamp: deleteTimestamp
+    });
 
     this.minimizedManager.remove(id);
 
@@ -166,12 +194,6 @@ export class DestroyHandler {
     if (removeQuickTabElement(id)) {
       console.log(`[DestroyHandler] Removed DOM element (source: ${source}):`, id);
     }
-
-    // Emit destruction event (legacy)
-    this._emitDestructionEvent(id);
-
-    // v1.6.3.2 - FIX Bug #4: Emit state:deleted for PanelContentManager to update
-    this._emitStateDeletedEvent(id, tabWindow, source);
 
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
@@ -195,7 +217,10 @@ export class DestroyHandler {
     console.log(`[DestroyHandler] Single destroy - immediate persist (source: ${source}):`, id);
     this._persistToStorageImmediate(id);
 
-    console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, id);
+    console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, {
+      id,
+      durationMs: Date.now() - destroyStartTime
+    });
   }
 
   /**

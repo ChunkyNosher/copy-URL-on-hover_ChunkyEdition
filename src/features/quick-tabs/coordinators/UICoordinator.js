@@ -66,6 +66,9 @@
  *   - destroy() method no longer calls tabWindow.destroy() - only handles Map cleanup
  *   - DestroyHandler is the authoritative deletion path (emits state:deleted)
  *   - UICoordinator.destroy() is just a cleanup listener for state:deleted events
+ * v1.6.3.8-v9 - FIX Issue #17: Handler readiness flag never set in initialization path
+ *   - init() now calls startRendering() instead of renderAll() directly
+ *   - This ensures _handlersReady validation and timestamp cleanup initialization
  */
 
 import browser from 'webextension-polyfill';
@@ -204,23 +207,42 @@ export class UICoordinator {
   /**
    * Start rendering after handlers are confirmed ready
    * v1.6.4.8 - Issue #3: Explicit method to call after setHandlers() confirms handlers
+   * v1.6.3.8-v9 - FIX Issue #17: Enhanced logging with timestamp and cleanup status
    */
   startRendering() {
+    const startTime = Date.now();
+
     if (!this._handlersReady) {
-      console.warn(`${this._logPrefix} startRendering() called before handlers ready - deferring`);
+      console.warn(`${this._logPrefix} startRendering() called before handlers ready - deferring:`, {
+        handlersReady: this._handlersReady,
+        timestamp: startTime
+      });
       return;
     }
 
-    const renderStartTimestamp = Date.now();
     console.log(`${this._logPrefix} startRendering() - handlers confirmed ready:`, {
-      renderStartTimestamp,
-      handlersReady: this._handlersReady
+      timestamp: startTime,
+      handlersReady: this._handlersReady,
+      hasUpdateHandler: !!this.updateHandler,
+      hasVisibilityHandler: !!this.visibilityHandler,
+      hasDestroyHandler: !!this.destroyHandler
     });
 
     // Start periodic timestamp cleanup (Issue #6)
+    // v1.6.3.8-v9 - FIX Issue #17: Log cleanup initialization
+    console.log(`${this._logPrefix} Starting timestamp cleanup timer:`, {
+      intervalMs: TIMESTAMP_CLEANUP_INTERVAL_MS,
+      timestamp: startTime
+    });
     this._startTimestampCleanup();
 
     this.renderAll();
+
+    const endTime = Date.now();
+    console.log(`${this._logPrefix} startRendering() complete:`, {
+      durationMs: endTime - startTime,
+      timestamp: endTime
+    });
   }
 
   /**
@@ -536,9 +558,12 @@ export class UICoordinator {
 
   /**
    * Initialize coordinator - setup listeners and render initial state
+   * v1.6.3.8-v9 - FIX Issue #17: Call startRendering() instead of renderAll()
+   *               This ensures _handlersReady validation and timestamp cleanup
    */
   async init() {
-    console.log('[UICoordinator] Initializing...');
+    const initStartTime = Date.now();
+    console.log('[UICoordinator] Initializing...', { timestamp: initStartTime });
 
     // v1.6.3.2 - Load showDebugId setting before rendering
     await this._loadDebugIdSetting();
@@ -546,10 +571,19 @@ export class UICoordinator {
     // Setup state listeners
     this.setupStateListeners();
 
-    // Render initial state
-    this.renderAll();
+    // v1.6.3.8-v9 - FIX Issue #17: Call startRendering() instead of renderAll()
+    // startRendering() validates _handlersReady flag and starts timestamp cleanup
+    // Previous code called renderAll() directly, bypassing handler readiness check
+    console.log('[UICoordinator] Calling startRendering() (not renderAll() directly):', {
+      handlersReady: this._handlersReady,
+      timestamp: Date.now()
+    });
+    this.startRendering();
 
-    console.log('[UICoordinator] Initialized');
+    console.log('[UICoordinator] Initialized:', {
+      durationMs: Date.now() - initStartTime,
+      handlersReady: this._handlersReady
+    });
   }
 
   /**
