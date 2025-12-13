@@ -294,6 +294,34 @@ const PORT_CIRCUIT_BREAKER_WINDOW_MS = 5000;
  */
 const PORT_CIRCUIT_BREAKER_MAX_DURATION_MS = 10000;
 
+// ==================== v1.6.3.8-v8 DEAD PORT MESSAGE QUEUE HANDLING (Issue #16) ====================
+/**
+ * TTL for messages in dead port queue (60 seconds)
+ * v1.6.3.8-v8 - Issue #16: Messages older than TTL are discarded when port is dead
+ */
+const DEAD_PORT_MESSAGE_TTL_MS = 60000;
+
+// ==================== v1.6.3.8-v8 STATE CHANGE AGE ENFORCEMENT (Issue #18) ====================
+/**
+ * Maximum age for state change events (5 minutes)
+ * v1.6.3.8-v8 - Issue #18: Events older than this are rejected as stale
+ * Prevents reapplying ancient operations from stuck queues
+ */
+const MAX_STATE_CHANGE_AGE_MS = 300000;
+
+// ==================== v1.6.3.8-v8 PORT DIAGNOSTIC DATA ROTATION (Issue #20) ====================
+/**
+ * Maximum messageCount tracked before capping
+ * v1.6.3.8-v8 - Issue #20: Cap messageCount to prevent unbounded growth
+ */
+const MAX_MESSAGE_COUNT_TRACKED = 999999;
+
+/**
+ * Idle duration before clearing port diagnostic data (24 hours)
+ * v1.6.3.8-v8 - Issue #20: Clear old diagnostic data for idle ports
+ */
+const PORT_IDLE_CLEANUP_MS = 86400000;
+
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
@@ -390,12 +418,15 @@ const PORT_REGISTRY_HISTORY_MAX = 5;
 // ==================== v1.6.3.7-v12 DEDUP STATISTICS ====================
 // Issue #6: Track deduplication statistics
 // v1.6.3.8-v6 - Issue #11: Enhanced dedup stats with tier tracking and longer history
+// v1.6.3.8-v8 - Issue #18: Added staleEventAge tier for max age enforcement
 let dedupStats = {
   skipped: 0,
   processed: 0,
   lastResetTime: Date.now(),
   // v1.6.3.8-v6 - Issue #11: Track which dedup tier was reached
+  // v1.6.3.8-v8 - Issue #18: Added staleEventAge tier
   tierCounts: {
+    staleEventAge: 0, // Tier 0: Max event age check (Issue #18)
     saveId: 0, // Tier 1: saveId match
     sequenceId: 0, // Tier 2: sequenceId ordering
     revision: 0, // Tier 3: revision check
@@ -408,7 +439,9 @@ const DEDUP_STATS_LOG_INTERVAL_MS = 60000; // Log stats every 60 seconds
 let dedupStatsIntervalId = null;
 let dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCounts }
 // v1.6.3.8-v6 - Issue #7: Map dedup method names to tier count keys
+// v1.6.3.8-v8 - Issue #18: Added staleEventAge mapping
 const DEDUP_TIER_MAP = {
+  staleEventAge: 'staleEventAge', // Issue #18: Max event age check
   'saveId-timestamp': 'saveId',
   sequenceId: 'sequenceId',
   revision: 'revision',
@@ -1998,11 +2031,13 @@ function startDedupStatsLogging() {
     }
 
     // Reset stats after logging (but keep history)
+    // v1.6.3.8-v8 - Issue #18: Include staleEventAge in reset
     dedupStats = {
       skipped: 0,
       processed: 0,
       lastResetTime: Date.now(),
       tierCounts: {
+        staleEventAge: 0, // Issue #18: Max event age check
         saveId: 0,
         sequenceId: 0,
         revision: 0,
@@ -6166,8 +6201,48 @@ function _runContentHashCheck(newValue, oldValue) {
   return null;
 }
 
+/**
+ * Check if event is too old and should be rejected
+ * v1.6.3.8-v8 - Issue #18: Maximum event age enforcement (5 minutes)
+ * @private
+ * @param {Object} newValue - New storage value
+ * @returns {{ shouldSkip: boolean, reason: string, ageMs: number } | null} Skip result if stale, null if valid
+ */
+function _runMaxEventAgeCheck(newValue) {
+  const eventTimestamp = newValue?.timestamp;
+  if (!eventTimestamp) {
+    // No timestamp - can't check age, allow processing
+    return null;
+  }
+
+  const eventAgeMs = Date.now() - eventTimestamp;
+  if (eventAgeMs > MAX_STATE_CHANGE_AGE_MS) {
+    console.warn('[Background] STALE_EVENT_REJECTED:', {
+      eventAgeMs,
+      maxAgeMs: MAX_STATE_CHANGE_AGE_MS,
+      eventTimestamp,
+      saveId: newValue?.saveId,
+      sequenceId: newValue?.sequenceId,
+      tabCount: newValue?.tabs?.length,
+      reason: 'Event exceeds maximum age threshold - likely from stuck queue'
+    });
+    
+    return _createSkipResult('staleEventAge', `Event is ${Math.round(eventAgeMs / 1000)}s old (max: ${MAX_STATE_CHANGE_AGE_MS / 1000}s)`, {
+      eventAgeMs,
+      maxAgeMs: MAX_STATE_CHANGE_AGE_MS,
+      eventTimestamp
+    });
+  }
+
+  return null;
+}
+
 function _multiMethodDeduplication(newValue, oldValue) {
   console.log('[Background] [STORAGE] DEDUP_CHECK:', _buildDedupLogDetails(newValue, oldValue));
+
+  // v1.6.3.8-v8 - Issue #18: Check max event age FIRST (reject ancient operations)
+  const ageCheck = _runMaxEventAgeCheck(newValue);
+  if (ageCheck) return ageCheck;
 
   // Run dedup checks in priority order, return first match
   const sequenceCheck = _runSequenceIdCheck(newValue, oldValue);
@@ -7377,19 +7452,24 @@ function logPortLifecycle(origin, event, details = {}) {
  * Register a new port connection
  * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
  * v1.6.4.13: Converted to options object pattern
+ * v1.6.3.8-v8 - Issue #13: Add frameId tracking for iframe port connections
  * @param {Object} options - Registration options
  * @param {browser.runtime.Port} options.port - The connected port
  * @param {string} options.origin - Origin identifier
  * @param {number|null} options.tabId - Tab ID (if from content script)
  * @param {string} options.type - Port type ('sidebar' or 'content')
  * @param {number|null} [options.windowId=null] - Window ID for sidebar ports (v1.6.3.7-v9)
+ * @param {number|null} [options.frameId=null] - Frame ID for iframe tracking (v1.6.3.8-v8 Issue #13)
  * @returns {string} Generated port ID
  */
-function registerPort({ port, origin, tabId, type, windowId = null }) {
+function registerPort({ port, origin, tabId, type, windowId = null, frameId = null }) {
   const portId = generatePortId();
   const beforeCount = portRegistry.size;
   const now = Date.now();
   const resolvedWindowId = windowId || port.sender?.tab?.windowId || null;
+  // v1.6.3.8-v8 - Issue #13: Resolve frameId from port.sender if available
+  // Use || pattern for consistency with windowId resolution above
+  const resolvedFrameId = frameId || port.sender?.frameId || null;
 
   portRegistry.set(portId, {
     port,
@@ -7398,10 +7478,14 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
     type,
     // v1.6.3.7-v9 - Issue #4: Enhanced metadata tracking
     windowId: resolvedWindowId,
+    // v1.6.3.8-v8 - Issue #13: Frame ID tracking for iframe port connections
+    frameId: resolvedFrameId,
     connectedAt: now,
     lastMessageAt: null,
     lastActivityTime: now, // v1.6.3.7-v9: Tracks both sent and received
     messageCount: 0,
+    // v1.6.3.8-v8 - Issue #20: Flag for messageCount overflow
+    messageCountExceeded: false,
     // v1.6.3.8-v5 - Issue #3: Port disconnection tracking
     lastSuccessfulMessageTime: now,
     consecutiveFailureCount: 0,
@@ -7428,6 +7512,7 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
     tabId,
     type,
     windowId: resolvedWindowId, // v1.6.3.7-v9
+    frameId: resolvedFrameId, // v1.6.3.8-v8 - Issue #13
     registrySize: portRegistry.size,
     previousSize: beforeCount
   });
@@ -7435,7 +7520,7 @@ function registerPort({ port, origin, tabId, type, windowId = null }) {
   // v1.6.4.9 - Issue #6: Warn if registry size exceeds thresholds
   _checkPortRegistrySizeWarnings();
 
-  logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
+  logPortLifecycle(origin, 'open', { tabId, portId, type, frameId: resolvedFrameId, totalPorts: portRegistry.size });
 
   return portId;
 }
@@ -7548,6 +7633,7 @@ function _cleanupPortsForTab(tabId) {
  * v1.6.3.6-v11 - FIX Issue #12: Track port activity
  * v1.6.3.7-v9 - Issue #4: Update lastActivityTime
  * v1.6.3.8 - Issue #10: Add PORT_ACTIVITY logging when DEBUG_DIAGNOSTICS enabled
+ * v1.6.3.8-v8 - Issue #20: Cap messageCount at MAX_MESSAGE_COUNT_TRACKED
  * @param {string} portId - Port ID
  */
 function updatePortActivity(portId) {
@@ -7560,7 +7646,22 @@ function updatePortActivity(portId) {
 
     portInfo.lastMessageAt = now;
     portInfo.lastActivityTime = now; // v1.6.3.7-v9
-    portInfo.messageCount++;
+    
+    // v1.6.3.8-v8 - Issue #20: Cap messageCount to prevent unbounded growth
+    if (portInfo.messageCount < MAX_MESSAGE_COUNT_TRACKED) {
+      portInfo.messageCount++;
+    } else if (!portInfo.messageCountExceeded) {
+      // Set exceeded flag only once when limit is reached
+      portInfo.messageCountExceeded = true;
+      console.warn('[Background] PORT_MESSAGE_COUNT_EXCEEDED:', {
+        portId,
+        origin: portInfo.origin,
+        tabId: portInfo.tabId,
+        messageCount: portInfo.messageCount,
+        limit: MAX_MESSAGE_COUNT_TRACKED,
+        timestamp: now
+      });
+    }
 
     // v1.6.3.8 - Issue #10: Log port activity when DEBUG_DIAGNOSTICS enabled
     if (DEBUG_DIAGNOSTICS) {
@@ -7570,6 +7671,7 @@ function updatePortActivity(portId) {
         tabId: portInfo.tabId,
         lastMessageTimeAgo: `${timeSinceLastActivity}ms`,
         messageCount: portInfo.messageCount,
+        messageCountExceeded: portInfo.messageCountExceeded || false,
         timestamp: now
       });
     }
@@ -7777,23 +7879,79 @@ function _trackPortMessageResult(portId, success) {
 }
 
 /**
+ * Check if a message is too old based on TTL for dead ports
+ * v1.6.3.8-v8 - Issue #16: Discard stale messages for dead ports
+ * 
+ * Uses message.timestamp (primary) or message.clientTimestamp (fallback for rapid operations)
+ * to determine message age. clientTimestamp is used by v1.6.3.8-v7 Issue #12 for ordering
+ * validation in rapid operations where client-side timestamp provides more accurate ordering.
+ * 
+ * @private
+ * @param {Object} message - Message to check
+ * @returns {{ isStale: boolean, ageMs: number }} Whether message exceeds TTL and its age in ms
+ */
+function _isMessageStaleForDeadPort(message) {
+  // Use timestamp first (standard), fallback to clientTimestamp (for rapid operations)
+  const messageTimestamp = message?.timestamp || message?.clientTimestamp;
+  if (!messageTimestamp) {
+    return { isStale: false, ageMs: 0 };
+  }
+  
+  const ageMs = Date.now() - messageTimestamp;
+  return { isStale: ageMs > DEAD_PORT_MESSAGE_TTL_MS, ageMs };
+}
+
+/**
+ * Log discarded stale message
+ * v1.6.3.8-v8 - Issue #16: Log when messages are discarded due to TTL
+ * @private
+ */
+function _logDiscardedStaleMessage(portId, portInfo, message, ageMs) {
+  console.warn('[Background] DEAD_PORT_MESSAGE_DISCARDED:', {
+    portId,
+    origin: portInfo?.origin,
+    tabId: portInfo?.tabId,
+    messageType: message?.type,
+    messageAgeMs: ageMs,
+    ttlMs: DEAD_PORT_MESSAGE_TTL_MS,
+    reason: 'Message exceeds TTL for dead port',
+    circuitBreakerState: portInfo?.circuitBreakerState,
+    timestamp: Date.now()
+  });
+}
+
+/**
  * Send message to port with failure tracking
  * v1.6.3.8-v5 - Issue #3: Wrapper that tracks postMessage failures
+ * v1.6.3.8-v8 - Issue #16: Check message TTL when circuit breaker is in CRITICAL or DISCONNECTED state
  * @param {string} portId - Port ID
  * @param {Object} message - Message to send
- * @returns {{ success: boolean, evicted: boolean }} Result of send attempt
+ * @returns {{ success: boolean, evicted: boolean, discarded: boolean }} Result of send attempt:
+ *   - success: true if message was sent successfully via port.postMessage()
+ *   - evicted: true if port was evicted due to consecutive failures (circuit breaker triggered)
+ *   - discarded: true if message was dropped because it exceeded TTL for a dead/critical port
  */
 function _sendPortMessageWithTracking(portId, message) {
   const portInfo = portRegistry.get(portId);
   if (!portInfo) {
-    return { success: false, evicted: false };
+    return { success: false, evicted: false, discarded: false };
+  }
+
+  // v1.6.3.8-v8 - Issue #16: Check message TTL when port is in dead/critical state
+  const circuitState = portInfo.circuitBreakerState || PORT_CIRCUIT_STATES.HEALTHY;
+  if (circuitState === PORT_CIRCUIT_STATES.CRITICAL || circuitState === PORT_CIRCUIT_STATES.DISCONNECTED) {
+    const { isStale, ageMs } = _isMessageStaleForDeadPort(message);
+    if (isStale) {
+      _logDiscardedStaleMessage(portId, portInfo, message, ageMs);
+      return { success: false, evicted: false, discarded: true };
+    }
   }
 
   try {
     portInfo.port.postMessage(message);
     const trackResult = _trackPortMessageResult(portId, true);
     updatePortActivity(portId);
-    return { success: true, evicted: trackResult.evicted };
+    return { success: true, evicted: trackResult.evicted, discarded: false };
   } catch (err) {
     const trackResult = _trackPortMessageResult(portId, false);
     console.warn('[Background] PORT_POSTMESSAGE_EXCEPTION:', {
@@ -7802,7 +7960,7 @@ function _sendPortMessageWithTracking(portId, message) {
       error: err.message,
       evicted: trackResult.evicted
     });
-    return { success: false, evicted: trackResult.evicted };
+    return { success: false, evicted: trackResult.evicted, discarded: false };
   }
 }
 
@@ -7897,11 +8055,53 @@ function _isPortStale(portInfo, now, portId) {
 }
 
 /**
+ * Check if port diagnostic data should be cleared (idle > 24 hours)
+ * v1.6.3.8-v8 - Issue #20: Clear diagnostic data for idle ports to prevent memory accumulation
+ * @private
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if diagnostics should be cleared
+ */
+function _shouldCleanupPortDiagnostics(portInfo, now) {
+  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || portInfo.connectedAt;
+  return now - lastActivity > PORT_IDLE_CLEANUP_MS;
+}
+
+/**
+ * Clear diagnostic data for an idle port
+ * v1.6.3.8-v8 - Issue #20: Reset diagnostic counters while preserving core port functionality
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ */
+function _clearPortDiagnostics(portId, portInfo, now) {
+  const oldMessageCount = portInfo.messageCount;
+  const wasExceeded = portInfo.messageCountExceeded;
+  
+  // Reset diagnostic counters but keep port alive
+  portInfo.messageCount = 0;
+  portInfo.messageCountExceeded = false;
+  
+  console.log('[Background] PORT_DIAGNOSTICS_CLEARED:', {
+    portId,
+    origin: portInfo.origin,
+    tabId: portInfo.tabId,
+    previousMessageCount: oldMessageCount,
+    wasExceeded,
+    idleDurationMs: now - (portInfo.lastActivityTime || portInfo.connectedAt),
+    idleThresholdMs: PORT_IDLE_CLEANUP_MS,
+    timestamp: now
+  });
+}
+
+/**
  * Clean up stale ports (e.g., from closed tabs)
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
  * v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP logging with before/after counts
  * v1.6.3.7-v9 - Issue #4: Added age-based and inactivity-based cleanup
  * v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during async iteration
+ * v1.6.3.8-v8 - Issue #20: Clear diagnostic data for idle ports (> 24 hours)
  */
 async function cleanupStalePorts() {
   const beforeCount = portRegistry.size;
@@ -7911,11 +8111,13 @@ async function cleanupStalePorts() {
     currentRegistrySize: beforeCount,
     maxAgeMs: PORT_MAX_AGE_MS,
     staleTimeoutMs: PORT_STALE_TIMEOUT_MS,
+    idleCleanupMs: PORT_IDLE_CLEANUP_MS, // v1.6.3.8-v8 - Issue #20
     timestamp: Date.now()
   });
 
   const now = Date.now();
   const stalePorts = [];
+  let diagnosticsClearedCount = 0; // v1.6.3.8-v8 - Issue #20
 
   // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during async iteration
   const portEntries = [...portRegistry.entries()];
@@ -7939,6 +8141,12 @@ async function cleanupStalePorts() {
       stalePorts.push({ portId, reason: 'stale-inactivity' });
       continue;
     }
+    
+    // v1.6.3.8-v8 - Issue #20: Clear diagnostic data for idle ports (> 24 hours)
+    if (_shouldCleanupPortDiagnostics(portInfo, now)) {
+      _clearPortDiagnostics(portId, portInfo, now);
+      diagnosticsClearedCount++;
+    }
 
     // Original inactivity check (logging only, 10 min threshold)
     _checkPortInactivity(portInfo, now, portId);
@@ -7953,6 +8161,7 @@ async function cleanupStalePorts() {
 
   // v1.6.4.9 - Issue #6: Enhanced PORT_CLEANUP_COMPLETE logging
   // v1.6.3.7-v9 - Issue #4: Enhanced with reason breakdown
+  // v1.6.3.8-v8 - Issue #20: Include diagnostics cleared count
   const reasonCounts = {};
   for (const { reason } of stalePorts) {
     reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
@@ -7962,6 +8171,7 @@ async function cleanupStalePorts() {
     beforeCount,
     afterCount,
     removedCount: stalePorts.length,
+    diagnosticsClearedCount, // v1.6.3.8-v8 - Issue #20
     reasonBreakdown: reasonCounts, // v1.6.3.7-v9
     removedPorts: stalePorts.map(p => ({ id: p.portId, reason: p.reason })),
     timestamp: Date.now()
