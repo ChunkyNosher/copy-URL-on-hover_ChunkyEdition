@@ -172,7 +172,9 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
    * When a tab navigates to a different URL, its Quick Tabs should persist
    * because the originTabId remains the same (same browser tab).
    */
-  test('Quick Tab should persist after navigation within same tab', async ({ extensionContext }) => {
+  test('Quick Tab should persist after navigation within same tab', async ({
+    extensionContext
+  }) => {
     const page = await extensionContext.newPage();
 
     // Navigate to first site
@@ -218,10 +220,7 @@ test.describe('Scenario 1: Basic Quick Tab Creation & Tab Isolation', () => {
     await tab1.goto('https://example.com');
     await tab2.goto('https://www.google.com');
 
-    await Promise.all([
-      tab1.waitForLoadState('networkidle'),
-      tab2.waitForLoadState('networkidle')
-    ]);
+    await Promise.all([tab1.waitForLoadState('networkidle'), tab2.waitForLoadState('networkidle')]);
 
     // Wait for sync
     await waitForSync(tab1, 500);

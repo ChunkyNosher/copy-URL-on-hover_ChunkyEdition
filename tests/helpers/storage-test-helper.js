@@ -265,17 +265,13 @@ export function createStorageTestHelper() {
     // Check local storage for quick_tabs_state_v2
     const localState = state.localStorage.get('quick_tabs_state_v2');
     if (localState && localState.tabs) {
-      results.push(
-        ...localState.tabs.filter(qt => qt.originTabId === tabId)
-      );
+      results.push(...localState.tabs.filter(qt => qt.originTabId === tabId));
     }
 
     // Check session storage
     const sessionState = state.sessionStorage.get('session_quick_tabs');
     if (sessionState && sessionState.tabs) {
-      results.push(
-        ...sessionState.tabs.filter(qt => qt.originTabId === tabId)
-      );
+      results.push(...sessionState.tabs.filter(qt => qt.originTabId === tabId));
     }
 
     return results;
@@ -448,9 +444,11 @@ export function createStorageTestHelper() {
    */
   function seedStorage(storageType, data) {
     const storage =
-      storageType === 'local' ? state.localStorage :
-      storageType === 'sync' ? state.syncStorage :
-      state.sessionStorage;
+      storageType === 'local'
+        ? state.localStorage
+        : storageType === 'sync'
+          ? state.syncStorage
+          : state.sessionStorage;
 
     for (const [key, value] of Object.entries(data)) {
       storage.set(key, JSON.parse(JSON.stringify(value)));

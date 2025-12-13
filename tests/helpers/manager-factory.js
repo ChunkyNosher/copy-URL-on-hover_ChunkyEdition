@@ -300,7 +300,10 @@ export function createMockTransactionManager(overrides = {}) {
 
       if (typeof expectedSize === 'number' && state.map.size !== expectedSize) {
         mock.rollbackTransaction();
-        return { success: false, error: `Size mismatch: expected ${expectedSize}, got ${state.map.size}` };
+        return {
+          success: false,
+          error: `Size mismatch: expected ${expectedSize}, got ${state.map.size}`
+        };
       }
 
       if (expectedKeys) {
@@ -558,9 +561,11 @@ export function createMockMinimizedManager(overrides = {}) {
     validateStateConsistency: jest.fn((id, entityMinimizedFlag) => {
       const inMap = state.minimizedTabs.has(id);
       const inPending = state.pendingClearSnapshots.has(id);
-      return (entityMinimizedFlag && inMap) ||
-             (!entityMinimizedFlag && !inMap) ||
-             (!entityMinimizedFlag && inPending);
+      return (
+        (entityMinimizedFlag && inMap) ||
+        (!entityMinimizedFlag && !inMap) ||
+        (!entityMinimizedFlag && inPending)
+      );
     }),
 
     // Cleanup

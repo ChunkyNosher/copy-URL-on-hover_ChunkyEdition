@@ -28,15 +28,15 @@ export function assertValidTransition(machine, from, to, action) {
     typeof machine.isValidTransition === 'function'
       ? machine.isValidTransition(from, to)
       : machine.canTransition
-      ? (() => {
-          // Need to set state first to check from that state
-          const id = `test-${Date.now()}`;
-          machine.initialize(id, from, 'test');
-          const result = machine.canTransition(id, to);
-          machine.remove(id);
-          return result;
-        })()
-      : true;
+        ? (() => {
+            // Need to set state first to check from that state
+            const id = `test-${Date.now()}`;
+            machine.initialize(id, from, 'test');
+            const result = machine.canTransition(id, to);
+            machine.remove(id);
+            return result;
+          })()
+        : true;
 
   if (!canTransition) {
     throw new Error(
@@ -412,10 +412,7 @@ function testSingleInvalidTransition(machine, from, to, action) {
  * @returns {Object} Mock state machine
  */
 export function createMockStateMachine(config = {}) {
-  const {
-    states = ['UNKNOWN', 'VISIBLE', 'MINIMIZED'],
-    transitions = []
-  } = config;
+  const { states = ['UNKNOWN', 'VISIBLE', 'MINIMIZED'], transitions = [] } = config;
 
   const validTransitions = new Map();
   for (const state of states) {

@@ -260,7 +260,7 @@ export class DestroyHandler {
   async _notifyBackgroundOfDeletion(id, source) {
     // v1.6.3.8-v7 - Issue #9: Generate correlationId for deletion tracing
     const correlationId = `op-${Date.now()}-${id.substring(0, 8)}-${Math.random().toString(36).substring(2, 6)}`;
-    
+
     try {
       await browser.runtime.sendMessage({
         type: 'QUICK_TAB_STATE_CHANGE',
@@ -504,7 +504,7 @@ export class DestroyHandler {
   async _requestCrossTabBroadcast(id, source) {
     // v1.6.3.8-v7 - Issue #9: Generate correlationId for cross-tab broadcast tracing
     const correlationId = `op-${Date.now()}-${id.substring(0, 8)}-${Math.random().toString(36).substring(2, 6)}`;
-    
+
     try {
       await browser.runtime.sendMessage({
         type: 'QUICK_TAB_STATE_CHANGE',

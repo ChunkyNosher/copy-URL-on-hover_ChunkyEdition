@@ -158,16 +158,16 @@ background:
 
 ### Test Helpers (v1.6.3.8-v7)
 
-| Helper                             | Purpose                              |
-| ---------------------------------- | ------------------------------------ |
-| `tests/helpers/manager-factory.js` | Manager instance creation for tests  |
-| `tests/helpers/port-simulator.js`  | Port connection simulation           |
-| `tests/helpers/storage-test-helper.js` | Storage operations mock          |
-| `tests/helpers/cross-tab-simulator.js` | Cross-tab sync simulation        |
-| `tests/helpers/state-machine-utils.js` | State machine test utilities     |
-| `tests/helpers/coordinator-utils.js` | Background coordinator helpers     |
-| `tests/e2e/helpers/multi-tab-fixture.js` | Multi-tab E2E fixtures         |
-| `tests/e2e/helpers/assertion-helpers.js` | E2E assertion utilities        |
+| Helper                                   | Purpose                             |
+| ---------------------------------------- | ----------------------------------- |
+| `tests/helpers/manager-factory.js`       | Manager instance creation for tests |
+| `tests/helpers/port-simulator.js`        | Port connection simulation          |
+| `tests/helpers/storage-test-helper.js`   | Storage operations mock             |
+| `tests/helpers/cross-tab-simulator.js`   | Cross-tab sync simulation           |
+| `tests/helpers/state-machine-utils.js`   | State machine test utilities        |
+| `tests/helpers/coordinator-utils.js`     | Background coordinator helpers      |
+| `tests/e2e/helpers/multi-tab-fixture.js` | Multi-tab E2E fixtures              |
+| `tests/e2e/helpers/assertion-helpers.js` | E2E assertion utilities             |
 
 ## v1.6.3.8-v6 Patterns (Retained)
 
@@ -187,20 +187,20 @@ background:
 
 ### Key Timing Constants (v1.6.3.8-v7)
 
-| Constant                          | Value    | Purpose                              |
-| --------------------------------- | -------- | ------------------------------------ |
-| `PORT_CIRCUIT_STATES`             | 4 states | HEALTHY, DEGRADED, CRITICAL, DISCONNECTED |
-| `PORT_CIRCUIT_BREAKER_WINDOW_MS`  | 5000     | Circuit breaker evaluation window    |
-| `PORT_CIRCUIT_BREAKER_MAX_DURATION_MS` | 10000 | Max circuit breaker duration       |
-| `DEAD_PORT_MESSAGE_TTL_MS`        | 60000    | Dead port message TTL                |
-| `MAX_STATE_CHANGE_AGE_MS`         | 300000   | Max event age (5 min)                |
-| `MAX_MESSAGE_COUNT_TRACKED`       | 999999   | Sequence ID max before reset         |
-| `PORT_IDLE_CLEANUP_MS`            | 86400000 | Port registry cleanup (24h)          |
-| `PORT_FAILURE_THRESHOLD`          | 3        | Consecutive failures before cleanup  |
-| `MAX_QUEUE_SIZE`                  | 100      | MessageBatcher queue limit           |
-| `MAX_MESSAGE_AGE_MS`              | 30000    | TTL for message pruning              |
-| `INIT_BARRIER_TIMEOUT_MS`         | 10000    | Initialization barrier timeout       |
-| `WRITE_BUFFER_FLUSH_MS`           | 75       | WriteBuffer batch window             |
+| Constant                               | Value    | Purpose                                   |
+| -------------------------------------- | -------- | ----------------------------------------- |
+| `PORT_CIRCUIT_STATES`                  | 4 states | HEALTHY, DEGRADED, CRITICAL, DISCONNECTED |
+| `PORT_CIRCUIT_BREAKER_WINDOW_MS`       | 5000     | Circuit breaker evaluation window         |
+| `PORT_CIRCUIT_BREAKER_MAX_DURATION_MS` | 10000    | Max circuit breaker duration              |
+| `DEAD_PORT_MESSAGE_TTL_MS`             | 60000    | Dead port message TTL                     |
+| `MAX_STATE_CHANGE_AGE_MS`              | 300000   | Max event age (5 min)                     |
+| `MAX_MESSAGE_COUNT_TRACKED`            | 999999   | Sequence ID max before reset              |
+| `PORT_IDLE_CLEANUP_MS`                 | 86400000 | Port registry cleanup (24h)               |
+| `PORT_FAILURE_THRESHOLD`               | 3        | Consecutive failures before cleanup       |
+| `MAX_QUEUE_SIZE`                       | 100      | MessageBatcher queue limit                |
+| `MAX_MESSAGE_AGE_MS`                   | 30000    | TTL for message pruning                   |
+| `INIT_BARRIER_TIMEOUT_MS`              | 10000    | Initialization barrier timeout            |
+| `WRITE_BUFFER_FLUSH_MS`                | 75       | WriteBuffer batch window                  |
 
 ---
 

@@ -139,7 +139,7 @@ class MessageBatcher {
    */
   queue(quickTabId, type, data, correlationId = null) {
     const now = Date.now();
-    
+
     // v1.6.3.8-v7 - Issue #7: Determine queue reason for logging
     let queueReason = 'window_active';
     if (this._windowStartTime === null) {
@@ -410,9 +410,7 @@ class MessageBatcher {
    * @private
    */
   _buildFlushResult(coalescedOps, originalCount, windowDuration, prunedCount) {
-    const correlationIds = coalescedOps
-      .map(op => op.correlationId)
-      .filter(id => id != null);
+    const correlationIds = coalescedOps.map(op => op.correlationId).filter(id => id != null);
 
     return {
       operations: coalescedOps,
@@ -458,7 +456,11 @@ class MessageBatcher {
     const { validOps, prunedCount } = this._pruneExpiredMessages(originalOps);
 
     if (validOps.length === 0) {
-      this._log('BATCHER_FLUSH_SKIP', { reason: 'all_messages_expired', prunedCount, originalCount: originalOps.length });
+      this._log('BATCHER_FLUSH_SKIP', {
+        reason: 'all_messages_expired',
+        prunedCount,
+        originalCount: originalOps.length
+      });
       return;
     }
 
@@ -467,7 +469,12 @@ class MessageBatcher {
     this._updateFlushMetrics(validOps.length, coalescedOps.length, windowDuration);
 
     // Build result
-    const result = this._buildFlushResult(coalescedOps, originalOps.length, windowDuration, prunedCount);
+    const result = this._buildFlushResult(
+      coalescedOps,
+      originalOps.length,
+      windowDuration,
+      prunedCount
+    );
 
     // Log flush
     this._log('BATCHER_FLUSH', {
@@ -495,7 +502,7 @@ class MessageBatcher {
    */
   _invokeFlushCallback(result) {
     if (!this._onBatchReady) return;
-    
+
     try {
       this._onBatchReady(result);
     } catch (err) {

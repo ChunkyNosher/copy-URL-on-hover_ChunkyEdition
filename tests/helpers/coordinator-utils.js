@@ -30,8 +30,9 @@ export function createCoordinatorTestBed(coordinator, dependencies = {}) {
 
   // Wrap coordinator methods to track operations
   const originalMethods = {};
-  const methodsToWrap = Object.getOwnPropertyNames(Object.getPrototypeOf(coordinator))
-    .filter(name => name !== 'constructor' && typeof coordinator[name] === 'function');
+  const methodsToWrap = Object.getOwnPropertyNames(Object.getPrototypeOf(coordinator)).filter(
+    name => name !== 'constructor' && typeof coordinator[name] === 'function'
+  );
 
   for (const methodName of methodsToWrap) {
     originalMethods[methodName] = coordinator[methodName].bind(coordinator);
@@ -415,7 +416,9 @@ export function createMockEventEmitter() {
 
     getHistory: () => [...history],
     getListenerCount: event => listeners.get(event)?.length || 0,
-    clearHistory: () => { history.length = 0; },
+    clearHistory: () => {
+      history.length = 0;
+    },
 
     _listeners: listeners,
     _history: history
@@ -428,9 +431,7 @@ export function createMockEventEmitter() {
  * @returns {Object} Mock coordinator
  */
 export function createMockCoordinator(config = {}) {
-  const {
-    hasEvents = true
-  } = config;
+  const { hasEvents = true } = config;
 
   const state = {
     items: new Map(),
@@ -479,12 +480,14 @@ export function createMockCoordinator(config = {}) {
     count: jest.fn(() => state.items.size),
 
     // Event emitter methods (if enabled)
-    ...(emitter ? {
-      on: emitter.on,
-      off: emitter.off,
-      emit: emitter.emit,
-      once: emitter.once
-    } : {}),
+    ...(emitter
+      ? {
+          on: emitter.on,
+          off: emitter.off,
+          emit: emitter.emit,
+          once: emitter.once
+        }
+      : {}),
 
     // State access
     _state: state,

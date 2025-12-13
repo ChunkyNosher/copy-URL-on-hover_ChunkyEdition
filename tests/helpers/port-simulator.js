@@ -309,7 +309,9 @@ export function createPortSimulator() {
         if (msg[key] === undefined) {
           errors.push(`Message ${index}: Missing required field '${key}'`);
         } else if (typeof msg[key] !== expectedType && expectedType !== 'any') {
-          errors.push(`Message ${index}: Field '${key}' expected ${expectedType}, got ${typeof msg[key]}`);
+          errors.push(
+            `Message ${index}: Field '${key}' expected ${expectedType}, got ${typeof msg[key]}`
+          );
         }
       }
     });

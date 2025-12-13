@@ -353,11 +353,12 @@ export function createCrossTabSimulator() {
       storage: {
         get: jest.fn(async keys => {
           const result = {};
-          const keysArray = keys === null || keys === undefined
-            ? Array.from(tabStorage.keys())
-            : Array.isArray(keys)
-            ? keys
-            : [keys];
+          const keysArray =
+            keys === null || keys === undefined
+              ? Array.from(tabStorage.keys())
+              : Array.isArray(keys)
+                ? keys
+                : [keys];
 
           for (const key of keysArray) {
             if (tabStorage.has(key)) {

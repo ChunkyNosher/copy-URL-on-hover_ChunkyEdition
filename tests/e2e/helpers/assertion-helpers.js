@@ -237,7 +237,13 @@ export async function getQuickTabSize(page, testId) {
  * await assertQuickTabSize(page, 'quick-tab-1', 400, 300);
  * ```
  */
-export async function assertQuickTabSize(page, testId, expectedWidth, expectedHeight, tolerance = 5) {
+export async function assertQuickTabSize(
+  page,
+  testId,
+  expectedWidth,
+  expectedHeight,
+  tolerance = 5
+) {
   const locator = page.locator(`[data-testid="${testId}"]`);
   const boundingBox = await locator.boundingBox();
 

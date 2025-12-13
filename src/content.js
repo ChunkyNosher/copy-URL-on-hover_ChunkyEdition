@@ -1241,19 +1241,21 @@ function _sendContentScriptUnloadSignal(reason) {
   // v1.6.3.8-v8 - Issue #19: Also try runtime.sendMessage as fallback
   // This may not always succeed but provides redundancy
   try {
-    browser.runtime.sendMessage({
-      action: 'CONTENT_SCRIPT_UNLOAD',
-      ...unloadMessage
-    }).catch(() => {
-      // Expected to fail if background not ready - ignore
-    });
+    browser.runtime
+      .sendMessage({
+        action: 'CONTENT_SCRIPT_UNLOAD',
+        ...unloadMessage
+      })
+      .catch(() => {
+        // Expected to fail if background not ready - ignore
+      });
   } catch (_err) {
     // Ignore - best effort
   }
 }
 
 // v1.6.3.8-v8 - Issue #19: Handle pagehide for BFCache entry and navigation
-window.addEventListener('pagehide', (event) => {
+window.addEventListener('pagehide', event => {
   console.log('[Content] PAGE_LIFECYCLE_PAGEHIDE:', {
     tabId: cachedTabId,
     hasPort: !!backgroundPort,
@@ -1607,7 +1609,9 @@ async function _sendPortMessageWithFallback(message, options = {}) {
   // v1.6.3.8-v8 - Issue #15: Set up fallback polling if listener hasn't fired within 1 second
   setTimeout(() => {
     if (!_storageListenerHasFired) {
-      console.warn('[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received within 1s, polling storage');
+      console.warn(
+        '[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received within 1s, polling storage'
+      );
       _fallbackToStorageRead('listener-no-fire');
     }
   }, 1000);

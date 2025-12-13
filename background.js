@@ -1365,12 +1365,14 @@ function _logStorageQuotaStatus(bytesInUse, percentUsed, aggregatedUsage = null)
     quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
     thresholdLevel: _lastStorageQuotaSnapshot.thresholdLevel || 'OK',
     // v1.6.3.8-v8 - Issue #17: Per-area usage breakdown
-    perAreaUsage: aggregatedUsage ? {
-      localMB: (aggregatedUsage.localBytes / (1024 * 1024)).toFixed(3) + 'MB',
-      syncMB: (aggregatedUsage.syncBytes / (1024 * 1024)).toFixed(3) + 'MB',
-      sessionMB: (aggregatedUsage.sessionBytes / (1024 * 1024)).toFixed(3) + 'MB',
-      aggregatedMB: (aggregatedUsage.aggregatedBytes / (1024 * 1024)).toFixed(3) + 'MB'
-    } : null,
+    perAreaUsage: aggregatedUsage
+      ? {
+          localMB: (aggregatedUsage.localBytes / (1024 * 1024)).toFixed(3) + 'MB',
+          syncMB: (aggregatedUsage.syncBytes / (1024 * 1024)).toFixed(3) + 'MB',
+          sessionMB: (aggregatedUsage.sessionBytes / (1024 * 1024)).toFixed(3) + 'MB',
+          aggregatedMB: (aggregatedUsage.aggregatedBytes / (1024 * 1024)).toFixed(3) + 'MB'
+        }
+      : null,
     monitoringMode: _storageQuotaMonitoringMode,
     timestamp: Date.now()
   });
@@ -1534,9 +1536,10 @@ async function _updateStorageQuotaAlarm(targetMode, percentUsed) {
   const wasHighUsage = _storageQuotaMonitoringMode === 'fast';
   _storageQuotaMonitoringMode = targetMode;
 
-  const newInterval = targetMode === 'fast'
-    ? ALARM_STORAGE_QUOTA_INTERVAL_FAST_MIN
-    : ALARM_STORAGE_QUOTA_INTERVAL_MIN;
+  const newInterval =
+    targetMode === 'fast'
+      ? ALARM_STORAGE_QUOTA_INTERVAL_FAST_MIN
+      : ALARM_STORAGE_QUOTA_INTERVAL_MIN;
 
   console.log('[Background] STORAGE_QUOTA_MONITORING_MODE_CHANGED:', {
     previousMode: wasHighUsage ? 'fast' : 'normal',
@@ -6226,12 +6229,16 @@ function _runMaxEventAgeCheck(newValue) {
       tabCount: newValue?.tabs?.length,
       reason: 'Event exceeds maximum age threshold - likely from stuck queue'
     });
-    
-    return _createSkipResult('staleEventAge', `Event is ${Math.round(eventAgeMs / 1000)}s old (max: ${MAX_STATE_CHANGE_AGE_MS / 1000}s)`, {
-      eventAgeMs,
-      maxAgeMs: MAX_STATE_CHANGE_AGE_MS,
-      eventTimestamp
-    });
+
+    return _createSkipResult(
+      'staleEventAge',
+      `Event is ${Math.round(eventAgeMs / 1000)}s old (max: ${MAX_STATE_CHANGE_AGE_MS / 1000}s)`,
+      {
+        eventAgeMs,
+        maxAgeMs: MAX_STATE_CHANGE_AGE_MS,
+        eventTimestamp
+      }
+    );
   }
 
   return null;
@@ -7520,7 +7527,13 @@ function registerPort({ port, origin, tabId, type, windowId = null, frameId = nu
   // v1.6.4.9 - Issue #6: Warn if registry size exceeds thresholds
   _checkPortRegistrySizeWarnings();
 
-  logPortLifecycle(origin, 'open', { tabId, portId, type, frameId: resolvedFrameId, totalPorts: portRegistry.size });
+  logPortLifecycle(origin, 'open', {
+    tabId,
+    portId,
+    type,
+    frameId: resolvedFrameId,
+    totalPorts: portRegistry.size
+  });
 
   return portId;
 }
@@ -7646,7 +7659,7 @@ function updatePortActivity(portId) {
 
     portInfo.lastMessageAt = now;
     portInfo.lastActivityTime = now; // v1.6.3.7-v9
-    
+
     // v1.6.3.8-v8 - Issue #20: Cap messageCount to prevent unbounded growth
     if (portInfo.messageCount < MAX_MESSAGE_COUNT_TRACKED) {
       portInfo.messageCount++;
@@ -7685,7 +7698,13 @@ function updatePortActivity(portId) {
  * v1.6.3.8-v7 - Issue #14: Extracted for reuse and complexity reduction
  * @private
  */
-function _logCircuitBreakerTransition(portInfo, previousState, newState, reason, extraDetails = {}) {
+function _logCircuitBreakerTransition(
+  portInfo,
+  previousState,
+  newState,
+  reason,
+  extraDetails = {}
+) {
   console.log('[Background] CIRCUIT_BREAKER_TRANSITION:', {
     portId: portInfo.origin,
     previousState,
@@ -7704,11 +7723,17 @@ function _logCircuitBreakerTransition(portInfo, previousState, newState, reason,
 function _checkMaxDurationDisconnect(portInfo, currentState, timeSinceFirstFailure, failureCount) {
   if (!portInfo.firstFailureTime) return null;
   if (timeSinceFirstFailure < PORT_CIRCUIT_BREAKER_MAX_DURATION_MS) return null;
-  
-  _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.DISCONNECTED, '10 seconds elapsed since first failure', {
-    timeSinceFirstFailureMs: timeSinceFirstFailure,
-    failureCount: failureCount + 1
-  });
+
+  _logCircuitBreakerTransition(
+    portInfo,
+    currentState,
+    PORT_CIRCUIT_STATES.DISCONNECTED,
+    '10 seconds elapsed since first failure',
+    {
+      timeSinceFirstFailureMs: timeSinceFirstFailure,
+      failureCount: failureCount + 1
+    }
+  );
   return { newState: PORT_CIRCUIT_STATES.DISCONNECTED, shouldEvict: true };
 }
 
@@ -7719,10 +7744,16 @@ function _checkMaxDurationDisconnect(portInfo, currentState, timeSinceFirstFailu
  */
 function _checkThirdFailureDisconnect(portInfo, currentState, failureCount) {
   if (failureCount < 2) return null;
-  
-  _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.DISCONNECTED, '3rd consecutive failure', {
-    failureCount: failureCount + 1
-  });
+
+  _logCircuitBreakerTransition(
+    portInfo,
+    currentState,
+    PORT_CIRCUIT_STATES.DISCONNECTED,
+    '3rd consecutive failure',
+    {
+      failureCount: failureCount + 1
+    }
+  );
   return { newState: PORT_CIRCUIT_STATES.DISCONNECTED, shouldEvict: true };
 }
 
@@ -7735,12 +7766,18 @@ function _checkSecondFailureCritical(portInfo, currentState, failureCount, timeS
   const isSecondFailure = failureCount === 1 && portInfo.firstFailureTime;
   const isInWindow = timeSinceFirstFailure <= PORT_CIRCUIT_BREAKER_WINDOW_MS;
   if (!isSecondFailure || !isInWindow) return null;
-  
-  _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.CRITICAL, '2nd failure within 5-second window', {
-    timeSinceFirstFailureMs: timeSinceFirstFailure,
-    windowMs: PORT_CIRCUIT_BREAKER_WINDOW_MS,
-    failureCount: failureCount + 1
-  });
+
+  _logCircuitBreakerTransition(
+    portInfo,
+    currentState,
+    PORT_CIRCUIT_STATES.CRITICAL,
+    '2nd failure within 5-second window',
+    {
+      timeSinceFirstFailureMs: timeSinceFirstFailure,
+      windowMs: PORT_CIRCUIT_BREAKER_WINDOW_MS,
+      failureCount: failureCount + 1
+    }
+  );
   return { newState: PORT_CIRCUIT_STATES.CRITICAL, shouldEvict: false };
 }
 
@@ -7761,23 +7798,41 @@ function _computeCircuitBreakerState(portInfo, isFailure) {
   }
 
   // Calculate time since first failure
-  const timeSinceFirstFailure = portInfo.firstFailureTime ? Date.now() - portInfo.firstFailureTime : 0;
+  const timeSinceFirstFailure = portInfo.firstFailureTime
+    ? Date.now() - portInfo.firstFailureTime
+    : 0;
 
   // Check escalation rules in priority order
-  const maxDurationResult = _checkMaxDurationDisconnect(portInfo, currentState, timeSinceFirstFailure, failureCount);
+  const maxDurationResult = _checkMaxDurationDisconnect(
+    portInfo,
+    currentState,
+    timeSinceFirstFailure,
+    failureCount
+  );
   if (maxDurationResult) return maxDurationResult;
 
   const thirdFailureResult = _checkThirdFailureDisconnect(portInfo, currentState, failureCount);
   if (thirdFailureResult) return thirdFailureResult;
 
-  const secondFailureResult = _checkSecondFailureCritical(portInfo, currentState, failureCount, timeSinceFirstFailure);
+  const secondFailureResult = _checkSecondFailureCritical(
+    portInfo,
+    currentState,
+    failureCount,
+    timeSinceFirstFailure
+  );
   if (secondFailureResult) return secondFailureResult;
 
   // 1st failure - DEGRADED
   if (failureCount === 0) {
-    _logCircuitBreakerTransition(portInfo, currentState, PORT_CIRCUIT_STATES.DEGRADED, '1st failure', {
-      failureCount: failureCount + 1
-    });
+    _logCircuitBreakerTransition(
+      portInfo,
+      currentState,
+      PORT_CIRCUIT_STATES.DEGRADED,
+      '1st failure',
+      {
+        failureCount: failureCount + 1
+      }
+    );
     return { newState: PORT_CIRCUIT_STATES.DEGRADED, shouldEvict: false };
   }
 
@@ -7855,7 +7910,9 @@ function _trackPortMessageResult(portId, success) {
       windowId: portInfo.windowId,
       consecutiveFailures: failureCount,
       circuitBreakerState: newState,
-      timeSinceFirstFailureMs: portInfo.firstFailureTime ? Date.now() - portInfo.firstFailureTime : 0,
+      timeSinceFirstFailureMs: portInfo.firstFailureTime
+        ? Date.now() - portInfo.firstFailureTime
+        : 0,
       timeSinceLastSuccessMs: timeSinceLastSuccess,
       reason: 'Circuit breaker triggered - Firefox Bugzilla 1223425',
       registrySizeBefore: portRegistry.size
@@ -7881,11 +7938,11 @@ function _trackPortMessageResult(portId, success) {
 /**
  * Check if a message is too old based on TTL for dead ports
  * v1.6.3.8-v8 - Issue #16: Discard stale messages for dead ports
- * 
+ *
  * Uses message.timestamp (primary) or message.clientTimestamp (fallback for rapid operations)
  * to determine message age. clientTimestamp is used by v1.6.3.8-v7 Issue #12 for ordering
  * validation in rapid operations where client-side timestamp provides more accurate ordering.
- * 
+ *
  * @private
  * @param {Object} message - Message to check
  * @returns {{ isStale: boolean, ageMs: number }} Whether message exceeds TTL and its age in ms
@@ -7896,7 +7953,7 @@ function _isMessageStaleForDeadPort(message) {
   if (!messageTimestamp) {
     return { isStale: false, ageMs: 0 };
   }
-  
+
   const ageMs = Date.now() - messageTimestamp;
   return { isStale: ageMs > DEAD_PORT_MESSAGE_TTL_MS, ageMs };
 }
@@ -7939,7 +7996,10 @@ function _sendPortMessageWithTracking(portId, message) {
 
   // v1.6.3.8-v8 - Issue #16: Check message TTL when port is in dead/critical state
   const circuitState = portInfo.circuitBreakerState || PORT_CIRCUIT_STATES.HEALTHY;
-  if (circuitState === PORT_CIRCUIT_STATES.CRITICAL || circuitState === PORT_CIRCUIT_STATES.DISCONNECTED) {
+  if (
+    circuitState === PORT_CIRCUIT_STATES.CRITICAL ||
+    circuitState === PORT_CIRCUIT_STATES.DISCONNECTED
+  ) {
     const { isStale, ageMs } = _isMessageStaleForDeadPort(message);
     if (isStale) {
       _logDiscardedStaleMessage(portId, portInfo, message, ageMs);
@@ -8078,11 +8138,11 @@ function _shouldCleanupPortDiagnostics(portInfo, now) {
 function _clearPortDiagnostics(portId, portInfo, now) {
   const oldMessageCount = portInfo.messageCount;
   const wasExceeded = portInfo.messageCountExceeded;
-  
+
   // Reset diagnostic counters but keep port alive
   portInfo.messageCount = 0;
   portInfo.messageCountExceeded = false;
-  
+
   console.log('[Background] PORT_DIAGNOSTICS_CLEARED:', {
     portId,
     origin: portInfo.origin,
@@ -8141,7 +8201,7 @@ async function cleanupStalePorts() {
       stalePorts.push({ portId, reason: 'stale-inactivity' });
       continue;
     }
-    
+
     // v1.6.3.8-v8 - Issue #20: Clear diagnostic data for idle ports (> 24 hours)
     if (_shouldCleanupPortDiagnostics(portInfo, now)) {
       _clearPortDiagnostics(portId, portInfo, now);
@@ -10634,7 +10694,15 @@ function _prepareStateChangeContext(message, sender) {
     clientTimestamp: clientTimestamp || null
   });
 
-  return { messageId, quickTabId, changes, source, sourceTabId, correlationId, clientTimestamp: clientTimestamp || null };
+  return {
+    messageId,
+    quickTabId,
+    changes,
+    source,
+    sourceTabId,
+    correlationId,
+    clientTimestamp: clientTimestamp || null
+  };
 }
 
 /**
@@ -10669,7 +10737,8 @@ async function handleQuickTabStateChange(message, sender) {
   }
 
   // v1.6.3.8-v7 - Issue #9, #12: Include correlationId and clientTimestamp
-  const { quickTabId, changes, source, sourceTabId, correlationId, clientTimestamp } = _prepareStateChangeContext(message, sender);
+  const { quickTabId, changes, source, sourceTabId, correlationId, clientTimestamp } =
+    _prepareStateChangeContext(message, sender);
 
   // Track which tab hosts this Quick Tab
   _updateQuickTabHostTracking(quickTabId, sourceTabId);
@@ -10719,7 +10788,12 @@ function _updateQuickTabHostTracking(quickTabId, sourceTabId) {
  * @param {number} sourceTabId - Source browser tab ID
  * @param {string} [providedCorrelationId] - Optional correlation ID from caller
  */
-async function _handleQuickTabDeletion(quickTabId, source, sourceTabId, providedCorrelationId = null) {
+async function _handleQuickTabDeletion(
+  quickTabId,
+  source,
+  sourceTabId,
+  providedCorrelationId = null
+) {
   // v1.6.3.8-v7 - Issue #9: Use provided correlationId or generate one
   const correlationId = providedCorrelationId || generateCorrelationId(quickTabId);
 
@@ -10770,7 +10844,7 @@ async function _handleQuickTabDeletion(quickTabId, source, sourceTabId, provided
 function _shouldSkipStaleUpdate(existingTab, clientTimestamp, quickTabId, changes) {
   if (!clientTimestamp || !existingTab._lastClientTimestamp) return false;
   if (clientTimestamp >= existingTab._lastClientTimestamp) return false;
-  
+
   console.warn('[Background] RAPID_OPERATION_ORDERING_SKIP:', {
     quickTabId,
     reason: 'clientTimestamp is older than last applied operation',
@@ -10799,7 +10873,7 @@ function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId, clientTime
     if (_shouldSkipStaleUpdate(existingTab, clientTimestamp, quickTabId, changes)) {
       return; // Skip stale operation
     }
-    
+
     Object.assign(existingTab, changes);
     // v1.6.3.8-v7 - Issue #12: Track last applied client timestamp
     if (clientTimestamp) {
@@ -10809,10 +10883,10 @@ function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId, clientTime
     console.log('[Background] Updated cache for:', quickTabId, changes);
     return;
   }
-  
+
   // New Quick Tab (only create if has url)
   if (!changes.url) return;
-  
+
   globalQuickTabState.tabs.push({
     id: quickTabId,
     ...changes,
@@ -10940,7 +11014,13 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
  * @param {string} [correlationId] - Optional correlation ID for tracing
  */
-async function broadcastQuickTabStateUpdate(quickTabId, changes, source, excludeTabId, correlationId = null) {
+async function broadcastQuickTabStateUpdate(
+  quickTabId,
+  changes,
+  source,
+  excludeTabId,
+  correlationId = null
+) {
   // v1.6.3.6-v4 - FIX Issue #4: Check broadcast limits
   const broadcastCheck = _shouldAllowBroadcast(quickTabId, changes);
   if (!broadcastCheck.allowed) {
@@ -11020,7 +11100,12 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
   // This ensures UI button and Manager button produce identical cross-tab results
   if (changes?.deleted === true) {
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
-    await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId || effectiveCorrelationId);
+    await _broadcastDeletionToAllTabs(
+      quickTabId,
+      source,
+      excludeTabId,
+      changes.correlationId || effectiveCorrelationId
+    );
   }
 }
 
