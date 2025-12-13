@@ -371,12 +371,22 @@ class QuickTabsManager {
    * Hydrate tabs from stored state
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Add comprehensive init logging
+   * v1.6.3.8-v6 - Issue #10: Enhanced logging for cross-tab filtering diagnostics
    * @private
    * @param {Array} tabs - Array of tab data from storage
    * @returns {number} Count of successfully hydrated tabs
    */
   _hydrateTabsFromStorage(tabs) {
+    // v1.6.3.8-v6 - Issue #10: Log tab count before filtering
+    console.log('[QuickTabsManager] HYDRATION_FILTER_START:', {
+      tabCountBeforeFilter: tabs.length,
+      currentTabId: this.currentTabId,
+      originTabIds: tabs.map(t => ({ id: t.id, originTabId: t.originTabId })),
+      timestamp: Date.now()
+    });
+
     // v1.6.3.6-v5 - FIX: Track validation results for comprehensive logging
+    // v1.6.3.8-v6: Track both filtered and recovered tabs for diagnostics
     const filterReasons = {
       invalidData: 0,
       noOriginTabId: 0,
@@ -386,22 +396,39 @@ class QuickTabsManager {
       noHandler: 0,
       error: 0
     };
+    // v1.6.3.8-v6: Track successful recoveries separately (not filtered)
+    let recoveredFromIdPattern = 0;
 
     let hydratedCount = 0;
     for (const tabData of tabs) {
       const result = this._safeHydrateTabWithReason(tabData, filterReasons);
-      if (result.success) {
-        hydratedCount++;
-      }
+      if (!result.success) continue;
+      
+      hydratedCount++;
+      // v1.6.3.8-v6: Track if this was a recovered tab
+      const wasRecovered = result.reason === 'recoveredFromIdPattern';
+      recoveredFromIdPattern += wasRecovered ? 1 : 0;
     }
 
     // v1.6.3.6-v5 - FIX: Comprehensive init logging (single structured log)
+    // v1.6.3.8-v6 - Issue #10: Enhanced with before/after counts
     console.log('[QuickTabsManager] TAB SCOPE ISOLATION VALIDATION:', {
       total: tabs.length,
       passed: hydratedCount,
       filtered: tabs.length - hydratedCount,
       currentTabId: this.currentTabId,
-      filterReasons
+      filterReasons,
+      recoveredFromIdPattern
+    });
+
+    // v1.6.3.8-v6 - Issue #10: Log final render count after filtering
+    console.log('[QuickTabsManager] HYDRATION_FILTER_COMPLETE:', {
+      tabCountBeforeFilter: tabs.length,
+      tabCountAfterFilter: hydratedCount,
+      filteredOutCount: tabs.length - hydratedCount,
+      recoveredCount: recoveredFromIdPattern,
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
     });
 
     return hydratedCount;
@@ -410,6 +437,7 @@ class QuickTabsManager {
   /**
    * Safely hydrate a single tab with error handling and reason tracking
    * v1.6.3.6-v5 - FIX: Added reason tracking for comprehensive logging
+   * v1.6.3.8-v6 - Issue #10: Track recoveredFromIdPattern as success reason
    * @private
    * @param {Object} tabData - Tab data from storage
    * @param {Object} filterReasons - Object to track filter reasons
@@ -429,6 +457,9 @@ class QuickTabsManager {
         filterReasons[skipResult.reason]++;
         return { success: false, reason: skipResult.reason };
       }
+
+      // v1.6.3.8-v6: Track if this was a recovered tab (for diagnostics)
+      const wasRecovered = skipResult.reason === 'recoveredFromIdPattern';
 
       // Skip if tab already exists
       if (this.tabs.has(tabData.id)) {
@@ -456,7 +487,8 @@ class QuickTabsManager {
       } else {
         this._hydrateVisibleTab(optionsWithCallbacks);
       }
-      return { success: true, reason: 'hydrated' };
+      // v1.6.3.8-v6: Return recoveredFromIdPattern reason if applicable
+      return { success: true, reason: wasRecovered ? 'recoveredFromIdPattern' : 'hydrated' };
     } catch (tabError) {
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
@@ -784,6 +816,7 @@ class QuickTabsManager {
    *              Consolidated to single implementation that tracks reasons
    * v1.6.3.6-v7 - FIX Issue #1: Add fallback to extract tab ID from Quick Tab ID pattern
    *              when originTabId is null but ID pattern matches current tab
+   * v1.6.3.8-v6 - Issue #10: Enhanced logging for cross-tab filtering diagnostics
    * @private
    * @param {Object} tabData - Stored tab data
    * @returns {{skip: boolean, reason: string}} Result with skip flag and reason
@@ -791,6 +824,16 @@ class QuickTabsManager {
   _checkTabScopeWithReason(tabData) {
     const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
     const hasCurrentTabId = this.currentTabId !== null && this.currentTabId !== undefined;
+
+    // v1.6.3.8-v6 - Issue #10: Log originTabId matching decision
+    console.log('[QuickTabsManager] CROSS_TAB_FILTER_CHECK:', {
+      quickTabId: tabData.id,
+      originTabId: tabData.originTabId,
+      currentTabId: this.currentTabId,
+      hasOriginTabId,
+      hasCurrentTabId,
+      timestamp: Date.now()
+    });
 
     // v1.6.3.6-v5 - FIX: If we don't have currentTabId, we CANNOT safely filter
     // Reject all tabs until we know our tab ID to prevent cross-tab contamination
@@ -846,6 +889,15 @@ class QuickTabsManager {
     }
 
     const shouldRender = this._shouldRenderOnThisTab(tabData);
+    // v1.6.3.8-v6 - Issue #10: Log final filtering decision
+    console.log('[QuickTabsManager] CROSS_TAB_FILTER_RESULT:', {
+      quickTabId: tabData.id,
+      originTabId: tabData.originTabId,
+      currentTabId: this.currentTabId,
+      shouldRender,
+      reason: shouldRender ? 'passed' : 'differentTab'
+    });
+    
     if (!shouldRender) {
       console.log('[QuickTabsManager] Skipping hydration - tab originated from different tab:', {
         id: tabData.id,

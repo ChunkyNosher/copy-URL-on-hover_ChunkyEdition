@@ -330,6 +330,7 @@ let keepaliveHealthCheckIntervalId = null; // Health check interval ID
 // ==================== v1.6.3.8 KEEPALIVE HEALTH TRACKING ====================
 // Issue #9: Comprehensive keepalive success/failure rate tracking
 // Track successes and failures within 60-second window for rate calculation
+// v1.6.3.8-v6 - Issue #9: Added first keepalive logging flag
 const KEEPALIVE_HEALTH_REPORT_INTERVAL_MS = 60000; // Report every 60 seconds
 let keepaliveHealthReportIntervalId = null;
 let keepaliveHealthStats = {
@@ -340,6 +341,8 @@ let keepaliveHealthStats = {
   slowestMs: 0,
   lastResetTime: Date.now()
 };
+// v1.6.3.8-v6 - Issue #9: Track first keepalive for unconditional logging
+let firstKeepaliveLogged = false;
 
 // Issue #6: Port Registry Size Warnings
 const PORT_REGISTRY_WARN_THRESHOLD = 50; // Warn if registry exceeds 50 ports
@@ -372,13 +375,31 @@ const PORT_REGISTRY_HISTORY_MAX = 5;
 
 // ==================== v1.6.3.7-v12 DEDUP STATISTICS ====================
 // Issue #6: Track deduplication statistics
+// v1.6.3.8-v6 - Issue #11: Enhanced dedup stats with tier tracking and longer history
 let dedupStats = {
   skipped: 0,
   processed: 0,
-  lastResetTime: Date.now()
+  lastResetTime: Date.now(),
+  // v1.6.3.8-v6 - Issue #11: Track which dedup tier was reached
+  tierCounts: {
+    saveId: 0,       // Tier 1: saveId match
+    sequenceId: 0,   // Tier 2: sequenceId ordering
+    revision: 0,     // Tier 3: revision check
+    contentHash: 0   // Tier 4: content hash
+  }
 };
+// v1.6.3.8-v6 - Issue #11: Longer-lived dedup history (last 5 minutes in 60s buckets)
+const DEDUP_HISTORY_BUCKETS = 5;
 const DEDUP_STATS_LOG_INTERVAL_MS = 60000; // Log stats every 60 seconds
 let dedupStatsIntervalId = null;
+let dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCounts }
+// v1.6.3.8-v6 - Issue #7: Map dedup method names to tier count keys
+const DEDUP_TIER_MAP = {
+  'saveId-timestamp': 'saveId',
+  'sequenceId': 'sequenceId',
+  'revision': 'revision',
+  'contentHash': 'contentHash'
+};
 
 // ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
 // API #4: browser.alarms - Scheduled cleanup tasks
@@ -559,6 +580,7 @@ async function _performKeepaliveQueries(context) {
  * Handle successful keepalive reset
  * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
  * v1.6.3.8 - Issue #9: Track comprehensive health stats for rate calculation
+ * v1.6.3.8-v6 - Issue #9: Log first keepalive unconditionally
  * @private
  * @param {Object} context - Keepalive context with results
  * @param {number} attemptStartTime - When the attempt started
@@ -577,9 +599,16 @@ function _handleKeepaliveSuccess(context, attemptStartTime) {
   keepaliveHealthStats.fastestMs = Math.min(keepaliveHealthStats.fastestMs, durationMs);
   keepaliveHealthStats.slowestMs = Math.max(keepaliveHealthStats.slowestMs, durationMs);
 
-  // Rate-limited success logging (every 10th success)
-  if (keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
+  // v1.6.3.8-v6 - Issue #9: Log first keepalive unconditionally
+  const isFirst = !firstKeepaliveLogged;
+  if (isFirst) {
+    firstKeepaliveLogged = true;
+  }
+
+  // Log first success unconditionally, then rate-limited (every 10th success)
+  if (isFirst || keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
     console.log('[Background] KEEPALIVE_RESET_SUCCESS:', {
+      isFirstKeepalive: isFirst,
       tabCount: context.tabCount,
       successCount: keepaliveSuccessCount,
       failureCount: consecutiveKeepaliveFailures,
@@ -1403,15 +1432,19 @@ function logDiagnosticSnapshot() {
   });
 
   // v1.6.3.7-v12 - Issue #6: Include dedup statistics
+  // v1.6.3.8-v6 - Issue #11: Enhanced with tier counts and history
+  const total = dedupStats.skipped + dedupStats.processed;
   console.log('[Background] Dedup statistics:', {
     skipped: dedupStats.skipped,
     processed: dedupStats.processed,
-    totalSinceReset: dedupStats.skipped + dedupStats.processed,
-    skipRate:
-      dedupStats.processed > 0
-        ? ((dedupStats.skipped / (dedupStats.skipped + dedupStats.processed)) * 100).toFixed(1) +
-          '%'
-        : 'N/A',
+    totalSinceReset: total,
+    skipRate: total > 0
+      ? ((dedupStats.skipped / total) * 100).toFixed(1) + '%'
+      : 'N/A',
+    tierCounts: dedupStats.tierCounts,
+    historyBuckets: dedupStatsHistory.length,
+    // v1.6.3.8-v6 - Issue #11: Include 5-minute average skip rate
+    avgSkipRateLast5Min: _calculateAvgSkipRate(),
     lastResetTime: new Date(dedupStats.lastResetTime).toISOString()
   });
 
@@ -1432,6 +1465,23 @@ function logDiagnosticSnapshot() {
   });
 
   console.log('[Background] =================================================================');
+}
+
+/**
+ * Calculate average skip rate from dedup history
+ * v1.6.3.8-v6 - Issue #11: Helper for 5-minute average skip rate
+ * @private
+ * @returns {string} Average skip rate or 'N/A' if no history
+ */
+function _calculateAvgSkipRate() {
+  if (!dedupStatsHistory || dedupStatsHistory.length === 0) {
+    return 'N/A';
+  }
+  const totalSkipped = dedupStatsHistory.reduce((sum, h) => sum + h.skipped, 0);
+  const totalProcessed = dedupStatsHistory.reduce((sum, h) => sum + h.processed, 0);
+  const total = totalSkipped + totalProcessed;
+  if (total === 0) return 'N/A';
+  return ((totalSkipped / total) * 100).toFixed(1) + '%';
 }
 
 /**
@@ -1703,6 +1753,7 @@ function startPortRegistryMonitoring() {
 /**
  * Start dedup statistics logging
  * v1.6.3.7-v12 - Issue #6: Log dedup statistics every 60 seconds
+ * v1.6.3.8-v6 - Issue #11: Include tier counts, longer history, and port failure correlation
  */
 function startDedupStatsLogging() {
   if (dedupStatsIntervalId) {
@@ -1712,21 +1763,55 @@ function startDedupStatsLogging() {
   dedupStatsIntervalId = setInterval(() => {
     const total = dedupStats.skipped + dedupStats.processed;
     if (total > 0) {
+      // v1.6.3.8-v6 - Issue #11: Calculate skip rate for correlation
+      const skipRate = ((dedupStats.skipped / total) * 100).toFixed(1);
+      
+      // v1.6.3.8-v6 - Issue #11: Correlate with port failures
+      const portFailureCorrelation = consecutiveKeepaliveFailures > 2 
+        ? 'HIGH_PORT_FAILURES' 
+        : consecutiveKeepaliveFailures > 0 
+          ? 'SOME_PORT_FAILURES' 
+          : 'HEALTHY';
+      
       console.log('[Background] [STORAGE] DEDUP_STATS:', {
         skipped: dedupStats.skipped,
         processed: dedupStats.processed,
         total,
-        skipRate: ((dedupStats.skipped / total) * 100).toFixed(1) + '%',
+        skipRate: skipRate + '%',
+        tierCounts: dedupStats.tierCounts,
+        portFailureCorrelation,
+        consecutivePortFailures: consecutiveKeepaliveFailures,
+        historyBuckets: dedupStatsHistory.length,
         intervalMs: DEDUP_STATS_LOG_INTERVAL_MS,
         timestamp: Date.now()
       });
+
+      // v1.6.3.8-v6 - Issue #11: Add to longer-lived history
+      dedupStatsHistory.push({
+        timestamp: Date.now(),
+        skipped: dedupStats.skipped,
+        processed: dedupStats.processed,
+        tierCounts: { ...dedupStats.tierCounts },
+        skipRate: parseFloat(skipRate)
+      });
+
+      // Keep only last N buckets
+      if (dedupStatsHistory.length > DEDUP_HISTORY_BUCKETS) {
+        dedupStatsHistory.shift();
+      }
     }
 
-    // Reset stats after logging
+    // Reset stats after logging (but keep history)
     dedupStats = {
       skipped: 0,
       processed: 0,
-      lastResetTime: Date.now()
+      lastResetTime: Date.now(),
+      tierCounts: {
+        saveId: 0,
+        sequenceId: 0,
+        revision: 0,
+        contentHash: 0
+      }
     };
   }, DEDUP_STATS_LOG_INTERVAL_MS);
 
@@ -5612,9 +5697,25 @@ function _getDedupStatsSnapshot() {
 }
 
 /**
+ * Update dedup tier counts based on the method used
+ * v1.6.3.8-v6 - Issue #7: Extracted to reduce _createDedupResult complexity
+ * @private
+ * @param {string} method - Dedup method used
+ */
+function _incrementDedupTierCount(method) {
+  if (!dedupStats.tierCounts) return;
+  
+  const tierKey = DEDUP_TIER_MAP[method];
+  if (tierKey) {
+    dedupStats.tierCounts[tierKey]++;
+  }
+}
+
+/**
  * Create a dedup result with logging
  * v1.6.3.7-v14 - FIX Duplication: Unified factory for skip/process results
  * v1.6.3.7-v14 - FIX Excess Args: Use options object pattern
+ * v1.6.3.8-v6 - Issue #7: Log dedup tier reached (saveId/sequenceId/revision/contentHash)
  * @private
  * @param {Object} options - Result configuration
  * @param {boolean} options.shouldSkip - Whether to skip processing
@@ -5626,16 +5727,23 @@ function _getDedupStatsSnapshot() {
 function _createDedupResult({ shouldSkip, method, reason, decision, logDetails = {} }) {
   if (shouldSkip) {
     dedupStats.skipped++;
+    // v1.6.3.8-v6 - Issue #7: Track tier reached
+    _incrementDedupTierCount(method);
   } else {
     dedupStats.processed++;
   }
 
   const result = { shouldSkip, method, reason };
 
+  // v1.6.3.8-v6 - Issue #7: Enhanced logging with tier and correlation ID
+  const correlationId = logDetails.correlationId || `dedup-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
   console.log('[Background] [STORAGE] DEDUP_DECISION:', {
     ...result,
     decision,
+    tierReached: method,
+    correlationId,
     dedupStatsSnapshot: _getDedupStatsSnapshot(),
+    tierCounts: dedupStats.tierCounts,
     ...logDetails,
     timestamp: Date.now()
   });
@@ -6234,9 +6342,13 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * Process storage update and update global cache
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
+ * v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID
  * @param {Object} newValue - New storage value
  */
 function _processStorageUpdate(newValue) {
+  // v1.6.3.8-v6 - Issue #7: Generate correlation ID for tracking this storage event
+  const correlationId = `storage-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
     _clearCacheForEmptyStorage(newValue);
@@ -6258,9 +6370,13 @@ function _processStorageUpdate(newValue) {
   // v1.6.3.4-v11 - Background caches state for popup/sidebar queries
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
   // v1.6.4.13 - FIX Issue #1 & #2: ALSO broadcast to BroadcastChannel for Manager updates
+  // v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID and sequenceId
   console.log('[Background] [STORAGE] STATE_CHANGE_DETECTED:', {
     tabCount: filteredValue.tabs?.length || 0,
     saveId: filteredValue.saveId,
+    sequenceId: filteredValue.sequenceId,
+    revisionId: filteredValue.revisionId,
+    correlationId,
     timestamp: Date.now()
   });
   _updateGlobalStateFromStorage(filteredValue);
