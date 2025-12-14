@@ -425,7 +425,10 @@ export class UpdateHandler {
             console.log('[UpdateHandler] Position message sent:', { id, correlationId });
           })
           .catch(err => {
-            console.warn('[UpdateHandler] Position message failed (fallback to storage):', err.message);
+            console.warn(
+              '[UpdateHandler] Position message failed (fallback to storage):',
+              err.message
+            );
           });
       }
     } catch (err) {

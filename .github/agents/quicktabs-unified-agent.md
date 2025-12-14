@@ -52,7 +52,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`, `_sendMinimizeMessage()`
+- **Handler Message Routing** - `_sendPositionChangedMessage()`,
+  `_sendMinimizeMessage()`
 - **CorrelationId Integration** - All messages use `generateCorrelationId()`
 - **Ownership Validation** - `_validateOwnership()` checks `originTabId`
 - **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
@@ -69,13 +70,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Modules (v1.6.3.9):**
 
-| Module                            | Purpose                                  |
-| --------------------------------- | ---------------------------------------- |
-| `src/constants.js`                | Centralized timing constants             |
-| `src/storage/schema-v2.js`        | Pure state utilities, version field      |
-| `src/storage/storage-manager.js`  | Dedup, readback validation, retry        |
-| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder            |
-| `src/utils/event-bus.js`          | EventBus with native EventTarget         |
+| Module                            | Purpose                             |
+| --------------------------------- | ----------------------------------- |
+| `src/constants.js`                | Centralized timing constants        |
+| `src/storage/schema-v2.js`        | Pure state utilities, version field |
+| `src/storage/storage-manager.js`  | Dedup, readback validation, retry   |
+| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
+| `src/utils/event-bus.js`          | EventBus with native EventTarget    |
 
 ---
 

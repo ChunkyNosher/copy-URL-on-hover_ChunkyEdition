@@ -1,9 +1,9 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9** - A feature-rich **Firefox/Chrome/Chromium** extension
-for quick URL copying and advanced Quick Tab management with **Solo/Mute
-visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
-Floating Panel Manager.
+**Version 1.6.3.9** - A feature-rich **Firefox/Chrome/Chromium** extension for
+quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
+control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
+Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
@@ -50,7 +50,8 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
 - **v1.6.3.8-v12** - Port removal, stateless messaging
-- **v1.6.3.8-v11** - Quick Tabs Architecture v2, tabs.sendMessage, StorageManager
+- **v1.6.3.8-v11** - Quick Tabs Architecture v2, tabs.sendMessage,
+  StorageManager
 - **v1.6.3.8-v10** - Modern APIs Audit, Diagnostic Fixes
 - **v1.6.3.8-v8** - Storage, Handler & Init Fixes
 - **v1.6.3.8-v7** - Communication & Storage Fixes

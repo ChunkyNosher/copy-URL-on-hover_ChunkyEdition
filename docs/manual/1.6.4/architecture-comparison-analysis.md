@@ -1,4 +1,5 @@
 # Architecture Comparison Analysis: Current vs Proposed
+
 **Document ID:** ARCH-COMP-001  
 **Date:** December 14, 2025  
 **Scope:** v1.6.3.8-v11 Current vs v2.0 Proposed Architecture  
@@ -12,7 +13,8 @@
 
 The Quick Tabs codebase has a **design-implementation mismatch**:
 
-- ✅ **Proposed Architecture (v2.0):** Documented in implementation-plan.md and architecture-rationale.md
+- ✅ **Proposed Architecture (v2.0):** Documented in implementation-plan.md and
+  architecture-rationale.md
   - Promise-based messaging with `runtime.sendMessage()`
   - Stateless content scripts (no persistent ports)
   - Storage.onChanged as source of truth
@@ -26,7 +28,8 @@ The Quick Tabs codebase has a **design-implementation mismatch**:
   - Complex BFCache handling
   - Message queue with promise contamination bugs
 
-- ⚠️ **Broadcast-Manager Paradox:** This file shows the correct v2.0 pattern is implementable and working, but it's not universally applied.
+- ⚠️ **Broadcast-Manager Paradox:** This file shows the correct v2.0 pattern is
+  implementable and working, but it's not universally applied.
 
 This creates **20 documented issues** that disappear with full v2.0 migration.
 
@@ -45,7 +48,7 @@ function connectContentToBackground(tabId) {
   backgroundPort = browser.runtime.connect({
     name: `quicktabs-content-${tabId}`
   });
-  
+
   backgroundPort.onMessage.addListener(handleContentPortMessage);
   backgroundPort.onDisconnect.addListener(() => {
     // Schedule reconnection with exponential backoff
@@ -82,7 +85,7 @@ function sendToBackground(message) {
 // Promise-based stateless messaging
 async function broadcastStateToAllTabs(state) {
   const tabs = await browser.tabs.query({});
-  
+
   for (const tab of tabs) {
     try {
       const result = await browser.tabs.sendMessage(tab.id, {
@@ -147,7 +150,7 @@ async function _fetchTabIdWithRetry() {
 async function initializeFeatures() {
   // This waits for 10-33.5 seconds before proceeding
   const tabId = await _fetchTabIdWithRetry();
-  
+
   // Only THEN can we initialize
   quickTabsManager = new QuickTabsManager(tabId);
   notificationManager = initNotifications();
@@ -176,17 +179,20 @@ async function initializeFeatures() {
   // Initialize everything immediately
   quickTabsManager = new QuickTabsManager(null); // null tabId OK
   notificationManager = initNotifications();
-  
+
   // Meanwhile, fetch tab ID in background (non-blocking)
-  browser.runtime.sendMessage({
-    action: 'GET_CURRENT_TAB_ID'
-  }).then(({tabId}) => {
-    // When tab ID arrives, update manager
-    quickTabsManager.setTabId(tabId);
-  }).catch(() => {
-    // Graceful degradation: use features without tab-specific operations
-    console.log('Tab ID fetch failed, using degraded mode');
-  });
+  browser.runtime
+    .sendMessage({
+      action: 'GET_CURRENT_TAB_ID'
+    })
+    .then(({ tabId }) => {
+      // When tab ID arrives, update manager
+      quickTabsManager.setTabId(tabId);
+    })
+    .catch(() => {
+      // Graceful degradation: use features without tab-specific operations
+      console.log('Tab ID fetch failed, using degraded mode');
+    });
 }
 
 // Timeline:
@@ -219,11 +225,11 @@ const CIRCUIT_BREAKER_THRESHOLD = 15;
 async function queueStorageWrite(message) {
   // Issue #16: OFF-BY-ONE - Check AFTER increment
   pendingWriteCount++;
-  
+
   if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
     return false; // Circuit breaker tripped
   }
-  
+
   try {
     const result = await browser.runtime.sendMessage(message);
     pendingWriteCount--;
@@ -242,7 +248,7 @@ async function savePosition(position) {
     type: 'POSITION_CHANGED',
     position
   });
-  
+
   if (result === false) {
     // Is this: operation failed OR queue reset?
     // Caller can't tell! (Issue #15)
@@ -269,7 +275,7 @@ async function savePosition(position) {
       position,
       correlationId: generateId()
     });
-    
+
     // Promise resolves with actual result
     return result;
   } catch (err) {
@@ -283,7 +289,7 @@ async function savePosition(position) {
 
 // Caller's perspective:
 try {
-  const result = await savePosition({x: 100, y: 200});
+  const result = await savePosition({ x: 100, y: 200 });
   console.log('Position saved:', result); // Clear success path
 } catch (err) {
   console.error('Position save failed with fallback:', err);
@@ -317,7 +323,7 @@ function _handleBFCachePageHide(event) {
   // Save state before page hide
   _bfCacheState.beforeHideState = stateManager.getState();
   _bfCacheState.checksum = _computeStateChecksum(_bfCacheState.beforeHideState);
-  
+
   // Disconnect port to prevent zombie
   if (backgroundPort) {
     backgroundPort.disconnect();
@@ -328,16 +334,16 @@ function _handleBFCachePageShow(event) {
   if (event.persisted) {
     // Page restored from BFCache
     _bfCacheState.isRestoring = true;
-    
+
     // Validate checksum
     const currentState = stateManager.getState();
     const currentChecksum = _computeStateChecksum(currentState);
-    
+
     // Issue #20: Checksum only validates tab list, not metadata!
     if (currentChecksum !== _bfCacheState.checksum) {
       _handleBFCacheRestore(currentState);
     }
-    
+
     // Reconnect port
     connectContentToBackground(currentTabId);
     _processPendingPortMessages();
@@ -366,24 +372,27 @@ function _computeStateChecksum(state) {
 ```javascript
 // content.js - minimal BFCache handling (20 lines)
 
-window.addEventListener('pageshow', (event) => {
+window.addEventListener('pageshow', event => {
   if (event.persisted) {
     // Page restored from BFCache
     console.log('BFCache restore detected');
-    
+
     // No disconnection needed - no ports!
     // No zombie handling needed - stateless!
-    
+
     // Just request fresh state
-    browser.runtime.sendMessage({
-      type: 'REQUEST_FULL_STATE'
-    }).then(({state}) => {
-      // Apply restored state
-      stateManager.setState(state);
-    }).catch(() => {
-      // storage.onChanged will handle sync
-      console.log('State fetch failed, storage listener will sync');
-    });
+    browser.runtime
+      .sendMessage({
+        type: 'REQUEST_FULL_STATE'
+      })
+      .then(({ state }) => {
+        // Apply restored state
+        stateManager.setState(state);
+      })
+      .catch(() => {
+        // storage.onChanged will handle sync
+        console.log('State fetch failed, storage listener will sync');
+      });
   }
 });
 
@@ -412,7 +421,7 @@ window.addEventListener('pageshow', (event) => {
 // Multiple sync mechanisms fighting each other:
 
 // Mechanism 1: Port messages
-backgroundPort.onMessage.addListener(({state}) => {
+backgroundPort.onMessage.addListener(({ state }) => {
   _applyStateChange(state); // Direct state push
 });
 
@@ -457,7 +466,7 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
   if (areaName === 'local' && changes.quickTabsState) {
     // Detect self-writes (own changes)
     const isSelfWrite = _detectSelfWrite(changes.quickTabsState);
-    
+
     if (!isSelfWrite) {
       // Another tab/process changed state
       const newState = changes.quickTabsState.newValue;
@@ -530,10 +539,10 @@ backgroundPort.onDisconnect.addListener(() => {
   // Issue #3: Queue messages hoping for reconnect
   // But reconnect might fail forever
   _queueMessageForPort({...});
-  
+
   // Issue #17: Then try to reconnect with 10-33.5s delay
   _schedulePortReconnect(tabId);
-  
+
   // Meanwhile:
   // - User sees blank interface
   // - Features waiting for port never initialize
@@ -564,7 +573,7 @@ async function handleMessage(message) {
     if (message.type === 'QT_STATE_SYNC') {
       const updated = SchemaV2.updateState(state, message.changes);
       stateManager.setState(updated);
-      return {success: true};
+      return { success: true };
     }
   } catch (err) {
     // Explicit error, clear recovery
@@ -572,13 +581,13 @@ async function handleMessage(message) {
       messageType: message.type,
       correlationId: message.correlationId
     });
-    
+
     // Fallback: request fresh state from storage
     try {
       const state = await browser.storage.local.get('quickTabsState');
-      return {success: false, fallback: state};
+      return { success: false, fallback: state };
     } catch (fallbackErr) {
-      return {success: false, error: fallbackErr.message};
+      return { success: false, error: fallbackErr.message };
     }
   }
 }
@@ -607,7 +616,7 @@ async function initializeQuickTabs() {
   let tabId = null;
   try {
     const result = await Promise.race([
-      browser.runtime.sendMessage({action: 'GET_TAB_ID'}),
+      browser.runtime.sendMessage({ action: 'GET_TAB_ID' }),
       new Promise((_, r) => setTimeout(() => r(), 2000)) // 2s timeout
     ]);
     tabId = result?.tabId;
@@ -615,15 +624,17 @@ async function initializeQuickTabs() {
     // Not critical - proceed with null
     console.log('Tab ID fetch failed, proceeding with degradation');
   }
-  
+
   // Initialize features (null tabId OK)
   quickTabsManager = new QuickTabsManager(tabId);
-  
+
   // If tab ID arrives later, update
   if (!tabId) {
     setTimeout(async () => {
       try {
-        const result = await browser.runtime.sendMessage({action: 'GET_TAB_ID'});
+        const result = await browser.runtime.sendMessage({
+          action: 'GET_TAB_ID'
+        });
         quickTabsManager.setTabId(result.tabId);
       } catch (err) {
         // Still failed - features work in degraded mode
@@ -685,7 +696,7 @@ if (timeSinceWrite <= STORAGE_LISTENER_LATENCY_TOLERANCE_MS + 100) {
 
 // Message handling timeouts
 const MESSAGE_SEND_TIMEOUT_MS = 2000; // 2 second timeout for sendMessage
-const MESSAGE_SEND_RETRY_COUNT = 2;   // Retry up to 2 times
+const MESSAGE_SEND_RETRY_COUNT = 2; // Retry up to 2 times
 
 // Storage change detection
 // Window for detecting "self-writes" (changes made by this tab)
@@ -713,7 +724,7 @@ const RESTORE_MESSAGE_DEDUP_WINDOW_MS = 200;
 if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
   throw new Error(
     'SELF_WRITE_DETECTION_WINDOW_MS too small, ' +
-    'may cause false positives in self-write detection'
+      'may cause false positives in self-write detection'
   );
 }
 
@@ -732,6 +743,7 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 ### OLD PATTERN (Current) - Complexity Metrics ❌
 
 **content.js:**
+
 - Lines of code: ~2,800
 - Port lifecycle functions: 7
 - BFCache handlers: 6
@@ -742,6 +754,7 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 - **Total complexity:** Very high
 
 **storage-utils.js:**
+
 - Storage write queue: 150+ lines
 - Circuit breaker: 50+ lines
 - Queue state tracking: 50+ lines
@@ -749,18 +762,21 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 - **Total complexity:** Medium
 
 **background/MessageRouter.js:**
+
 - Port registry: 100+ lines
 - Port lifecycle: 150+ lines
 - Connection tracking: 100+ lines
 - **Total complexity:** Medium-high
 
 **Cyclomatic Complexity (CC):**
+
 - content.js port lifecycle: CC > 8
 - Port reconnection: CC > 6
 - BFCache handling: CC > 12
 - **Average CC:** High (>8)
 
 **Coupling:**
+
 - Constants coupled (Issue #18)
 - Port lifecycle depends on tab ID
 - BFCache depends on port state
@@ -772,6 +788,7 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 ### NEW PATTERN (v2.0 proposed) - Complexity Metrics ✅
 
 **content.js:**
+
 - Lines of code: ~1,500 (47% reduction)
 - Port lifecycle functions: 0
 - BFCache handlers: 1 simple listener
@@ -782,6 +799,7 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 - **Total complexity:** Low
 
 **storage-utils.js:**
+
 - Storage write queue: 0
 - Circuit breaker: 0
 - Queue state tracking: 0
@@ -789,18 +807,21 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 - **Total complexity:** Minimal
 
 **background/MessageRouter.js:**
+
 - Port registry: 0
 - Port lifecycle: 0
 - Connection tracking: 0
 - **Total complexity:** Very low
 
 **Cyclomatic Complexity (CC):**
+
 - Any message handler: CC < 3
 - State update functions: CC < 2
 - Error handlers: CC < 4
 - **Average CC:** Low (<3)
 
 **Coupling:**
+
 - Constants independent (explicit values)
 - No port lifecycle dependencies
 - BFCache just uses storage
@@ -808,6 +829,7 @@ if (SELF_WRITE_DETECTION_WINDOW_MS < 100) {
 - **Loose coupling:** 2-3 dependencies (storage, events)
 
 **Reduction Summary:**
+
 - Lines removed: ~1,300
 - Functions removed: ~20
 - Complexity reduced: ~60%
@@ -849,14 +871,14 @@ async function _schedulePortReconnect(tabId) {
 async function testPortMessage() {
   const mockPort = {
     postMessage: jest.fn(),
-    onMessage: {addListener: jest.fn()},
-    onDisconnect: {addListener: jest.fn()}
+    onMessage: { addListener: jest.fn() },
+    onDisconnect: { addListener: jest.fn() }
   };
-  
+
   browser.runtime.connect = jest.fn(() => mockPort);
-  
+
   connectContentToBackground(1);
-  
+
   // What if this fails? Queue fills up?
   // What if reconnect starts during this test?
   // Hard to control all the async/state
@@ -894,7 +916,7 @@ async function sendToBackground(message) {
 // Just test storage.onChanged works
 
 // Problem 4: BFCache is trivial
-window.addEventListener('pageshow', (event) => {
+window.addEventListener('pageshow', event => {
   if (event.persisted) {
     // Just request fresh state
   }
@@ -905,13 +927,13 @@ window.addEventListener('pageshow', (event) => {
 
 // Example test (simple):
 async function testSendMessage() {
-  browser.runtime.sendMessage = jest.fn(
-    () => Promise.resolve({success: true})
+  browser.runtime.sendMessage = jest.fn(() =>
+    Promise.resolve({ success: true })
   );
-  
-  const result = await sendToBackground({type: 'TEST'});
-  
-  expect(result).toEqual({success: true});
+
+  const result = await sendToBackground({ type: 'TEST' });
+
+  expect(result).toEqual({ success: true });
   expect(browser.runtime.sendMessage).toHaveBeenCalled();
 }
 
@@ -920,9 +942,9 @@ async function testSendMessageTimeout() {
   browser.runtime.sendMessage = jest.fn(
     () => new Promise(() => {}) // Never resolves
   );
-  
-  const result = await sendToBackgroundWithTimeout({type: 'TEST'}, 2000);
-  
+
+  const result = await sendToBackgroundWithTimeout({ type: 'TEST' }, 2000);
+
   expect(result).toEqual(fallbackStorageResult);
 }
 
@@ -930,27 +952,27 @@ async function testSendMessageTimeout() {
 async function testStorageSync() {
   const changes = {
     quickTabsState: {
-      newValue: {tabs: [{id: 1, minimized: false}]},
-      oldValue: {tabs: []}
+      newValue: { tabs: [{ id: 1, minimized: false }] },
+      oldValue: { tabs: [] }
     }
   };
-  
+
   const listener = getStorageListener();
   listener(changes, 'local');
-  
+
   expect(stateManager.getState()).toEqual(changes.quickTabsState.newValue);
 }
 
 // Test BFCache:
 function testBFCacheRestore() {
-  const event = new PageTransitionEvent('pageshow', {persisted: true});
-  
-  browser.runtime.sendMessage = jest.fn(
-    () => Promise.resolve({state: newState})
+  const event = new PageTransitionEvent('pageshow', { persisted: true });
+
+  browser.runtime.sendMessage = jest.fn(() =>
+    Promise.resolve({ state: newState })
   );
-  
+
   window.dispatchEvent(event);
-  
+
   expect(stateManager.getState()).toEqual(newState);
 }
 
@@ -968,28 +990,28 @@ function testBFCacheRestore() {
 
 ## SECTION 10: ISSUE MAPPING - HOW v2.0 FIXES ALL 20 ISSUES
 
-| Issue | Current Problem | Root Cause | v2.0 Solution | Status |
-|-------|-----------------|-----------|--------------|--------|
-| #1 | Silent failures in messaging | Port disconnection not handled | Explicit try/catch with storage fallback | ✅ FIXED |
-| #2 | Message retry failures | Port reconnection timeout | Promise timeout (2s) with retry logic | ✅ FIXED |
-| #3 | Debounce race conditions | Port message ordering | storage.onChanged ordering + detection window | ✅ FIXED |
-| #4 | Orphaned Quick Tab windows | Hydration race with port | Explicit synchronization before feature init | ✅ FIXED |
-| #5 | Message queue overflow | No circuit breaker | No queue (stateless messaging) | ✅ FIXED |
-| #6 | Hydration race with storage | Port init blocks storage listener | Listener registered immediately, before init | ✅ FIXED |
-| #7 | Hash cooldown blocking | Port state tracking | No port state tracking needed | ✅ FIXED |
-| #8 | Solo/mute atomic operations | Promise race in queue | Direct Promise handling, no queue | ✅ FIXED |
-| #9 | Message deduplication fails | Dedup window issues | Implicit dedup via self-write detection | ✅ FIXED |
-| #10 | Message ordering | Port delivery order | storage.onChanged provides ordering | ✅ FIXED |
-| #11 | State validation gaps | Multiple sync paths | Single source of truth (storage) | ✅ FIXED |
-| #12 | Fallback behavior missing | Silent failures | Explicit fallback to storage always | ✅ FIXED |
-| #13 | Logging missing | Port complexity obscures issues | Simple architecture + explicit logging | ✅ FIXED |
-| #14 | Quota monitoring | Queue state fragile | No queue = no quota issues | ✅ FIXED |
-| #15 | Promise contamination | Catch returns false | Promise semantics respected | ✅ FIXED |
-| #16 | Circuit breaker off-by-one | Check after increment | No circuit breaker needed | ✅ FIXED |
-| #17 | 10-33.5s init blocking | Port init dependency | Async tab ID fetch, non-blocking init | ✅ FIXED |
-| #18 | Dedup window coupling | Constants linked silently | Independent explicit constants | ✅ FIXED |
-| #19 | Detection window mismatch | Constant ≠ implementation | Single constant, matches implementation | ✅ FIXED |
-| #20 | Checksum validation gap | Only validates tabs, not metadata | No checksum (fetch fresh state) | ✅ FIXED |
+| Issue | Current Problem              | Root Cause                        | v2.0 Solution                                 | Status   |
+| ----- | ---------------------------- | --------------------------------- | --------------------------------------------- | -------- |
+| #1    | Silent failures in messaging | Port disconnection not handled    | Explicit try/catch with storage fallback      | ✅ FIXED |
+| #2    | Message retry failures       | Port reconnection timeout         | Promise timeout (2s) with retry logic         | ✅ FIXED |
+| #3    | Debounce race conditions     | Port message ordering             | storage.onChanged ordering + detection window | ✅ FIXED |
+| #4    | Orphaned Quick Tab windows   | Hydration race with port          | Explicit synchronization before feature init  | ✅ FIXED |
+| #5    | Message queue overflow       | No circuit breaker                | No queue (stateless messaging)                | ✅ FIXED |
+| #6    | Hydration race with storage  | Port init blocks storage listener | Listener registered immediately, before init  | ✅ FIXED |
+| #7    | Hash cooldown blocking       | Port state tracking               | No port state tracking needed                 | ✅ FIXED |
+| #8    | Solo/mute atomic operations  | Promise race in queue             | Direct Promise handling, no queue             | ✅ FIXED |
+| #9    | Message deduplication fails  | Dedup window issues               | Implicit dedup via self-write detection       | ✅ FIXED |
+| #10   | Message ordering             | Port delivery order               | storage.onChanged provides ordering           | ✅ FIXED |
+| #11   | State validation gaps        | Multiple sync paths               | Single source of truth (storage)              | ✅ FIXED |
+| #12   | Fallback behavior missing    | Silent failures                   | Explicit fallback to storage always           | ✅ FIXED |
+| #13   | Logging missing              | Port complexity obscures issues   | Simple architecture + explicit logging        | ✅ FIXED |
+| #14   | Quota monitoring             | Queue state fragile               | No queue = no quota issues                    | ✅ FIXED |
+| #15   | Promise contamination        | Catch returns false               | Promise semantics respected                   | ✅ FIXED |
+| #16   | Circuit breaker off-by-one   | Check after increment             | No circuit breaker needed                     | ✅ FIXED |
+| #17   | 10-33.5s init blocking       | Port init dependency              | Async tab ID fetch, non-blocking init         | ✅ FIXED |
+| #18   | Dedup window coupling        | Constants linked silently         | Independent explicit constants                | ✅ FIXED |
+| #19   | Detection window mismatch    | Constant ≠ implementation         | Single constant, matches implementation       | ✅ FIXED |
+| #20   | Checksum validation gap      | Only validates tabs, not metadata | No checksum (fetch fresh state)               | ✅ FIXED |
 
 ---
 
@@ -1000,6 +1022,7 @@ function testBFCacheRestore() {
 **YES - Evidence:**
 
 **broadcast-manager.js is already doing it correctly:**
+
 ```javascript
 async function broadcastStateToAllTabs(state) {
   const tabs = await browser.tabs.query({});
@@ -1017,12 +1040,13 @@ async function broadcastStateToAllTabs(state) {
           // Tab not ready - OK, storage.onChanged will sync
         })
     );
-  
+
   await Promise.allSettled(promises);
 }
 ```
 
 This proves:
+
 - ✅ tabs.sendMessage() works
 - ✅ Error handling works
 - ✅ storage.onChanged fallback works
@@ -1041,6 +1065,7 @@ This proves:
 - Total: 30-45 hours for complete v2.0
 
 **Risk level:** Medium
+
 - High-risk: BFCache behavior, initialization timing
 - Low-risk: Port removal (clear deletion)
 - Medium-risk: Testing new patterns
@@ -1052,14 +1077,17 @@ This proves:
 ## CONCLUSION
 
 The v2.0 architecture is:
+
 - ✅ **Documented:** implementation-plan.md, architecture-rationale.md
 - ✅ **Proven:** broadcast-manager.js uses it successfully
 - ✅ **Complete:** All 20 issues would be resolved
 - ✅ **Implementable:** Clear removal path defined
 
-The gap is purely **implementation**: taking the proven pattern and applying it universally.
+The gap is purely **implementation**: taking the proven pattern and applying it
+universally.
 
-This analysis shows that the design is sound - the problem is completing the migration to apply it everywhere.
+This analysis shows that the design is sound - the problem is completing the
+migration to apply it everywhere.
 
 ---
 

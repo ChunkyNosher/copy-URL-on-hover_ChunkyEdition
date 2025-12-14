@@ -299,7 +299,9 @@ if (!_attemptStorageListenerRegistration()) {
       if (_attemptStorageListenerRegistration()) {
         console.log('[Content] STORAGE_LISTENER_FALLBACK_SUCCESS: Listener registered on retry');
       } else {
-        console.error('[Content] STORAGE_LISTENER_FALLBACK_FAILED: Manual polling will be required');
+        console.error(
+          '[Content] STORAGE_LISTENER_FALLBACK_FAILED: Manual polling will be required'
+        );
       }
     }
   }, 100);
@@ -583,11 +585,16 @@ function _registerPendingFallbackOperation(action, correlationId) {
   // Set timeout for fallback warning
   const timeoutId = setTimeout(() => {
     if (_pendingFallbackOperations.has(correlationId)) {
-      console.warn('[Fallback] FALLBACK_SYNC_TIMEOUT:', action, '- manual intervention may be required', {
-        correlationId,
-        elapsedMs: Date.now() - startTime,
-        timeoutMs: FALLBACK_SYNC_TIMEOUT_MS
-      });
+      console.warn(
+        '[Fallback] FALLBACK_SYNC_TIMEOUT:',
+        action,
+        '- manual intervention may be required',
+        {
+          correlationId,
+          elapsedMs: Date.now() - startTime,
+          timeoutMs: FALLBACK_SYNC_TIMEOUT_MS
+        }
+      );
       _pendingFallbackOperations.delete(correlationId);
     }
   }, FALLBACK_SYNC_TIMEOUT_MS);
@@ -611,11 +618,16 @@ function _confirmFallbackSyncCompleted(correlationId, reason = 'storage-sync') {
 
   const elapsedMs = Date.now() - pending.startTime;
 
-  console.log('[Fallback] FALLBACK_SYNC_CONFIRMED:', pending.action, 'via storage after message failed', {
-    correlationId,
-    elapsedMs: elapsedMs + 'ms',
-    reason
-  });
+  console.log(
+    '[Fallback] FALLBACK_SYNC_CONFIRMED:',
+    pending.action,
+    'via storage after message failed',
+    {
+      correlationId,
+      elapsedMs: elapsedMs + 'ms',
+      reason
+    }
+  );
 
   // Clear the timeout and remove from pending
   clearTimeout(pending.timeoutId);
@@ -1399,7 +1411,13 @@ function _handleOutOfOrderSequenceId(incomingSequenceId, timeSinceWrite, newValu
  * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
  * @private
  */
-function _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue) {
+function _rejectSequenceIdOrdering(
+  incomingSequenceId,
+  isDuplicate,
+  timeSinceWrite,
+  withinToleranceWindow,
+  newValue
+) {
   console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
     incomingSequenceId,
     lastAppliedSequenceId,
@@ -1447,7 +1465,11 @@ function _checkSequenceIdOrdering(
 
   // Handle duplicate within tolerance
   if (isDuplicate) {
-    const result = _handleDuplicateSequenceId(incomingSequenceId, timeSinceWrite, withinToleranceWindow);
+    const result = _handleDuplicateSequenceId(
+      incomingSequenceId,
+      timeSinceWrite,
+      withinToleranceWindow
+    );
     if (result) return result;
   }
 
@@ -1458,7 +1480,13 @@ function _checkSequenceIdOrdering(
   }
 
   // Reject with detailed logging
-  return _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue);
+  return _rejectSequenceIdOrdering(
+    incomingSequenceId,
+    isDuplicate,
+    timeSinceWrite,
+    withinToleranceWindow,
+    newValue
+  );
 }
 
 /**

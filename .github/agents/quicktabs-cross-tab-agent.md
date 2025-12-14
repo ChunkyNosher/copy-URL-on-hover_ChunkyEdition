@@ -59,12 +59,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Modules (v1.6.3.9):**
 
-| Module                                                | Purpose                           |
-| ----------------------------------------------------- | --------------------------------- |
-| `src/constants.js`                                    | Centralized timing constants      |
-| `src/storage/storage-manager.js`                      | Dedup, readback validation, retry |
-| `src/messaging/message-router.js`                     | MESSAGE_TYPES, MessageBuilder     |
-| `src/background/broadcast-manager.js`                 | broadcastToAllTabs(), sendToTab() |
+| Module                                | Purpose                           |
+| ------------------------------------- | --------------------------------- |
+| `src/constants.js`                    | Centralized timing constants      |
+| `src/storage/storage-manager.js`      | Dedup, readback validation, retry |
+| `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
+| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
 
 **Storage Format:**
 

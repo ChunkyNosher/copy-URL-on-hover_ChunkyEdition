@@ -1,22 +1,31 @@
 # Quick Tabs v2.0 - Supplementary Gap Analysis (Part 3)
+
 ## Build System Verification, Manager Sidebar Architecture, Logging Strategy & Migration Plan
 
 **Extension Version:** v1.6.3.8-v12  
 **Date:** December 14, 2025  
-**Scope:** Verified build system, Manager sidebar filtering, structured logging format, v1→v2 transition strategy  
+**Scope:** Verified build system, Manager sidebar filtering, structured logging
+format, v1→v2 transition strategy
 
 ---
 
 ## Executive Summary
 
-This Part 3 analysis validates the build system infrastructure that underpins v2 code integration and documents architectural patterns for:
+This Part 3 analysis validates the build system infrastructure that underpins v2
+code integration and documents architectural patterns for:
 
-1. **Build System Status:** ✅ VERIFIED - Rollup bundler INCLUDES all v2 source files (background.js entry point transpiles src/* modules)
-2. **Manager Sidebar Filtering:** ⚠️ PARTIALLY DOCUMENTED - Filtering logic exists but needs explicit contract definition
-3. **Logging Architecture:** ❌ INCONSISTENT - Mix of background.js patterns, console overrides, and unstructured logging across layers
-4. **v1→v2 Migration Strategy:** ❌ MISSING - No documented path for feature flag enabling, rollback, or feature-by-feature rollout
+1. **Build System Status:** ✅ VERIFIED - Rollup bundler INCLUDES all v2 source
+   files (background.js entry point transpiles src/\* modules)
+2. **Manager Sidebar Filtering:** ⚠️ PARTIALLY DOCUMENTED - Filtering logic
+   exists but needs explicit contract definition
+3. **Logging Architecture:** ❌ INCONSISTENT - Mix of background.js patterns,
+   console overrides, and unstructured logging across layers
+4. **v1→v2 Migration Strategy:** ❌ MISSING - No documented path for feature
+   flag enabling, rollback, or feature-by-feature rollout
 
-**Critical Finding:** The build system confirms v2 code IS compiled into dist/background.js. The initialization pathway exists but is obscured by background.js's 300KB+ size and lack of explicit bootstrap logging.
+**Critical Finding:** The build system confirms v2 code IS compiled into
+dist/background.js. The initialization pathway exists but is obscured by
+background.js's 300KB+ size and lack of explicit bootstrap logging.
 
 ---
 
@@ -34,6 +43,7 @@ This Part 3 analysis validates the build system infrastructure that underpins v2
    - All v2 modules successfully bundled
 
 2. **Root background.js Imports:**
+
    ```javascript
    import { LogHandler } from './src/background/handlers/LogHandler.js';
    import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
@@ -55,7 +65,9 @@ This Part 3 analysis validates the build system infrastructure that underpins v2
 
 ### What This Means:
 
-**V2 code IS being compiled and loaded.** The build system works correctly. Issues from Part 1 & 2 are NOT due to missing modules—they're due to:
+**V2 code IS being compiled and loaded.** The build system works correctly.
+Issues from Part 1 & 2 are NOT due to missing modules—they're due to:
+
 - Missing initialization calls at bootstrap
 - No explicit feature flag checks
 - Poor integration between components
@@ -68,11 +80,13 @@ This Part 3 analysis validates the build system infrastructure that underpins v2
 ### Current State: Partially Documented
 
 **What We Know Works:**
+
 - Hydration filters by originTabId during startup ✅
 - Schema provides `getQuickTabsByOriginTabId()` ✅
 - Storage updates include originTabId ✅
 
 **What's Unclear:**
+
 - Does storage.onChanged event trigger Manager update? ❓
 - Does Manager re-filter when state changes? ❓
 - Can orphaned tabs be seen in Manager UI? ❓
@@ -85,11 +99,11 @@ This Part 3 analysis validates the build system infrastructure that underpins v2
 ```javascript
 /**
  * Quick Tabs Manager Component
- * 
+ *
  * FILTERING CONTRACT: Only display Quick Tabs where originTabId === currentTabId
- * 
+ *
  * Guarantee: Each browser tab sees ONLY its own Quick Tabs
- * 
+ *
  * Data Flow:
  * 1. Sidebar initializes with currentTabId
  * 2. Receives state via browser.tabs.sendMessage
@@ -98,12 +112,12 @@ This Part 3 analysis validates the build system infrastructure that underpins v2
  * 5. User actions trigger background updates
  * 6. Background broadcasts updated state
  * 7. Sidebar re-filters and updates UI
- * 
+ *
  * Cross-Tab Safety:
  * - No cross-tab tab visibility (filtered at UI level)
  * - No cross-tab tab modification (ownership validated)
  * - Storage atomicity prevents partial updates
- * 
+ *
  * Orphan Handling:
  * - Display "Orphaned Quick Tabs" section separately
  * - Allow user manual deletion of orphaned items
@@ -124,13 +138,13 @@ function filterTabsByOrigin(allTabs, currentTabId) {
   return allTabs.filter(tab => {
     // Include only if originTabId matches current tab
     if (tab.originTabId === currentTabId) return true;
-    
+
     // Exclude orphaned/corrupted
     if (!tab.originTabId) {
       console.warn('[Manager] Excluding orphaned tab:', tab.id);
       return false;
     }
-    
+
     // Exclude from other tabs
     console.warn('[Manager] Excluding tab from different origin:', {
       tabId: tab.id,
@@ -201,8 +215,12 @@ class StructuredLogger {
       ...options
     };
 
-    const method = { DEBUG: console.debug, INFO: console.info, 
-                     WARN: console.warn, ERROR: console.error }[level];
+    const method = {
+      DEBUG: console.debug,
+      INFO: console.info,
+      WARN: console.warn,
+      ERROR: console.error
+    }[level];
     method(`[${level}] ${this.context} ${operation}:`, entry);
   }
 }
@@ -229,10 +247,10 @@ backgroundLogger.info('OPERATION_NAME', operationId, {
 async function handleMessage(message, sender) {
   const traceId = message.traceId || `trace-${Date.now()}`;
   backgroundLogger.setTraceId(traceId);
-  
+
   // All logs in this handler use same traceId
   await processMessage(message);
-  
+
   backgroundLogger.clearTraceId();
 }
 ```
@@ -244,6 +262,7 @@ async function handleMessage(message, sender) {
 ### Current State: No Documented Path
 
 Feature flag infrastructure exists but:
+
 - Never called during initialization
 - No rollback procedure documented
 - No user-facing toggle option
@@ -267,7 +286,7 @@ PHASE 4: DEPRECATED (v1 removed)
 ```javascript
 async function initializeQuickTabs() {
   const v2Enabled = await isV2Enabled();
-  
+
   console.log('[Background] Quick Tabs init:', {
     v2Enabled,
     version: v2Enabled ? '2.0' : '1.0'
@@ -287,17 +306,17 @@ async function initializeQuickTabs() {
 async function migrateV1ToV2() {
   // Read v1 format: { tabs: { [tabId]: [tab, ...] } }
   // Write v2 format: { tabs: [{...tab, originTabId}, ...] }
-  
+
   const v1Result = await browser.storage.local.get('quick_tabs');
   const v2Tabs = [];
-  
+
   for (const [tabIdStr, v1Tabs] of Object.entries(v1Result.quick_tabs.tabs)) {
     const originTabId = parseInt(tabIdStr);
     for (const tab of v1Tabs) {
       v2Tabs.push({ ...tab, originTabId });
     }
   }
-  
+
   await browser.storage.local.set({
     quick_tabs_state_v2: {
       tabs: v2Tabs,
@@ -332,12 +351,14 @@ IF v2 has critical issues:
 ## Integration Summary
 
 ### What Works (✅ VERIFIED):
+
 - Build system includes v2 code correctly
 - Rollup bundling works
 - Module resolution works
 - Tree-shaking configured safely
 
 ### What Needs Implementation (❌ MISSING):
+
 - Feature flag check at bootstrap
 - Structured logging throughout
 - Manager filtering contract documentation
@@ -363,5 +384,5 @@ This Part 3 analysis provides actionable implementation details for:
 3. **Logging standardization** - Structured logger class required
 4. **Migration infrastructure** - Feature flag, data conversion, rollback
 
-Reference alongside Part 1 (9 critical gaps) and Part 2 (11 additional gaps) for complete picture of v2 integration work needed.
-
+Reference alongside Part 1 (9 critical gaps) and Part 2 (11 additional gaps) for
+complete picture of v2 integration work needed.

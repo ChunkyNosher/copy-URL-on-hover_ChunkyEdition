@@ -42,7 +42,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
 
 - **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`, `_sendSizeChangedMessage()`
+- **Handler Message Routing** - `_sendPositionChangedMessage()`,
+  `_sendSizeChangedMessage()`
 - **CorrelationId Integration** - All messages use `generateCorrelationId()`
 - **Centralized Constants** - `src/constants.js` with timing values
 

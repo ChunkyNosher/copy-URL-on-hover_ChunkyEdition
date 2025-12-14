@@ -1312,7 +1312,12 @@ class QuickTabsManager {
     await this.createHandler.init();
 
     // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Pass currentTabId for ownership validation
-    this.updateHandler = new UpdateHandler(this.tabs, this.internalEventBus, this.minimizedManager, this.currentTabId);
+    this.updateHandler = new UpdateHandler(
+      this.tabs,
+      this.internalEventBus,
+      this.minimizedManager,
+      this.currentTabId
+    );
 
     this.visibilityHandler = new VisibilityHandler({
       quickTabsMap: this.tabs,
@@ -1411,7 +1416,11 @@ class QuickTabsManager {
    * @private
    */
   _removeStorageListener() {
-    if (this._boundStorageListener && typeof browser !== 'undefined' && browser?.storage?.onChanged) {
+    if (
+      this._boundStorageListener &&
+      typeof browser !== 'undefined' &&
+      browser?.storage?.onChanged
+    ) {
       browser.storage.onChanged.removeListener(this._boundStorageListener);
       this._boundStorageListener = null;
       console.log('[QuickTabsManager] storage.onChanged listener removed');
@@ -1975,13 +1984,21 @@ class QuickTabsManager {
     // Sync state with UICoordinator if available
     if (this.uiCoordinator && typeof this.uiCoordinator.syncState === 'function') {
       this.uiCoordinator.syncState(filteredTabs);
-      console.log('[QuickTabsManager] Storage sync:', filteredTabs.length, 'Quick Tabs for this tab');
+      console.log(
+        '[QuickTabsManager] Storage sync:',
+        filteredTabs.length,
+        'Quick Tabs for this tab'
+      );
     } else {
       // Fallback: emit event for manual handling
       if (this.internalEventBus) {
         this.internalEventBus.emit('storage:synced', { tabs: filteredTabs });
       }
-      console.log('[QuickTabsManager] Storage sync (event):', filteredTabs.length, 'Quick Tabs for this tab');
+      console.log(
+        '[QuickTabsManager] Storage sync (event):',
+        filteredTabs.length,
+        'Quick Tabs for this tab'
+      );
     }
   }
 
@@ -1999,7 +2016,9 @@ class QuickTabsManager {
     }
 
     // Filter tabs by originTabId for this tab
-    const filteredTabs = validation.newState.tabs.filter(tab => tab.originTabId === this.currentTabId);
+    const filteredTabs = validation.newState.tabs.filter(
+      tab => tab.originTabId === this.currentTabId
+    );
 
     console.log('[QuickTabsManager] STORAGE_ONCHANGED: Filtered tabs:', {
       totalInStorage: validation.newState.tabs.length,

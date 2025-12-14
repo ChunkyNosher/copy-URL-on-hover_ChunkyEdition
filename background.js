@@ -18,7 +18,10 @@ import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
 // v1.6.3.8-v12 GAP-1, GAP-10 fix: Import Quick Tabs v2 bootstrap
-import { bootstrapQuickTabs, getActiveArchitecture } from './src/background/quick-tabs-v2-integration.js';
+import {
+  bootstrapQuickTabs,
+  getActiveArchitecture
+} from './src/background/quick-tabs-v2-integration.js';
 // v1.6.3.8-v8 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports and functions removed - Port + storage.onChanged ONLY
 // See Issue #13: Any remaining BC references are comments for historical context

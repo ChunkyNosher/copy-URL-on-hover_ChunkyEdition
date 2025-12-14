@@ -398,9 +398,7 @@ async function broadcastStateToAllTabs(state) {
     );
 
     const results = await Promise.allSettled(promises);
-    const successCount = results.filter(
-      r => r.status === 'fulfilled' && r.value?.success
-    ).length;
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
 
     console.log('[MessageHandler] BROADCAST_COMPLETE:', {
       correlationId,

@@ -1494,7 +1494,7 @@ function _markListenerReady() {
  */
 function _resetListenerReadyState() {
   // No-op - port removed
-};
+}
 
 // ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
 // FIX Issue #10: Prevent concurrent reconnection attempts

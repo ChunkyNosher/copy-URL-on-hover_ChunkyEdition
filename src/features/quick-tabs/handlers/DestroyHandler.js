@@ -105,7 +105,15 @@ export class DestroyHandler {
    * @param {number} baseZIndex - Base z-index value to reset to
    * @param {number} [currentTabId=null] - v1.6.3.8-v12 GAP-3 fix: Current browser tab ID for ownership validation
    */
-  constructor(quickTabsMap, minimizedManager, eventBus, currentZIndex, Events, baseZIndex, currentTabId = null) {
+  constructor(
+    quickTabsMap,
+    minimizedManager,
+    eventBus,
+    currentZIndex,
+    Events,
+    baseZIndex,
+    currentTabId = null
+  ) {
     this.quickTabsMap = quickTabsMap;
     this.minimizedManager = minimizedManager;
     this.eventBus = eventBus;

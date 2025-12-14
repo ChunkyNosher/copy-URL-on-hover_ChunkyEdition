@@ -619,7 +619,10 @@ export class VisibilityHandler {
             console.log(`${this._logPrefix} Minimize message sent:`, { id, correlationId });
           })
           .catch(err => {
-            console.warn(`${this._logPrefix} Minimize message failed (fallback to storage):`, err.message);
+            console.warn(
+              `${this._logPrefix} Minimize message failed (fallback to storage):`,
+              err.message
+            );
           });
       }
     } catch (err) {
@@ -1198,7 +1201,10 @@ export class VisibilityHandler {
             console.log(`${this._logPrefix} Restore message sent:`, { id, correlationId });
           })
           .catch(err => {
-            console.warn(`${this._logPrefix} Restore message failed (fallback to storage):`, err.message);
+            console.warn(
+              `${this._logPrefix} Restore message failed (fallback to storage):`,
+              err.message
+            );
           });
       }
     } catch (err) {
