@@ -1,0 +1,8 @@
+{
+  "id": "f44ceaf9-d4ca-4201-8136-adec6dcf5e64",
+  "title": "Self-Write and Ownership Fixes v1.6.3.9",
+  "details": "Fixed two architectural issues in storage synchronization (v1.6.3.9-v3):\n\nISSUE 1 - Self-Write Detection:\n- Problem: Timestamp-based detection was unreliable due to Firefox's 100-250ms storage.onChanged latency\n- Solution: Multi-layer deterministic detection in content.js _detectSelfWrite():\n  1. transactionId match (PRIMARY) - calls getLastWrittenTransactionId() from storage-utils.js\n  2. writingInstanceId match (SECONDARY) - calls getWritingInstanceId() from storage-utils.js\n  3. writingTabId match (TERTIARY) - uses cachedTabId\n  4. saveId + timestamp match (FALLBACK) - original method\n\nISSUE 2 - Empty Write Paradox:\n- Problem: Empty writes blocked unless forceEmpty=true, preventing legitimate cleanup\n- Solution: Updated _handleEmptyWriteValidation() in storage-utils.js to allow empty writes when:\n  1. Tab has ownership history (previouslyOwnedTabIds Set contains tabId)\n  2. OR forceEmpty=true (system cleanup bypass)\n\nKey files: src/content.js, src/utils/storage-utils.js",
+  "category": "bug_fixes",
+  "dateCreated": "2025-12-14T22:23:59.723Z",
+  "dateUpdated": "2025-12-14T22:23:59.723Z"
+}

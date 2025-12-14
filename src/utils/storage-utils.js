@@ -216,6 +216,7 @@ const WRITING_INSTANCE_ID = (() => {
 
 // v1.6.3.6-v2 - FIX Issue #1: Track last written transaction ID for deterministic self-write detection
 // This provides a secondary check independent of writingInstanceId matching
+// v1.6.3.9-v3 - Issue #1: Export getter for content.js to use as PRIMARY detection method
 let lastWrittenTransactionId = null;
 
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs
@@ -320,6 +321,16 @@ export function setWritingTabId(tabId) {
  */
 export function getWritingInstanceId() {
   return WRITING_INSTANCE_ID;
+}
+
+/**
+ * Get the last written transaction ID for deterministic self-write detection
+ * v1.6.3.9-v3 - Issue #1: Export for content.js to use as PRIMARY detection method
+ * This is the most reliable detection because it's set AFTER successful write completion.
+ * @returns {string|null} Last written transaction ID or null if no write has occurred
+ */
+export function getLastWrittenTransactionId() {
+  return lastWrittenTransactionId;
 }
 
 /**
@@ -461,51 +472,64 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
 /**
  * Handle empty write validation for ownership checking
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
+ * v1.6.3.9-v3 - Issue #2: Fix "Empty Write Paradox" - allow cleanup writes with ownership history
+ *   Previously required BOTH forceEmpty=true AND hasOwnershipHistory.
+ *   Now allows empty writes when tab has ownership history (proves it legitimately
+ *   owned Quick Tabs before and is cleaning up its state).
+ *   forceEmpty=true is now a BYPASS for system cleanup operations.
  * @private
  */
 function _handleEmptyWriteValidation(tabId, forceEmpty) {
   const hasOwnershipHistory = previouslyOwnedTabIds.has(tabId);
 
-  if (!forceEmpty) {
-    console.warn('[StorageUtils] Storage write BLOCKED - no owned tabs:', {
+  // v1.6.3.9-v3 - Issue #2: Allow cleanup writes from tabs with ownership history
+  // hasOwnershipHistory is true when tabId exists in `previouslyOwnedTabIds` Set,
+  // which is populated when a tab creates/owns Quick Tabs. A tab that previously
+  // owned Quick Tabs can legitimately end up with 0 Quick Tabs (user closed all
+  // their Quick Tabs). This is a valid state transition, not an error.
+  if (hasOwnershipHistory) {
+    console.log('[StorageUtils] Empty write allowed (cleanup with ownership history):', {
       currentTabId: tabId,
-      tabCount: 0,
       forceEmpty,
       hasOwnershipHistory,
-      reason: 'Empty write requires forceEmpty=true'
+      reason: 'Tab previously owned Quick Tabs - cleanup permitted'
     });
     return {
-      shouldWrite: false,
+      shouldWrite: true,
       ownedTabs: [],
-      reason: 'empty write blocked - forceEmpty required'
+      reason: 'cleanup write with ownership history'
     };
   }
 
-  if (!hasOwnershipHistory) {
-    console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
+  // v1.6.3.9-v3 - Issue #2: forceEmpty=true bypasses ownership check
+  // Used for system-level cleanup operations (e.g., Close All from Manager)
+  if (forceEmpty) {
+    console.log('[StorageUtils] Empty write allowed (forceEmpty bypass):', {
       currentTabId: tabId,
-      tabCount: 0,
       forceEmpty,
       hasOwnershipHistory,
-      reason: 'Tab never owned Quick Tabs, cannot write empty state'
+      reason: 'System cleanup operation'
     });
     return {
-      shouldWrite: false,
+      shouldWrite: true,
       ownedTabs: [],
-      reason: 'empty write blocked - no ownership history'
+      reason: 'forceEmpty bypass for system cleanup'
     };
   }
 
-  // Tab has ownership history and forceEmpty=true - allow empty write
-  console.log('[StorageUtils] Empty write allowed:', {
+  // Block: Tab has no ownership history AND forceEmpty=false
+  // This prevents non-owner tabs from accidentally corrupting storage with empty state
+  console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
     currentTabId: tabId,
+    tabCount: 0,
     forceEmpty,
-    hasOwnershipHistory
+    hasOwnershipHistory,
+    reason: 'Tab never owned Quick Tabs, cannot write empty state'
   });
   return {
-    shouldWrite: true,
+    shouldWrite: false,
     ownedTabs: [],
-    reason: 'intentional empty write with ownership history'
+    reason: 'empty write blocked - no ownership history (non-owner tab)'
   };
 }
 

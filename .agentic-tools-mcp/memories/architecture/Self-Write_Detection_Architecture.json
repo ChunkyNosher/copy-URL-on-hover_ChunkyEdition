@@ -1,0 +1,8 @@
+{
+  "id": "7426ad1e-1f0a-416e-9088-5acc6292c42e",
+  "title": "Self-Write Detection Architecture",
+  "details": "Self-write detection in content.js uses three layers:\n1. transactionId match - Primary (deterministic, should be checked first)\n2. writingInstanceId match - Secondary (unique per tab load)\n3. writingTabId match - Tertiary (fallback)\n\nThe storage-utils.js has lastWrittenTransactionId (line 219) which tracks the most recent transaction written by this tab. This is the most deterministic method because it's set AFTER successful write completion.\n\nCurrent issue: content.js uses timestamp-based detection (_checkTimestampMatch) with _recentSelfWrites Map, which is unreliable because Firefox's storage.onChanged fires 100-250ms AFTER write completes. Any async operation during this window breaks the timing calculation.\n\nFix: Add getLastWrittenTransactionId() export to storage-utils.js and use it as PRIMARY detection in content.js _detectSelfWrite().",
+  "category": "architecture",
+  "dateCreated": "2025-12-14T22:17:30.821Z",
+  "dateUpdated": "2025-12-14T22:17:30.821Z"
+}

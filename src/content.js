@@ -367,7 +367,12 @@ import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.j
 // v1.6.3.8-v2 - Issue #7: Import sendRequestWithTimeout for reliable message/response handling
 import { sendRequestWithTimeout } from './utils/message-utils.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
-import { setWritingTabId } from './utils/storage-utils.js';
+// v1.6.3.9-v3 - Issue #1: Import getLastWrittenTransactionId and getWritingInstanceId for deterministic self-write detection
+import {
+  setWritingTabId,
+  getLastWrittenTransactionId,
+  getWritingInstanceId
+} from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -763,8 +768,76 @@ function _checkWritingTabIdMatch(newValue) {
 }
 
 /**
+ * Check if transactionId matches our last written transaction (PRIMARY detection)
+ * v1.6.3.9-v3 - Issue #1: Use transactionId as PRIMARY detection method
+ * This is the most deterministic because lastWrittenTransactionId is set AFTER
+ * successful write completion in storage-utils.js.
+ * @private
+ * @param {Object} newValue - New value from storage change event
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}|null}
+ */
+function _checkTransactionIdMatch(newValue) {
+  if (!newValue.transactionId) {
+    return null;
+  }
+
+  const lastWrittenTxnId = getLastWrittenTransactionId();
+  if (!lastWrittenTxnId) {
+    return null;
+  }
+
+  const isMatch = newValue.transactionId === lastWrittenTxnId;
+  if (isMatch) {
+    console.log('[Content] SELF_WRITE_DETECTED (transactionId match - PRIMARY):', {
+      transactionId: newValue.transactionId,
+      saveId: newValue.saveId,
+      decision: 'is-self-write'
+    });
+    return {
+      isSelfWrite: true,
+      reason: 'transactionId-match',
+      matchedSaveId: newValue.saveId
+    };
+  }
+
+  // No match - return null to continue checking other methods
+  return null;
+}
+
+/**
+ * Check if writingInstanceId matches our instance (SECONDARY detection)
+ * v1.6.3.9-v3 - Issue #1: Extracted from _detectSelfWrite for clarity
+ * @private
+ * @param {Object} newValue - New value from storage change event
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}|null}
+ */
+function _checkWritingInstanceIdMatch(newValue) {
+  if (!newValue.writingInstanceId) {
+    return null;
+  }
+
+  const ourInstanceId = getWritingInstanceId();
+  const isMatch = newValue.writingInstanceId === ourInstanceId;
+  if (isMatch) {
+    console.log('[Content] SELF_WRITE_DETECTED (writingInstanceId match - SECONDARY):', {
+      writingInstanceId: newValue.writingInstanceId,
+      saveId: newValue.saveId,
+      decision: 'is-self-write'
+    });
+    return {
+      isSelfWrite: true,
+      reason: 'writingInstanceId-match',
+      matchedSaveId: newValue.saveId
+    };
+  }
+
+  return null;
+}
+
+/**
  * Check timestamp-based self-write detection
  * v1.6.3.8-v8 - Helper to reduce _detectSelfWrite complexity
+ * v1.6.3.9-v3 - Issue #1: Now TERTIARY fallback (timestamp-based is unreliable)
  * @private
  * @param {Object} newValue - New value from storage change event
  * @param {Object} savedEntry - Entry from _recentSelfWrites
@@ -775,7 +848,7 @@ function _checkTimestampMatch(newValue, savedEntry) {
   const timeSinceWrite = eventTime - savedEntry.writeTime;
   const withinWindow = timeSinceWrite <= STORAGE_LISTENER_LATENCY_TOLERANCE_MS;
 
-  console.log('[Content] SELF_WRITE_DETECTION:', {
+  console.log('[Content] SELF_WRITE_DETECTION (timestamp fallback - TERTIARY):', {
     saveId: newValue.saveId,
     writeTime: savedEntry.writeTime,
     eventTime,
@@ -798,6 +871,12 @@ function _checkTimestampMatch(newValue, savedEntry) {
 /**
  * Check if a storage change event is from this tab's recent write
  * v1.6.3.8-v8 - FIX Issue #1: Use strict timestamp matching within detection window
+ * v1.6.3.9-v3 - Issue #1: Use multi-layer detection with transactionId as PRIMARY
+ *   Detection priority (fall through if not matched):
+ *   1. transactionId match (PRIMARY - most deterministic)
+ *   2. writingInstanceId match (SECONDARY - per tab-load unique)
+ *   3. writingTabId match (TERTIARY - tab-level)
+ *   4. saveId + timestamp match (FALLBACK - unreliable due to Firefox latency)
  * @param {Object} newValue - New value from storage change event
  * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}}
  */
@@ -806,17 +885,25 @@ function _detectSelfWrite(newValue) {
     return { isSelfWrite: false, reason: 'no-saveId', matchedSaveId: null };
   }
 
-  const savedEntry = _recentSelfWrites.get(newValue.saveId);
+  // v1.6.3.9-v3 - Issue #1: PRIMARY - Check transactionId (most deterministic)
+  const txnResult = _checkTransactionIdMatch(newValue);
+  if (txnResult) return txnResult;
 
-  if (!savedEntry) {
-    // Check writingTabId as fallback
-    const tabIdResult = _checkWritingTabIdMatch(newValue);
-    if (tabIdResult) return tabIdResult;
-    return { isSelfWrite: false, reason: 'unknown-saveId', matchedSaveId: null };
+  // SECONDARY - Check writingInstanceId (unique per tab load)
+  const instanceResult = _checkWritingInstanceIdMatch(newValue);
+  if (instanceResult) return instanceResult;
+
+  // TERTIARY - Check writingTabId (tab-level)
+  const tabIdResult = _checkWritingTabIdMatch(newValue);
+  if (tabIdResult) return tabIdResult;
+
+  // FALLBACK - Check saveId in _recentSelfWrites Map (timestamp-based, unreliable)
+  const savedEntry = _recentSelfWrites.get(newValue.saveId);
+  if (savedEntry) {
+    return _checkTimestampMatch(newValue, savedEntry);
   }
 
-  // Check timestamp within detection window
-  return _checkTimestampMatch(newValue, savedEntry);
+  return { isSelfWrite: false, reason: 'unknown-saveId', matchedSaveId: null };
 }
 
 // ==================== v1.6.3.8-v13 STATELESS MESSAGE SENDING ====================
