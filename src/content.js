@@ -2018,8 +2018,18 @@ async function initializeQuickTabsFeature() {
     console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
     _logInitializationBarrierState('tabId-set');
   } else {
-    console.warn(
-      '[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation'
+    // v1.6.3.9-v2 - Issue #5: Enhanced error logging with actionable information
+    console.error(
+      '[Copy-URL-on-Hover] TAB_ID_INITIALIZATION_FAILURE: Could not set writing tab ID',
+      {
+        consequence: 'Storage writes WILL FAIL ownership validation - Quick Tabs will not persist',
+        possibleCauses: [
+          'Background script not responding to GET_CURRENT_TAB_ID',
+          'Extension context invalidated',
+          'Content script loaded in non-tab context (e.g., extension page)'
+        ],
+        action: 'Check background script console for errors; try reloading the tab'
+      }
     );
     _logInitializationBarrierState('tabId-skipped');
   }

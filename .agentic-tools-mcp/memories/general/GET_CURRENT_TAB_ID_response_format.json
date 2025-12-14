@@ -1,0 +1,8 @@
+{
+  "id": "8a7bc10d-9484-47ca-8acf-b781504cf3d5",
+  "title": "GET_CURRENT_TAB_ID response format",
+  "details": "The GET_CURRENT_TAB_ID message handler uses the new response format { success: true, data: { tabId } } for consistency with content.js expectations. The legacy format { success: true, tabId } is deprecated and should not be used. Error responses should also use the data wrapper: { success: false, data: { tabId: null }, error: '...' }.",
+  "category": "general",
+  "dateCreated": "2025-12-14T22:14:27.205Z",
+  "dateUpdated": "2025-12-14T22:14:27.205Z"
+}

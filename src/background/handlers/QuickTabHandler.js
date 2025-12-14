@@ -769,7 +769,9 @@ export class QuickTabHandler {
       console.log(
         `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (actual requesting tab)`
       );
-      return { success: true, tabId: sender.tab.id };
+      // v1.6.3.9-v2 - Issue #5: Use new response format { success: true, data: { tabId } }
+      // This aligns with content.js which prefers this format (legacy format is deprecated)
+      return { success: true, data: { tabId: sender.tab.id } };
     }
 
     // v1.6.3.6-v4 - REMOVED: Fallback to tabs.query({ active: true })
@@ -789,9 +791,10 @@ export class QuickTabHandler {
     console.error(
       '[QuickTabHandler] This should not happen for content scripts. Check if message came from non-tab context.'
     );
+    // v1.6.3.9-v2 - Issue #5: Use consistent response format with data wrapper
     return {
       success: false,
-      tabId: null,
+      data: { tabId: null },
       error: 'sender.tab not available - cannot identify requesting tab'
     };
   }
