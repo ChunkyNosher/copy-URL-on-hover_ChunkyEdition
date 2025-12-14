@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.8-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,39 +9,36 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v9 Status:** Initialization & Event Fixes ✅
+**🔧 v1.6.3.8-v10 Status:** Modern APIs Audit Fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v9
+## 🎉 What's New in v1.6.3.8-v10
 
-**🔧 Initialization & Event Fixes (December 2025) ✅**
+**🔧 Modern APIs Audit & Diagnostic Fixes (December 2025) ✅**
 
-**Event & Handler Fixes:**
+**Storage & Event Ordering:**
 
-- ✅ **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- ✅ **UICoordinator init flag** - `_isInitializing` suppresses orphan recovery
-- ✅ **DestroyHandler retry** - `_pendingPersists` queue with max 3 retries
-- ✅ **Handler readiness** - `startRendering()` from `UICoordinator.init()`
+- ✅ **Stricter sequenceId ordering** - Only accept exact duplicates, reject gaps
+- ✅ **Self-write detection aligned** - 300ms window matches listener tolerance
+- ✅ **Storage write retry** - Exponential backoff with extracted helpers
 
-**Initialization & Logging:**
+**Initialization & Lifecycle:**
 
-- ✅ **EventEmitter3 logging** - Timestamps for handler/listener order
-- ✅ **Message conflict detection** - `_checkMessageConflict()` deduplication
-- ✅ **Init sequence fix** - `signalReady()` BEFORE hydration (Step 5.5)
-- ✅ **INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
+- ✅ **Tab ID fetch retry** - 10s timeout, 3 retries, exponential backoff
+- ✅ **Content script unload signals** - Multi-channel (port + runtime.sendMessage)
+- ✅ **LISTENERS_READY event** - UICoordinator validation pattern
 
-**Resource Management:**
+**Code Quality:**
 
-- ✅ **Timestamp map limit** - Max 1000 entries with cleanup
-- ✅ **Event listener cleanup** - `cleanupStateListeners()` method
-- ✅ **Message queue limit** - Max 100 messages
-- ✅ **Tab ID timeout 5s** - Increased from 2s with retry fallback
+- ✅ **ESLint max-depth fixes** - Helper functions reduce nesting depth
+- ✅ **Port zombie detection** - Pending messages flushed on BFCache entry
+- ✅ **BFCache session tabs** - Filtered out during restoration
 
-**Why This Matters:** Resolves critical initialization timing issues and event
-ordering problems that could cause Quick Tabs to not render correctly.
+**Why This Matters:** Implements recommendations from modern-apis-audit.md and
+fixes all 10 issues in quick-tabs-diagnostic-v2.md for robust state sync.
 
 ---
 

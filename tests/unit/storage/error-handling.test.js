@@ -107,7 +107,8 @@ describe('Storage Error Handling', () => {
 
       try {
         await syncAdapter.save([quickTab]);
-        fail('Expected error to be thrown');
+        // Should not reach here - fail the test
+        expect(true).toBe(false); // Force fail if no error thrown
       } catch (error) {
         expect(error.message).toBe('Storage quota exceeded');
         expect(error.code).toBe(22);
