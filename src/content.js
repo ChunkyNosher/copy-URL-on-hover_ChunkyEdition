@@ -192,6 +192,13 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #10: BFCache state reconciliation handles session-only tabs correctly
  * - FIX Issue #12: Fallback storage polling with retry loop and listener re-registration
  * - Port connection now processes pending messages after successful connection
+ *
+ * v1.6.3.8-v12 Changes:
+ * - FIX Issue #1: Port zombie queuing - cleanup orphaned pending messages on port disconnect
+ * - FIX Issue #5: Per-message logging before discarding messages on BFCache entry
+ * - FIX Issue #6: Standardized message handler responses with _buildMessageResponse()
+ * - FIX Issue #7: State ordering validation with 100ms out-of-order tolerance window
+ * - FIX Issue #10: Storage listener registration flag with fallback retry
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -218,6 +225,12 @@ const _storageListenerRegistrationTime = Date.now();
  * v1.6.3.8-v8 - Issue #15: If no event within 1 second, poll storage
  */
 let _storageListenerHasFired = false;
+
+/**
+ * Flag to track if storage listener registration succeeded
+ * v1.6.3.8-v12 - FIX Issue #10: Track listener registration state for runtime checks
+ */
+let _storageListenerIsActive = false;
 
 /**
  * Early storage change handler - forwards to _handleStorageChange once defined
@@ -248,15 +261,43 @@ function _earlyStorageChangeHandler(changes, areaName) {
  */
 const _earlyStorageChangeQueue = [];
 
+/**
+ * Attempt to register storage listener with fallback retry
+ * v1.6.3.8-v12 - FIX Issue #10: Registration with retry and flag tracking
+ * @returns {boolean} True if registration succeeded
+ */
+function _attemptStorageListenerRegistration() {
+  try {
+    browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
+    _storageListenerIsActive = true;
+    console.log('[Content] v1.6.3.8-v12 storage.onChanged listener registered:', {
+      registrationTime: _storageListenerRegistrationTime,
+      isActive: _storageListenerIsActive,
+      timestamp: Date.now()
+    });
+    return true;
+  } catch (err) {
+    console.error('[Content] Storage listener registration failed:', err.message);
+    _storageListenerIsActive = false;
+    return false;
+  }
+}
+
 // Register storage.onChanged listener immediately at script load
-try {
-  browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
-  console.log('[Content] v1.6.3.8-v8 storage.onChanged listener registered EARLY:', {
-    registrationTime: _storageListenerRegistrationTime,
-    timestamp: Date.now()
-  });
-} catch (err) {
-  console.error('[Content] CRITICAL: Failed to register early storage listener:', err.message);
+// v1.6.3.8-v12 - FIX Issue #10: Add fallback registration attempt
+if (!_attemptStorageListenerRegistration()) {
+  console.warn('[Content] CRITICAL: First storage listener registration failed, scheduling retry');
+  // Schedule fallback registration attempt
+  setTimeout(() => {
+    if (!_storageListenerIsActive) {
+      console.log('[Content] STORAGE_LISTENER_FALLBACK_REGISTRATION: Attempting retry');
+      if (_attemptStorageListenerRegistration()) {
+        console.log('[Content] STORAGE_LISTENER_FALLBACK_SUCCESS: Listener registered on retry');
+      } else {
+        console.error('[Content] STORAGE_LISTENER_FALLBACK_FAILED: Manual polling will be required');
+      }
+    }
+  }, 100);
 }
 
 // ==================== END EARLY STORAGE LISTENER REGISTRATION ====================
@@ -786,6 +827,36 @@ function logContentPortLifecycle(event, details = {}) {
 }
 
 /**
+ * Clean up orphaned pending messages when port disconnects
+ * v1.6.3.8-v12 - FIX Issue #1: Prevent message buildup when port fails/disconnects
+ * @private
+ * @param {string} reason - Reason for cleanup
+ */
+function _cleanupOrphanedPendingMessages(reason) {
+  const orphanedCount = _pendingPortMessages.length;
+  if (orphanedCount === 0) return;
+
+  console.warn('[Content] ORPHANED_MESSAGES_CLEANUP:', {
+    count: orphanedCount,
+    reason,
+    timestamp: Date.now()
+  });
+
+  // Log each orphaned message for traceability
+  for (const item of _pendingPortMessages) {
+    console.warn('[Content] ORPHANED_MESSAGE_DROPPED:', {
+      type: item.message.type || 'unknown',
+      correlationId: item.message.correlationId || null,
+      ageMs: Date.now() - item.timestamp,
+      reason
+    });
+  }
+
+  // Clear the queue
+  _pendingPortMessages.length = 0;
+}
+
+/**
  * Reset port reconnection state
  * v1.6.3.8-v6 - Issue #3: Reset backoff after successful connection
  * @private
@@ -888,6 +959,10 @@ function connectContentToBackground(tabId) {
       const error = browser.runtime.lastError;
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
+
+      // v1.6.3.8-v12 - FIX Issue #1: Clean up orphaned pending messages on port disconnect
+      // When port disconnects (not just BFCache), queued messages become orphaned
+      _cleanupOrphanedPendingMessages('port-disconnect');
 
       // v1.6.3.8-v6 - Issue #3: Track consecutive failures for circuit breaker
       portConsecutiveFailures++;
@@ -1271,17 +1346,30 @@ function _tryGetSessionState() {
 /**
  * Disconnect port safely during BFCache entry
  * v1.6.3.8-v10 - FIX Issue #5: Enhanced with pending message flush and logging
+ * v1.6.3.8-v12 - FIX Issue #5: Per-message logging before discarding
  * @private
  */
 function _disconnectPortForBFCache() {
-  // v1.6.3.8-v10 - FIX Issue #5: Clear pending messages queue on BFCache entry
-  // Messages queued for the zombie port should not be sent later
+  // v1.6.3.8-v12 - FIX Issue #5: Log each pending message before discarding
+  // This provides traceability for messages that would have been lost
   const pendingCount = _pendingPortMessages.length;
   if (pendingCount > 0) {
-    console.log('[Content] PORT_ZOMBIE_AVOIDED: Flushing pending messages on BFCache entry:', {
-      flushedCount: pendingCount,
+    console.log('[Content] PORT_ZOMBIE_AVOIDED: Discarding pending messages on BFCache entry:', {
+      totalCount: pendingCount,
       reason: 'BFCache entry - port will be zombie'
     });
+
+    // v1.6.3.8-v12 - FIX Issue #5: Per-message logging before discard
+    for (const item of _pendingPortMessages) {
+      console.warn('[Content] PENDING_MESSAGE_DISCARDED:', {
+        type: item.message.type || 'unknown',
+        correlationId: item.message.correlationId || null,
+        intendedRecipient: 'background',
+        ageMs: Date.now() - item.timestamp,
+        reason: 'BFCache entry'
+      });
+    }
+
     _pendingPortMessages.length = 0; // Clear the queue
   }
 
@@ -1703,58 +1791,119 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
 }
 
 /**
+ * Tolerance window for out-of-order events (ms)
+ * v1.6.3.8-v12 - FIX Issue #7: Cross-tab timing tolerance
+ */
+const OUT_OF_ORDER_TOLERANCE_MS = 100;
+
+/**
+ * Handle duplicate sequenceId within tolerance
+ * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _handleDuplicateSequenceId(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
+  if (!withinToleranceWindow) return null;
+
+  console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId exact duplicate within tolerance):', {
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    timeSinceWrite,
+    tolerance: STORAGE_ORDERING_TOLERANCE_MS
+  });
+  return { valid: true, reason: 'duplicate-within-tolerance' };
+}
+
+/**
+ * Handle out-of-order sequenceId within tight tolerance
+ * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _handleOutOfOrderSequenceId(incomingSequenceId, timeSinceWrite, newValue) {
+  if (timeSinceWrite > OUT_OF_ORDER_TOLERANCE_MS) return null;
+
+  console.log('[Content] STORAGE_EVENT_ALLOWED (out-of-order within tight tolerance):', {
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    gap: lastAppliedSequenceId - incomingSequenceId,
+    timeSinceWrite,
+    tolerance: OUT_OF_ORDER_TOLERANCE_MS,
+    originTabId: newValue?.originTabId || 'unknown'
+  });
+  return { valid: true, reason: 'out-of-order-within-tolerance' };
+}
+
+/**
+ * Log and reject sequenceId ordering violation
+ * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue) {
+  console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    gap: isDuplicate ? 0 : lastAppliedSequenceId - incomingSequenceId,
+    classification: isDuplicate ? 'duplicate' : 'out-of-order',
+    reason: isDuplicate ? 'duplicate-outside-tolerance' : 'out-of-order-gap',
+    timeSinceWrite,
+    withinTolerance: withinToleranceWindow,
+    originTabId: newValue?.originTabId || 'unknown',
+    note: 'Fresh state will be requested via recovery path'
+  });
+  return { valid: false, reason: 'sequenceId-rejected' };
+}
+
+/**
  * Check sequenceId ordering for storage event
  * v1.6.3.8-v8 - Helper to reduce _validateStorageEventOrdering complexity
  * v1.6.3.8-v10 - FIX Issue #7: Stricter ordering - only accept exact duplicates
  *               Revision-based ordering is primary; sequenceId validates consistency
  *               Gaps trigger state recovery instead of replay to avoid wrong-order processing
+ * v1.6.3.8-v12 - FIX Issue #7: Add tolerance for out-of-order events (100ms window)
+ *               Distinguish "duplicate" (same ID, likely same event) from "out-of-order"
+ *               (earlier ID but later timestamp - indicates cross-tab timing issues)
+ *               Extracted helpers to reduce complexity
  * @private
  * @param {number} incomingSequenceId - Incoming sequence ID
  * @param {number} timeSinceWrite - Time since write in ms
  * @param {boolean} withinToleranceWindow - Whether within tolerance
+ * @param {Object} [newValue] - Full event value for cross-tab analysis
  * @returns {{valid: boolean, reason: string}|null} - Result or null to continue
  */
-function _checkSequenceIdOrdering(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
+function _checkSequenceIdOrdering(
+  incomingSequenceId,
+  timeSinceWrite,
+  withinToleranceWindow,
+  newValue = null
+) {
   if (typeof incomingSequenceId !== 'number') return null;
 
   // Newer sequenceId - allow it
   if (incomingSequenceId > lastAppliedSequenceId) return null;
 
-  // v1.6.3.8-v10 - FIX Issue #7: Only accept EXACT duplicates within tolerance window
-  // Gaps are rejected because they indicate out-of-order delivery which would cause
-  // events to be processed in wrong order (e.g., #2-#5 before #1)
-  // Instead of accepting gaps, we request fresh state recovery
-  if (incomingSequenceId === lastAppliedSequenceId && withinToleranceWindow) {
-    console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId exact duplicate within tolerance):', {
-      incomingSequenceId,
-      lastAppliedSequenceId,
-      timeSinceWrite,
-      tolerance: STORAGE_ORDERING_TOLERANCE_MS
-    });
-    return { valid: true, reason: 'duplicate-within-tolerance' };
+  // v1.6.3.8-v12 - FIX Issue #7: Distinguish duplicate vs out-of-order
+  const isDuplicate = incomingSequenceId === lastAppliedSequenceId;
+
+  // Handle duplicate within tolerance
+  if (isDuplicate) {
+    const result = _handleDuplicateSequenceId(incomingSequenceId, timeSinceWrite, withinToleranceWindow);
+    if (result) return result;
   }
 
-  // v1.6.3.8-v10 - FIX Issue #7: Reject gaps in sequenceId
-  // Out-of-order delivery means events would process in wrong order
-  // Request fresh state instead of replaying stale events
-  console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
-    incomingSequenceId,
-    lastAppliedSequenceId,
-    reason:
-      incomingSequenceId === lastAppliedSequenceId
-        ? 'duplicate-outside-tolerance'
-        : 'out-of-order-gap',
-    timeSinceWrite,
-    withinTolerance: withinToleranceWindow,
-    note: 'Gaps rejected to prevent wrong-order processing; fresh state will be requested'
-  });
-  return { valid: false, reason: 'sequenceId-rejected' };
+  // Handle out-of-order within tight tolerance
+  if (!isDuplicate) {
+    const result = _handleOutOfOrderSequenceId(incomingSequenceId, timeSinceWrite, newValue);
+    if (result) return result;
+  }
+
+  // Reject with detailed logging
+  return _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue);
 }
 
 /**
  * Validate incoming storage event ordering
  * v1.6.3.8-v6 - Issue #2: Reject out-of-order updates using sequenceId and revision
  * v1.6.3.8-v8 - FIX Issue #8: Add tolerance window for Firefox's 100-250ms listener latency
+ * v1.6.3.8-v12 - FIX Issue #7: Pass newValue to sequenceId check for cross-tab analysis
  * @param {Object} newValue - New storage value
  * @param {number} [eventReceiveTime] - Wall-clock time when listener fired (optional)
  * @returns {{valid: boolean, reason: string}} Validation result
@@ -1778,10 +1927,12 @@ function _validateStorageEventOrdering(newValue, eventReceiveTime = null) {
   if (revisionResult) return revisionResult;
 
   // Check sequenceId ordering (secondary)
+  // v1.6.3.8-v12 - FIX Issue #7: Pass newValue for cross-tab tolerance analysis
   const sequenceResult = _checkSequenceIdOrdering(
     newValue.sequenceId,
     timeSinceWrite,
-    withinToleranceWindow
+    withinToleranceWindow,
+    newValue
   );
   if (sequenceResult) return sequenceResult;
 
@@ -3858,6 +4009,7 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
 
 /**
  * Handle GET_CONTENT_LOGS action
+ * v1.6.3.8-v12 - FIX Issue #6: Use standardized response with success field
  * @private
  */
 function _handleGetContentLogs(sendResponse) {
@@ -3874,10 +4026,11 @@ function _handleGetContentLogs(sendResponse) {
     const stats = getBufferStats();
     console.log('[Content] Buffer stats:', stats);
 
-    sendResponse({ logs: allLogs, stats });
+    // v1.6.3.8-v12 - FIX Issue #6: Standardized response with success field
+    sendResponse({ success: true, logs: allLogs, stats });
   } catch (error) {
     console.error('[Content] Error getting log buffer:', error);
-    sendResponse({ logs: [], error: error.message });
+    sendResponse({ success: false, logs: [], error: error.message });
   }
 }
 
@@ -4452,6 +4605,41 @@ if (IS_TEST_MODE) {
 }
 // ==================== END TEST BRIDGE HANDLER FUNCTIONS ====================
 
+// ==================== MESSAGE RESPONSE UTILITIES ====================
+/**
+ * Build standardized message response
+ * v1.6.3.8-v12 - FIX Issue #6: Unified response interface for all message handlers
+ * @param {boolean} success - Whether the operation succeeded
+ * @param {Object} [options] - Optional response data
+ * @param {string} [options.error] - Error message if success is false
+ * @param {string} [options.correlationId] - Correlation ID for tracing
+ * @param {*} [options.data] - Additional data to include in response
+ * @returns {Object} Standardized response object
+ */
+function _buildMessageResponse(success, options = {}) {
+  const response = { success };
+
+  if (!success && options.error) {
+    response.error = options.error;
+  }
+
+  if (options.correlationId) {
+    response.correlationId = options.correlationId;
+  }
+
+  // Spread any additional data
+  if (options.data !== undefined) {
+    response.data = options.data;
+  }
+
+  // Include message if provided (backward compatibility)
+  if (options.message) {
+    response.message = options.message;
+  }
+
+  return response;
+}
+
 // ==================== MESSAGE DISPATCHER ====================
 
 /**
@@ -4638,6 +4826,7 @@ const TYPE_HANDLERS = {
   },
 
   // v1.6.3.5-v3 - FIX Architecture Phase 1: Handle state update notifications
+  // v1.6.3.8-v12 - FIX Issue #6: Use standardized response format
   QUICK_TAB_STATE_UPDATED: (message, sendResponse) => {
     console.log('[Content] QUICK_TAB_STATE_UPDATED received:', {
       quickTabId: message.quickTabId,
@@ -4645,7 +4834,7 @@ const TYPE_HANDLERS = {
     });
     // Content script doesn't need to do anything - it manages its own state
     // This handler is mainly for logging and potential future use
-    sendResponse({ received: true });
+    sendResponse(_buildMessageResponse(true, { correlationId: message.correlationId }));
     return true;
   }
 };
