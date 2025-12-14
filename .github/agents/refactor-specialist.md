@@ -60,26 +60,25 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.8-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
+**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
 
-- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
-- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
-- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
+- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled)
+- **FIX Issue #19** - Self-write cleanup aligned to 300ms
 
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, port message queue, explicit tab ID barrier.
+**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
+key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
 
-**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
-escalation, correlationId tracing, adaptive quota monitoring.
+**v1.6.3.8-v10 Features (Retained):** Tab ID fetch retry, storage write retry.
 
-**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
-quota monitoring, MessageBatcher queue limits.
+**v1.6.3.8-v9 Features (Retained):** DestroyHandler event order, UICoordinator
+`_isInitializing`, DestroyHandler retry logic, handler readiness.
 
 **CodeScene Analysis - Refactoring Targets:**
 

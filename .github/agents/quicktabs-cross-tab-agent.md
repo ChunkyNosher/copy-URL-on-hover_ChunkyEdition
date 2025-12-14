@@ -38,9 +38,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v11 - Quick Tabs Architecture v2
+**Version:** 1.6.3.8-v12 - Quick Tabs Architecture v2
 
-**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
+**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
+- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled)
+- **FIX Issue #19** - Self-write cleanup aligned to 300ms
+- **FIX Issue #1** - `_cleanupOrphanedPendingMessages()` for port zombies
+- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
+
+**v1.6.3.8-v11 Features (Retained):**
 
 - **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
 - **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
@@ -80,11 +90,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] Readback validation works (every write verified) (v11)
 - [ ] Deduplication works (correlationId with 50ms window) (v11)
 - [ ] Message patterns work (LOCAL, GLOBAL, MANAGER) (v11)
+- [ ] OUT_OF_ORDER_TOLERANCE_MS (100ms) works (v12)
+- [ ] Port zombie cleanup works (_cleanupOrphanedPendingMessages) (v12)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.8-v11 tabs.sendMessage +
-storage.local architecture, single storage key, readback validation.**
+**Your strength: Reliable cross-tab sync with v1.6.3.8-v12 tabs.sendMessage +
+storage.local architecture, single storage key, readback validation, 100ms
+out-of-order tolerance.**

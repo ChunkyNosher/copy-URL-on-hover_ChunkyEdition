@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v11 - Quick Tabs Architecture v2
+**Version:** 1.6.3.8-v12 - Quick Tabs Architecture v2
 
 **Key Manager Features:**
 
@@ -49,7 +49,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **storage.onChanged Fallback** - Fallback sync via storage.onChanged
 
-**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
+**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+
+- **FIX Issue #9** - Debounced render queue with checksum validation
+- **FIX Issue #10** - `_storageListenerIsActive` flag with fallback retry
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **New helpers:** `_enqueueRender()`, `_processRenderQueue()`,
+  `_validateRenderIntegrity()`
+
+**v1.6.3.8-v11 Features (Retained):**
 
 - **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
 - **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
@@ -85,6 +94,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] MANAGER pattern works (close all, close minimized) (v11)
 - [ ] manager-state-handler.js works (v11)
 - [ ] EventBus FIFO events work (v11)
+- [ ] Debounced render queue works (_enqueueRender) (v12)
+- [ ] Checksum validation works (_validateRenderIntegrity) (v12)
+- [ ] Storage listener flag works (_storageListenerIsActive) (v12)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -92,5 +104,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.8-v11 tabs.sendMessage +
-storage.local architecture, MANAGER pattern actions, manager-state-handler.js.**
+**Your strength: Manager coordination with v1.6.3.8-v12 tabs.sendMessage +
+storage.local architecture, MANAGER pattern actions, debounced render queue.**
