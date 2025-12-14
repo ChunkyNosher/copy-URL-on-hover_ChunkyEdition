@@ -310,6 +310,12 @@ const RENDER_STALL_TIMEOUT_MS = 5000;
  */
 const RENDER_QUEUE_MAX_SIZE = 10;
 
+/**
+ * Delay before rendering after corruption recovery to allow state to stabilize
+ * v1.6.3.8-v12 - FIX Issue #9: Use explicit constant instead of hardcoded value
+ */
+const RENDER_RECOVERY_DELAY_MS = 50;
+
 // FIX Issue #5: Port Reconnect Circuit Breaker
 const RECONNECT_BACKOFF_INITIAL_MS = 100;
 const RECONNECT_BACKOFF_MAX_MS = 10000;
@@ -7299,8 +7305,12 @@ function _validateRenderIntegrity(context) {
   const hasCountDecreased = postRenderTabCount < preRenderTabCount;
 
   // Corruption = tabs disappeared unexpectedly without any new tabs added
-  const possibleCorruption =
-    hasTabsDisappeared && hasNoNewTabs && tabCountChanged && hasCountDecreased;
+  const possibleCorruption = _detectTabCorruption({
+    hasTabsDisappeared,
+    hasNoNewTabs,
+    tabCountChanged,
+    hasCountDecreased
+  });
 
   if (possibleCorruption) {
     _handlePossibleCorruption({
@@ -7320,6 +7330,23 @@ function _validateRenderIntegrity(context) {
       newTabs
     });
   }
+}
+
+/**
+ * Detect tab corruption based on state changes
+ * v1.6.3.8-v12 - FIX Issue #9: Extracted for testability and readability
+ * @private
+ * @param {Object} context - Context object with corruption indicators
+ * @param {boolean} context.hasTabsDisappeared - True if tabs existed before but not after
+ * @param {boolean} context.hasNoNewTabs - True if no new tabs were added
+ * @param {boolean} context.tabCountChanged - True if tab count changed
+ * @param {boolean} context.hasCountDecreased - True if tab count decreased
+ * @returns {boolean} True if corruption is detected
+ */
+function _detectTabCorruption(context) {
+  const { hasTabsDisappeared, hasNoNewTabs, tabCountChanged, hasCountDecreased } = context;
+  // Corruption = tabs disappeared unexpectedly without any new tabs added
+  return hasTabsDisappeared && hasNoNewTabs && tabCountChanged && hasCountDecreased;
 }
 
 /**
@@ -7415,7 +7442,7 @@ async function _requestFullStateRefresh() {
       setTimeout(() => {
         _renderCorruptionRecoveryAttempts = 0; // Reset on successful refresh
         _renderUIImmediate_force();
-      }, 50);
+      }, RENDER_RECOVERY_DELAY_MS);
     } else {
       console.warn('[Manager] FULL_STATE_REFRESH: No valid state in storage');
     }
