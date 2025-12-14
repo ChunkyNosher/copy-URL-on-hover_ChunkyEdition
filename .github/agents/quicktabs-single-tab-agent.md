@@ -3,8 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.8
-  init barriers, BFCache handling, currentTabId detection
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.9
+  ownership validation, handler message routing
 tools: ['*']
 ---
 
@@ -37,31 +37,26 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v12 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.9 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
 
-- **FIX Issue #15** - Promise chaining: catch blocks properly reject
-- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
-- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
-- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled)
-- **FIX Issue #19** - Self-write cleanup aligned to 300ms
+- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
+- **Handler Message Routing** - `_sendPositionChangedMessage()`,
+  `_sendSizeChangedMessage()`
+- **CorrelationId Integration** - All messages use `generateCorrelationId()`
+- **Centralized Constants** - `src/constants.js` with timing values
 
-**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
-key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
+**v1.6.3.8-v12 Features (Retained):**
+
+- **Stateless messaging** - `runtime.sendMessage()` / `tabs.sendMessage()`
+- **Tab ID fetch timeout** - 2s with retry fallback
+- **Self-write detection** - 300ms window
 
 **v1.6.3.8-v9 Features (Retained):**
 
 - **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
 - **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
-- **Tab ID timeout 2s** - Reduced from 10s with retry fallback (v12)
-
-**v1.6.3.7-v1 Features (Retained):**
-
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
-- **originTabId Validation** - `_isValidOriginTabId()` validates positive
-  integers
 
 **Key Quick Tab Features:**
 
@@ -79,12 +74,12 @@ key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
 
 ## Testing Requirements
 
-- [ ] DestroyHandler event order works (emit before delete) (v1.6.3.8-v9)
-- [ ] Handler readiness works (`startRendering()` from init) (v1.6.3.8-v9)
-- [ ] Tab ID timeout 2s works with 2 retries, 300ms delay (v1.6.3.8-v12)
-- [ ] Self-write detection works (300ms window) (v12)
-- [ ] Explicit tab ID barrier works
-- [ ] BFCache session tabs work (document.wasDiscarded)
+- [ ] Ownership validation works (`_validateOwnership()`) (v1.6.3.9)
+- [ ] Handler message routing works (v1.6.3.9)
+- [ ] DestroyHandler event order works (emit before delete)
+- [ ] Handler readiness works (`startRendering()` from init)
+- [ ] Tab ID timeout 2s works with 2 retries, 300ms delay
+- [ ] Self-write detection works (300ms window)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] originTabId set correctly on creation
@@ -93,5 +88,5 @@ key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.8-v12 DestroyHandler
-event order, handler readiness, 2s tab ID timeout, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.9 ownership
+validation, handler message routing, and proper per-tab scoping.**

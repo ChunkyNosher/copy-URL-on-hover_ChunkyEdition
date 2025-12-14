@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.8-v12.
+  documentation. Current version: v1.6.3.9.
 tools: ['*']
 ---
 
@@ -69,31 +69,22 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.8-v12)
+## Current Extension State (v1.6.3.9)
 
-### v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes
+### v1.6.3.9 Features (NEW) - Gap Analysis Implementation
 
-**Critical Issues Fixed:**
+- **Feature Flag Wiring** - `bootstrapQuickTabs()` checks `isV2Enabled()`
+- **Message Routing** - Handlers send MESSAGE_TYPES to background
+- **CorrelationId Integration** - All messages use `generateCorrelationId()`
+- **Ownership Validation** - `_validateOwnership()` in handlers
+- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
+- **Centralized Constants** - `src/constants.js` with timing values
+- **Structured Logger** - `src/utils/structured-logger.js`
+- **Schema Version** - `version: 2` field in schema-v2.js
 
-- **FIX Issue #15** - Promise chaining: catch blocks properly reject
-- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
-- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
-- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled from port)
-- **FIX Issue #19** - Self-write cleanup aligned to 300ms
+### v1.6.3.8-v12 Features (Retained)
 
-**Behavioral Issues Fixed:**
-
-- **FIX Issue #1** - `_cleanupOrphanedPendingMessages()` for port zombies
-- **FIX Issue #5** - Per-message cleanup logging (type, correlationId, ageMs)
-- **FIX Issue #6** - `_buildMessageResponse()` for standardized responses
-- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
-- **FIX Issue #9** - Debounced render queue with checksum validation
-- **FIX Issue #10** - `_storageListenerIsActive` flag with fallback retry
-
-### v1.6.3.8-v11 Features (Retained)
-
-- tabs.sendMessage messaging, single storage key, tab isolation
-- Readback validation, correlationId dedup, EventBus FIFO, message patterns
+- Port removal (~2,364 lines), stateless messaging, simplified BFCache
 
 ### Architecture
 
@@ -101,27 +92,14 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.8-v12)
-
-| Function                            | Location      | Purpose                  |
-| ----------------------------------- | ------------- | ------------------------ |
-| `_cleanupOrphanedPendingMessages()` | Manager       | Port zombie cleanup      |
-| `_buildMessageResponse()`           | message-utils | Standardized responses   |
-| `_enqueueRender()`                  | Manager       | Debounced render queue   |
-| `_validateRenderIntegrity()`        | Manager       | Checksum validation      |
-| `_detectTabCorruption()`            | storage-utils | Corruption detection     |
-| `_handleOutOfOrderSequenceId()`     | storage-utils | State ordering tolerance |
-
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.8-v12
-- [ ] **v1.6.3.8-v12:** Promise contamination fix documented (Issue #15)
-- [ ] **v1.6.3.8-v12:** Circuit breaker removal documented (Issue #16)
-- [ ] **v1.6.3.8-v12:** Tab ID fetch timeout (2s) documented (Issue #17)
-- [ ] **v1.6.3.8-v12:** Debounced render queue documented (Issue #9)
+- [ ] Version numbers match 1.6.3.9
+- [ ] **v1.6.3.9:** Gap analysis features documented
+- [ ] **v1.6.3.9:** New modules documented (constants.js, structured-logger.js)
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -131,7 +109,7 @@ nothing.
 
 | Error                   | Fix                         |
 | ----------------------- | --------------------------- |
-| v1.6.3.8-v11 or earlier | Update to 1.6.3.8-v12       |
+| v1.6.3.8-v12 or earlier | Update to 1.6.3.9           |
 | "Pin to Page"           | Use "Solo/Mute"             |
 | Direct storage writes   | Use Single Writer Authority |
 | BroadcastChannel refs   | REMOVE - BC DELETED in v6   |

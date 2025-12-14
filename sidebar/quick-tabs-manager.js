@@ -2,6 +2,47 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * ===============================================================================
+ * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.8-v14)
+ * ===============================================================================
+ *
+ * FILTERING GUARANTEE:
+ *   The Manager sidebar displays ALL Quick Tabs globally, grouped by originTabId.
+ *   Unlike content scripts (which filter to `originTabId === currentTabId`),
+ *   the Manager shows Quick Tabs from ALL tabs for global visibility.
+ *
+ * DATA FLOW:
+ *   1. storage.onChanged fires with updated state (`quick_tabs_state_v2`)
+ *   2. _handleStorageChange() validates the change and enqueues render
+ *   3. scheduleRender() debounces rapid changes (100ms window)
+ *   4. renderUI() groups Quick Tabs by originTabId for display
+ *   5. Each group section shows Quick Tabs belonging to that browser tab
+ *
+ * CROSS-TAB ISOLATION:
+ *   - Content scripts: Tab A's script only renders Quick Tabs with `originTabId === A`
+ *   - Manager sidebar: Shows ALL Quick Tabs from ALL tabs (no filtering by originTabId)
+ *   - Operations (close, minimize, restore) are sent to the owning tab via background
+ *
+ * ORPHAN HANDLING:
+ *   - Quick Tabs with invalid/closed originTabId appear in an "Orphaned" group
+ *   - User can "adopt" orphaned Quick Tabs to move them to the current tab
+ *   - Adoption updates `originTabId` via background script coordination
+ *   - See adoptQuickTabToCurrentTab() for adoption flow
+ *
+ * SINGLE WRITER AUTHORITY:
+ *   - Manager NEVER writes directly to storage (except legacy recovery paths)
+ *   - Manager sends commands to background script (e.g., CLOSE_QUICK_TAB)
+ *   - Background is the sole authority for state persistence
+ *   - Manager renders state received via storage.onChanged
+ *
+ * ARCHITECTURE NOTES:
+ *   - Primary sync: storage.onChanged listener
+ *   - Request/response: runtime.sendMessage to background
+ *   - No BroadcastChannel (removed in v1.6.3.8-v6)
+ *   - No runtime.Port (removed in v1.6.3.8-v13)
+ *
+ * ===============================================================================
+ *
  * v1.6.3.8-v13 - FULL Port Removal: Replaced runtime.Port with stateless runtime.sendMessage
  *   - REMOVED: backgroundPort, _portOnMessageHandler, portMessageQueue
  *   - REMOVED: connectToBackground(), scheduleReconnect(), handleConnectionFailure()
@@ -1423,13 +1464,13 @@ const pendingAcks = new Map();
 // v1.6.3.8-v13 - PORT REMOVED: Listener ready functions are no-ops
 
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let listenerReadyPromise = Promise.resolve();
+const listenerReadyPromise = Promise.resolve();
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let _listenerReadyResolve = null;
+const _listenerReadyResolve = null;
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let _listenerReadyReject = null;
+const _listenerReadyReject = null;
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let listenerFullyRegistered = true;
+const listenerFullyRegistered = true;
 
 /**
  * @deprecated v1.6.3.8-v13 - Port removed
@@ -1453,7 +1494,7 @@ function _markListenerReady() {
  */
 function _resetListenerReadyState() {
   // No-op - port removed
-};
+}
 
 // ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
 // FIX Issue #10: Prevent concurrent reconnection attempts
@@ -1461,7 +1502,7 @@ function _resetListenerReadyState() {
  * Atomic guard for reconnection - prevents multiple simultaneous attempts
  * v1.6.3.7-v8 - FIX Issue #10: Race condition prevention
  */
-let isReconnecting = false;
+const isReconnecting = false;
 
 // ==================== v1.6.3.7-v8 HEARTBEAT HYSTERESIS ====================
 // FIX Issue #13: Require consecutive failures before ZOMBIE
@@ -1475,7 +1516,7 @@ const HEARTBEAT_FAILURES_BEFORE_ZOMBIE = 3;
  * Counter for consecutive heartbeat timeouts (separate from general failures)
  * v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
  */
-let consecutiveHeartbeatTimeouts = 0;
+const consecutiveHeartbeatTimeouts = 0;
 
 // ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
 // FIX Issue #14: Detect Firefox background script termination
@@ -1495,13 +1536,13 @@ const BACKGROUND_STALE_WARNING_THRESHOLD_MS = 30000;
  * Timestamp of last message received from background via port
  * v1.6.3.7-v8 - FIX Issue #14: Track background activity
  */
-let lastBackgroundMessageTime = Date.now();
+const lastBackgroundMessageTime = Date.now();
 
 /**
  * Timer ID for background activity check
  * v1.6.3.7-v8 - FIX Issue #14: Periodic health check
  */
-let backgroundActivityCheckTimerId = null;
+const backgroundActivityCheckTimerId = null;
 
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention

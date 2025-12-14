@@ -17,6 +17,11 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
+// v1.6.3.8-v12 GAP-1, GAP-10 fix: Import Quick Tabs v2 bootstrap
+import {
+  bootstrapQuickTabs,
+  getActiveArchitecture
+} from './src/background/quick-tabs-v2-integration.js';
 // v1.6.3.8-v8 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports and functions removed - Port + storage.onChanged ONLY
 // See Issue #13: Any remaining BC references are comments for historical context
@@ -4068,6 +4073,23 @@ function logSuccessfulLoad(source, format) {
 
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
+
+// v1.6.3.8-v12 GAP-1, GAP-10, GAP-11 fix: Bootstrap Quick Tabs v2 after state initialization
+// This must happen after initializeGlobalState() but before content scripts run
+// The bootstrapQuickTabs() function checks the feature flag and initializes the appropriate architecture
+(async function bootstrapQuickTabsV2() {
+  console.log('[Background] v1.6.3.8-v12 Initiating Quick Tabs v2 bootstrap...');
+  try {
+    const result = await bootstrapQuickTabs();
+    console.log('[Background] v1.6.3.8-v12 Quick Tabs bootstrap complete:', {
+      architecture: result.architecture,
+      success: result.success,
+      activeArchitecture: getActiveArchitecture()
+    });
+  } catch (err) {
+    console.error('[Background] v1.6.3.8-v12 Quick Tabs bootstrap failed:', err.message);
+  }
+})();
 
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs

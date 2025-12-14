@@ -2390,6 +2390,87 @@ export class UICoordinator {
   }
 
   /**
+   * Find tabs to remove during sync (in current but not in incoming)
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Extracted to reduce syncState complexity
+   * @private
+   * @param {Set} currentIds - Set of currently rendered tab IDs
+   * @param {Set} incomingIds - Set of incoming tab IDs from storage
+   * @returns {Array} Array of tab IDs to remove
+   */
+  _findTabsToRemove(currentIds, incomingIds) {
+    const tabsToRemove = [];
+    for (const id of currentIds) {
+      if (!incomingIds.has(id)) {
+        tabsToRemove.push(id);
+      }
+    }
+    return tabsToRemove;
+  }
+
+  /**
+   * Process tabs to add or update during sync
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Extracted to reduce syncState complexity
+   * @private
+   * @param {Array} tabsToAddOrUpdate - Array of Quick Tab entities
+   */
+  _processTabsToAddOrUpdate(tabsToAddOrUpdate) {
+    for (const quickTab of tabsToAddOrUpdate) {
+      if (this.renderedTabs.has(quickTab.id)) {
+        // Update existing tab
+        this.update(quickTab, 'storage-sync', false);
+      } else if (!quickTab.minimized) {
+        // Render new visible tab
+        this.render(quickTab);
+      }
+    }
+  }
+
+  /**
+   * Sync state from storage changes (cross-tab sync)
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Update UI based on storage.onChanged events
+   *
+   * @param {Array} filteredTabs - Array of Quick Tab entities filtered for this tab
+   */
+  syncState(filteredTabs) {
+    console.log(`${this._logPrefix} syncState() called:`, {
+      tabCount: filteredTabs?.length || 0,
+      renderedTabsCount: this.renderedTabs.size,
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
+    });
+
+    if (!filteredTabs || !Array.isArray(filteredTabs)) {
+      console.warn(`${this._logPrefix} syncState() received invalid tabs array`);
+      return;
+    }
+
+    const incomingIds = new Set(filteredTabs.map(qt => qt.id));
+    const currentIds = new Set(this.renderedTabs.keys());
+
+    // Find tabs to remove (in current but not in incoming)
+    const tabsToRemove = this._findTabsToRemove(currentIds, incomingIds);
+
+    console.log(`${this._logPrefix} syncState() reconciliation:`, {
+      tabsToRemove: tabsToRemove.length,
+      tabsToAddOrUpdate: filteredTabs.length
+    });
+
+    // Remove tabs that are no longer in storage
+    for (const id of tabsToRemove) {
+      console.log(`${this._logPrefix} syncState() removing tab:`, id);
+      this.destroy(id);
+    }
+
+    // Update or render tabs from storage
+    this._processTabsToAddOrUpdate(filteredTabs);
+
+    console.log(`${this._logPrefix} syncState() complete:`, {
+      renderedTabsCountAfter: this.renderedTabs.size,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
    * Setup state event listeners
    * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync)
    * v1.6.3.4-v4 - FIX Issue #3: Add state:cleared listener for reconciliation

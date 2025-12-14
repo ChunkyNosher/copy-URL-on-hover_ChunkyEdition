@@ -299,7 +299,9 @@ if (!_attemptStorageListenerRegistration()) {
       if (_attemptStorageListenerRegistration()) {
         console.log('[Content] STORAGE_LISTENER_FALLBACK_SUCCESS: Listener registered on retry');
       } else {
-        console.error('[Content] STORAGE_LISTENER_FALLBACK_FAILED: Manual polling will be required');
+        console.error(
+          '[Content] STORAGE_LISTENER_FALLBACK_FAILED: Manual polling will be required'
+        );
       }
     }
   }, 100);
@@ -338,6 +340,8 @@ console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
 console.log('[Copy-URL-on-Hover] Starting module imports...');
+// v1.6.3.8-v13 - GAP-7: Import shared dedup constant for self-write detection
+import { STORAGE_DEDUP_WINDOW_MS, RESTORE_DEDUP_WINDOW_MS } from './constants.js';
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 import { ConfigManager, CONSTANTS, DEFAULT_CONFIG } from './core/config.js';
 import { EventBus, Events } from './core/events.js';
@@ -533,9 +537,154 @@ async function getCurrentTabIdFromBackground() {
  */
 let cachedTabId = null;
 
-// v1.6.3.8-v13: Self-write detection uses STORAGE_LISTENER_LATENCY_TOLERANCE_MS directly
+// v1.6.3.8-v13 - GAP-7: Use imported STORAGE_DEDUP_WINDOW_MS constant for self-write detection
 // Firefox listener fires 100-250ms after write completes
-const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = 300; // Firefox listener latency tolerance
+// The constant is imported from src/constants.js for consistency across codebase
+const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = STORAGE_DEDUP_WINDOW_MS; // Firefox listener latency tolerance
+
+// ==================== v1.6.3.8-v14 GAP-8: FALLBACK SYNC LOGGING ====================
+// FIX GAP-8: When Promise-based messages fail, track whether storage.onChanged fallback works
+
+/**
+ * Timeout for fallback sync to complete (ms)
+ * v1.6.3.8-v14 - GAP-8: Alert if fallback doesn't complete within this window
+ */
+const FALLBACK_SYNC_TIMEOUT_MS = 2000;
+
+/**
+ * Pending fallback operations awaiting storage.onChanged confirmation
+ * v1.6.3.8-v14 - GAP-8: Track operations that need fallback sync
+ * Structure: Map<correlationId, { action, startTime, timeoutId }>
+ */
+const _pendingFallbackOperations = new Map();
+
+/**
+ * Register a pending fallback operation when message send fails
+ * v1.6.3.8-v14 - GAP-8: Start fallback tracking when message fails
+ * @param {string} action - The action that failed
+ * @param {string} correlationId - Correlation ID for tracking
+ */
+function _registerPendingFallbackOperation(action, correlationId) {
+  // Generate fallback ID if not provided (intentionally local to avoid circular imports
+  // with storage-manager.js which has generateCorrelationId())
+  if (!correlationId) {
+    correlationId = `fallback-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  }
+
+  // Clear any existing operation with same correlationId
+  _clearPendingFallbackOperation(correlationId);
+
+  const startTime = Date.now();
+
+  console.log('[Fallback] Falling back to storage sync for', action, {
+    correlationId,
+    startTime,
+    timeoutMs: FALLBACK_SYNC_TIMEOUT_MS
+  });
+
+  // Set timeout for fallback warning
+  const timeoutId = setTimeout(() => {
+    if (_pendingFallbackOperations.has(correlationId)) {
+      console.warn(
+        '[Fallback] FALLBACK_SYNC_TIMEOUT:',
+        action,
+        '- manual intervention may be required',
+        {
+          correlationId,
+          elapsedMs: Date.now() - startTime,
+          timeoutMs: FALLBACK_SYNC_TIMEOUT_MS
+        }
+      );
+      _pendingFallbackOperations.delete(correlationId);
+    }
+  }, FALLBACK_SYNC_TIMEOUT_MS);
+
+  _pendingFallbackOperations.set(correlationId, {
+    action,
+    startTime,
+    timeoutId
+  });
+}
+
+/**
+ * Confirm that a fallback operation completed via storage.onChanged
+ * v1.6.3.8-v14 - GAP-8: Called when storage.onChanged fires with matching action
+ * @param {string} correlationId - Correlation ID to confirm
+ * @param {string} [reason='storage-sync'] - Reason for confirmation
+ */
+function _confirmFallbackSyncCompleted(correlationId, reason = 'storage-sync') {
+  const pending = _pendingFallbackOperations.get(correlationId);
+  if (!pending) return;
+
+  const elapsedMs = Date.now() - pending.startTime;
+
+  console.log(
+    '[Fallback] FALLBACK_SYNC_CONFIRMED:',
+    pending.action,
+    'via storage after message failed',
+    {
+      correlationId,
+      elapsedMs: elapsedMs + 'ms',
+      reason
+    }
+  );
+
+  // Clear the timeout and remove from pending
+  clearTimeout(pending.timeoutId);
+  _pendingFallbackOperations.delete(correlationId);
+}
+
+/**
+ * Clear a pending fallback operation
+ * v1.6.3.8-v14 - GAP-8: Clean up pending operation
+ * @param {string} correlationId - Correlation ID to clear
+ */
+function _clearPendingFallbackOperation(correlationId) {
+  const pending = _pendingFallbackOperations.get(correlationId);
+  if (pending) {
+    clearTimeout(pending.timeoutId);
+    _pendingFallbackOperations.delete(correlationId);
+  }
+}
+
+/**
+ * Check if any pending fallback operation matches the incoming storage change
+ * v1.6.3.8-v14 - GAP-8: Match storage changes to pending operations
+ * @param {Object} newValue - New value from storage change
+ */
+function _checkPendingFallbacksForStorageChange(newValue) {
+  if (!newValue) return;
+
+  // Check if any pending operation might match this storage change
+  for (const [correlationId, pending] of _pendingFallbackOperations.entries()) {
+    // Match by correlationId if present in storage value
+    if (newValue.correlationId === correlationId) {
+      _confirmFallbackSyncCompleted(correlationId, 'correlationId-match');
+      continue;
+    }
+
+    // Match by saveId pattern if it contains our correlationId
+    if (newValue.saveId?.includes(correlationId)) {
+      _confirmFallbackSyncCompleted(correlationId, 'saveId-match');
+      continue;
+    }
+
+    // Match by timing - if storage change arrived within reasonable window of our failed action
+    const elapsedMs = Date.now() - pending.startTime;
+    if (elapsedMs < FALLBACK_SYNC_TIMEOUT_MS && elapsedMs > 50) {
+      // Log potential match but don't auto-confirm without ID match
+      console.log('[Fallback] POTENTIAL_FALLBACK_MATCH:', {
+        pendingAction: pending.action,
+        correlationId,
+        elapsedMs,
+        newValueTimestamp: newValue.timestamp,
+        newValueSaveId: newValue.saveId
+      });
+    }
+  }
+}
+
+// ==================== END GAP-8 FALLBACK SYNC LOGGING ====================
 
 // v1.6.3.8-v8 - FIX Issue #8: Storage event ordering tolerance window
 // Accept out-of-order events if within Firefox's documented listener latency
@@ -674,6 +823,7 @@ function _detectSelfWrite(newValue) {
 /**
  * Send a message to background script using stateless Promise-based pattern
  * v1.6.3.8-v13 - Replaces port-based messaging with simpler runtime.sendMessage
+ * v1.6.3.8-v14 - GAP-8: Register fallback operation when message fails
  *
  * This is the primary method for content-to-background communication.
  * It uses browser.runtime.sendMessage which is stateless - each call is independent.
@@ -682,6 +832,7 @@ function _detectSelfWrite(newValue) {
  * @param {Object} message - Message object to send
  * @param {string} [message.action] - Action identifier for the background to handle
  * @param {string} [message.type] - Message type for type-based routing
+ * @param {string} [message.correlationId] - Correlation ID for tracking
  * @returns {Promise<Object|null>} Response from background or null on failure
  *
  * @example
@@ -698,10 +849,18 @@ async function _sendMessageToBackground(message) {
     });
     return response;
   } catch (err) {
+    const action = message.type || message.action;
+    const correlationId = message.correlationId;
+
     console.warn('[Content] MESSAGE_FAILED (storage.onChanged will sync):', {
-      type: message.type || message.action,
-      error: err.message
+      type: action,
+      error: err.message,
+      correlationId
     });
+
+    // v1.6.3.8-v14 - GAP-8: Register fallback operation to track storage sync
+    _registerPendingFallbackOperation(action, correlationId);
+
     return null;
   }
 }
@@ -1252,7 +1411,13 @@ function _handleOutOfOrderSequenceId(incomingSequenceId, timeSinceWrite, newValu
  * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
  * @private
  */
-function _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue) {
+function _rejectSequenceIdOrdering(
+  incomingSequenceId,
+  isDuplicate,
+  timeSinceWrite,
+  withinToleranceWindow,
+  newValue
+) {
   console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
     incomingSequenceId,
     lastAppliedSequenceId,
@@ -1300,7 +1465,11 @@ function _checkSequenceIdOrdering(
 
   // Handle duplicate within tolerance
   if (isDuplicate) {
-    const result = _handleDuplicateSequenceId(incomingSequenceId, timeSinceWrite, withinToleranceWindow);
+    const result = _handleDuplicateSequenceId(
+      incomingSequenceId,
+      timeSinceWrite,
+      withinToleranceWindow
+    );
     if (result) return result;
   }
 
@@ -1311,7 +1480,13 @@ function _checkSequenceIdOrdering(
   }
 
   // Reject with detailed logging
-  return _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue);
+  return _rejectSequenceIdOrdering(
+    incomingSequenceId,
+    isDuplicate,
+    timeSinceWrite,
+    withinToleranceWindow,
+    newValue
+  );
 }
 
 /**
@@ -1503,6 +1678,7 @@ function _notifyManagerOfStorageUpdate(state, source) {
  * v1.6.3.8-v8 - FIX Issue #1: Add self-write detection with timestamp matching
  *   - Self-writes are processed (for local state update) but not re-broadcast
  *   - Distinguishes self-writes from same tab vs writes from different tabs
+ * v1.6.3.8-v14 - GAP-8: Check pending fallback operations for confirmation
  * @param {Object} changes - Storage changes
  * @param {string} areaName - Storage area ('local', 'sync', etc.)
  */
@@ -1517,6 +1693,9 @@ function _handleStorageChange(changes, areaName) {
   const newValue = stateChange.newValue;
   const oldValue = stateChange.oldValue;
   const eventReceiveTime = Date.now();
+
+  // v1.6.3.8-v14 - GAP-8: Check if this storage change confirms any pending fallback operations
+  _checkPendingFallbacksForStorageChange(newValue);
 
   // v1.6.3.8-v8 - FIX Issue #1: Detect if this is a self-write from this tab
   const selfWriteResult = _detectSelfWrite(newValue);
@@ -2833,6 +3012,7 @@ function _getActionError(result) {
 // v1.6.3.4-v11 - FIX Issue #2: Message deduplication to prevent duplicate RESTORE_QUICK_TAB processing
 // Map of quickTabId -> timestamp of last processed restore message
 const recentRestoreMessages = new Map();
+// v1.6.3.8-v13 - GAP-7: Use imported RESTORE_DEDUP_WINDOW_MS constant for consistency
 // v1.6.3.8-v12 - FIX Issue #18: Decoupled from port reconnection timing
 // The deduplication window prevents rapid duplicate restore commands from overwhelming the system.
 // This is based on the typical user interaction debounce window (50ms):
@@ -2840,7 +3020,7 @@ const recentRestoreMessages = new Map();
 // - Slower than programmatic retries within same event loop (~0-10ms)
 // - Matches correlationId DEDUP_WINDOW_MS in storage-manager.js for consistency
 // See also: https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event
-const RESTORE_DEDUP_WINDOW_MS = 50;
+// NOTE: RESTORE_DEDUP_WINDOW_MS is now imported from src/constants.js
 
 /**
  * Check if restore message is a duplicate (within deduplication window)

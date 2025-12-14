@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.8-v11), tabs.sendMessage + storage.local
+  sync with Single Writer Authority (v1.6.3.9), tabs.sendMessage + storage.local
   architecture, single storage key, readback validation, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v12 - Quick Tabs Architecture v2
+**Version:** 1.6.3.9 - Quick Tabs Architecture v2
 
 **Complete Quick Tab System:**
 
@@ -49,17 +49,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
 
-- **FIX Issue #15** - Promise chaining: catch blocks properly reject
-- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
-- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
-- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled)
-- **FIX Issue #19** - Self-write cleanup aligned to 300ms
-- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
-- **FIX Issue #9** - Debounced render queue with checksum validation
+- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
+- **Handler Message Routing** - `_sendPositionChangedMessage()`,
+  `_sendMinimizeMessage()`
+- **CorrelationId Integration** - All messages use `generateCorrelationId()`
+- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
+- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
+- **Centralized Constants** - `src/constants.js` (GAP-7)
 
-**v1.6.3.8-v11 Features (Retained):**
+**v1.6.3.8-v12 Features (Retained):**
 
 - **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
 - **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
@@ -67,16 +67,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Readback validation** - Every write validated by read-back
 - **StorageManager** - Dedup, retry with exponential backoff
 - **EventBus** - Native EventTarget for FIFO-guaranteed events
-- **Message patterns** - LOCAL (no broadcast), GLOBAL (broadcast), MANAGER
 
-**Key Modules (v1.6.3.8-v11):**
+**Key Modules (v1.6.3.9):**
 
-| Module                            | Purpose                                  |
-| --------------------------------- | ---------------------------------------- |
-| `src/storage/schema-v2.js`        | Pure state utilities, originTabId filter |
-| `src/storage/storage-manager.js`  | Dedup, readback validation, retry        |
-| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder            |
-| `src/utils/event-bus.js`          | EventBus with native EventTarget         |
+| Module                            | Purpose                             |
+| --------------------------------- | ----------------------------------- |
+| `src/constants.js`                | Centralized timing constants        |
+| `src/storage/schema-v2.js`        | Pure state utilities, version field |
+| `src/storage/storage-manager.js`  | Dedup, readback validation, retry   |
+| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
+| `src/utils/event-bus.js`          | EventBus with native EventTarget    |
 
 ---
 
@@ -93,21 +93,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel) (v11)
-- [ ] Single storage key works (`quick_tabs_state_v2`) (v11)
-- [ ] Tab isolation works (originTabId filtering) (v11)
-- [ ] Readback validation works (every write validated) (v11)
-- [ ] EventBus FIFO events work (native EventTarget) (v11)
-- [ ] Message patterns work (LOCAL, GLOBAL, MANAGER) (v11)
-- [ ] OUT_OF_ORDER_TOLERANCE_MS (100ms) works (v12)
-- [ ] Debounced render queue works (v12)
-- [ ] Tab ID fetch timeout (2s) works (v12)
+- [ ] Feature flag bootstrap works (`bootstrapQuickTabs()`) (v1.6.3.9)
+- [ ] Handler message routing works (v1.6.3.9)
+- [ ] Ownership validation works (`_validateOwnership()`) (v1.6.3.9)
+- [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
+- [ ] Single storage key works (`quick_tabs_state_v2`)
+- [ ] Tab isolation works (originTabId filtering)
+- [ ] Readback validation works (every write validated)
+- [ ] EventBus FIFO events work (native EventTarget)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8-v12 tabs.sendMessage +
-storage.local architecture, single storage key, readback validation, FIFO
-EventBus, debounced render queue.**
+**Your strength: Complete Quick Tab system with v1.6.3.9 tabs.sendMessage +
+storage.local architecture, feature flag bootstrap, handler message routing.**

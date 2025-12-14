@@ -10,7 +10,18 @@
  * - New format: { version: 2, allQuickTabs: [...], managerState: {...} }
  * Migration should check for version field before processing.
  *
+ * ## GAP-19 FIX: Version Field Documentation
+ *
+ * The `version` field is REQUIRED in all state objects for:
+ * 1. **Schema Migration Detection** - Identify when state needs migration
+ * 2. **Forward Compatibility** - Future schema changes can be detected
+ * 3. **Debugging** - Log version mismatches for troubleshooting
+ *
+ * When reading state, use `validateStateWithDiagnostics()` to get detailed
+ * validation info including migration requirements.
+ *
  * @module storage/schema-v2
+ * @version 1.6.3.9 - GAP-19: Enhanced version field documentation
  */
 
 export const SCHEMA_VERSION = 2;
@@ -191,6 +202,59 @@ export function isValidState(state) {
     Array.isArray(state.allQuickTabs) &&
     typeof state.managerState === 'object'
   );
+}
+
+/**
+ * Validate state and log warnings for version mismatches
+ *
+ * GAP-19 FIX: This function validates state and provides diagnostic
+ * logging when the version field is missing or doesn't match the
+ * current schema version. This helps identify migration issues.
+ *
+ * @param {Object} state - State object to validate
+ * @returns {{isValid: boolean, needsMigration: boolean, warnings: string[]}} Validation result with diagnostics
+ */
+export function validateStateWithDiagnostics(state) {
+  const warnings = [];
+  let needsMigration = false;
+
+  if (!state || typeof state !== 'object') {
+    return { isValid: false, needsMigration: false, warnings: ['State is null or not an object'] };
+  }
+
+  // GAP-19: Check version field
+  if (!('version' in state)) {
+    warnings.push('Missing version field - state may be from legacy format');
+    needsMigration = true;
+  } else if (state.version !== SCHEMA_VERSION) {
+    warnings.push(`Version mismatch: expected ${SCHEMA_VERSION}, got ${state.version}`);
+    needsMigration = true;
+  }
+
+  // Check required fields
+  if (!Array.isArray(state.allQuickTabs)) {
+    warnings.push('Missing or invalid allQuickTabs array');
+  }
+
+  if (typeof state.managerState !== 'object') {
+    warnings.push('Missing or invalid managerState object');
+  }
+
+  // State is valid if there are no warnings (avoids redundant isValidState() call)
+  const isValid = warnings.length === 0;
+
+  // Log warnings if any
+  if (warnings.length > 0) {
+    console.warn('[Schema-V2] State validation warnings:', {
+      isValid,
+      needsMigration,
+      warnings,
+      stateVersion: state.version,
+      expectedVersion: SCHEMA_VERSION
+    });
+  }
+
+  return { isValid, needsMigration, warnings };
 }
 
 /**

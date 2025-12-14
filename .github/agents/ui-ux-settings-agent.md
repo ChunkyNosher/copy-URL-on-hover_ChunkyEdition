@@ -59,19 +59,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v12 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.9 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
 
-- **FIX Issue #15** - Promise chaining: catch blocks properly reject
-- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
-- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
+- **Centralized Constants** - `src/constants.js` with timing values
+- **Structured Logger** - `src/utils/structured-logger.js`
+
+**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
+messaging, simplified BFCache.
 
 **v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
 key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
-
-**v1.6.3.8-v9 Features (Retained):** UICoordinator `_isInitializing`, event
-listener cleanup `cleanupStateListeners()` method.
 
 **Settings Sidebar Structure (Two-Layer System):**
 
