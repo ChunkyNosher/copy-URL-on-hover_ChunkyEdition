@@ -566,14 +566,14 @@ const _recentSelfWrites = new Map();
 function _trackSelfWrite(saveId, revision) {
   const writeTime = Date.now();
   _recentSelfWrites.set(saveId, { writeTime, saveId, revision });
-  
+
   console.log('[Content] SELF_WRITE_TRACKED:', {
     saveId,
     revision,
     writeTime,
     trackedCount: _recentSelfWrites.size
   });
-  
+
   // Clean up old entries after listener latency window passes
   setTimeout(() => {
     if (_recentSelfWrites.has(saveId)) {
@@ -594,7 +594,7 @@ function _checkWritingTabIdMatch(newValue) {
   if (newValue.writingTabId === null || newValue.writingTabId === undefined) {
     return null;
   }
-  
+
   const isFromThisTab = newValue.writingTabId === cachedTabId;
   console.log('[Content] SELF_WRITE_CHECK (writingTabId):', {
     saveId: newValue.saveId,
@@ -621,7 +621,7 @@ function _checkTimestampMatch(newValue, savedEntry) {
   const eventTime = Date.now();
   const timeSinceWrite = eventTime - savedEntry.writeTime;
   const withinWindow = timeSinceWrite <= STORAGE_LISTENER_LATENCY_TOLERANCE_MS;
-  
+
   console.log('[Content] SELF_WRITE_DETECTION:', {
     saveId: newValue.saveId,
     writeTime: savedEntry.writeTime,
@@ -631,10 +631,10 @@ function _checkTimestampMatch(newValue, savedEntry) {
     tolerance: STORAGE_LISTENER_LATENCY_TOLERANCE_MS,
     decision: withinWindow ? 'is-self-write' : 'stale-write'
   });
-  
+
   // Clean up matched entry
   _recentSelfWrites.delete(newValue.saveId);
-  
+
   return {
     isSelfWrite: withinWindow,
     reason: withinWindow ? 'timestamp-match' : 'stale-timestamp',
@@ -652,16 +652,16 @@ function _detectSelfWrite(newValue) {
   if (!newValue?.saveId) {
     return { isSelfWrite: false, reason: 'no-saveId', matchedSaveId: null };
   }
-  
+
   const savedEntry = _recentSelfWrites.get(newValue.saveId);
-  
+
   if (!savedEntry) {
     // Check writingTabId as fallback
     const tabIdResult = _checkWritingTabIdMatch(newValue);
     if (tabIdResult) return tabIdResult;
     return { isSelfWrite: false, reason: 'unknown-saveId', matchedSaveId: null };
   }
-  
+
   // Check timestamp within detection window
   return _checkTimestampMatch(newValue, savedEntry);
 }
@@ -688,17 +688,19 @@ const PENDING_MESSAGE_MAX_AGE_MS = 60000;
  */
 function _queueMessageForPort(message) {
   const now = Date.now();
-  
+
   // Prune old messages first
-  while (_pendingPortMessages.length > 0 && 
-         now - _pendingPortMessages[0].timestamp > PENDING_MESSAGE_MAX_AGE_MS) {
+  while (
+    _pendingPortMessages.length > 0 &&
+    now - _pendingPortMessages[0].timestamp > PENDING_MESSAGE_MAX_AGE_MS
+  ) {
     const discarded = _pendingPortMessages.shift();
     console.warn('[Content] PENDING_MESSAGE_EXPIRED:', {
       type: discarded.message.type,
       age: now - discarded.timestamp
     });
   }
-  
+
   _pendingPortMessages.push({ message, timestamp: now });
   console.log('[Content] MESSAGE_QUEUED_FOR_PORT:', {
     type: message.type,
@@ -713,14 +715,14 @@ function _queueMessageForPort(message) {
 function _processPendingPortMessages() {
   if (_pendingPortMessages.length === 0) return;
   if (!backgroundPort) return; // Exit early if no port
-  
+
   const count = _pendingPortMessages.length;
   console.log('[Content] PROCESSING_PENDING_MESSAGES:', { count });
-  
+
   const now = Date.now();
   while (_pendingPortMessages.length > 0) {
     const item = _pendingPortMessages.shift();
-    
+
     // Skip expired messages
     if (now - item.timestamp > PENDING_MESSAGE_MAX_AGE_MS) {
       console.warn('[Content] PENDING_MESSAGE_SKIPPED_EXPIRED:', {
@@ -729,11 +731,11 @@ function _processPendingPortMessages() {
       });
       continue;
     }
-    
+
     // Send via port - separated to reduce nesting depth
     _sendPendingMessage(item, now);
   }
-  
+
   console.log('[Content] PENDING_MESSAGES_PROCESSED:', { processed: count });
 }
 
@@ -753,7 +755,7 @@ function _sendPendingMessage(item, now) {
     });
     return;
   }
-  
+
   try {
     backgroundPort.postMessage(item.message);
     console.log('[Content] PENDING_MESSAGE_SENT:', {
@@ -901,7 +903,7 @@ function connectContentToBackground(tabId) {
     });
 
     console.log('[Content] v1.6.3.8-v8 Port connection established to background');
-    
+
     // v1.6.3.8-v8 - FIX Issue #5: Process any messages that were queued before port was ready
     _processPendingPortMessages();
   } catch (err) {
@@ -1285,12 +1287,12 @@ function _disconnectPortForBFCache() {
   if (!backgroundPort) return;
 
   logContentPortLifecycle('bfcache-enter', { reason: 'entering-bfcache' });
-  
+
   // v1.6.3.8-v10 - FIX Issue #5: Set port to null SYNCHRONOUSLY before disconnect
   // This prevents any code from trying to use the port during disconnect
   const portRef = backgroundPort;
   backgroundPort = null; // Null first to prevent zombie usage
-  
+
   try {
     portRef.disconnect();
   } catch (_err) {
@@ -1389,17 +1391,17 @@ function _handleBFCacheRestore(localState, correlationId) {
     enterTime: _bfCacheState.enterTime,
     tabCount: localState.tabs?.length || 0
   });
-  
+
   // Filter out session-only tabs from localState
   const filteredState = _filterSessionOnlyTabs(localState);
-  
+
   console.log('[Content] BFCACHE_SESSION_TABS_FILTERED:', {
     correlationId,
     originalTabCount: localState.tabs?.length || 0,
     filteredTabCount: filteredState.tabs?.length || 0,
     sessionTabsRemoved: (localState.tabs?.length || 0) - (filteredState.tabs?.length || 0)
   });
-  
+
   // Update ordering state and notify QuickTabsManager
   _updateAppliedOrderingState(filteredState);
   _notifyManagerOfStorageUpdate(filteredState, 'bfcache-restore-filtered');
@@ -1454,7 +1456,9 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
     const localState = localResult?.[CONTENT_STATE_KEY];
 
     if (!localState) {
-      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', { correlationId });
+      console.log('[Content] BFCACHE_STATE_VALIDATION: No state in storage.local', {
+        correlationId
+      });
       return;
     }
 
@@ -1462,7 +1466,9 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
     const checksumResult = _validateHydrationChecksum(localState, localState.checksum);
     if (!checksumResult.valid) {
       console.error('[Content] BFCACHE_CHECKSUM_MISMATCH: Requesting fresh state', {
-        correlationId, computed: checksumResult.computed, expected: localState.checksum
+        correlationId,
+        computed: checksumResult.computed,
+        expected: localState.checksum
       });
       _requestStateRecovery('bfcache-checksum-mismatch');
       return;
@@ -1475,7 +1481,11 @@ async function _validateAndSyncStateAfterBFCache(correlationId) {
       _handleNormalRestore(localState, checksumResult.computed, correlationId);
     }
   } catch (err) {
-    console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', { correlationId, error: err.message, timestamp: Date.now() });
+    console.error('[Content] BFCACHE_STATE_VALIDATION_ERROR:', {
+      correlationId,
+      error: err.message,
+      timestamp: Date.now()
+    });
     _triggerFullStateSyncAfterBFCache();
   } finally {
     _bfCacheState.enteredBFCache = false;
@@ -1493,7 +1503,7 @@ function _filterSessionOnlyTabs(state) {
   if (!state || !state.tabs) {
     return state;
   }
-  
+
   // Filter out tabs marked as session-only
   // Two patterns are supported for backward compatibility:
   // 1. sessionOnly: true (legacy/explicit flag)
@@ -1509,7 +1519,7 @@ function _filterSessionOnlyTabs(state) {
     }
     return !isSessionOnly;
   });
-  
+
   // Return new state object with filtered tabs
   return {
     ...state,
@@ -1669,19 +1679,24 @@ const CONTENT_STATE_KEY = 'quick_tabs_state_v2';
 function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranceWindow) {
   if (typeof incomingRevision !== 'number') return null;
   if (incomingRevision > lastAppliedRevision) return null;
-  
+
   // Allow duplicate revision within tolerance
   if (incomingRevision === lastAppliedRevision && withinToleranceWindow) {
     console.log('[Content] STORAGE_EVENT_ALLOWED (revision duplicate within tolerance):', {
-      incomingRevision, lastAppliedRevision, timeSinceWrite, tolerance: STORAGE_ORDERING_TOLERANCE_MS
+      incomingRevision,
+      lastAppliedRevision,
+      timeSinceWrite,
+      tolerance: STORAGE_ORDERING_TOLERANCE_MS
     });
     return { valid: true, reason: 'duplicate-within-tolerance' };
   }
-  
+
   console.warn('[Content] STORAGE_EVENT_REJECTED (revision):', {
-    incomingRevision, lastAppliedRevision,
+    incomingRevision,
+    lastAppliedRevision,
     reason: incomingRevision === lastAppliedRevision ? 'duplicate' : 'out-of-order',
-    timeSinceWrite, withinTolerance: withinToleranceWindow
+    timeSinceWrite,
+    withinTolerance: withinToleranceWindow
   });
   return { valid: false, reason: 'revision-rejected' };
 }
@@ -1700,28 +1715,36 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
  */
 function _checkSequenceIdOrdering(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
   if (typeof incomingSequenceId !== 'number') return null;
-  
+
   // Newer sequenceId - allow it
   if (incomingSequenceId > lastAppliedSequenceId) return null;
-  
+
   // v1.6.3.8-v10 - FIX Issue #7: Only accept EXACT duplicates within tolerance window
   // Gaps are rejected because they indicate out-of-order delivery which would cause
   // events to be processed in wrong order (e.g., #2-#5 before #1)
   // Instead of accepting gaps, we request fresh state recovery
   if (incomingSequenceId === lastAppliedSequenceId && withinToleranceWindow) {
     console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId exact duplicate within tolerance):', {
-      incomingSequenceId, lastAppliedSequenceId, timeSinceWrite, tolerance: STORAGE_ORDERING_TOLERANCE_MS
+      incomingSequenceId,
+      lastAppliedSequenceId,
+      timeSinceWrite,
+      tolerance: STORAGE_ORDERING_TOLERANCE_MS
     });
     return { valid: true, reason: 'duplicate-within-tolerance' };
   }
-  
+
   // v1.6.3.8-v10 - FIX Issue #7: Reject gaps in sequenceId
   // Out-of-order delivery means events would process in wrong order
   // Request fresh state instead of replaying stale events
   console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
-    incomingSequenceId, lastAppliedSequenceId,
-    reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate-outside-tolerance' : 'out-of-order-gap',
-    timeSinceWrite, withinTolerance: withinToleranceWindow,
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    reason:
+      incomingSequenceId === lastAppliedSequenceId
+        ? 'duplicate-outside-tolerance'
+        : 'out-of-order-gap',
+    timeSinceWrite,
+    withinTolerance: withinToleranceWindow,
     note: 'Gaps rejected to prevent wrong-order processing; fresh state will be requested'
   });
   return { valid: false, reason: 'sequenceId-rejected' };
@@ -1746,11 +1769,19 @@ function _validateStorageEventOrdering(newValue, eventReceiveTime = null) {
   const withinToleranceWindow = timeSinceWrite <= STORAGE_ORDERING_TOLERANCE_MS;
 
   // Check revision ordering (primary)
-  const revisionResult = _checkRevisionOrdering(newValue.revision, timeSinceWrite, withinToleranceWindow);
+  const revisionResult = _checkRevisionOrdering(
+    newValue.revision,
+    timeSinceWrite,
+    withinToleranceWindow
+  );
   if (revisionResult) return revisionResult;
 
   // Check sequenceId ordering (secondary)
-  const sequenceResult = _checkSequenceIdOrdering(newValue.sequenceId, timeSinceWrite, withinToleranceWindow);
+  const sequenceResult = _checkSequenceIdOrdering(
+    newValue.sequenceId,
+    timeSinceWrite,
+    withinToleranceWindow
+  );
   if (sequenceResult) return sequenceResult;
 
   return { valid: true, reason: 'passed' };
@@ -1816,12 +1847,12 @@ function _requestStateRecovery(reason) {
 async function _fallbackToStorageRead(reason, retryCount = 0) {
   const MAX_FALLBACK_RETRIES = 3;
   const FALLBACK_RETRY_DELAY_MS = 500;
-  
-  console.log('[Content] STORAGE_FALLBACK_READ:', { 
-    reason, 
+
+  console.log('[Content] STORAGE_FALLBACK_READ:', {
+    reason,
     retryCount,
     maxRetries: MAX_FALLBACK_RETRIES,
-    timestamp: Date.now() 
+    timestamp: Date.now()
   });
 
   try {
@@ -1829,7 +1860,12 @@ async function _fallbackToStorageRead(reason, retryCount = 0) {
     const storedState = result?.[CONTENT_STATE_KEY];
 
     if (!storedState) {
-      return _handleFallbackEmpty(reason, retryCount, MAX_FALLBACK_RETRIES, FALLBACK_RETRY_DELAY_MS);
+      return _handleFallbackEmpty(
+        reason,
+        retryCount,
+        MAX_FALLBACK_RETRIES,
+        FALLBACK_RETRY_DELAY_MS
+      );
     }
 
     console.log('[Content] STORAGE_FALLBACK_SUCCESS:', {
@@ -1855,12 +1891,12 @@ async function _fallbackToStorageRead(reason, retryCount = 0) {
  */
 async function _handleFallbackEmpty(reason, retryCount, maxRetries, delayMs) {
   console.warn('[Content] STORAGE_FALLBACK_EMPTY: No state in storage', { reason, retryCount });
-  
+
   if (retryCount >= maxRetries) {
     console.error('[Content] STORAGE_FALLBACK_FAILED: Max retries exceeded');
     return;
   }
-  
+
   console.log('[Content] STORAGE_FALLBACK_RETRY_SCHEDULED:', {
     retryCount: retryCount + 1,
     delayMs
@@ -1922,7 +1958,7 @@ function _handleStorageChange(changes, areaName) {
 
   // v1.6.3.8-v8 - FIX Issue #1: Detect if this is a self-write from this tab
   const selfWriteResult = _detectSelfWrite(newValue);
-  
+
   console.log('[Content] STORAGE_CHANGE_RECEIVED:', {
     hasNewValue: !!newValue,
     hasOldValue: !!oldValue,
@@ -1947,10 +1983,10 @@ function _handleStorageChange(changes, areaName) {
       saveId: selfWriteResult.matchedSaveId,
       reason: selfWriteResult.reason
     });
-    
+
     // Update ordering state to track this write
     _updateAppliedOrderingState(newValue);
-    
+
     // Don't notify QuickTabsManager - it already has this state from the write
     return;
   }
@@ -2142,10 +2178,9 @@ const _initializationBarrier = {
  * @private
  */
 function _logInitializationBarrierState(phase) {
-  const elapsed = _initializationBarrier.startTime > 0 
-    ? Date.now() - _initializationBarrier.startTime 
-    : 0;
-    
+  const elapsed =
+    _initializationBarrier.startTime > 0 ? Date.now() - _initializationBarrier.startTime : 0;
+
   console.log('[Content] INITIALIZATION_BARRIER:', {
     phase,
     tabIdFetched: _initializationBarrier.tabIdFetched,
@@ -2163,16 +2198,16 @@ function _logInitializationBarrierState(phase) {
  */
 async function _fetchTabIdWithTimeout() {
   let timeoutId = null;
-  
+
   try {
     const tabIdPromise = getCurrentTabIdFromBackground();
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(
-        () => reject(new Error('Tab ID fetch timeout')), 
+        () => reject(new Error('Tab ID fetch timeout')),
         TAB_ID_FETCH_TIMEOUT_MS
       );
     });
-    
+
     const result = await Promise.race([tabIdPromise, timeoutPromise]);
     return result;
   } finally {
@@ -2200,7 +2235,7 @@ function _handleTabIdFetchSuccess(tabId, attempt) {
     });
     return { success: false, tabId: null };
   }
-  
+
   console.log('[Content] TAB_ID_FETCH_SUCCESS:', {
     tabId,
     attempt,
@@ -2218,21 +2253,21 @@ function _handleTabIdFetchSuccess(tabId, attempt) {
 async function _fetchTabIdWithRetry() {
   let lastError = null;
   let delay = TAB_ID_FETCH_RETRY_DELAY_MS;
-  
+
   for (let attempt = 1; attempt <= TAB_ID_FETCH_MAX_RETRIES; attempt++) {
     const result = await _attemptTabIdFetch(attempt, delay, lastError);
-    
+
     if (result.success) {
       return result.tabId;
     }
-    
+
     if (result.error) {
       lastError = result.error;
     }
-    
+
     delay = result.nextDelay;
   }
-  
+
   // All retries exhausted
   console.error('[Content] TAB_ID_FETCH_ALL_RETRIES_EXHAUSTED:', {
     attempts: TAB_ID_FETCH_MAX_RETRIES,
@@ -2240,7 +2275,7 @@ async function _fetchTabIdWithRetry() {
     consequence: 'Proceeding with null tabId - graceful degradation',
     timestamp: Date.now()
   });
-  
+
   return null;
 }
 
@@ -2260,11 +2295,11 @@ async function _attemptTabIdFetch(attempt, delay, _lastError) {
     timeout: TAB_ID_FETCH_TIMEOUT_MS,
     timestamp: Date.now()
   });
-  
+
   try {
     const tabId = await _fetchTabIdWithTimeout();
     const fetchResult = _handleTabIdFetchSuccess(tabId, attempt);
-    
+
     if (fetchResult.success) {
       return { success: true, tabId: fetchResult.tabId, error: null, nextDelay: delay };
     }
@@ -2275,7 +2310,7 @@ async function _attemptTabIdFetch(attempt, delay, _lastError) {
       willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
       timestamp: Date.now()
     });
-    
+
     // Handle retry delay
     if (attempt < TAB_ID_FETCH_MAX_RETRIES) {
       console.log('[Content] TAB_ID_FETCH_RETRYING:', {
@@ -2285,10 +2320,10 @@ async function _attemptTabIdFetch(attempt, delay, _lastError) {
       });
       await new Promise(resolve => setTimeout(resolve, delay));
     }
-    
+
     return { success: false, tabId: null, error: err, nextDelay: delay * 2 };
   }
-  
+
   // Null response case - handle retry delay
   if (attempt < TAB_ID_FETCH_MAX_RETRIES) {
     console.log('[Content] TAB_ID_FETCH_RETRYING:', {
@@ -2298,7 +2333,7 @@ async function _attemptTabIdFetch(attempt, delay, _lastError) {
     });
     await new Promise(resolve => setTimeout(resolve, delay));
   }
-  
+
   return { success: false, tabId: null, error: null, nextDelay: delay * 2 };
 }
 
@@ -2316,19 +2351,19 @@ async function initializeQuickTabsFeature() {
   // v1.6.3.8-v10 - FIX Issue #6: Explicit initialization chain with retry logic
   // Step 1: Fetch tab ID with retry and exponential backoff
   let currentTabId = null;
-  
+
   // v1.6.3.8-v10 - FIX Issue #6: Use retry function instead of single timeout
   console.log('[Content] INIT_STEP_1: Fetching tab ID with retry logic');
   currentTabId = await _fetchTabIdWithRetry();
   _initializationBarrier.tabIdFetched = true;
-  
+
   if (currentTabId !== null) {
     _logInitializationBarrierState('tabId-fetched');
   } else {
     console.warn('[Content] INIT_STEP_1_WARNING: Proceeding without tab ID - graceful degradation');
     _logInitializationBarrierState('tabId-fetch-failed');
   }
-  
+
   console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
 
   // v1.6.3.8-v8 - FIX Issue #7: Step 2: Port connection (requires tab ID)

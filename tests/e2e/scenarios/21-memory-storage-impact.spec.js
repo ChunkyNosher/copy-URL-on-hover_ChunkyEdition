@@ -133,11 +133,7 @@ test.describe('Scenario 21: Memory and Storage Impact', () => {
     await waitForSync(tab3, 500);
 
     // Concurrent reloads
-    await Promise.all([
-      tab1.reload(),
-      tab2.reload(),
-      tab3.reload()
-    ]);
+    await Promise.all([tab1.reload(), tab2.reload(), tab3.reload()]);
 
     await Promise.all([
       tab1.waitForLoadState('domcontentloaded'),

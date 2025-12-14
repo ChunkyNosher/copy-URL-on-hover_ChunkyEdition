@@ -110,11 +110,7 @@ test.describe('Scenario 16 & 17: Manager and Rapid Tab Switching', () => {
     await waitForSync(tab3, 500);
 
     // Simulate concurrent operations
-    await Promise.all([
-      tab1.reload(),
-      tab2.reload(),
-      tab3.reload()
-    ]);
+    await Promise.all([tab1.reload(), tab2.reload(), tab3.reload()]);
 
     await Promise.all([
       tab1.waitForLoadState('domcontentloaded'),

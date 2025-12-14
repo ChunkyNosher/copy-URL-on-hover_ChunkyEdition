@@ -2,10 +2,9 @@
 name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
-  port-based messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.8-v9), Port + storage.local architecture (NO BroadcastChannel),
-  initializationBarrier Promise, port-based hydration, storage quota monitoring,
-  checksum validation
+  tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
+  (v1.6.3.8-v11), tabs.sendMessage + storage.local architecture (NO Port, NO BroadcastChannel),
+  single storage key, readback validation, MANAGER pattern actions
 tools: ['*']
 ---
 
@@ -37,54 +36,43 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v11 - Quick Tabs Architecture v2
 
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
-- **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect` (PRIMARY)
+- **tabs.sendMessage Messaging** - Receives updates via tabs.sendMessage
 - **Single Writer Authority** - Manager sends commands, never writes storage
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash-based
-  deduplication
+- **MANAGER Pattern Actions** - close all, close minimized
 - **Cross-Tab Grouping UI** - Groups Quick Tabs by originTabId in collapsible
   sections
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
-- **DOM Reconciliation** - `_itemElements` Map for differential updates
-- **Port + Storage Sync** - Real-time sync via Port, fallback via
-  storage.onChanged
-- **Operation Confirmations** - Closed-loop feedback for all operations
+- **storage.onChanged Fallback** - Fallback sync via storage.onChanged
 
-**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
+**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
 
-- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
-- **Message queue conflict** - `_checkMessageConflict()` deduplication
-- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
-- **Event listener cleanup** - `cleanupStateListeners()` method
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+- **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
+- **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
+- **MANAGER pattern** - Manager-initiated actions broadcast to all tabs
+- **manager-state-handler.js** - Handles Pattern C (manager) actions
+- **EventBus** - Native EventTarget for FIFO-guaranteed events
 
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, port message queue, explicit tab ID barrier, extended dedup 10s.
+**Key Modules (v1.6.3.8-v11):**
 
-**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
-escalation, correlationId tracing, adaptive quota monitoring.
-
-**Key Logging Events (v1.6.3.8-v9):**
-
-- `[Manager] INIT_START: timestamp=X`
-- `[Manager] INIT_STEP_N: phase=X, elapsed=Yms`
-- `[Manager] INIT_COMPLETE: duration=Xms`
-- `[Manager] BARRIER_CHECK: phase=X`
-- `[Manager] STATE_HYDRATION: source=port|storage|cache, tabCount=N`
+| Module                             | Purpose                       |
+| ---------------------------------- | ----------------------------- |
+| `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
+| `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
+| `src/storage/schema-v2.js`         | Pure state utilities          |
 
 ---
 
 ## QuickTabsManager API
 
-| Method          | Description                                                           |
-| --------------- | --------------------------------------------------------------------- |
-| `closeById(id)` | Close a single Quick Tab by ID                                        |
-| `closeAll()`    | Close all Quick Tabs via `CLEAR_ALL_QUICK_TABS` (Single Writer Model) |
+| Method          | Description                                                        |
+| --------------- | ------------------------------------------------------------------ |
+| `closeById(id)` | Close a single Quick Tab by ID                                     |
+| `closeAll()`    | Close all Quick Tabs via `MANAGER_CLOSE_ALL` (Single Writer Model) |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -92,14 +80,11 @@ escalation, correlationId tracing, adaptive quota monitoring.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v9)
-- [ ] UICoordinator `_isInitializing` works (v1.6.3.8-v9)
-- [ ] Message conflict detection works (`_checkMessageConflict`) (v1.6.3.8-v9)
-- [ ] Init sequence works (`signalReady()` before hydration) (v1.6.3.8-v9)
-- [ ] Event listener cleanup works (`cleanupStateListeners`) (v1.6.3.8-v9)
-- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
-- [ ] Self-write detection works (50ms window)
-- [ ] Transaction timeout 1000ms
+- [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel) (v11)
+- [ ] Single storage key works (`quick_tabs_state_v2`) (v11)
+- [ ] MANAGER pattern works (close all, close minimized) (v11)
+- [ ] manager-state-handler.js works (v11)
+- [ ] EventBus FIFO events work (v11)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -107,5 +92,5 @@ escalation, correlationId tracing, adaptive quota monitoring.
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.8-v9 Port + storage.local
-architecture, `_isInitializing` flag, message conflict detection.**
+**Your strength: Manager coordination with v1.6.3.8-v11 tabs.sendMessage +
+storage.local architecture, MANAGER pattern actions, manager-state-handler.js.**

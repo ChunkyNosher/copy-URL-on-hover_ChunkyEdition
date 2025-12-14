@@ -2,10 +2,9 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
-  lifecycle, manager integration, port-based messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.8-v9), Port + storage.local architecture,
-  ACK-based messaging, WriteBuffer batching, BFCache lifecycle, storage quota
-  monitoring, checksum validation
+  lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
+  sync with Single Writer Authority (v1.6.3.8-v11), tabs.sendMessage + storage.local
+  architecture, single storage key, readback validation, FIFO EventBus
 tools: ['*']
 ---
 
@@ -37,52 +36,46 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v11 - Quick Tabs Architecture v2
 
 **Complete Quick Tab System:**
 
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
-- **Port-Based Messaging** - Persistent connections via
-  `browser.runtime.onConnect` (PRIMARY)
+- **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
 - **Single Writer Authority** - Manager sends commands, background writes
   storage
-- **Cross-Tab Sync** - Port + storage.onChanged (NO BroadcastChannel)
+- **Cross-Tab Sync** - tabs.sendMessage + storage.onChanged (NO Port, NO
+  BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
+**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
 
-- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
-- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
-- **Message queue conflict** - `_checkMessageConflict()` deduplication
-- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+- **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
+- **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
+- **Tab isolation** - Filter by `originTabId` at hydration time
+- **Readback validation** - Every write validated by read-back
+- **StorageManager** - Dedup, retry with exponential backoff
+- **EventBus** - Native EventTarget for FIFO-guaranteed events
+- **Message patterns** - LOCAL (no broadcast), GLOBAL (broadcast), MANAGER
 
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, storage event ordering (300ms), port message queue, explicit
-tab ID barrier, extended dedup 10s.
+**Key Modules (v1.6.3.8-v11):**
 
-**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
-escalation, correlationId tracing, adaptive quota monitoring.
-
-**Key Functions (v1.6.3.8-v9):**
-
-| Function                   | Location        | Purpose                    |
-| -------------------------- | --------------- | -------------------------- |
-| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging        |
-| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush    |
-| `waitForInitialization()`  | QuickTabHandler | 10s init barrier           |
-| `scheduleRender(source)`   | Manager         | Unified render entry point |
+| Module                            | Purpose                                  |
+| --------------------------------- | ---------------------------------------- |
+| `src/storage/schema-v2.js`        | Pure state utilities, originTabId filter |
+| `src/storage/storage-manager.js`  | Dedup, readback validation, retry        |
+| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder            |
+| `src/utils/event-bus.js`          | EventBus with native EventTarget         |
 
 ---
 
 ## QuickTabsManager API
 
-| Method          | Description                                                      |
-| --------------- | ---------------------------------------------------------------- |
-| `closeById(id)` | Close a single Quick Tab by ID                                   |
-| `closeAll()`    | Close all Quick Tabs, uses `CLEAR_ALL_QUICK_TABS` via background |
+| Method          | Description                                                        |
+| --------------- | ------------------------------------------------------------------ |
+| `closeById(id)` | Close a single Quick Tab by ID                                     |
+| `closeAll()`    | Close all Quick Tabs via `MANAGER_CLOSE_ALL` (Single Writer Model) |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 
@@ -90,20 +83,18 @@ escalation, correlationId tracing, adaptive quota monitoring.
 
 ## Testing Requirements
 
-- [ ] Port-based messaging works (NO BroadcastChannel) (v1.6.3.8-v9)
-- [ ] DestroyHandler event order works (emit before delete) (v1.6.3.8-v9)
-- [ ] UICoordinator `_isInitializing` works (v1.6.3.8-v9)
-- [ ] DestroyHandler retry logic works (v1.6.3.8-v9)
-- [ ] Message conflict detection works (`_checkMessageConflict`) (v1.6.3.8-v9)
-- [ ] Init sequence works (`signalReady()` before hydration) (v1.6.3.8-v9)
-- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
-- [ ] Self-write detection works (50ms window)
-- [ ] Transaction timeout 1000ms
+- [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel) (v11)
+- [ ] Single storage key works (`quick_tabs_state_v2`) (v11)
+- [ ] Tab isolation works (originTabId filtering) (v11)
+- [ ] Readback validation works (every write validated) (v11)
+- [ ] EventBus FIFO events work (native EventTarget) (v11)
+- [ ] Message patterns work (LOCAL, GLOBAL, MANAGER) (v11)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8-v9 Port + storage.local
-architecture, DestroyHandler event order, `_isInitializing` flag, message conflict detection.**
+**Your strength: Complete Quick Tab system with v1.6.3.8-v11 tabs.sendMessage +
+storage.local architecture, single storage key, readback validation, FIFO
+EventBus.**
