@@ -184,14 +184,26 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * v1.6.3.8-v8 Changes:
  * - FIX Issue #1: Self-write detection using strict timestamp matching (50ms window)
  * - FIX Issue #4: Synchronous Map operations during hydration (orphaned window fix)
- * - FIX Issue #5: Add message queue for events firing before port is ready
  * - FIX Issue #6: Process queued storage events synchronously before hydration
  * - FIX Issue #7: Explicit initialization barrier - features wait for tab ID fetch
  * - FIX Issue #8: Storage event ordering tolerance window (300ms for Firefox latency)
- * - FIX Issue #9: Extended message deduplication window to PORT_RECONNECT_MAX_DELAY_MS (10s)
  * - FIX Issue #10: BFCache state reconciliation handles session-only tabs correctly
  * - FIX Issue #12: Fallback storage polling with retry loop and listener re-registration
- * - Port connection now processes pending messages after successful connection
+ *
+ * v1.6.3.8-v12 Changes:
+ * - FIX Issue #1: Port zombie queuing - cleanup orphaned pending messages on port disconnect
+ * - FIX Issue #5: Per-message logging before discarding messages on BFCache entry
+ * - FIX Issue #6: Standardized message handler responses with _buildMessageResponse()
+ * - FIX Issue #7: State ordering validation with 100ms out-of-order tolerance window
+ * - FIX Issue #10: Storage listener registration flag with fallback retry
+ *
+ * v1.6.3.8-v13 Changes:
+ * - REMOVED: All port-based messaging (browser.runtime.connect)
+ * - REMOVED: Port reconnection/circuit breaker logic
+ * - REMOVED: Pending message queue for port
+ * - Replaced with stateless Promise-based pattern (browser.runtime.sendMessage)
+ * - Primary sync now via storage.onChanged (already in place)
+ * - Simplified BFCache handling (no port reconnection needed)
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -218,6 +230,12 @@ const _storageListenerRegistrationTime = Date.now();
  * v1.6.3.8-v8 - Issue #15: If no event within 1 second, poll storage
  */
 let _storageListenerHasFired = false;
+
+/**
+ * Flag to track if storage listener registration succeeded
+ * v1.6.3.8-v12 - FIX Issue #10: Track listener registration state for runtime checks
+ */
+let _storageListenerIsActive = false;
 
 /**
  * Early storage change handler - forwards to _handleStorageChange once defined
@@ -248,15 +266,43 @@ function _earlyStorageChangeHandler(changes, areaName) {
  */
 const _earlyStorageChangeQueue = [];
 
+/**
+ * Attempt to register storage listener with fallback retry
+ * v1.6.3.8-v12 - FIX Issue #10: Registration with retry and flag tracking
+ * @returns {boolean} True if registration succeeded
+ */
+function _attemptStorageListenerRegistration() {
+  try {
+    browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
+    _storageListenerIsActive = true;
+    console.log('[Content] v1.6.3.8-v12 storage.onChanged listener registered:', {
+      registrationTime: _storageListenerRegistrationTime,
+      isActive: _storageListenerIsActive,
+      timestamp: Date.now()
+    });
+    return true;
+  } catch (err) {
+    console.error('[Content] Storage listener registration failed:', err.message);
+    _storageListenerIsActive = false;
+    return false;
+  }
+}
+
 // Register storage.onChanged listener immediately at script load
-try {
-  browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
-  console.log('[Content] v1.6.3.8-v8 storage.onChanged listener registered EARLY:', {
-    registrationTime: _storageListenerRegistrationTime,
-    timestamp: Date.now()
-  });
-} catch (err) {
-  console.error('[Content] CRITICAL: Failed to register early storage listener:', err.message);
+// v1.6.3.8-v12 - FIX Issue #10: Add fallback registration attempt
+if (!_attemptStorageListenerRegistration()) {
+  console.warn('[Content] CRITICAL: First storage listener registration failed, scheduling retry');
+  // Schedule fallback registration attempt
+  setTimeout(() => {
+    if (!_storageListenerIsActive) {
+      console.log('[Content] STORAGE_LISTENER_FALLBACK_REGISTRATION: Attempting retry');
+      if (_attemptStorageListenerRegistration()) {
+        console.log('[Content] STORAGE_LISTENER_FALLBACK_SUCCESS: Listener registered on retry');
+      } else {
+        console.error('[Content] STORAGE_LISTENER_FALLBACK_FAILED: Manual polling will be required');
+      }
+    }
+  }, 100);
 }
 
 // ==================== END EARLY STORAGE LISTENER REGISTRATION ====================
@@ -476,75 +522,29 @@ async function getCurrentTabIdFromBackground() {
   return null;
 }
 
-// ==================== v1.6.3.6-v11 PORT CONNECTION ====================
-// FIX Issue #11: Persistent port connection to background script
-// FIX Issue #12: Port lifecycle logging
-// FIX Issue #17: Port cleanup on tab close
-// v1.6.3.8-v6 - Issue #1-4: Cross-tab sync improvements with storage.onChanged fallback
+// ==================== v1.6.3.8-v13 STATELESS MESSAGING ====================
+// Removed port-based messaging in v1.6.3.8-v13
+// Now using stateless browser.runtime.sendMessage for all background communication
+// Primary sync is via storage.onChanged listener (already registered above)
 
 /**
- * Port connection to background script
- * v1.6.3.6-v11 - FIX Issue #11: Persistent connection
- */
-let backgroundPort = null;
-
-/**
- * Current tab ID cached after background connection
- * v1.6.3.6-v11 - Used for port name and logging
+ * Current tab ID cached after background request
+ * v1.6.3.8-v13 - Used for logging and storage ownership
  */
 let cachedTabId = null;
 
-// v1.6.3.8-v6 - Issue #3: Port reconnection constants (exponential backoff)
-const PORT_RECONNECT_INITIAL_DELAY_MS = 100;
-const PORT_RECONNECT_MAX_DELAY_MS = 10000;
-const PORT_RECONNECT_BACKOFF_MULTIPLIER = 2;
-const PORT_RECONNECT_MAX_ATTEMPTS = 10;
-const PORT_CIRCUIT_BREAKER_THRESHOLD = 3; // Failures before circuit breaker trips
-
-// v1.6.3.8-v10 - FIX Issue #4: Self-write detection constants aligned
+// v1.6.3.8-v13: Self-write detection uses STORAGE_LISTENER_LATENCY_TOLERANCE_MS directly
 // Firefox listener fires 100-250ms after write completes
-// CRITICAL: SELF_WRITE_DETECTION_WINDOW_MS MUST be >= STORAGE_LISTENER_LATENCY_TOLERANCE_MS
-// Previous bug: 50ms detection window vs 300ms tolerance caused false negatives
-// A self-write at T+100ms was missed (outside 50ms window) but accepted (within 300ms tolerance)
 const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = 300; // Firefox listener latency tolerance
-const SELF_WRITE_DETECTION_WINDOW_MS = STORAGE_LISTENER_LATENCY_TOLERANCE_MS; // Must match for correct detection
 
 // v1.6.3.8-v8 - FIX Issue #8: Storage event ordering tolerance window
 // Accept out-of-order events if within Firefox's documented listener latency
 const STORAGE_ORDERING_TOLERANCE_MS = 300;
 
 /**
- * Port reconnection state object
- * v1.6.3.8-v6 - Issue #3: Encapsulated port reconnection state for maintainability
- * @type {Object}
+ * State ordering tracking
+ * v1.6.3.8-v6 - Issue #2: Track highest applied revision/sequenceId to reject duplicates
  */
-const portReconnectState = {
-  attempts: 0,
-  currentDelay: PORT_RECONNECT_INITIAL_DELAY_MS,
-  circuitBreakerTripped: false,
-  consecutiveFailures: 0,
-  timeoutId: null
-};
-
-/**
- * State ordering tracking object
- * v1.6.3.8-v6 - Issue #2: Encapsulated ordering state for cross-tab sync validation
- * Tracks the highest applied revision/sequenceId to reject out-of-order or duplicate events.
- * NOTE: Using <= comparison is intentional - we reject BOTH duplicates (==) AND out-of-order (<)
- * events. This prevents re-application of the same state which could cause UI flicker.
- * @type {Object}
- */
-const orderingState = {
-  lastAppliedRevision: 0,
-  lastAppliedSequenceId: 0
-};
-
-// Legacy variable references for backward compatibility (will be removed in future)
-let portReconnectAttempts = 0;
-let portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
-let portCircuitBreakerTripped = false;
-let portConsecutiveFailures = 0;
-let portReconnectTimeoutId = null;
 let lastAppliedRevision = 0;
 let lastAppliedSequenceId = 0;
 
@@ -574,13 +574,14 @@ function _trackSelfWrite(saveId, revision) {
     trackedCount: _recentSelfWrites.size
   });
 
+  // v1.6.3.8-v12 - FIX Issue #19: Cleanup uses same window as detection for consistency
   // Clean up old entries after listener latency window passes
   setTimeout(() => {
     if (_recentSelfWrites.has(saveId)) {
       _recentSelfWrites.delete(saveId);
       console.log('[Content] SELF_WRITE_EXPIRED:', { saveId, revision });
     }
-  }, STORAGE_LISTENER_LATENCY_TOLERANCE_MS + 100);
+  }, STORAGE_LISTENER_LATENCY_TOLERANCE_MS);
 }
 
 /**
@@ -666,454 +667,50 @@ function _detectSelfWrite(newValue) {
   return _checkTimestampMatch(newValue, savedEntry);
 }
 
-// v1.6.3.8-v8 - FIX Issue #5: Message queue for events firing before port is ready
-// When storage events fire before port connection is established, queue them for later processing
-/**
- * Queue for messages that need to be sent but port is not yet connected
- * v1.6.3.8-v8 - FIX Issue #5: Prevent message loss during initialization
- * @type {Array<{message: Object, timestamp: number}>}
- */
-const _pendingPortMessages = [];
+// ==================== v1.6.3.8-v13 STATELESS MESSAGE SENDING ====================
+// Simplified messaging using browser.runtime.sendMessage instead of ports
+// storage.onChanged handles the primary sync mechanism
 
 /**
- * Maximum age for pending messages (60 seconds)
- * v1.6.3.8-v8 - FIX Issue #5: Discard stale messages
+ * Send a message to background script using stateless Promise-based pattern
+ * v1.6.3.8-v13 - Replaces port-based messaging with simpler runtime.sendMessage
+ *
+ * This is the primary method for content-to-background communication.
+ * It uses browser.runtime.sendMessage which is stateless - each call is independent.
+ * The primary sync mechanism is storage.onChanged, so message failures are not critical.
+ *
+ * @param {Object} message - Message object to send
+ * @param {string} [message.action] - Action identifier for the background to handle
+ * @param {string} [message.type] - Message type for type-based routing
+ * @returns {Promise<Object|null>} Response from background or null on failure
+ *
+ * @example
+ * const response = await _sendMessageToBackground({ action: 'GET_STATE', tabId: 123 });
+ * if (response?.success) { ... }
  */
-const PENDING_MESSAGE_MAX_AGE_MS = 60000;
-
-/**
- * Queue a message for sending when port becomes available
- * v1.6.3.8-v8 - FIX Issue #5: Prevent message loss during initialization
- * @param {Object} message - Message to queue
- */
-function _queueMessageForPort(message) {
-  const now = Date.now();
-
-  // Prune old messages first
-  while (
-    _pendingPortMessages.length > 0 &&
-    now - _pendingPortMessages[0].timestamp > PENDING_MESSAGE_MAX_AGE_MS
-  ) {
-    const discarded = _pendingPortMessages.shift();
-    console.warn('[Content] PENDING_MESSAGE_EXPIRED:', {
-      type: discarded.message.type,
-      age: now - discarded.timestamp
-    });
-  }
-
-  _pendingPortMessages.push({ message, timestamp: now });
-  console.log('[Content] MESSAGE_QUEUED_FOR_PORT:', {
-    type: message.type,
-    queueLength: _pendingPortMessages.length
-  });
-}
-
-/**
- * Process all pending messages now that port is connected
- * v1.6.3.8-v8 - FIX Issue #5: Send queued messages after port connects
- */
-function _processPendingPortMessages() {
-  if (_pendingPortMessages.length === 0) return;
-  if (!backgroundPort) return; // Exit early if no port
-
-  const count = _pendingPortMessages.length;
-  console.log('[Content] PROCESSING_PENDING_MESSAGES:', { count });
-
-  const now = Date.now();
-  while (_pendingPortMessages.length > 0) {
-    const item = _pendingPortMessages.shift();
-
-    // Skip expired messages
-    if (now - item.timestamp > PENDING_MESSAGE_MAX_AGE_MS) {
-      console.warn('[Content] PENDING_MESSAGE_SKIPPED_EXPIRED:', {
-        type: item.message.type,
-        age: now - item.timestamp
-      });
-      continue;
-    }
-
-    // Send via port - separated to reduce nesting depth
-    _sendPendingMessage(item, now);
-  }
-
-  console.log('[Content] PENDING_MESSAGES_PROCESSED:', { processed: count });
-}
-
-/**
- * Send a single pending message via port
- * v1.6.3.8-v10 - FIX Issue #5: Add port validity guard before sending
- * @private
- * @param {Object} item - Message queue item with message and timestamp
- * @param {number} now - Current timestamp
- */
-function _sendPendingMessage(item, now) {
-  // v1.6.3.8-v10 - FIX Issue #5: Guard against zombie port
-  if (!backgroundPort) {
-    console.warn('[Content] PORT_ZOMBIE_AVOIDED: Skipping pending message - port is null:', {
-      type: item.message.type,
-      age: now - item.timestamp
-    });
-    return;
-  }
-
+async function _sendMessageToBackground(message) {
   try {
-    backgroundPort.postMessage(item.message);
-    console.log('[Content] PENDING_MESSAGE_SENT:', {
-      type: item.message.type,
-      age: now - item.timestamp
+    const response = await browser.runtime.sendMessage(message);
+    console.log('[Content] MESSAGE_SENT:', {
+      type: message.type || message.action,
+      success: true,
+      hasResponse: !!response
     });
+    return response;
   } catch (err) {
-    console.error('[Content] PENDING_MESSAGE_SEND_FAILED:', {
-      type: item.message.type,
+    console.warn('[Content] MESSAGE_FAILED (storage.onChanged will sync):', {
+      type: message.type || message.action,
       error: err.message
     });
+    return null;
   }
 }
 
-/**
- * Log port lifecycle event
- * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
- * @param {string} event - Event name
- * @param {Object} details - Event details
- */
-function logContentPortLifecycle(event, details = {}) {
-  console.log(`[Content] PORT_LIFECYCLE [content-tab-${cachedTabId || 'unknown'}] [${event}]:`, {
-    tabId: cachedTabId,
-    timestamp: Date.now(),
-    ...details
-  });
-}
-
-/**
- * Reset port reconnection state
- * v1.6.3.8-v6 - Issue #3: Reset backoff after successful connection
- * @private
- */
-function _resetPortReconnectState() {
-  portReconnectAttempts = 0;
-  portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
-  portConsecutiveFailures = 0;
-  if (portReconnectTimeoutId) {
-    clearTimeout(portReconnectTimeoutId);
-    portReconnectTimeoutId = null;
-  }
-}
-
-/**
- * Schedule port reconnection with exponential backoff
- * v1.6.3.8-v6 - Issue #3: Implement reconnection with backoff and circuit breaker
- * @private
- * @param {number} tabId - Tab ID to reconnect
- */
-function _schedulePortReconnect(tabId) {
-  // Guard: Circuit breaker check
-  if (portCircuitBreakerTripped) {
-    console.warn('[Content] PORT_RECONNECT_BLOCKED: Circuit breaker tripped', {
-      consecutiveFailures: portConsecutiveFailures,
-      threshold: PORT_CIRCUIT_BREAKER_THRESHOLD
-    });
-    return;
-  }
-
-  // Guard: Max attempts check
-  if (portReconnectAttempts >= PORT_RECONNECT_MAX_ATTEMPTS) {
-    console.error('[Content] PORT_RECONNECT_MAX_ATTEMPTS_REACHED:', {
-      attempts: portReconnectAttempts,
-      maxAttempts: PORT_RECONNECT_MAX_ATTEMPTS
-    });
-    portCircuitBreakerTripped = true;
-    return;
-  }
-
-  // Guard: Don't reconnect if page is hidden
-  if (document.visibilityState === 'hidden') {
-    console.log('[Content] PORT_RECONNECT_DEFERRED: Page hidden');
-    return;
-  }
-
-  // Clear any existing timeout
-  if (portReconnectTimeoutId) {
-    clearTimeout(portReconnectTimeoutId);
-  }
-
-  const delay = portCurrentDelay;
-  portReconnectAttempts++;
-
-  console.log('[Content] PORT_RECONNECT_SCHEDULED:', {
-    attempt: portReconnectAttempts,
-    delayMs: delay,
-    nextDelayMs: Math.min(delay * PORT_RECONNECT_BACKOFF_MULTIPLIER, PORT_RECONNECT_MAX_DELAY_MS)
-  });
-
-  portReconnectTimeoutId = setTimeout(() => {
-    portReconnectTimeoutId = null;
-    if (!backgroundPort && document.visibilityState !== 'hidden') {
-      connectContentToBackground(tabId);
-    }
-  }, delay);
-
-  // Update delay for next attempt (exponential backoff)
-  portCurrentDelay = Math.min(
-    portCurrentDelay * PORT_RECONNECT_BACKOFF_MULTIPLIER,
-    PORT_RECONNECT_MAX_DELAY_MS
-  );
-}
-
-/**
- * Connect to background script via persistent port
- * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
- * v1.6.3.8-v6 - Issue #3: Add exponential backoff reconnection
- * v1.6.3.8-v8 - FIX Issue #5: Process pending messages after successful connection
- * @param {number} tabId - Current tab ID
- */
-function connectContentToBackground(tabId) {
-  cachedTabId = tabId;
-
-  try {
-    backgroundPort = browser.runtime.connect({
-      name: `quicktabs-content-${tabId}`
-    });
-
-    logContentPortLifecycle('open', { portName: backgroundPort.name });
-
-    // v1.6.3.8-v6 - Issue #3: Reset reconnect state on successful connection
-    _resetPortReconnectState();
-
-    // Handle messages from background
-    backgroundPort.onMessage.addListener(handleContentPortMessage);
-
-    // Handle disconnect
-    backgroundPort.onDisconnect.addListener(() => {
-      const error = browser.runtime.lastError;
-      logContentPortLifecycle('disconnect', { error: error?.message });
-      backgroundPort = null;
-
-      // v1.6.3.8-v6 - Issue #3: Track consecutive failures for circuit breaker
-      portConsecutiveFailures++;
-      if (portConsecutiveFailures >= PORT_CIRCUIT_BREAKER_THRESHOLD) {
-        portCircuitBreakerTripped = true;
-        console.error('[Content] PORT_CIRCUIT_BREAKER_TRIPPED:', {
-          consecutiveFailures: portConsecutiveFailures,
-          threshold: PORT_CIRCUIT_BREAKER_THRESHOLD
-        });
-      }
-
-      // v1.6.3.8-v6 - Issue #3: Schedule reconnection with exponential backoff
-      _schedulePortReconnect(tabId);
-    });
-
-    console.log('[Content] v1.6.3.8-v8 Port connection established to background');
-
-    // v1.6.3.8-v8 - FIX Issue #5: Process any messages that were queued before port was ready
-    _processPendingPortMessages();
-  } catch (err) {
-    console.error('[Content] Failed to connect to background:', err.message);
-    logContentPortLifecycle('error', { error: err.message });
-
-    // v1.6.3.8-v6 - Issue #3: Track failure and schedule reconnection
-    portConsecutiveFailures++;
-    _schedulePortReconnect(tabId);
-  }
-}
-
-/**
- * Handle messages received via port
- * v1.6.3.6-v11 - FIX Issue #11: Process messages from background
- * v1.6.3.8 - Issue #4 (arch): Added PORT_PING handler for zombie detection
- * v1.6.3.8-v6 - Issue #2: Added STATE_UPDATE handler with ordering validation
- * @param {Object} message - Message from background
- */
-function handleContentPortMessage(message) {
-  logContentPortLifecycle('message', {
-    type: message.type,
-    action: message.action
-  });
-
-  // v1.6.3.8-v6 - Reset consecutive failures on successful message
-  portConsecutiveFailures = 0;
-
-  // v1.6.3.8 - Issue #4 (arch): Handle PORT_PING for zombie port detection
-  if (message.type === 'PORT_PING') {
-    _handlePortPingFromBackground(message);
-    return;
-  }
-
-  // v1.6.3.8 - Issue #2 (arch): Handle ALIVE_PING from background keepalive
-  if (message.type === 'ALIVE_PING') {
-    console.log('[Content] Received ALIVE_PING from background:', {
-      timestamp: message.timestamp,
-      isInitialized: message.isInitialized
-    });
-    return;
-  }
-
-  // v1.6.3.8-v6 - Issue #2: Handle STATE_UPDATE with ordering validation
-  if (message.type === 'STATE_UPDATE') {
-    _handleStateUpdateFromPort(message);
-    return;
-  }
-
-  // Handle broadcasts
-  if (message.type === 'BROADCAST') {
-    handleContentBroadcast(message);
-    return;
-  }
-
-  // Handle acknowledgments (if content script sends requests)
-  if (message.type === 'ACKNOWLEDGMENT') {
-    console.log('[Content] Received acknowledgment:', message.correlationId);
-  }
-}
-
-/**
- * Handle STATE_UPDATE message from background via port
- * v1.6.3.8-v6 - Issue #2: Validate ordering before applying
- * @private
- * @param {Object} message - State update message
- */
-function _handleStateUpdateFromPort(message) {
-  const { state, sequenceId, revision } = message;
-
-  console.log('[Content] STATE_UPDATE received via port:', {
-    sequenceId,
-    revision,
-    tabCount: state?.tabs?.length || 0,
-    lastAppliedSequenceId,
-    lastAppliedRevision
-  });
-
-  // Validate ordering
-  const stateWithMeta = { ...state, sequenceId, revision };
-  const orderingResult = _validateStorageEventOrdering(stateWithMeta);
-
-  if (!orderingResult.valid) {
-    console.warn('[Content] STATE_UPDATE rejected (ordering):', {
-      reason: orderingResult.reason,
-      sequenceId,
-      revision
-    });
-    // Request fresh state on ordering failure
-    _requestStateRecovery(`port-${orderingResult.reason}`);
-    return;
-  }
-
-  // Update ordering state
-  _updateAppliedOrderingState(stateWithMeta);
-
-  // Notify QuickTabsManager
-  _notifyManagerOfStorageUpdate(state, 'port-state-update');
-}
-
-/**
- * Handle PORT_PING from background for zombie detection
- * v1.6.3.8 - Issue #4 (arch): Respond with PORT_PONG to confirm alive
- * @private
- * @param {Object} message - Ping message from background
- */
-function _handlePortPingFromBackground(message) {
-  console.log('[Content] PORT_PING received:', {
-    portId: message.portId,
-    timestamp: message.timestamp
-  });
-
-  // Send pong response to confirm we're alive (not a BFCache zombie)
-  if (backgroundPort) {
-    try {
-      backgroundPort.postMessage({
-        type: 'PORT_PONG',
-        originalTimestamp: message.timestamp,
-        timestamp: Date.now(),
-        tabId: cachedTabId
-      });
-      console.log('[Content] PORT_PONG sent');
-    } catch (err) {
-      console.error('[Content] Failed to send PORT_PONG:', err.message);
-    }
-  } else {
-    console.warn('[Content] Cannot send PORT_PONG - no backgroundPort');
-  }
-}
-
-/**
- * Handle broadcast messages from background
- * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
- * @param {Object} message - Broadcast message
- */
-function handleContentBroadcast(message) {
-  const { action } = message;
-
-  switch (action) {
-    case 'VISIBILITY_CHANGE':
-      console.log('[Content] Received visibility change broadcast:', {
-        quickTabId: message.quickTabId,
-        changes: message.changes
-      });
-      // Quick Tabs manager will handle this via its own listeners
-      break;
-
-    case 'TAB_LIFECYCLE_CHANGE':
-      console.log('[Content] Received tab lifecycle broadcast:', {
-        event: message.event,
-        tabId: message.tabId,
-        affectedQuickTabs: message.affectedQuickTabs
-      });
-      break;
-
-    default:
-      console.log('[Content] Received broadcast:', message);
-  }
-}
-
-// v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
-window.addEventListener('unload', () => {
-  if (backgroundPort) {
-    logContentPortLifecycle('unload', { reason: 'window-unload' });
-    backgroundPort.disconnect();
-    backgroundPort = null;
-  }
-  // v1.6.3.8-v6 - Clear reconnect timeout on unload
-  if (portReconnectTimeoutId) {
-    clearTimeout(portReconnectTimeoutId);
-    portReconnectTimeoutId = null;
-  }
-});
-
-// v1.6.3.8-v6 - Issue #3: Reset circuit breaker when tab becomes visible
-// This allows reconnection attempts when user returns to the tab
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    console.log('[Content] TAB_VISIBILITY_VISIBLE:', {
-      hasPort: !!backgroundPort,
-      circuitBreakerTripped: portCircuitBreakerTripped,
-      consecutiveFailures: portConsecutiveFailures
-    });
-
-    // Reset circuit breaker when tab becomes visible
-    if (portCircuitBreakerTripped) {
-      console.log('[Content] CIRCUIT_BREAKER_RESET: Tab became visible');
-      portCircuitBreakerTripped = false;
-      portConsecutiveFailures = 0;
-      portReconnectAttempts = 0;
-      portCurrentDelay = PORT_RECONNECT_INITIAL_DELAY_MS;
-    }
-
-    // Attempt reconnection if port is dead
-    if (!backgroundPort && cachedTabId !== null) {
-      console.log('[Content] ATTEMPTING_RECONNECT: Tab visible, no port');
-      connectContentToBackground(cachedTabId);
-    }
-  }
-});
-
-// ==================== v1.6.3.8 BFCACHE HANDLING ====================
-// Issue #4 (arch): Handle BFCache "Zombie" Port Connections
-// When pages enter BFCache, ports remain open but cannot receive messages.
-// Explicitly disconnect port when entering BFCache and re-sync when restored.
-//
+// ==================== v1.6.3.8-v13 BFCACHE HANDLING ====================
+// v1.6.3.8-v13: Simplified - no port to manage, just state sync via storage.onChanged
 // v1.6.3.8-v7 - Issue #1: Enhanced BFCache restoration with checksum validation
 // v1.6.3.8-v7 - Issue #2: Add checksum validation during hydration
 // v1.6.3.8-v7 - Issue #3: SessionStorage vs LocalStorage conflict resolution
-// v1.6.3.8-v7 - Issue #4: Iframe beforeunload cleanup (simplified with all_frames=false)
 
 /**
  * Compute djb2-like checksum for state validation
@@ -1268,37 +865,15 @@ function _tryGetSessionState() {
 }
 
 /**
- * Disconnect port safely during BFCache entry
- * v1.6.3.8-v10 - FIX Issue #5: Enhanced with pending message flush and logging
+ * v1.6.3.8-v13: BFCache handling simplified - no port to manage
+ * Just log entry for diagnostics
  * @private
  */
-function _disconnectPortForBFCache() {
-  // v1.6.3.8-v10 - FIX Issue #5: Clear pending messages queue on BFCache entry
-  // Messages queued for the zombie port should not be sent later
-  const pendingCount = _pendingPortMessages.length;
-  if (pendingCount > 0) {
-    console.log('[Content] PORT_ZOMBIE_AVOIDED: Flushing pending messages on BFCache entry:', {
-      flushedCount: pendingCount,
-      reason: 'BFCache entry - port will be zombie'
-    });
-    _pendingPortMessages.length = 0; // Clear the queue
-  }
-
-  if (!backgroundPort) return;
-
-  logContentPortLifecycle('bfcache-enter', { reason: 'entering-bfcache' });
-
-  // v1.6.3.8-v10 - FIX Issue #5: Set port to null SYNCHRONOUSLY before disconnect
-  // This prevents any code from trying to use the port during disconnect
-  const portRef = backgroundPort;
-  backgroundPort = null; // Null first to prevent zombie usage
-
-  try {
-    portRef.disconnect();
-  } catch (_err) {
-    // Port may already be in bad state
-    console.log('[Content] PORT_DISCONNECT_FAILED_SILENT: Port may already be closed');
-  }
+function _handleBFCacheCleanup() {
+  console.log('[Content] BFCACHE_ENTRY: Cleaning up for BFCache', {
+    tabId: cachedTabId,
+    timestamp: Date.now()
+  });
 }
 
 // v1.6.3.8-v8 - FIX Issue #10: BFCache state tracking for session state reconciliation
@@ -1313,8 +888,7 @@ const _bfCacheState = {
 
 /**
  * Handle page entering BFCache (Back/Forward Cache)
- * v1.6.3.8 - Issue #4 (arch): Explicitly disconnect port to prevent zombie connections
- * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_ENTER log event name
+ * v1.6.3.8-v13: Simplified - no port to disconnect
  * v1.6.3.8-v8 - FIX Issue #10: Track BFCache entry for session state reconciliation
  * @param {PageTransitionEvent} event - The pagehide event
  */
@@ -1328,24 +902,21 @@ function _handleBFCachePageHide(event) {
   _bfCacheState.enteredBFCache = true;
   _bfCacheState.enterTime = Date.now();
 
-  // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
+  // v1.6.3.8-v13: Log BFCache entry for visibility
   console.log('[Content] PAGE_LIFECYCLE_BFCACHE_ENTER:', {
     reason: 'pagehide with persisted=true',
     tabId: cachedTabId,
-    hadPort: !!backgroundPort,
     enterTime: _bfCacheState.enterTime,
     timestamp: Date.now()
   });
 
-  // Explicitly disconnect port to prevent zombie connection
-  _disconnectPortForBFCache();
+  // v1.6.3.8-v13: Cleanup for BFCache (simplified, no port)
+  _handleBFCacheCleanup();
 }
 
 /**
  * Handle page restored from BFCache
- * v1.6.3.8 - Issue #4 (arch): Request full state sync after BFCache restore
- * v1.6.3.8-v3 - Issue #2: Use PAGE_LIFECYCLE_BFCACHE_RESTORE log event name
- * v1.6.3.8-v7 - Issue #1: Re-establish port with checksum validation
+ * v1.6.3.8-v13: Simplified - no port to reconnect, use storage sync
  * v1.6.3.8-v7 - Issue #3: Validate SessionStorage vs LocalStorage
  * @param {PageTransitionEvent} event - The pageshow event
  */
@@ -1355,25 +926,16 @@ function _handleBFCachePageShow(event) {
 
   const correlationId = `bfcache-restore-${Date.now()}-${cachedTabId || 'unknown'}`;
 
-  // v1.6.3.8-v3 - Issue #2: Log with specific event name for visibility
+  // v1.6.3.8-v13: Log BFCache restore
   console.log('[Content] PAGE_LIFECYCLE_BFCACHE_RESTORE:', {
     reason: 'pageshow with persisted=true',
     tabId: cachedTabId,
-    hadPort: !!backgroundPort,
     correlationId,
     timestamp: Date.now()
   });
 
-  // Re-establish port connection
-  if (cachedTabId !== null && !backgroundPort) {
-    console.log('[Content] Re-establishing port connection after BFCache restore', {
-      correlationId
-    });
-    connectContentToBackground(cachedTabId);
-  }
-
   // v1.6.3.8-v7 - Issue #3: Validate and sync state after BFCache restore
-  // Prefer storage.local over SessionStorage for freshness
+  // State will be synced via storage.onChanged or explicit read
   _validateAndSyncStateAfterBFCache(correlationId);
 }
 
@@ -1531,110 +1093,55 @@ function _filterSessionOnlyTabs(state) {
 
 /**
  * Trigger full state sync after BFCache restoration (fallback)
- * v1.6.3.8 - Issue #4 (arch): Content script may have missed updates while in BFCache
+ * v1.6.3.8-v13: Simplified - uses _sendMessageToBackground helper
  * @private
  */
 function _triggerFullStateSyncAfterBFCache() {
   console.log('[Content] Requesting full state sync after BFCache restore');
 
-  // Method 1: Send message via port if available
-  if (backgroundPort) {
-    try {
-      backgroundPort.postMessage({
-        type: 'REQUEST_FULL_STATE_SYNC',
-        source: 'content-bfcache-restore',
-        tabId: cachedTabId,
-        timestamp: Date.now()
-      });
-      return;
-    } catch (err) {
-      console.warn('[Content] Port message failed, trying runtime.sendMessage:', err.message);
-    }
-  }
-
-  // Method 2: Fallback to runtime.sendMessage
-  browser.runtime
-    .sendMessage({
-      action: 'REQUEST_FULL_STATE_SYNC',
-      source: 'content-bfcache-restore',
-      tabId: cachedTabId,
-      timestamp: Date.now()
-    })
-    .catch(err => {
-      console.warn('[Content] Failed to request state sync after BFCache restore:', err.message);
-    });
+  // Fire-and-forget - errors handled by helper, no need to await
+  _sendMessageToBackground({
+    action: 'REQUEST_FULL_STATE_SYNC',
+    source: 'content-bfcache-restore',
+    tabId: cachedTabId,
+    timestamp: Date.now()
+  });
 }
 
 // Register BFCache handlers
 window.addEventListener('pagehide', _handleBFCachePageHide);
 window.addEventListener('pageshow', _handleBFCachePageShow);
 
-// v1.6.3.8-v8 - Issue #19: Explicit content script lifecycle handlers
-// Send CONTENT_SCRIPT_UNLOAD to background on pagehide (BFCache enter) and beforeunload
-// This provides a more reliable cleanup signal than port.onDisconnect (Firefox bug 1223425)
+// v1.6.3.8-v13: Simplified content script lifecycle handlers
+// Use stateless runtime.sendMessage instead of port
 
 /**
- * Send unload signal to background via multiple channels for reliability
- * v1.6.3.8-v8 - Issue #19: Multiple channels ensure message reaches background
- * @private
- * @param {string} reason - Reason for unload
- */
-/**
- * Send unload signal to background via multiple channels for reliability
- * v1.6.3.8-v10 - FIX Issue #10: Multiple channels ensure message reaches background
- *               Add brief timeout before final cleanup to allow messages to queue
+ * Send unload signal to background
+ * v1.6.3.8-v13: Simplified - uses _sendMessageToBackground helper
  * @private
  * @param {string} reason - Reason for unload
  */
 function _sendContentScriptUnloadSignal(reason) {
-  const unloadMessage = {
+  console.log('[Content] CONTENT_SCRIPT_UNLOAD_SIGNAL_SENT:', {
+    tabId: cachedTabId,
+    reason,
+    timestamp: Date.now()
+  });
+
+  // Use the helper - errors are handled internally (best effort)
+  _sendMessageToBackground({
+    action: 'CONTENT_SCRIPT_UNLOAD',
     type: 'CONTENT_SCRIPT_UNLOAD',
     tabId: cachedTabId,
     reason,
     timestamp: Date.now()
-  };
-
-  console.log('[Content] CONTENT_SCRIPT_UNLOAD_SIGNAL_SENT:', {
-    tabId: cachedTabId,
-    hasPort: !!backgroundPort,
-    reason,
-    channels: ['port', 'runtime.sendMessage'],
-    timestamp: Date.now()
   });
-
-  // v1.6.3.8-v10 - FIX Issue #10: Try port first (synchronous, most reliable)
-  if (backgroundPort) {
-    try {
-      backgroundPort.postMessage(unloadMessage);
-      console.log('[Content] CONTENT_SCRIPT_UNLOAD sent via port');
-    } catch (_err) {
-      // Port may already be disconnected
-      console.log('[Content] Port send failed (expected during unload) - trying fallback');
-    }
-  }
-
-  // v1.6.3.8-v10 - FIX Issue #10: Also try runtime.sendMessage as fallback
-  // This provides redundancy in case port is already zombie
-  try {
-    browser.runtime
-      .sendMessage({
-        action: 'CONTENT_SCRIPT_UNLOAD',
-        ...unloadMessage
-      })
-      .catch(() => {
-        // Expected to fail if background not ready - ignore
-      });
-    console.log('[Content] CONTENT_SCRIPT_UNLOAD sent via runtime.sendMessage (fallback)');
-  } catch (_err) {
-    // Ignore - best effort
-  }
 }
 
-// v1.6.3.8-v8 - Issue #19: Handle pagehide for BFCache entry and navigation
+// v1.6.3.8-v13: Handle pagehide for BFCache entry and navigation
 window.addEventListener('pagehide', event => {
   console.log('[Content] PAGE_LIFECYCLE_PAGEHIDE:', {
     tabId: cachedTabId,
-    hasPort: !!backgroundPort,
     persisted: event.persisted,
     timestamp: Date.now()
   });
@@ -1647,22 +1154,19 @@ window.addEventListener('pagehide', event => {
   }
 });
 
-// v1.6.3.8-v7 - Issue #4: Iframe port lifecycle cleanup
-// v1.6.3.8-v8 - Issue #19: Enhanced beforeunload with explicit unload message
-// Since all_frames=false (v1.6.3.8-v6), this only runs in main frame
-// Add beforeunload to signal background for port cleanup
+// v1.6.3.8-v13: beforeunload signal to background
+// Since all_frames=false, this only runs in main frame
 window.addEventListener('beforeunload', () => {
   _sendContentScriptUnloadSignal('beforeunload');
 });
 
-console.log('[Content] v1.6.3.8-v8 Content script lifecycle handlers registered');
+console.log('[Content] v1.6.3.8-v13 Content script lifecycle handlers registered');
 
 // ==================== END BFCACHE HANDLING ====================
 
-// ==================== v1.6.3.8-v6 STORAGE FALLBACK & ORDERING ====================
-// Issue #1: storage.onChanged listener as fallback when port messaging fails
-// Issue #2: Storage event ordering validation using sequenceId and revision
-// Issue #4: Fallback when port.postMessage fails
+// ==================== v1.6.3.8-v13 STORAGE SYNC ====================
+// v1.6.3.8-v13: Primary sync via storage.onChanged (already registered above)
+// State ordering validation using sequenceId and revision
 
 // Storage key for Quick Tabs state (must match storage-utils.js)
 const CONTENT_STATE_KEY = 'quick_tabs_state_v2';
@@ -1702,58 +1206,119 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
 }
 
 /**
+ * Tolerance window for out-of-order events (ms)
+ * v1.6.3.8-v12 - FIX Issue #7: Cross-tab timing tolerance
+ */
+const OUT_OF_ORDER_TOLERANCE_MS = 100;
+
+/**
+ * Handle duplicate sequenceId within tolerance
+ * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _handleDuplicateSequenceId(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
+  if (!withinToleranceWindow) return null;
+
+  console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId exact duplicate within tolerance):', {
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    timeSinceWrite,
+    tolerance: STORAGE_ORDERING_TOLERANCE_MS
+  });
+  return { valid: true, reason: 'duplicate-within-tolerance' };
+}
+
+/**
+ * Handle out-of-order sequenceId within tight tolerance
+ * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _handleOutOfOrderSequenceId(incomingSequenceId, timeSinceWrite, newValue) {
+  if (timeSinceWrite > OUT_OF_ORDER_TOLERANCE_MS) return null;
+
+  console.log('[Content] STORAGE_EVENT_ALLOWED (out-of-order within tight tolerance):', {
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    gap: lastAppliedSequenceId - incomingSequenceId,
+    timeSinceWrite,
+    tolerance: OUT_OF_ORDER_TOLERANCE_MS,
+    originTabId: newValue?.originTabId || 'unknown'
+  });
+  return { valid: true, reason: 'out-of-order-within-tolerance' };
+}
+
+/**
+ * Log and reject sequenceId ordering violation
+ * v1.6.3.8-v12 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue) {
+  console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
+    incomingSequenceId,
+    lastAppliedSequenceId,
+    gap: isDuplicate ? 0 : lastAppliedSequenceId - incomingSequenceId,
+    classification: isDuplicate ? 'duplicate' : 'out-of-order',
+    reason: isDuplicate ? 'duplicate-outside-tolerance' : 'out-of-order-gap',
+    timeSinceWrite,
+    withinTolerance: withinToleranceWindow,
+    originTabId: newValue?.originTabId || 'unknown',
+    note: 'Fresh state will be requested via recovery path'
+  });
+  return { valid: false, reason: 'sequenceId-rejected' };
+}
+
+/**
  * Check sequenceId ordering for storage event
  * v1.6.3.8-v8 - Helper to reduce _validateStorageEventOrdering complexity
  * v1.6.3.8-v10 - FIX Issue #7: Stricter ordering - only accept exact duplicates
  *               Revision-based ordering is primary; sequenceId validates consistency
  *               Gaps trigger state recovery instead of replay to avoid wrong-order processing
+ * v1.6.3.8-v12 - FIX Issue #7: Add tolerance for out-of-order events (100ms window)
+ *               Distinguish "duplicate" (same ID, likely same event) from "out-of-order"
+ *               (earlier ID but later timestamp - indicates cross-tab timing issues)
+ *               Extracted helpers to reduce complexity
  * @private
  * @param {number} incomingSequenceId - Incoming sequence ID
  * @param {number} timeSinceWrite - Time since write in ms
  * @param {boolean} withinToleranceWindow - Whether within tolerance
+ * @param {Object} [newValue] - Full event value for cross-tab analysis
  * @returns {{valid: boolean, reason: string}|null} - Result or null to continue
  */
-function _checkSequenceIdOrdering(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
+function _checkSequenceIdOrdering(
+  incomingSequenceId,
+  timeSinceWrite,
+  withinToleranceWindow,
+  newValue = null
+) {
   if (typeof incomingSequenceId !== 'number') return null;
 
   // Newer sequenceId - allow it
   if (incomingSequenceId > lastAppliedSequenceId) return null;
 
-  // v1.6.3.8-v10 - FIX Issue #7: Only accept EXACT duplicates within tolerance window
-  // Gaps are rejected because they indicate out-of-order delivery which would cause
-  // events to be processed in wrong order (e.g., #2-#5 before #1)
-  // Instead of accepting gaps, we request fresh state recovery
-  if (incomingSequenceId === lastAppliedSequenceId && withinToleranceWindow) {
-    console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId exact duplicate within tolerance):', {
-      incomingSequenceId,
-      lastAppliedSequenceId,
-      timeSinceWrite,
-      tolerance: STORAGE_ORDERING_TOLERANCE_MS
-    });
-    return { valid: true, reason: 'duplicate-within-tolerance' };
+  // v1.6.3.8-v12 - FIX Issue #7: Distinguish duplicate vs out-of-order
+  const isDuplicate = incomingSequenceId === lastAppliedSequenceId;
+
+  // Handle duplicate within tolerance
+  if (isDuplicate) {
+    const result = _handleDuplicateSequenceId(incomingSequenceId, timeSinceWrite, withinToleranceWindow);
+    if (result) return result;
   }
 
-  // v1.6.3.8-v10 - FIX Issue #7: Reject gaps in sequenceId
-  // Out-of-order delivery means events would process in wrong order
-  // Request fresh state instead of replaying stale events
-  console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
-    incomingSequenceId,
-    lastAppliedSequenceId,
-    reason:
-      incomingSequenceId === lastAppliedSequenceId
-        ? 'duplicate-outside-tolerance'
-        : 'out-of-order-gap',
-    timeSinceWrite,
-    withinTolerance: withinToleranceWindow,
-    note: 'Gaps rejected to prevent wrong-order processing; fresh state will be requested'
-  });
-  return { valid: false, reason: 'sequenceId-rejected' };
+  // Handle out-of-order within tight tolerance
+  if (!isDuplicate) {
+    const result = _handleOutOfOrderSequenceId(incomingSequenceId, timeSinceWrite, newValue);
+    if (result) return result;
+  }
+
+  // Reject with detailed logging
+  return _rejectSequenceIdOrdering(incomingSequenceId, isDuplicate, timeSinceWrite, withinToleranceWindow, newValue);
 }
 
 /**
  * Validate incoming storage event ordering
  * v1.6.3.8-v6 - Issue #2: Reject out-of-order updates using sequenceId and revision
  * v1.6.3.8-v8 - FIX Issue #8: Add tolerance window for Firefox's 100-250ms listener latency
+ * v1.6.3.8-v12 - FIX Issue #7: Pass newValue to sequenceId check for cross-tab analysis
  * @param {Object} newValue - New storage value
  * @param {number} [eventReceiveTime] - Wall-clock time when listener fired (optional)
  * @returns {{valid: boolean, reason: string}} Validation result
@@ -1777,10 +1342,12 @@ function _validateStorageEventOrdering(newValue, eventReceiveTime = null) {
   if (revisionResult) return revisionResult;
 
   // Check sequenceId ordering (secondary)
+  // v1.6.3.8-v12 - FIX Issue #7: Pass newValue for cross-tab tolerance analysis
   const sequenceResult = _checkSequenceIdOrdering(
     newValue.sequenceId,
     timeSinceWrite,
-    withinToleranceWindow
+    withinToleranceWindow,
+    newValue
   );
   if (sequenceResult) return sequenceResult;
 
@@ -1803,7 +1370,7 @@ function _updateAppliedOrderingState(newValue) {
 
 /**
  * Request fresh state from background when ordering fails
- * v1.6.3.8-v6 - Issue #2: Recovery mechanism for out-of-order events
+ * v1.6.3.8-v13: Uses _sendMessageToBackground helper then falls back to storage read
  * @param {string} reason - Reason for recovery request
  */
 function _requestStateRecovery(reason) {
@@ -1811,36 +1378,31 @@ function _requestStateRecovery(reason) {
     reason,
     lastAppliedRevision,
     lastAppliedSequenceId,
-    hasPort: !!backgroundPort,
     timestamp: Date.now()
   });
 
-  // Try port first
-  if (backgroundPort) {
-    try {
-      backgroundPort.postMessage({
-        type: 'REQUEST_FULL_STATE_SYNC',
-        source: 'content-ordering-recovery',
-        reason,
-        tabId: cachedTabId,
-        lastAppliedRevision,
-        lastAppliedSequenceId,
-        timestamp: Date.now()
-      });
-      return;
-    } catch (err) {
-      console.warn('[Content] Port recovery request failed:', err.message);
+  // Fire-and-forget with fallback on failure
+  _sendMessageToBackground({
+    action: 'REQUEST_FULL_STATE_SYNC',
+    source: 'content-ordering-recovery',
+    reason,
+    tabId: cachedTabId,
+    lastAppliedRevision,
+    lastAppliedSequenceId,
+    timestamp: Date.now()
+  }).then(response => {
+    if (response?.success) {
+      console.log('[Content] RECOVERY_MESSAGE_SENT:', { reason });
+    } else {
+      // Fallback to storage.local.get
+      _fallbackToStorageRead(reason);
     }
-  }
-
-  // Fallback to storage.local.get
-  _fallbackToStorageRead(reason);
+  });
 }
 
 /**
- * Fallback to storage.local.get when port fails
- * v1.6.3.8-v6 - Issue #4: Fallback mechanism when port.postMessage fails
- * v1.6.3.8-v8 - FIX Issue #12: Implement actual fallback with retry loop and listener re-registration
+ * Fallback to storage.local.get for state recovery
+ * v1.6.3.8-v13: Direct storage read (primary mechanism now)
  * @param {string} reason - Reason for fallback
  * @param {number} [retryCount=0] - Current retry count
  */
@@ -2008,104 +1570,6 @@ function _handleStorageChange(changes, areaName) {
   _notifyManagerOfStorageUpdate(newValue, 'storage.onChanged');
 }
 
-/**
- * Try to send a single message via port
- * v1.6.3.8-v7 - Extracted to reduce sendPortMessageWithFallback complexity
- * @private
- * @param {Object} message - Message to send
- * @param {number} attempt - Current attempt number
- * @returns {{success: boolean, error: Error|null}} Result
- */
-function _tryPortMessageSend(message, attempt) {
-  if (!backgroundPort) {
-    return { success: false, error: new Error('No port available') };
-  }
-
-  try {
-    backgroundPort.postMessage(message);
-    console.log('[Content] PORT_MESSAGE_SENT:', {
-      type: message.type || message.action,
-      attempt: attempt + 1
-    });
-    return { success: true, error: null };
-  } catch (err) {
-    console.warn('[Content] PORT_MESSAGE_FAILED:', {
-      attempt: attempt + 1,
-      error: err.message
-    });
-    return { success: false, error: err };
-  }
-}
-
-/**
- * Try to read state from storage as fallback
- * v1.6.3.8-v7 - Extracted to reduce sendPortMessageWithFallback complexity
- * @private
- * @returns {Promise<{success: boolean, state: Object|null}>} Result
- */
-async function _tryStorageFallbackRead() {
-  try {
-    const result = await browser.storage.local.get(CONTENT_STATE_KEY);
-    const state = result?.[CONTENT_STATE_KEY];
-
-    if (state) {
-      console.log('[Content] PORT_FALLBACK_STORAGE_SUCCESS:', {
-        tabCount: state.tabs?.length || 0,
-        revision: state.revision
-      });
-      return { success: true, state };
-    }
-    return { success: false, state: null };
-  } catch (storageErr) {
-    console.error('[Content] PORT_FALLBACK_STORAGE_ERROR:', storageErr.message);
-    return { success: false, state: null };
-  }
-}
-
-/**
- * Send message via port with fallback to storage.local.get
- * v1.6.3.8-v6 - Issue #4: Graceful fallback when port fails
- * v1.6.3.8-v7 - Refactored: Extracted helpers to reduce complexity
- * @param {Object} message - Message to send
- * @param {Object} options - Options for sending
- * @param {number} [options.maxRetries=3] - Max retry attempts
- * @param {number} [options.retryDelayMs=100] - Initial retry delay
- * @returns {Promise<Object>} Response or fallback result
- */
-async function _sendPortMessageWithFallback(message, options = {}) {
-  const { maxRetries = 3, retryDelayMs = 100 } = options;
-  let lastError = null;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const result = _tryPortMessageSend(message, attempt);
-    if (result.success) {
-      return { success: true, method: 'port', attempt: attempt + 1 };
-    }
-    lastError = result.error;
-
-    // Wait before retry with exponential backoff
-    if (attempt < maxRetries - 1) {
-      const delay = retryDelayMs * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  // All retries failed - fallback to storage read
-  console.warn('[Content] PORT_MESSAGE_ALL_RETRIES_FAILED:', {
-    totalAttempts: maxRetries,
-    lastError: lastError?.message,
-    fallbackAction: 'storage.local.get'
-  });
-
-  // Fallback: read from storage.local
-  const fallbackResult = await _tryStorageFallbackRead();
-  if (fallbackResult.success) {
-    return { success: true, method: 'storage-fallback', state: fallbackResult.state };
-  }
-
-  return { success: false, method: 'none', error: lastError?.message || 'Port unavailable' };
-}
-
 // v1.6.3.8-v10 - FIX Issue #2: Process early queued storage changes and set up fallback polling
 // The early listener was registered at script load, now connect it to actual handler
 // CRITICAL: Ensure queue is flushed BEFORE hydration starts
@@ -2155,26 +1619,25 @@ async function _sendPortMessageWithFallback(message, options = {}) {
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 
-// v1.6.3.8-v10 - FIX Issue #6: Initialization barrier for explicit ordering
-// Increased timeout for slow devices and added retry logic
-const TAB_ID_FETCH_TIMEOUT_MS = 10000; // Increased from 5s to 10s for slow devices
-const TAB_ID_FETCH_MAX_RETRIES = 3; // Maximum retry attempts
-const TAB_ID_FETCH_RETRY_DELAY_MS = 500; // Initial delay between retries
+// v1.6.3.8-v12 - FIX Issue #17: Reduced timeout to make initialization non-blocking
+// Previous 10s timeout blocked features; now using 2s max with graceful degradation
+const TAB_ID_FETCH_TIMEOUT_MS = 2000; // Reduced from 10s to 2s for non-blocking init
+const TAB_ID_FETCH_MAX_RETRIES = 2; // Reduced retries for faster fallback
+const TAB_ID_FETCH_RETRY_DELAY_MS = 300; // Reduced delay between retries
 
 /**
  * Initialization barrier state
- * v1.6.3.8-v8 - FIX Issue #7: Track initialization phases explicitly
+ * v1.6.3.8-v13: Simplified - no port connection phase
  */
 const _initializationBarrier = {
   tabIdFetched: false,
-  portConnected: false,
   featuresInitialized: false,
   startTime: 0
 };
 
 /**
  * Log initialization barrier state
- * v1.6.3.8-v8 - FIX Issue #7: Diagnostic logging for initialization ordering
+ * v1.6.3.8-v13: Simplified - no port tracking
  * @private
  */
 function _logInitializationBarrierState(phase) {
@@ -2184,7 +1647,6 @@ function _logInitializationBarrierState(phase) {
   console.log('[Content] INITIALIZATION_BARRIER:', {
     phase,
     tabIdFetched: _initializationBarrier.tabIdFetched,
-    portConnected: _initializationBarrier.portConnected,
     featuresInitialized: _initializationBarrier.featuresInitialized,
     elapsedMs: elapsed
   });
@@ -2341,7 +1803,7 @@ async function _attemptTabIdFetch(attempt, delay, _lastError) {
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
- * v1.6.3.8-v10 - FIX Issue #6: Use retry logic instead of single timeout for tab ID fetch
+ * v1.6.3.8-v13 - Removed port connection - using stateless messaging
  */
 async function initializeQuickTabsFeature() {
   console.log('[Copy-URL-on-Hover] INIT_START: About to initialize Quick Tabs...');
@@ -2366,26 +1828,24 @@ async function initializeQuickTabsFeature() {
 
   console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
 
-  // v1.6.3.8-v8 - FIX Issue #7: Step 2: Port connection (requires tab ID)
+  // v1.6.3.8-v13: Step 2: Set tab ID for storage ownership (no port needed)
   // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
   // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
   // explicitly set the tab ID for storage-utils to validate ownership during writes
   if (currentTabId !== null) {
+    // Cache tab ID for state sync and unload signals
+    cachedTabId = currentTabId;
     setWritingTabId(currentTabId);
     console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
-
-    // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
-    connectContentToBackground(currentTabId);
-    _initializationBarrier.portConnected = true;
-    _logInitializationBarrierState('port-connected');
+    _logInitializationBarrierState('tabId-set');
   } else {
     console.warn(
       '[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation'
     );
-    _logInitializationBarrierState('port-skipped-no-tabId');
+    _logInitializationBarrierState('tabId-skipped');
   }
 
-  // v1.6.3.8-v8 - FIX Issue #7: Step 3: Initialize features (requires tab ID and port)
+  // v1.6.3.8-v13: Step 3: Initialize features (sync via storage.onChanged)
   // Pass currentTabId as option so UICoordinator can filter by originTabId
   quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
   _initializationBarrier.featuresInitialized = true;
@@ -3373,12 +2833,14 @@ function _getActionError(result) {
 // v1.6.3.4-v11 - FIX Issue #2: Message deduplication to prevent duplicate RESTORE_QUICK_TAB processing
 // Map of quickTabId -> timestamp of last processed restore message
 const recentRestoreMessages = new Map();
-// v1.6.3.8-v8 - FIX Issue #9: Extended deduplication window to match PORT_RECONNECT_MAX_DELAY_MS
-// Port reconnection can take up to 10 seconds, so deduplication window must be at least that long
-// to prevent message floods when port reconnects.
-// INTENTIONAL COUPLING: This uses PORT_RECONNECT_MAX_DELAY_MS to ensure the deduplication window
-// always covers the maximum port reconnection time. If port timing changes, deduplication follows.
-const RESTORE_DEDUP_WINDOW_MS = PORT_RECONNECT_MAX_DELAY_MS; // Extended from 2000ms to 10000ms
+// v1.6.3.8-v12 - FIX Issue #18: Decoupled from port reconnection timing
+// The deduplication window prevents rapid duplicate restore commands from overwhelming the system.
+// This is based on the typical user interaction debounce window (50ms):
+// - Faster than user double-clicks (typically 200-300ms apart)
+// - Slower than programmatic retries within same event loop (~0-10ms)
+// - Matches correlationId DEDUP_WINDOW_MS in storage-manager.js for consistency
+// See also: https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event
+const RESTORE_DEDUP_WINDOW_MS = 50;
 
 /**
  * Check if restore message is a duplicate (within deduplication window)
@@ -3855,6 +3317,7 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
 
 /**
  * Handle GET_CONTENT_LOGS action
+ * v1.6.3.8-v12 - FIX Issue #6: Use standardized response with success field
  * @private
  */
 function _handleGetContentLogs(sendResponse) {
@@ -3871,10 +3334,11 @@ function _handleGetContentLogs(sendResponse) {
     const stats = getBufferStats();
     console.log('[Content] Buffer stats:', stats);
 
-    sendResponse({ logs: allLogs, stats });
+    // v1.6.3.8-v12 - FIX Issue #6: Standardized response with success field
+    sendResponse({ success: true, logs: allLogs, stats });
   } catch (error) {
     console.error('[Content] Error getting log buffer:', error);
-    sendResponse({ logs: [], error: error.message });
+    sendResponse({ success: false, logs: [], error: error.message });
   }
 }
 
@@ -4449,6 +3913,41 @@ if (IS_TEST_MODE) {
 }
 // ==================== END TEST BRIDGE HANDLER FUNCTIONS ====================
 
+// ==================== MESSAGE RESPONSE UTILITIES ====================
+/**
+ * Build standardized message response
+ * v1.6.3.8-v12 - FIX Issue #6: Unified response interface for all message handlers
+ * @param {boolean} success - Whether the operation succeeded
+ * @param {Object} [options] - Optional response data
+ * @param {string} [options.error] - Error message if success is false
+ * @param {string} [options.correlationId] - Correlation ID for tracing
+ * @param {*} [options.data] - Additional data to include in response
+ * @returns {Object} Standardized response object
+ */
+function _buildMessageResponse(success, options = {}) {
+  const response = { success };
+
+  if (!success && options.error) {
+    response.error = options.error;
+  }
+
+  if (options.correlationId) {
+    response.correlationId = options.correlationId;
+  }
+
+  // Spread any additional data
+  if (options.data !== undefined) {
+    response.data = options.data;
+  }
+
+  // Include message if provided (backward compatibility)
+  if (options.message) {
+    response.message = options.message;
+  }
+
+  return response;
+}
+
 // ==================== MESSAGE DISPATCHER ====================
 
 /**
@@ -4635,6 +4134,7 @@ const TYPE_HANDLERS = {
   },
 
   // v1.6.3.5-v3 - FIX Architecture Phase 1: Handle state update notifications
+  // v1.6.3.8-v12 - FIX Issue #6: Use standardized response format
   QUICK_TAB_STATE_UPDATED: (message, sendResponse) => {
     console.log('[Content] QUICK_TAB_STATE_UPDATED received:', {
       quickTabId: message.quickTabId,
@@ -4642,7 +4142,7 @@ const TYPE_HANDLERS = {
     });
     // Content script doesn't need to do anything - it manages its own state
     // This handler is mainly for logging and potential future use
-    sendResponse({ received: true });
+    sendResponse(_buildMessageResponse(true, { correlationId: message.correlationId }));
     return true;
   }
 };

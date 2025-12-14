@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v11 - Quick Tabs Architecture v2
+**Version:** 1.6.3.8-v12 - Quick Tabs Architecture v2
 
 **Complete Quick Tab System:**
 
@@ -49,7 +49,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
+**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
+- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled)
+- **FIX Issue #19** - Self-write cleanup aligned to 300ms
+- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
+- **FIX Issue #9** - Debounced render queue with checksum validation
+
+**v1.6.3.8-v11 Features (Retained):**
 
 - **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
 - **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
@@ -89,12 +99,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] Readback validation works (every write validated) (v11)
 - [ ] EventBus FIFO events work (native EventTarget) (v11)
 - [ ] Message patterns work (LOCAL, GLOBAL, MANAGER) (v11)
+- [ ] OUT_OF_ORDER_TOLERANCE_MS (100ms) works (v12)
+- [ ] Debounced render queue works (v12)
+- [ ] Tab ID fetch timeout (2s) works (v12)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.8-v11 tabs.sendMessage +
+**Your strength: Complete Quick Tab system with v1.6.3.8-v12 tabs.sendMessage +
 storage.local architecture, single storage key, readback validation, FIFO
-EventBus.**
+EventBus, debounced render queue.**

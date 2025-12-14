@@ -37,26 +37,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.8-v9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.8-v12 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
+**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
+- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled)
+- **FIX Issue #19** - Self-write cleanup aligned to 300ms
+
+**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
+key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
+
+**v1.6.3.8-v9 Features (Retained):**
 
 - **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
 - **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
-- **EventEmitter3 logging** - Timestamps for handler/listener registration order
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
-
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, port message queue, explicit tab ID barrier, BFCache session
-tabs.
-
-**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
-escalation, correlationId tracing, adaptive quota monitoring.
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Circuit Breaker Probing** - Early recovery with 500ms health probes
-- **Message Error Handling** - Graceful degradation in port message handlers
+- **Tab ID timeout 2s** - Reduced from 10s with retry fallback (v12)
 
 **v1.6.3.7-v1 Features (Retained):**
 
@@ -83,12 +81,10 @@ escalation, correlationId tracing, adaptive quota monitoring.
 
 - [ ] DestroyHandler event order works (emit before delete) (v1.6.3.8-v9)
 - [ ] Handler readiness works (`startRendering()` from init) (v1.6.3.8-v9)
-- [ ] Tab ID timeout 5s works with retry fallback (v1.6.3.8-v9)
-- [ ] Self-write detection works (50ms window)
+- [ ] Tab ID timeout 2s works with 2 retries, 300ms delay (v1.6.3.8-v12)
+- [ ] Self-write detection works (300ms window) (v12)
 - [ ] Explicit tab ID barrier works
 - [ ] BFCache session tabs work (document.wasDiscarded)
-- [ ] Circuit breaker probing recovers early
-- [ ] Strict tab isolation rejects null originTabId
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] originTabId set correctly on creation
@@ -97,5 +93,5 @@ escalation, correlationId tracing, adaptive quota monitoring.
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.8-v9 DestroyHandler
-event order, handler readiness, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.8-v12 DestroyHandler
+event order, handler readiness, 2s tab ID timeout, and proper per-tab scoping.**

@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.8-v9.
+  documentation. Current version: v1.6.3.8-v12.
 tools: ['*']
 ---
 
@@ -69,31 +69,31 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.8-v9)
+## Current Extension State (v1.6.3.8-v12)
 
-### v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes
+### v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes
 
-- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
-- **DestroyHandler retry logic** - `_pendingPersists` queue, max 3 retries
-- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
-- **Message queue conflict** - `_checkMessageConflict()` deduplication
-- **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
-- **Comprehensive INIT logging** - INIT*START, INIT_STEP*\*, INIT_COMPLETE
-- **Resource limits** - Timestamp map max 1000, message queue max 100
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+**Critical Issues Fixed:**
 
-### v1.6.3.8-v8 Features (Retained)
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
+- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled from port)
+- **FIX Issue #19** - Self-write cleanup aligned to 300ms
 
-- Self-write detection (50ms), transaction timeout 1000ms, storage event
-  ordering
-- Port message queue, explicit tab ID barrier, extended dedup 10s, BFCache
+**Behavioral Issues Fixed:**
 
-### v1.6.3.8-v7 Features (Retained)
+- **FIX Issue #1** - `_cleanupOrphanedPendingMessages()` for port zombies
+- **FIX Issue #5** - Per-message cleanup logging (type, correlationId, ageMs)
+- **FIX Issue #6** - `_buildMessageResponse()` for standardized responses
+- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
+- **FIX Issue #9** - Debounced render queue with checksum validation
+- **FIX Issue #10** - `_storageListenerIsActive` flag with fallback retry
 
-- Per-port sequence ID tracking, circuit breaker escalation, correlationId
-  tracing
-- Adaptive quota monitoring, storage aggregation, content script unload
+### v1.6.3.8-v11 Features (Retained)
+
+- tabs.sendMessage messaging, single storage key, tab isolation
+- Readback validation, correlationId dedup, EventBus FIFO, message patterns
 
 ### Architecture
 
@@ -101,27 +101,27 @@ nothing.
 - **Pattern:** Domain-Driven Design with Clean Architecture
 - **Layers:** Domain + Storage (96% coverage)
 
-### Key Functions (v1.6.3.8-v9)
+### Key Functions (v1.6.3.8-v12)
 
-| Function                   | Location        | Purpose                    |
-| -------------------------- | --------------- | -------------------------- |
-| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging        |
-| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush    |
-| `waitForInitialization()`  | QuickTabHandler | 10s init barrier           |
-| `scheduleRender(source)`   | Manager         | Unified render entry point |
-| `cleanupStateListeners()`  | UICoordinator   | Event listener cleanup     |
-| `_checkMessageConflict()`  | Manager         | Message deduplication      |
+| Function                            | Location      | Purpose                  |
+| ----------------------------------- | ------------- | ------------------------ |
+| `_cleanupOrphanedPendingMessages()` | Manager       | Port zombie cleanup      |
+| `_buildMessageResponse()`           | message-utils | Standardized responses   |
+| `_enqueueRender()`                  | Manager       | Debounced render queue   |
+| `_validateRenderIntegrity()`        | Manager       | Checksum validation      |
+| `_detectTabCorruption()`            | storage-utils | Corruption detection     |
+| `_handleOutOfOrderSequenceId()`     | storage-utils | State ordering tolerance |
 
 ---
 
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.8-v9
-- [ ] **v1.6.3.8-v9:** DestroyHandler event order documented
-- [ ] **v1.6.3.8-v9:** UICoordinator `_isInitializing` documented
-- [ ] **v1.6.3.8-v9:** Message conflict detection documented
-- [ ] **v1.6.3.8-v9:** Init sequence fix documented
+- [ ] Version numbers match 1.6.3.8-v12
+- [ ] **v1.6.3.8-v12:** Promise contamination fix documented (Issue #15)
+- [ ] **v1.6.3.8-v12:** Circuit breaker removal documented (Issue #16)
+- [ ] **v1.6.3.8-v12:** Tab ID fetch timeout (2s) documented (Issue #17)
+- [ ] **v1.6.3.8-v12:** Debounced render queue documented (Issue #9)
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -129,13 +129,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                  | Fix                         |
-| ---------------------- | --------------------------- |
-| v1.6.3.8-v8 or earlier | Update to 1.6.3.8-v9        |
-| "Pin to Page"          | Use "Solo/Mute"             |
-| Direct storage writes  | Use Single Writer Authority |
-| BroadcastChannel refs  | REMOVE - BC DELETED in v6   |
-| Missing DestroyHandler | Document event order fix    |
+| Error                   | Fix                         |
+| ----------------------- | --------------------------- |
+| v1.6.3.8-v11 or earlier | Update to 1.6.3.8-v12       |
+| "Pin to Page"           | Use "Solo/Mute"             |
+| Direct storage writes   | Use Single Writer Authority |
+| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
+| Circuit breaker refs    | REMOVE - CB DELETED in v12  |
 
 ---
 

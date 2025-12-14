@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.8-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,11 +9,38 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v11 Status:** Quick Tabs Architecture v2 ✅
+**🔧 v1.6.3.8-v12 Status:** Critical Fixes & Behavioral Improvements ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.8-v12
+
+**🏗️ Architecture Migration (December 2025) ✅**
+
+- ✅ **Port Removal Complete** - ~2,364 lines of port code removed
+- ✅ **Stateless Messaging** - `runtime.sendMessage()` / `tabs.sendMessage()`
+- ✅ **storage.onChanged** as primary sync mechanism
+- ✅ **No port registry**, no reconnection, no message queues
+- ✅ **Simplified BFCache** - storage.onChanged handles restoration
+
+**Critical Fixes:**
+
+- ✅ **Issue #15** - Promise contamination fixed in storage-utils.js
+- ✅ **Issue #16** - Circuit breaker removed (stateless architecture)
+- ✅ **Issue #17** - Init blocking reduced: 10-33.5s → 2-4s
+- ✅ **Issue #18** - Dedup window decoupled: RESTORE_DEDUP_WINDOW_MS = 50ms
+- ✅ **Issue #19** - Self-write detection window aligned (300ms)
+
+**Behavioral Improvements:**
+
+- ✅ **Orphan message cleanup** - `_cleanupOrphanedPendingMessages()`
+- ✅ **Standardized responses** - `_buildMessageResponse()` format
+- ✅ **Cross-tab tolerance** - 100ms `OUT_OF_ORDER_TOLERANCE_MS`
+- ✅ **Render debouncing** - 100ms queue with checksum validation
+
+---
 
 ## 🎉 What's New in v1.6.3.8-v11
 
@@ -21,7 +48,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **New Architecture:**
 
-- ✅ **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
+- ✅ **tabs.sendMessage messaging** - Stateless (ports fully removed in v12)
 - ✅ **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - ✅ **Readback validation** - Every write validated by read-back (fixes Issue
   #8)
@@ -45,6 +72,7 @@ zombies, silent storage failures, and corruption issues.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v11** - Quick Tabs Architecture v2, tabs.sendMessage, StorageManager
 - **v1.6.3.8-v10** - Modern APIs Audit, Diagnostic Fixes
 - **v1.6.3.8-v8** - Storage, Handler & Init Fixes
 - **v1.6.3.8-v7** - Communication & Storage Fixes
@@ -88,7 +116,7 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Tab Grouping** - tabs.group() API support, Firefox 138+ (v1.6.3.7-v3)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ **Cross-Tab Sync via Port + storage.onChanged** (NO BroadcastChannel)  
+✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
 ✓ 100+ Site-Specific Handlers  
 ✓ Dark Mode support  
 ✓ Auto-Updates via GitHub releases
@@ -236,6 +264,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v11** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v12** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

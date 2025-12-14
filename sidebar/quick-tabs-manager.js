@@ -2,6 +2,37 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.8-v13 - FULL Port Removal: Replaced runtime.Port with stateless runtime.sendMessage
+ *   - REMOVED: backgroundPort, _portOnMessageHandler, portMessageQueue
+ *   - REMOVED: connectToBackground(), scheduleReconnect(), handleConnectionFailure()
+ *   - REMOVED: startHeartbeat(), stopHeartbeat(), sendHeartbeat()
+ *   - REMOVED: _establishPortConnection(), _setupPortListeners(), _handlePortDisconnect()
+ *   - REMOVED: _finalizeConnection(), _prepareForReconnection(), _cleanupOldPortListener()
+ *   - REMOVED: _handlePortMessageWithQueue(), _flushPortMessageQueue()
+ *   - REMOVED: Circuit breaker logic (tripCircuitBreaker, reconnectAttempts, etc.)
+ *   - REMOVED: Heartbeat state (consecutiveHeartbeatFailures, lastHeartbeatResponse, etc.)
+ *   - REPLACED: sendWithAck() → sendToBackground() using runtime.sendMessage
+ *   - REPLACED: _sendActionRequest() → uses sendToBackground()
+ *   - ARCHITECTURE: storage.onChanged is now PRIMARY sync mechanism
+ *   - ARCHITECTURE: runtime.sendMessage for request/response patterns only
+ *   - KEPT: All storage.onChanged listeners and state rendering code
+ *   - KEPT: v1.6.3.8-v12 debounced render queue improvements
+ *
+ * v1.6.3.8-v12 - FIX Issue #9: Manager Sidebar Grouping Race Condition
+ *   - NEW: Serial render queue (_renderQueue) - renders execute one at a time
+ *   - NEW: _enqueueRender() - buffers render requests with debouncing (100ms)
+ *   - NEW: _processRenderQueue() - processes queued renders serially
+ *   - NEW: _executeQueuedRender() - executes single render with checksum validation
+ *   - NEW: _validateRenderIntegrity() - detects state corruption during render
+ *   - NEW: _triggerRenderCorruptionRecovery() - requests full state refresh on corruption
+ *   - NEW: _requestFullStateRefresh() - reads fresh state from storage for recovery
+ *   - NEW: _startRenderStallTimer() / _clearRenderStallTimer() - detects stalled renders
+ *   - NEW: RENDER_QUEUE_DEBOUNCE_MS (100ms) - buffer rapid changes before re-rendering
+ *   - NEW: RENDER_STALL_TIMEOUT_MS (5s) - safety timeout for render operations
+ *   - NEW: RENDER_QUEUE_MAX_SIZE (10) - prevent memory issues from excessive queuing
+ *   - ARCHITECTURE: Checksum validation before/after render detects corruption
+ *   - ARCHITECTURE: Recovery triggers full state refresh from storage on corruption
+ *
  * v1.6.3.8-v5 - FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
  *   - NEW: Monotonic revision versioning for storage event ordering
  *   - NEW: _lastAppliedRevision tracking - listeners reject revision ≤ current
@@ -20,7 +51,6 @@
  *   - FIX Issue #1: Sequential hydration barrier - blocks render until all tiers verified
  *   - FIX Issue #2: Port message queue guards during reconnection - prevents lost button clicks
  *   - FIX Issue #3: document.visibilitychange listener + periodic state freshness check (15s)
- *   - FIX Issue #6: Query background via port BEFORE rendering on hydration
  *   - FIX Issue #7: Proactive dedup cleanup at 50% capacity, sliding window eviction at 95%
  *   - FIX Issue #8: Probe queuing with min interval (500ms) and force-reset timeout (1000ms)
  *   - FIX Issue #9: Enforcing initialization guard - queue messages until barrier resolves
@@ -31,14 +61,7 @@
  *   - ARCHITECTURE: All event listeners await initializationBarrier before processing
  *
  * v1.6.3.8-v3 - FIX Cross-Tab Communication Issues from diagnostic reports:
- *   - FIX Issue #1: BroadcastChannel demoted from Tier 1 - Port-based messaging is now PRIMARY for sidebar
- *   - FIX Issue #6: BC verification replaced with explicit state test + clear failure logging
- *   - FIX Issue #10: Port message queue now validates sequence numbers during flush (monotonic check)
- *   - FIX Issue #11: Old port onMessage listener explicitly removed on reconnection via stored reference
- *   - FIX Issue #16: Disconnect check added before flushing queue - logs warning if port is DISCONNECTED
- *   - NEW: _portOnMessageHandler reference stored for explicit cleanup
- *   - NEW: _lastReceivedSequence tracking for incoming message sequence validation
- *   - ARCHITECTURE: Port-based messaging is Tier 1 for sidebar, BroadcastChannel is Tier 2 (tab-to-tab only)
+ *   - ARCHITECTURE: storage.onChanged is now PRIMARY for sidebar state sync
  *
  * v1.6.3.7-v13 - FIX Sidebar Communication Fallback Issues #5, #12, arch #1, #6:
  *   - FIX Issue #5: Sidebar BroadcastChannel fallback logging with SIDEBAR_BC_UNAVAILABLE message
@@ -272,16 +295,37 @@ let hostInfoCleanupIntervalId = null;
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
-const RENDER_DEBOUNCE_MS = 300;
-// FIX Issue #5: Port Reconnect Circuit Breaker
-const RECONNECT_BACKOFF_INITIAL_MS = 100;
-const RECONNECT_BACKOFF_MAX_MS = 10000;
-const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
-// v1.6.3.7-v4 - FIX Issue #8: Reduced from 10000ms to 2000ms
-// Shorter blackout period with early recovery probes
-const CIRCUIT_BREAKER_OPEN_DURATION_MS = 2000;
-// v1.6.3.7-v4 - FIX Issue #8: Probe interval for early recovery detection
-const CIRCUIT_BREAKER_PROBE_INTERVAL_MS = 500;
+// v1.6.3.8-v12: Legacy constant - replaced by RENDER_QUEUE_DEBOUNCE_MS but kept for documentation
+const _LEGACY_RENDER_DEBOUNCE_MS = 300;
+
+// ==================== v1.6.3.8-v12 RENDER QUEUE CONSTANTS ====================
+// FIX Issue #9: Manager Sidebar Grouping Race Condition
+/**
+ * Debounce delay for buffering rapid storage changes before re-rendering
+ * v1.6.3.8-v12 - FIX Issue #9: Buffer changes for 100ms before re-rendering
+ */
+const RENDER_QUEUE_DEBOUNCE_MS = 100;
+
+/**
+ * Maximum time to wait for a render to complete before considering it stalled
+ * v1.6.3.8-v12 - FIX Issue #9: Safety timeout for render operations
+ */
+const RENDER_STALL_TIMEOUT_MS = 5000;
+
+/**
+ * Maximum number of pending render requests to queue
+ * v1.6.3.8-v12 - FIX Issue #9: Prevent memory issues from excessive queuing
+ */
+const RENDER_QUEUE_MAX_SIZE = 10;
+
+/**
+ * Delay before rendering after corruption recovery to allow state to stabilize
+ * v1.6.3.8-v12 - FIX Issue #9: Use explicit constant instead of hardcoded value
+ */
+const RENDER_RECOVERY_DELAY_MS = 50;
+
+// v1.6.3.8-v13 - PORT REMOVED: All port-related constants deleted
+// Circuit breaker, heartbeat, and reconnection constants no longer needed
 
 // ==================== v1.6.3.7-v4 MESSAGE DEDUPLICATION ====================
 // FIX Issue #4: Prevent multiple renders from independent message listeners
@@ -305,36 +349,35 @@ const MESSAGE_ID_MAX_AGE_MS = 5000;
  */
 const MESSAGE_DEDUP_MAX_SIZE = 1000;
 
-// ==================== v1.6.3.7-v5 CONNECTION STATE TRACKING ====================
-// FIX Issue #1: Three explicit connection states for background detection
+// ==================== v1.6.3.8-v13 CONNECTION STATE (SIMPLIFIED) ====================
+// v1.6.3.8-v13 - Port removed: Connection state simplified, kept for logging only
 /**
  * Connection state enum
- * v1.6.3.7-v5 - FIX Issue #1: Track three explicit states
- * - 'connected': Port is open AND background is responding to heartbeats
- * - 'zombie': Port appears open but background is not responding (Firefox 30s termination)
- * - 'disconnected': Port is closed, no connection
+ * v1.6.3.8-v13 - Simplified: Port removed, state used for logging compatibility
+ * - 'connected': Background is responding to messages
+ * - 'disconnected': Background is not responding
  */
 const CONNECTION_STATE = {
   CONNECTED: 'connected',
-  ZOMBIE: 'zombie',
+  ZOMBIE: 'zombie', // Kept for compatibility but rarely used
   DISCONNECTED: 'disconnected'
 };
 
 /**
- * Current connection state
- * v1.6.3.7-v5 - FIX Issue #1: Explicit state tracking
+ * Current connection state (simplified - used for logging)
+ * v1.6.3.8-v13 - Port removed: State based on runtime.sendMessage success
  */
-let connectionState = CONNECTION_STATE.DISCONNECTED;
+let connectionState = CONNECTION_STATE.CONNECTED;
 
 /**
  * Timestamp of last connection state transition
- * v1.6.3.7-v5 - FIX Issue #1: State transition logging
+ * v1.6.3.8-v13 - Kept for logging compatibility
  */
 let lastConnectionStateChange = 0;
 
 /**
  * Consecutive connection failures counter for state transition context
- * v1.6.3.7-v6 - Issue #3: Track consecutive failures for transition logging
+ * v1.6.3.8-v13 - Kept for logging compatibility
  */
 let consecutiveConnectionFailures = 0;
 
@@ -1350,200 +1393,67 @@ const _groupElements = new Map();
  */
 let _groupsContainer = null;
 
-// ==================== v1.6.3.6-v11 PORT CONNECTION ====================
-// FIX Issue #11: Persistent port connection to background script
-// FIX Issue #10: Message acknowledgment tracking
+// ==================== v1.6.3.8-v13 STATELESS MESSAGING ====================
+// v1.6.3.8-v13 - Port removed: Using stateless runtime.sendMessage instead
 
 /**
- * Port connection to background script
- * v1.6.3.6-v11 - FIX Issue #11: Persistent connection
+ * Message timeout for runtime.sendMessage requests
+ * v1.6.3.8-v13 - PORT REMOVED: Timeout for stateless messages
  */
-let backgroundPort = null;
+const MESSAGE_TIMEOUT_MS = 5000;
 
 /**
- * Reference to the port onMessage handler for explicit cleanup
- * v1.6.3.8-v3 - FIX Issue #11: Store handler reference for removeListener on reconnection
- * @private
+ * State hash captured when debounce timer was set
+ * v1.6.4.0 - FIX Issue D: Detect state staleness during debounce
  */
-let _portOnMessageHandler = null;
+let capturedStateHashAtDebounce = 0;
 
 /**
- * Last received sequence number from background for incoming message validation
- * v1.6.3.8-v3 - FIX Issue #10: Track incoming sequence for monotonic validation during queue flush
- * @private
+ * Timestamp when debounce was set
+ * v1.6.4.0 - FIX Issue D: Track debounce timing
  */
-let _lastReceivedSequence = 0;
+let debounceSetTimestamp = 0;
 
 /**
- * Pending acknowledgments map
- * v1.6.3.6-v11 - FIX Issue #10: Track pending acknowledgments
- * Key: correlationId, Value: { resolve, reject, timeout, sentAt }
+ * Pending acknowledgments map - stub for compatibility
+ * v1.6.3.8-v13 - PORT REMOVED: Kept as stub
  */
 const pendingAcks = new Map();
 
-/**
- * Acknowledgment timeout (1 second)
- * v1.6.3.6-v11 - FIX Issue #10: Fallback timeout
- */
-const ACK_TIMEOUT_MS = 1000;
+// v1.6.3.8-v13 - PORT REMOVED: Listener ready functions are no-ops
 
-// ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
-// FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
-// v1.6.3.7-v9 - Issue #1: Consolidated heartbeat (25s) and keepalive (20s) into unified 20s system
-
-/**
- * Unified keepalive interval (20 seconds - same as background keepalive)
- * v1.6.3.7-v9 - Issue #1: Consolidated from separate 25s heartbeat and 20s keepalive
- * Firefox idle timeout is 30s, so 20s gives ~10s safety margin
- */
-const UNIFIED_KEEPALIVE_INTERVAL_MS = 20000;
-
-/**
- * Heartbeat interval - kept for backwards compatibility but now uses unified timing
- * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
- * v1.6.3.7-v9 - Issue #1: Now equals UNIFIED_KEEPALIVE_INTERVAL_MS
- */
-const HEARTBEAT_INTERVAL_MS = UNIFIED_KEEPALIVE_INTERVAL_MS;
-
-/**
- * Heartbeat timeout (5 seconds)
- * v1.6.3.6-v12 - FIX Issue #4: Detect unresponsive background
- */
-const HEARTBEAT_TIMEOUT_MS = 5000;
-
-/**
- * Heartbeat interval ID
- * v1.6.3.6-v12 - FIX Issue #4: Track interval for cleanup
- */
-let heartbeatIntervalId = null;
-
-/**
- * Last heartbeat response time
- * v1.6.3.6-v12 - FIX Issue #4: Track background responsiveness
- */
-let lastHeartbeatResponse = Date.now();
-
-/**
- * Consecutive heartbeat failures
- * v1.6.3.6-v12 - FIX Issue #4: Track for reconnection
- */
-let consecutiveHeartbeatFailures = 0;
-const MAX_HEARTBEAT_FAILURES = 2;
-
-// ==================== v1.6.3.7-v9 UNIFIED KEEPALIVE STATE (Issue #1) ====================
-// Consolidated keepalive system with correlation IDs and immediate fallback
-
-/**
- * Counter for keepalive correlation IDs
- * v1.6.3.7-v9 - Issue #1: Track keepalive cycles for debugging
- */
-let keepaliveCorrelationCounter = 0;
-
-/**
- * Current keepalive cycle correlation ID
- * v1.6.3.7-v9 - Issue #1: Unique ID per keepalive round
- */
-let currentKeepaliveCorrelationId = null;
-
-/**
- * Timestamp when current keepalive cycle started
- * v1.6.3.7-v9 - Issue #1: Track round-trip time
- */
-let currentKeepaliveStartTime = 0;
-
-/**
- * Threshold for consecutive keepalive failures before ZOMBIE transition
- * v1.6.3.7-v9 - Issue #1: Use same threshold as HEARTBEAT_FAILURES_BEFORE_ZOMBIE
- */
-const KEEPALIVE_FAILURES_BEFORE_ZOMBIE = 3;
-
-/**
- * Counter for consecutive keepalive failures (unified tracking)
- * v1.6.3.7-v9 - Issue #1: Combined heartbeat + keepalive failure tracking
- */
-let consecutiveKeepaliveFailures = 0;
-
-// ==================== v1.6.3.7 CIRCUIT BREAKER STATE ====================
-// FIX Issue #5: Port Reconnect Circuit Breaker to prevent thundering herd
-/**
- * Circuit breaker state
- * v1.6.3.7 - FIX Issue #5: Prevent thundering herd on reconnect
- * v1.6.3.7-v4 - FIX Issue #8: Add probing for early recovery detection
- * States: 'closed' (connected), 'open' (not trying), 'half-open' (attempting)
- */
-let circuitBreakerState = 'closed';
-let circuitBreakerOpenTime = 0;
-let reconnectAttempts = 0;
-let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-// v1.6.3.7-v4 - FIX Issue #8: Timer for early recovery probes
-let circuitBreakerProbeTimerId = null;
-
-// ==================== v1.6.3.7-v8 PORT MESSAGE QUEUE ====================
-// FIX Issue #9: Buffer messages arriving before listener registration
-/**
- * Queue for port messages that arrive before listener is fully registered
- * v1.6.3.7-v8 - FIX Issue #9: Prevent silent message drops on reconnection
- */
-let portMessageQueue = [];
-
-/**
- * Flag indicating if listener is fully registered (kept for backward compatibility)
- * v1.6.3.7-v8 - FIX Issue #9: Track listener registration state
- * @deprecated Use listenerReadyPromise instead for async operations
- */
-let listenerFullyRegistered = false;
-
-/**
- * Promise-based barrier for listener registration
- * v1.6.4.16 - FIX Issue #9: Replace boolean with Promise for reliable race prevention
- * Resolves when listener is fully registered and ready to process messages
- */
-let listenerReadyPromise = null;
+/** @deprecated v1.6.3.8-v13 - Port removed */
+let listenerReadyPromise = Promise.resolve();
+/** @deprecated v1.6.3.8-v13 - Port removed */
 let _listenerReadyResolve = null;
+/** @deprecated v1.6.3.8-v13 - Port removed */
 let _listenerReadyReject = null;
+/** @deprecated v1.6.3.8-v13 - Port removed */
+let listenerFullyRegistered = true;
 
 /**
- * Initialize the listener ready promise
- * v1.6.4.16 - FIX Issue #9: Create new promise barrier
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _initListenerReadyPromise() {
-  listenerReadyPromise = new Promise((resolve, reject) => {
-    _listenerReadyResolve = resolve;
-    _listenerReadyReject = reject;
-  });
-  console.log('[Manager] [PORT] [PROMISE_BARRIER_INITIALIZED]:', {
-    timestamp: Date.now()
-  });
+  // No-op - port removed
 }
 
 /**
- * Mark listener as ready and resolve the promise barrier
- * v1.6.4.16 - FIX Issue #9: Signal listener is ready
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _markListenerReady() {
-  listenerFullyRegistered = true; // Maintain backward compatibility
-  if (_listenerReadyResolve) {
-    _listenerReadyResolve();
-    console.log('[Manager] [PORT] [PROMISE_BARRIER_RESOLVED]:', {
-      timestamp: Date.now()
-    });
-  }
+  // No-op - port removed
 }
 
 /**
- * Reset listener ready state (on disconnect)
- * v1.6.4.16 - FIX Issue #9: Reset for reconnection
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _resetListenerReadyState() {
-  listenerFullyRegistered = false;
-  _initListenerReadyPromise(); // Create new promise for next connection
-}
-
-// Initialize the promise barrier on module load
-_initListenerReadyPromise();
+  // No-op - port removed
+};
 
 // ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
 // FIX Issue #10: Prevent concurrent reconnection attempts
@@ -1599,6 +1509,50 @@ let renderDebounceTimer = null;
 let lastRenderedHash = 0;
 let pendingRenderUI = false;
 
+// ==================== v1.6.3.8-v12 RENDER QUEUE STATE ====================
+// FIX Issue #9: Manager Sidebar Grouping Race Condition
+/**
+ * Flag indicating if a render is currently in progress
+ * v1.6.3.8-v12 - FIX Issue #9: Serialize render operations
+ */
+let _renderInProgress = false;
+
+/**
+ * Queue of pending render requests (source and timestamp)
+ * v1.6.3.8-v12 - FIX Issue #9: Queue renders to execute serially
+ */
+const _renderQueue = [];
+
+/**
+ * Timer ID for render queue debounce
+ * v1.6.3.8-v12 - FIX Issue #9: Debounce rapid render requests
+ */
+let _renderQueueDebounceTimer = null;
+
+/**
+ * Timer ID for render stall detection
+ * v1.6.3.8-v12 - FIX Issue #9: Detect stalled renders
+ */
+let _renderStallTimerId = null;
+
+/**
+ * State hash captured before render starts (for validation)
+ * v1.6.3.8-v12 - FIX Issue #9: Checksum before/after render
+ */
+let _preRenderStateHash = 0;
+
+/**
+ * Counter for tracking render corruption recovery attempts
+ * v1.6.3.8-v12 - FIX Issue #9: Limit recovery attempts to prevent loops
+ */
+let _renderCorruptionRecoveryAttempts = 0;
+
+/**
+ * Maximum recovery attempts before giving up
+ * v1.6.3.8-v12 - FIX Issue #9: Prevent infinite recovery loops
+ */
+const MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS = 3;
+
 /**
  * Generate correlation ID for message acknowledgment
  * v1.6.3.6-v11 - FIX Issue #10: Correlation tracking
@@ -1610,14 +1564,14 @@ function generateCorrelationId() {
 
 /**
  * Log port lifecycle event
- * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
+ * v1.6.3.8-v13 - PORT REMOVED: Simplified logging
  * @param {string} event - Event name
  * @param {Object} details - Event details
  */
 function logPortLifecycle(event, details = {}) {
-  console.log(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, {
+  // v1.6.3.8-v13 - Port removed, keep for backwards compatibility
+  console.log(`[Manager] LIFECYCLE [sidebar] [${event}]:`, {
     tabId: currentBrowserTabId,
-    portId: backgroundPort?._portId,
     connectionState,
     timestamp: Date.now(),
     ...details
@@ -1735,334 +1689,136 @@ function _logDisconnectedFallback() {
 }
 
 /**
- * Connect to background script via persistent port
- * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
- * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
- * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
- * v1.6.3.7-v5 - FIX Issue #1: Update connection state on connect
- * v1.6.3.7-v8 - FIX Issue #9: Port message queue for buffering pre-listener messages
- * v1.6.3.7-v8 - FIX Issue #10: Atomic reconnection guard with isReconnecting flag
- * v1.6.3.8-v3 - Refactored to extract helpers for max-lines-per-function compliance
+ * Connect to background script
+ * v1.6.3.8-v13 - PORT REMOVED: No-op, using stateless runtime.sendMessage instead
+ * @deprecated Port connection removed - using storage.onChanged + runtime.sendMessage
  */
 function connectToBackground() {
-  if (!_canAttemptConnection()) return;
-
-  _prepareForReconnection();
-  _cleanupOldPortListener();
-
-  try {
-    _establishPortConnection();
-    _setupPortListeners();
-    _finalizeConnection();
-    console.log('[Manager] v1.6.3.8-v3 Port connection established');
-  } catch (err) {
-    _handlePortConnectionError(err);
-  } finally {
-    isReconnecting = false;
-  }
+  // v1.6.3.8-v13 - Port removed: No-op stub for backwards compatibility
+  console.log('[Manager] v1.6.3.8-v13 PORT_REMOVED: connectToBackground is now no-op');
+  console.log('[Manager] Using storage.onChanged (PRIMARY) + runtime.sendMessage (SECONDARY)');
+  connectionState = CONNECTION_STATE.CONNECTED;
 }
 
+// v1.6.3.8-v13 - PORT REMOVED: All port helper functions below are no-ops
+
 /**
- * Check if connection attempt is allowed (not already reconnecting, circuit breaker)
- * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @returns {boolean} True if connection can be attempted
  */
 function _canAttemptConnection() {
-  if (isReconnecting) {
-    console.log('[Manager] [PORT] [RECONNECT_BLOCKED]:', {
-      reason: 'already_in_progress',
-      timestamp: Date.now()
-    });
-    return false;
-  }
-
-  if (circuitBreakerState === 'open') {
-    const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
-    if (timeSinceOpen < CIRCUIT_BREAKER_OPEN_DURATION_MS) {
-      console.log('[Manager] Circuit breaker OPEN - skipping reconnect', {
-        timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
-      });
-      return false;
-    }
-    circuitBreakerState = 'half-open';
-    console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
-  }
-
-  return true;
+  return false; // No port connection needed
 }
 
 /**
- * Prepare state for reconnection
- * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _prepareForReconnection() {
-  isReconnecting = true;
-  listenerFullyRegistered = false;
-  portMessageQueue = [];
-  _lastReceivedSequence = 0;
+  // No-op
 }
 
 /**
- * Establish the port connection to background
- * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _establishPortConnection() {
-  backgroundPort = browser.runtime.connect({ name: 'quicktabs-sidebar' });
-  logPortLifecycle('open', { portName: backgroundPort.name });
+  // No-op
 }
 
 /**
- * Set up port message and disconnect listeners
- * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _setupPortListeners() {
-  _portOnMessageHandler = _handlePortMessageWithQueue;
-  backgroundPort.onMessage.addListener(_portOnMessageHandler);
-  console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
-    type: 'onMessage',
-    handlerStored: true,
-    timestamp: Date.now()
-  });
-
-  backgroundPort.onDisconnect.addListener(_handlePortDisconnect);
-  console.log('[Manager] [PORT] [LISTENER_REGISTERED]:', {
-    type: 'onDisconnect',
-    timestamp: Date.now()
-  });
+  // No-op
 }
 
 /**
- * Handle port disconnect event
- * v1.6.3.8-v3 - Extracted from connectToBackground inline handler
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _handlePortDisconnect() {
-  const error = browser.runtime.lastError;
-  logPortLifecycle('disconnect', { error: error?.message });
-  _cleanupOldPortListener();
-  backgroundPort = null;
-  _resetListenerReadyState();
-  _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
-  stopHeartbeat();
-  _stopBackgroundActivityCheck();
-  _stopCircuitBreakerProbes();
-  scheduleReconnect();
+  // No-op
 }
 
 /**
- * Finalize successful connection (reset circuit breaker, start heartbeat)
- * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _finalizeConnection() {
-  _markListenerReady();
-  _flushPortMessageQueue();
-  circuitBreakerState = 'closed';
-  reconnectAttempts = 0;
-  reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-  _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'port-connected');
-  startHeartbeat();
-  _startBackgroundActivityCheck();
-  _requestFullStateSync();
-  _verifyPortListenerRegistration();
+  // No-op
 }
 
 /**
- * Handle port connection error
- * v1.6.3.8-v3 - Extracted from connectToBackground
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Error} err - Connection error
  */
-function _handlePortConnectionError(err) {
-  console.error('[Manager] Failed to connect to background:', err.message);
-  logPortLifecycle('error', { error: err.message });
-  _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'connection-error');
-  handleConnectionFailure();
+function _handlePortConnectionError(_err) {
+  // No-op
 }
 
 /**
- * Verify port listener registration by sending a test message
- * v1.6.3.7-v4 - FIX Issue #10: Confirm listener is actually receiving messages
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _verifyPortListenerRegistration() {
-  if (!backgroundPort) return;
-
-  try {
-    // Send a ping message that should get an acknowledgment
-    backgroundPort.postMessage({
-      type: 'LISTENER_VERIFICATION',
-      timestamp: Date.now(),
-      source: 'sidebar'
-    });
-    console.log('[Manager] LISTENER_VERIFICATION: Test message sent to verify port listener');
-  } catch (err) {
-    console.error(
-      '[Manager] LISTENER_VERIFICATION_FAILED: Could not send test message:',
-      err.message
-    );
-  }
+  // No-op
 }
 
 /**
- * Clean up old port onMessage listener before reconnection
- * v1.6.3.8-v3 - FIX Issue #11: Prevent dual message processing from old + new listeners
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _cleanupOldPortListener() {
-  if (_portOnMessageHandler && backgroundPort) {
-    try {
-      backgroundPort.onMessage.removeListener(_portOnMessageHandler);
-      console.log('[Manager] [PORT] [OLD_LISTENER_REMOVED]:', {
-        reason: 'reconnection-cleanup',
-        timestamp: Date.now()
-      });
-    } catch (err) {
-      // Port may already be disconnected, which is fine
-      console.log('[Manager] [PORT] [OLD_LISTENER_REMOVAL_SKIPPED]:', {
-        reason: err.message,
-        timestamp: Date.now()
-      });
-    }
-  }
-  _portOnMessageHandler = null;
+  // No-op
 }
 
 /**
- * Schedule reconnection with exponential backoff
- * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
+ * Schedule reconnection - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED: No reconnection needed
+ * @deprecated Port removed - using stateless messaging
  */
 function scheduleReconnect() {
-  reconnectAttempts++;
-
-  console.log('[Manager] RECONNECT_SCHEDULED:', {
-    attempt: reconnectAttempts,
-    backoffMs: reconnectBackoffMs,
-    circuitBreakerState,
-    maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD
-  });
-
-  // Check if we should trip the circuit breaker
-  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
-    tripCircuitBreaker();
-    return;
-  }
-
-  // Schedule reconnect with current backoff
-  setTimeout(() => {
-    console.log('[Manager] Attempting reconnect (attempt', reconnectAttempts, ')');
-    connectToBackground();
-  }, reconnectBackoffMs);
-
-  // Calculate next backoff with exponential increase, capped at max
-  reconnectBackoffMs = Math.min(reconnectBackoffMs * 2, RECONNECT_BACKOFF_MAX_MS);
+  // No-op - port removed
 }
 
 /**
- * Handle connection failure
- * v1.6.3.7 - FIX Issue #5: Track failures for circuit breaker
+ * Handle connection failure - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED
+ * @deprecated Port removed
  */
 function handleConnectionFailure() {
-  // Note: scheduleReconnect() handles the increment, so we don't double-count here
-  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD - 1) {
-    // One more failure will trip the breaker, call scheduleReconnect to handle it
-    scheduleReconnect();
-  } else {
-    scheduleReconnect();
-  }
+  // No-op - port removed
 }
 
 /**
- * Trip the circuit breaker to "open" state
- * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
- * v1.6.3.7-v4 - FIX Issue #8: Add early recovery probes during open period
+ * Trip circuit breaker - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED: Circuit breaker not needed
+ * @deprecated Port removed
  */
 function tripCircuitBreaker() {
-  circuitBreakerState = 'open';
-  circuitBreakerOpenTime = Date.now();
-
-  console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
-    attempts: reconnectAttempts,
-    cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
-    probeIntervalMs: CIRCUIT_BREAKER_PROBE_INTERVAL_MS,
-    reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
-  });
-
-  // v1.6.3.7-v4 - FIX Issue #8: Start probing for early recovery
-  _startCircuitBreakerProbes();
-
-  // Schedule hard reopen at max cooldown time
-  setTimeout(() => {
-    _stopCircuitBreakerProbes();
-    console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
-    circuitBreakerState = 'half-open';
-    reconnectAttempts = 0;
-    reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-    connectToBackground();
-  }, CIRCUIT_BREAKER_OPEN_DURATION_MS);
+  // No-op - port removed
 }
-
 /**
- * Start periodic probes during circuit breaker open period
- * v1.6.3.7-v4 - FIX Issue #8: Detect early background recovery
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _startCircuitBreakerProbes() {
-  _stopCircuitBreakerProbes(); // Clear any existing probe timer
-
-  circuitBreakerProbeTimerId = setInterval(() => {
-    if (circuitBreakerState !== 'open') {
-      _stopCircuitBreakerProbes();
-      return;
-    }
-
-    const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
-    console.log('[Manager] CIRCUIT_BREAKER_PROBE:', {
-      state: circuitBreakerState,
-      timeSinceOpenMs: timeSinceOpen,
-      timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
-    });
-
-    // Attempt a lightweight probe to detect if background recovered
-    _probeBackgroundHealth()
-      .then(healthy => {
-        if (healthy && circuitBreakerState === 'open') {
-          console.log(
-            '[Manager] CIRCUIT_BREAKER_EARLY_RECOVERY: Background responding - transitioning to HALF-OPEN'
-          );
-          _stopCircuitBreakerProbes();
-          circuitBreakerState = 'half-open';
-          reconnectAttempts = 0;
-          reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-          connectToBackground();
-        }
-      })
-      .catch(() => {
-        // Probe failed, continue waiting
-        console.log('[Manager] CIRCUIT_BREAKER_PROBE_FAILED: Background still unresponsive');
-      });
-  }, CIRCUIT_BREAKER_PROBE_INTERVAL_MS);
+  // No-op - port removed
 }
 
 /**
- * Stop circuit breaker probes
- * v1.6.3.7-v4 - FIX Issue #8: Cleanup probe timer
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _stopCircuitBreakerProbes() {
-  if (circuitBreakerProbeTimerId) {
-    clearInterval(circuitBreakerProbeTimerId);
-    circuitBreakerProbeTimerId = null;
-  }
+  // No-op - port removed
 }
 
 /**
  * Probe background health with a lightweight ping
- * v1.6.3.7-v4 - FIX Issue #8: Quick check if background is responsive
+ * v1.6.3.8-v13 - Kept for health checks using runtime.sendMessage
  * @private
  * @returns {Promise<boolean>} True if background is healthy
  */
@@ -2078,306 +1834,112 @@ async function _probeBackgroundHealth() {
   }
 }
 
-// ==================== v1.6.3.7-v8 PORT MESSAGE QUEUE ====================
-// FIX Issue #9: Buffer messages arriving before listener registration
+// ==================== v1.6.3.8-v13 PORT MESSAGE HANDLING (SIMPLIFIED) ====================
+// v1.6.3.8-v13 - Port removed: Message queue no longer needed
 
 /**
- * Handle port message with queue support
- * v1.6.3.7-v8 - FIX Issue #9: Buffer messages if listener not fully registered
- * v1.6.4.16 - FIX Issue #9: Use Promise barrier for reliable race prevention
- * v1.6.3.8-v3 - FIX Issue #10: Track incoming sequence numbers for validation
+ * Handle port message - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED: All message handling via storage.onChanged
+ * @deprecated Port removed
  * @private
- * @param {Object} message - Message from background
  */
-function _handlePortMessageWithQueue(message) {
-  // v1.6.3.7-v8 - FIX Issue #14: Update last background message time
-  lastBackgroundMessageTime = Date.now();
-
-  // v1.6.3.8-v3 - FIX Issue #10: Track incoming sequence number for validation
-  const incomingSequence = message?.messageSequence;
-  if (typeof incomingSequence === 'number') {
-    message._receivedAt = Date.now();
-    message._previousSequence = _lastReceivedSequence;
-  }
-
-  // v1.6.4.16 - FIX Issue #9: Use boolean for sync check (Promise for async operations)
-  if (!listenerFullyRegistered) {
-    portMessageQueue.push(message);
-    console.log('[Manager] [PORT] [MESSAGE_QUEUED]:', {
-      type: message?.type || message?.action || 'unknown',
-      queueSize: portMessageQueue.length,
-      listenerReady: listenerFullyRegistered,
-      incomingSequence,
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  // v1.6.3.8-v3 - FIX Issue #10: Update sequence after queue check
-  if (typeof incomingSequence === 'number') {
-    _lastReceivedSequence = incomingSequence;
-  }
-
-  // Process message normally
-  handlePortMessage(message);
+function _handlePortMessageWithQueue(_message) {
+  // No-op - port removed, using storage.onChanged instead
 }
 
 /**
- * Wait for listener to be ready before processing
- * v1.6.4.16 - FIX Issue #9: Async barrier for operations that need listener ready
- * @param {number} [timeoutMs=5000] - Timeout in milliseconds
- * @returns {Promise<void>} Resolves when listener is ready
+ * @deprecated v1.6.3.8-v13 - Port removed
  */
-async function waitForListenerReady(timeoutMs = 5000) {
-  if (listenerFullyRegistered) return;
-
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Listener ready timeout')), timeoutMs);
-  });
-
-  try {
-    await Promise.race([listenerReadyPromise, timeoutPromise]);
-    console.log('[Manager] [PORT] [LISTENER_READY_WAIT_RESOLVED]:', {
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn('[Manager] [PORT] [LISTENER_READY_TIMEOUT]:', {
-      timeoutMs,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    throw err;
-  }
+async function waitForListenerReady(_timeoutMs = 5000) {
+  // No-op - always ready with stateless messaging
+  return Promise.resolve();
 }
 
 /**
- * Flush queued port messages after listener is fully registered
- * v1.6.3.7-v8 - FIX Issue #9: Process buffered messages
- * v1.6.3.8-v3 - FIX Issue #16: Check connection state before flushing
- * v1.6.3.8-v3 - FIX Issue #10: Validate sequence ordering during flush
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _flushPortMessageQueue() {
-  if (portMessageQueue.length === 0) {
-    console.log('[Manager] [PORT] [QUEUE_FLUSH]: No messages to flush');
-    return;
-  }
-
-  // v1.6.3.8-v3 - FIX Issue #16: Check connection state before processing
-  if (connectionState === CONNECTION_STATE.DISCONNECTED) {
-    console.warn('[Manager] [PORT] [QUEUE_FLUSH_BLOCKED]:', {
-      reason: 'port-disconnected',
-      connectionState,
-      queueSize: portMessageQueue.length,
-      warning: 'Queue will be preserved for reconnection',
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  const messagesToProcess = _extractQueuedMessages();
-
-  // v1.6.3.8-v3 - FIX Issue #10: Validate and potentially reorder messages by sequence
-  const validatedMessages = _validateAndSortQueuedMessages(messagesToProcess);
-
-  _processQueuedMessages(validatedMessages);
+  // No-op - port removed
 }
 
+// v1.6.3.8-v13 - PORT REMOVED: All queue-related helper functions below are no-ops
+
 /**
- * Extract and clear queued messages
- * v1.6.4.17 - Extracted to reduce _flushPortMessageQueue CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @returns {Array} Messages to process
  */
 function _extractQueuedMessages() {
-  console.log('[Manager] [PORT] [QUEUE_FLUSH_STARTED]:', {
-    messageCount: portMessageQueue.length,
-    timestamp: Date.now()
-  });
-
-  const messages = [...portMessageQueue];
-  portMessageQueue = [];
-  return messages;
+  return [];
 }
 
 /**
- * Validate and sort queued messages by sequence number
- * v1.6.3.8-v3 - FIX Issue #10: Ensure monotonically increasing sequence during flush
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Array} messages - Messages to validate
- * @returns {Array} Validated and sorted messages
  */
-function _validateAndSortQueuedMessages(messages) {
-  const { sequencedMessages, unsequencedMessages } = _partitionMessagesBySequence(messages);
-
-  // Sort sequenced messages by sequence number
-  sequencedMessages.sort((a, b) => a.messageSequence - b.messageSequence);
-
-  // Validate sequence ordering and log any issues
-  const validationResult = _validateSequenceOrdering(sequencedMessages);
-
-  // Update last received sequence to highest in queue
-  _updateLastReceivedSequence(sequencedMessages);
-
-  // Log validation summary if issues detected
-  _logValidationSummaryIfNeeded(messages, sequencedMessages, unsequencedMessages, validationResult);
-
-  // Return sorted sequenced messages first, then unsequenced
-  return [...sequencedMessages, ...unsequencedMessages];
+function _validateAndSortQueuedMessages(_messages) {
+  return [];
 }
 
 /**
- * Partition messages into sequenced and unsequenced groups
- * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Array} messages - Messages to partition
- * @returns {Object} Object with sequencedMessages and unsequencedMessages arrays
  */
-function _partitionMessagesBySequence(messages) {
-  const sequencedMessages = [];
-  const unsequencedMessages = [];
-
-  for (const msg of messages) {
-    if (typeof msg?.messageSequence === 'number') {
-      sequencedMessages.push(msg);
-    } else {
-      unsequencedMessages.push(msg);
-    }
-  }
-
-  return { sequencedMessages, unsequencedMessages };
+function _partitionMessagesBySequence(_messages) {
+  return { sequencedMessages: [], unsequencedMessages: [] };
 }
 
 /**
- * Validate sequence ordering and log reordering/gaps
- * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Array} sequencedMessages - Sorted sequenced messages
- * @returns {Object} Validation result with reorderDetected and gapsDetected
  */
-function _validateSequenceOrdering(sequencedMessages) {
-  let lastSeq = _lastReceivedSequence;
-  let reorderDetected = false;
-  let gapsDetected = 0;
-
-  for (const msg of sequencedMessages) {
-    const seq = msg.messageSequence;
-    const result = _checkSequenceIssue(seq, lastSeq, msg);
-    if (result.reorder) reorderDetected = true;
-    if (result.gap) gapsDetected++;
-    lastSeq = seq;
-  }
-
-  return { reorderDetected, gapsDetected };
+function _validateSequenceOrdering(_sequencedMessages) {
+  return { reorderDetected: false, gapsDetected: 0 };
 }
 
 /**
- * Check for sequence issue (reorder or gap) and log if found
- * v1.6.3.8-v3 - Extracted to reduce _validateSequenceOrdering CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {number} seq - Current sequence number
- * @param {number} lastSeq - Previous sequence number
- * @param {Object} msg - Message object
- * @returns {Object} Result with reorder and gap flags
  */
-function _checkSequenceIssue(seq, lastSeq, msg) {
-  const messageType = msg.type || msg.action || 'unknown';
-
-  if (seq < lastSeq) {
-    console.warn('[Manager] [PORT] [QUEUE_SEQUENCE_REORDER]:', {
-      expectedMinSequence: lastSeq,
-      receivedSequence: seq,
-      messageType,
-      timestamp: Date.now()
-    });
-    return { reorder: true, gap: false };
-  }
-
-  if (seq > lastSeq + 1) {
-    console.warn('[Manager] [PORT] [QUEUE_SEQUENCE_GAP]:', {
-      expectedSequence: lastSeq + 1,
-      receivedSequence: seq,
-      gapSize: seq - lastSeq - 1,
-      messageType,
-      timestamp: Date.now()
-    });
-    return { reorder: false, gap: true };
-  }
-
+function _checkSequenceIssue(_seq, _lastSeq, _msg) {
   return { reorder: false, gap: false };
 }
 
 /**
- * Update last received sequence from sequenced messages
- * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Array} sequencedMessages - Sorted sequenced messages
  */
-function _updateLastReceivedSequence(sequencedMessages) {
-  if (sequencedMessages.length > 0) {
-    _lastReceivedSequence = sequencedMessages[sequencedMessages.length - 1].messageSequence;
-  }
+function _updateLastReceivedSequence(_sequencedMessages) {
+  // No-op
 }
 
 /**
- * Log validation summary if issues were detected
- * v1.6.3.8-v3 - Extracted to reduce _validateAndSortQueuedMessages CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
-function _logValidationSummaryIfNeeded(messages, sequencedMessages, unsequencedMessages, result) {
-  if (!result.reorderDetected && result.gapsDetected === 0) return;
-
-  console.log('[Manager] [PORT] [QUEUE_VALIDATION_SUMMARY]:', {
-    totalMessages: messages.length,
-    sequencedCount: sequencedMessages.length,
-    unsequencedCount: unsequencedMessages.length,
-    reorderDetected: result.reorderDetected,
-    gapsDetected: result.gapsDetected,
-    finalSequence: _lastReceivedSequence,
-    timestamp: Date.now()
-  });
+function _logValidationSummaryIfNeeded(_messages, _sequenced, _unsequenced, _result) {
+  // No-op
 }
 
 /**
- * Process a batch of queued messages
- * v1.6.4.17 - Extracted to reduce _flushPortMessageQueue CC
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Array} messages - Messages to process
  */
-function _processQueuedMessages(messages) {
-  for (const message of messages) {
-    _processQueuedMessage(message);
-  }
-
-  console.log('[Manager] [PORT] [QUEUE_FLUSH_COMPLETED]:', {
-    processedCount: messages.length,
-    timestamp: Date.now()
-  });
+function _processQueuedMessages(_messages) {
+  // No-op
 }
 
 /**
- * Process a single queued message with error handling
- * v1.6.4.17 - Extracted to reduce _flushPortMessageQueue CC
- * v1.6.4.17 - Refactored to reduce CC from 10 to ~3
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Object} message - Message to process
  */
-function _processQueuedMessage(message) {
-  const messageType = _getMessageType(message);
-  try {
-    _logQueuedMessageProcessing(messageType);
-    handlePortMessage(message);
-  } catch (err) {
-    _logQueuedMessageError(messageType, err);
-  }
+function _processQueuedMessage(_message) {
+  // No-op
 }
 
 /**
- * Get message type for logging
- * v1.6.4.17 - Extracted from _processQueuedMessage
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Object} message - Message object
- * @returns {string} Message type
  */
 function _getMessageType(message) {
   if (!message) return 'unknown';
@@ -2385,642 +1947,155 @@ function _getMessageType(message) {
 }
 
 /**
- * Log queued message processing start
- * v1.6.4.17 - Extracted from _processQueuedMessage
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {string} messageType - Message type
  */
-function _logQueuedMessageProcessing(messageType) {
-  console.log('[Manager] [PORT] [QUEUE_MESSAGE_PROCESSING]:', {
-    type: messageType,
-    timestamp: Date.now()
-  });
+function _logQueuedMessageProcessing(_messageType) {
+  // No-op
 }
 
 /**
- * Log queued message error
- * v1.6.4.17 - Extracted from _processQueuedMessage
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {string} messageType - Message type
- * @param {Error} err - Error object
  */
-function _logQueuedMessageError(messageType, err) {
-  console.error('[Manager] [PORT] [QUEUE_MESSAGE_ERROR]:', {
-    type: messageType,
-    error: err.message,
-    timestamp: Date.now()
-  });
+function _logQueuedMessageError(_messageType, _err) {
+  // No-op
 }
 
-// ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
-// FIX Issue #14: Detect Firefox background script termination
+// ==================== v1.6.3.8-v13 BACKGROUND ACTIVITY (SIMPLIFIED) ====================
+// v1.6.3.8-v13 - Port removed: Background activity checking simplified
 
 /**
- * Start background activity monitoring
- * v1.6.3.7-v8 - FIX Issue #14: Periodic check to detect idle background
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _startBackgroundActivityCheck() {
-  _stopBackgroundActivityCheck(); // Clear any existing check
-
-  lastBackgroundMessageTime = Date.now();
-
-  backgroundActivityCheckTimerId = setInterval(() => {
-    _checkBackgroundActivity();
-  }, BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS);
-
-  console.log('[Manager] [HEALTH_CHECK] Background activity monitoring started', {
-    checkIntervalMs: BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS,
-    staleThresholdMs: BACKGROUND_STALE_WARNING_THRESHOLD_MS
-  });
+  // No-op - port removed
 }
 
 /**
- * Stop background activity monitoring
- * v1.6.3.7-v8 - FIX Issue #14: Cleanup timer
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _stopBackgroundActivityCheck() {
-  if (backgroundActivityCheckTimerId) {
-    clearInterval(backgroundActivityCheckTimerId);
-    backgroundActivityCheckTimerId = null;
-    console.log('[Manager] [HEALTH_CHECK] Background activity monitoring stopped');
-  }
+  // No-op - port removed
 }
 
-/**
- * Check if background is still active and responsive
- * v1.6.3.7-v8 - FIX Issue #14: Detect Firefox 30s termination
- * @private
- */
-async function _checkBackgroundActivity() {
-  const now = Date.now();
-  const timeSinceLastMessage = now - lastBackgroundMessageTime;
-
-  // Check if background might be stale (approaching Firefox 30s termination)
-  if (timeSinceLastMessage >= BACKGROUND_STALE_WARNING_THRESHOLD_MS) {
-    console.warn('[Manager] [WARNING] [BACKGROUND_POSSIBLY_DEAD]:', {
-      timeSinceLastMessageMs: timeSinceLastMessage,
-      thresholdMs: BACKGROUND_STALE_WARNING_THRESHOLD_MS,
-      lastMessageTime: new Date(lastBackgroundMessageTime).toISOString(),
-      timestamp: now
-    });
-  }
-
-  // If no messages for 10 seconds, send a ping to keep background alive
-  if (timeSinceLastMessage >= BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS) {
-    await _sendBackgroundHealthPing(timeSinceLastMessage);
-  }
-}
+// ==================== v1.6.3.8-v13 HEARTBEAT (REMOVED) ====================
+// v1.6.3.8-v13 - Port removed: Heartbeat no longer needed with stateless messaging
 
 /**
- * Send health ping to background and handle response
- * v1.6.3.7-v8 - FIX Issue #14: Extracted to reduce _checkBackgroundActivity depth
- * @private
- * @param {number} timeSinceLastMessage - Time since last background message
- */
-async function _sendBackgroundHealthPing(timeSinceLastMessage) {
-  console.log('[Manager] [HEALTH_CHECK] [PING_SENT]:', {
-    reason: 'no_messages_received',
-    timeSinceLastMessageMs: timeSinceLastMessage,
-    timestamp: Date.now()
-  });
-
-  try {
-    const healthy = await _probeBackgroundHealth();
-    _handleHealthPingResult(healthy, timeSinceLastMessage);
-  } catch (err) {
-    console.error('[Manager] [HEALTH_CHECK] [PING_FAILED]:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Handle the result of a background health ping
- * v1.6.3.7-v8 - FIX Issue #14: Extracted to reduce nesting depth
- * @private
- * @param {boolean} healthy - Whether background responded successfully
- * @param {number} timeSinceLastMessage - Time since last background message
- */
-function _handleHealthPingResult(healthy, timeSinceLastMessage) {
-  if (healthy) {
-    // Update last message time since background responded
-    lastBackgroundMessageTime = Date.now();
-    console.log('[Manager] [HEALTH_CHECK] [PING_SUCCESS]:', {
-      backgroundResponsive: true,
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  console.warn('[Manager] [HEALTH_CHECK] [BACKGROUND_UNRESPONSIVE]:', {
-    timeSinceLastMessageMs: timeSinceLastMessage,
-    connectionState,
-    timestamp: Date.now()
-  });
-
-  // If background is unresponsive and we're in CONNECTED state, transition to ZOMBIE
-  if (connectionState === CONNECTION_STATE.CONNECTED) {
-    _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'health-check-unresponsive');
-  }
-}
-
-// ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
-
-/**
- * Start heartbeat interval
- * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * Start heartbeat - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED: Heartbeat no longer needed
+ * @deprecated Port removed - using stateless messaging
  */
 function startHeartbeat() {
-  // Clear any existing interval
-  stopHeartbeat();
-
-  // v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
-  consecutiveKeepaliveFailures = 0;
-
-  // Send initial heartbeat immediately
-  sendHeartbeat();
-
-  // Start interval - v1.6.3.7-v9: Uses unified UNIFIED_KEEPALIVE_INTERVAL_MS (20s)
-  heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-  console.log(
-    '[Manager] v1.6.3.7-v9 Unified keepalive started (every',
-    HEARTBEAT_INTERVAL_MS / 1000,
-    's) - consolidated heartbeat + keepalive'
-  );
+  // No-op - port removed, using stateless runtime.sendMessage
+  console.log('[Manager] v1.6.3.8-v13 PORT_REMOVED: startHeartbeat is now no-op');
 }
 
 /**
- * Stop heartbeat interval
- * v1.6.3.6-v12 - FIX Issue #4: Cleanup on disconnect/unload
+ * Stop heartbeat - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED
+ * @deprecated Port removed
  */
 function stopHeartbeat() {
-  if (heartbeatIntervalId) {
-    clearInterval(heartbeatIntervalId);
-    heartbeatIntervalId = null;
-    console.log('[Manager] v1.6.3.7-v9 Unified keepalive stopped');
-  }
+  // No-op - port removed
 }
 
 /**
- * Generate keepalive correlation ID
- * v1.6.3.7-v9 - Issue #1: Unique ID per keepalive round for tracing
- * @private
- * @returns {string} Correlation ID
- */
-function _generateKeepaliveCorrelationId() {
-  keepaliveCorrelationCounter++;
-  return `ka-${Date.now()}-${keepaliveCorrelationCounter}`;
-}
-
-/**
- * Send heartbeat message to background (unified keepalive)
- * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
- * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
- * v1.6.3.7-v4 - FIX Issue #1: Enhanced logging to distinguish port vs background state
- * v1.6.3.7-v9 - Issue #1: Unified keepalive with correlation IDs and START/COMPLETE logs
- *
- * Three-tier communication architecture:
- * 1. BroadcastChannel (PRIMARY) - Instant cross-tab messaging
- * 2. Port messaging (SECONDARY) - Persistent connection to background
- * 3. storage.onChanged (TERTIARY) - Reliable fallback
+ * Send heartbeat - NO-OP in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED: Heartbeat no longer needed
+ * @deprecated Port removed
  */
 async function sendHeartbeat() {
-  // v1.6.3.7-v9 - Issue #1: Generate correlation ID for this keepalive round
-  currentKeepaliveCorrelationId = _generateKeepaliveCorrelationId();
-  currentKeepaliveStartTime = Date.now();
-
-  // v1.6.3.7-v9 - Issue #1: Log keepalive START with correlation ID
-  console.log('[Manager] [KEEPALIVE] START:', {
-    correlationId: currentKeepaliveCorrelationId,
-    portExists: backgroundPort !== null,
-    connectionState,
-    consecutiveFailures: consecutiveKeepaliveFailures,
-    timestamp: currentKeepaliveStartTime
-  });
-
-  // v1.6.3.7-v4 - FIX Issue #1: Log heartbeat attempt with port state
-  _logHeartbeatAttempt();
-
-  if (!backgroundPort) {
-    _handlePortDisconnected();
-    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (failed - no port)
-    _logKeepaliveComplete(false, 'port-disconnected');
-    return;
-  }
-
-  try {
-    // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
-    const response = await sendPortMessageWithTimeout(
-      {
-        type: 'HEARTBEAT',
-        timestamp: Date.now(),
-        source: 'sidebar',
-        correlationId: currentKeepaliveCorrelationId // v1.6.3.7-v9: Include correlation ID
-      },
-      HEARTBEAT_TIMEOUT_MS
-    );
-
-    _handleHeartbeatSuccess(response, currentKeepaliveStartTime);
-    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (success)
-    _logKeepaliveComplete(true, 'success');
-  } catch (err) {
-    _handleHeartbeatFailure(err);
-    // v1.6.3.7-v9 - Issue #1: Log keepalive COMPLETE (failed)
-    _logKeepaliveComplete(false, err.message);
-    // v1.6.3.7-v9 - Issue #1: Trigger immediate fallback on failure
-    _triggerKeepaliveFallback(err);
-  }
+  // No-op - port removed
 }
 
 /**
- * Log keepalive cycle completion
- * v1.6.3.7-v9 - Issue #1: COMPLETE log with correlation ID
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {boolean} success - Whether keepalive succeeded
- * @param {string} reason - Success/failure reason
  */
-function _logKeepaliveComplete(success, reason) {
-  const duration = Date.now() - currentKeepaliveStartTime;
-  console.log('[Manager] [KEEPALIVE] COMPLETE:', {
-    correlationId: currentKeepaliveCorrelationId,
-    success,
-    reason,
-    durationMs: duration,
-    consecutiveFailures: consecutiveKeepaliveFailures,
-    timestamp: Date.now()
-  });
+function _logKeepaliveComplete(_success, _reason) {
+  // No-op
 }
 
 /**
- * Trigger immediate fallback mechanism on keepalive failure
- * v1.6.3.7-v9 - Issue #1: Backpressure detection with immediate fallback
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Error} err - The error that caused failure
  */
-function _triggerKeepaliveFallback(err) {
-  consecutiveKeepaliveFailures++;
-
-  console.warn('[Manager] [KEEPALIVE] FALLBACK_TRIGGERED:', {
-    correlationId: currentKeepaliveCorrelationId,
-    error: err.message,
-    consecutiveFailures: consecutiveKeepaliveFailures,
-    threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE,
-    timestamp: Date.now()
-  });
-
-  // v1.6.3.7-v9 - Issue #1: Check if we should transition to ZOMBIE
-  if (consecutiveKeepaliveFailures >= KEEPALIVE_FAILURES_BEFORE_ZOMBIE) {
-    if (connectionState === CONNECTION_STATE.CONNECTED) {
-      console.warn(
-        '[Manager] [KEEPALIVE] ZOMBIE_TRANSITION: Consecutive failure threshold reached',
-        {
-          consecutiveFailures: consecutiveKeepaliveFailures,
-          threshold: KEEPALIVE_FAILURES_BEFORE_ZOMBIE
-        }
-      );
-      _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'keepalive-failure-threshold');
-    }
-  }
+function _triggerKeepaliveFallback(_err) {
+  // No-op
 }
 
 /**
- * Log heartbeat attempt details
- * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
- * v1.6.3.7-v5 - FIX Issue #1: Added connectionState to logging
- * v1.6.3.7-v9 - Issue #1: Added keepalive correlation ID
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _logHeartbeatAttempt() {
-  console.log('[Manager] HEARTBEAT_ATTEMPT:', {
-    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
-    portExists: backgroundPort !== null,
-    portConnected: backgroundPort ? 'yes' : 'no',
-    connectionState, // v1.6.3.7-v5 - FIX Issue #1: Explicit connection state
-    circuitBreakerState,
-    consecutiveFailures: consecutiveHeartbeatFailures,
-    consecutiveKeepaliveFailures, // v1.6.3.7-v9
-    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse
-  });
+  // No-op
 }
 
 /**
- * Handle case when port is disconnected
- * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
- * v1.6.3.7-v5 - FIX Issue #1: Update connection state
- * v1.6.3.7-v9 - Issue #1: Increment unified failure counter
- * v1.6.3.8-v4 - FIX Issue #4: Attempt Tier 3 fallback on port failure
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
  */
 function _handlePortDisconnected() {
-  console.warn('[Manager] HEARTBEAT_FAILED: port disconnected', {
-    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
-    status: 'PORT_DISCONNECTED',
-    connectionState,
-    circuitBreakerState,
-    reconnectAttempts,
-    diagnosis: 'Port object is null - connection was closed or never established'
-  });
-
-  // v1.6.3.7-v5 - FIX Issue #1: Update connection state
-  if (connectionState !== CONNECTION_STATE.DISCONNECTED) {
-    _transitionConnectionState(CONNECTION_STATE.DISCONNECTED, 'heartbeat-port-null');
-  }
-
-  consecutiveHeartbeatFailures++;
-  // v1.6.3.7-v9 - Issue #1: Also increment unified counter
-  consecutiveKeepaliveFailures++;
-
-  // v1.6.3.8-v4 - FIX Issue #4: Attempt Tier 3 fallback on port failure
-  _attemptTier3FallbackOnPortFailure().catch(err => {
-    console.warn('[Manager] TIER3_FALLBACK_ERROR:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-  });
-
-  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-    console.error('[Manager] v1.6.3.7-v9 Max heartbeat failures - triggering reconnect');
-    scheduleReconnect();
-  }
+  // No-op
 }
 
 /**
- * Handle successful heartbeat response
- * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
- * v1.6.3.7-v5 - FIX Issue #1: Update connection state on success
- * v1.6.3.7-v8 - FIX Issue #13: Reset timeout counter on success
- * v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Object} response - Response from background
- * @param {number} startTime - When heartbeat was started
  */
-function _handleHeartbeatSuccess(response, startTime) {
-  consecutiveHeartbeatFailures = 0;
-  // v1.6.3.7-v8 - FIX Issue #13: Reset timeout-specific counter on success
-  consecutiveHeartbeatTimeouts = 0;
-  // v1.6.3.7-v9 - Issue #1: Reset unified keepalive failure counter
-  consecutiveKeepaliveFailures = 0;
-  lastHeartbeatResponse = Date.now();
-
-  // v1.6.3.7-v5 - FIX Issue #1: Confirm we're in CONNECTED state (recovered from zombie)
-  if (connectionState !== CONNECTION_STATE.CONNECTED) {
-    _transitionConnectionState(CONNECTION_STATE.CONNECTED, 'heartbeat-success');
-  }
-
-  console.log('[Manager] [HEARTBEAT] SUCCESS:', {
-    correlationId: currentKeepaliveCorrelationId, // v1.6.3.7-v9
-    status: 'BACKGROUND_ALIVE',
-    connectionState,
-    roundTripMs: Date.now() - startTime,
-    backgroundAlive: response?.backgroundAlive ?? true,
-    isInitialized: response?.isInitialized,
-    circuitBreakerState,
-    consecutiveTimeouts: consecutiveHeartbeatTimeouts,
-    consecutiveKeepaliveFailures, // v1.6.3.7-v9
-    diagnosis: 'Background script is alive and responding'
-  });
+function _handleHeartbeatSuccess(_response, _startTime) {
+  // No-op
 }
 
 /**
- * Handle heartbeat failure
- * v1.6.3.7-v4 - FIX Issue #1: Extracted to reduce sendHeartbeat complexity
- * v1.6.3.7-v5 - FIX Issue #1: Immediately detect zombie state and switch to BroadcastChannel
- * v1.6.3.7-v8 - FIX Issue #13: Implement hysteresis - require 2-3 consecutive failures before ZOMBIE
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {Error} err - Error that occurred
  */
-function _handleHeartbeatFailure(err) {
-  consecutiveHeartbeatFailures++;
-
-  const isTimeout = err.message === 'Heartbeat timeout';
-  const isPortClosed = err.message.includes('disconnected') || err.message.includes('closed');
-
-  // v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
-  if (isTimeout) {
-    consecutiveHeartbeatTimeouts++;
-  } else {
-    // Non-timeout failures (like port closed) still count but reset timeout counter
-    consecutiveHeartbeatTimeouts = 0;
-  }
-
-  console.warn('[Manager] [HEARTBEAT] [FAILURE]:', {
-    status: isTimeout ? 'TIMEOUT' : isPortClosed ? 'PORT_CLOSED' : 'UNKNOWN_ERROR',
-    error: err.message,
-    count: consecutiveHeartbeatTimeouts,
-    maxBeforeZombie: HEARTBEAT_FAILURES_BEFORE_ZOMBIE,
-    totalFailures: consecutiveHeartbeatFailures,
-    maxTotalFailures: MAX_HEARTBEAT_FAILURES,
-    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-    connectionState,
-    circuitBreakerState,
-    diagnosis: _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed)
-  });
-
-  // v1.6.3.7-v8 - FIX Issue #13: Implement hysteresis - require consecutive failures before ZOMBIE
-  // Instead of immediately transitioning on first timeout, require 2-3 consecutive timeouts
-  if (isTimeout && connectionState === CONNECTION_STATE.CONNECTED) {
-    if (consecutiveHeartbeatTimeouts >= HEARTBEAT_FAILURES_BEFORE_ZOMBIE) {
-      console.warn(
-        '[Manager] [HEARTBEAT] [ZOMBIE_TRANSITION]: Consecutive timeout threshold reached',
-        {
-          consecutiveTimeouts: consecutiveHeartbeatTimeouts,
-          threshold: HEARTBEAT_FAILURES_BEFORE_ZOMBIE
-        }
-      );
-      _transitionConnectionState(CONNECTION_STATE.ZOMBIE, 'heartbeat-timeout-zombie');
-      // BroadcastChannel fallback is activated in _transitionConnectionState
-    } else {
-      console.log('[Manager] [HEARTBEAT] [TIMEOUT_WARNING]: Timeout detected but below threshold', {
-        consecutiveTimeouts: consecutiveHeartbeatTimeouts,
-        threshold: HEARTBEAT_FAILURES_BEFORE_ZOMBIE,
-        remainingBeforeZombie: HEARTBEAT_FAILURES_BEFORE_ZOMBIE - consecutiveHeartbeatTimeouts
-      });
-    }
-  }
-
-  _processHeartbeatFailureRecovery(isTimeout);
+function _handleHeartbeatFailure(_err) {
+  // No-op
 }
 
 /**
- * Get diagnosis message for heartbeat failure
- * v1.6.3.7-v4 - Extracted to reduce _handleHeartbeatFailure complexity
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {boolean} isTimeout - Whether failure was timeout
- * @param {boolean} isPortClosed - Whether port was closed
- * @returns {string} Diagnosis message
  */
-function _getHeartbeatFailureDiagnosis(isTimeout, isPortClosed) {
-  if (isTimeout)
-    return 'Port is open but background script is not responding (Firefox 30s termination?)';
-  if (isPortClosed) return 'Port was closed by background script';
-  return 'Unknown heartbeat failure';
+function _getHeartbeatFailureDiagnosis(_isTimeout, _isPortClosed) {
+  return 'Port removed';
 }
 
 /**
- * Process recovery actions after heartbeat failure
- * v1.6.3.7-v4 - Extracted to reduce _handleHeartbeatFailure complexity
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @param {boolean} isTimeout - Whether failure was timeout
  */
-function _processHeartbeatFailureRecovery(isTimeout) {
-  if (isTimeout) {
-    console.error(
-      '[Manager] v1.6.3.7 ZOMBIE_PORT_DETECTED: Port appears alive but background is dead'
-    );
-    backgroundPort = null;
-  }
-
-  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-    console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
-    backgroundPort = null;
-    stopHeartbeat();
-    scheduleReconnect();
-  }
+function _processHeartbeatFailureRecovery(_isTimeout) {
+  // No-op
 }
 
 /**
- * Send port message with timeout
- * v1.6.3.6-v12 - FIX Issue #4: Wrap port messages with timeout
- * @param {Object} message - Message to send
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<Object>} Response from background
- */
-// ==================== v1.6.3.7-v9 PORT MESSAGE SEQUENCING (Issue #9) ====================
-// Monotonic sequence counter for outgoing port messages
-
-/**
- * Monotonic sequence counter for outgoing port messages from Manager
- * v1.6.3.7-v9 - Issue #9: Detect message reordering
- */
-let _managerPortMessageSequence = 0;
-
-/**
- * Get next message sequence number for port messages
- * v1.6.3.7-v9 - Issue #9: Generate monotonically increasing sequence
+ * @deprecated v1.6.3.8-v13 - Port removed
  * @private
- * @returns {number} Next sequence number
  */
 function _getNextManagerPortMessageSequence() {
-  _managerPortMessageSequence++;
-  return _managerPortMessageSequence;
+  return 0;
 }
 
 /**
- * Send a message via port with timeout and correlation ID
- * v1.6.3.6-v12 - FIX Issue #4: Send messages with acknowledgment tracking
- * v1.6.3.7-v9 - Issue #9: Added message sequence number for ordering
- * v1.6.3.8-v4 - FIX Issue #2: Guard against sending during reconnection/registration
- * @param {Object} message - Message to send
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<Object>} Response from background
+ * Send port message with timeout - REPLACED in v1.6.3.8-v13
+ * v1.6.3.8-v13 - PORT REMOVED: Use sendToBackground instead
+ * @deprecated Use sendToBackground instead
  */
-async function sendPortMessageWithTimeout(message, timeoutMs) {
-  // v1.6.3.8-v4 - FIX Issue #2: Pre-flight checks before creating Promise
-  if (!backgroundPort) {
-    throw new Error('Port not connected');
-  }
-
-  // v1.6.3.8-v4 - FIX Issue #2: Wait for listener registration before sending
-  if (!listenerFullyRegistered && listenerReadyPromise) {
-    console.log('[Manager] [PORT] MESSAGE_AWAITING_REGISTRATION:', {
-      type: message.type,
-      timestamp: Date.now()
-    });
-
-    try {
-      // Wait for listener registration with a timeout
-      await Promise.race([
-        listenerReadyPromise,
-        new Promise((_, timeoutReject) =>
-          setTimeout(
-            () => timeoutReject(new Error('Listener registration timeout')),
-            LISTENER_REGISTRATION_TIMEOUT_MS
-          )
-        )
-      ]);
-    } catch (err) {
-      console.warn('[Manager] [PORT] MESSAGE_REGISTRATION_WAIT_FAILED:', {
-        type: message.type,
-        error: err.message,
-        timestamp: Date.now()
-      });
-      throw new Error('Listener registration timeout - message not sent');
-    }
-  }
-
-  // v1.6.3.8-v4 - FIX Issue #2: Double-check port is still connected after await
-  if (!backgroundPort) {
-    throw new Error('Port disconnected during registration wait');
-  }
-
-  // Now create the Promise for the actual message send/response
-  return new Promise((resolve, reject) => {
-    const correlationId = generateCorrelationId();
-    // v1.6.3.7-v9 - Issue #9: Add message sequence number
-    const messageSequence = _getNextManagerPortMessageSequence();
-    const messageWithCorrelation = {
-      ...message,
-      correlationId,
-      messageSequence // v1.6.3.7-v9
-    };
-
-    // Set up timeout
-    const timeout = setTimeout(() => {
-      pendingAcks.delete(correlationId);
-      reject(new Error('Heartbeat timeout'));
-    }, timeoutMs);
-
-    // Track pending ack
-    pendingAcks.set(correlationId, {
-      resolve,
-      reject,
-      timeout,
-      sentAt: Date.now(),
-      messageSequence // v1.6.3.7-v9: Track sequence for debugging
-    });
-
-    // Send message
-    try {
-      backgroundPort.postMessage(messageWithCorrelation);
-
-      // v1.6.3.7-v9 - Issue #9: Log sequence for debugging
-      if (DEBUG_MESSAGING) {
-        console.log('[Manager] [PORT] MESSAGE_SENT:', {
-          type: message.type,
-          correlationId,
-          messageSequence,
-          timestamp: Date.now()
-        });
-      }
-    } catch (err) {
-      clearTimeout(timeout);
-      pendingAcks.delete(correlationId);
-      reject(err);
-    }
-  });
+async function sendPortMessageWithTimeout(message, _timeoutMs) {
+  // v1.6.3.8-v13 - Delegate to stateless sendToBackground
+  return sendToBackground(message);
 }
 
-// ==================== END HEARTBEAT FUNCTIONS ====================
-
-// ==================== v1.6.4.0 STATE SYNC & UNIFIED RENDER ====================
-// FIX Issue E: State sync on port reconnection
-// FIX Issue B: Unified render entry point
-// FIX Issue D: Hash-based state staleness detection
-
-/**
- * State hash captured when debounce timer was set
- * v1.6.4.0 - FIX Issue D: Detect state staleness during debounce
- */
-let capturedStateHashAtDebounce = 0;
-
-/**
- * Timestamp when debounce was set
- * v1.6.4.0 - FIX Issue D: Track debounce timing
- */
-let debounceSetTimestamp = 0;
+// ==================== v1.6.3.8-v13 STATE SYNC (SIMPLIFIED) ====================
+// v1.6.3.8-v13 - Port removed: State sync uses runtime.sendMessage
 
 /**
  * State sync timeout (5 seconds)
@@ -3029,98 +2104,46 @@ let debounceSetTimestamp = 0;
 const STATE_SYNC_TIMEOUT_MS = 5000;
 
 /**
- * Request full state sync from background after port reconnection
- * v1.6.4.0 - FIX Issue E: Ensure Manager has latest state after reconnection
- * v1.6.3.7-v6 - Gap #3 & Gap #4: Enhanced logging for state sync request/response/timeout
+ * Request full state sync from background
+ * v1.6.3.8-v13 - PORT REMOVED: Uses runtime.sendMessage instead of port
  * @private
  */
 async function _requestFullStateSync() {
-  if (!backgroundPort) {
-    console.warn('[Manager] Cannot request state sync - port not connected');
-    return;
-  }
-
   const syncRequestTime = Date.now();
-  _logStateSyncStart(syncRequestTime);
-
-  try {
-    const request = _buildStateSyncRequest(syncRequestTime);
-    const response = await sendPortMessageWithTimeout(request, STATE_SYNC_TIMEOUT_MS);
-
-    _processStateSyncResponse(response, syncRequestTime);
-  } catch (err) {
-    _logStateSyncTimeout(err);
-  }
-}
-
-/**
- * Log state sync request start
- * v1.6.4.17 - Extracted to reduce _requestFullStateSync CC
- * @private
- */
-function _logStateSyncStart(syncRequestTime) {
   console.log('[Manager] STATE_SYNC_REQUESTED:', {
     timestamp: syncRequestTime,
     timeoutMs: STATE_SYNC_TIMEOUT_MS,
     currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
   });
-}
 
-/**
- * Build state sync request message
- * v1.6.4.17 - Extracted to reduce _requestFullStateSync CC
- * @private
- */
-function _buildStateSyncRequest(syncRequestTime) {
-  return {
-    type: 'REQUEST_FULL_STATE_SYNC',
-    timestamp: syncRequestTime,
-    source: 'sidebar',
-    currentCacheHash: computeStateHash(quickTabsState),
-    currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
-  };
-}
+  try {
+    const request = {
+      type: 'REQUEST_FULL_STATE_SYNC',
+      timestamp: syncRequestTime,
+      source: 'sidebar',
+      currentCacheHash: computeStateHash(quickTabsState),
+      currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
+    };
 
-/**
- * Process state sync response
- * v1.6.4.17 - Extracted to reduce _requestFullStateSync CC
- * @private
- */
-function _processStateSyncResponse(response, syncRequestTime) {
-  if (response?.success && response?.state) {
-    _logStateSyncSuccess(response, syncRequestTime);
-    _handleStateSyncResponse(response);
-  } else {
-    console.warn('[Manager] State sync response did not include state:', response);
+    const response = await sendToBackground(request);
+
+    if (response?.success && response?.state) {
+      console.log('[Manager] STATE_SYNC_RESPONSE_RECEIVED:', {
+        timestamp: Date.now(),
+        roundTripMs: Date.now() - syncRequestTime,
+        serverTabCount: response.state?.tabs?.length ?? 0
+      });
+      _handleStateSyncResponse(response);
+    } else {
+      console.warn('[Manager] State sync response did not include state:', response);
+    }
+  } catch (err) {
+    console.warn('[Manager] STATE_SYNC_TIMEOUT:', {
+      error: err.message,
+      elapsedMs: Date.now() - syncRequestTime,
+      timestamp: Date.now()
+    });
   }
-}
-
-/**
- * Log successful state sync response
- * v1.6.4.17 - Extracted helper
- * @private
- */
-function _logStateSyncSuccess(response, syncRequestTime) {
-  const responseTime = Date.now();
-  console.log('[Manager] STATE_SYNC_RESPONSE_RECEIVED:', {
-    timestamp: responseTime,
-    roundTripMs: responseTime - syncRequestTime,
-    serverTabCount: response.state?.tabs?.length ?? 0
-  });
-}
-
-/**
- * Log state sync timeout
- * v1.6.4.17 - Extracted helper
- * @private
- */
-function _logStateSyncTimeout(err) {
-  console.warn('[Manager] STATE_SYNC_TIMEOUT:', {
-    timestamp: Date.now(),
-    timeoutMs: STATE_SYNC_TIMEOUT_MS,
-    error: err.message,
-    message: `State sync did not complete within ${STATE_SYNC_TIMEOUT_MS}ms`
-  });
 }
 
 /**
@@ -3922,71 +2945,83 @@ function handleStateUpdateBroadcast(message) {
 }
 
 /**
+ * Send message to background using stateless runtime.sendMessage
+ * v1.6.3.8-v13 - PORT REMOVED: Replaces port-based sendWithAck
+ * @param {Object} message - Message to send
+ * @returns {Promise<Object>} Response from background
+ */
+async function sendToBackground(message) {
+  const correlationId = generateCorrelationId();
+  const messageWithCorrelation = {
+    ...message,
+    correlationId,
+    timestamp: Date.now(),
+    source: 'sidebar'
+  };
+
+  try {
+    console.log('[Manager] RUNTIME_MESSAGE_SEND:', {
+      type: message.type,
+      action: message.action,
+      correlationId,
+      timestamp: Date.now()
+    });
+
+    const response = await Promise.race([
+      browser.runtime.sendMessage(messageWithCorrelation),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Message timeout')), MESSAGE_TIMEOUT_MS)
+      )
+    ]);
+
+    console.log('[Manager] RUNTIME_MESSAGE_RESPONSE:', {
+      correlationId,
+      success: response?.success,
+      hasResponse: !!response,
+      timestamp: Date.now()
+    });
+
+    return response || { success: true, correlationId };
+  } catch (err) {
+    console.warn('[Manager] RUNTIME_MESSAGE_FAILED:', {
+      correlationId,
+      error: err.message,
+      timestamp: Date.now()
+    });
+
+    // Fallback: trigger re-render anyway on timeout
+    // v1.6.3.8-v13 - Robust timeout detection (includes our timeout and network timeouts)
+    const isTimeout = err.message?.includes('timeout') || err.message?.includes('Timeout');
+    if (isTimeout) {
+      scheduleRender('message-timeout-fallback');
+      return { success: true, timedOut: true, correlationId };
+    }
+
+    return { success: false, error: err.message, correlationId };
+  }
+}
+
+/**
  * Send message via port with acknowledgment tracking
- * v1.6.3.6-v11 - FIX Issue #10: Request-acknowledgment pattern
+ * v1.6.3.8-v13 - PORT REMOVED: Now delegates to sendToBackground
+ * @deprecated Use sendToBackground instead
  * @param {Object} message - Message to send
  * @returns {Promise<Object>} Acknowledgment response
  */
 function sendWithAck(message) {
-  return new Promise((resolve, reject) => {
-    if (!backgroundPort) {
-      reject(new Error('No port connection'));
-      return;
-    }
-
-    const correlationId = generateCorrelationId();
-    const messageWithCorrelation = {
-      ...message,
-      correlationId,
-      timestamp: Date.now()
-    };
-
-    // Set up timeout fallback
-    const timeout = setTimeout(() => {
-      pendingAcks.delete(correlationId);
-      console.warn('[Manager] Acknowledgment timeout for:', correlationId);
-
-      // Fallback: trigger re-render anyway
-      renderUI();
-
-      // Resolve with timeout indicator
-      resolve({ success: true, timedOut: true, correlationId });
-    }, ACK_TIMEOUT_MS);
-
-    // Store pending ack
-    pendingAcks.set(correlationId, {
-      resolve,
-      reject,
-      timeout,
-      sentAt: Date.now()
-    });
-
-    // Send message
-    try {
-      backgroundPort.postMessage(messageWithCorrelation);
-      console.log('[Manager] Sent message with ack request:', {
-        type: message.type,
-        action: message.action,
-        correlationId
-      });
-    } catch (err) {
-      clearTimeout(timeout);
-      pendingAcks.delete(correlationId);
-      reject(err);
-    }
-  });
+  // v1.6.3.8-v13 - Delegate to stateless sendToBackground
+  return sendToBackground(message);
 }
 
 /**
- * Send ACTION_REQUEST via port
- * v1.6.3.6-v11 - FIX Issue #15: Typed messages
- * Note: Prefixed with _ as it's prepared for future use but not yet integrated
+ * Send ACTION_REQUEST to background
+ * v1.6.3.8-v13 - PORT REMOVED: Uses stateless runtime.sendMessage
  * @param {string} action - Action name
  * @param {Object} payload - Action payload
  * @returns {Promise<Object>} Response
  */
 function _sendActionRequest(action, payload) {
-  return sendWithAck({
+  return sendToBackground({
     type: 'ACTION_REQUEST',
     action,
     payload,
@@ -3994,13 +3029,17 @@ function _sendActionRequest(action, payload) {
   });
 }
 
-// ==================== END PORT CONNECTION ====================
+// ==================== END PORT CONNECTION (v1.6.3.8-v13: PORT REMOVED) ====================
+// v1.6.3.8-v13 - Port-based messaging completely removed
+// All communication now uses:
+// - storage.onChanged for state updates (PRIMARY)
+// - runtime.sendMessage for request/response patterns (SECONDARY)
 
 // ==================== v1.6.3.8-v5 BROADCAST CHANNEL REMOVED ====================
 // ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// The new architecture uses:
-// - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
-// - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
+// v1.6.3.8-v13 - Port also removed. The new architecture uses:
+// - Layer 1: storage.onChanged for real-time state sync (PRIMARY)
+// - Layer 2: runtime.sendMessage for request/response patterns
 //
 // BroadcastChannel was removed because:
 // 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
@@ -6012,42 +5051,31 @@ async function _initializeManager() {
 }
 
 /**
- * Hydrate state from background via port BEFORE rendering
- * v1.6.3.8-v4 - FIX Issue #6: Query background for authoritative state
+ * Hydrate state from background
+ * v1.6.3.8-v13 - PORT REMOVED: Uses runtime.sendMessage instead of port
  * @private
  */
 async function _hydrateStateFromBackground() {
   const hydrationStart = Date.now();
 
-  console.log('[Manager] STATE_HYDRATION: source=port, starting', {
+  console.log('[Manager] STATE_HYDRATION: starting', {
     timestamp: hydrationStart,
-    portConnected: backgroundPort !== null,
     connectionState
   });
 
-  if (!backgroundPort) {
-    console.warn('[Manager] STATE_HYDRATION: port not connected, will use storage fallback', {
-      elapsed: Date.now() - hydrationStart
-    });
-    return;
-  }
-
   try {
-    // Request full state from background with timeout
-    const response = await sendPortMessageWithTimeout(
-      {
-        type: 'REQUEST_FULL_STATE_SYNC',
-        timestamp: hydrationStart,
-        source: 'sidebar-hydration',
-        isInitialHydration: true
-      },
-      STATE_SYNC_TIMEOUT_MS
-    );
+    // v1.6.3.8-v13 - Use stateless runtime.sendMessage
+    const response = await sendToBackground({
+      type: 'REQUEST_FULL_STATE_SYNC',
+      timestamp: hydrationStart,
+      source: 'sidebar-hydration',
+      isInitialHydration: true
+    });
 
     if (response?.success && response?.state) {
       const tabCount = response.state?.tabs?.length ?? 0;
 
-      console.log('[Manager] STATE_HYDRATION: source=port, success', {
+      console.log('[Manager] STATE_HYDRATION: success', {
         tabCount,
         elapsed: Date.now() - hydrationStart + 'ms',
         saveId: response.state?.saveId,
@@ -6060,17 +5088,17 @@ async function _hydrateStateFromBackground() {
       lastKnownGoodTabCount = tabCount;
       lastLocalUpdateTime = Date.now();
 
-      // Mark initial state load complete since we got state from port
+      // Mark initial state load complete since we got state
       initialStateLoadComplete = true;
     } else {
-      console.warn('[Manager] STATE_HYDRATION: port response invalid, will use storage fallback', {
+      console.warn('[Manager] STATE_HYDRATION: response invalid, will use storage', {
         hasResponse: !!response,
         hasState: !!response?.state,
         elapsed: Date.now() - hydrationStart
       });
     }
   } catch (err) {
-    console.warn('[Manager] STATE_HYDRATION: port request failed, will use storage fallback', {
+    console.warn('[Manager] STATE_HYDRATION: request failed, will use storage', {
       error: err.message,
       elapsed: Date.now() - hydrationStart
     });
@@ -6124,20 +5152,22 @@ async function _initializeCurrentTabId() {
 }
 
 /**
- * Initialize port and broadcast channel connections
+ * Initialize connections
  * v1.6.4.17 - Extracted from DOMContentLoaded
- * v1.6.3.8-v3 - FIX Issue #1: Port is Tier 1 (PRIMARY), BC is Tier 2 (tab-to-tab only)
+ * v1.6.3.8-v13 - PORT REMOVED: Now just initializes storage.onChanged listener
  * @private
  */
 function _initializeConnections() {
-  // v1.6.3.8-v3 - FIX Issue #1: Port-based messaging is PRIMARY for sidebar
-  // Must be initialized first as it's the authoritative communication channel
-  console.log('[Manager] [PORT] Initializing Tier 1 (PRIMARY): Port-based messaging');
+  // v1.6.3.8-v13 - PORT REMOVED: No port connection needed
+  // storage.onChanged is PRIMARY, runtime.sendMessage is SECONDARY
+  console.log('[Manager] v1.6.3.8-v13 Initializing stateless messaging:');
+  console.log('[Manager]   - PRIMARY: storage.onChanged for state sync');
+  console.log('[Manager]   - SECONDARY: runtime.sendMessage for request/response');
+
+  // v1.6.3.8-v13 - connectToBackground is now a no-op
   connectToBackground();
 
-  // v1.6.3.8-v3 - FIX Issue #1: BroadcastChannel is SECONDARY (tab-to-tab only)
-  // NOT reliable for sidebar↔background due to Firefox isolation
-  console.log('[Manager] [BC] Initializing Tier 2 (SECONDARY): BroadcastChannel (tab-to-tab)');
+  // v1.6.3.8-v3 - FIX Issue #1: BroadcastChannel is NO-OP (removed)
   initializeBroadcastChannel();
 }
 
@@ -6425,6 +5455,7 @@ function _markInitializationComplete() {
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
+// v1.6.3.8-v13 - PORT REMOVED: Simplified unload handler
 // v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
 // v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
 // v1.6.3.7-v13 - Issue #12: Also stop fallback health monitoring
@@ -6434,7 +5465,7 @@ window.addEventListener('unload', () => {
   // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
   cleanupBroadcastChannel();
 
-  // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
+  // v1.6.3.8-v13 - PORT REMOVED: stopHeartbeat is now no-op
   stopHeartbeat();
 
   // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
@@ -6461,17 +5492,8 @@ window.addEventListener('unload', () => {
     timestamp: Date.now()
   });
 
-  if (backgroundPort) {
-    logPortLifecycle('unload', { reason: 'window-unload' });
-    backgroundPort.disconnect();
-    backgroundPort = null;
-  }
-
-  // Clear pending acks
-  for (const [_correlationId, pending] of pendingAcks.entries()) {
-    clearTimeout(pending.timeout);
-  }
-  pendingAcks.clear();
+  // v1.6.3.8-v13 - PORT REMOVED: No port to disconnect
+  console.log('[Manager] v1.6.3.8-v13 UNLOAD: Port removed, no disconnect needed');
 });
 
 /**
@@ -6994,12 +6016,121 @@ function updateUIStats(totalTabs, latestTimestamp) {
 }
 
 /**
- * Render the Quick Tabs Manager UI (debounced)
+ * Render the Quick Tabs Manager UI (debounced with serial queue)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
  * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
+ * v1.6.3.8-v12 - FIX Issue #9: Serial render queue to prevent race conditions
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
+  // v1.6.3.8-v12 - FIX Issue #9: Use render queue with debouncing
+  _enqueueRender('renderUI');
+}
+
+/**
+ * Enqueue a render request with debouncing
+ * v1.6.3.8-v12 - FIX Issue #9: Buffer rapid changes before re-rendering
+ * @private
+ * @param {string} source - Source of the render request
+ */
+function _enqueueRender(source) {
+  const timestamp = Date.now();
+
+  // Add to queue (with size limit)
+  if (_renderQueue.length < RENDER_QUEUE_MAX_SIZE) {
+    _renderQueue.push({ source, timestamp });
+  } else {
+    console.warn('[Manager] RENDER_QUEUE_FULL: Dropping render request', {
+      source,
+      queueSize: _renderQueue.length,
+      maxSize: RENDER_QUEUE_MAX_SIZE
+    });
+  }
+
+  // Clear existing debounce timer
+  if (_renderQueueDebounceTimer) {
+    clearTimeout(_renderQueueDebounceTimer);
+  }
+
+  // Debounce: wait for more changes before processing
+  _renderQueueDebounceTimer = setTimeout(() => {
+    _renderQueueDebounceTimer = null;
+    _processRenderQueue();
+  }, RENDER_QUEUE_DEBOUNCE_MS);
+
+  console.log('[Manager] RENDER_ENQUEUED:', {
+    source,
+    queueSize: _renderQueue.length,
+    renderInProgress: _renderInProgress,
+    timestamp
+  });
+}
+
+/**
+ * Process the render queue serially
+ * v1.6.3.8-v12 - FIX Issue #9: Ensure renders complete serially
+ * @private
+ */
+async function _processRenderQueue() {
+  // If already rendering, wait - the current render will process remaining queue
+  if (_renderInProgress) {
+    console.log('[Manager] RENDER_QUEUE_WAITING: Render already in progress', {
+      queueSize: _renderQueue.length
+    });
+    return;
+  }
+
+  // If queue is empty, nothing to do
+  if (_renderQueue.length === 0) {
+    console.log('[Manager] RENDER_QUEUE_EMPTY: Nothing to render');
+    return;
+  }
+
+  // Coalesce all queued renders into one
+  const coalescedSources = _renderQueue.map(r => r.source);
+  const queueStartTime = _renderQueue[0]?.timestamp || Date.now();
+  _renderQueue.length = 0; // Clear queue
+
+  console.log('[Manager] RENDER_QUEUE_PROCESSING:', {
+    coalescedCount: coalescedSources.length,
+    sources: coalescedSources.slice(0, 5), // Log first 5 sources
+    queueDelayMs: Date.now() - queueStartTime
+  });
+
+  // Execute the render
+  _renderInProgress = true;
+  _startRenderStallTimer();
+
+  try {
+    await _executeQueuedRender();
+  } catch (err) {
+    console.error('[Manager] RENDER_QUEUE_ERROR:', {
+      error: err.message,
+      stack: err.stack
+    });
+  } finally {
+    _renderInProgress = false;
+    _clearRenderStallTimer();
+
+    // Check if more renders were queued during this render
+    if (_renderQueue.length > 0) {
+      console.log('[Manager] RENDER_QUEUE_CONTINUE: More renders queued during execution', {
+        pendingCount: _renderQueue.length
+      });
+      // Use setTimeout to avoid stack overflow from deep recursion
+      setTimeout(() => _processRenderQueue(), 0);
+    }
+  }
+}
+
+/**
+ * Execute a single queued render with checksum validation
+ * v1.6.3.8-v12 - FIX Issue #9: Checksum before/after render
+ * @private
+ */
+async function _executeQueuedRender() {
+  const renderStartTime = Date.now();
+
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
 
@@ -7007,52 +6138,293 @@ function renderUI() {
   capturedStateHashAtDebounce = computeStateHash(quickTabsState);
   debounceSetTimestamp = Date.now();
 
-  // Clear any existing debounce timer
-  if (renderDebounceTimer) {
-    clearTimeout(renderDebounceTimer);
+  // v1.6.3.8-v12 - FIX Issue #9: Capture pre-render checksum for validation
+  _preRenderStateHash = capturedStateHashAtDebounce;
+  const preRenderTabCount = quickTabsState?.tabs?.length ?? 0;
+  const preRenderTabIds = new Set((quickTabsState?.tabs || []).map(t => t.id));
+
+  console.log('[Manager] RENDER_CHECKSUM_PRE:', {
+    hash: _preRenderStateHash,
+    tabCount: preRenderTabCount,
+    timestamp: renderStartTime
+  });
+
+  // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
+  const staleCheckResult = await _checkAndReloadStaleState();
+  if (staleCheckResult.stateReloaded) {
+    console.log(
+      '[Manager] State changed while debounce was waiting, rendering with fresh state',
+      staleCheckResult
+    );
   }
 
-  // Schedule the actual render
-  renderDebounceTimer = setTimeout(async () => {
-    renderDebounceTimer = null;
-
-    // Only render if still pending (wasn't cancelled)
-    if (!pendingRenderUI) {
-      console.log('[Manager] Skipping debounced render - no longer pending');
-      return;
-    }
-
-    pendingRenderUI = false;
-
-    // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
-    const staleCheckResult = await _checkAndReloadStaleState();
-    if (staleCheckResult.stateReloaded) {
-      console.log(
-        '[Manager] State changed while debounce was waiting, rendering with fresh state',
-        staleCheckResult
-      );
-    }
-
-    // Recalculate hash after potential fresh load
-    const finalHash = computeStateHash(quickTabsState);
-    if (finalHash === lastRenderedHash) {
-      console.log('[Manager] Skipping render - state hash unchanged', {
-        hash: finalHash,
-        tabCount: quickTabsState?.tabs?.length ?? 0
-      });
-      return;
-    }
-
-    // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
-    // This ensures consistent state even on render failure
-    lastRenderedHash = finalHash;
-    lastRenderedStateHash = finalHash;
-
-    // Synchronize DOM mutation with requestAnimationFrame
-    requestAnimationFrame(() => {
-      _renderUIImmediate();
+  // Recalculate hash after potential fresh load
+  const finalHash = computeStateHash(quickTabsState);
+  if (finalHash === lastRenderedHash) {
+    console.log('[Manager] Skipping render - state hash unchanged', {
+      hash: finalHash,
+      tabCount: quickTabsState?.tabs?.length ?? 0
     });
-  }, RENDER_DEBOUNCE_MS);
+    pendingRenderUI = false;
+    return;
+  }
+
+  // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
+  lastRenderedHash = finalHash;
+  lastRenderedStateHash = finalHash;
+
+  pendingRenderUI = false;
+
+  // Synchronize DOM mutation with requestAnimationFrame
+  await new Promise(resolve => {
+    requestAnimationFrame(async () => {
+      await _renderUIImmediate();
+      resolve();
+    });
+  });
+
+  // v1.6.3.8-v12 - FIX Issue #9: Post-render checksum validation
+  const postRenderHash = computeStateHash(quickTabsState);
+  const postRenderTabCount = quickTabsState?.tabs?.length ?? 0;
+  const postRenderTabIds = new Set((quickTabsState?.tabs || []).map(t => t.id));
+
+  console.log('[Manager] RENDER_CHECKSUM_POST:', {
+    preHash: _preRenderStateHash,
+    postHash: postRenderHash,
+    hashMatch: _preRenderStateHash === postRenderHash,
+    preTabCount: preRenderTabCount,
+    postTabCount: postRenderTabCount,
+    durationMs: Date.now() - renderStartTime
+  });
+
+  // v1.6.3.8-v12 - FIX Issue #9: Detect potential corruption
+  _validateRenderIntegrity({
+    preRenderHash: _preRenderStateHash,
+    postRenderHash,
+    preRenderTabCount,
+    postRenderTabCount,
+    preRenderTabIds,
+    postRenderTabIds,
+    renderStartTime
+  });
+}
+
+/**
+ * Validate render integrity and trigger recovery if corruption detected
+ * v1.6.3.8-v12 - FIX Issue #9: Detect and recover from render corruption
+ * @private
+ * @param {Object} context - Validation context
+ */
+function _validateRenderIntegrity(context) {
+  const {
+    preRenderHash,
+    postRenderHash,
+    preRenderTabCount,
+    postRenderTabCount,
+    preRenderTabIds,
+    postRenderTabIds,
+    renderStartTime
+  } = context;
+
+  // Check for unexpected state changes during render
+  const hashChanged = preRenderHash !== postRenderHash;
+  const tabCountChanged = preRenderTabCount !== postRenderTabCount;
+
+  // Calculate missing tabs (tabs that existed before but not after)
+  const missingTabs = [...preRenderTabIds].filter(id => !postRenderTabIds.has(id));
+  const newTabs = [...postRenderTabIds].filter(id => !preRenderTabIds.has(id));
+
+  // v1.6.3.8-v12 - FIX: Extract corruption checks into helper functions
+  const hasTabsDisappeared = missingTabs.length > 0;
+  const hasNoNewTabs = newTabs.length === 0;
+  const hasCountDecreased = postRenderTabCount < preRenderTabCount;
+
+  // Corruption = tabs disappeared unexpectedly without any new tabs added
+  const possibleCorruption = _detectTabCorruption({
+    hasTabsDisappeared,
+    hasNoNewTabs,
+    tabCountChanged,
+    hasCountDecreased
+  });
+
+  if (possibleCorruption) {
+    _handlePossibleCorruption({
+      preRenderHash,
+      postRenderHash,
+      preRenderTabCount,
+      postRenderTabCount,
+      missingTabs,
+      renderStartTime
+    });
+  } else if (hashChanged) {
+    _handleStateDrift({
+      preRenderHash,
+      postRenderHash,
+      preRenderTabCount,
+      postRenderTabCount,
+      newTabs
+    });
+  }
+}
+
+/**
+ * Detect tab corruption based on state changes
+ * v1.6.3.8-v12 - FIX Issue #9: Extracted for testability and readability
+ * @private
+ * @param {Object} context - Context object with corruption indicators
+ * @param {boolean} context.hasTabsDisappeared - True if tabs existed before but not after
+ * @param {boolean} context.hasNoNewTabs - True if no new tabs were added
+ * @param {boolean} context.tabCountChanged - True if tab count changed
+ * @param {boolean} context.hasCountDecreased - True if tab count decreased
+ * @returns {boolean} True if corruption is detected
+ */
+function _detectTabCorruption(context) {
+  const { hasTabsDisappeared, hasNoNewTabs, tabCountChanged, hasCountDecreased } = context;
+  // Corruption = tabs disappeared unexpectedly without any new tabs added
+  return hasTabsDisappeared && hasNoNewTabs && tabCountChanged && hasCountDecreased;
+}
+
+/**
+ * Handle possible corruption detection
+ * v1.6.3.8-v12 - FIX Issue #9: Extracted for clarity and testability
+ * @private
+ * @param {Object} context - Corruption context
+ */
+function _handlePossibleCorruption(context) {
+  console.error('[Manager] RENDER_CORRUPTION_DETECTED:', {
+    preHash: context.preRenderHash,
+    postHash: context.postRenderHash,
+    preTabCount: context.preRenderTabCount,
+    postTabCount: context.postRenderTabCount,
+    missingTabs: context.missingTabs,
+    renderDurationMs: Date.now() - context.renderStartTime,
+    recoveryAttempts: _renderCorruptionRecoveryAttempts
+  });
+
+  _triggerRenderCorruptionRecovery();
+}
+
+/**
+ * Handle state drift (non-corruption state changes)
+ * v1.6.3.8-v12 - FIX Issue #9: Extracted for clarity and testability
+ * @private
+ * @param {Object} context - Drift context
+ */
+function _handleStateDrift(context) {
+  console.log('[Manager] RENDER_STATE_DRIFT:', {
+    reason: 'State changed during render (normal)',
+    preHash: context.preRenderHash,
+    postHash: context.postRenderHash,
+    tabCountDelta: context.postRenderTabCount - context.preRenderTabCount,
+    newTabsAdded: context.newTabs.length
+  });
+}
+
+/**
+ * Trigger recovery from render corruption
+ * v1.6.3.8-v12 - FIX Issue #9: Request full state refresh on corruption
+ * @private
+ */
+function _triggerRenderCorruptionRecovery() {
+  // Limit recovery attempts to prevent infinite loops
+  if (_renderCorruptionRecoveryAttempts >= MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS) {
+    console.error('[Manager] RENDER_RECOVERY_EXHAUSTED: Max recovery attempts reached', {
+      attempts: _renderCorruptionRecoveryAttempts,
+      max: MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS
+    });
+    _renderCorruptionRecoveryAttempts = 0; // Reset for future
+    return;
+  }
+
+  _renderCorruptionRecoveryAttempts++;
+
+  console.log('[Manager] RENDER_RECOVERY_TRIGGERED:', {
+    attempt: _renderCorruptionRecoveryAttempts,
+    max: MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS,
+    action: 'requesting_full_state_refresh'
+  });
+
+  // Request full state refresh from storage
+  _requestFullStateRefresh();
+}
+
+/**
+ * Request full state refresh from storage
+ * v1.6.3.8-v12 - FIX Issue #9: Recovery mechanism
+ * @private
+ */
+async function _requestFullStateRefresh() {
+  try {
+    console.log('[Manager] FULL_STATE_REFRESH: Reading fresh state from storage');
+
+    const result = await browser.storage.local.get(STATE_KEY);
+    const freshState = result?.[STATE_KEY];
+
+    if (freshState?.tabs) {
+      // Update local state with fresh data
+      quickTabsState = freshState;
+      _updateInMemoryCache(freshState.tabs);
+      lastLocalUpdateTime = Date.now();
+
+      console.log('[Manager] FULL_STATE_REFRESH_SUCCESS:', {
+        tabCount: freshState.tabs.length,
+        saveId: freshState.saveId,
+        timestamp: Date.now()
+      });
+
+      // v1.6.3.8-v12 - FIX: Use force render to bypass queue for recovery
+      // Using scheduleRender could re-trigger the same corruption, so bypass queue
+      setTimeout(() => {
+        _renderCorruptionRecoveryAttempts = 0; // Reset on successful refresh
+        _renderUIImmediate_force();
+      }, RENDER_RECOVERY_DELAY_MS);
+    } else {
+      console.warn('[Manager] FULL_STATE_REFRESH: No valid state in storage');
+    }
+  } catch (err) {
+    console.error('[Manager] FULL_STATE_REFRESH_FAILED:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Start the render stall detection timer
+ * v1.6.3.8-v12 - FIX Issue #9: Detect stalled renders
+ * @private
+ */
+function _startRenderStallTimer() {
+  _clearRenderStallTimer();
+
+  _renderStallTimerId = setTimeout(() => {
+    console.error('[Manager] RENDER_STALL_DETECTED: Render took too long', {
+      timeoutMs: RENDER_STALL_TIMEOUT_MS,
+      renderInProgress: _renderInProgress
+    });
+
+    // Force reset the render state
+    _renderInProgress = false;
+    _renderStallTimerId = null;
+
+    // Process any pending renders
+    if (_renderQueue.length > 0) {
+      console.log('[Manager] RENDER_STALL_RECOVERY: Processing pending queue');
+      setTimeout(() => _processRenderQueue(), 0);
+    }
+  }, RENDER_STALL_TIMEOUT_MS);
+}
+
+/**
+ * Clear the render stall detection timer
+ * v1.6.3.8-v12 - FIX Issue #9: Cleanup stall timer
+ * @private
+ */
+function _clearRenderStallTimer() {
+  if (_renderStallTimerId) {
+    clearTimeout(_renderStallTimerId);
+    _renderStallTimerId = null;
+  }
 }
 
 /**
@@ -7105,15 +6477,28 @@ async function _loadFreshStateFromStorage() {
 }
 
 /**
- * Force immediate render (bypasses debounce)
+ * Force immediate render (bypasses debounce and queue)
  * v1.6.3.7 - FIX Issue #3: Use for critical updates that can't wait
+ * v1.6.3.8-v12 - FIX Issue #9: Also clears render queue
  */
 function _renderUIImmediate_force() {
   pendingRenderUI = false;
+
+  // v1.6.3.8-v12 - FIX Issue #9: Clear queue-related state
+  if (_renderQueueDebounceTimer) {
+    clearTimeout(_renderQueueDebounceTimer);
+    _renderQueueDebounceTimer = null;
+  }
+  _renderQueue.length = 0; // Clear pending renders
+  _renderInProgress = false; // Allow immediate render
+  _clearRenderStallTimer();
+
+  // Legacy debounce timer cleanup (kept for compatibility)
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
     renderDebounceTimer = null;
   }
+
   requestAnimationFrame(() => {
     _renderUIImmediate();
   });

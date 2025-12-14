@@ -59,28 +59,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v9 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.8-v12 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
+**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
 
-- **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
-- **Event listener cleanup** - `cleanupStateListeners()` method
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+- **FIX Issue #15** - Promise chaining: catch blocks properly reject
+- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
 
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, port message queue, explicit tab ID barrier.
+**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
+key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
 
-**v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
-escalation, correlationId tracing, adaptive quota monitoring.
-
-**v1.6.3.8-v6 Features (Retained):** BroadcastChannelManager.js DELETED, storage
-quota monitoring, MessageBatcher queue limits.
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+**v1.6.3.8-v9 Features (Retained):** UICoordinator `_isInitializing`, event
+listener cleanup `cleanupStateListeners()` method.
 
 **Settings Sidebar Structure (Two-Layer System):**
 
