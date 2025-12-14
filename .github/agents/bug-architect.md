@@ -65,33 +65,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.8-v12 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.8-v12 Features (NEW) - Critical & Behavioral Fixes:**
+**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
 
-- **FIX Issue #15** - Promise chaining: catch blocks properly reject
-- **FIX Issue #16** - Circuit breaker removed (stateless architecture)
-- **FIX Issue #17** - Tab ID fetch timeout reduced to 2s (was 10s)
-- **FIX Issue #18** - RESTORE_DEDUP_WINDOW_MS = 50ms (decoupled from port)
-- **FIX Issue #19** - Self-write cleanup aligned to 300ms
-- **FIX Issue #1** - `_cleanupOrphanedPendingMessages()` for port zombies
-- **FIX Issue #6** - `_buildMessageResponse()` for standardized responses
-- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
-- **FIX Issue #9** - Debounced render queue with checksum validation
+- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
+- **Handler Message Routing** - `_sendPositionChangedMessage()`, `_sendMinimizeMessage()`
+- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
+- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
+- **Centralized Constants** - `src/constants.js` with timing values
+
+**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
+messaging, simplified BFCache.
 
 **v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
 key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
-
-**v1.6.3.8-v10 Features (Retained):** Tab ID fetch retry, storage write retry,
-stricter sequenceId ordering, content script unload signals.
-
-**v1.6.3.8-v9 Features (Retained):** DestroyHandler event order, UICoordinator
-`_isInitializing`, DestroyHandler retry logic, handler readiness.
-
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (300ms aligned),
-transaction timeout 1000ms, port message queue, explicit tab ID barrier.
 
 **Key Features:**
 

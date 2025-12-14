@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.9** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,61 +9,38 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v12 Status:** Critical Fixes & Behavioral Improvements ✅
+**🔧 v1.6.3.9 Status:** Gap Analysis Implementation Complete ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.9
+
+**🏗️ Gap Analysis Implementation (December 2025) ✅**
+
+- ✅ **Feature Flag Wiring** - `bootstrapQuickTabs()` checks `isV2Enabled()`
+- ✅ **Message Routing** - Handlers send MESSAGE_TYPES to background
+- ✅ **CorrelationId Integration** - All messages use shared generator
+- ✅ **Ownership Validation** - `_validateOwnership()` checks originTabId
+- ✅ **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
+- ✅ **Centralized Constants** - `src/constants.js` with timing values
+- ✅ **Structured Logger** - Pre-configured logger instances
+- ✅ **Schema Version Field** - `version: 2` in state format
+
+**New Files:**
+
+- ✅ **src/constants.js** - STORAGE_DEDUP_WINDOW_MS, MESSAGE_DEDUP_WINDOW_MS
+- ✅ **src/utils/structured-logger.js** - StructuredLogger class
+
+---
+
 ## 🎉 What's New in v1.6.3.8-v12
 
 **🏗️ Architecture Migration (December 2025) ✅**
 
-- ✅ **Port Removal Complete** - ~2,364 lines of port code removed
-- ✅ **Stateless Messaging** - `runtime.sendMessage()` / `tabs.sendMessage()`
+- ✅ **Port Removal** - ~2,364 lines removed, stateless messaging
 - ✅ **storage.onChanged** as primary sync mechanism
-- ✅ **No port registry**, no reconnection, no message queues
-- ✅ **Simplified BFCache** - storage.onChanged handles restoration
-
-**Critical Fixes:**
-
-- ✅ **Issue #15** - Promise contamination fixed in storage-utils.js
-- ✅ **Issue #16** - Circuit breaker removed (stateless architecture)
-- ✅ **Issue #17** - Init blocking reduced: 10-33.5s → 2-4s
-- ✅ **Issue #18** - Dedup window decoupled: RESTORE_DEDUP_WINDOW_MS = 50ms
-- ✅ **Issue #19** - Self-write detection window aligned (300ms)
-
-**Behavioral Improvements:**
-
-- ✅ **Orphan message cleanup** - `_cleanupOrphanedPendingMessages()`
-- ✅ **Standardized responses** - `_buildMessageResponse()` format
-- ✅ **Cross-tab tolerance** - 100ms `OUT_OF_ORDER_TOLERANCE_MS`
-- ✅ **Render debouncing** - 100ms queue with checksum validation
-
----
-
-## 🎉 What's New in v1.6.3.8-v11
-
-**🔧 Quick Tabs Architecture v2 (December 2025) ✅**
-
-**New Architecture:**
-
-- ✅ **tabs.sendMessage messaging** - Stateless (ports fully removed in v12)
-- ✅ **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
-- ✅ **Readback validation** - Every write validated by read-back (fixes Issue
-  #8)
-- ✅ **Deduplication** - correlationId with 50ms window prevents duplicates
-
-**New Modules:**
-
-- ✅ **StorageManager** - Retry with exponential backoff (100ms, 200ms, 400ms)
-- ✅ **EventBus** - Native EventTarget for FIFO-guaranteed events (fixes Issue
-  #3)
-- ✅ **MessageBuilder** - Typed messages with LOCAL/GLOBAL/MANAGER patterns
-- ✅ **Migration logic** - Legacy storage format migration with grace period
-
-**Why This Matters:** Complete architecture redesign fixes race conditions, port
-zombies, silent storage failures, and corruption issues.
 
 ---
 
@@ -72,6 +49,7 @@ zombies, silent storage failures, and corruption issues.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v12** - Port removal, stateless messaging
 - **v1.6.3.8-v11** - Quick Tabs Architecture v2, tabs.sendMessage, StorageManager
 - **v1.6.3.8-v10** - Modern APIs Audit, Diagnostic Fixes
 - **v1.6.3.8-v8** - Storage, Handler & Init Fixes
@@ -264,6 +242,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v12** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.9** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
