@@ -2,6 +2,47 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * ===============================================================================
+ * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.8-v14)
+ * ===============================================================================
+ *
+ * FILTERING GUARANTEE:
+ *   The Manager sidebar displays ALL Quick Tabs globally, grouped by originTabId.
+ *   Unlike content scripts (which filter to `originTabId === currentTabId`),
+ *   the Manager shows Quick Tabs from ALL tabs for global visibility.
+ *
+ * DATA FLOW:
+ *   1. storage.onChanged fires with updated state (`quick_tabs_state_v2`)
+ *   2. _handleStorageChange() validates the change and enqueues render
+ *   3. scheduleRender() debounces rapid changes (100ms window)
+ *   4. renderUI() groups Quick Tabs by originTabId for display
+ *   5. Each group section shows Quick Tabs belonging to that browser tab
+ *
+ * CROSS-TAB ISOLATION:
+ *   - Content scripts: Tab A's script only renders Quick Tabs with `originTabId === A`
+ *   - Manager sidebar: Shows ALL Quick Tabs from ALL tabs (no filtering by originTabId)
+ *   - Operations (close, minimize, restore) are sent to the owning tab via background
+ *
+ * ORPHAN HANDLING:
+ *   - Quick Tabs with invalid/closed originTabId appear in an "Orphaned" group
+ *   - User can "adopt" orphaned Quick Tabs to move them to the current tab
+ *   - Adoption updates `originTabId` via background script coordination
+ *   - See adoptQuickTabToCurrentTab() for adoption flow
+ *
+ * SINGLE WRITER AUTHORITY:
+ *   - Manager NEVER writes directly to storage (except legacy recovery paths)
+ *   - Manager sends commands to background script (e.g., CLOSE_QUICK_TAB)
+ *   - Background is the sole authority for state persistence
+ *   - Manager renders state received via storage.onChanged
+ *
+ * ARCHITECTURE NOTES:
+ *   - Primary sync: storage.onChanged listener
+ *   - Request/response: runtime.sendMessage to background
+ *   - No BroadcastChannel (removed in v1.6.3.8-v6)
+ *   - No runtime.Port (removed in v1.6.3.8-v13)
+ *
+ * ===============================================================================
+ *
  * v1.6.3.8-v13 - FULL Port Removal: Replaced runtime.Port with stateless runtime.sendMessage
  *   - REMOVED: backgroundPort, _portOnMessageHandler, portMessageQueue
  *   - REMOVED: connectToBackground(), scheduleReconnect(), handleConnectionFailure()

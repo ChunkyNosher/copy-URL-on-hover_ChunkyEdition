@@ -1,5 +1,31 @@
 // Manager State Handler
 // Handles state management and UI for the Quick Tabs Manager sidebar
+//
+// ===============================================================================
+// MANAGER STATE HANDLER - FILTERING CONTRACT (v1.6.3.8-v14)
+// ===============================================================================
+//
+// DATA FLOW:
+//   1. initManagerState() sets up message listener and storage.onChanged fallback
+//   2. requestFullState() requests initial state from background
+//   3. handleStateUpdate() receives state and invokes renderCallback
+//   4. State flows: Background → handleMessage/handleStorageChanged → UI render
+//
+// NO FILTERING BY originTabId:
+//   Unlike content scripts, the Manager shows ALL Quick Tabs globally.
+//   The state's allQuickTabs array is rendered without filtering.
+//   Grouping by originTabId happens at UI render time (in quick-tabs-manager.js).
+//
+// MANAGER ACTIONS (Pattern C):
+//   - minimizeQuickTab(), restoreQuickTab(), closeQuickTab()
+//   - closeAllQuickTabs(), closeMinimizedQuickTabs()
+//   All actions use MessageBuilder to create properly-formatted messages.
+//
+// SINGLE WRITER AUTHORITY:
+//   Manager sends commands via runtime.sendMessage → background handles state
+//   Manager NEVER writes to storage directly
+//
+// ===============================================================================
 
 import {
   MESSAGE_TYPES,

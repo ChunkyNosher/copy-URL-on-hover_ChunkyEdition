@@ -2047,8 +2047,36 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
 // Session Quick Tabs auto-clear when browser closes (no stale data persistence)
 
 /**
+ * ===============================================================================
+ * GAP-20 SESSION STORAGE DECISION (v1.6.3.8-v14)
+ * ===============================================================================
+ * STATUS: RESERVED FOR FUTURE USE - Functions exist but are not currently called
+ *
+ * INTENDED FEATURE:
+ * - Session-only Quick Tabs (permanent: false) auto-clear on browser close
+ * - Use storage.session API (Firefox MV2+) for ephemeral Quick Tabs
+ * - Regular Quick Tabs persist in storage.local (permanent by default)
+ *
+ * CURRENT STATE:
+ * - No UI toggle for "permanent" property exists
+ * - No handlers check `tab.permanent` property to route storage
+ * - Functions are implemented and tested but not integrated
+ *
+ * INTEGRATION PATH (when feature is needed):
+ * 1. Add "Make Temporary" toggle to Quick Tab context menu
+ * 2. Call routeTabsToStorageLayers() before persistence
+ * 3. Call saveSessionQuickTabs() for tabs with permanent: false
+ * 4. Call loadAllQuickTabs() for unified state hydration
+ *
+ * DO NOT DELETE - Keep for future "Session Quick Tabs" feature implementation.
+ * See docs/manual/1.6.4/gap-analysis-part-2.md for full context.
+ * ===============================================================================
+ */
+
+/**
  * Check if storage.session API is available
  * v1.6.3.7-v3 - API #1: Session storage availability check
+ * v1.6.3.8-v14 - GAP-20: RESERVED - Not currently called (see decision above)
  * @returns {boolean} True if storage.session is available
  */
 export function isSessionStorageAvailable() {

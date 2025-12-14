@@ -2,6 +2,24 @@
  * MessageRouter - Routes runtime.onMessage calls to appropriate handlers
  * v1.6.3.8-v2 - Issue #7: Enhanced with standardized response shapes and requestId support
  * v1.6.3.8-v3 - Issue #11: Handler timeout with graceful degradation (5000ms)
+ * v1.6.3.8-v14 - GAP-16 DECISION: KEEP MessageRouter (Active in production)
+ *
+ * ===============================================================================
+ * GAP-16 ARCHITECTURAL DECISION
+ * ===============================================================================
+ * This file IS ACTIVELY USED in the production architecture:
+ * - background.js imports and instantiates MessageRouter (line 19, 5065)
+ * - background.js registers 21+ handlers via messageRouter.register()
+ * - chrome.runtime.onMessage uses messageRouter.createListener() (line 5248)
+ *
+ * RELATIONSHIP TO message-handler.js:
+ * - message-handler.js is part of the v2 Quick Tabs architecture (schema-v2.js)
+ * - message-handler.js uses MESSAGE_TYPES from message-router.js (different file!)
+ * - These are SEPARATE systems: MessageRouter handles legacy/action-based routing,
+ *   while message-handler.js handles v2 Quick Tabs state sync messages
+ *
+ * DO NOT DELETE THIS FILE - it is actively used in the codebase.
+ * ===============================================================================
  *
  * Reduces the monolithic message handler from 628 lines (cc=93) to a simple
  * routing table pattern. Each handler is responsible for one domain of operations.
