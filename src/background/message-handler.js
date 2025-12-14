@@ -286,6 +286,7 @@ async function handleRequestFullState(_message, sender) {
   }
 
   return {
+    tabId: tabId,
     state: {
       ...state,
       allQuickTabs: relevantTabs
@@ -313,6 +314,7 @@ async function handleContentScriptReady(_message, sender) {
 
   return {
     ready: true,
+    tabId: tabId,
     quickTabs: myQuickTabs,
     pattern: 'LIFECYCLE'
   };
