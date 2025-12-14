@@ -34,6 +34,15 @@ Tabs Manager
 - **FIX Issue #19** - Self-write cleanup window aligned with detection window
   (300ms)
 
+**v1.6.3.8-v12 Behavioral Fixes:**
+
+- **FIX Issue #1** - Port zombie cleanup: `_cleanupOrphanedPendingMessages()`
+- **FIX Issue #5** - Port disconnect logging: type, correlationId, ageMs
+- **FIX Issue #6** - `_buildMessageResponse()` for standardized responses
+- **FIX Issue #7** - 100ms `OUT_OF_ORDER_TOLERANCE_MS` for cross-tab events
+- **FIX Issue #9** - 100ms debounced render queue with checksum validation
+- **FIX Issue #10** - `_storageListenerIsActive` flag with fallback retry
+
 **v1.6.3.8-v11 Features (Retained):**
 
 - **Quick Tabs Architecture v2** - tabs.sendMessage + storage.onChanged
@@ -210,7 +219,10 @@ conflict detection
 | `STORAGE_RETRY_DELAYS`            | [100,200,400] | Exponential backoff for writes     |
 | `TAB_ID_FETCH_TIMEOUT_MS`         | 2000          | Tab ID fetch timeout (reduced)     |
 | `TAB_ID_FETCH_MAX_RETRIES`        | 2             | Max retry attempts                 |
+| `TAB_ID_FETCH_RETRY_DELAY_MS`     | 300           | Delay between retries              |
 | `SELF_WRITE_DETECTION_WINDOW_MS`  | 300           | Self-write cleanup window          |
+| `OUT_OF_ORDER_TOLERANCE_MS`       | 100           | Cross-tab event ordering tolerance |
+| `RENDER_QUEUE_DEBOUNCE_MS`        | 100           | Manager render debounce            |
 | `MAX_MESSAGE_QUEUE_SIZE`          | 100           | Message queue limit                |
 | `TRANSACTION_FALLBACK_CLEANUP_MS` | 1000          | Transaction timeout                |
 

@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.8-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,11 +9,30 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v11 Status:** Quick Tabs Architecture v2 ✅
+**🔧 v1.6.3.8-v12 Status:** Critical Fixes & Behavioral Improvements ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.8-v12
+
+**🔧 Critical Fixes (December 2025) ✅**
+
+- ✅ **Issue #15** - Promise contamination fixed in storage-utils.js
+- ✅ **Issue #16** - Circuit breaker removed (stateless architecture)
+- ✅ **Issue #17** - Init blocking reduced: 10-33.5s → 2-4s
+- ✅ **Issue #18** - Dedup window decoupled: RESTORE_DEDUP_WINDOW_MS = 50ms
+- ✅ **Issue #19** - Self-write detection window aligned (300ms)
+
+**Behavioral Improvements:**
+
+- ✅ **Port zombie cleanup** - `_cleanupOrphanedPendingMessages()`
+- ✅ **Standardized responses** - `_buildMessageResponse()` format
+- ✅ **Cross-tab tolerance** - 100ms `OUT_OF_ORDER_TOLERANCE_MS`
+- ✅ **Render debouncing** - 100ms queue with checksum validation
+
+---
 
 ## 🎉 What's New in v1.6.3.8-v11
 
@@ -45,6 +64,7 @@ zombies, silent storage failures, and corruption issues.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v11** - Quick Tabs Architecture v2, tabs.sendMessage, StorageManager
 - **v1.6.3.8-v10** - Modern APIs Audit, Diagnostic Fixes
 - **v1.6.3.8-v8** - Storage, Handler & Init Fixes
 - **v1.6.3.8-v7** - Communication & Storage Fixes
@@ -236,6 +256,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v11** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v12** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
