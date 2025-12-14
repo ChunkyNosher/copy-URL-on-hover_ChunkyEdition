@@ -109,7 +109,7 @@ export async function broadcastToAllTabs(state, options = {}) {
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise<Object>} Send result
  */
-async function sendWithTimeout(tabId, message, timeout) {
+function sendWithTimeout(tabId, message, timeout) {
   return new Promise(resolve => {
     let resolved = false;
 

@@ -22,11 +22,11 @@ let initializationPromise = null;
 export async function initializeQuickTabsV2() {
   // Prevent multiple initializations
   if (initializationPromise) {
-    return initializationPromise;
+    return await initializationPromise;
   }
 
   initializationPromise = _doInitialize();
-  return initializationPromise;
+  return await initializationPromise;
 }
 
 async function _doInitialize() {

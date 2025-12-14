@@ -30,7 +30,7 @@ function generateUniqueId() {
   return `qt-${now}-${idCounter}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-let migrationState = {
+const migrationState = {
   migrated: false,
   writesSinceMigration: 0,
   oldKeysDeleted: false

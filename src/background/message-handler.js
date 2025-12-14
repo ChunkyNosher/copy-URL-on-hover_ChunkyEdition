@@ -325,9 +325,9 @@ async function handleContentScriptReady(_message, sender) {
  *
  * @param {Object} _message - Message object (unused)
  * @param {Object} sender - Message sender
- * @returns {Promise<Object>} Handler result
+ * @returns {Object} Handler result
  */
-async function handleContentScriptUnload(_message, sender) {
+function handleContentScriptUnload(_message, sender) {
   const tabId = sender?.tab?.id;
   console.log('[MessageHandler] Content script unloading:', tabId);
 
