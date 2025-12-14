@@ -264,47 +264,6 @@ const RECOVERY_MAX_ATTEMPTS = 3;
  */
 const RECOVERY_BACKOFF_BASE_MS = 500;
 
-// ==================== v1.6.3.8-v5 PORT DISCONNECTION DETECTION (Issue #3) ====================
-// Track consecutive postMessage failures to detect silent port disconnections
-/**
- * Number of consecutive postMessage failures before evicting a port
- * v1.6.3.8-v5 - Issue #3: After N failures, port is considered disconnected
- * Firefox Bugzilla 1223425: onDisconnect may not fire for BFCache/navigation
- */
-const PORT_CONSECUTIVE_FAILURE_THRESHOLD = 3;
-
-// ==================== v1.6.3.8-v7 CIRCUIT BREAKER ENHANCEMENTS (Issue #14) ====================
-// Time-based escalation for dead port detection
-/**
- * Port circuit breaker states for time-based escalation
- * v1.6.3.8-v7 - Issue #14: States for circuit breaker state machine
- */
-const PORT_CIRCUIT_STATES = {
-  HEALTHY: 'healthy',
-  DEGRADED: 'degraded',
-  CRITICAL: 'critical',
-  DISCONNECTED: 'disconnected'
-};
-
-/**
- * Time window for consecutive failure tracking (ms)
- * v1.6.3.8-v7 - Issue #14: 2nd failure within this window triggers CRITICAL
- */
-const PORT_CIRCUIT_BREAKER_WINDOW_MS = 5000;
-
-/**
- * Maximum duration before forced disconnection (ms)
- * v1.6.3.8-v7 - Issue #14: 10 seconds elapsed from first failure triggers DISCONNECTED
- */
-const PORT_CIRCUIT_BREAKER_MAX_DURATION_MS = 10000;
-
-// ==================== v1.6.3.8-v8 DEAD PORT MESSAGE QUEUE HANDLING (Issue #16) ====================
-/**
- * TTL for messages in dead port queue (60 seconds)
- * v1.6.3.8-v8 - Issue #16: Messages older than TTL are discarded when port is dead
- */
-const DEAD_PORT_MESSAGE_TTL_MS = 60000;
-
 // ==================== v1.6.3.8-v8 STATE CHANGE AGE ENFORCEMENT (Issue #18) ====================
 /**
  * Maximum age for state change events (5 minutes)
@@ -390,10 +349,6 @@ let keepaliveHealthStats = {
 // v1.6.3.8-v6 - Issue #9: Track first keepalive for unconditional logging
 let firstKeepaliveLogged = false;
 
-// Issue #6: Port Registry Size Warnings
-const PORT_REGISTRY_WARN_THRESHOLD = 50; // Warn if registry exceeds 50 ports
-const PORT_REGISTRY_CRITICAL_THRESHOLD = 100; // Critical if exceeds 100 ports
-
 // ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
 // Issue #5: Feature flag for verbose message routing logs
 // Set to true to enable detailed logging of message routing at all tiers
@@ -410,14 +365,6 @@ const DEBUG_DIAGNOSTICS = true;
 // Track whether first failure has been logged in this session
 let firstKeepaliveFailureLogged = false;
 const KEEPALIVE_FAILURE_LOG_EVERY_N = 10; // Log every Nth failure after first (deterministic)
-
-// ==================== v1.6.3.7-v12 PORT REGISTRY MONITORING ====================
-// Issue #3, #10: Port registry threshold monitoring interval
-const PORT_REGISTRY_CHECK_INTERVAL_MS = 30000; // Check every 30 seconds
-let portRegistryCheckIntervalId = null;
-// Track port registry size history for trend analysis
-const portRegistrySizeHistory = [];
-const PORT_REGISTRY_HISTORY_MAX = 5;
 
 // ==================== v1.6.3.7-v12 DEDUP STATISTICS ====================
 // Issue #6: Track deduplication statistics
@@ -1073,28 +1020,28 @@ async function _handleKeepaliveAlarm() {
 
 /**
  * Send alive ping to a single sidebar
- * v1.6.3.8-v13 - Port infrastructure removed, this is now a no-op
+ * v1.6.3.8-v12 - Port infrastructure removed, this is now a no-op
  * @private
  * @param {string} _portId - Port ID (unused)
  * @param {Object} _portInfo - Port info (unused)
  * @param {Object} _alivePing - Ping message (unused)
  */
 function _sendAlivePingToPort(_portId, _portInfo, _alivePing) {
-  // v1.6.3.8-v13 - Port infrastructure removed, no-op
+  // v1.6.3.8-v12 - Port infrastructure removed, no-op
 }
 
 /**
  * Send proactive ALIVE ping to sidebar
- * v1.6.3.8-v13 - Port infrastructure removed, this is now a no-op
+ * v1.6.3.8-v12 - Port infrastructure removed, this is now a no-op
  * Sidebar communicates via runtime.sendMessage and storage.onChanged
  * @private
  */
 function _sendAlivePingToSidebars() {
-  // v1.6.3.8-v13 - Port infrastructure removed
+  // v1.6.3.8-v12 - Port infrastructure removed
   // Sidebar now uses runtime.sendMessage and storage.onChanged for communication
   // This function is kept as a no-op for keepalive alarm compatibility
   if (DEBUG_DIAGNOSTICS) {
-    console.log('[Background] v1.6.3.8-v13 ALIVE_PING skipped (port infrastructure removed)');
+    console.log('[Background] v1.6.3.8-v12 ALIVE_PING skipped (port infrastructure removed)');
   }
 }
 
@@ -1607,7 +1554,7 @@ function _getStorageQuotaSnapshot() {
 /**
  * Log diagnostic snapshot of current state
  * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
- * v1.6.3.8-v13 - Port infrastructure removed, simplified logging
+ * v1.6.3.8-v12 - Port infrastructure removed, simplified logging
  */
 function logDiagnosticSnapshot() {
   console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
@@ -1628,10 +1575,10 @@ function logDiagnosticSnapshot() {
     totalSuccessCount: keepaliveSuccessCount
   });
 
-  // v1.6.3.8-v13 - Port infrastructure removed
+  // v1.6.3.8-v12 - Port infrastructure removed
   console.log('[Background] Messaging:', {
     architecture: 'tabs.sendMessage + storage.onChanged',
-    portInfrastructure: 'REMOVED in v1.6.3.8-v13'
+    portInfrastructure: 'REMOVED in v1.6.3.8-v12'
   });
 
   console.log('[Background] Quick Tab host tracking:', {
@@ -1691,34 +1638,6 @@ function _calculateAvgSkipRate() {
 }
 
 /**
- * Get port lifecycle details for diagnostic snapshot
- * v1.6.3.8 - Issue #10: Include port lifecycle details in diagnostic snapshot
- * @private
- * @returns {Array} Array of port lifecycle info
- */
-function _getPortLifecycleDetails() {
-  const now = Date.now();
-  const details = [];
-
-  for (const [portId, portInfo] of portRegistry.entries()) {
-    const createdAt = portInfo.connectedAt || now;
-    const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || createdAt;
-    const ageMs = now - createdAt;
-    const inactiveMs = now - lastActivity;
-
-    details.push({
-      portId,
-      origin: portInfo.origin,
-      createdAgo: _formatDuration(ageMs),
-      lastActiveAgo: _formatDuration(inactiveMs),
-      messageCount: portInfo.messageCount || 0
-    });
-  }
-
-  return details;
-}
-
-/**
  * Format milliseconds as human-readable duration
  * v1.6.3.8 - Issue #10: Helper for formatting duration
  * @private
@@ -1730,230 +1649,6 @@ function _formatDuration(ms) {
   if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
   if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
   return `${Math.floor(ms / 3600000)}h`;
-}
-
-/**
- * Get port registry threshold status
- * v1.6.3.7-v12 - Issue #3, #10: Helper for threshold status
- * @private
- * @param {number} count - Current port count
- * @returns {string} Status string
- */
-function _getPortRegistryThresholdStatus(count) {
-  if (count >= PORT_REGISTRY_CRITICAL_THRESHOLD) return 'CRITICAL';
-  if (count >= PORT_REGISTRY_WARN_THRESHOLD) return 'WARNING';
-  return 'OK';
-}
-
-/**
- * Compute port registry trend from history
- * v1.6.3.7-v12 - Issue #3, #10: Helper for trend analysis
- * @private
- * @returns {string} Trend description
- */
-function _computePortRegistryTrend() {
-  if (portRegistrySizeHistory.length < 2) return 'insufficient_data';
-
-  const oldest = portRegistrySizeHistory[0];
-  const newest = portRegistrySizeHistory[portRegistrySizeHistory.length - 1];
-  const diff = newest - oldest;
-
-  if (diff > 5) return 'increasing';
-  if (diff < -5) return 'decreasing';
-  return 'stable';
-}
-
-/**
- * Check port registry thresholds and log warnings
- * v1.6.3.7-v12 - Issue #3, #10: Implement threshold monitoring
- * Called periodically to check port registry health
- */
-function checkPortRegistryThresholds() {
-  const count = portRegistry.size;
-
-  // Update history for trend analysis
-  portRegistrySizeHistory.push(count);
-  if (portRegistrySizeHistory.length > PORT_REGISTRY_HISTORY_MAX) {
-    portRegistrySizeHistory.shift();
-  }
-
-  const trend = _computePortRegistryTrend();
-
-  // v1.6.3.7-v12 - Issue #10: Check CRITICAL threshold
-  if (count >= PORT_REGISTRY_CRITICAL_THRESHOLD) {
-    console.error('[Background] [PORT] PORT_REGISTRY_CRITICAL:', {
-      currentSize: count,
-      criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
-      trend,
-      recommendation: 'Attempting automatic cleanup of stale ports',
-      timestamp: Date.now()
-    });
-
-    // Attempt automatic cleanup of stale ports
-    _attemptStalePortCleanup();
-    return;
-  }
-
-  // v1.6.3.7-v12 - Issue #10: Check WARN threshold
-  if (count >= PORT_REGISTRY_WARN_THRESHOLD) {
-    console.warn('[Background] [PORT] PORT_REGISTRY_WARNING:', {
-      currentSize: count,
-      warnThreshold: PORT_REGISTRY_WARN_THRESHOLD,
-      criticalThreshold: PORT_REGISTRY_CRITICAL_THRESHOLD,
-      trend,
-      recommendation: 'Investigate stale ports - approaching critical threshold',
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  // Log health snapshot (only when DEBUG_DIAGNOSTICS is enabled)
-  if (DEBUG_DIAGNOSTICS) {
-    console.log('[Background] [PORT] PORT_REGISTRY_HEALTH:', {
-      currentSize: count,
-      thresholdStatus: 'OK',
-      trend,
-      sizeHistory: [...portRegistrySizeHistory],
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Attempt to clean up stale ports (inactive for 60+ seconds)
- * v1.6.3.7-v12 - Issue #3, #10: Automatic cleanup when critical threshold reached
- * v1.6.3.7-v12 - FIX ESLint: Extracted helpers to reduce complexity (cc=10 → cc=5)
- * @private
- */
-function _attemptStalePortCleanup() {
-  const STALE_PORT_AGE_MS = 60000; // 60 seconds
-  const now = Date.now();
-  const beforeCount = portRegistry.size;
-
-  const stalePorts = _findStalePorts(now, STALE_PORT_AGE_MS);
-
-  _logStalePortCleanupAttempt(beforeCount, stalePorts, STALE_PORT_AGE_MS, now);
-  _removeStalePortsFromRegistry(stalePorts);
-  _logStalePortCleanupComplete(beforeCount);
-}
-
-/**
- * Find all stale ports in the registry
- * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
- * @private
- */
-function _findStalePorts(now, thresholdMs) {
-  const stalePorts = [];
-
-  for (const [portId, portInfo] of portRegistry.entries()) {
-    const stalePortInfo = _checkPortStaleness(portId, portInfo, now, thresholdMs);
-    if (stalePortInfo) {
-      stalePorts.push(stalePortInfo);
-    }
-  }
-
-  return stalePorts;
-}
-
-/**
- * Check if a port is stale and return info if so
- * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
- * v1.6.3.7-v13 - FIX Issue #4: Use correct property names (lastActivityTime, lastMessageAt)
- *   Bug fix: was using non-existent lastMessageTime property
- * @private
- */
-function _checkPortStaleness(portId, portInfo, now, thresholdMs) {
-  // v1.6.3.7-v13 - FIX: Use correct property names from port registry
-  const createdAt = portInfo.connectedAt || portInfo.createdAt || now;
-  const age = now - createdAt;
-  const lastActivity = portInfo.lastActivityTime || portInfo.lastMessageAt || createdAt;
-  const inactiveTime = now - lastActivity;
-
-  if (inactiveTime > thresholdMs) {
-    return { portId, age, inactiveTime, type: portInfo.type };
-  }
-  return null;
-}
-
-/**
- * Log stale port cleanup attempt
- * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
- * @private
- */
-function _logStalePortCleanupAttempt(beforeCount, stalePorts, thresholdMs, now) {
-  console.log('[Background] [PORT] STALE_PORT_CLEANUP_ATTEMPT:', {
-    beforeCount,
-    stalePortsFound: stalePorts.length,
-    stalePortDetails: stalePorts.slice(0, 5),
-    thresholdMs,
-    timestamp: now
-  });
-}
-
-/**
- * Remove stale ports from the registry
- * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
- * @private
- */
-function _removeStalePortsFromRegistry(stalePorts) {
-  for (const { portId } of stalePorts) {
-    _disconnectAndRemovePort(portId);
-  }
-}
-
-/**
- * Disconnect and remove a single port from registry
- * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce nesting depth
- * @private
- */
-function _disconnectAndRemovePort(portId) {
-  try {
-    const port = portRegistry.get(portId)?.port;
-    if (port) {
-      port.disconnect();
-    }
-    portRegistry.delete(portId);
-  } catch (err) {
-    console.warn('[Background] [PORT] STALE_PORT_CLEANUP_ERROR:', {
-      portId,
-      error: err.message
-    });
-  }
-}
-
-/**
- * Log stale port cleanup completion
- * v1.6.3.7-v12 - FIX ESLint: Extracted from _attemptStalePortCleanup
- * @private
- */
-function _logStalePortCleanupComplete(beforeCount) {
-  const afterCount = portRegistry.size;
-  console.log('[Background] [PORT] STALE_PORT_CLEANUP_COMPLETE:', {
-    beforeCount,
-    afterCount,
-    removed: beforeCount - afterCount,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Start port registry monitoring
- * v1.6.3.7-v12 - Issue #3, #10: Periodic threshold checks
- */
-function startPortRegistryMonitoring() {
-  if (portRegistryCheckIntervalId) {
-    clearInterval(portRegistryCheckIntervalId);
-  }
-
-  portRegistryCheckIntervalId = setInterval(() => {
-    checkPortRegistryThresholds();
-  }, PORT_REGISTRY_CHECK_INTERVAL_MS);
-
-  console.log(
-    '[Background] [PORT] Port registry monitoring started (every',
-    PORT_REGISTRY_CHECK_INTERVAL_MS / 1000,
-    's)'
-  );
 }
 
 /**
@@ -2031,8 +1726,8 @@ function startDedupStatsLogging() {
   );
 }
 
-// Start port registry monitoring and dedup stats logging on script load
-startPortRegistryMonitoring();
+// Start dedup stats logging on script load (port registry monitoring removed)
+// v1.6.3.8-v12 - Port infrastructure removed
 startDedupStatsLogging();
 
 // Register alarm listener
@@ -7082,264 +6777,37 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
 }
 // ==================== END BROWSER ACTION HANDLER ====================
 
-// ==================== v1.6.3.8-v13 PORT INFRASTRUCTURE REMOVED ====================
-// Port-based messaging has been replaced with tabs.sendMessage + storage.onChanged
-// The following are stub/no-op implementations for backward compatibility
-
-/**
- * Port registry stub - empty Map for backward compatibility
- * v1.6.3.8-v13 - Port infrastructure removed
- * @deprecated Use tabs.sendMessage instead
- */
-const portRegistry = new Map();
-
-/**
- * Port registry size history - stub array
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-const portRegistrySizeHistory = [];
-
-/**
- * Port ID counter stub
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-let portIdCounter = 0;
-
-/**
- * Port registry check interval ID stub
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-let portRegistryCheckIntervalId = null;
-
-/**
- * Port registry snapshot interval ID stub
- * v1.6.3.8-v13 - Port infrastructure removed  
- */
-let _portRegistrySnapshotIntervalId = null;
-
-/**
- * Generate port ID stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {string} Stub port ID
- */
-function generatePortId() {
-  portIdCounter++;
-  return `port-stub-${portIdCounter}`;
-}
-
-/**
- * Register port stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {string} Stub port ID
- */
-function registerPort() {
-  return generatePortId();
-}
-
-/**
- * Unregister port stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function unregisterPort(_portId, _reason) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Handle port connect stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- * Note: runtime.onConnect listener is NOT registered in this version
- */
-function handlePortConnect(_port) {
-  console.log('[Background] v1.6.3.8-v13 Port connection ignored (port infrastructure removed)');
-}
-
-/**
- * Send port message with tracking stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {{ success: false, evicted: false, discarded: true }}
- */
-function _sendPortMessageWithTracking(_portId, _message) {
-  // v1.6.3.8-v13 - Port infrastructure removed
-  return { success: false, evicted: false, discarded: true };
-}
-
-/**
- * Port lifecycle log stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function logPortLifecycle(_origin, _event, _details) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Port evicted log stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function logPortEvicted(_portId, _reason, _details) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Update port activity stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function updatePortActivity(_portId) {
-  // No-op - port infrastructure removed
-}
+// ==================== v1.6.3.8-v12 PORT INFRASTRUCTURE REMOVED ====================
+// Port-based messaging has been completely removed and replaced with tabs.sendMessage
+// The following are minimal stub implementations for backward compatibility
 
 /**
  * Clean up ports for tab stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
+ * v1.6.3.8-v12 - Port infrastructure removed
  */
 function _cleanupPortsForTab(_tabId) {
   // No-op - port infrastructure removed
 }
 
 /**
- * Check port registry size warnings stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
+ * Clean up Quick Tab host tracking when a tab unloads
+ * v1.6.3.8-v12 - Tab host tracking cleanup
+ * @param {number} tabId - Tab ID that is unloading
  */
-function _checkPortRegistrySizeWarnings() {
-  // No-op - port infrastructure removed
+function _cleanupQuickTabHostTracking(tabId) {
+  // Remove all Quick Tab host entries for this tab
+  for (const [quickTabId, hostTabId] of quickTabHostTabs.entries()) {
+    if (hostTabId === tabId) {
+      quickTabHostTabs.delete(quickTabId);
+    }
+  }
 }
 
 /**
- * Cleanup stale ports stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-async function cleanupStalePorts() {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Check port registry thresholds stub - no-op  
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function checkPortRegistryThresholds() {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Start port registry check stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _startPortRegistryCheck() {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Get port registry threshold status stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {string} Always returns 'N/A'
- */
-function _getPortRegistryThresholdStatus(_count) {
-  return 'N/A';
-}
-
-/**
- * Compute port registry trend stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {string} Always returns 'N/A'
- */
-function _computePortRegistryTrend() {
-  return 'N/A';
-}
-
-/**
- * Get port lifecycle details stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {Array} Empty array
- */
-function _getPortLifecycleDetails() {
-  return [];
-}
-
-/**
- * Init port ACK tracking stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function initPortACKTracking(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Cleanup port ACK tracking stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function cleanupPortACKTracking(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Init port sequence tracking stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _initPortSequenceTracking(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Cleanup port sequence tracking stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _cleanupPortSequenceTracking(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Init per-port sequence counter stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _initPerPortSequenceCounter(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Cleanup per-port sequence counter stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _cleanupPerPortSequenceCounter(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Get next port message sequence stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {number} Always returns 0
- */
-function _getNextPortMessageSequence() {
-  return 0;
-}
-
-/**
- * Sidebar ready ports stub - empty Set
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-const _sidebarReadyPorts = new Set();
-
-/**
- * Clean up sidebar ready state stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _cleanupSidebarReadyState(_portId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Is sidebar port stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {boolean} Always returns false
- */
-function _isSidebarPort(_portInfo) {
-  return false;
-}
-
-/**
- * Notify manager to start watchdog stub - use tabs.sendMessage
- * v1.6.3.8-v13 - Port infrastructure removed
+ * Notify manager to start watchdog - use runtime.sendMessage
+ * v1.6.3.8-v12 - Port infrastructure removed
  */
 async function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
-  // v1.6.3.8-v13 - Use runtime.sendMessage instead of port
   try {
     await browser.runtime.sendMessage({
       type: 'START_STORAGE_WATCHDOG',
@@ -7353,21 +6821,10 @@ async function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
 }
 
 /**
- * Broadcast to sidebar ports stub - use tabs.sendMessage  
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {number} Always returns 0
- */
-function _broadcastToSidebarPorts(_message) {
-  // v1.6.3.8-v13 - Port infrastructure removed, return 0 sent
-  return 0;
-}
-
-/**
- * Send state update via ports stub - use runtime.sendMessage
- * v1.6.3.8-v13 - Port infrastructure removed
+ * Send state update via runtime.sendMessage
+ * v1.6.3.8-v12 - Port infrastructure removed
  */
 async function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlationId) {
-  // v1.6.3.8-v13 - Use runtime.sendMessage instead of ports
   try {
     await browser.runtime.sendMessage({
       type: 'STATE_UPDATE',
@@ -7384,71 +6841,8 @@ async function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlat
 }
 
 /**
- * Send message to sidebar ports stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {{ sentCount: 0, errorCount: 0, evictedCount: 0 }}
- */
-function _sendMessageToSidebarPorts(_message, _quickTabId, _operation, _correlationId) {
-  return { sentCount: 0, errorCount: 0, evictedCount: 0 };
-}
-
-/**
- * Try send to port stub
- * v1.6.3.8-v13 - Port infrastructure removed
- * @returns {{ success: false, evicted: false }}
- */
-function _trySendToPort(_options) {
-  return { success: false, evicted: false };
-}
-
-/**
- * Log port send success stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _logPortSendSuccess(_portId, _quickTabId, _operation, _correlationId) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Log port send failure stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function _logPortSendFailure(_portId, _quickTabId, _errorMessage) {
-  // No-op - port infrastructure removed
-}
-
-/**
- * Route port message stub - returns error
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-function routePortMessage(_message, _portInfo) {
-  return Promise.resolve({ success: false, error: 'Port infrastructure removed' });
-}
-
-/**
- * Handle port message stub - no-op
- * v1.6.3.8-v13 - Port infrastructure removed
- */
-async function handlePortMessage(_port, _portId, _message) {
-  // No-op - port infrastructure removed
-}
-
-// Port message handler stubs
-function handleHeartbeat() { return Promise.resolve({ success: true }); }
-function handleHealthProbe() { return Promise.resolve({ success: true, healthy: true }); }
-function handleListenerVerification() { return Promise.resolve({ success: true }); }
-function handleActionRequest() { return Promise.resolve({ success: false, error: 'Port infrastructure removed' }); }
-function handleDeletionAck() { return Promise.resolve({ success: true }); }
-function handleFullStateSyncRequest() { return handleFullStateSyncRequestImpl.apply(this, arguments); }
-function handleBCVerificationRequest() { return Promise.resolve({ success: true, bcAvailable: false, deprecated: true }); }
-function handlePortPong() { return Promise.resolve({ success: true }); }
-function handleSidebarReady() { return Promise.resolve({ success: true }); }
-function handleRelayToSidebar() { return Promise.resolve({ success: false, error: 'Port infrastructure removed' }); }
-function handleContentUnloading() { return Promise.resolve({ success: true }); }
-
-/**
- * Handle legacy action stub
- * v1.6.3.8-v13 - Port infrastructure removed
+ * Handle legacy action messages
+ * v1.6.3.8-v12 - Simplified legacy action handler
  */
 function handleLegacyAction(message, _portInfo) {
   if (message.action === 'MANAGER_COMMAND') {
@@ -7460,9 +6854,29 @@ function handleLegacyAction(message, _portInfo) {
   return Promise.resolve({ success: false, error: 'Unknown legacy action' });
 }
 
-console.log('[Background] v1.6.3.8-v13 Port infrastructure stub functions initialized');
+/**
+ * Broadcast storage write confirmation - no-op (port infrastructure removed)
+ * v1.6.3.8-v12 - Port infrastructure removed
+ * @private
+ */
+function _broadcastStorageWriteConfirmation(_state, _saveId) {
+  // No-op - port infrastructure removed
+  // Sidebar receives updates via storage.onChanged
+}
 
-// ==================== END PORT INFRASTRUCTURE STUBS ====================
+/**
+ * Broadcast operation confirmation - no-op (port infrastructure removed)
+ * v1.6.3.8-v12 - Port infrastructure removed
+ * @private
+ */
+function _broadcastOperationConfirmation(_options) {
+  // No-op - port infrastructure removed
+  // Sidebar receives updates via storage.onChanged
+}
+
+console.log('[Background] v1.6.3.8-v12 Port infrastructure removed - using tabs.sendMessage');
+
+// ==================== END PORT INFRASTRUCTURE REMOVED ====================
 
 // ==================== v1.6.4.0 COMMAND HANDLERS ====================
 // FIX Issue A: Background as sole storage writer
@@ -7915,28 +7329,51 @@ async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, at
 
 /**
  * Broadcast message to all tabs via tabs.sendMessage
- * v1.6.3.8-v13 - Port infrastructure removed, replaced with tabs.sendMessage
+ * v1.6.3.8-v12 - Port infrastructure removed, replaced with tabs.sendMessage
  * @param {Object} message - Message to broadcast
  * @param {number|null} excludeTabId - Tab ID to exclude from broadcast (optional)
  */
-async function broadcastToAllPorts(message, excludeTabId = null) {
-  // v1.6.3.8-v13 - Port infrastructure removed, use tabs.sendMessage
+/**
+ * Send message to a single tab
+ * v1.6.3.8-v12 - Extracted helper to reduce nesting depth
+ * @private
+ */
+async function _sendMessageToTab(tabId, message) {
+  try {
+    await browser.tabs.sendMessage(tabId, message);
+    return { success: true };
+  } catch (_err) {
+    // Content script may not be loaded - this is expected for system pages
+    return { success: false };
+  }
+}
+
+/**
+ * Process broadcast results and return counts
+ * v1.6.3.8-v12 - Extracted helper to reduce nesting depth
+ * @private
+ */
+function _countBroadcastResults(results) {
+  return results.reduce(
+    (acc, result) => {
+      if (result.success) {
+        acc.sentCount++;
+      } else {
+        acc.errorCount++;
+      }
+      return acc;
+    },
+    { sentCount: 0, errorCount: 0 }
+  );
+}
+
+async function broadcastToAllTabs(message, excludeTabId = null) {
+  // v1.6.3.8-v12 - Port infrastructure removed, use tabs.sendMessage
   try {
     const tabs = await browser.tabs.query({});
-    let sentCount = 0;
-    let errorCount = 0;
-
-    for (const tab of tabs) {
-      if (excludeTabId && tab.id === excludeTabId) continue;
-      
-      try {
-        await browser.tabs.sendMessage(tab.id, message);
-        sentCount++;
-      } catch (_err) {
-        // Content script may not be loaded - this is expected for system pages
-        errorCount++;
-      }
-    }
+    const targetTabs = excludeTabId ? tabs.filter(tab => tab.id !== excludeTabId) : tabs;
+    const results = await Promise.all(targetTabs.map(tab => _sendMessageToTab(tab.id, message)));
+    const { sentCount, errorCount } = _countBroadcastResults(results);
 
     console.log('[Background] Broadcast complete (tabs.sendMessage):', {
       action: message.action || message.type,
@@ -7949,11 +7386,16 @@ async function broadcastToAllPorts(message, excludeTabId = null) {
   }
 }
 
-// v1.6.3.8-v13 - Port infrastructure removed
-// Port-based messaging replaced with tabs.sendMessage + storage.onChanged
-console.log('[Background] v1.6.3.8-v13 Port infrastructure removed - using tabs.sendMessage');
+// Alias for backward compatibility (kept for any external references)
+const broadcastToAllPorts = broadcastToAllTabs;
+// Mark as exported for potential external use
+void broadcastToAllPorts;
 
-// ==================== END PORT LIFECYCLE MANAGEMENT (REMOVED v1.6.3.8-v13) ====================
+// v1.6.3.8-v12 - Port infrastructure removed
+// Port-based messaging replaced with tabs.sendMessage + storage.onChanged
+console.log('[Background] v1.6.3.8-v12 Port infrastructure removed - using tabs.sendMessage');
+
+// ==================== END PORT LIFECYCLE MANAGEMENT (REMOVED v1.6.3.8-v12) ====================
 
 // ==================== v1.6.3.6-v11 TAB LIFECYCLE EVENTS ====================
 // FIX Issue #16: Track browser tab lifecycle for orphan detection
@@ -7961,7 +7403,7 @@ console.log('[Background] v1.6.3.8-v13 Port infrastructure removed - using tabs.
 /**
  * Handle browser tab removal
  * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
- * v1.6.3.8-v13 - Updated to use tabs.sendMessage instead of port broadcasting
+ * v1.6.3.8-v12 - Uses broadcastToAllTabs for consistency
  * @param {number} tabId - ID of the removed tab
  * @param {Object} removeInfo - Removal info
  */
@@ -7987,9 +7429,8 @@ async function handleTabRemoved(tabId, removeInfo) {
     quickTabHostTabs.delete(qt.id);
   }
 
-  // v1.6.3.8-v13 - Broadcast tab lifecycle change via tabs.sendMessage
+  // v1.6.3.8-v12 - Broadcast tab lifecycle change via broadcastToAllTabs for consistency
   try {
-    const tabs = await browser.tabs.query({});
     const message = {
       type: 'BROADCAST',
       action: 'TAB_LIFECYCLE_CHANGE',
@@ -7998,13 +7439,7 @@ async function handleTabRemoved(tabId, removeInfo) {
       affectedQuickTabs: orphanedQuickTabs.map(t => t.id),
       timestamp: Date.now()
     };
-    
-    for (const tab of tabs) {
-      if (tab.id === tabId) continue; // Skip the removed tab
-      browser.tabs.sendMessage(tab.id, message).catch(() => {
-        // Content script may not be loaded in this tab - ignore
-      });
-    }
+    await broadcastToAllTabs(message, tabId);
   } catch (err) {
     console.error('[Background] Error broadcasting tab removal:', err.message);
   }
@@ -8624,59 +8059,19 @@ function _determineBroadcastType(quickTabId, changes) {
   return { broadcastType: 'quick-tab-updated' };
 }
 
-// v1.6.3.8-v6 - REMOVED: _broadcastViaBroadcastChannel function
-// BroadcastChannel removed - port-based messaging is now primary
+// v1.6.3.8-v12 - Port infrastructure removed - use runtime.sendMessage in broadcastQuickTabStateUpdate
 
 /**
- * Broadcast message to all connected sidebar ports
- * v1.6.3.7-v4 - FIX Issue #3: Send state updates via port for reliable delivery
- * v1.6.3.8-v5 - Issue #3: Use _sendPortMessageWithTracking for failure detection
+ * Broadcast message to sidebar - no-op (port infrastructure removed)
+ * v1.6.3.8-v12 - Port infrastructure removed
  * @private
- * @param {Object} message - Message to send
- * @returns {number} Number of ports the message was sent to
+ * @param {Object} _message - Message to send (unused)
+ * @returns {number} Always returns 0 (no ports available)
  */
-function _broadcastToSidebarPorts(message) {
-  let sentCount = 0;
-  let errorCount = 0;
-  let evictedCount = 0;
-
-  // v1.6.3.8-v5 - Issue #3: Copy entries to avoid modification during iteration
-  const portEntries = [...portRegistry.entries()];
-
-  for (const [portId, portInfo] of portEntries) {
-    // Only send to sidebar ports (not content script ports)
-    if (portInfo.origin !== 'sidebar' && !portInfo.port?.name?.includes('sidebar')) {
-      continue;
-    }
-
-    // v1.6.3.8-v5 - Issue #3: Use tracking function for failure detection
-    const result = _sendPortMessageWithTracking(portId, message);
-    if (result.success) {
-      sentCount++;
-      console.log('[Background] PORT_MESSAGE_SENT:', {
-        portId,
-        messageType: message.type,
-        messageId: message.messageId,
-        quickTabId: message.quickTabId
-      });
-      continue;
-    }
-    // v1.6.3.8-v5 - Issue #3: Track failures and evictions
-    errorCount++;
-    evictedCount += result.evicted ? 1 : 0;
-  }
-
-  // v1.6.3.8-v5 - Issue #3: Log errors and evictions if any
-  if (errorCount > 0) {
-    console.log('[Background] SIDEBAR_BROADCAST_ERRORS:', {
-      errorCount,
-      evictedCount,
-      sentCount,
-      messageType: message.type
-    });
-  }
-
-  return sentCount;
+function _broadcastToSidebarPorts(_message) {
+  // v1.6.3.8-v12 - Port infrastructure removed, return 0 sent
+  // Sidebar communication now handled via runtime.sendMessage fallback
+  return 0;
 }
 
 /**
