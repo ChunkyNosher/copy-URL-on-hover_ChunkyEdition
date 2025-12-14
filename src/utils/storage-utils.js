@@ -1861,23 +1861,33 @@ export function queueStorageWrite(
   }
 
   // Chain this operation to the previous one
-  // v1.6.3.8-v12 - FIX Issue #15: Properly reject instead of returning false
+  // v1.6.3.9-v2 - FIX Issue #3: Proper Promise chain semantics without orphaned rejections
+  // The catch handler must:
+  // 1. Log the error for debugging
+  // 2. Update pendingWriteCount
+  // 3. Resolve gracefully (not reject) to allow subsequent writes to proceed
+  // The queue assignment stays chained to prevent orphaned rejections
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
-      // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
-      const droppedWrites = pendingWriteCount - 1;
+      // v1.6.3.9-v2 - FIX Issue #3: Log failure but allow chain to continue
       console.error(
-        `[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`,
+        `[StorageUtils] Storage write FAILED [${transactionId}]:`,
         err
       );
 
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-      // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
-      storageWriteQueuePromise = Promise.resolve();
-      // v1.6.3.8-v12 - FIX Issue #15: Properly reject to maintain Promise chain semantics
-      // Returning false would contaminate all subsequent .then() handlers
-      return Promise.reject(err);
+
+      // v1.6.3.9-v2 - FIX Issue #3: Return false instead of rejecting
+      // Rejecting here creates an orphaned rejection because:
+      // - The caller receives this rejected promise
+      // - But if we reset storageWriteQueuePromise separately, the chain is broken
+      // By returning false, we:
+      // - Signal failure to the caller (false indicates write failed)
+      // - Allow the Promise chain to continue cleanly for subsequent writes
+      // - Avoid unhandled rejection warnings
+      // The caller should check the return value, not rely on rejection
+      return false;
     });
 
   return storageWriteQueuePromise;

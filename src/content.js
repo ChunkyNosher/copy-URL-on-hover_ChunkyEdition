@@ -340,8 +340,17 @@ console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
 console.log('[Copy-URL-on-Hover] Starting module imports...');
-// v1.6.3.8-v13 - GAP-7: Import shared dedup constant for self-write detection
-import { STORAGE_DEDUP_WINDOW_MS, RESTORE_DEDUP_WINDOW_MS } from './constants.js';
+// v1.6.3.9-v2 - Issue #4: Import all timing constants from centralized location
+import {
+  STORAGE_DEDUP_WINDOW_MS,
+  RESTORE_DEDUP_WINDOW_MS,
+  STORAGE_ORDERING_TOLERANCE_MS,
+  OUT_OF_ORDER_TOLERANCE_MS,
+  FALLBACK_SYNC_TIMEOUT_MS,
+  TAB_ID_FETCH_TIMEOUT_MS,
+  TAB_ID_FETCH_RETRY_DELAY_MS,
+  FALLBACK_RETRY_DELAY_MS
+} from './constants.js';
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 import { ConfigManager, CONSTANTS, DEFAULT_CONFIG } from './core/config.js';
 import { EventBus, Events } from './core/events.js';
@@ -537,19 +546,14 @@ async function getCurrentTabIdFromBackground() {
  */
 let cachedTabId = null;
 
-// v1.6.3.8-v13 - GAP-7: Use imported STORAGE_DEDUP_WINDOW_MS constant for self-write detection
-// Firefox listener fires 100-250ms after write completes
+// v1.6.3.9-v2 - Issue #4: Use imported STORAGE_DEDUP_WINDOW_MS constant for self-write detection
+// Firefox listener fires 100-250ms after write completes (per Bugzilla #1554088)
 // The constant is imported from src/constants.js for consistency across codebase
 const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = STORAGE_DEDUP_WINDOW_MS; // Firefox listener latency tolerance
 
 // ==================== v1.6.3.8-v14 GAP-8: FALLBACK SYNC LOGGING ====================
 // FIX GAP-8: When Promise-based messages fail, track whether storage.onChanged fallback works
-
-/**
- * Timeout for fallback sync to complete (ms)
- * v1.6.3.8-v14 - GAP-8: Alert if fallback doesn't complete within this window
- */
-const FALLBACK_SYNC_TIMEOUT_MS = 2000;
+// v1.6.3.9-v2 - Issue #4: FALLBACK_SYNC_TIMEOUT_MS now imported from constants.js
 
 /**
  * Pending fallback operations awaiting storage.onChanged confirmation
@@ -686,9 +690,8 @@ function _checkPendingFallbacksForStorageChange(newValue) {
 
 // ==================== END GAP-8 FALLBACK SYNC LOGGING ====================
 
-// v1.6.3.8-v8 - FIX Issue #8: Storage event ordering tolerance window
-// Accept out-of-order events if within Firefox's documented listener latency
-const STORAGE_ORDERING_TOLERANCE_MS = 300;
+// v1.6.3.9-v2 - Issue #4: STORAGE_ORDERING_TOLERANCE_MS now imported from constants.js
+// Accept out-of-order events if within Firefox's documented listener latency (300ms)
 
 /**
  * State ordering tracking
@@ -1364,11 +1367,8 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
   return { valid: false, reason: 'revision-rejected' };
 }
 
-/**
- * Tolerance window for out-of-order events (ms)
- * v1.6.3.8-v12 - FIX Issue #7: Cross-tab timing tolerance
- */
-const OUT_OF_ORDER_TOLERANCE_MS = 100;
+// v1.6.3.9-v2 - Issue #4: OUT_OF_ORDER_TOLERANCE_MS now imported from constants.js
+// Tolerance window for out-of-order events (100ms for cross-tab timing tolerance)
 
 /**
  * Handle duplicate sequenceId within tolerance
@@ -1578,12 +1578,13 @@ function _requestStateRecovery(reason) {
 /**
  * Fallback to storage.local.get for state recovery
  * v1.6.3.8-v13: Direct storage read (primary mechanism now)
+ * v1.6.3.9-v2 - Issue #4: FALLBACK_RETRY_DELAY_MS now imported from constants.js
  * @param {string} reason - Reason for fallback
  * @param {number} [retryCount=0] - Current retry count
  */
 async function _fallbackToStorageRead(reason, retryCount = 0) {
   const MAX_FALLBACK_RETRIES = 3;
-  const FALLBACK_RETRY_DELAY_MS = 500;
+  // v1.6.3.9-v2 - Issue #4: Using imported FALLBACK_RETRY_DELAY_MS from constants.js
 
   console.log('[Content] STORAGE_FALLBACK_READ:', {
     reason,
@@ -1798,11 +1799,10 @@ function _handleStorageChange(changes, areaName) {
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 
-// v1.6.3.8-v12 - FIX Issue #17: Reduced timeout to make initialization non-blocking
+// v1.6.3.9-v2 - Issue #4: TAB_ID_FETCH_TIMEOUT_MS and TAB_ID_FETCH_RETRY_DELAY_MS
+// now imported from constants.js
 // Previous 10s timeout blocked features; now using 2s max with graceful degradation
-const TAB_ID_FETCH_TIMEOUT_MS = 2000; // Reduced from 10s to 2s for non-blocking init
 const TAB_ID_FETCH_MAX_RETRIES = 2; // Reduced retries for faster fallback
-const TAB_ID_FETCH_RETRY_DELAY_MS = 300; // Reduced delay between retries
 
 /**
  * Initialization barrier state
