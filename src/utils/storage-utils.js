@@ -36,6 +36,8 @@
  * @module storage-utils
  */
 
+// v1.6.3.9-v2 - Issue #6: Import DEFAULT_CONTAINER_ID from centralized constants
+import { DEFAULT_CONTAINER_ID } from '../constants.js';
 import { CONSTANTS } from '../core/config.js';
 
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
@@ -1345,7 +1347,11 @@ function serializeTabForStorage(tab, isMinimized) {
     mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
     // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
-    originTabId: extractedOriginTabId
+    originTabId: extractedOriginTabId,
+    // v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+    // Firefox containers are identified by cookieStoreId (Firefox 55+)
+    // Default to DEFAULT_CONTAINER_ID for backward compatibility with existing Quick Tabs
+    originContainerId: String(tab.originContainerId || tab.cookieStoreId || DEFAULT_CONTAINER_ID)
   };
 }
 

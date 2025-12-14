@@ -1,0 +1,8 @@
+{
+  "id": "abacee9f-9818-4ac4-a50d-8cae2e2fa75b",
+  "title": "Container Isolation Issue 6",
+  "details": "Implemented container isolation at storage level for Quick Tabs:\n\n1. Added `originContainerId` field to Quick Tab data structure in `src/utils/storage-utils.js` (serializeTabForStorage function)\n2. Added container-aware filtering functions to `src/storage/schema-v2.js`:\n   - `getQuickTabsByOriginTabIdAndContainer()` - Filters by both tab ID and container\n   - `getQuickTabsByContainerId()` - Filters by container only\n   - `removeQuickTabsByContainerId()` - Removes all Quick Tabs for a container\n3. Created `src/background/tab-events.js` with three event listeners:\n   - `browser.tabs.onActivated` - Triggers STATE_REFRESH_REQUESTED message for faster sync\n   - `browser.tabs.onRemoved` - Automatic cleanup of Quick Tabs when tab closes\n   - `browser.tabs.onUpdated` - Monitors URL/title/favicon/container changes with 500ms debounce\n4. Added container-aware utilities to `src/core/browser-api.js`:\n   - `getTabsByContainer()` - Gets tabs organized by container\n   - `validateTabExists()` - Validates tab and container match\n   - `getTabContainerId()` - Gets container ID for a tab\n   - `areTabsInSameContainer()` - Checks if tabs are in same container\n   - `getAllContainers()` - Lists all Firefox containers\n\nKey architectural decisions:\n- Default container ID is 'firefox-default' for backward compatibility\n- Container ID comes from `tab.cookieStoreId` (Firefox 55+)\n- Tab events are initialized alongside Quick Tabs v2 bootstrap in background.js\n- Updates are debounced (500ms) to prevent rapid duplicate writes",
+  "category": "architecture",
+  "dateCreated": "2025-12-14T22:33:48.349Z",
+  "dateUpdated": "2025-12-14T22:33:48.349Z"
+}

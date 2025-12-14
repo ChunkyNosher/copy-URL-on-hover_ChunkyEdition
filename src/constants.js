@@ -180,3 +180,43 @@ export const HANDLER_DEDUP_WINDOW_MS = 100;
  * @constant {number}
  */
 export const IFRAME_DEDUP_WINDOW_MS = 200;
+
+// =============================================================================
+// v1.6.3.9-v2 - TAB EVENTS CONSTANTS (Issue #6)
+// =============================================================================
+
+/**
+ * Debounce interval for browser.tabs.onUpdated events.
+ *
+ * Prevents rapid duplicate updates when tab properties change frequently
+ * (e.g., during page load when title/favicon update multiple times).
+ *
+ * v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+ *
+ * @constant {number}
+ */
+export const TAB_UPDATED_DEBOUNCE_MS = 500;
+
+/**
+ * Maximum age for pending tab updates before discarding.
+ *
+ * Prevents stale updates from processing if debounce accumulates
+ * too many changes over an extended period.
+ *
+ * v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+ *
+ * @constant {number}
+ */
+export const PENDING_TAB_UPDATE_MAX_AGE_MS = 5000;
+
+/**
+ * Default container ID for tabs without container context.
+ *
+ * Firefox uses 'firefox-default' for the default (non-container) context.
+ * This constant ensures consistency across all container-aware code.
+ *
+ * v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+ *
+ * @constant {string}
+ */
+export const DEFAULT_CONTAINER_ID = 'firefox-default';
