@@ -4,7 +4,8 @@
 import {
   MESSAGE_TYPES,
   MessageBuilder,
-  sendMessageWithTimeout
+  sendMessageWithTimeout,
+  generateMessageId
 } from '../../messaging/message-router.js';
 import * as SchemaV2 from '../../storage/schema-v2.js';
 
@@ -28,7 +29,7 @@ export async function initContentMessageListener(uiCoordinator) {
   try {
     const response = await browser.runtime.sendMessage({
       type: MESSAGE_TYPES.CONTENT_SCRIPT_READY,
-      correlationId: `ready-${Date.now()}`,
+      correlationId: generateMessageId('ready'),
       timestamp: Date.now()
     });
 
@@ -213,7 +214,7 @@ async function notifyUnload() {
     await browser.runtime.sendMessage({
       type: MESSAGE_TYPES.CONTENT_SCRIPT_UNLOAD,
       tabId: currentTabId,
-      correlationId: `unload-${Date.now()}`,
+      correlationId: generateMessageId('unload'),
       timestamp: Date.now()
     });
   } catch (_error) {

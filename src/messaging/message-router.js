@@ -285,21 +285,32 @@ export class MessageValidator {
  */
 export function sendMessageWithTimeout(message, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+
     const timeoutId = setTimeout(() => {
-      reject(
-        new Error(`Message timed out after ${timeoutMs}ms: ${message.type}`)
-      );
+      if (!settled) {
+        settled = true;
+        reject(
+          new Error(`Message timed out after ${timeoutMs}ms: ${message.type}`)
+        );
+      }
     }, timeoutMs);
 
     browser.runtime
       .sendMessage(message)
       .then(result => {
-        clearTimeout(timeoutId);
-        resolve(result);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(result);
+        }
       })
       .catch(error => {
-        clearTimeout(timeoutId);
-        reject(error);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(error);
+        }
       });
   });
 }

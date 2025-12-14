@@ -275,7 +275,8 @@ export class StorageManager {
 
     // Notify user
     try {
-      await browser.notifications.create('storage-recovery', {
+      const notificationId = `storage-recovery-${Date.now()}`;
+      await browser.notifications.create(notificationId, {
         type: 'basic',
         iconUrl: browser.runtime.getURL('icons/icon.png'),
         title: 'Quick Tabs Recovery',
