@@ -8,11 +8,14 @@
  * - Storage recovery mechanisms
  *
  * @module storage/storage-manager
+ * @version 1.6.3.8-v13 - GAP-7: Import shared dedup constant
  */
 
 import { STORAGE_KEY, getEmptyState, isValidState, SCHEMA_VERSION } from './schema-v2.js';
+import { MESSAGE_DEDUP_WINDOW_MS } from '../constants.js';
 
-const DEDUP_WINDOW_MS = 50;
+// v1.6.3.8-v13 - GAP-7: Use shared constant for deduplication window
+const DEDUP_WINDOW_MS = MESSAGE_DEDUP_WINDOW_MS;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [100, 200, 400]; // Exponential backoff
 

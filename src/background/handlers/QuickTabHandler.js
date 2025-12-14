@@ -14,7 +14,11 @@
  * - UPDATE_QUICK_TAB_MUTE: Update mute state
  * - UPDATE_QUICK_TAB_MINIMIZE: Update minimize state
  * - GET_CURRENT_TAB_ID: Get current browser tab ID
+ *
+ * @version 1.6.3.8-v13 - GAP-7: Import shared dedup constant
  */
+
+import { HANDLER_DEDUP_WINDOW_MS } from '../../constants.js';
 
 // v1.6.3.7-v12 - Issue #7: Initialization barrier timeout constant (code review fix)
 const INIT_TIMEOUT_MS = 10000;
@@ -34,10 +38,11 @@ const VALIDATION_IDLE_TIMEOUT_MS = 2000; // Max wait for idle callback
 let DEBUG_DIAGNOSTICS = true;
 
 export class QuickTabHandler {
+  // v1.6.3.8-v13 - GAP-7: Use imported HANDLER_DEDUP_WINDOW_MS constant
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
   // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
   // Using 100ms provides safety margin while not blocking legitimate rapid operations
-  static DEDUP_WINDOW_MS = 100;
+  static DEDUP_WINDOW_MS = HANDLER_DEDUP_WINDOW_MS;
   // 5000ms: Cleanup interval balances memory usage vs CPU overhead
   static DEDUP_CLEANUP_INTERVAL_MS = 5000;
   // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat

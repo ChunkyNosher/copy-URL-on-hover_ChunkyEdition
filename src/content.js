@@ -338,6 +338,8 @@ console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
 console.log('[Copy-URL-on-Hover] Starting module imports...');
+// v1.6.3.8-v13 - GAP-7: Import shared dedup constant for self-write detection
+import { STORAGE_DEDUP_WINDOW_MS, RESTORE_DEDUP_WINDOW_MS } from './constants.js';
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 import { ConfigManager, CONSTANTS, DEFAULT_CONFIG } from './core/config.js';
 import { EventBus, Events } from './core/events.js';
@@ -533,9 +535,10 @@ async function getCurrentTabIdFromBackground() {
  */
 let cachedTabId = null;
 
-// v1.6.3.8-v13: Self-write detection uses STORAGE_LISTENER_LATENCY_TOLERANCE_MS directly
+// v1.6.3.8-v13 - GAP-7: Use imported STORAGE_DEDUP_WINDOW_MS constant for self-write detection
 // Firefox listener fires 100-250ms after write completes
-const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = 300; // Firefox listener latency tolerance
+// The constant is imported from src/constants.js for consistency across codebase
+const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = STORAGE_DEDUP_WINDOW_MS; // Firefox listener latency tolerance
 
 // ==================== v1.6.3.8-v14 GAP-8: FALLBACK SYNC LOGGING ====================
 // FIX GAP-8: When Promise-based messages fail, track whether storage.onChanged fallback works
@@ -2981,6 +2984,7 @@ function _getActionError(result) {
 // v1.6.3.4-v11 - FIX Issue #2: Message deduplication to prevent duplicate RESTORE_QUICK_TAB processing
 // Map of quickTabId -> timestamp of last processed restore message
 const recentRestoreMessages = new Map();
+// v1.6.3.8-v13 - GAP-7: Use imported RESTORE_DEDUP_WINDOW_MS constant for consistency
 // v1.6.3.8-v12 - FIX Issue #18: Decoupled from port reconnection timing
 // The deduplication window prevents rapid duplicate restore commands from overwhelming the system.
 // This is based on the typical user interaction debounce window (50ms):
@@ -2988,7 +2992,7 @@ const recentRestoreMessages = new Map();
 // - Slower than programmatic retries within same event loop (~0-10ms)
 // - Matches correlationId DEDUP_WINDOW_MS in storage-manager.js for consistency
 // See also: https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event
-const RESTORE_DEDUP_WINDOW_MS = 50;
+// NOTE: RESTORE_DEDUP_WINDOW_MS is now imported from src/constants.js
 
 /**
  * Check if restore message is a duplicate (within deduplication window)
