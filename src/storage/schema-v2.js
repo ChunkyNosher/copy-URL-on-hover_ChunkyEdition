@@ -21,7 +21,7 @@
  * validation info including migration requirements.
  *
  * @module storage/schema-v2
- * @version 1.6.3.8-v13 - GAP-19: Enhanced version field documentation
+ * @version 1.6.3.9 - GAP-19: Enhanced version field documentation
  */
 
 export const SCHEMA_VERSION = 2;

@@ -5,7 +5,7 @@
  * easier debugging, filtering, and log aggregation.
  *
  * @module utils/structured-logger
- * @version 1.6.3.8-v13
+ * @version 1.6.3.9
  */
 
 /**
@@ -39,9 +39,9 @@ const LEVEL_NAMES = {
  *
  * @example
  * const logger = new StructuredLogger('[Background]');
- * logger.info('init', 'Initialization complete', { version: '1.6.3.8-v13' });
+ * logger.info('init', 'Initialization complete', { version: '1.6.3.9' });
  * // Output: { timestamp: 1702577324000, level: 'INFO', context: '[Background]',
- * //          operation: 'init', message: 'Initialization complete', data: { version: '1.6.3.8-v13' } }
+ * //          operation: 'init', message: 'Initialization complete', data: { version: '1.6.3.9' } }
  */
 export class StructuredLogger {
   /**

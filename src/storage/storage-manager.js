@@ -8,7 +8,7 @@
  * - Storage recovery mechanisms
  *
  * @module storage/storage-manager
- * @version 1.6.3.8-v13 - GAP-7: Import shared dedup constant
+ * @version 1.6.3.9 - GAP-7: Import shared dedup constant
  */
 
 import { STORAGE_KEY, getEmptyState, isValidState, SCHEMA_VERSION } from './schema-v2.js';

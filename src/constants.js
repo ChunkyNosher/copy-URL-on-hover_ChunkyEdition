@@ -5,7 +5,7 @@
  * inconsistent hardcoded values across the codebase.
  *
  * @module constants
- * @version 1.6.3.8-v13
+ * @version 1.6.3.9
  */
 
 /**

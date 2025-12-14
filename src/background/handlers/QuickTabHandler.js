@@ -15,7 +15,7 @@
  * - UPDATE_QUICK_TAB_MINIMIZE: Update minimize state
  * - GET_CURRENT_TAB_ID: Get current browser tab ID
  *
- * @version 1.6.3.8-v13 - GAP-7: Import shared dedup constant
+ * @version 1.6.3.9 - GAP-7: Import shared dedup constant
  */
 
 import { HANDLER_DEDUP_WINDOW_MS } from '../../constants.js';
