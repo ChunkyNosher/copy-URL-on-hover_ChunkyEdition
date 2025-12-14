@@ -38,14 +38,16 @@ global.browser = {
     }
   },
   runtime: {
-    sendMessage: jest.fn(),
+    // v1.6.3.8-v12 GAP-2 fix: Make sendMessage return a Promise for message routing tests
+    sendMessage: jest.fn().mockResolvedValue({ success: true }),
     onMessage: {
       addListener: jest.fn()
     }
   },
   tabs: {
     query: jest.fn(),
-    sendMessage: jest.fn(),
+    // v1.6.3.8-v12 GAP-5 fix: Make tabs.sendMessage return a Promise for broadcast tests
+    sendMessage: jest.fn().mockResolvedValue({ success: true }),
     create: jest.fn()
   },
   contextualIdentities: {

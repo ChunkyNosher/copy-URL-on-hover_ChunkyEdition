@@ -1,5 +1,6 @@
 // Quick Tabs V2 Integration Module
 // Integrates all v2 architecture components for the background script
+// v1.6.3.8-v12: GAP-1, GAP-10 fix - Feature flag check before initialization
 
 import { getBroadcastMetrics, resetBroadcastMetrics } from './broadcast-manager.js';
 import { initializeMessageHandler, storageManager } from './message-handler.js';
@@ -8,19 +9,101 @@ import * as SchemaV2 from '../storage/schema-v2.js';
 
 let isInitialized = false;
 let initializationPromise = null;
+// v1.6.3.8-v12 GAP-1: Track which architecture path was taken
+let activeArchitecture = 'unknown';
 
 /**
  * Initialize Quick Tabs v2 architecture
  * Call this from background.js on extension startup
+ * v1.6.3.8-v12 GAP-1, GAP-10 fix: Check feature flag before initialization
  */
-export async function initializeQuickTabsV2() {
+export function initializeQuickTabsV2() {
   // Prevent multiple initializations
   if (initializationPromise) {
-    return await initializationPromise;
+    return initializationPromise;
   }
 
   initializationPromise = _doInitialize();
-  return await initializationPromise;
+  return initializationPromise;
+}
+
+/**
+ * Bootstrap Quick Tabs architecture - checks feature flag first
+ * v1.6.3.8-v12 GAP-1, GAP-10 fix: Entry point that checks isV2Enabled()
+ * Call this from background.js on extension load
+ */
+export async function bootstrapQuickTabs() {
+  const bootstrapStartTime = Date.now();
+  console.log('[QuickTabsV2] BOOTSTRAP_START:', {
+    timestamp: bootstrapStartTime
+  });
+
+  try {
+    // GAP-1 Fix: Check feature flag before initialization
+    const v2Enabled = await isV2Enabled();
+
+    console.log('[QuickTabsV2] BOOTSTRAP_FLAG_CHECK:', {
+      v2Enabled,
+      timestamp: Date.now()
+    });
+
+    if (v2Enabled) {
+      // Initialize v2 architecture
+      activeArchitecture = 'v2';
+      console.log('[QuickTabsV2] BOOTSTRAP_PATH: Initializing v2 architecture');
+      const result = await initializeQuickTabsV2();
+
+      console.log('[QuickTabsV2] BOOTSTRAP_COMPLETE:', {
+        architecture: 'v2',
+        success: result.success,
+        duration: Date.now() - bootstrapStartTime
+      });
+
+      return {
+        ...result,
+        architecture: 'v2'
+      };
+    } else {
+      // v1 fallback - maintain legacy systems
+      activeArchitecture = 'v1';
+      console.log('[QuickTabsV2] BOOTSTRAP_PATH: v2 disabled, maintaining v1 fallback');
+
+      // Still initialize message handler for basic communication
+      initializeMessageHandler();
+      console.log('[QuickTabsV2] v1 fallback: Message handler initialized');
+
+      console.log('[QuickTabsV2] BOOTSTRAP_COMPLETE:', {
+        architecture: 'v1',
+        success: true,
+        duration: Date.now() - bootstrapStartTime
+      });
+
+      return {
+        success: true,
+        architecture: 'v1',
+        duration: Date.now() - bootstrapStartTime
+      };
+    }
+  } catch (error) {
+    console.error('[QuickTabsV2] BOOTSTRAP_FAILED:', {
+      error: error.message,
+      duration: Date.now() - bootstrapStartTime
+    });
+
+    return {
+      success: false,
+      architecture: 'error',
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Get active architecture ('v1', 'v2', or 'unknown')
+ * v1.6.3.8-v12 GAP-1: Diagnostic helper
+ */
+export function getActiveArchitecture() {
+  return activeArchitecture;
 }
 
 async function _doInitialize() {

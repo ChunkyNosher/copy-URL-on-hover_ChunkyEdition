@@ -22,12 +22,26 @@ const messageHandlers = {
   [MESSAGE_TYPES.CONTENT_SCRIPT_UNLOAD]: handleContentScriptUnload
 };
 
+// v1.6.3.8-v12 GAP-11 fix: Track first message received for diagnostics
+let firstMessageReceived = false;
+let handlerRegistrationTime = null;
+
 /**
  * Initialize the message handler
+ * v1.6.3.8-v12 GAP-11 fix: Add early-load logging with timestamp
  */
 export function initializeMessageHandler() {
+  handlerRegistrationTime = Date.now();
+  console.log('[MessageHandler] INIT_START:', {
+    timestamp: handlerRegistrationTime
+  });
+
   browser.runtime.onMessage.addListener(handleMessage);
-  console.log('[MessageHandler] Initialized');
+
+  console.log('[MessageHandler] INIT_COMPLETE: Listener registered:', {
+    timestamp: Date.now(),
+    durationMs: Date.now() - handlerRegistrationTime
+  });
 }
 
 /**
@@ -38,6 +52,17 @@ export function initializeMessageHandler() {
  * @returns {Promise<Object>} Handler response
  */
 async function handleMessage(message, sender) {
+  // v1.6.3.8-v12 GAP-11 fix: Log first message received
+  if (!firstMessageReceived) {
+    firstMessageReceived = true;
+    console.log('[MessageHandler] FIRST_MESSAGE_RECEIVED:', {
+      type: message.type,
+      senderTabId: sender?.tab?.id,
+      timeSinceInit: handlerRegistrationTime ? Date.now() - handlerRegistrationTime : 'unknown',
+      timestamp: Date.now()
+    });
+  }
+
   // Validate message
   const validation = MessageValidator.validate(message);
   if (!validation.valid) {
@@ -335,34 +360,61 @@ function handleContentScriptUnload(_message, sender) {
 
 /**
  * Broadcast state update to all tabs
+ * v1.6.3.8-v12 GAP-5, GAP-14 fix: Enhanced logging to confirm broadcast execution
  *
  * @param {Object} state - State to broadcast
  * @returns {Promise<void>}
  */
 async function broadcastStateToAllTabs(state) {
+  const broadcastStartTime = Date.now();
+  const correlationId = generateCorrelationId('broadcast');
+
+  console.log('[MessageHandler] BROADCAST_START:', {
+    correlationId,
+    quickTabCount: state?.allQuickTabs?.length || 0,
+    timestamp: broadcastStartTime
+  });
+
   try {
     const tabs = await browser.tabs.query({});
-    const correlationId = generateCorrelationId('broadcast');
+    const httpTabs = tabs.filter(tab => tab.url?.startsWith('http'));
 
-    const promises = tabs
-      .filter(tab => tab.url?.startsWith('http'))
-      .map(tab =>
-        browser.tabs
-          .sendMessage(tab.id, {
-            type: MESSAGE_TYPES.QT_STATE_SYNC,
-            state: state,
-            correlationId,
-            timestamp: Date.now()
-          })
-          .catch(() => {
-            // Tab not ready - OK, storage.onChanged will sync
-          })
-      );
+    console.log('[MessageHandler] BROADCAST_TARGETS:', {
+      correlationId,
+      totalTabs: tabs.length,
+      httpTabs: httpTabs.length
+    });
 
-    await Promise.allSettled(promises);
-    console.log('[MessageHandler] Broadcast complete to', tabs.length, 'tabs');
+    const promises = httpTabs.map(tab =>
+      browser.tabs
+        .sendMessage(tab.id, {
+          type: MESSAGE_TYPES.QT_STATE_SYNC,
+          state: state,
+          correlationId,
+          timestamp: Date.now()
+        })
+        .then(() => ({ tabId: tab.id, success: true }))
+        .catch(() => ({ tabId: tab.id, success: false }))
+    );
+
+    const results = await Promise.allSettled(promises);
+    const successCount = results.filter(
+      r => r.status === 'fulfilled' && r.value?.success
+    ).length;
+
+    console.log('[MessageHandler] BROADCAST_COMPLETE:', {
+      correlationId,
+      totalTargets: httpTabs.length,
+      successCount,
+      failedCount: httpTabs.length - successCount,
+      durationMs: Date.now() - broadcastStartTime
+    });
   } catch (error) {
-    console.warn('[MessageHandler] Broadcast error:', error);
+    console.warn('[MessageHandler] BROADCAST_ERROR:', {
+      correlationId,
+      error: error.message,
+      durationMs: Date.now() - broadcastStartTime
+    });
     // Not critical - storage.onChanged provides fallback
   }
 }

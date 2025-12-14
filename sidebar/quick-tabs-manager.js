@@ -1423,13 +1423,13 @@ const pendingAcks = new Map();
 // v1.6.3.8-v13 - PORT REMOVED: Listener ready functions are no-ops
 
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let listenerReadyPromise = Promise.resolve();
+const listenerReadyPromise = Promise.resolve();
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let _listenerReadyResolve = null;
+const _listenerReadyResolve = null;
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let _listenerReadyReject = null;
+const _listenerReadyReject = null;
 /** @deprecated v1.6.3.8-v13 - Port removed */
-let listenerFullyRegistered = true;
+const listenerFullyRegistered = true;
 
 /**
  * @deprecated v1.6.3.8-v13 - Port removed
@@ -1461,7 +1461,7 @@ function _resetListenerReadyState() {
  * Atomic guard for reconnection - prevents multiple simultaneous attempts
  * v1.6.3.7-v8 - FIX Issue #10: Race condition prevention
  */
-let isReconnecting = false;
+const isReconnecting = false;
 
 // ==================== v1.6.3.7-v8 HEARTBEAT HYSTERESIS ====================
 // FIX Issue #13: Require consecutive failures before ZOMBIE
@@ -1475,7 +1475,7 @@ const HEARTBEAT_FAILURES_BEFORE_ZOMBIE = 3;
  * Counter for consecutive heartbeat timeouts (separate from general failures)
  * v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
  */
-let consecutiveHeartbeatTimeouts = 0;
+const consecutiveHeartbeatTimeouts = 0;
 
 // ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
 // FIX Issue #14: Detect Firefox background script termination
@@ -1495,13 +1495,13 @@ const BACKGROUND_STALE_WARNING_THRESHOLD_MS = 30000;
  * Timestamp of last message received from background via port
  * v1.6.3.7-v8 - FIX Issue #14: Track background activity
  */
-let lastBackgroundMessageTime = Date.now();
+const lastBackgroundMessageTime = Date.now();
 
 /**
  * Timer ID for background activity check
  * v1.6.3.7-v8 - FIX Issue #14: Periodic health check
  */
-let backgroundActivityCheckTimerId = null;
+const backgroundActivityCheckTimerId = null;
 
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention

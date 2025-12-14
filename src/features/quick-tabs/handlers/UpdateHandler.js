@@ -14,6 +14,7 @@
  * v1.6.3.5-v8 - FIX Diagnostic Issue #3:
  *   - Re-wire window reference after restore using eventBus
  *   - Enhanced tab recovery for post-restore updates
+ * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send messages to background with correlationId
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -23,11 +24,14 @@
  * - Handle z-index updates on focus
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
+ * - Send messages to background for Pattern A operations (position/size)
  *
- * @version 1.6.3.7-v4
+ * @version 1.6.3.8-v12
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+
+import { generateCorrelationId } from '@storage/storage-manager.js';
 
 // v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports and functions removed per user request - Port + storage.onChanged only
@@ -122,6 +126,7 @@ export class UpdateHandler {
    * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, re-add if missing
    * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
    * v1.6.3.7-v4 - FIX Issue #2: Broadcast position update via BroadcastChannel
+   * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send message to background with correlationId
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
@@ -168,8 +173,8 @@ export class UpdateHandler {
       top: roundedTop
     });
 
-    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
-    // Port-based messaging via storage.onChanged is now the primary sync mechanism
+    // v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message to background (Pattern A - position changed)
+    this._sendPositionChangedMessage(id, { x: roundedLeft, y: roundedTop });
 
     // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
@@ -260,6 +265,7 @@ export class UpdateHandler {
    * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, enhanced logging
    * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
    * v1.6.3.7-v4 - FIX Issue #2: Broadcast size update via BroadcastChannel
+   * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send message to background with correlationId
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
@@ -306,8 +312,8 @@ export class UpdateHandler {
       height: roundedHeight
     });
 
-    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
-    // Port-based messaging via storage.onChanged is now the primary sync mechanism
+    // v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message to background (Pattern A - size changed)
+    this._sendSizeChangedMessage(id, { w: roundedWidth, h: roundedHeight });
 
     // v1.6.3.4 - FIX Issue #3: Persist to storage after resize ends
     console.log('[UpdateHandler] Scheduling storage persist after size change');
@@ -316,6 +322,90 @@ export class UpdateHandler {
 
   // v1.6.3.8-v6 - REMOVED: _broadcastUpdate method
   // BroadcastChannel removed - port-based messaging is now primary
+
+  /**
+   * Send position changed message to background (Pattern A - local update)
+   * v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message with correlationId
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {{ x: number, y: number }} newPosition - New position
+   */
+  _sendPositionChangedMessage(id, newPosition) {
+    // Guard: Check if browser runtime is available (not available in tests)
+    if (typeof browser === 'undefined' || !browser?.runtime?.sendMessage) {
+      console.debug('[UpdateHandler] Skipping position message (browser API unavailable):', id);
+      return;
+    }
+
+    const correlationId = generateCorrelationId('pos');
+
+    // Fire-and-forget - storage persistence is the backup
+    // Use try-catch to handle cases where sendMessage doesn't return a Promise (e.g., in tests)
+    try {
+      const result = browser.runtime.sendMessage({
+        type: 'QT_POSITION_CHANGED',
+        quickTabId: id,
+        newPosition,
+        correlationId,
+        timestamp: Date.now()
+      });
+
+      // Only chain .then/.catch if result is a Promise
+      if (result && typeof result.then === 'function') {
+        result
+          .then(() => {
+            console.log('[UpdateHandler] Position message sent:', { id, correlationId });
+          })
+          .catch(err => {
+            console.warn('[UpdateHandler] Position message failed (fallback to storage):', err.message);
+          });
+      }
+    } catch (err) {
+      console.warn('[UpdateHandler] Position message error:', err.message);
+    }
+  }
+
+  /**
+   * Send size changed message to background (Pattern A - local update)
+   * v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message with correlationId
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {{ w: number, h: number }} newSize - New size
+   */
+  _sendSizeChangedMessage(id, newSize) {
+    // Guard: Check if browser runtime is available (not available in tests)
+    if (typeof browser === 'undefined' || !browser?.runtime?.sendMessage) {
+      console.debug('[UpdateHandler] Skipping size message (browser API unavailable):', id);
+      return;
+    }
+
+    const correlationId = generateCorrelationId('size');
+
+    // Fire-and-forget - storage persistence is the backup
+    // Use try-catch to handle cases where sendMessage doesn't return a Promise (e.g., in tests)
+    try {
+      const result = browser.runtime.sendMessage({
+        type: 'QT_SIZE_CHANGED',
+        quickTabId: id,
+        newSize,
+        correlationId,
+        timestamp: Date.now()
+      });
+
+      // Only chain .then/.catch if result is a Promise
+      if (result && typeof result.then === 'function') {
+        result
+          .then(() => {
+            console.log('[UpdateHandler] Size message sent:', { id, correlationId });
+          })
+          .catch(err => {
+            console.warn('[UpdateHandler] Size message failed (fallback to storage):', err.message);
+          });
+      }
+    } catch (err) {
+      console.warn('[UpdateHandler] Size message error:', err.message);
+    }
+  }
 
   /**
    * Persist current state to browser.storage.local (debounced with change detection)
