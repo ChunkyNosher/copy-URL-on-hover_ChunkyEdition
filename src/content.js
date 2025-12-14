@@ -1689,6 +1689,9 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
 /**
  * Check sequenceId ordering for storage event
  * v1.6.3.8-v8 - Helper to reduce _validateStorageEventOrdering complexity
+ * v1.6.3.8-v10 - FIX Issue #7: Stricter ordering - only accept exact duplicates
+ *               Revision-based ordering is primary; sequenceId validates consistency
+ *               Gaps trigger state recovery instead of replay to avoid wrong-order processing
  * @private
  * @param {number} incomingSequenceId - Incoming sequence ID
  * @param {number} timeSinceWrite - Time since write in ms
@@ -1696,25 +1699,30 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
  * @returns {{valid: boolean, reason: string}|null} - Result or null to continue
  */
 function _checkSequenceIdOrdering(incomingSequenceId, timeSinceWrite, withinToleranceWindow) {
-  // Max acceptable gap for out-of-order sequenceIds within tolerance window
-  // Firefox listener latency (100-250ms) can cause up to ~5 sequential writes to arrive out of order
-  const MAX_SEQUENCE_ID_GAP = 5;
-  
   if (typeof incomingSequenceId !== 'number') return null;
+  
+  // Newer sequenceId - allow it
   if (incomingSequenceId > lastAppliedSequenceId) return null;
   
-  // Accept out-of-order within tolerance window if gap is within acceptable range
-  if (withinToleranceWindow && incomingSequenceId > lastAppliedSequenceId - MAX_SEQUENCE_ID_GAP) {
-    console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId out-of-order within tolerance):', {
+  // v1.6.3.8-v10 - FIX Issue #7: Only accept EXACT duplicates within tolerance window
+  // Gaps are rejected because they indicate out-of-order delivery which would cause
+  // events to be processed in wrong order (e.g., #2-#5 before #1)
+  // Instead of accepting gaps, we request fresh state recovery
+  if (incomingSequenceId === lastAppliedSequenceId && withinToleranceWindow) {
+    console.log('[Content] STORAGE_EVENT_ALLOWED (sequenceId exact duplicate within tolerance):', {
       incomingSequenceId, lastAppliedSequenceId, timeSinceWrite, tolerance: STORAGE_ORDERING_TOLERANCE_MS
     });
-    return { valid: true, reason: 'out-of-order-within-tolerance' };
+    return { valid: true, reason: 'duplicate-within-tolerance' };
   }
   
+  // v1.6.3.8-v10 - FIX Issue #7: Reject gaps in sequenceId
+  // Out-of-order delivery means events would process in wrong order
+  // Request fresh state instead of replaying stale events
   console.warn('[Content] STORAGE_EVENT_REJECTED (sequenceId):', {
     incomingSequenceId, lastAppliedSequenceId,
-    reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate' : 'out-of-order',
-    timeSinceWrite, withinTolerance: withinToleranceWindow
+    reason: incomingSequenceId === lastAppliedSequenceId ? 'duplicate-outside-tolerance' : 'out-of-order-gap',
+    timeSinceWrite, withinTolerance: withinToleranceWindow,
+    note: 'Gaps rejected to prevent wrong-order processing; fresh state will be requested'
   });
   return { valid: false, reason: 'sequenceId-rejected' };
 }

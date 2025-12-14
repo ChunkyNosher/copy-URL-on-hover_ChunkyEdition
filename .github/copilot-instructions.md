@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v9  
+**Version:** 1.6.3.8-v10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,7 +21,16 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v9 Features (NEW) - Initialization & Event Fixes:**
+**v1.6.3.8-v10 Features (NEW) - Modern APIs Audit Fixes:**
+
+- **Tab ID fetch retry** - Exponential backoff with extracted helper functions
+- **Storage write retry** - `_handleStorageWriteRetryDelay` helper extracted
+- **Stricter sequenceId ordering** - Only accept exact duplicates, reject gaps
+- **Content script unload** - Multi-channel (port + runtime.sendMessage) signals
+- **ESLint max-depth fixes** - Extracted helpers reduce nesting depth
+- **LISTENERS_READY event** - UICoordinator emits when listeners registered
+
+**v1.6.3.8-v9 Features (Retained):**
 
 - **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
 - **UICoordinator `_isInitializing`** - Suppresses orphan recovery during init
@@ -36,15 +45,9 @@ Tabs Manager
 - **Message queue limit** - Max 100 messages
 - **Tab ID timeout** - Increased to 5s with retry fallback
 
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, storage event ordering (300ms), port message queue, explicit
-tab ID barrier, extended dedup 10s, BFCache session tabs.
-
-**v1.6.3.8-v7 Features (Retained):** Per-port sequence ID tracking, circuit
-breaker escalation, correlationId tracing, adaptive quota monitoring.
-
-**v1.6.3.8-v6 Features (Retained):** Storage quota monitoring, MessageBatcher
-queue limits (100), checksum validation, BroadcastChannelManager.js DELETED.
+**v1.6.3.8-v8 Features (Retained):** Self-write detection (300ms aligned),
+transaction timeout 1000ms, storage event ordering (300ms), port message queue,
+explicit tab ID barrier, extended dedup 10s, BFCache session tabs.
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager
@@ -214,7 +217,7 @@ background:
   listener
 - Proactive dedup cleanup (50%), sliding window eviction (95%), probe queuing
 
-### Key Timing Constants (v1.6.3.8-v9)
+### Key Timing Constants (v1.6.3.8-v10)
 
 | Constant                               | Value    | Purpose                                   |
 | -------------------------------------- | -------- | ----------------------------------------- |
@@ -224,11 +227,13 @@ background:
 | `MAX_PERSIST_RETRY_ATTEMPTS`           | 3        | Persist retry limit                       |
 | `PERSIST_RETRY_DELAY_MS`               | 500      | Delay between persist retries             |
 | `TRANSACTION_FALLBACK_CLEANUP_MS`      | 1000     | Transaction timeout                       |
-| `SELF_WRITE_TIMESTAMP_WINDOW_MS`       | 50       | Self-write detection window               |
-| `STORAGE_EVENT_ORDER_TOLERANCE_MS`     | 300      | Firefox latency tolerance                 |
+| `SELF_WRITE_DETECTION_WINDOW_MS`       | 300      | Self-write detection (aligned with tolerance) |
+| `STORAGE_ORDERING_TOLERANCE_MS`        | 300      | Firefox latency tolerance                 |
 | `RESTORE_DEDUP_WINDOW_MS`              | 10000    | Dedup window                              |
 | `PORT_CIRCUIT_STATES`                  | 4 states | HEALTHY, DEGRADED, CRITICAL, DISCONNECTED |
 | `INIT_BARRIER_TIMEOUT_MS`              | 10000    | Initialization barrier timeout            |
+| `TAB_ID_FETCH_TIMEOUT_MS`              | 10000    | Tab ID fetch timeout (10s)                |
+| `TAB_ID_FETCH_MAX_RETRIES`             | 3        | Max retry attempts for tab ID fetch       |
 
 ---
 
