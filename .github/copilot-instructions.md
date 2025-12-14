@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v10  
+**Version:** 1.6.3.8-v11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -12,16 +12,27 @@ Tabs Manager
 **Key Features:**
 
 - Solo/Mute tab-specific visibility control
-- **Global Quick Tab visibility** (Container isolation REMOVED)
+- **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage key
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **Port-based messaging** with persistent connections (PRIMARY)
-- **Cross-tab sync via storage.onChanged + Background-as-Coordinator**
-- **Cross-tab isolation via `originTabId`** with strict per-tab scoping
-- **Lifecycle resilience** with keepalive & circuit breaker
+- **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
+- **Tab Isolation** - Filter by `originTabId` at hydration time
+- **Readback Validation** - Every storage write validated by read-back
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v10 Features (NEW) - Modern APIs Audit Fixes:**
+**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
+
+- **Quick Tabs Architecture v2** - tabs.sendMessage + storage.onChanged messaging
+- **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
+- **Tab Isolation** - Filter by `originTabId` at hydration time (structural)
+- **Readback Validation** - Every write validated by read-back (Issue #8 fix)
+- **Deduplication** - correlationId with 50ms window
+- **EventBus** - Native EventTarget for FIFO-guaranteed events (Issue #3 fix)
+- **StorageManager** - Retry with exponential backoff (100ms, 200ms, 400ms)
+- **Message Patterns** - LOCAL (no broadcast), GLOBAL (broadcast), MANAGER (broadcast)
+- **Migration Logic** - Legacy storage format migration with grace period
+
+**v1.6.3.8-v10 Features (Retained):**
 
 - **Tab ID fetch retry** - Exponential backoff with extracted helper functions
 - **Storage write retry** - `_handleStorageWriteRetryDelay` helper extracted
@@ -50,10 +61,10 @@ transaction timeout 1000ms, storage event ordering (300ms), port message queue,
 explicit tab ID barrier, extended dedup 10s, BFCache session tabs.
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
-TabStateManager, QuickTabGroupManager, NotificationManager
+TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager, MessageBuilder
 
 **Deprecated:** `setPosition()`, `setSize()`, `updateQuickTabPosition()`,
-`updateQuickTabSize()`, `BroadcastChannelManager` (DELETED in v6)
+`updateQuickTabSize()`, `BroadcastChannelManager` (DELETED in v6), runtime.Port (v11)
 
 ---
 
@@ -68,57 +79,80 @@ TabStateManager, QuickTabGroupManager, NotificationManager
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Single Writer Authority (v1.6.3.7-v2+)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.8-v11)
 
-**Manager no longer writes to storage directly.** All state changes flow through
-background:
+**tabs.sendMessage + storage.onChanged architecture:**
 
-- `ADOPT_TAB` - Manager sends adoption request to background
-- `CLOSE_MINIMIZED_TABS` - Background handler
-  `handleCloseMinimizedTabsCommand()`
-- `REQUEST_FULL_STATE_SYNC` - Manager requests full state on port reconnection
+- `QT_STATE_SYNC` - Background broadcasts state updates to all tabs
+- `MANAGER_CLOSE_ALL` / `MANAGER_CLOSE_MINIMIZED` - Manager pattern actions
+- `REQUEST_FULL_STATE_SYNC` - Request full state from background
 
-### v1.6.3.8-v9: Initialization & Event Fixes (PRODUCTION)
+**Message Patterns:**
 
-**Two-layer architecture (NO BroadcastChannel):**
+- **LOCAL** - No broadcast (position, size changes)
+- **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
+- **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-- **Layer 1:** runtime.Port for real-time metadata sync (position, minimized,
-  active)
-- **Layer 2:** storage.local with monotonic revision versioning +
-  storage.onChanged fallback
+### v1.6.3.8-v11: Architecture v2 (PRODUCTION)
 
-**Key Changes (v9):**
+**Two-layer architecture (NO Port, NO BroadcastChannel):**
 
-- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- **UICoordinator init flag** - `_isInitializing` suppresses orphan recovery
-- **DestroyHandler retry** - `_pendingPersists` queue with max 3 retries (500ms delay)
-- **Handler readiness** - `startRendering()` from `UICoordinator.init()`
-- **EventEmitter3 logging** - Timestamps for handler/listener order validation
-- **Message conflict detection** - `_checkMessageConflict()` prevents duplicates
-- **Init sequence** - `signalReady()` moved BEFORE hydration (Step 5.5)
-- **Comprehensive logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
-- **Resource limits** - Timestamp map max 1000, message queue max 100
-- **Tab ID timeout** - Increased to 5s with retry fallback
+- **Layer 1:** tabs.sendMessage for real-time broadcasts
+- **Layer 2:** storage.local with readback validation + storage.onChanged fallback
 
-### v1.6.3.8-v8: Storage & Init Improvements (Retained)
+**Key Changes (v11):**
 
-- **initializationBarrier Promise** - All async tasks complete before listeners
-- **`_hydrateStateFromBackground()`** - Port-based hydration before storage
-- **`document.visibilitychange`** - State refresh when sidebar becomes visible
-- **Proactive dedup cleanup** - 50% threshold with sliding window at 95%
+- **StorageManager class** - Dedup, readback validation, retry with backoff
+- **MessageBuilder** - Builds typed messages with correlationId
+- **EventBus** - Native EventTarget for FIFO events (replaces EventEmitter3)
+- **schema-v2.js** - Pure state utilities with immutable operations
+- **content-message-listener.js** - Content script receives via tabs.sendMessage
+- **manager-state-handler.js** - Manager handles Pattern C actions
+- **broadcast-manager.js** - `broadcastToAllTabs()` utility
+
+### v1.6.3.8-v10: Modern APIs Audit (Retained)
+
+- Tab ID fetch retry, storage write retry, stricter sequenceId
+- Content script unload signals, ESLint max-depth fixes
+
+### v1.6.3.8-v8: Storage & Init (Retained)
+
+- initializationBarrier Promise, port-based hydration, visibility change listener
 
 ### v1.6.3.8-v2/v3: Communication Layer (Retained)
 
-- ACK-based messaging, SIDEBAR_READY handshake
-- BFCache lifecycle, port snapshots (60s), WriteBuffer (75ms)
-- Storage listener verification
+- ACK-based messaging, SIDEBAR_READY handshake, BFCache lifecycle
 
 ### v1.6.3.8: Initialization & Diagnostics (Retained)
 
-- **Initialization barriers** - QuickTabHandler (10s), currentTabId (2s backoff)
-- **Centralized storage validation** - Type-specific recovery with re-write +
-  verify
-- **Code Health** - background.js (9.09), QuickTabHandler.js (9.41)
+- Initialization barriers, centralized storage validation
+
+---
+
+## 🆕 v1.6.3.8-v11 Patterns
+
+- **Single Storage Key** - `quick_tabs_state_v2.allQuickTabs[]`
+- **Tab Isolation** - Filter by `originTabId` at hydration (structural)
+- **Readback Validation** - Every write verified by reading back
+- **Deduplication** - correlationId with 50ms window prevents dupes
+- **EventBus** - Native EventTarget for FIFO-guaranteed events
+- **Message Patterns** - LOCAL, GLOBAL, MANAGER with MessageBuilder
+- **StorageManager** - Retry with exponential backoff (100ms, 200ms, 400ms)
+- **Migration** - Legacy format migration with grace period cleanup
+
+### New Modules (v1.6.3.8-v11)
+
+| Module                            | Purpose                                     |
+| --------------------------------- | ------------------------------------------- |
+| `src/storage/schema-v2.js`        | Pure state utilities, immutable operations  |
+| `src/storage/storage-manager.js`  | Dedup, readback validation, retry           |
+| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder, MessageValidator |
+| `src/background/quick-tabs-v2-integration.js` | V2 init, feature flags, cleanup |
+| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab()       |
+| `src/background/message-handler.js` | Background message handling               |
+| `src/features/quick-tabs/content-message-listener.js` | Content script listener |
+| `sidebar/manager-state-handler.js` | Manager Pattern C actions                  |
+| `src/utils/event-bus.js`          | EventBus with native EventTarget           |
 
 ---
 
@@ -137,103 +171,23 @@ background:
 
 ---
 
-## 🆕 v1.6.3.8-v9 Patterns
+## Previous Patterns (v10 and earlier)
 
-- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- **UICoordinator `_isInitializing`** - Flag suppresses orphan recovery during init
-- **DestroyHandler retry logic** - `_pendingPersists` queue, 3 retries, 500ms delay
-- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
-- **EventEmitter3 logging** - Timestamps for handler/listener registration order
-- **Message conflict detection** - `_checkMessageConflict()` prevents duplicates
-- **Init sequence fix** - `signalReady()` BEFORE hydration (Step 5.5)
-- **INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE, BARRIER_CHECK
-- **Timestamp map limit** - Max 1000 entries with automatic cleanup
-- **Event listener cleanup** - `cleanupStateListeners()` method
-- **Message queue limit** - Max 100 messages
-- **Tab ID timeout 5s** - Increased from 2s with retry fallback
+**v9:** DestroyHandler event order, UICoordinator `_isInitializing`, message conflict detection  
+**v8:** Self-write detection, transaction timeout, port message queue  
+**v7:** Per-port sequence IDs, circuit breaker, correlationId tracing  
+**v6:** Port-based messaging, storage quota, checksum validation  
+**v5:** Monotonic revision versioning, declarativeNetRequest fallback
 
-### New Methods/Patterns (v1.6.3.8-v9)
+### Key Timing Constants (v1.6.3.8-v11)
 
-**UICoordinator:**
-- `_isInitializing` flag - tracks initialization phase
-- `cleanupStateListeners()` - removes registered event listeners
-- `_firstEventReceived` Map - tracks when events first fire
-- Callback error handling wraps all handler calls in try-catch
-
-**QuickTabsManager (index.js):**
-- `_checkMessageConflict()` - detects duplicate/stale messages
-- `_checkStaleDestructiveMessage()` - checks if delete message is stale
-- Step 5.5: Message replay BEFORE hydration
-- Delayed hydration retry if currentTabId barrier fails
-
-**DestroyHandler:**
-- `_pendingPersists` queue for retry logic
-- `_persistedDeletions` Set for tracking
-- `_schedulePersistRetry()` and `_processRetryQueue()` methods
-- Event emission order reversed (emit before delete)
-
-### v1.6.3.8-v8 Patterns (Retained)
-
-| Module              | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
-| `init-barrier.js`   | Initialization barrier logic, CONNECTION_STATE |
-| `state-sync.js`     | Port/storage sync, SaveId dedup, sequence IDs  |
-| `diagnostics.js`    | Logging utilities, correlation IDs             |
-| `health-metrics.js` | Storage/fallback health, dedup map monitoring  |
-| `index.js`          | Re-exports for convenient importing            |
-
-### Test Helpers (v1.6.3.8-v8)
-
-| Helper                                   | Purpose                             |
-| ---------------------------------------- | ----------------------------------- |
-| `tests/helpers/manager-factory.js`       | Manager instance creation for tests |
-| `tests/helpers/port-simulator.js`        | Port connection simulation          |
-| `tests/helpers/storage-test-helper.js`   | Storage operations mock             |
-| `tests/helpers/cross-tab-simulator.js`   | Cross-tab sync simulation           |
-| `tests/helpers/state-machine-utils.js`   | State machine test utilities        |
-| `tests/helpers/coordinator-utils.js`     | Background coordinator helpers      |
-| `tests/e2e/helpers/multi-tab-fixture.js` | Multi-tab E2E fixtures              |
-| `tests/e2e/helpers/assertion-helpers.js` | E2E assertion utilities             |
-
-## v1.6.3.8-v7 Patterns (Retained)
-
-- Per-port sequence IDs, circuit breaker escalation, correlationId tracing
-- Adaptive quota monitoring, storage aggregation, iframe port tracking
-- Queue TTL (60s), max event age (5-min), content script unload
-
-## v1.6.3.8-v6 Patterns (Retained)
-
-- Port-based messaging PRIMARY, storage quota monitoring, MessageBatcher limits
-- Port reconnection backoff, checksum validation, beforeunload cleanup
-
-## v1.6.3.8-v5 Patterns (Retained)
-
-- Monotonic revision versioning, port failure counting, storage quota recovery
-- declarativeNetRequest fallback, URL validation
-
-## v1.6.3.8-v4 Patterns (Retained)
-
-- initializationBarrier Promise, port-based hydration, visibility change
-  listener
-- Proactive dedup cleanup (50%), sliding window eviction (95%), probe queuing
-
-### Key Timing Constants (v1.6.3.8-v10)
-
-| Constant                               | Value    | Purpose                                   |
-| -------------------------------------- | -------- | ----------------------------------------- |
-| `CURRENT_TAB_ID_WAIT_TIMEOUT_MS`       | 5000     | Tab ID barrier timeout (was 2000ms)       |
-| `MAX_MESSAGE_QUEUE_SIZE`               | 100      | Message queue limit                       |
-| `MAX_MAP_ENTRIES`                      | 1000     | Timestamp map size limit                  |
-| `MAX_PERSIST_RETRY_ATTEMPTS`           | 3        | Persist retry limit                       |
-| `PERSIST_RETRY_DELAY_MS`               | 500      | Delay between persist retries             |
-| `TRANSACTION_FALLBACK_CLEANUP_MS`      | 1000     | Transaction timeout                       |
-| `SELF_WRITE_DETECTION_WINDOW_MS`       | 300      | Self-write detection (aligned with tolerance) |
-| `STORAGE_ORDERING_TOLERANCE_MS`        | 300      | Firefox latency tolerance                 |
-| `RESTORE_DEDUP_WINDOW_MS`              | 10000    | Dedup window                              |
-| `PORT_CIRCUIT_STATES`                  | 4 states | HEALTHY, DEGRADED, CRITICAL, DISCONNECTED |
-| `INIT_BARRIER_TIMEOUT_MS`              | 10000    | Initialization barrier timeout            |
-| `TAB_ID_FETCH_TIMEOUT_MS`              | 10000    | Tab ID fetch timeout (10s)                |
-| `TAB_ID_FETCH_MAX_RETRIES`             | 3        | Max retry attempts for tab ID fetch       |
+| Constant                      | Value       | Purpose                              |
+| ----------------------------- | ----------- | ------------------------------------ |
+| `DEDUP_WINDOW_MS`             | 50          | correlationId deduplication window   |
+| `STORAGE_RETRY_DELAYS`        | [100,200,400] | Exponential backoff for writes     |
+| `CURRENT_TAB_ID_WAIT_TIMEOUT_MS` | 5000     | Tab ID barrier timeout               |
+| `MAX_MESSAGE_QUEUE_SIZE`      | 100         | Message queue limit                  |
+| `TRANSACTION_FALLBACK_CLEANUP_MS` | 1000    | Transaction timeout                  |
 
 ---
 
@@ -245,9 +199,9 @@ background:
 | QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                       |
 | MapTransactionManager | `beginTransaction()`, `commitTransaction()`                  |
 | TabStateManager (v3)  | `getTabState()`, `setTabState()`                             |
-| Manager               | `scheduleRender()`, `_transitionConnectionState()`           |
-| UICoordinator         | `init()`, `cleanupStateListeners()`, `_isInitializing` flag  |
-| DestroyHandler        | `_pendingPersists`, `_schedulePersistRetry()`, emit-before-delete |
+| StorageManager        | `readState()`, `writeStateWithValidation()`, `triggerStorageRecovery()` |
+| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()` |
+| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`  |
 
 ---
 
@@ -263,11 +217,8 @@ background:
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, coordinated clear, closeAll mutex, **v1.6.3.8-v9:** event emission
-before deletion, `_isInitializing` flag, persist retry queue, message conflict
-detection, init sequence reorder, **v1.6.3.8-v8:** self-write detection,
-transaction timeout 1000ms, port message queue, **v1.6.3.8-v7:** per-port
-sequence IDs, circuit breaker escalation.
+Authority, **v1.6.3.8-v11:** tabs.sendMessage messaging, readback validation,
+correlationId deduplication, FIFO EventBus, message patterns (LOCAL/GLOBAL/MANAGER).
 
 ---
 
@@ -320,25 +271,28 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ### Key Files
 
-| File                       | Features                                                         |
-| -------------------------- | ---------------------------------------------------------------- |
-| `quick-tabs-manager.js`    | Port-based sync, initializationBarrier, port hydration           |
-| `sidebar/modules/index.js` | Re-exports init-barrier, state-sync, diagnostics, health-metrics |
-| `background.js`            | Port registry, storage versioning, quota monitoring              |
-| `QuickTabHandler.js`       | Handler timeout, init barrier, Code Health 9.41                  |
-| `message-utils.js`         | ACK-based messaging, MessageBatcher with queue limits            |
-| `storage-utils.js`         | WriteBuffer, sequence rejection, checksum validation             |
+| File                              | Features                                          |
+| --------------------------------- | ------------------------------------------------- |
+| `src/storage/schema-v2.js`        | Pure state utilities, originTabId filtering       |
+| `src/storage/storage-manager.js`  | Dedup, readback validation, retry                 |
+| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder, MessageValidator   |
+| `src/background/quick-tabs-v2-integration.js` | V2 initialization, feature flags    |
+| `src/utils/event-bus.js`          | EventBus with native EventTarget                  |
+| `background.js`                   | Message handler, storage versioning               |
 
 ### Storage
 
 **Permanent State Key:** `quick_tabs_state_v2` (storage.local)  
-**Session State Key:** `session_quick_tabs` (storage.session, v3)  
-**Format:** `{ tabs: [...], saveId, timestamp, writingTabId, revisionId, checksum }`
+**Session State Key:** `session_quick_tabs` (storage.session)  
+**Format:** `{ allQuickTabs: [...], originTabId, correlationId, timestamp }`
 
 ### Messages
 
-**Protocol:** `ACTION_REQUEST`, `STATE_UPDATE`, `ACKNOWLEDGMENT`, `ERROR`,
-`BROADCAST`, `REQUEST_FULL_STATE_SYNC`, `ADOPT_TAB`, `CLOSE_MINIMIZED_TABS`
+**MESSAGE_TYPES:** `QT_POSITION_CHANGED`, `QT_SIZE_CHANGED`, `QT_MINIMIZED`,
+`QT_RESTORED`, `QT_CLOSED`, `MANAGER_CLOSE_ALL`, `MANAGER_CLOSE_MINIMIZED`,
+`QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
+
+**Patterns:** LOCAL (no broadcast), GLOBAL (broadcast to all), MANAGER (manager-initiated)
 
 ---
 

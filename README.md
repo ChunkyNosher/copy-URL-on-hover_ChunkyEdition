@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.8-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.8-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent
 Floating Panel Manager.
@@ -9,36 +9,32 @@ Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.8-v10 Status:** Modern APIs Audit Fixes ✅
+**🔧 v1.6.3.8-v11 Status:** Quick Tabs Architecture v2 ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.8-v10
+## 🎉 What's New in v1.6.3.8-v11
 
-**🔧 Modern APIs Audit & Diagnostic Fixes (December 2025) ✅**
+**🔧 Quick Tabs Architecture v2 (December 2025) ✅**
 
-**Storage & Event Ordering:**
+**New Architecture:**
 
-- ✅ **Stricter sequenceId ordering** - Only accept exact duplicates, reject gaps
-- ✅ **Self-write detection aligned** - 300ms window matches listener tolerance
-- ✅ **Storage write retry** - Exponential backoff with extracted helpers
+- ✅ **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
+- ✅ **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
+- ✅ **Readback validation** - Every write validated by read-back (fixes Issue #8)
+- ✅ **Deduplication** - correlationId with 50ms window prevents duplicates
 
-**Initialization & Lifecycle:**
+**New Modules:**
 
-- ✅ **Tab ID fetch retry** - 10s timeout, 3 retries, exponential backoff
-- ✅ **Content script unload signals** - Multi-channel (port + runtime.sendMessage)
-- ✅ **LISTENERS_READY event** - UICoordinator validation pattern
+- ✅ **StorageManager** - Retry with exponential backoff (100ms, 200ms, 400ms)
+- ✅ **EventBus** - Native EventTarget for FIFO-guaranteed events (fixes Issue #3)
+- ✅ **MessageBuilder** - Typed messages with LOCAL/GLOBAL/MANAGER patterns
+- ✅ **Migration logic** - Legacy storage format migration with grace period
 
-**Code Quality:**
-
-- ✅ **ESLint max-depth fixes** - Helper functions reduce nesting depth
-- ✅ **Port zombie detection** - Pending messages flushed on BFCache entry
-- ✅ **BFCache session tabs** - Filtered out during restoration
-
-**Why This Matters:** Implements recommendations from modern-apis-audit.md and
-fixes all 10 issues in quick-tabs-diagnostic-v2.md for robust state sync.
+**Why This Matters:** Complete architecture redesign fixes race conditions,
+port zombies, silent storage failures, and corruption issues.
 
 ---
 
@@ -47,6 +43,7 @@ fixes all 10 issues in quick-tabs-diagnostic-v2.md for robust state sync.
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
 including:
 
+- **v1.6.3.8-v10** - Modern APIs Audit, Diagnostic Fixes
 - **v1.6.3.8-v8** - Storage, Handler & Init Fixes
 - **v1.6.3.8-v7** - Communication & Storage Fixes
 - **v1.6.3.8-v6** - Production Hardening, BC removal complete
@@ -237,6 +234,6 @@ for details.
 
 ---
 
-**Version 1.6.3.8-v9** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.8-v11** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
