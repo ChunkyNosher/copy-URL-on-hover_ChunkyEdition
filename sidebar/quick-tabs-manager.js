@@ -2,6 +2,21 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.8-v12 - FIX Issue #9: Manager Sidebar Grouping Race Condition
+ *   - NEW: Serial render queue (_renderQueue) - renders execute one at a time
+ *   - NEW: _enqueueRender() - buffers render requests with debouncing (100ms)
+ *   - NEW: _processRenderQueue() - processes queued renders serially
+ *   - NEW: _executeQueuedRender() - executes single render with checksum validation
+ *   - NEW: _validateRenderIntegrity() - detects state corruption during render
+ *   - NEW: _triggerRenderCorruptionRecovery() - requests full state refresh on corruption
+ *   - NEW: _requestFullStateRefresh() - reads fresh state from storage for recovery
+ *   - NEW: _startRenderStallTimer() / _clearRenderStallTimer() - detects stalled renders
+ *   - NEW: RENDER_QUEUE_DEBOUNCE_MS (100ms) - buffer rapid changes before re-rendering
+ *   - NEW: RENDER_STALL_TIMEOUT_MS (5s) - safety timeout for render operations
+ *   - NEW: RENDER_QUEUE_MAX_SIZE (10) - prevent memory issues from excessive queuing
+ *   - ARCHITECTURE: Checksum validation before/after render detects corruption
+ *   - ARCHITECTURE: Recovery triggers full state refresh from storage on corruption
+ *
  * v1.6.3.8-v5 - FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
  *   - NEW: Monotonic revision versioning for storage event ordering
  *   - NEW: _lastAppliedRevision tracking - listeners reject revision ≤ current
@@ -272,7 +287,29 @@ let hostInfoCleanupIntervalId = null;
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
-const RENDER_DEBOUNCE_MS = 300;
+// v1.6.3.8-v12: Legacy constant - replaced by RENDER_QUEUE_DEBOUNCE_MS but kept for documentation
+const _LEGACY_RENDER_DEBOUNCE_MS = 300;
+
+// ==================== v1.6.3.8-v12 RENDER QUEUE CONSTANTS ====================
+// FIX Issue #9: Manager Sidebar Grouping Race Condition
+/**
+ * Debounce delay for buffering rapid storage changes before re-rendering
+ * v1.6.3.8-v12 - FIX Issue #9: Buffer changes for 100ms before re-rendering
+ */
+const RENDER_QUEUE_DEBOUNCE_MS = 100;
+
+/**
+ * Maximum time to wait for a render to complete before considering it stalled
+ * v1.6.3.8-v12 - FIX Issue #9: Safety timeout for render operations
+ */
+const RENDER_STALL_TIMEOUT_MS = 5000;
+
+/**
+ * Maximum number of pending render requests to queue
+ * v1.6.3.8-v12 - FIX Issue #9: Prevent memory issues from excessive queuing
+ */
+const RENDER_QUEUE_MAX_SIZE = 10;
+
 // FIX Issue #5: Port Reconnect Circuit Breaker
 const RECONNECT_BACKOFF_INITIAL_MS = 100;
 const RECONNECT_BACKOFF_MAX_MS = 10000;
@@ -1598,6 +1635,50 @@ let backgroundActivityCheckTimerId = null;
 let renderDebounceTimer = null;
 let lastRenderedHash = 0;
 let pendingRenderUI = false;
+
+// ==================== v1.6.3.8-v12 RENDER QUEUE STATE ====================
+// FIX Issue #9: Manager Sidebar Grouping Race Condition
+/**
+ * Flag indicating if a render is currently in progress
+ * v1.6.3.8-v12 - FIX Issue #9: Serialize render operations
+ */
+let _renderInProgress = false;
+
+/**
+ * Queue of pending render requests (source and timestamp)
+ * v1.6.3.8-v12 - FIX Issue #9: Queue renders to execute serially
+ */
+const _renderQueue = [];
+
+/**
+ * Timer ID for render queue debounce
+ * v1.6.3.8-v12 - FIX Issue #9: Debounce rapid render requests
+ */
+let _renderQueueDebounceTimer = null;
+
+/**
+ * Timer ID for render stall detection
+ * v1.6.3.8-v12 - FIX Issue #9: Detect stalled renders
+ */
+let _renderStallTimerId = null;
+
+/**
+ * State hash captured before render starts (for validation)
+ * v1.6.3.8-v12 - FIX Issue #9: Checksum before/after render
+ */
+let _preRenderStateHash = 0;
+
+/**
+ * Counter for tracking render corruption recovery attempts
+ * v1.6.3.8-v12 - FIX Issue #9: Limit recovery attempts to prevent loops
+ */
+let _renderCorruptionRecoveryAttempts = 0;
+
+/**
+ * Maximum recovery attempts before giving up
+ * v1.6.3.8-v12 - FIX Issue #9: Prevent infinite recovery loops
+ */
+const MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS = 3;
 
 /**
  * Generate correlation ID for message acknowledgment
@@ -6994,12 +7075,121 @@ function updateUIStats(totalTabs, latestTimestamp) {
 }
 
 /**
- * Render the Quick Tabs Manager UI (debounced)
+ * Render the Quick Tabs Manager UI (debounced with serial queue)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
  * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
+ * v1.6.3.8-v12 - FIX Issue #9: Serial render queue to prevent race conditions
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
+  // v1.6.3.8-v12 - FIX Issue #9: Use render queue with debouncing
+  _enqueueRender('renderUI');
+}
+
+/**
+ * Enqueue a render request with debouncing
+ * v1.6.3.8-v12 - FIX Issue #9: Buffer rapid changes before re-rendering
+ * @private
+ * @param {string} source - Source of the render request
+ */
+function _enqueueRender(source) {
+  const timestamp = Date.now();
+
+  // Add to queue (with size limit)
+  if (_renderQueue.length < RENDER_QUEUE_MAX_SIZE) {
+    _renderQueue.push({ source, timestamp });
+  } else {
+    console.warn('[Manager] RENDER_QUEUE_FULL: Dropping render request', {
+      source,
+      queueSize: _renderQueue.length,
+      maxSize: RENDER_QUEUE_MAX_SIZE
+    });
+  }
+
+  // Clear existing debounce timer
+  if (_renderQueueDebounceTimer) {
+    clearTimeout(_renderQueueDebounceTimer);
+  }
+
+  // Debounce: wait for more changes before processing
+  _renderQueueDebounceTimer = setTimeout(() => {
+    _renderQueueDebounceTimer = null;
+    _processRenderQueue();
+  }, RENDER_QUEUE_DEBOUNCE_MS);
+
+  console.log('[Manager] RENDER_ENQUEUED:', {
+    source,
+    queueSize: _renderQueue.length,
+    renderInProgress: _renderInProgress,
+    timestamp
+  });
+}
+
+/**
+ * Process the render queue serially
+ * v1.6.3.8-v12 - FIX Issue #9: Ensure renders complete serially
+ * @private
+ */
+async function _processRenderQueue() {
+  // If already rendering, wait - the current render will process remaining queue
+  if (_renderInProgress) {
+    console.log('[Manager] RENDER_QUEUE_WAITING: Render already in progress', {
+      queueSize: _renderQueue.length
+    });
+    return;
+  }
+
+  // If queue is empty, nothing to do
+  if (_renderQueue.length === 0) {
+    console.log('[Manager] RENDER_QUEUE_EMPTY: Nothing to render');
+    return;
+  }
+
+  // Coalesce all queued renders into one
+  const coalescedSources = _renderQueue.map(r => r.source);
+  const queueStartTime = _renderQueue[0]?.timestamp || Date.now();
+  _renderQueue.length = 0; // Clear queue
+
+  console.log('[Manager] RENDER_QUEUE_PROCESSING:', {
+    coalescedCount: coalescedSources.length,
+    sources: coalescedSources.slice(0, 5), // Log first 5 sources
+    queueDelayMs: Date.now() - queueStartTime
+  });
+
+  // Execute the render
+  _renderInProgress = true;
+  _startRenderStallTimer();
+
+  try {
+    await _executeQueuedRender();
+  } catch (err) {
+    console.error('[Manager] RENDER_QUEUE_ERROR:', {
+      error: err.message,
+      stack: err.stack
+    });
+  } finally {
+    _renderInProgress = false;
+    _clearRenderStallTimer();
+
+    // Check if more renders were queued during this render
+    if (_renderQueue.length > 0) {
+      console.log('[Manager] RENDER_QUEUE_CONTINUE: More renders queued during execution', {
+        pendingCount: _renderQueue.length
+      });
+      // Use setTimeout to avoid stack overflow from deep recursion
+      setTimeout(() => _processRenderQueue(), 0);
+    }
+  }
+}
+
+/**
+ * Execute a single queued render with checksum validation
+ * v1.6.3.8-v12 - FIX Issue #9: Checksum before/after render
+ * @private
+ */
+async function _executeQueuedRender() {
+  const renderStartTime = Date.now();
+
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
 
@@ -7007,52 +7197,272 @@ function renderUI() {
   capturedStateHashAtDebounce = computeStateHash(quickTabsState);
   debounceSetTimestamp = Date.now();
 
-  // Clear any existing debounce timer
-  if (renderDebounceTimer) {
-    clearTimeout(renderDebounceTimer);
+  // v1.6.3.8-v12 - FIX Issue #9: Capture pre-render checksum for validation
+  _preRenderStateHash = capturedStateHashAtDebounce;
+  const preRenderTabCount = quickTabsState?.tabs?.length ?? 0;
+  const preRenderTabIds = new Set((quickTabsState?.tabs || []).map(t => t.id));
+
+  console.log('[Manager] RENDER_CHECKSUM_PRE:', {
+    hash: _preRenderStateHash,
+    tabCount: preRenderTabCount,
+    timestamp: renderStartTime
+  });
+
+  // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
+  const staleCheckResult = await _checkAndReloadStaleState();
+  if (staleCheckResult.stateReloaded) {
+    console.log(
+      '[Manager] State changed while debounce was waiting, rendering with fresh state',
+      staleCheckResult
+    );
   }
 
-  // Schedule the actual render
-  renderDebounceTimer = setTimeout(async () => {
-    renderDebounceTimer = null;
-
-    // Only render if still pending (wasn't cancelled)
-    if (!pendingRenderUI) {
-      console.log('[Manager] Skipping debounced render - no longer pending');
-      return;
-    }
-
-    pendingRenderUI = false;
-
-    // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
-    const staleCheckResult = await _checkAndReloadStaleState();
-    if (staleCheckResult.stateReloaded) {
-      console.log(
-        '[Manager] State changed while debounce was waiting, rendering with fresh state',
-        staleCheckResult
-      );
-    }
-
-    // Recalculate hash after potential fresh load
-    const finalHash = computeStateHash(quickTabsState);
-    if (finalHash === lastRenderedHash) {
-      console.log('[Manager] Skipping render - state hash unchanged', {
-        hash: finalHash,
-        tabCount: quickTabsState?.tabs?.length ?? 0
-      });
-      return;
-    }
-
-    // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
-    // This ensures consistent state even on render failure
-    lastRenderedHash = finalHash;
-    lastRenderedStateHash = finalHash;
-
-    // Synchronize DOM mutation with requestAnimationFrame
-    requestAnimationFrame(() => {
-      _renderUIImmediate();
+  // Recalculate hash after potential fresh load
+  const finalHash = computeStateHash(quickTabsState);
+  if (finalHash === lastRenderedHash) {
+    console.log('[Manager] Skipping render - state hash unchanged', {
+      hash: finalHash,
+      tabCount: quickTabsState?.tabs?.length ?? 0
     });
-  }, RENDER_DEBOUNCE_MS);
+    pendingRenderUI = false;
+    return;
+  }
+
+  // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
+  lastRenderedHash = finalHash;
+  lastRenderedStateHash = finalHash;
+
+  pendingRenderUI = false;
+
+  // Synchronize DOM mutation with requestAnimationFrame
+  await new Promise(resolve => {
+    requestAnimationFrame(async () => {
+      await _renderUIImmediate();
+      resolve();
+    });
+  });
+
+  // v1.6.3.8-v12 - FIX Issue #9: Post-render checksum validation
+  const postRenderHash = computeStateHash(quickTabsState);
+  const postRenderTabCount = quickTabsState?.tabs?.length ?? 0;
+  const postRenderTabIds = new Set((quickTabsState?.tabs || []).map(t => t.id));
+
+  console.log('[Manager] RENDER_CHECKSUM_POST:', {
+    preHash: _preRenderStateHash,
+    postHash: postRenderHash,
+    hashMatch: _preRenderStateHash === postRenderHash,
+    preTabCount: preRenderTabCount,
+    postTabCount: postRenderTabCount,
+    durationMs: Date.now() - renderStartTime
+  });
+
+  // v1.6.3.8-v12 - FIX Issue #9: Detect potential corruption
+  _validateRenderIntegrity({
+    preRenderHash: _preRenderStateHash,
+    postRenderHash,
+    preRenderTabCount,
+    postRenderTabCount,
+    preRenderTabIds,
+    postRenderTabIds,
+    renderStartTime
+  });
+}
+
+/**
+ * Validate render integrity and trigger recovery if corruption detected
+ * v1.6.3.8-v12 - FIX Issue #9: Detect and recover from render corruption
+ * @private
+ * @param {Object} context - Validation context
+ */
+function _validateRenderIntegrity(context) {
+  const {
+    preRenderHash,
+    postRenderHash,
+    preRenderTabCount,
+    postRenderTabCount,
+    preRenderTabIds,
+    postRenderTabIds,
+    renderStartTime
+  } = context;
+
+  // Check for unexpected state changes during render
+  const hashChanged = preRenderHash !== postRenderHash;
+  const tabCountChanged = preRenderTabCount !== postRenderTabCount;
+
+  // Calculate missing tabs (tabs that existed before but not after)
+  const missingTabs = [...preRenderTabIds].filter(id => !postRenderTabIds.has(id));
+  const newTabs = [...postRenderTabIds].filter(id => !preRenderTabIds.has(id));
+
+  // v1.6.3.8-v12 - FIX: Extract corruption checks into helper functions
+  const hasTabsDisappeared = missingTabs.length > 0;
+  const hasNoNewTabs = newTabs.length === 0;
+  const hasCountDecreased = postRenderTabCount < preRenderTabCount;
+
+  // Corruption = tabs disappeared unexpectedly without any new tabs added
+  const possibleCorruption =
+    hasTabsDisappeared && hasNoNewTabs && tabCountChanged && hasCountDecreased;
+
+  if (possibleCorruption) {
+    _handlePossibleCorruption({
+      preRenderHash,
+      postRenderHash,
+      preRenderTabCount,
+      postRenderTabCount,
+      missingTabs,
+      renderStartTime
+    });
+  } else if (hashChanged) {
+    _handleStateDrift({
+      preRenderHash,
+      postRenderHash,
+      preRenderTabCount,
+      postRenderTabCount,
+      newTabs
+    });
+  }
+}
+
+/**
+ * Handle possible corruption detection
+ * v1.6.3.8-v12 - FIX Issue #9: Extracted for clarity and testability
+ * @private
+ * @param {Object} context - Corruption context
+ */
+function _handlePossibleCorruption(context) {
+  console.error('[Manager] RENDER_CORRUPTION_DETECTED:', {
+    preHash: context.preRenderHash,
+    postHash: context.postRenderHash,
+    preTabCount: context.preRenderTabCount,
+    postTabCount: context.postRenderTabCount,
+    missingTabs: context.missingTabs,
+    renderDurationMs: Date.now() - context.renderStartTime,
+    recoveryAttempts: _renderCorruptionRecoveryAttempts
+  });
+
+  _triggerRenderCorruptionRecovery();
+}
+
+/**
+ * Handle state drift (non-corruption state changes)
+ * v1.6.3.8-v12 - FIX Issue #9: Extracted for clarity and testability
+ * @private
+ * @param {Object} context - Drift context
+ */
+function _handleStateDrift(context) {
+  console.log('[Manager] RENDER_STATE_DRIFT:', {
+    reason: 'State changed during render (normal)',
+    preHash: context.preRenderHash,
+    postHash: context.postRenderHash,
+    tabCountDelta: context.postRenderTabCount - context.preRenderTabCount,
+    newTabsAdded: context.newTabs.length
+  });
+}
+
+/**
+ * Trigger recovery from render corruption
+ * v1.6.3.8-v12 - FIX Issue #9: Request full state refresh on corruption
+ * @private
+ */
+function _triggerRenderCorruptionRecovery() {
+  // Limit recovery attempts to prevent infinite loops
+  if (_renderCorruptionRecoveryAttempts >= MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS) {
+    console.error('[Manager] RENDER_RECOVERY_EXHAUSTED: Max recovery attempts reached', {
+      attempts: _renderCorruptionRecoveryAttempts,
+      max: MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS
+    });
+    _renderCorruptionRecoveryAttempts = 0; // Reset for future
+    return;
+  }
+
+  _renderCorruptionRecoveryAttempts++;
+
+  console.log('[Manager] RENDER_RECOVERY_TRIGGERED:', {
+    attempt: _renderCorruptionRecoveryAttempts,
+    max: MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS,
+    action: 'requesting_full_state_refresh'
+  });
+
+  // Request full state refresh from storage
+  _requestFullStateRefresh();
+}
+
+/**
+ * Request full state refresh from storage
+ * v1.6.3.8-v12 - FIX Issue #9: Recovery mechanism
+ * @private
+ */
+async function _requestFullStateRefresh() {
+  try {
+    console.log('[Manager] FULL_STATE_REFRESH: Reading fresh state from storage');
+
+    const result = await browser.storage.local.get(STATE_KEY);
+    const freshState = result?.[STATE_KEY];
+
+    if (freshState?.tabs) {
+      // Update local state with fresh data
+      quickTabsState = freshState;
+      _updateInMemoryCache(freshState.tabs);
+      lastLocalUpdateTime = Date.now();
+
+      console.log('[Manager] FULL_STATE_REFRESH_SUCCESS:', {
+        tabCount: freshState.tabs.length,
+        saveId: freshState.saveId,
+        timestamp: Date.now()
+      });
+
+      // v1.6.3.8-v12 - FIX: Use force render to bypass queue for recovery
+      // Using scheduleRender could re-trigger the same corruption, so bypass queue
+      setTimeout(() => {
+        _renderCorruptionRecoveryAttempts = 0; // Reset on successful refresh
+        _renderUIImmediate_force();
+      }, 50);
+    } else {
+      console.warn('[Manager] FULL_STATE_REFRESH: No valid state in storage');
+    }
+  } catch (err) {
+    console.error('[Manager] FULL_STATE_REFRESH_FAILED:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Start the render stall detection timer
+ * v1.6.3.8-v12 - FIX Issue #9: Detect stalled renders
+ * @private
+ */
+function _startRenderStallTimer() {
+  _clearRenderStallTimer();
+
+  _renderStallTimerId = setTimeout(() => {
+    console.error('[Manager] RENDER_STALL_DETECTED: Render took too long', {
+      timeoutMs: RENDER_STALL_TIMEOUT_MS,
+      renderInProgress: _renderInProgress
+    });
+
+    // Force reset the render state
+    _renderInProgress = false;
+    _renderStallTimerId = null;
+
+    // Process any pending renders
+    if (_renderQueue.length > 0) {
+      console.log('[Manager] RENDER_STALL_RECOVERY: Processing pending queue');
+      setTimeout(() => _processRenderQueue(), 0);
+    }
+  }, RENDER_STALL_TIMEOUT_MS);
+}
+
+/**
+ * Clear the render stall detection timer
+ * v1.6.3.8-v12 - FIX Issue #9: Cleanup stall timer
+ * @private
+ */
+function _clearRenderStallTimer() {
+  if (_renderStallTimerId) {
+    clearTimeout(_renderStallTimerId);
+    _renderStallTimerId = null;
+  }
 }
 
 /**
@@ -7105,15 +7515,28 @@ async function _loadFreshStateFromStorage() {
 }
 
 /**
- * Force immediate render (bypasses debounce)
+ * Force immediate render (bypasses debounce and queue)
  * v1.6.3.7 - FIX Issue #3: Use for critical updates that can't wait
+ * v1.6.3.8-v12 - FIX Issue #9: Also clears render queue
  */
 function _renderUIImmediate_force() {
   pendingRenderUI = false;
+
+  // v1.6.3.8-v12 - FIX Issue #9: Clear queue-related state
+  if (_renderQueueDebounceTimer) {
+    clearTimeout(_renderQueueDebounceTimer);
+    _renderQueueDebounceTimer = null;
+  }
+  _renderQueue.length = 0; // Clear pending renders
+  _renderInProgress = false; // Allow immediate render
+  _clearRenderStallTimer();
+
+  // Legacy debounce timer cleanup (kept for compatibility)
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
     renderDebounceTimer = null;
   }
+
   requestAnimationFrame(() => {
     _renderUIImmediate();
   });
