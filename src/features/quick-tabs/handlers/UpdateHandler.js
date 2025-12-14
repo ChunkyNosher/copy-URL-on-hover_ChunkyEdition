@@ -15,6 +15,7 @@
  *   - Re-wire window reference after restore using eventBus
  *   - Enhanced tab recovery for post-restore updates
  * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send messages to background with correlationId
+ * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Ownership validation before operations
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -25,6 +26,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  * - Send messages to background for Pattern A operations (position/size)
+ * - Validate ownership before operations (GAP-3, GAP-17)
  *
  * @version 1.6.3.8-v12
  */
@@ -46,17 +48,21 @@ const DEBOUNCE_DELAY_MS = 300;
  * v1.6.3.4 - FIX Issue #2: Added debounce and change detection for storage writes
  * v1.6.3.4 - FIX Issue #3: Added storage persistence after position/size changes
  * v1.6.3.4-v12 - FIX Issue #3: Resilience checks - verify DOM before skipping updates
+ * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Ownership validation before operations
  */
 export class UpdateHandler {
   /**
    * @param {Map} quickTabsMap - Map of Quick Tab instances
    * @param {EventEmitter} eventBus - Event bus for internal communication
    * @param {Object} minimizedManager - Manager for minimized Quick Tabs (optional, for storage persistence)
+   * @param {number} [currentTabId=null] - v1.6.3.8-v12 GAP-3 fix: Current browser tab ID for ownership validation
    */
-  constructor(quickTabsMap, eventBus, minimizedManager = null) {
+  constructor(quickTabsMap, eventBus, minimizedManager = null, currentTabId = null) {
     this.quickTabsMap = quickTabsMap;
     this.eventBus = eventBus;
     this.minimizedManager = minimizedManager;
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Store current tab ID for ownership validation
+    this.currentTabId = currentTabId;
 
     // v1.6.3.4 - FIX Issue #2: Debounce state tracking for _persistToStorage
     this._debounceTimer = null;
@@ -68,15 +74,59 @@ export class UpdateHandler {
   }
 
   /**
+   * Validate ownership of a Quick Tab before performing operations
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Ensure only owning tab can modify Quick Tab
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Name of operation for logging
+   * @returns {boolean} True if ownership validated, false if rejected
+   */
+  _validateOwnership(id, operation) {
+    const tab = this.quickTabsMap.get(id);
+    if (!tab) {
+      console.warn(`[UpdateHandler] ${operation} skipped - tab not in Map:`, id);
+      return false;
+    }
+
+    // If we don't have currentTabId, skip ownership check (fallback to old behavior)
+    if (this.currentTabId === null || this.currentTabId === undefined) {
+      return true;
+    }
+
+    // Check if tab belongs to this browser tab
+    if (tab.originTabId !== undefined && tab.originTabId !== this.currentTabId) {
+      console.warn(`[UpdateHandler] OWNERSHIP_MISMATCH: ${operation} rejected for:`, {
+        quickTabId: id,
+        originTabId: tab.originTabId,
+        currentTabId: this.currentTabId
+      });
+      return false;
+    }
+
+    console.log(`[UpdateHandler] Ownership validated for ${operation}:`, {
+      id,
+      originTabId: tab.originTabId,
+      currentTabId: this.currentTabId
+    });
+    return true;
+  }
+
+  /**
    * Handle position change during drag
    * v1.6.3 - Local only (no cross-tab broadcast)
    * v1.6.3.5-v7 - FIX Issue #4: Add debounced persistence during drag for live Manager updates
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Add ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - New left position
    * @param {number} top - New top position
    */
   handlePositionChange(id, left, top) {
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Validate ownership before operation
+    if (!this._validateOwnership(id, 'handlePositionChange')) {
+      return;
+    }
+
     // v1.6.3.5-v7 - FIX Issue #4: Update in-memory state for live tracking
     const tab = this.quickTabsMap.get(id);
     if (tab) {
@@ -127,6 +177,7 @@ export class UpdateHandler {
    * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
    * v1.6.3.7-v4 - FIX Issue #2: Broadcast position update via BroadcastChannel
    * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send message to background with correlationId
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Add ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
@@ -135,6 +186,11 @@ export class UpdateHandler {
   handlePositionChangeEnd(id, left, top) {
     // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
     console.log('[UpdateHandler] handlePositionChangeEnd called:', { id, left, top });
+
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Validate ownership before operation
+    if (!this._validateOwnership(id, 'handlePositionChangeEnd')) {
+      return;
+    }
 
     const roundedLeft = Math.round(left);
     const roundedTop = Math.round(top);
@@ -233,12 +289,18 @@ export class UpdateHandler {
    * Handle size change during resize
    * v1.6.3 - Local only (no cross-tab broadcast)
    * v1.6.3.5-v7 - FIX Issue #4: Add debounced persistence during resize for live Manager updates
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Add ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - New width
    * @param {number} height - New height
    */
   handleSizeChange(id, width, height) {
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Validate ownership before operation
+    if (!this._validateOwnership(id, 'handleSizeChange')) {
+      return;
+    }
+
     // v1.6.3.5-v7 - FIX Issue #4: Update in-memory state for live tracking
     const tab = this.quickTabsMap.get(id);
     if (tab) {
@@ -266,6 +328,7 @@ export class UpdateHandler {
    * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
    * v1.6.3.7-v4 - FIX Issue #2: Broadcast size update via BroadcastChannel
    * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send message to background with correlationId
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Add ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - Final width
@@ -274,6 +337,11 @@ export class UpdateHandler {
   handleSizeChangeEnd(id, width, height) {
     // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
     console.log('[UpdateHandler] handleSizeChangeEnd called:', { id, width, height });
+
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Validate ownership before operation
+    if (!this._validateOwnership(id, 'handleSizeChangeEnd')) {
+      return;
+    }
 
     const roundedWidth = Math.round(width);
     const roundedHeight = Math.round(height);

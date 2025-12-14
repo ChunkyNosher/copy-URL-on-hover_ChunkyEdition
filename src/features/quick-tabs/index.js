@@ -1311,7 +1311,8 @@ class QuickTabsManager {
     // v1.6.3.2 - Initialize CreateHandler to load debug settings
     await this.createHandler.init();
 
-    this.updateHandler = new UpdateHandler(this.tabs, this.internalEventBus, this.minimizedManager);
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Pass currentTabId for ownership validation
+    this.updateHandler = new UpdateHandler(this.tabs, this.internalEventBus, this.minimizedManager, this.currentTabId);
 
     this.visibilityHandler = new VisibilityHandler({
       quickTabsMap: this.tabs,
@@ -1322,13 +1323,15 @@ class QuickTabsManager {
       Events: this.Events
     });
 
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Pass currentTabId for ownership validation
     this.destroyHandler = new DestroyHandler(
       this.tabs,
       this.minimizedManager,
       this.internalEventBus, // v1.6.3.3 - FIX Bug #6: Use internal bus for state:deleted so UICoordinator receives it
       this.currentZIndex,
       this.Events,
-      CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+      CONSTANTS.QUICK_TAB_BASE_Z_INDEX,
+      this.currentTabId
     );
   }
 
@@ -1361,6 +1364,7 @@ class QuickTabsManager {
    * Setup component listeners and event flows
    * v1.6.3 - Simplified (no storage/sync setup)
    * v1.6.3.3 - FIX Bug #5: Setup event bridge after UI coordinator init
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Register storage.onChanged listener
    * @private
    */
   async _setupComponents() {
@@ -1372,6 +1376,9 @@ class QuickTabsManager {
     // v1.6.3.3 - FIX Bug #5: Bridge internal events to external bus
     this._setupEventBridge();
 
+    // v1.6.3.8-v12 - GAP-6, GAP-15 fix: Register storage.onChanged listener for cross-tab sync
+    this._setupStorageListener();
+
     // Start memory monitoring
     if (this.memoryGuard) {
       this.memoryGuard.startMonitoring();
@@ -1379,6 +1386,36 @@ class QuickTabsManager {
     }
 
     console.log('[QuickTabsManager] ✓ _setupComponents complete');
+  }
+
+  /**
+   * Setup storage.onChanged listener for cross-tab sync
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Register listener for storage changes
+   * @private
+   */
+  _setupStorageListener() {
+    // Store bound reference for cleanup
+    this._boundStorageListener = this.onStorageChanged.bind(this);
+
+    if (typeof browser !== 'undefined' && browser?.storage?.onChanged) {
+      browser.storage.onChanged.addListener(this._boundStorageListener);
+      console.log('[QuickTabsManager] storage.onChanged listener registered');
+    } else {
+      console.warn('[QuickTabsManager] storage.onChanged API not available');
+    }
+  }
+
+  /**
+   * Remove storage.onChanged listener (cleanup)
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Clean up listener on destroy
+   * @private
+   */
+  _removeStorageListener() {
+    if (this._boundStorageListener && typeof browser !== 'undefined' && browser?.storage?.onChanged) {
+      browser.storage.onChanged.removeListener(this._boundStorageListener);
+      this._boundStorageListener = null;
+      console.log('[QuickTabsManager] storage.onChanged listener removed');
+    }
   }
 
   /**
@@ -1842,10 +1879,12 @@ class QuickTabsManager {
    * Cleanup and teardown the QuickTabsManager
    * v1.6.3.4-v11 - FIX Issue #1, #2, #3: Proper resource cleanup to prevent memory leaks
    * v1.6.3.6-v10 - Refactored: Extracted steps to helper methods to reduce cc from 9 to 2
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Remove storage.onChanged listener
    *
    * This method:
    * - Stops MemoryGuard monitoring
    * - Removes storage.onChanged listener via CreateHandler.destroy()
+   * - Removes QuickTabsManager's storage.onChanged listener
    * - Closes all Quick Tabs (DOM cleanup)
    * - Removes all event listeners from internalEventBus
    * - Marks manager as uninitialized
@@ -1865,6 +1904,8 @@ class QuickTabsManager {
 
     this._destroyStep1_StopMemoryGuard();
     this._destroyStep2_RemoveStorageListener();
+    // v1.6.3.8-v12 - GAP-6, GAP-15 fix: Remove QuickTabsManager's own storage listener
+    this._removeStorageListener();
     this._destroyStep3_CloseAllTabs();
     this._destroyStep4_RemoveEventListeners();
 
@@ -1876,6 +1917,97 @@ class QuickTabsManager {
     this._messageQueue = [];
 
     console.log('[QuickTabsManager] ✓ Cleanup/teardown complete');
+  }
+
+  // ============================================================================
+  // v1.6.3.8-v12 - GAP-6, GAP-15: STORAGE.ONCHANGED SYNC METHOD
+  // ============================================================================
+
+  /**
+   * Validate storage change event and extract state
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Extracted to reduce onStorageChanged complexity
+   * @private
+   * @param {Object} changes - Storage changes object
+   * @param {string} areaName - Storage area ('local', 'session', etc.)
+   * @returns {{ valid: boolean, newState: Object|null }} Validation result
+   */
+  _validateStorageChange(changes, areaName) {
+    // Only handle local storage changes for quick_tabs_state_v2
+    if (areaName !== 'local') {
+      return { valid: false, newState: null };
+    }
+
+    const stateChange = changes[STATE_KEY];
+    if (!stateChange) {
+      return { valid: false, newState: null };
+    }
+
+    console.log('[QuickTabsManager] STORAGE_ONCHANGED: Received storage update:', {
+      areaName,
+      hasNewValue: !!stateChange.newValue,
+      hasOldValue: !!stateChange.oldValue,
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
+    });
+
+    // Skip if we don't have a currentTabId (can't filter)
+    if (this.currentTabId === null || this.currentTabId === undefined) {
+      console.warn('[QuickTabsManager] STORAGE_ONCHANGED: Skipped - no currentTabId set');
+      return { valid: false, newState: null };
+    }
+
+    const newState = stateChange.newValue;
+    if (!newState?.tabs || !Array.isArray(newState.tabs)) {
+      console.log('[QuickTabsManager] STORAGE_ONCHANGED: Skipped - invalid state format');
+      return { valid: false, newState: null };
+    }
+
+    return { valid: true, newState };
+  }
+
+  /**
+   * Sync filtered tabs with UICoordinator or emit event
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Extracted to reduce onStorageChanged complexity
+   * @private
+   * @param {Array} filteredTabs - Tabs filtered for this tab
+   */
+  _syncFilteredTabs(filteredTabs) {
+    // Sync state with UICoordinator if available
+    if (this.uiCoordinator && typeof this.uiCoordinator.syncState === 'function') {
+      this.uiCoordinator.syncState(filteredTabs);
+      console.log('[QuickTabsManager] Storage sync:', filteredTabs.length, 'Quick Tabs for this tab');
+    } else {
+      // Fallback: emit event for manual handling
+      if (this.internalEventBus) {
+        this.internalEventBus.emit('storage:synced', { tabs: filteredTabs });
+      }
+      console.log('[QuickTabsManager] Storage sync (event):', filteredTabs.length, 'Quick Tabs for this tab');
+    }
+  }
+
+  /**
+   * Handle storage changes from other tabs (storage.onChanged listener)
+   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Respond to storage changes for cross-tab sync
+   *
+   * @param {Object} changes - Storage changes object
+   * @param {string} areaName - Storage area ('local', 'session', etc.)
+   */
+  onStorageChanged(changes, areaName) {
+    const validation = this._validateStorageChange(changes, areaName);
+    if (!validation.valid) {
+      return;
+    }
+
+    // Filter tabs by originTabId for this tab
+    const filteredTabs = validation.newState.tabs.filter(tab => tab.originTabId === this.currentTabId);
+
+    console.log('[QuickTabsManager] STORAGE_ONCHANGED: Filtered tabs:', {
+      totalInStorage: validation.newState.tabs.length,
+      filteredForThisTab: filteredTabs.length,
+      currentTabId: this.currentTabId
+    });
+
+    this._syncFilteredTabs(filteredTabs);
   }
 
   // ============================================================================

@@ -93,6 +93,7 @@ function _shouldForceEmptyWrite(state) {
  * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
  * v1.6.3.2 - FIX Issue #6: Batch mode to prevent storage write storm during closeAll
  * v1.6.3.5-v6 - FIX Diagnostic Issue #3: closeAll mutex to prevent duplicate executions
+ * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Ownership validation before operations
  */
 export class DestroyHandler {
   /**
@@ -102,14 +103,17 @@ export class DestroyHandler {
    * @param {Object} currentZIndex - Reference object with value property for z-index
    * @param {Object} Events - Events constants object
    * @param {number} baseZIndex - Base z-index value to reset to
+   * @param {number} [currentTabId=null] - v1.6.3.8-v12 GAP-3 fix: Current browser tab ID for ownership validation
    */
-  constructor(quickTabsMap, minimizedManager, eventBus, currentZIndex, Events, baseZIndex) {
+  constructor(quickTabsMap, minimizedManager, eventBus, currentZIndex, Events, baseZIndex, currentTabId = null) {
     this.quickTabsMap = quickTabsMap;
     this.minimizedManager = minimizedManager;
     this.eventBus = eventBus;
     this.currentZIndex = currentZIndex;
     this.Events = Events;
     this.baseZIndex = baseZIndex;
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Store current tab ID for ownership validation
+    this.currentTabId = currentTabId;
 
     // v1.6.3.4-v5 - FIX Bug #8: Debounce timer for storage writes
     this._storageDebounceTimer = null;
@@ -151,6 +155,44 @@ export class DestroyHandler {
   }
 
   /**
+   * Validate ownership of a Quick Tab before performing operations
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Ensure only owning tab can modify Quick Tab
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Name of operation for logging
+   * @returns {boolean} True if ownership validated, false if rejected
+   */
+  _validateOwnership(id, operation) {
+    const tab = this.quickTabsMap.get(id);
+    // If tab is not found, let the operation continue (it will fail naturally)
+    if (!tab) {
+      return true;
+    }
+
+    // If we don't have currentTabId, skip ownership check (fallback to old behavior)
+    if (this.currentTabId === null || this.currentTabId === undefined) {
+      return true;
+    }
+
+    // Check if tab belongs to this browser tab
+    if (tab.originTabId !== undefined && tab.originTabId !== this.currentTabId) {
+      console.warn(`[DestroyHandler] OWNERSHIP_MISMATCH: ${operation} rejected for:`, {
+        quickTabId: id,
+        originTabId: tab.originTabId,
+        currentTabId: this.currentTabId
+      });
+      return false;
+    }
+
+    console.log(`[DestroyHandler] Ownership validated for ${operation}:`, {
+      id,
+      originTabId: tab.originTabId,
+      currentTabId: this.currentTabId
+    });
+    return true;
+  }
+
+  /**
    * Mark handler as initialized and ready
    * v1.6.3.8-v9 - FIX Issue #21: Explicit initialization tracking
    */
@@ -175,6 +217,7 @@ export class DestroyHandler {
    * v1.6.3.4 - FIX Issues #4, #6, #7: Add source parameter, enhanced logging
    * v1.6.3.4-v10 - FIX Issue #6: Check batch Set membership instead of boolean flag
    * v1.6.4.8 - Issue #5: Write-ahead logging before Map deletion, immediate persist for single destroys
+   * v1.6.3.8-v12 - GAP-3, GAP-17 fix: Add ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
@@ -184,6 +227,11 @@ export class DestroyHandler {
     // This prevents the loop: UICoordinator.destroy() → state:deleted → DestroyHandler → loop
     if (this._destroyedIds.has(id)) {
       console.log(`[DestroyHandler] SKIPPED: ID already destroyed (source: ${source}):`, id);
+      return;
+    }
+
+    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Validate ownership before operation
+    if (!this._validateOwnership(id, 'handleDestroy')) {
       return;
     }
 
