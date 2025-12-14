@@ -2,10 +2,7 @@
 // Handles migration from legacy storage format to v2 schema
 
 import * as SchemaV2 from '../storage/schema-v2.js';
-import {
-  StorageManager,
-  generateCorrelationId
-} from '../storage/storage-manager.js';
+import { StorageManager, generateCorrelationId } from '../storage/storage-manager.js';
 
 const OLD_STORAGE_KEYS_PATTERN = /^qt_positions_tab_\d+$/;
 const MIGRATION_GRACE_PERIOD = 5; // Number of writes before deleting old keys
@@ -44,9 +41,7 @@ const migrationState = {
  */
 function isLegacyKey(key) {
   return (
-    OLD_STORAGE_KEYS_PATTERN.test(key) ||
-    key === 'qt_states' ||
-    key === 'quick_tabs_positions'
+    OLD_STORAGE_KEYS_PATTERN.test(key) || key === 'qt_states' || key === 'quick_tabs_positions'
   );
 }
 
@@ -220,9 +215,7 @@ function extractIntermediateFormatQuickTabs(allStorage, existingIds) {
     return [];
   }
 
-  return tabs
-    .filter(tab => !existingIds.includes(tab.id))
-    .map(convertIntermediateTab);
+  return tabs.filter(tab => !existingIds.includes(tab.id)).map(convertIntermediateTab);
 }
 
 /**
@@ -361,9 +354,7 @@ function convertLegacyQuickTab(legacy, originTabId) {
  * Schedule cleanup of legacy storage keys
  */
 function scheduleLegacyKeyCleanup() {
-  console.log(
-    '[QuickTabsInit] Legacy key cleanup scheduled after grace period'
-  );
+  console.log('[QuickTabsInit] Legacy key cleanup scheduled after grace period');
 }
 
 /**

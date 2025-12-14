@@ -52,8 +52,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Tab ID timeout 5s** - Increased from 2s with retry fallback
 
 **v1.6.3.8-v8 Features (Retained):** Self-write detection (50ms), transaction
-timeout 1000ms, storage event ordering (300ms), port message queue, explicit
-tab ID barrier, extended dedup 10s, BFCache session tabs.
+timeout 1000ms, storage event ordering (300ms), port message queue, explicit tab
+ID barrier, extended dedup 10s, BFCache session tabs.
 
 **v1.6.3.8-v7 Features (Retained):** Per-port sequence IDs, circuit breaker
 escalation, correlationId tracing, adaptive quota monitoring.

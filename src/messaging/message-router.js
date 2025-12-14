@@ -169,8 +169,7 @@ const VALID_MESSAGE_TYPES = new Set(Object.values(MESSAGE_TYPES));
 const TYPE_VALIDATORS = {
   [MESSAGE_TYPES.QT_POSITION_CHANGED]: message => {
     const errors = [];
-    if (!message.quickTabId)
-      errors.push('Missing quickTabId for position change');
+    if (!message.quickTabId) errors.push('Missing quickTabId for position change');
     if (!message.newPosition) errors.push('Missing newPosition');
     return errors;
   },
@@ -268,10 +267,7 @@ export class MessageValidator {
    */
   static requiresBroadcast(message) {
     const pattern = TYPE_TO_PATTERN[message.type];
-    return (
-      pattern === MESSAGE_PATTERNS.GLOBAL ||
-      pattern === MESSAGE_PATTERNS.MANAGER
-    );
+    return pattern === MESSAGE_PATTERNS.GLOBAL || pattern === MESSAGE_PATTERNS.MANAGER;
   }
 }
 
@@ -290,9 +286,7 @@ export function sendMessageWithTimeout(message, timeoutMs = 5000) {
     const timeoutId = setTimeout(() => {
       if (!settled) {
         settled = true;
-        reject(
-          new Error(`Message timed out after ${timeoutMs}ms: ${message.type}`)
-        );
+        reject(new Error(`Message timed out after ${timeoutMs}ms: ${message.type}`));
       }
     }, timeoutMs);
 

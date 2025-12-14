@@ -417,11 +417,14 @@ export class DestroyHandler {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
 
     if (!state) {
-      console.error('[DestroyHandler] PERSIST_BLOCKED: Failed to build state for immediate storage:', {
-        deletedId,
-        timestamp: Date.now(),
-        reason: 'buildStateForStorage returned null'
-      });
+      console.error(
+        '[DestroyHandler] PERSIST_BLOCKED: Failed to build state for immediate storage:',
+        {
+          deletedId,
+          timestamp: Date.now(),
+          reason: 'buildStateForStorage returned null'
+        }
+      );
       // v1.6.3.8-v9 - FIX Issue #16: Queue for retry
       this._schedulePersistRetry(deletedId, 'state-build-failed');
       return;
@@ -430,10 +433,10 @@ export class DestroyHandler {
     // v1.6.4.8 - Issue #5: Generate checksum BEFORE write
     const checksumBefore = generateStateChecksum(state);
     const tabCount = state.tabs?.length || 0;
-    
+
     // v1.6.3.8-v8 - FIX Issue #2: Use shared helper to determine forceEmpty
     const forceEmpty = _shouldForceEmptyWrite(state);
-    
+
     console.log('[DestroyHandler] PERSIST_CHECKSUM: Checksum BEFORE storage write:', {
       checksum: checksumBefore,
       tabCount,
@@ -470,10 +473,10 @@ export class DestroyHandler {
 
     // v1.6.4.8 - Issue #5: Verify checksum AFTER write by re-reading
     await this._verifyStorageChecksum(checksumBefore, state, deletedId);
-    
+
     // v1.6.3.8-v9 - FIX Issue #16: Mark deletion as successfully persisted
     this._persistedDeletions.add(deletedId);
-    
+
     const persistDuration = Date.now() - persistStartTime;
     console.log('[DestroyHandler] PERSIST_SUCCESS: Storage persist complete:', {
       deletedId,
@@ -541,10 +544,10 @@ export class DestroyHandler {
     }
 
     const tabCount = state.tabs?.length || 0;
-    
+
     // v1.6.3.8-v8 - FIX Issue #2: Use shared helper to determine forceEmpty
     const forceEmpty = _shouldForceEmptyWrite(state);
-    
+
     console.debug('[DestroyHandler] Persisting state with', tabCount, 'tabs', { forceEmpty });
     const success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
     if (!success) {
@@ -595,7 +598,7 @@ export class DestroyHandler {
       const newTimer = setTimeout(() => {
         this._processRetryQueue();
       }, PERSIST_RETRY_DELAY_MS);
-      
+
       // Only assign if still null (in case another call beat us)
       if (this._retryTimer === null) {
         this._retryTimer = newTimer;

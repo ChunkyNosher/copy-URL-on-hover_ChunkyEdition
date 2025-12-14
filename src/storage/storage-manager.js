@@ -10,12 +10,7 @@
  * @module storage/storage-manager
  */
 
-import {
-  STORAGE_KEY,
-  getEmptyState,
-  isValidState,
-  SCHEMA_VERSION
-} from './schema-v2.js';
+import { STORAGE_KEY, getEmptyState, isValidState, SCHEMA_VERSION } from './schema-v2.js';
 
 const DEDUP_WINDOW_MS = 50;
 const MAX_RETRIES = 3;
@@ -54,9 +49,7 @@ export class StorageManager {
       const state = result[this.storageKey];
 
       if (!state || !isValidState(state)) {
-        console.log(
-          '[StorageManager] No valid state found, returning empty state'
-        );
+        console.log('[StorageManager] No valid state found, returning empty state');
         return getEmptyState();
       }
 
@@ -96,11 +89,7 @@ export class StorageManager {
     let lastError = null;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const result = await this._executeWriteAttempt(
-        stateToWrite,
-        correlationId,
-        attempt
-      );
+      const result = await this._executeWriteAttempt(stateToWrite, correlationId, attempt);
 
       if (result.success) {
         return result;
@@ -153,10 +142,7 @@ export class StorageManager {
 
       return { success: true, attempt: attempt + 1 };
     } catch (error) {
-      console.warn(
-        `[StorageManager] Write attempt ${attempt + 1} failed:`,
-        error.message
-      );
+      console.warn(`[StorageManager] Write attempt ${attempt + 1} failed:`, error.message);
       return { success: false, error };
     }
   }
@@ -190,9 +176,7 @@ export class StorageManager {
 
     // Validate array length match
     if (readBack.allQuickTabs.length !== written.allQuickTabs.length) {
-      console.error(
-        '[StorageManager] Validation failed: array length mismatch'
-      );
+      console.error('[StorageManager] Validation failed: array length mismatch');
       return false;
     }
 
@@ -244,19 +228,13 @@ export class StorageManager {
    * @returns {Promise<Object>} Recovery result
    */
   async triggerStorageRecovery(correlationId) {
-    console.error(
-      '[StorageManager] Triggering storage recovery:',
-      correlationId
-    );
+    console.error('[StorageManager] Triggering storage recovery:', correlationId);
 
     try {
       // Attempt to read backup from sync storage
       const syncResult = await browser.storage.sync.get('quick_tabs_backup');
 
-      if (
-        syncResult.quick_tabs_backup &&
-        isValidState(syncResult.quick_tabs_backup)
-      ) {
+      if (syncResult.quick_tabs_backup && isValidState(syncResult.quick_tabs_backup)) {
         console.log('[StorageManager] Restoring from sync backup');
         await browser.storage.local.set({
           [this.storageKey]: syncResult.quick_tabs_backup
@@ -280,8 +258,7 @@ export class StorageManager {
         type: 'basic',
         iconUrl: browser.runtime.getURL('icons/icon.png'),
         title: 'Quick Tabs Recovery',
-        message:
-          'Quick Tabs state was reset due to storage issues. Your data has been cleared.'
+        message: 'Quick Tabs state was reset due to storage issues. Your data has been cleared.'
       });
     } catch (notifError) {
       console.warn('[StorageManager] Could not show notification:', notifError);

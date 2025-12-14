@@ -43,8 +43,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
-- **Single Writer Authority** - Manager sends commands, background writes storage
-- **Cross-Tab Sync** - tabs.sendMessage + storage.onChanged (NO Port, NO BroadcastChannel)
+- **Single Writer Authority** - Manager sends commands, background writes
+  storage
+- **Cross-Tab Sync** - tabs.sendMessage + storage.onChanged (NO Port, NO
+  BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
 **v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
@@ -59,20 +61,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Modules (v1.6.3.8-v11):**
 
-| Module                      | Purpose                                 |
-| --------------------------- | --------------------------------------- |
-| `src/storage/schema-v2.js`  | Pure state utilities, originTabId filter |
-| `src/storage/storage-manager.js` | Dedup, readback validation, retry  |
-| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder     |
-| `src/utils/event-bus.js`    | EventBus with native EventTarget        |
+| Module                            | Purpose                                  |
+| --------------------------------- | ---------------------------------------- |
+| `src/storage/schema-v2.js`        | Pure state utilities, originTabId filter |
+| `src/storage/storage-manager.js`  | Dedup, readback validation, retry        |
+| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder            |
+| `src/utils/event-bus.js`          | EventBus with native EventTarget         |
 
 ---
 
 ## QuickTabsManager API
 
-| Method          | Description                                                      |
-| --------------- | ---------------------------------------------------------------- |
-| `closeById(id)` | Close a single Quick Tab by ID                                   |
+| Method          | Description                                                        |
+| --------------- | ------------------------------------------------------------------ |
+| `closeById(id)` | Close a single Quick Tab by ID                                     |
 | `closeAll()`    | Close all Quick Tabs via `MANAGER_CLOSE_ALL` (Single Writer Model) |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
@@ -94,4 +96,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 ---
 
 **Your strength: Complete Quick Tab system with v1.6.3.8-v11 tabs.sendMessage +
-storage.local architecture, single storage key, readback validation, FIFO EventBus.**
+storage.local architecture, single storage key, readback validation, FIFO
+EventBus.**

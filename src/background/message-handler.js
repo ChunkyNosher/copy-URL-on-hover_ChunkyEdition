@@ -1,15 +1,9 @@
 // Background Message Handler
 // Handles all Quick Tabs messages using tabs.sendMessage architecture
 
-import {
-  MESSAGE_TYPES,
-  MessageValidator
-} from '../messaging/message-router.js';
+import { MESSAGE_TYPES, MessageValidator } from '../messaging/message-router.js';
 import * as SchemaV2 from '../storage/schema-v2.js';
-import {
-  StorageManager,
-  generateCorrelationId
-} from '../storage/storage-manager.js';
+import { StorageManager, generateCorrelationId } from '../storage/storage-manager.js';
 
 const storageManager = new StorageManager();
 
@@ -308,9 +302,7 @@ async function handleContentScriptReady(_message, sender) {
 
   // Send initial state to the tab
   const state = await storageManager.readState();
-  const myQuickTabs = tabId
-    ? SchemaV2.getQuickTabsByOriginTabId(state, tabId)
-    : [];
+  const myQuickTabs = tabId ? SchemaV2.getQuickTabsByOriginTabId(state, tabId) : [];
 
   return {
     ready: true,
@@ -403,9 +395,4 @@ async function notifyManager(state) {
 // Exports
 // ============================================
 
-export {
-  handleMessage,
-  broadcastStateToAllTabs,
-  notifyManager,
-  storageManager
-};
+export { handleMessage, broadcastStateToAllTabs, notifyManager, storageManager };

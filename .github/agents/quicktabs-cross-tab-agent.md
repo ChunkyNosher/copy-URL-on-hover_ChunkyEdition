@@ -52,12 +52,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Modules (v1.6.3.8-v11):**
 
-| Module                            | Purpose                              |
-| --------------------------------- | ------------------------------------ |
-| `src/storage/storage-manager.js`  | Dedup, readback validation, retry    |
-| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder        |
-| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
-| `src/features/quick-tabs/content-message-listener.js` | Content listener |
+| Module                                                | Purpose                           |
+| ----------------------------------------------------- | --------------------------------- |
+| `src/storage/storage-manager.js`                      | Dedup, readback validation, retry |
+| `src/messaging/message-router.js`                     | MESSAGE_TYPES, MessageBuilder     |
+| `src/background/broadcast-manager.js`                 | broadcastToAllTabs(), sendToTab() |
+| `src/features/quick-tabs/content-message-listener.js` | Content listener                  |
 
 **Storage Format:**
 

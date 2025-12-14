@@ -1,15 +1,9 @@
 // Quick Tabs V2 Integration Module
 // Integrates all v2 architecture components for the background script
 
-import {
-  getBroadcastMetrics,
-  resetBroadcastMetrics
-} from './broadcast-manager.js';
+import { getBroadcastMetrics, resetBroadcastMetrics } from './broadcast-manager.js';
 import { initializeMessageHandler, storageManager } from './message-handler.js';
-import {
-  initializeQuickTabsStorage,
-  getMigrationStatus
-} from './quick-tabs-initialization.js';
+import { initializeQuickTabsStorage, getMigrationStatus } from './quick-tabs-initialization.js';
 import * as SchemaV2 from '../storage/schema-v2.js';
 
 let isInitialized = false;
@@ -94,10 +88,7 @@ async function handleTabClosed(tabId, _removeInfo) {
     );
 
     const updated = SchemaV2.removeQuickTabsByOriginTabId(state, tabId);
-    await storageManager.writeStateWithValidation(
-      updated,
-      `tab-closed-${tabId}-${Date.now()}`
-    );
+    await storageManager.writeStateWithValidation(updated, `tab-closed-${tabId}-${Date.now()}`);
   } catch (error) {
     console.error('[QuickTabsV2] Error handling tab close:', error);
   }

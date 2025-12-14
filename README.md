@@ -23,18 +23,20 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 - ✅ **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
 - ✅ **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
-- ✅ **Readback validation** - Every write validated by read-back (fixes Issue #8)
+- ✅ **Readback validation** - Every write validated by read-back (fixes Issue
+  #8)
 - ✅ **Deduplication** - correlationId with 50ms window prevents duplicates
 
 **New Modules:**
 
 - ✅ **StorageManager** - Retry with exponential backoff (100ms, 200ms, 400ms)
-- ✅ **EventBus** - Native EventTarget for FIFO-guaranteed events (fixes Issue #3)
+- ✅ **EventBus** - Native EventTarget for FIFO-guaranteed events (fixes Issue
+  #3)
 - ✅ **MessageBuilder** - Typed messages with LOCAL/GLOBAL/MANAGER patterns
 - ✅ **Migration logic** - Legacy storage format migration with grace period
 
-**Why This Matters:** Complete architecture redesign fixes race conditions,
-port zombies, silent storage failures, and corruption issues.
+**Why This Matters:** Complete architecture redesign fixes race conditions, port
+zombies, silent storage failures, and corruption issues.
 
 ---
 

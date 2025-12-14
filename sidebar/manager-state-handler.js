@@ -225,10 +225,7 @@ export async function closeQuickTab(quickTabId) {
  */
 export async function closeAllQuickTabs() {
   try {
-    const message = MessageBuilder.buildManagerAction(
-      MESSAGE_TYPES.MANAGER_CLOSE_ALL,
-      {}
-    );
+    const message = MessageBuilder.buildManagerAction(MESSAGE_TYPES.MANAGER_CLOSE_ALL, {});
 
     const response = await sendMessageWithTimeout(message, 5000);
     console.log('[ManagerState] Closed all:', response?.closedCount);
@@ -244,10 +241,7 @@ export async function closeAllQuickTabs() {
  */
 export async function closeMinimizedQuickTabs() {
   try {
-    const message = MessageBuilder.buildManagerAction(
-      MESSAGE_TYPES.MANAGER_CLOSE_MINIMIZED,
-      {}
-    );
+    const message = MessageBuilder.buildManagerAction(MESSAGE_TYPES.MANAGER_CLOSE_MINIMIZED, {});
 
     const response = await sendMessageWithTimeout(message, 5000);
     console.log('[ManagerState] Closed minimized:', response?.closedCount);

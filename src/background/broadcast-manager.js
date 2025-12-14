@@ -23,11 +23,7 @@ let broadcastMetrics = {
  * @returns {Promise<Object>} Broadcast result with success flag and metrics
  */
 export async function broadcastToAllTabs(state, options = {}) {
-  const {
-    excludeTabId = null,
-    includeOnlyHttpTabs = true,
-    timeout = 2000
-  } = options;
+  const { excludeTabId = null, includeOnlyHttpTabs = true, timeout = 2000 } = options;
 
   broadcastMetrics.totalBroadcasts++;
   broadcastMetrics.lastBroadcastTime = Date.now();
@@ -158,11 +154,7 @@ export async function sendToTab(tabId, state) {
     const response = await browser.tabs.sendMessage(tabId, message);
     return { success: true, response };
   } catch (error) {
-    console.warn(
-      '[BroadcastManager] Failed to send to tab',
-      tabId,
-      error.message
-    );
+    console.warn('[BroadcastManager] Failed to send to tab', tabId, error.message);
     return { success: false, error: error.message };
   }
 }

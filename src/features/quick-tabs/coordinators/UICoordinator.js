@@ -260,10 +260,13 @@ export class UICoordinator {
     const startTime = Date.now();
 
     if (!this._handlersReady) {
-      console.warn(`${this._logPrefix} startRendering() called before handlers ready - deferring:`, {
-        handlersReady: this._handlersReady,
-        timestamp: startTime
-      });
+      console.warn(
+        `${this._logPrefix} startRendering() called before handlers ready - deferring:`,
+        {
+          handlersReady: this._handlersReady,
+          timestamp: startTime
+        }
+      );
       return;
     }
 
@@ -554,7 +557,10 @@ export class UICoordinator {
 
     // v1.6.3.8-v9 - FIX Section 10.1: Enforce maximum size limit as safety net
     // Remove oldest entries if map exceeds limit (before age-based cleanup)
-    renderTimestampsRemoved += this._enforceMapSizeLimit(this._renderTimestamps, '_renderTimestamps');
+    renderTimestampsRemoved += this._enforceMapSizeLimit(
+      this._renderTimestamps,
+      '_renderTimestamps'
+    );
     lastRenderTimeRemoved += this._enforceMapSizeLimit(this._lastRenderTime, '_lastRenderTime');
 
     // Clean up _renderTimestamps by age
@@ -598,7 +604,9 @@ export class UICoordinator {
     }
 
     const entriesToRemove = map.size - MAX_MAP_ENTRIES;
-    console.warn(`${this._logPrefix} ${mapName} exceeded max size (${MAX_MAP_ENTRIES}), removing ${entriesToRemove} oldest entries`);
+    console.warn(
+      `${this._logPrefix} ${mapName} exceeded max size (${MAX_MAP_ENTRIES}), removing ${entriesToRemove} oldest entries`
+    );
 
     // Convert to array and sort by timestamp (oldest first)
     const entries = Array.from(map.entries()).sort((a, b) => a[1] - b[1]);
@@ -664,7 +672,9 @@ export class UICoordinator {
     });
 
     // v1.6.3.2 - Load showDebugId setting before rendering
-    console.log(`${this._logPrefix} INIT_STEP_2: Loading debug settings...`, { timestamp: Date.now() });
+    console.log(`${this._logPrefix} INIT_STEP_2: Loading debug settings...`, {
+      timestamp: Date.now()
+    });
     await this._loadDebugIdSetting();
     console.log(`${this._logPrefix} INIT_STEP_2_COMPLETE: Debug settings loaded:`, {
       showDebugIdSetting: this.showDebugIdSetting,
@@ -672,7 +682,9 @@ export class UICoordinator {
     });
 
     // Setup state listeners
-    console.log(`${this._logPrefix} INIT_STEP_3: Setting up state listeners...`, { timestamp: Date.now() });
+    console.log(`${this._logPrefix} INIT_STEP_3: Setting up state listeners...`, {
+      timestamp: Date.now()
+    });
     this.setupStateListeners();
     console.log(`${this._logPrefix} INIT_STEP_3_COMPLETE: State listeners registered:`, {
       timestamp: Date.now(),
@@ -752,10 +764,10 @@ export class UICoordinator {
     this._isHydrating = true;
 
     const visibleTabs = this.stateManager.getVisible();
-    
+
     // v1.6.3.8-v8 - FIX Issue #4: Track tabs we're about to render for synchronous processing
     const hydrationTabIds = new Set(visibleTabs.map(qt => qt.id));
-    
+
     console.log('[UICoordinator] Hydration batch:', {
       tabCount: visibleTabs.length,
       tabIds: Array.from(hydrationTabIds)
@@ -770,9 +782,9 @@ export class UICoordinator {
         // Create a placeholder entry that will be replaced by actual window
         this.renderedTabs.set(quickTab.id, null);
       }
-      
+
       const window = this.render(quickTab);
-      
+
       if (window) {
         // v1.6.3.8-v8 - FIX Issue #4: Synchronous Map update with actual window
         this.renderedTabs.set(quickTab.id, window);
@@ -1158,11 +1170,14 @@ export class UICoordinator {
     // Orphaned window recovery is ONLY for crash/BFCache recovery scenarios, NOT normal hydration
     // During init, the Map is being populated - existing DOM elements are expected
     if (this._isInitializing || this._isHydrating) {
-      console.log('[UICoordinator] DOM element found during init/hydration (expected, skipping recovery):', {
-        id: quickTab.id,
-        isInitializing: this._isInitializing,
-        isHydrating: this._isHydrating
-      });
+      console.log(
+        '[UICoordinator] DOM element found during init/hydration (expected, skipping recovery):',
+        {
+          id: quickTab.id,
+          isInitializing: this._isInitializing,
+          isHydrating: this._isHydrating
+        }
+      );
       // v1.6.3.8-v9 - FIX Issue #15: Return null to skip recovery and let render() create new window
       // The render() path will handle Map.set() properly
       return null;
@@ -2409,7 +2424,9 @@ export class UICoordinator {
           quickTabId: quickTab.id,
           eventTimestamp,
           timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
-          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null,
+          timeSinceInit: this._initStartTimestamp
+            ? eventTimestamp - this._initStartTimestamp
+            : null,
           handlersReady: this._handlersReady,
           prerequisite: 'handlersReady must be true for proper callback wiring',
           result: this._handlersReady ? 'OK' : 'WARNING - handlers not ready'
@@ -2437,7 +2454,9 @@ export class UICoordinator {
           isRestoreOperation,
           eventTimestamp,
           timeSinceListenersRegistered: eventTimestamp - setupListenersTimestamp,
-          timeSinceInit: this._initStartTimestamp ? eventTimestamp - this._initStartTimestamp : null,
+          timeSinceInit: this._initStartTimestamp
+            ? eventTimestamp - this._initStartTimestamp
+            : null,
           handlersReady: this._handlersReady,
           prerequisite: 'handlersReady must be true for proper callback wiring',
           result: this._handlersReady ? 'OK' : 'WARNING - handlers not ready'
@@ -2491,7 +2510,7 @@ export class UICoordinator {
     this._stateListenerRefs.push({ event: 'window:created', handler: onWindowCreated });
 
     const setupCompleteTimestamp = Date.now();
-    
+
     // v1.6.3.8-v10 - FIX Issue #3, #8: Log listener count and emit LISTENERS_READY event
     // EventEmitter3 fires listeners in registration order (FIFO), but we log for verification
     const registeredListeners = this._stateListenerRefs.length;
@@ -2501,7 +2520,7 @@ export class UICoordinator {
       timestamp: setupCompleteTimestamp,
       note: 'EventEmitter3 guarantees FIFO listener order - first registered fires first'
     });
-    
+
     console.log(`${this._logPrefix} LISTENERS_READY:`, {
       timestamp: setupCompleteTimestamp,
       durationMs: setupCompleteTimestamp - setupListenersTimestamp,
@@ -2509,7 +2528,7 @@ export class UICoordinator {
       listenerCount: registeredListeners,
       note: 'Init order: handlers ready → listeners registered → events fire'
     });
-    
+
     // v1.6.3.8-v10 - FIX Issue #8: Emit listeners:ready event for components that need to defer hydration
     if (this.eventBus) {
       this.eventBus.emit('listeners:ready', {
@@ -2837,7 +2856,8 @@ export class UICoordinator {
     // handlers initialized → handlers marked ready → listeners registered → rendering begins
     // If this assertion fails, it indicates a broken initialization sequence that must be fixed
     if (!this._handlersReady) {
-      const errorMsg = `ASSERTION FAILED: _buildCallbackOptions called before handlers ready for ${quickTabId}. ` +
+      const errorMsg =
+        `ASSERTION FAILED: _buildCallbackOptions called before handlers ready for ${quickTabId}. ` +
         'This indicates a broken initialization sequence. Init order must be: ' +
         'handlers initialized → handlers marked ready → listeners registered → rendering begins.';
       console.error(`${this._logPrefix} ${errorMsg}`, {

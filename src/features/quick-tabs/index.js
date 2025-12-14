@@ -177,13 +177,16 @@ class QuickTabsManager {
       // Previous order: Hydration → signalReady() (queued events replayed AFTER tabs created)
       // New order: signalReady() → Hydration (queued events applied BEFORE tabs created)
       // This ensures storage events are processed before local memory state is restored
-      console.log('[QuickTabsManager] INIT_STEP_5.5: Signaling ready and replaying queued messages:', {
-        timestamp: Date.now(),
-        isReady: this._isReady,
-        queuedMessages: this._messageQueue.length,
-        prerequisite: 'Steps 1-5 complete',
-        purpose: 'Enable message processing before hydration'
-      });
+      console.log(
+        '[QuickTabsManager] INIT_STEP_5.5: Signaling ready and replaying queued messages:',
+        {
+          timestamp: Date.now(),
+          isReady: this._isReady,
+          queuedMessages: this._messageQueue.length,
+          prerequisite: 'Steps 1-5 complete',
+          purpose: 'Enable message processing before hydration'
+        }
+      );
       this.signalReady();
       console.log('[QuickTabsManager] INIT_STEP_5.5_COMPLETE: Queued messages replayed:', {
         timestamp: Date.now(),
@@ -1966,7 +1969,9 @@ class QuickTabsManager {
       result: '_isReady set to true',
       timestamp: signalReadyStartTime,
       queuedMessageCount: queuedCount,
-      timeSinceInit: this._initStartTimestamp ? signalReadyStartTime - this._initStartTimestamp : null,
+      timeSinceInit: this._initStartTimestamp
+        ? signalReadyStartTime - this._initStartTimestamp
+        : null,
       note: 'Message replay starting (before hydration per Issue #20 fix)'
     });
 
@@ -2089,9 +2094,9 @@ class QuickTabsManager {
       // v1.6.3.8-v9 - FIX Issue #19: Tab exists - compare message timestamp with hydration
       // Queued messages are from BEFORE signalReady(), hydration happens AFTER signalReady()
       // Therefore, hydration state is always newer than queued messages - skip the message
-      return { 
-        hasConflict: true, 
-        tabId, 
+      return {
+        hasConflict: true,
+        tabId,
         reason: 'duplicate',
         note: 'Tab already exists in tabs Map - hydration has newer state'
       };
@@ -2115,12 +2120,12 @@ class QuickTabsManager {
     // If message is trying to update/delete a tab that doesn't exist, it's stale
     const messageType = message.type || message.action || '';
     const isDestructiveMessage = this._isDestructiveMessageType(messageType);
-    
+
     if (isDestructiveMessage && !existsInTabs) {
       // Trying to delete a tab that doesn't exist - message is stale
-      return { 
-        hasConflict: true, 
-        tabId, 
+      return {
+        hasConflict: true,
+        tabId,
         reason: 'conflict',
         note: 'Delete message for non-existent tab - message is stale'
       };

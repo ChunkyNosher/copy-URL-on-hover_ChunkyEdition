@@ -168,21 +168,13 @@ async function hydrateQuickTabs(quickTabs) {
     return;
   }
 
-  console.log(
-    '[ContentMessageListener] Hydrating',
-    quickTabs.length,
-    'Quick Tabs'
-  );
+  console.log('[ContentMessageListener] Hydrating', quickTabs.length, 'Quick Tabs');
 
   for (const qt of quickTabs) {
     try {
       await uiCoordinatorRef.render(qt);
     } catch (error) {
-      console.error(
-        '[ContentMessageListener] Failed to render QT:',
-        qt.id,
-        error
-      );
+      console.error('[ContentMessageListener] Failed to render QT:', qt.id, error);
     }
   }
 }

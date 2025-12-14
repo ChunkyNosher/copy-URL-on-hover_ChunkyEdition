@@ -79,18 +79,20 @@ nothing.
 - **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
 - **Message queue conflict** - `_checkMessageConflict()` deduplication
 - **Init sequence fix** - `signalReady()` before hydration (Step 5.5)
-- **Comprehensive INIT logging** - INIT_START, INIT_STEP_*, INIT_COMPLETE
+- **Comprehensive INIT logging** - INIT*START, INIT_STEP*\*, INIT_COMPLETE
 - **Resource limits** - Timestamp map max 1000, message queue max 100
 - **Tab ID timeout 5s** - Increased from 2s with retry fallback
 
 ### v1.6.3.8-v8 Features (Retained)
 
-- Self-write detection (50ms), transaction timeout 1000ms, storage event ordering
+- Self-write detection (50ms), transaction timeout 1000ms, storage event
+  ordering
 - Port message queue, explicit tab ID barrier, extended dedup 10s, BFCache
 
 ### v1.6.3.8-v7 Features (Retained)
 
-- Per-port sequence ID tracking, circuit breaker escalation, correlationId tracing
+- Per-port sequence ID tracking, circuit breaker escalation, correlationId
+  tracing
 - Adaptive quota monitoring, storage aggregation, content script unload
 
 ### Architecture
@@ -101,14 +103,14 @@ nothing.
 
 ### Key Functions (v1.6.3.8-v9)
 
-| Function                   | Location        | Purpose                        |
-| -------------------------- | --------------- | ------------------------------ |
-| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging            |
-| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush        |
-| `waitForInitialization()`  | QuickTabHandler | 10s init barrier               |
-| `scheduleRender(source)`   | Manager         | Unified render entry point     |
-| `cleanupStateListeners()`  | UICoordinator   | Event listener cleanup         |
-| `_checkMessageConflict()`  | Manager         | Message deduplication          |
+| Function                   | Location        | Purpose                    |
+| -------------------------- | --------------- | -------------------------- |
+| `sendRequestWithTimeout()` | message-utils   | ACK-based messaging        |
+| `flushWriteBuffer()`       | storage-utils   | WriteBuffer batch flush    |
+| `waitForInitialization()`  | QuickTabHandler | 10s init barrier           |
+| `scheduleRender(source)`   | Manager         | Unified render entry point |
+| `cleanupStateListeners()`  | UICoordinator   | Event listener cleanup     |
+| `_checkMessageConflict()`  | Manager         | Message deduplication      |
 
 ---
 
@@ -127,13 +129,13 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                                 |
-| ------------------------ | ----------------------------------- |
-| v1.6.3.8-v8 or earlier   | Update to 1.6.3.8-v9                |
-| "Pin to Page"            | Use "Solo/Mute"                     |
-| Direct storage writes    | Use Single Writer Authority         |
-| BroadcastChannel refs    | REMOVE - BC DELETED in v6           |
-| Missing DestroyHandler   | Document event order fix            |
+| Error                  | Fix                         |
+| ---------------------- | --------------------------- |
+| v1.6.3.8-v8 or earlier | Update to 1.6.3.8-v9        |
+| "Pin to Page"          | Use "Solo/Mute"             |
+| Direct storage writes  | Use Single Writer Authority |
+| BroadcastChannel refs  | REMOVE - BC DELETED in v6   |
+| Missing DestroyHandler | Document event order fix    |
 
 ---
 

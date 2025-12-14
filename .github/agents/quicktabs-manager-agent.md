@@ -59,20 +59,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Modules (v1.6.3.8-v11):**
 
-| Module                            | Purpose                              |
-| --------------------------------- | ------------------------------------ |
-| `sidebar/manager-state-handler.js` | Manager Pattern C actions           |
-| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder        |
-| `src/storage/schema-v2.js`        | Pure state utilities                 |
+| Module                             | Purpose                       |
+| ---------------------------------- | ----------------------------- |
+| `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
+| `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
+| `src/storage/schema-v2.js`         | Pure state utilities          |
 
 ---
 
 ## QuickTabsManager API
 
-| Method          | Description                                                           |
-| --------------- | --------------------------------------------------------------------- |
-| `closeById(id)` | Close a single Quick Tab by ID                                        |
-| `closeAll()`    | Close all Quick Tabs via `MANAGER_CLOSE_ALL` (Single Writer Model)    |
+| Method          | Description                                                        |
+| --------------- | ------------------------------------------------------------------ |
+| `closeById(id)` | Close a single Quick Tab by ID                                     |
+| `closeAll()`    | Close all Quick Tabs via `MANAGER_CLOSE_ALL` (Single Writer Model) |
 
 ❌ `closeQuickTab(id)` - **DOES NOT EXIST**
 

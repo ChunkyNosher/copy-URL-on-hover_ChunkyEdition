@@ -89,9 +89,7 @@ export function updateQuickTab(state, quickTabId, changes) {
   return {
     ...state,
     lastModified: Date.now(),
-    allQuickTabs: state.allQuickTabs.map(qt =>
-      qt.id === quickTabId ? { ...qt, ...changes } : qt
-    )
+    allQuickTabs: state.allQuickTabs.map(qt => (qt.id === quickTabId ? { ...qt, ...changes } : qt))
   };
 }
 
