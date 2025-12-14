@@ -2176,6 +2176,32 @@ async function _fetchTabIdWithTimeout() {
 }
 
 /**
+ * Handle successful tab ID fetch attempt
+ * v1.6.3.8-v10 - FIX ESLint max-depth: Extracted to flatten control flow
+ * @private
+ * @param {number|null} tabId - Tab ID from background
+ * @param {number} attempt - Current attempt number
+ * @returns {{success: boolean, tabId: number|null}} Result with success flag
+ */
+function _handleTabIdFetchSuccess(tabId, attempt) {
+  if (tabId === null || tabId === undefined) {
+    console.warn('[Content] TAB_ID_FETCH_NULL_RESPONSE:', {
+      attempt,
+      willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
+      timestamp: Date.now()
+    });
+    return { success: false, tabId: null };
+  }
+  
+  console.log('[Content] TAB_ID_FETCH_SUCCESS:', {
+    tabId,
+    attempt,
+    timestamp: Date.now()
+  });
+  return { success: true, tabId };
+}
+
+/**
  * Fetch tab ID with retries and exponential backoff
  * v1.6.3.8-v10 - FIX Issue #6: Retry logic for slow background script scenarios
  * @private
@@ -2186,52 +2212,17 @@ async function _fetchTabIdWithRetry() {
   let delay = TAB_ID_FETCH_RETRY_DELAY_MS;
   
   for (let attempt = 1; attempt <= TAB_ID_FETCH_MAX_RETRIES; attempt++) {
-    try {
-      console.log('[Content] TAB_ID_FETCH_ATTEMPT:', {
-        attempt,
-        maxRetries: TAB_ID_FETCH_MAX_RETRIES,
-        timeout: TAB_ID_FETCH_TIMEOUT_MS,
-        timestamp: Date.now()
-      });
-      
-      const tabId = await _fetchTabIdWithTimeout();
-      
-      if (tabId !== null && tabId !== undefined) {
-        console.log('[Content] TAB_ID_FETCH_SUCCESS:', {
-          tabId,
-          attempt,
-          timestamp: Date.now()
-        });
-        return tabId;
-      }
-      
-      // Tab ID came back as null - log and retry
-      console.warn('[Content] TAB_ID_FETCH_NULL_RESPONSE:', {
-        attempt,
-        willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
-        timestamp: Date.now()
-      });
-      
-    } catch (err) {
-      lastError = err;
-      console.warn('[Content] TAB_ID_FETCH_TIMEOUT:', {
-        attempt,
-        error: err.message,
-        willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
-        timestamp: Date.now()
-      });
+    const result = await _attemptTabIdFetch(attempt, delay, lastError);
+    
+    if (result.success) {
+      return result.tabId;
     }
     
-    // Wait before retry (except on last attempt)
-    if (attempt < TAB_ID_FETCH_MAX_RETRIES) {
-      console.log('[Content] TAB_ID_FETCH_RETRYING:', {
-        attempt: attempt + 1,
-        delayMs: delay,
-        timestamp: Date.now()
-      });
-      await new Promise(resolve => setTimeout(resolve, delay));
-      delay *= 2; // Exponential backoff
+    if (result.error) {
+      lastError = result.error;
     }
+    
+    delay = result.nextDelay;
   }
   
   // All retries exhausted
@@ -2243,6 +2234,64 @@ async function _fetchTabIdWithRetry() {
   });
   
   return null;
+}
+
+/**
+ * Single tab ID fetch attempt
+ * v1.6.3.8-v10 - FIX ESLint max-depth: Extracted to flatten nested try/catch/if
+ * @private
+ * @param {number} attempt - Current attempt number
+ * @param {number} delay - Current delay before retry
+ * @param {Error|null} _lastError - Previous error (unused but kept for consistency)
+ * @returns {Promise<{success: boolean, tabId: number|null, error: Error|null, nextDelay: number}>}
+ */
+async function _attemptTabIdFetch(attempt, delay, _lastError) {
+  console.log('[Content] TAB_ID_FETCH_ATTEMPT:', {
+    attempt,
+    maxRetries: TAB_ID_FETCH_MAX_RETRIES,
+    timeout: TAB_ID_FETCH_TIMEOUT_MS,
+    timestamp: Date.now()
+  });
+  
+  try {
+    const tabId = await _fetchTabIdWithTimeout();
+    const fetchResult = _handleTabIdFetchSuccess(tabId, attempt);
+    
+    if (fetchResult.success) {
+      return { success: true, tabId: fetchResult.tabId, error: null, nextDelay: delay };
+    }
+  } catch (err) {
+    console.warn('[Content] TAB_ID_FETCH_TIMEOUT:', {
+      attempt,
+      error: err.message,
+      willRetry: attempt < TAB_ID_FETCH_MAX_RETRIES,
+      timestamp: Date.now()
+    });
+    
+    // Handle retry delay
+    if (attempt < TAB_ID_FETCH_MAX_RETRIES) {
+      console.log('[Content] TAB_ID_FETCH_RETRYING:', {
+        attempt: attempt + 1,
+        delayMs: delay,
+        timestamp: Date.now()
+      });
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    
+    return { success: false, tabId: null, error: err, nextDelay: delay * 2 };
+  }
+  
+  // Null response case - handle retry delay
+  if (attempt < TAB_ID_FETCH_MAX_RETRIES) {
+    console.log('[Content] TAB_ID_FETCH_RETRYING:', {
+      attempt: attempt + 1,
+      delayMs: delay,
+      timestamp: Date.now()
+    });
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  
+  return { success: false, tabId: null, error: null, nextDelay: delay * 2 };
 }
 
 /**

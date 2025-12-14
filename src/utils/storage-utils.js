@@ -2262,6 +2262,23 @@ const STORAGE_WRITE_INITIAL_DELAY_MS = 100;
 const STORAGE_WRITE_MAX_DELAY_MS = 500;
 
 /**
+ * Handle storage write retry delay to reduce nesting depth
+ * v1.6.3.8-v10 - FIX ESLint max-depth: Extracted to flatten control flow
+ * @private
+ * @param {number} attempt - Current attempt number
+ * @param {number} maxRetries - Maximum retries
+ * @param {number} delay - Current delay
+ * @returns {Promise<number>} Next delay value
+ */
+async function _handleStorageWriteRetryDelay(attempt, maxRetries, delay) {
+  if (attempt >= maxRetries) {
+    return delay; // No need to wait on last attempt
+  }
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return Math.min(delay * 2, STORAGE_WRITE_MAX_DELAY_MS);
+}
+
+/**
  * Write to storage with exponential backoff retry
  * v1.6.3.8-v10 - FIX Issue #9: Robust storage write with retry logic
  * @param {string} key - Storage key
@@ -2318,11 +2335,8 @@ export async function writeStorageWithRetry(key, value, options = {}) {
         timestamp: Date.now()
       });
 
-      // Wait before retry (except on last attempt)
-      if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay = Math.min(delay * 2, STORAGE_WRITE_MAX_DELAY_MS); // Exponential backoff with cap
-      }
+      // Wait before retry using helper to reduce nesting depth
+      delay = await _handleStorageWriteRetryDelay(attempt, maxRetries, delay);
     }
   }
 
