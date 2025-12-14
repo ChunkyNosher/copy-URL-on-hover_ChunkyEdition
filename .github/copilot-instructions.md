@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.8-v11  
+**Version:** 1.6.3.8-v12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,7 +21,20 @@ Tabs Manager
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 
-**v1.6.3.8-v11 Features (NEW) - Quick Tabs Architecture v2:**
+**v1.6.3.8-v12 Features (NEW) - Critical Fixes:**
+
+- **FIX Issue #15** - Promise chaining fixed: catch blocks properly reject
+  instead of returning false
+- **FIX Issue #16** - Circuit breaker removed from storage-utils.js (not needed
+  with stateless architecture)
+- **FIX Issue #17** - Tab ID fetch timeout reduced from 10s to 2s for
+  non-blocking initialization
+- **FIX Issue #18** - Dedup window decoupled from port timing:
+  RESTORE_DEDUP_WINDOW_MS = 50ms
+- **FIX Issue #19** - Self-write cleanup window aligned with detection window
+  (300ms)
+
+**v1.6.3.8-v11 Features (Retained):**
 
 - **Quick Tabs Architecture v2** - tabs.sendMessage + storage.onChanged
   messaging
@@ -57,7 +70,8 @@ Tabs Manager
 - **Timestamp map limit** - Max 1000 entries with cleanup
 - **Event listener cleanup** - `cleanupStateListeners()` method
 - **Message queue limit** - Max 100 messages
-- **Tab ID timeout** - Increased to 5s with retry fallback
+- **Tab ID timeout** - Reduced to 2s with retry fallback (was 5s in v10, 10s
+  temporarily)
 
 **v1.6.3.8-v8 Features (Retained):** Self-write detection (300ms aligned),
 transaction timeout 1000ms, storage event ordering (300ms), port message queue,
@@ -187,13 +201,16 @@ conflict detection
 **v6:** Port-based messaging, storage quota, checksum validation  
 **v5:** Monotonic revision versioning, declarativeNetRequest fallback
 
-### Key Timing Constants (v1.6.3.8-v11)
+### Key Timing Constants (v1.6.3.8-v12)
 
 | Constant                          | Value         | Purpose                            |
 | --------------------------------- | ------------- | ---------------------------------- |
 | `DEDUP_WINDOW_MS`                 | 50            | correlationId deduplication window |
+| `RESTORE_DEDUP_WINDOW_MS`         | 50            | Restore message deduplication      |
 | `STORAGE_RETRY_DELAYS`            | [100,200,400] | Exponential backoff for writes     |
-| `CURRENT_TAB_ID_WAIT_TIMEOUT_MS`  | 5000          | Tab ID barrier timeout             |
+| `TAB_ID_FETCH_TIMEOUT_MS`         | 2000          | Tab ID fetch timeout (reduced)     |
+| `TAB_ID_FETCH_MAX_RETRIES`        | 2             | Max retry attempts                 |
+| `SELF_WRITE_DETECTION_WINDOW_MS`  | 300           | Self-write cleanup window          |
 | `MAX_MESSAGE_QUEUE_SIZE`          | 100           | Message queue limit                |
 | `TRANSACTION_FALLBACK_CLEANUP_MS` | 1000          | Transaction timeout                |
 

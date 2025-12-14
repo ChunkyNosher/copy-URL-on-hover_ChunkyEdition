@@ -574,13 +574,14 @@ function _trackSelfWrite(saveId, revision) {
     trackedCount: _recentSelfWrites.size
   });
 
+  // v1.6.3.8-v12 - FIX Issue #19: Cleanup uses same window as detection for consistency
   // Clean up old entries after listener latency window passes
   setTimeout(() => {
     if (_recentSelfWrites.has(saveId)) {
       _recentSelfWrites.delete(saveId);
       console.log('[Content] SELF_WRITE_EXPIRED:', { saveId, revision });
     }
-  }, STORAGE_LISTENER_LATENCY_TOLERANCE_MS + 100);
+  }, STORAGE_LISTENER_LATENCY_TOLERANCE_MS);
 }
 
 /**
@@ -2155,11 +2156,11 @@ async function _sendPortMessageWithFallback(message, options = {}) {
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 
-// v1.6.3.8-v10 - FIX Issue #6: Initialization barrier for explicit ordering
-// Increased timeout for slow devices and added retry logic
-const TAB_ID_FETCH_TIMEOUT_MS = 10000; // Increased from 5s to 10s for slow devices
-const TAB_ID_FETCH_MAX_RETRIES = 3; // Maximum retry attempts
-const TAB_ID_FETCH_RETRY_DELAY_MS = 500; // Initial delay between retries
+// v1.6.3.8-v12 - FIX Issue #17: Reduced timeout to make initialization non-blocking
+// Previous 10s timeout blocked features; now using 2s max with graceful degradation
+const TAB_ID_FETCH_TIMEOUT_MS = 2000; // Reduced from 10s to 2s for non-blocking init
+const TAB_ID_FETCH_MAX_RETRIES = 2; // Reduced retries for faster fallback
+const TAB_ID_FETCH_RETRY_DELAY_MS = 300; // Reduced delay between retries
 
 /**
  * Initialization barrier state
@@ -3373,12 +3374,14 @@ function _getActionError(result) {
 // v1.6.3.4-v11 - FIX Issue #2: Message deduplication to prevent duplicate RESTORE_QUICK_TAB processing
 // Map of quickTabId -> timestamp of last processed restore message
 const recentRestoreMessages = new Map();
-// v1.6.3.8-v8 - FIX Issue #9: Extended deduplication window to match PORT_RECONNECT_MAX_DELAY_MS
-// Port reconnection can take up to 10 seconds, so deduplication window must be at least that long
-// to prevent message floods when port reconnects.
-// INTENTIONAL COUPLING: This uses PORT_RECONNECT_MAX_DELAY_MS to ensure the deduplication window
-// always covers the maximum port reconnection time. If port timing changes, deduplication follows.
-const RESTORE_DEDUP_WINDOW_MS = PORT_RECONNECT_MAX_DELAY_MS; // Extended from 2000ms to 10000ms
+// v1.6.3.8-v12 - FIX Issue #18: Decoupled from port reconnection timing
+// The deduplication window prevents rapid duplicate restore commands from overwhelming the system.
+// This is based on the typical user interaction debounce window (50ms):
+// - Faster than user double-clicks (typically 200-300ms apart)
+// - Slower than programmatic retries within same event loop (~0-10ms)
+// - Matches correlationId DEDUP_WINDOW_MS in storage-manager.js for consistency
+// See also: https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event
+const RESTORE_DEDUP_WINDOW_MS = 50;
 
 /**
  * Check if restore message is a duplicate (within deduplication window)

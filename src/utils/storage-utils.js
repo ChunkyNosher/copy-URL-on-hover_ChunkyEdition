@@ -172,12 +172,11 @@ let storageWriteQueuePromise = Promise.resolve();
 let pendingWriteCount = 0;
 let lastCompletedTransactionId = null;
 
-// v1.6.3.6-v3 - FIX Issue #2: Circuit breaker to prevent infinite storage write loops
-// When pendingWriteCount exceeds this threshold, ALL new writes are blocked
-const CIRCUIT_BREAKER_THRESHOLD = 15;
-const CIRCUIT_BREAKER_RESET_THRESHOLD = 10; // Auto-reset when queue drains below this
-let circuitBreakerTripped = false;
-let circuitBreakerTripTime = null;
+// v1.6.3.8-v12 - FIX Issue #16: Circuit breaker removed in favor of stateless architecture
+// The write queue is now self-limiting with Promise-based messaging and storage.onChanged fallback
+// Constants kept for reference but not used in active code path:
+// const CIRCUIT_BREAKER_THRESHOLD = 15;
+// const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;
 
 // v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
 // Stores state snapshots for rollback on failure
@@ -1773,15 +1772,7 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
 
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
 
-    // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
-    if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
-      const tripDuration = Date.now() - circuitBreakerTripTime;
-      circuitBreakerTripped = false;
-      circuitBreakerTripTime = null;
-      console.log(
-        `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
-      );
-    }
+    // v1.6.3.8-v12 - FIX Issue #16: Circuit breaker removed - no longer needed with stateless architecture
 
     // v1.6.3.6-v5 - Log storage write complete (success)
     logStorageWrite(operationId, STATE_KEY, 'complete', {
@@ -1841,25 +1832,9 @@ export function queueStorageWrite(
   logPrefix = '[StorageUtils]',
   transactionId = ''
 ) {
-  // v1.6.3.6-v3 - FIX Issue #2: Circuit breaker check BEFORE incrementing pendingWriteCount
-  // This prevents infinite storage write loops from overwhelming the system
-  if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
-    if (!circuitBreakerTripped) {
-      circuitBreakerTripped = true;
-      circuitBreakerTripTime = Date.now();
-      console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
-      console.error(
-        `[StorageUtils] Blocking ALL new storage writes (threshold: ${CIRCUIT_BREAKER_THRESHOLD})`
-      );
-      console.error('[StorageUtils] Current queue depth:', pendingWriteCount);
-      console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
-      console.error(
-        '[StorageUtils] To recover: Close tabs using this extension, then go to about:addons, disable and re-enable the extension'
-      );
-    }
-    console.error(`[StorageUtils] Write BLOCKED by circuit breaker [${transactionId}]`);
-    return Promise.resolve(false);
-  }
+  // v1.6.3.8-v12 - FIX Issue #16: Removed circuit breaker in favor of stateless architecture
+  // With Promise-based messaging and storage.onChanged fallback, the write queue is self-limiting
+  // Backlog warnings remain for diagnostics
 
   // v1.6.3.4-v12 - FIX Issue #6: Log queue state with previous transaction
   pendingWriteCount++;
@@ -1870,35 +1845,28 @@ export function queueStorageWrite(
     queueDepth: pendingWriteCount
   });
 
-  // v1.6.3.6-v2 - FIX Issue #2: Backlog detection warnings
+  // v1.6.3.8-v12 - FIX Code Review: Consistent severity progression for backlog warnings
+  // >10 = error (critical), >5 = warn (concerning), otherwise just log
   if (pendingWriteCount > 10) {
     console.error(
-      `[StorageUtils] ⚠️⚠️⚠️ CRITICAL STORAGE WRITE BACKLOG: ${pendingWriteCount} pending transactions!`
+      `[StorageUtils] ⚠️⚠️ CRITICAL BACKLOG: ${pendingWriteCount} pending writes - may indicate infinite loop`
     );
-    console.error('[StorageUtils] This strongly indicates an infinite storage write loop.');
     console.error(
-      '[StorageUtils] Check for self-write detection failure in storage.onChanged listener.'
+      `[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`
     );
-    console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
-    console.error(`[StorageUtils] Current transaction: ${transactionId}`);
   } else if (pendingWriteCount > 5) {
     console.warn(
-      `[StorageUtils] ⚠️ STORAGE WRITE BACKLOG DETECTED: ${pendingWriteCount} pending transactions`
-    );
-    console.warn(
-      '[StorageUtils] Possible infinite loop - check storage.onChanged listener for self-write.'
-    );
-    console.warn(
-      `[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`
+      `[StorageUtils] ⚠️ HIGH BACKLOG: ${pendingWriteCount} pending writes - monitoring for issues`
     );
   }
 
   // Chain this operation to the previous one
+  // v1.6.3.8-v12 - FIX Issue #15: Properly reject instead of returning false
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
       // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
-      const droppedWrites = pendingWriteCount - 1; // Current write failed, others are dropped
+      const droppedWrites = pendingWriteCount - 1;
       console.error(
         `[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`,
         err
@@ -1906,11 +1874,10 @@ export function queueStorageWrite(
 
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
       // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
-      // Without this reset, the `false` return value contaminates subsequent writes
-      // because the Promise chain carries the error state forward.
-      // By resetting to a fresh Promise.resolve(), subsequent writes start fresh.
       storageWriteQueuePromise = Promise.resolve();
-      return false;
+      // v1.6.3.8-v12 - FIX Issue #15: Properly reject to maintain Promise chain semantics
+      // Returning false would contaminate all subsequent .then() handlers
+      return Promise.reject(err);
     });
 
   return storageWriteQueuePromise;
