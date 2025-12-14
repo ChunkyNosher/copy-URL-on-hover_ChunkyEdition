@@ -17,7 +17,15 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.3.8-v12
 
-**🔧 Critical Fixes (December 2025) ✅**
+**🏗️ Architecture Migration (December 2025) ✅**
+
+- ✅ **Port Removal Complete** - ~2,364 lines of port code removed
+- ✅ **Stateless Messaging** - `runtime.sendMessage()` / `tabs.sendMessage()`
+- ✅ **storage.onChanged** as primary sync mechanism
+- ✅ **No port registry**, no reconnection, no message queues
+- ✅ **Simplified BFCache** - storage.onChanged handles restoration
+
+**Critical Fixes:**
 
 - ✅ **Issue #15** - Promise contamination fixed in storage-utils.js
 - ✅ **Issue #16** - Circuit breaker removed (stateless architecture)
@@ -27,7 +35,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **Behavioral Improvements:**
 
-- ✅ **Port zombie cleanup** - `_cleanupOrphanedPendingMessages()`
+- ✅ **Orphan message cleanup** - `_cleanupOrphanedPendingMessages()`
 - ✅ **Standardized responses** - `_buildMessageResponse()` format
 - ✅ **Cross-tab tolerance** - 100ms `OUT_OF_ORDER_TOLERANCE_MS`
 - ✅ **Render debouncing** - 100ms queue with checksum validation
@@ -40,7 +48,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **New Architecture:**
 
-- ✅ **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
+- ✅ **tabs.sendMessage messaging** - Stateless (ports fully removed in v12)
 - ✅ **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - ✅ **Readback validation** - Every write validated by read-back (fixes Issue
   #8)
@@ -108,7 +116,7 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Tab Grouping** - tabs.group() API support, Firefox 138+ (v1.6.3.7-v3)  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ **Cross-Tab Sync via Port + storage.onChanged** (NO BroadcastChannel)  
+✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
 ✓ 100+ Site-Specific Handlers  
 ✓ Dark Mode support  
 ✓ Auto-Updates via GitHub releases
