@@ -1,0 +1,8 @@
+{
+  "id": "3787d324-d907-483c-a79c-20dea055ce89",
+  "title": "Promise chain error handling pattern",
+  "details": "In the queueStorageWrite() function in src/utils/storage-utils.js, Promise chain failures should be handled by returning false (success indicator) rather than Promise.reject(). Returning a rejected promise while simultaneously resetting the module-level storageWriteQueuePromise variable creates orphaned rejections - the caller receives the old rejected promise while the new queue has moved on. The fix is to resolve gracefully with a failure indicator (false) instead of rejecting.",
+  "category": "project_context",
+  "dateCreated": "2025-12-14T22:04:04.501Z",
+  "dateUpdated": "2025-12-14T22:04:04.501Z"
+}

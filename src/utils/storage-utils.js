@@ -36,6 +36,8 @@
  * @module storage-utils
  */
 
+// v1.6.3.9-v2 - Issue #6: Import DEFAULT_CONTAINER_ID from centralized constants
+import { DEFAULT_CONTAINER_ID } from '../constants.js';
 import { CONSTANTS } from '../core/config.js';
 
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
@@ -216,6 +218,7 @@ const WRITING_INSTANCE_ID = (() => {
 
 // v1.6.3.6-v2 - FIX Issue #1: Track last written transaction ID for deterministic self-write detection
 // This provides a secondary check independent of writingInstanceId matching
+// v1.6.3.9-v3 - Issue #1: Export getter for content.js to use as PRIMARY detection method
 let lastWrittenTransactionId = null;
 
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs
@@ -320,6 +323,16 @@ export function setWritingTabId(tabId) {
  */
 export function getWritingInstanceId() {
   return WRITING_INSTANCE_ID;
+}
+
+/**
+ * Get the last written transaction ID for deterministic self-write detection
+ * v1.6.3.9-v3 - Issue #1: Export for content.js to use as PRIMARY detection method
+ * This is the most reliable detection because it's set AFTER successful write completion.
+ * @returns {string|null} Last written transaction ID or null if no write has occurred
+ */
+export function getLastWrittenTransactionId() {
+  return lastWrittenTransactionId;
 }
 
 /**
@@ -461,51 +474,64 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
 /**
  * Handle empty write validation for ownership checking
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
+ * v1.6.3.9-v3 - Issue #2: Fix "Empty Write Paradox" - allow cleanup writes with ownership history
+ *   Previously required BOTH forceEmpty=true AND hasOwnershipHistory.
+ *   Now allows empty writes when tab has ownership history (proves it legitimately
+ *   owned Quick Tabs before and is cleaning up its state).
+ *   forceEmpty=true is now a BYPASS for system cleanup operations.
  * @private
  */
 function _handleEmptyWriteValidation(tabId, forceEmpty) {
   const hasOwnershipHistory = previouslyOwnedTabIds.has(tabId);
 
-  if (!forceEmpty) {
-    console.warn('[StorageUtils] Storage write BLOCKED - no owned tabs:', {
+  // v1.6.3.9-v3 - Issue #2: Allow cleanup writes from tabs with ownership history
+  // hasOwnershipHistory is true when tabId exists in `previouslyOwnedTabIds` Set,
+  // which is populated when a tab creates/owns Quick Tabs. A tab that previously
+  // owned Quick Tabs can legitimately end up with 0 Quick Tabs (user closed all
+  // their Quick Tabs). This is a valid state transition, not an error.
+  if (hasOwnershipHistory) {
+    console.log('[StorageUtils] Empty write allowed (cleanup with ownership history):', {
       currentTabId: tabId,
-      tabCount: 0,
       forceEmpty,
       hasOwnershipHistory,
-      reason: 'Empty write requires forceEmpty=true'
+      reason: 'Tab previously owned Quick Tabs - cleanup permitted'
     });
     return {
-      shouldWrite: false,
+      shouldWrite: true,
       ownedTabs: [],
-      reason: 'empty write blocked - forceEmpty required'
+      reason: 'cleanup write with ownership history'
     };
   }
 
-  if (!hasOwnershipHistory) {
-    console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
+  // v1.6.3.9-v3 - Issue #2: forceEmpty=true bypasses ownership check
+  // Used for system-level cleanup operations (e.g., Close All from Manager)
+  if (forceEmpty) {
+    console.log('[StorageUtils] Empty write allowed (forceEmpty bypass):', {
       currentTabId: tabId,
-      tabCount: 0,
       forceEmpty,
       hasOwnershipHistory,
-      reason: 'Tab never owned Quick Tabs, cannot write empty state'
+      reason: 'System cleanup operation'
     });
     return {
-      shouldWrite: false,
+      shouldWrite: true,
       ownedTabs: [],
-      reason: 'empty write blocked - no ownership history'
+      reason: 'forceEmpty bypass for system cleanup'
     };
   }
 
-  // Tab has ownership history and forceEmpty=true - allow empty write
-  console.log('[StorageUtils] Empty write allowed:', {
+  // Block: Tab has no ownership history AND forceEmpty=false
+  // This prevents non-owner tabs from accidentally corrupting storage with empty state
+  console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
     currentTabId: tabId,
+    tabCount: 0,
     forceEmpty,
-    hasOwnershipHistory
+    hasOwnershipHistory,
+    reason: 'Tab never owned Quick Tabs, cannot write empty state'
   });
   return {
-    shouldWrite: true,
+    shouldWrite: false,
     ownedTabs: [],
-    reason: 'intentional empty write with ownership history'
+    reason: 'empty write blocked - no ownership history (non-owner tab)'
   };
 }
 
@@ -1321,7 +1347,11 @@ function serializeTabForStorage(tab, isMinimized) {
     mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
     // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
-    originTabId: extractedOriginTabId
+    originTabId: extractedOriginTabId,
+    // v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+    // Firefox containers are identified by cookieStoreId (Firefox 55+)
+    // Default to DEFAULT_CONTAINER_ID for backward compatibility with existing Quick Tabs
+    originContainerId: String(tab.originContainerId || tab.cookieStoreId || DEFAULT_CONTAINER_ID)
   };
 }
 
@@ -1861,23 +1891,33 @@ export function queueStorageWrite(
   }
 
   // Chain this operation to the previous one
-  // v1.6.3.8-v12 - FIX Issue #15: Properly reject instead of returning false
+  // v1.6.3.9-v2 - FIX Issue #3: Proper Promise chain semantics without orphaned rejections
+  // The catch handler must:
+  // 1. Log the error for debugging
+  // 2. Update pendingWriteCount
+  // 3. Resolve gracefully (not reject) to allow subsequent writes to proceed
+  // The queue assignment stays chained to prevent orphaned rejections
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
-      // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
-      const droppedWrites = pendingWriteCount - 1;
+      // v1.6.3.9-v2 - FIX Issue #3: Log failure but allow chain to continue
       console.error(
-        `[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`,
+        `[StorageUtils] Storage write FAILED [${transactionId}]:`,
         err
       );
 
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-      // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
-      storageWriteQueuePromise = Promise.resolve();
-      // v1.6.3.8-v12 - FIX Issue #15: Properly reject to maintain Promise chain semantics
-      // Returning false would contaminate all subsequent .then() handlers
-      return Promise.reject(err);
+
+      // v1.6.3.9-v2 - FIX Issue #3: Return false instead of rejecting
+      // Rejecting here creates an orphaned rejection because:
+      // - The caller receives this rejected promise
+      // - But if we reset storageWriteQueuePromise separately, the chain is broken
+      // By returning false, we:
+      // - Signal failure to the caller (false indicates write failed)
+      // - Allow the Promise chain to continue cleanly for subsequent writes
+      // - Avoid unhandled rejection warnings
+      // The caller should check the return value, not rely on rejection
+      return false;
     });
 
   return storageWriteQueuePromise;

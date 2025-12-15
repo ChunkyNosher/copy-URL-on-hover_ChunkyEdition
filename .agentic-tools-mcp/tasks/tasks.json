@@ -6,6 +6,13 @@
       "description": "Tracking cross-tab sync, messaging, and state persistence improvements for the Firefox extension",
       "createdAt": "2025-12-10T23:59:08.391Z",
       "updatedAt": "2025-12-10T23:59:08.391Z"
+    },
+    {
+      "id": "6d9b89bc-722e-400e-b73a-6dfc20f0759d",
+      "name": "Container Isolation and Tab Events",
+      "description": "Implement Issue 6 (Container Isolation at Storage Level) and Tabs API Event Listeners for copy-URL-on-hover_ChunkyEdition extension",
+      "createdAt": "2025-12-14T22:26:14.875Z",
+      "updatedAt": "2025-12-14T22:26:14.875Z"
     }
   ],
   "tasks": [],

@@ -1,0 +1,8 @@
+{
+  "id": "5d758b41-e076-4bde-91aa-b4acca34044a",
+  "title": "Timing constants location",
+  "details": "All timing constants for Firefox storage operations are centralized in src/constants.js. Key constants:\n- FIREFOX_STORAGE_LISTENER_LATENCY_MAX_MS = 250 (Firefox Bugzilla #1554088 documented behavior)\n- STORAGE_LATENCY_BUFFER_MS = 50 (safety buffer)\n- STORAGE_DEDUP_WINDOW_MS = 300 (self-write detection)\n- STORAGE_ORDERING_TOLERANCE_MS = 300 (event ordering validation)\n- OUT_OF_ORDER_TOLERANCE_MS = 100 (cross-tab timing)\n- FALLBACK_SYNC_TIMEOUT_MS = 2000\n- TAB_ID_FETCH_TIMEOUT_MS = 2000\nThese should be imported from constants.js, not redefined locally.",
+  "category": "project_context",
+  "dateCreated": "2025-12-14T22:04:04.503Z",
+  "dateUpdated": "2025-12-14T22:04:04.503Z"
+}

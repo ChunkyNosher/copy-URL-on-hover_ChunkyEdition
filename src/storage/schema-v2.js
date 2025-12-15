@@ -24,6 +24,12 @@
  * @version 1.6.3.9 - GAP-19: Enhanced version field documentation
  */
 
+// Import DEFAULT_CONTAINER_ID from centralized constants
+import { DEFAULT_CONTAINER_ID } from '../constants.js';
+
+// Re-export for consumers that import from schema-v2.js
+export { DEFAULT_CONTAINER_ID };
+
 export const SCHEMA_VERSION = 2;
 export const STORAGE_KEY = 'quick_tabs_state_v2';
 
@@ -55,6 +61,68 @@ export function getEmptyState() {
 export function getQuickTabsByOriginTabId(state, tabId) {
   if (!state?.allQuickTabs) return [];
   return state.allQuickTabs.filter(qt => qt.originTabId === tabId);
+}
+
+/**
+ * Get Quick Tabs filtered by origin tab ID AND container ID
+ * v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+ *
+ * This function filters Quick Tabs that belong to a specific tab AND container.
+ * This prevents cross-container contamination where Quick Tabs from different
+ * containers could appear in the wrong container's view.
+ *
+ * @param {Object} state - Current state object
+ * @param {number} tabId - Origin tab ID to filter by
+ * @param {string} containerId - Container ID (cookieStoreId) to filter by
+ * @returns {Array} Array of Quick Tabs matching both tab ID and container
+ */
+export function getQuickTabsByOriginTabIdAndContainer(state, tabId, containerId) {
+  if (!state?.allQuickTabs) return [];
+  const normalizedContainerId = containerId || DEFAULT_CONTAINER_ID;
+  return state.allQuickTabs.filter(qt => {
+    // Match tab ID
+    if (qt.originTabId !== tabId) return false;
+    // Match container ID (default to 'firefox-default' for backward compatibility)
+    const qtContainerId = qt.originContainerId || DEFAULT_CONTAINER_ID;
+    return qtContainerId === normalizedContainerId;
+  });
+}
+
+/**
+ * Get Quick Tabs filtered by container ID only
+ * v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+ *
+ * @param {Object} state - Current state object
+ * @param {string} containerId - Container ID (cookieStoreId) to filter by
+ * @returns {Array} Array of Quick Tabs belonging to the specified container
+ */
+export function getQuickTabsByContainerId(state, containerId) {
+  if (!state?.allQuickTabs) return [];
+  const normalizedContainerId = containerId || DEFAULT_CONTAINER_ID;
+  return state.allQuickTabs.filter(qt => {
+    const qtContainerId = qt.originContainerId || DEFAULT_CONTAINER_ID;
+    return qtContainerId === normalizedContainerId;
+  });
+}
+
+/**
+ * Remove all Quick Tabs belonging to a specific container (immutable)
+ * v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
+ *
+ * @param {Object} state - Current state object
+ * @param {string} containerId - Container ID whose Quick Tabs should be removed
+ * @returns {Object} New state with the Quick Tabs removed
+ */
+export function removeQuickTabsByContainerId(state, containerId) {
+  const normalizedContainerId = containerId || DEFAULT_CONTAINER_ID;
+  return {
+    ...state,
+    lastModified: Date.now(),
+    allQuickTabs: state.allQuickTabs.filter(qt => {
+      const qtContainerId = qt.originContainerId || DEFAULT_CONTAINER_ID;
+      return qtContainerId !== normalizedContainerId;
+    })
+  };
 }
 
 /**

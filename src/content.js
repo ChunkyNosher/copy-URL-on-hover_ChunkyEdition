@@ -340,8 +340,17 @@ console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
 console.log('[Copy-URL-on-Hover] Starting module imports...');
-// v1.6.3.8-v13 - GAP-7: Import shared dedup constant for self-write detection
-import { STORAGE_DEDUP_WINDOW_MS, RESTORE_DEDUP_WINDOW_MS } from './constants.js';
+// v1.6.3.9-v2 - Issue #4: Import all timing constants from centralized location
+import {
+  STORAGE_DEDUP_WINDOW_MS,
+  RESTORE_DEDUP_WINDOW_MS,
+  STORAGE_ORDERING_TOLERANCE_MS,
+  OUT_OF_ORDER_TOLERANCE_MS,
+  FALLBACK_SYNC_TIMEOUT_MS,
+  TAB_ID_FETCH_TIMEOUT_MS,
+  TAB_ID_FETCH_RETRY_DELAY_MS,
+  FALLBACK_RETRY_DELAY_MS
+} from './constants.js';
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 import { ConfigManager, CONSTANTS, DEFAULT_CONFIG } from './core/config.js';
 import { EventBus, Events } from './core/events.js';
@@ -358,7 +367,12 @@ import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.j
 // v1.6.3.8-v2 - Issue #7: Import sendRequestWithTimeout for reliable message/response handling
 import { sendRequestWithTimeout } from './utils/message-utils.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
-import { setWritingTabId } from './utils/storage-utils.js';
+// v1.6.3.9-v3 - Issue #1: Import getLastWrittenTransactionId and getWritingInstanceId for deterministic self-write detection
+import {
+  setWritingTabId,
+  getLastWrittenTransactionId,
+  getWritingInstanceId
+} from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -537,19 +551,14 @@ async function getCurrentTabIdFromBackground() {
  */
 let cachedTabId = null;
 
-// v1.6.3.8-v13 - GAP-7: Use imported STORAGE_DEDUP_WINDOW_MS constant for self-write detection
-// Firefox listener fires 100-250ms after write completes
+// v1.6.3.9-v2 - Issue #4: Use imported STORAGE_DEDUP_WINDOW_MS constant for self-write detection
+// Firefox listener fires 100-250ms after write completes (per Bugzilla #1554088)
 // The constant is imported from src/constants.js for consistency across codebase
 const STORAGE_LISTENER_LATENCY_TOLERANCE_MS = STORAGE_DEDUP_WINDOW_MS; // Firefox listener latency tolerance
 
 // ==================== v1.6.3.8-v14 GAP-8: FALLBACK SYNC LOGGING ====================
 // FIX GAP-8: When Promise-based messages fail, track whether storage.onChanged fallback works
-
-/**
- * Timeout for fallback sync to complete (ms)
- * v1.6.3.8-v14 - GAP-8: Alert if fallback doesn't complete within this window
- */
-const FALLBACK_SYNC_TIMEOUT_MS = 2000;
+// v1.6.3.9-v2 - Issue #4: FALLBACK_SYNC_TIMEOUT_MS now imported from constants.js
 
 /**
  * Pending fallback operations awaiting storage.onChanged confirmation
@@ -686,9 +695,8 @@ function _checkPendingFallbacksForStorageChange(newValue) {
 
 // ==================== END GAP-8 FALLBACK SYNC LOGGING ====================
 
-// v1.6.3.8-v8 - FIX Issue #8: Storage event ordering tolerance window
-// Accept out-of-order events if within Firefox's documented listener latency
-const STORAGE_ORDERING_TOLERANCE_MS = 300;
+// v1.6.3.9-v2 - Issue #4: STORAGE_ORDERING_TOLERANCE_MS now imported from constants.js
+// Accept out-of-order events if within Firefox's documented listener latency (300ms)
 
 /**
  * State ordering tracking
@@ -760,8 +768,76 @@ function _checkWritingTabIdMatch(newValue) {
 }
 
 /**
+ * Check if transactionId matches our last written transaction (PRIMARY detection)
+ * v1.6.3.9-v3 - Issue #1: Use transactionId as PRIMARY detection method
+ * This is the most deterministic because lastWrittenTransactionId is set AFTER
+ * successful write completion in storage-utils.js.
+ * @private
+ * @param {Object} newValue - New value from storage change event
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}|null}
+ */
+function _checkTransactionIdMatch(newValue) {
+  if (!newValue.transactionId) {
+    return null;
+  }
+
+  const lastWrittenTxnId = getLastWrittenTransactionId();
+  if (!lastWrittenTxnId) {
+    return null;
+  }
+
+  const isMatch = newValue.transactionId === lastWrittenTxnId;
+  if (isMatch) {
+    console.log('[Content] SELF_WRITE_DETECTED (transactionId match - PRIMARY):', {
+      transactionId: newValue.transactionId,
+      saveId: newValue.saveId,
+      decision: 'is-self-write'
+    });
+    return {
+      isSelfWrite: true,
+      reason: 'transactionId-match',
+      matchedSaveId: newValue.saveId
+    };
+  }
+
+  // No match - return null to continue checking other methods
+  return null;
+}
+
+/**
+ * Check if writingInstanceId matches our instance (SECONDARY detection)
+ * v1.6.3.9-v3 - Issue #1: Extracted from _detectSelfWrite for clarity
+ * @private
+ * @param {Object} newValue - New value from storage change event
+ * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}|null}
+ */
+function _checkWritingInstanceIdMatch(newValue) {
+  if (!newValue.writingInstanceId) {
+    return null;
+  }
+
+  const ourInstanceId = getWritingInstanceId();
+  const isMatch = newValue.writingInstanceId === ourInstanceId;
+  if (isMatch) {
+    console.log('[Content] SELF_WRITE_DETECTED (writingInstanceId match - SECONDARY):', {
+      writingInstanceId: newValue.writingInstanceId,
+      saveId: newValue.saveId,
+      decision: 'is-self-write'
+    });
+    return {
+      isSelfWrite: true,
+      reason: 'writingInstanceId-match',
+      matchedSaveId: newValue.saveId
+    };
+  }
+
+  return null;
+}
+
+/**
  * Check timestamp-based self-write detection
  * v1.6.3.8-v8 - Helper to reduce _detectSelfWrite complexity
+ * v1.6.3.9-v3 - Issue #1: Now TERTIARY fallback (timestamp-based is unreliable)
  * @private
  * @param {Object} newValue - New value from storage change event
  * @param {Object} savedEntry - Entry from _recentSelfWrites
@@ -772,7 +848,7 @@ function _checkTimestampMatch(newValue, savedEntry) {
   const timeSinceWrite = eventTime - savedEntry.writeTime;
   const withinWindow = timeSinceWrite <= STORAGE_LISTENER_LATENCY_TOLERANCE_MS;
 
-  console.log('[Content] SELF_WRITE_DETECTION:', {
+  console.log('[Content] SELF_WRITE_DETECTION (timestamp fallback - TERTIARY):', {
     saveId: newValue.saveId,
     writeTime: savedEntry.writeTime,
     eventTime,
@@ -795,6 +871,12 @@ function _checkTimestampMatch(newValue, savedEntry) {
 /**
  * Check if a storage change event is from this tab's recent write
  * v1.6.3.8-v8 - FIX Issue #1: Use strict timestamp matching within detection window
+ * v1.6.3.9-v3 - Issue #1: Use multi-layer detection with transactionId as PRIMARY
+ *   Detection priority (fall through if not matched):
+ *   1. transactionId match (PRIMARY - most deterministic)
+ *   2. writingInstanceId match (SECONDARY - per tab-load unique)
+ *   3. writingTabId match (TERTIARY - tab-level)
+ *   4. saveId + timestamp match (FALLBACK - unreliable due to Firefox latency)
  * @param {Object} newValue - New value from storage change event
  * @returns {{isSelfWrite: boolean, reason: string, matchedSaveId: string|null}}
  */
@@ -803,17 +885,25 @@ function _detectSelfWrite(newValue) {
     return { isSelfWrite: false, reason: 'no-saveId', matchedSaveId: null };
   }
 
-  const savedEntry = _recentSelfWrites.get(newValue.saveId);
+  // v1.6.3.9-v3 - Issue #1: PRIMARY - Check transactionId (most deterministic)
+  const txnResult = _checkTransactionIdMatch(newValue);
+  if (txnResult) return txnResult;
 
-  if (!savedEntry) {
-    // Check writingTabId as fallback
-    const tabIdResult = _checkWritingTabIdMatch(newValue);
-    if (tabIdResult) return tabIdResult;
-    return { isSelfWrite: false, reason: 'unknown-saveId', matchedSaveId: null };
+  // SECONDARY - Check writingInstanceId (unique per tab load)
+  const instanceResult = _checkWritingInstanceIdMatch(newValue);
+  if (instanceResult) return instanceResult;
+
+  // TERTIARY - Check writingTabId (tab-level)
+  const tabIdResult = _checkWritingTabIdMatch(newValue);
+  if (tabIdResult) return tabIdResult;
+
+  // FALLBACK - Check saveId in _recentSelfWrites Map (timestamp-based, unreliable)
+  const savedEntry = _recentSelfWrites.get(newValue.saveId);
+  if (savedEntry) {
+    return _checkTimestampMatch(newValue, savedEntry);
   }
 
-  // Check timestamp within detection window
-  return _checkTimestampMatch(newValue, savedEntry);
+  return { isSelfWrite: false, reason: 'unknown-saveId', matchedSaveId: null };
 }
 
 // ==================== v1.6.3.8-v13 STATELESS MESSAGE SENDING ====================
@@ -1364,11 +1454,8 @@ function _checkRevisionOrdering(incomingRevision, timeSinceWrite, withinToleranc
   return { valid: false, reason: 'revision-rejected' };
 }
 
-/**
- * Tolerance window for out-of-order events (ms)
- * v1.6.3.8-v12 - FIX Issue #7: Cross-tab timing tolerance
- */
-const OUT_OF_ORDER_TOLERANCE_MS = 100;
+// v1.6.3.9-v2 - Issue #4: OUT_OF_ORDER_TOLERANCE_MS now imported from constants.js
+// Tolerance window for out-of-order events (100ms for cross-tab timing tolerance)
 
 /**
  * Handle duplicate sequenceId within tolerance
@@ -1578,12 +1665,13 @@ function _requestStateRecovery(reason) {
 /**
  * Fallback to storage.local.get for state recovery
  * v1.6.3.8-v13: Direct storage read (primary mechanism now)
+ * v1.6.3.9-v2 - Issue #4: FALLBACK_RETRY_DELAY_MS now imported from constants.js
  * @param {string} reason - Reason for fallback
  * @param {number} [retryCount=0] - Current retry count
  */
 async function _fallbackToStorageRead(reason, retryCount = 0) {
   const MAX_FALLBACK_RETRIES = 3;
-  const FALLBACK_RETRY_DELAY_MS = 500;
+  // v1.6.3.9-v2 - Issue #4: Using imported FALLBACK_RETRY_DELAY_MS from constants.js
 
   console.log('[Content] STORAGE_FALLBACK_READ:', {
     reason,
@@ -1798,11 +1886,10 @@ function _handleStorageChange(changes, areaName) {
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
 
-// v1.6.3.8-v12 - FIX Issue #17: Reduced timeout to make initialization non-blocking
+// v1.6.3.9-v2 - Issue #4: TAB_ID_FETCH_TIMEOUT_MS and TAB_ID_FETCH_RETRY_DELAY_MS
+// now imported from constants.js
 // Previous 10s timeout blocked features; now using 2s max with graceful degradation
-const TAB_ID_FETCH_TIMEOUT_MS = 2000; // Reduced from 10s to 2s for non-blocking init
 const TAB_ID_FETCH_MAX_RETRIES = 2; // Reduced retries for faster fallback
-const TAB_ID_FETCH_RETRY_DELAY_MS = 300; // Reduced delay between retries
 
 /**
  * Initialization barrier state
@@ -2018,8 +2105,18 @@ async function initializeQuickTabsFeature() {
     console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
     _logInitializationBarrierState('tabId-set');
   } else {
-    console.warn(
-      '[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation'
+    // v1.6.3.9-v2 - Issue #5: Enhanced error logging with actionable information
+    console.error(
+      '[Copy-URL-on-Hover] TAB_ID_INITIALIZATION_FAILURE: Could not set writing tab ID',
+      {
+        consequence: 'Storage writes WILL FAIL ownership validation - Quick Tabs will not persist',
+        possibleCauses: [
+          'Background script not responding to GET_CURRENT_TAB_ID',
+          'Extension context invalidated',
+          'Content script loaded in non-tab context (e.g., extension page)'
+        ],
+        action: 'Check background script console for errors; try reloading the tab'
+      }
     );
     _logInitializationBarrierState('tabId-skipped');
   }

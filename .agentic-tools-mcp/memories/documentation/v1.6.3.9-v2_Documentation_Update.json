@@ -1,0 +1,8 @@
+{
+  "id": "895f49a3-12b8-463b-824b-2b00b66fde2c",
+  "title": "v1.6.3.9-v2 Documentation Update",
+  "details": "Updated documentation from v1.6.3.9 to v1.6.3.9-v2 with the following key features:\n\n1. Multi-Layer Self-Write Detection - 4 layers: TransactionId → InstanceId → TabId → Timing\n2. Container Isolation - originContainerId field for Firefox Containers\n3. Tabs API Integration - src/background/tab-events.js with onActivated, onRemoved, onUpdated\n4. Ownership History - previouslyOwnedTabIds for empty write validation\n5. Promise Chain Fix - queueStorageWrite() returns false on error\n6. Response Format - { success: true, data: { tabId } } standardization\n\nNew Timing Constants:\n- FIREFOX_STORAGE_LISTENER_LATENCY_MAX_MS = 250\n- STORAGE_LATENCY_BUFFER_MS = 50\n- STORAGE_ORDERING_TOLERANCE_MS = 300\n- TAB_UPDATED_DEBOUNCE_MS = 500\n- DEFAULT_CONTAINER_ID = 'firefox-default'\n\nFile sizes maintained under limits:\n- copilot-instructions.md: 14,960 bytes (limit 15KB)\n- README.md: 9,482 bytes (limit 10KB)",
+  "category": "documentation",
+  "dateCreated": "2025-12-15T00:28:49.700Z",
+  "dateUpdated": "2025-12-15T00:28:49.700Z"
+}

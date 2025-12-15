@@ -1,19 +1,37 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.9-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
-control**, **Per-Tab Isolation**, Session Quick Tabs, and Persistent Floating
+control**, **Per-Tab Isolation**, **Container Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.9 Status:** Gap Analysis Implementation Complete ✅
+**🔧 v1.6.3.9-v2 Status:** Self-Write Detection & Container Isolation ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.9-v2
+
+**🔧 Self-Write Detection & Container Isolation (December 2025) ✅**
+
+- ✅ **Multi-Layer Self-Write Detection** - TransactionId → InstanceId → TabId → Timing
+- ✅ **Container Isolation** - `originContainerId` field for Firefox Containers
+- ✅ **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
+- ✅ **Ownership History** - `previouslyOwnedTabIds` for empty write validation
+- ✅ **Promise Chain Fix** - Clean error handling in `queueStorageWrite()`
+- ✅ **Response Format** - Standardized `{ success, data }` format
+
+**New Files:**
+
+- ✅ **src/background/tab-events.js** - Tabs API event listeners
+- ✅ **Container functions in browser-api.js** - getTabsByContainer, validateTabExists
+
+---
 
 ## 🎉 What's New in v1.6.3.9
 
@@ -46,21 +64,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 Previous Releases
 
-See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history
-including:
-
-- **v1.6.3.8-v12** - Port removal, stateless messaging
-- **v1.6.3.8-v11** - Quick Tabs Architecture v2, tabs.sendMessage,
-  StorageManager
-- **v1.6.3.8-v10** - Modern APIs Audit, Diagnostic Fixes
-- **v1.6.3.8-v8** - Storage, Handler & Init Fixes
-- **v1.6.3.8-v7** - Communication & Storage Fixes
-- **v1.6.3.8-v6** - Production Hardening, BC removal complete
-- **v1.6.3.8-v5** - Architecture Redesign, BC removal begun
-- **v1.6.3.8-v4** - 9 Critical Sync Fixes, Sidebar Modules
-- **v1.6.3.8-v3** - Storage listener verification, tier hysteresis
-- **v1.6.3.8-v2** - ACK-based messaging, WriteBuffer
-- **v1.6.3.8** - Initialization barriers, centralized storage validation
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
 ---
 
@@ -92,8 +96,10 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 ✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
 ✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility  
+✓ **Container Isolation** - Firefox Container support with originContainerId  
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Tab Grouping** - tabs.group() API support, Firefox 138+ (v1.6.3.7-v3)  
+✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
 ✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
 ✓ 100+ Site-Specific Handlers  
@@ -243,6 +249,6 @@ for details.
 
 ---
 
-**Version 1.6.3.9** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.9-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

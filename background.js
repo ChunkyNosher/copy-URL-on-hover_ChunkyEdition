@@ -22,6 +22,8 @@ import {
   bootstrapQuickTabs,
   getActiveArchitecture
 } from './src/background/quick-tabs-v2-integration.js';
+// v1.6.3.9-v2 - Issue #6: Import tab events for container isolation and cleanup
+import { initializeTabEvents, getTabEventsDiagnostics } from './src/background/tab-events.js';
 // v1.6.3.8-v8 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports and functions removed - Port + storage.onChanged ONLY
 // See Issue #13: Any remaining BC references are comments for historical context
@@ -1589,6 +1591,9 @@ function logDiagnosticSnapshot() {
   console.log('[Background] Quick Tab host tracking:', {
     trackedQuickTabs: quickTabHostTabs.size
   });
+
+  // v1.6.3.9-v2 - Issue #6: Include tab events diagnostics
+  console.log('[Background] Tab events:', getTabEventsDiagnostics());
 
   // v1.6.3.7-v12 - Issue #6: Include dedup statistics
   // v1.6.3.8-v6 - Issue #11: Enhanced with tier counts and history
@@ -4077,6 +4082,7 @@ initializeGlobalState();
 // v1.6.3.8-v12 GAP-1, GAP-10, GAP-11 fix: Bootstrap Quick Tabs v2 after state initialization
 // This must happen after initializeGlobalState() but before content scripts run
 // The bootstrapQuickTabs() function checks the feature flag and initializes the appropriate architecture
+// v1.6.3.9-v2 - Issue #6: Also initializes tab events for container isolation
 (async function bootstrapQuickTabsV2() {
   console.log('[Background] v1.6.3.8-v12 Initiating Quick Tabs v2 bootstrap...');
   try {
@@ -4085,6 +4091,13 @@ initializeGlobalState();
       architecture: result.architecture,
       success: result.success,
       activeArchitecture: getActiveArchitecture()
+    });
+
+    // v1.6.3.9-v2 - Issue #6: Initialize tab events for container isolation and cleanup
+    const tabEventsResult = initializeTabEvents();
+    console.log('[Background] v1.6.3.9-v2 Tab events initialized:', {
+      success: tabEventsResult.success,
+      listeners: tabEventsResult.listenersRegistered
     });
   } catch (err) {
     console.error('[Background] v1.6.3.8-v12 Quick Tabs bootstrap failed:', err.message);
