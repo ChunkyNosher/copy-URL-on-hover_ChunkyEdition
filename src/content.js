@@ -240,11 +240,22 @@ let _storageListenerIsActive = false;
 /**
  * Early storage change handler - forwards to _handleStorageChange once defined
  * v1.6.3.8-v8 - Issue #15: Registered synchronously at script load
+ * v1.6.4 - Issue #47-8: Enhanced diagnostic logging for listener health
  * @param {Object} changes - Storage changes
  * @param {string} areaName - Storage area name
  */
 function _earlyStorageChangeHandler(changes, areaName) {
   _storageListenerHasFired = true;
+
+  // v1.6.4 - Issue #47-8: Enhanced logging for storage listener fires
+  const hasQuickTabsStateChange = 'quick_tabs_state_v2' in changes;
+  console.log('[Content] STORAGE_LISTENER_FIRED:', {
+    areaName,
+    hasQuickTabsStateChange,
+    changeKeys: Object.keys(changes),
+    timeSinceRegistrationMs: Date.now() - _storageListenerRegistrationTime,
+    timestamp: Date.now()
+  });
 
   // Forward to actual handler if defined, otherwise log and queue
   if (typeof _handleStorageChange === 'function') {
@@ -269,20 +280,28 @@ const _earlyStorageChangeQueue = [];
 /**
  * Attempt to register storage listener with fallback retry
  * v1.6.3.8-v12 - FIX Issue #10: Registration with retry and flag tracking
+ * v1.6.4 - Issue #47-8: Enhanced diagnostic logging for listener registration
  * @returns {boolean} True if registration succeeded
  */
 function _attemptStorageListenerRegistration() {
   try {
     browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
     _storageListenerIsActive = true;
-    console.log('[Content] v1.6.3.8-v12 storage.onChanged listener registered:', {
+
+    // v1.6.4 - Issue #47-8: Enhanced registration logging
+    console.log('[Content] STORAGE_LISTENER_REGISTERED:', {
+      listenerRegistered: true,
       registrationTime: _storageListenerRegistrationTime,
       isActive: _storageListenerIsActive,
       timestamp: Date.now()
     });
     return true;
   } catch (err) {
-    console.error('[Content] Storage listener registration failed:', err.message);
+    console.error('[Content] STORAGE_LISTENER_REGISTRATION_FAILED:', {
+      listenerRegistered: false,
+      error: err.message,
+      timestamp: Date.now()
+    });
     _storageListenerIsActive = false;
     return false;
   }
@@ -1721,19 +1740,44 @@ async function _fallbackToStorageRead(reason, retryCount = 0) {
       );
     }
 
+    // v1.6.4 - Issue #47-8: Enhanced completion logging
+    const quickTabsCount = storedState.tabs?.length || 0;
     console.log('[Content] STORAGE_FALLBACK_SUCCESS:', {
-      tabCount: storedState.tabs?.length || 0,
+      tabCount: quickTabsCount,
       revision: storedState.revision,
       sequenceId: storedState.sequenceId,
       saveId: storedState.saveId,
       retryCount
     });
 
+    // v1.6.4 - Issue #47-8: Log fallback polling complete with standard format
+    console.log('[Content] STORAGE_FALLBACK_POLLING_COMPLETE:', {
+      success: true,
+      quickTabsFound: quickTabsCount,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+
     // Update ordering state and notify QuickTabsManager if available
     _updateAppliedOrderingState(storedState);
     _notifyManagerOfStorageUpdate(storedState, 'storage-fallback');
   } catch (err) {
-    console.error('[Content] STORAGE_FALLBACK_ERROR:', err.message);
+    // v1.6.4 - Issue #47-8: Enhanced error logging
+    console.error('[Content] STORAGE_FALLBACK_ERROR:', {
+      error: err.message,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+
+    console.log('[Content] STORAGE_FALLBACK_POLLING_COMPLETE:', {
+      success: false,
+      quickTabsFound: 0,
+      error: err.message,
+      reason,
+      timestamp: Date.now()
+    });
   }
 }
 
@@ -1903,12 +1947,23 @@ function _handleStorageChange(changes, areaName) {
 
   // v1.6.3.8-v10 - FIX Issue #2: Set up fallback polling if listener hasn't fired within expected window
   // v1.6.3.9-v3 - Issue #47-12: Use FALLBACK_SYNC_TIMEOUT_MS constant for consistency
+  // v1.6.4 - Issue #47-8: Enhanced diagnostic logging for fallback polling
   // Firefox storage.onChanged has NO guaranteed delivery timing per MDN docs.
   // During content script startup, events may be delayed 500ms+ on slow devices.
   // Fallback polling is the PRIMARY reliable mechanism, storage listener is optimization.
   const _fallbackPollingStartTime = Date.now();
   setTimeout(() => {
     if (!_storageListenerHasFired) {
+      // v1.6.4 - Issue #47-8: Log fallback polling start with full diagnostics
+      console.log('[Content] STORAGE_FALLBACK_POLLING_START:', {
+        reason: 'storage_listener_timeout',
+        timeoutMs: FALLBACK_SYNC_TIMEOUT_MS,
+        listenerRegistered: _storageListenerIsActive,
+        listenerHasFired: _storageListenerHasFired,
+        timeSinceRegistrationMs: Date.now() - _storageListenerRegistrationTime,
+        timestamp: Date.now()
+      });
+
       console.warn(
         '[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received, polling storage'
       );
