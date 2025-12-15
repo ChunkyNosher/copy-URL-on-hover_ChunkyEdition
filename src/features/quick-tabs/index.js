@@ -38,7 +38,9 @@ import { STATE_KEY } from '../../utils/storage-utils.js';
 
 // v1.6.3.7-v12 - Issue #12: currentTabId barrier constants (code review fix)
 // v1.6.3.8-v9 - FIX Section 1.3: Increased timeout from 2s to 5s for slow devices
-const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 5000; // 5 second max wait
+// v1.6.3.9-v3 - Issue #47-2: Reduced from 5s to 2s - stateless architecture doesn't need long Port wait
+//               Allow graceful degradation if currentTabId unavailable (hydration deferred, not blocked)
+const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait (reduced from 5s)
 const INITIAL_POLL_INTERVAL_MS = 50;
 const MAX_POLL_INTERVAL_MS = 200;
 const POLL_INTERVAL_MULTIPLIER = 1.5; // Exponential backoff factor
@@ -406,11 +408,13 @@ class QuickTabsManager {
 
     // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
     // v1.6.3.8-v9 - FIX Section 1.3: Schedule delayed retry instead of just failing
-    console.error('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: FAILED - timeout reached', {
+    // v1.6.3.9-v3 - Issue #47-6: Use warn instead of error - graceful degradation is normal operation
+    console.warn('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Timeout - proceeding with graceful degradation', {
       currentTabId: this.currentTabId,
       timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
       elapsedMs: Date.now() - barrierStartTime,
-      consequence: 'Hydration will be skipped, scheduling delayed retry',
+      consequence: 'Hydration deferred until currentTabId available (retry scheduled)',
+      note: 'This is expected behavior in stateless architecture - not a failure',
       retryDelayMs: HYDRATION_RETRY_DELAY_MS,
       timestamp: Date.now()
     });

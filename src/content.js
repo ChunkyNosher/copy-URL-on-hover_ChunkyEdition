@@ -1901,15 +1901,37 @@ function _handleStorageChange(changes, areaName) {
     });
   }
 
-  // v1.6.3.8-v10 - FIX Issue #2: Set up fallback polling if listener hasn't fired within 1 second
+  // v1.6.3.8-v10 - FIX Issue #2: Set up fallback polling if listener hasn't fired within expected window
+  // v1.6.3.9-v3 - Issue #47-12: Use FALLBACK_SYNC_TIMEOUT_MS constant for consistency
+  // Firefox storage.onChanged has NO guaranteed delivery timing per MDN docs.
+  // During content script startup, events may be delayed 500ms+ on slow devices.
+  // Fallback polling is the PRIMARY reliable mechanism, storage listener is optimization.
+  const _fallbackPollingStartTime = Date.now();
   setTimeout(() => {
     if (!_storageListenerHasFired) {
       console.warn(
-        '[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received within 1s, polling storage'
+        '[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received, polling storage'
       );
+      // Log diagnostic info about which sync mechanism is being used
+      console.log('[Content] STATE_SYNC_MECHANISM:', {
+        mechanism: 'fallback_polling',
+        success: true,
+        durationMs: Date.now() - _fallbackPollingStartTime,
+        reason: 'storage.onChanged listener did not fire within timeout',
+        timestamp: Date.now()
+      });
       _fallbackToStorageRead('listener-no-fire');
+    } else {
+      // Storage listener fired successfully - log for diagnostics
+      console.log('[Content] STATE_SYNC_MECHANISM:', {
+        mechanism: 'storage_listener',
+        success: true,
+        durationMs: Date.now() - _fallbackPollingStartTime,
+        reason: 'storage.onChanged listener fired before fallback timeout',
+        timestamp: Date.now()
+      });
     }
-  }, 1000);
+  }, FALLBACK_SYNC_TIMEOUT_MS);
 })();
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================
