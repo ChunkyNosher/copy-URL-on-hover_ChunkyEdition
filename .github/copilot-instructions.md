@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.9  
+**Version:** 1.6.3.9-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -17,44 +17,35 @@ Tabs Manager
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - **Tab Isolation** - Filter by `originTabId` at hydration time
+- **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Readback Validation** - Every storage write validated by read-back
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
+- **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v2 Features (NEW):**
+
+- **Multi-Layer Self-Write Detection** - TransactionId → WritingInstanceId →
+  WritingTabId → Timing fallback
+- **Container Isolation** - `originContainerId` field, container-aware queries
+- **Tabs API Integration** - `src/background/tab-events.js` with 3 listeners
+- **Ownership History** - `previouslyOwnedTabIds` for empty write validation
+- **Promise Chain Fix** - Clean error handling in `queueStorageWrite()`
+- **Response Format** - `{ success: true, data: { tabId } }` standard
+
+**v1.6.3.9 Features (Retained) - Gap Analysis Implementation:**
 
 - **Feature Flag Wiring** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Message Routing** - Handlers send MESSAGE_TYPES to background
-- **CorrelationId Integration** - All messages use shared
-  `generateCorrelationId()`
-- **Broadcast After Operations** - Enhanced `broadcastStateToAllTabs()` logging
+- **CorrelationId Integration** - All messages use `generateCorrelationId()`
 - **Ownership Validation** - `_validateOwnership()` checks `originTabId`
 - **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
 - **Centralized Constants** - `src/constants.js` with timing values
-- **Fallback Sync Logging** - `_pendingFallbackOperations` with 2s timeout
-- **Schema Version Field** - `version: 2` in schema-v2.js
-- **Structured Logger** - `src/utils/structured-logger.js` with StructuredLogger
-
-**v1.6.3.8-v12 Features (Retained) - Architecture Migration:**
-
-- **REMOVED all port-based messaging** (~2,364 lines removed)
-- **Stateless messaging** - `runtime.sendMessage()` content→background,
-  `tabs.sendMessage()` background→content
-- **storage.onChanged** as primary sync mechanism (no port registry)
-
-**v1.6.3.8-v11 Features (Retained):**
-
-- **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
-- **Tab Isolation** - Filter by `originTabId` at hydration time (structural)
-- **Readback Validation** - Every write validated by read-back
-- **Deduplication** - correlationId with 50ms window
-- **EventBus** - Native EventTarget for FIFO-guaranteed events
-- **StorageManager** - Retry with exponential backoff (100ms, 200ms, 400ms)
-- **Message Patterns** - LOCAL (no broadcast), GLOBAL (broadcast), MANAGER
+- **Structured Logger** - `src/utils/structured-logger.js`
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
-MessageBuilder, StructuredLogger
+MessageBuilder, StructuredLogger, TabEventsManager
 
 **Deprecated/Removed:** `setPosition()`, `setSize()`,
 `updateQuickTabPosition()`, `updateQuickTabSize()`, `BroadcastChannelManager`
@@ -73,7 +64,7 @@ MessageBuilder, StructuredLogger
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v2)
 
 **Stateless messaging architecture (NO Port, NO BroadcastChannel):**
 
@@ -89,7 +80,28 @@ MessageBuilder, StructuredLogger
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.9: Gap Analysis Implementation (PRODUCTION)
+### v1.6.3.9-v2: Self-Write Detection & Container Isolation (PRODUCTION)
+
+**Multi-Layer Self-Write Detection:**
+
+1. **Primary:** TransactionId match (`getLastWrittenTransactionId()`)
+2. **Secondary:** WritingInstanceId match (`getWritingInstanceId()`)
+3. **Tertiary:** WritingTabId match
+4. **Fallback:** Timing-based detection (legacy)
+
+**Container Isolation:**
+
+- `originContainerId` field in Quick Tab data structure
+- Container-aware queries: `getQuickTabsByOriginTabIdAndContainer()`
+- Backward compatible: defaults to `'firefox-default'`
+
+**Tabs API Integration:**
+
+- `browser.tabs.onActivated` - Immediate state refresh on tab switch
+- `browser.tabs.onRemoved` - Automatic Quick Tab cleanup on tab close
+- `browser.tabs.onUpdated` - Metadata sync with 500ms debounce
+
+### v1.6.3.9: Gap Analysis Implementation (Retained)
 
 **New patterns implemented:**
 
@@ -103,50 +115,47 @@ MessageBuilder, StructuredLogger
 
 ### v1.6.3.8-v12: Architecture v2 (Retained)
 
-**Fully stateless architecture (NO Port, NO BroadcastChannel):**
+**Stateless architecture (NO Port, NO BroadcastChannel):**
 
 - **Layer 1:** `runtime.sendMessage()` / `tabs.sendMessage()` for real-time
-- **Layer 2:** `storage.onChanged` as primary sync with readback validation
-
-**Key Changes (v12 - Port Removal):**
-
-- **~2,364 lines removed** - Port code from content.js, manager.js,
-  background.js
-- **No port registry** - No port reconnection, no message queues
-- **Simplified BFCache** - storage.onChanged handles page restoration
-- **StorageManager** - Dedup, readback validation, retry with backoff
-- **MessageBuilder** - Builds typed messages with correlationId
+- **Layer 2:** `storage.onChanged` with readback validation
 
 ---
 
-## 🆕 v1.6.3.9 Patterns
+## 🆕 v1.6.3.9-v2 Patterns
+
+- **Multi-Layer Self-Write Detection** - 4 layers: TransactionId → InstanceId →
+  TabId → Timing
+- **Container Isolation** - `originContainerId` with Firefox Container support
+- **Ownership History** - `previouslyOwnedTabIds` for empty write validation
+- **Promise Chain Fix** - `queueStorageWrite()` returns `false` on error
+- **Response Format** - `{ success: true, data: { tabId } }` for GET_CURRENT_TAB_ID
+
+### v1.6.3.9 Patterns (Retained)
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` gates initialization
 - **Handler Message Routing** - Handlers send MESSAGE_TYPES to background
-- **CorrelationId Generation** - `generateCorrelationId()` format:
-  `${tabId}-${timestamp}-${random}`
-- **Ownership Validation** - `_validateOwnership()` checks
-  `originTabId === currentTabId`
-- **UI Sync Methods** - `onStorageChanged()`, `syncState()` for cross-tab
-  updates
-- **Centralized Constants** - `src/constants.js` exports timing values
-- **Fallback Tracking** - `_pendingFallbackOperations` with
-  `FALLBACK_SYNC_CONFIRMED` logs
+- **CorrelationId Generation** - `${tabId}-${timestamp}-${random}` format
+- **Ownership Validation** - `_validateOwnership()` checks originTabId
 - **Schema Version** - `version: 2` field, `validateStateWithDiagnostics()`
-  function
-- **Structured Logger** - Pre-configured logger instances for different contexts
 
-### New Modules (v1.6.3.9)
+### New Modules (v1.6.3.9-v2)
+
+| Module                            | Purpose                                      |
+| --------------------------------- | -------------------------------------------- |
+| `src/background/tab-events.js`    | Tabs API listeners (onActivated/Removed/Updated) |
+| `src/storage/schema-v2.js`        | Container-aware queries, version field       |
+| `src/utils/browser-api.js`        | Container functions (getTabsByContainer)     |
+
+### Modules (v1.6.3.9 Retained)
 
 | Module                                        | Purpose                                         |
 | --------------------------------------------- | ----------------------------------------------- |
-| `src/constants.js`                            | Centralized timing constants (GAP-7)            |
-| `src/utils/structured-logger.js`              | StructuredLogger class with contexts            |
-| `src/storage/schema-v2.js`                    | Pure state utilities, version field (GAP-19)    |
+| `src/constants.js`                            | Centralized timing constants                    |
+| `src/utils/structured-logger.js`              | StructuredLogger class                          |
 | `src/storage/storage-manager.js`              | Dedup, readback validation, retry               |
-| `src/messaging/message-router.js`             | MESSAGE_TYPES, MessageBuilder, MessageValidator |
-| `src/background/quick-tabs-v2-integration.js` | V2 init, feature flags (GAP-1)                  |
-| `src/background/broadcast-manager.js`         | broadcastToAllTabs(), sendToTab()               |
+| `src/messaging/message-router.js`             | MESSAGE_TYPES, MessageBuilder                   |
+| `src/background/quick-tabs-v2-integration.js` | V2 init, feature flags                          |
 | `sidebar/manager-state-handler.js`            | Manager Pattern C actions                       |
 | `src/utils/event-bus.js`                      | EventBus with native EventTarget                |
 
@@ -175,35 +184,39 @@ MessageBuilder, StructuredLogger
 **v9:** DestroyHandler event order, UICoordinator `_isInitializing`  
 **v8:** Self-write detection, transaction timeout _(port message queue removed)_
 
-### Key Timing Constants (v1.6.3.9)
+### Key Timing Constants (v1.6.3.9-v2)
 
-| Constant                    | Value         | Purpose                            |
-| --------------------------- | ------------- | ---------------------------------- |
-| `STORAGE_DEDUP_WINDOW_MS`   | 300           | Firefox listener latency tolerance |
-| `MESSAGE_DEDUP_WINDOW_MS`   | 50            | correlationId deduplication window |
-| `RESTORE_DEDUP_WINDOW_MS`   | 50            | Restore message deduplication      |
-| `HANDLER_DEDUP_WINDOW_MS`   | 100           | Handler-level deduplication        |
-| `STORAGE_RETRY_DELAYS`      | [100,200,400] | Exponential backoff for writes     |
-| `TAB_ID_FETCH_TIMEOUT_MS`   | 2000          | Tab ID fetch timeout               |
-| `FALLBACK_SYNC_TIMEOUT_MS`  | 2000          | Fallback sync timeout with warning |
-| `OUT_OF_ORDER_TOLERANCE_MS` | 100           | Cross-tab event ordering tolerance |
-| `RENDER_QUEUE_DEBOUNCE_MS`  | 100           | Manager render debounce            |
+| Constant                              | Value         | Purpose                                |
+| ------------------------------------- | ------------- | -------------------------------------- |
+| `FIREFOX_STORAGE_LISTENER_LATENCY_MAX_MS` | 250       | Firefox listener latency max           |
+| `STORAGE_LATENCY_BUFFER_MS`           | 50            | Storage latency buffer                 |
+| `STORAGE_ORDERING_TOLERANCE_MS`       | 300           | Storage write ordering tolerance       |
+| `MESSAGE_DEDUP_WINDOW_MS`             | 50            | correlationId deduplication window     |
+| `OUT_OF_ORDER_TOLERANCE_MS`           | 100           | Cross-tab event ordering tolerance     |
+| `TAB_ID_FETCH_TIMEOUT_MS`             | 2000          | Tab ID fetch timeout                   |
+| `TAB_ID_FETCH_RETRY_DELAY_MS`         | 300           | Tab ID fetch retry delay               |
+| `FALLBACK_SYNC_TIMEOUT_MS`            | 2000          | Fallback sync timeout with warning     |
+| `FALLBACK_RETRY_DELAY_MS`             | 500           | Fallback retry delay                   |
+| `TAB_UPDATED_DEBOUNCE_MS`             | 500           | tabs.onUpdated debounce                |
+| `DEFAULT_CONTAINER_ID`                | 'firefox-default' | Default container ID               |
+| `STORAGE_RETRY_DELAYS`                | [100,200,400] | Exponential backoff for writes         |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                                                 |
-| --------------------- | ----------------------------------------------------------------------- |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                                       |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                  |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                             |
-| TabStateManager (v3)  | `getTabState()`, `setTabState()`                                        |
-| StorageManager        | `readState()`, `writeStateWithValidation()`, `triggerStorageRecovery()` |
-| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`     |
-| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`             |
-| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`               |
-| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                    |
+| Class                 | Methods                                                                        |
+| --------------------- | ------------------------------------------------------------------------------ |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                                              |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                         |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                                    |
+| TabStateManager (v3)  | `getTabState()`, `setTabState()`                                               |
+| StorageManager        | `readState()`, `writeStateWithValidation()`, `getLastWrittenTransactionId()`   |
+| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`            |
+| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`                    |
+| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                      |
+| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                           |
+| TabEventsManager      | `onActivated()`, `onRemoved()`, `onUpdated()` (listeners in tab-events.js)     |
 
 ---
 
@@ -211,9 +224,15 @@ MessageBuilder, StructuredLogger
 
 **Key Exports:** `STATE_KEY`, `SESSION_STATE_KEY`, `logStorageRead()`,
 `logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
-`validateOwnershipForWrite()`, `writeStateWithVerificationAndRetry()`
+`validateOwnershipForWrite()`, `writeStateWithVerificationAndRetry()`,
+`getLastWrittenTransactionId()`, `queueStorageWrite()`
 
-**Schema v2 Exports:** `validateStateWithDiagnostics()`, `version: 2` field
+**Schema v2 Exports:** `validateStateWithDiagnostics()`, `version: 2` field,
+`getQuickTabsByOriginTabIdAndContainer()`, `getQuickTabsByContainerId()`,
+`removeQuickTabsByContainerId()`
+
+**Browser API Exports:** `getTabsByContainer()`, `validateTabExists()`,
+`getTabContainerId()`, `areTabsInSameContainer()`, `getAllContainers()`
 
 ---
 
@@ -221,9 +240,10 @@ MessageBuilder, StructuredLogger
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, **v1.6.3.9:** Feature flag bootstrap, handler message routing,
-correlationId generation, ownership validation, UI sync methods, centralized
-constants, fallback tracking, schema versioning, structured logging.
+Authority, **v1.6.3.9-v2:** Multi-layer self-write detection, container
+isolation, tabs API events, ownership history, promise chain error handling,
+**v1.6.3.9:** Feature flag bootstrap, handler message routing, correlationId
+generation, ownership validation, UI sync methods, centralized constants.
 
 ---
 
@@ -276,22 +296,24 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ### Key Files
 
-| File                                          | Features                                        |
-| --------------------------------------------- | ----------------------------------------------- |
-| `src/constants.js`                            | Centralized timing constants (GAP-7)            |
-| `src/utils/structured-logger.js`              | StructuredLogger class with contexts            |
-| `src/storage/schema-v2.js`                    | Pure state utilities, version field             |
-| `src/storage/storage-manager.js`              | Dedup, readback validation, retry               |
-| `src/messaging/message-router.js`             | MESSAGE_TYPES, MessageBuilder, MessageValidator |
-| `src/background/quick-tabs-v2-integration.js` | V2 initialization, feature flags                |
-| `src/utils/event-bus.js`                      | EventBus with native EventTarget                |
-| `background.js`                               | Message handler, storage versioning             |
+| File                                          | Features                                           |
+| --------------------------------------------- | -------------------------------------------------- |
+| `src/constants.js`                            | Centralized timing constants (all values)          |
+| `src/background/tab-events.js`                | Tabs API listeners (onActivated/Removed/Updated)   |
+| `src/utils/structured-logger.js`              | StructuredLogger class with contexts               |
+| `src/storage/schema-v2.js`                    | Container-aware queries, version field             |
+| `src/storage/storage-manager.js`              | Dedup, readback validation, retry                  |
+| `src/storage/storage-utils.js`                | Self-write detection, queueStorageWrite()          |
+| `src/utils/browser-api.js`                    | Container functions, validateTabExists()           |
+| `src/messaging/message-router.js`             | MESSAGE_TYPES, MessageBuilder, MessageValidator    |
+| `src/background/quick-tabs-v2-integration.js` | V2 initialization, feature flags                   |
+| `background.js`                               | Message handler, storage versioning                |
 
 ### Storage
 
 **Permanent State Key:** `quick_tabs_state_v2` (storage.local)  
 **Session State Key:** `session_quick_tabs` (storage.session)  
-**Format:** `{ allQuickTabs: [...], originTabId, correlationId, timestamp, version: 2 }`
+**Format:** `{ allQuickTabs: [...], originTabId, originContainerId, correlationId, timestamp, version: 2 }`
 
 ### Messages
 
