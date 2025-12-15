@@ -182,10 +182,8 @@ const pendingAdoptionWriteQueue = [];
 // v1.6.4 - Issue #47-3: Maximum age for pending writes before discarding (10 seconds)
 const PENDING_WRITE_MAX_AGE_MS = 10000;
 
-// v1.6.4 - Issue #47-7: Failed write retry queue (reserved for future batch retry processing)
-// Currently using direct setTimeout retries instead of queue-based processing
-// This provides simpler implementation while still achieving automatic retry behavior
-const _failedWriteRetryQueue = [];
+// v1.6.4 - Issue #47-7: Failed write retry uses direct setTimeout retries
+// Simpler implementation vs. queue-based processing while achieving automatic retry behavior
 
 // v1.6.4 - Issue #47-7: Retry configuration
 const MAX_WRITE_RETRIES = 3;
@@ -397,7 +395,9 @@ export function replayPendingAdoptionWrites() {
     });
 
     // Replay the write with the new tab ID
-    // Note: This is async but we don't await to avoid blocking
+    // Intentionally not awaiting to avoid blocking the current operation.
+    // Each replay is independent and writes are deduplicated by transactionId.
+    // Using fire-and-forget pattern here; storage.onChanged provides eventual consistency.
     persistStateToStorage(
       pendingWrite.state,
       pendingWrite.logPrefix || '[StorageUtils-AdoptionReplay]',
@@ -1992,7 +1992,9 @@ async function _executeStorageWrite(
  */
 function _scheduleWriteRetry(stateWithTxn, tabCount, logPrefix, transactionId, currentRetry) {
   const nextRetry = currentRetry + 1;
-  // Safe bounds check: use Math.min to prevent array index out of bounds
+  // Safe bounds check: use Math.min to cap at maximum delay (400ms)
+  // When currentRetry >= WRITE_RETRY_DELAYS.length, all subsequent retries use max delay
+  // This is intentional: exponential backoff caps at maximum delay to prevent excessive waits
   const delayIndex = Math.min(currentRetry, WRITE_RETRY_DELAYS.length - 1);
   const delayMs = WRITE_RETRY_DELAYS[delayIndex];
 
