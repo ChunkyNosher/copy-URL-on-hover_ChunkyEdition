@@ -174,6 +174,21 @@ let storageWriteQueuePromise = Promise.resolve();
 let pendingWriteCount = 0;
 let lastCompletedTransactionId = null;
 
+// v1.6.4 - Issue #47-3: Pending write queue for adoption flow
+// When originTabId is null during initialization, writes are queued here
+// and replayed when currentTabId becomes available via setWritingTabId()
+const pendingAdoptionWriteQueue = [];
+
+// v1.6.4 - Issue #47-3: Maximum age for pending writes before discarding (10 seconds)
+const PENDING_WRITE_MAX_AGE_MS = 10000;
+
+// v1.6.4 - Issue #47-7: Failed write retry uses direct setTimeout retries
+// Simpler implementation vs. queue-based processing while achieving automatic retry behavior
+
+// v1.6.4 - Issue #47-7: Retry configuration
+const MAX_WRITE_RETRIES = 3;
+const WRITE_RETRY_DELAYS = [100, 200, 400]; // Exponential backoff: 100ms, 200ms, 400ms
+
 // v1.6.3.8-v12 - FIX Issue #16: Circuit breaker removed in favor of stateless architecture
 // The write queue is now self-limiting with Promise-based messaging and storage.onChanged fallback
 // Constants kept for reference but not used in active code path:
@@ -294,6 +309,7 @@ function _isValidPositiveInteger(tabId) {
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Allow content scripts to set tab ID
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the tab ID from background script and pass it here.
+ * v1.6.4 - Issue #47-3: Replay pending adoption writes when tab ID becomes available
  *
  * @param {number} tabId - The browser tab ID to use for ownership tracking (must be positive integer)
  */
@@ -313,7 +329,100 @@ export function setWritingTabId(tabId) {
   currentWritingTabId = tabId;
   console.log('[StorageUtils] Writing tab ID set explicitly:', {
     oldTabId,
-    newTabId: tabId
+    newTabId: tabId,
+    pendingAdoptionWrites: pendingAdoptionWriteQueue.length
+  });
+
+  // v1.6.4 - Issue #47-3: Replay pending adoption writes now that tab ID is available
+  if (oldTabId === null && pendingAdoptionWriteQueue.length > 0) {
+    console.log('[StorageUtils] ADOPTION_FLOW: Tab ID now available, replaying pending writes:', {
+      tabId,
+      pendingCount: pendingAdoptionWriteQueue.length
+    });
+    replayPendingAdoptionWrites();
+  }
+}
+
+/**
+ * Replay all pending adoption writes now that tab ID is available
+ * v1.6.4 - Issue #47-3: Adoption flow implementation
+ * Called automatically when setWritingTabId() sets the first valid tab ID.
+ * Can also be called manually if needed.
+ * @export
+ */
+export function replayPendingAdoptionWrites() {
+  if (currentWritingTabId === null) {
+    console.warn('[StorageUtils] ADOPTION_FLOW: Cannot replay - tab ID still null');
+    return;
+  }
+
+  if (pendingAdoptionWriteQueue.length === 0) {
+    console.log('[StorageUtils] ADOPTION_FLOW: No pending writes to replay');
+    return;
+  }
+
+  const now = Date.now();
+  const writesToReplay = [...pendingAdoptionWriteQueue];
+  pendingAdoptionWriteQueue.length = 0; // Clear queue before replay
+
+  console.log('[StorageUtils] ADOPTION_FLOW: Starting replay of pending writes:', {
+    count: writesToReplay.length,
+    currentTabId: currentWritingTabId,
+    timestamp: now
+  });
+
+  let replayedCount = 0;
+  let skippedCount = 0;
+
+  for (const pendingWrite of writesToReplay) {
+    const ageMs = now - pendingWrite.timestamp;
+
+    // Skip stale writes
+    if (ageMs > PENDING_WRITE_MAX_AGE_MS) {
+      console.warn('[StorageUtils] ADOPTION_FLOW: Skipping stale pending write:', {
+        transactionId: pendingWrite.transactionId,
+        ageMs,
+        maxAgeMs: PENDING_WRITE_MAX_AGE_MS
+      });
+      skippedCount++;
+      continue;
+    }
+
+    console.log('[StorageUtils] ADOPTION_FLOW: Replaying write:', {
+      transactionId: pendingWrite.transactionId,
+      tabCount: pendingWrite.state?.tabs?.length || 0,
+      ageMs
+    });
+
+    // Replay the write with the new tab ID
+    // Intentionally not awaiting to avoid blocking the current operation.
+    // Each replay is independent and writes are deduplicated by transactionId.
+    // Using fire-and-forget pattern here; storage.onChanged provides eventual consistency.
+    persistStateToStorage(
+      pendingWrite.state,
+      pendingWrite.logPrefix || '[StorageUtils-AdoptionReplay]',
+      pendingWrite.forceEmpty
+    )
+      .then(success => {
+        console.log('[StorageUtils] ADOPTION_FLOW: Replay completed:', {
+          transactionId: pendingWrite.transactionId,
+          success
+        });
+      })
+      .catch(err => {
+        console.error('[StorageUtils] ADOPTION_FLOW: Replay failed:', {
+          transactionId: pendingWrite.transactionId,
+          error: err.message
+        });
+      });
+
+    replayedCount++;
+  }
+
+  console.log('[StorageUtils] ADOPTION_FLOW: Replay initiated:', {
+    replayed: replayedCount,
+    skipped: skippedCount,
+    total: writesToReplay.length
   });
 }
 
@@ -557,18 +666,23 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
   const tabId = currentTabId ?? currentWritingTabId;
 
   // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
-  // Previously this allowed writes with unknown tab ID, which caused:
-  // - Self-write detection to fail (isSelfWrite returns false)
-  // - Empty state corruption from non-owner tabs
-  // Now we block writes until tab ID is initialized
+  // v1.6.4 - Issue #47-3: Queue writes for adoption flow when tab ID is unknown
+  // Instead of simply blocking, we return a special status that indicates
+  // the write should be queued for later replay when tab ID becomes available
   if (tabId === null) {
-    console.warn('[StorageUtils] Storage write BLOCKED - unknown tab ID (initialization race?):', {
+    console.warn('[StorageUtils] STORAGE_WRITE_BLOCKED - unknown tab ID (initialization race):', {
       tabCount: tabs.length,
       forceEmpty,
+      pendingQueueLength: pendingAdoptionWriteQueue.length,
       suggestion:
-        'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
+        'Write will be queued for adoption flow - setWritingTabId() will replay when tab ID available'
     });
-    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety' };
+    return {
+      shouldWrite: false,
+      ownedTabs: [],
+      reason: 'unknown tab ID - queued for adoption',
+      queueForAdoption: true // v1.6.4 - Signal to caller to queue the write
+    };
   }
 
   // Filter to only tabs owned by this tab
@@ -1740,9 +1854,21 @@ function _trackDuplicateSaveIdWrite(saveId, transactionId, _logPrefix) {
  * v1.6.3.4-v12 - FIX Issue #1, #6: Enhanced logging with transaction sequencing
  * v1.6.3.6-v2 - FIX Issue #1, #2: Update lastWrittenTransactionId, add duplicate saveId tracking
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage write operation logging
+ * v1.6.4 - Issue #47-7: Add retry queue for failed writes with exponential backoff
  * @private
+ * @param {Object} stateWithTxn - State to write with transaction metadata
+ * @param {number} tabCount - Number of tabs in state
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ * @param {number} [retryCount=0] - Current retry attempt count
  */
-async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
+async function _executeStorageWrite(
+  stateWithTxn,
+  tabCount,
+  logPrefix,
+  transactionId,
+  retryCount = 0
+) {
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     console.warn(`${logPrefix} Storage API not available, cannot persist`);
@@ -1828,6 +1954,20 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     });
 
     console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
+
+    // v1.6.4 - Issue #47-7: Queue for retry if under max retries
+    if (retryCount < MAX_WRITE_RETRIES) {
+      _scheduleWriteRetry(stateWithTxn, tabCount, logPrefix, transactionId, retryCount);
+    } else {
+      console.error(`${logPrefix} STORAGE_WRITE_RETRY_EXHAUSTED [${transactionId}]:`, {
+        retryCount,
+        maxRetries: MAX_WRITE_RETRIES,
+        error: err.message,
+        tabCount,
+        timestamp: Date.now()
+      });
+    }
+
     return false;
   } finally {
     // v1.6.3.4-v3 - FIX: Always clear timeout to prevent memory leak
@@ -1838,6 +1978,54 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     // The cleanupTransactionId() function is called from shouldProcessStorageChange() when
     // storage.onChanged is received, providing immediate cleanup in the normal case
   }
+}
+
+/**
+ * Schedule a failed write for retry with exponential backoff
+ * v1.6.4 - Issue #47-7: Error recovery for failed storage writes
+ * @private
+ * @param {Object} stateWithTxn - State to write
+ * @param {number} tabCount - Number of tabs
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ * @param {number} currentRetry - Current retry count
+ */
+function _scheduleWriteRetry(stateWithTxn, tabCount, logPrefix, transactionId, currentRetry) {
+  const nextRetry = currentRetry + 1;
+  // Safe bounds check: use Math.min to cap at maximum delay (400ms)
+  // When currentRetry >= WRITE_RETRY_DELAYS.length, all subsequent retries use max delay
+  // This is intentional: exponential backoff caps at maximum delay to prevent excessive waits
+  const delayIndex = Math.min(currentRetry, WRITE_RETRY_DELAYS.length - 1);
+  const delayMs = WRITE_RETRY_DELAYS[delayIndex];
+
+  console.log(`${logPrefix} STORAGE_WRITE_RETRY_SCHEDULED [${transactionId}]:`, {
+    retryAttempt: nextRetry,
+    maxRetries: MAX_WRITE_RETRIES,
+    delayMs,
+    tabCount,
+    timestamp: Date.now()
+  });
+
+  // Schedule retry with exponential backoff
+  setTimeout(() => {
+    console.log(`${logPrefix} STORAGE_WRITE_RETRY_EXECUTING [${transactionId}]:`, {
+      retryAttempt: nextRetry,
+      tabCount
+    });
+
+    // Queue the retry operation through the normal write queue
+    queueStorageWrite(
+      () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, nextRetry),
+      logPrefix,
+      `${transactionId}-retry-${nextRetry}`
+    ).then(success => {
+      if (success) {
+        console.log(`${logPrefix} STORAGE_WRITE_RETRY_SUCCESS [${transactionId}]:`, {
+          retryAttempt: nextRetry
+        });
+      }
+    });
+  }, delayMs);
 }
 
 /**
@@ -1927,27 +2115,107 @@ export function queueStorageWrite(
  * Validate ownership for persist operation
  * v1.6.3.5-v4 - Extracted to reduce persistStateToStorage complexity
  * v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to validateOwnershipForWrite for proper empty write validation
+ * v1.6.4 - Issue #47-3: Queue writes for adoption when tab ID is unknown
  * @private
  * @param {Object} state - State to validate
  * @param {boolean} forceEmpty - Whether empty writes are forced
  * @param {string} logPrefix - Logging prefix
  * @param {string} transactionId - Transaction ID for logging
- * @returns {{ shouldProceed: boolean }}
+ * @returns {{ shouldProceed: boolean, queuedForAdoption: boolean }}
  */
 function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) {
   // v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to ownership validation
   // This allows validateOwnershipForWrite to properly handle empty writes
   const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId, forceEmpty);
   if (!ownershipCheck.shouldWrite) {
+    // v1.6.4 - Issue #47-3: Queue for adoption flow if indicated
+    if (ownershipCheck.queueForAdoption) {
+      _queueWriteForAdoption(state, forceEmpty, logPrefix, transactionId);
+      console.log(`${logPrefix} STORAGE_WRITE_QUEUED for adoption [${transactionId}]:`, {
+        reason: ownershipCheck.reason,
+        currentTabId: currentWritingTabId,
+        tabCount: state.tabs.length,
+        pendingQueueLength: pendingAdoptionWriteQueue.length
+      });
+      return { shouldProceed: false, queuedForAdoption: true };
+    }
+
     console.warn(`${logPrefix} Storage write BLOCKED [${transactionId}]:`, {
       reason: ownershipCheck.reason,
       currentTabId: currentWritingTabId,
       tabCount: state.tabs.length,
       forceEmpty
     });
-    return { shouldProceed: false };
+    return { shouldProceed: false, queuedForAdoption: false };
   }
-  return { shouldProceed: true };
+  return { shouldProceed: true, queuedForAdoption: false };
+}
+
+/**
+ * Queue a write operation for later replay when tab ID becomes available
+ * v1.6.4 - Issue #47-3: Adoption flow implementation
+ * @private
+ * @param {Object} state - State to persist
+ * @param {boolean} forceEmpty - Whether empty writes are forced
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ */
+function _queueWriteForAdoption(state, forceEmpty, logPrefix, transactionId) {
+  const now = Date.now();
+
+  // Remove stale entries before adding new one
+  _cleanupStaleAdoptionWrites(now);
+
+  // Queue the write for later
+  // Note: JSON.parse(JSON.stringify()) is safe here because state objects are
+  // always JSON-serializable (they're stored in browser.storage.local)
+  pendingAdoptionWriteQueue.push({
+    state: JSON.parse(JSON.stringify(state)), // Deep copy to prevent mutation
+    forceEmpty,
+    logPrefix,
+    transactionId,
+    timestamp: now
+  });
+
+  console.log('[StorageUtils] ADOPTION_FLOW: Write queued for later replay:', {
+    transactionId,
+    tabCount: state.tabs?.length || 0,
+    pendingQueueLength: pendingAdoptionWriteQueue.length,
+    timestamp: now
+  });
+}
+
+/**
+ * Clean up stale adoption writes older than PENDING_WRITE_MAX_AGE_MS
+ * v1.6.4 - Issue #47-3: Prevent memory leaks from abandoned writes
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _cleanupStaleAdoptionWrites(now) {
+  const initialLength = pendingAdoptionWriteQueue.length;
+  let removedCount = 0;
+
+  // Filter in place - keep only non-stale writes
+  for (let i = pendingAdoptionWriteQueue.length - 1; i >= 0; i--) {
+    const write = pendingAdoptionWriteQueue[i];
+    if (now - write.timestamp > PENDING_WRITE_MAX_AGE_MS) {
+      console.warn('[StorageUtils] ADOPTION_FLOW: Discarding stale write:', {
+        transactionId: write.transactionId,
+        ageMs: now - write.timestamp,
+        maxAgeMs: PENDING_WRITE_MAX_AGE_MS
+      });
+      pendingAdoptionWriteQueue.splice(i, 1);
+      removedCount++;
+    }
+  }
+
+  if (removedCount > 0) {
+    console.log('[StorageUtils] ADOPTION_FLOW: Cleaned up stale writes:', {
+      removed: removedCount,
+      remaining: pendingAdoptionWriteQueue.length,
+      initialLength
+    });
+  }
 }
 
 /**

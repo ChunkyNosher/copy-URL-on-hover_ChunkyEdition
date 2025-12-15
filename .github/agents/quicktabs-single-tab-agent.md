@@ -37,9 +37,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.9-v3 - Domain-Driven Design with Background-as-Coordinator
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
+- **Write Retry** - Exponential backoff [100,200,400]ms
+
+**v1.6.3.9 Features (Retained):**
 
 - **Ownership Validation** - `_validateOwnership()` checks `originTabId`
 - **Handler Message Routing** - `_sendPositionChangedMessage()`,

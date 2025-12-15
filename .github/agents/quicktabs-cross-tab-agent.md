@@ -38,9 +38,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Quick Tabs Architecture v2
+**Version:** 1.6.3.9-v3 - Quick Tabs Architecture v2
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
+- **Write Retry** - Exponential backoff [100,200,400]ms, MAX_WRITE_RETRIES=3
+- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Broadcast After Operations** - Enhanced `broadcastStateToAllTabs()` logging
@@ -57,7 +66,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Deduplication** - correlationId with 50ms window
 - **EventBus** - Native EventTarget for FIFO-guaranteed events
 
-**Key Modules (v1.6.3.9):**
+**Key Modules (v1.6.3.9-v3):**
 
 | Module                                | Purpose                           |
 | ------------------------------------- | --------------------------------- |

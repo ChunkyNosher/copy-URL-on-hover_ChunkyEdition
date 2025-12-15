@@ -240,11 +240,22 @@ let _storageListenerIsActive = false;
 /**
  * Early storage change handler - forwards to _handleStorageChange once defined
  * v1.6.3.8-v8 - Issue #15: Registered synchronously at script load
+ * v1.6.4 - Issue #47-8: Enhanced diagnostic logging for listener health
  * @param {Object} changes - Storage changes
  * @param {string} areaName - Storage area name
  */
 function _earlyStorageChangeHandler(changes, areaName) {
   _storageListenerHasFired = true;
+
+  // v1.6.4 - Issue #47-8: Enhanced logging for storage listener fires
+  const hasQuickTabsStateChange = 'quick_tabs_state_v2' in changes;
+  console.log('[Content] STORAGE_LISTENER_FIRED:', {
+    areaName,
+    hasQuickTabsStateChange,
+    changeKeys: Object.keys(changes),
+    timeSinceRegistrationMs: Date.now() - _storageListenerRegistrationTime,
+    timestamp: Date.now()
+  });
 
   // Forward to actual handler if defined, otherwise log and queue
   if (typeof _handleStorageChange === 'function') {
@@ -269,20 +280,28 @@ const _earlyStorageChangeQueue = [];
 /**
  * Attempt to register storage listener with fallback retry
  * v1.6.3.8-v12 - FIX Issue #10: Registration with retry and flag tracking
+ * v1.6.4 - Issue #47-8: Enhanced diagnostic logging for listener registration
  * @returns {boolean} True if registration succeeded
  */
 function _attemptStorageListenerRegistration() {
   try {
     browser.storage.onChanged.addListener(_earlyStorageChangeHandler);
     _storageListenerIsActive = true;
-    console.log('[Content] v1.6.3.8-v12 storage.onChanged listener registered:', {
+
+    // v1.6.4 - Issue #47-8: Enhanced registration logging
+    console.log('[Content] STORAGE_LISTENER_REGISTERED:', {
+      listenerRegistered: true,
       registrationTime: _storageListenerRegistrationTime,
       isActive: _storageListenerIsActive,
       timestamp: Date.now()
     });
     return true;
   } catch (err) {
-    console.error('[Content] Storage listener registration failed:', err.message);
+    console.error('[Content] STORAGE_LISTENER_REGISTRATION_FAILED:', {
+      listenerRegistered: false,
+      error: err.message,
+      timestamp: Date.now()
+    });
     _storageListenerIsActive = false;
     return false;
   }
@@ -493,11 +512,22 @@ function logQuickTabsInitError(qtErr) {
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
  * v1.6.3.8-v2 - Issue #7: Use sendRequestWithTimeout for reliable ACK handling
+ * v1.6.3.9-v2 - Issue #47: Enhanced logging for message flow visibility
+ *
+ * Message Flow:
+ * 1. Content script sends: { action: 'GET_CURRENT_TAB_ID' }
+ * 2. MessageRouter (background.js) routes to QuickTabHandler.handleGetCurrentTabId()
+ * 3. QuickTabHandler returns: { success: true, data: { tabId: <number> } }
+ * 4. MessageRouter augments with: { requestId, timestamp }
+ * 5. Content script receives full response
  *
  * @returns {Promise<number|null>} Current tab ID or null if unavailable
  */
 async function getCurrentTabIdFromBackground() {
-  console.log('[Content] Requesting current tab ID from background...');
+  const requestStartTime = Date.now();
+  console.log('[Content] GET_CURRENT_TAB_ID request starting:', {
+    timestamp: requestStartTime
+  });
 
   // v1.6.3.8-v2 - Issue #7: Use sendRequestWithTimeout for reliable response
   const response = await sendRequestWithTimeout(
@@ -505,12 +535,25 @@ async function getCurrentTabIdFromBackground() {
     { timeoutMs: 3000 } // 3 second timeout for tab ID request
   );
 
-  // Check for success with valid tab ID
+  // v1.6.3.9-v2 Issue #47: Log the raw response for debugging
+  console.log('[Content] GET_CURRENT_TAB_ID raw response received:', {
+    response,
+    responseType: typeof response,
+    hasSuccess: 'success' in (response || {}),
+    hasData: 'data' in (response || {}),
+    hasTabId: typeof response?.data?.tabId,
+    hasLegacyTabId: typeof response?.tabId,
+    roundTripMs: Date.now() - requestStartTime
+  });
+
+  // Check for success with valid tab ID (v2 format)
   if (response?.success && typeof response.data?.tabId === 'number') {
-    console.log('[Content] Got current tab ID from background:', {
+    console.log('[Content] GET_CURRENT_TAB_ID success (v2 format):', {
       tabId: response.data.tabId,
       success: response.success,
-      requestId: response.requestId
+      requestId: response.requestId,
+      timestamp: response.timestamp,
+      roundTripMs: Date.now() - requestStartTime
     });
     return response.data.tabId;
   }
@@ -521,21 +564,25 @@ async function getCurrentTabIdFromBackground() {
     console.warn(
       '[Content] DEPRECATED: Legacy response format detected. Migrate to { data: { tabId } }'
     );
-    console.log('[Content] Got current tab ID from background (legacy format):', {
+    console.log('[Content] GET_CURRENT_TAB_ID success (legacy format):', {
       tabId: response.tabId,
-      success: response.success
+      success: response.success,
+      roundTripMs: Date.now() - requestStartTime
     });
     return response.tabId;
   }
 
-  // Log detailed error information
-  console.warn('[Content] Background returned invalid tab ID response:', {
+  // Log detailed error information for debugging
+  console.warn('[Content] GET_CURRENT_TAB_ID failed - invalid response:', {
     response,
     success: response?.success,
-    tabId: response?.tabId || response?.data?.tabId,
+    dataTabId: response?.data?.tabId,
+    legacyTabId: response?.tabId,
     error: response?.error,
     code: response?.code,
-    requestId: response?.requestId
+    requestId: response?.requestId,
+    timestamp: response?.timestamp,
+    roundTripMs: Date.now() - requestStartTime
   });
   return null;
 }
@@ -1693,19 +1740,44 @@ async function _fallbackToStorageRead(reason, retryCount = 0) {
       );
     }
 
+    // v1.6.4 - Issue #47-8: Enhanced completion logging
+    const quickTabsCount = storedState.tabs?.length || 0;
     console.log('[Content] STORAGE_FALLBACK_SUCCESS:', {
-      tabCount: storedState.tabs?.length || 0,
+      tabCount: quickTabsCount,
       revision: storedState.revision,
       sequenceId: storedState.sequenceId,
       saveId: storedState.saveId,
       retryCount
     });
 
+    // v1.6.4 - Issue #47-8: Log fallback polling complete with standard format
+    console.log('[Content] STORAGE_FALLBACK_POLLING_COMPLETE:', {
+      success: true,
+      quickTabsFound: quickTabsCount,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+
     // Update ordering state and notify QuickTabsManager if available
     _updateAppliedOrderingState(storedState);
     _notifyManagerOfStorageUpdate(storedState, 'storage-fallback');
   } catch (err) {
-    console.error('[Content] STORAGE_FALLBACK_ERROR:', err.message);
+    // v1.6.4 - Issue #47-8: Enhanced error logging
+    console.error('[Content] STORAGE_FALLBACK_ERROR:', {
+      error: err.message,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+
+    console.log('[Content] STORAGE_FALLBACK_POLLING_COMPLETE:', {
+      success: false,
+      quickTabsFound: 0,
+      error: err.message,
+      reason,
+      timestamp: Date.now()
+    });
   }
 }
 
@@ -1873,15 +1945,48 @@ function _handleStorageChange(changes, areaName) {
     });
   }
 
-  // v1.6.3.8-v10 - FIX Issue #2: Set up fallback polling if listener hasn't fired within 1 second
+  // v1.6.3.8-v10 - FIX Issue #2: Set up fallback polling if listener hasn't fired within expected window
+  // v1.6.3.9-v3 - Issue #47-12: Use FALLBACK_SYNC_TIMEOUT_MS constant for consistency
+  // v1.6.4 - Issue #47-8: Enhanced diagnostic logging for fallback polling
+  // Firefox storage.onChanged has NO guaranteed delivery timing per MDN docs.
+  // During content script startup, events may be delayed 500ms+ on slow devices.
+  // Fallback polling is the PRIMARY reliable mechanism, storage listener is optimization.
+  const _fallbackPollingStartTime = Date.now();
   setTimeout(() => {
     if (!_storageListenerHasFired) {
+      // v1.6.4 - Issue #47-8: Log fallback polling start with full diagnostics
+      console.log('[Content] STORAGE_FALLBACK_POLLING_START:', {
+        reason: 'storage_listener_timeout',
+        timeoutMs: FALLBACK_SYNC_TIMEOUT_MS,
+        listenerRegistered: _storageListenerIsActive,
+        listenerHasFired: _storageListenerHasFired,
+        timeSinceRegistrationMs: Date.now() - _storageListenerRegistrationTime,
+        timestamp: Date.now()
+      });
+
       console.warn(
-        '[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received within 1s, polling storage'
+        '[Content] STORAGE_LISTENER_FALLBACK_POLLING: No events received, polling storage'
       );
+      // Log diagnostic info about which sync mechanism is being used
+      console.log('[Content] STATE_SYNC_MECHANISM:', {
+        mechanism: 'fallback_polling',
+        success: true,
+        durationMs: Date.now() - _fallbackPollingStartTime,
+        reason: 'storage.onChanged listener did not fire within timeout',
+        timestamp: Date.now()
+      });
       _fallbackToStorageRead('listener-no-fire');
+    } else {
+      // Storage listener fired successfully - log for diagnostics
+      console.log('[Content] STATE_SYNC_MECHANISM:', {
+        mechanism: 'storage_listener',
+        success: true,
+        durationMs: Date.now() - _fallbackPollingStartTime,
+        reason: 'storage.onChanged listener fired before fallback timeout',
+        timestamp: Date.now()
+      });
     }
-  }, 1000);
+  }, FALLBACK_SYNC_TIMEOUT_MS);
 })();
 
 // ==================== END STORAGE FALLBACK & ORDERING ====================

@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Quick Tabs Architecture v2
+**Version:** 1.6.3.9-v3 - Quick Tabs Architecture v2
 
 **Complete Quick Tab System:**
 
@@ -49,7 +49,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   BroadcastChannel)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
+- **Write Retry** - Exponential backoff [100,200,400]ms
+- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Handler Message Routing** - `_sendPositionChangedMessage()`,
@@ -57,7 +66,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **CorrelationId Integration** - All messages use `generateCorrelationId()`
 - **Ownership Validation** - `_validateOwnership()` checks `originTabId`
 - **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- **Centralized Constants** - `src/constants.js` (GAP-7)
+- **Centralized Constants** - `src/constants.js`
 
 **v1.6.3.8-v12 Features (Retained):**
 
@@ -68,7 +77,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **StorageManager** - Dedup, retry with exponential backoff
 - **EventBus** - Native EventTarget for FIFO-guaranteed events
 
-**Key Modules (v1.6.3.9):**
+**Key Modules (v1.6.3.9-v3):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |

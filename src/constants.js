@@ -99,9 +99,15 @@ export const OUT_OF_ORDER_TOLERANCE_MS = 100;
  * This timeout triggers a warning if the fallback doesn't complete
  * within the expected window.
  *
+ * Firefox storage.onChanged has NO guaranteed delivery timing per MDN docs.
+ * During content script startup, events may be delayed 500ms+ on slow devices.
+ * Fallback polling is the PRIMARY reliable mechanism, storage listener is optimization.
+ *
+ * v1.6.3.9-v3 - Issue #47-12: Increased from 2000ms to 2500ms for Firefox timing tolerance.
+ *
  * @constant {number}
  */
-export const FALLBACK_SYNC_TIMEOUT_MS = 2000;
+export const FALLBACK_SYNC_TIMEOUT_MS = 2500;
 
 /**
  * Timeout for tab ID fetch operations.

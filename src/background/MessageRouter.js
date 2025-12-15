@@ -3,20 +3,42 @@
  * v1.6.3.8-v2 - Issue #7: Enhanced with standardized response shapes and requestId support
  * v1.6.3.8-v3 - Issue #11: Handler timeout with graceful degradation (5000ms)
  * v1.6.3.8-v14 - GAP-16 DECISION: KEEP MessageRouter (Active in production)
+ * v1.6.3.9-v2 - Issue #47: Enhanced documentation for architecture clarity
  *
  * ===============================================================================
- * GAP-16 ARCHITECTURAL DECISION
+ * ARCHITECTURE: ACTION-BASED MESSAGE ROUTING (Legacy Pattern)
  * ===============================================================================
- * This file IS ACTIVELY USED in the production architecture:
- * - background.js imports and instantiates MessageRouter (line 19, 5065)
- * - background.js registers 21+ handlers via messageRouter.register()
- * - chrome.runtime.onMessage uses messageRouter.createListener() (line 5248)
+ * This module handles ACTION-based messages from content scripts and other
+ * extension components. Messages use { action: 'ACTION_NAME' } format.
  *
- * RELATIONSHIP TO message-handler.js:
- * - message-handler.js is part of the v2 Quick Tabs architecture (schema-v2.js)
- * - message-handler.js uses MESSAGE_TYPES from message-router.js (different file!)
- * - These are SEPARATE systems: MessageRouter handles legacy/action-based routing,
- *   while message-handler.js handles v2 Quick Tabs state sync messages
+ * HANDLED ACTIONS (via background.js messageRouter.register()):
+ * - GET_CURRENT_TAB_ID: Returns sender.tab.id for content script identification
+ * - GET_CONTAINER_CONTEXT: Returns cookieStoreId and tabId
+ * - COPY_URL, openTab, saveQuickTabState, getQuickTabState, clearQuickTabState
+ * - UPDATE_QUICK_TAB_SOLO, UPDATE_QUICK_TAB_MUTE, UPDATE_QUICK_TAB_MINIMIZE
+ * - UPDATE_QUICK_TAB_ZINDEX, SWITCH_TO_TAB, GET_QUICK_TABS_STATE
+ * - And 10+ more action types registered in background.js
+ *
+ * Response Format (v1.6.3.8-v2):
+ * { success: boolean, data?: any, error?: string, requestId?: string, timestamp: number }
+ *
+ * ===============================================================================
+ * RELATIONSHIP TO message-handler.js (src/background/message-handler.js)
+ * ===============================================================================
+ * These are SEPARATE systems with different responsibilities:
+ *
+ * MessageRouter.js (this file) - ACTION-based routing:
+ * - Messages: { action: 'GET_CURRENT_TAB_ID' }, { action: 'COPY_URL' }
+ * - Used by: content.js, popup.js, options_page.js for legacy message patterns
+ * - Routes to: QuickTabHandler, TabHandler, LogHandler, etc.
+ *
+ * message-handler.js - TYPE-based routing for Quick Tabs v2:
+ * - Messages: { type: 'QT_CREATED' }, { type: 'QT_MINIMIZED' }
+ * - Uses: MESSAGE_TYPES from src/messaging/message-router.js (different file!)
+ * - Handles: Quick Tabs state synchronization (create, minimize, restore, close)
+ *
+ * Both listeners coexist on browser.runtime.onMessage without conflict because
+ * they check for different message fields (action vs type).
  *
  * DO NOT DELETE THIS FILE - it is actively used in the codebase.
  * ===============================================================================

@@ -760,18 +760,36 @@ export class QuickTabHandler {
    *
    * @param {Object} _message - Message object (unused, required by message router signature)
    * @param {Object} sender - Message sender object containing tab information
-   * @returns {{ success: boolean, tabId: number|null, error?: string }}
+   * @returns {{ success: boolean, data: { tabId: number|null }, error?: string }}
+   *
+   * Response Schema (v1.6.3.9-v2):
+   * - Success: { success: true, data: { tabId: <number> } }
+   * - Failure: { success: false, data: { tabId: null }, error: <string> }
+   *
+   * Note: MessageRouter.js will augment this with requestId and timestamp.
    */
   handleGetCurrentTabId(_message, sender) {
+    // v1.6.3.9-v2 Issue #47: Enhanced logging for message flow visibility
+    console.log('[QuickTabHandler] GET_CURRENT_TAB_ID request received:', {
+      hasSenderTab: !!sender?.tab,
+      senderTabId: sender?.tab?.id,
+      senderTabUrl: sender?.tab?.url ? sender.tab.url.substring(0, 50) : undefined,
+      senderFrameId: sender?.frameId,
+      timestamp: Date.now()
+    });
+
     // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id - this is the ACTUAL requesting tab
     // sender.tab is populated by Firefox for all messages from content scripts
     if (sender.tab && typeof sender.tab.id === 'number') {
-      console.log(
-        `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (actual requesting tab)`
-      );
       // v1.6.3.9-v2 - Issue #5: Use new response format { success: true, data: { tabId } }
       // This aligns with content.js which prefers this format (legacy format is deprecated)
-      return { success: true, data: { tabId: sender.tab.id } };
+      const response = { success: true, data: { tabId: sender.tab.id } };
+      console.log('[QuickTabHandler] GET_CURRENT_TAB_ID response (success):', {
+        response,
+        senderTabId: sender.tab.id,
+        timestamp: Date.now()
+      });
+      return response;
     }
 
     // v1.6.3.6-v4 - REMOVED: Fallback to tabs.query({ active: true })
@@ -785,18 +803,27 @@ export class QuickTabHandler {
     // Instead: Return null if sender.tab is unavailable - this is a clear error
     // that the caller can handle, rather than silently returning wrong data.
 
-    console.error(
-      '[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available - cannot determine requesting tab ID'
-    );
-    console.error(
-      '[QuickTabHandler] This should not happen for content scripts. Check if message came from non-tab context.'
-    );
-    // v1.6.3.9-v2 - Issue #5: Use consistent response format with data wrapper
-    return {
+    // v1.6.3.9-v2 Issue #47: Enhanced error logging
+    const errorResponse = {
       success: false,
       data: { tabId: null },
       error: 'sender.tab not available - cannot identify requesting tab'
     };
+    console.error('[QuickTabHandler] GET_CURRENT_TAB_ID response (failure):', {
+      response: errorResponse,
+      senderInfo: {
+        hasSender: !!sender,
+        hasTab: !!sender?.tab,
+        tabId: sender?.tab?.id,
+        frameId: sender?.frameId,
+        url: sender?.url ? sender.url.substring(0, 50) : undefined
+      },
+      timestamp: Date.now()
+    });
+    console.error(
+      '[QuickTabHandler] This should not happen for content scripts. Check if message came from non-tab context.'
+    );
+    return errorResponse;
   }
 
   /**

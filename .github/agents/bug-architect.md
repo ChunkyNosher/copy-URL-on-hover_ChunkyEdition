@@ -65,11 +65,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.9-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture Docs** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]`, `replayPendingAdoptionWrites()`
+- **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000→2000ms
+- **Write Retry** - Exponential backoff [100,200,400]ms
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation,
+Tabs API Integration, Ownership History.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Handler Message Routing** - `_sendPositionChangedMessage()`,

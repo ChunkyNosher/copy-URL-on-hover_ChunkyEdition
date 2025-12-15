@@ -37,11 +37,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.9-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture Docs** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]`, `replayPendingAdoptionWrites()`
+- **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000→2000ms
+- **Write Retry** - Exponential backoff [100,200,400]ms
+- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation,
+Tabs API Integration, Ownership History.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Handler Message Routing** - `_sendPositionChangedMessage()`,
@@ -56,28 +67,6 @@ messaging, simplified BFCache.
 
 **v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
 key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
-
-**v1.6.3.8-v8 Features (Retained):** Self-write detection (300ms aligned),
-transaction timeout 1000ms, storage event ordering (300ms), port message queue,
-explicit tab ID barrier, BFCache session tabs.
-
-**v1.6.3.7-v9 Features (Retained):**
-
-- **Unified Keepalive** - Single 20s interval with correlation IDs
-- **Sequence Tracking** - sequenceId (storage), messageSequence (port)
-- **Storage Integrity** - Write validation with sync backup and corruption
-  recovery
-- **Initialization Barrier** - `initializationStarted`/`initializationComplete`
-  flags
-- **Port Age Management** - 90s max age, 30s stale timeout
-- **Tab Affinity Cleanup** - 24h TTL with `browser.tabs.onRemoved` listener
-
-**v1.6.3.7-v4 Features (Retained):**
-
-- **Circuit Breaker Probing** - Early recovery with 500ms health probes
-  (`_probeBackgroundHealth()`, `_startCircuitBreakerProbes()`)
-- **Close All Feedback** - `_showCloseAllErrorNotification()` for user-facing
-  errors
 - **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
 - **Listener Verification** - `_verifyPortListenerRegistration()` sends test
   message after connection
