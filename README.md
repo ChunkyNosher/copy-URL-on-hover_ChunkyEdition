@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.9-v3** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
 control**, **Per-Tab Isolation**, **Container Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
@@ -9,11 +9,24 @@ Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.9-v2 Status:** Self-Write Detection & Container Isolation ✅
+**🔧 v1.6.3.9-v3 Status:** Issue #47 Fixes - Diagnostic Logging & Adoption Flow ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.9-v3
+
+**🔧 Issue #47 Comprehensive Fixes (December 2025) ✅**
+
+- ✅ **Dual Architecture Documentation** - MessageRouter (ACTION) vs message-handler (TYPE)
+- ✅ **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId writes
+- ✅ **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000ms → 2000ms
+- ✅ **Increased Fallback Timeout** - FALLBACK_SYNC_TIMEOUT_MS: 2000ms → 2500ms
+- ✅ **Write Retry** - Exponential backoff [100,200,400]ms with MAX_WRITE_RETRIES=3
+- ✅ **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM, ADOPTION_FLOW
+
+---
 
 ## 🎉 What's New in v1.6.3.9-v2
 
@@ -22,43 +35,6 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Multi-Layer Self-Write Detection** - TransactionId → InstanceId → TabId → Timing
 - ✅ **Container Isolation** - `originContainerId` field for Firefox Containers
 - ✅ **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
-- ✅ **Ownership History** - `previouslyOwnedTabIds` for empty write validation
-- ✅ **Promise Chain Fix** - Clean error handling in `queueStorageWrite()`
-- ✅ **Response Format** - Standardized `{ success, data }` format
-
-**New Files:**
-
-- ✅ **src/background/tab-events.js** - Tabs API event listeners
-- ✅ **Container functions in browser-api.js** - getTabsByContainer, validateTabExists
-
----
-
-## 🎉 What's New in v1.6.3.9
-
-**🏗️ Gap Analysis Implementation (December 2025) ✅**
-
-- ✅ **Feature Flag Wiring** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- ✅ **Message Routing** - Handlers send MESSAGE_TYPES to background
-- ✅ **CorrelationId Integration** - All messages use shared generator
-- ✅ **Ownership Validation** - `_validateOwnership()` checks originTabId
-- ✅ **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- ✅ **Centralized Constants** - `src/constants.js` with timing values
-- ✅ **Structured Logger** - Pre-configured logger instances
-- ✅ **Schema Version Field** - `version: 2` in state format
-
-**New Files:**
-
-- ✅ **src/constants.js** - STORAGE_DEDUP_WINDOW_MS, MESSAGE_DEDUP_WINDOW_MS
-- ✅ **src/utils/structured-logger.js** - StructuredLogger class
-
----
-
-## 🎉 What's New in v1.6.3.8-v12
-
-**🏗️ Architecture Migration (December 2025) ✅**
-
-- ✅ **Port Removal** - ~2,364 lines removed, stateless messaging
-- ✅ **storage.onChanged** as primary sync mechanism
 
 ---
 
@@ -249,6 +225,6 @@ for details.
 
 ---
 
-**Version 1.6.3.9-v2** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.9-v3** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

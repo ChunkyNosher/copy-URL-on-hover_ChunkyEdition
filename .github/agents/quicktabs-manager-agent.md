@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Quick Tabs Architecture v2
+**Version:** 1.6.3.9-v3 - Quick Tabs Architecture v2
 
 **Key Manager Features:**
 
@@ -48,7 +48,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **storage.onChanged Fallback** - Fallback sync via storage.onChanged
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
+- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Storage Listener to UI** - `onStorageChanged()` method
 - **UI Sync Method** - `syncState()` for cross-tab updates
@@ -63,7 +71,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **manager-state-handler.js** - Handles Pattern C (manager) actions
 - **EventBus** - Native EventTarget for FIFO-guaranteed events
 
-**Key Modules (v1.6.3.9):**
+**Key Modules (v1.6.3.9-v3):**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |

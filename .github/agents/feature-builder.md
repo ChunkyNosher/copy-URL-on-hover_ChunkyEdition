@@ -60,12 +60,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.9-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
+- **Write Retry** - Exponential backoff [100,200,400]ms
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation,
+Tabs API Integration.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Handler Message Routing** - `_sendPositionChangedMessage()`,
@@ -76,28 +85,6 @@ UI)
 
 **v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
 messaging, simplified BFCache.
-
-**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
-key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
-
-**v1.6.3.7-v3 Features (Retained):**
-
-- **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks
-- **tabs.group() API** - Tab grouping (Firefox 138+)
-- **notifications API** - System notifications
-- **DOM Reconciliation** - `_itemElements` Map for differential updates
-
-**v1.6.3.7-v2 Features (Retained):**
-
-- **Single Writer Authority** - Manager sends commands to background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash deduplication
-- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
-
-**v1.6.3.7-v1 Features (Retained):**
-
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
   idle timer
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates

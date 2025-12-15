@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.9.
+  documentation. Current version: v1.6.3.9-v3.
 tools: ['*']
 ---
 
@@ -69,22 +69,20 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.9)
+## Current Extension State (v1.6.3.9-v3)
 
-### v1.6.3.9 Features (NEW) - Gap Analysis Implementation
+### v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes
 
-- **Feature Flag Wiring** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Message Routing** - Handlers send MESSAGE_TYPES to background
-- **CorrelationId Integration** - All messages use `generateCorrelationId()`
-- **Ownership Validation** - `_validateOwnership()` in handlers
-- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - `src/utils/structured-logger.js`
-- **Schema Version** - `version: 2` field in schema-v2.js
+- **Dual Architecture Docs** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]`, `replayPendingAdoptionWrites()`
+- **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000→2000ms
+- **Increased Fallback Timeout** - FALLBACK_SYNC_TIMEOUT_MS: 2000→2500ms
+- **Write Retry** - Exponential backoff [100,200,400]ms
+- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM, ADOPTION_FLOW
 
-### v1.6.3.8-v12 Features (Retained)
+### v1.6.3.9-v2 Features (Retained)
 
-- Port removal (~2,364 lines), stateless messaging, simplified BFCache
+- Multi-Layer Self-Write Detection, Container Isolation, Tabs API Integration
 
 ### Architecture
 
@@ -97,9 +95,9 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.9
-- [ ] **v1.6.3.9:** Gap analysis features documented
-- [ ] **v1.6.3.9:** New modules documented (constants.js, structured-logger.js)
+- [ ] Version numbers match 1.6.3.9-v3
+- [ ] **v1.6.3.9-v3:** Issue #47 fixes documented
+- [ ] **v1.6.3.9-v3:** Dual architecture documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -109,7 +107,7 @@ nothing.
 
 | Error                   | Fix                         |
 | ----------------------- | --------------------------- |
-| v1.6.3.8-v12 or earlier | Update to 1.6.3.9           |
+| v1.6.3.9-v2 or earlier  | Update to 1.6.3.9-v3        |
 | "Pin to Page"           | Use "Solo/Mute"             |
 | Direct storage writes   | Use Single Writer Authority |
 | BroadcastChannel refs   | REMOVE - BC DELETED in v6   |

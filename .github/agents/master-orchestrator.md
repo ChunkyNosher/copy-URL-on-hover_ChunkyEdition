@@ -60,12 +60,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.9-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9 Features (NEW) - Gap Analysis Implementation:**
+**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
+- **Write Retry** - Exponential backoff [100,200,400]ms
+
+**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation,
+Tabs API Integration.
+
+**v1.6.3.9 Features (Retained):**
 
 - **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
 - **Centralized Constants** - `src/constants.js` with timing values
@@ -73,16 +82,6 @@ UI)
 
 **v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
 messaging, simplified BFCache.
-
-**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
-key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
-
-**v1.6.3.6-v12 Lifecycle Resilience (Retained):**
-
-- **Init Guard** - `checkInitializationGuard()`, `waitForInitialization()`
-- **Heartbeat** - Keep background alive (25s interval, 5s timeout)
-- **Storage Deduplication** - Multi-method dedup
-- **Architectural Resilience** - Coordinator is optimization, not requirement
 
 **v1.6.3.6-v10 Build & Analysis (Retained):**
 
