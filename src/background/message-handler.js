@@ -1,5 +1,66 @@
-// Background Message Handler
-// Handles all Quick Tabs messages using tabs.sendMessage architecture
+/**
+ * Background Message Handler - Quick Tabs v2 TYPE-based Message Routing
+ * v1.6.3.9-v2 - Issue #47: Enhanced documentation for architecture clarity
+ *
+ * ===============================================================================
+ * ARCHITECTURE: TYPE-BASED MESSAGE ROUTING (Quick Tabs v2)
+ * ===============================================================================
+ * This module handles TYPE-based messages for Quick Tabs v2 state synchronization.
+ * Messages use { type: 'MESSAGE_TYPE', correlationId, timestamp } format.
+ *
+ * HANDLED MESSAGE TYPES (from MESSAGE_TYPES in src/messaging/message-router.js):
+ * - Pattern A (Local Updates - no broadcast):
+ *   - QT_POSITION_CHANGED: Update Quick Tab position
+ *   - QT_SIZE_CHANGED: Update Quick Tab size
+ *
+ * - Pattern B (Global Actions - broadcast to all tabs):
+ *   - QT_CREATED: Create new Quick Tab
+ *   - QT_MINIMIZED: Minimize Quick Tab
+ *   - QT_RESTORED: Restore Quick Tab
+ *   - QT_CLOSED: Close Quick Tab
+ *
+ * - Pattern C (Manager Actions - broadcast to all tabs):
+ *   - MANAGER_CLOSE_ALL: Close all Quick Tabs
+ *   - MANAGER_CLOSE_MINIMIZED: Close all minimized Quick Tabs
+ *
+ * - State Sync & Lifecycle:
+ *   - REQUEST_FULL_STATE: Request full state from background
+ *   - CONTENT_SCRIPT_READY: Content script initialization notification
+ *   - CONTENT_SCRIPT_UNLOAD: Content script unload notification
+ *
+ * ===============================================================================
+ * RELATIONSHIP TO MessageRouter.js (src/background/MessageRouter.js)
+ * ===============================================================================
+ * These are SEPARATE systems with different responsibilities:
+ *
+ * message-handler.js (this file) - TYPE-based routing for Quick Tabs v2:
+ * - Messages: { type: 'QT_CREATED' }, { type: 'QT_MINIMIZED' }
+ * - Validation: Uses MessageValidator.validate() for strict message validation
+ * - Handles: Quick Tabs state synchronization with storage.local persistence
+ *
+ * MessageRouter.js - ACTION-based routing for legacy patterns:
+ * - Messages: { action: 'GET_CURRENT_TAB_ID' }, { action: 'COPY_URL' }
+ * - Used by: content.js for basic operations (tab ID, URL copying, etc.)
+ * - Note: GET_CURRENT_TAB_ID is NOT handled here - it uses ACTION routing
+ *
+ * Both listeners coexist on browser.runtime.onMessage without conflict because
+ * they check for different message fields (type vs action).
+ *
+ * ===============================================================================
+ * WHY GET_CURRENT_TAB_ID IS NOT HERE
+ * ===============================================================================
+ * GET_CURRENT_TAB_ID uses { action: 'GET_CURRENT_TAB_ID' } format (ACTION-based),
+ * not { type: 'GET_CURRENT_TAB_ID' } format (TYPE-based).
+ *
+ * It is registered in background.js via MessageRouter:
+ *   messageRouter.register('GET_CURRENT_TAB_ID', (msg, sender) =>
+ *     quickTabHandler.handleGetCurrentTabId(msg, sender)
+ *   );
+ *
+ * This is correct architecture - legacy operations use ACTION routing,
+ * while Quick Tabs v2 state sync uses TYPE routing.
+ * ===============================================================================
+ */
 
 import { MESSAGE_TYPES, MessageValidator } from '../messaging/message-router.js';
 import * as SchemaV2 from '../storage/schema-v2.js';

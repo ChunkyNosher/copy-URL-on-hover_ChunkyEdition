@@ -1,0 +1,8 @@
+{
+  "id": "f78dc8fb-027b-45fe-9dcd-6330f3464044",
+  "title": "Message Handler Dual Architecture",
+  "details": "The extension uses two separate message handling systems:\n\n1. **MessageRouter.js (src/background/MessageRouter.js)** - ACTION-based routing:\n   - Messages use { action: 'ACTION_NAME' } format\n   - Handles: GET_CURRENT_TAB_ID, COPY_URL, openTab, saveQuickTabState, etc.\n   - Used by: content.js, popup.js for legacy operations\n   - Response format: { success, data?, error?, requestId?, timestamp }\n\n2. **message-handler.js (src/background/message-handler.js)** - TYPE-based routing:\n   - Messages use { type: 'MESSAGE_TYPE', correlationId, timestamp } format\n   - Handles: QT_CREATED, QT_MINIMIZED, QT_RESTORED, QT_CLOSED, etc.\n   - Uses MESSAGE_TYPES from src/messaging/message-router.js\n   - For Quick Tabs v2 state synchronization\n\nBoth listeners coexist on browser.runtime.onMessage without conflict.\nGET_CURRENT_TAB_ID uses ACTION routing (via QuickTabHandler), NOT TYPE routing.",
+  "category": "architecture",
+  "dateCreated": "2025-12-15T07:04:39.242Z",
+  "dateUpdated": "2025-12-15T07:04:39.242Z"
+}

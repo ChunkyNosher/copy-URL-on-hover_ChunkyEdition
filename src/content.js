@@ -493,11 +493,22 @@ function logQuickTabsInitError(qtErr) {
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
  * v1.6.3.8-v2 - Issue #7: Use sendRequestWithTimeout for reliable ACK handling
+ * v1.6.3.9-v2 - Issue #47: Enhanced logging for message flow visibility
+ *
+ * Message Flow:
+ * 1. Content script sends: { action: 'GET_CURRENT_TAB_ID' }
+ * 2. MessageRouter (background.js) routes to QuickTabHandler.handleGetCurrentTabId()
+ * 3. QuickTabHandler returns: { success: true, data: { tabId: <number> } }
+ * 4. MessageRouter augments with: { requestId, timestamp }
+ * 5. Content script receives full response
  *
  * @returns {Promise<number|null>} Current tab ID or null if unavailable
  */
 async function getCurrentTabIdFromBackground() {
-  console.log('[Content] Requesting current tab ID from background...');
+  const requestStartTime = Date.now();
+  console.log('[Content] GET_CURRENT_TAB_ID request starting:', {
+    timestamp: requestStartTime
+  });
 
   // v1.6.3.8-v2 - Issue #7: Use sendRequestWithTimeout for reliable response
   const response = await sendRequestWithTimeout(
@@ -505,12 +516,25 @@ async function getCurrentTabIdFromBackground() {
     { timeoutMs: 3000 } // 3 second timeout for tab ID request
   );
 
-  // Check for success with valid tab ID
+  // v1.6.3.9-v2 Issue #47: Log the raw response for debugging
+  console.log('[Content] GET_CURRENT_TAB_ID raw response received:', {
+    response,
+    responseType: typeof response,
+    hasSuccess: 'success' in (response || {}),
+    hasData: 'data' in (response || {}),
+    hasTabId: typeof response?.data?.tabId,
+    hasLegacyTabId: typeof response?.tabId,
+    roundTripMs: Date.now() - requestStartTime
+  });
+
+  // Check for success with valid tab ID (v2 format)
   if (response?.success && typeof response.data?.tabId === 'number') {
-    console.log('[Content] Got current tab ID from background:', {
+    console.log('[Content] GET_CURRENT_TAB_ID success (v2 format):', {
       tabId: response.data.tabId,
       success: response.success,
-      requestId: response.requestId
+      requestId: response.requestId,
+      timestamp: response.timestamp,
+      roundTripMs: Date.now() - requestStartTime
     });
     return response.data.tabId;
   }
@@ -521,21 +545,25 @@ async function getCurrentTabIdFromBackground() {
     console.warn(
       '[Content] DEPRECATED: Legacy response format detected. Migrate to { data: { tabId } }'
     );
-    console.log('[Content] Got current tab ID from background (legacy format):', {
+    console.log('[Content] GET_CURRENT_TAB_ID success (legacy format):', {
       tabId: response.tabId,
-      success: response.success
+      success: response.success,
+      roundTripMs: Date.now() - requestStartTime
     });
     return response.tabId;
   }
 
-  // Log detailed error information
-  console.warn('[Content] Background returned invalid tab ID response:', {
+  // Log detailed error information for debugging
+  console.warn('[Content] GET_CURRENT_TAB_ID failed - invalid response:', {
     response,
     success: response?.success,
-    tabId: response?.tabId || response?.data?.tabId,
+    dataTabId: response?.data?.tabId,
+    legacyTabId: response?.tabId,
     error: response?.error,
     code: response?.code,
-    requestId: response?.requestId
+    requestId: response?.requestId,
+    timestamp: response?.timestamp,
+    roundTripMs: Date.now() - requestStartTime
   });
   return null;
 }
