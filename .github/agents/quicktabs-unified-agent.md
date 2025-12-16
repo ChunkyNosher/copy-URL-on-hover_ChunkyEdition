@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.9), tabs.sendMessage + storage.local
-  architecture, single storage key, readback validation, FIFO EventBus
+  sync with Single Writer Authority (v1.6.3.9-v4), simplified architecture,
+  single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v3 - Quick Tabs Architecture v2
+**Version:** 1.6.3.9-v4 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -45,45 +45,28 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
 - **Single Writer Authority** - Manager sends commands, background writes
   storage
-- **Cross-Tab Sync** - tabs.sendMessage + storage.onChanged (NO Port, NO
-  BroadcastChannel)
+- **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+
+- **Single Barrier Init** - Replaces multi-phase initialization
+- **Render Queue Debounce** - 100ms debounce with revision dedup
+- **Storage Health Check** - Fallback polling every 5s
+- **State Checksum** - `_computeStateChecksum()` for data integrity
+
+**v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
-- **Write Retry** - Exponential backoff [100,200,400]ms
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
-**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation.
-
-**v1.6.3.9 Features (Retained):**
-
-- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`,
-  `_sendMinimizeMessage()`
-- **CorrelationId Integration** - All messages use `generateCorrelationId()`
-- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- **Centralized Constants** - `src/constants.js`
-
-**v1.6.3.8-v12 Features (Retained):**
-
-- **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
-- **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
-- **Tab isolation** - Filter by `originTabId` at hydration time
-- **Readback validation** - Every write validated by read-back
-- **StorageManager** - Dedup, retry with exponential backoff
-- **EventBus** - Native EventTarget for FIFO-guaranteed events
-
-**Key Modules (v1.6.3.9-v3):**
+**Key Modules (v1.6.3.9-v4):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
-| `src/constants.js`                | Centralized timing constants        |
+| `src/constants.js`                | Centralized constants (+225 lines)  |
 | `src/storage/schema-v2.js`        | Pure state utilities, version field |
-| `src/storage/storage-manager.js`  | Dedup, readback validation, retry   |
+| `src/storage/storage-manager.js`  | Simplified persistence, checksum    |
 | `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
 | `src/utils/event-bus.js`          | EventBus with native EventTarget    |
 
@@ -102,13 +85,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Feature flag bootstrap works (`bootstrapQuickTabs()`) (v1.6.3.9)
-- [ ] Handler message routing works (v1.6.3.9)
-- [ ] Ownership validation works (`_validateOwnership()`) (v1.6.3.9)
+- [ ] Single barrier init works (v1.6.3.9-v4)
+- [ ] Render queue debounce works (100ms) (v1.6.3.9-v4)
+- [ ] Storage health check works (5s fallback) (v1.6.3.9-v4)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering)
-- [ ] Readback validation works (every write validated)
 - [ ] EventBus FIFO events work (native EventTarget)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
@@ -116,5 +98,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.9 tabs.sendMessage +
-storage.local architecture, feature flag bootstrap, handler message routing.**
+**Your strength: Complete Quick Tab system with v1.6.3.9-v4 simplified
+architecture, storage.onChanged PRIMARY, single barrier init.**

@@ -10,6 +10,7 @@
 ## EXECUTIVE SUMMARY
 
 This document maps each source file to the changes needed:
+
 - What stays
 - What goes
 - What changes
@@ -18,25 +19,28 @@ This document maps each source file to the changes needed:
 
 ### Key Files
 
-| File | Type | Status | Impact |
-|------|------|--------|--------|
-| `background.js` | Core | Major changes | Simplify state, remove port handlers |
-| `sidebar/quick-tabs-manager.js` | UI Controller | Major changes | Remove port connection, simplify init |
-| `src/background/handlers/QuickTabHandler.js` | Handler | Minor changes | Remove port message handler |
-| `src/background/MessageRouter.js` | Router | Minor changes | Keep routing logic |
-| `sidebar/modules/*.js` | Utilities | Cleanup | Remove unused state exports |
-| `content.js` | Trigger | No changes | Keep as-is |
+| File                                         | Type          | Status        | Impact                                |
+| -------------------------------------------- | ------------- | ------------- | ------------------------------------- |
+| `background.js`                              | Core          | Major changes | Simplify state, remove port handlers  |
+| `sidebar/quick-tabs-manager.js`              | UI Controller | Major changes | Remove port connection, simplify init |
+| `src/background/handlers/QuickTabHandler.js` | Handler       | Minor changes | Remove port message handler           |
+| `src/background/MessageRouter.js`            | Router        | Minor changes | Keep routing logic                    |
+| `sidebar/modules/*.js`                       | Utilities     | Cleanup       | Remove unused state exports           |
+| `content.js`                                 | Trigger       | No changes    | Keep as-is                            |
 
 ---
 
 ## FILE 1: `background.js`
 
 ### Overview
-The main background script. Currently ~1000 lines with port logic, complex persistence, quota monitoring.
+
+The main background script. Currently ~1000 lines with port logic, complex
+persistence, quota monitoring.
 
 ### What Stays
 
 **Core state management:**
+
 ```javascript
 // Keep this structure exactly
 const globalQuickTabState = {
@@ -50,6 +54,7 @@ let _storageRevision = Date.now();
 ```
 
 **Basic initialization:**
+
 ```javascript
 // Keep this pattern
 async function initializeState() {
@@ -60,6 +65,7 @@ async function initializeState() {
 ```
 
 **Message handlers:**
+
 - `browser.runtime.onMessage.addListener()` - KEEP
 - Handler for `GET_QUICK_TABS_STATE` - KEEP
 - Handler for `CREATE_QUICK_TAB` - KEEP (refactor if needed)
@@ -67,22 +73,26 @@ async function initializeState() {
 - Handler for `DELETE_QUICK_TAB` - KEEP
 
 **Storage operations:**
+
 - `browser.storage.local.set()` calls - KEEP
 - `browser.storage.onChanged.addListener()` in background - KEEP
 - Basic error logging - KEEP
 
 **Backup functionality:**
+
 - `storage.sync` backup write - KEEP (non-blocking)
 
 ### What Goes
 
 **Port-related code (300+ lines):**
+
 - `browser.runtime.onConnect.addListener()` - DELETE
 - `_handleSidebarPortMessage()` function - DELETE
 - All port connection logic - DELETE
 - Port state variables (`connectedPorts`, `portMap`, etc.) - DELETE
 
 **Complex persistence (200+ lines):**
+
 - `_handleStorageWriteFailure()` function - DELETE
 - `_performWriteAttempt()` function - DELETE
 - `_retryWithBackoff()` function - DELETE
@@ -91,11 +101,13 @@ async function initializeState() {
 - `_monitorStorageQuota()` interval - DELETE
 
 **Verification logic (150+ lines):**
+
 - `_validateWriteReadback()` function - SIMPLIFY (keep basic check)
 - Corruption recovery with multiple tiers - DELETE
 - Complex error classification - DELETE
 
 **Orphan cleanup (50+ lines):**
+
 - Keep `browser.alarms` pattern - KEEP
 - Simplify logic inside it - SIMPLIFY
 
@@ -106,6 +118,7 @@ async function initializeState() {
 **Current state:** 50+ lines with retry logic and error handling
 
 **New implementation:** Simplified to 20-30 lines
+
 ```javascript
 async function _persistToStorage() {
   const stateToWrite = {
@@ -115,28 +128,32 @@ async function _persistToStorage() {
     revision: _storageRevision,
     checksum: _computeStateChecksum(globalQuickTabState.tabs)
   };
-  
+
   try {
     // Write to primary storage
     await browser.storage.local.set({
-      'quick_tabs_state_v2': stateToWrite
+      quick_tabs_state_v2: stateToWrite
     });
-    
+
     // Write to backup (non-blocking)
-    browser.storage.sync.set({
-      'quick_tabs_backup_v1': {
-        tabs: stateToWrite.tabs,
-        lastModified: stateToWrite.lastModified,
-        checksum: stateToWrite.checksum
-      }
-    }).catch(err => {
-      console.warn('[Background] Sync backup failed:', err);
-    });
-    
+    browser.storage.sync
+      .set({
+        quick_tabs_backup_v1: {
+          tabs: stateToWrite.tabs,
+          lastModified: stateToWrite.lastModified,
+          checksum: stateToWrite.checksum
+        }
+      })
+      .catch(err => {
+        console.warn('[Background] Sync backup failed:', err);
+      });
+
     // Validate write-back
     const readBack = await browser.storage.local.get('quick_tabs_state_v2');
-    if (!readBack['quick_tabs_state_v2'] || 
-        readBack['quick_tabs_state_v2'].checksum !== stateToWrite.checksum) {
+    if (
+      !readBack['quick_tabs_state_v2'] ||
+      readBack['quick_tabs_state_v2'].checksum !== stateToWrite.checksum
+    ) {
       console.error('[Background] WRITE VALIDATION FAILED');
       _triggerCorruptionRecovery();
     }
@@ -147,6 +164,7 @@ async function _persistToStorage() {
 ```
 
 **Changes:**
+
 - Remove all retry logic
 - Remove error classification
 - Remove quota monitoring calls
@@ -197,19 +215,24 @@ None needed (background script is not an ES module in typical setup).
 ## FILE 2: `sidebar/quick-tabs-manager.js`
 
 ### Overview
-The sidebar manager. Currently ~1500 lines with port connection, complex init, multi-layer dedup.
+
+The sidebar manager. Currently ~1500 lines with port connection, complex init,
+multi-layer dedup.
 
 ### What Stays
 
 **Core DOM elements:**
+
 - `containersList` DOM reference - KEEP
 - Quick Tab DOM element creation - KEEP
 - DOM reconciliation logic - KEEP
 
 **Storage listener:**
+
 - `browser.storage.onChanged.addListener()` - KEEP (primary mechanism)
 
 **Render queue:**
+
 - `_renderQueue` array - KEEP
 - `scheduleRender()` function - KEEP (basic version)
 - `_processRenderQueue()` function - KEEP
@@ -217,12 +240,14 @@ The sidebar manager. Currently ~1500 lines with port connection, complex init, m
 - Debounce logic (100ms) - KEEP
 
 **State validation:**
+
 - Revision checking - KEEP
 - Checksum validation for storage - KEEP
 
 ### What Goes
 
 **Port connection (500+ lines):**
+
 - `connectToBackground()` function - DELETE
 - `_establishPortConnection()` function - DELETE
 - `_setupPortListeners()` function - DELETE
@@ -235,6 +260,7 @@ The sidebar manager. Currently ~1500 lines with port connection, complex init, m
 - All heartbeat state variables - DELETE
 
 **Complex initialization (400+ lines):**
+
 - `_initializeStorageListener()` - DELETE
 - `_verifyStorageListenerWithRetry()` - DELETE
 - Storage verification test key writes - DELETE
@@ -246,6 +272,7 @@ The sidebar manager. Currently ~1500 lines with port connection, complex init, m
 - `_processQueuedMessages()` - DELETE
 
 **Multi-layer dedup (250+ lines):**
+
 - `recentlyProcessedMessageIds` map - DELETE
 - `_messageIdTimestamps` map - DELETE
 - `_revisionEventBuffer` - DELETE
@@ -256,6 +283,7 @@ The sidebar manager. Currently ~1500 lines with port connection, complex init, m
 - `_processBufferedRevisionEvents()` - DELETE
 
 **Render stall detection (100+ lines):**
+
 - `_renderStallTimerId` - DELETE
 - `_startRenderStallTimer()` - DELETE
 - `_clearRenderStallTimer()` - DELETE
@@ -263,10 +291,12 @@ The sidebar manager. Currently ~1500 lines with port connection, complex init, m
 - Render stall recovery logic - DELETE
 
 **Render corruption validation (80+ lines):**
+
 - `_validateRenderIntegrity()` - DELETE (before/after validation)
 - Render corruption recovery attempts - DELETE
 
 **Storage probes (150+ lines):**
+
 - `_lastStorageEventTime` - DELETE
 - `_probeInProgress` flag - DELETE
 - `_canStartProbe()` - DELETE
@@ -282,6 +312,7 @@ The sidebar manager. Currently ~1500 lines with port connection, complex init, m
 **Current state:** Multiple phases with verification and queueing
 
 **New implementation:**
+
 ```javascript
 let initializationPromise = null;
 let initializationResolve = null;
@@ -294,7 +325,7 @@ function _createInitializationBarrier() {
     initializationResolve = resolve;
     initializationReject = reject;
   });
-  
+
   setTimeout(() => {
     if (!initializationResolve) return;
     initializationReject(new Error('Initialization timeout'));
@@ -303,39 +334,39 @@ function _createInitializationBarrier() {
 
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   if (!_isInitPhaseComplete) {
     _initPhaseMessageQueue.push({ changes, timestamp: Date.now() });
     return;
   }
-  
+
   _handleStorageChangedEvent(changes);
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
   _createInitializationBarrier();
-  
+
   try {
     const initialState = await browser.runtime.sendMessage({
       action: 'GET_QUICK_TABS_STATE',
       requestId: _generateRequestId()
     });
-    
+
     if (!initialState || !Array.isArray(initialState.tabs)) {
       throw new Error('Invalid initial state received');
     }
-    
+
     sidebarLocalState = {
       tabs: initialState.tabs.slice(),
       lastModified: initialState.lastModified,
       revisionReceived: 0
     };
-    
+
     _isInitPhaseComplete = true;
     initializationResolve();
-    
+
     renderQuickTabsList(sidebarLocalState.tabs);
-    
+
     _processInitPhaseMessageQueue();
   } catch (err) {
     console.error('[Manager] Init failed:', err);
@@ -352,6 +383,7 @@ async function _processInitPhaseMessageQueue() {
 ```
 
 **Changes:**
+
 - Remove all verification/retry logic
 - Remove phase tracking variables
 - Keep simple barrier pattern
@@ -363,25 +395,26 @@ async function _processInitPhaseMessageQueue() {
 **Current state:** Multiple guards, buffer management, phase checking
 
 **New implementation:**
+
 ```javascript
 async function _handleStorageChangedEvent(changes) {
   const stateChange = changes['quick_tabs_state_v2'];
   if (!stateChange) return;
-  
+
   const newState = stateChange.newValue;
-  
+
   // Guard 1: Validate state structure
   if (!newState || !Array.isArray(newState.tabs)) {
     console.warn('[Manager] Received invalid state structure');
     return;
   }
-  
+
   // Guard 2: Check if we've already processed this exact revision
   if (newState.revision <= sidebarLocalState.revisionReceived) {
     console.log('[Manager] Ignoring stale revision:', newState.revision);
     return;
   }
-  
+
   // Guard 3: Verify checksum (corruption detection)
   const expectedChecksum = _computeStateChecksum(newState.tabs);
   if (newState.checksum && newState.checksum !== expectedChecksum) {
@@ -389,13 +422,13 @@ async function _handleStorageChangedEvent(changes) {
     _requestStateRepair();
     return;
   }
-  
+
   // Guard 4: Age check (reject ancient events older than 5 min)
   if (Date.now() - newState.lastModified > 300000) {
     console.warn('[Manager] Ignoring event older than 5 minutes');
     return;
   }
-  
+
   // Update local cache
   sidebarLocalState = {
     tabs: newState.tabs.slice(),
@@ -403,13 +436,14 @@ async function _handleStorageChangedEvent(changes) {
     revisionReceived: newState.revision,
     writeSequence: newState.writeSequence
   };
-  
+
   // Schedule render (debounced, serialized)
   scheduleRender('storage-event', newState.revision);
 }
 ```
 
 **Changes:**
+
 - Remove buffer management
 - Remove phase detection
 - Remove message ID dedup checks
@@ -422,22 +456,23 @@ async function _handleStorageChangedEvent(changes) {
 **Current state:** 30+ lines with queue management and stall detection
 
 **New implementation:**
+
 ```javascript
 function scheduleRender(source, revision) {
   // Deduplicate: don't schedule if we just processed this revision
   if (revision === sidebarLocalState.lastRenderedRevision) {
     return;
   }
-  
+
   clearTimeout(_renderDebounceTimer);
-  
+
   // Enqueue
   _renderQueue.push({
     source,
     revision,
     timestamp: Date.now()
   });
-  
+
   // Debounce: wait 100ms before processing
   _renderDebounceTimer = setTimeout(() => {
     _processRenderQueue();
@@ -446,6 +481,7 @@ function scheduleRender(source, revision) {
 ```
 
 **Changes:**
+
 - Remove queue size check
 - Remove stall timer
 - Keep basic debounce
@@ -456,24 +492,25 @@ function scheduleRender(source, revision) {
 **Current state:** 50+ lines with stall detection and corruption recovery
 
 **New implementation:**
+
 ```javascript
 async function _processRenderQueue() {
   if (_renderInProgress || _renderQueue.length === 0) return;
-  
+
   _renderInProgress = true;
-  
+
   try {
     const latestRender = _renderQueue[_renderQueue.length - 1];
-    
+
     _renderQuickTabsWithReconciliation(sidebarLocalState.tabs);
-    
+
     sidebarLocalState.lastRenderedRevision = latestRender.revision;
   } catch (err) {
     console.error('[Manager] Render error:', err);
   } finally {
     _renderInProgress = false;
     _renderQueue.length = 0;
-    
+
     if (_renderQueue.length > 0) {
       scheduleRender(_renderQueue[0].source, _renderQueue[0].revision);
     }
@@ -482,6 +519,7 @@ async function _processRenderQueue() {
 ```
 
 **Changes:**
+
 - Remove stall timer calls
 - Remove corruption validation before/after
 - Remove recovery logic
@@ -536,19 +574,20 @@ const DEBUG_MESSAGING = true;
 ### New Message Handler
 
 Add this handler:
+
 ```javascript
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'QUICK_TAB_OPERATION_ACK') {
     const { operationId, operationSequence } = message;
-    
+
     if (operationSequence <= sidebarLocalState.writeSequence) {
       sendResponse({ received: true });
       return;
     }
-    
+
     sidebarLocalState.writeSequence = operationSequence;
     scheduleRender('operation-ack', operationSequence);
-    
+
     sendResponse({ received: true });
   }
 });
@@ -559,29 +598,34 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 ## FILE 3: `src/background/handlers/QuickTabHandler.js`
 
 ### Overview
+
 Handler for Quick Tab operations (create, update, delete).
 
 ### What Stays
 
 **Operation handlers:**
+
 - `handleCreateQuickTab()` - KEEP (refactor if needed)
 - `handleUpdateQuickTab()` - KEEP
 - `handleDeleteQuickTab()` - KEEP
 - `handleDeleteAllQuickTabs()` - KEEP
 
 **Validation:**
+
 - Input validation - KEEP
 - State validation - KEEP
 
 ### What Goes
 
 **Port-specific handling:**
+
 - Any port message routing - DELETE
 - Port acknowledgment sending - DELETE
 
 ### What Changes
 
 **Return values:**
+
 - Ensure all handlers return `{ success, data, error }` format
 - Remove port-specific response handling
 - Use plain `runtime.sendMessage` responses
@@ -591,11 +635,13 @@ Handler for Quick Tab operations (create, update, delete).
 ## FILE 4: `src/background/MessageRouter.js`
 
 ### Overview
+
 Routes messages from sidebar/content scripts to appropriate handlers.
 
 ### What Stays
 
 **Core routing logic:**
+
 - Message action routing - KEEP
 - Handler dispatch - KEEP
 - Error handling - KEEP
@@ -603,12 +649,14 @@ Routes messages from sidebar/content scripts to appropriate handlers.
 ### What Goes
 
 **Port-specific routing:**
+
 - Port vs. message differentiation - DELETE
 - Port message queue management - DELETE
 
 ### What Changes
 
 **Route handling:**
+
 - Simplify to single path (all via `runtime.onMessage`)
 - Remove fallback branching
 
@@ -630,7 +678,8 @@ sidebar/modules/
 
 ### What to Do
 
-- `init-barrier.js`: If it exports state vars, those are now handled locally in manager
+- `init-barrier.js`: If it exports state vars, those are now handled locally in
+  manager
 - `health-metrics.js`: DELETE if only used for probes/quotas
 - Others: KEEP but verify no unused exports
 
@@ -639,6 +688,7 @@ sidebar/modules/
 ## FILE 6: `content.js`
 
 ### Overview
+
 Content script that triggers Quick Tab creation.
 
 ### What Stays
@@ -652,11 +702,13 @@ Content script that triggers Quick Tab creation.
 ### What Changes
 
 **Permissions:**
+
 - Remove if any port-specific permissions were added
 - Keep all storage permissions
 - Keep all tab permissions
 
 **Background script:**
+
 - Should already be configured
 - No changes needed
 
@@ -664,15 +716,15 @@ Content script that triggers Quick Tab creation.
 
 ## CHANGE SUMMARY TABLE
 
-| File | Lines Changed | Functions Deleted | Functions Added | Complexity Impact |
-|------|----------------|-------------------|-----------------|-------------------|
-| `background.js` | 200-250 | 15+ | 0 | Simpler |
-| `sidebar/quick-tabs-manager.js` | 400-500 | 25+ | 1 | Much simpler |
-| `QuickTabHandler.js` | 50-100 | 2 | 0 | Simpler |
-| `MessageRouter.js` | 20-50 | 0 | 0 | Simpler |
-| `sidebar/modules/` | 100-200 | 5+ | 0 | Cleanup |
-| `content.js` | 0 | 0 | 0 | No change |
-| **TOTAL** | **770-1100** | **47+** | **1** | **Significantly simpler** |
+| File                            | Lines Changed | Functions Deleted | Functions Added | Complexity Impact         |
+| ------------------------------- | ------------- | ----------------- | --------------- | ------------------------- |
+| `background.js`                 | 200-250       | 15+               | 0               | Simpler                   |
+| `sidebar/quick-tabs-manager.js` | 400-500       | 25+               | 1               | Much simpler              |
+| `QuickTabHandler.js`            | 50-100        | 2                 | 0               | Simpler                   |
+| `MessageRouter.js`              | 20-50         | 0                 | 0               | Simpler                   |
+| `sidebar/modules/`              | 100-200       | 5+                | 0               | Cleanup                   |
+| `content.js`                    | 0             | 0                 | 0               | No change                 |
+| **TOTAL**                       | **770-1100**  | **47+**           | **1**           | **Significantly simpler** |
 
 ---
 
@@ -729,4 +781,3 @@ After all changes, verify:
 ## VERSION HISTORY
 
 - **v1.0** (Dec 15, 2025) - Initial file-by-file change guide
-

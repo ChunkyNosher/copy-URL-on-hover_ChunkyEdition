@@ -271,10 +271,7 @@ async function _applyQuickTabUpdates(state, tabQuickTabs, updates, tabId) {
     updatedState = SchemaV2.updateQuickTab(updatedState, qt.id, updates);
   }
 
-  await storageManager.writeStateWithValidation(
-    updatedState,
-    `tab-updated-${tabId}-${Date.now()}`
-  );
+  await storageManager.writeStateWithValidation(updatedState, `tab-updated-${tabId}-${Date.now()}`);
 
   _logTabEvent('UPDATED_QUICKTABS_SYNCED', {
     tabId,

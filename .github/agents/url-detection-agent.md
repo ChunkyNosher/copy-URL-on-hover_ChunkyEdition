@@ -60,18 +60,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.9-v4 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+
+- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
+- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
+- **Single Barrier Init** - Replaces multi-phase initialization
+
+**v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
-- **Write Retry** - Exponential backoff [100,200,400]ms
-
-**v1.6.3.9 Features (Retained):**
-
-- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Centralized Constants** - `src/constants.js` with timing values
 
 **v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
 messaging, simplified BFCache.

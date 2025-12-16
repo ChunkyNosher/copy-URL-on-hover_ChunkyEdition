@@ -1,0 +1,8 @@
+{
+  "id": "b1b2c2cc-9944-40e3-8d92-6fa7c25bbf5e",
+  "title": "Constants Centralization Pattern",
+  "details": "In v1.6.3.9-v4, constants are centralized in src/constants.js. Key constants per spec (constants-config-reference.md): STORAGE_KEY, ENABLE_SYNC_BACKUP, INIT_BARRIER_TIMEOUT_MS (10000), RENDER_QUEUE_DEBOUNCE_MS (100), MESSAGE_TIMEOUT_MS (3000), STORAGE_HEALTH_CHECK_INTERVAL_MS (5000), STORAGE_MAX_AGE_MS (300000), QUICK_TAB_ID_PREFIX ('qt-'), QUICK_TAB_ID_RANDOM_LENGTH (6), MIN/MAX_QUICK_TAB_WIDTH/HEIGHT, MAX_QUICK_TABS (100), URL_MAX_LENGTH (2048), TITLE_MAX_LENGTH (255), ORPHAN_CLEANUP_INTERVAL_MS (3600000), CHECKSUM_VERSION ('v1'). Import from src/constants.js instead of defining locally.",
+  "category": "project_context",
+  "dateCreated": "2025-12-16T03:41:55.491Z",
+  "dateUpdated": "2025-12-16T03:41:55.491Z"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "302a88fa-9b44-4c2a-adf7-46ee2690abc9",
+  "title": "Manager Render Queue Architecture",
+  "details": "The Quick Tabs Manager sidebar (sidebar/quick-tabs-manager.js) uses:\n\n1. **Render Queue System**: `scheduleRender()` → `_enqueueRenderWithRevision()` → `_processRenderQueue()` → `_executeQueuedRender()` → `_renderUIImmediate()`\n\n2. **Deduplication**: Three layers - revision-based, saveId-based, message ID-based, and hash-based\n\n3. **DOM Reconciliation**: Uses `_itemElements` (Map of tabId → DOM element) and `_groupElements` (Map of groupKey → DOM element) for efficient updates\n\n4. **Message Handler**: `_processRuntimeMessage()` routes to `_handleRuntimeStateUpdated`, `_handleRuntimeDeleted`, and `_handleOperationAck`\n\n5. **Key Constants**: MESSAGE_TIMEOUT_MS (3000ms), RENDER_QUEUE_DEBOUNCE_MS (100ms), RENDER_QUEUE_MAX_SIZE (10)\n\n6. **Logging Format per Spec**:\n- `console.debug('[Manager] RENDER_SCHEDULED source=X revision=Y')`\n- `console.debug('[Manager] RENDER_DEDUP revision=X')`\n- `console.debug('[Manager] RENDER_START queueSize=X')`\n- `console.info('[Manager] RENDER_COMPLETE duration=Xms tabCount=Y')`\n- `console.error('[Manager] RENDER_ERROR error=X')`",
+  "category": "general",
+  "dateCreated": "2025-12-16T03:27:09.917Z",
+  "dateUpdated": "2025-12-16T03:27:09.917Z"
+}

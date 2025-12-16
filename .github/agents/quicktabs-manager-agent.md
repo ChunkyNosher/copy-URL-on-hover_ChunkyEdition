@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9), tabs.sendMessage + storage.local architecture (NO Port, NO BroadcastChannel),
-  single storage key, readback validation, MANAGER pattern actions
+  (v1.6.3.9-v4), simplified architecture, scheduleRender() with revision dedup,
+  single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v3 - Quick Tabs Architecture v2
+**Version:** 1.6.3.9-v4 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -46,36 +46,26 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **MANAGER Pattern Actions** - close all, close minimized
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
-- **storage.onChanged Fallback** - Fallback sync via storage.onChanged
+- **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+
+- **scheduleRender()** - Revision-based deduplication
+- **RENDER_QUEUE_DEBOUNCE_MS** = 100ms debounce
+- **RENDER_START/COMPLETE/ERROR** logging per spec
+- **sendMessageToBackground()** - Helper with 3s timeout
+- **Operation ACK handler** - `_handleOperationAck()`
+
+**v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
-**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation.
-
-**v1.6.3.9 Features (Retained):**
-
-- **Storage Listener to UI** - `onStorageChanged()` method
-- **UI Sync Method** - `syncState()` for cross-tab updates
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - Pre-configured logger instances
-
-**v1.6.3.8-v12 Features (Retained):**
-
-- **tabs.sendMessage messaging** - Replaces runtime.Port (fixes port zombies)
-- **Single storage key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
-- **MANAGER pattern** - Manager-initiated actions broadcast to all tabs
-- **manager-state-handler.js** - Handles Pattern C (manager) actions
-- **EventBus** - Native EventTarget for FIFO-guaranteed events
-
-**Key Modules (v1.6.3.9-v3):**
+**Key Modules (v1.6.3.9-v4):**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |
-| `src/constants.js`                 | Centralized timing constants  |
+| `src/constants.js`                 | Centralized constants         |
 | `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
 | `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
 | `src/storage/schema-v2.js`         | Pure state utilities          |
@@ -95,13 +85,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Storage listener to UI works (`onStorageChanged()`) (v1.6.3.9)
-- [ ] UI sync method works (`syncState()`) (v1.6.3.9)
+- [ ] scheduleRender() works with revision dedup (v1.6.3.9-v4)
+- [ ] Render queue debounce works (100ms) (v1.6.3.9-v4)
+- [ ] sendMessageToBackground() works (3s timeout) (v1.6.3.9-v4)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] MANAGER pattern works (close all, close minimized)
-- [ ] manager-state-handler.js works
-- [ ] EventBus FIFO events work
 - [ ] Manager shows ALL Quick Tabs (global, not filtered)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
@@ -110,5 +99,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.9 tabs.sendMessage +
-storage.local architecture, storage listener to UI, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.9-v4 simplified architecture,
+scheduleRender() with revision dedup, MANAGER pattern actions.**
