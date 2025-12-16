@@ -1,0 +1,8 @@
+{
+  "id": "4b6752b4-f5ed-4c98-abcc-c47504d040ed",
+  "title": "Firefox API Limitations Fix",
+  "details": "v1.6.3.9-v7 addresses Firefox WebExtensions API limitations:\n\n1. **Issue 8/11 (Content Script Ready Handshake)**:\n   - Content script sends CONTENT_SCRIPT_READY after initialization\n   - Background responds with initial state for immediate hydration\n   - More reliable than relying on tabs.onUpdated status=complete\n\n2. **Issue 13 (Cross-Domain Navigation)**:\n   - Content script stores CURRENT_ORIGIN at load time\n   - Sends CONTENT_SCRIPT_UNLOADING before cross-domain navigation\n   - Allows background to preserve state if needed\n\n3. **Already Implemented**:\n   - Issue 7: originTabId in all storage writes (schema-v2.js)\n   - Issue 9: Out-of-order event logging with tolerance windows\n   - Issue 10: Content scripts use sendMessage for tab ID\n   - Issue 12: Keepalive alarm every 25 seconds\n\nKey files: src/content.js (ready handshake), background.js (message handlers)",
+  "category": "architecture",
+  "dateCreated": "2025-12-16T21:08:10.035Z",
+  "dateUpdated": "2025-12-16T21:08:10.035Z"
+}

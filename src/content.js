@@ -2346,10 +2346,75 @@ function reportInitializationError(err) {
     // Set success marker
     window.CUO_initialized = true;
     console.log('[Copy-URL-on-Hover] Extension is ready for use!');
+
+    // v1.6.3.9-v7 - Issue #8/#11: Send CONTENT_SCRIPT_READY to background
+    // This enables reliable hydration handshake instead of relying on tabs.onUpdated
+    await _notifyContentScriptReady();
   } catch (err) {
     reportInitializationError(err);
   }
 })();
+
+// =============================================================================
+// v1.6.3.9-v7 - Issue #8/#11: CONTENT_SCRIPT_READY HANDSHAKE
+// =============================================================================
+
+/**
+ * Store current page origin for cross-domain validation (Issue #13)
+ * v1.6.3.9-v7 - Firefox WebExtensions API limitation fix
+ */
+const CURRENT_ORIGIN = window.location.origin;
+
+/**
+ * Send CONTENT_SCRIPT_READY notification to background
+ * v1.6.3.9-v7 - Issue #8/#11: Reliable initialization handshake
+ * Background uses this to know content script is ready for hydration
+ * @private
+ */
+async function _notifyContentScriptReady() {
+  const readyPayload = {
+    action: 'CONTENT_SCRIPT_READY',
+    origin: CURRENT_ORIGIN,
+    tabId: cachedTabId,
+    url: window.location.href,
+    readyState: document.readyState,
+    timestamp: Date.now()
+  };
+
+  console.log('[Content] CONTENT_SCRIPT_READY: Sending ready notification to background:', {
+    origin: CURRENT_ORIGIN,
+    tabId: cachedTabId,
+    timestamp: Date.now()
+  });
+
+  try {
+    const response = await _sendMessageToBackground(readyPayload);
+    _handleContentScriptReadyResponse(response);
+  } catch (err) {
+    // Background not responding - fall back to storage.onChanged
+    console.warn('[Content] CONTENT_SCRIPT_READY: Background not responding, using storage.onChanged fallback:', {
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Handle response from CONTENT_SCRIPT_READY message
+ * v1.6.3.9-v7 - Extracted to reduce nesting depth
+ * @private
+ * @param {Object} response - Response from background
+ */
+function _handleContentScriptReadyResponse(response) {
+  if (!response?.success) return;
+  
+  console.log('[Content] CONTENT_SCRIPT_READY: Background acknowledged, hydration may follow');
+  
+  // If background responded with initial state, process it
+  if (response.initialState) {
+    console.log('[Content] CONTENT_SCRIPT_READY: Received initial state from background');
+    _notifyManagerOfStorageUpdate(response.initialState, 'ready-handshake');
+  }
+}
 
 /**
  * Initialize main features
@@ -4759,15 +4824,38 @@ function _dispatchMessage(message, _sender, sendResponse) {
 
 // ==================== BEFOREUNLOAD CLEANUP HANDLER ====================
 // v1.6.3.4-v11 - FIX Issue #3: Cleanup resources on page navigation to prevent memory leaks
+// v1.6.3.9-v7 - Issue #13: Enhanced to save state before cross-domain navigation
 // This handler ensures storage listeners and other resources are properly released
 // Note: Content scripts are injected once per page load, but we add a guard for safety
 
 /**
- * Handler for beforeunload event to cleanup resources
+ * Handler for beforeunload event to cleanup resources and save state
+ * v1.6.3.9-v7 - Issue #13: Save Quick Tab state before cross-domain navigation
  * @private
  */
 function _handleBeforeUnload() {
-  console.log('[Content] beforeunload event - starting cleanup');
+  console.log('[Content] beforeunload event - starting cleanup', {
+    origin: CURRENT_ORIGIN,
+    tabId: cachedTabId,
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.9-v7 - Issue #13: Notify background that content script is unloading
+  // This allows background to handle any state preservation if needed
+  // Use sendMessage (not async) because beforeunload must be synchronous
+  try {
+    browser.runtime.sendMessage({
+      action: 'CONTENT_SCRIPT_UNLOADING',
+      origin: CURRENT_ORIGIN,
+      tabId: cachedTabId,
+      url: window.location.href,
+      timestamp: Date.now()
+    });
+    console.log('[Content] beforeunload: Notified background of unload');
+  } catch (err) {
+    // Expected if background is not available
+    console.log('[Content] beforeunload: Could not notify background:', err.message);
+  }
 
   if (quickTabsManager?.destroy) {
     console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');
