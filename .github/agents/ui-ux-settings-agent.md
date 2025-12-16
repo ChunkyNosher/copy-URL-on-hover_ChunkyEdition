@@ -59,9 +59,15 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v5 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.9-v6 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+
+- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
+- **Simplified Init** - Manager reduced from ~8 state variables to 4
+
+**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`

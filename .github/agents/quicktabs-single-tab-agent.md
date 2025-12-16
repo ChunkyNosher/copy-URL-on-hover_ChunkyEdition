@@ -3,8 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.9-v5
-  simplified architecture, storage.onChanged PRIMARY
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.9-v6
+  unified barrier init, storage.onChanged PRIMARY
 tools: ['*']
 ---
 
@@ -37,9 +37,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v5 - Simplified Architecture
+**Version:** 1.6.3.9-v6 - Simplified Architecture
 
-**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+
+- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Response Helper** - `_buildResponse()` for correlationId responses
+
+**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
@@ -71,8 +76,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Single barrier init works (v1.6.3.9-v5)
-- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v5)
+- [ ] Unified barrier init works (v1.6.3.9-v6)
+- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v6)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] originTabId set correctly on creation
@@ -81,5 +86,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.9-v5 simplified
-architecture, storage.onChanged PRIMARY, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.9-v6 unified barrier,
+storage.onChanged PRIMARY, and proper per-tab scoping.**

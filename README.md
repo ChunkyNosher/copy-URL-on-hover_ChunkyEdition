@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.9-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,39 +9,48 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.9-v5 Status:** Bug Fixes & Reliability Improvements ✅
+**🔧 v1.6.3.9-v6 Status:** Sidebar & Background Cleanup ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.9-v6
+
+**🔧 Sidebar & Background Cleanup (December 2025) ✅**
+
+- ✅ **Simplified Initialization** - Manager reduced from ~8 state variables to 4
+- ✅ **Unified Barrier** - Single barrier with resolve-only semantics
+- ✅ **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
+- ✅ **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
+- ✅ **Unified Routing** - Enhanced `_routeRuntimeMessage()` switch-based routing
+- ✅ **State Hash Validation** - `stateHashAtQueue` field in render queue
+- ✅ **Lint Fixes** - 15+ unused import/variable warnings fixed
+- ✅ **Response Helper** - `_buildResponse()` for correlationId responses
+- ✅ **Centralized Constants** - Timing constants moved to `src/constants.js`
+
+---
+
 ## 🎉 What's New in v1.6.3.9-v5
 
-**🐛 Bug Fixes & Reliability (December 2025) ✅**
+**🐛 Bug Fixes & Reliability (Previous) ✅**
 
 - ✅ **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - ✅ **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
 - ✅ **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
 - ✅ **Response Format** - Background responses include `type` and `correlationId`
-- ✅ **Content Script Handlers** - `QT_STATE_SYNC` and `STATE_REFRESH_REQUESTED`
-- ✅ **MessageRouter Logging** - Full context logged on routing failures
-- ✅ **Tab Cleanup Listener** - `browser.tabs.onRemoved` in Manager sidebar
 - ✅ **Message Cross-Routing** - Handles both `type` and `action` fields
 
 ---
 
 ## 🎉 What's New in v1.6.3.9-v4
 
-**🔧 Architecture Simplification (December 2025) ✅**
+**🔧 Architecture Simplification (Previous) ✅**
 
 - ✅ **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
 - ✅ **Centralized Constants** - `src/constants.js` expanded (+225 lines)
 - ✅ **Single Barrier Init** - Replaces multi-phase initialization
-- ✅ **Render Queue Debounce** - 100ms debounce with revision deduplication
 - ✅ **Storage Health Check** - Fallback polling every 5s
-- ✅ **State Checksum** - `_computeStateChecksum()` for data integrity
-- ✅ **Simplified Persistence** - `_persistToStorage()` with validation
-- ✅ **Orphan Removal** - Cleanup now removes orphans instead of marking
 
 ---
 
@@ -242,6 +251,6 @@ for details.
 
 ---
 
-**Version 1.6.3.9-v5** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.9-v6** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

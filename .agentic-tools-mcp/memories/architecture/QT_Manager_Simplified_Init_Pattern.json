@@ -1,0 +1,8 @@
+{
+  "id": "d491127c-1aa3-4f0d-9da5-fb325d733fd0",
+  "title": "QT Manager Simplified Init Pattern",
+  "details": "The Quick Tabs Manager sidebar (sidebar/quick-tabs-manager.js) uses a simplified initialization pattern as of v1.6.3.9-v6:\n\n1. **Single Source of Truth**: `_isInitPhaseComplete` is the authoritative flag for initialization state\n2. **Backwards Compatibility**: `initializationStarted`, `initializationComplete`, and `currentInitPhase` are kept as aliases\n3. **Single Barrier**: `initializationPromise` replaces the old `initializationBarrier` with simpler resolve-only semantics\n4. **Guard Pattern**: `_resolveInitBarrier()` guards against double-resolution with early return\n\nKey functions:\n- `isFullyInitialized()` - Returns `_isInitPhaseComplete`\n- `_initializeBarrier()` - Creates the promise barrier\n- `_resolveInitBarrier()` - Resolves once and updates both `_isInitPhaseComplete` and `initializationComplete`\n- `_queueMessageDuringInit()` - Queues messages to `_initPhaseMessageQueue`\n- `_replayQueuedMessages()` - Replays after barrier resolves",
+  "category": "architecture",
+  "dateCreated": "2025-12-16T17:44:17.392Z",
+  "dateUpdated": "2025-12-16T17:44:17.392Z"
+}
