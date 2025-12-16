@@ -25,9 +25,6 @@
  *   - Issue #3: DOM event listener cleanup - Call controller cleanup() before DOM removal
  *   - Issue #4: Operation-specific flags (isMinimizing, isRestoring) replace time-based suppression
  *   - Issue #5: Enhanced logging in minimize(), restore(), updateZIndex()
- * v1.6.3.7-v3 - FIX Critical originTabId Initialization Missing:
- *   - Issue #1: Added originTabId initialization in _initializeVisibility()
- *   - Issue #4: Added diagnostic logging for originTabId adoption flow
  */
 
 import browser from 'webextension-polyfill';
@@ -99,7 +96,6 @@ export class QuickTabWindow {
   /**
    * Initialize visibility-related properties (minimized, solo, mute)
    * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
-   * v1.6.3.7-v3 - FIX Issue #1: Added originTabId initialization for cross-tab isolation
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
@@ -109,18 +105,6 @@ export class QuickTabWindow {
     // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
     // This removes tight coupling to window.quickTabsManager.currentTabId
     this.currentTabId = options.currentTabId ?? null;
-    // v1.6.3.7-v3 - FIX Issue #1: Store originTabId for cross-tab isolation
-    // This property tracks which browser tab created this Quick Tab
-    // Without this, originTabId becomes null in storage, breaking cross-tab filtering
-    this.originTabId = options.originTabId ?? null;
-
-    // v1.6.3.7-v3 - FIX Issue #4: Diagnostic logging for originTabId adoption flow
-    console.log('[QuickTabWindow] originTabId initialized:', {
-      id: this.id,
-      originTabId: this.originTabId,
-      source: options.originTabId !== undefined ? 'options' : 'fallback-null',
-      optionsValue: options.originTabId
-    });
   }
 
   /**

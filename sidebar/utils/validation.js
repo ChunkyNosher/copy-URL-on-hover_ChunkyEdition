@@ -34,22 +34,22 @@ export function filterInvalidTabs(state) {
   if (!state.tabs || !Array.isArray(state.tabs)) return;
 
   const originalCount = state.tabs.length;
-
+  
   // v1.6.4.0 - FIX Issue C: HYDRATION_STARTED logging
   console.log('[Manager] HYDRATION_STARTED:', {
     tabsFromStorage: originalCount,
     tabIds: state.tabs.map(t => t.id),
     timestamp: Date.now()
   });
-
+  
   const validTabs = [];
   const blockedTabs = [];
   const blockedReasons = new Set();
-
+  
   for (const tab of state.tabs) {
     _processTabForHydration(tab, validTabs, blockedTabs, blockedReasons);
   }
-
+  
   // v1.6.4.0 - FIX Issue C: HYDRATION_BLOCKED_TABS summary
   if (blockedTabs.length > 0) {
     console.warn('[Manager] HYDRATION_BLOCKED_TABS:', {
@@ -58,14 +58,14 @@ export function filterInvalidTabs(state) {
       blockedIds: blockedTabs.map(b => b.tab.id)
     });
   }
-
+  
   // Update state with valid tabs only
   state.tabs = validTabs;
-
+  
   // Count orphaned tabs in the valid set
   const orphanedCount = validTabs.filter(t => _isOrphanedTab(t)).length;
   const healthyCount = validTabs.length - orphanedCount;
-
+  
   // v1.6.4.0 - FIX Issue C: HYDRATION_COMPLETE logging
   console.log('[Manager] HYDRATION_COMPLETE:', {
     originalCount,
@@ -89,7 +89,7 @@ export function filterInvalidTabs(state) {
  */
 function _processTabForHydration(tab, validTabs, blockedTabs, blockedReasons) {
   const validationResult = _validateTabForHydration(tab);
-
+  
   if (!validationResult.valid) {
     blockedTabs.push({ tab, reason: validationResult.reason });
     blockedReasons.add(validationResult.reason);
@@ -101,7 +101,7 @@ function _processTabForHydration(tab, validTabs, blockedTabs, blockedReasons) {
     });
     return;
   }
-
+  
   validTabs.push(tab);
   _logValidTabHydration(tab);
 }
@@ -140,11 +140,11 @@ function _validateTabForHydration(tab) {
   if (!isValidTabUrl(tab.url)) {
     return { valid: false, reason: 'invalid_url' };
   }
-
+  
   // IMPORTANT: We do NOT filter orphaned tabs (originTabId null/undefined)
   // They are kept in state for the adoption UI to display
   // The groupQuickTabsByOriginTab() function will group them into 'orphaned' group
-
+  
   return { valid: true };
 }
 

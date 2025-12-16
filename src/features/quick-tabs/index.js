@@ -8,10 +8,6 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
- * v1.6.3.8-v9 - FIX Issue #20: Restructure init sequence - signalReady() BEFORE hydration
- *               This ensures queued messages are replayed BEFORE tabs created from storage
- * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection in message replay to prevent duplicates
- *               Queued messages that reference existing tabs are skipped (hydration has newer state)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -36,47 +32,19 @@ import { QuickTabWindow } from './window.js'; // v1.6.3.4-v7 - FIX Issue #1: Imp
 import { CONSTANTS } from '../../core/config.js';
 import { STATE_KEY } from '../../utils/storage-utils.js';
 
-// v1.6.3.7-v12 - Issue #12: currentTabId barrier constants (code review fix)
-// v1.6.3.8-v9 - FIX Section 1.3: Increased timeout from 2s to 5s for slow devices
-// v1.6.3.9-v3 - Issue #47-2: Reduced from 5s to 2s - stateless architecture doesn't need long Port wait
-//               Allow graceful degradation if currentTabId unavailable (hydration deferred, not blocked)
-const CURRENT_TAB_ID_WAIT_TIMEOUT_MS = 2000; // 2 second max wait (reduced from 5s)
-const INITIAL_POLL_INTERVAL_MS = 50;
-const MAX_POLL_INTERVAL_MS = 200;
-const POLL_INTERVAL_MULTIPLIER = 1.5; // Exponential backoff factor
-
-// v1.6.3.8-v9 - FIX Section 1.3: Delayed retry interval for hydration fallback
-const HYDRATION_RETRY_DELAY_MS = 3000; // 3 second delay before retry
-
-// v1.6.3.8-v3 - Issue #6: Debug flag for message queueing (respects DEBUG_MESSAGING pattern)
-const DEBUG_MESSAGING = true;
-
-// v1.6.3.8-v9 - FIX Section 5.3: Maximum message queue size to prevent unbounded growth
-const MAX_MESSAGE_QUEUE_SIZE = 100;
-
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with logging
- * v1.6.3.8-v3 - FIX Issue #6: Add message queue for init race condition prevention
- * v1.6.3.8-v9 - FIX Section 5.3: Add message queue size limit (100 messages)
  */
 class QuickTabsManager {
   constructor(options = {}) {
-    // v1.6.3.8-v9 - FIX Issue #21: Track constructor start time for initialization diagnostics
-    const constructorStartTime = Date.now();
-
     // Backward compatibility fields (MUST KEEP - other code depends on these)
     this.tabs = new Map(); // id -> QuickTabWindow instance (used by panel.js, etc.)
     this.currentZIndex = { value: CONSTANTS.QUICK_TAB_BASE_Z_INDEX }; // Changed to ref object
     this.initialized = false;
     this.cookieStoreId = null;
     this.currentTabId = null;
-
-    // v1.6.3.8-v3 - Issue #6: Message queue for buffering during initialization
-    // Messages received before handler signals READY are queued and replayed
-    this._messageQueue = [];
-    this._isReady = false; // True when handler explicitly signals READY
 
     // Internal event bus for component communication
     this.internalEventBus = new EventEmitter();
@@ -109,27 +77,11 @@ class QuickTabsManager {
 
     // Track all generated IDs to prevent collisions within this session
     this.generatedIds = new Set();
-
-    // v1.6.3.8-v9 - FIX Issue #21: Track initialization timestamps for diagnostics
-    this._constructorTimestamp = constructorStartTime;
-    this._initStartTimestamp = null;
-    this._initCompleteTimestamp = null;
-    this._handlersReadyTimestamp = null;
-    this._listenersRegisteredTimestamp = null;
-
-    // v1.6.3.8-v9 - FIX Issue #21: Log constructor completion
-    console.log('[QuickTabsManager] CONSTRUCTOR_COMPLETE:', {
-      timestamp: constructorStartTime,
-      isReady: this._isReady,
-      queueLength: this._messageQueue.length
-    });
   }
 
   /**
    * Initialize the Quick Tabs manager
    * v1.6.3 - Simplified (no storage/sync components)
-   * v1.6.3.8-v3 - Issue #6: Signal READY and replay queued messages after init
-   * v1.6.3.8-v9 - FIX Issue #21: Enhanced initialization logging with timestamps
    *
    * @param {EventEmitter} eventBus - External event bus from content.js
    * @param {Object} Events - Event constants
@@ -138,10 +90,7 @@ class QuickTabsManager {
    */
   async init(eventBus, Events, options = {}) {
     if (this.initialized) {
-      console.log('[QuickTabsManager] INIT_SKIPPED: Already initialized:', {
-        timestamp: Date.now(),
-        initCompleteTimestamp: this._initCompleteTimestamp
-      });
+      console.log('[QuickTabsManager] Already initialized, skipping');
       return;
     }
 
@@ -156,17 +105,7 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] Using pre-fetched currentTabId:', this.currentTabId);
     }
 
-    const initStartTime = Date.now();
-    this._initStartTimestamp = initStartTime;
-
-    // v1.6.3.8-v9 - FIX Issue #21: Log initialization start with barrier status
-    console.log('[QuickTabsManager] INIT_START:', {
-      timestamp: initStartTime,
-      timeSinceConstructor: initStartTime - this._constructorTimestamp,
-      isReady: this._isReady,
-      queueLength: this._messageQueue.length,
-      currentTabId: this.currentTabId
-    });
+    console.log('[QuickTabsManager] Initializing facade...');
 
     try {
       await this._initStep1_Context(options);
@@ -174,47 +113,11 @@ class QuickTabsManager {
       await this._initStep3_Handlers(); // v1.6.3.2 - Made async for CreateHandler settings
       this._initStep4_Coordinators();
       await this._initStep5_Setup();
-
-      // v1.6.3.8-v9 - FIX Issue #20: Signal READY and replay queued messages BEFORE hydration
-      // Previous order: Hydration → signalReady() (queued events replayed AFTER tabs created)
-      // New order: signalReady() → Hydration (queued events applied BEFORE tabs created)
-      // This ensures storage events are processed before local memory state is restored
-      console.log(
-        '[QuickTabsManager] INIT_STEP_5.5: Signaling ready and replaying queued messages:',
-        {
-          timestamp: Date.now(),
-          isReady: this._isReady,
-          queuedMessages: this._messageQueue.length,
-          prerequisite: 'Steps 1-5 complete',
-          purpose: 'Enable message processing before hydration'
-        }
-      );
-      this.signalReady();
-      console.log('[QuickTabsManager] INIT_STEP_5.5_COMPLETE: Queued messages replayed:', {
-        timestamp: Date.now(),
-        isReady: this._isReady
-      });
-
       await this._initStep6_Hydrate(); // v1.6.3.4 - FIX Issue #1: Hydrate state from storage
       this._initStep7_Expose();
 
       this.initialized = true;
-      this._initCompleteTimestamp = Date.now();
-
-      // v1.6.3.8-v9 - FIX Issue #21: Log initialization completion with full timing
-      console.log('[QuickTabsManager] INIT_COMPLETE:', {
-        status: 'passed',
-        durationMs: this._initCompleteTimestamp - initStartTime,
-        timestamp: this._initCompleteTimestamp,
-        initSequence: {
-          constructorTimestamp: this._constructorTimestamp,
-          initStartTimestamp: this._initStartTimestamp,
-          handlersReadyTimestamp: this._handlersReadyTimestamp,
-          initCompleteTimestamp: this._initCompleteTimestamp
-        },
-        tabsCount: this.tabs.size,
-        isReady: this._isReady
-      });
+      console.log('[QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓');
     } catch (err) {
       this._logInitializationError(err);
       throw err;
@@ -241,18 +144,10 @@ class QuickTabsManager {
   /**
    * STEP 1: Detect context (container, tab ID)
    * v1.6.3.5-v10 - FIX Issue #3: Accept options parameter for pre-fetched tab ID
-   * v1.6.3.7-v13 - Issue #6: Enhanced logging with INIT_STEP_1 format
    * @private
    * @param {Object} [_options={}] - Options including pre-fetched currentTabId (unused, kept for API consistency)
    */
   async _initStep1_Context(_options = {}) {
-    // v1.6.3.7-v13 - Issue #6: Log step entry with specific format
-    console.log('[QuickTabsManager] INIT_STEP_1: currentTabId detection started', {
-      currentTabId: this.currentTabId,
-      hasPreFetchedId: this.currentTabId !== null && this.currentTabId !== undefined,
-      timestamp: Date.now()
-    });
-
     console.log('[QuickTabsManager] STEP 1: Detecting container context...');
     const containerDetected = await this.detectContainerContext();
     if (!containerDetected) {
@@ -270,13 +165,6 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
       await this.detectCurrentTabId();
     }
-
-    // v1.6.3.7-v13 - Issue #6: Log step completion with specific format
-    console.log('[QuickTabsManager] INIT_STEP_1_COMPLETE:', {
-      currentTabId: this.currentTabId,
-      success: this.currentTabId !== null && this.currentTabId !== undefined,
-      timestamp: Date.now()
-    });
     console.log('[QuickTabsManager] STEP 1 Complete - currentTabId:', this.currentTabId);
   }
 
@@ -324,25 +212,10 @@ class QuickTabsManager {
   /**
    * STEP 6: Hydrate state from storage (v1.6.3.4 - FIX Issues #1, #8)
    * v1.6.3.4 - Added hydration step: reads stored Quick Tabs and repopulates local state
-   * v1.6.3.7-v12 - Issue #12: Add currentTabId barrier before hydration
    * @private
    */
   async _initStep6_Hydrate() {
     console.log('[QuickTabsManager] STEP 6: Attempting to hydrate state from storage...');
-
-    // v1.6.3.7-v12 - Issue #12: Check currentTabId barrier before hydration
-    const barrierResult = await this._checkCurrentTabIdBarrier();
-    if (!barrierResult.passed) {
-      console.warn('[QuickTabsManager] STEP 6: ⚠️ WARNING - Hydration blocked:', {
-        reason: 'currentTabId barrier failed',
-        currentTabId: this.currentTabId,
-        barrierReason: barrierResult.reason,
-        timestamp: Date.now()
-      });
-      console.log('[QuickTabsManager] STEP 6 Complete (skipped - no currentTabId)');
-      return;
-    }
-
     const hydrationResult = await this._hydrateStateFromStorage();
 
     if (hydrationResult.success) {
@@ -357,115 +230,6 @@ class QuickTabsManager {
       );
     }
     console.log('[QuickTabsManager] STEP 6 Complete');
-  }
-
-  /**
-   * Check currentTabId barrier before hydration
-   * v1.6.3.7-v12 - Issue #12: Ensure currentTabId is set before hydration to prevent filtering all tabs
-   * v1.6.3.8-v9 - FIX Section 1.3: Increased timeout to 5s, add fallback retry mechanism
-   * @private
-   * @returns {Promise<{passed: boolean, reason: string}>}
-   */
-  async _checkCurrentTabIdBarrier() {
-    const barrierStartTime = Date.now();
-
-    // If currentTabId is already set, barrier passes
-    if (this.currentTabId !== null && this.currentTabId !== undefined) {
-      console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Passed (already set)', {
-        currentTabId: this.currentTabId,
-        timestamp: Date.now()
-      });
-      return { passed: true, reason: 'already_set' };
-    }
-
-    // v1.6.3.7-v12 - Issue #12: Wait for currentTabId to be set with timeout
-    // v1.6.3.7-v12 - FIX Code Review: Use exponential backoff for polling
-    // v1.6.3.8-v9 - FIX Section 1.3: Increased timeout to 5 seconds for slow devices
-    console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Waiting for currentTabId...', {
-      timeout: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
-      pollingStrategy: 'exponential-backoff',
-      timestamp: Date.now()
-    });
-
-    let pollInterval = INITIAL_POLL_INTERVAL_MS;
-
-    while (Date.now() - barrierStartTime < CURRENT_TAB_ID_WAIT_TIMEOUT_MS) {
-      // Check if currentTabId was set by Step 1 or message handler
-      if (this.currentTabId !== null && this.currentTabId !== undefined) {
-        const waitDurationMs = Date.now() - barrierStartTime;
-        console.log('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Passed (after wait)', {
-          currentTabId: this.currentTabId,
-          waitDurationMs,
-          timestamp: Date.now()
-        });
-        return { passed: true, reason: 'resolved_after_wait' };
-      }
-
-      // Wait before next check with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-      pollInterval = Math.min(pollInterval * POLL_INTERVAL_MULTIPLIER, MAX_POLL_INTERVAL_MS);
-    }
-
-    // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
-    // v1.6.3.8-v9 - FIX Section 1.3: Schedule delayed retry instead of just failing
-    // v1.6.3.9-v3 - Issue #47-6: Use warn instead of error - graceful degradation is normal operation
-    console.warn(
-      '[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Timeout - proceeding with graceful degradation',
-      {
-        currentTabId: this.currentTabId,
-        timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
-        elapsedMs: Date.now() - barrierStartTime,
-        consequence: 'Hydration deferred until currentTabId available (retry scheduled)',
-        note: 'This is expected behavior in stateless architecture - not a failure',
-        retryDelayMs: HYDRATION_RETRY_DELAY_MS,
-        timestamp: Date.now()
-      }
-    );
-
-    // v1.6.3.8-v9 - FIX Section 1.3: Schedule a delayed retry of hydration
-    // This gives background script more time to respond with currentTabId
-    this._scheduleDelayedHydrationRetry();
-
-    return {
-      passed: false,
-      reason: `currentTabId still null after ${CURRENT_TAB_ID_WAIT_TIMEOUT_MS}ms wait (retry scheduled)`
-    };
-  }
-
-  /**
-   * Schedule a delayed retry of hydration after barrier timeout
-   * v1.6.3.8-v9 - FIX Section 1.3: Fallback mechanism for slow devices
-   * @private
-   */
-  _scheduleDelayedHydrationRetry() {
-    console.log('[QuickTabsManager] HYDRATION_RETRY_SCHEDULED:', {
-      retryDelayMs: HYDRATION_RETRY_DELAY_MS,
-      timestamp: Date.now()
-    });
-
-    setTimeout(async () => {
-      // Check if currentTabId is now available
-      if (this.currentTabId !== null && this.currentTabId !== undefined) {
-        console.log('[QuickTabsManager] HYDRATION_RETRY_STARTED:', {
-          currentTabId: this.currentTabId,
-          timestamp: Date.now()
-        });
-
-        // Attempt hydration now that currentTabId is available
-        const hydrationResult = await this._hydrateStateFromStorage();
-        console.log('[QuickTabsManager] HYDRATION_RETRY_COMPLETE:', {
-          success: hydrationResult.success,
-          count: hydrationResult.count,
-          reason: hydrationResult.reason,
-          timestamp: Date.now()
-        });
-      } else {
-        console.warn('[QuickTabsManager] HYDRATION_RETRY_SKIPPED: currentTabId still null', {
-          currentTabId: this.currentTabId,
-          timestamp: Date.now()
-        });
-      }
-    }, HYDRATION_RETRY_DELAY_MS);
   }
 
   /**
@@ -495,22 +259,12 @@ class QuickTabsManager {
    * Hydrate tabs from stored state
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.6-v5 - FIX Cross-Tab State Contamination: Add comprehensive init logging
-   * v1.6.3.8-v6 - Issue #10: Enhanced logging for cross-tab filtering diagnostics
    * @private
    * @param {Array} tabs - Array of tab data from storage
    * @returns {number} Count of successfully hydrated tabs
    */
   _hydrateTabsFromStorage(tabs) {
-    // v1.6.3.8-v6 - Issue #10: Log tab count before filtering
-    console.log('[QuickTabsManager] HYDRATION_FILTER_START:', {
-      tabCountBeforeFilter: tabs.length,
-      currentTabId: this.currentTabId,
-      originTabIds: tabs.map(t => ({ id: t.id, originTabId: t.originTabId })),
-      timestamp: Date.now()
-    });
-
     // v1.6.3.6-v5 - FIX: Track validation results for comprehensive logging
-    // v1.6.3.8-v6: Track both filtered and recovered tabs for diagnostics
     const filterReasons = {
       invalidData: 0,
       noOriginTabId: 0,
@@ -520,39 +274,22 @@ class QuickTabsManager {
       noHandler: 0,
       error: 0
     };
-    // v1.6.3.8-v6: Track successful recoveries separately (not filtered)
-    let recoveredFromIdPattern = 0;
 
     let hydratedCount = 0;
     for (const tabData of tabs) {
       const result = this._safeHydrateTabWithReason(tabData, filterReasons);
-      if (!result.success) continue;
-
-      hydratedCount++;
-      // v1.6.3.8-v6: Track if this was a recovered tab
-      const wasRecovered = result.reason === 'recoveredFromIdPattern';
-      recoveredFromIdPattern += wasRecovered ? 1 : 0;
+      if (result.success) {
+        hydratedCount++;
+      }
     }
 
     // v1.6.3.6-v5 - FIX: Comprehensive init logging (single structured log)
-    // v1.6.3.8-v6 - Issue #10: Enhanced with before/after counts
     console.log('[QuickTabsManager] TAB SCOPE ISOLATION VALIDATION:', {
       total: tabs.length,
       passed: hydratedCount,
       filtered: tabs.length - hydratedCount,
       currentTabId: this.currentTabId,
-      filterReasons,
-      recoveredFromIdPattern
-    });
-
-    // v1.6.3.8-v6 - Issue #10: Log final render count after filtering
-    console.log('[QuickTabsManager] HYDRATION_FILTER_COMPLETE:', {
-      tabCountBeforeFilter: tabs.length,
-      tabCountAfterFilter: hydratedCount,
-      filteredOutCount: tabs.length - hydratedCount,
-      recoveredCount: recoveredFromIdPattern,
-      currentTabId: this.currentTabId,
-      timestamp: Date.now()
+      filterReasons
     });
 
     return hydratedCount;
@@ -561,7 +298,6 @@ class QuickTabsManager {
   /**
    * Safely hydrate a single tab with error handling and reason tracking
    * v1.6.3.6-v5 - FIX: Added reason tracking for comprehensive logging
-   * v1.6.3.8-v6 - Issue #10: Track recoveredFromIdPattern as success reason
    * @private
    * @param {Object} tabData - Tab data from storage
    * @param {Object} filterReasons - Object to track filter reasons
@@ -581,9 +317,6 @@ class QuickTabsManager {
         filterReasons[skipResult.reason]++;
         return { success: false, reason: skipResult.reason };
       }
-
-      // v1.6.3.8-v6: Track if this was a recovered tab (for diagnostics)
-      const wasRecovered = skipResult.reason === 'recoveredFromIdPattern';
 
       // Skip if tab already exists
       if (this.tabs.has(tabData.id)) {
@@ -611,8 +344,7 @@ class QuickTabsManager {
       } else {
         this._hydrateVisibleTab(optionsWithCallbacks);
       }
-      // v1.6.3.8-v6: Return recoveredFromIdPattern reason if applicable
-      return { success: true, reason: wasRecovered ? 'recoveredFromIdPattern' : 'hydrated' };
+      return { success: true, reason: 'hydrated' };
     } catch (tabError) {
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
@@ -643,103 +375,10 @@ class QuickTabsManager {
   }
 
   /**
-   * Compute djb2-like checksum for state validation
-   * v1.6.3.8-v7 - Issue #2: Same algorithm as background.js _computeStorageChecksum
-   * IMPORTANT: Must match background.js exactly to ensure checksums are comparable
-   * @private
-   * @param {Object} state - State object with tabs array
-   * @returns {string} Checksum string (e.g., 'chk-3-a1b2c3d4') or 'empty'
-   */
-  _computeStateChecksum(state) {
-    if (!state?.tabs || !Array.isArray(state.tabs) || state.tabs.length === 0) {
-      return 'empty';
-    }
-
-    // Build a deterministic string from tab IDs and their minimized states
-    // MUST match background.js: ${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}
-    const tabSignatures = state.tabs
-      .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
-      .sort()
-      .join('|');
-
-    // djb2-like hash: hash = hash * 33 + char
-    let hash = state.tabs.length;
-    for (let i = 0; i < tabSignatures.length; i++) {
-      hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
-    }
-
-    return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
-  }
-
-  /**
-   * Validate checksum during hydration
-   * v1.6.3.8-v7 - Issue #2: Detect corruption by comparing computed vs expected checksum
-   * @private
-   * @param {Object} storedState - State from storage
-   * @returns {{valid: boolean, computed: string, reason: string}}
-   */
-  _validateHydrationChecksum(storedState) {
-    const computed = this._computeStateChecksum(storedState);
-    const expected = storedState?.checksum;
-
-    // Log checksum validation for diagnostics
-    console.log('[QuickTabsManager] CHECKSUM_VALIDATION:', {
-      computed,
-      expected: expected || 'none',
-      tabCount: storedState?.tabs?.length || 0,
-      hasExpected: !!expected
-    });
-
-    // If no expected checksum in stored state, assume valid (backwards compatibility)
-    if (!expected) {
-      return { valid: true, computed, reason: 'no-expected-checksum' };
-    }
-
-    if (computed === expected) {
-      return { valid: true, computed, reason: 'match' };
-    }
-
-    console.error('[QuickTabsManager] CHECKSUM_MISMATCH:', {
-      computed,
-      expected,
-      tabCount: storedState?.tabs?.length || 0,
-      recommendation: 'Request fresh state from background'
-    });
-    return { valid: false, computed, reason: 'mismatch' };
-  }
-
-  /**
-   * Request fresh state from background when checksum validation fails
-   * v1.6.3.8-v7 - Issue #2: Recovery mechanism for corrupted state
-   * @private
-   * @param {string} reason - Reason for requesting fresh state
-   */
-  async _requestFreshStateFromBackground(reason) {
-    console.log('[QuickTabsManager] REQUESTING_FRESH_STATE:', {
-      reason,
-      currentTabId: this.currentTabId,
-      timestamp: Date.now()
-    });
-
-    try {
-      await browser.runtime.sendMessage({
-        action: 'REQUEST_FULL_STATE_SYNC',
-        source: 'quicktabs-manager-checksum-recovery',
-        reason,
-        tabId: this.currentTabId,
-        timestamp: Date.now()
-      });
-    } catch (err) {
-      console.warn('[QuickTabsManager] Failed to request fresh state:', err.message);
-    }
-  }
-
-  /**
    * Hydrate Quick Tab state from browser.storage.local
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
-   * v1.6.3.8-v7 - Issue #2: Add checksum validation during hydration
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
@@ -758,18 +397,6 @@ class QuickTabsManager {
         return { success: false, count: 0, reason: validation.reason };
       }
 
-      // v1.6.3.8-v7 - Issue #2: Validate checksum before hydrating
-      const checksumResult = this._validateHydrationChecksum(storedState);
-      if (!checksumResult.valid) {
-        // Checksum mismatch - request fresh state and skip hydration
-        await this._requestFreshStateFromBackground('hydration-checksum-mismatch');
-        return {
-          success: false,
-          count: 0,
-          reason: `Checksum mismatch: computed=${checksumResult.computed}, expected=${storedState.checksum}`
-        };
-      }
-
       console.log(
         `[QuickTabsManager] Found ${storedState.tabs.length} Quick Tab(s) in storage to hydrate`
       );
@@ -779,17 +406,6 @@ class QuickTabsManager {
 
       // Emit hydrated event for UICoordinator to render restored tabs
       this._emitHydratedEventIfNeeded(hydratedCount);
-
-      // v1.6.3.7-v13 - Issue #6: Log successful hydration completion with specific format
-      // v1.6.3.8-v7 - Issue #2: Include checksum in completion log
-      console.log('[QuickTabsManager] HYDRATION_COMPLETE:', {
-        loadedTabCount: hydratedCount,
-        totalInStorage: storedState.tabs.length,
-        currentTabId: this.currentTabId,
-        checksum: checksumResult.computed,
-        checksumValid: true,
-        timestamp: Date.now()
-      });
 
       return { success: true, count: hydratedCount, reason: 'Success' };
     } catch (error) {
@@ -940,7 +556,6 @@ class QuickTabsManager {
    *              Consolidated to single implementation that tracks reasons
    * v1.6.3.6-v7 - FIX Issue #1: Add fallback to extract tab ID from Quick Tab ID pattern
    *              when originTabId is null but ID pattern matches current tab
-   * v1.6.3.8-v6 - Issue #10: Enhanced logging for cross-tab filtering diagnostics
    * @private
    * @param {Object} tabData - Stored tab data
    * @returns {{skip: boolean, reason: string}} Result with skip flag and reason
@@ -948,16 +563,6 @@ class QuickTabsManager {
   _checkTabScopeWithReason(tabData) {
     const hasOriginTabId = tabData.originTabId !== null && tabData.originTabId !== undefined;
     const hasCurrentTabId = this.currentTabId !== null && this.currentTabId !== undefined;
-
-    // v1.6.3.8-v6 - Issue #10: Log originTabId matching decision
-    console.log('[QuickTabsManager] CROSS_TAB_FILTER_CHECK:', {
-      quickTabId: tabData.id,
-      originTabId: tabData.originTabId,
-      currentTabId: this.currentTabId,
-      hasOriginTabId,
-      hasCurrentTabId,
-      timestamp: Date.now()
-    });
 
     // v1.6.3.6-v5 - FIX: If we don't have currentTabId, we CANNOT safely filter
     // Reject all tabs until we know our tab ID to prevent cross-tab contamination
@@ -1013,15 +618,6 @@ class QuickTabsManager {
     }
 
     const shouldRender = this._shouldRenderOnThisTab(tabData);
-    // v1.6.3.8-v6 - Issue #10: Log final filtering decision
-    console.log('[QuickTabsManager] CROSS_TAB_FILTER_RESULT:', {
-      quickTabId: tabData.id,
-      originTabId: tabData.originTabId,
-      currentTabId: this.currentTabId,
-      shouldRender,
-      reason: shouldRender ? 'passed' : 'differentTab'
-    });
-
     if (!shouldRender) {
       console.log('[QuickTabsManager] Skipping hydration - tab originated from different tab:', {
         id: tabData.id,
@@ -1318,13 +914,7 @@ class QuickTabsManager {
     // v1.6.3.2 - Initialize CreateHandler to load debug settings
     await this.createHandler.init();
 
-    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Pass currentTabId for ownership validation
-    this.updateHandler = new UpdateHandler(
-      this.tabs,
-      this.internalEventBus,
-      this.minimizedManager,
-      this.currentTabId
-    );
+    this.updateHandler = new UpdateHandler(this.tabs, this.internalEventBus, this.minimizedManager);
 
     this.visibilityHandler = new VisibilityHandler({
       quickTabsMap: this.tabs,
@@ -1335,15 +925,13 @@ class QuickTabsManager {
       Events: this.Events
     });
 
-    // v1.6.3.8-v12 - GAP-3, GAP-17 fix: Pass currentTabId for ownership validation
     this.destroyHandler = new DestroyHandler(
       this.tabs,
       this.minimizedManager,
       this.internalEventBus, // v1.6.3.3 - FIX Bug #6: Use internal bus for state:deleted so UICoordinator receives it
       this.currentZIndex,
       this.Events,
-      CONSTANTS.QUICK_TAB_BASE_Z_INDEX,
-      this.currentTabId
+      CONSTANTS.QUICK_TAB_BASE_Z_INDEX
     );
   }
 
@@ -1376,7 +964,6 @@ class QuickTabsManager {
    * Setup component listeners and event flows
    * v1.6.3 - Simplified (no storage/sync setup)
    * v1.6.3.3 - FIX Bug #5: Setup event bridge after UI coordinator init
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Register storage.onChanged listener
    * @private
    */
   async _setupComponents() {
@@ -1388,9 +975,6 @@ class QuickTabsManager {
     // v1.6.3.3 - FIX Bug #5: Bridge internal events to external bus
     this._setupEventBridge();
 
-    // v1.6.3.8-v12 - GAP-6, GAP-15 fix: Register storage.onChanged listener for cross-tab sync
-    this._setupStorageListener();
-
     // Start memory monitoring
     if (this.memoryGuard) {
       this.memoryGuard.startMonitoring();
@@ -1398,40 +982,6 @@ class QuickTabsManager {
     }
 
     console.log('[QuickTabsManager] ✓ _setupComponents complete');
-  }
-
-  /**
-   * Setup storage.onChanged listener for cross-tab sync
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Register listener for storage changes
-   * @private
-   */
-  _setupStorageListener() {
-    // Store bound reference for cleanup
-    this._boundStorageListener = this.onStorageChanged.bind(this);
-
-    if (typeof browser !== 'undefined' && browser?.storage?.onChanged) {
-      browser.storage.onChanged.addListener(this._boundStorageListener);
-      console.log('[QuickTabsManager] storage.onChanged listener registered');
-    } else {
-      console.warn('[QuickTabsManager] storage.onChanged API not available');
-    }
-  }
-
-  /**
-   * Remove storage.onChanged listener (cleanup)
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Clean up listener on destroy
-   * @private
-   */
-  _removeStorageListener() {
-    if (
-      this._boundStorageListener &&
-      typeof browser !== 'undefined' &&
-      browser?.storage?.onChanged
-    ) {
-      browser.storage.onChanged.removeListener(this._boundStorageListener);
-      this._boundStorageListener = null;
-      console.log('[QuickTabsManager] storage.onChanged listener removed');
-    }
   }
 
   /**
@@ -1895,12 +1445,10 @@ class QuickTabsManager {
    * Cleanup and teardown the QuickTabsManager
    * v1.6.3.4-v11 - FIX Issue #1, #2, #3: Proper resource cleanup to prevent memory leaks
    * v1.6.3.6-v10 - Refactored: Extracted steps to helper methods to reduce cc from 9 to 2
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Remove storage.onChanged listener
    *
    * This method:
    * - Stops MemoryGuard monitoring
    * - Removes storage.onChanged listener via CreateHandler.destroy()
-   * - Removes QuickTabsManager's storage.onChanged listener
    * - Closes all Quick Tabs (DOM cleanup)
    * - Removes all event listeners from internalEventBus
    * - Marks manager as uninitialized
@@ -1920,451 +1468,13 @@ class QuickTabsManager {
 
     this._destroyStep1_StopMemoryGuard();
     this._destroyStep2_RemoveStorageListener();
-    // v1.6.3.8-v12 - GAP-6, GAP-15 fix: Remove QuickTabsManager's own storage listener
-    this._removeStorageListener();
     this._destroyStep3_CloseAllTabs();
     this._destroyStep4_RemoveEventListeners();
 
     // Step 5: Mark as uninitialized
     this.initialized = false;
 
-    // v1.6.3.8-v3 - Issue #6: Reset ready state and clear message queue
-    this._isReady = false;
-    this._messageQueue = [];
-
     console.log('[QuickTabsManager] ✓ Cleanup/teardown complete');
-  }
-
-  // ============================================================================
-  // v1.6.3.8-v12 - GAP-6, GAP-15: STORAGE.ONCHANGED SYNC METHOD
-  // ============================================================================
-
-  /**
-   * Validate storage change event and extract state
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Extracted to reduce onStorageChanged complexity
-   * @private
-   * @param {Object} changes - Storage changes object
-   * @param {string} areaName - Storage area ('local', 'session', etc.)
-   * @returns {{ valid: boolean, newState: Object|null }} Validation result
-   */
-  _validateStorageChange(changes, areaName) {
-    // Only handle local storage changes for quick_tabs_state_v2
-    if (areaName !== 'local') {
-      return { valid: false, newState: null };
-    }
-
-    const stateChange = changes[STATE_KEY];
-    if (!stateChange) {
-      return { valid: false, newState: null };
-    }
-
-    console.log('[QuickTabsManager] STORAGE_ONCHANGED: Received storage update:', {
-      areaName,
-      hasNewValue: !!stateChange.newValue,
-      hasOldValue: !!stateChange.oldValue,
-      currentTabId: this.currentTabId,
-      timestamp: Date.now()
-    });
-
-    // Skip if we don't have a currentTabId (can't filter)
-    if (this.currentTabId === null || this.currentTabId === undefined) {
-      console.warn('[QuickTabsManager] STORAGE_ONCHANGED: Skipped - no currentTabId set');
-      return { valid: false, newState: null };
-    }
-
-    const newState = stateChange.newValue;
-    if (!newState?.tabs || !Array.isArray(newState.tabs)) {
-      console.log('[QuickTabsManager] STORAGE_ONCHANGED: Skipped - invalid state format');
-      return { valid: false, newState: null };
-    }
-
-    return { valid: true, newState };
-  }
-
-  /**
-   * Sync filtered tabs with UICoordinator or emit event
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Extracted to reduce onStorageChanged complexity
-   * @private
-   * @param {Array} filteredTabs - Tabs filtered for this tab
-   */
-  _syncFilteredTabs(filteredTabs) {
-    // Sync state with UICoordinator if available
-    if (this.uiCoordinator && typeof this.uiCoordinator.syncState === 'function') {
-      this.uiCoordinator.syncState(filteredTabs);
-      console.log(
-        '[QuickTabsManager] Storage sync:',
-        filteredTabs.length,
-        'Quick Tabs for this tab'
-      );
-    } else {
-      // Fallback: emit event for manual handling
-      if (this.internalEventBus) {
-        this.internalEventBus.emit('storage:synced', { tabs: filteredTabs });
-      }
-      console.log(
-        '[QuickTabsManager] Storage sync (event):',
-        filteredTabs.length,
-        'Quick Tabs for this tab'
-      );
-    }
-  }
-
-  /**
-   * Handle storage changes from other tabs (storage.onChanged listener)
-   * v1.6.3.8-v12 - GAP-6, GAP-15 fix: Respond to storage changes for cross-tab sync
-   *
-   * @param {Object} changes - Storage changes object
-   * @param {string} areaName - Storage area ('local', 'session', etc.)
-   */
-  onStorageChanged(changes, areaName) {
-    const validation = this._validateStorageChange(changes, areaName);
-    if (!validation.valid) {
-      return;
-    }
-
-    // Filter tabs by originTabId for this tab
-    const filteredTabs = validation.newState.tabs.filter(
-      tab => tab.originTabId === this.currentTabId
-    );
-
-    console.log('[QuickTabsManager] STORAGE_ONCHANGED: Filtered tabs:', {
-      totalInStorage: validation.newState.tabs.length,
-      filteredForThisTab: filteredTabs.length,
-      currentTabId: this.currentTabId
-    });
-
-    this._syncFilteredTabs(filteredTabs);
-  }
-
-  // ============================================================================
-  // v1.6.3.8-v3 - Issue #6: MESSAGE QUEUE METHODS (Race Condition Prevention)
-  // ============================================================================
-
-  /**
-   * Queue a message for later processing
-   * v1.6.3.8-v3 - Issue #6: Buffer messages until handler signals READY
-   * v1.6.3.8-v9 - FIX Section 5.3: Add maximum queue size limit (100 messages)
-   * Messages received during initialization are queued and replayed later
-   *
-   * @param {Object} message - Message to queue
-   * @param {string} message.type - Message type (e.g., 'storage-update', 'broadcast')
-   * @param {Object} message.data - Message payload
-   * @param {string} [message.source] - Source of the message (for logging)
-   * @returns {boolean} True if message was queued, false if processed immediately
-   */
-  queueMessage(message) {
-    // If already ready, process immediately
-    if (this._isReady) {
-      return false;
-    }
-
-    // v1.6.3.8-v9 - FIX Section 5.3: Check queue size limit before adding
-    if (this._messageQueue.length >= MAX_MESSAGE_QUEUE_SIZE) {
-      // Drop oldest message to make room for new one
-      const droppedMessage = this._messageQueue.shift();
-      console.warn('[QuickTabsManager] MESSAGE_QUEUE_OVERFLOW: Dropping oldest message', {
-        droppedType: droppedMessage?.type,
-        droppedAt: droppedMessage?._queuedAt,
-        queueSize: MAX_MESSAGE_QUEUE_SIZE,
-        newMessageType: message.type,
-        timestamp: Date.now()
-      });
-    }
-
-    // Add timestamp and queue position for debugging
-    const queuedMessage = {
-      ...message,
-      _queuedAt: Date.now(),
-      _queuePosition: this._messageQueue.length
-    };
-
-    this._messageQueue.push(queuedMessage);
-
-    // v1.6.3.8-v3 - Issue #6: Log queued message (respects DEBUG_MESSAGING)
-    if (DEBUG_MESSAGING) {
-      console.log('[QuickTabsManager] INIT_MESSAGE_QUEUED:', {
-        type: message.type,
-        source: message.source || 'unknown',
-        queuePosition: queuedMessage._queuePosition,
-        queueLength: this._messageQueue.length,
-        maxQueueSize: MAX_MESSAGE_QUEUE_SIZE,
-        timestamp: Date.now()
-      });
-    }
-
-    return true;
-  }
-
-  /**
-   * Signal that the handler is ready to process messages
-   * v1.6.3.8-v3 - Issue #6: Replays all queued messages in order
-   * v1.6.3.8-v9 - FIX Issue #20: Now called BEFORE hydration to ensure queued storage
-   *               events are processed BEFORE tabs are created from local memory
-   * v1.6.3.8-v9 - FIX Issue #21: Enhanced logging with timestamps for init diagnostics
-   * Call this after Step 5 (setup) but BEFORE Step 6 (hydration)
-   *
-   * @param {Function} [messageHandler] - Optional handler function to process messages
-   *                                       If not provided, emits 'message:received' events
-   */
-  signalReady(messageHandler = null) {
-    if (this._isReady) {
-      console.warn('[QuickTabsManager] signalReady() called but already ready:', {
-        timestamp: Date.now(),
-        previousReadyTimestamp: this._handlersReadyTimestamp
-      });
-      return;
-    }
-
-    const signalReadyStartTime = Date.now();
-    this._isReady = true;
-    this._handlersReadyTimestamp = signalReadyStartTime;
-    const queuedCount = this._messageQueue.length;
-
-    // v1.6.3.8-v9 - FIX Issue #21: Enhanced logging for init sequence diagnostics
-    console.log('[QuickTabsManager] HANDLERS_READY_BARRIER:', {
-      status: 'passed',
-      prerequisite: 'init() steps 1-5 complete',
-      result: '_isReady set to true',
-      timestamp: signalReadyStartTime,
-      queuedMessageCount: queuedCount,
-      timeSinceInit: this._initStartTimestamp
-        ? signalReadyStartTime - this._initStartTimestamp
-        : null,
-      note: 'Message replay starting (before hydration per Issue #20 fix)'
-    });
-
-    // Replay queued messages
-    if (queuedCount > 0) {
-      console.log('[QuickTabsManager] MESSAGE_REPLAY_START:', {
-        messageCount: queuedCount,
-        timestamp: Date.now(),
-        note: 'Replaying queued messages BEFORE hydration'
-      });
-      this._replayQueuedMessages(messageHandler);
-      console.log('[QuickTabsManager] MESSAGE_REPLAY_END:', {
-        durationMs: Date.now() - signalReadyStartTime,
-        timestamp: Date.now()
-      });
-    } else {
-      console.log('[QuickTabsManager] MESSAGE_QUEUE_EMPTY: No queued messages to replay:', {
-        timestamp: Date.now()
-      });
-    }
-  }
-
-  /**
-   * Replay queued messages after ready signal
-   * v1.6.3.8-v3 - Issue #6: Process queued messages in order
-   * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection to skip messages for existing tabs
-   * @private
-   * @param {Function|null} messageHandler - Handler function or null to emit events
-   */
-  _replayQueuedMessages(messageHandler) {
-    const messagesToReplay = [...this._messageQueue];
-    this._messageQueue = []; // Clear queue before replay
-
-    const replayStartTime = Date.now();
-    let replayedCount = 0;
-    let skippedDuplicates = 0;
-    let skippedConflicts = 0;
-
-    for (const message of messagesToReplay) {
-      const replayResult = this._replaySingleMessage(message, messageHandler);
-      if (replayResult.replayed) {
-        replayedCount++;
-      } else if (replayResult.reason === 'duplicate') {
-        skippedDuplicates++;
-      } else if (replayResult.reason === 'conflict') {
-        skippedConflicts++;
-      }
-    }
-
-    console.log('[QuickTabsManager] INIT_MESSAGE_REPLAY_COMPLETE:', {
-      totalQueued: messagesToReplay.length,
-      replayedCount,
-      skippedDuplicates,
-      skippedConflicts,
-      totalReplayTimeMs: Date.now() - replayStartTime,
-      timestamp: Date.now()
-    });
-  }
-
-  /**
-   * Replay a single queued message with conflict detection
-   * v1.6.3.8-v3 - Issue #6: Extracted to reduce _replayQueuedMessages max-depth
-   * v1.6.3.8-v9 - FIX Issue #19: Add conflict detection for existing tabs
-   * @private
-   * @returns {{replayed: boolean, reason: string}} Result of replay attempt
-   */
-  _replaySingleMessage(message, messageHandler) {
-    const replayDelay = Date.now() - message._queuedAt;
-
-    // v1.6.3.8-v9 - FIX Issue #19: Check for conflicts with existing tabs
-    const conflictCheck = this._checkMessageConflict(message);
-    if (conflictCheck.hasConflict) {
-      if (DEBUG_MESSAGING) {
-        console.log('[QuickTabsManager] INIT_MESSAGE_SKIPPED (conflict):', {
-          type: message.type,
-          tabId: conflictCheck.tabId,
-          reason: conflictCheck.reason,
-          queuedAt: message._queuedAt,
-          timestamp: Date.now()
-        });
-      }
-      return { replayed: false, reason: conflictCheck.reason };
-    }
-
-    // v1.6.3.8-v3 - Issue #6: Log message replay
-    if (DEBUG_MESSAGING) {
-      console.log('[QuickTabsManager] INIT_MESSAGE_REPLAY:', {
-        type: message.type,
-        source: message.source || 'unknown',
-        originalQueuePosition: message._queuePosition,
-        queuedAt: message._queuedAt,
-        replayDelayMs: replayDelay,
-        timestamp: Date.now()
-      });
-    }
-
-    this._processMessageWithHandler(message, messageHandler);
-    return { replayed: true, reason: 'success' };
-  }
-
-  /**
-   * Check if a queued message conflicts with existing state
-   * v1.6.3.8-v9 - FIX Issue #19: Conflict detection for message replay
-   * @private
-   * @param {Object} message - Queued message to check
-   * @returns {{hasConflict: boolean, tabId: string|null, reason: string}}
-   */
-  _checkMessageConflict(message) {
-    // Extract tab ID from message based on message type
-    const tabId = this._extractTabIdFromMessage(message);
-    if (!tabId) {
-      // No tab ID in message, can't detect conflicts - allow replay
-      return { hasConflict: false, tabId: null, reason: 'no-tab-id' };
-    }
-
-    // v1.6.3.8-v9 - FIX Issue #19: Check if tab already exists in local state
-    // If tab exists in this.tabs Map, hydration created it with newer state
-    const existsInTabs = this.tabs.has(tabId);
-    if (existsInTabs) {
-      // v1.6.3.8-v9 - FIX Issue #19: Tab exists - compare message timestamp with hydration
-      // Queued messages are from BEFORE signalReady(), hydration happens AFTER signalReady()
-      // Therefore, hydration state is always newer than queued messages - skip the message
-      return {
-        hasConflict: true,
-        tabId,
-        reason: 'duplicate',
-        note: 'Tab already exists in tabs Map - hydration has newer state'
-      };
-    }
-
-    // v1.6.3.8-v9 - FIX Issue #19: Check for stale destructive operations
-    return this._checkStaleDestructiveMessage(message, tabId, existsInTabs);
-  }
-
-  /**
-   * Check if a message is a stale destructive operation
-   * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce _checkMessageConflict complexity
-   * @private
-   * @param {Object} message - Message to check
-   * @param {string} tabId - Extracted tab ID
-   * @param {boolean} existsInTabs - Whether tab exists in tabs Map
-   * @returns {{hasConflict: boolean, tabId: string, reason: string}}
-   */
-  _checkStaleDestructiveMessage(message, tabId, existsInTabs) {
-    // v1.6.3.8-v9 - FIX Issue #19: Check for contradictory operations
-    // If message is trying to update/delete a tab that doesn't exist, it's stale
-    const messageType = message.type || message.action || '';
-    const isDestructiveMessage = this._isDestructiveMessageType(messageType);
-
-    if (isDestructiveMessage && !existsInTabs) {
-      // Trying to delete a tab that doesn't exist - message is stale
-      return {
-        hasConflict: true,
-        tabId,
-        reason: 'conflict',
-        note: 'Delete message for non-existent tab - message is stale'
-      };
-    }
-
-    return { hasConflict: false, tabId, reason: 'no-conflict' };
-  }
-
-  /**
-   * Check if a message type indicates a destructive operation
-   * v1.6.3.8-v9 - FIX Issue #19: Extracted to reduce complexity
-   * v1.6.3.8-v9 - Code Review Fix: Use RegExp for better performance
-   * @private
-   * @param {string} messageType - Message type to check
-   * @returns {boolean} True if destructive (delete/remove/destroy/close)
-   */
-  _isDestructiveMessageType(messageType) {
-    // v1.6.3.8-v9 - Code Review Fix: Use optional chaining with early return
-    if (!messageType?.includes) {
-      return false;
-    }
-    // v1.6.3.8-v9 - Code Review Fix: Use RegExp for better performance
-    return /delete|remove|destroy|close/i.test(messageType);
-  }
-
-  /**
-   * Extract tab ID from a message object
-   * v1.6.3.8-v9 - FIX Issue #19: Helper for conflict detection
-   * @private
-   * @param {Object} message - Message to extract tab ID from
-   * @returns {string|null} Tab ID or null if not found
-   */
-  _extractTabIdFromMessage(message) {
-    // Try various common locations for tab ID in messages
-    if (message.data?.id) return message.data.id;
-    if (message.data?.tabId) return message.data.tabId;
-    if (message.data?.quickTabId) return message.data.quickTabId;
-    if (message.data?.quickTab?.id) return message.data.quickTab.id;
-    if (message.id) return message.id;
-    if (message.tabId) return message.tabId;
-    if (message.quickTabId) return message.quickTabId;
-    return null;
-  }
-
-  /**
-   * Process a message with the given handler
-   * v1.6.3.8-v3 - Issue #6: Extracted to reduce nesting depth
-   * @private
-   */
-  _processMessageWithHandler(message, messageHandler) {
-    try {
-      if (messageHandler) {
-        messageHandler(message);
-      } else {
-        this.internalEventBus.emit('message:received', message);
-      }
-    } catch (err) {
-      console.error('[QuickTabsManager] Error replaying queued message:', {
-        type: message.type,
-        error: err.message,
-        stack: err.stack
-      });
-    }
-  }
-
-  /**
-   * Check if the handler is ready to process messages
-   * v1.6.3.8-v3 - Issue #6: Used to check if messages should be queued
-   * @returns {boolean} True if ready, false if messages should be queued
-   */
-  isReady() {
-    return this._isReady;
-  }
-
-  /**
-   * Get the current message queue length
-   * v1.6.3.8-v3 - Issue #6: For diagnostics and testing
-   * @returns {number} Number of messages in queue
-   */
-  getQueueLength() {
-    return this._messageQueue.length;
   }
 }
 

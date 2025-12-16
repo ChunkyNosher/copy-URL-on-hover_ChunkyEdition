@@ -1,15 +1,7 @@
 // Background script handles injecting content script into all tabs
 // and manages Quick Tab state persistence across tabs
 // Also handles sidebar panel communication
-// Also handles webRequest/declarativeNetRequest to remove X-Frame-Options for Quick Tabs
-// v1.6.3.8-v8 - Critical Bug Fixes:
-//   - Transaction timeout: Increased from 500ms to 1000ms for Firefox listener delay
-//   - BroadcastChannel: Completely removed - port + storage.onChanged only
-// v1.6.3.8-v6 - Core Architecture Fixes:
-//   - Issue #2: MessageBatcher queue size limits (MAX_QUEUE_SIZE=100) and TTL (MAX_MESSAGE_AGE_MS=30000)
-//   - Issue #4: Storage quota monitoring (every 5 min) with warnings at 50%, 75%, 90% thresholds
-//   - Issue #5: Enhanced correlation ID and timestamp tracing
-// v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
+// Also handles webRequest to remove X-Frame-Options for Quick Tabs
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
@@ -17,25 +9,6 @@ import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.3.8-v12 GAP-1, GAP-10 fix: Import Quick Tabs v2 bootstrap
-import {
-  bootstrapQuickTabs,
-  getActiveArchitecture
-} from './src/background/quick-tabs-v2-integration.js';
-// v1.6.3.9-v2 - Issue #6: Import tab events for container isolation and cleanup
-import { initializeTabEvents, getTabEventsDiagnostics } from './src/background/tab-events.js';
-// v1.6.3.9-v6 - GAP #5: Import centralized constants
-import {
-  WRITE_IGNORE_WINDOW_MS,
-  STORAGE_CHANGE_COOLDOWN_MS
-} from './src/constants.js';
-// v1.6.3.8-v8 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
-// All BC imports and functions removed - Port + storage.onChanged ONLY
-// See Issue #13: Any remaining BC references are comments for historical context
-// v1.6.4.14 - Phase 3A Optimization imports
-import MemoryMonitor from './src/features/quick-tabs/MemoryMonitor.js';
-import PerformanceMetrics from './src/features/quick-tabs/PerformanceMetrics.js';
-import StorageCache from './src/features/quick-tabs/storage/StorageCache.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -105,293 +78,31 @@ const quickTabStates = new Map();
 // v1.6.2.2 - ISSUE #35/#51 FIX: Unified format (no container separation)
 // This provides instant cross-origin sync (< 50ms latency)
 // v1.5.8.13 - Enhanced with eager loading for Issue #35 and #51
-// v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md: Added lastModified field
 const globalQuickTabState = {
-  // v1.6.3.9-v6 - GAP 4: Schema version field per spec
-  version: 2,
   // v1.6.2.2 - Unified format: single tabs array for global visibility
   tabs: [],
-  // v1.6.3.9-v4 - lastModified (per spec), aliased as lastUpdate for backwards compatibility
-  lastModified: 0,
-  lastUpdate: 0, // Deprecated alias - use lastModified
+  lastUpdate: 0,
   // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
-  saveId: null,
-  // v1.6.3.9-v4 - Per spec: Track initialization status in state object
-  isInitialized: false
+  saveId: null
 };
 
-// Flag to track initialization status (external reference for backwards compatibility)
+// Flag to track initialization status
 let isInitialized = false;
-
-// v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for listener entry logging
-const initializationStartTime = Date.now();
 
 // v1.6.1.6 - Memory leak fix: State hash for deduplication
 // Prevents redundant broadcasts when state hasn't actually changed
 let lastBroadcastedStateHash = 0;
 
-// v1.6.3.9-v6 - GAP #5: WRITE_IGNORE_WINDOW_MS now imported from src/constants.js
 // v1.6.1.6 - Memory leak fix: Window for ignoring self-triggered storage events (ms)
-// const WRITE_IGNORE_WINDOW_MS = 100; // MOVED to src/constants.js
+const WRITE_IGNORE_WINDOW_MS = 100;
 
-// v1.6.3.7-v9 - FIX Issue #3: REMOVED IN_PROGRESS_TRANSACTIONS (dead code)
-// The set was declared but NEVER populated anywhere in the codebase
-// Transaction-based dedup is replaced by unified saveId-based deduplication
-// See _multiMethodDeduplication() for the unified dedup strategy
+// v1.6.3.4-v6 - FIX Issue #1: Track in-progress storage transactions
+// This prevents storage.onChanged from processing writes we just triggered
+const IN_PROGRESS_TRANSACTIONS = new Set();
 
-// v1.6.3.9-v6 - GAP #5: STORAGE_CHANGE_COOLDOWN_MS now imported from src/constants.js
-// v1.6.3.7-v9 - FIX Issue #5: Increased cooldown from 50ms to 200ms
-// Cooldown is now applied conditionally only when dedup filter triggers
-// const STORAGE_CHANGE_COOLDOWN_MS = 200; // MOVED to src/constants.js
+// v1.6.3.4-v6 - FIX Issue #5: Cooldown for storage.onChanged processing
+const STORAGE_CHANGE_COOLDOWN_MS = 50;
 let lastStorageChangeProcessed = 0;
-
-// v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering validation
-// Incremented on every storage write to ensure Manager processes in correct order
-let storageWriteSequenceId = 0;
-
-/**
- * Get the next sequence ID for storage writes
- * v1.6.3.7-v9 - FIX Issue #6: Monotonically increasing sequence ID
- * @returns {number} Next sequence ID
- */
-function _getNextStorageSequenceId() {
-  storageWriteSequenceId++;
-  return storageWriteSequenceId;
-}
-
-// ==================== v1.6.3.8-v5 MONOTONIC REVISION VERSIONING ====================
-// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
-// IndexedDB delivers storage.onChanged events in arbitrary order. Revision numbers
-// provide a definitive ordering mechanism that listeners can use to reject stale updates.
-
-/**
- * Global revision counter for storage writes
- * v1.6.3.8-v5 - FIX Issue #1: Monotonic counter that NEVER resets during session
- * Initialized to Date.now() to ensure uniqueness across browser restarts
- */
-let _globalRevisionCounter = Date.now();
-
-/**
- * Get the next revision number for storage writes
- * v1.6.3.8-v5 - FIX Issue #1: Always incrementing, never resets
- * Each state snapshot includes this revision number. Listeners reject any update
- * with revision ≤ their _lastAppliedRevision.
- * @returns {number} Next revision number
- */
-function _getNextRevision() {
-  _globalRevisionCounter++;
-  return _globalRevisionCounter;
-}
-
-/**
- * Get current revision without incrementing (for diagnostic purposes)
- * v1.6.3.8-v5 - FIX Issue #1: Used for logging/debugging
- * @returns {number} Current revision number
- */
-function _getCurrentRevision() {
-  return _globalRevisionCounter;
-}
-
-// ==================== v1.6.3.9-v4 STATE CHECKSUM & PERSISTENCE ====================
-// Per ROBUST-QUICKTABS-ARCHITECTURE.md: Simplified state management with checksum validation
-
-/**
- * Compute a deterministic checksum for Quick Tab state.
- *
- * v1.6.3.9-v4 - Per state-data-structure-spec.md: Checksum for corruption detection
- *
- * Format: v{version}:{tabCount}:{hash}
- * - version: Checksum algorithm version (v1)
- * - tabCount: Number of tabs (quick sanity check)
- * - hash: 8-character hex hash of all tab signatures
- *
- * @param {Array} tabs - Array of Quick Tab objects
- * @returns {string} Checksum string in format 'v1:{count}:{hash}'
- */
-function _computeStateChecksum(tabs) {
-  if (!Array.isArray(tabs) || tabs.length === 0) {
-    return 'v1:0:00000000';
-  }
-
-  // Create deterministic signature of state
-  // Sort to ensure consistent ordering regardless of array order
-  const signatures = tabs.map(_tabToSignature).sort().join('||');
-
-  // Simple hash (not cryptographic, just collision detection)
-  let hash = 0;
-  for (let i = 0; i < signatures.length; i++) {
-    const char = signatures.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-
-  return `v1:${tabs.length}:${Math.abs(hash).toString(16).padStart(8, '0')}`;
-}
-
-/**
- * Get a numeric property from tab with fallbacks.
- * v1.6.3.9-v4 - Helper to reduce _tabToSignature complexity
- * @param {Object} t - Quick Tab object
- * @param {string} primary - Primary property name
- * @param {string} secondary - Secondary property path (e.g., 'position')
- * @param {string} nested - Nested property name under secondary
- * @param {number} defaultVal - Default value if not found
- * @returns {number} Property value
- */
-function _getTabProp(t, primary, secondary, nested, defaultVal) {
-  if (t[primary] != null) return t[primary];
-  if (t[secondary]?.[nested] != null) return t[secondary][nested];
-  return defaultVal;
-}
-
-/**
- * Convert a Quick Tab object to a signature string for checksum.
- * v1.6.3.9-v4 - Extracted to reduce _computeStateChecksum complexity
- * @param {Object} t - Quick Tab object
- * @returns {string} Signature string
- */
-function _tabToSignature(t) {
-  const left = _getTabProp(t, 'left', 'position', 'left', 0);
-  const top = _getTabProp(t, 'top', 'position', 'top', 0);
-  const width = _getTabProp(t, 'width', 'size', 'width', 800);
-  const height = _getTabProp(t, 'height', 'size', 'height', 600);
-  const minimized = t.minimized ? 1 : 0;
-  return `${t.id}|${left}|${top}|${width}|${height}|${minimized}`;
-}
-
-/**
- * Simplified storage persistence function.
- *
- * v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md Section 1: Background Script
- *
- * This function:
- * 1. Writes state to primary storage (storage.local)
- * 2. Writes backup to storage.sync (non-blocking)
- * 3. Validates write via read-back checksum comparison
- * 4. Triggers corruption recovery if validation fails
- *
- * @returns {Promise<boolean>} True if write succeeded and validated
- */
-async function _persistToStorage() {
-  const STORAGE_KEY = 'quick_tabs_state_v2';
-
-  // Increment counters BEFORE write (per spec)
-  storageWriteSequenceId++;
-  _globalRevisionCounter++;
-
-  const stateToWrite = {
-    tabs: globalQuickTabState.tabs,
-    lastModified: Date.now(),
-    writeSequence: storageWriteSequenceId,
-    revision: _globalRevisionCounter,
-    checksum: _computeStateChecksum(globalQuickTabState.tabs),
-    // Preserve existing saveId format for backwards compatibility
-    saveId: `persist-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-    timestamp: Date.now()
-  };
-
-  console.log('[Background] _persistToStorage: Writing state', {
-    tabCount: stateToWrite.tabs.length,
-    revision: stateToWrite.revision,
-    writeSequence: stateToWrite.writeSequence,
-    checksum: stateToWrite.checksum
-  });
-
-  try {
-    // Write to primary storage
-    await browser.storage.local.set({
-      [STORAGE_KEY]: stateToWrite
-    });
-
-    // Write to backup (non-blocking)
-    if (ENABLE_SYNC_STORAGE_BACKUP) {
-      browser.storage.sync
-        .set({
-          [SYNC_BACKUP_KEY]: {
-            tabs: stateToWrite.tabs,
-            lastModified: stateToWrite.lastModified,
-            checksum: stateToWrite.checksum
-          }
-        })
-        .catch(err => {
-          console.warn('[Background] Sync backup failed:', err.message || err);
-        });
-    }
-
-    // Validate write-back
-    const readBack = await browser.storage.local.get(STORAGE_KEY);
-    if (!readBack[STORAGE_KEY] || readBack[STORAGE_KEY].checksum !== stateToWrite.checksum) {
-      console.error('[Background] WRITE VALIDATION FAILED - checksum mismatch', {
-        expected: stateToWrite.checksum,
-        actual: readBack[STORAGE_KEY]?.checksum
-      });
-      _triggerCorruptionRecovery();
-      return false;
-    }
-
-    // Update global state tracking
-    globalQuickTabState.lastUpdate = stateToWrite.lastModified;
-    globalQuickTabState.saveId = stateToWrite.saveId;
-
-    console.log('[Background] _persistToStorage: SUCCESS', {
-      tabCount: stateToWrite.tabs.length,
-      revision: stateToWrite.revision,
-      checksum: stateToWrite.checksum
-    });
-
-    return true;
-  } catch (err) {
-    console.error('[Background] Storage write error:', err.message || err);
-    return false;
-  }
-}
-
-/**
- * Generate a unique Quick Tab ID.
- *
- * v1.6.3.9-v4 - Per state-data-structure-spec.md: ID Generation
- *
- * Format: qt-{timestamp}-{randomId}
- * - qt-: Prefix (always 'qt-')
- * - timestamp: 13-digit millisecond timestamp
- * - randomId: 6 random alphanumeric characters
- *
- * @returns {string} Unique Quick Tab ID
- */
-function _generateQuickTabId() {
-  const timestamp = Date.now();
-  const randomId = Math.random().toString(36).substring(2, 8);
-  return `qt-${timestamp}-${randomId}`;
-}
-
-/**
- * Trigger corruption recovery process.
- *
- * v1.6.3.9-v4 - Simplified wrapper for corruption recovery
- *
- * This is called when write validation fails (checksum mismatch).
- * It logs the issue and triggers async recovery if available.
- */
-function _triggerCorruptionRecovery() {
-  const operationId = _generateStorageOperationId();
-
-  console.error('[Background] _triggerCorruptionRecovery: Corruption detected', {
-    operationId,
-    tabCount: globalQuickTabState.tabs.length,
-    timestamp: Date.now()
-  });
-
-  // Delegate to the existing handleStorageCorruption if available
-  // This is a non-blocking call to avoid blocking the write path
-  setTimeout(() => {
-    handleStorageCorruption(operationId, {
-      tabs: globalQuickTabState.tabs,
-      timestamp: Date.now()
-    }).catch(err => {
-      console.error('[Background] Corruption recovery failed:', err.message || err);
-    });
-  }, 0);
-}
 
 // v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
 // Also track consecutive 0-tab reads to require confirmation before clearing
@@ -400,121 +111,13 @@ let consecutiveZeroTabReads = 0;
 const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
-// ==================== v1.6.3.7-v9 ISSUE #8: INDEXEDDB CORRUPTION DETECTION ====================
-// FIX Issue #8: Firefox bugs 1979997 and 1885297 cause silent IndexedDB corruption
-// Implement storage integrity validation with redundant backup to storage.sync
-
-/**
- * Operation ID counter for storage operation tracing
- * v1.6.3.7-v9 - FIX Issue #8: Unique operation IDs for all storage operations
- */
-let storageOperationIdCounter = 0;
-
-/**
- * Generate unique operation ID for storage operation tracing
- * v1.6.3.7-v9 - FIX Issue #8: All storage operations have unique IDs
- * @returns {string} Unique operation ID
- */
-function _generateStorageOperationId() {
-  storageOperationIdCounter++;
-  return `storage-op-${Date.now()}-${storageOperationIdCounter}`;
-}
-
-/**
- * Maximum retries for storage write validation
- * v1.6.3.7-v9 - FIX Issue #8: Retry on validation failure
- */
-const STORAGE_VALIDATION_MAX_RETRIES = 3;
-
-/**
- * Delay between validation retries (ms)
- * v1.6.3.7-v9 - FIX Issue #8: Give IndexedDB time to sync
- */
-const STORAGE_VALIDATION_RETRY_DELAY_MS = 100;
-
-/**
- * Flag to enable storage.sync redundant backup
- * v1.6.3.7-v9 - FIX Issue #8: Optional recovery mechanism
- */
-const ENABLE_SYNC_STORAGE_BACKUP = true;
-
-/**
- * Key for redundant backup in storage.sync
- * v1.6.3.7-v9 - FIX Issue #8: Uses separate IndexedDB instance
- */
-const SYNC_BACKUP_KEY = 'quick_tabs_backup_v1';
-
-/**
- * Timestamp of last corruption detection (for rate limiting recovery)
- * v1.6.3.7-v9 - FIX Issue #8: Prevent recovery loops
- */
-let lastCorruptionDetectedAt = 0;
-
-/**
- * Minimum time between corruption recovery attempts (ms)
- * v1.6.3.7-v9 - FIX Issue #8: 30 second cooldown
- */
-const CORRUPTION_RECOVERY_COOLDOWN_MS = 30000;
-
-/**
- * Percentage of Quick Tabs to keep during quota-exceeded recovery
- * v1.6.3.7-v13 - Issue #7: Configurable recovery strategy
- * When storage quota is exceeded, keep newest 75% of tabs (clear oldest 25%)
- * v1.6.3.8-v5 - Issue #4: DEPRECATED - Now superseded by RECOVERY_PERCENTAGES array
- * Kept for documentation purposes only
- */
-const _RECOVERY_KEEP_PERCENTAGE = 0.75;
-
-// ==================== v1.6.3.8-v5 ITERATIVE STORAGE RECOVERY (Issue #4) ====================
-// When storage quota is exceeded, progressively reduce data until write succeeds
-/**
- * Iterative recovery percentages for storage quota recovery
- * v1.6.3.8-v5 - Issue #4: Progressive reduction: 75% → 50% → 25%
- * @type {number[]}
- */
-const RECOVERY_PERCENTAGES = [0.75, 0.5, 0.25];
-
-/**
- * Maximum number of recovery attempts before giving up
- * v1.6.3.8-v5 - Issue #4: Prevent infinite loops
- */
-const RECOVERY_MAX_ATTEMPTS = 3;
-
-/**
- * Base delay for exponential backoff between recovery attempts (ms)
- * v1.6.3.8-v5 - Issue #4: Exponential backoff: 500ms, 1000ms, 2000ms
- */
-const RECOVERY_BACKOFF_BASE_MS = 500;
-
-// ==================== v1.6.3.8-v8 STATE CHANGE AGE ENFORCEMENT (Issue #18) ====================
-/**
- * Maximum age for state change events (5 minutes)
- * v1.6.3.8-v8 - Issue #18: Events older than this are rejected as stale
- * Prevents reapplying ancient operations from stuck queues
- */
-const MAX_STATE_CHANGE_AGE_MS = 300000;
-
-// ==================== v1.6.3.8-v8 PORT DIAGNOSTIC DATA ROTATION (Issue #20) ====================
-// v1.6.3.9-v6 - GAP 1: Removed MAX_MESSAGE_COUNT_TRACKED and PORT_IDLE_CLEANUP_MS
-// These constants were part of port infrastructure which has been removed (v1.6.3.8-v12)
-
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
 const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 
 // FIX Issue #3: Multi-method deduplication
-// v1.6.3.7-v13 - Issue #3: Documentation of 50ms window rationale
-// IMPORTANT: The 50ms timestamp window is a SECONDARY safety net, NOT the primary ordering mechanism.
-// Primary ordering uses sequence IDs (added v1.6.3.7-v9) which are assigned at write-time before
-// storage.local.set() call. Firefox does NOT reorder events from same JS execution, so sequence
-// IDs provide a reliable ordering guarantee that timestamps cannot provide.
-// Timestamp-based dedup alone is INSUFFICIENT because:
-//   1. Firefox storage.onChanged events can fire in any order (MDN: "The order listeners are called is not defined")
-//   2. Timestamps assigned at write-time, but events may fire out of order due to IndexedDB batching
-//   3. Two writes 100ms apart may have their onChanged events fire in reverse order
-// See _checkSequenceIdOrdering() for the primary ordering mechanism.
-const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison (SECONDARY fallback)
+const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
 
 // FIX Issue #6: Deletion acknowledgment tracking
 const DELETION_ACK_TIMEOUT_MS = 1000; // 1 second timeout for deletion acknowledgments
@@ -532,180 +135,6 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
-// ==================== v1.6.4.9 LOGGING ENHANCEMENT TRACKING VARIABLES ====================
-// Issue #4: Deduplication Decision Logging
-// v1.6.3.7-v9 - FIX Issue #3: Dedup now tracked via saveId in _multiMethodDeduplication()
-
-// Issue #5: Keepalive Health Monitoring
-let lastKeepaliveSuccessTime = Date.now(); // Track last successful keepalive reset
-let keepaliveSuccessCount = 0; // Counter for rate-limited success logging (every 10th)
-let consecutiveKeepaliveFailures = 0; // Track consecutive failures for warning
-const KEEPALIVE_LOG_EVERY_N = 10; // Log success every Nth keepalive
-const KEEPALIVE_HEALTH_CHECK_INTERVAL_MS = 60000; // Health check every 60 seconds
-const KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS = 90000; // Warn if no success for 90+ seconds
-let keepaliveHealthCheckIntervalId = null; // Health check interval ID
-
-// ==================== v1.6.3.8 KEEPALIVE HEALTH TRACKING ====================
-// Issue #9: Comprehensive keepalive success/failure rate tracking
-// Track successes and failures within 60-second window for rate calculation
-// v1.6.3.8-v6 - Issue #9: Added first keepalive logging flag
-const KEEPALIVE_HEALTH_REPORT_INTERVAL_MS = 60000; // Report every 60 seconds
-let keepaliveHealthReportIntervalId = null;
-let keepaliveHealthStats = {
-  successCount: 0,
-  failureCount: 0,
-  totalDurationMs: 0,
-  fastestMs: Infinity,
-  slowestMs: 0,
-  lastResetTime: Date.now()
-};
-// v1.6.3.8-v6 - Issue #9: Track first keepalive for unconditional logging
-let firstKeepaliveLogged = false;
-
-// ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
-// Issue #5: Feature flag for verbose message routing logs
-// Set to true to enable detailed logging of message routing at all tiers
-const DEBUG_MESSAGING = true;
-
-// ==================== v1.6.3.7-v12 DEBUG DIAGNOSTICS FLAG ====================
-// Issue #6: Separate flag for verbose diagnostic logging (dedup decisions, validation, etc.)
-// Set to true to enable detailed diagnostic logging without affecting DEBUG_MESSAGING
-const DEBUG_DIAGNOSTICS = true;
-
-// ==================== v1.6.3.7-v12 KEEPALIVE SAMPLING ====================
-// Issue #2: Keepalive health monitoring - log first failure + sample 10% thereafter
-// v1.6.3.7-v12 - FIX Code Review: Counter-based sampling instead of random for determinism
-// Track whether first failure has been logged in this session
-let firstKeepaliveFailureLogged = false;
-const KEEPALIVE_FAILURE_LOG_EVERY_N = 10; // Log every Nth failure after first (deterministic)
-
-// ==================== v1.6.3.7-v12 DEDUP STATISTICS ====================
-// Issue #6: Track deduplication statistics
-// v1.6.3.8-v6 - Issue #11: Enhanced dedup stats with tier tracking and longer history
-// v1.6.3.8-v8 - Issue #18: Added staleEventAge tier for max age enforcement
-let dedupStats = {
-  skipped: 0,
-  processed: 0,
-  lastResetTime: Date.now(),
-  // v1.6.3.8-v6 - Issue #11: Track which dedup tier was reached
-  // v1.6.3.8-v8 - Issue #18: Added staleEventAge tier
-  tierCounts: {
-    staleEventAge: 0, // Tier 0: Max event age check (Issue #18)
-    saveId: 0, // Tier 1: saveId match
-    sequenceId: 0, // Tier 2: sequenceId ordering
-    revision: 0, // Tier 3: revision check
-    contentHash: 0 // Tier 4: content hash
-  }
-};
-// v1.6.3.8-v6 - Issue #11: Longer-lived dedup history (last 5 minutes in 60s buckets)
-const DEDUP_HISTORY_BUCKETS = 5;
-const DEDUP_STATS_LOG_INTERVAL_MS = 60000; // Log stats every 60 seconds
-let dedupStatsIntervalId = null;
-const dedupStatsHistory = []; // Array of { timestamp, skipped, processed, tierCounts }
-// v1.6.3.8-v6 - Issue #7: Map dedup method names to tier count keys
-// v1.6.3.8-v8 - Issue #18: Added staleEventAge mapping
-const DEDUP_TIER_MAP = {
-  staleEventAge: 'staleEventAge', // Issue #18: Max event age check
-  'saveId-timestamp': 'saveId',
-  sequenceId: 'sequenceId',
-  revision: 'revision',
-  contentHash: 'contentHash'
-};
-
-// ==================== v1.6.3.7-v3 ALARM CONSTANTS ====================
-// API #4: browser.alarms - Scheduled cleanup tasks
-const ALARM_CLEANUP_ORPHANED = 'cleanup-orphaned';
-const ALARM_SYNC_SESSION_STATE = 'sync-session-state';
-const ALARM_DIAGNOSTIC_SNAPSHOT = 'diagnostic-snapshot';
-// v1.6.3.8 - Issue #2 (arch): Keepalive alarm as backup to interval-based keepalive
-const ALARM_KEEPALIVE_BACKUP = 'keepalive-backup';
-
-// Alarm intervals in minutes
-const ALARM_CLEANUP_INTERVAL_MIN = 60; // Hourly orphan cleanup
-const ALARM_SYNC_INTERVAL_MIN = 5; // Every 5 minutes sync
-const ALARM_DIAGNOSTIC_INTERVAL_MIN = 120; // Every 2 hours diagnostic
-// v1.6.3.8 - Issue #2 (arch): Keepalive alarm every 25 seconds (0.42 min)
-// Firefox idle timer is 30s, so 25s gives us 5s buffer
-const ALARM_KEEPALIVE_INTERVAL_MIN = 25 / 60; // 25 seconds in minutes
-
-// ==================== v1.6.3.8-v6 STORAGE QUOTA MONITORING ====================
-// FIX Issue #4: Monitor storage.local quota usage and log warnings at thresholds
-
-/**
- * Alarm name for storage quota monitoring
- * v1.6.3.8-v6 - Issue #4: Storage quota monitoring alarm
- */
-const ALARM_STORAGE_QUOTA_CHECK = 'storage-quota-check';
-
-/**
- * Interval for storage quota checks (5 minutes - normal)
- * v1.6.3.8-v6 - Issue #4: Every 5 minutes
- */
-const ALARM_STORAGE_QUOTA_INTERVAL_MIN = 5;
-
-/**
- * Interval for storage quota checks (1 minute - fast mode when quota high)
- * v1.6.3.8-v8 - Issue #4: Adaptive monitoring - switch to 1 minute when quota > 50%
- */
-const ALARM_STORAGE_QUOTA_INTERVAL_FAST_MIN = 1;
-
-/**
- * Threshold to switch to fast monitoring (50%)
- * v1.6.3.8-v8 - Issue #4: Adaptive monitoring threshold
- */
-const STORAGE_QUOTA_HIGH_USAGE_THRESHOLD = 0.5;
-
-/**
- * Threshold to switch back to normal monitoring (40%)
- * v1.6.3.8-v8 - Issue #4: Hysteresis to prevent oscillation
- */
-const STORAGE_QUOTA_LOW_USAGE_THRESHOLD = 0.4;
-
-/**
- * Track current monitoring mode for adaptive frequency
- * v1.6.3.8-v8 - Issue #4: 'normal' (5 min) or 'fast' (1 min)
- */
-let _storageQuotaMonitoringMode = 'normal';
-
-/**
- * Storage quota warning thresholds (percentage of 10MB limit)
- * v1.6.3.8-v6 - Issue #4: Log warnings at 50%, 75%, 90%
- */
-const STORAGE_QUOTA_WARNING_THRESHOLDS = [
-  { percent: 0.5, level: 'INFO', message: '50% storage quota used' },
-  { percent: 0.75, level: 'WARN', message: '75% storage quota used - consider cleanup' },
-  { percent: 0.9, level: 'CRITICAL', message: '90% storage quota used - cleanup required' }
-];
-
-/**
- * Firefox storage.local quota limit (10MB for MV2 extensions)
- * v1.6.3.8-v6 - Issue #4: Used for percentage calculations
- */
-const STORAGE_LOCAL_QUOTA_BYTES = 10 * 1024 * 1024; // 10MB
-
-/**
- * Track last triggered threshold to avoid duplicate logs
- * v1.6.3.8-v6 - Issue #4: Prevent repeated warnings at same level
- */
-let _lastStorageQuotaThresholdLevel = null;
-
-/**
- * Storage quota usage snapshot for diagnostic reports
- * v1.6.3.8-v6 - Issue #4: Included in diagnostic snapshots
- * v1.6.3.8-v8 - Issue #17: Added aggregated storage tracking
- */
-let _lastStorageQuotaSnapshot = {
-  bytesInUse: 0,
-  percentUsed: 0,
-  lastChecked: 0,
-  thresholdLevel: null,
-  // v1.6.3.8-v8 - Issue #17: Per-area usage tracking
-  localBytes: 0,
-  syncBytes: 0,
-  sessionBytes: 0,
-  aggregatedBytes: 0
-};
-
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
 // Use runtime.sendMessage periodically as it DOES reset the idle timer
@@ -714,207 +143,51 @@ let keepaliveIntervalId = null;
 /**
  * Start keepalive interval to reset Firefox's idle timer
  * v1.6.3.7 - FIX Issue #1: Use browser.runtime.sendMessage to reset idle timer
- * v1.6.4.9 - Issue #5: Added health monitoring with periodic health checks
- * v1.6.3.8 - Issue #9: Added comprehensive health reporting every 60 seconds
  */
 function startKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
   }
-
-  // v1.6.4.9 - Issue #5: Initialize health tracking
-  lastKeepaliveSuccessTime = Date.now();
-  consecutiveKeepaliveFailures = 0;
-  keepaliveSuccessCount = 0;
-
-  // v1.6.3.8 - Issue #9: Reset health stats
-  keepaliveHealthStats = {
-    successCount: 0,
-    failureCount: 0,
-    totalDurationMs: 0,
-    fastestMs: Infinity,
-    slowestMs: 0,
-    lastResetTime: Date.now()
-  };
-
+  
   // Immediate ping to register activity
   triggerIdleReset();
-
+  
   keepaliveIntervalId = setInterval(() => {
     triggerIdleReset();
   }, KEEPALIVE_INTERVAL_MS);
-
-  // v1.6.4.9 - Issue #5: Start health check interval
-  _startKeepaliveHealthCheck();
-
-  // v1.6.3.8 - Issue #9: Start health report interval
-  _startKeepaliveHealthReport();
-
+  
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
-}
-
-/**
- * Start periodic health check for keepalive mechanism
- * v1.6.4.9 - Issue #5: Check if keepalive is functioning properly
- * @private
- */
-function _startKeepaliveHealthCheck() {
-  if (keepaliveHealthCheckIntervalId) {
-    clearInterval(keepaliveHealthCheckIntervalId);
-  }
-
-  keepaliveHealthCheckIntervalId = setInterval(() => {
-    const timeSinceLastSuccess = Date.now() - lastKeepaliveSuccessTime;
-    if (timeSinceLastSuccess > KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS) {
-      console.warn('[Background] KEEPALIVE_HEALTH_WARNING:', {
-        timeSinceLastSuccessMs: timeSinceLastSuccess,
-        lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString(),
-        consecutiveFailures: consecutiveKeepaliveFailures,
-        threshold: KEEPALIVE_HEALTH_WARNING_THRESHOLD_MS
-      });
-    }
-  }, KEEPALIVE_HEALTH_CHECK_INTERVAL_MS);
 }
 
 /**
  * Trigger idle timer reset using tabs.query and sendMessage
  * v1.6.3.7 - FIX Issue #1: Firefox treats tabs.query and runtime.sendMessage as activity
- * v1.6.4.9 - Issue #5: Added health tracking and rate-limited success logging
- * v1.6.3.7-v12 - Issue #2: Log first failure + sample 10% thereafter instead of rate-limiting
- * v1.6.3.7-v12 - FIX ESLint: Extracted helpers to reduce complexity (cc=10 → cc=5)
  */
 async function triggerIdleReset() {
-  const attemptStartTime = Date.now();
-  const context = { tabsQuerySuccess: false, sendMessageSuccess: false, tabCount: 0 };
-
   try {
-    await _performKeepaliveQueries(context);
-    _handleKeepaliveSuccess(context, attemptStartTime);
+    // Method 1: browser.tabs.query triggers event handlers which reset idle timer
+    const tabs = await browser.tabs.query({});
+    
+    // Method 2: Self-send a message (this resets the idle timer)
+    // Note: This will be caught by our own listener but that's fine
+    try {
+      await browser.runtime.sendMessage({ type: 'KEEPALIVE_PING', timestamp: Date.now() });
+    } catch (_err) {
+      // Expected to fail if no listener, but the message send itself resets the timer
+    }
+    
+    console.log('[Background] KEEPALIVE: idle timer reset via tabs.query + sendMessage', {
+      tabCount: tabs.length,
+      timestamp: Date.now()
+    });
   } catch (err) {
-    _handleKeepaliveFailure(err, context.tabsQuerySuccess, attemptStartTime);
-  }
-}
-
-/**
- * Perform keepalive queries (tabs.query and runtime.sendMessage)
- * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
- * @private
- * @param {Object} context - Context object to update with results
- */
-async function _performKeepaliveQueries(context) {
-  // Method 1: browser.tabs.query triggers event handlers which reset idle timer
-  const tabs = await browser.tabs.query({});
-  context.tabsQuerySuccess = true;
-  context.tabCount = tabs.length;
-
-  // Method 2: Self-send a message (this resets the idle timer)
-  try {
-    await browser.runtime.sendMessage({ type: 'KEEPALIVE_PING', timestamp: Date.now() });
-    context.sendMessageSuccess = true;
-  } catch (_err) {
-    // Expected to fail if no listener, but the message send itself resets the timer
-    context.sendMessageSuccess = false;
-  }
-}
-
-/**
- * Handle successful keepalive reset
- * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
- * v1.6.3.8 - Issue #9: Track comprehensive health stats for rate calculation
- * v1.6.3.8-v6 - Issue #9: Log first keepalive unconditionally
- * @private
- * @param {Object} context - Keepalive context with results
- * @param {number} attemptStartTime - When the attempt started
- */
-function _handleKeepaliveSuccess(context, attemptStartTime) {
-  const durationMs = Date.now() - attemptStartTime;
-
-  lastKeepaliveSuccessTime = Date.now();
-  consecutiveKeepaliveFailures = 0;
-  firstKeepaliveFailureLogged = false;
-  keepaliveSuccessCount++;
-
-  // v1.6.3.8 - Issue #9: Update health stats for rate tracking
-  keepaliveHealthStats.successCount++;
-  keepaliveHealthStats.totalDurationMs += durationMs;
-  keepaliveHealthStats.fastestMs = Math.min(keepaliveHealthStats.fastestMs, durationMs);
-  keepaliveHealthStats.slowestMs = Math.max(keepaliveHealthStats.slowestMs, durationMs);
-
-  // v1.6.3.8-v6 - Issue #9: Log first keepalive unconditionally
-  const isFirst = !firstKeepaliveLogged;
-  if (isFirst) {
-    firstKeepaliveLogged = true;
-  }
-
-  // Log first success unconditionally, then rate-limited (every 10th success)
-  if (isFirst || keepaliveSuccessCount % KEEPALIVE_LOG_EVERY_N === 0) {
-    console.log('[Background] KEEPALIVE_RESET_SUCCESS:', {
-      isFirstKeepalive: isFirst,
-      tabCount: context.tabCount,
-      successCount: keepaliveSuccessCount,
-      failureCount: consecutiveKeepaliveFailures,
-      tabsQuerySuccess: context.tabsQuerySuccess,
-      sendMessageSuccess: context.sendMessageSuccess,
-      durationMs,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Handle keepalive reset failure
- * v1.6.3.7-v12 - FIX ESLint: Extracted to reduce triggerIdleReset complexity
- * v1.6.3.8 - Issue #9: Track failures for rate calculation
- * @private
- * @param {Error} err - Error that occurred
- * @param {boolean} tabsQuerySuccess - Whether tabs.query succeeded
- * @param {number} attemptStartTime - When the attempt started
- */
-function _handleKeepaliveFailure(err, tabsQuerySuccess, attemptStartTime) {
-  consecutiveKeepaliveFailures++;
-
-  // v1.6.3.8 - Issue #9: Update health stats for rate tracking
-  keepaliveHealthStats.failureCount++;
-
-  // Issue #2: Always log first failure, then sample every Nth thereafter (deterministic)
-  // v1.6.3.7-v12 - FIX Code Review: Counter-based sampling for predictable, testable behavior
-  const shouldLogFailure =
-    !firstKeepaliveFailureLogged ||
-    consecutiveKeepaliveFailures % KEEPALIVE_FAILURE_LOG_EVERY_N === 0;
-
-  if (shouldLogFailure) {
-    console.error('[Background] KEEPALIVE_RESET_FAILED:', {
-      error: err.message,
-      failedApi: tabsQuerySuccess ? 'runtime.sendMessage' : 'tabs.query',
-      tabsQuerySuccess,
-      consecutiveFailures: consecutiveKeepaliveFailures,
-      lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString(),
-      timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
-      durationMs: Date.now() - attemptStartTime,
-      isFirstFailure: !firstKeepaliveFailureLogged,
-      samplingStrategy: firstKeepaliveFailureLogged
-        ? `every ${KEEPALIVE_FAILURE_LOG_EVERY_N}th`
-        : 'first',
-      timestamp: Date.now()
-    });
-    firstKeepaliveFailureLogged = true;
-  }
-
-  // Warn if > 2 consecutive failures
-  if (consecutiveKeepaliveFailures > 2) {
-    console.warn('[Background] KEEPALIVE_CONSECUTIVE_FAILURES_WARNING:', {
-      failureCount: consecutiveKeepaliveFailures,
-      timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
-      healthStatus: consecutiveKeepaliveFailures > 5 ? 'critical' : 'degraded'
-    });
+    console.warn('[Background] KEEPALIVE: trigger failed:', err.message);
   }
 }
 
 /**
  * Stop keepalive interval
  * v1.6.3.7 - FIX Issue #1: Cleanup function
- * v1.6.4.9 - Issue #5: Also stop health check interval
- * v1.6.3.8 - Issue #9: Also stop health report interval
  */
 function _stopKeepalive() {
   if (keepaliveIntervalId) {
@@ -922,2721 +195,16 @@ function _stopKeepalive() {
     keepaliveIntervalId = null;
     console.log('[Background] v1.6.3.7 Keepalive stopped');
   }
-
-  // v1.6.4.9 - Issue #5: Stop health check interval
-  if (keepaliveHealthCheckIntervalId) {
-    clearInterval(keepaliveHealthCheckIntervalId);
-    keepaliveHealthCheckIntervalId = null;
-  }
-
-  // v1.6.3.8 - Issue #9: Stop health report interval
-  if (keepaliveHealthReportIntervalId) {
-    clearInterval(keepaliveHealthReportIntervalId);
-    keepaliveHealthReportIntervalId = null;
-  }
-}
-
-/**
- * Start periodic keepalive health reporting
- * v1.6.3.8 - Issue #9: Log comprehensive success/failure rates every 60 seconds
- * @private
- */
-function _startKeepaliveHealthReport() {
-  if (keepaliveHealthReportIntervalId) {
-    clearInterval(keepaliveHealthReportIntervalId);
-  }
-
-  keepaliveHealthReportIntervalId = setInterval(() => {
-    _logKeepaliveHealthReport();
-  }, KEEPALIVE_HEALTH_REPORT_INTERVAL_MS);
-}
-
-/**
- * Log keepalive health report with success/failure rates and timing metrics
- * v1.6.3.8 - Issue #9: Comprehensive health metrics
- * @private
- */
-function _logKeepaliveHealthReport() {
-  const total = keepaliveHealthStats.successCount + keepaliveHealthStats.failureCount;
-
-  // Skip if no attempts in this window
-  if (total === 0) {
-    return;
-  }
-
-  const successRate = (keepaliveHealthStats.successCount / total) * 100;
-  const averageMs =
-    keepaliveHealthStats.successCount > 0
-      ? keepaliveHealthStats.totalDurationMs / keepaliveHealthStats.successCount
-      : 0;
-
-  // Determine health status based on success rate
-  let healthStatus = 'excellent';
-  if (successRate < 90) {
-    healthStatus = 'degraded';
-  }
-  if (successRate < 70) {
-    healthStatus = 'poor';
-  }
-  if (successRate < 50) {
-    healthStatus = 'critical';
-  }
-
-  // Log health report
-  console.log('[Background] KEEPALIVE_HEALTH_REPORT:', {
-    window: `last ${KEEPALIVE_HEALTH_REPORT_INTERVAL_MS / 1000}s`,
-    successes: keepaliveHealthStats.successCount,
-    failures: keepaliveHealthStats.failureCount,
-    successRate: `${successRate.toFixed(1)}%`,
-    healthStatus,
-    averageMethod: 'tabs.query + runtime.sendMessage',
-    timing: {
-      fastestMs: keepaliveHealthStats.fastestMs === Infinity ? 0 : keepaliveHealthStats.fastestMs,
-      slowestMs: keepaliveHealthStats.slowestMs,
-      averageMs: averageMs.toFixed(1)
-    },
-    timestamp: Date.now()
-  });
-
-  // Log warning if success rate drops below 90%
-  if (successRate < 90) {
-    console.warn('[Background] KEEPALIVE_HEALTH_WARNING:', {
-      successRate: `${successRate.toFixed(1)}%`,
-      recommendation: 'Inspect Firefox idle state or API availability',
-      consecutiveFailures: consecutiveKeepaliveFailures,
-      timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime
-    });
-  }
-
-  // Reset stats for next window
-  keepaliveHealthStats = {
-    successCount: 0,
-    failureCount: 0,
-    totalDurationMs: 0,
-    fastestMs: Infinity,
-    slowestMs: 0,
-    lastResetTime: Date.now()
-  };
-}
-
-/**
- * Get keepalive health summary for diagnostic snapshot
- * v1.6.3.8 - Issue #9: Include in diagnostic snapshot
- * @returns {string} Health summary string
- */
-function _getKeepaliveHealthSummary() {
-  const total = keepaliveHealthStats.successCount + keepaliveHealthStats.failureCount;
-  if (total === 0) {
-    return 'no data';
-  }
-
-  const successRate = (keepaliveHealthStats.successCount / total) * 100;
-  let status = 'excellent';
-  if (successRate < 90) status = 'degraded';
-  if (successRate < 70) status = 'poor';
-  if (successRate < 50) status = 'critical';
-
-  return `${successRate.toFixed(0)}% (${status})`;
 }
 
 // Start keepalive on script load
 startKeepalive();
 
-// ==================== v1.6.3.8-v8 BROADCASTCHANNEL REMOVED ====================
-// ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED per architecture-redesign.md
-// v1.6.3.8-v8 - Issue #13: BroadcastChannel removal complete
-// All BC code removed - Port + storage.onChanged ONLY
-// The new architecture uses:
-// - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
-// - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
-
-// ==================== v1.6.3.7-v3 ALARMS MECHANISM ====================
-// API #4: browser.alarms - Scheduled cleanup tasks
-
 /**
- * Initialize browser.alarms for scheduled cleanup tasks
- * v1.6.3.7-v3 - API #4: Create alarms on extension startup
- * v1.6.3.8 - Issue #2 (arch): Add keepalive backup alarm
- */
-async function initializeAlarms() {
-  console.log('[Background] v1.6.3.7-v3 Initializing browser.alarms...');
-
-  try {
-    // v1.6.3.8 - Issue #2 (arch): Create keepalive-backup alarm - most reliable keepalive method
-    // This alarm fires every 25 seconds and resets Firefox's idle timer
-    // Even if setInterval-based keepalive fails, alarms will keep background alive
-    await browser.alarms.create(ALARM_KEEPALIVE_BACKUP, {
-      delayInMinutes: ALARM_KEEPALIVE_INTERVAL_MIN, // First run after 25 seconds
-      periodInMinutes: ALARM_KEEPALIVE_INTERVAL_MIN
-    });
-    console.log(
-      '[Background] Created alarm:',
-      ALARM_KEEPALIVE_BACKUP,
-      '(every',
-      Math.round(ALARM_KEEPALIVE_INTERVAL_MIN * 60),
-      'sec) - backup keepalive'
-    );
-
-    // Create cleanup-orphaned alarm - runs hourly
-    await browser.alarms.create(ALARM_CLEANUP_ORPHANED, {
-      delayInMinutes: 30, // First run after 30 minutes
-      periodInMinutes: ALARM_CLEANUP_INTERVAL_MIN
-    });
-    console.log(
-      '[Background] Created alarm:',
-      ALARM_CLEANUP_ORPHANED,
-      '(every',
-      ALARM_CLEANUP_INTERVAL_MIN,
-      'min)'
-    );
-
-    // Create sync-session-state alarm - runs every 5 minutes
-    await browser.alarms.create(ALARM_SYNC_SESSION_STATE, {
-      delayInMinutes: 1, // First run after 1 minute
-      periodInMinutes: ALARM_SYNC_INTERVAL_MIN
-    });
-    console.log(
-      '[Background] Created alarm:',
-      ALARM_SYNC_SESSION_STATE,
-      '(every',
-      ALARM_SYNC_INTERVAL_MIN,
-      'min)'
-    );
-
-    // Create diagnostic-snapshot alarm - runs every 2 hours
-    await browser.alarms.create(ALARM_DIAGNOSTIC_SNAPSHOT, {
-      delayInMinutes: 60, // First run after 1 hour
-      periodInMinutes: ALARM_DIAGNOSTIC_INTERVAL_MIN
-    });
-    console.log(
-      '[Background] Created alarm:',
-      ALARM_DIAGNOSTIC_SNAPSHOT,
-      '(every',
-      ALARM_DIAGNOSTIC_INTERVAL_MIN,
-      'min)'
-    );
-
-    // v1.6.3.8-v6 - Issue #4: Create storage-quota-check alarm - runs every 5 minutes
-    await browser.alarms.create(ALARM_STORAGE_QUOTA_CHECK, {
-      delayInMinutes: 1, // First run after 1 minute
-      periodInMinutes: ALARM_STORAGE_QUOTA_INTERVAL_MIN
-    });
-    console.log(
-      '[Background] Created alarm:',
-      ALARM_STORAGE_QUOTA_CHECK,
-      '(every',
-      ALARM_STORAGE_QUOTA_INTERVAL_MIN,
-      'min) - storage quota monitoring'
-    );
-
-    console.log('[Background] v1.6.3.7-v3 All alarms initialized successfully');
-  } catch (err) {
-    console.error('[Background] Failed to initialize alarms:', err.message);
-  }
-}
-
-/**
- * Handle alarm events
- * v1.6.3.7-v3 - API #4: Route alarms to appropriate handlers
- * v1.6.3.8 - Issue #2 (arch): Add keepalive backup alarm handler
- * v1.6.3.8-v5 - FIX Issue #6: Add initialization guards to prevent race conditions
- * @param {Object} alarm - Alarm info object
- */
-async function handleAlarm(alarm) {
-  // v1.6.3.8-v5 - FIX Issue #6: Keepalive alarm can run without full init
-  // but must skip state-dependent operations until initialized
-  if (alarm.name === ALARM_KEEPALIVE_BACKUP) {
-    // Simply receiving the alarm event resets Firefox's idle timer
-    // Also trigger our idle reset for consistency
-    await _handleKeepaliveAlarm();
-    return;
-  }
-
-  // v1.6.3.8-v5 - FIX Issue #6: All non-keepalive alarms require initialization
-  // These alarms access globalQuickTabState and perform storage operations
-  if (!isInitialized) {
-    console.warn('[Background] v1.6.3.8-v5 ALARM_SKIPPED_NOT_INITIALIZED:', {
-      alarmName: alarm.name,
-      timestamp: Date.now(),
-      isInitialized: false
-    });
-    return;
-  }
-
-  console.log('[Background] ALARM_FIRED:', alarm.name, 'at', new Date().toISOString());
-
-  switch (alarm.name) {
-    case ALARM_CLEANUP_ORPHANED:
-      await cleanupOrphanedQuickTabs();
-      break;
-
-    case ALARM_SYNC_SESSION_STATE:
-      await syncSessionState();
-      break;
-
-    case ALARM_DIAGNOSTIC_SNAPSHOT:
-      logDiagnosticSnapshot();
-      break;
-
-    // v1.6.3.8-v6 - Issue #4: Storage quota monitoring
-    case ALARM_STORAGE_QUOTA_CHECK:
-      await checkStorageQuota();
-      break;
-
-    default:
-      console.warn('[Background] Unknown alarm:', alarm.name);
-  }
-}
-
-/**
- * Handle keepalive alarm event
- * v1.6.3.8 - Issue #2 (arch): Backup keepalive mechanism via browser.alarms
- * v1.6.3.8-v5 - FIX Issue #6: Skip sidebar pings during initialization
- * This is the most reliable way to keep MV2 background scripts alive in Firefox
- * @private
- */
-async function _handleKeepaliveAlarm() {
-  // Receiving alarm callback already resets idle timer, but also trigger our reset
-  try {
-    // Perform a lightweight API call to ensure activity is registered
-    await browser.tabs.query({ active: true, currentWindow: true });
-
-    // v1.6.3.9-v6 - GAP 1: Port infrastructure removed - no sidebar pings needed
-    // Sidebar now uses runtime.sendMessage and storage.onChanged for communication
-
-    // Update keepalive health stats (success via alarm)
-    const now = Date.now();
-    lastKeepaliveSuccessTime = now;
-    keepaliveHealthStats.successCount++;
-
-    // Rate-limited logging (every 12th alarm = ~5 minutes)
-    if (keepaliveSuccessCount % 12 === 0) {
-      console.log('[Background] KEEPALIVE_ALARM_SUCCESS:', {
-        alarmCount: keepaliveSuccessCount,
-        timestamp: now,
-        isInitialized
-      });
-    }
-    keepaliveSuccessCount++;
-  } catch (err) {
-    console.error('[Background] KEEPALIVE_ALARM_FAILED:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-    keepaliveHealthStats.failureCount++;
-  }
-}
-
-// v1.6.3.9-v6 - GAP 1: Removed _sendAlivePingToPort and _sendAlivePingToSidebars
-// Port infrastructure was removed in v1.6.3.8-v12. These no-op functions are now deleted.
-// Sidebar communicates via runtime.sendMessage and storage.onChanged.
-
-/**
- * Cleanup orphaned Quick Tabs whose origin tabs no longer exist.
- *
- * v1.6.3.7-v3 - API #4: Hourly orphan cleanup via browser.alarms
- * v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md: Remove orphans and use _persistToStorage
- */
-async function cleanupOrphanedQuickTabs() {
-  console.info('[Background] ORPHAN_CLEANUP_START tabCount=' + globalQuickTabState.tabs.length);
-
-  const initGuard = checkInitializationGuard('cleanupOrphanedQuickTabs');
-  if (!initGuard.initialized) {
-    console.warn('[Background] Skipping cleanup - not initialized');
-    return;
-  }
-
-  try {
-    // Get all open browser tabs
-    const allTabs = await browser.tabs.query({});
-    const validTabIds = new Set(allTabs.map(t => t.id));
-
-    // Find orphaned Quick Tabs (their origin tab no longer exists)
-    const orphaned = globalQuickTabState.tabs.filter(qt => !validTabIds.has(qt.originTabId));
-
-    if (orphaned.length === 0) {
-      console.log('[Background] No orphaned Quick Tabs found');
-      return;
-    }
-
-    console.log(
-      '[Background] Found',
-      orphaned.length,
-      'orphaned Quick Tabs:',
-      orphaned.map(t => ({ id: t.id, originTabId: t.originTabId }))
-    );
-
-    // v1.6.3.9-v4 - Remove orphans from state (per spec - was marking before)
-    globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt =>
-      validTabIds.has(qt.originTabId)
-    );
-    globalQuickTabState.lastModified = Date.now();
-    globalQuickTabState.lastUpdate = Date.now(); // Backwards compatibility
-
-    // Persist using new simplified function
-    await _persistToStorage();
-
-    console.info('[Background] ORPHAN_CLEANUP_COMPLETE removed=' + orphaned.length);
-  } catch (err) {
-    console.error('[Background] ORPHAN_CLEANUP_ERROR error=' + err.message);
-  }
-}
-
-/**
- * Sync session state between storage layers
- * v1.6.3.7-v3 - API #4: Periodic session state validation
- */
-async function syncSessionState() {
-  console.log('[Background] Running session state sync...');
-
-  const initGuard = checkInitializationGuard('syncSessionState');
-  if (!initGuard.initialized) {
-    console.warn('[Background] Skipping sync - not initialized');
-    return;
-  }
-
-  // Early exit if session storage not available
-  if (typeof browser.storage.session === 'undefined') {
-    console.log('[Background] Session storage not available, skipping sync');
-    return;
-  }
-
-  try {
-    await _performSessionSync();
-  } catch (err) {
-    console.error('[Background] Session sync failed:', err.message);
-  }
-}
-
-/**
- * Extract tabs array from storage result
- * v1.6.4.14 - FIX Complexity: Extracted to reduce _performSessionSync cc
- * @private
- * @param {Object} result - Storage get result
- * @param {string} key - Storage key
- * @returns {Array} Tabs array or empty array
- */
-function _extractTabsFromResult(result, key) {
-  return result?.[key]?.tabs || [];
-}
-
-/**
- * Perform the actual session sync operation
- * v1.6.3.7-v3 - API #4: Extracted to reduce max-depth in syncSessionState
- * v1.6.4.14 - FIX Complexity: Extracted _extractTabsFromResult (cc=10 → cc=4)
- * @private
- */
-async function _performSessionSync() {
-  const sessionResult = await browser.storage.session.get('quick_tabs_session');
-  const localResult = await browser.storage.local.get('quick_tabs_state_v2');
-
-  const sessionTabs = _extractTabsFromResult(sessionResult, 'quick_tabs_session');
-  const localTabs = _extractTabsFromResult(localResult, 'quick_tabs_state_v2');
-
-  console.log('[Background] Session sync check:', {
-    sessionTabCount: sessionTabs.length,
-    localTabCount: localTabs.length,
-    cacheTabCount: globalQuickTabState.tabs?.length || 0
-  });
-
-  // If session storage has fewer tabs than local, re-sync
-  if (sessionTabs.length < localTabs.length) {
-    console.log('[Background] Session storage out of sync - re-syncing from local');
-    await browser.storage.session.set({
-      quick_tabs_session: {
-        tabs: localTabs,
-        timestamp: Date.now()
-      }
-    });
-  }
-}
-
-/**
- * Check storage.local quota usage and log warnings at thresholds
- * v1.6.3.8-v6 - Issue #4: Storage quota monitoring
- * v1.6.3.8-v8 - Issue #4: Adaptive monitoring frequency
- * v1.6.3.8-v8 - Issue #17: Aggregated storage usage tracking
- * Logs warnings at 50%, 75%, 90% of 10MB limit
- */
-async function checkStorageQuota() {
-  console.log('[Background] v1.6.3.8-v8 Running storage quota check...');
-
-  try {
-    // v1.6.3.8-v8 - Issue #17: Get aggregated usage across all storage areas
-    const aggregatedUsage = await _getAggregatedStorageUsage();
-    const bytesInUse = aggregatedUsage.localBytes;
-    const percentUsed = aggregatedUsage.aggregatedBytes / STORAGE_LOCAL_QUOTA_BYTES;
-
-    _updateStorageQuotaSnapshot(bytesInUse, percentUsed, aggregatedUsage);
-    _checkAndLogThresholdWarning(bytesInUse, percentUsed);
-    _checkThresholdRecovery(bytesInUse, percentUsed);
-    _logStorageQuotaStatus(bytesInUse, percentUsed, aggregatedUsage);
-
-    // v1.6.3.8-v8 - Issue #4: Adjust monitoring frequency based on usage
-    await _adjustStorageQuotaMonitoringFrequency(percentUsed);
-  } catch (err) {
-    console.error('[Background] STORAGE_QUOTA_CHECK_FAILED:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Get storage bytes in use
- * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
- * @private
- * @returns {Promise<number>} Bytes in use
- */
-async function _getStorageBytesInUse() {
-  if (typeof browser.storage.local.getBytesInUse === 'function') {
-    return browser.storage.local.getBytesInUse(null);
-  }
-  return _estimateStorageUsage();
-}
-
-/**
- * Update storage quota snapshot
- * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
- * v1.6.3.8-v8 - Issue #17: Include aggregated usage details
- * @private
- * @param {number} bytesInUse - Local storage bytes
- * @param {number} percentUsed - Usage percentage (0-1)
- * @param {Object} [aggregatedUsage] - Per-area usage breakdown
- */
-function _updateStorageQuotaSnapshot(bytesInUse, percentUsed, aggregatedUsage = null) {
-  _lastStorageQuotaSnapshot = {
-    bytesInUse,
-    percentUsed,
-    lastChecked: Date.now(),
-    thresholdLevel: null,
-    // v1.6.3.8-v8 - Issue #17: Per-area usage tracking
-    localBytes: aggregatedUsage?.localBytes || bytesInUse,
-    syncBytes: aggregatedUsage?.syncBytes || 0,
-    sessionBytes: aggregatedUsage?.sessionBytes || 0,
-    aggregatedBytes: aggregatedUsage?.aggregatedBytes || bytesInUse
-  };
-}
-
-/**
- * Check and log threshold warning if needed
- * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
- * @private
- */
-function _checkAndLogThresholdWarning(bytesInUse, percentUsed) {
-  for (let i = STORAGE_QUOTA_WARNING_THRESHOLDS.length - 1; i >= 0; i--) {
-    const threshold = STORAGE_QUOTA_WARNING_THRESHOLDS[i];
-    if (percentUsed < threshold.percent) continue;
-
-    _lastStorageQuotaSnapshot.thresholdLevel = threshold.level;
-    if (_lastStorageQuotaThresholdLevel !== threshold.level) {
-      _logStorageQuotaWarning(bytesInUse, percentUsed, threshold);
-      _lastStorageQuotaThresholdLevel = threshold.level;
-    }
-    break;
-  }
-}
-
-/**
- * Check and log threshold recovery if needed
- * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
- * @private
- */
-function _checkThresholdRecovery(bytesInUse, percentUsed) {
-  if (percentUsed >= STORAGE_QUOTA_WARNING_THRESHOLDS[0].percent) return;
-  if (_lastStorageQuotaThresholdLevel === null) return;
-
-  console.log('[Background] STORAGE_QUOTA_RECOVERED:', {
-    bytesInUse,
-    percentUsed: (percentUsed * 100).toFixed(1) + '%',
-    previousLevel: _lastStorageQuotaThresholdLevel,
-    timestamp: Date.now()
-  });
-  _lastStorageQuotaThresholdLevel = null;
-}
-
-/**
- * Log storage quota status
- * v1.6.3.8-v6 - Issue #4: Extracted to reduce nesting
- * v1.6.3.8-v8 - Issue #17: Include per-area usage breakdown
- * @private
- * @param {number} bytesInUse - Local storage bytes
- * @param {number} percentUsed - Usage percentage (0-1)
- * @param {Object} [aggregatedUsage] - Per-area usage breakdown
- */
-function _logStorageQuotaStatus(bytesInUse, percentUsed, aggregatedUsage = null) {
-  console.log('[Background] STORAGE_QUOTA_STATUS:', {
-    bytesInUse,
-    bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
-    percentUsed: (percentUsed * 100).toFixed(1) + '%',
-    quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
-    thresholdLevel: _lastStorageQuotaSnapshot.thresholdLevel || 'OK',
-    // v1.6.3.8-v8 - Issue #17: Per-area usage breakdown
-    perAreaUsage: aggregatedUsage
-      ? {
-          localMB: (aggregatedUsage.localBytes / (1024 * 1024)).toFixed(3) + 'MB',
-          syncMB: (aggregatedUsage.syncBytes / (1024 * 1024)).toFixed(3) + 'MB',
-          sessionMB: (aggregatedUsage.sessionBytes / (1024 * 1024)).toFixed(3) + 'MB',
-          aggregatedMB: (aggregatedUsage.aggregatedBytes / (1024 * 1024)).toFixed(3) + 'MB'
-        }
-      : null,
-    monitoringMode: _storageQuotaMonitoringMode,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Estimate storage usage by serializing storage contents
- * v1.6.3.8-v6 - Issue #4: Fallback for browsers without getBytesInUse
- * @private
- * @returns {Promise<number>} Estimated bytes in use
- */
-async function _estimateStorageUsage() {
-  try {
-    const data = await browser.storage.local.get(null);
-    const serialized = JSON.stringify(data);
-    return new Blob([serialized]).size;
-  } catch (_err) {
-    return 0;
-  }
-}
-
-/**
- * Get aggregated storage usage across all storage areas
- * v1.6.3.8-v8 - Issue #17: Track usage across local, sync, and session storage
- * Firefox MV2 extensions have a shared 10MB quota for storage.local
- * storage.sync has a 5KB item limit and 100KB total limit
- * storage.session has variable limits
- * @private
- * @returns {Promise<Object>} Per-area and aggregated usage
- */
-async function _getAggregatedStorageUsage() {
-  const usage = {
-    localBytes: 0,
-    syncBytes: 0,
-    sessionBytes: 0,
-    aggregatedBytes: 0
-  };
-
-  try {
-    // Get storage.local usage (primary)
-    usage.localBytes = await _getLocalStorageBytes();
-
-    // Get storage.sync usage
-    usage.syncBytes = await _getSyncStorageBytes();
-
-    // Estimate storage.session usage (Firefox 115+)
-    usage.sessionBytes = await _getSessionStorageBytes();
-
-    // Calculate aggregated total
-    usage.aggregatedBytes = usage.localBytes + usage.syncBytes + usage.sessionBytes;
-
-    console.log('[Background] STORAGE_USAGE_AGGREGATED:', {
-      localBytes: usage.localBytes,
-      syncBytes: usage.syncBytes,
-      sessionBytes: usage.sessionBytes,
-      aggregatedBytes: usage.aggregatedBytes,
-      timestamp: Date.now()
-    });
-
-    return usage;
-  } catch (err) {
-    console.error('[Background] _getAggregatedStorageUsage error:', err.message);
-    // Fall back to local-only usage
-    usage.aggregatedBytes = usage.localBytes;
-    return usage;
-  }
-}
-
-/**
- * Get storage.local bytes in use
- * v1.6.3.8-v8 - Issue #17: Extracted to reduce nesting
- * @private
- * @returns {Promise<number>} Bytes in use
- */
-async function _getLocalStorageBytes() {
-  if (typeof browser.storage.local.getBytesInUse === 'function') {
-    return browser.storage.local.getBytesInUse(null);
-  }
-  return _estimateStorageUsage();
-}
-
-/**
- * Get storage.sync bytes in use
- * v1.6.3.8-v8 - Issue #17: Extracted to reduce nesting
- * @private
- * @returns {Promise<number>} Bytes in use
- */
-async function _getSyncStorageBytes() {
-  try {
-    if (typeof browser.storage.sync?.getBytesInUse === 'function') {
-      return browser.storage.sync.getBytesInUse(null);
-    }
-    if (browser.storage.sync) {
-      // Estimate sync storage size
-      const syncData = await browser.storage.sync.get(null);
-      return new Blob([JSON.stringify(syncData)]).size;
-    }
-    return 0;
-  } catch (_syncErr) {
-    // storage.sync may not be available or may throw
-    return 0;
-  }
-}
-
-/**
- * Get storage.session bytes in use (Firefox 115+)
- * v1.6.3.8-v8 - Issue #17: Extracted to reduce nesting
- * @private
- * @returns {Promise<number>} Estimated bytes in use
- */
-async function _getSessionStorageBytes() {
-  try {
-    if (!browser.storage.session) return 0;
-    const sessionData = await browser.storage.session.get(null);
-    const sessionKeys = Object.keys(sessionData);
-    if (sessionKeys.length === 0) return 0;
-    return new Blob([JSON.stringify(sessionData)]).size;
-  } catch (_sessionErr) {
-    // storage.session may not be available
-    return 0;
-  }
-}
-
-/**
- * Check if storage quota is in high usage state (>50%)
- * v1.6.3.8-v8 - Issue #4: Helper for adaptive monitoring decision
- * @private
- * @param {number} percentUsed - Usage percentage (0-1)
- * @returns {boolean} True if quota exceeds high usage threshold
- */
-function _isQuotaHighUsage(percentUsed) {
-  return percentUsed >= STORAGE_QUOTA_HIGH_USAGE_THRESHOLD;
-}
-
-/**
- * Determine target monitoring mode based on usage with hysteresis
- * v1.6.3.8-v8 - Issue #4: Extracted to reduce complexity
- * @private
- * @param {number} percentUsed - Usage percentage (0-1)
- * @returns {string} Target mode ('fast' or 'normal')
- */
-function _determineTargetMonitoringMode(percentUsed) {
-  const wasHighUsage = _storageQuotaMonitoringMode === 'fast';
-  const isHighUsage = _isQuotaHighUsage(percentUsed);
-  const isLowUsage = percentUsed < STORAGE_QUOTA_LOW_USAGE_THRESHOLD;
-
-  // Apply hysteresis to prevent oscillation
-  if (isHighUsage && !wasHighUsage) return 'fast';
-  if (isLowUsage && wasHighUsage) return 'normal';
-  return _storageQuotaMonitoringMode;
-}
-
-/**
- * Update storage quota alarm with new interval
- * v1.6.3.8-v8 - Issue #4: Extracted to reduce complexity
- * @private
- * @param {string} targetMode - Target monitoring mode
- * @param {number} percentUsed - Current usage percentage
- */
-async function _updateStorageQuotaAlarm(targetMode, percentUsed) {
-  const wasHighUsage = _storageQuotaMonitoringMode === 'fast';
-  _storageQuotaMonitoringMode = targetMode;
-
-  const newInterval =
-    targetMode === 'fast'
-      ? ALARM_STORAGE_QUOTA_INTERVAL_FAST_MIN
-      : ALARM_STORAGE_QUOTA_INTERVAL_MIN;
-
-  console.log('[Background] STORAGE_QUOTA_MONITORING_MODE_CHANGED:', {
-    previousMode: wasHighUsage ? 'fast' : 'normal',
-    newMode: targetMode,
-    newIntervalMin: newInterval,
-    percentUsed: (percentUsed * 100).toFixed(1) + '%',
-    timestamp: Date.now()
-  });
-
-  try {
-    await browser.alarms.clear(ALARM_STORAGE_QUOTA_CHECK);
-    await browser.alarms.create(ALARM_STORAGE_QUOTA_CHECK, {
-      delayInMinutes: newInterval,
-      periodInMinutes: newInterval
-    });
-  } catch (err) {
-    console.error('[Background] Failed to update storage quota alarm:', err.message);
-  }
-}
-
-/**
- * Adjust storage quota monitoring frequency based on usage level
- * v1.6.3.8-v8 - Issue #4: Adaptive monitoring - fast (1 min) when >50%, normal (5 min) when <40%
- * Uses hysteresis (50%/40%) to prevent oscillation between modes
- * @private
- * @param {number} percentUsed - Current usage percentage (0-1)
- */
-async function _adjustStorageQuotaMonitoringFrequency(percentUsed) {
-  const targetMode = _determineTargetMonitoringMode(percentUsed);
-
-  // Only update alarm if mode changed
-  if (targetMode === _storageQuotaMonitoringMode) return;
-
-  await _updateStorageQuotaAlarm(targetMode, percentUsed);
-}
-
-/**
- * Log storage quota warning at threshold level
- * v1.6.3.8-v6 - Issue #4: Threshold-based logging
- * @private
- * @param {number} bytesInUse - Current bytes in use
- * @param {number} percentUsed - Usage as decimal (0-1)
- * @param {Object} threshold - Threshold config with level and message
- */
-function _logStorageQuotaWarning(bytesInUse, percentUsed, threshold) {
-  const logData = {
-    bytesInUse,
-    bytesInUseMB: (bytesInUse / (1024 * 1024)).toFixed(2) + 'MB',
-    percentUsed: (percentUsed * 100).toFixed(1) + '%',
-    threshold: threshold.percent * 100 + '%',
-    level: threshold.level,
-    message: threshold.message,
-    quotaLimitMB: (STORAGE_LOCAL_QUOTA_BYTES / (1024 * 1024)).toFixed(0) + 'MB',
-    timestamp: Date.now()
-  };
-
-  if (threshold.level === 'CRITICAL') {
-    console.error('[Background] STORAGE_QUOTA_CRITICAL:', logData);
-  } else if (threshold.level === 'WARN') {
-    console.warn('[Background] STORAGE_QUOTA_WARNING:', logData);
-  } else {
-    console.info('[Background] STORAGE_QUOTA_INFO:', logData);
-  }
-}
-
-/**
- * Get storage quota snapshot for diagnostic reports
- * v1.6.3.8-v6 - Issue #4: Include in diagnostic snapshots
- * @returns {Object} Storage quota snapshot
- */
-function _getStorageQuotaSnapshot() {
-  return { ..._lastStorageQuotaSnapshot };
-}
-
-/**
- * Log diagnostic snapshot of current state
- * v1.6.3.7-v3 - API #4: Periodic diagnostic logging
- * v1.6.3.8-v12 - Port infrastructure removed, simplified logging
- */
-function logDiagnosticSnapshot() {
-  console.log('[Background] ==================== DIAGNOSTIC SNAPSHOT ====================');
-  console.log('[Background] Timestamp:', new Date().toISOString());
-  console.log('[Background] Cache state:', {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    lastUpdate: globalQuickTabState.lastUpdate,
-    saveId: globalQuickTabState.saveId,
-    isInitialized
-  });
-
-  // v1.6.3.8 - Issue #9: Include keepalive health in diagnostic snapshot
-  console.log('[Background] Keepalive health:', {
-    summary: `keepalive health: ${_getKeepaliveHealthSummary()}`,
-    lastSuccessTime: new Date(lastKeepaliveSuccessTime).toISOString(),
-    timeSinceLastSuccessMs: Date.now() - lastKeepaliveSuccessTime,
-    consecutiveFailures: consecutiveKeepaliveFailures,
-    totalSuccessCount: keepaliveSuccessCount
-  });
-
-  // v1.6.3.8-v12 - Port infrastructure removed
-  console.log('[Background] Messaging:', {
-    architecture: 'tabs.sendMessage + storage.onChanged',
-    portInfrastructure: 'REMOVED in v1.6.3.8-v12'
-  });
-
-  console.log('[Background] Quick Tab host tracking:', {
-    trackedQuickTabs: quickTabHostTabs.size
-  });
-
-  // v1.6.3.9-v2 - Issue #6: Include tab events diagnostics
-  console.log('[Background] Tab events:', getTabEventsDiagnostics());
-
-  // v1.6.3.7-v12 - Issue #6: Include dedup statistics
-  // v1.6.3.8-v6 - Issue #11: Enhanced with tier counts and history
-  const total = dedupStats.skipped + dedupStats.processed;
-  console.log('[Background] Dedup statistics:', {
-    skipped: dedupStats.skipped,
-    processed: dedupStats.processed,
-    totalSinceReset: total,
-    skipRate: total > 0 ? ((dedupStats.skipped / total) * 100).toFixed(1) + '%' : 'N/A',
-    tierCounts: dedupStats.tierCounts,
-    historyBuckets: dedupStatsHistory.length,
-    // v1.6.3.8-v6 - Issue #11: Include 5-minute average skip rate
-    avgSkipRateLast5Min: _calculateAvgSkipRate(),
-    lastResetTime: new Date(dedupStats.lastResetTime).toISOString()
-  });
-
-  // v1.6.3.8-v6 - Issue #4: Include storage quota in diagnostic snapshot
-  const quotaSnapshot = _getStorageQuotaSnapshot();
-  console.log('[Background] Storage quota:', {
-    bytesInUse: quotaSnapshot.bytesInUse,
-    bytesInUseMB:
-      quotaSnapshot.bytesInUse > 0
-        ? (quotaSnapshot.bytesInUse / (1024 * 1024)).toFixed(2) + 'MB'
-        : 'unknown',
-    percentUsed:
-      quotaSnapshot.percentUsed > 0
-        ? (quotaSnapshot.percentUsed * 100).toFixed(1) + '%'
-        : 'unknown',
-    thresholdLevel: quotaSnapshot.thresholdLevel || 'OK',
-    lastChecked:
-      quotaSnapshot.lastChecked > 0 ? new Date(quotaSnapshot.lastChecked).toISOString() : 'never'
-  });
-
-  console.log('[Background] =================================================================');
-}
-
-/**
- * Calculate average skip rate from dedup history
- * v1.6.3.8-v6 - Issue #11: Helper for 5-minute average skip rate
- * @private
- * @returns {string} Average skip rate or 'N/A' if no history
- */
-function _calculateAvgSkipRate() {
-  if (!dedupStatsHistory || dedupStatsHistory.length === 0) {
-    return 'N/A';
-  }
-  const totalSkipped = dedupStatsHistory.reduce((sum, h) => sum + h.skipped, 0);
-  const totalProcessed = dedupStatsHistory.reduce((sum, h) => sum + h.processed, 0);
-  const total = totalSkipped + totalProcessed;
-  if (total === 0) return 'N/A';
-  return ((totalSkipped / total) * 100).toFixed(1) + '%';
-}
-
-/**
- * Format milliseconds as human-readable duration
- * v1.6.3.8 - Issue #10: Helper for formatting duration
- * @private
- * @param {number} ms - Duration in milliseconds
- * @returns {string} Formatted duration string
- */
-function _formatDuration(ms) {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
-  if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
-  return `${Math.floor(ms / 3600000)}h`;
-}
-
-/**
- * Start dedup statistics logging
- * v1.6.3.7-v12 - Issue #6: Log dedup statistics every 60 seconds
- * v1.6.3.8-v6 - Issue #11: Include tier counts, longer history, and port failure correlation
- */
-function startDedupStatsLogging() {
-  if (dedupStatsIntervalId) {
-    clearInterval(dedupStatsIntervalId);
-  }
-
-  dedupStatsIntervalId = setInterval(() => {
-    const total = dedupStats.skipped + dedupStats.processed;
-    if (total > 0) {
-      // v1.6.3.8-v6 - Issue #11: Calculate skip rate for correlation
-      const skipRate = ((dedupStats.skipped / total) * 100).toFixed(1);
-
-      // v1.6.3.8-v6 - Issue #11: Correlate with port failures
-      const portFailureCorrelation =
-        consecutiveKeepaliveFailures > 2
-          ? 'HIGH_PORT_FAILURES'
-          : consecutiveKeepaliveFailures > 0
-            ? 'SOME_PORT_FAILURES'
-            : 'HEALTHY';
-
-      console.log('[Background] [STORAGE] DEDUP_STATS:', {
-        skipped: dedupStats.skipped,
-        processed: dedupStats.processed,
-        total,
-        skipRate: skipRate + '%',
-        tierCounts: dedupStats.tierCounts,
-        portFailureCorrelation,
-        consecutivePortFailures: consecutiveKeepaliveFailures,
-        historyBuckets: dedupStatsHistory.length,
-        intervalMs: DEDUP_STATS_LOG_INTERVAL_MS,
-        timestamp: Date.now()
-      });
-
-      // v1.6.3.8-v6 - Issue #11: Add to longer-lived history
-      dedupStatsHistory.push({
-        timestamp: Date.now(),
-        skipped: dedupStats.skipped,
-        processed: dedupStats.processed,
-        tierCounts: { ...dedupStats.tierCounts },
-        skipRate: parseFloat(skipRate)
-      });
-
-      // Keep only last N buckets
-      if (dedupStatsHistory.length > DEDUP_HISTORY_BUCKETS) {
-        dedupStatsHistory.shift();
-      }
-    }
-
-    // Reset stats after logging (but keep history)
-    // v1.6.3.8-v8 - Issue #18: Include staleEventAge in reset
-    dedupStats = {
-      skipped: 0,
-      processed: 0,
-      lastResetTime: Date.now(),
-      tierCounts: {
-        staleEventAge: 0, // Issue #18: Max event age check
-        saveId: 0,
-        sequenceId: 0,
-        revision: 0,
-        contentHash: 0
-      }
-    };
-  }, DEDUP_STATS_LOG_INTERVAL_MS);
-
-  console.log(
-    '[Background] [STORAGE] Dedup stats logging started (every',
-    DEDUP_STATS_LOG_INTERVAL_MS / 1000,
-    's)'
-  );
-}
-
-// Start dedup stats logging on script load (port registry monitoring removed)
-// v1.6.3.8-v12 - Port infrastructure removed
-startDedupStatsLogging();
-
-// Register alarm listener
-browser.alarms.onAlarm.addListener(handleAlarm);
-
-// Initialize alarms on script load
-initializeAlarms();
-
-// ==================== v1.6.4.14 PHASE 3A OPTIMIZATION INITIALIZATION ====================
-
-/**
- * Initialize Phase 3A optimization modules
- * v1.6.4.14 - StorageCache, MemoryMonitor, PerformanceMetrics
- */
-function initializePhase3AOptimizations() {
-  console.log('[Background] v1.6.4.14 Initializing Phase 3A optimizations...');
-
-  // 1. Initialize PerformanceMetrics collection
-  PerformanceMetrics.startCollection({ flushIntervalMs: 60000 }); // Flush every minute
-  console.log('[Background] PerformanceMetrics collection started');
-
-  // 2. Initialize MemoryMonitor with cleanup callbacks
-  const memoryOptions = {
-    memoryLimitMB: 150,
-    thresholdPercent: 0.8,
-    intervalMs: 60000 // Check every 60 seconds
-  };
-
-  // Register cleanup callbacks for when memory threshold is exceeded
-  MemoryMonitor.registerCleanupCallback('invalidate-storage-cache', snapshot => {
-    console.log('[Background] Memory cleanup: Invalidating storage cache', {
-      usedMB: snapshot.usedMB
-    });
-    StorageCache.clearCache();
-  });
-
-  MemoryMonitor.registerCleanupCallback('clear-performance-samples', snapshot => {
-    console.log('[Background] Memory cleanup: Clearing old performance samples', {
-      usedMB: snapshot.usedMB
-    });
-    // Log metrics count before clearing for visibility
-    const operationCount = Object.keys(PerformanceMetrics.getMetricsSummary()).length;
-    console.log('[Background] Clearing metrics for', operationCount, 'tracked operations');
-    PerformanceMetrics.clearMetrics();
-  });
-
-  MemoryMonitor.startMonitoring(memoryOptions);
-  console.log('[Background] MemoryMonitor started with', memoryOptions.memoryLimitMB, 'MB limit');
-
-  // 3. StorageCache is used on-demand (initialized in-module)
-  // Configure TTL
-  StorageCache.setTTL(30000); // 30 second TTL
-  console.log('[Background] StorageCache configured with 30s TTL');
-
-  console.log('[Background] v1.6.4.14 Phase 3A optimizations initialized');
-}
-
-// Initialize Phase 3A optimizations on script load
-initializePhase3AOptimizations();
-
-// ==================== END PHASE 3A OPTIMIZATION INITIALIZATION ====================
-
-// ==================== END ALARMS MECHANISM ====================
-
-// ==================== v1.6.3.7-v9 ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
-// FIX Issue #8: Implement storage integrity validation to detect IndexedDB corruption
-
-/**
- * Run all validation checks on read-back data
- * v1.6.4.14 - FIX Complexity: Extracted to reduce validateStorageWrite cc from 16
- * @private
-/**
- * Run validation sequence and return first failure
- * v1.6.4.14 - FIX Complexity: Extracted from _runValidationChecks
- * @private
- */
-function _runValidatorSequence(validators) {
-  for (const validator of validators) {
-    const result = validator();
-    if (result) return result;
-  }
-  return null;
-}
-
-/**
- * Run all validation checks on read-back data
- * v1.6.4.14 - FIX Complexity: Extracted to reduce validateStorageWrite cc from 16
- * v1.6.4.14 - FIX Complexity: Extracted _runValidatorSequence (cc=9 → cc=5)
- * @private
- * @param {Object} validationContext - Context for validation
- * @param {Object} readBack - Data read back from storage
- * @param {string} storageKey - Storage key used
- * @returns {Object|null} Error result if validation failed, null if passed
- */
-function _runValidationChecks(validationContext, readBack, storageKey) {
-  const { expectedData } = validationContext;
-
-  // Check if data exists
-  if (!readBack) {
-    const tabCount = expectedData?.tabs?.length || 0;
-    return _logValidationFailed({
-      ...validationContext,
-      errorCode: 'READ_RETURNED_NULL',
-      storageKey,
-      extraInfo: { expectedTabCount: tabCount }
-    });
-  }
-
-  // Run validation sequence - return first failure or null
-  return _runValidatorSequence([
-    () => _validateSaveId({ ...validationContext, readBack }),
-    () => _validateTabCount({ ...validationContext, readBack }),
-    () =>
-      _validateRuntimeChecksum({
-        ...validationContext,
-        readBack,
-        tabCount: readBack.tabs?.length || 0
-      })
-  ]);
-}
-
-/**
- * Validate that storage write was successful by reading back and comparing
- * v1.6.3.7-v9 - FIX Issue #8: Detect IndexedDB corruption after writes
- * v1.6.4.14 - FIX Complexity: Extracted _runValidationChecks helper (cc=16 → cc=5)
- * @param {string} operationId - Unique operation ID for tracing
- * @param {Object} expectedData - Data that was written
- * @param {string} storageKey - Storage key used
- * @param {number} retryAttempt - Current retry attempt (0-based)
- * @returns {Promise<{valid: boolean, readBack: Object|null, error: string|null}>}
- */
-async function validateStorageWrite(operationId, expectedData, storageKey, retryAttempt = 0) {
-  const validationStart = Date.now();
-  const validationContext = { operationId, expectedData, retryAttempt, validationStart };
-
-  try {
-    // Read back the data immediately after write
-    const result = await browser.storage.local.get(storageKey);
-    const readBack = result?.[storageKey];
-
-    // Run all validation checks
-    const failureResult = _runValidationChecks(validationContext, readBack, storageKey);
-    if (failureResult) return failureResult;
-
-    // Validation passed
-    console.log('[Background] STORAGE_VALIDATION_PASSED:', {
-      operationId,
-      saveId: expectedData.saveId,
-      tabCount: readBack?.tabs?.length || 0,
-      checksum: _computeStorageChecksum(readBack),
-      retryAttempt,
-      validationDurationMs: Date.now() - validationStart
-    });
-
-    return { valid: true, readBack, error: null };
-  } catch (err) {
-    console.error('[Background] STORAGE_VALIDATION_ERROR:', {
-      operationId,
-      error: err.message,
-      retryAttempt,
-      validationDurationMs: Date.now() - validationStart
-    });
-    return { valid: false, readBack: null, error: `VALIDATION_EXCEPTION: ${err.message}` };
-  }
-}
-
-/**
- * Log validation failure and return error result
- * v1.6.4.13 - FIX Issue #17: Extracted to reduce validateStorageWrite complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- * @param {Object} options - Options object
- * @param {string} options.operationId - Operation ID
- * @param {string} options.errorCode - Error code
- * @param {string} options.storageKey - Storage key
- * @param {number} options.retryAttempt - Retry attempt
- * @param {number} options.validationStart - Validation start time
- * @param {Object} [options.extraInfo={}] - Extra info for logging
- */
-function _logValidationFailed({
-  operationId,
-  errorCode,
-  storageKey,
-  retryAttempt,
-  validationStart,
-  extraInfo = {}
-}) {
-  console.error(`[Background] STORAGE_VALIDATION_FAILED: ${errorCode}`, {
-    operationId,
-    storageKey,
-    retryAttempt,
-    validationDurationMs: Date.now() - validationStart,
-    ...extraInfo
-  });
-  return { valid: false, readBack: null, error: errorCode };
-}
-
-/**
- * Validate saveId matches
- * v1.6.4.13 - FIX Issue #17: Extracted to reduce validateStorageWrite complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- * @param {Object} options - Options object
- */
-function _validateSaveId({ operationId, expectedData, readBack, retryAttempt, validationStart }) {
-  if (expectedData.saveId && readBack.saveId !== expectedData.saveId) {
-    console.error('[Background] STORAGE_VALIDATION_FAILED: SaveId mismatch', {
-      operationId,
-      expectedSaveId: expectedData.saveId,
-      actualSaveId: readBack.saveId,
-      retryAttempt,
-      validationDurationMs: Date.now() - validationStart
-    });
-    return { valid: false, readBack, error: 'SAVEID_MISMATCH' };
-  }
-  return null;
-}
-
-/**
- * Validate tab count matches
- * v1.6.4.13 - FIX Issue #17: Extracted to reduce validateStorageWrite complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- * @param {Object} options - Options object
- */
-function _validateTabCount({ operationId, expectedData, readBack, retryAttempt, validationStart }) {
-  const expectedTabCount = expectedData?.tabs?.length || 0;
-  const actualTabCount = readBack?.tabs?.length || 0;
-
-  if (expectedTabCount !== actualTabCount) {
-    console.error('[Background] STORAGE_VALIDATION_FAILED: Tab count mismatch', {
-      operationId,
-      expectedTabCount,
-      actualTabCount,
-      retryAttempt,
-      validationDurationMs: Date.now() - validationStart
-    });
-    return { valid: false, readBack, error: 'TAB_COUNT_MISMATCH' };
-  }
-  return null;
-}
-
-/**
- * Validate checksums match during runtime storage write validation
- * v1.6.4.13 - FIX Issue #17: Extracted to reduce validateStorageWrite complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- * @param {Object} options - Options object
- * @returns {Object|null} Error result if checksum mismatch, null if valid
- */
-function _validateRuntimeChecksum({
-  operationId,
-  expectedData,
-  readBack,
-  tabCount,
-  retryAttempt,
-  validationStart
-}) {
-  const expectedChecksum = _computeStorageChecksum(expectedData);
-  const actualChecksum = _computeStorageChecksum(readBack);
-
-  if (expectedChecksum !== actualChecksum) {
-    console.error('[Background] STORAGE_VALIDATION_FAILED: Checksum mismatch', {
-      operationId,
-      expectedChecksum,
-      actualChecksum,
-      tabCount,
-      retryAttempt,
-      validationDurationMs: Date.now() - validationStart
-    });
-    return { valid: false, readBack, error: 'CHECKSUM_MISMATCH' };
-  }
-
-  return null; // Checksum valid
-}
-
-/**
- * Perform single write attempt with validation
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce writeStorageWithValidation complexity
- * @private
- * @param {Object} stateToWrite - State to write
- * @param {string} storageKey - Storage key
- * @param {string} operationId - Operation ID
- * @param {number} attempt - Attempt number (0-based)
- * @returns {Promise<{success: boolean, error: string|null}>}
- */
-async function _performWriteAttempt(stateToWrite, storageKey, operationId, attempt) {
-  // Perform the write
-  await browser.storage.local.set({ [storageKey]: stateToWrite });
-
-  // Wait a small delay before validation on retries
-  if (attempt > 0) {
-    await new Promise(resolve => setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS));
-  }
-
-  // Validate the write
-  const validation = await validateStorageWrite(operationId, stateToWrite, storageKey, attempt);
-  return validation;
-}
-
-/**
- * Log validation failure and return failure result
- * v1.6.3.7-v13 - Issue #2: Helper for _writeQuickTabStateWithValidation
- * @private
- */
-function _logWriteValidationFailure(operationId, failureType, details) {
-  console.error('[Background] STORAGE_WRITE_VALIDATION:', {
-    operationId,
-    result: 'FAILED',
-    failureType,
-    ...details
-  });
-}
-
-/**
- * Build validation context metadata for logging
- * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce _validateWriteReadback cc
- * @private
- */
-function _buildValidationMeta(context) {
-  return { durationMs: Date.now() - context.writeStart };
-}
-
-/**
- * Check if readback data is null/undefined
- * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
- * @private
- */
-function _checkNullReadback(readBack, stateToWrite, context) {
-  if (readBack) return null;
-
-  _logWriteValidationFailure(context.operationId, 'READ_RETURNED_NULL', {
-    expectedTabs: context.expectedTabs,
-    actualTabs: 0,
-    saveId: stateToWrite.saveId,
-    ..._buildValidationMeta(context)
-  });
-  return { valid: false, failureType: 'READ_RETURNED_NULL' };
-}
-
-/**
- * Check if saveId matches expected value
- * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
- * @private
- */
-function _checkSaveIdMatch(readBack, stateToWrite, context) {
-  if (readBack.saveId === stateToWrite.saveId) return null;
-
-  _logWriteValidationFailure(context.operationId, 'SAVEID_MISMATCH', {
-    expectedSaveId: stateToWrite.saveId,
-    actualSaveId: readBack.saveId,
-    expectedTabs: context.expectedTabs,
-    actualTabs: readBack?.tabs?.length || 0,
-    ..._buildValidationMeta(context)
-  });
-  return { valid: false, failureType: 'SAVEID_MISMATCH', readBack };
-}
-
-/**
- * Check if tab count matches expected value
- * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
- * @private
- */
-function _checkTabCountMatch(readBack, stateToWrite, context) {
-  const actualTabs = readBack?.tabs?.length || 0;
-  if (context.expectedTabs === actualTabs) return null;
-
-  _logWriteValidationFailure(context.operationId, 'TAB_COUNT_MISMATCH', {
-    expectedTabs: context.expectedTabs,
-    actualTabs,
-    difference: context.expectedTabs - actualTabs,
-    saveId: stateToWrite.saveId,
-    ..._buildValidationMeta(context)
-  });
-  return { valid: false, failureType: 'TAB_COUNT_MISMATCH' };
-}
-
-/**
- * Check if checksum matches expected value
- * v1.6.3.7-v14 - FIX Complexity: Extracted validation check
- * @private
- */
-function _checkChecksumMatch(readBack, stateToWrite, context) {
-  const expectedChecksum = _computeStorageChecksum(stateToWrite);
-  const actualChecksum = _computeStorageChecksum(readBack);
-  if (expectedChecksum === actualChecksum) return null;
-
-  const actualTabs = readBack?.tabs?.length || 0;
-  _logWriteValidationFailure(context.operationId, 'CHECKSUM_MISMATCH', {
-    expectedChecksum,
-    actualChecksum,
-    expectedTabs: context.expectedTabs,
-    actualTabs,
-    saveId: stateToWrite.saveId,
-    ..._buildValidationMeta(context)
-  });
-  return { valid: false, failureType: 'CHECKSUM_MISMATCH' };
-}
-
-/**
- * Validate readback data against expected state
- * v1.6.3.7-v13 - Issue #2: Helper to reduce _writeQuickTabStateWithValidation complexity
- * v1.6.3.7-v14 - FIX Complexity: Extracted checks into separate functions
- * @private
- */
-function _validateWriteReadback(stateToWrite, readBack, context) {
-  // Run validation checks in order, return first failure
-  const nullCheck = _checkNullReadback(readBack, stateToWrite, context);
-  if (nullCheck) return nullCheck;
-
-  const saveIdCheck = _checkSaveIdMatch(readBack, stateToWrite, context);
-  if (saveIdCheck) return saveIdCheck;
-
-  const tabCountCheck = _checkTabCountMatch(readBack, stateToWrite, context);
-  if (tabCountCheck) return tabCountCheck;
-
-  const checksumCheck = _checkChecksumMatch(readBack, stateToWrite, context);
-  if (checksumCheck) return checksumCheck;
-
-  return { valid: true, actualTabs: readBack?.tabs?.length || 0 };
-}
-
-/**
- * Centralized storage write with validation for direct writes in background.js
- * v1.6.3.7-v13 - Issue #2: Centralize all storage writes through validated path
- * @param {Object} stateToWrite - State object to write (must have saveId, tabs)
- * @param {string} operationName - Name of the operation for logging
- * @returns {Promise<{success: boolean, operationId: string, error: string|null, recovered: boolean}>}
- */
-async function _writeQuickTabStateWithValidation(stateToWrite, operationName) {
-  const operationId = `${operationName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const storageKey = 'quick_tabs_state_v2';
-  const writeStart = Date.now();
-  const expectedTabs = stateToWrite?.tabs?.length || 0;
-  const context = { operationId, expectedTabs, writeStart };
-
-  if (DEBUG_DIAGNOSTICS) {
-    console.log('[Background] STORAGE_WRITE_VALIDATION_START:', {
-      operationId,
-      operationName,
-      saveId: stateToWrite.saveId,
-      expectedTabs,
-      sequenceId: stateToWrite.sequenceId,
-      timestamp: writeStart
-    });
-  }
-
-  try {
-    await browser.storage.local.set({ [storageKey]: stateToWrite });
-    const readResult = await browser.storage.local.get(storageKey);
-    const readBack = readResult?.[storageKey];
-
-    const validation = _validateWriteReadback(stateToWrite, readBack, context);
-
-    if (!validation.valid) {
-      const recoveryResult = await _attemptStorageWriteRecovery(
-        operationId,
-        stateToWrite,
-        validation.failureType,
-        validation.readBack
-      );
-      return {
-        success: false,
-        operationId,
-        error: validation.failureType,
-        recovered: recoveryResult.recovered
-      };
-    }
-
-    console.log('[Background] STORAGE_WRITE_VALIDATION:', {
-      operationId,
-      result: 'PASSED',
-      saveId: stateToWrite.saveId,
-      expectedTabs,
-      actualTabs: validation.actualTabs,
-      checksumMatch: true,
-      durationMs: Date.now() - writeStart
-    });
-    return { success: true, operationId, error: null, recovered: false };
-  } catch (err) {
-    console.error('[Background] STORAGE_WRITE_VALIDATION:', {
-      operationId,
-      result: 'ERROR',
-      error: err.message,
-      expectedTabs,
-      saveId: stateToWrite.saveId,
-      durationMs: Date.now() - writeStart
-    });
-    return { success: false, operationId, error: err.message, recovered: false };
-  }
-}
-
-/**
- * Attempt recovery when storage write validation fails
- * v1.6.3.7-v13 - Issue #7: Type-specific recovery strategies
- *
- * Recovery strategies by failure type:
- * - READ_RETURNED_NULL: Likely quota exceeded - clear oldest Quick Tabs and retry
- * - TAB_COUNT_MISMATCH: Likely corruption - re-write state
- * - SAVEID_MISMATCH: Check sequence ID ordering - may be out-of-order event
- * - CHECKSUM_MISMATCH: Re-write state with new saveId
- *
- * @param {string} operationId - Operation ID for tracing
- * @param {Object} intendedState - State that failed to write
- * @param {string} failureType - Type of failure
- * @param {Object} [readBackState] - State read back from storage (if available)
- * @returns {Promise<{recovered: boolean, method: string, reason: string}>}
- */
-/**
- * Map of recovery strategies by failure type
- * v1.6.3.7-v14 - FIX Complexity: Strategy map to reduce switch complexity
- * Note: All strategies receive (operationId, intendedState, readBackState) but some ignore readBackState
- * @private
- */
-const RECOVERY_STRATEGIES = {
-  READ_RETURNED_NULL: (operationId, intendedState, _readBackState) =>
-    _recoverFromNullRead(operationId, intendedState),
-  TAB_COUNT_MISMATCH: (operationId, intendedState, _readBackState) =>
-    _recoverFromTabCountMismatch(operationId, intendedState),
-  SAVEID_MISMATCH: (operationId, intendedState, readBackState) =>
-    _recoverFromSaveIdMismatch(operationId, intendedState, readBackState),
-  CHECKSUM_MISMATCH: (operationId, intendedState, _readBackState) =>
-    _recoverFromChecksumMismatch(operationId, intendedState)
-};
-
-async function _attemptStorageWriteRecovery(
-  operationId,
-  intendedState,
-  failureType,
-  readBackState = null
-) {
-  console.log('[Background] RECOVERY_ATTEMPT:', {
-    operationId,
-    failureType,
-    intendedTabCount: intendedState?.tabs?.length || 0,
-    timestamp: Date.now()
-  });
-
-  try {
-    const strategy = RECOVERY_STRATEGIES[failureType];
-    if (!strategy) {
-      console.warn('[Background] RECOVERY_UNKNOWN_FAILURE_TYPE:', { operationId, failureType });
-      return { recovered: false, method: 'none', reason: `Unknown failure type: ${failureType}` };
-    }
-    return await strategy(operationId, intendedState, readBackState);
-  } catch (err) {
-    console.error('[Background] RECOVERY_ERROR:', {
-      operationId,
-      failureType,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    return { recovered: false, method: 'error', reason: err.message };
-  }
-}
-
-/**
- * Recover from null read (likely quota exceeded)
- * v1.6.3.7-v13 - Issue #7: Clear oldest Quick Tabs and retry
- * v1.6.3.8-v5 - Issue #4: Iterative recovery with progressive reduction (75% → 50% → 25%)
- * @private
- */
-async function _recoverFromNullRead(operationId, intendedState) {
-  console.log('[Background] RECOVERY_STRATEGY: Iterative quota recovery starting', {
-    operationId,
-    tabCount: intendedState?.tabs?.length || 0,
-    recoveryPercentages: RECOVERY_PERCENTAGES,
-    maxAttempts: RECOVERY_MAX_ATTEMPTS
-  });
-
-  // If not enough tabs to clear, fail early
-  if (!intendedState?.tabs?.length || intendedState.tabs.length <= 1) {
-    return _logRecoveryFailure(
-      operationId,
-      'READ_RETURNED_NULL',
-      'storage quota may be exhausted - insufficient tabs to clear'
-    );
-  }
-
-  // Sort by creationTime once (oldest first)
-  const sortedTabs = [...intendedState.tabs].sort(
-    (a, b) => (a.creationTime || 0) - (b.creationTime || 0)
-  );
-
-  // v1.6.3.8-v5 - Issue #4: Try each recovery percentage iteratively
-  for (
-    let attempt = 0;
-    attempt < RECOVERY_PERCENTAGES.length && attempt < RECOVERY_MAX_ATTEMPTS;
-    attempt++
-  ) {
-    const result = await _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt);
-    if (result.success) {
-      return result.recoveryResult;
-    }
-  }
-
-  // All attempts failed
-  return _handleRecoveryExhausted(operationId, intendedState.tabs.length);
-}
-
-/**
- * Try a single recovery attempt at a given percentage
- * v1.6.3.8-v5 - Issue #4: Helper to reduce complexity in _recoverFromNullRead
- * @private
- */
-async function _tryRecoveryAttempt(operationId, intendedState, sortedTabs, attempt) {
-  const keepPercentage = RECOVERY_PERCENTAGES[attempt];
-  const keepCount = Math.max(1, Math.floor(sortedTabs.length * keepPercentage));
-  const reducedTabs = sortedTabs.slice(-keepCount); // Keep newest tabs
-  const removedCount = intendedState.tabs.length - reducedTabs.length;
-
-  _logRecoveryAttempt(
-    operationId,
-    attempt,
-    keepPercentage,
-    intendedState.tabs.length,
-    keepCount,
-    removedCount
-  );
-
-  const recoverySaveId = `recovery-null-${attempt + 1}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const recoveryState = _buildIterativeRecoveryState(
-    intendedState,
-    reducedTabs,
-    recoverySaveId,
-    attempt,
-    keepPercentage
-  );
-
-  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
-
-  if (writeResult.success) {
-    return {
-      success: true,
-      recoveryResult: _buildRecoverySuccessResult(
-        operationId,
-        intendedState,
-        reducedTabs,
-        removedCount,
-        attempt,
-        keepPercentage
-      )
-    };
-  }
-
-  // Apply backoff if more attempts remain
-  await _applyRecoveryBackoff(operationId, attempt);
-  return { success: false };
-}
-
-/**
- * Log a recovery attempt
- * v1.6.3.8-v5 - Issue #4: Helper for logging
- * @private
- */
-function _logRecoveryAttempt(
-  operationId,
-  attempt,
-  keepPercentage,
-  originalCount,
-  keepCount,
-  removedCount
-) {
-  console.log('[Background] RECOVERY_ATTEMPT:', {
-    operationId,
-    attempt: attempt + 1,
-    maxAttempts: RECOVERY_MAX_ATTEMPTS,
-    keepPercentage: `${keepPercentage * 100}%`,
-    originalTabCount: originalCount,
-    keepCount,
-    removedCount,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Build recovery state for iterative recovery
- * v1.6.3.8-v5 - Issue #4: Helper to build state object
- * @private
- */
-function _buildIterativeRecoveryState(
-  intendedState,
-  reducedTabs,
-  recoverySaveId,
-  attempt,
-  keepPercentage
-) {
-  return {
-    ...intendedState,
-    tabs: reducedTabs,
-    saveId: recoverySaveId,
-    recoveredFrom: 'READ_RETURNED_NULL',
-    recoveryTimestamp: Date.now(),
-    recoveryAttempt: attempt + 1,
-    recoveryKeepPercentage: keepPercentage
-  };
-}
-
-/**
- * Build success result and notify user if critical
- * v1.6.3.8-v5 - Issue #4: Helper for success handling
- * @private
- */
-function _buildRecoverySuccessResult(
-  operationId,
-  intendedState,
-  reducedTabs,
-  removedCount,
-  attempt,
-  keepPercentage
-) {
-  console.log('[Background] RECOVERY_SUCCESS:', {
-    operationId,
-    method: 'clear-oldest-tabs',
-    attempt: attempt + 1,
-    keepPercentage: `${keepPercentage * 100}%`,
-    originalTabCount: intendedState.tabs.length,
-    newTabCount: reducedTabs.length,
-    removedCount,
-    timestamp: Date.now()
-  });
-
-  // Notify user at critical pruning levels (50% or more removed)
-  if (keepPercentage <= 0.5) {
-    _notifyUserOfDataPruning(operationId, attempt + 1, removedCount, intendedState.tabs.length);
-  }
-
-  return {
-    recovered: true,
-    method: 'clear-oldest-tabs',
-    reason: `Cleared ${((1 - keepPercentage) * 100).toFixed(0)}% of oldest tabs (attempt ${attempt + 1})`,
-    attempt: attempt + 1,
-    keepPercentage,
-    removedCount
-  };
-}
-
-/**
- * Apply exponential backoff between recovery attempts
- * v1.6.3.8-v5 - Issue #4: Helper for backoff logic
- * @private
- */
-async function _applyRecoveryBackoff(operationId, attempt) {
-  if (attempt < RECOVERY_PERCENTAGES.length - 1) {
-    const backoffMs = RECOVERY_BACKOFF_BASE_MS * Math.pow(2, attempt);
-    console.log('[Background] RECOVERY_BACKOFF:', {
-      operationId,
-      attempt: attempt + 1,
-      backoffMs,
-      nextPercentage: `${RECOVERY_PERCENTAGES[attempt + 1] * 100}%`,
-      timestamp: Date.now()
-    });
-    await _sleepMs(backoffMs);
-  }
-}
-
-/**
- * Handle when all recovery attempts are exhausted
- * v1.6.3.8-v5 - Issue #4: Helper for exhausted handling
- * @private
- */
-function _handleRecoveryExhausted(operationId, originalTabCount) {
-  console.error('[Background] RECOVERY_EXHAUSTED:', {
-    operationId,
-    attemptsExhausted: RECOVERY_MAX_ATTEMPTS,
-    percentagesTried: RECOVERY_PERCENTAGES.map(p => `${p * 100}%`).join(', '),
-    timestamp: Date.now()
-  });
-
-  _notifyUserOfRecoveryFailure(operationId, originalTabCount);
-  return _logRecoveryFailure(
-    operationId,
-    'READ_RETURNED_NULL',
-    'storage quota recovery exhausted all attempts'
-  );
-}
-
-/**
- * Sleep for specified milliseconds
- * v1.6.3.8-v5 - Issue #4: Helper for exponential backoff
- * @private
- * @param {number} ms - Milliseconds to sleep
- * @returns {Promise<void>}
- */
-function _sleepMs(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Notify user of significant data pruning during quota recovery
- * v1.6.3.8-v5 - Issue #4: User notification at critical pruning levels
- * @private
- * @param {string} operationId - Operation ID for tracking
- * @param {number} attempt - Recovery attempt number
- * @param {number} removedCount - Number of tabs removed
- * @param {number} originalCount - Original tab count
- */
-function _notifyUserOfDataPruning(operationId, attempt, removedCount, originalCount) {
-  console.warn('[Background] RECOVERY_DATA_PRUNED:', {
-    operationId,
-    attempt,
-    removedCount,
-    originalCount,
-    remainingCount: originalCount - removedCount,
-    message: 'Significant Quick Tab data was pruned due to storage quota limits',
-    timestamp: Date.now()
-  });
-
-  // Create notification if API available
-  if (browser.notifications?.create) {
-    browser.notifications
-      .create(`quota-recovery-${operationId}`, {
-        type: 'basic',
-        iconUrl: browser.runtime.getURL('images/icon48.png'),
-        title: 'Quick Tabs Data Pruned',
-        message: `${removedCount} oldest Quick Tab(s) were removed due to storage limits. ${originalCount - removedCount} tabs remain.`
-      })
-      .catch(err => {
-        console.warn('[Background] Failed to create notification:', err.message);
-      });
-  }
-}
-
-/**
- * Notify user of complete quota recovery failure
- * v1.6.3.8-v5 - Issue #4: User notification when all recovery attempts fail
- * @private
- * @param {string} operationId - Operation ID for tracking
- * @param {number} originalCount - Original tab count before recovery attempts
- */
-function _notifyUserOfRecoveryFailure(operationId, originalCount) {
-  console.error('[Background] RECOVERY_COMPLETE_FAILURE:', {
-    operationId,
-    originalCount,
-    message: 'All quota recovery attempts failed - manual intervention required',
-    timestamp: Date.now()
-  });
-
-  // Create notification if API available
-  if (browser.notifications?.create) {
-    browser.notifications
-      .create(`quota-failure-${operationId}`, {
-        type: 'basic',
-        iconUrl: browser.runtime.getURL('images/icon48.png'),
-        title: 'Quick Tabs Storage Error',
-        message:
-          'Storage quota exceeded and recovery failed. Please manually close some Quick Tabs to free space.'
-      })
-      .catch(err => {
-        console.warn('[Background] Failed to create notification:', err.message);
-      });
-  }
-}
-
-/**
- * Try a recovery write and verify
- * v1.6.3.7-v13 - Issue #7: Helper to reduce nesting depth in recovery functions
- * @private
- */
-async function _tryRecoveryWrite(operationId, recoveryState, expectedSaveId) {
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
-    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
-    return { success: verifyResult?.quick_tabs_state_v2?.saveId === expectedSaveId };
-  } catch (err) {
-    console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
-    return { success: false };
-  }
-}
-
-/**
- * Log recovery failure and return failure result
- * v1.6.3.7-v13 - Issue #7: Helper to reduce duplication in recovery functions
- * @private
- */
-function _logRecoveryFailure(operationId, failureType, recommendation) {
-  console.error('[Background] RECOVERY_FAILED:', {
-    operationId,
-    failureType,
-    recommendation: `Manual intervention required - ${recommendation}`,
-    timestamp: Date.now()
-  });
-  return { recovered: false, method: 'none', reason: `Unable to recover from ${failureType}` };
-}
-
-/**
- * Generate recovery save ID with type prefix
- * v1.6.3.7-v14 - FIX Duplication: Extracted common pattern
- * @private
- */
-function _generateRecoverySaveId(type) {
-  return `recovery-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/**
- * Build recovery state from intended state
- * v1.6.3.7-v14 - FIX Duplication: Extracted common pattern
- * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
- * @private
- */
-function _buildRecoveryState(intendedState, recoverySaveId, failureType) {
-  return {
-    ...intendedState,
-    saveId: recoverySaveId,
-    sequenceId: _getNextStorageSequenceId(),
-    revision: _getNextRevision(),
-    recoveredFrom: failureType,
-    recoveryTimestamp: Date.now()
-  };
-}
-
-/**
- * Log recovery success with details
- * v1.6.3.7-v14 - FIX Duplication: Extracted common logging
- * @private
- */
-function _logRecoverySuccess(operationId, method, recoverySaveId, additionalDetails = {}) {
-  console.log('[Background] RECOVERY_SUCCESS:', {
-    operationId,
-    method,
-    recoverySaveId,
-    ...additionalDetails,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Execute recovery with write and verification
- * v1.6.3.7-v14 - FIX Duplication: Unified recovery execution pattern
- * @private
- */
-async function _executeRecoveryWithVerification(config) {
-  const {
-    operationId,
-    intendedState,
-    failureType,
-    saveIdPrefix,
-    method,
-    verifyFn,
-    successDetails = {},
-    failureRecommendation
-  } = config;
-
-  console.log(
-    `[Background] RECOVERY_STRATEGY: Re-writing state (${failureType.toLowerCase().replace('_', ' ')})`
-  );
-
-  const recoverySaveId = _generateRecoverySaveId(saveIdPrefix);
-  const recoveryState = _buildRecoveryState(intendedState, recoverySaveId, failureType);
-
-  const writeResult = await _tryRecoveryWriteAndVerify(
-    operationId,
-    recoveryState,
-    recoverySaveId,
-    verifyFn
-  );
-  if (!writeResult.success) {
-    return _logRecoveryFailure(operationId, failureType, failureRecommendation);
-  }
-
-  _logRecoverySuccess(operationId, method, recoverySaveId, {
-    ...successDetails,
-    tabCount: writeResult.tabCount
-  });
-  return { recovered: true, method, reason: 'Successfully re-wrote state' };
-}
-
-/**
- * Recover from tab count mismatch (corruption)
- * v1.6.3.7-v13 - Issue #7: Re-write state with verification
- * v1.6.3.7-v14 - FIX Duplication: Use unified recovery execution
- * @private
- */
-async function _recoverFromTabCountMismatch(operationId, intendedState) {
-  const expectedTabCount = intendedState?.tabs?.length;
-  return _executeRecoveryWithVerification({
-    operationId,
-    intendedState,
-    failureType: 'TAB_COUNT_MISMATCH',
-    saveIdPrefix: 'count',
-    method: 're-write',
-    verifyFn: (_expected, actual) => actual?.tabs?.length === expectedTabCount,
-    failureRecommendation: 'state corruption persists - recommend clearing storage'
-  });
-}
-
-/**
- * Unified recovery write and verify operation
- * v1.6.3.7-v14 - FIX Duplication: Replaces _tryRecoveryWriteWithTabCount and _tryRecoveryWriteWithChecksum
- * @private
- */
-async function _tryRecoveryWriteAndVerify(operationId, recoveryState, expectedSaveId, verifyFn) {
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: recoveryState });
-    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
-    const verifyData = verifyResult?.quick_tabs_state_v2;
-    const success = verifyData?.saveId === expectedSaveId && verifyFn(recoveryState, verifyData);
-    return { success, tabCount: verifyData?.tabs?.length || 0 };
-  } catch (err) {
-    console.error('[Background] RECOVERY_RETRY_FAILED:', { operationId, error: err.message });
-    return { success: false };
-  }
-}
-
-/**
- * Check if sequence ordering indicates write was superseded
- * v1.6.3.7-v14 - FIX Complexity: Extracted from _recoverFromSaveIdMismatch
- * @private
- */
-function _checkSequenceSuperseded(operationId, intendedState, readBackState) {
-  const intendedSeqId = intendedState?.sequenceId;
-  const actualSeqId = readBackState?.sequenceId;
-
-  if (typeof intendedSeqId !== 'number' || typeof actualSeqId !== 'number') {
-    return null;
-  }
-
-  if (actualSeqId > intendedSeqId) {
-    console.log('[Background] RECOVERY_OUT_OF_ORDER_EVENT:', {
-      operationId,
-      intendedSequenceId: intendedSeqId,
-      actualSequenceId: actualSeqId,
-      explanation: 'Storage contains newer write - our write was superseded, no recovery needed',
-      timestamp: Date.now()
-    });
-    return {
-      recovered: true,
-      method: 'sequence-superseded',
-      reason: 'Storage has newer sequence ID - no action needed'
-    };
-  }
-
-  console.log('[Background] OUT_OF_ORDER_EVENTS: Older sequence fired after newer', {
-    intendedSequenceId: intendedSeqId,
-    actualSequenceId: actualSeqId,
-    operationId
-  });
-  return null;
-}
-
-/**
- * Recover from saveId mismatch (check sequence ID ordering)
- * v1.6.3.7-v13 - Issue #7: Verify sequence ID ordering
- * v1.6.3.7-v14 - FIX Complexity: Extracted sequence check
- * @private
- */
-async function _recoverFromSaveIdMismatch(operationId, intendedState, readBackState) {
-  console.log('[Background] RECOVERY_STRATEGY: Checking sequence ID ordering (saveId mismatch)');
-
-  // Check if our write was superseded by a newer one
-  const supersededResult = _checkSequenceSuperseded(operationId, intendedState, readBackState);
-  if (supersededResult) return supersededResult;
-
-  // Try re-writing with force
-  const recoverySaveId = _generateRecoverySaveId('saveid');
-  const recoveryState = _buildRecoveryState(intendedState, recoverySaveId, 'SAVEID_MISMATCH');
-
-  const writeResult = await _tryRecoveryWrite(operationId, recoveryState, recoverySaveId);
-  if (!writeResult.success) {
-    return _logRecoveryFailure(operationId, 'SAVEID_MISMATCH', 'concurrent writes may be blocking');
-  }
-
-  _logRecoverySuccess(operationId, 're-write-force', recoverySaveId);
-  return { recovered: true, method: 're-write-force', reason: 'Forced re-write with new saveId' };
-}
-
-/**
- * Recover from checksum mismatch (data corruption)
- * v1.6.3.7-v13 - Issue #7: Re-write with verification
- * v1.6.3.7-v14 - FIX Duplication: Use unified recovery execution
- * @private
- */
-async function _recoverFromChecksumMismatch(operationId, intendedState) {
-  return _executeRecoveryWithVerification({
-    operationId,
-    intendedState,
-    failureType: 'CHECKSUM_MISMATCH',
-    saveIdPrefix: 'checksum',
-    method: 're-write-verified',
-    verifyFn: (expected, actual) =>
-      _computeStorageChecksum(expected) === _computeStorageChecksum(actual),
-    successDetails: { checksumVerified: true },
-    failureRecommendation: 'persistent data corruption - recommend clearing storage'
-  });
-}
-
-/**
- * Handle successful write validation
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
- * @private
- */
-function _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite) {
-  console.log('[Background] STORAGE_WRITE_COMPLETE:', {
-    operationId,
-    success: true,
-    attempts: attempt + 1,
-    totalDurationMs: Date.now() - writeStart
-  });
-
-  // Update redundant backup if enabled
-  if (ENABLE_SYNC_STORAGE_BACKUP) {
-    _updateSyncBackup(stateToWrite, operationId);
-  }
-}
-
-/**
- * Write to storage with integrity validation and retry
- * v1.6.3.7-v9 - FIX Issue #8: Validate writes and retry on failure
- * @param {Object} stateToWrite - State object to write
- * @param {string} storageKey - Storage key
- * @returns {Promise<{success: boolean, operationId: string, retries: number, error: string|null}>}
- */
-async function writeStorageWithValidation(stateToWrite, storageKey) {
-  const operationId = _generateStorageOperationId();
-  const writeStart = Date.now();
-
-  console.log('[Background] STORAGE_WRITE_START:', {
-    operationId,
-    storageKey,
-    saveId: stateToWrite.saveId,
-    tabCount: stateToWrite?.tabs?.length || 0,
-    timestamp: writeStart
-  });
-
-  for (let attempt = 0; attempt < STORAGE_VALIDATION_MAX_RETRIES; attempt++) {
-    const result = await _tryWriteAttempt({
-      stateToWrite,
-      storageKey,
-      operationId,
-      attempt,
-      writeStart
-    });
-    if (result.done) return result.value;
-  }
-
-  // All retries failed - potential corruption
-  return _handleAllRetriesFailed(operationId, stateToWrite, writeStart);
-}
-
-/**
- * Try a single write attempt
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce nesting in writeStorageWithValidation
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- * @param {Object} options - Write attempt options
- * @param {Object} options.stateToWrite - State object to write
- * @param {string} options.storageKey - Storage key
- * @param {string} options.operationId - Operation ID for tracing
- * @param {number} options.attempt - Current attempt number
- * @param {number} options.writeStart - Write start timestamp
- */
-async function _tryWriteAttempt({ stateToWrite, storageKey, operationId, attempt, writeStart }) {
-  try {
-    const validation = await _performWriteAttempt(stateToWrite, storageKey, operationId, attempt);
-
-    if (validation.valid) {
-      _handleWriteSuccess(operationId, attempt, writeStart, stateToWrite);
-      return { done: true, value: { success: true, operationId, retries: attempt, error: null } };
-    }
-
-    // Validation failed, log retry
-    console.warn('[Background] STORAGE_WRITE_RETRY:', {
-      operationId,
-      attempt: attempt + 1,
-      maxAttempts: STORAGE_VALIDATION_MAX_RETRIES,
-      error: validation.error
-    });
-  } catch (err) {
-    console.error('[Background] STORAGE_WRITE_ERROR:', {
-      operationId,
-      attempt,
-      error: err.message
-    });
-  }
-
-  // Wait before next retry
-  await new Promise(resolve =>
-    setTimeout(resolve, STORAGE_VALIDATION_RETRY_DELAY_MS * (attempt + 1))
-  );
-  return { done: false };
-}
-
-/**
- * Handle case when all retries failed
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce complexity
- * @private
- */
-async function _handleAllRetriesFailed(operationId, stateToWrite, writeStart) {
-  console.error('[Background] CRITICAL: STORAGE_WRITE_ALL_RETRIES_FAILED:', {
-    operationId,
-    totalAttempts: STORAGE_VALIDATION_MAX_RETRIES,
-    totalDurationMs: Date.now() - writeStart,
-    action: 'TRIGGERING_CORRUPTION_RECOVERY'
-  });
-
-  await handleStorageCorruption(operationId, stateToWrite);
-
-  return {
-    success: false,
-    operationId,
-    retries: STORAGE_VALIDATION_MAX_RETRIES,
-    error: 'ALL_VALIDATION_RETRIES_FAILED'
-  };
-}
-
-/**
- * Update redundant backup in storage.sync
- * v1.6.3.7-v9 - FIX Issue #8: Keep second copy for recovery
- * @param {Object} stateToWrite - State to backup
- * @param {string} operationId - Operation ID for tracing
- */
-async function _updateSyncBackup(stateToWrite, operationId) {
-  try {
-    // storage.sync has lower quota limits, so we store essential data only
-    const backupData = {
-      tabs: stateToWrite.tabs,
-      timestamp: Date.now(),
-      saveId: stateToWrite.saveId,
-      backupOperationId: operationId
-    };
-
-    await browser.storage.sync.set({ [SYNC_BACKUP_KEY]: backupData });
-
-    console.log('[Background] SYNC_BACKUP_UPDATED:', {
-      operationId,
-      tabCount: backupData.tabs?.length || 0,
-      timestamp: backupData.timestamp
-    });
-  } catch (err) {
-    // storage.sync failures are non-critical (quota exceeded is common)
-    console.warn('[Background] SYNC_BACKUP_FAILED:', {
-      operationId,
-      error: err.message
-    });
-  }
-}
-
-/**
- * Handle detected storage corruption
- * v1.6.3.7-v9 - FIX Issue #8: Recovery mechanism using storage.sync backup
- * @param {string} operationId - Operation ID for tracing
- * @param {Object} intendedState - State that failed to write
- */
-async function handleStorageCorruption(operationId, intendedState) {
-  const now = Date.now();
-
-  // Rate limit recovery attempts
-  if (now - lastCorruptionDetectedAt < CORRUPTION_RECOVERY_COOLDOWN_MS) {
-    console.warn('[Background] CORRUPTION_RECOVERY_RATE_LIMITED:', {
-      operationId,
-      timeSinceLastMs: now - lastCorruptionDetectedAt,
-      cooldownMs: CORRUPTION_RECOVERY_COOLDOWN_MS
-    });
-    return;
-  }
-
-  lastCorruptionDetectedAt = now;
-
-  console.error('[Background] CRITICAL: STORAGE_CORRUPTION_DETECTED:', {
-    operationId,
-    intendedTabCount: intendedState?.tabs?.length || 0,
-    timestamp: now
-  });
-
-  // Try to recover from storage.sync backup
-  if (ENABLE_SYNC_STORAGE_BACKUP) {
-    await attemptRecoveryFromSyncBackup(operationId, intendedState);
-  }
-}
-
-/**
- * Attempt to recover state from storage.sync backup
- * v1.6.3.7-v9 - FIX Issue #8: Recovery from redundant backup
- * @param {string} operationId - Operation ID for tracing
- * @param {Object} intendedState - State that failed to write
- */
-/**
- * Handle case when sync backup is empty
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
- * @private
- */
-function _handleEmptyBackup(operationId, backup, intendedState) {
-  console.warn('[Background] SYNC_BACKUP_EMPTY: No backup available for recovery', {
-    operationId,
-    hasBackup: !!backup,
-    backupTabCount: backup?.tabs?.length || 0
-  });
-
-  // Fall back to intended state if we have it
-  if (intendedState?.tabs?.length > 0) {
-    console.log('[Background] USING_INTENDED_STATE_FOR_RECOVERY:', {
-      operationId,
-      tabCount: intendedState.tabs.length
-    });
-    globalQuickTabState.tabs = intendedState.tabs;
-    globalQuickTabState.lastUpdate = Date.now();
-  }
-}
-
-/**
- * Write recovered state to local storage
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce attemptRecoveryFromSyncBackup complexity
- * v1.6.3.7-v13 - Issue #2: Use centralized write validation
- * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
- * @private
- */
-async function _writeRecoveredState(operationId, backup) {
-  const recoveredState = {
-    tabs: backup.tabs,
-    saveId: `recovered-${operationId}`,
-    sequenceId: _getNextStorageSequenceId(),
-    revision: _getNextRevision(),
-    timestamp: Date.now(),
-    recoveredFrom: 'sync-backup'
-  };
-
-  // v1.6.3.7-v13 - Issue #2: Use centralized validation
-  const result = await _writeQuickTabStateWithValidation(recoveredState, 'sync-backup-recovery');
-
-  if (result.success) {
-    console.log('[Background] RECOVERY_COMPLETE: State restored from backup', {
-      operationId,
-      tabCount: backup.tabs.length,
-      validated: true
-    });
-  } else {
-    console.error('[Background] RECOVERY_WRITE_FAILED:', {
-      operationId,
-      error: result.error,
-      recovered: result.recovered
-    });
-  }
-}
-
-/**
- * Check if backup is valid for recovery
- * v1.6.4.14 - FIX Complex Conditional: Extracted from attemptRecoveryFromSyncBackup
- * @private
- */
-function _isBackupValidForRecovery(backup) {
-  return backup && backup.tabs && backup.tabs.length > 0;
-}
-
-/**
- * Attempt to recover state from storage.sync backup
- * v1.6.3.7-v9 - FIX Issue #8: Recovery from redundant backup
- * v1.6.4.14 - FIX Complex Conditional: Extracted _isBackupValidForRecovery
- * @param {string} operationId - Operation ID for tracing
- * @param {Object} intendedState - State that failed to write
- */
-async function attemptRecoveryFromSyncBackup(operationId, intendedState) {
-  try {
-    console.log('[Background] ATTEMPTING_SYNC_BACKUP_RECOVERY:', { operationId });
-
-    const result = await browser.storage.sync.get(SYNC_BACKUP_KEY);
-    const backup = result?.[SYNC_BACKUP_KEY];
-
-    // Check if backup is valid
-    if (!_isBackupValidForRecovery(backup)) {
-      _handleEmptyBackup(operationId, backup, intendedState);
-      return;
-    }
-
-    // Check backup age - don't restore very old backups (> 1 hour)
-    const backupAgeMs = Date.now() - backup.timestamp;
-    if (backupAgeMs > 3600000) {
-      console.warn('[Background] SYNC_BACKUP_TOO_OLD: Backup is over 1 hour old', {
-        operationId,
-        backupAgeMs,
-        backupTimestamp: backup.timestamp
-      });
-      return;
-    }
-
-    // Restore from backup
-    console.log('[Background] RESTORING_FROM_SYNC_BACKUP:', {
-      operationId,
-      backupTabCount: backup.tabs.length,
-      backupSaveId: backup.saveId,
-      backupAgeMs
-    });
-
-    // Update global state
-    globalQuickTabState.tabs = backup.tabs;
-    globalQuickTabState.lastUpdate = Date.now();
-    globalQuickTabState.saveId = backup.saveId;
-
-    // Write recovered state to local storage
-    await _writeRecoveredState(operationId, backup);
-  } catch (err) {
-    console.error('[Background] SYNC_BACKUP_RECOVERY_ERROR:', { operationId, error: err.message });
-  }
-}
-
-/**
- * Try to restore from sync backup on startup
- * v1.6.3.7-v9 - FIX Issue #8: Helper to reduce checkStorageIntegrityOnStartup complexity
- * @private
- */
-async function _tryRestoreFromStartupBackup(operationId) {
-  const syncResult = await browser.storage.sync.get(SYNC_BACKUP_KEY);
-  const backup = syncResult?.[SYNC_BACKUP_KEY];
-
-  if (!backup?.tabs || backup.tabs.length === 0) {
-    return { hasBackup: false, recovered: false };
-  }
-
-  console.warn('[Background] STORAGE_INTEGRITY_MISMATCH: Local empty but backup has data', {
-    operationId,
-    localTabCount: 0,
-    backupTabCount: backup.tabs.length,
-    backupAge: Date.now() - backup.timestamp
-  });
-
-  // Check if backup is recent enough to restore (< 24 hours)
-  const backupAgeMs = Date.now() - backup.timestamp;
-  if (backupAgeMs >= 86400000) {
-    console.warn('[Background] STARTUP_BACKUP_TOO_OLD:', {
-      operationId,
-      backupAgeHours: Math.round(backupAgeMs / 3600000)
-    });
-    return { hasBackup: true, recovered: false };
-  }
-
-  console.log('[Background] RESTORING_FROM_STARTUP_BACKUP:', {
-    operationId,
-    backupTabCount: backup.tabs.length
-  });
-
-  await attemptRecoveryFromSyncBackup(operationId, null);
-  return { hasBackup: true, recovered: true };
-}
-
-/**
- * Check storage integrity on startup
- * v1.6.3.7-v9 - FIX Issue #8: Verify storage.local data on initialization
- * v1.6.3.7-v10 - FIX Issue #8: Add checksum comparison with sync backup
- * @returns {Promise<{healthy: boolean, recovered: boolean, error: string|null}>}
- */
-async function checkStorageIntegrityOnStartup() {
-  const operationId = _generateStorageOperationId();
-  console.log('[Background] STORAGE_INTEGRITY_CHECK_START:', { operationId });
-
-  try {
-    // Read from storage.local
-    const localResult = await browser.storage.local.get('quick_tabs_state_v2');
-    const localState = localResult?.quick_tabs_state_v2;
-
-    // v1.6.3.7-v10 - FIX Issue #8: Compute checksums for comparison
-    const localChecksum = _computeStorageChecksum(localState);
-
-    // If sync backup is enabled, compare checksums
-    const checksumResult = await _performChecksumComparison(operationId, localState, localChecksum);
-    if (checksumResult.shouldReturn) {
-      return checksumResult.result;
-    }
-
-    // If local storage has data, we're good
-    if (_hasValidLocalState(localState)) {
-      return _logAndReturnHealthy(operationId, localState, localChecksum);
-    }
-
-    // Local storage is empty - check if we have a backup and try recovery
-    return await _attemptBackupRecovery(operationId);
-  } catch (err) {
-    console.error('[Background] STORAGE_INTEGRITY_CHECK_ERROR:', {
-      operationId,
-      error: err.message
-    });
-    return { healthy: false, recovered: false, error: err.message };
-  }
-}
-
-/**
- * Perform checksum comparison if sync backup is enabled
- * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
- * @private
- */
-async function _performChecksumComparison(operationId, localState, localChecksum) {
-  if (!ENABLE_SYNC_STORAGE_BACKUP) {
-    return { shouldReturn: false, result: null };
-  }
-
-  const checksumResult = await _compareStorageChecksums(operationId, localState, localChecksum);
-  if (checksumResult.mismatch && checksumResult.recovered) {
-    return { shouldReturn: true, result: { healthy: false, recovered: true, error: null } };
-  }
-  return { shouldReturn: false, result: null };
-}
-
-/**
- * Check if local state has valid tabs
- * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
- * @private
- */
-function _hasValidLocalState(localState) {
-  return localState?.tabs && localState.tabs.length > 0;
-}
-
-/**
- * Log and return healthy result
- * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
- * @private
- */
-function _logAndReturnHealthy(operationId, localState, localChecksum) {
-  console.log('[Background] STORAGE_INTEGRITY_CHECK_PASSED:', {
-    operationId,
-    localTabCount: localState.tabs.length,
-    localChecksum,
-    saveId: localState.saveId
-  });
-  return { healthy: true, recovered: false, error: null };
-}
-
-/**
- * Attempt backup recovery if local storage is empty
- * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce checkStorageIntegrityOnStartup max-depth
- * @private
- */
-async function _attemptBackupRecovery(operationId) {
-  const backupResult = ENABLE_SYNC_STORAGE_BACKUP
-    ? await _tryRestoreFromStartupBackup(operationId)
-    : { hasBackup: false, recovered: false };
-
-  if (backupResult.recovered) {
-    return { healthy: false, recovered: true, error: null };
-  }
-
-  // No data in either storage - this is expected for new installations
-  console.log('[Background] STORAGE_INTEGRITY_CHECK_COMPLETE: No existing data', { operationId });
-  return { healthy: true, recovered: false, error: null };
-}
-
-/**
- * Compute a checksum for storage state (hash of tab IDs + states)
- * v1.6.3.7-v10 - FIX Issue #8: Data checksum for corruption detection
- * @private
- * @param {Object} state - State object with tabs array
- * @returns {string} Checksum string or 'empty' if no tabs
- */
-function _computeStorageChecksum(state) {
-  if (!state?.tabs || state.tabs.length === 0) {
-    return 'empty';
-  }
-
-  // Build a deterministic string from tab IDs and their minimized states
-  const tabSignatures = state.tabs
-    .map(t => `${t.id}:${t.minimized ? '1' : '0'}:${t.originTabId || '?'}`)
-    .sort()
-    .join('|');
-
-  // v1.6.3.7-v10 - FIX Code Review: djb2-like hash algorithm explanation
-  // hash = hash * 33 + char is equivalent to (hash << 5) - hash + char
-  // This is a simple, fast string hash used for corruption detection (not crypto)
-  let hash = state.tabs.length;
-  for (let i = 0; i < tabSignatures.length; i++) {
-    hash = ((hash << 5) - hash + tabSignatures.charCodeAt(i)) | 0;
-  }
-
-  return `chk-${state.tabs.length}-${Math.abs(hash).toString(16)}`;
-}
-
-/**
- * Compare local storage checksum with sync backup checksum
- * v1.6.3.7-v10 - FIX Issue #8: Detect subtle corruption via checksum mismatch
- * v1.6.4.14 - FIX Complexity: Simplified with early returns (cc=10 → cc=5)
- * @private
-/**
- * Check if sync backup is valid for comparison
- * v1.6.4.14 - FIX Complexity: Extracted predicate
- * @private
- */
-function _isSyncBackupValid(syncBackup) {
-  return syncBackup?.tabs && syncBackup.tabs.length > 0;
-}
-
-/**
- * Compare local storage checksum with sync backup checksum
- * v1.6.3.7-v10 - FIX Issue #8: Detect subtle corruption via checksum mismatch
- * v1.6.4.14 - FIX Complexity: Extracted _isSyncBackupValid (cc=10 → cc=6)
- * @private
- * @param {string} operationId - Operation ID for logging
- * @param {Object} localState - Local storage state
- * @param {string} localChecksum - Computed local checksum
- * @returns {Promise<{mismatch: boolean, recovered: boolean}>}
- */
-async function _compareStorageChecksums(operationId, localState, localChecksum) {
-  const noMismatchResult = { mismatch: false, recovered: false };
-
-  try {
-    const syncResult = await browser.storage.sync.get('quick_tabs_backup');
-    const syncBackup = syncResult?.quick_tabs_backup;
-
-    // No sync backup to compare against
-    if (!_isSyncBackupValid(syncBackup)) {
-      return noMismatchResult;
-    }
-
-    const syncChecksum = _computeStorageChecksum(syncBackup);
-    const localTabCount = localState?.tabs?.length || 0;
-    const syncTabCount = syncBackup.tabs.length;
-
-    const mismatchResult = _detectChecksumMismatch(
-      localChecksum,
-      syncChecksum,
-      localTabCount,
-      syncTabCount
-    );
-
-    if (!mismatchResult.hasMismatch) {
-      return noMismatchResult;
-    }
-
-    return await _handleChecksumMismatch({
-      operationId,
-      localChecksum,
-      syncChecksum,
-      localTabCount,
-      syncTabCount,
-      mismatchResult,
-      localState
-    });
-  } catch (err) {
-    console.warn('[Background] STORAGE_CHECKSUM_COMPARISON_ERROR:', {
-      operationId,
-      error: err.message
-    });
-    return noMismatchResult;
-  }
-}
-
-/**
- * Detect if there is a checksum or count mismatch between local and sync
- * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce _compareStorageChecksums complexity
- * @private
- */
-function _detectChecksumMismatch(localChecksum, syncChecksum, localTabCount, syncTabCount) {
-  const countMismatch = localTabCount !== syncTabCount && localTabCount > 0 && syncTabCount > 0;
-  const checksumMismatch =
-    localChecksum !== 'empty' && syncChecksum !== 'empty' && localChecksum !== syncChecksum;
-
-  return {
-    hasMismatch: countMismatch || checksumMismatch,
-    countMismatch,
-    checksumMismatch
-  };
-}
-
-/**
- * Handle detected checksum mismatch
- * v1.6.3.7-v10 - FIX Issue #8: Extracted to reduce _compareStorageChecksums complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- * @param {Object} options - Options object
- * @param {string} options.operationId - Operation ID for logging
- * @param {string} options.localChecksum - Local storage checksum
- * @param {string} options.syncChecksum - Sync backup checksum
- * @param {number} options.localTabCount - Local tab count
- * @param {number} options.syncTabCount - Sync tab count
- * @param {Object} options.mismatchResult - Result of mismatch detection
- * @param {Object} options.localState - Local state for recovery
- */
-async function _handleChecksumMismatch({
-  operationId,
-  localChecksum,
-  syncChecksum,
-  localTabCount,
-  syncTabCount,
-  mismatchResult,
-  localState
-}) {
-  console.warn('[Background] STORAGE_INTEGRITY_CHECKSUM_MISMATCH:', {
-    operationId,
-    localChecksum,
-    syncChecksum,
-    localTabCount,
-    syncTabCount,
-    countMismatch: mismatchResult.countMismatch,
-    checksumMismatch: mismatchResult.checksumMismatch,
-    timestamp: Date.now()
-  });
-
-  // Determine which source to trust (prefer the one with more data)
-  if (syncTabCount > localTabCount) {
-    console.log(
-      '[Background] STORAGE_INTEGRITY_RECOVERY: Restoring from sync backup (more complete)'
-    );
-    await attemptRecoveryFromSyncBackup(operationId, localState);
-    return { mismatch: true, recovered: true };
-  }
-
-  console.log('[Background] STORAGE_INTEGRITY_MISMATCH_KEPT_LOCAL: Local has more or equal data', {
-    localTabCount,
-    syncTabCount
-  });
-  return { mismatch: true, recovered: false };
-}
-
-// ==================== END ISSUE #8: STORAGE INTEGRITY VALIDATION ====================
-
-// ==================== v1.6.3.8-v5 FIX Issue #7: ROBUST URL VALIDATION ====================
-
-/**
- * Whitelisted URL protocols for Quick Tab creation
- * v1.6.3.8-v5 - FIX Issue #7: Strictly whitelisted protocols only
- * Note: chrome-extension:// included for Chromium compatibility but filtered in Firefox
- * @private
- */
-const VALID_QUICKTAB_PROTOCOLS = new Set([
-  'http:',
-  'https:',
-  'moz-extension:',
-  'chrome-extension:'
-]);
-
-/**
- * Dangerous URL protocols that should always be rejected
- * v1.6.3.8-v5 - FIX Issue #7: Explicit blocklist for security audit logging
- * @private
- */
-// eslint-disable-next-line no-script-url -- Used for validation/rejection, not execution
-const DANGEROUS_PROTOCOLS = new Set(['javascript:', 'data:', 'blob:', 'vbscript:', 'file:']);
-
-/**
- * Maximum length for parsed URL logging (protocol + hostname + pathname)
- * v1.6.3.8-v5 - FIX Issue #7: Named constant for URL logging truncation
- * @private
- */
-const URL_LOG_MAX_PARSED_LENGTH = 80;
-
-/**
- * Maximum length for unparseable raw URL logging
- * v1.6.3.8-v5 - FIX Issue #7: Named constant for raw URL logging truncation
+ * Valid URL protocols for Quick Tab creation
  * @private
  */
-const URL_LOG_MAX_RAW_LENGTH = 50;
+const VALID_QUICKTAB_PROTOCOLS = ['http://', 'https://', 'moz-extension://', 'chrome-extension://'];
 
 /**
  * Check if URL is null, undefined, or empty
@@ -3660,125 +228,27 @@ function _isUrlCorruptedWithUndefined(url) {
 }
 
 /**
- * Safely extract loggable parts from a URL for security audit
- * v1.6.3.8-v5 - FIX Issue #7: Better URL sanitization for logging
- * Preserves protocol and domain while safely truncating query/fragment
+ * Check if URL starts with a valid protocol
  * @private
- * @param {string} url - The URL to sanitize
- * @returns {string} Sanitized URL safe for logging
+ * @param {string} urlStr - URL string to check
+ * @returns {boolean} True if URL has valid protocol
  */
-function _sanitizeUrlForLogging(url) {
-  const urlStr = String(url);
-  try {
-    const parsed = new URL(urlStr);
-    // Keep protocol + hostname + pathname (truncated), remove query/fragment
-    const basePart = `${parsed.protocol}//${parsed.hostname}${parsed.pathname}`;
-    const truncated = basePart.substring(0, URL_LOG_MAX_PARSED_LENGTH);
-    return truncated.length < basePart.length ? truncated + '...[TRUNCATED]' : truncated;
-  } catch (_err) {
-    // If URL can't be parsed, just show first chars of raw string
-    const truncated = urlStr.substring(0, URL_LOG_MAX_RAW_LENGTH);
-    return truncated.length < urlStr.length ? truncated + '...[UNPARSEABLE]' : truncated;
-  }
-}
-
-/**
- * Log rejected URL for security audit
- * v1.6.3.8-v5 - FIX Issue #7: Security audit logging for rejected URLs
- * @private
- * @param {string} url - The URL that was rejected
- * @param {string} reason - Reason for rejection
- */
-function _logRejectedUrl(url, reason) {
-  console.warn('[Background] URL_VALIDATION_REJECTED:', {
-    url: _sanitizeUrlForLogging(url),
-    reason,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Parse and validate URL using URL constructor
- * v1.6.3.8-v5 - FIX Issue #7: Robust URL validation using URL constructor
- * @private
- * @param {string} urlStr - URL string to validate
- * @returns {{ valid: boolean, protocol: string|null, reason: string|null }} Validation result
- */
-function _parseAndValidateUrl(urlStr) {
-  try {
-    const parsed = new URL(urlStr);
-
-    // v1.6.3.8-v5 - FIX Issue #7: Check for dangerous protocols first (security audit)
-    if (DANGEROUS_PROTOCOLS.has(parsed.protocol)) {
-      return {
-        valid: false,
-        protocol: parsed.protocol,
-        reason: `DANGEROUS_PROTOCOL: ${parsed.protocol}`
-      };
-    }
-
-    // v1.6.3.8-v5 - FIX Issue #7: Strict whitelist enforcement
-    if (!VALID_QUICKTAB_PROTOCOLS.has(parsed.protocol)) {
-      return {
-        valid: false,
-        protocol: parsed.protocol,
-        reason: `PROTOCOL_NOT_WHITELISTED: ${parsed.protocol}`
-      };
-    }
-
-    // v1.6.3.8-v5 - FIX Issue #7: Additional validation - ensure hostname exists for http/https
-    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.hostname) {
-      return {
-        valid: false,
-        protocol: parsed.protocol,
-        reason: 'MISSING_HOSTNAME'
-      };
-    }
-
-    return { valid: true, protocol: parsed.protocol, reason: null };
-  } catch (err) {
-    // URL constructor throws on invalid URLs
-    // v1.6.3.8-v5: Log error type for debugging (but not the URL content for security)
-    return {
-      valid: false,
-      protocol: null,
-      reason: `INVALID_URL_FORMAT: ${err.name || 'TypeError'}`
-    };
-  }
+function _hasValidProtocol(urlStr) {
+  return VALID_QUICKTAB_PROTOCOLS.some(proto => urlStr.startsWith(proto));
 }
 
 /**
  * Check if a URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
  * v1.6.4.8 - Refactored: Extracted helpers to reduce complex conditionals
- * v1.6.3.8-v5 - FIX Issue #7: Robust URL validation with URL constructor and security logging
  * @param {*} url - URL to validate
  * @returns {boolean} True if URL is valid
  */
 function isValidQuickTabUrl(url) {
-  // Quick checks first
-  if (_isUrlNullOrEmpty(url)) {
-    return false;
-  }
-  if (_isUrlCorruptedWithUndefined(url)) {
-    _logRejectedUrl(url, 'CORRUPTED_UNDEFINED');
-    return false;
-  }
-
-  const urlStr = String(url);
-
-  // v1.6.3.8-v5 - FIX Issue #7: Use URL constructor for robust validation
-  const validation = _parseAndValidateUrl(urlStr);
-
-  if (!validation.valid) {
-    _logRejectedUrl(urlStr, validation.reason);
-    return false;
-  }
-
-  return true;
+  if (_isUrlNullOrEmpty(url)) return false;
+  if (_isUrlCorruptedWithUndefined(url)) return false;
+  return _hasValidProtocol(String(url));
 }
-
-// ==================== END v1.6.3.8-v5 FIX Issue #7: ROBUST URL VALIDATION ====================
 
 /**
  * Filter out tabs with invalid URLs from state
@@ -3921,59 +391,10 @@ let initializationRetryCount = 0;
 const MAX_INITIALIZATION_RETRIES = 3;
 
 /**
- * Log successful initialization completion
- * v1.6.4.13 - FIX Complexity: Extracted from initializeGlobalState (cc=12 → cc=6)
- * @private
- * @param {string} source - Source of state (e.g., 'session storage', 'local storage')
- * @param {number} initStartTime - Initialization start timestamp
- */
-function _logInitializationComplete(source, initStartTime) {
-  initializationRetryCount = 0;
-  console.log(`[Background] v1.6.3.6-v12 Initialization complete from ${source}:`, {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    durationMs: Date.now() - initStartTime
-  });
-}
-
-/**
- * Handle initialization error with retry logic
- * v1.6.4.13 - FIX Complexity: Extracted from initializeGlobalState (cc=12 → cc=6)
- * @private
- * @param {Error} err - The error that occurred
- * @param {number} initStartTime - Initialization start timestamp
- */
-function _handleInitializationError(err, initStartTime) {
-  console.error('[Background] v1.6.3.6-v12 INITIALIZATION_FAILED:', {
-    error: err.message,
-    durationMs: Date.now() - initStartTime,
-    retryCount: initializationRetryCount,
-    maxRetries: MAX_INITIALIZATION_RETRIES
-  });
-
-  if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
-    initializationRetryCount++;
-    const backoffMs = Math.pow(2, initializationRetryCount) * 500;
-    console.log(
-      `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
-    );
-    setTimeout(() => initializeGlobalState(), backoffMs);
-  } else {
-    console.error(
-      '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
-    );
-    globalQuickTabState.tabs = [];
-    globalQuickTabState.lastUpdate = Date.now();
-    isInitialized = true;
-  }
-}
-
-/**
  * v1.5.8.13 - EAGER LOADING: Initialize global state from storage on extension startup
  * v1.6.2.2 - Simplified for unified format
  * v1.6.3.6-v12 - FIX Issue #1: Proper error handling - don't set isInitialized on failure
  * v1.6.3.6-v12 - FIX Code Review: Added retry limit to prevent infinite loop
- * v1.6.3.7-v9 - FIX Issue #8: Check storage integrity on startup
- * v1.6.4.13 - FIX Complexity: Extracted helpers (cc=12 → cc=6)
  */
 async function initializeGlobalState() {
   // Guard: Already initialized
@@ -3986,31 +407,47 @@ async function initializeGlobalState() {
   const initStartTime = Date.now();
 
   try {
-    // v1.6.3.7-v9 - FIX Issue #8: Check storage integrity before loading
-    const integrityResult = await checkStorageIntegrityOnStartup();
-    console.log('[Background] Storage integrity check result:', {
-      healthy: integrityResult.healthy,
-      recovered: integrityResult.recovered,
-      error: integrityResult.error
-    });
-
-    // If we recovered from backup, our state is already populated
-    if (integrityResult.recovered && globalQuickTabState.tabs?.length > 0) {
-      _logInitializationComplete('backup recovery', initStartTime);
-      return;
-    }
-
     // Try session storage first (faster)
-    if (await tryLoadFromSessionStorage()) {
-      _logInitializationComplete('session storage', initStartTime);
+    const loaded = await tryLoadFromSessionStorage();
+    if (loaded) {
+      initializationRetryCount = 0; // Reset on success
+      console.log('[Background] v1.6.3.6-v12 Initialization complete from session storage:', {
+        tabCount: globalQuickTabState.tabs?.length || 0,
+        durationMs: Date.now() - initStartTime
+      });
       return;
     }
 
     // Fall back to sync storage
     await tryLoadFromSyncStorage();
-    _logInitializationComplete('local storage', initStartTime);
+    initializationRetryCount = 0; // Reset on success
+    console.log('[Background] v1.6.3.6-v12 Initialization complete from local storage:', {
+      tabCount: globalQuickTabState.tabs?.length || 0,
+      durationMs: Date.now() - initStartTime
+    });
   } catch (err) {
-    _handleInitializationError(err, initStartTime);
+    // v1.6.3.6-v12 - FIX Issue #1: Do NOT set isInitialized=true on error
+    // This ensures handlers know state is not ready
+    console.error('[Background] v1.6.3.6-v12 INITIALIZATION FAILED:', {
+      error: err.message,
+      durationMs: Date.now() - initStartTime,
+      retryCount: initializationRetryCount,
+      maxRetries: MAX_INITIALIZATION_RETRIES
+    });
+
+    // v1.6.3.6-v12 - FIX Code Review: Limit retries with exponential backoff
+    if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
+      initializationRetryCount++;
+      const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
+      console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+      setTimeout(() => initializeGlobalState(), backoffMs);
+    } else {
+      console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+      // Fall back to empty state after max retries
+      globalQuickTabState.tabs = [];
+      globalQuickTabState.lastUpdate = Date.now();
+      isInitialized = true;
+    }
   }
 }
 
@@ -4196,23 +633,17 @@ async function tryLoadFromSyncStorage() {
 /**
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
- * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
- * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  *
  * @returns {Promise<void>}
  */
 async function saveMigratedToUnifiedFormat() {
-  const saveId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  const sequenceId = _getNextStorageSequenceId();
-  const revision = _getNextRevision();
+  const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
     await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
-        sequenceId,
-        revision,
         timestamp: Date.now()
       }
     });
@@ -4241,31 +672,6 @@ function logSuccessfulLoad(source, format) {
 
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
-
-// v1.6.3.8-v12 GAP-1, GAP-10, GAP-11 fix: Bootstrap Quick Tabs v2 after state initialization
-// This must happen after initializeGlobalState() but before content scripts run
-// The bootstrapQuickTabs() function checks the feature flag and initializes the appropriate architecture
-// v1.6.3.9-v2 - Issue #6: Also initializes tab events for container isolation
-(async function bootstrapQuickTabsV2() {
-  console.log('[Background] v1.6.3.8-v12 Initiating Quick Tabs v2 bootstrap...');
-  try {
-    const result = await bootstrapQuickTabs();
-    console.log('[Background] v1.6.3.8-v12 Quick Tabs bootstrap complete:', {
-      architecture: result.architecture,
-      success: result.success,
-      activeArchitecture: getActiveArchitecture()
-    });
-
-    // v1.6.3.9-v2 - Issue #6: Initialize tab events for container isolation and cleanup
-    const tabEventsResult = initializeTabEvents();
-    console.log('[Background] v1.6.3.9-v2 Tab events initialized:', {
-      success: tabEventsResult.success,
-      listeners: tabEventsResult.listenersRegistered
-    });
-  } catch (err) {
-    console.error('[Background] v1.6.3.8-v12 Quick Tabs bootstrap failed:', err.message);
-  }
-})();
 
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
@@ -4324,9 +730,6 @@ function migrateTabFromPinToSoloMute(quickTab) {
 /**
  * Helper: Save migrated Quick Tab state to storage
  * v1.6.2.2 - Updated for unified format
- * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
- * v1.6.3.7-v13 - Issue #2: Use centralized write validation
- * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  *
  * @returns {Promise<void>}
  */
@@ -4335,22 +738,16 @@ async function saveMigratedQuickTabState() {
 
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
-    saveId: `migration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    sequenceId: _getNextStorageSequenceId(),
-    revision: _getNextRevision(),
+    saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     timestamp: Date.now()
   };
 
-  // v1.6.3.7-v13 - Issue #2: Use centralized validation
-  const result = await _writeQuickTabStateWithValidation(stateToSave, 'migration');
-
-  if (result.success) {
-    console.log('[Background Migration] ✓ Migration complete (validated)');
-  } else {
-    console.error('[Background Migration] Error saving migrated state:', {
-      error: result.error,
-      recovered: result.recovered
-    });
+  try {
+    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
+    console.log('[Background Migration] ✓ Migration complete');
+  } catch (err) {
+    console.error('[Background Migration] Error saving migrated state:', err);
   }
 }
 
@@ -4732,350 +1129,176 @@ const stateCoordinator = new StateCoordinator();
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
 // This allows Quick Tabs to load any website, bypassing clickjacking protection
 // ==================== X-FRAME-OPTIONS BYPASS FOR QUICK TABS ====================
-// v1.6.3.8-v5 - Issue 5: declarativeNetRequest feature detection with webRequest fallback
-// Firefox Manifest V2 currently supports blocking webRequest, but Mozilla may enforce MV3-only
-// in the future. This implementation provides future-proofing with declarativeNetRequest support.
+// Firefox Manifest V3 - Supports blocking webRequest
+// This allows Quick Tabs to load any website, bypassing clickjacking protection
 // Security Note: This removes X-Frame-Options and CSP frame-ancestors headers
 // which normally prevent websites from being embedded in iframes. This makes
 // the extension potentially vulnerable to clickjacking attacks if a malicious
 // website tricks the user into clicking on a Quick Tab overlay. Use with caution.
 
-console.log('[Quick Tabs] Initializing X-Frame-Options bypass...');
+console.log('[Quick Tabs] Initializing Firefox MV3 X-Frame-Options bypass...');
 
-// ==================== v1.6.3.8-v5 DECLARATIVENETREQUEST FEATURE DETECTION ====================
-// Issue 5: Feature detection for MV3 compatibility
+// Track modified URLs for debugging
+const modifiedUrls = new Set();
 
-/**
- * Check if declarativeNetRequest API is available
- * v1.6.3.8-v5 - Issue 5: Feature detection for MV3 future-proofing
- * @returns {boolean} True if declarativeNetRequest API is available
- */
-function isDeclarativeNetRequestAvailable() {
-  return (
-    typeof browser !== 'undefined' &&
-    typeof browser.declarativeNetRequest !== 'undefined' &&
-    typeof browser.declarativeNetRequest.updateSessionRules === 'function'
-  );
-}
+// v1.6.3.4-v11 - FIX Issue #6: Track recently processed iframe URLs to prevent spam logging
+const recentlyProcessedIframes = new Map(); // url -> timestamp
+const IFRAME_DEDUP_WINDOW_MS = 200; // Skip logging if same URL processed within 200ms
 
 /**
- * Track which API mode is being used for header modification
- * v1.6.3.8-v5 - Issue 5: Logged at startup for diagnostics
- * @type {'declarativeNetRequest' | 'webRequest' | 'none'}
+ * Clean up old entries from recentlyProcessedIframes Map
+ * v1.6.3.4-v11 - FIX Issue #6: Extracted to reduce nesting depth
+ * @private
+ * @param {number} now - Current timestamp
  */
-let headerModificationApiMode = 'none';
-
-/**
- * Rule IDs for declarativeNetRequest session rules
- * v1.6.3.8-v5 - Issue 5: Unique IDs for each header rule
- */
-const DNR_RULE_IDS = {
-  REMOVE_X_FRAME_OPTIONS: 1,
-  REMOVE_CSP: 2,
-  REMOVE_CORP: 3
-};
-
-/**
- * Array of our rule IDs for cleanup operations
- * v1.6.3.8-v5 - Issue 5: Pre-computed to avoid repeated Object.values() calls
- */
-const DNR_OUR_RULE_IDS = Object.values(DNR_RULE_IDS);
-
-/**
- * Initialize declarativeNetRequest rules for iframe header modification
- * v1.6.3.8-v5 - Issue 5: Uses session rules (cleared on browser restart)
- * @returns {Promise<boolean>} True if initialization succeeded
- */
-async function initializeDeclarativeNetRequest() {
-  if (!isDeclarativeNetRequestAvailable()) {
-    // v1.6.3.8-v5 - Issue 5: API not available, let caller handle fallback
-    return false;
-  }
-
-  console.log('[Quick Tabs] Attempting to initialize declarativeNetRequest rules...');
-
-  try {
-    // Define session rules to modify response headers for sub_frame requests
-    const rules = [
-      {
-        id: DNR_RULE_IDS.REMOVE_X_FRAME_OPTIONS,
-        priority: 1,
-        action: {
-          type: 'modifyHeaders',
-          responseHeaders: [
-            {
-              header: 'X-Frame-Options',
-              operation: 'remove'
-            }
-          ]
-        },
-        condition: {
-          resourceTypes: ['sub_frame']
-        }
-      },
-      {
-        id: DNR_RULE_IDS.REMOVE_CSP,
-        priority: 1,
-        action: {
-          type: 'modifyHeaders',
-          responseHeaders: [
-            {
-              header: 'Content-Security-Policy',
-              operation: 'remove'
-            }
-          ]
-        },
-        condition: {
-          resourceTypes: ['sub_frame']
-        }
-      },
-      {
-        id: DNR_RULE_IDS.REMOVE_CORP,
-        priority: 1,
-        action: {
-          type: 'modifyHeaders',
-          responseHeaders: [
-            {
-              header: 'Cross-Origin-Resource-Policy',
-              operation: 'remove'
-            }
-          ]
-        },
-        condition: {
-          resourceTypes: ['sub_frame']
-        }
-      }
-    ];
-
-    // v1.6.3.8-v5 - Only remove our own rules to avoid interfering with other extensions
-    // Use pre-computed DNR_OUR_RULE_IDS rather than clearing all existing rules
-
-    await browser.declarativeNetRequest.updateSessionRules({
-      removeRuleIds: DNR_OUR_RULE_IDS,
-      addRules: rules
-    });
-
-    // Verify rules were added
-    const addedRules = await browser.declarativeNetRequest.getSessionRules();
-    console.log('[Quick Tabs] declarativeNetRequest session rules registered:', {
-      ruleCount: addedRules.length,
-      ruleIds: addedRules.map(r => r.id)
-    });
-
-    headerModificationApiMode = 'declarativeNetRequest';
-    return true;
-  } catch (err) {
-    console.error('[Quick Tabs] Failed to initialize declarativeNetRequest:', {
-      error: err.message,
-      name: err.name
-    });
-    return false;
-  }
-}
-
-/**
- * Initialize header modification using either declarativeNetRequest or webRequest
- * v1.6.3.8-v5 - Issue 5: Feature detection with fallback
- */
-async function initializeHeaderModification() {
-  // Try declarativeNetRequest first (MV3 future-proofing)
-  const dnrSuccess = await initializeDeclarativeNetRequest();
-
-  if (dnrSuccess) {
-    console.log('[Quick Tabs] WEBREQUEST_API_MODE: declarativeNetRequest');
-    console.log('[Quick Tabs] ✓ Using declarativeNetRequest for header modification (MV3-ready)');
-    return;
-  }
-
-  // Fall back to webRequest (current MV2 implementation)
-  // v1.6.3.8-v5 - Log why fallback is being used
-  console.log('[Quick Tabs] declarativeNetRequest not available, using webRequest fallback');
-  headerModificationApiMode = 'webRequest';
-  console.log('[Quick Tabs] WEBREQUEST_API_MODE: webRequest');
-  console.log('[Quick Tabs] ✓ Using webRequest for header modification (MV2 fallback)');
-  initializeWebRequestHeaderModification();
-}
-
-/**
- * Initialize webRequest-based header modification (fallback)
- * v1.6.3.8-v5 - Issue 5: Wrapped in function for conditional initialization
- */
-function initializeWebRequestHeaderModification() {
-  console.log('[Quick Tabs] Initializing webRequest header modification...');
-
-  // Track modified URLs for debugging
-  const modifiedUrls = new Set();
-
-  // v1.6.3.4-v11 - FIX Issue #6: Track recently processed iframe URLs to prevent spam logging
-  const recentlyProcessedIframes = new Map(); // url -> timestamp
-  const IFRAME_DEDUP_WINDOW_MS = 200; // Skip logging if same URL processed within 200ms
-
-  /**
-   * Clean up old entries from recentlyProcessedIframes Map
-   * v1.6.3.4-v11 - FIX Issue #6: Extracted to reduce nesting depth
-   * @private
-   * @param {number} now - Current timestamp
-   */
-  function _cleanupOldIframeEntries(now) {
-    const cutoff = now - IFRAME_DEDUP_WINDOW_MS * 10;
-    for (const [url, timestamp] of recentlyProcessedIframes) {
-      if (timestamp < cutoff) {
-        recentlyProcessedIframes.delete(url);
-      }
+function _cleanupOldIframeEntries(now) {
+  const cutoff = now - IFRAME_DEDUP_WINDOW_MS * 10;
+  for (const [url, timestamp] of recentlyProcessedIframes) {
+    if (timestamp < cutoff) {
+      recentlyProcessedIframes.delete(url);
     }
   }
+}
 
-  /**
-   * Handle X-Frame-Options header removal
-   * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
-   * @param {Object} header - HTTP header object
-   * @param {string} url - Request URL for logging
-   * @returns {boolean} false to remove header, true to keep
-   */
-  function _handleXFrameOptionsHeader(header, url) {
-    console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${url}`);
+/**
+ * Handle X-Frame-Options header removal
+ * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
+ * @param {Object} header - HTTP header object
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _handleXFrameOptionsHeader(header, url) {
+  console.log(`[Quick Tabs] ✓ Removed X-Frame-Options: ${header.value} from ${url}`);
+  modifiedUrls.add(url);
+  return false;
+}
+
+/**
+ * Handle CSP header modification
+ * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
+ * @param {Object} header - HTTP header object (modified in place)
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _handleCSPHeader(header, url) {
+  const originalValue = header.value;
+  header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
+
+  // If CSP is now empty, remove the header entirely
+  const trimmedValue = header.value.trim();
+  if (trimmedValue === '' || trimmedValue === ';') {
+    console.log(`[Quick Tabs] ✓ Removed empty CSP from ${url}`);
     modifiedUrls.add(url);
     return false;
   }
 
-  /**
-   * Handle CSP header modification
-   * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
-   * @param {Object} header - HTTP header object (modified in place)
-   * @param {string} url - Request URL for logging
-   * @returns {boolean} false to remove header, true to keep
-   */
-  function _handleCSPHeader(header, url) {
-    const originalValue = header.value;
-    header.value = header.value.replace(/frame-ancestors[^;]*(;|$)/gi, '');
-
-    // If CSP is now empty, remove the header entirely
-    const trimmedValue = header.value.trim();
-    if (trimmedValue === '' || trimmedValue === ';') {
-      console.log(`[Quick Tabs] ✓ Removed empty CSP from ${url}`);
-      modifiedUrls.add(url);
-      return false;
-    }
-
-    // Log if we modified it
-    if (header.value !== originalValue) {
-      console.log(`[Quick Tabs] ✓ Modified CSP for ${url}`);
-      modifiedUrls.add(url);
-    }
-    return true;
+  // Log if we modified it
+  if (header.value !== originalValue) {
+    console.log(`[Quick Tabs] ✓ Modified CSP for ${url}`);
+    modifiedUrls.add(url);
   }
+  return true;
+}
 
-  /**
-   * Handle CORP header removal
-   * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
-   * @param {Object} header - HTTP header object
-   * @param {string} url - Request URL for logging
-   * @returns {boolean} false to remove header, true to keep
-   */
-  function _handleCORPHeader(header, url) {
-    const value = header.value.toLowerCase();
-    if (value === 'same-origin' || value === 'same-site') {
-      console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${url}`);
-      modifiedUrls.add(url);
-      return false;
-    }
-    return true;
+/**
+ * Handle CORP header removal
+ * v1.6.3.4-v11 - Extracted from onHeadersReceived to reduce complexity
+ * @param {Object} header - HTTP header object
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _handleCORPHeader(header, url) {
+  const value = header.value.toLowerCase();
+  if (value === 'same-origin' || value === 'same-site') {
+    console.log(`[Quick Tabs] ✓ Removed CORP: ${header.value} from ${url}`);
+    modifiedUrls.add(url);
+    return false;
   }
+  return true;
+}
 
-  /**
-   * Filter security headers for Quick Tab iframe embedding
-   * v1.6.3.4-v11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
-   * @param {Object} header - HTTP header object
-   * @param {string} url - Request URL for logging
-   * @returns {boolean} false to remove header, true to keep
-   */
-  function _filterSecurityHeader(header, url) {
-    const name = header.name.toLowerCase();
+/**
+ * Filter security headers for Quick Tab iframe embedding
+ * v1.6.3.4-v11 - Refactored: Extracted handlers (cc reduced from 9 to ~3)
+ * @param {Object} header - HTTP header object
+ * @param {string} url - Request URL for logging
+ * @returns {boolean} false to remove header, true to keep
+ */
+function _filterSecurityHeader(header, url) {
+  const name = header.name.toLowerCase();
 
-    if (name === 'x-frame-options') {
-      return _handleXFrameOptionsHeader(header, url);
-    }
-    if (name === 'content-security-policy') {
-      return _handleCSPHeader(header, url);
-    }
-    if (name === 'cross-origin-resource-policy') {
-      return _handleCORPHeader(header, url);
-    }
-    return true;
+  if (name === 'x-frame-options') {
+    return _handleXFrameOptionsHeader(header, url);
   }
+  if (name === 'content-security-policy') {
+    return _handleCSPHeader(header, url);
+  }
+  if (name === 'cross-origin-resource-policy') {
+    return _handleCORPHeader(header, url);
+  }
+  return true;
+}
 
-  browser.webRequest.onHeadersReceived.addListener(
-    details => {
-      // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
-      const now = Date.now();
-      const lastProcessed = recentlyProcessedIframes.get(details.url);
-      const shouldLog = !lastProcessed || now - lastProcessed >= IFRAME_DEDUP_WINDOW_MS;
+browser.webRequest.onHeadersReceived.addListener(
+  details => {
+    // v1.6.3.4-v11 - FIX Issue #6: Deduplicate iframe processing logs
+    const now = Date.now();
+    const lastProcessed = recentlyProcessedIframes.get(details.url);
+    const shouldLog = !lastProcessed || now - lastProcessed >= IFRAME_DEDUP_WINDOW_MS;
 
-      if (shouldLog) {
-        console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
-        recentlyProcessedIframes.set(details.url, now);
+    if (shouldLog) {
+      console.log(`[Quick Tabs] Processing iframe: ${details.url}`);
+      recentlyProcessedIframes.set(details.url, now);
 
-        // Clean up old entries to prevent memory leak
-        if (recentlyProcessedIframes.size > 100) {
-          _cleanupOldIframeEntries(now);
-        }
+      // Clean up old entries to prevent memory leak
+      if (recentlyProcessedIframes.size > 100) {
+        _cleanupOldIframeEntries(now);
       }
+    }
 
-      const modifiedHeaders = details.responseHeaders.filter(header =>
-        _filterSecurityHeader(header, details.url)
-      );
+    const modifiedHeaders = details.responseHeaders.filter(header =>
+      _filterSecurityHeader(header, details.url)
+    );
 
-      return { responseHeaders: modifiedHeaders };
-    },
-    {
-      urls: ['<all_urls>'],
-      types: ['sub_frame'] // Only iframes - filter at registration for better performance
-    },
-    ['blocking', 'responseHeaders'] // Firefox MV3 allows 'blocking'
-  );
+    return { responseHeaders: modifiedHeaders };
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame'] // Only iframes - filter at registration for better performance
+  },
+  ['blocking', 'responseHeaders'] // Firefox MV3 allows 'blocking'
+);
 
-  // Log successful iframe loads
-  browser.webRequest.onCompleted.addListener(
-    details => {
-      if (modifiedUrls.has(details.url)) {
-        console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
-        // Clean up old URLs to prevent memory leak
-        if (modifiedUrls.size > 100) {
-          modifiedUrls.clear();
-        }
+// Log successful iframe loads
+browser.webRequest.onCompleted.addListener(
+  details => {
+    if (modifiedUrls.has(details.url)) {
+      console.log(`[Quick Tabs] ✅ Successfully loaded iframe: ${details.url}`);
+      // Clean up old URLs to prevent memory leak
+      if (modifiedUrls.size > 100) {
+        modifiedUrls.clear();
       }
-    },
-    {
-      urls: ['<all_urls>'],
-      types: ['sub_frame']
     }
-  );
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']
+  }
+);
 
-  // Log failed iframe loads
-  browser.webRequest.onErrorOccurred.addListener(
-    details => {
-      console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
-      console.error(`[Quick Tabs] Error: ${details.error}`);
-    },
-    {
-      urls: ['<all_urls>'],
-      types: ['sub_frame']
-    }
-  );
+// Log failed iframe loads
+browser.webRequest.onErrorOccurred.addListener(
+  details => {
+    console.error(`[Quick Tabs] ❌ Failed to load iframe: ${details.url}`);
+    console.error(`[Quick Tabs] Error: ${details.error}`);
+  },
+  {
+    urls: ['<all_urls>'],
+    types: ['sub_frame']
+  }
+);
 
-  console.log('[Quick Tabs] ✓ webRequest header modification installed');
-} // End initializeWebRequestHeaderModification()
-
-// ==================== HEADER MODIFICATION INITIALIZATION ====================
-// v1.6.3.8-v5 - Issue 5: Initialize header modification with feature detection
-// Call the async initialization function - fallback is handled within initializeHeaderModification()
-initializeHeaderModification().catch(err => {
-  // Only log error - fallback is already handled in initializeHeaderModification()
-  console.error(
-    '[Quick Tabs] Header modification initialization error:',
-    err?.message || String(err)
-  );
-});
+console.log('[Quick Tabs] ✓ Firefox MV3 X-Frame-Options bypass installed');
 
 // ==================== END X-FRAME-OPTIONS BYPASS ====================
 
@@ -5171,10 +1394,9 @@ function _removeTabFromQuickTab(quickTab, tabId) {
  * Helper: Clean up Quick Tab state after tab closes
  * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
  * v1.6.2.2 - Updated for unified format
- * v1.6.3.7-v13 - Issue #2: Use centralized write validation
  *
  * @param {number} tabId - Tab ID that was closed
- * @returns {Promise<boolean>} True if state was changed and persisted (either validated or recovered)
+ * @returns {Promise<boolean>} True if state was changed and saved
  */
 async function _cleanupQuickTabStateAfterTabClose(tabId) {
   // Guard: Not initialized
@@ -5196,36 +1418,20 @@ async function _cleanupQuickTabStateAfterTabClose(tabId) {
     return false;
   }
 
-  // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
-  // v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
   const stateToSave = {
     tabs: globalQuickTabState.tabs,
-    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    sequenceId: _getNextStorageSequenceId(),
-    revision: _getNextRevision(),
+    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     timestamp: Date.now()
   };
 
-  // v1.6.3.7-v13 - Issue #2: Use centralized validation
-  const result = await _writeQuickTabStateWithValidation(stateToSave, 'tab-cleanup');
-
-  // Return true if write was validated OR if recovery succeeded
-  const persistedSuccessfully = result.success || result.recovered;
-
-  if (persistedSuccessfully) {
-    console.log('[Background] Cleaned up Quick Tab state after tab closure', {
-      validated: result.success,
-      recovered: result.recovered
-    });
-  } else {
-    console.error('[Background] Error saving cleaned up state:', {
-      error: result.error,
-      recovered: result.recovered,
-      note: 'State may be inconsistent with storage'
-    });
+  try {
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
+    console.log('[Background] Cleaned up Quick Tab state after tab closure');
+    return true;
+  } catch (err) {
+    console.error('[Background] Error saving cleaned up state:', err);
+    return false;
   }
-
-  return persistedSuccessfully;
 }
 
 // Clean up state when tab is closed
@@ -5441,30 +1647,18 @@ if (chrome.sidePanel) {
 }
 
 /**
-/**
- * Create a snapshot of current global state for logging
- * v1.6.4.14 - FIX Complexity: Extracted to reduce _applyUnifiedFormatFromStorage cc
- * @private
- */
-function _createGlobalStateSnapshot() {
-  const tabs = globalQuickTabState.tabs || [];
-  return {
-    tabCount: tabs.length,
-    saveId: globalQuickTabState.saveId,
-    tabIds: tabs.slice(0, 5).map(t => t.id) // Sample first 5
-  };
-}
-
-/**
  * Apply unified format state to global state from storage
  * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
  * v1.6.3.6-v12 - FIX Issue #7: Enhanced logging with before/after state snapshots
- * v1.6.4.14 - FIX Complexity: Extracted _createGlobalStateSnapshot (cc=9 → cc=4)
  * @param {Object} newValue - Storage value with tabs array
  */
 function _applyUnifiedFormatFromStorage(newValue) {
   // v1.6.3.6-v12 - FIX Issue #7: Log before state for before/after comparison
-  const beforeState = _createGlobalStateSnapshot();
+  const beforeState = {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    saveId: globalQuickTabState.saveId,
+    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id) // Sample first 5
+  };
 
   globalQuickTabState.tabs = newValue.tabs;
   globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
@@ -5472,7 +1666,11 @@ function _applyUnifiedFormatFromStorage(newValue) {
   globalQuickTabState.saveId = newValue.saveId || null;
 
   // v1.6.3.6-v12 - FIX Issue #7: Log after state with comparison
-  const afterState = _createGlobalStateSnapshot();
+  const afterState = {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    saveId: globalQuickTabState.saveId,
+    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id)
+  };
 
   console.log('[Background] v1.6.3.6-v12 CACHE_UPDATE:', {
     before: beforeState,
@@ -5717,15 +1915,6 @@ function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
 
-  // v1.6.4.9 - Issue #4: Log storage change received with incoming values
-  console.log('[Background] STORAGE_CHANGE_RECEIVED:', {
-    saveId: newValue?.saveId,
-    timestamp: newValue?.timestamp,
-    transactionId: newValue?.transactionId,
-    tabCount: newValue?.tabs?.length ?? 0,
-    oldSaveId: oldValue?.saveId
-  });
-
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
 
@@ -5841,431 +2030,47 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 }
 
 /**
- * Create a dedup result indicating the change should be skipped
- * v1.6.4.13 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
- * v1.6.3.7-v12 - Issue #6: Track dedup statistics and log all decisions
- * @private
- * @param {string} method - Dedup method that triggered the skip
- * @param {string} reason - Reason for skipping
- * @param {Object} logDetails - Additional details for logging
- * @returns {{ shouldSkip: boolean, method: string, reason: string }}
- */
-/**
- * Get current dedup stats snapshot
- * v1.6.3.7-v14 - FIX Duplication: Extracted common stats getter
- * @private
- */
-function _getDedupStatsSnapshot() {
-  return {
-    skipped: dedupStats.skipped,
-    processed: dedupStats.processed,
-    total: dedupStats.skipped + dedupStats.processed
-  };
-}
-
-/**
- * Update dedup tier counts based on the method used
- * v1.6.3.8-v6 - Issue #7: Extracted to reduce _createDedupResult complexity
- * @private
- * @param {string} method - Dedup method used
- */
-function _incrementDedupTierCount(method) {
-  if (!dedupStats.tierCounts) return;
-
-  const tierKey = DEDUP_TIER_MAP[method];
-  if (tierKey) {
-    dedupStats.tierCounts[tierKey]++;
-  }
-}
-
-/**
- * Create a dedup result with logging
- * v1.6.3.7-v14 - FIX Duplication: Unified factory for skip/process results
- * v1.6.3.7-v14 - FIX Excess Args: Use options object pattern
- * v1.6.3.8-v6 - Issue #7: Log dedup tier reached (saveId/sequenceId/revision/contentHash)
- * @private
- * @param {Object} options - Result configuration
- * @param {boolean} options.shouldSkip - Whether to skip processing
- * @param {string} options.method - Dedup method used
- * @param {string} options.reason - Reason for decision
- * @param {string} options.decision - Decision type (skip/process)
- * @param {Object} options.logDetails - Additional logging details
- */
-function _createDedupResult({ shouldSkip, method, reason, decision, logDetails = {} }) {
-  if (shouldSkip) {
-    dedupStats.skipped++;
-    // v1.6.3.8-v6 - Issue #7: Track tier reached
-    _incrementDedupTierCount(method);
-  } else {
-    dedupStats.processed++;
-  }
-
-  const result = { shouldSkip, method, reason };
-
-  // v1.6.3.8-v6 - Issue #7: Enhanced logging with tier and correlation ID
-  const correlationId =
-    logDetails.correlationId || `dedup-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-  console.log('[Background] [STORAGE] DEDUP_DECISION:', {
-    ...result,
-    decision,
-    tierReached: method,
-    correlationId,
-    dedupStatsSnapshot: _getDedupStatsSnapshot(),
-    tierCounts: dedupStats.tierCounts,
-    ...logDetails,
-    timestamp: Date.now()
-  });
-  return result;
-}
-
-function _createSkipResult(method, reason, logDetails = {}) {
-  return _createDedupResult({ shouldSkip: true, method, reason, decision: 'skip', logDetails });
-}
-
-/**
- * Create a dedup result indicating the change should be processed
- * v1.6.4.13 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
- * v1.6.3.7-v12 - Issue #6: Track dedup statistics and log all decisions
- * v1.6.3.7-v13 - Issue #8: Add optional logDetails parameter for context
- * v1.6.3.7-v14 - FIX Duplication: Delegates to unified factory
- * @private
- * @param {Object} logDetails - Optional details for logging (saveId, sequenceId, etc.)
- * @returns {{ shouldSkip: boolean, method: string, reason: string }}
- */
-function _createProcessResult(logDetails = {}) {
-  return _createDedupResult({
-    shouldSkip: false,
-    method: 'none',
-    reason: 'Legitimate change',
-    decision: 'process',
-    logDetails
-  });
-}
-
-// ==================== EVENT ORDERING ARCHITECTURE (v1.6.3.7-v9, v1.6.3.7-v13) ====================
-/**
- * Event Ordering Architecture (v1.6.3.7-v9)
- *
- * Firefox storage.onChanged provides NO ordering guarantees across multiple writes.
- * Two writes 100ms apart may have their onChanged events fire in any order.
- * MDN Reference: "The order in which listeners are called is not defined."
- *
- * Sequence IDs (assigned at write-time, not event-fire time) provide reliable
- * ordering because Firefox does not reorder messages from same JS execution.
- *
- * WHY SEQUENCE IDs WORK:
- * 1. Write A gets sequenceId=5, then calls storage.local.set()
- * 2. Write B gets sequenceId=6, then calls storage.local.set()
- * 3. Even if B's onChanged fires BEFORE A's, we detect this because:
- *    - B has sequenceId=6, A has sequenceId=5
- *    - If we've already processed sequenceId=6, sequenceId=5 is stale
- *
- * WHY TIMESTAMPS ARE INSUFFICIENT:
- * 1. Timestamps are assigned at write-time, same as sequence IDs
- * 2. BUT: Two writes 100ms apart may fire in reverse order
- * 3. The 50ms timestamp window cannot detect 150ms+ delays
- *
- * DEDUP PRIORITY ORDER:
- * 1. PRIMARY: Sequence ID comparison (strongest guarantee)
- * 2. SECONDARY: saveId + timestamp (50ms window, for legacy writes)
- * 3. TERTIARY: Content hash (for messages without saveId)
- *
- * See: _getNextStorageSequenceId(), _checkSequenceIdOrdering()
- */
-// ==================== END EVENT ORDERING ARCHITECTURE ====================
-
-/**
- * Build deduplication check log details
- * v1.6.4.14 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
- * @private
- */
-function _buildDedupLogDetails(newValue, oldValue) {
-  return {
-    newSaveId: newValue?.saveId,
-    oldSaveId: oldValue?.saveId,
-    newTimestamp: newValue?.timestamp,
-    oldTimestamp: oldValue?.timestamp,
-    newSequenceId: newValue?.sequenceId,
-    oldSequenceId: oldValue?.sequenceId
-  };
-}
-
-/**
- * Build saveId comparison details for logging
- * v1.6.4.14 - FIX Complexity: Extracted to reduce _multiMethodDeduplication cc
- * @private
- */
-function _buildSaveIdComparisonDetails(newValue, oldValue) {
-  const newTs = newValue?.timestamp || 0;
-  const oldTs = oldValue?.timestamp || 0;
-  return {
-    saveId: newValue?.saveId,
-    newTs,
-    oldTs,
-    diffMs: Math.abs(newTs - oldTs)
-  };
-}
-
-/**
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
- * v1.6.4.9 - Issue #4: Enhanced logging with comparison values
- * v1.6.3.7-v9 - FIX Issue #3: Unified dedup strategy - removed dead transactionId code
- * v1.6.4.13 - FIX Complexity: Extracted result helpers (cc=17 → cc=7)
- * v1.6.4.14 - FIX Complexity: Extracted log builders (cc=17 → cc=4)
- * v1.6.3.7-v12 - Issue #9: Prioritize sequence ID ordering over arbitrary 50ms window
- *   - PRIMARY: Sequence ID comparison (stronger ordering guarantee)
- *   - SECONDARY: saveId + timestamp comparison (fallback for legacy writes)
- *   - TERTIARY: Content hash comparison for messages without saveId
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
-/**
- * Run sequence ID dedup check
- * v1.6.3.7-v14 - FIX Complexity: Extracted dedup step
- * @private
- */
-function _runSequenceIdCheck(newValue, oldValue) {
-  const sequenceResult = _checkSequenceIdOrdering(newValue, oldValue);
-  if (sequenceResult.shouldSkip) {
-    return _createSkipResult('sequenceId', sequenceResult.reason, {
-      newSequenceId: newValue?.sequenceId,
-      oldSequenceId: oldValue?.sequenceId,
-      explanation:
-        'Sequence ID ordering: events with lower or equal sequenceId than already-processed events are duplicates'
-    });
-  }
-  return null;
-}
-
-/**
- * Run saveId + timestamp dedup check
- * v1.6.3.7-v14 - FIX Complexity: Extracted dedup step
- * @private
- */
-function _runSaveIdTimestampCheck(newValue, oldValue) {
-  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
-    return _createSkipResult('saveId+timestamp', 'Same saveId and timestamp within window', {
-      comparison: _buildSaveIdComparisonDetails(newValue, oldValue),
-      note: 'Fallback method - new writes should use sequenceId'
-    });
-  }
-  return null;
-}
-
-/**
- * Run content hash dedup check
- * v1.6.3.7-v14 - FIX Complexity: Extracted dedup step
- * @private
- */
-function _runContentHashCheck(newValue, oldValue) {
-  if (_isContentHashDuplicate(newValue, oldValue)) {
-    return _createSkipResult(
-      'contentHash',
-      'Identical content (tertiary safeguard for no-saveId messages)',
-      {
-        hasSaveId: !!newValue?.saveId
-      }
-    );
-  }
-  return null;
-}
-
-/**
- * Check if event is too old and should be rejected
- * v1.6.3.8-v8 - Issue #18: Maximum event age enforcement (5 minutes)
- * @private
- * @param {Object} newValue - New storage value
- * @returns {{ shouldSkip: boolean, reason: string, ageMs: number } | null} Skip result if stale, null if valid
- */
-function _runMaxEventAgeCheck(newValue) {
-  const eventTimestamp = newValue?.timestamp;
-  if (!eventTimestamp) {
-    // No timestamp - can't check age, allow processing
-    return null;
-  }
-
-  const eventAgeMs = Date.now() - eventTimestamp;
-  if (eventAgeMs > MAX_STATE_CHANGE_AGE_MS) {
-    console.warn('[Background] STALE_EVENT_REJECTED:', {
-      eventAgeMs,
-      maxAgeMs: MAX_STATE_CHANGE_AGE_MS,
-      eventTimestamp,
-      saveId: newValue?.saveId,
-      sequenceId: newValue?.sequenceId,
-      tabCount: newValue?.tabs?.length,
-      reason: 'Event exceeds maximum age threshold - likely from stuck queue'
-    });
-
-    return _createSkipResult(
-      'staleEventAge',
-      `Event is ${Math.round(eventAgeMs / 1000)}s old (max: ${MAX_STATE_CHANGE_AGE_MS / 1000}s)`,
-      {
-        eventAgeMs,
-        maxAgeMs: MAX_STATE_CHANGE_AGE_MS,
-        eventTimestamp
-      }
-    );
-  }
-
-  return null;
-}
-
 function _multiMethodDeduplication(newValue, oldValue) {
-  console.log('[Background] [STORAGE] DEDUP_CHECK:', _buildDedupLogDetails(newValue, oldValue));
-
-  // v1.6.3.8-v8 - Issue #18: Check max event age FIRST (reject ancient operations)
-  const ageCheck = _runMaxEventAgeCheck(newValue);
-  if (ageCheck) return ageCheck;
-
-  // Run dedup checks in priority order, return first match
-  const sequenceCheck = _runSequenceIdCheck(newValue, oldValue);
-  if (sequenceCheck) return sequenceCheck;
-
-  const saveIdCheck = _runSaveIdTimestampCheck(newValue, oldValue);
-  if (saveIdCheck) return saveIdCheck;
-
-  const hashCheck = _runContentHashCheck(newValue, oldValue);
-  if (hashCheck) return hashCheck;
-
-  return _createProcessResult({
-    saveId: newValue?.saveId,
-    sequenceId: newValue?.sequenceId,
-    tabCount: newValue?.tabs?.length
-  });
-}
-
-/**
- * Check if sequence ID indicates this is an old/duplicate event
- * v1.6.3.7-v12 - Issue #9: Sequence ID-based ordering replaces arbitrary timestamp window
- * v1.6.3.7-v12 - FIX Code Review: Renamed 'skip' to 'shouldSkip' for clarity
- * v1.6.3.7-v13 - Issue #3: Added comprehensive explanation of ordering guarantees
- *
- * IMPORTANT: Why Sequence IDs Provide Ordering Guarantees
- * ========================================================
- * Firefox's storage.onChanged provides NO ordering guarantees across multiple writes.
- * Two writes made 100ms apart may have their storage.onChanged events fire in ANY order
- * due to Firefox's async event processing, IndexedDB batching, and internal scheduling.
- *
- * Sequence IDs solve this because they are assigned BEFORE the storage.local.set() call,
- * during the same synchronous JS execution that initiates the write. This means:
- *
- * 1. Write A gets sequenceId=5, then calls storage.local.set()
- * 2. Write B gets sequenceId=6, then calls storage.local.set()
- *
- * Even if B's storage.onChanged fires BEFORE A's (which Firefox allows), we can detect
- * this because B will have sequenceId=6 and A will have sequenceId=5. If we've already
- * processed sequenceId=6, we know sequenceId=5 is stale data from an older write.
- *
- * The 50ms timestamp window (DEDUP_SAVEID_TIMESTAMP_WINDOW_MS) is kept as a SECONDARY
- * fallback for legacy writes that don't have sequenceId, but it cannot reliably detect
- * out-of-order events because timestamps are also assigned at write-time, not event-fire time.
- *
- * @private
- * @param {Object} newValue - New storage value
- * @param {Object} oldValue - Previous storage value
- * @returns {{ shouldSkip: boolean, reason: string }}
- */
-/**
- * Check if both values have valid numeric sequence IDs
- * v1.6.3.7-v14 - FIX Complexity: Extracted predicate to reduce cc
- * @private
- */
-function _hasValidSequenceIds(newValue, oldValue) {
-  return typeof newValue?.sequenceId === 'number' && typeof oldValue?.sequenceId === 'number';
-}
-
-/**
- * Log missing sequence ID diagnostic
- * v1.6.3.7-v14 - FIX Complexity: Extracted logger to reduce cc
- * @private
- */
-function _logMissingSequenceId(newSeqId, oldSeqId) {
-  if (DEBUG_DIAGNOSTICS) {
-    console.log(
-      '[Background] [STORAGE] SEQUENCE_ID_CHECK: Missing sequenceId, falling back to other methods',
-      {
-        hasNewSeqId: typeof newSeqId === 'number',
-        hasOldSeqId: typeof oldSeqId === 'number'
-      }
-    );
-  }
-}
-
-/**
- * Log and return skip result for stale/duplicate sequence
- * v1.6.3.7-v14 - FIX Complexity: Extracted to reduce cc and flatten conditionals
- * @private
- */
-function _handleStaleSequenceId(newSeqId, oldSeqId) {
-  const isDuplicate = newSeqId === oldSeqId;
-  const isOutOfOrder = newSeqId < oldSeqId;
-
-  if (isOutOfOrder) {
-    console.log(
-      '[Background] [STORAGE] OUT_OF_ORDER_EVENTS: Older sequence fired after newer sequence',
-      {
-        olderSequenceId: newSeqId,
-        newerSequenceId: oldSeqId,
-        explanation:
-          'Firefox storage.onChanged events can fire in any order - this older write arrived late'
-      }
-    );
+  // Method 1: transactionId (highest priority - deterministic)
+  // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
+  if (_isTransactionSelfWrite(newValue)) {
+    return {
+      shouldSkip: true,
+      method: 'transactionId',
+      reason: `Transaction ${newValue.transactionId} in progress`
+    };
   }
 
-  console.log('[Background] [STORAGE] SEQUENCE_ID_SKIP: Old or duplicate event detected', {
-    newSequenceId: newSeqId,
-    oldSequenceId: oldSeqId,
-    isDuplicate,
-    isOutOfOrder
-  });
-
-  const reason = isDuplicate
-    ? 'Same sequenceId (duplicate event)'
-    : 'Lower sequenceId (out-of-order event from older write)';
-  return { shouldSkip: true, reason };
-}
-
-/**
- * Log valid sequence progression diagnostic
- * v1.6.3.7-v14 - FIX Complexity: Extracted logger to reduce cc
- * @private
- */
-function _logValidSequenceProgression(newSeqId, oldSeqId) {
-  if (DEBUG_DIAGNOSTICS) {
-    console.log('[Background] [STORAGE] SEQUENCE_ID_PASS: Valid new event', {
-      newSequenceId: newSeqId,
-      oldSequenceId: oldSeqId,
-      increment: newSeqId - oldSeqId
-    });
-  }
-}
-
-function _checkSequenceIdOrdering(newValue, oldValue) {
-  const newSeqId = newValue?.sequenceId;
-  const oldSeqId = oldValue?.sequenceId;
-
-  // Can't use sequence ordering if either lacks sequenceId
-  if (!_hasValidSequenceIds(newValue, oldValue)) {
-    _logMissingSequenceId(newSeqId, oldSeqId);
-    return { shouldSkip: false, reason: 'No sequenceId available' };
+  // Method 2: saveId + timestamp comparison (catches duplicates from same source)
+  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
+    return {
+      shouldSkip: true,
+      method: 'saveId+timestamp',
+      reason: 'Same saveId and timestamp within window'
+    };
   }
 
-  // Stale or duplicate event - sequence ID is same or lower
-  if (newSeqId <= oldSeqId) {
-    return _handleStaleSequenceId(newSeqId, oldSeqId);
+  // Method 3: Content hash comparison (catches Firefox spurious events)
+  if (_isContentHashDuplicate(newValue, oldValue)) {
+    return {
+      shouldSkip: true,
+      method: 'contentHash',
+      reason: 'Identical content with same saveId'
+    };
   }
 
-  // Valid sequence progression
-  _logValidSequenceProgression(newSeqId, oldSeqId);
-  return { shouldSkip: false, reason: 'Valid sequence progression' };
+  return { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
 }
 
 /**
  * Check if saveId + timestamp indicate a duplicate write
  * v1.6.3.6-v12 - FIX Issue #3: Second dedup method
- * v1.6.3.7-v9 - FIX Issue #3: Now the PRIMARY dedup method
  * @private
  */
 function _isSaveIdTimestampDuplicate(newValue, oldValue) {
@@ -6279,96 +2084,50 @@ function _isSaveIdTimestampDuplicate(newValue, oldValue) {
 }
 
 /**
- * Check if saveIds indicate different writes (not a duplicate)
- * v1.6.3.7-v9 - FIX Issue #3: Extracted helper to reduce complexity
- * @private
- */
-function _areSaveIdsDifferent(newValue, oldValue) {
-  const newHasSaveId = !!newValue?.saveId;
-  const oldHasSaveId = !!oldValue?.saveId;
-
-  if (!newHasSaveId || !oldHasSaveId) {
-    return false; // Can't determine if different without both saveIds
-  }
-
-  return newValue.saveId !== oldValue.saveId;
-}
-
-/**
- * Log content hash match details
- * v1.6.3.7-v9 - FIX Issue #3: Extracted helper to reduce complexity
- * @private
- */
-function _logContentHashMatch(newHasSaveId, oldHasSaveId, saveIdMatch) {
-  const mode = !newHasSaveId || !oldHasSaveId ? 'secondary-no-saveId' : 'firefox-spurious';
-  console.log('[Background] v1.6.3.7-v9 Content hash match detected:', {
-    mode,
-    newHasSaveId,
-    oldHasSaveId,
-    saveIdMatch
-  });
-}
-
-/**
  * Check if content hash indicates a duplicate (Firefox spurious event)
  * v1.6.3.6-v12 - FIX Issue #3: Third dedup method (safe version)
- * v1.6.3.7-v9 - FIX Issue #3: Updated as SECONDARY safeguard for messages without saveId
- *   - If neither has saveId: use pure content comparison (secondary safeguard)
-/**
- * Check if content hashes match (non-empty and equal)
- * v1.6.4.14 - FIX Complexity: Extracted predicate
- * @private
- */
-function _doContentHashesMatch(newContentKey, oldContentKey) {
-  return newContentKey !== '' && newContentKey === oldContentKey;
-}
-
-/**
- * Determine if saveIds indicate a match
- * v1.6.4.14 - FIX Complexity: Extracted computation
- * @private
- */
-function _computeSaveIdMatch(newValue, oldValue) {
-  const newHasSaveId = !!newValue?.saveId;
-  const oldHasSaveId = !!oldValue?.saveId;
-  return newHasSaveId && oldHasSaveId && newValue.saveId === oldValue.saveId;
-}
-
-/**
- * Check if content hash indicates a duplicate (Firefox spurious event)
- * v1.6.3.6-v12 - FIX Issue #3: Third dedup method (safe version)
- * v1.6.3.7-v9 - FIX Issue #3: Updated as SECONDARY safeguard for messages without saveId
- *   - If neither has saveId: use pure content comparison (secondary safeguard)
- *   - If both have same saveId: check content to catch Firefox spurious events
- *   - If saveIds differ: not a duplicate (different writes)
- * v1.6.4.14 - FIX Complexity: Extracted helpers (cc=10 → cc=4)
+ * Only skips if BOTH saveId matches AND content is identical
+ * This prevents false negatives during rapid legitimate writes
  * @private
  */
 function _isContentHashDuplicate(newValue, oldValue) {
-  // Early exit checks
   if (!newValue || !oldValue) return false;
-  if (_areSaveIdsDifferent(newValue, oldValue)) return false;
 
-  // Compute and compare content keys
+  // Only apply this check if saveId matches (same source)
+  if (newValue.saveId !== oldValue.saveId) return false;
+
+  // Compute content keys
   const newContentKey = _computeQuickTabContentKey(newValue);
   const oldContentKey = _computeQuickTabContentKey(oldValue);
 
-  if (!_doContentHashesMatch(newContentKey, oldContentKey)) return false;
+  if (newContentKey === oldContentKey && newContentKey !== '') {
+    console.log('[Background] v1.6.3.6-v12 Content hash match detected (Firefox spurious event)');
+    return true;
+  }
 
-  // Content matches - log and return true
-  const saveIdMatch = _computeSaveIdMatch(newValue, oldValue);
-  _logContentHashMatch(!!newValue?.saveId, !!oldValue?.saveId, saveIdMatch);
-
-  return true;
+  return false;
 }
 
-// v1.6.3.7-v9 - FIX Issue #3: REMOVED _isTransactionSelfWrite function (dead code)
-// The IN_PROGRESS_TRANSACTIONS set was never populated, making this function useless
-// Transaction-based dedup is replaced by saveId-based deduplication
+/**
+ * Check if this is a self-write via transaction ID
+ * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
+ * v1.6.3.6-v12 - Note: This is also called by _multiMethodDeduplication() as Method 1
+ * Other self-write detection methods are handled by content scripts
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} True if self-write
+ */
+function _isTransactionSelfWrite(newValue) {
+  // Check transaction ID - the most deterministic method
+  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
+    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Check and log if storage change is within cooldown period
- * v1.6.3.7-v9 - FIX Issue #5: Cooldown now applied conditionally only when dedup triggers
  * @private
  * @param {number} now - Current timestamp
  * @returns {boolean} True if within cooldown
@@ -6384,7 +2143,6 @@ function _checkAndLogCooldown(now) {
 
 /**
  * Build storage change comparison object for logging
- * v1.6.3.7-v9 - FIX Issue #3, #6: Replaced transactionId with sequenceId for event ordering
  * @private
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
@@ -6396,8 +2154,7 @@ function _buildStorageChangeComparison(newValue, oldValue) {
     newTabCount: _getTabCount(newValue),
     oldSaveId: oldValue?.saveId,
     newSaveId: newValue?.saveId,
-    oldSequenceId: oldValue?.sequenceId,
-    newSequenceId: newValue?.sequenceId,
+    transactionId: newValue?.transactionId,
     writingInstanceId: newValue?.writingInstanceId,
     writingTabId: newValue?.writingTabId
   };
@@ -6554,13 +2311,9 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * Process storage update and update global cache
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
- * v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID
  * @param {Object} newValue - New storage value
  */
 function _processStorageUpdate(newValue) {
-  // v1.6.3.8-v6 - Issue #7: Generate correlation ID for tracking this storage event
-  const correlationId = `storage-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
     _clearCacheForEmptyStorage(newValue);
@@ -6579,23 +2332,15 @@ function _processStorageUpdate(newValue) {
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
 
-  // v1.6.3.4-v11 - Background caches state for popup/sidebar queries
+  // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
-  // v1.6.3.8-v8 - Issue #13: BC removed, port-based notification only
-  // v1.6.3.8-v6 - Issue #7: Enhanced logging with correlation ID and sequenceId
-  console.log('[Background] [STORAGE] STATE_CHANGE_DETECTED:', {
+  // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
+  console.log('[Background] Updating cache only (no broadcast):', {
     tabCount: filteredValue.tabs?.length || 0,
     saveId: filteredValue.saveId,
-    sequenceId: filteredValue.sequenceId,
-    revisionId: filteredValue.revisionId,
-    correlationId,
-    timestamp: Date.now()
+    note: 'Tabs sync independently via storage.onChanged'
   });
   _updateGlobalStateFromStorage(filteredValue);
-
-  // v1.6.3.8-v8 - Issue #13: Broadcast via port-based messaging (BC removed)
-  // This ensures Manager receives instant updates when storage changes
-  _broadcastStorageWriteConfirmation(filteredValue, filteredValue.saveId);
 }
 
 /**
@@ -6617,37 +2362,8 @@ async function _handleSettingsChange(changes) {
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 // v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
-// v1.6.3.7-v9 - FIX Issue #11: Add initialization guard to prevent race condition
-
-/**
- * Handle storage.onChanged events with initialization guard
- * v1.6.3.7-v9 - FIX Issue #11: Explicit initialization check before processing
- * v1.6.3.7-v10 - FIX Issue #11: Added time since init start for logging
- * @param {Object} changes - Storage changes
- * @param {string} areaName - Storage area name
- */
-function _handleStorageOnChanged(changes, areaName) {
-  // v1.6.3.7-v10 - FIX Issue #11: Log listener entry with initialization status + time since init start
-  const timeSinceInitStartMs = Date.now() - initializationStartTime;
-  console.log('[Background] LISTENER_ENTRY: storage.onChanged', {
-    isInitialized,
-    timeSinceInitStartMs,
-    areaName,
-    changedKeys: Object.keys(changes),
-    timestamp: Date.now()
-  });
-
-  // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
-  if (!isInitialized) {
-    console.warn('[Background] LISTENER_CALLED_BEFORE_INIT: storage.onChanged', {
-      areaName,
-      changedKeys: Object.keys(changes),
-      timeSinceInitStartMs,
-      message: 'Skipping - background script not yet initialized',
-      timestamp: Date.now()
-    });
-    return;
-  }
+browser.storage.onChanged.addListener((changes, areaName) => {
+  console.log('[Background] Storage changed:', areaName, Object.keys(changes));
 
   // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
   if (areaName !== 'local' && areaName !== 'sync') {
@@ -6663,16 +2379,6 @@ function _handleStorageOnChanged(changes, areaName) {
   if (changes.quick_tab_settings) {
     _handleSettingsChange(changes);
   }
-}
-
-// Register storage.onChanged listener
-// v1.6.3.7-v9 - FIX Issue #11: Listener is registered at script load, but handler has init guard
-// v1.6.3.7-v10 - FIX Issue #11: Enhanced logging with initialization status
-browser.storage.onChanged.addListener(_handleStorageOnChanged);
-console.log('[Background] LISTENER_REGISTERED: storage.onChanged', {
-  isInitialized,
-  hasInitGuard: true,
-  timestamp: Date.now()
 });
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
@@ -6975,107 +2681,622 @@ if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAc
 }
 // ==================== END BROWSER ACTION HANDLER ====================
 
-// ==================== v1.6.3.8-v12 PORT INFRASTRUCTURE REMOVED ====================
-// Port-based messaging has been completely removed and replaced with tabs.sendMessage
-// The following are minimal stub implementations for backward compatibility
+// ==================== v1.6.3.6-v11 PORT LIFECYCLE MANAGEMENT ====================
+// FIX Issue #11: Persistent port connections to keep background script alive
+// FIX Issue #12: Port lifecycle logging
 
 /**
- * Clean up ports for tab stub - no-op
- * v1.6.3.8-v12 - Port infrastructure removed
+ * Port registry for tracking connected ports
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * Structure: portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount }
  */
-function _cleanupPortsForTab(_tabId) {
-  // No-op - port infrastructure removed
+const portRegistry = new Map();
+
+/**
+ * Port ID counter for unique identification
+ * v1.6.3.6-v11 - FIX Issue #12: Track port IDs
+ */
+let portIdCounter = 0;
+
+/**
+ * Port cleanup interval (5 minutes)
+ * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup
+ */
+const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Port inactivity threshold for logging warnings (10 minutes)
+ * v1.6.3.6-v11 - FIX Issue #17: Inactivity monitoring
+ */
+const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
+
+/**
+ * Generate unique port ID
+ * v1.6.3.6-v11 - FIX Issue #12: Port identification
+ * @returns {string} Unique port ID
+ */
+function generatePortId() {
+  portIdCounter++;
+  return `port-${Date.now()}-${portIdCounter}`;
 }
 
 /**
- * Clean up Quick Tab host tracking when a tab unloads
- * v1.6.3.8-v12 - Tab host tracking cleanup
- * @param {number} tabId - Tab ID that is unloading
+ * Log port lifecycle event
+ * v1.6.3.6-v11 - FIX Issue #12: Comprehensive port logging
+ * @param {string} origin - Origin of the port (sidebar, content-tab-X)
+ * @param {string} event - Event type (open, close, disconnect, error, message)
+ * @param {Object} details - Event details
  */
-function _cleanupQuickTabHostTracking(tabId) {
-  // Remove all Quick Tab host entries for this tab
-  for (const [quickTabId, hostTabId] of quickTabHostTabs.entries()) {
-    if (hostTabId === tabId) {
-      quickTabHostTabs.delete(quickTabId);
+function logPortLifecycle(origin, event, details = {}) {
+  console.log(`[Manager] PORT_LIFECYCLE [${origin}] [${event}]:`, {
+    tabId: details.tabId,
+    portId: details.portId,
+    timestamp: Date.now(),
+    ...details
+  });
+}
+
+/**
+ * Register a new port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
+ * @param {browser.runtime.Port} port - The connected port
+ * @param {string} origin - Origin identifier
+ * @param {number|null} tabId - Tab ID (if from content script)
+ * @param {string} type - Port type ('sidebar' or 'content')
+ * @returns {string} Generated port ID
+ */
+function registerPort(port, origin, tabId, type) {
+  const portId = generatePortId();
+
+  portRegistry.set(portId, {
+    port,
+    origin,
+    tabId,
+    type,
+    connectedAt: Date.now(),
+    lastMessageAt: null,
+    messageCount: 0
+  });
+
+  logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
+
+  return portId;
+}
+
+/**
+ * Unregister a port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Clean up disconnected ports
+ * @param {string} portId - Port ID to unregister
+ * @param {string} reason - Reason for disconnect
+ */
+function unregisterPort(portId, reason = 'disconnect') {
+  const portInfo = portRegistry.get(portId);
+  if (portInfo) {
+    logPortLifecycle(portInfo.origin, 'close', {
+      tabId: portInfo.tabId,
+      portId,
+      reason,
+      messageCount: portInfo.messageCount,
+      duration: Date.now() - portInfo.connectedAt
+    });
+    portRegistry.delete(portId);
+  }
+}
+
+/**
+ * Update port activity timestamp
+ * v1.6.3.6-v11 - FIX Issue #12: Track port activity
+ * @param {string} portId - Port ID
+ */
+function updatePortActivity(portId) {
+  const portInfo = portRegistry.get(portId);
+  if (portInfo) {
+    portInfo.lastMessageAt = Date.now();
+    portInfo.messageCount++;
+  }
+}
+
+/**
+ * Check if a port's tab still exists
+ * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting in cleanupStalePorts
+ * @param {Object} portInfo - Port info object
+ * @returns {Promise<boolean>} True if tab exists or port is not content type
+ */
+async function _checkPortTabExists(portInfo) {
+  if (portInfo.type !== 'content' || !portInfo.tabId) {
+    return true;
+  }
+
+  try {
+    await browser.tabs.get(portInfo.tabId);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+/**
+ * Check if a port is inactive (for logging purposes)
+ * v1.6.3.6-v11 - FIX Issue #17: Helper to reduce nesting
+ * @param {Object} portInfo - Port info object
+ * @param {number} now - Current timestamp
+ * @param {string} portId - Port ID
+ */
+function _checkPortInactivity(portInfo, now, portId) {
+  const lastActivity = portInfo.lastMessageAt || portInfo.connectedAt;
+  if (now - lastActivity > PORT_INACTIVITY_THRESHOLD_MS) {
+    console.warn('[Background] PORT_CLEANUP: Port has been inactive:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      inactiveMs: now - lastActivity
+    });
+  }
+}
+
+/**
+ * Clean up stale ports (e.g., from closed tabs)
+ * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup every 5 minutes
+ */
+async function cleanupStalePorts() {
+  console.log('[Background] PORT_CLEANUP: Starting periodic port cleanup...');
+
+  const now = Date.now();
+  const stalePorts = [];
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const tabExists = await _checkPortTabExists(portInfo);
+    if (!tabExists) {
+      stalePorts.push({ portId, reason: 'tab-closed' });
+      continue;
+    }
+
+    _checkPortInactivity(portInfo, now, portId);
+  }
+
+  // Remove stale ports
+  for (const { portId, reason } of stalePorts) {
+    unregisterPort(portId, reason);
+  }
+
+  console.log('[Background] PORT_CLEANUP: Complete.', {
+    removedCount: stalePorts.length,
+    remainingPorts: portRegistry.size
+  });
+}
+
+// Start periodic cleanup
+setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
+
+/**
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * @param {browser.runtime.Port} port - The connecting port
+ */
+function handlePortConnect(port) {
+  // Parse port name to determine origin
+  // Format: "quicktabs-{type}-{tabId}" (e.g., "quicktabs-sidebar" or "quicktabs-content-123")
+  const nameParts = port.name.split('-');
+  const type = nameParts[1] || 'unknown';
+  const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : port.sender?.tab?.id || null;
+  const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+
+  const portId = registerPort(port, origin, tabId, type);
+
+  // Store portId on the port for later reference
+  port._portId = portId;
+
+  // Handle messages from this port
+  port.onMessage.addListener(message => {
+    handlePortMessage(port, portId, message);
+  });
+
+  // Handle port disconnect
+  port.onDisconnect.addListener(() => {
+    const error = browser.runtime.lastError;
+    if (error) {
+      logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
+    }
+    unregisterPort(portId, 'client-disconnect');
+  });
+}
+
+/**
+ * Handle message received via port
+ * v1.6.3.6-v11 - FIX Issue #10: Message acknowledgment system
+ * @param {browser.runtime.Port} port - The port that sent the message
+ * @param {string} portId - Port ID
+ * @param {Object} message - The message
+ */
+async function handlePortMessage(port, portId, message) {
+  const portInfo = portRegistry.get(portId);
+  updatePortActivity(portId);
+
+  logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
+    portId,
+    tabId: portInfo?.tabId,
+    messageType: message.type,
+    correlationId: message.correlationId
+  });
+
+  // Route message based on type
+  const response = await routePortMessage(message, portInfo);
+
+  // Send acknowledgment if correlationId present
+  if (message.correlationId) {
+    const ack = {
+      type: 'ACKNOWLEDGMENT',
+      correlationId: message.correlationId,
+      originalType: message.type,
+      success: response?.success ?? true,
+      timestamp: Date.now(),
+      ...response
+    };
+
+    try {
+      port.postMessage(ack);
+      logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
+        portId,
+        correlationId: message.correlationId,
+        success: ack.success
+      });
+    } catch (err) {
+      console.error('[Background] Failed to send acknowledgment:', err.message);
     }
   }
 }
 
 /**
- * Notify manager to start watchdog - use runtime.sendMessage
- * v1.6.3.8-v12 - Port infrastructure removed
+ * Route port message to appropriate handler
+ * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Added HEARTBEAT handling
+ * v1.6.4.0 - FIX Issue E: Added REQUEST_FULL_STATE_SYNC handling
+ * @param {Object} message - Message to route
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Handler response
  */
-async function _notifyManagerToStartWatchdog(expectedSaveId, sequenceId) {
-  try {
-    await browser.runtime.sendMessage({
-      type: 'START_STORAGE_WATCHDOG',
-      expectedSaveId,
-      sequenceId,
-      timestamp: Date.now()
-    });
-  } catch (_err) {
-    // Sidebar may not be open - this is expected
+function routePortMessage(message, portInfo) {
+  const { type, action } = message;
+
+  // Route by message type (v1.6.3.6-v11: FIX Issue #15)
+  switch (type) {
+    // v1.6.3.6-v12 - FIX Issue #2, #4: Handle heartbeat to prevent Firefox termination
+    case 'HEARTBEAT':
+      return handleHeartbeat(message, portInfo);
+
+    case 'ACTION_REQUEST':
+      return handleActionRequest(message, portInfo);
+
+    case 'STATE_UPDATE':
+      return handleStateUpdate(message, portInfo);
+
+    case 'BROADCAST':
+      return handleBroadcastRequest(message, portInfo);
+
+    // v1.6.3.6-v12 - FIX Issue #6: Handle deletion acknowledgments
+    case 'DELETION_ACK':
+      return handleDeletionAck(message, portInfo);
+
+    // v1.6.4.0 - FIX Issue E: Handle state sync request after port reconnection
+    case 'REQUEST_FULL_STATE_SYNC':
+      return handleFullStateSyncRequest(message, portInfo);
+
+    default:
+      // Fallback to action-based routing for backwards compatibility
+      if (action) {
+        return handleLegacyAction(message, portInfo);
+      }
+      console.warn('[Background] Unknown message type:', type);
+      return Promise.resolve({ success: false, error: 'Unknown message type' });
   }
 }
 
 /**
- * Send state update via runtime.sendMessage
- * v1.6.3.8-v12 - Port infrastructure removed
+ * Handle HEARTBEAT message to keep background script alive
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat mechanism prevents Firefox 30s termination
+ * @param {Object} message - Heartbeat message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Heartbeat acknowledgment
  */
-async function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlationId) {
-  try {
-    await browser.runtime.sendMessage({
-      type: 'STATE_UPDATE',
+function handleHeartbeat(message, portInfo) {
+  const { timestamp, source } = message;
+  const now = Date.now();
+  const latencyMs = now - (timestamp || now);
+
+  console.log('[Background] PORT_HEARTBEAT received:', {
+    source: source || portInfo?.origin || 'unknown',
+    latencyMs,
+    portId: portInfo?.port?._portId,
+    tabId: portInfo?.tabId
+  });
+
+  // Log successful heartbeat for monitoring
+  console.log('[Background] PORT_HEARTBEAT: success', {
+    portCount: portRegistry.size,
+    isInitialized
+  });
+
+  return Promise.resolve({
+    success: true,
+    type: 'HEARTBEAT_ACK',
+    originalTimestamp: timestamp,
+    timestamp: now,
+    latencyMs,
+    backgroundAlive: true,
+    isInitialized
+  });
+}
+
+/**
+ * Handle deletion acknowledgment from content scripts
+ * v1.6.3.6-v12 - FIX Issue #6: Track acknowledgments for deletion ordering
+ * @param {Object} message - Deletion ack message
+ * @param {Object} portInfo - Port info
+ * @returns {Promise<Object>} Ack response
+ */
+function handleDeletionAck(message, portInfo) {
+  const { correlationId, quickTabId, tabId } = message;
+
+  console.log('[Background] DELETION_ACK received:', {
+    correlationId,
+    quickTabId,
+    fromTabId: tabId || portInfo?.tabId
+  });
+
+  // Find pending deletion tracking
+  const pending = pendingDeletionAcks.get(correlationId);
+  if (!pending) {
+    console.warn('[Background] No pending deletion for correlationId:', correlationId);
+    return Promise.resolve({ success: false, error: 'No pending deletion' });
+  }
+
+  // Mark tab as completed
+  const ackTabId = tabId || portInfo?.tabId;
+  if (ackTabId) {
+    pending.completedTabs.add(ackTabId);
+    pending.pendingTabs.delete(ackTabId);
+  }
+
+  console.log('[Background] Deletion progress:', {
+    correlationId,
+    completed: pending.completedTabs.size,
+    pending: pending.pendingTabs.size
+  });
+
+  // Check if all tabs have acknowledged
+  if (pending.pendingTabs.size === 0) {
+    console.log('[Background] All tabs acknowledged deletion:', correlationId);
+    pending.resolve({ success: true, allAcked: true });
+    pendingDeletionAcks.delete(correlationId);
+  }
+
+  return Promise.resolve({ success: true, recorded: true });
+}
+
+/**
+ * Handle ACTION_REQUEST type messages
+ * v1.6.3.6-v11 - FIX Issue #15: Action request handling
+ * v1.6.4.0 - FIX Issue A: Added CLOSE_MINIMIZED_TABS handler
+ * @param {Object} message - Action request message
+ * @param {Object} portInfo - Port info
+ */
+function handleActionRequest(message, portInfo) {
+  const { action, payload } = message;
+
+  console.log('[Background] Handling ACTION_REQUEST:', { action, portInfo: portInfo?.origin });
+
+  switch (action) {
+    case 'TOGGLE_GROUP':
+      // Manager toggle group - no storage write needed
+      return { success: true };
+
+    case 'MINIMIZE_TAB':
+      return executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+
+    case 'RESTORE_TAB':
+      return executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+
+    case 'CLOSE_TAB':
+      return executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
+
+    case 'ADOPT_TAB':
+      return handleAdoptAction(payload);
+
+    // v1.6.4.0 - FIX Issue A: Handle close minimized tabs command
+    case 'CLOSE_MINIMIZED_TABS':
+      return handleCloseMinimizedTabsCommand();
+
+    case 'DELETE_GROUP':
+      // TODO: Implement delete group
+      return { success: false, error: 'Not implemented' };
+
+    default:
+      console.warn('[Background] Unknown action:', action);
+      return { success: false, error: `Unknown action: ${action}` };
+  }
+}
+
+/**
+ * Handle STATE_UPDATE type messages
+ * v1.6.3.6-v11 - FIX Issue #13: Background as sole writer
+ * @param {Object} message - State update message
+ * @param {Object} portInfo - Port info
+ */
+async function handleStateUpdate(message, portInfo) {
+  const { quickTabId, changes } = message.payload || {};
+
+  console.log('[Background] Handling STATE_UPDATE:', {
+    quickTabId,
+    changes,
+    source: portInfo?.origin
+  });
+
+  // Update global state
+  _updateGlobalQuickTabCache(quickTabId, changes, portInfo?.tabId);
+
+  // v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+  const writeResult = await writeStateWithVerification();
+
+  // v1.6.3.6-v11 - FIX Issue #19: Broadcast visibility changes to all ports
+  if (changes?.minimized !== undefined || changes?.visibility !== undefined) {
+    broadcastToAllPorts({
+      type: 'BROADCAST',
+      action: 'VISIBILITY_CHANGE',
       quickTabId,
       changes,
-      operation,
-      correlationId,
-      source: 'background',
       timestamp: Date.now()
     });
-  } catch (_err) {
-    // Sidebar may not be open - this is expected
   }
+
+  return writeResult;
 }
 
 /**
- * Handle legacy action messages
- * v1.6.3.8-v12 - Simplified legacy action handler
- * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
+ * Handle BROADCAST type messages
+ * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
+ * @param {Object} message - Broadcast message
+ * @param {Object} portInfo - Port info
  */
-function _handleLegacyAction(message, _portInfo) {
-  if (message.action === 'MANAGER_COMMAND') {
+function handleBroadcastRequest(message, portInfo) {
+  const excludePortId = portInfo ? portInfo.port?._portId : null;
+
+  console.log('[Background] Broadcasting to all ports:', {
+    action: message.action,
+    excludePortId
+  });
+
+  broadcastToAllPorts(message, excludePortId);
+
+  return Promise.resolve({
+    success: true,
+    broadcastedTo: portRegistry.size - (excludePortId ? 1 : 0)
+  });
+}
+
+/**
+ * Handle legacy action-based messages (backwards compatibility)
+ * v1.6.3.6-v11 - Backwards compatibility with existing message format
+ * @param {Object} message - Legacy message
+ * @param {Object} portInfo - Port info
+ */
+function handleLegacyAction(message, portInfo) {
+  const { action, quickTabId } = message;
+
+  console.log('[Background] Handling legacy action:', { action, quickTabId });
+
+  // Map legacy actions to new handlers
+  if (action === 'MANAGER_COMMAND') {
     return handleManagerCommand(message);
   }
-  if (message.action === 'QUICK_TAB_STATE_CHANGE') {
-    return handleQuickTabStateChange(message, { tab: { id: message.sourceTabId } });
+
+  if (action === 'QUICK_TAB_STATE_CHANGE') {
+    return handleQuickTabStateChange(message, { tab: { id: portInfo?.tabId } });
   }
+
   return Promise.resolve({ success: false, error: 'Unknown legacy action' });
 }
 
 /**
- * Broadcast storage write confirmation - no-op (port infrastructure removed)
- * v1.6.3.8-v12 - Port infrastructure removed
- * @private
+ * Handle adopt action (atomic single write)
+ * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * @param {Object} payload - Adoption payload
  */
-function _broadcastStorageWriteConfirmation(_state, _saveId) {
-  // No-op - port infrastructure removed
-  // Sidebar receives updates via storage.onChanged
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId } = payload;
+
+  console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
+
+  // Read entire state
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = result?.quick_tabs_state_v2;
+
+  if (!state?.tabs) {
+    return { success: false, error: 'No state to adopt from' };
+  }
+
+  // Find and update the tab locally
+  const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
+  if (tabIndex === -1) {
+    return { success: false, error: 'Quick Tab not found' };
+  }
+
+  const oldOriginTabId = state.tabs[tabIndex].originTabId;
+  state.tabs[tabIndex].originTabId = targetTabId;
+
+  // Single atomic write
+  const saveId = `adopt-${quickTabId}-${Date.now()}`;
+  await browser.storage.local.set({
+    quick_tabs_state_v2: {
+      tabs: state.tabs,
+      saveId,
+      timestamp: Date.now(),
+      writingTabId: targetTabId,
+      writingInstanceId: `background-adopt-${Date.now()}`
+    }
+  });
+
+  // Update global cache
+  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (cachedTab) {
+    cachedTab.originTabId = targetTabId;
+  }
+
+  // Update host tracking
+  quickTabHostTabs.set(quickTabId, targetTabId);
+
+  console.log('[Background] ADOPT_TAB complete:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId
+  });
+
+  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
 }
 
 /**
- * Broadcast operation confirmation - no-op (port infrastructure removed)
- * v1.6.3.8-v12 - Port infrastructure removed
- * @private
+ * Write state to storage with verification
+ * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+ * @returns {Promise<Object>} Write result with verification status
  */
-function _broadcastOperationConfirmation(_options) {
-  // No-op - port infrastructure removed
-  // Sidebar receives updates via storage.onChanged
+async function writeStateWithVerification() {
+  const saveId = `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const stateToWrite = {
+    tabs: globalQuickTabState.tabs,
+    saveId,
+    timestamp: Date.now()
+  };
+
+  try {
+    // Write
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
+
+    // v1.6.3.6-v11 - FIX Issue #14: Read-back verification
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const readBack = result?.quick_tabs_state_v2;
+
+    const verified = readBack?.saveId === saveId;
+
+    if (!verified) {
+      console.error('[Background] Storage write verification FAILED:', {
+        expectedSaveId: saveId,
+        actualSaveId: readBack?.saveId,
+        expectedTabs: stateToWrite.tabs.length,
+        actualTabs: readBack?.tabs?.length
+      });
+    } else {
+      console.log('[Background] Storage write verified:', {
+        saveId,
+        tabCount: stateToWrite.tabs.length
+      });
+    }
+
+    return { success: verified, saveId, verified };
+  } catch (err) {
+    console.error('[Background] Storage write error:', err.message);
+    return { success: false, error: err.message };
+  }
 }
-
-console.log('[Background] v1.6.3.8-v12 Port infrastructure removed - using tabs.sendMessage');
-
-// ==================== END PORT INFRASTRUCTURE REMOVED ====================
 
 // ==================== v1.6.4.0 COMMAND HANDLERS ====================
 // FIX Issue A: Background as sole storage writer
@@ -7100,9 +3321,8 @@ const STORAGE_WRITE_BACKOFF_INITIAL_MS = 100;
  * @param {Object} message - Sync request message
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} State sync response
- * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
  */
-async function _handleFullStateSyncRequest(message, portInfo) {
+async function handleFullStateSyncRequest(message, portInfo) {
   const { currentCacheHash, currentCacheTabCount, timestamp } = message;
   const now = Date.now();
   const latencyMs = now - (timestamp || now);
@@ -7153,41 +3373,11 @@ async function _handleFullStateSyncRequest(message, portInfo) {
 }
 
 /**
- * Check if a tab is minimized
- * v1.6.4.14 - FIX Complexity: Extracted predicate
- * @private
- */
-function _isTabMinimized(tab) {
-  return tab.minimized === true || tab.visibility?.minimized === true;
-}
-
-/**
- * Process closed tab cleanup after deletion
- * v1.6.4.14 - FIX Complexity: Extracted to reduce handleCloseMinimizedTabsCommand cc
- * @private
- */
-function _processClosedTabCleanup(closedIds, saveId) {
-  for (const id of closedIds) {
-    quickTabHostTabs.delete(id);
-    _broadcastOperationConfirmation({
-      operationType: 'DELETE_CONFIRMED',
-      quickTabId: id,
-      changes: { deleted: true },
-      saveId,
-      correlationId: null
-    });
-    _sendStateUpdateViaPorts(id, { deleted: true }, 'close-minimized', null);
-  }
-}
-
-/**
  * Handle CLOSE_MINIMIZED_TABS command
  * v1.6.4.0 - FIX Issue A: Background as sole storage writer
- * v1.6.4.14 - FIX Complexity: Extracted helpers (cc=9 → cc=5)
- * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
  * @returns {Promise<Object>} Command result
  */
-async function _handleCloseMinimizedTabsCommand() {
+async function handleCloseMinimizedTabsCommand() {
   console.log('[Background] Handling CLOSE_MINIMIZED_TABS command');
 
   // Check initialization
@@ -7200,7 +3390,9 @@ async function _handleCloseMinimizedTabsCommand() {
   }
 
   // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(_isTabMinimized);
+  const minimizedTabs = globalQuickTabState.tabs.filter(tab =>
+    tab.minimized === true || tab.visibility?.minimized === true
+  );
 
   if (minimizedTabs.length === 0) {
     console.log('[Background] No minimized tabs to close');
@@ -7208,20 +3400,28 @@ async function _handleCloseMinimizedTabsCommand() {
   }
 
   const closedIds = minimizedTabs.map(tab => tab.id);
-  console.log('[Background] Closing minimized tabs:', { count: closedIds.length, ids: closedIds });
+
+  console.log('[Background] Closing minimized tabs:', {
+    count: closedIds.length,
+    ids: closedIds
+  });
 
   // Broadcast close messages to content scripts first
   await _broadcastCloseManyToAllTabs(closedIds);
 
   // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab => !_isTabMinimized(tab));
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab =>
+    !(tab.minimized === true || tab.visibility?.minimized === true)
+  );
   globalQuickTabState.lastUpdate = Date.now();
 
   // Write to storage with verification (FIX Issue F)
   const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
 
-  // v1.6.4.14 - Combined cleanup + broadcast + state updates
-  _processClosedTabCleanup(closedIds, writeResult.saveId);
+  // Remove from host tracking
+  for (const id of closedIds) {
+    quickTabHostTabs.delete(id);
+  }
 
   console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {
     closedCount: closedIds.length,
@@ -7274,173 +3474,51 @@ async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
  */
 function _sendCloseMessageToTabs(tabs, quickTabId) {
   for (const tab of tabs) {
-    browser.tabs
-      .sendMessage(tab.id, {
-        action: 'CLOSE_QUICK_TAB',
-        quickTabId,
-        source: 'background-command'
-      })
-      .catch(() => {
-        // Content script may not be loaded
-      });
+    browser.tabs.sendMessage(tab.id, {
+      action: 'CLOSE_QUICK_TAB',
+      quickTabId,
+      source: 'background-command'
+    }).catch(() => {
+      // Content script may not be loaded
+    });
   }
 }
 
 /**
  * Write state to storage with verification and exponential backoff retry
  * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
- * v1.6.4.9 - Issue #8: Enhanced logging with attempt numbers and success signals
- * v1.6.4.13 - Issue #5: Added [STORAGE] prefix for consistent logging
  * @param {string} operation - Operation name for logging
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerificationAndRetry(operation) {
   const saveId = `bg-${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  const tabCount = globalQuickTabState.tabs?.length ?? 0;
-  const stateHash = computeStateHash({ tabs: globalQuickTabState.tabs, saveId });
-
-  // v1.6.4.13 - Issue #5: Log storage write start with [STORAGE] prefix
-  _logStorageWriteStarted(saveId, operation, tabCount, stateHash);
-
-  // v1.6.4.9 - Issue #8: Log initial write attempt
-  console.log('[Background] STORAGE_WRITE_ATTEMPT:', {
-    saveId,
-    operation,
-    attempt: `1/${STORAGE_WRITE_MAX_RETRIES}`,
-    tabCount
-  });
-
-  const result = await _executeStorageWriteLoop(operation, saveId, tabCount, stateHash);
-
-  // Log final result
-  _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stateHash });
-
-  return result;
-}
-
-/**
- * Log storage write start event
- * v1.6.4.13 - Issue #5: Extracted to reduce complexity
- * @private
- */
-function _logStorageWriteStarted(saveId, operation, tabCount, stateHash) {
-  if (DEBUG_MESSAGING) {
-    console.log('[Background] [STORAGE] WRITE_STARTED:', {
-      saveId,
-      operation,
-      tabCount,
-      stateHash,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Execute the storage write retry loop
- * v1.6.4.13 - Issue #5: Extracted to reduce complexity
- * @private
- */
-async function _executeStorageWriteLoop(operation, saveId, tabCount, stateHash) {
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(
-      operation,
-      saveId,
-      attempt,
-      backoffMs
-    );
-
+    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
+    
     if (result.success && result.verified) {
-      _logStorageWriteSuccess({ saveId, operation, tabCount, stateHash, attemptNumber: attempt });
       return result;
     }
-
+    
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
-      _logStorageWriteRetry(saveId, operation, attempt, backoffMs);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
     }
   }
 
+  console.error('[Background] Storage write verification FAILED after max retries:', {
+    operation,
+    saveId,
+    maxRetries: STORAGE_WRITE_MAX_RETRIES
+  });
+
   return { success: false, saveId, verified: false, attempts: STORAGE_WRITE_MAX_RETRIES };
-}
-
-/**
- * Log storage write success event
- * v1.6.4.13 - Issue #5: Extracted to reduce complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- */
-function _logStorageWriteSuccess({ saveId, operation, tabCount, stateHash, attemptNumber }) {
-  console.log('[Background] STORAGE_WRITE_SUCCESS:', {
-    saveId,
-    operation,
-    attemptNumber,
-    totalAttempts: STORAGE_WRITE_MAX_RETRIES,
-    tabCount
-  });
-
-  if (DEBUG_MESSAGING) {
-    console.log('[Background] [STORAGE] WRITE_SUCCESS:', {
-      saveId,
-      operation,
-      tabCount,
-      stateHash,
-      attemptNumber,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Log storage write retry event
- * v1.6.4.13 - Issue #5: Extracted to reduce complexity
- * @private
- */
-function _logStorageWriteRetry(saveId, operation, attempt, backoffMs) {
-  console.log('[Background] STORAGE_WRITE_RETRY:', {
-    saveId,
-    operation,
-    attempt: `${attempt + 1}/${STORAGE_WRITE_MAX_RETRIES}`,
-    backoffMs,
-    reason: 'verification pending'
-  });
-}
-
-/**
- * Log final storage write result
- * v1.6.4.13 - Issue #5: Extracted to reduce complexity
- * v1.6.4.14 - FIX Excess Args: Converted to options object
- * @private
- */
-function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stateHash }) {
-  if (result.success) return;
-
-  console.error('[Background] STORAGE_WRITE_FINAL_FAILURE:', {
-    operation,
-    saveId,
-    totalAttempts: STORAGE_WRITE_MAX_RETRIES,
-    tabCount
-  });
-
-  if (DEBUG_MESSAGING) {
-    console.error('[Background] [STORAGE] WRITE_FAILED:', {
-      saveId,
-      operation,
-      tabCount,
-      stateHash,
-      totalAttempts: STORAGE_WRITE_MAX_RETRIES,
-      timestamp: Date.now()
-    });
-  }
 }
 
 /**
  * Attempt a single storage write with verification
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
- * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
- * v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -7449,26 +3527,15 @@ function _logStorageWriteFinalResult({ result, saveId, operation, tabCount, stat
  * @returns {Promise<{ success: boolean, verified: boolean, needsRetry: boolean, attempts?: number, saveId?: string }>}
  */
 async function _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs) {
-  const sequenceId = _getNextStorageSequenceId();
-  const revision = _getNextRevision();
   const stateToWrite = {
     tabs: globalQuickTabState.tabs,
     saveId,
-    sequenceId,
-    revision,
     timestamp: Date.now()
   };
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite({
-      operation,
-      saveId,
-      sequenceId,
-      revision,
-      tabCount: stateToWrite.tabs.length,
-      attempt
-    });
+    return await _verifyStorageWrite(operation, saveId, stateToWrite.tabs.length, attempt, backoffMs);
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -7478,17 +3545,9 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 /**
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
- * v1.6.3.7-v9 - FIX Issue #6: Add sequenceId parameter
- * v1.6.4.14 - FIX Excess Args: Converted to options object
  * @private
- * @param {Object} options - Options object
- * @param {string} options.operation - Operation name for logging
- * @param {string} options.saveId - Save ID to verify
- * @param {number} options.sequenceId - Sequence ID for tracking
- * @param {number} options.tabCount - Tab count for logging
- * @param {number} options.attempt - Current attempt number
  */
-async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, attempt }) {
+async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoffMs) {
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
@@ -7497,106 +3556,59 @@ async function _verifyStorageWrite({ operation, saveId, sequenceId, tabCount, at
     console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
       operation,
       saveId,
-      sequenceId,
       tabCount
     });
-
-    // v1.6.3.8-v8 - Issue #13: Broadcast via port-based notification (BC removed)
-    _broadcastStorageWriteConfirmation(readBack, saveId);
-
-    return {
-      success: true,
-      saveId,
-      sequenceId,
-      verified: true,
-      attempts: attempt,
-      needsRetry: false
-    };
+    return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(
-    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
-    {
-      operation,
-      expectedSaveId: saveId,
-      actualSaveId: readBack?.saveId
-    }
-  );
-
+  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
+    operation,
+    expectedSaveId: saveId,
+    actualSaveId: readBack?.saveId,
+    backoffMs
+  });
+  
   return { success: false, verified: false, needsRetry: true };
 }
 
 // ==================== END v1.6.4.0 COMMAND HANDLERS ====================
 
 /**
- * Broadcast message to all tabs via tabs.sendMessage
- * v1.6.3.8-v12 - Port infrastructure removed, replaced with tabs.sendMessage
+ * Broadcast message to all connected ports
+ * v1.6.3.6-v11 - FIX Issue #19: Visibility state sync
  * @param {Object} message - Message to broadcast
- * @param {number|null} excludeTabId - Tab ID to exclude from broadcast (optional)
+ * @param {string} excludePortId - Port ID to exclude from broadcast
  */
-/**
- * Send message to a single tab
- * v1.6.3.8-v12 - Extracted helper to reduce nesting depth
- * @private
- */
-async function _sendMessageToTab(tabId, message) {
-  try {
-    await browser.tabs.sendMessage(tabId, message);
-    return { success: true };
-  } catch (_err) {
-    // Content script may not be loaded - this is expected for system pages
-    return { success: false };
+function broadcastToAllPorts(message, excludePortId = null) {
+  let sentCount = 0;
+  let errorCount = 0;
+
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portId === excludePortId) continue;
+
+    try {
+      portInfo.port.postMessage(message);
+      sentCount++;
+    } catch (err) {
+      console.warn('[Background] Failed to broadcast to port:', { portId, error: err.message });
+      errorCount++;
+    }
   }
+
+  console.log('[Background] Broadcast complete:', {
+    action: message.action || message.type,
+    sentCount,
+    errorCount,
+    excludedPortId: excludePortId
+  });
 }
 
-/**
- * Process broadcast results and return counts
- * v1.6.3.8-v12 - Extracted helper to reduce nesting depth
- * @private
- */
-function _countBroadcastResults(results) {
-  return results.reduce(
-    (acc, result) => {
-      if (result.success) {
-        acc.sentCount++;
-      } else {
-        acc.errorCount++;
-      }
-      return acc;
-    },
-    { sentCount: 0, errorCount: 0 }
-  );
-}
+// Register port connection listener
+browser.runtime.onConnect.addListener(handlePortConnect);
 
-async function broadcastToAllTabs(message, excludeTabId = null) {
-  // v1.6.3.8-v12 - Port infrastructure removed, use tabs.sendMessage
-  try {
-    const tabs = await browser.tabs.query({});
-    const targetTabs = excludeTabId ? tabs.filter(tab => tab.id !== excludeTabId) : tabs;
-    const results = await Promise.all(targetTabs.map(tab => _sendMessageToTab(tab.id, message)));
-    const { sentCount, errorCount } = _countBroadcastResults(results);
+console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
 
-    console.log('[Background] Broadcast complete (tabs.sendMessage):', {
-      action: message.action || message.type,
-      sentCount,
-      errorCount,
-      excludeTabId
-    });
-  } catch (err) {
-    console.error('[Background] Broadcast failed:', err.message);
-  }
-}
-
-// Alias for backward compatibility (kept for any external references)
-const broadcastToAllPorts = broadcastToAllTabs;
-// Mark as exported for potential external use
-void broadcastToAllPorts;
-
-// v1.6.3.8-v12 - Port infrastructure removed
-// Port-based messaging replaced with tabs.sendMessage + storage.onChanged
-console.log('[Background] v1.6.3.8-v12 Port infrastructure removed - using tabs.sendMessage');
-
-// ==================== END PORT LIFECYCLE MANAGEMENT (REMOVED v1.6.3.8-v12) ====================
+// ==================== END PORT LIFECYCLE MANAGEMENT ====================
 
 // ==================== v1.6.3.6-v11 TAB LIFECYCLE EVENTS ====================
 // FIX Issue #16: Track browser tab lifecycle for orphan detection
@@ -7604,11 +3616,10 @@ console.log('[Background] v1.6.3.8-v12 Port infrastructure removed - using tabs.
 /**
  * Handle browser tab removal
  * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
- * v1.6.3.8-v12 - Uses broadcastToAllTabs for consistency
  * @param {number} tabId - ID of the removed tab
  * @param {Object} removeInfo - Removal info
  */
-async function handleTabRemoved(tabId, removeInfo) {
+function handleTabRemoved(tabId, removeInfo) {
   console.log('[Background] TAB_REMOVED:', { tabId, removeInfo });
 
   // Find Quick Tabs that belonged to this tab
@@ -7630,19 +3641,21 @@ async function handleTabRemoved(tabId, removeInfo) {
     quickTabHostTabs.delete(qt.id);
   }
 
-  // v1.6.3.8-v12 - Broadcast tab lifecycle change via broadcastToAllTabs for consistency
-  try {
-    const message = {
-      type: 'BROADCAST',
-      action: 'TAB_LIFECYCLE_CHANGE',
-      event: 'tab-removed',
-      tabId,
-      affectedQuickTabs: orphanedQuickTabs.map(t => t.id),
-      timestamp: Date.now()
-    };
-    await broadcastToAllTabs(message, tabId);
-  } catch (err) {
-    console.error('[Background] Error broadcasting tab removal:', err.message);
+  // Broadcast tab lifecycle change to all connected ports
+  broadcastToAllPorts({
+    type: 'BROADCAST',
+    action: 'TAB_LIFECYCLE_CHANGE',
+    event: 'tab-removed',
+    tabId,
+    affectedQuickTabs: orphanedQuickTabs.map(t => t.id),
+    timestamp: Date.now()
+  });
+
+  // Clean up ports associated with this tab
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.tabId === tabId) {
+      unregisterPort(portId, 'tab-removed');
+    }
   }
 }
 
@@ -7676,52 +3689,6 @@ let messageIdCounter = 0;
 function generateMessageId() {
   messageIdCounter++;
   return `msg-${Date.now()}-${messageIdCounter}`;
-}
-
-/**
- * Correlation ID counter for state change operations
- * v1.6.3.8-v7 - Issue #9: Unique correlation IDs for full state change tracing
- */
-let _correlationIdCounter = 0;
-
-/**
- * Generate unique correlation ID for state change tracing
- * v1.6.3.8-v7 - Issue #9: Format: op-{timestamp}-{id_short}-{random}
- * Used to trace state changes from origin through background to all contexts
- * @param {string} [quickTabId=''] - Optional Quick Tab ID to include in correlation ID
- * @returns {string} Unique correlation ID
- */
-function generateCorrelationId(quickTabId = '') {
-  _correlationIdCounter++;
-  const timestamp = Date.now();
-  const idShort = quickTabId ? quickTabId.substring(0, 8) : 'gen';
-  const random = Math.random().toString(36).substring(2, 6);
-  return `op-${timestamp}-${idShort}-${random}`;
-}
-
-/**
- * Build a standardized response object for message handlers.
- *
- * v1.6.3.9-v6 - GAP #20: Cross-component coordination with correlationId tracking
- *
- * All message responses include:
- * - success: Whether the operation succeeded
- * - correlationId: For end-to-end tracing
- * - timestamp: When the response was generated
- * - Additional data fields as provided
- *
- * @param {boolean} success - Whether the operation succeeded
- * @param {Object} [data={}] - Additional response data
- * @param {string|null} [correlationId=null] - Correlation ID for tracing
- * @returns {Object} Standardized response object
- */
-function _buildResponse(success, data = {}, correlationId = null) {
-  return {
-    success,
-    correlationId: correlationId || generateCorrelationId(),
-    timestamp: Date.now(),
-    ...data
-  };
 }
 
 /**
@@ -7807,59 +3774,11 @@ function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) 
 const quickTabHostTabs = new Map();
 
 /**
- * Validate and log Quick Tab state change message
- * v1.6.4.14 - FIX Complexity: Extracted to reduce handleQuickTabStateChange cc
- * v1.6.3.8-v7 - Issue #9: Include correlationId for full state change tracing
- * v1.6.3.8-v7 - Issue #12: Include clientTimestamp for rapid operation ordering
- * @private
- * @returns {{ messageId: string, quickTabId: string, changes: Object, source: string, sourceTabId: number, correlationId: string, clientTimestamp: number|null }}
- */
-function _prepareStateChangeContext(message, sender) {
-  const { quickTabId, changes, source, clientTimestamp } = message;
-  const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
-  const messageId = message.messageId || generateMessageId();
-  // v1.6.3.8-v7 - Issue #9: Generate correlationId if not provided
-  const correlationId = message.correlationId || generateCorrelationId(quickTabId);
-
-  logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
-  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
-    quickTabId,
-    changes,
-    source,
-    sourceTabId,
-    // v1.6.3.8-v7 - Issue #9: Log correlationId for tracing
-    correlationId,
-    // v1.6.3.8-v7 - Issue #12: Log clientTimestamp for ordering validation
-    clientTimestamp: clientTimestamp || null
-  });
-
-  return {
-    messageId,
-    quickTabId,
-    changes,
-    source,
-    sourceTabId,
-    correlationId,
-    clientTimestamp: clientTimestamp || null
-  };
-}
-
-/**
- * Check if this is a deletion change
- * v1.6.4.14 - FIX Complexity: Extracted predicate
- * @private
- */
-function _isDeletionChange(changes, source) {
-  return changes?.deleted === true || source === 'destroy';
-}
-
-/**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes (deleted: true) by removing from cache
  * v1.6.3.6-v5 - FIX Issue #4c: Added message receipt logging
  * v1.6.3.6-v12 - FIX Issue #1: Added initialization guard
- * v1.6.4.14 - FIX Complexity: Extracted helpers (cc=9 → cc=5)
  * Background becomes the coordinator, updating cache and broadcasting to other contexts
  * @param {Object} message - Message containing state change
  * @param {Object} sender - Sender info (includes tab.id)
@@ -7868,6 +3787,7 @@ async function handleQuickTabStateChange(message, sender) {
   // v1.6.3.6-v12 - FIX Issue #1: Check initialization before processing
   const guard = checkInitializationGuard('handleQuickTabStateChange');
   if (!guard.initialized) {
+    // Wait briefly for initialization, then retry or fail
     const initialized = await waitForInitialization(2000);
     if (!initialized) {
       console.warn('[Background] v1.6.3.6-v12 State change rejected - not initialized');
@@ -7875,31 +3795,38 @@ async function handleQuickTabStateChange(message, sender) {
     }
   }
 
-  // v1.6.3.8-v7 - Issue #9, #12: Include correlationId and clientTimestamp
-  const { quickTabId, changes, source, sourceTabId, correlationId, clientTimestamp } =
-    _prepareStateChangeContext(message, sender);
+  const { quickTabId, changes, source } = message;
+  const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
+
+  // v1.6.3.6-v5 - FIX Issue #4c: Log message receipt
+  const messageId = message.messageId || generateMessageId();
+  logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
+
+  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
+    quickTabId,
+    changes,
+    source,
+    sourceTabId
+  });
 
   // Track which tab hosts this Quick Tab
   _updateQuickTabHostTracking(quickTabId, sourceTabId);
 
   // v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes
-  if (_isDeletionChange(changes, source)) {
-    // v1.6.3.8-v7 - Issue #9: Pass correlationId for deletion tracing
-    await _handleQuickTabDeletion(quickTabId, source, sourceTabId, correlationId);
-    // v1.6.3.9-v6 - GAP #20: Use _buildResponse for consistent response format
-    return _buildResponse(true, {}, correlationId);
+  // Note: We check both `changes.deleted === true` (explicit deletion flag) and `source === 'destroy'`
+  // (legacy source indication) for backward compatibility. The explicit flag is preferred for new code.
+  if (changes?.deleted === true || source === 'destroy') {
+    await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
+    return { success: true };
   }
 
   // Update globalQuickTabState cache
-  // v1.6.3.8-v7 - Issue #12: Pass clientTimestamp for rapid operation ordering
-  _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId, clientTimestamp);
+  _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
 
   // Broadcast to all interested parties
-  // v1.6.3.8-v7 - Issue #9: Pass correlationId for tracing
-  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId, correlationId);
+  await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
 
-  // v1.6.3.9-v6 - GAP #20: Use _buildResponse for consistent response format
-  return _buildResponse(true, {}, correlationId);
+  return { success: true };
 }
 
 /**
@@ -7923,20 +3850,13 @@ function _updateQuickTabHostTracking(quickTabId, sourceTabId) {
  * Handle Quick Tab deletion
  * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging
- * v1.6.3.8-v7 - Issue #9: Accept correlationId parameter for tracing
  * @param {string} quickTabId - Quick Tab ID
  * @param {string} source - Source of deletion
  * @param {number} sourceTabId - Source browser tab ID
- * @param {string} [providedCorrelationId] - Optional correlation ID from caller
  */
-async function _handleQuickTabDeletion(
-  quickTabId,
-  source,
-  sourceTabId,
-  providedCorrelationId = null
-) {
-  // v1.6.3.8-v7 - Issue #9: Use provided correlationId or generate one
-  const correlationId = providedCorrelationId || generateCorrelationId(quickTabId);
+async function _handleQuickTabDeletion(quickTabId, source, sourceTabId) {
+  // v1.6.3.6-v5 - FIX Issue #4e: Generate correlation ID for deletion tracing
+  const correlationId = `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
 
   // v1.6.3.6-v5 - Log deletion submission
   logDeletionPropagation(correlationId, 'submit', quickTabId, {
@@ -7944,10 +3864,7 @@ async function _handleQuickTabDeletion(
     excludeTabId: sourceTabId
   });
 
-  console.log('[Background] Processing deletion for:', quickTabId, {
-    correlationId,
-    source
-  });
+  console.log('[Background] Processing deletion for:', quickTabId);
   const beforeCount = globalQuickTabState.tabs.length;
   globalQuickTabState.tabs = globalQuickTabState.tabs.filter(t => t.id !== quickTabId);
   globalQuickTabState.lastUpdate = Date.now();
@@ -7967,76 +3884,35 @@ async function _handleQuickTabDeletion(
     quickTabId,
     { deleted: true, correlationId },
     source,
-    sourceTabId,
-    correlationId
+    sourceTabId
   );
-}
-
-/**
- * Check if client timestamp should skip this update (stale operation)
- * v1.6.3.8-v7 - Issue #12: Extracted to reduce max-depth
- * @private
- * @param {Object} existingTab - Existing tab in cache
- * @param {number|null} clientTimestamp - Client-side timestamp
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - Changes being applied
- * @returns {boolean} True if should skip this update
- */
-function _shouldSkipStaleUpdate(existingTab, clientTimestamp, quickTabId, changes) {
-  if (!clientTimestamp || !existingTab._lastClientTimestamp) return false;
-  if (clientTimestamp >= existingTab._lastClientTimestamp) return false;
-
-  console.warn('[Background] RAPID_OPERATION_ORDERING_SKIP:', {
-    quickTabId,
-    reason: 'clientTimestamp is older than last applied operation',
-    incomingTimestamp: clientTimestamp,
-    lastAppliedTimestamp: existingTab._lastClientTimestamp,
-    changes
-  });
-  return true;
 }
 
 /**
  * Update global Quick Tab state cache
  * v1.6.3.5-v11 - Extracted from handleQuickTabStateChange to reduce complexity
- * v1.6.3.8-v7 - Issue #12: Add clientTimestamp validation for rapid operation ordering
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {number} sourceTabId - Source browser tab ID
- * @param {number|null} clientTimestamp - Client-side timestamp for ordering validation
  */
-function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId, clientTimestamp = null) {
+function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
   if (!changes || !quickTabId) return;
 
   const existingTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (existingTab) {
-    // v1.6.3.8-v7 - Issue #12: Validate timestamp ordering for rapid operations
-    if (_shouldSkipStaleUpdate(existingTab, clientTimestamp, quickTabId, changes)) {
-      return; // Skip stale operation
-    }
-
     Object.assign(existingTab, changes);
-    // v1.6.3.8-v7 - Issue #12: Track last applied client timestamp
-    if (clientTimestamp) {
-      existingTab._lastClientTimestamp = clientTimestamp;
-    }
     globalQuickTabState.lastUpdate = Date.now();
     console.log('[Background] Updated cache for:', quickTabId, changes);
-    return;
+  } else if (changes.url) {
+    // New Quick Tab
+    globalQuickTabState.tabs.push({
+      id: quickTabId,
+      ...changes,
+      originTabId: sourceTabId
+    });
+    globalQuickTabState.lastUpdate = Date.now();
+    console.log('[Background] Added new tab to cache:', quickTabId);
   }
-
-  // New Quick Tab (only create if has url)
-  if (!changes.url) return;
-
-  globalQuickTabState.tabs.push({
-    id: quickTabId,
-    ...changes,
-    originTabId: sourceTabId,
-    // v1.6.3.8-v7 - Issue #12: Initialize client timestamp tracking
-    _lastClientTimestamp: clientTimestamp || Date.now()
-  });
-  globalQuickTabState.lastUpdate = Date.now();
-  console.log('[Background] Added new tab to cache:', quickTabId);
 }
 
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #4: Broadcast deduplication and circuit breaker
@@ -8145,45 +4021,29 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
- * v1.6.3.7-v4 - FIX Issue #3: Route state updates through PORT when available (primary)
- *              then fall back to runtime.sendMessage (secondary)
- * v1.6.3.8-v7 - Issue #9: Include correlationId in broadcast messages for tracing
- * v1.6.3.8-v8 - Issue #13: BC removed, port-based messaging is now PRIMARY
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
  * @param {number} excludeTabId - Tab to exclude from broadcast (the source tab)
- * @param {string} [correlationId] - Optional correlation ID for tracing
  */
-async function broadcastQuickTabStateUpdate(
-  quickTabId,
-  changes,
-  source,
-  excludeTabId,
-  correlationId = null
-) {
+async function broadcastQuickTabStateUpdate(quickTabId, changes, source, excludeTabId) {
   // v1.6.3.6-v4 - FIX Issue #4: Check broadcast limits
   const broadcastCheck = _shouldAllowBroadcast(quickTabId, changes);
   if (!broadcastCheck.allowed) {
     console.log('[Background] Broadcast BLOCKED:', {
       quickTabId,
       reason: broadcastCheck.reason,
-      source,
-      correlationId
+      source
     });
     return;
   }
 
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
-  // v1.6.3.8-v7 - Issue #9: Generate correlationId if not provided
-  const effectiveCorrelationId = correlationId || generateCorrelationId(quickTabId);
 
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
-    // v1.6.3.8-v7 - Issue #9: Include correlationId for full tracing
-    correlationId: effectiveCorrelationId,
     quickTabId,
     changes,
     source: 'background',
@@ -8200,106 +4060,23 @@ async function broadcastQuickTabStateUpdate(
     changes,
     source,
     excludeTabId,
-    triggerSource: source,
-    // v1.6.3.8-v7 - Issue #9: Log correlationId for tracing
-    correlationId: effectiveCorrelationId
+    triggerSource: source
   });
 
-  // v1.6.3.8-v6 - BC REMOVED: Skip BC broadcast, port-based messaging is primary
-  // _broadcastViaBroadcastChannel removed - just log for debugging
-
-  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 (now PRIMARY) - Route state updates through PORT
-  // Port-based messaging is more reliable than runtime.sendMessage for sidebar
-  let sentViaPort = false;
-  const sidebarPortsSent = _broadcastToSidebarPorts(message);
-  if (sidebarPortsSent > 0) {
-    sentViaPort = true;
-    console.log('[Background] [PORT] STATE_UPDATE sent to', sidebarPortsSent, 'sidebar(s):', {
-      messageId,
-      quickTabId,
-      correlationId: effectiveCorrelationId
-    });
-  }
-
-  // v1.6.3.7-v4 - FIX Issue #3: Tier 2 (now fallback) - Fall back to runtime.sendMessage if no ports available
-  // This ensures sidebar gets the message even if port connection hasn't been established yet
-  if (!sentViaPort) {
-    try {
-      await browser.runtime.sendMessage(message);
-      console.log('[Background] STATE_UPDATE sent via runtime.sendMessage (no port available):', {
-        messageId,
-        quickTabId,
-        correlationId: effectiveCorrelationId
-      });
-    } catch (_err) {
-      // Sidebar may not be open - ignore
-      console.log('[Background] No port or runtime listener available for state update');
-    }
+  // Broadcast to Manager sidebar (if open)
+  try {
+    await browser.runtime.sendMessage(message);
+    console.log('[Background] Sent state update to sidebar/popup');
+  } catch (_err) {
+    // Sidebar may not be open - ignore
   }
 
   // v1.6.3.7 - FIX Issue #3: For deletions, broadcast to ALL tabs (except sender)
   // This ensures UI button and Manager button produce identical cross-tab results
   if (changes?.deleted === true) {
     // v1.6.3.6-v5 - FIX Issue #4e: Pass correlation ID for deletion tracing
-    await _broadcastDeletionToAllTabs(
-      quickTabId,
-      source,
-      excludeTabId,
-      changes.correlationId || effectiveCorrelationId
-    );
+    await _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, changes.correlationId);
   }
-}
-
-/**
- * Determine broadcast type and function based on changes
- * v1.6.4.13 - FIX Complexity: Extracted to reduce _broadcastViaBroadcastChannel cc
-/**
- * Check if this is a create operation (new Quick Tab)
- * v1.6.4.14 - FIX Complexity: Extracted to simplify _determineBroadcastTypeAndFn
- * @private
- */
-function _isQuickTabCreation(changes, quickTabId) {
-  return changes?.url && !globalQuickTabState.tabs.find(t => t.id === quickTabId);
-}
-
-/**
- * Determine the broadcast type based on state changes (for logging)
- * v1.6.3.8-v6 - BC REMOVED: Used only for logging, no BC function calls
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes
- * @returns {{ broadcastType: string }}
- */
-function _determineBroadcastType(quickTabId, changes) {
-  // Priority-ordered checks for state changes
-  if (changes?.deleted === true) {
-    return { broadcastType: 'quick-tab-deleted' };
-  }
-  if (changes?.minimized === true) {
-    return { broadcastType: 'quick-tab-minimized' };
-  }
-  if (changes?.minimized === false) {
-    return { broadcastType: 'quick-tab-restored' };
-  }
-  if (_isQuickTabCreation(changes, quickTabId)) {
-    return { broadcastType: 'quick-tab-created' };
-  }
-  return { broadcastType: 'quick-tab-updated' };
-}
-
-// v1.6.3.8-v12 - Port infrastructure removed - use runtime.sendMessage in broadcastQuickTabStateUpdate
-
-/**
- * Broadcast message to sidebar - no-op (port infrastructure removed)
- * v1.6.3.8-v12 - Port infrastructure removed
- * @private
- * @param {Object} _message - Message to send (unused)
- * @returns {number} Always returns 0 (no ports available)
- */
-function _broadcastToSidebarPorts(_message) {
-  // v1.6.3.8-v12 - Port infrastructure removed, return 0 sent
-  // Sidebar communication now handled via runtime.sendMessage fallback
-  return 0;
 }
 
 /**
@@ -8374,7 +4151,9 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     const tabs = await browser.tabs.query({});
 
     // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
-    const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
+    const pendingTabs = new Set(
+      tabs.filter(t => t.id !== excludeTabId).map(t => t.id)
+    );
 
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
@@ -8559,163 +4338,15 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
   }
 }
 
-// =============================================================================
-// v1.6.3.9-v7 - Message Handler Functions (Extracted for complexity reduction)
-// =============================================================================
-
-/**
- * Handle HEALTH_PROBE message
- * v1.6.3.9-v7 - Extracted from inline handler
- * @private
- */
-function _handleHealthProbe(message, sendResponse) {
-  console.log('[Background] HEALTH_PROBE via sendMessage received:', {
-    source: message.source,
-    timestamp: message.timestamp
-  });
-  sendResponse({
-    success: true,
-    type: 'HEALTH_ACK',
-    healthy: true,
-    timestamp: Date.now(),
-    originalTimestamp: message.timestamp,
-    isInitialized,
-    cacheTabCount: globalQuickTabState.tabs?.length || 0
-  });
-  return true;
-}
-
-/**
- * Handle BC_VERIFICATION_REQUEST message (deprecated)
- * v1.6.3.9-v7 - Extracted from inline handler
- * @private
- */
-function _handleBCVerificationRequest(message, sendResponse) {
-  console.log('[Background] BC_VERIFICATION_REQUEST received (BC REMOVED):', {
-    requestId: message.requestId,
-    source: message.source,
-    timestamp: message.timestamp,
-    note: 'BroadcastChannel removed - use Port-based messaging'
-  });
-
-  sendResponse({
-    success: true,
-    type: 'BC_VERIFICATION_REQUEST_ACK',
-    bcAvailable: false,
-    deprecated: true,
-    message: 'BroadcastChannel removed - use Port-based messaging',
-    timestamp: Date.now()
-  });
-  return true;
-}
-
-/**
- * Handle CONTENT_SCRIPT_UNLOAD message
- * v1.6.3.9-v7 - Extracted from inline handler
- * @private
- */
-function _handleContentScriptUnload(message, sender, sendResponse) {
-  const tabId = message.tabId || sender?.tab?.id;
-  console.log('[Background] CONTENT_SCRIPT_UNLOAD received:', {
-    tabId,
-    reason: message.reason,
-    timestamp: message.timestamp,
-    senderTabId: sender?.tab?.id
-  });
-
-  _cleanupPortsForTab(tabId);
-  _cleanupQuickTabHostTracking(tabId);
-
-  sendResponse({
-    success: true,
-    type: 'CONTENT_SCRIPT_UNLOAD_ACK',
-    timestamp: Date.now()
-  });
-  return true;
-}
-
-/**
- * Handle CONTENT_SCRIPT_READY message
- * v1.6.3.9-v7 - Issue #8/#11: Content script ready handshake
- * @private
- */
-function _handleContentScriptReady(message, sender, sendResponse) {
-  const tabId = message.tabId || sender?.tab?.id;
-  const origin = message.origin || sender?.url || 'unknown';
-  
-  console.log('[Background] CONTENT_SCRIPT_READY received:', {
-    tabId,
-    origin,
-    url: message.url,
-    readyState: message.readyState,
-    timestamp: message.timestamp,
-    senderTabId: sender?.tab?.id
-  });
-
-  try {
-    const initialState = isInitialized ? globalQuickTabState : null;
-    sendResponse({
-      success: true,
-      type: 'CONTENT_SCRIPT_READY_ACK',
-      initialState: initialState,
-      isBackgroundInitialized: isInitialized,
-      tabId: tabId,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    sendResponse({
-      success: false,
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-  return true;
-}
-
-/**
- * Handle CONTENT_SCRIPT_UNLOADING message
- * v1.6.3.9-v7 - Issue #13: Before cross-domain navigation
- * @private
- */
-function _handleContentScriptUnloading(message, sender, sendResponse) {
-  const tabId = message.tabId || sender?.tab?.id;
-  const origin = message.origin || 'unknown';
-  
-  console.log('[Background] CONTENT_SCRIPT_UNLOADING received:', {
-    tabId,
-    origin,
-    url: message.url,
-    timestamp: message.timestamp,
-    senderTabId: sender?.tab?.id,
-    note: 'Content script unloading - Quick Tabs state in storage will persist'
-  });
-
-  sendResponse({
-    success: true,
-    type: 'CONTENT_SCRIPT_UNLOADING_ACK',
-    timestamp: Date.now()
-  });
-  return true;
-}
-
 // Register message handlers for Quick Tab coordination
 // This extends the existing runtime.onMessage listener
-// v1.6.3.9-v7 - Refactored to use lookup table for reduced complexity
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Route by type first
-  if (message.type === 'HEALTH_PROBE') {
-    return _handleHealthProbe(message, sendResponse);
-  }
-
-  if (message.type === 'BC_VERIFICATION_REQUEST') {
-    return _handleBCVerificationRequest(message, sendResponse);
-  }
-
+  // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
   if (message.type === 'QUICK_TAB_STATE_CHANGE') {
     handleQuickTabStateChange(message, sender)
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
+    return true; // Keep channel open for async response
   }
 
   if (message.type === 'MANAGER_COMMAND') {
@@ -8725,406 +4356,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Route by action or type for unload messages
-  if (message.action === 'CONTENT_SCRIPT_UNLOAD' || message.type === 'CONTENT_SCRIPT_UNLOAD') {
-    return _handleContentScriptUnload(message, sender, sendResponse);
-  }
-
-  if (message.action === 'CONTENT_SCRIPT_READY') {
-    return _handleContentScriptReady(message, sender, sendResponse);
-  }
-
-  if (message.action === 'CONTENT_SCRIPT_UNLOADING') {
-    return _handleContentScriptUnloading(message, sender, sendResponse);
-  }
-
   // Let other handlers process the message
   return false;
 });
 
 console.log('[Background] v1.6.3.5-v3 Message infrastructure registered');
 // ==================== END MESSAGE INFRASTRUCTURE ====================
-
-// ==================== v1.6.3.7-v3 CONTEXT MENUS ====================
-// API #7: Enhanced contextMenus for Quick Tab grouping options
-
-/**
- * Context menu IDs for Quick Tab grouping
- * v1.6.3.7-v3 - API #7: Context menu constants
- */
-const CONTEXT_MENU_IDS = {
-  GROUPING_SUBMENU: 'qt-grouping-submenu',
-  CREATE_NEW_GROUP: 'create-new-group',
-  ADD_TO_GROUP: 'add-to-group'
-};
-
-/**
- * Initialize context menus for Quick Tab grouping
- * v1.6.3.7-v3 - API #7: Creates submenu with grouping options
- */
-function initializeContextMenus() {
-  console.log('[Background] v1.6.3.7-v3 Initializing context menus...');
-
-  try {
-    // Create main submenu for Quick Tab Grouping
-    browser.contextMenus.create({
-      id: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
-      title: 'Quick Tab Grouping',
-      contexts: ['page', 'link']
-    });
-
-    // Create "Create new group..." option
-    browser.contextMenus.create({
-      id: CONTEXT_MENU_IDS.CREATE_NEW_GROUP,
-      parentId: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
-      title: 'Create new Quick Tab group...',
-      contexts: ['page', 'link']
-    });
-
-    // Create "Add to group..." option
-    browser.contextMenus.create({
-      id: CONTEXT_MENU_IDS.ADD_TO_GROUP,
-      parentId: CONTEXT_MENU_IDS.GROUPING_SUBMENU,
-      title: 'Add to group...',
-      contexts: ['page', 'link']
-    });
-
-    console.log('[Background] v1.6.3.7-v3 Context menus created successfully');
-  } catch (err) {
-    console.error('[Background] Failed to create context menus:', err.message);
-  }
-}
-
-/**
- * Handle context menu click events
- * v1.6.3.7-v3 - API #7: Route menu clicks to appropriate handlers
- * @param {Object} info - Click info (menuItemId, linkUrl, pageUrl, etc.)
- * @param {Object} tab - Tab where the menu was clicked
- */
-async function handleContextMenuClick(info, tab) {
-  const { menuItemId, linkUrl, pageUrl } = info;
-  const tabId = tab?.id;
-
-  console.log('[Background] Context menu clicked:', {
-    menuItemId,
-    linkUrl,
-    pageUrl,
-    tabId
-  });
-
-  switch (menuItemId) {
-    case CONTEXT_MENU_IDS.CREATE_NEW_GROUP:
-      await handleCreateNewGroup(linkUrl || pageUrl, tabId);
-      break;
-
-    case CONTEXT_MENU_IDS.ADD_TO_GROUP:
-      await handleAddToGroup(linkUrl || pageUrl, tabId);
-      break;
-
-    default:
-      console.log('[Background] Unknown context menu item:', menuItemId);
-  }
-}
-
-/**
- * Handle "Create new Quick Tab group..." menu action
- * v1.6.3.7-v3 - API #7: Creates group with current tab
- * @param {string} url - URL from context menu
- * @param {number} tabId - Current tab ID
- */
-async function handleCreateNewGroup(url, tabId) {
-  console.log('[Background] Creating new Quick Tab group:', { url, tabId });
-
-  // Check if tabs.group API is available (Firefox 138+)
-  if (typeof browser.tabs.group !== 'function') {
-    console.warn('[Background] tabs.group API not available (requires Firefox 138+)');
-    // Show notification about unavailable feature
-    await notifyGroupingUnavailable();
-    return;
-  }
-
-  try {
-    // Create group with current tab
-    const groupId = await browser.tabs.group({
-      tabIds: [tabId],
-      createProperties: {
-        windowId: browser.windows.WINDOW_ID_CURRENT
-      }
-    });
-
-    // Store group metadata
-    const metadata = {
-      groupId,
-      name: `Quick Tab Group ${groupId}`,
-      tabIds: [tabId],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    await saveQuickTabGroupMetadata(metadata);
-
-    console.log('[Background] Quick Tab group created:', metadata);
-
-    // Notify user of success
-    await notifyGroupCreated(metadata.name);
-  } catch (err) {
-    console.error('[Background] Failed to create Quick Tab group:', err.message);
-  }
-}
-
-/**
- * Handle "Add to group..." menu action
- * v1.6.3.7-v3 - API #7: Shows prompt to select group
- * @param {string} url - URL from context menu
- * @param {number} tabId - Current tab ID
- */
-async function handleAddToGroup(url, tabId) {
-  console.log('[Background] Add to group requested:', { url, tabId });
-
-  // Check if tabs.group API is available (Firefox 138+)
-  if (typeof browser.tabs.group !== 'function') {
-    console.warn('[Background] tabs.group API not available (requires Firefox 138+)');
-    await notifyGroupingUnavailable();
-    return;
-  }
-
-  // For now, log the request - full UI would require popup/sidebar interaction
-  console.log('[Background] Add to group: Feature requires group selection UI (coming soon)');
-
-  // Notify user that this feature is coming
-  await notifyFeatureComingSoon('Add to group');
-}
-
-/**
- * Save Quick Tab group metadata to storage
- * v1.6.3.7-v3 - API #7: Persist group data
- * @param {Object} metadata - Group metadata
- */
-async function saveQuickTabGroupMetadata(metadata) {
-  try {
-    const result = await browser.storage.local.get('quickTabGroups');
-    const groups = result.quickTabGroups || [];
-    groups.push(metadata);
-    await browser.storage.local.set({ quickTabGroups: groups });
-    console.log('[Background] Group metadata saved:', metadata.groupId);
-  } catch (err) {
-    console.error('[Background] Failed to save group metadata:', err.message);
-  }
-}
-
-// Register context menu click listener
-browser.contextMenus.onClicked.addListener(handleContextMenuClick);
-
-// Initialize context menus on script load
-initializeContextMenus();
-
-console.log('[Background] v1.6.3.7-v3 Context menus initialized');
-// ==================== END CONTEXT MENUS ====================
-
-// ==================== v1.6.3.7-v3 NOTIFICATIONS API ====================
-// API #6: browser.notifications for user feedback
-
-/**
- * Notification icon path
- * v1.6.3.7-v3 - API #6: Notification constants
- */
-const NOTIFICATION_ICON_PATH = '/icons/icon-48.png';
-
-/**
- * Auto-clear timeout for notifications (ms)
- * v1.6.3.7-v3 - API #6: 5 second auto-clear
- */
-const NOTIFICATION_AUTO_CLEAR_MS = 5000;
-
-/**
- * Check if notifications API is available
- * v1.6.3.7-v3 - API #6: Feature detection
- * @returns {boolean} True if available
- */
-function isNotificationsAvailable() {
-  return (
-    typeof browser.notifications !== 'undefined' &&
-    typeof browser.notifications.create === 'function'
-  );
-}
-
-/**
- * Notify when Quick Tab is created
- * v1.6.3.7-v3 - API #6: User feedback for creation
- * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
- * @param {Object} quickTab - Quick Tab data { id, title, url }
- */
-async function _notifyQuickTabCreated(quickTab) {
-  if (!isNotificationsAvailable()) {
-    return null;
-  }
-
-  try {
-    const notificationId = `qt-created-${quickTab.id}`;
-    const title = quickTab.title || 'Quick Tab';
-    const truncatedTitle = title.length > 50 ? title.substring(0, 47) + '...' : title;
-
-    await browser.notifications.create(notificationId, {
-      type: 'basic',
-      iconUrl: NOTIFICATION_ICON_PATH,
-      title: 'Quick Tab Created',
-      message: `"${truncatedTitle}" is now a Quick Tab`,
-      priority: 1
-    });
-
-    // Auto-clear after timeout
-    setTimeout(() => {
-      browser.notifications.clear(notificationId).catch(() => {});
-    }, NOTIFICATION_AUTO_CLEAR_MS);
-
-    console.log('[Background] Quick Tab created notification sent:', notificationId);
-    return notificationId;
-  } catch (err) {
-    console.warn('[Background] Failed to send notification:', err.message);
-    return null;
-  }
-}
-
-/**
- * Notify about storage warning
- * v1.6.3.7-v3 - API #6: Storage issue alerts
- * @param {string} message - Warning message
- */
-/**
- * Create and display a notification with auto-clear
- * v1.6.4.13 - FIX Code Duplication: Extracted common notification logic
- * @private
- * @param {Object} config - Notification configuration
- * @param {string} config.idPrefix - Prefix for notification ID (e.g., 'qt-storage-warning')
- * @param {string} config.title - Notification title
- * @param {string} config.message - Notification message
- * @param {number} [config.priority=1] - Notification priority (1-2)
- * @param {number} [config.clearTimeoutMultiplier=1] - Multiplier for auto-clear timeout
- * @returns {Promise<string|null>} Notification ID or null on failure
- */
-async function _createNotification({
-  idPrefix,
-  title,
-  message,
-  priority = 1,
-  clearTimeoutMultiplier = 1
-}) {
-  if (!isNotificationsAvailable()) {
-    return null;
-  }
-
-  try {
-    const notificationId = `${idPrefix}-${Date.now()}`;
-
-    await browser.notifications.create(notificationId, {
-      type: 'basic',
-      iconUrl: NOTIFICATION_ICON_PATH,
-      title,
-      message,
-      priority
-    });
-
-    setTimeout(() => {
-      browser.notifications.clear(notificationId).catch(() => {});
-    }, NOTIFICATION_AUTO_CLEAR_MS * clearTimeoutMultiplier);
-
-    console.log('[Background] Notification sent:', { notificationId, title });
-    return notificationId;
-  } catch (err) {
-    console.warn('[Background] Failed to send notification:', err.message);
-    return null;
-  }
-}
-
-// v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
-async function _notifyStorageWarning(message) {
-  return _createNotification({
-    idPrefix: 'qt-storage-warning',
-    title: 'Quick Tabs Storage Issue',
-    message: message || 'A storage issue was detected',
-    priority: 2,
-    clearTimeoutMultiplier: 2
-  });
-}
-
-/**
- * Notify that grouping is unavailable (Firefox < 138)
- * v1.6.3.7-v3 - API #6: Feature unavailable notification
- * v1.6.4.13 - FIX Code Duplication: Uses _createNotification helper
- */
-async function notifyGroupingUnavailable() {
-  return _createNotification({
-    idPrefix: 'qt-grouping-unavailable',
-    title: 'Tab Grouping Unavailable',
-    message: 'Tab grouping requires Firefox 138 or newer'
-  });
-}
-
-/**
- * Notify that Quick Tab group was created
- * v1.6.3.7-v3 - API #6: Group creation success notification
- * v1.6.4.13 - FIX Code Duplication: Uses _createNotification helper
- * @param {string} groupName - Name of the created group
- */
-async function notifyGroupCreated(groupName) {
-  return _createNotification({
-    idPrefix: 'qt-group-created',
-    title: 'Quick Tab Group Created',
-    message: `Group "${groupName}" created successfully`
-  });
-}
-
-/**
- * Notify that a feature is coming soon
- * v1.6.3.7-v3 - API #6: Coming soon notification
- * v1.6.4.13 - FIX Code Duplication: Uses _createNotification helper
- * @param {string} featureName - Name of the feature
- */
-async function notifyFeatureComingSoon(featureName) {
-  return _createNotification({
-    idPrefix: 'qt-coming-soon',
-    title: 'Feature Coming Soon',
-    message: `"${featureName}" will be available in a future update`
-  });
-}
-
-/**
- * Check if sidebar can be opened
- * v1.6.3.7-v3 - Extracted to reduce nesting depth
- * @returns {boolean} True if sidebarAction.open is available
- */
-function canOpenSidebar() {
-  return typeof browser.sidebarAction?.open === 'function';
-}
-
-/**
- * Handle notification click events
- * v1.6.3.7-v3 - API #6: Notification click handler
- * @param {string} notificationId - ID of clicked notification
- */
-async function handleNotificationClick(notificationId) {
-  console.log('[Background] Notification clicked:', notificationId);
-
-  try {
-    // If it's a Quick Tab created notification, open the sidebar
-    const isQuickTabNotification = notificationId.startsWith('qt-created-');
-    if (isQuickTabNotification && canOpenSidebar()) {
-      await browser.sidebarAction.open();
-      console.log('[Background] Sidebar opened from notification click');
-    }
-
-    // Clear the notification after handling
-    await browser.notifications.clear(notificationId);
-  } catch (err) {
-    console.error('[Background] Error handling notification click:', err.message);
-  }
-}
-
-// Register notification click listener if available
-if (isNotificationsAvailable() && browser.notifications.onClicked) {
-  browser.notifications.onClicked.addListener(handleNotificationClick);
-  console.log('[Background] v1.6.3.7-v3 Notification click listener registered');
-}
-
-console.log('[Background] v1.6.3.7-v3 Notifications API initialized');
-// ==================== END NOTIFICATIONS API ====================

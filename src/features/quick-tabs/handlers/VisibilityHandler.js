@@ -39,7 +39,6 @@
  *   - Log originTabId in _performTabWindowRestore() before and after restore
  *   - Log originTabId in _verifyRestoreAndEmit() verification
  *   - Log originTabId in _emitRestoreStateUpdateSync() event payload
- * v1.6.3.8-v12 - GAP-2, GAP-4 fix: Send messages to background for Pattern B operations
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -55,9 +54,8 @@
  * - Update button appearances
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
- * - Send messages to background for Pattern B operations (minimize/restore)
  *
- * @version 1.6.3.8-v12
+ * @version 1.6.3.5-v11
  */
 
 import {
@@ -67,11 +65,6 @@ import {
   STATE_KEY,
   getBrowserStorageAPI
 } from '@utils/storage-utils.js';
-
-import { generateCorrelationId } from '@storage/storage-manager.js';
-
-// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
-// All BC imports and functions removed per user request - Port + storage.onChanged only
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
 // STATE_EMIT_DELAY_MS must be LESS THAN MINIMIZE_DEBOUNCE_MS to prevent race condition
@@ -561,18 +554,9 @@ export class VisibilityHandler {
         quickTabData.domVerified = false; // v1.6.3.5-v7 - FIX Issue #6
         this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
         console.log(
-          `${this._logPrefix} [EVENT] [INTERNAL_EMIT] state:updated for minimize (source: ${source}):`,
+          `${this._logPrefix} Emitted state:updated for minimize (source: ${source}):`,
           id
         );
-
-        // v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message to background (Pattern B - minimize)
-        this._sendMinimizeMessage(id, source);
-
-        console.log(`${this._logPrefix} [VISIBILITY] MINIMIZE_EMITTED (message-based):`, {
-          operation: 'minimize',
-          tabId: id,
-          timestamp: Date.now()
-        });
       }
 
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
@@ -582,51 +566,6 @@ export class VisibilityHandler {
     } finally {
       // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
       this._releaseLock('minimize', id);
-    }
-  }
-
-  /**
-   * Send minimize message to background (Pattern B - global action)
-   * v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message with correlationId
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {string} source - Source of action
-   */
-  _sendMinimizeMessage(id, source) {
-    // Guard: Check if browser runtime is available (not available in tests)
-    if (typeof browser === 'undefined' || !browser?.runtime?.sendMessage) {
-      console.debug(`${this._logPrefix} Skipping minimize message (browser API unavailable):`, id);
-      return;
-    }
-
-    const correlationId = generateCorrelationId('min');
-
-    // Fire-and-forget - storage persistence is the backup
-    // Use try-catch to handle cases where sendMessage doesn't return a Promise (e.g., in tests)
-    try {
-      const result = browser.runtime.sendMessage({
-        type: 'QT_MINIMIZED',
-        quickTabId: id,
-        correlationId,
-        timestamp: Date.now(),
-        source
-      });
-
-      // Only chain .then/.catch if result is a Promise
-      if (result && typeof result.then === 'function') {
-        result
-          .then(() => {
-            console.log(`${this._logPrefix} Minimize message sent:`, { id, correlationId });
-          })
-          .catch(err => {
-            console.warn(
-              `${this._logPrefix} Minimize message failed (fallback to storage):`,
-              err.message
-            );
-          });
-      }
-    } catch (err) {
-      console.warn(`${this._logPrefix} Minimize message error:`, err.message);
     }
   }
 
@@ -1118,7 +1057,6 @@ export class VisibilityHandler {
   /**
    * Emit state:updated event for restore (synchronous version for promise chaining)
    * v1.6.3.5-v5 - FIX Issue #3: Synchronous event emission for ordered execution
-   * v1.6.3.7-v8 - FIX Issue #11, #15: Add BroadcastChannel notification for cross-context sync
    * Note: Returns void, caller handles flow control
    * @private
    */
@@ -1147,69 +1085,11 @@ export class VisibilityHandler {
 
     this.eventBus.emit('state:updated', { quickTab: quickTabData, source });
     // v1.6.3.6-v6 - FIX: Include originTabId in emission log for debugging cross-tab validation
-    console.log(
-      `${this._logPrefix} [EVENT] [INTERNAL_EMIT] state:updated for restore (source: ${source}):`,
-      id,
-      {
-        domVerified: isDOMRendered,
-        isRestoreOperation: true,
-        originTabId: tabWindow?.originTabId ?? 'N/A'
-      }
-    );
-
-    // v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message to background (Pattern B - restore)
-    this._sendRestoreMessage(id, source);
-
-    console.log(`${this._logPrefix} [VISIBILITY] RESTORE_EMITTED (message-based):`, {
-      operation: 'restore',
-      tabId: id,
-      timestamp: Date.now()
+    console.log(`[VisibilityHandler] Emitted state:updated for restore (source: ${source}):`, id, {
+      domVerified: isDOMRendered,
+      isRestoreOperation: true,
+      originTabId: tabWindow?.originTabId ?? 'N/A'
     });
-  }
-
-  /**
-   * Send restore message to background (Pattern B - global action)
-   * v1.6.3.8-v12 GAP-2, GAP-4 fix: Send message with correlationId
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {string} source - Source of action
-   */
-  _sendRestoreMessage(id, source) {
-    // Guard: Check if browser runtime is available (not available in tests)
-    if (typeof browser === 'undefined' || !browser?.runtime?.sendMessage) {
-      console.debug(`${this._logPrefix} Skipping restore message (browser API unavailable):`, id);
-      return;
-    }
-
-    const correlationId = generateCorrelationId('restore');
-
-    // Fire-and-forget - storage persistence is the backup
-    // Use try-catch to handle cases where sendMessage doesn't return a Promise (e.g., in tests)
-    try {
-      const result = browser.runtime.sendMessage({
-        type: 'QT_RESTORED',
-        quickTabId: id,
-        correlationId,
-        timestamp: Date.now(),
-        source
-      });
-
-      // Only chain .then/.catch if result is a Promise
-      if (result && typeof result.then === 'function') {
-        result
-          .then(() => {
-            console.log(`${this._logPrefix} Restore message sent:`, { id, correlationId });
-          })
-          .catch(err => {
-            console.warn(
-              `${this._logPrefix} Restore message failed (fallback to storage):`,
-              err.message
-            );
-          });
-      }
-    } catch (err) {
-      console.warn(`${this._logPrefix} Restore message error:`, err.message);
-    }
   }
 
   /**

@@ -2,213 +2,6 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * ===============================================================================
- * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.9-v7)
- * ===============================================================================
- *
- * FILTERING GUARANTEE:
- *   The Manager sidebar displays ALL Quick Tabs globally, grouped by originTabId.
- *   Unlike content scripts (which filter to `originTabId === currentTabId`),
- *   the Manager shows Quick Tabs from ALL tabs for global visibility.
- *
- * DATA FLOW:
- *   1. storage.onChanged fires with updated state (`quick_tabs_state_v2`)
- *   2. _handleStorageChange() validates the change and enqueues render
- *   3. scheduleRender() debounces rapid changes (100ms window)
- *   4. renderUI() groups Quick Tabs by originTabId for display
- *   5. Each group section shows Quick Tabs belonging to that browser tab
- *
- * CROSS-TAB ISOLATION:
- *   - Content scripts: Tab A's script only renders Quick Tabs with `originTabId === A`
- *   - Manager sidebar: Shows ALL Quick Tabs from ALL tabs (no filtering by originTabId)
- *   - Operations (close, minimize, restore) are sent to the owning tab via background
- *
- * ORPHAN HANDLING:
- *   - Quick Tabs with invalid/closed originTabId appear in an "Orphaned" group
- *   - User can "adopt" orphaned Quick Tabs to move them to the current tab
- *   - Adoption updates `originTabId` via background script coordination
- *   - See adoptQuickTabToCurrentTab() for adoption flow
- *
- * SINGLE WRITER AUTHORITY:
- *   - Manager NEVER writes directly to storage (except legacy recovery paths)
- *   - Manager sends commands to background script (e.g., CLOSE_QUICK_TAB)
- *   - Background is the sole authority for state persistence
- *   - Manager renders state received via storage.onChanged
- *
- * ARCHITECTURE NOTES:
- *   - Primary sync: storage.onChanged listener
- *   - Request/response: runtime.sendMessage to background
- *   - Secondary sync: runtime.onMessage listener for direct state pushes (v1.6.3.9-v7)
- *   - No BroadcastChannel (removed in v1.6.3.8-v6)
- *   - No runtime.Port (removed in v1.6.3.8-v13)
- *
- * ===============================================================================
- *
- * v1.6.3.9-v7 - GAP Analysis Fixes (Issues #1-6 from gap-analysis):
- *   - GAP #1: Log capture infrastructure matching background.js pattern
- *     - SIDEBAR_LOG_BUFFER with MAX_SIDEBAR_BUFFER_SIZE (2000)
- *     - Console override (log/error/warn/info/debug) for capture
- *     - getSidebarLogs(), clearSidebarLogs(), _exportSidebarLogs() APIs
- *     - GET_SIDEBAR_LOGS/CLEAR_SIDEBAR_LOGS message handlers
- *   - GAP #2: Enhanced runtime.onMessage listener for state push from background
- *     - PUSH_STATE_UPDATE: Direct state update bypassing storage.onChanged
- *     - ERROR_NOTIFICATION: Error notifications from background
- *     - REQUEST_INIT_STATUS: Initialization status query
- *   - GAP #3: Centralized constants in src/constants.js
- *     - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE
- *     - STORAGE_WATCHDOG_TIMEOUT_MS now imported (not locally defined)
- *   - GAP #4: Refactored _routeRuntimeMessage to use lookup table (CC 13 → 3)
- *     - _runtimeMessageHandlers lookup table for O(1) routing
- *   - Issue #6: Dead Code Removal (~265 lines removed)
- *     - REMOVED: _CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, _consecutiveConnectionFailures
- *     - REMOVED: _stateLoadStartTime, _currentInitPhase (assignments only)
- *     - REMOVED: logPortLifecycle(), _transitionConnectionState() (no-op stubs)
- *     - REMOVED: _sendMessageToBackground(), _sendWithAck() (deprecated functions)
- *     - REMOVED: _handleBroadcastCreate/Update/Delete/MinimizeRestore(), _findTabIndex(), _updateStateAfterMutation()
- *
- * v1.6.3.9-v6 - GAP Analysis Fixes (from docs/manual/1.6.4/ gap analysis):
- *   - GAP #11: Simplified initialization from ~8 variables to 4 (initializationPromise,
- *     initializationResolve, _initPhaseMessageQueue, _isInitPhaseComplete)
- *   - GAP #13: Single unified barrier - resolve only once, guard against double-resolve
- *   - GAP #14: Render queue dedup - revision is PRIMARY, saveId as fallback only
- *   - GAP #15: Removed ~200 lines of dead code (CONNECTION_STATE enum, logPortLifecycle,
- *     _checkBroadcastChannelHealth, _checkSequenceGap, _routeBroadcastMessage, etc.)
- *   - GAP #17: Capture state hash at queue time for validation (stateHashAtQueue field)
- *   - ARCHITECTURE: connectionState is now constant 'connected' (no state tracking)
- *   - CLEANUP: Backwards compatibility aliases for initializationComplete, currentInitPhase
- *
- * v1.6.3.9-v5 - FIX Critical Bugs #1-7 from issue-47-diagnostic:
- *   - FIX #1: Ensure currentBrowserTabId initialization with fallback to background request
- *   - FIX #2: Correct storage event handler routing - unified to _handleStorageChangedEvent()
- *   - FIX #3: Add adoption flow fallback for null currentBrowserTabId
- *   - FIX #4: Add missing logging in storage event initialization (queue/replay/guard)
- *   - FIX #7: Verify tab affinity map cleanup interval started and onRemoved listener active
- *   - NEW: _requestCurrentTabIdFromBackground() - fallback when tabs.query() fails
- *   - NEW: Enhanced logging in _guardBeforeInit(), _queueMessageDuringInit(), _replayQueuedMessages()
- *   - NEW: Adoption flow validates and requests currentBrowserTabId before proceeding
- *
- * v1.6.3.9-v4 - SIMPLIFIED ARCHITECTURE from ROBUST-QUICKTABS-ARCHITECTURE.md:
- *   - NEW: Centralized constants import from src/constants.js
- *   - NEW: STORAGE_HEALTH_CHECK_INTERVAL_MS (5s) - fallback polling when storage.onChanged silent
- *   - NEW: STORAGE_MAX_AGE_MS (5min) - reject events older than this
- *   - NEW: sidebarLocalState - simplified local state tracking
- *   - NEW: _checkStorageHealth() - requests fresh state if no events for 5s
- *   - NEW: _handleStorageChangedEvent() - simplified guard-based storage handler
- *   - NEW: _startStorageHealthCheckInterval() / _stopStorageHealthCheckInterval()
- *   - NEW: Helper functions to reduce complexity (_validateStorageEventStructure, etc.)
- *   - NEW: scheduleRender() revision-based deduplication (RENDER_DEDUP logging)
- *   - NEW: _processRenderQueue() with RENDER_START/RENDER_COMPLETE/RENDER_ERROR logging
- *   - NEW: _handleOperationAck() for QUICK_TAB_OPERATION_ACK messages from background
- *   - NEW: sendMessageToBackground() helper with latency tracking (MESSAGE_RECEIVED/MESSAGE_TIMEOUT)
- *   - NEW: MESSAGE_TIMEOUT_MS updated to 3000ms per spec
- *   - ARCHITECTURE: Clean guard pattern for storage event validation
- *   - ARCHITECTURE: Health check fallback prevents silent storage listener failures
- *
- * v1.6.3.8-v13 - FULL Port Removal: Replaced runtime.Port with stateless runtime.sendMessage
- *   - REMOVED: backgroundPort, _portOnMessageHandler, portMessageQueue
- *   - REMOVED: connectToBackground(), scheduleReconnect(), handleConnectionFailure()
- *   - REMOVED: startHeartbeat(), stopHeartbeat(), sendHeartbeat()
- *   - REMOVED: _establishPortConnection(), _setupPortListeners(), _handlePortDisconnect()
- *   - REMOVED: _finalizeConnection(), _prepareForReconnection(), _cleanupOldPortListener()
- *   - REMOVED: _handlePortMessageWithQueue(), _flushPortMessageQueue()
- *   - REMOVED: Circuit breaker logic (tripCircuitBreaker, reconnectAttempts, etc.)
- *   - REMOVED: Heartbeat state (consecutiveHeartbeatFailures, lastHeartbeatResponse, etc.)
- *   - REPLACED: sendWithAck() → sendToBackground() using runtime.sendMessage
- *   - REPLACED: _sendActionRequest() → uses sendToBackground()
- *   - ARCHITECTURE: storage.onChanged is now PRIMARY sync mechanism
- *   - ARCHITECTURE: runtime.sendMessage for request/response patterns only
- *   - KEPT: All storage.onChanged listeners and state rendering code
- *   - KEPT: v1.6.3.8-v12 debounced render queue improvements
- *
- * v1.6.3.8-v12 - FIX Issue #9: Manager Sidebar Grouping Race Condition
- *   - NEW: Serial render queue (_renderQueue) - renders execute one at a time
- *   - NEW: _enqueueRender() - buffers render requests with debouncing (100ms)
- *   - NEW: _processRenderQueue() - processes queued renders serially
- *   - NEW: _executeQueuedRender() - executes single render with checksum validation
- *   - NEW: _validateRenderIntegrity() - detects state corruption during render
- *   - NEW: _triggerRenderCorruptionRecovery() - requests full state refresh on corruption
- *   - NEW: _requestFullStateRefresh() - reads fresh state from storage for recovery
- *   - NEW: _startRenderStallTimer() / _clearRenderStallTimer() - detects stalled renders
- *   - NEW: RENDER_QUEUE_DEBOUNCE_MS (100ms) - buffer rapid changes before re-rendering
- *   - NEW: RENDER_STALL_TIMEOUT_MS (5s) - safety timeout for render operations
- *   - NEW: RENDER_QUEUE_MAX_SIZE (10) - prevent memory issues from excessive queuing
- *   - ARCHITECTURE: Checksum validation before/after render detects corruption
- *   - ARCHITECTURE: Recovery triggers full state refresh from storage on corruption
- *
- * v1.6.3.8-v5 - FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
- *   - NEW: Monotonic revision versioning for storage event ordering
- *   - NEW: _lastAppliedRevision tracking - listeners reject revision ≤ current
- *   - NEW: _revisionEventBuffer for out-of-order event handling
- *   - NEW: _validateRevision() - validates incoming revision numbers
- *   - NEW: _bufferRevisionEvent() - buffers out-of-order events
- *   - NEW: _processBufferedRevisionEvents() - applies buffered events in order
- *   - NEW: _cleanupRevisionBuffer() - periodic cleanup of stale events
- *   - NEW: REVISION_BUFFER_MAX_AGE_MS (5s) - max age for buffered events
- *   - NEW: REVISION_BUFFER_MAX_SIZE (50) - max buffer size before cleanup
- *   - ARCHITECTURE: Revision validation runs after sequence ID validation
- *
- * v1.6.3.8-v4 - FIX 9 Critical Issues from quick-tabs-sync-critical.md:
- *   - FIX Issue #5: Initialization barrier Promise - ALL async tasks must complete before listeners process messages
- *   - FIX Issue #4: Storage listener verification with exponential backoff retry (1s, 2s, 4s)
- *   - FIX Issue #1: Sequential hydration barrier - blocks render until all tiers verified
- *   - FIX Issue #2: Port message queue guards during reconnection - prevents lost button clicks
- *   - FIX Issue #3: document.visibilitychange listener + periodic state freshness check (15s)
- *   - FIX Issue #7: Proactive dedup cleanup at 50% capacity, sliding window eviction at 95%
- *   - FIX Issue #8: Probe queuing with min interval (500ms) and force-reset timeout (1000ms)
- *   - FIX Issue #9: Enforcing initialization guard - queue messages until barrier resolves
- *   - NEW: initializationBarrier Promise for true async init blocking
- *   - NEW: _queueMessageDuringInit() for pre-barrier message queuing
- *   - NEW: VISIBILITY_REFRESH_INTERVAL_MS (15s) periodic state freshness check
- *   - NEW: Storage listener verification retry with exponential backoff
- *   - ARCHITECTURE: All event listeners await initializationBarrier before processing
- *
- * v1.6.3.8-v3 - FIX Cross-Tab Communication Issues from diagnostic reports:
- *   - ARCHITECTURE: storage.onChanged is now PRIMARY for sidebar state sync
- *
- * v1.6.3.7-v13 - FIX Sidebar Communication Fallback Issues #5, #12, arch #1, #6:
- *   - FIX Issue #5: Sidebar BroadcastChannel fallback logging with SIDEBAR_BC_UNAVAILABLE message
- *   - FIX Issue #5: Explicit fallback mechanism type documentation (port-based + storage.onChanged)
- *   - FIX Issue #12: Enhanced fallback health monitoring with stall detection (60s threshold)
- *   - FIX Issue #12: Latency tracking in fallback stats (avgLatencyMs, lastLatencyMs)
- *   - FIX Issue #12: FALLBACK_HEALTH log with expected messages per interval (~6 if state changes every 5s)
- *   - FIX Issue #12: FALLBACK_STALLED warning when no updates for 60+ seconds
- *   - FIX arch #1: BC verification handshake (PING/PONG) to detect if BC actually works in sidebar
- *   - FIX arch #1: BC_VERIFICATION_FAILED log when messages don't cross sidebar boundary
- *   - FIX arch #6: Storage health probe - write timestamp to _sidebar_health_ping key
- *   - FIX arch #6: STORAGE_TIER_BROKEN log when onChanged doesn't fire within 500ms
- *   - FIX arch #6: Storage tier latency measurement (healthy/acceptable/degraded classification)
- *
- * v1.6.3.7-v10 - FIX Issue #10 (state-persistence-issues.md): Tab Affinity Map Desynchronization
- *   - FIX Issue #10: Enhanced cleanup job logging with before/after sizes and age bucket counts
- *   - FIX Issue #10: Age bucket distribution (< 1h, 1-6h, 6-24h, > 24h) in diagnostics
- *   - FIX Issue #10: Defensive cleanup via browser.tabs.query() cross-check
- *   - FIX Issue #10: Sample entries logging (first 5 entries with ages) every 60s
- *
- * v1.6.3.7-v9 - FIX Issues #2, #10:
- *   - FIX Issue #2: Unified MESSAGE_RECEIVED logging with [PORT], [BC], [RUNTIME] prefixes
- *   - FIX Issue #2: Correlation ID tracking across all three message paths
- *   - FIX Issue #2: Message entry/exit logging with duration for performance tracking
- *   - FIX Issue #10: Tab affinity map (quickTabHostInfo) 24-hour TTL cleanup
- *   - FIX Issue #10: browser.tabs.onRemoved listener to clean up closed tab entries
- *   - FIX Issue #10: Diagnostic logging for quickTabHostInfo size and age stats (60s)
- *
- * v1.6.3.7-v5 - FIX State Sync Issues #1-10 from quick-tabs-state-sync-issues.md
- *   - FIX Issue #1: Three explicit connection states (connected/zombie/disconnected)
- *   - FIX Issue #3: Unified message routing with logging for port vs runtime path
- *   - FIX Issue #4: State versioning with saveId deduplication
- *   - FIX Issue #5: Close All error feedback with user notifications
- *   - FIX Issue #6: Session cache validation with sessionId
- *   - FIX Issue #9: Message error handling with try-catch in all listeners
- *   - FIX Issue #10: Listener registration verification with test messages
- *
- * v1.6.3.7-v3 - FIX Issue #3: DOM Reconciliation for CSS animation flickering
- *   - Implements differential DOM updates instead of full re-renders
- *   - Tracks existing DOM elements by Quick Tab ID (_itemElements Map)
- *   - Tracks existing group elements by originTabId (_groupElements Map)
- *   - Only creates/removes DOM for added/deleted Quick Tabs
- *   - Updates existing elements in-place without triggering CSS animations
- *   - New items animate in correctly; existing items remain stable
- *
  * v1.6.3.6-v11 - FIX Issues #1-9 from comprehensive diagnostics
  *   - FIX Issue #1: Animations properly invoked on toggle
  *   - FIX Issue #2: Removed inline maxHeight conflicts, JS calculates scrollHeight
@@ -240,150 +33,7 @@
  * v1.6.3.5-v11 - FIX Issue #6: Manager list updates when last Quick Tab closed
  */
 
-// ==================== LOG CAPTURE FOR EXPORT ====================
-// v1.6.3.9-v7 - GAP #1: Log capture matching background.js pattern
-// Enables diagnostics export via messages
-const SIDEBAR_LOG_BUFFER = [];
-const MAX_SIDEBAR_BUFFER_SIZE = 2000;
-
-/**
- * Safe JSON stringify that handles circular references
- * v1.6.3.9-v7 - GAP #1: Prevent crashes from circular references in log data
- * @param {*} obj - Object to stringify
- * @returns {string} JSON string or fallback string
- */
-function _safeStringify(obj) {
-  try {
-    return JSON.stringify(obj, null, 2);
-  } catch (_err) {
-    // Handle circular references or other stringify errors
-    return '[Object with circular reference or unstringifiable]';
-  }
-}
-
-/**
- * Add a log entry to the sidebar log buffer
- * v1.6.3.9-v7 - GAP #1: Log capture for diagnostics
- * NOTE: Stores only the message string (not raw args) to reduce memory usage
- * @param {string} type - Log type (DEBUG, INFO, WARN, ERROR)
- * @param {...any} args - Log arguments
- */
-function _addSidebarLog(type, ...args) {
-  if (SIDEBAR_LOG_BUFFER.length >= MAX_SIDEBAR_BUFFER_SIZE) {
-    SIDEBAR_LOG_BUFFER.shift();
-  }
-
-  // v1.6.3.9-v7 - Only store message string, not raw args (memory optimization)
-  SIDEBAR_LOG_BUFFER.push({
-    type: type,
-    timestamp: Date.now(),
-    message: args
-      .map(arg => (typeof arg === 'object' ? _safeStringify(arg) : String(arg)))
-      .join(' ')
-  });
-}
-
-// Override console methods to capture logs
-// v1.6.3.9-v7 - GAP #1: Console capture matching background.js pattern
-const _originalConsoleLog = console.log;
-const _originalConsoleError = console.error;
-const _originalConsoleWarn = console.warn;
-const _originalConsoleInfo = console.info;
-const _originalConsoleDebug = console.debug;
-
-console.log = function (...args) {
-  _addSidebarLog('DEBUG', ...args);
-  _originalConsoleLog.apply(console, args);
-};
-
-console.error = function (...args) {
-  _addSidebarLog('ERROR', ...args);
-  _originalConsoleError.apply(console, args);
-};
-
-console.warn = function (...args) {
-  _addSidebarLog('WARN', ...args);
-  _originalConsoleWarn.apply(console, args);
-};
-
-console.info = function (...args) {
-  _addSidebarLog('INFO', ...args);
-  _originalConsoleInfo.apply(console, args);
-};
-
-console.debug = function (...args) {
-  _addSidebarLog('DEBUG', ...args);
-  _originalConsoleDebug.apply(console, args);
-};
-
-/**
- * Get sidebar logs for export
- * v1.6.3.9-v7 - GAP #1: Log export API
- * @param {number} [limit] - Maximum number of logs to return (default: all)
- * @returns {Array} Array of log entries
- */
-function getSidebarLogs(limit = null) {
-  if (limit && limit > 0) {
-    return SIDEBAR_LOG_BUFFER.slice(-limit);
-  }
-  return [...SIDEBAR_LOG_BUFFER];
-}
-
-/**
- * Clear sidebar log buffer
- * v1.6.3.9-v7 - GAP #1: Log management API
- */
-function clearSidebarLogs() {
-  SIDEBAR_LOG_BUFFER.length = 0;
-}
-
-/**
- * Export logs in standardized format
- * v1.6.3.9-v7 - GAP #1: Standardized format `[Context] ACTION: key=value timestamp=X`
- * NOTE: Prefixed with underscore as it's exported via message API, not direct call
- * @param {number} [limit] - Maximum number of logs to return
- * @returns {string} Formatted log string
- */
-function _exportSidebarLogs(limit = null) {
-  const logs = getSidebarLogs(limit);
-  return logs.map(entry => {
-    const formattedTime = new Date(entry.timestamp).toISOString();
-    return `[Manager] ${entry.type}: message="${entry.message}" timestamp=${formattedTime}`;
-  }).join('\n');
-}
-
 // ==================== IMPORTS ====================
-// v1.6.3.8-v4 - Bundle size refactoring: Import utilities from sidebar modules
-// These modules contain shared constants and utility functions extracted for maintainability.
-//
-// MIGRATION STRATEGY (v1.6.3.8-v4):
-// Phase 1 (Current): Modules export constants and stateless utility functions.
-//   - Main file (quick-tabs-manager.js) retains all state variables locally.
-//   - Module functions are available but not yet integrated.
-//   - No duplicate state - modules contain constants/functions only.
-// Phase 2 (Future): Gradually migrate local constants to module imports.
-// Phase 3 (Future): Migrate state management to modules with proper getters/setters.
-//
-// NOTE: The modules' state variables (e.g., in init-barrier.js) are NOT used yet.
-//       The local state in this file remains authoritative.
-import {
-  // Diagnostics utilities (non-conflicting)
-  generateCorrelationId as _generateCorrelationIdFromModule,
-  generateSessionId as _generateSessionIdFromModule,
-  formatDuration as _formatDuration,
-  getAgeBucket as _getAgeBucket,
-  // Health metrics utilities (non-conflicting) - NOT importing storageHealthStats as it's declared locally
-  canStartProbe as _canStartProbeFromModule,
-  startStorageProbe as _startStorageProbeFromModule,
-  completeStorageProbe as _completeStorageProbeFromModule,
-  getStorageSuccessRate as _getStorageSuccessRate,
-  getStorageHealthTier as _getStorageHealthTier,
-  getStorageHealthSnapshot as _getStorageHealthSnapshot,
-  recordFallbackMessage as _recordFallbackMessage,
-  checkFallbackStall as _checkFallbackStall,
-  getFallbackHealthSnapshot as _getFallbackHealthSnapshot,
-  generateHealthReport as _generateHealthReport
-} from './modules/index.js';
 import {
   computeStateHash,
   createFavicon,
@@ -391,13 +41,12 @@ import {
   animateCollapse,
   animateExpand,
   scrollIntoViewIfNeeded,
-  animateGroupRemoval,
+  checkAndRemoveEmptyGroups,
   extractTabsFromState,
   groupQuickTabsByOriginTab,
   logStateTransition,
   STATE_OPEN,
-  STATE_CLOSED,
-  ANIMATION_DURATION_MS
+  STATE_CLOSED
 } from './utils/render-helpers.js';
 import {
   STORAGE_READ_DEBOUNCE_MS,
@@ -415,29 +64,8 @@ import {
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
-// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
-// All BC imports removed per user request - Port + storage.onChanged only
-// v1.6.3.9-v4 - Simplified architecture: Import centralized constants
-// v1.6.3.9-v7 - GAP #3: Added RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE, STORAGE_WATCHDOG_TIMEOUT_MS
-import {
-  STORAGE_HEALTH_CHECK_INTERVAL_MS,
-  STORAGE_MAX_AGE_MS,
-  INIT_BARRIER_TIMEOUT_MS,
-  RENDER_QUEUE_DEBOUNCE_MS,
-  MESSAGE_TIMEOUT_MS,
-  RENDER_STALL_TIMEOUT_MS,
-  RENDER_QUEUE_MAX_SIZE,
-  STORAGE_WATCHDOG_TIMEOUT_MS
-} from '../src/constants.js';
-// v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
-// v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
-import _PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
 // ==================== CONSTANTS ====================
-// v1.6.3.8-v4 - Bundle refactoring: Shared constants/utilities in ./modules/
-// Local constants remain here for now; modules provide a foundation for future refactoring.
-// v1.6.3.9-v7 - GAP #3: RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE, STORAGE_WATCHDOG_TIMEOUT_MS
-//               now imported from src/constants.js
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 const SAVEID_RECONCILED = 'reconciled';
@@ -445,629 +73,14 @@ const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 
-// ==================== v1.6.3.8-v4 INITIALIZATION BARRIER CONSTANTS ====================
-// FIX Issue #5: True async initialization barrier with Promise-based blocking
-// v1.6.3.9-v4 - INIT_BARRIER_TIMEOUT_MS now imported from src/constants.js
-
-/**
- * Exponential backoff intervals for storage listener verification retry
- * v1.6.3.8-v4 - FIX Issue #4: Don't permanently disable Tier 3 on single timeout
- */
-const STORAGE_VERIFICATION_RETRY_MS = [1000, 2000, 4000];
-
-/**
- * Interval for periodic state freshness check when sidebar becomes visible
- * v1.6.3.8-v4 - FIX Issue #3: Active state refresh when visible
- */
-const VISIBILITY_REFRESH_INTERVAL_MS = 15000;
-
-/**
- * Capacity threshold for proactive dedup map cleanup
- * v1.6.3.8-v4 - FIX Issue #7: Cleanup at 50% capacity instead of waiting for 90%
- */
-const DEDUP_CLEANUP_THRESHOLD = 0.5;
-
-/**
- * Sliding window eviction threshold
- * v1.6.3.8-v4 - FIX Issue #7: Remove oldest 10% when hitting 95%
- */
-const DEDUP_EVICTION_THRESHOLD = 0.95;
-
-/**
- * Minimum time between storage health probes
- * v1.6.3.8-v4 - FIX Issue #8: Prevent rapid probe requests
- */
-const PROBE_MIN_INTERVAL_MS = 500;
-
-/**
- * Force reset timeout for stuck probe flag
- * v1.6.3.8-v4 - FIX Issue #8: If probe running >1000ms, force-reset flag
- */
-const PROBE_FORCE_RESET_MS = 1000;
-
-/**
- * Timeout for waiting on listener registration before sending messages
- * v1.6.3.8-v4 - FIX Issue #2: Extracted from inline timeout
- * v1.6.3.9-v4 - Prefixed with underscore as unused (for ESLint)
- */
-const _LISTENER_REGISTRATION_TIMEOUT_MS = 3000;
-
-// ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
-// Issue #5: Feature flag for verbose message routing logs
-// Set to true to enable detailed logging of message routing at all tiers
-const DEBUG_MESSAGING = true;
-
-// ==================== v1.6.3.7-v9 Issue #10: TAB AFFINITY MAP CLEANUP ====================
-// Constants for quickTabHostInfo TTL-based cleanup and browser.tabs.onRemoved handling
-
-/**
- * TTL for quickTabHostInfo entries (24 hours in milliseconds)
- * v1.6.3.7-v9 - Issue #10: Remove stale entries older than this
- */
-const HOST_INFO_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-/**
- * Cleanup interval for quickTabHostInfo stale entries (60 seconds)
- * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
- */
-const HOST_INFO_CLEANUP_INTERVAL_MS = 60000;
-
-/**
- * Interval ID for quickTabHostInfo cleanup job
- * v1.6.3.7-v9 - Issue #10: Track for potential cleanup
- */
-let hostInfoCleanupIntervalId = null;
-
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
-// v1.6.3.8-v12: Legacy constant - replaced by RENDER_QUEUE_DEBOUNCE_MS but kept for documentation
-const _LEGACY_RENDER_DEBOUNCE_MS = 300;
-
-// ==================== v1.6.3.8-v12 RENDER QUEUE CONSTANTS ====================
-// FIX Issue #9: Manager Sidebar Grouping Race Condition
-// v1.6.3.9-v4 - RENDER_QUEUE_DEBOUNCE_MS now imported from src/constants.js
-// v1.6.3.9-v7 - GAP #3: RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE now imported from src/constants.js
-
-/**
- * Delay before rendering after corruption recovery to allow state to stabilize
- * v1.6.3.8-v12 - FIX Issue #9: Use explicit constant instead of hardcoded value
- */
-const RENDER_RECOVERY_DELAY_MS = 50;
-
-// v1.6.3.8-v13 - PORT REMOVED: All port-related constants deleted
-// Circuit breaker, heartbeat, and reconnection constants no longer needed
-
-// ==================== v1.6.3.7-v4 MESSAGE DEDUPLICATION ====================
-// FIX Issue #4: Prevent multiple renders from independent message listeners
-// Track processed state versions to avoid duplicate processing
-/**
- * Set of recently processed message IDs (for correlation ID based dedup)
- * v1.6.3.7-v4 - FIX Issue #4: Message deduplication
- */
-const recentlyProcessedMessageIds = new Set();
-
-/**
- * Max age for message ID tracking (ms)
- * v1.6.3.7-v4 - FIX Issue #4: Cleanup old message IDs
- */
-const MESSAGE_ID_MAX_AGE_MS = 5000;
-
-/**
- * Maximum deduplication entries before forced eviction
- * v1.6.4.16 - FIX Issue #13: Prevent unbounded growth of dedup map
- * 1000 entries * ~50 bytes per entry = ~50KB max memory
- */
-const MESSAGE_DEDUP_MAX_SIZE = 1000;
-
-// ==================== v1.6.3.9-v7 CONNECTION STATE ====================
-// v1.6.3.9-v7 - Issue #6: Simplified connection state after port removal
-// Connection is always 'connected' since we use stateless runtime.sendMessage
-// Dead code removed: _CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, _consecutiveConnectionFailures
-
-/**
- * Current connection state (simplified - always 'connected' since port removal)
- * v1.6.3.9-v6 - GAP #15: Simplified to constant, no longer tracked
- */
-const connectionState = 'connected';
-
-// ==================== v1.6.3.7-v6 INITIALIZATION TRACKING ====================
-// Gap #1: State Loading & Initialization Race Condition
-/**
- * Timeout ID for initial empty state wait
- * v1.6.3.7-v6 - Gap #1: Wait 2 seconds before rendering empty if initial load is empty
- */
-let initialLoadTimeoutId = null;
-
-/**
- * Flag to track if initial state load has completed
- * v1.6.3.7-v6 - Gap #1: Prevent duplicate initialization
- */
-let initialStateLoadComplete = false;
-
-// ==================== v1.6.3.9-v6 INITIALIZATION TRACKING (SIMPLIFIED) ====================
-// GAP #11: Simplified initialization - _isInitPhaseComplete is the single source of truth.
-// The old pattern checked both initializationStarted && initializationComplete, but since
-// initializationStarted was set immediately at the start of _initializeFlags(), the effective
-// check was just initializationComplete. We maintain backwards compatibility aliases.
-
-/**
- * @deprecated v1.6.3.9-v6 - Use _isInitPhaseComplete instead
- * Mutable for backwards compatibility with code that assigns to it.
- * NOTE: isFullyInitialized() now only checks _isInitPhaseComplete.
- */
-let initializationStarted = false; // Set to true in _initializeFlags()
-
-/**
- * Check if sidebar is fully initialized
- * v1.6.3.9-v6 - GAP #11: Simplified to check single flag (_isInitPhaseComplete)
- * NOTE: This is equivalent to the old (initializationStarted && initializationComplete)
- * because initializationStarted is set immediately at init start, so the effective
- * check was always just initializationComplete.
- * @returns {boolean} True if initialization is complete
- */
-function isFullyInitialized() {
-  return _isInitPhaseComplete;
-}
-
-// v1.6.3.9-v6 - Backwards compatibility aliases
-// These allow existing code to reference the old variable names directly.
-
-/**
- * @deprecated v1.6.3.9-v6 - Use _isInitPhaseComplete instead
- * Mutable alias that gets updated when _resolveInitBarrier() is called.
- */
-let initializationComplete = false;
-
-// v1.6.3.9-v7 - Issue #6: _currentInitPhase removed (was assigned but never read)
-
-// v1.6.3.7-v10 - FIX Code Review: Named constant for uninitialized timestamp
-const INIT_TIME_NOT_STARTED = -1;
-
-/**
- * Log listener entry with initialization status
- * v1.6.3.7-v9 - FIX Issue #11: Diagnostic logging for race detection
- * v1.6.3.7-v10 - FIX Issue #11: Added time since init start
- * @param {string} listenerName - Name of the listener
- * @param {Object} context - Additional context to log
- */
-function logListenerEntry(listenerName, context = {}) {
-  const fullyInit = isFullyInitialized();
-  const timeSinceInitStartMs =
-    initializationStartTime > 0 ? Date.now() - initializationStartTime : INIT_TIME_NOT_STARTED;
-  console.log(`[Manager] LISTENER_ENTRY: ${listenerName}`, {
-    isFullyInitialized: fullyInit,
-    initializationStarted,
-    initializationComplete,
-    timeSinceInitStartMs,
-    connectionState,
-    timestamp: Date.now(),
-    ...context
-  });
-}
-
-// ==================== v1.6.3.7-v5 SAVEID DEDUPLICATION ====================
-// FIX Issue #4: State versioning using saveId for deduplication
-/**
- * Last processed saveId to prevent duplicate renders
- * v1.6.3.7-v5 - FIX Issue #4: SaveId-based deduplication
- */
-let lastProcessedSaveId = '';
-
-/**
- * Timestamp of last saveId processing
- * v1.6.3.7-v5 - FIX Issue #4: Track when saveId was processed
- */
-let lastSaveIdProcessedAt = 0;
-
-// ==================== v1.6.3.9-v6 INITIALIZATION BARRIER (SIMPLIFIED) ====================
-// GAP #11, #13: Simplified initialization state - reduced from ~8 variables to 4
-// v1.6.3.9-v6 - Single unified barrier, resolve only once, automatic promise.then() pattern
-
-/**
- * Promise that resolves when ALL async initialization is complete
- * v1.6.3.9-v6 - GAP #11: Single unified barrier (renamed from initializationBarrier)
- */
-let initializationPromise = null;
-
-/**
- * Resolver for initialization promise
- * v1.6.3.9-v6 - GAP #11: Simplified naming (renamed from _initBarrierResolve)
- */
-let initializationResolve = null;
-
-/**
- * Queue for messages received before initialization completes
- * v1.6.3.9-v6 - GAP #11: Simplified naming (renamed from preInitMessageQueue)
- */
-const _initPhaseMessageQueue = [];
-
-/**
- * @deprecated v1.6.3.9-v6 - Use _initPhaseMessageQueue instead
- * Alias for backwards compatibility with existing code
- */
-const preInitMessageQueue = _initPhaseMessageQueue;
-
-/**
- * Flag indicating initialization is complete (single source of truth)
- * v1.6.3.9-v6 - GAP #11: Replaces both initializationStarted AND initializationComplete
- */
-let _isInitPhaseComplete = false;
-
-/**
- * v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for time-since-init logging
- */
-let initializationStartTime = 0;
-
-// v1.6.3.9-v6 - GAP #11: REMOVED excess variables:
-// - initializationStarted (merged into _isInitPhaseComplete)
-// - initializationComplete (merged into _isInitPhaseComplete)
-// - _initBarrierReject (not needed - barrier always resolves, never rejects)
-// - initBarrierTimeoutId (timeout handled inline)
-// - currentInitPhase (not needed - simplified to single boolean)
-
-/**
- * Storage listener verification retry attempt counter
- * v1.6.3.8-v4 - FIX Issue #4: Exponential backoff retry tracking
- */
-let storageVerificationRetryCount = 0;
-
-/**
- * Timer ID for visibility refresh interval
- * v1.6.3.8-v4 - FIX Issue #3: Periodic state freshness check when visible
- */
-let visibilityRefreshIntervalId = null;
-
-/**
- * Timestamp when last probe was started
- * v1.6.3.8-v4 - FIX Issue #8: Track for min interval enforcement
- */
-let lastProbeStartTime = 0;
-
-/**
- * Initialize the initialization barrier Promise
- * v1.6.3.9-v6 - GAP #11, #13: Simplified single barrier initialization
- * @private
- */
-function _initializeBarrier() {
-  // v1.6.3.9-v6 - Single barrier, no phase tracking needed
-  initializationPromise = new Promise((resolve) => {
-    initializationResolve = resolve;
-  });
-
-  // Set timeout for barrier - resolves barrier regardless to prevent lockup
-  setTimeout(() => {
-    if (!_isInitPhaseComplete) {
-      _handleInitBarrierTimeout();
-    }
-  }, INIT_BARRIER_TIMEOUT_MS);
-
-  console.log('[Manager] INITIALIZATION_BARRIER: created', {
-    timeoutMs: INIT_BARRIER_TIMEOUT_MS,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Handle initialization barrier timeout
- * v1.6.3.9-v6 - GAP #13: Simplified timeout handler - always resolves
- * @private
- */
-function _handleInitBarrierTimeout() {
-  const elapsed = initializationStartTime > 0 ? Date.now() - initializationStartTime : 0;
-
-  console.error('[Manager] INITIALIZATION_BARRIER: TIMEOUT', {
-    elapsedMs: elapsed,
-    timeoutMs: INIT_BARRIER_TIMEOUT_MS,
-    storageListenerVerified,
-    connectionState,
-    message: `Initialization did not complete within ${INIT_BARRIER_TIMEOUT_MS}ms - proceeding with partial state`,
-    timestamp: Date.now()
-  });
-
-  // v1.6.3.9-v6 - GAP #13: Always resolve (never reject) to prevent lockup
-  _resolveInitBarrier();
-}
-
-/**
- * Resolve the initialization barrier after successful init
- * v1.6.3.9-v6 - GAP #13: Simplified - resolve only once, guard against double-resolve
- * @private
- */
-function _resolveInitBarrier() {
-  // v1.6.3.9-v6 - Guard against double resolution
-  if (_isInitPhaseComplete) {
-    console.log('[Manager] INITIALIZATION_BARRIER: already resolved, skipping');
-    return;
-  }
-
-  const elapsed = initializationStartTime > 0 ? Date.now() - initializationStartTime : 0;
-
-  console.log('[Manager] INITIALIZATION_BARRIER: resolved', {
-    elapsedMs: elapsed,
-    storageListenerVerified,
-    connectionState,
-    queuedMessagesCount: _initPhaseMessageQueue.length,
-    timestamp: Date.now()
-  });
-
-  // v1.6.3.9-v6 - GAP #13: Set flag FIRST, then resolve promise
-  _isInitPhaseComplete = true;
-  initializationComplete = true; // v1.6.3.9-v6 - Update backwards-compatibility alias
-  
-  if (initializationResolve) {
-    initializationResolve();
-    initializationResolve = null; // Prevent double-resolve
-  }
-
-  // v1.6.3.9-v6 - GAP #13: Replay queued messages using promise.then() pattern
-  _replayQueuedMessages();
-}
-
-/**
- * Queue a message received before initialization is complete
- * v1.6.3.9-v6 - GAP #11: Updated to use _initPhaseMessageQueue
- * @param {string} source - Message source (port, storage, bc)
- * @param {Object} message - Message to queue
- * @private
- */
-function _queueMessageDuringInit(source, message) {
-  const queueEntry = {
-    source,
-    message,
-    timestamp: Date.now()
-  };
-  _initPhaseMessageQueue.push(queueEntry);
-
-  // v1.6.3.9-v6 - Simplified logging with fewer redundant fields
-  console.log('[Manager] INIT_MESSAGE_QUEUED:', {
-    source,
-    messageType: message?.type || message?.action || 'unknown',
-    queueSize: _initPhaseMessageQueue.length,
-    isInitComplete: _isInitPhaseComplete,
-    hasNewValue: !!message?.newValue,
-    tabCount: message?.newValue?.tabs?.length ?? message?.tabs?.length ?? 'N/A',
-    saveId: message?.newValue?.saveId ?? message?.saveId ?? 'N/A',
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Replay queued messages after initialization barrier resolves
- * v1.6.3.9-v6 - GAP #11, #13: Updated to use _initPhaseMessageQueue
- * @private
- */
-function _replayQueuedMessages() {
-  if (_initPhaseMessageQueue.length === 0) {
-    console.log('[Manager] INIT_MESSAGE_REPLAY: no queued messages', {
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  // v1.6.3.9-v6 - Log detailed replay info
-  const storageMessages = _initPhaseMessageQueue.filter(m => m.source === 'storage');
-  const portMessages = _initPhaseMessageQueue.filter(m => m.source === 'port');
-
-  console.log('[Manager] INIT_MESSAGE_REPLAY: starting', {
-    totalCount: _initPhaseMessageQueue.length,
-    storageMessageCount: storageMessages.length,
-    portMessageCount: portMessages.length,
-    timeSinceFirstQueued: _initPhaseMessageQueue.length > 0 ?
-      Date.now() - _initPhaseMessageQueue[0].timestamp : 0,
-    timestamp: Date.now()
-  });
-
-  const messages = [..._initPhaseMessageQueue];
-  _initPhaseMessageQueue.length = 0; // Clear queue
-
-  let successCount = 0;
-  let errorCount = 0;
-
-  for (const item of messages) {
-    try {
-      _processQueuedInitMessage(item);
-      successCount++;
-    } catch (err) {
-      errorCount++;
-      console.error('[Manager] INIT_MESSAGE_REPLAY: error in processing loop', {
-        source: item.source,
-        error: err.message,
-        timestamp: Date.now()
-      });
-    }
-  }
-
-  console.log('[Manager] INIT_MESSAGE_REPLAY: completed', {
-    processedCount: messages.length,
-    successCount,
-    errorCount,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Process a single queued init message with error handling
- * v1.6.3.8-v4 - FIX Issue #9: Extracted to reduce nesting depth
- * @param {Object} item - Queued message item with source, message, timestamp
- * @private
- */
-function _processQueuedInitMessage(item) {
-  console.log('[Manager] INIT_MESSAGE_REPLAY: processing', {
-    source: item.source,
-    messageType: item.message?.type || item.message?.action || 'unknown',
-    queuedAt: item.timestamp,
-    delayMs: Date.now() - item.timestamp
-  });
-
-  try {
-    _routeInitMessage(item);
-  } catch (err) {
-    console.error('[Manager] INIT_MESSAGE_REPLAY: error processing message', {
-      source: item.source,
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Route a queued init message based on source
- * v1.6.3.8-v4 - FIX Issue #9: Extracted to reduce nesting depth
- * v1.6.3.9-v5 - FIX Bug #2: Use _handleStorageChangedEvent() for consistency with v1.6.3.9-v4 architecture
- *
- * NOTE on storage message format transformation:
- *   - Messages are queued from _guardBeforeInit() which passes the raw storage change object
- *   - The v1.6.3.9-v4 handler _handleStorageChangedEvent() expects a 'changes' object format
- *     where the state is at changes[STATE_KEY] (e.g., { quick_tabs_state_v2: { newValue: {...} } })
- *   - This wrapper ensures consistent data format regardless of queue entry source
- *
- * @param {Object} item - Queued message item with source, message
- * @private
- */
-function _routeInitMessage(item) {
-  console.log('[Manager] INIT_MESSAGE_ROUTE:', {
-    source: item.source,
-    messageType: item.message?.type || item.message?.action || 'unknown',
-    timestamp: Date.now()
-  });
-
-  if (item.source === 'port') {
-    handlePortMessage(item.message);
-  } else if (item.source === 'storage') {
-    // v1.6.3.9-v5 - FIX Bug #2: Use the v1.6.3.9-v4 simplified handler for consistency
-    // Wrap in changes format expected by _handleStorageChangedEvent():
-    // { STATE_KEY: { newValue: {...}, oldValue: {...} } }
-    const changes = { [STATE_KEY]: item.message };
-    console.log('[Manager] INIT_MESSAGE_ROUTE: routing storage message to _handleStorageChangedEvent()', {
-      hasNewValue: !!item.message?.newValue,
-      timestamp: Date.now()
-    });
-    _handleStorageChangedEvent(changes);
-  }
-  // BC messages are demoted, so we skip them during replay
-}
-
-/**
- * Await initialization barrier before processing (for use in listeners)
- * v1.6.3.9-v6 - GAP #13: Simplified to use single barrier with promise.then() pattern
- * @returns {Promise<boolean>} True if barrier resolved, false if should skip
- * @private
- */
-async function _awaitInitBarrier() {
-  // v1.6.3.9-v6 - Check single flag
-  if (_isInitPhaseComplete) {
-    return true;
-  }
-
-  if (!initializationPromise) {
-    console.warn('[Manager] INIT_BARRIER_MISSING: barrier not created, allowing through', {
-      timestamp: Date.now()
-    });
-    return true;
-  }
-
-  console.log('[Manager] INIT_BARRIER_WAITING: listener waiting for barrier', {
-    timestamp: Date.now()
-  });
-
-  try {
-    await initializationPromise;
-    return true;
-  } catch (err) {
-    console.error('[Manager] INIT_BARRIER_ERROR:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-    return false;
-  }
-}
-
-// ==================== v1.6.3.7-v9 SEQUENCE ID EVENT ORDERING ====================
-// FIX Issue #6: Validate storage event ordering using sequence IDs
-/**
- * Last applied sequence ID to validate event ordering
- * v1.6.3.7-v9 - FIX Issue #6: Events with sequenceId <= lastAppliedSequenceId are rejected
- */
-let lastAppliedSequenceId = 0;
-
-// ==================== v1.6.3.8-v5 MONOTONIC REVISION VERSIONING ====================
-// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
-// IndexedDB delivers storage.onChanged events in arbitrary order. Revision numbers
-// provide a definitive ordering mechanism - listeners reject updates with revision ≤ current.
-
-/**
- * Last applied revision number
- * v1.6.3.8-v5 - FIX Issue #1: Monotonic revision counter for storage event ordering
- * All updates with revision ≤ _lastAppliedRevision are rejected as stale
- */
-let _lastAppliedRevision = 0;
-
-// v1.6.3.9-v4 - REMOVED: Revision buffer variables:
-// - _revisionEventBuffer Map (event buffering for out-of-order handling)
-// - REVISION_BUFFER_MAX_AGE_MS (5000ms max age)
-// - REVISION_BUFFER_MAX_SIZE (50 max buffer size)
-// - REVISION_BUFFER_CLEANUP_INTERVAL_MS (10000ms cleanup interval)
-// - _revisionBufferCleanupTimerId
-// (Complex buffering removed - simplified to just reject stale/accept gaps)
-
-/**
- * Watchdog timer ID for storage.onChanged verification
- * v1.6.3.7-v9 - FIX Issue #6: If no event within 2s of expected write, re-read storage
- */
-let storageWatchdogTimerId = null;
-
-// v1.6.3.9-v7 - GAP #3: STORAGE_WATCHDOG_TIMEOUT_MS now imported from src/constants.js
-
-// ==================== v1.6.3.8-v3 STORAGE LISTENER VERIFICATION ====================
-// FIX Issues #2, #5, #9, #15: Explicit storage.onChanged listener registration verification
-
-/**
- * Test key for storage listener verification
- * v1.6.3.8-v3 - FIX Issue #5: Write-then-verify pattern
- */
-const STORAGE_LISTENER_TEST_KEY = '__storage_listener_verification_test__';
-
-/**
- * Timeout for storage listener verification (ms)
- * v1.6.3.8-v3 - FIX Issue #5: If callback doesn't fire within this time, listener failed
- */
-const STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS = 1000;
-
-/**
- * Flag indicating storage listener is verified working
- * v1.6.3.8-v3 - FIX Issue #5: If false, Tier 3 fallback should be disabled
- */
-let storageListenerVerified = false;
-
-/**
- * Timer ID for storage listener verification timeout
- * v1.6.3.8-v3 - FIX Issue #5: Track timeout for cleanup
- */
-let storageListenerVerificationTimerId = null;
-
-/**
- * Timestamp when storage listener verification started
- * v1.6.3.8-v3 - FIX Issue #5: Track latency of verification
- */
-let storageListenerVerificationStartTime = 0;
-
-/**
- * Promise resolver for storage listener verification barrier
- * v1.6.3.8-v3 - FIX Issue #9: Initialization barrier for listener registration
- */
-let _storageListenerReadyResolve = null;
-
-/**
- * Promise for awaiting storage listener verification
- * v1.6.3.8-v3 - FIX Issue #9: Barrier to ensure listener is working before main init
- */
-let storageListenerReadyPromise = null;
-
-/**
- * Reference to the storage.onChanged handler for verification
- * v1.6.3.8-v3 - FIX Issue #15: Store callback reference as named variable
- */
-let _storageOnChangedHandler = null;
+const RENDER_DEBOUNCE_MS = 300;
+// FIX Issue #5: Port Reconnect Circuit Breaker
+const RECONNECT_BACKOFF_INITIAL_MS = 100;
+const RECONNECT_BACKOFF_MAX_MS = 10000;
+const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
+const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -1107,461 +120,9 @@ let lastRenderedStateHash = 0;
 //   Recovery operation: Manager uses cache when storage returns suspicious 0-tab results
 //   The cache should NEVER be used to overwrite background's authoritative state.
 //   See v1.6.3.5-architectural-issues.md Architecture Issue #6 for context.
-// v1.6.3.7-v4 - FIX Issue #6: Added sessionId and timestamp to prevent restoring ghost tabs
-//   Cache now has structure: { tabs: [], timestamp: number, sessionId: string }
-//   On fallback, we validate that cache is from current session
-let inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+let inMemoryTabsCache = [];
 let lastKnownGoodTabCount = 0;
 const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 tab
-
-// v1.6.3.7-v4 - FIX Issue #6: Session ID to identify current browser session
-// This prevents restoring cache from a previous browser session
-let currentSessionId = '';
-
-/**
- * Generate a unique session ID for this browser session
- * v1.6.3.7-v4 - FIX Issue #6: Session validation for cache
- * @returns {string} Unique session identifier
- */
-function _generateSessionId() {
-  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-}
-
-/**
- * Initialize session ID on sidebar load
- * v1.6.3.7-v4 - FIX Issue #6: Must be called during DOMContentLoaded
- */
-function _initializeSessionId() {
-  currentSessionId = _generateSessionId();
-  console.log('[Manager] v1.6.3.7-v5 Session initialized:', { sessionId: currentSessionId });
-}
-
-// ==================== v1.6.3.8-v3 STORAGE LISTENER INITIALIZATION ====================
-// FIX Issues #2, #5, #9, #15: Explicit storage.onChanged listener registration and verification
-
-/**
- * Initialize the storage listener verification promise barrier
- * v1.6.3.8-v3 - FIX Issue #9: Create promise for init barrier
- * @private
- */
-function _initStorageListenerReadyPromise() {
-  storageListenerReadyPromise = new Promise(resolve => {
-    _storageListenerReadyResolve = resolve;
-  });
-  console.log('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_INITIALIZED:', {
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Storage.onChanged handler callback (named for explicit reference)
- * v1.6.3.8-v3 - FIX Issue #15: Named callback instead of inline arrow function
- * v1.6.4.18 - Refactored to reduce complexity below 9
- * @private
- * @param {Object} changes - Storage changes object
- * @param {string} areaName - Storage area name
- */
-function _handleStorageOnChanged(changes, areaName) {
-  // v1.6.3.8-v3 - FIX Issue #5: Handle verification test key
-  if (_handleVerificationTestKey(changes, areaName)) return;
-
-  // v1.6.3.7-v9 - FIX Issue #11: Log listener entry with init status
-  logListenerEntry('storage.onChanged', {
-    areaName,
-    hasStateKey: !!changes[STATE_KEY],
-    hasHealthProbeKey: !!changes[STORAGE_HEALTH_PROBE_KEY]
-  });
-
-  // v1.6.3.7-v13 - Issue #6 (arch): Handle storage health probe response
-  if (_handleHealthProbeKey(changes, areaName)) return;
-
-  // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
-  // v1.6.3.8-v4 - FIX Issue #9: Pass change data for queueing (null if undefined)
-  const stateChange = changes[STATE_KEY] || null;
-  if (_guardBeforeInit(areaName, stateChange)) return;
-
-  if (areaName !== 'local' || !changes[STATE_KEY]) return;
-  _handleStorageChange(changes[STATE_KEY]);
-}
-
-/**
- * Handle verification test key if present
- * v1.6.4.18 - Extracted to reduce complexity
- * @private
- * @param {Object} changes - Storage changes object
- * @param {string} areaName - Storage area name
- * @returns {boolean} True if handled (caller should return)
- */
-function _handleVerificationTestKey(changes, areaName) {
-  if (areaName === 'local' && changes[STORAGE_LISTENER_TEST_KEY]) {
-    _handleStorageListenerVerification(changes[STORAGE_LISTENER_TEST_KEY]);
-    return true;
-  }
-  return false;
-}
-
-/**
- * Handle health probe key if present
- * v1.6.4.18 - Extracted to reduce complexity
- * @private
- * @param {Object} changes - Storage changes object
- * @param {string} areaName - Storage area name
- * @returns {boolean} True if handled (caller should return)
- */
-function _handleHealthProbeKey(changes, areaName) {
-  if (areaName === 'local' && changes[STORAGE_HEALTH_PROBE_KEY]) {
-    const probeData = changes[STORAGE_HEALTH_PROBE_KEY].newValue;
-    if (probeData?.timestamp) {
-      _handleStorageProbeResponse(probeData.timestamp);
-    }
-    return true;
-  }
-  return false;
-}
-
-/**
- * Guard against processing before initialization - ENFORCING version
- * v1.6.4.18 - Extracted to reduce complexity
- * v1.6.3.8-v4 - FIX Issue #9: Made ENFORCING - queues messages instead of skipping
- * @private
- * @param {string} areaName - Storage area name for logging
- * @param {Object} [changeData] - Storage change data to queue if not initialized
- * @returns {boolean} True if should skip processing (caller should return)
- */
-function _guardBeforeInit(areaName, changeData = null) {
-  if (!isFullyInitialized()) {
-    const timeSinceInitStartMs =
-      initializationStartTime > 0 ? Date.now() - initializationStartTime : -1;
-
-    // v1.6.3.8-v4 - FIX Issue #9: Queue the message for later processing instead of dropping
-    if (changeData) {
-      _queueMessageDuringInit('storage', changeData);
-      console.log('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged - QUEUED', {
-        initializationStarted,
-        initializationComplete,
-        timeSinceInitStartMs,
-        areaName,
-        queueSize: preInitMessageQueue.length,
-        message: 'Message queued - will be processed after init barrier resolves',
-        timestamp: Date.now()
-      });
-    } else {
-      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: storage.onChanged - SKIP (no data)', {
-        initializationStarted,
-        initializationComplete,
-        timeSinceInitStartMs,
-        areaName,
-        message: 'Skipping - no change data provided to queue',
-        timestamp: Date.now()
-      });
-    }
-    return true;
-  }
-  return false;
-}
-
-/**
- * Handle storage listener verification callback
- * v1.6.3.8-v3 - FIX Issue #5: Called when test key change is detected
- * @private
- * @param {Object} change - Storage change object for test key
- */
-function _handleStorageListenerVerification(change) {
-  const latencyMs = Date.now() - storageListenerVerificationStartTime;
-
-  // Clear verification timeout
-  if (storageListenerVerificationTimerId !== null) {
-    clearTimeout(storageListenerVerificationTimerId);
-    storageListenerVerificationTimerId = null;
-  }
-
-  // Mark listener as verified
-  storageListenerVerified = true;
-
-  console.log('[Manager] STORAGE_LISTENER_VERIFIED: success', {
-    latencyMs,
-    testValue: change.newValue,
-    callbackReference: '_handleStorageOnChanged',
-    timestamp: Date.now()
-  });
-
-  // Clean up the test key
-  browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(err => {
-    console.warn('[Manager] Failed to clean up storage listener test key:', err.message);
-  });
-
-  // Resolve the verification promise barrier
-  if (_storageListenerReadyResolve) {
-    _storageListenerReadyResolve();
-    console.log('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_RESOLVED:', {
-      latencyMs,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Handle storage listener verification timeout (listener did not fire)
- * v1.6.3.8-v3 - FIX Issue #5: Called when verification times out
- * v1.6.3.8-v4 - FIX Issue #4: Implement exponential backoff retry instead of permanent disable
- * @private
- */
-function _handleStorageListenerVerificationTimeout() {
-  const latencyMs = Date.now() - storageListenerVerificationStartTime;
-
-  storageListenerVerificationTimerId = null;
-
-  // v1.6.3.8-v4 - FIX Issue #4: Check if we should retry with exponential backoff
-  if (storageVerificationRetryCount < STORAGE_VERIFICATION_RETRY_MS.length) {
-    const retryDelay = STORAGE_VERIFICATION_RETRY_MS[storageVerificationRetryCount];
-    storageVerificationRetryCount++;
-
-    console.warn('[Manager] STORAGE_VERIFICATION: status=retry', {
-      attempt: storageVerificationRetryCount,
-      totalAttempts: STORAGE_VERIFICATION_RETRY_MS.length,
-      latencyMs,
-      retryDelayMs: retryDelay,
-      message: `Verification timeout - retrying in ${retryDelay}ms`,
-      timestamp: Date.now()
-    });
-
-    // Clean up the test key before retry
-    browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(() => {});
-
-    // Schedule retry
-    setTimeout(() => {
-      _retryStorageListenerVerification();
-    }, retryDelay);
-
-    return; // Don't resolve barrier yet - wait for retry
-  }
-
-  // All retries exhausted - mark as unverified but don't permanently disable
-  storageListenerVerified = false;
-
-  console.error('[Manager] STORAGE_LISTENER_VERIFICATION_FAILED: all retries exhausted', {
-    timeoutMs: STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS,
-    latencyMs,
-    retryAttempts: storageVerificationRetryCount,
-    callbackReference: '_handleStorageOnChanged',
-    tier3Status: 'unverified-but-available-on-demand',
-    message:
-      'storage.onChanged listener verification failed - Tier 3 marked UNVERIFIED (will retry on port failure)',
-    timestamp: Date.now()
-  });
-
-  // Clean up the test key anyway
-  browser.storage.local.remove(STORAGE_LISTENER_TEST_KEY).catch(() => {});
-
-  // Resolve the promise barrier (with failure state, but don't block init)
-  if (_storageListenerReadyResolve) {
-    _storageListenerReadyResolve();
-    console.warn('[Manager] STORAGE_LISTENER_PROMISE_BARRIER_RESOLVED: with unverified status', {
-      storageListenerVerified: false,
-      retryCount: storageVerificationRetryCount,
-      message: 'Tier 3 will be attempted on port failure despite unverified status',
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Retry storage listener verification with new test key
- * v1.6.3.8-v4 - FIX Issue #4: Exponential backoff retry
- * @private
- */
-async function _retryStorageListenerVerification() {
-  console.log('[Manager] STORAGE_VERIFICATION: status=retrying', {
-    attempt: storageVerificationRetryCount,
-    timestamp: Date.now()
-  });
-
-  try {
-    // Start verification by writing test key
-    storageListenerVerificationStartTime = Date.now();
-
-    // Use dynamic timeout based on observed latency
-    const dynamicTimeout = _calculateDynamicVerificationTimeout();
-
-    // Set verification timeout
-    storageListenerVerificationTimerId = setTimeout(
-      _handleStorageListenerVerificationTimeout,
-      dynamicTimeout
-    );
-
-    // Write test key to trigger storage.onChanged
-    const testValue = `verify-retry-${storageVerificationRetryCount}-${Date.now()}`;
-
-    console.log('[Manager] STORAGE_LISTENER_VERIFICATION_RETRY:', {
-      testKey: STORAGE_LISTENER_TEST_KEY,
-      testValue,
-      timeoutMs: dynamicTimeout,
-      attempt: storageVerificationRetryCount,
-      timestamp: Date.now()
-    });
-
-    await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
-  } catch (err) {
-    console.error('[Manager] STORAGE_LISTENER_VERIFICATION_RETRY_FAILED:', {
-      error: err.message,
-      attempt: storageVerificationRetryCount,
-      timestamp: Date.now()
-    });
-
-    // Continue to next retry or fail
-    _handleStorageListenerVerificationTimeout();
-  }
-}
-
-/**
- * Calculate dynamic verification timeout based on observed latencies
- * v1.6.3.8-v4 - FIX Issue #4: Use dynamic timeout based on actual latency
- * @returns {number} Timeout in milliseconds
- * @private
- */
-function _calculateDynamicVerificationTimeout() {
-  // If we have probe latency data, use it to set a more realistic timeout
-  if (storageHealthStats.avgLatencyMs > 0) {
-    // Use 2x the average latency as timeout, minimum 500ms, max 2000ms
-    return Math.min(2000, Math.max(500, storageHealthStats.avgLatencyMs * 2));
-  }
-  // Default to base timeout
-  return STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS;
-}
-
-/**
- * Attempt Tier 3 fallback even if originally unverified
- * v1.6.3.8-v4 - FIX Issue #4: If port fails, immediately attempt Tier 3
- * @private
- */
-async function _attemptTier3FallbackOnPortFailure() {
-  console.log('[Manager] TIER3_FALLBACK_ATTEMPT: port failure triggered Tier 3 attempt', {
-    storageListenerVerified,
-    timestamp: Date.now()
-  });
-
-  // If already verified, nothing special needed
-  if (storageListenerVerified) {
-    return;
-  }
-
-  // Try to verify now - port has failed so we need Tier 3
-  storageVerificationRetryCount = 0; // Reset retry count for this attempt
-
-  try {
-    storageListenerVerificationStartTime = Date.now();
-
-    const testValue = `fallback-verify-${Date.now()}`;
-    await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
-
-    // Wait briefly for verification
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    console.log('[Manager] TIER3_FALLBACK_VERIFICATION:', {
-      verified: storageListenerVerified,
-      message: storageListenerVerified
-        ? 'Tier 3 now verified and active'
-        : 'Tier 3 still unverified but will be used as last resort',
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.error('[Manager] TIER3_FALLBACK_VERIFICATION_FAILED:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Initialize storage.onChanged listener with explicit verification
- * v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Explicit registration with verification pattern
- *
- * This function:
- * 1. Registers the storage.onChanged listener with try/catch
- * 2. Logs registration attempt and success/failure
- * 3. Writes a test key to storage
- * 4. Sets timeout expecting callback within 1000ms
- * 5. If callback fires, verifies listener works and resolves barrier
- * 6. If timeout occurs, logs error and disables Tier 3 fallback
- *
- * @returns {Promise<void>} Resolves when verification completes (success or failure)
- */
-async function _initializeStorageListener() {
-  console.log('[Manager] STORAGE_LISTENER_INITIALIZATION: attempting registration', {
-    callbackFunction: '_handleStorageOnChanged',
-    timestamp: Date.now()
-  });
-
-  // Initialize the promise barrier
-  _initStorageListenerReadyPromise();
-
-  try {
-    // Store callback reference as module-level named variable
-    _storageOnChangedHandler = _handleStorageOnChanged;
-
-    // Register the listener
-    browser.storage.onChanged.addListener(_storageOnChangedHandler);
-
-    console.log('[Manager] STORAGE_LISTENER_INITIALIZED: success', {
-      callbackReference: '_handleStorageOnChanged',
-      callbackStored: _storageOnChangedHandler !== null,
-      timestamp: Date.now()
-    });
-
-    // Start verification by writing test key
-    storageListenerVerificationStartTime = Date.now();
-
-    // Set verification timeout
-    storageListenerVerificationTimerId = setTimeout(
-      _handleStorageListenerVerificationTimeout,
-      STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS
-    );
-
-    // Write test key to trigger storage.onChanged
-    const testValue = `verify-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-
-    console.log('[Manager] STORAGE_LISTENER_VERIFICATION_STARTED:', {
-      testKey: STORAGE_LISTENER_TEST_KEY,
-      testValue,
-      timeoutMs: STORAGE_LISTENER_VERIFICATION_TIMEOUT_MS,
-      timestamp: Date.now()
-    });
-
-    await browser.storage.local.set({ [STORAGE_LISTENER_TEST_KEY]: testValue });
-  } catch (err) {
-    console.error('[Manager] STORAGE_LISTENER_INITIALIZATION_FAILED: exception', {
-      error: err.message,
-      tier3Disabled: true,
-      timestamp: Date.now()
-    });
-
-    storageListenerVerified = false;
-
-    // Clear any pending timeout
-    if (storageListenerVerificationTimerId !== null) {
-      clearTimeout(storageListenerVerificationTimerId);
-      storageListenerVerificationTimerId = null;
-    }
-
-    // Resolve barrier with failure
-    if (_storageListenerReadyResolve) {
-      _storageListenerReadyResolve();
-    }
-  }
-
-  // Return the promise - caller can await verification completion
-  return storageListenerReadyPromise;
-}
-
-/**
- * Check if storage listener is verified and Tier 3 fallback is enabled
- * v1.6.3.8-v3 - FIX Issue #5: Guard function for fallback decisions
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @returns {boolean} True if storage listener is verified working
- */
-function _isStorageListenerVerified() {
-  return storageListenerVerified;
-}
 
 // UI Elements (cached for performance)
 let containersList;
@@ -1583,30 +144,384 @@ let lastLocalUpdateTime = 0;
 // Browser tab info cache
 const browserTabInfoCache = new Map();
 
-// ==================== v1.6.3.7-v3 DOM RECONCILIATION ====================
-// FIX Issue #3: Track DOM elements for differential updates (prevents CSS animation flickering)
+// ==================== v1.6.3.6-v11 PORT CONNECTION ====================
+// FIX Issue #11: Persistent port connection to background script
+// FIX Issue #10: Message acknowledgment tracking
 
 /**
- * Map of Quick Tab ID -> DOM element for reconciliation
- * v1.6.3.7-v3 - FIX Issue #3: Track individual Quick Tab items
+ * Port connection to background script
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent connection
  */
-const _itemElements = new Map();
+let backgroundPort = null;
 
 /**
- * Map of originTabId (group key) -> DOM details element for reconciliation
- * v1.6.3.7-v3 - FIX Issue #3: Track group containers
+ * Pending acknowledgments map
+ * v1.6.3.6-v11 - FIX Issue #10: Track pending acknowledgments
+ * Key: correlationId, Value: { resolve, reject, timeout, sentAt }
  */
-const _groupElements = new Map();
+const pendingAcks = new Map();
 
 /**
- * Last known groups container reference for reconciliation
- * v1.6.3.7-v3 - FIX Issue #3: Cache the container reference
+ * Acknowledgment timeout (1 second)
+ * v1.6.3.6-v11 - FIX Issue #10: Fallback timeout
  */
-let _groupsContainer = null;
+const ACK_TIMEOUT_MS = 1000;
 
-// ==================== v1.6.3.8-v13 STATELESS MESSAGING ====================
-// v1.6.3.8-v13 - Port removed: Using stateless runtime.sendMessage instead
-// v1.6.3.9-v4 - MESSAGE_TIMEOUT_MS now imported from src/constants.js
+// ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
+// FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
+
+/**
+ * Heartbeat interval (25 seconds - Firefox idle timeout is 30s)
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ */
+const HEARTBEAT_INTERVAL_MS = 25000;
+
+/**
+ * Heartbeat timeout (5 seconds)
+ * v1.6.3.6-v12 - FIX Issue #4: Detect unresponsive background
+ */
+const HEARTBEAT_TIMEOUT_MS = 5000;
+
+/**
+ * Heartbeat interval ID
+ * v1.6.3.6-v12 - FIX Issue #4: Track interval for cleanup
+ */
+let heartbeatIntervalId = null;
+
+/**
+ * Last heartbeat response time
+ * v1.6.3.6-v12 - FIX Issue #4: Track background responsiveness
+ */
+let lastHeartbeatResponse = Date.now();
+
+/**
+ * Consecutive heartbeat failures
+ * v1.6.3.6-v12 - FIX Issue #4: Track for reconnection
+ */
+let consecutiveHeartbeatFailures = 0;
+const MAX_HEARTBEAT_FAILURES = 2;
+
+// ==================== v1.6.3.7 CIRCUIT BREAKER STATE ====================
+// FIX Issue #5: Port Reconnect Circuit Breaker to prevent thundering herd
+/**
+ * Circuit breaker state
+ * v1.6.3.7 - FIX Issue #5: Prevent thundering herd on reconnect
+ * States: 'closed' (connected), 'open' (not trying), 'half-open' (attempting)
+ */
+let circuitBreakerState = 'closed';
+let circuitBreakerOpenTime = 0;
+let reconnectAttempts = 0;
+let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+
+// ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
+// FIX Issue #3: UI Flicker Prevention
+let renderDebounceTimer = null;
+let lastRenderedHash = 0;
+let pendingRenderUI = false;
+
+/**
+ * Generate correlation ID for message acknowledgment
+ * v1.6.3.6-v11 - FIX Issue #10: Correlation tracking
+ * @returns {string} Unique correlation ID
+ */
+function generateCorrelationId() {
+  return `corr-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+/**
+ * Log port lifecycle event
+ * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
+ * @param {string} event - Event name
+ * @param {Object} details - Event details
+ */
+function logPortLifecycle(event, details = {}) {
+  console.log(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, {
+    tabId: currentBrowserTabId,
+    portId: backgroundPort?._portId,
+    timestamp: Date.now(),
+    ...details
+  });
+}
+
+/**
+ * Connect to background script via persistent port
+ * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
+ * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
+ */
+function connectToBackground() {
+  // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
+  if (circuitBreakerState === 'open') {
+    const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
+    if (timeSinceOpen < CIRCUIT_BREAKER_OPEN_DURATION_MS) {
+      console.log('[Manager] Circuit breaker OPEN - skipping reconnect', {
+        timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
+      });
+      return;
+    }
+    // Transition to half-open state
+    circuitBreakerState = 'half-open';
+    console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
+  }
+
+  try {
+    backgroundPort = browser.runtime.connect({
+      name: 'quicktabs-sidebar'
+    });
+
+    logPortLifecycle('open', { portName: backgroundPort.name });
+
+    // Handle messages from background
+    backgroundPort.onMessage.addListener(handlePortMessage);
+
+    // Handle disconnect
+    backgroundPort.onDisconnect.addListener(() => {
+      const error = browser.runtime.lastError;
+      logPortLifecycle('disconnect', { error: error?.message });
+      backgroundPort = null;
+
+      // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
+      stopHeartbeat();
+
+      // v1.6.3.7 - FIX Issue #5: Implement exponential backoff reconnection
+      scheduleReconnect();
+    });
+
+    // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
+    circuitBreakerState = 'closed';
+    reconnectAttempts = 0;
+    reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+
+    // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
+    startHeartbeat();
+
+    // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
+    // This ensures Manager has latest state after any disconnection
+    _requestFullStateSync();
+
+    console.log('[Manager] v1.6.3.6-v11 Port connection established');
+  } catch (err) {
+    console.error('[Manager] Failed to connect to background:', err.message);
+    logPortLifecycle('error', { error: err.message });
+    
+    // v1.6.3.7 - FIX Issue #5: Handle connection failure
+    handleConnectionFailure();
+  }
+}
+
+/**
+ * Schedule reconnection with exponential backoff
+ * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
+ */
+function scheduleReconnect() {
+  reconnectAttempts++;
+  
+  console.log('[Manager] RECONNECT_SCHEDULED:', {
+    attempt: reconnectAttempts,
+    backoffMs: reconnectBackoffMs,
+    circuitBreakerState,
+    maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+  });
+  
+  // Check if we should trip the circuit breaker
+  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+    tripCircuitBreaker();
+    return;
+  }
+  
+  // Schedule reconnect with current backoff
+  setTimeout(() => {
+    console.log('[Manager] Attempting reconnect (attempt', reconnectAttempts, ')');
+    connectToBackground();
+  }, reconnectBackoffMs);
+  
+  // Calculate next backoff with exponential increase, capped at max
+  reconnectBackoffMs = Math.min(reconnectBackoffMs * 2, RECONNECT_BACKOFF_MAX_MS);
+}
+
+/**
+ * Handle connection failure
+ * v1.6.3.7 - FIX Issue #5: Track failures for circuit breaker
+ */
+function handleConnectionFailure() {
+  // Note: scheduleReconnect() handles the increment, so we don't double-count here
+  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD - 1) {
+    // One more failure will trip the breaker, call scheduleReconnect to handle it
+    scheduleReconnect();
+  } else {
+    scheduleReconnect();
+  }
+}
+
+/**
+ * Trip the circuit breaker to "open" state
+ * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
+ */
+function tripCircuitBreaker() {
+  circuitBreakerState = 'open';
+  circuitBreakerOpenTime = Date.now();
+  
+  console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
+    attempts: reconnectAttempts,
+    cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
+    reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
+  });
+  
+  // Schedule attempt to reopen circuit breaker
+  setTimeout(() => {
+    console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
+    circuitBreakerState = 'half-open';
+    reconnectAttempts = 0;
+    reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+    connectToBackground();
+  }, CIRCUIT_BREAKER_OPEN_DURATION_MS);
+}
+
+// ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
+
+/**
+ * Start heartbeat interval
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ */
+function startHeartbeat() {
+  // Clear any existing interval
+  stopHeartbeat();
+
+  // Send initial heartbeat immediately
+  sendHeartbeat();
+
+  // Start interval
+  heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+  console.log('[Manager] v1.6.3.6-v12 Heartbeat started (every', HEARTBEAT_INTERVAL_MS / 1000, 's)');
+}
+
+/**
+ * Stop heartbeat interval
+ * v1.6.3.6-v12 - FIX Issue #4: Cleanup on disconnect/unload
+ */
+function stopHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+    console.log('[Manager] v1.6.3.6-v12 Heartbeat stopped');
+  }
+}
+
+/**
+ * Send heartbeat message to background
+ * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
+ * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
+ */
+async function sendHeartbeat() {
+  if (!backgroundPort) {
+    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected', {
+      circuitBreakerState,
+      reconnectAttempts
+    });
+    consecutiveHeartbeatFailures++;
+    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+      scheduleReconnect();
+    }
+    return;
+  }
+
+  const timestamp = Date.now();
+
+  try {
+    // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
+    const response = await sendPortMessageWithTimeout({
+      type: 'HEARTBEAT',
+      timestamp,
+      source: 'sidebar'
+    }, HEARTBEAT_TIMEOUT_MS);
+
+    // Success - reset failure count
+    consecutiveHeartbeatFailures = 0;
+    lastHeartbeatResponse = Date.now();
+
+    console.log('[Manager] PORT_HEARTBEAT: success', {
+      roundTripMs: Date.now() - timestamp,
+      backgroundAlive: response?.backgroundAlive,
+      isInitialized: response?.isInitialized,
+      circuitBreakerState
+    });
+  } catch (err) {
+    consecutiveHeartbeatFailures++;
+    
+    // v1.6.3.7 - FIX Issue #2: Enhanced failure logging
+    console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
+      error: err.message,
+      failures: consecutiveHeartbeatFailures,
+      maxFailures: MAX_HEARTBEAT_FAILURES,
+      timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+      circuitBreakerState
+    });
+
+    // v1.6.3.6-v12 - FIX Issue #4: Treat port as dead after timeout
+    if (err.message === 'Heartbeat timeout') {
+      console.error('[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie');
+      backgroundPort = null;
+    }
+
+    // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
+    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
+      backgroundPort = null;
+      stopHeartbeat();
+      scheduleReconnect();
+    }
+  }
+}
+
+/**
+ * Send port message with timeout
+ * v1.6.3.6-v12 - FIX Issue #4: Wrap port messages with timeout
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} Response from background
+ */
+function sendPortMessageWithTimeout(message, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!backgroundPort) {
+      reject(new Error('Port not connected'));
+      return;
+    }
+
+    const correlationId = generateCorrelationId();
+    const messageWithCorrelation = { ...message, correlationId };
+
+    // Set up timeout
+    const timeout = setTimeout(() => {
+      pendingAcks.delete(correlationId);
+      reject(new Error('Heartbeat timeout'));
+    }, timeoutMs);
+
+    // Track pending ack
+    pendingAcks.set(correlationId, {
+      resolve,
+      reject,
+      timeout,
+      sentAt: Date.now()
+    });
+
+    // Send message
+    try {
+      backgroundPort.postMessage(messageWithCorrelation);
+    } catch (err) {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      reject(err);
+    }
+  });
+}
+
+// ==================== END HEARTBEAT FUNCTIONS ====================
+
+// ==================== v1.6.4.0 STATE SYNC & UNIFIED RENDER ====================
+// FIX Issue E: State sync on port reconnection
+// FIX Issue B: Unified render entry point
+// FIX Issue D: Hash-based state staleness detection
 
 /**
  * State hash captured when debounce timer was set
@@ -1621,193 +536,43 @@ let capturedStateHashAtDebounce = 0;
 let debounceSetTimestamp = 0;
 
 /**
- * Pending acknowledgments map - stub for compatibility
- * v1.6.3.8-v13 - PORT REMOVED: Kept as stub
- */
-const pendingAcks = new Map();
-
-// v1.6.3.9-v4 - PORT REMOVED: All port-related listener code removed:
-// - listenerReadyPromise, _listenerReadyResolve, _listenerReadyReject, listenerFullyRegistered
-// - _initListenerReadyPromise(), _markListenerReady(), _resetListenerReadyState()
-// - isReconnecting, HEARTBEAT_FAILURES_BEFORE_ZOMBIE, consecutiveHeartbeatTimeouts
-// - BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS, BACKGROUND_STALE_WARNING_THRESHOLD_MS
-// - lastBackgroundMessageTime, backgroundActivityCheckTimerId
-
-// ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
-// FIX Issue #3: UI Flicker Prevention
-let renderDebounceTimer = null;
-let lastRenderedHash = 0;
-let pendingRenderUI = false;
-
-// ==================== v1.6.3.8-v12 RENDER QUEUE STATE ====================
-// FIX Issue #9: Manager Sidebar Grouping Race Condition
-/**
- * Flag indicating if a render is currently in progress
- * v1.6.3.8-v12 - FIX Issue #9: Serialize render operations
- */
-let _renderInProgress = false;
-
-/**
- * Queue of pending render requests (source and timestamp)
- * v1.6.3.8-v12 - FIX Issue #9: Queue renders to execute serially
- */
-const _renderQueue = [];
-
-/**
- * Timer ID for render queue debounce
- * v1.6.3.8-v12 - FIX Issue #9: Debounce rapid render requests
- */
-let _renderQueueDebounceTimer = null;
-
-/**
- * Timer ID for render stall detection
- * v1.6.3.8-v12 - FIX Issue #9: Detect stalled renders
- */
-let _renderStallTimerId = null;
-
-/**
- * State hash captured before render starts (for validation)
- * v1.6.3.8-v12 - FIX Issue #9: Checksum before/after render
- */
-let _preRenderStateHash = 0;
-
-/**
- * Counter for tracking render corruption recovery attempts
- * v1.6.3.8-v12 - FIX Issue #9: Limit recovery attempts to prevent loops
- */
-let _renderCorruptionRecoveryAttempts = 0;
-
-/**
- * Maximum recovery attempts before giving up
- * v1.6.3.8-v12 - FIX Issue #9: Prevent infinite recovery loops
- */
-const MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS = 3;
-
-// ==================== v1.6.3.9-v4 SIMPLIFIED SIDEBAR LOCAL STATE ====================
-// From ROBUST-QUICKTABS-ARCHITECTURE.md - Simplified state structure
-/**
- * Sidebar local state for tracking synced state and rendering
- * v1.6.3.9-v4 - Simplified architecture from constants-config-reference.md
- * @type {Object}
- */
-const sidebarLocalState = {
-  tabs: [],
-  lastModified: 0,
-  revisionReceived: 0,
-  writeSequence: 0,
-  lastRenderedRevision: 0
-};
-
-/**
- * Timestamp of last storage event received
- * v1.6.3.9-v4 - Used for storage health check fallback
- */
-let _lastStorageEventTime = Date.now();
-
-/**
- * Interval ID for storage health check
- * v1.6.3.9-v4 - Periodic verification that storage.onChanged is firing
- */
-let _storageHealthCheckIntervalId = null;
-
-/**
- * Generate correlation ID for message acknowledgment
- * v1.6.3.6-v11 - FIX Issue #10: Correlation tracking
- * @returns {string} Unique correlation ID
- */
-function generateCorrelationId() {
-  return `corr-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-}
-
-// v1.6.3.9-v7 - Issue #6: logPortLifecycle() removed (was no-op stub)
-// v1.6.3.9-v7 - Issue #6: _transitionConnectionState() removed (was no-op stub)
-
-// v1.6.3.9-v6 - GAP #15: REMOVED dead code functions:
-// - _updateConsecutiveFailures() - tracked port failures
-// - _logConnectionStateTransition() - logged port state changes  
-// - _logFallbackModeIfNeeded() - logged fallback to storage
-// - _logZombieFallback() - logged zombie state
-// - _logDisconnectedFallback() - logged disconnected state
-
-// v1.6.3.9-v4 - PORT REMOVED: Connection management, circuit breaker, and heartbeat functions removed:
-// - connectToBackground() - was no-op since v13
-// - _canAttemptConnection(), _prepareForReconnection(), _establishPortConnection()
-// - _setupPortListeners(), _handlePortDisconnect(), _finalizeConnection()
-// - _handlePortConnectionError(), _verifyPortListenerRegistration(), _cleanupOldPortListener()
-// - scheduleReconnect(), handleConnectionFailure(), tripCircuitBreaker()
-// - _startCircuitBreakerProbes(), _stopCircuitBreakerProbes()
-// - _handlePortMessageWithQueue(), waitForListenerReady(), _flushPortMessageQueue()
-// - All message queue helpers (_extractQueuedMessages, _validateAndSortQueuedMessages, etc.)
-// - _startBackgroundActivityCheck(), _stopBackgroundActivityCheck()
-// - startHeartbeat(), stopHeartbeat(), sendHeartbeat() and all heartbeat helpers
-
-/**
- * Probe background health with a lightweight ping
- * v1.6.3.9-v4 - Kept for health checks using runtime.sendMessage
- * @private
- * @returns {Promise<boolean>} True if background is healthy
- */
-async function _probeBackgroundHealth() {
-  try {
-    const response = await Promise.race([
-      browser.runtime.sendMessage({ type: 'HEALTH_PROBE', timestamp: Date.now() }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
-    ]);
-    return response?.healthy === true || response?.type === 'HEALTH_ACK';
-  } catch {
-    return false;
-  }
-}
-
-// ==================== v1.6.3.8-v13 STATE SYNC (SIMPLIFIED) ====================
-// v1.6.3.9-v4 - Port removed: State sync uses runtime.sendMessage
-
-/**
  * State sync timeout (5 seconds)
  * v1.6.4.0 - FIX Issue E: Timeout for state sync request
  */
 const STATE_SYNC_TIMEOUT_MS = 5000;
 
 /**
- * Request full state sync from background
- * v1.6.3.8-v13 - PORT REMOVED: Uses runtime.sendMessage instead of port
+ * Request full state sync from background after port reconnection
+ * v1.6.4.0 - FIX Issue E: Ensure Manager has latest state after reconnection
  * @private
  */
 async function _requestFullStateSync() {
-  const syncRequestTime = Date.now();
-  console.log('[Manager] STATE_SYNC_REQUESTED:', {
-    timestamp: syncRequestTime,
-    timeoutMs: STATE_SYNC_TIMEOUT_MS,
-    currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
-  });
+  if (!backgroundPort) {
+    console.warn('[Manager] Cannot request state sync - port not connected');
+    return;
+  }
+
+  console.log('[Manager] STATE_SYNC_REQUESTED: requesting full state from background');
 
   try {
-    const request = {
-      type: 'REQUEST_FULL_STATE_SYNC',
-      timestamp: syncRequestTime,
-      source: 'sidebar',
-      currentCacheHash: computeStateHash(quickTabsState),
-      currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
-    };
-
-    const response = await sendToBackground(request);
+    const response = await sendPortMessageWithTimeout(
+      {
+        type: 'REQUEST_FULL_STATE_SYNC',
+        timestamp: Date.now(),
+        source: 'sidebar',
+        currentCacheHash: computeStateHash(quickTabsState),
+        currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
+      },
+      STATE_SYNC_TIMEOUT_MS
+    );
 
     if (response?.success && response?.state) {
-      console.log('[Manager] STATE_SYNC_RESPONSE_RECEIVED:', {
-        timestamp: Date.now(),
-        roundTripMs: Date.now() - syncRequestTime,
-        serverTabCount: response.state?.tabs?.length ?? 0
-      });
       _handleStateSyncResponse(response);
     } else {
       console.warn('[Manager] State sync response did not include state:', response);
     }
   } catch (err) {
-    console.warn('[Manager] STATE_SYNC_TIMEOUT:', {
-      error: err.message,
-      elapsedMs: Date.now() - syncRequestTime,
-      timestamp: Date.now()
-    });
+    console.warn('[Manager] State sync timed out after', STATE_SYNC_TIMEOUT_MS, 'ms, proceeding with cached state (may be stale):', err.message);
   }
 }
 
@@ -1821,7 +586,7 @@ function _handleStateSyncResponse(response) {
   const serverState = response.state;
   const serverTabCount = serverState?.tabs?.length ?? 0;
   const cacheTabCount = quickTabsState?.tabs?.length ?? 0;
-
+  
   const serverHash = computeStateHash(serverState);
   const cacheHash = computeStateHash(quickTabsState);
   const hashDiverged = serverHash !== cacheHash;
@@ -1835,20 +600,14 @@ function _handleStateSyncResponse(response) {
   });
 
   if (hashDiverged) {
-    console.log(
-      '[Manager] STATE_DIVERGENCE_DETECTED: server has',
-      serverTabCount,
-      'tabs, cache had',
-      cacheTabCount,
-      'tabs - updating'
-    );
-
+    console.log('[Manager] STATE_DIVERGENCE_DETECTED: server has', serverTabCount, 'tabs, cache had', cacheTabCount, 'tabs - updating');
+    
     // Update local state from server
     quickTabsState = serverState;
     _updateInMemoryCache(serverState.tabs || []);
     lastKnownGoodTabCount = serverTabCount;
     lastLocalUpdateTime = Date.now();
-
+    
     // Trigger UI update
     scheduleRender('state-sync-divergence');
   } else {
@@ -1858,514 +617,31 @@ function _handleStateSyncResponse(response) {
 
 /**
  * Unified render entry point - ALL render triggers go through here
- * v1.6.3.9-v6 - GAP #14: Revision is PRIMARY check, saveId only as fallback
- * v1.6.4.17 - Refactored to reduce CC from 11 to ~4
+ * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
  * @param {string} source - Source of render trigger for logging
- * @param {string|number} [revisionOrMessageId] - Optional revision number or message ID for deduplication
  */
-function scheduleRender(source = 'unknown', revisionOrMessageId = null) {
-  // v1.6.3.9-v6 - GAP #14: Parse revision vs messageId
-  const revision = typeof revisionOrMessageId === 'number' ? revisionOrMessageId : null;
-  // v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
-  const _messageId = typeof revisionOrMessageId === 'string' ? revisionOrMessageId : null;
-  
-  // v1.6.3.9-v6 - GAP #14: Compute current saveId for fallback
-  const currentSaveId = _getValidSaveId(quickTabsState?.saveId);
-
-  // v1.6.3.9-v6 - GAP #14: PRIORITY 1 - If revision provided and NEW → RENDER
-  if (revision !== null) {
-    if (revision > sidebarLocalState.lastRenderedRevision) {
-      // New revision - proceed to render
-      console.debug('[Manager] RENDER_SCHEDULED: revision=' + revision + ' (new, rendering)');
-      _proceedToRenderSimplified(source, revision, currentSaveId);
-      return;
-    } else {
-      // Same or older revision - skip
-      console.debug('[Manager] RENDER_DEDUP: revision=' + revision + ' (stale, skipping)');
-      return;
-    }
-  }
-
-  // v1.6.3.9-v6 - GAP #14: PRIORITY 2 - If no revision, use saveId as fallback
-  if (currentSaveId && currentSaveId !== lastProcessedSaveId) {
-    console.debug('[Manager] RENDER_SCHEDULED: saveId=' + currentSaveId + ' (new, rendering)');
-    _proceedToRenderSimplified(source, null, currentSaveId);
-    return;
-  }
-
-  // v1.6.3.9-v6 - GAP #14: PRIORITY 3 - Hash-based check as last resort
+function scheduleRender(source = 'unknown') {
   const currentHash = computeStateHash(quickTabsState);
-  if (currentHash !== lastRenderedStateHash) {
-    console.debug('[Manager] RENDER_SCHEDULED: hash changed (rendering)');
-    _proceedToRenderSimplified(source, null, currentSaveId);
+  
+  // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
+  if (currentHash === lastRenderedStateHash) {
+    console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
+      source,
+      hash: currentHash
+    });
     return;
   }
 
-  // v1.6.3.9-v6 - All checks failed - skip render
-  console.log('[Manager] RENDER_DEDUP: skipped', {
-    source,
-    revision,
-    saveId: currentSaveId,
-    hash: currentHash,
-    reason: 'no_change_detected'
-  });
-}
-
-/**
- * Simplified proceed to render - reduced from 5 args to 3
- * v1.6.3.9-v6 - GAP #14: Simplified render entry
- * @private
- * @param {string} source - Source of render
- * @param {number|null} revision - Revision number (if any)
- * @param {string} currentSaveId - Current saveId
- */
-function _proceedToRenderSimplified(source, revision, currentSaveId) {
-  // Track processed saveId
-  if (currentSaveId) {
-    lastProcessedSaveId = currentSaveId;
-    lastSaveIdProcessedAt = Date.now();
-  }
-
-  // v1.6.3.9-v6 - Log render scheduled
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
-    revision,
-    saveId: currentSaveId,
-    timestamp: Date.now()
-  });
-
-  // Enqueue with revision for tracking
-  _enqueueRenderWithRevision(source, revision);
-}
-
-/**
- * Build render context with computed values
- * v1.6.4.17 - Extracted from scheduleRender
- * @private
- * @param {string} source - Render source
- * @param {string} messageId - Message ID
- * @returns {Object} Render context
- */
-function _buildRenderContext(source, messageId) {
-  return {
-    source,
-    messageId,
-    currentHash: computeStateHash(quickTabsState),
-    currentTabCount: quickTabsState?.tabs?.length ?? 0,
-    currentSaveId: _getValidSaveId(quickTabsState?.saveId)
-  };
-}
-
-/**
- * Check if render should be forced (empty→populated transition)
- * v1.6.4.17 - Extracted from scheduleRender
- * @private
- * @param {Object} context - Render context
- * @returns {boolean} True if render should be forced
- */
-function _shouldForceRender(context) {
-  if (lastRenderedStateHash !== 0 || context.currentTabCount <= 0) {
-    return false;
-  }
-
-  console.log('[Manager] RENDER_SPECIAL_CASE: Previous state was empty, forcing render', {
-    source: context.source,
-    previousHash: lastRenderedStateHash,
-    currentHash: context.currentHash,
-    currentTabCount: context.currentTabCount
-  });
-  return true;
-}
-
-/**
- * Check if render should be skipped due to deduplication
- * v1.6.4.17 - Extracted from scheduleRender
- * @private
- * @param {Object} context - Render context
- * @param {string} messageId - Message ID
- * @returns {boolean} True if render should be skipped
- */
-function _shouldSkipRender(context, messageId) {
-  return (
-    _checkSaveIdDedup(context) ||
-    _checkMessageIdDedup(context, messageId) ||
-    _checkHashDedup(context)
-  );
-}
-
-/**
- * Check saveId-based deduplication
- * v1.6.4.17 - Extracted from scheduleRender
- * @private
- * @param {Object} context - Render context
- * @returns {boolean} True if should skip
- */
-function _checkSaveIdDedup(context) {
-  if (!context.currentSaveId || context.currentSaveId !== lastProcessedSaveId) {
-    return false;
-  }
-
-  console.log('[Manager] RENDER_SKIPPED:', {
-    reason: 'saveId_match',
-    source: context.source,
-    saveId: context.currentSaveId,
-    lastProcessedSaveId,
-    hash: context.currentHash
-  });
-  return true;
-}
-
-/**
- * Check message ID deduplication
- * v1.6.4.17 - Extracted from scheduleRender
- * @private
- * @param {Object} context - Render context
- * @param {string} messageId - Message ID
- * @returns {boolean} True if should skip
- */
-function _checkMessageIdDedup(context, messageId) {
-  if (!messageId || !_isMessageAlreadyProcessed(messageId)) {
-    return false;
-  }
-
-  console.log('[Manager] RENDER_SKIPPED:', {
-    reason: 'message_dedup',
-    source: context.source,
-    messageId,
-    hash: context.currentHash
-  });
-  return true;
-}
-
-/**
- * Check hash-based deduplication
- * v1.6.4.17 - Extracted from scheduleRender
- * @private
- * @param {Object} context - Render context
- * @returns {boolean} True if should skip
- */
-function _checkHashDedup(context) {
-  if (context.currentHash !== lastRenderedStateHash) {
-    return false;
-  }
-
-  console.log('[Manager] RENDER_SKIPPED:', {
-    reason: 'hash_match',
-    source: context.source,
-    hash: context.currentHash
-  });
-  return true;
-}
-
-/**
- * Proceed with rendering after passing deduplication checks
- * v1.6.3.7-v6 - Gap #5: Extracted to support special case rendering
- * v1.6.3.9-v4 - Phase 5: Added revision parameter for queue tracking
- * @private
- * @param {string} source - Source of render trigger
- * @param {string} messageId - Message ID for deduplication
- * @param {string} currentSaveId - Current saveId
- * @param {number} currentHash - Current state hash
- * @param {number} [revision] - Optional revision number for queue tracking
- */
-function _proceedToRender(source, messageId, currentSaveId, currentHash, revision = null) {
-  // v1.6.3.7-v5 - FIX Issue #4: Track this saveId as processed
-  if (currentSaveId) {
-    lastProcessedSaveId = currentSaveId;
-    lastSaveIdProcessedAt = Date.now();
-    console.log('[Manager] SAVEID_PROCESSED:', {
-      saveId: currentSaveId,
-      source,
-      timestamp: lastSaveIdProcessedAt
-    });
-  }
-
-  // v1.6.3.7-v4 - FIX Issue #4: Track this message as processed
-  if (messageId) {
-    _markMessageAsProcessed(messageId);
-  }
-
-  // v1.6.3.9-v4 - Phase 5: RENDER_SCHEDULED log per spec format
-  console.debug('[Manager] RENDER_SCHEDULED source=' + source + ' revision=' + (revision ?? 'N/A'));
-
-  console.log('[Manager] RENDER_SCHEDULED:', {
-    source,
-    messageId,
-    revision,
-    saveId: currentSaveId,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
   });
 
-  // v1.6.3.9-v4 - Phase 5: Enqueue with revision for tracking
-  _enqueueRenderWithRevision(source, revision);
+  // Route to the debounced renderUI
+  renderUI();
 }
-
-/**
- * Enqueue render with optional revision for tracking
- * v1.6.3.9-v6 - GAP #17: Capture state hash at queue time for validation
- * @private
- * @param {string} source - Source of render request
- * @param {number} [revision] - Optional revision number
- */
-function _enqueueRenderWithRevision(source, revision = null) {
-  const timestamp = Date.now();
-  
-  // v1.6.3.9-v6 - GAP #17: Capture state hash NOW for later validation
-  const stateHashAtQueue = computeStateHash(quickTabsState);
-
-  // Add to queue (with size limit)
-  if (_renderQueue.length < RENDER_QUEUE_MAX_SIZE) {
-    // v1.6.3.9-v6 - GAP #17: Include stateHashAtQueue in queue item
-    _renderQueue.push({ source, timestamp, revision, stateHashAtQueue });
-  } else {
-    console.warn('[Manager] RENDER_QUEUE_FULL: Dropping render request', {
-      source,
-      queueSize: _renderQueue.length,
-      maxSize: RENDER_QUEUE_MAX_SIZE
-    });
-    return;
-  }
-
-  // Clear existing debounce timer
-  if (_renderQueueDebounceTimer) {
-    clearTimeout(_renderQueueDebounceTimer);
-  }
-
-  // Debounce: wait for more changes before processing
-  _renderQueueDebounceTimer = setTimeout(() => {
-    _renderQueueDebounceTimer = null;
-    _processRenderQueue();
-  }, RENDER_QUEUE_DEBOUNCE_MS);
-
-  console.log('[Manager] RENDER_ENQUEUED:', {
-    source,
-    revision,
-    stateHashAtQueue,
-    queueSize: _renderQueue.length,
-    renderInProgress: _renderInProgress,
-    timestamp
-  });
-}
-
-/**
- * Check if a message was already processed (deduplication)
- * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
- * @private
- * @param {string} messageId - Message ID to check
- * @returns {boolean} True if already processed
- */
-function _isMessageAlreadyProcessed(messageId) {
-  if (!messageId) return false;
-  return recentlyProcessedMessageIds.has(messageId);
-}
-
-/**
- * Validate and return saveId as string
- * v1.6.3.7-v5 - FIX Code Review: Type validation for saveId
- * @private
- * @param {*} saveId - Value to validate
- * @returns {string} Valid saveId string or empty string
- */
-function _getValidSaveId(saveId) {
-  if (typeof saveId === 'string' && saveId.length > 0) {
-    return saveId;
-  }
-  // Handle unexpected types gracefully
-  if (saveId != null && typeof saveId !== 'string') {
-    console.warn('[Manager] SAVEID_INVALID_TYPE: saveId is not a string', {
-      type: typeof saveId,
-      value: saveId
-    });
-  }
-  return '';
-}
-
-/**
- * Map of processed message IDs with their timestamps
- * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient cleanup
- */
-const processedMessageTimestamps = new Map();
-
-/**
- * Mark a message as processed for deduplication
- * v1.6.3.7-v4 - FIX Issue #4: Message deduplication helper
- * v1.6.3.7-v4 - FIX Code Review: Use Map with timestamps for efficient memory management
- * v1.6.4.16 - FIX Issue #13: Trigger cleanup if approaching max size
- * v1.6.3.8-v4 - FIX Issue #7: Proactive cleanup at 50%, sliding window at 95%
- * @private
- * @param {string} messageId - Message ID to mark
- */
-function _markMessageAsProcessed(messageId) {
-  if (!messageId) return;
-
-  // v1.6.3.8-v4 - FIX Issue #7: Proactive cleanup at 50% capacity
-  const currentCapacity = processedMessageTimestamps.size / MESSAGE_DEDUP_MAX_SIZE;
-
-  if (currentCapacity >= DEDUP_EVICTION_THRESHOLD) {
-    // v1.6.3.8-v4 - At 95% capacity, use sliding window eviction (remove oldest 10%)
-    _slidingWindowEviction();
-  } else if (currentCapacity >= DEDUP_CLEANUP_THRESHOLD) {
-    // v1.6.3.8-v4 - At 50% capacity, do proactive cleanup
-    _cleanupExpiredMessageIds();
-  }
-
-  recentlyProcessedMessageIds.add(messageId);
-  processedMessageTimestamps.set(messageId, Date.now());
-}
-
-/**
- * Sliding window eviction - remove oldest 10% when hitting 95% capacity
- * v1.6.3.8-v4 - FIX Issue #7: More aggressive cleanup to prevent unbounded growth
- * @private
- */
-function _slidingWindowEviction() {
-  const currentSize = processedMessageTimestamps.size;
-  const evictCount = Math.ceil(currentSize * 0.1); // Remove oldest 10%
-
-  if (evictCount === 0) return;
-
-  // Sort by timestamp (oldest first)
-  const sortedEntries = [...processedMessageTimestamps.entries()].sort((a, b) => a[1] - b[1]);
-
-  for (let i = 0; i < evictCount && i < sortedEntries.length; i++) {
-    const [messageId] = sortedEntries[i];
-    recentlyProcessedMessageIds.delete(messageId);
-    processedMessageTimestamps.delete(messageId);
-  }
-
-  console.log('[Manager] [DEDUP] SLIDING_WINDOW_EVICTION:', {
-    evictedCount: evictCount,
-    previousSize: currentSize,
-    remainingSize: processedMessageTimestamps.size,
-    capacityBefore: ((currentSize / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
-    capacityAfter:
-      ((processedMessageTimestamps.size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Cleanup expired message IDs (called periodically)
- * v1.6.3.7-v4 - FIX Code Review: Efficient periodic cleanup instead of per-message timers
- * v1.6.4.16 - FIX Issue #13: Size-based eviction when over max capacity
- * v1.6.4.17 - Refactored to flatten bumpy road (bumps=2)
- * v1.6.3.8-v4 - FIX Issue #7: Enhanced with hybrid cleanup strategy
- * @private
- */
-function _cleanupExpiredMessageIds() {
-  const now = Date.now();
-  const sizeBefore = processedMessageTimestamps.size;
-  const expiredCount = _removeExpiredMessages(now);
-
-  // v1.6.3.8-v4 - FIX Issue #7: Also check size-based eviction after age-based cleanup
-  _evictOldestIfOverCapacity(now);
-
-  _logExpiredCleanup(expiredCount, sizeBefore, now);
-}
-
-/**
- * Remove messages older than max age
- * v1.6.4.17 - Extracted from _cleanupExpiredMessageIds
- * @private
- * @param {number} now - Current timestamp
- * @returns {number} Number of expired messages removed
- */
-function _removeExpiredMessages(now) {
-  let expiredCount = 0;
-
-  for (const [messageId, timestamp] of processedMessageTimestamps) {
-    if (now - timestamp > MESSAGE_ID_MAX_AGE_MS) {
-      recentlyProcessedMessageIds.delete(messageId);
-      processedMessageTimestamps.delete(messageId);
-      expiredCount++;
-    }
-  }
-
-  return expiredCount;
-}
-
-/**
- * Evict oldest messages if over capacity (LRU-style)
- * v1.6.4.17 - Extracted from _cleanupExpiredMessageIds
- * @private
- * @param {number} now - Current timestamp
- */
-function _evictOldestIfOverCapacity(now) {
-  if (processedMessageTimestamps.size <= MESSAGE_DEDUP_MAX_SIZE) {
-    return;
-  }
-
-  const evictCount = processedMessageTimestamps.size - MESSAGE_DEDUP_MAX_SIZE;
-  const sortedEntries = [...processedMessageTimestamps.entries()].sort((a, b) => a[1] - b[1]);
-
-  for (let i = 0; i < evictCount; i++) {
-    const [messageId] = sortedEntries[i];
-    recentlyProcessedMessageIds.delete(messageId);
-    processedMessageTimestamps.delete(messageId);
-  }
-
-  console.log('[Manager] [DEDUP] SIZE_EVICTION:', {
-    evictedCount: evictCount,
-    remainingSize: processedMessageTimestamps.size,
-    maxSize: MESSAGE_DEDUP_MAX_SIZE,
-    timestamp: now
-  });
-}
-
-/**
- * Log expired message cleanup if any were removed
- * v1.6.4.17 - Extracted from _cleanupExpiredMessageIds
- * v1.6.3.8-v4 - FIX Issue #7: Enhanced logging with capacity percentage
- * @private
- * @param {number} expiredCount - Number of expired messages
- * @param {number} sizeBefore - Size before cleanup
- * @param {number} now - Current timestamp
- */
-function _logExpiredCleanup(expiredCount, sizeBefore, now) {
-  if (expiredCount > 0) {
-    const sizeAfter = processedMessageTimestamps.size;
-    console.log('[Manager] [DEDUP] EXPIRED_CLEANUP:', {
-      expiredCount,
-      sizeBefore,
-      sizeAfter,
-      capacityBefore: ((sizeBefore / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
-      capacityAfter: ((sizeAfter / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1) + '%',
-      timestamp: now
-    });
-  }
-}
-
-// Start periodic cleanup interval (every 5 seconds)
-setInterval(_cleanupExpiredMessageIds, 5000);
-
-// ==================== v1.6.3.7-v13 DEDUP MAP SIZE LOGGING ====================
-// Issue #5: Periodic logging of dedup Map size for memory monitoring
-const DEDUP_MAP_SIZE_LOG_INTERVAL_MS = 60000; // Log every 60 seconds
-const ESTIMATED_BYTES_PER_ENTRY = 50; // Approximate memory per Map entry (key + value + overhead)
-
-/**
- * Log the current size of the deduplication Map
- * v1.6.3.7-v13 - Issue #5: Periodic memory monitoring for dedup map
- * @private
- */
-function _logDedupMapSize() {
-  const size = processedMessageTimestamps.size;
-  const estimatedKB = ((size * ESTIMATED_BYTES_PER_ENTRY) / 1024).toFixed(1);
-  const capacityPercent = ((size / MESSAGE_DEDUP_MAX_SIZE) * 100).toFixed(1);
-
-  console.log('[Manager] [DEDUP] DEDUP_MAP_SIZE:', {
-    entries: size,
-    maxSize: MESSAGE_DEDUP_MAX_SIZE,
-    capacityPercent: capacityPercent + '%',
-    estimatedMemoryKB: estimatedKB + 'KB',
-    timestamp: Date.now()
-  });
-}
-
-// Start periodic dedup map size logging (every 60 seconds)
-setInterval(_logDedupMapSize, DEDUP_MAP_SIZE_LOG_INTERVAL_MS);
 
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
 
@@ -2374,266 +650,46 @@ setInterval(_logDedupMapSize, DEDUP_MAP_SIZE_LOG_INTERVAL_MS);
  * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
  * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
  * v1.6.4.0 - FIX Issue E: Handle FULL_STATE_SYNC response
- * v1.6.3.7-v4 - FIX Issue #3: Handle STATE_UPDATE from port (not just runtime.onMessage)
- * v1.6.3.7-v4 - FIX Issue #9: Wrapped in try-catch for error handling
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
-  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
-  const messageEntryTime = Date.now();
+  logPortLifecycle('message', {
+    type: message.type,
+    action: message.action,
+    correlationId: message.correlationId
+  });
 
-  // v1.6.3.7-v4 - FIX Issue #9: Wrap in try-catch to handle corrupted messages gracefully
-  try {
-    // v1.6.3.7-v4 - FIX Issue #9: Validate message structure
-    if (!message || typeof message !== 'object') {
-      console.warn('[Manager] PORT_MESSAGE_INVALID: Received non-object message:', typeof message);
-      return;
-    }
-
-    _logPortMessageReceived(message, messageEntryTime);
-
-    // Route message to appropriate handler
-    _routePortMessage(message);
-
-    // v1.6.3.7-v9 - Issue #2: Log message exit with duration
-    const processingDurationMs = Date.now() - messageEntryTime;
-    if (DEBUG_MESSAGING) {
-      console.log(
-        `[Manager] MESSAGE_PROCESSED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`,
-        {
-          quickTabId: message.quickTabId,
-          correlationId: message.correlationId,
-          durationMs: processingDurationMs,
-          timestamp: Date.now()
-        }
-      );
-    }
-  } catch (err) {
-    // v1.6.3.7-v4 - FIX Issue #9: Log error with context and continue
-    console.error('[Manager] PORT_MESSAGE_ERROR: Error processing port message:', {
-      error: err.message,
-      stack: err.stack,
-      messageType: message?.type,
-      messageAction: message?.action,
-      timestamp: Date.now()
-    });
-    // Don't rethrow - graceful degradation
-  }
-}
-
-/**
- * Log port message received with details
- * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
- * v1.6.3.7-v5 - FIX Issue #3: Added path indicator for unified message routing logging
- * v1.6.4.13 - Issue #5: Consolidated MESSAGE_RECEIVED logging (single log entry)
- * v1.6.3.7-v9 - Issue #2: Added entryTime parameter for timing, generate correlationId if missing
- * @private
- * @param {Object} message - Message from background
- * @param {number} entryTime - Timestamp when message was received
- */
-function _logPortMessageReceived(message, entryTime) {
-  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
-  const correlationId =
-    message.correlationId || `port-${entryTime}-${Math.random().toString(36).substring(2, 7)}`;
-
-  // v1.6.4.13 - Issue #5: Consolidated log with [PORT] prefix and all details
-  console.log(
-    `[Manager] MESSAGE_RECEIVED [PORT] [${message.type || message.action || 'UNKNOWN'}]:`,
-    {
-      quickTabId: message.quickTabId,
-      messageId: message.messageId,
-      saveId: message.saveId,
-      correlationId,
-      from: 'background',
-      path: 'port-connection',
-      connectionState,
-      timestamp: entryTime
-    }
-  );
-  // v1.6.3.9-v7 - Issue #6: logPortLifecycle() call removed (function was no-op)
-}
-
-/**
- * Route port message to appropriate handler
- * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
- * v1.6.3.7-v5 - FIX Issue #3: Added logging for STATE_UPDATE via port path
- * v1.6.3.7-v10 - FIX Issue #6: Handle START_STORAGE_WATCHDOG message
- * v1.6.3.7-v10 - FIX ESLint: Refactored to use lookup table to reduce complexity
- * @private
- * @param {Object} message - Message to route
- */
-function _routePortMessage(message) {
-  // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment (combined check)
-  if (message.type === 'HEARTBEAT_ACK' || message.type === 'ACKNOWLEDGMENT') {
+  // v1.6.3.6-v12 - FIX Issue #4: Handle heartbeat acknowledgment
+  if (message.type === 'HEARTBEAT_ACK') {
     handleAcknowledgment(message);
     return;
   }
 
-  // v1.6.3.7-v10 - Use handler lookup for simple routes
-  const handled = _tryRoutePortMessageByType(message);
-  if (handled) return;
-
-  // v1.6.3.7-v7 - FIX Issue #7: Handle operation confirmations from background
-  if (_isOperationConfirmation(message.type)) {
-    _handleOperationConfirmation(message);
+  // Handle acknowledgment
+  if (message.type === 'ACKNOWLEDGMENT') {
+    handleAcknowledgment(message);
     return;
   }
 
-  // v1.6.3.7-v7 - FIX Issue #7: Log unknown message types for debugging
-  console.log('[Manager] [PORT] UNKNOWN_MESSAGE_TYPE:', {
-    type: message.type,
-    action: message.action,
-    messageId: message.messageId,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Try to route port message by type using lookup table
- * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce _routePortMessage complexity
- * @private
- * @param {Object} message - Message to route
- * @returns {boolean} True if message was handled
- */
-function _tryRoutePortMessageByType(message) {
-  const handlers = {
-    START_STORAGE_WATCHDOG: _handleStartStorageWatchdog,
-    BROADCAST: handleBroadcast,
-    QUICK_TAB_STATE_UPDATED: _handleQuickTabStateUpdate,
-    FULL_STATE_SYNC: _handleStateSyncResponse
-  };
-
-  const handler = handlers[message.type];
-  if (handler) {
-    handler(message);
-    return true;
+  // Handle broadcasts
+  if (message.type === 'BROADCAST') {
+    handleBroadcast(message);
+    return;
   }
 
-  // Special handling for STATE_UPDATE with logging
+  // Handle state updates
   if (message.type === 'STATE_UPDATE') {
-    _handlePortStateUpdate(message);
-    return true;
+    // v1.6.4.0 - FIX Issue B: Route through unified render entry point
+    handleStateUpdateBroadcast(message);
+    scheduleRender('port-STATE_UPDATE');
+    return;
   }
-
-  return false;
-}
-
-/**
- * Handle STATE_UPDATE message via port
- * v1.6.3.7-v10 - FIX ESLint: Extracted to reduce _routePortMessage complexity
- * v1.6.3.7-v12 - Issue #5: Track fallback updates for health monitoring
- * @private
- * @param {Object} message - State update message
- */
-function _handlePortStateUpdate(message) {
-  console.log('[Manager] PORT_STATE_UPDATE:', {
-    type: message.type,
-    quickTabId: message.quickTabId || message.payload?.quickTabId,
-    path: 'port-connection',
-    timestamp: Date.now()
-  });
-  handleStateUpdateBroadcast(message);
-  scheduleRender('port-STATE_UPDATE', message.messageId);
-
-  // v1.6.3.7-v12 - Issue #5: Track as port-based fallback update
-  _trackFallbackUpdate('port');
-}
-
-/**
- * Handle START_STORAGE_WATCHDOG message from background
- * v1.6.3.7-v10 - FIX Issue #6: Start watchdog timer when background notifies of storage write
- * v1.6.3.7-v10 - FIX Code Review: timeoutMs destructured for logging but timer uses STORAGE_WATCHDOG_TIMEOUT_MS
- * @private
- * @param {Object} message - Watchdog message with expectedSaveId and timeoutMs
- */
-function _handleStartStorageWatchdog(message) {
-  const { expectedSaveId, sequenceId, timeoutMs } = message;
-
-  // Note: timeoutMs from message is logged for debugging, but timer uses local constant
-  // STORAGE_WATCHDOG_TIMEOUT_MS (2000ms) to ensure consistent behavior
-  console.log('[Manager] START_STORAGE_WATCHDOG received:', {
-    expectedSaveId,
-    sequenceId,
-    backgroundTimeoutMs: timeoutMs, // v1.6.3.7-v10 - Renamed for clarity
-    localTimeoutMs: STORAGE_WATCHDOG_TIMEOUT_MS,
-    timestamp: Date.now()
-  });
-
-  // Start the watchdog timer - if storage.onChanged doesn't arrive in time,
-  // _handleWatchdogTimeout will re-read storage explicitly
-  _startStorageWatchdog(expectedSaveId);
-}
-
-/**
- * Check if message type is an operation confirmation
- * v1.6.3.7-v7 - FIX Issue #7: Support operation confirmation messages
- * @private
- * @param {string} type - Message type
- * @returns {boolean} True if this is an operation confirmation
- */
-function _isOperationConfirmation(type) {
-  const confirmationTypes = [
-    'MINIMIZE_CONFIRMED',
-    'RESTORE_CONFIRMED',
-    'DELETE_CONFIRMED',
-    'UPDATE_CONFIRMED',
-    'ADOPT_CONFIRMED',
-    'CLEAR_ALL_CONFIRMED'
-  ];
-  return confirmationTypes.includes(type);
-}
-
-/**
- * Handle operation confirmation from background
- * v1.6.3.7-v7 - FIX Issue #7: Process confirmations and trigger UI update
- * @private
- * @param {Object} message - Confirmation message
- */
-function _handleOperationConfirmation(message) {
-  const { type, quickTabId, correlationId, success, error } = message;
-
-  // Default success to true if not explicitly false (confirmation messages typically indicate success)
-  const isSuccess = success !== false;
-
-  console.log('[Manager] [PORT] OPERATION_CONFIRMED:', {
-    type,
-    quickTabId,
-    correlationId,
-    success: isSuccess,
-    error: error || null,
-    timestamp: Date.now()
-  });
-
-  // If there's a pending acknowledgment for this correlationId, resolve it
-  if (correlationId && pendingAcks.has(correlationId)) {
-    const pending = pendingAcks.get(correlationId);
-    clearTimeout(pending.timeout);
-    pending.resolve({ success: isSuccess, type, quickTabId });
-    pendingAcks.delete(correlationId);
+  
+  // v1.6.4.0 - FIX Issue E: Handle full state sync response
+  if (message.type === 'FULL_STATE_SYNC') {
+    _handleStateSyncResponse(message);
+    return;
   }
-
-  // Schedule render to reflect the confirmed operation
-  scheduleRender(`port-${type}`, message.messageId);
-}
-
-/**
- * Handle QUICK_TAB_STATE_UPDATED message from port
- * v1.6.3.7-v4 - FIX Issue #9: Extracted for complexity reduction
- * v1.6.3.7-v5 - FIX Issue #3: Enhanced path logging
- * @private
- * @param {Object} message - State update message
- */
-function _handleQuickTabStateUpdate(message) {
-  console.log('[Manager] PORT_STATE_UPDATE_RECEIVED:', {
-    quickTabId: message.quickTabId,
-    changes: message.changes,
-    messageId: message.messageId,
-    saveId: message.saveId,
-    path: 'port-connection' // v1.6.3.7-v5 - FIX Issue #3: Explicit path
-  });
-
-  handleStateUpdateBroadcast(message);
-  scheduleRender('port-QUICK_TAB_STATE_UPDATED', message.messageId);
 }
 
 /**
@@ -2675,17 +731,16 @@ function handleAcknowledgment(ack) {
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
  * v1.6.4.0 - FIX Issue B: Route all renders through scheduleRender()
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * @param {Object} message - Broadcast message
  */
 function handleBroadcast(message) {
-  const { action, messageId } = message;
+  const { action } = message;
 
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Manager] Received visibility change broadcast:', message);
       // v1.6.4.0 - FIX Issue B: Route through unified entry point
-      scheduleRender('broadcast-VISIBILITY_CHANGE', messageId);
+      scheduleRender('broadcast-VISIBILITY_CHANGE');
       break;
 
     case 'TAB_LIFECYCLE_CHANGE':
@@ -2695,7 +750,7 @@ function handleBroadcast(message) {
         browserTabInfoCache.delete(message.tabId);
       }
       // v1.6.4.0 - FIX Issue B: Route through unified entry point
-      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE', messageId);
+      scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE');
       break;
 
     default:
@@ -2719,74 +774,71 @@ function handleStateUpdateBroadcast(message) {
 }
 
 /**
- * Send message to background using stateless runtime.sendMessage
- * v1.6.3.8-v13 - PORT REMOVED: Replaces port-based sendWithAck
+ * Send message via port with acknowledgment tracking
+ * v1.6.3.6-v11 - FIX Issue #10: Request-acknowledgment pattern
  * @param {Object} message - Message to send
- * @returns {Promise<Object>} Response from background
+ * @returns {Promise<Object>} Acknowledgment response
  */
-async function sendToBackground(message) {
-  const correlationId = generateCorrelationId();
-  const messageWithCorrelation = {
-    ...message,
-    correlationId,
-    timestamp: Date.now(),
-    source: 'sidebar'
-  };
-
-  try {
-    console.log('[Manager] RUNTIME_MESSAGE_SEND:', {
-      type: message.type,
-      action: message.action,
-      correlationId,
-      timestamp: Date.now()
-    });
-
-    const response = await Promise.race([
-      browser.runtime.sendMessage(messageWithCorrelation),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Message timeout')), MESSAGE_TIMEOUT_MS)
-      )
-    ]);
-
-    console.log('[Manager] RUNTIME_MESSAGE_RESPONSE:', {
-      correlationId,
-      success: response?.success,
-      hasResponse: !!response,
-      timestamp: Date.now()
-    });
-
-    return response || { success: true, correlationId };
-  } catch (err) {
-    console.warn('[Manager] RUNTIME_MESSAGE_FAILED:', {
-      correlationId,
-      error: err.message,
-      timestamp: Date.now()
-    });
-
-    // Fallback: trigger re-render anyway on timeout
-    // v1.6.3.8-v13 - Robust timeout detection (includes our timeout and network timeouts)
-    const isTimeout = err.message?.includes('timeout') || err.message?.includes('Timeout');
-    if (isTimeout) {
-      scheduleRender('message-timeout-fallback');
-      return { success: true, timedOut: true, correlationId };
+function sendWithAck(message) {
+  return new Promise((resolve, reject) => {
+    if (!backgroundPort) {
+      reject(new Error('No port connection'));
+      return;
     }
 
-    return { success: false, error: err.message, correlationId };
-  }
+    const correlationId = generateCorrelationId();
+    const messageWithCorrelation = {
+      ...message,
+      correlationId,
+      timestamp: Date.now()
+    };
+
+    // Set up timeout fallback
+    const timeout = setTimeout(() => {
+      pendingAcks.delete(correlationId);
+      console.warn('[Manager] Acknowledgment timeout for:', correlationId);
+
+      // Fallback: trigger re-render anyway
+      renderUI();
+
+      // Resolve with timeout indicator
+      resolve({ success: true, timedOut: true, correlationId });
+    }, ACK_TIMEOUT_MS);
+
+    // Store pending ack
+    pendingAcks.set(correlationId, {
+      resolve,
+      reject,
+      timeout,
+      sentAt: Date.now()
+    });
+
+    // Send message
+    try {
+      backgroundPort.postMessage(messageWithCorrelation);
+      console.log('[Manager] Sent message with ack request:', {
+        type: message.type,
+        action: message.action,
+        correlationId
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      reject(err);
+    }
+  });
 }
 
-// v1.6.3.9-v7 - Issue #6: _sendMessageToBackground() removed (deprecated, never called)
-// v1.6.3.9-v7 - Issue #6: _sendWithAck() removed (deprecated, never called)
-
 /**
- * Send ACTION_REQUEST to background
- * v1.6.3.8-v13 - PORT REMOVED: Uses stateless runtime.sendMessage
+ * Send ACTION_REQUEST via port
+ * v1.6.3.6-v11 - FIX Issue #15: Typed messages
+ * Note: Prefixed with _ as it's prepared for future use but not yet integrated
  * @param {string} action - Action name
  * @param {Object} payload - Action payload
  * @returns {Promise<Object>} Response
  */
 function _sendActionRequest(action, payload) {
-  return sendToBackground({
+  return sendWithAck({
     type: 'ACTION_REQUEST',
     action,
     payload,
@@ -2794,734 +846,7 @@ function _sendActionRequest(action, payload) {
   });
 }
 
-// ==================== END PORT CONNECTION (v1.6.3.9-v4: ALL REMOVED) ====================
-// v1.6.3.9-v4 - Port and BroadcastChannel completely removed
-// All communication now uses:
-// - storage.onChanged for state updates (PRIMARY)
-// - runtime.sendMessage for request/response patterns (SECONDARY)
-
-// ==================== v1.6.3.7-v12/v13 FALLBACK HEALTH MONITORING ====================
-// v1.6.3.9-v4 - NOTE: "Fallback" now refers to storage.onChanged as PRIMARY mechanism
-// Issue #5: Periodic fallback status logging when BC is unavailable
-// Issue #12: Enhanced health monitoring with stall detection and latency tracking
-// Issue #6 (arch): Storage tier health instrumentation
-
-/**
- * Fallback health monitoring interval ID
- * v1.6.3.7-v12 - Issue #5: Track interval for cleanup
- */
-let fallbackHealthIntervalId = null;
-
-/**
- * Storage health probe interval ID
- * v1.6.3.7-v13 - Issue #6 (arch): Track storage probe interval
- */
-let storageHealthProbeIntervalId = null;
-
-/**
- * Fallback statistics for health monitoring
- * v1.6.3.7-v12 - Issue #5: Track state updates received via fallback
- * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
- * v1.6.3.8-v3 - FIX Issue #20: Added reset function for clean cycle separation
- */
-const fallbackStats = {
-  stateUpdatesReceived: 0,
-  lastUpdateTime: 0,
-  portMessagesReceived: 0,
-  storageEventsReceived: 0,
-  startTime: Date.now(),
-  // v1.6.3.7-v13 - Issue #12: Latency tracking
-  latencySum: 0,
-  latencyCount: 0,
-  lastLatencyMs: 0
-};
-
-/**
- * Reset fallback stats for a new monitoring cycle
- * v1.6.3.8-v3 - FIX Issue #20: Clear all counters to prevent cross-cycle accumulation
- * @private
- */
-function _resetFallbackStats() {
-  const previousStats = { ...fallbackStats };
-
-  fallbackStats.stateUpdatesReceived = 0;
-  fallbackStats.lastUpdateTime = 0;
-  fallbackStats.portMessagesReceived = 0;
-  fallbackStats.storageEventsReceived = 0;
-  fallbackStats.startTime = Date.now();
-  fallbackStats.latencySum = 0;
-  fallbackStats.latencyCount = 0;
-  fallbackStats.lastLatencyMs = 0;
-
-  console.log('[Manager] FALLBACK_STATS_RESET:', {
-    previousCycle: {
-      stateUpdatesReceived: previousStats.stateUpdatesReceived,
-      portMessages: previousStats.portMessagesReceived,
-      storageEvents: previousStats.storageEventsReceived,
-      durationMs: Date.now() - previousStats.startTime
-    },
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Storage health probe statistics
- * v1.6.3.7-v13 - Issue #6 (arch): Track storage tier health
- * v1.6.3.8-v3 - FIX Issue #17: Added probeInProgress flag to prevent concurrent probes
- */
-const storageHealthStats = {
-  probesSent: 0,
-  probesReceived: 0,
-  lastProbeTime: 0,
-  lastProbeLatencyMs: 0,
-  avgLatencyMs: 0,
-  latencySum: 0,
-  lastSuccessfulProbe: 0,
-  consecutiveFailures: 0,
-  // v1.6.3.8-v3 - FIX Issue #17: Guard flag to prevent concurrent probes
-  probeInProgress: false
-};
-
-/**
- * Fallback health check interval (30 seconds)
- * v1.6.3.7-v12 - Issue #5: Log fallback status periodically
- */
-const FALLBACK_HEALTH_CHECK_INTERVAL_MS = 30000;
-
-/**
- * Stall detection threshold (60 seconds)
- * v1.6.3.7-v13 - Issue #12: Warn if no updates received for this long
- */
-const FALLBACK_STALL_THRESHOLD_MS = 60000;
-
-/**
- * Storage health probe interval (30 seconds)
- * v1.6.3.7-v13 - Issue #6 (arch): Check storage tier health periodically
- */
-const STORAGE_HEALTH_PROBE_INTERVAL_MS = 30000;
-
-/**
- * Storage health probe timeout (500ms)
- * v1.6.3.7-v13 - Issue #6 (arch): Max wait for probe response
- */
-const STORAGE_HEALTH_PROBE_TIMEOUT_MS = 500;
-
-/**
- * Storage health probe key
- * v1.6.3.7-v13 - Issue #6 (arch): Dedicated key for health probes
- */
-const STORAGE_HEALTH_PROBE_KEY = '_sidebar_health_ping';
-
-/**
- * Track if fallback mode is active
- * v1.6.3.7-v13 - Issue #5, #12: Used for UI badge display
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- */
-let _fallbackModeActive = false;
-
-/**
- * Start fallback health monitoring
- * v1.6.3.7-v12 - Issue #5: Log periodic fallback status when BC unavailable
- * v1.6.3.7-v13 - Issue #12: Enhanced with stall detection and degraded warnings
- * v1.6.3.8-v3 - FIX Issue #20: Reset stats at start for clean cycle separation
- * @private
- */
-function _startFallbackHealthMonitoring() {
-  if (fallbackHealthIntervalId) {
-    clearInterval(fallbackHealthIntervalId);
-  }
-
-  // v1.6.3.8-v3 - FIX Issue #20: Reset stats at start of new monitoring cycle
-  _resetFallbackStats();
-  _fallbackModeActive = true;
-
-  // v1.6.3.7-v13 - Issue #6 (arch): Also start storage health probing
-  _startStorageHealthProbe();
-
-  fallbackHealthIntervalId = setInterval(() => {
-    _logFallbackHealthStatus();
-  }, FALLBACK_HEALTH_CHECK_INTERVAL_MS);
-
-  console.log(
-    '[Manager] FALLBACK_SESSION_START: using [port-based + storage.onChanged], will check fallback health every 30s',
-    {
-      healthCheckIntervalMs: FALLBACK_HEALTH_CHECK_INTERVAL_MS,
-      stallThresholdMs: FALLBACK_STALL_THRESHOLD_MS,
-      storageProbeIntervalMs: STORAGE_HEALTH_PROBE_INTERVAL_MS,
-      timestamp: Date.now()
-    }
-  );
-}
-
-/**
- * Log fallback health status with stall detection
- * v1.6.3.7-v13 - Issue #12: Extracted for clarity with enhanced monitoring
- * @private
- */
-function _logFallbackHealthStatus() {
-  const now = Date.now();
-  const elapsedMs = now - fallbackStats.startTime;
-  const timeSinceLastUpdate =
-    fallbackStats.lastUpdateTime > 0 ? now - fallbackStats.lastUpdateTime : elapsedMs;
-
-  // Calculate average time between updates
-  const avgTimeBetweenUpdatesMs =
-    fallbackStats.stateUpdatesReceived > 0
-      ? Math.round(elapsedMs / fallbackStats.stateUpdatesReceived)
-      : null;
-
-  // Calculate average latency
-  const avgLatencyMs =
-    fallbackStats.latencyCount > 0
-      ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
-      : null;
-
-  // Expected updates: ~6 per interval if state changes every 5s
-  const expectedUpdates = Math.floor(FALLBACK_HEALTH_CHECK_INTERVAL_MS / 5000);
-
-  // v1.6.3.7-v13 - Issue #12: Detect stall condition
-  const isStalled = timeSinceLastUpdate >= FALLBACK_STALL_THRESHOLD_MS;
-
-  if (isStalled) {
-    console.warn(
-      '[Manager] FALLBACK_STALLED: no state updates for 60+ seconds, fallback may be broken',
-      {
-        timeSinceLastUpdateMs: timeSinceLastUpdate,
-        thresholdMs: FALLBACK_STALL_THRESHOLD_MS,
-        portMessagesReceived: fallbackStats.portMessagesReceived,
-        storageEventsReceived: fallbackStats.storageEventsReceived,
-        connectionState,
-        lastUpdateTime:
-          fallbackStats.lastUpdateTime > 0
-            ? new Date(fallbackStats.lastUpdateTime).toISOString()
-            : 'never',
-        timestamp: now
-      }
-    );
-  }
-
-  // v1.6.3.7-v13 - Issue #12: Log health status with all metrics
-  console.log('[Manager] FALLBACK_HEALTH:', {
-    receivedMessages: fallbackStats.stateUpdatesReceived,
-    expectedPerInterval: expectedUpdates,
-    avgLatencyMs,
-    lastLatencyMs: fallbackStats.lastLatencyMs,
-    lastUpdateAgoMs: timeSinceLastUpdate,
-    isStalled,
-    broadcastChannelAvailable: false,
-    fallbackActive: true,
-    portMessages: fallbackStats.portMessagesReceived,
-    storageEvents: fallbackStats.storageEventsReceived,
-    lastUpdateTime:
-      fallbackStats.lastUpdateTime > 0
-        ? new Date(fallbackStats.lastUpdateTime).toISOString()
-        : 'never',
-    avgTimeBetweenUpdatesMs,
-    uptimeMs: elapsedMs,
-    storageHealthy: storageHealthStats.consecutiveFailures === 0,
-    timestamp: now
-  });
-}
-
-/**
- * Stop fallback health monitoring
- * v1.6.3.7-v13 - Issue #12: Cleanup on channel recovery
- * v1.6.3.8-v3 - FIX Issue #20: Log final session stats before stopping
- * @private
- */
-function _stopFallbackHealthMonitoring() {
-  if (fallbackHealthIntervalId) {
-    clearInterval(fallbackHealthIntervalId);
-    fallbackHealthIntervalId = null;
-
-    // v1.6.3.8-v3 - FIX Issue #20: Log final stats for this session
-    const sessionDurationMs = Date.now() - fallbackStats.startTime;
-    const avgLatencyMs =
-      fallbackStats.latencyCount > 0
-        ? Math.round(fallbackStats.latencySum / fallbackStats.latencyCount)
-        : 0;
-
-    console.log('[Manager] FALLBACK_SESSION_ENDED:', {
-      sessionDurationMs,
-      totalStateUpdates: fallbackStats.stateUpdatesReceived,
-      portMessages: fallbackStats.portMessagesReceived,
-      storageEvents: fallbackStats.storageEventsReceived,
-      avgLatencyMs,
-      lastLatencyMs: fallbackStats.lastLatencyMs,
-      timestamp: Date.now()
-    });
-  }
-  _stopStorageHealthProbe();
-  _fallbackModeActive = false;
-  console.log('[Manager] Fallback health monitoring stopped');
-}
-
-/**
- * Start storage health probe
- * v1.6.3.7-v13 - Issue #6 (arch): Periodic storage tier health check
- * @private
- */
-function _startStorageHealthProbe() {
-  if (storageHealthProbeIntervalId) {
-    clearInterval(storageHealthProbeIntervalId);
-  }
-
-  // Set up listener for probe responses
-  _setupStorageHealthProbeListener();
-
-  // Send initial probe
-  _sendStorageHealthProbe();
-
-  // Schedule periodic probes
-  storageHealthProbeIntervalId = setInterval(() => {
-    _sendStorageHealthProbe();
-  }, STORAGE_HEALTH_PROBE_INTERVAL_MS);
-
-  console.log(
-    `[Manager] Storage health probe started (every ${STORAGE_HEALTH_PROBE_INTERVAL_MS / 1000}s)`
-  );
-}
-
-/**
- * Stop storage health probe
- * v1.6.3.7-v13 - Issue #6 (arch): Cleanup
- * @private
- */
-function _stopStorageHealthProbe() {
-  if (storageHealthProbeIntervalId) {
-    clearInterval(storageHealthProbeIntervalId);
-    storageHealthProbeIntervalId = null;
-  }
-}
-
-/**
- * Set up listener for storage health probe responses
- * v1.6.3.7-v13 - Issue #6 (arch): Listen for our own probe writes
- * @private
- */
-function _setupStorageHealthProbeListener() {
-  // This is called once during init - the actual listener is in setupEventListeners
-  // We just track the state here
-  console.log('[Manager] Storage health probe listener ready');
-}
-
-/**
- * Send a storage health probe
- * v1.6.3.7-v13 - Issue #6 (arch): Write timestamp to storage and measure round-trip
- * v1.6.3.8-v3 - FIX Issue #17: Added guard to prevent concurrent probes
- * v1.6.3.8-v4 - FIX Issue #8: Track lastProbeTime, queue next probe, force-reset timeout
- * @private
- */
-async function _sendStorageHealthProbe() {
-  const now = Date.now();
-
-  // v1.6.3.8-v4 - FIX Issue #8: Enforce minimum interval between probes
-  const timeSinceLastProbe =
-    lastProbeStartTime > 0 ? now - lastProbeStartTime : PROBE_MIN_INTERVAL_MS + 1;
-  if (timeSinceLastProbe < PROBE_MIN_INTERVAL_MS) {
-    console.log('[Manager] STORAGE_HEALTH_PROBE_THROTTLED: too soon since last probe', {
-      lastProbeTime: lastProbeStartTime,
-      timeSinceLastProbeMs: timeSinceLastProbe,
-      minIntervalMs: PROBE_MIN_INTERVAL_MS,
-      timestamp: now
-    });
-    // Queue next probe for later
-    setTimeout(_sendStorageHealthProbe, PROBE_MIN_INTERVAL_MS - timeSinceLastProbe + 100);
-    return;
-  }
-
-  // v1.6.3.8-v3 - FIX Issue #17: Prevent concurrent health probes
-  if (storageHealthStats.probeInProgress) {
-    // v1.6.3.8-v4 - FIX Issue #8: Check if probe is stuck and force-reset if needed
-    const probeRunTime = now - lastProbeStartTime;
-    if (probeRunTime > PROBE_FORCE_RESET_MS) {
-      console.warn('[Manager] STORAGE_HEALTH_PROBE_FORCE_RESET: probe stuck, resetting flag', {
-        probeRunTimeMs: probeRunTime,
-        forceResetThresholdMs: PROBE_FORCE_RESET_MS,
-        lastProbeTime: lastProbeStartTime,
-        timestamp: now
-      });
-      storageHealthStats.probeInProgress = false;
-      storageHealthStats.consecutiveFailures++;
-    } else {
-      console.log('[Manager] STORAGE_HEALTH_PROBE_SKIPPED: probe already in progress', {
-        lastProbeTime: storageHealthStats.lastProbeTime,
-        probeRunTimeMs: probeRunTime,
-        timestamp: now
-      });
-      // Queue next probe for 100ms later instead of just skipping
-      setTimeout(_sendStorageHealthProbe, 100);
-      return;
-    }
-  }
-
-  storageHealthStats.probeInProgress = true;
-  lastProbeStartTime = now;
-  const probeTimestamp = now;
-  storageHealthStats.probesSent++;
-  storageHealthStats.lastProbeTime = probeTimestamp;
-
-  // Set up timeout for probe response
-  const timeoutId = setTimeout(() => {
-    _handleStorageProbeTimeout(probeTimestamp);
-  }, STORAGE_HEALTH_PROBE_TIMEOUT_MS);
-
-  try {
-    // Write probe timestamp to storage
-    await browser.storage.local.set({
-      [STORAGE_HEALTH_PROBE_KEY]: {
-        timestamp: probeTimestamp,
-        source: 'sidebar-health-probe'
-      }
-    });
-
-    // Store timeout ID for cleanup
-    storageHealthStats._currentProbeTimeoutId = timeoutId;
-
-    if (DEBUG_MESSAGING) {
-      console.log('[Manager] STORAGE_HEALTH_PROBE_SENT:', {
-        probeTimestamp,
-        probesSent: storageHealthStats.probesSent,
-        timestamp: Date.now()
-      });
-    }
-  } catch (err) {
-    clearTimeout(timeoutId);
-    // v1.6.3.8-v3 - FIX Issue #17: Clear probe in progress on failure
-    storageHealthStats.probeInProgress = false;
-    console.error('[Manager] STORAGE_HEALTH_PROBE_FAILED:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-    storageHealthStats.consecutiveFailures++;
-  }
-}
-
-/**
- * Handle storage health probe response (called from storage.onChanged)
- * v1.6.3.7-v13 - Issue #6 (arch): Measure round-trip latency
- * v1.6.3.8-v3 - FIX Issue #17: Clear probeInProgress flag on response
- * @param {number} probeTimestamp - Original probe timestamp
- * @private
- */
-function _handleStorageProbeResponse(probeTimestamp) {
-  const now = Date.now();
-  const latencyMs = now - probeTimestamp;
-
-  // v1.6.3.8-v3 - FIX Issue #17: Clear probe in progress flag
-  storageHealthStats.probeInProgress = false;
-
-  // Clear any pending timeout
-  if (storageHealthStats._currentProbeTimeoutId) {
-    clearTimeout(storageHealthStats._currentProbeTimeoutId);
-    storageHealthStats._currentProbeTimeoutId = null;
-  }
-
-  storageHealthStats.probesReceived++;
-  storageHealthStats.lastProbeLatencyMs = latencyMs;
-  storageHealthStats.latencySum += latencyMs;
-  storageHealthStats.avgLatencyMs = Math.round(
-    storageHealthStats.latencySum / storageHealthStats.probesReceived
-  );
-  storageHealthStats.lastSuccessfulProbe = now;
-  storageHealthStats.consecutiveFailures = 0;
-
-  // Classify health based on latency
-  const healthStatus = latencyMs < 100 ? 'healthy' : latencyMs < 500 ? 'acceptable' : 'degraded';
-
-  if (DEBUG_MESSAGING) {
-    console.log(`[Manager] Storage Tier Latency: ${latencyMs}ms (${healthStatus})`, {
-      probeTimestamp,
-      latencyMs,
-      avgLatencyMs: storageHealthStats.avgLatencyMs,
-      probesReceived: storageHealthStats.probesReceived,
-      healthStatus,
-      timestamp: now
-    });
-  }
-}
-
-/**
- * Handle storage probe timeout
- * v1.6.3.7-v13 - Issue #6 (arch): storage.onChanged didn't fire in time
- * v1.6.3.8-v4 - FIX Issue #8: Clear probeInProgress flag on timeout
- * @param {number} probeTimestamp - Original probe timestamp
- * @private
- */
-function _handleStorageProbeTimeout(probeTimestamp) {
-  // v1.6.3.8-v4 - FIX Issue #8: Clear probeInProgress flag on timeout
-  storageHealthStats.probeInProgress = false;
-  storageHealthStats.consecutiveFailures++;
-  storageHealthStats._currentProbeTimeoutId = null;
-
-  console.warn('[Manager] STORAGE_TIER_BROKEN: onChanged not firing', {
-    probeTimestamp,
-    timeoutMs: STORAGE_HEALTH_PROBE_TIMEOUT_MS,
-    consecutiveFailures: storageHealthStats.consecutiveFailures,
-    lastSuccessfulProbe:
-      storageHealthStats.lastSuccessfulProbe > 0
-        ? new Date(storageHealthStats.lastSuccessfulProbe).toISOString()
-        : 'never',
-    timestamp: Date.now()
-  });
-}
-
-// ==================== v1.6.3.9-v4 SIMPLIFIED STORAGE HEALTH CHECK ====================
-// From ROBUST-QUICKTABS-ARCHITECTURE.md - Fallback polling when storage.onChanged goes silent
-
-/**
- * Check storage health and request state if no events received recently
- * v1.6.3.9-v4 - Simplified health check from constants-config-reference.md
- * @private
- */
-async function _checkStorageHealth() {
-  const now = Date.now();
-  const timeSinceLastEvent = now - _lastStorageEventTime;
-
-  // Trigger health check if no events for 80% of the interval
-  // This provides more responsive detection of silent storage listeners
-  const healthCheckThreshold = STORAGE_HEALTH_CHECK_INTERVAL_MS * 0.8;
-  if (timeSinceLastEvent <= healthCheckThreshold) {
-    return;
-  }
-
-  console.warn('[Manager] STORAGE_HEALTH_CHECK: No events for', timeSinceLastEvent, 'ms');
-
-  try {
-    // Request fresh state from background via runtime.sendMessage
-    const response = await sendToBackground({
-      action: 'GET_QUICK_TABS_STATE',
-      source: 'health-check',
-      timestamp: now
-    });
-
-    if (response?.state) {
-      console.log('[Manager] STORAGE_HEALTH_CHECK: Got state via fallback', {
-        tabCount: response.state?.tabs?.length ?? 0,
-        revision: response.state?.revision,
-        timeSinceLastEventMs: timeSinceLastEvent
-      });
-
-      // Process through the same handler as storage.onChanged events
-      // This ensures consistent guard checks and state updates
-      _handleStorageChangedEvent({
-        [STATE_KEY]: { newValue: response.state }
-      });
-
-      _lastStorageEventTime = now;
-    }
-  } catch (err) {
-    console.error('[Manager] STORAGE_HEALTH_CHECK: Failed', {
-      error: err.message,
-      timeSinceLastEventMs: timeSinceLastEvent
-    });
-  }
-}
-
-/**
- * Start the storage health check interval
- * v1.6.3.9-v4 - From constants-config-reference.md
- * @private
- */
-function _startStorageHealthCheckInterval() {
-  if (_storageHealthCheckIntervalId) {
-    clearInterval(_storageHealthCheckIntervalId);
-  }
-
-  _storageHealthCheckIntervalId = setInterval(
-    _checkStorageHealth,
-    STORAGE_HEALTH_CHECK_INTERVAL_MS
-  );
-
-  console.log('[Manager] STORAGE_HEALTH_CHECK: Started', {
-    intervalMs: STORAGE_HEALTH_CHECK_INTERVAL_MS,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Stop the storage health check interval
- * v1.6.3.9-v4 - Cleanup on unload
- * @private
- */
-function _stopStorageHealthCheckInterval() {
-  if (_storageHealthCheckIntervalId) {
-    clearInterval(_storageHealthCheckIntervalId);
-    _storageHealthCheckIntervalId = null;
-    console.log('[Manager] STORAGE_HEALTH_CHECK: Stopped');
-  }
-}
-
-// ==================== v1.6.3.9-v4 SIMPLIFIED STORAGE CHANGED EVENT HANDLER ====================
-// From ROBUST-QUICKTABS-ARCHITECTURE.md - Clean guard pattern for storage events
-
-/**
- * Simplified storage changed event handler with clear guards
- * v1.6.3.9-v4 - From ROBUST-QUICKTABS-ARCHITECTURE.md
- * @param {Object} changes - Storage changes object
- * @private
- */
-/**
- * Validate storage event structure
- * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
- * @param {Object} newState - The new state from storage
- * @returns {boolean} True if valid
- */
-function _validateStorageEventStructure(newState) {
-  if (!newState || !Array.isArray(newState.tabs)) {
-    console.warn('[Manager] STORAGE_EVENT_INVALID: Invalid state structure', {
-      hasNewState: !!newState,
-      hasTabs: !!newState?.tabs,
-      isArray: Array.isArray(newState?.tabs)
-    });
-    return false;
-  }
-  return true;
-}
-
-/**
- * Check if revision is stale
- * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
- * Uses _lastAppliedRevision for consistency with existing revision tracking
- * @param {number} newRevision - The incoming revision
- * @returns {boolean} True if stale (should reject)
- */
-function _isStaleRevision(newRevision) {
-  if (newRevision === undefined) {
-    return false; // No revision = accept (backward compatibility)
-  }
-  // Use _lastAppliedRevision for consistency with existing revision tracking
-  if (newRevision <= _lastAppliedRevision) {
-    console.log('[Manager] STORAGE_EVENT_STALE: Ignoring stale revision', {
-      received: newRevision,
-      current: _lastAppliedRevision
-    });
-    return true;
-  }
-  return false;
-}
-
-/**
- * Check if state is too old
- * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
- * @param {Object} newState - The new state from storage
- * @returns {boolean} True if too old (should reject)
- */
-function _isStateEventTooOld(newState) {
-  const stateTimestamp = newState.lastModified || newState.timestamp;
-
-  // If no timestamp available, accept the event (can't determine age)
-  if (!stateTimestamp) {
-    return false;
-  }
-
-  const stateAge = Date.now() - stateTimestamp;
-  if (stateAge > STORAGE_MAX_AGE_MS) {
-    console.warn('[Manager] STORAGE_EVENT_OLD: Rejecting old event', {
-      ageMs: stateAge,
-      maxAgeMs: STORAGE_MAX_AGE_MS,
-      lastModified: stateTimestamp
-    });
-    return true;
-  }
-  return false;
-}
-
-/**
- * Update sidebar local state from new state
- * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
- * @param {Object} newState - The new state from storage
- */
-function _updateSidebarLocalState(newState) {
-  sidebarLocalState.tabs = newState.tabs.slice();
-  sidebarLocalState.lastModified = newState.lastModified || newState.timestamp || Date.now();
-  if (newState.revision !== undefined) {
-    sidebarLocalState.revisionReceived = newState.revision;
-    // Also update _lastAppliedRevision for consistency
-    _lastAppliedRevision = newState.revision;
-  }
-  if (newState.writeSequence !== undefined) {
-    sidebarLocalState.writeSequence = newState.writeSequence;
-  }
-}
-
-/**
- * Simplified storage changed event handler with clear guards
- * v1.6.3.9-v4 - From ROBUST-QUICKTABS-ARCHITECTURE.md
- * @param {Object} changes - Storage changes object
- * @private
- */
-function _handleStorageChangedEvent(changes) {
-  const stateChange = changes[STATE_KEY];
-  if (!stateChange) return;
-
-  const newState = stateChange.newValue;
-
-  // Guard 1: Validate structure
-  if (!_validateStorageEventStructure(newState)) return;
-
-  // Guard 2: Revision ordering (if revision present)
-  if (_isStaleRevision(newState.revision)) return;
-
-  // Guard 3: Age check (reject events older than 5 minutes)
-  if (_isStateEventTooOld(newState)) return;
-
-  // Update last event time for health check
-  _lastStorageEventTime = Date.now();
-
-  // Update sidebar local state
-  _updateSidebarLocalState(newState);
-
-  console.log('[Manager] STORAGE_EVENT_ACCEPTED:', {
-    tabCount: newState.tabs.length,
-    revision: newState.revision,
-    saveId: newState.saveId
-  });
-
-  // Schedule render with revision for dedup
-  scheduleRender('storage-event', newState.saveId);
-}
-
-/**
- * Track fallback state update received
- * v1.6.3.7-v12 - Issue #5: Increment counters for health monitoring
- * v1.6.3.7-v13 - Issue #12: Enhanced with latency tracking
- * @param {string} source - Source of update ('port' or 'storage')
- * @param {number} [latencyMs] - Optional latency measurement
- */
-function _trackFallbackUpdate(source, latencyMs = null) {
-  const now = Date.now();
-  fallbackStats.stateUpdatesReceived++;
-  fallbackStats.lastUpdateTime = now;
-
-  if (source === 'port') {
-    fallbackStats.portMessagesReceived++;
-  } else if (source === 'storage') {
-    fallbackStats.storageEventsReceived++;
-  }
-
-  // v1.6.3.7-v13 - Issue #12: Track latency if provided
-  if (latencyMs !== null && latencyMs >= 0) {
-    fallbackStats.latencySum += latencyMs;
-    fallbackStats.latencyCount++;
-    fallbackStats.lastLatencyMs = latencyMs;
-  }
-}
-
-// ==================== v1.6.3.9-v7 GAP #15: BROADCASTCHANNEL DEAD CODE REMOVED ====================
-// v1.6.3.9-v7 - Issue #6: All broadcast handler functions removed (BC was removed in v1.6.3.8-v6)
-// storage.onChanged is now the PRIMARY sync mechanism, no BC fallback exists.
-//
-// REMOVED functions in v1.6.3.9-v6:
-// - handleBroadcastChannelMessage(), _checkBroadcastChannelHealth(), _checkSequenceGap()
-// - _generateBroadcastMessageIds(), _logBroadcastMessageProcessed()
-// - _triggerStorageFallbackOnGap(), _routeBroadcastMessage(), handleBroadcastFullStateSync()
-//
-// REMOVED functions in v1.6.3.9-v7 (Issue #6):
-// - _handleBroadcastCreate(), _handleBroadcastUpdate(), _handleBroadcastDelete()
-// - _handleBroadcastMinimizeRestore(), _findTabIndex(), _updateStateAfterMutation()
-
-// v1.6.3.9-v4 - BC removed: cleanupBroadcastChannel deleted
+// ==================== END PORT CONNECTION ====================
 
 // ==================== v1.6.3.6-v11 COUNT BADGE ANIMATION ====================
 // FIX Issue #20: Diff-based rendering for count badge animation
@@ -3679,459 +1004,43 @@ async function saveCollapseState(collapseState) {
 
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
 // v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
-// v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
-// v1.6.3.7-v5 - FIX Issue #9: Wrapped in try-catch for error handling
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // v1.6.3.7-v5 - FIX Issue #9: Wrap entire handler in try-catch
-  try {
-    return _processRuntimeMessage(message, sendResponse);
-  } catch (err) {
-    // v1.6.3.7-v5 - FIX Issue #9: Log error with full context and continue gracefully
-    console.error('[Manager] RUNTIME_MESSAGE_ERROR: Error processing runtime message:', {
-      error: err.message,
-      stack: err.stack,
-      messageType: message?.type,
-      timestamp: Date.now()
-    });
-    // Don't rethrow - graceful degradation
-    return false;
-  }
-});
-// v1.6.3.7-v5 - FIX Issue #10: Log listener registration confirmation
-console.log('[Manager] LISTENER_REGISTERED: browser.runtime.onMessage listener added');
-
-/**
- * Process runtime message
- * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce nesting depth
- * v1.6.3.9-v4 - Phase 5: Refactored to reduce complexity below 9
- * @private
- * @param {Object} message - Incoming message
- * @param {Function} sendResponse - Response callback
- * @returns {boolean} True if message was handled asynchronously
- */
-function _processRuntimeMessage(message, sendResponse) {
-  // v1.6.3.7-v9 - Issue #2: Track start time for duration logging
-  const messageEntryTime = Date.now();
-
-  // v1.6.3.7-v5 - FIX Issue #9: Validate message structure
-  if (!message || typeof message !== 'object') {
-    console.warn('[Manager] RUNTIME_MESSAGE_INVALID: Received non-object message:', typeof message);
-    return false;
-  }
-
-  // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
-  const correlationId = _getOrGenerateCorrelationId(message);
-
-  // v1.6.3.7-v9 - Issue #2: Unified MESSAGE_RECEIVED logging with [RUNTIME] prefix
-  _logRuntimeMessageReceived(message, correlationId, messageEntryTime);
-
-  // v1.6.3.9-v4 - Phase 5: Route to appropriate handler
-  const handled = _routeRuntimeMessage(message, sendResponse, correlationId);
-
-  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
-  _logRuntimeMessageProcessed(message, correlationId, handled, messageEntryTime);
-
-  return handled;
-}
-
-/**
- * Get existing correlation ID or generate a new one
- * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
- * @private
- * @param {Object} message - Incoming message
- * @returns {string} Correlation ID
- */
-function _getOrGenerateCorrelationId(message) {
-  return (
-    message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
-  );
-}
-
-/**
- * Log runtime message received
- * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
- * @private
- */
-function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
-  console.log(
-    `[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`,
-    {
+  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
+    console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
       quickTabId: message.quickTabId,
-      messageId: message.messageId,
-      saveId: message.saveId,
-      correlationId,
-      from: 'runtime.onMessage',
-      path: 'runtime-onMessage',
-      timestamp: messageEntryTime
+      changes: message.changes,
+      source: message.originalSource
+    });
+
+    // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
+    if (message.changes?.deleted === true || message.originalSource === 'destroy') {
+      handleStateDeletedMessage(message.quickTabId);
+    } else if (message.quickTabId && message.changes) {
+      // Update local state cache
+      handleStateUpdateMessage(message.quickTabId, message.changes);
     }
-  );
-}
 
-/**
- * Message handler lookup table for runtime messages
- * v1.6.3.9-v7 - GAP #4: Refactored to reduce complexity (CC from 13 to ~3)
- * @private
- */
-const _runtimeMessageHandlers = {
-  'QUICK_TAB_STATE_UPDATED': _handleRuntimeStateUpdated,
-  'QUICK_TAB_DELETED': _handleRuntimeDeleted,
-  'QUICK_TAB_OPERATION_ACK': _handleOperationAck,
-  'STATE_UPDATE': _handleSidebarStateSync,
-  'QT_STATE_SYNC': _handleSidebarStateSync,
-  'STATE_REFRESH_REQUESTED': _handleSidebarStateRefresh,
-  'GET_SIDEBAR_LOGS': _handleGetSidebarLogs,
-  'CLEAR_SIDEBAR_LOGS': _handleClearSidebarLogs,
-  'PUSH_STATE_UPDATE': _handlePushStateUpdate,
-  'ERROR_NOTIFICATION': _handleErrorNotification,
-  'REQUEST_INIT_STATUS': _handleInitStatusRequest
-};
-
-/**
- * Route runtime message to appropriate handler
- * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
- * v1.6.3.9-v6 - GAP #16: Unified message routing with switch-based pattern
- * v1.6.3.9-v7 - GAP #2: Added log export and state push handlers
- * v1.6.3.9-v7 - GAP #4: Refactored to use lookup table (CC reduced from 13 to ~3)
- * @private
- * @param {Object} message - Incoming message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- * @returns {boolean} True if message was handled
- */
-function _routeRuntimeMessage(message, sendResponse, correlationId) {
-  // v1.6.3.9-v6 - GAP #16: Unified routing - check both type and action fields
-  const action = message.type || message.action;
-  
-  // v1.6.3.9-v7 - GAP #4: Use handler lookup table to reduce complexity
-  const handler = _runtimeMessageHandlers[action];
-  
-  if (handler) {
-    handler(message, sendResponse, correlationId);
+    // Re-render UI
+    renderUI();
+    sendResponse({ received: true });
     return true;
   }
-  
-  // v1.6.3.9-v6 - GAP #16: Log unknown messages for debugging
-  console.debug('[Manager] UNKNOWN_MESSAGE: action=' + action, {
-    correlationId,
-    hasType: !!message.type,
-    hasAction: !!message.action,
-    timestamp: Date.now()
-  });
-  return false;
-}
 
-/**
- * Handle GET_SIDEBAR_LOGS request - log export API
- * v1.6.3.9-v7 - GAP #1: Log export via messages
- * @private
- * @param {Object} message - Request message with optional limit
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handleGetSidebarLogs(message, sendResponse, correlationId) {
-  console.log('[Manager] [RUNTIME] GET_SIDEBAR_LOGS:', {
-    limit: message.limit,
-    correlationId,
-    timestamp: Date.now()
-  });
-  
-  const logs = getSidebarLogs(message.limit);
-  sendResponse({
-    success: true,
-    logs: logs,
-    count: logs.length,
-    correlationId
-  });
-}
-
-/**
- * Handle CLEAR_SIDEBAR_LOGS request
- * v1.6.3.9-v7 - GAP #1: Log management via messages
- * @private
- * @param {Object} message - Request message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handleClearSidebarLogs(message, sendResponse, correlationId) {
-  console.log('[Manager] [RUNTIME] CLEAR_SIDEBAR_LOGS:', {
-    correlationId,
-    timestamp: Date.now()
-  });
-  
-  clearSidebarLogs();
-  sendResponse({ success: true, correlationId });
-}
-
-/**
- * Handle PUSH_STATE_UPDATE - direct state push from background
- * v1.6.3.9-v7 - GAP #2: Background can push state updates directly
- * @private
- * @param {Object} message - State update message with state payload
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handlePushStateUpdate(message, sendResponse, correlationId) {
-  console.log('[Manager] [RUNTIME] PUSH_STATE_UPDATE:', {
-    tabCount: message.state?.tabs?.length ?? 'N/A',
-    revision: message.revision,
-    correlationId,
-    path: 'runtime-onMessage-push',
-    timestamp: Date.now()
-  });
-  
-  // v1.6.3.9-v7 - Validate state structure before processing
-  if (message.state && Array.isArray(message.state.tabs)) {
-    // Direct state update - bypass storage.onChanged
-    const stateChange = { newValue: message.state };
-    _handleStorageChangedEvent({ [STATE_KEY]: stateChange });
-  } else if (message.state) {
-    console.warn('[Manager] PUSH_STATE_UPDATE: Invalid state structure', {
-      hasState: !!message.state,
-      hasTabs: !!message.state?.tabs,
-      isArray: Array.isArray(message.state?.tabs)
-    });
-  }
-  
-  sendResponse({ received: true, correlationId });
-}
-
-/**
- * Sanitize error message to prevent XSS
- * v1.6.3.9-v7 - GAP #2: Prevent XSS from background error messages
- * @private
- * @param {string} message - Raw error message
- * @returns {string} Sanitized message safe for display
- */
-function _sanitizeErrorMessage(message) {
-  if (typeof message !== 'string') return 'Unknown error';
-  // Escape HTML entities first (before any other processing)
-  // This prevents XSS by converting < to &lt; etc. before any tag manipulation
-  // Order matters: escape first, then limit length
-  return message
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .substring(0, 500);
-}
-
-/**
- * Handle ERROR_NOTIFICATION - error from background
- * v1.6.3.9-v7 - GAP #2: Background can push error notifications
- * @private
- * @param {Object} message - Error message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handleErrorNotification(message, sendResponse, correlationId) {
-  console.error('[Manager] [RUNTIME] ERROR_NOTIFICATION:', {
-    errorCode: message.errorCode,
-    errorMessage: message.errorMessage,
-    correlationId,
-    timestamp: Date.now()
-  });
-  
-  // Show error to user if UI is ready (with sanitization to prevent XSS)
-  if (_isInitPhaseComplete && message.errorMessage) {
-    _showErrorNotification(_sanitizeErrorMessage(message.errorMessage));
-  }
-  
-  sendResponse({ received: true, correlationId });
-}
-
-/**
- * Handle REQUEST_INIT_STATUS - initialization status request
- * v1.6.3.9-v7 - GAP #2: Background can query sidebar init state
- * @private
- * @param {Object} message - Request message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handleInitStatusRequest(message, sendResponse, correlationId) {
-  console.log('[Manager] [RUNTIME] REQUEST_INIT_STATUS:', {
-    correlationId,
-    timestamp: Date.now()
-  });
-  
-  sendResponse({
-    success: true,
-    isInitialized: _isInitPhaseComplete,
-    storageListenerVerified: storageListenerVerified,
-    tabCount: quickTabsState?.tabs?.length ?? 0,
-    correlationId
-  });
-}
-
-/**
- * Handle STATE_UPDATE / QT_STATE_SYNC messages from background
- * v1.6.3.9-v6 - GAP #16: Unified state sync handler
- * @private
- * @param {Object} message - State sync message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handleSidebarStateSync(message, sendResponse, correlationId) {
-  console.log('[Manager] [RUNTIME] STATE_SYNC_RECEIVED:', {
-    quickTabId: message.quickTabId,
-    tabCount: message.tabs?.length ?? message.state?.tabs?.length ?? 'N/A',
-    correlationId,
-    path: 'runtime-onMessage',
-    timestamp: Date.now()
-  });
-  
-  // Trigger a state refresh from storage
-  scheduleRender('runtime-state-sync', message.revision);
-  sendResponse({ received: true, correlationId });
-}
-
-/**
- * Handle STATE_REFRESH_REQUESTED messages from background
- * v1.6.3.9-v6 - GAP #16: Handle refresh requests
- * @private
- * @param {Object} message - Refresh request message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID
- */
-function _handleSidebarStateRefresh(message, sendResponse, correlationId) {
-  console.log('[Manager] [RUNTIME] REFRESH_REQUESTED:', {
-    reason: message.reason || 'unspecified',
-    correlationId,
-    path: 'runtime-onMessage',
-    timestamp: Date.now()
-  });
-  
-  // Request fresh state from storage
-  loadQuickTabsState().then(() => {
-    scheduleRender('runtime-refresh-requested');
-  });
-  sendResponse({ received: true, correlationId });
-}
-
-/**
- * Log runtime message processed
- * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
- * @private
- */
-function _logRuntimeMessageProcessed(message, correlationId, handled, messageEntryTime) {
-  if (!DEBUG_MESSAGING) return;
-
-  const processingDurationMs = Date.now() - messageEntryTime;
-  console.log(
-    `[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`,
-    {
+  // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
+  if (message.type === 'QUICK_TAB_DELETED') {
+    console.log('[Manager] Received QUICK_TAB_DELETED:', {
       quickTabId: message.quickTabId,
-      correlationId,
-      handled,
-      durationMs: processingDurationMs,
-      timestamp: Date.now()
-    }
-  );
-}
-
-/**
- * Handle QUICK_TAB_STATE_UPDATED via runtime.onMessage
- * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
- * v1.6.3.7-v9 - Issue #2: Added correlationId parameter for tracking
- * @private
- * @param {Object} message - State update message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID for tracking
- */
-function _handleRuntimeStateUpdated(message, sendResponse, correlationId) {
-  // v1.6.3.7-v9 - Issue #2: Use [RUNTIME] prefix and include correlationId
-  console.log('[Manager] [RUNTIME] STATE_UPDATE_RECEIVED:', {
-    quickTabId: message.quickTabId,
-    changes: message.changes,
-    source: message.originalSource,
-    messageId: message.messageId,
-    correlationId,
-    path: 'runtime-onMessage'
-  });
-
-  // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
-  if (message.changes?.deleted === true || message.originalSource === 'destroy') {
-    handleStateDeletedMessage(message.quickTabId);
-  } else if (message.quickTabId && message.changes) {
-    // Update local state cache
-    handleStateUpdateMessage(message.quickTabId, message.changes);
-  }
-
-  // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
-  scheduleRender('runtime-QUICK_TAB_STATE_UPDATED', message.messageId);
-  sendResponse({ received: true, correlationId });
-}
-
-/**
- * Handle QUICK_TAB_DELETED via runtime.onMessage
- * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce complexity
- * v1.6.3.7-v9 - Issue #2: Added correlationId parameter for tracking
- * @private
- * @param {Object} message - Deletion message
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID for tracking
- */
-function _handleRuntimeDeleted(message, sendResponse, correlationId) {
-  // v1.6.3.7-v9 - Issue #2: Use [RUNTIME] prefix and include correlationId
-  console.log('[Manager] [RUNTIME] DELETE_RECEIVED:', {
-    quickTabId: message.quickTabId,
-    source: message.source,
-    messageId: message.messageId,
-    correlationId,
-    path: 'runtime-onMessage'
-  });
-
-  handleStateDeletedMessage(message.quickTabId);
-  // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
-  scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
-  sendResponse({ received: true, correlationId });
-}
-
-/**
- * Handle QUICK_TAB_OPERATION_ACK from background
- * v1.6.3.9-v4 - Phase 5: Operation acknowledgment from background
- *   - Used when background confirms an operation succeeded
- *   - If operationSequence is ahead of local state, trigger immediate render
- *   - Prevents need to wait for storage.onChanged in latency-sensitive scenarios
- * @private
- * @param {Object} message - Operation ACK message
- * @param {Object} message.operationId - Unique operation identifier
- * @param {Object} message.operationSequence - Sequence number for ordering
- * @param {Function} sendResponse - Response callback
- * @param {string} correlationId - Correlation ID for tracking
- */
-function _handleOperationAck(message, sendResponse, correlationId) {
-  const { operationId, operationSequence } = message;
-
-  console.log('[Manager] OPERATION_ACK_RECEIVED:', {
-    operationId,
-    operationSequence,
-    currentWriteSequence: sidebarLocalState.writeSequence,
-    correlationId,
-    timestamp: Date.now()
-  });
-
-  // If we're already ahead or equal, ignore (we already rendered from storage event)
-  if (operationSequence <= sidebarLocalState.writeSequence) {
-    console.debug('[Manager] OPERATION_ACK_SKIP: Already processed this sequence', {
-      operationSequence,
-      currentWriteSequence: sidebarLocalState.writeSequence
+      source: message.source
     });
-    sendResponse({ received: true, correlationId });
-    return;
+
+    handleStateDeletedMessage(message.quickTabId);
+    renderUI();
+    sendResponse({ received: true });
+    return true;
   }
 
-  // Otherwise, if storage event is delayed, update immediately
-  sidebarLocalState.writeSequence = operationSequence;
-  scheduleRender('operation-ack', operationSequence);
-
-  console.info('[Manager] OPERATION_ACK_APPLIED:', {
-    operationId,
-    newWriteSequence: sidebarLocalState.writeSequence
-  });
-
-  sendResponse({ received: true, correlationId });
-}
+  return false;
+});
 
 /**
  * Handle state update message from background
@@ -4140,112 +1049,33 @@ function _handleOperationAck(message, sendResponse, correlationId) {
  * v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ALL state changes (not just when originTabId provided)
  *   - Track last operation type (minimize/restore/update)
  *   - Validate and clean stale entries
- * v1.6.4.17 - Refactored to flatten bumpy road (bumps=3)
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  */
 function handleStateUpdateMessage(quickTabId, changes) {
-  _ensureTabsArrayExists();
-  _applyStateChange(quickTabId, changes);
-  _updateQuickTabHostInfo(quickTabId, changes);
-  _updateStateTimestamps();
-}
-
-/**
- * Ensure quickTabsState.tabs array exists
- * v1.6.4.17 - Extracted from handleStateUpdateMessage to flatten bumpy road
- * @private
- */
-function _ensureTabsArrayExists() {
   if (!quickTabsState.tabs) {
     quickTabsState = { tabs: [] };
   }
-}
 
-/**
- * Apply state change to tabs array (update, add, or skip)
- * v1.6.4.17 - Extracted from handleStateUpdateMessage to flatten bumpy road
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes
- */
-function _applyStateChange(quickTabId, changes) {
   const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
-
   if (existingIndex >= 0) {
-    _updateExistingTab(existingIndex, quickTabId, changes);
-    return;
+    // Update existing tab
+    Object.assign(quickTabsState.tabs[existingIndex], changes);
+    console.log('[Manager] Updated tab from message:', quickTabId);
+  } else if (changes.url) {
+    // Add new tab
+    quickTabsState.tabs.push({ id: quickTabId, ...changes });
+    console.log('[Manager] Added new tab from message:', quickTabId);
   }
 
-  if (changes.url) {
-    _addNewTab(quickTabId, changes);
-    return;
-  }
+  // v1.6.3.7-v1 - FIX ISSUE #7: Update quickTabHostInfo on ANY state change
+  // This ensures the Map stays in sync even when operations originate from content scripts
+  _updateQuickTabHostInfo(quickTabId, changes);
 
-  _logSkippedUpdate(quickTabId, changes);
-}
-
-/**
- * Update an existing tab with new changes
- * v1.6.4.17 - Extracted from handleStateUpdateMessage
- * @private
- * @param {number} index - Tab index in array
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes
- */
-function _updateExistingTab(index, quickTabId, changes) {
-  Object.assign(quickTabsState.tabs[index], changes);
-  if (DEBUG_MESSAGING) {
-    console.log('[Manager] [STATE] TAB_UPDATED:', {
-      quickTabId,
-      changes,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Add a new tab to state
- * v1.6.4.17 - Extracted from handleStateUpdateMessage
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes including URL
- */
-function _addNewTab(quickTabId, changes) {
-  quickTabsState.tabs.push({ id: quickTabId, ...changes });
-  if (DEBUG_MESSAGING) {
-    console.log('[Manager] [STATE] TAB_ADDED:', {
-      quickTabId,
-      changes,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Log when update is skipped (tab not found and no URL)
- * v1.6.4.17 - Extracted from handleStateUpdateMessage
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @param {Object} changes - State changes
- */
-function _logSkippedUpdate(quickTabId, changes) {
-  if (DEBUG_MESSAGING) {
-    console.log('[Manager] [STATE] UPDATE_SKIPPED: Tab not found and no URL in changes', {
-      quickTabId,
-      changesKeys: Object.keys(changes),
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Update state timestamps after state change
- * v1.6.4.17 - Extracted from handleStateUpdateMessage
- * @private
- */
-function _updateStateTimestamps() {
+  // Update timestamp
   quickTabsState.timestamp = Date.now();
+
+  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
   lastLocalUpdateTime = Date.now();
 }
 
@@ -4447,423 +1277,6 @@ function _removeFromHostInfo(quickTabId) {
   }
 }
 
-// ==================== v1.6.3.7-v9 Issue #10: TAB AFFINITY MAP CLEANUP ====================
-// Functions for TTL-based cleanup and browser.tabs.onRemoved handling
-
-/**
- * Clean up stale quickTabHostInfo entries older than TTL
- * v1.6.3.7-v9 - Issue #10: Remove entries older than 24 hours
- * v1.6.3.7-v10 - FIX Issue #10: Enhanced logging with before/after sizes and age buckets
- * @private
- * @returns {Object} Cleanup result with before/after counts and removed entries
- */
-function _cleanupStaleHostInfoEntries() {
-  const now = Date.now();
-  const ttlThreshold = now - HOST_INFO_TTL_MS;
-
-  // v1.6.3.7-v10 - FIX Issue #10: Track before size for logging
-  const sizeBeforeCleanup = quickTabHostInfo.size;
-  let removedCount = 0;
-  const removedEntries = [];
-
-  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
-    // Skip null entries (consistent with _getHostInfoAgeStats)
-    if (!entry || !entry.lastUpdate) continue;
-
-    if (entry.lastUpdate < ttlThreshold) {
-      quickTabHostInfo.delete(quickTabId);
-      removedCount++;
-      removedEntries.push({
-        quickTabId,
-        hostTabId: entry.hostTabId,
-        ageHours: Math.round((now - entry.lastUpdate) / (1000 * 60 * 60))
-      });
-    }
-  }
-
-  // v1.6.3.7-v10 - FIX Issue #10: Always log cleanup result with before/after sizes
-  const sizeAfterCleanup = quickTabHostInfo.size;
-  console.log('[Manager] [HOST_INFO_CLEANUP] TTL_CLEANUP_COMPLETE:', {
-    sizeBeforeCleanup,
-    sizeAfterCleanup,
-    removedCount,
-    removedEntries: removedCount > 0 ? removedEntries : [],
-    ttlHours: HOST_INFO_TTL_MS / (1000 * 60 * 60),
-    timestamp: now
-  });
-
-  return { sizeBeforeCleanup, sizeAfterCleanup, removedCount, removedEntries };
-}
-
-// v1.6.3.7-v10 - FIX Issue #10: Time constants for age bucket boundaries
-const AGE_BUCKET_BOUNDARIES = {
-  ONE_HOUR_MS: 60 * 60 * 1000,
-  SIX_HOURS_MS: 6 * 60 * 60 * 1000,
-  TWENTY_FOUR_HOURS_MS: 24 * 60 * 60 * 1000
-};
-
-/**
- * Categorize age into bucket
- * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce complexity
- * @private
- * @param {number} ageMs - Age in milliseconds
- * @returns {string} Bucket key
- */
-function _getAgeBucketKey(ageMs) {
-  if (ageMs < AGE_BUCKET_BOUNDARIES.ONE_HOUR_MS) return 'lessThan1h';
-  if (ageMs < AGE_BUCKET_BOUNDARIES.SIX_HOURS_MS) return 'oneToSixH';
-  if (ageMs < AGE_BUCKET_BOUNDARIES.TWENTY_FOUR_HOURS_MS) return 'sixTo24H';
-  return 'moreThan24h';
-}
-
-/**
- * Update min/max entry tracking
- * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce complexity
- * @private
- */
-function _updateMinMaxEntries(ageMs, quickTabId, hostTabId, stats) {
-  if (ageMs < stats.minAgeMs) {
-    stats.minAgeMs = ageMs;
-    stats.newestEntry = { quickTabId, hostTabId, ageMs };
-  }
-  if (ageMs > stats.maxAgeMs) {
-    stats.maxAgeMs = ageMs;
-    stats.oldestEntry = { quickTabId, hostTabId, ageMs };
-  }
-}
-
-/**
- * Get age statistics for quickTabHostInfo entries
- * v1.6.3.7-v9 - Issue #10: Calculate min/max/avg age for diagnostics
- * v1.6.3.7-v10 - FIX Issue #10: Add age bucket counts (< 1h, 1-6h, 6-24h, > 24h)
- * @private
- * @returns {Object} Age statistics with bucket counts
- */
-function _getHostInfoAgeStats() {
-  const now = Date.now();
-  const stats = {
-    minAgeMs: Infinity,
-    maxAgeMs: 0,
-    newestEntry: null,
-    oldestEntry: null
-  };
-  let totalAgeMs = 0;
-  let entryCount = 0;
-
-  // v1.6.3.7-v10 - FIX Issue #10: Age bucket counts
-  const ageBuckets = {
-    lessThan1h: 0,
-    oneToSixH: 0,
-    sixTo24H: 0,
-    moreThan24h: 0
-  };
-
-  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
-    if (!entry || !entry.lastUpdate) continue;
-
-    const ageMs = now - entry.lastUpdate;
-    totalAgeMs += ageMs;
-    entryCount++;
-
-    // v1.6.3.7-v10 - FIX Issue #10: Categorize into age buckets
-    ageBuckets[_getAgeBucketKey(ageMs)]++;
-
-    // Update min/max tracking
-    _updateMinMaxEntries(ageMs, quickTabId, entry.hostTabId, stats);
-  }
-
-  return {
-    entryCount,
-    minAgeMs: entryCount > 0 ? stats.minAgeMs : 0,
-    maxAgeMs: entryCount > 0 ? stats.maxAgeMs : 0,
-    avgAgeMs: entryCount > 0 ? Math.round(totalAgeMs / entryCount) : 0,
-    oldestEntry: stats.oldestEntry,
-    newestEntry: stats.newestEntry,
-    ageBuckets
-  };
-}
-
-/**
- * Log quickTabHostInfo diagnostic statistics
- * v1.6.3.7-v9 - Issue #10: Log size and age stats every 60 seconds
- * v1.6.3.7-v10 - FIX Issue #10: Enhanced with age buckets and sample entries
- * @private
- */
-function _logHostInfoDiagnostics() {
-  const stats = _getHostInfoAgeStats();
-  const now = Date.now();
-
-  // Convert ms to human-readable format
-  const msToTimeStr = ms => {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
-    return `${(ms / 3600000).toFixed(1)}h`;
-  };
-
-  // v1.6.3.7-v10 - FIX Issue #10: Get first 5 sample entries for diagnostics
-  const sampleEntries = _getSampleHostInfoEntries(5, now, msToTimeStr);
-
-  console.log('[Manager] [HOST_INFO_DIAGNOSTICS]:', {
-    mapSize: quickTabHostInfo.size,
-    entryCount: stats.entryCount,
-    // v1.6.3.7-v10 - FIX Issue #10: Age bucket distribution
-    ageBuckets: {
-      '<1h': stats.ageBuckets.lessThan1h,
-      '1-6h': stats.ageBuckets.oneToSixH,
-      '6-24h': stats.ageBuckets.sixTo24H,
-      '>24h': stats.ageBuckets.moreThan24h
-    },
-    minAge: msToTimeStr(stats.minAgeMs),
-    maxAge: msToTimeStr(stats.maxAgeMs),
-    avgAge: msToTimeStr(stats.avgAgeMs),
-    oldestEntry: stats.oldestEntry
-      ? {
-          quickTabId: stats.oldestEntry.quickTabId,
-          hostTabId: stats.oldestEntry.hostTabId,
-          age: msToTimeStr(stats.oldestEntry.ageMs)
-        }
-      : null,
-    // v1.6.3.7-v10 - FIX Issue #10: Sample entries for diagnostics
-    sampleEntries,
-    timestamp: now
-  });
-}
-
-/**
- * Get sample host info entries for diagnostic logging
- * v1.6.3.7-v10 - FIX Issue #10: Extract first N entries with their ages
- * @private
- * @param {number} count - Number of sample entries to retrieve
- * @param {number} now - Current timestamp
- * @param {Function} msToTimeStr - Time formatter function
- * @returns {Array} Array of sample entry objects
- */
-function _getSampleHostInfoEntries(count, now, msToTimeStr) {
-  const samples = [];
-  let i = 0;
-
-  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
-    if (i >= count) break;
-    if (!entry || !entry.lastUpdate) continue;
-
-    const ageMs = now - entry.lastUpdate;
-    samples.push({
-      quickTabId,
-      hostTabId: entry.hostTabId,
-      age: msToTimeStr(ageMs),
-      lastOperation: entry.lastOperation || 'unknown'
-    });
-    i++;
-  }
-
-  return samples;
-}
-
-/**
- * Run cleanup job for quickTabHostInfo: remove stale entries and log diagnostics
- * v1.6.3.7-v9 - Issue #10: Combined cleanup and diagnostic logging
- * v1.6.3.7-v10 - FIX Issue #10: Added defensive cleanup against browser.tabs.query()
- * @private
- */
-async function _runHostInfoCleanupJob() {
-  // First log diagnostics
-  _logHostInfoDiagnostics();
-
-  // v1.6.3.7-v10 - FIX Issue #10: Defensive cleanup - cross-check against open tabs
-  await _defensiveCleanupStaleHostInfo();
-
-  // Then clean up stale entries (TTL-based)
-  _cleanupStaleHostInfoEntries();
-}
-
-/**
- * Start the periodic cleanup job for quickTabHostInfo
- * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
- * v1.6.3.9-v5 - FIX Bug #7: Enhanced logging to verify cleanup interval started
- */
-function _startHostInfoCleanupInterval() {
-  // Don't start if already running
-  if (hostInfoCleanupIntervalId !== null) {
-    console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job already running, skipping start', {
-      intervalId: hostInfoCleanupIntervalId,
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  hostInfoCleanupIntervalId = setInterval(_runHostInfoCleanupJob, HOST_INFO_CLEANUP_INTERVAL_MS);
-
-  // v1.6.3.9-v5 - FIX Bug #7: Enhanced logging
-  console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job started:', {
-    intervalId: hostInfoCleanupIntervalId,
-    intervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
-    ttlMs: HOST_INFO_TTL_MS,
-    currentHostInfoSize: quickTabHostInfo.size,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Stop the periodic cleanup job for quickTabHostInfo
- * v1.6.3.7-v9 - Issue #10: Stop cleanup on unload
- */
-function _stopHostInfoCleanupInterval() {
-  if (hostInfoCleanupIntervalId !== null) {
-    clearInterval(hostInfoCleanupIntervalId);
-    hostInfoCleanupIntervalId = null;
-    console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job stopped');
-  }
-}
-
-/**
- * Remove quickTabHostInfo entries for a closed browser tab
- * v1.6.3.7-v9 - Issue #10: Clean up entries when browser tab closes
- * @param {number} closedTabId - ID of the closed browser tab
- */
-function _cleanupHostInfoForClosedTab(closedTabId) {
-  const removedQuickTabIds = [];
-
-  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
-    if (entry.hostTabId === closedTabId) {
-      quickTabHostInfo.delete(quickTabId);
-      removedQuickTabIds.push(quickTabId);
-    }
-  }
-
-  if (removedQuickTabIds.length > 0) {
-    console.log('[Manager] [HOST_INFO_CLEANUP] BROWSER_TAB_CLOSED:', {
-      closedTabId,
-      removedQuickTabIds,
-      remainingCount: quickTabHostInfo.size,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Check if host info entry should be removed based on open tabs
- * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce nesting depth
- * @private
- * @param {Object} entry - Host info entry
- * @param {Set} openTabIds - Set of open tab IDs
- * @returns {boolean} True if entry is stale and should be removed
- */
-function _isStaleHostInfoEntry(entry, openTabIds) {
-  if (!entry || !entry.hostTabId) return false;
-  return !openTabIds.has(entry.hostTabId);
-}
-
-/**
- * Remove stale entries from quickTabHostInfo and collect results
- * v1.6.3.7-v10 - FIX Issue #10: Helper to reduce nesting depth
- * @private
- * @param {Set} openTabIds - Set of open tab IDs
- * @returns {Object} Removed entries and stale host tab IDs
- */
-function _removeStaleHostInfoEntries(openTabIds) {
-  const removedEntries = [];
-  const staleHostTabIds = new Set();
-
-  for (const [quickTabId, entry] of quickTabHostInfo.entries()) {
-    if (_isStaleHostInfoEntry(entry, openTabIds)) {
-      staleHostTabIds.add(entry.hostTabId);
-      quickTabHostInfo.delete(quickTabId);
-      removedEntries.push({
-        quickTabId,
-        hostTabId: entry.hostTabId,
-        lastOperation: entry.lastOperation || 'unknown'
-      });
-    }
-  }
-
-  return { removedEntries, staleHostTabIds };
-}
-
-/**
- * Defensive cleanup: Remove quickTabHostInfo entries for tabs that are no longer open
- * v1.6.3.7-v10 - FIX Issue #10: Cross-check against browser.tabs.query() to remove stale entries
- * Called during cleanup job to ensure Map doesn't contain entries for closed tabs
- * @private
- * @returns {Promise<Object>} Cleanup result with removed count
- */
-async function _defensiveCleanupStaleHostInfo() {
-  const now = Date.now();
-
-  try {
-    // Query all open tabs
-    const openTabs = await browser.tabs.query({ status: 'complete' });
-    const openTabIds = new Set(openTabs.map(tab => tab.id));
-
-    // v1.6.3.7-v10 - FIX Issue #10: Extracted to helper for reduced nesting
-    const { removedEntries, staleHostTabIds } = _removeStaleHostInfoEntries(openTabIds);
-
-    if (removedEntries.length > 0) {
-      console.log('[Manager] [HOST_INFO_CLEANUP] STALE_HOST_INFO_REMOVED:', {
-        removedCount: removedEntries.length,
-        staleHostTabIds: Array.from(staleHostTabIds),
-        removedEntries,
-        remainingCount: quickTabHostInfo.size,
-        openTabCount: openTabs.length,
-        timestamp: now
-      });
-    }
-
-    return { removedCount: removedEntries.length, removedEntries };
-  } catch (error) {
-    console.warn('[Manager] [HOST_INFO_CLEANUP] Defensive cleanup failed:', {
-      error: error.message,
-      timestamp: now
-    });
-    return { removedCount: 0, removedEntries: [], error: error.message };
-  }
-}
-
-/**
- * Handler for browser.tabs.onRemoved event
- * v1.6.3.7-v9 - Issue #10: Remove quickTabHostInfo entries for closed tabs
- * @param {number} tabId - ID of the closed tab
- * @param {Object} removeInfo - Information about the removal
- */
-function _handleBrowserTabRemoved(tabId, removeInfo) {
-  // Clean up quickTabHostInfo entries for this tab
-  _cleanupHostInfoForClosedTab(tabId);
-
-  // Also invalidate browser tab info cache
-  browserTabInfoCache.delete(tabId);
-
-  if (DEBUG_MESSAGING) {
-    console.log('[Manager] [BROWSER_TAB_REMOVED]:', {
-      tabId,
-      windowClosing: removeInfo?.isWindowClosing,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Initialize browser.tabs.onRemoved listener
- * v1.6.3.7-v9 - Issue #10: Listen for tab closures to clean up quickTabHostInfo
- * v1.6.3.9-v5 - FIX Bug #7: Enhanced logging for listener registration
- */
-function _initBrowserTabsOnRemovedListener() {
-  if (browser?.tabs?.onRemoved) {
-    browser.tabs.onRemoved.addListener(_handleBrowserTabRemoved);
-    console.log('[Manager] LISTENER_REGISTERED: browser.tabs.onRemoved', {
-      listenerFunction: '_handleBrowserTabRemoved',
-      purpose: 'Clean up quickTabHostInfo entries when browser tabs close',
-      currentHostInfoSize: quickTabHostInfo.size,
-      timestamp: Date.now()
-    });
-  } else {
-    console.warn('[Manager] LISTENER_REGISTRATION_FAILED: browser.tabs.onRemoved API not available', {
-      timestamp: Date.now()
-    });
-  }
-}
-
-// ==================== END v1.6.3.7-v9 Issue #10 ====================
-
 /**
  * Send MANAGER_COMMAND to background for remote Quick Tab control
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
@@ -4899,583 +1312,68 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-  // v1.6.3.9-v6 - GAP #18: Await async function to avoid require-await warning
-  await _initializeManager();
-});
-
-/**
- * Main initialization function for the Manager
- * v1.6.4.17 - Extracted from DOMContentLoaded to reduce CC and line count
- * v1.6.3.8-v4 - FIX Issue #5: Implements true sequential initialization barrier
- * @private
- */
-async function _initializeManager() {
-  // v1.6.3.8-v4 - FIX Issue #5: Create initialization barrier FIRST
-  _initializeBarrier();
-  // v1.6.3.9-v7 - Issue #6: _currentInitPhase assignments removed (dead code)
-
-  _initializeFlags();
-  _cacheDOMElements();
-  _initializeSessionId();
-
-  // v1.6.3.8-v4 - FIX Issue #1: Sequential initialization - port must connect first
-  await _initializeCurrentTabId();
-
-  // v1.6.3.8-v4 - FIX Issue #1: Establish port connection before anything else
-  _initializeConnections();
-
-  // v1.6.3.8-v4 - FIX Issue #6: Query background for state via port BEFORE storage read
-  await _hydrateStateFromBackground();
-
-  // v1.6.3.8-v4 - FIX Issue #1: Storage listener must be verified before state load
-  await _initializeState();
-
-  await _setupListeners();
-
-  _startPeriodicTasks();
-
-  // v1.6.3.8-v4 - FIX Issue #3: Setup visibility change listener
-  _setupVisibilityChangeListener();
-
-  // v1.6.3.8-v4 - FIX Issue #5: Resolve initialization barrier AFTER all async init complete
-  _resolveInitBarrier();
-
-  _markInitializationComplete();
-}
-
-/**
- * Hydrate state from background
- * v1.6.3.8-v13 - PORT REMOVED: Uses runtime.sendMessage instead of port
- * @private
- */
-async function _hydrateStateFromBackground() {
-  const hydrationStart = Date.now();
-
-  console.log('[Manager] STATE_HYDRATION: starting', {
-    timestamp: hydrationStart,
-    connectionState
-  });
-
-  try {
-    // v1.6.3.8-v13 - Use stateless runtime.sendMessage
-    const response = await sendToBackground({
-      type: 'REQUEST_FULL_STATE_SYNC',
-      timestamp: hydrationStart,
-      source: 'sidebar-hydration',
-      isInitialHydration: true
-    });
-
-    if (response?.success && response?.state) {
-      const tabCount = response.state?.tabs?.length ?? 0;
-
-      console.log('[Manager] STATE_HYDRATION: success', {
-        tabCount,
-        elapsed: Date.now() - hydrationStart + 'ms',
-        saveId: response.state?.saveId,
-        timestamp: Date.now()
-      });
-
-      // Update local state from background's authoritative state
-      quickTabsState = response.state;
-      _updateInMemoryCache(response.state.tabs || []);
-      lastKnownGoodTabCount = tabCount;
-      lastLocalUpdateTime = Date.now();
-
-      // Mark initial state load complete since we got state
-      initialStateLoadComplete = true;
-    } else {
-      console.warn('[Manager] STATE_HYDRATION: response invalid, will use storage', {
-        hasResponse: !!response,
-        hasState: !!response?.state,
-        elapsed: Date.now() - hydrationStart
-      });
-    }
-  } catch (err) {
-    console.warn('[Manager] STATE_HYDRATION: request failed, will use storage', {
-      error: err.message,
-      elapsed: Date.now() - hydrationStart
-    });
-  }
-}
-
-/**
- * Initialize flags and timing
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-function _initializeFlags() {
-  initializationStarted = true;
-  initializationStartTime = Date.now();
-
-  console.log('[Manager] DOM_CONTENT_LOADED:', {
-    timestamp: initializationStartTime,
-    url: window.location.href,
-    initializationStarted,
-    initializationComplete
-  });
-}
-
-/**
- * Cache DOM elements
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-function _cacheDOMElements() {
+  // Cache DOM elements
   containersList = document.getElementById('containersList');
   emptyState = document.getElementById('emptyState');
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
-}
 
-/**
- * Initialize current tab ID for origin filtering
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-async function _initializeCurrentTabId() {
-  console.log('[Manager] INIT_CURRENT_TAB_ID: starting', {
-    timestamp: Date.now()
-  });
-
+  // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]) {
       currentBrowserTabId = tabs[0].id;
-      console.log('[Manager] INIT_CURRENT_TAB_ID: success via tabs.query()', {
-        currentBrowserTabId,
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    // No tabs found - try fallback to background
-    console.warn('[Manager] INIT_CURRENT_TAB_ID: no active tab found, trying background fallback', {
-      timestamp: Date.now()
-    });
-    await _requestCurrentTabIdFromBackground('no-active-tab');
-  } catch (err) {
-    console.warn('[Manager] INIT_CURRENT_TAB_ID: tabs.query() failed, trying background fallback', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-    // Try fallback to background
-    await _requestCurrentTabIdFromBackground('query-failed');
-  }
-
-  // Final validation
-  if (currentBrowserTabId === null) {
-    console.error('[Manager] INIT_CURRENT_TAB_ID: FAILED - currentBrowserTabId is still null', {
-      message: 'Adoption and other tab-specific operations will not work',
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Request current tab ID from background script as fallback
- * v1.6.3.9-v5 - FIX Bug #1: Fallback when browser.tabs.query() fails in sidebar context
- * @param {string} [reason='unknown'] - Reason for fallback (for debugging context)
- * @private
- */
-async function _requestCurrentTabIdFromBackground(reason = 'unknown') {
-  console.log('[Manager] REQUESTING_TAB_ID_FROM_BACKGROUND:', {
-    reason,
-    timestamp: Date.now()
-  });
-
-  try {
-    // Use Promise.race to add timeout handling for unresponsive background
-    const timeoutPromise = new Promise((_resolve, reject) => {
-      setTimeout(() => reject(new Error('Background request timeout (3s)')), MESSAGE_TIMEOUT_MS);
-    });
-
-    const messagePromise = browser.runtime.sendMessage({
-      action: 'GET_CURRENT_TAB_ID',
-      source: 'sidebar-init',
-      reason
-    });
-
-    const response = await Promise.race([messagePromise, timeoutPromise]);
-
-    if (response?.success && response?.tabId) {
-      currentBrowserTabId = response.tabId;
-      console.log('[Manager] INIT_CURRENT_TAB_ID: success via background fallback', {
-        currentBrowserTabId,
-        reason,
-        timestamp: Date.now()
-      });
-    } else {
-      console.warn('[Manager] INIT_CURRENT_TAB_ID: background fallback returned invalid response', {
-        response,
-        reason,
-        timestamp: Date.now()
-      });
+      console.log('[Manager] Current browser tab ID:', currentBrowserTabId);
     }
   } catch (err) {
-    // Handle both timeout and extension context errors
-    const isContextInvalid = err.message?.includes('Extension context invalidated') ||
-                             err.message?.includes('Receiving end does not exist');
-    console.error('[Manager] INIT_CURRENT_TAB_ID: background fallback failed', {
-      error: err.message,
-      reason,
-      isContextInvalid,
-      timestamp: Date.now()
-    });
+    console.warn('[Manager] Could not get current tab ID:', err);
   }
-}
 
-/**
- * Initialize connections
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * v1.6.3.9-v6 - GAP #15: Simplified - no port/BC needed, storage.onChanged is PRIMARY
- * @private
- */
-function _initializeConnections() {
-  // v1.6.3.9-v6 - GAP #15: Simplified - connectionState is now a constant 'connected'
-  // No port/BC connection needed - storage.onChanged is PRIMARY, runtime.sendMessage is SECONDARY
-  console.log('[Manager] v1.6.3.9-v6 Initializing stateless messaging:');
-  console.log('[Manager]   - PRIMARY: storage.onChanged for state sync');
-  console.log('[Manager]   - SECONDARY: runtime.sendMessage for request/response');
-  // v1.6.3.9-v6 - No need to set connectionState - it's always 'connected' since port removal
-}
+  // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
+  connectToBackground();
 
-/**
- * Initialize state from storage and containers
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-async function _initializeState() {
+  // Load container information from Firefox API
   await loadContainerInfo();
-  // v1.6.3.9-v7 - Issue #6: _stateLoadStartTime removed (was assigned but never read)
 
+  // Load Quick Tabs state from storage
   await loadQuickTabsState();
-  const tabCount = quickTabsState?.tabs?.length ?? 0;
 
-  _handleInitialLoadState(tabCount);
-}
+  // Render initial UI
+  renderUI();
 
-/**
- * Handle initial load state - render or wait
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-function _handleInitialLoadState(tabCount) {
-  if (tabCount === 0 && !initialStateLoadComplete) {
-    _setupInitialLoadTimeout();
-  } else {
-    initialStateLoadComplete = true;
-    renderUI();
-  }
-}
-
-/**
- * Setup timeout for initial empty state
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-function _setupInitialLoadTimeout() {
-  console.log(
-    '[Manager] INITIAL_LOAD_EMPTY: Waiting 2s for storage.onChanged before rendering empty',
-    {
-      timestamp: Date.now()
-    }
-  );
-
-  initialLoadTimeoutId = setTimeout(_handleInitialLoadTimeout, 2000);
-}
-
-/**
- * Handle initial load timeout callback
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-function _handleInitialLoadTimeout() {
-  initialLoadTimeoutId = null;
-  initialStateLoadComplete = true;
-  const currentTabCount = quickTabsState?.tabs?.length ?? 0;
-
-  if (currentTabCount === 0) {
-    console.log(
-      '[Manager] INITIAL_LOAD_TIMEOUT: No tabs received after 2s wait, rendering empty state',
-      {
-        timestamp: Date.now()
-      }
-    );
-    renderUI();
-  } else {
-    console.log('[Manager] INITIAL_LOAD_TIMEOUT: Tabs received during wait period', {
-      tabCount: currentTabCount,
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Setup all event listeners
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Initialize storage listener FIRST with verification
- * @private
- */
-async function _setupListeners() {
-  // v1.6.3.8-v3 - FIX Issue #9: Initialize storage listener FIRST
-  // This ensures listener is registered before any storage writes from background
-  // and provides verification barrier for init sequence
-  await _initializeStorageListener();
-
-  // v1.6.3.8-v3 - FIX Issue #5: Log storage listener verification status
-  console.log('[Manager] STORAGE_LISTENER_VERIFIED_AT:', {
-    verified: storageListenerVerified,
-    timeSinceInitStartMs: Date.now() - initializationStartTime,
-    tier3FallbackEnabled: storageListenerVerified,
-    timestamp: Date.now()
-  });
-
+  // Setup event listeners
   setupEventListeners();
+
+  // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
+  // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
-  _initBrowserTabsOnRemovedListener();
-}
 
-/**
- * Setup document visibility change listener
- * v1.6.3.8-v4 - FIX Issue #3: Listen for sidebar visibility changes
- * @private
- */
-function _setupVisibilityChangeListener() {
-  document.addEventListener('visibilitychange', _handleVisibilityChange);
-
-  console.log('[Manager] VISIBILITY_LISTENER_REGISTERED:', {
-    initialVisibility: document.visibilityState,
-    refreshIntervalMs: VISIBILITY_REFRESH_INTERVAL_MS,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Handle document visibility change event
- * v1.6.3.8-v4 - FIX Issue #3: Trigger state refresh when sidebar becomes visible
- * @private
- */
-function _handleVisibilityChange() {
-  const isVisible = document.visibilityState === 'visible';
-
-  console.log('[Manager] VISIBILITY_CHANGE:', {
-    state: document.visibilityState,
-    isVisible,
-    wasHidden: !isVisible,
-    timestamp: Date.now()
-  });
-
-  if (isVisible) {
-    // Sidebar became visible - trigger active state refresh
-    _onSidebarBecameVisible();
-    // Start periodic state freshness check while visible
-    _startVisibilityRefreshInterval();
-  } else {
-    // Sidebar became hidden - stop the interval
-    _stopVisibilityRefreshInterval();
-  }
-}
-
-/**
- * Handle sidebar becoming visible
- * v1.6.3.8-v4 - FIX Issue #3: Active state refresh on visibility change
- * @private
- */
-async function _onSidebarBecameVisible() {
-  const refreshStart = Date.now();
-
-  console.log('[Manager] VISIBILITY_REFRESH: hidden→visible, requesting state', {
-    timestamp: refreshStart,
-    connectionState,
-    lastLocalUpdateTime,
-    timeSinceLastUpdate: lastLocalUpdateTime > 0 ? refreshStart - lastLocalUpdateTime : -1
-  });
-
-  // Request fresh state from background
-  try {
-    await _requestFullStateSync();
-
-    console.log('[Manager] VISIBILITY_REFRESH: completed', {
-      durationMs: Date.now() - refreshStart,
-      tabCount: quickTabsState?.tabs?.length ?? 0,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn('[Manager] VISIBILITY_REFRESH: failed, falling back to storage read', {
-      error: err.message,
-      durationMs: Date.now() - refreshStart,
-      timestamp: Date.now()
-    });
-
-    // Fallback to storage read
-    await loadQuickTabsState();
-    renderUI();
-  }
-}
-
-/**
- * Start periodic state freshness check while sidebar is visible
- * v1.6.3.8-v4 - FIX Issue #3: Check state freshness every 15 seconds
- * @private
- */
-function _startVisibilityRefreshInterval() {
-  _stopVisibilityRefreshInterval(); // Clear any existing interval
-
-  visibilityRefreshIntervalId = setInterval(async () => {
-    await _checkStateFreshness();
-  }, VISIBILITY_REFRESH_INTERVAL_MS);
-
-  console.log('[Manager] VISIBILITY_REFRESH_INTERVAL_STARTED:', {
-    intervalMs: VISIBILITY_REFRESH_INTERVAL_MS,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Stop periodic state freshness check
- * v1.6.3.8-v4 - FIX Issue #3: Stop interval when sidebar becomes hidden
- * @private
- */
-function _stopVisibilityRefreshInterval() {
-  if (visibilityRefreshIntervalId) {
-    clearInterval(visibilityRefreshIntervalId);
-    visibilityRefreshIntervalId = null;
-
-    console.log('[Manager] VISIBILITY_REFRESH_INTERVAL_STOPPED:', {
-      timestamp: Date.now()
-    });
-  }
-}
-
-/**
- * Check if local state is stale and refresh if needed
- * v1.6.3.8-v4 - FIX Issue #3: Periodic state freshness verification
- * @private
- */
-async function _checkStateFreshness() {
-  const now = Date.now();
-  const timeSinceLastUpdate = lastLocalUpdateTime > 0 ? now - lastLocalUpdateTime : -1;
-
-  // If state is older than 30 seconds, request fresh state
-  const STALE_THRESHOLD_MS = 30000;
-
-  if (timeSinceLastUpdate < 0 || timeSinceLastUpdate > STALE_THRESHOLD_MS) {
-    console.log('[Manager] STATE_FRESHNESS_CHECK: state is stale, refreshing', {
-      timeSinceLastUpdateMs: timeSinceLastUpdate,
-      staleThresholdMs: STALE_THRESHOLD_MS,
-      timestamp: now
-    });
-
-    try {
-      await _requestFullStateSync();
-    } catch (err) {
-      console.warn('[Manager] STATE_FRESHNESS_CHECK: refresh failed', {
-        error: err.message,
-        timestamp: now
-      });
-    }
-  } else {
-    console.log('[Manager] STATE_FRESHNESS_CHECK: state is fresh', {
-      timeSinceLastUpdateMs: timeSinceLastUpdate,
-      staleThresholdMs: STALE_THRESHOLD_MS,
-      timestamp: now
-    });
-  }
-}
-
-/**
- * Start periodic background tasks
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * v1.6.3.9-v4 - SIMPLIFIED: Revision buffer cleanup removed
- * v1.6.3.9-v5 - FIX Bug #7: Enhanced logging to verify cleanup interval started
- * @private
- */
-function _startPeriodicTasks() {
-  console.log('[Manager] PERIODIC_TASKS_STARTING:', {
-    timestamp: Date.now()
-  });
-
-  // v1.6.3.9-v5 - FIX Bug #7: Verify cleanup interval is started
-  _startHostInfoCleanupInterval();
-
-  // v1.6.3.9-v4 - REMOVED: Revision buffer cleanup (buffering removed)
-
-  // v1.6.3.9-v4 - Start storage health check interval (fallback when storage.onChanged goes silent)
-  _startStorageHealthCheckInterval();
-
+  // Auto-refresh every 2 seconds
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
-  }, 10000);
+  }, 2000);
 
-  // v1.6.3.9-v5 - FIX Bug #7: Log all periodic tasks started
-  console.log('[Manager] PERIODIC_TASKS_STARTED:', {
-    hostInfoCleanupInterval: hostInfoCleanupIntervalId !== null,
-    hostInfoCleanupIntervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
-    storagePollingMs: 10000,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Mark initialization as complete and log
- * v1.6.4.17 - Extracted from DOMContentLoaded
- * @private
- */
-function _markInitializationComplete() {
-  initializationComplete = true;
-
-  console.log('[Manager] v1.6.3.7-v9 INITIALIZATION_COMPLETE:', {
-    initializationStarted,
-    initializationComplete,
-    storagePollingMs: 10000,
-    sessionId: currentSessionId,
-    connectionState,
-    hostInfoCleanupIntervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
-    hostInfoTTLMs: HOST_INFO_TTL_MS,
-    timestamp: Date.now()
-  });
-}
+  console.log('[Manager] v1.6.3.6-v11 Port connection + Message infrastructure initialized');
+});
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
-// v1.6.3.8-v13 - PORT REMOVED: Simplified unload handler
-// v1.6.3.7-v3 - API #2: Also cleanup BroadcastChannel
-// v1.6.3.7-v9 - Issue #10: Also stop hostInfo cleanup interval
-// v1.6.3.7-v13 - Issue #12: Also stop fallback health monitoring
-// v1.6.3.8-v3 - FIX Issue #19: Also clear quickTabHostInfo map
-// v1.6.3.8-v4 - FIX Issue #3: Also stop visibility refresh interval
 window.addEventListener('unload', () => {
-  // v1.6.3.9-v4 - SIMPLIFIED: Removed port/BC cleanup
+  // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
+  stopHeartbeat();
 
-  // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
-  _stopHostInfoCleanupInterval();
+  if (backgroundPort) {
+    logPortLifecycle('unload', { reason: 'window-unload' });
+    backgroundPort.disconnect();
+    backgroundPort = null;
+  }
 
-  // v1.6.3.7-v13 - Issue #12: Stop fallback health monitoring
-  _stopFallbackHealthMonitoring();
-
-  // v1.6.3.8-v4 - FIX Issue #3: Stop visibility refresh interval
-  _stopVisibilityRefreshInterval();
-
-  // v1.6.3.9-v4 - Stop storage health check interval
-  _stopStorageHealthCheckInterval();
-
-  // v1.6.3.8-v4 - FIX Issue #3: Remove visibility change listener
-  document.removeEventListener('visibilitychange', _handleVisibilityChange);
-
-  // v1.6.3.9-v4 - SIMPLIFIED: Removed revision buffer cleanup (code removed)
-
-  // v1.6.3.8-v3 - FIX Issue #19: Clear quickTabHostInfo map to prevent memory leak
-  const hostInfoEntriesBefore = quickTabHostInfo.size;
-  quickTabHostInfo.clear();
-  console.log('[Manager] HOST_INFO_MAP_CLEARED:', {
-    entriesRemoved: hostInfoEntriesBefore,
-    reason: 'window-unload',
-    timestamp: Date.now()
-  });
-
-  // v1.6.3.9-v4 - Simplified unload logging
-  console.log('[Manager] v1.6.3.9-v4 UNLOAD: Cleanup complete');
+  // Clear pending acks
+  for (const [_correlationId, pending] of pendingAcks.entries()) {
+    clearTimeout(pending.timeout);
+  }
+  pendingAcks.clear();
 });
 
 /**
@@ -5580,44 +1478,27 @@ async function checkStorageDebounce() {
  * v1.6.3.5-v11 - FIX Issue #6: Clear cache when storage is legitimately empty
  *   If storage is empty and cache has only 1 tab, this is a legitimate single-tab deletion.
  *   Sets quickTabsState and logs appropriately - used as flow control signal
- * v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache as fallback
  */
 function _handleEmptyStorageState() {
-  const cacheTabs = inMemoryTabsCache.tabs || [];
-  const cacheSessionId = inMemoryTabsCache.sessionId || '';
-
   // v1.6.3.5-v11 - FIX Issue #6: Check if this is a legitimate single-tab deletion
-  if (cacheTabs.length === 1) {
+  if (inMemoryTabsCache.length === 1) {
     console.log(
       '[Manager] Storage empty with single-tab cache - clearing cache (legitimate deletion)'
     );
-    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    inMemoryTabsCache = [];
     lastKnownGoodTabCount = 0;
     quickTabsState = {};
     return;
   }
 
-  // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache as fallback
-  if (cacheTabs.length > 1 && cacheSessionId === currentSessionId) {
+  // Multiple tabs in cache but storage empty - use cache (potential storm protection)
+  if (inMemoryTabsCache.length > 1) {
     console.log(
       '[Manager] Storage returned empty but cache has',
-      cacheTabs.length,
-      'tabs - using cache (same session)'
+      inMemoryTabsCache.length,
+      'tabs - using cache'
     );
-    quickTabsState = { tabs: cacheTabs, timestamp: Date.now() };
-  } else if (cacheTabs.length > 1 && cacheSessionId !== currentSessionId) {
-    // v1.6.3.7-v4 - FIX Issue #6: Cache from different session - reject with warning
-    console.warn('[Manager] ⚠️ STALE_CACHE_REJECTED: Cache is from different session', {
-      cacheSessionId,
-      currentSessionId,
-      cacheTabs: cacheTabs.length,
-      cacheTimestamp: inMemoryTabsCache.timestamp,
-      warning: 'Not restoring ghost tabs from previous session'
-    });
-    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
-    lastKnownGoodTabCount = 0;
-    quickTabsState = {};
-    console.log('[Manager] Loaded Quick Tabs state: empty (cache rejected)');
+    quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
   } else {
     // Cache is empty too - normal empty state
     quickTabsState = {};
@@ -5632,14 +1513,11 @@ function _handleEmptyStorageState() {
  *   Storage storms are detected when MULTIPLE tabs vanish unexpectedly.
  *   A single tab going to 0 is legitimate user action.
  * v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation instead of silently using cache
- * v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache in storm detection
  * @param {Object} state - Storage state
  * @returns {boolean} True if storm detected and handled
  */
 function _detectStorageStorm(state) {
   const storageTabs = state.tabs || [];
-  const cacheTabs = inMemoryTabsCache.tabs || [];
-  const cacheSessionId = inMemoryTabsCache.sessionId || '';
 
   // No storm if storage has tabs
   if (storageTabs.length !== 0) {
@@ -5647,34 +1525,18 @@ function _detectStorageStorm(state) {
   }
 
   // No cache to protect - no storm possible
-  if (cacheTabs.length < MIN_TABS_FOR_CACHE_PROTECTION) {
+  if (inMemoryTabsCache.length < MIN_TABS_FOR_CACHE_PROTECTION) {
     return false;
-  }
-
-  // v1.6.3.7-v4 - FIX Issue #6: Validate session before using cache
-  if (cacheSessionId !== currentSessionId) {
-    console.warn(
-      '[Manager] ⚠️ STALE_CACHE_IGNORED: Cache is from different session during storm detection',
-      {
-        cacheSessionId,
-        currentSessionId,
-        cacheTabCount: cacheTabs.length,
-        warning: 'Not using stale cache for fallback'
-      }
-    );
-    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
-    lastKnownGoodTabCount = 0;
-    return false; // No valid cache to use
   }
 
   // v1.6.3.5-v11 - FIX Issue #6: Single tab deletion is legitimate, not a storm
   // If cache has exactly 1 tab and storage has 0, user closed the last Quick Tab
-  if (cacheTabs.length === 1) {
+  if (inMemoryTabsCache.length === 1) {
     console.log(
       '[Manager] Single tab→0 transition detected - clearing cache (legitimate deletion)'
     );
     // Clear the cache to accept the new 0-tab state
-    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    inMemoryTabsCache = [];
     lastKnownGoodTabCount = 0;
     return false; // Not a storm - proceed with normal update
   }
@@ -5682,26 +1544,16 @@ function _detectStorageStorm(state) {
   // v1.6.3.6-v12 - FIX Issue #5: CACHE_DIVERGENCE - trigger reconciliation
   console.warn('[Manager] v1.6.3.6-v12 CACHE_DIVERGENCE:', {
     storageTabCount: storageTabs.length,
-    cacheTabCount: cacheTabs.length,
+    cacheTabCount: inMemoryTabsCache.length,
     lastKnownGoodCount: lastKnownGoodTabCount,
-    saveId: state.saveId,
-    cacheSessionId,
-    currentSessionId
-  });
-
-  // v1.6.3.7-v4 - FIX Issue #6: Log fallback rescue with warning
-  console.warn('[Manager] ⚠️ FALLBACK_RESCUE_TRIGGERED:', {
-    reason: 'Storage shows 0 tabs but cache has valid data from current session',
-    cacheTabs: cacheTabs.length,
-    sessionMatch: cacheSessionId === currentSessionId,
-    action: 'Using cache temporarily while reconciling with content scripts'
+    saveId: state.saveId
   });
 
   // v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation with content scripts
   _triggerCacheReconciliation();
 
   // Temporarily use cache to prevent blank UI while reconciliation runs
-  quickTabsState = { tabs: cacheTabs, timestamp: Date.now() };
+  quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
   console.log('[Manager] Using in-memory cache temporarily during reconciliation');
   return true;
 }
@@ -5710,7 +1562,6 @@ function _detectStorageStorm(state) {
  * Trigger reconciliation with content scripts when cache diverges from storage
  * v1.6.3.6-v12 - FIX Issue #5: Query content scripts and restore to STORAGE if needed
  * v1.6.3.6-v12 - FIX Code Review: Use module-level imports instead of dynamic import
- * v1.6.3.7-v4 - FIX Issue #6: Update cache with new object structure
  */
 async function _triggerCacheReconciliation() {
   console.log('[Manager] v1.6.3.6-v12 Starting cache reconciliation...');
@@ -5719,41 +1570,28 @@ async function _triggerCacheReconciliation() {
     // Query all content scripts for their Quick Tabs
     // v1.6.3.6-v12 - FIX Code Review: Using module-level import
     const contentScriptTabs = await queryAllContentScriptsForQuickTabs();
-    const cacheTabs = inMemoryTabsCache.tabs || [];
 
     console.log('[Manager] v1.6.3.6-v12 Reconciliation found:', {
       contentScriptTabCount: contentScriptTabs.length,
-      cacheTabCount: cacheTabs.length
+      cacheTabCount: inMemoryTabsCache.length
     });
 
     if (contentScriptTabs.length > 0) {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts have tabs - restore to STORAGE
-      console.warn(
-        '[Manager] CORRUPTION CONFIRMED: Content scripts have tabs but storage is empty'
-      );
+      console.warn('[Manager] CORRUPTION CONFIRMED: Content scripts have tabs but storage is empty');
       console.log('[Manager] v1.6.3.6-v12 Restoring state to storage...');
 
       const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
       quickTabsState = restoredState;
-      // v1.6.3.7-v4 - FIX Issue #6: Update cache with new object structure
-      inMemoryTabsCache = {
-        tabs: [...restoredState.tabs],
-        timestamp: Date.now(),
-        sessionId: currentSessionId
-      };
+      inMemoryTabsCache = [...restoredState.tabs];
       lastKnownGoodTabCount = restoredState.tabs.length;
 
-      console.log(
-        '[Manager] v1.6.3.6-v12 Reconciliation complete: Restored',
-        contentScriptTabs.length,
-        'tabs to storage'
-      );
+      console.log('[Manager] v1.6.3.6-v12 Reconciliation complete: Restored', contentScriptTabs.length, 'tabs to storage');
       renderUI(); // Re-render with restored state
     } else {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
       console.log('[Manager] v1.6.3.6-v12 Content scripts confirm 0 tabs - accepting empty state');
-      // v1.6.3.7-v4 - FIX Issue #6: Clear cache with new object structure
-      inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+      inMemoryTabsCache = [];
       lastKnownGoodTabCount = 0;
       quickTabsState = { tabs: [], timestamp: Date.now() };
       renderUI();
@@ -5769,27 +1607,17 @@ async function _triggerCacheReconciliation() {
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
  * v1.6.3.5-v11 - FIX Issue #6: Also update cache when tabs.length is 0 (legitimate deletion)
  *   The cache must be cleared when tabs legitimately reach 0, not just updated when > 0.
- * v1.6.3.7-v4 - FIX Issue #6: Added session ID and timestamp to cache structure
  * @param {Array} tabs - Tabs array from storage
  */
 function _updateInMemoryCache(tabs) {
   if (tabs.length > 0) {
-    // v1.6.3.7-v4 - FIX Issue #6: Store with session ID and timestamp
-    inMemoryTabsCache = {
-      tabs: [...tabs],
-      timestamp: Date.now(),
-      sessionId: currentSessionId
-    };
+    inMemoryTabsCache = [...tabs];
     lastKnownGoodTabCount = tabs.length;
-    console.log('[Manager] Updated in-memory cache:', {
-      tabCount: tabs.length,
-      sessionId: currentSessionId,
-      timestamp: inMemoryTabsCache.timestamp
-    });
+    console.log('[Manager] Updated in-memory cache:', { tabCount: tabs.length });
   } else if (lastKnownGoodTabCount === 1) {
     // v1.6.3.5-v11 - FIX Issue #6: Clear cache when going from 1→0 (single-tab deletion)
     console.log('[Manager] Clearing in-memory cache (single-tab deletion detected)');
-    inMemoryTabsCache = { tabs: [], timestamp: 0, sessionId: '' };
+    inMemoryTabsCache = [];
     lastKnownGoodTabCount = 0;
   }
   // Note: If lastKnownGoodTabCount > 1 and tabs.length === 0, we don't clear the cache
@@ -5802,174 +1630,61 @@ function _updateInMemoryCache(tabs) {
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
- * v1.6.3.7-v6 - Gap #1: STATE_LOAD_STARTED and STATE_LOAD_COMPLETED logging
- * v1.6.4.18 - Refactored to reduce CC from 10 to ~5
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
-  _logStateLoadStarted(loadStartTime);
 
   try {
-    const state = await _fetchStorageState(loadStartTime);
-    _processStorageStateResult(state, loadStartTime);
+    await checkStorageDebounce();
+
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read start
+    console.log('[Manager] Reading Quick Tab state from storage...');
+
+    const result = await browser.storage.local.get(STATE_KEY);
+    const state = result?.[STATE_KEY];
+
+    if (!state) {
+      _handleEmptyStorageState();
+      console.log('[Manager] Storage read complete: empty state', {
+        source: 'storage.local',
+        durationMs: Date.now() - loadStartTime
+      });
+      return;
+    }
+
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
+    console.log('[Manager] Storage read result:', {
+      tabCount: state.tabs?.length ?? 0,
+      saveId: state.saveId,
+      timestamp: state.timestamp,
+      source: 'storage.local',
+      durationMs: Date.now() - loadStartTime
+    });
+
+    // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
+    const newHash = computeStateHash(state);
+    if (newHash === lastRenderedStateHash) {
+      console.log('[Manager] Storage state unchanged (hash match), skipping update');
+      return;
+    }
+
+    // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
+    if (_detectStorageStorm(state)) return;
+
+    // v1.6.3.5-v4 - Update cache with new valid state
+    _updateInMemoryCache(state.tabs || []);
+
+    quickTabsState = state;
+    filterInvalidTabs(quickTabsState);
+
+    // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
+    lastLocalUpdateTime = Date.now();
+
+    console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
   } catch (err) {
-    _handleStateLoadError(err, loadStartTime);
+    console.error('[Manager] Error loading Quick Tabs state:', err);
   }
-}
-
-/**
- * Log state load started event
- * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
- * @private
- * @param {number} loadStartTime - Load start timestamp
- */
-function _logStateLoadStarted(loadStartTime) {
-  console.log('[Manager] STATE_LOAD_STARTED:', {
-    timestamp: loadStartTime,
-    sessionId: currentSessionId,
-    existingTabCount: quickTabsState?.tabs?.length ?? 0
-  });
-}
-
-/**
- * Fetch state from storage with debounce check
- * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
- * @private
- * @param {number} loadStartTime - Load start timestamp
- * @returns {Promise<Object|null>} Storage state or null
- */
-async function _fetchStorageState(loadStartTime) {
-  await checkStorageDebounce();
-  console.log('[Manager] Reading Quick Tab state from storage...');
-
-  const result = await browser.storage.local.get(STATE_KEY);
-  const state = result?.[STATE_KEY];
-
-  if (state) {
-    _logStorageReadResult(state, loadStartTime);
-  }
-
-  return state;
-}
-
-/**
- * Log storage read result
- * v1.6.4.18 - Extracted from loadQuickTabsState
- * @private
- * @param {Object} state - Loaded state
- * @param {number} loadStartTime - Load start timestamp
- */
-function _logStorageReadResult(state, loadStartTime) {
-  console.log('[Manager] Storage read result:', {
-    tabCount: state.tabs?.length ?? 0,
-    saveId: state.saveId,
-    timestamp: state.timestamp,
-    source: 'storage.local',
-    durationMs: Date.now() - loadStartTime
-  });
-}
-
-/**
- * Process storage state result
- * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
- * @private
- * @param {Object|null} state - Loaded state or null
- * @param {number} loadStartTime - Load start timestamp
- */
-function _processStorageStateResult(state, loadStartTime) {
-  if (!state) {
-    _handleEmptyStorageState();
-    _logStateLoadCompleted('empty', 0, loadStartTime);
-    return;
-  }
-
-  if (_isStateUnchanged(state, loadStartTime)) {
-    return;
-  }
-
-  if (_detectStorageStorm(state)) {
-    return;
-  }
-
-  _processLoadedState(state, loadStartTime);
-}
-
-/**
- * Check if state is unchanged (hash match)
- * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
- * @private
- * @param {Object} state - Loaded state
- * @param {number} loadStartTime - Load start timestamp
- * @returns {boolean} True if unchanged
- */
-function _isStateUnchanged(state, loadStartTime) {
-  const newHash = computeStateHash(state);
-  if (newHash !== lastRenderedStateHash) {
-    return false;
-  }
-
-  console.log('[Manager] Storage state unchanged (hash match), skipping update');
-  _logStateLoadCompleted('skipped-hash-match', state.tabs?.length ?? 0, loadStartTime);
-  return true;
-}
-
-/**
- * Handle state load error
- * v1.6.4.18 - Extracted from loadQuickTabsState to reduce CC
- * @private
- * @param {Error} err - Error object
- * @param {number} loadStartTime - Load start timestamp
- */
-function _handleStateLoadError(err, loadStartTime) {
-  _logStateLoadCompleted('error', 0, loadStartTime, err.message);
-  console.error('[Manager] Error loading Quick Tabs state:', err);
-}
-
-/**
- * Log state load completed event
- * v1.6.3.7-v6 - Gap #1: Extracted to reduce loadQuickTabsState complexity
- * @private
- * @param {string} status - Load status
- * @param {number} tabCount - Number of tabs loaded
- * @param {number} startTime - Load start time
- * @param {string} [error] - Error message if failed
- */
-function _logStateLoadCompleted(status, tabCount, startTime, error = null) {
-  const logData = {
-    status,
-    tabCount,
-    durationMs: Date.now() - startTime,
-    source: 'storage.local'
-  };
-  if (error) {
-    logData.error = error;
-  }
-  if (status === 'success') {
-    logData.saveId = quickTabsState?.saveId;
-  }
-  console.log('[Manager] STATE_LOAD_COMPLETED:', logData);
-}
-
-/**
- * Process loaded state and update local cache
- * v1.6.3.7-v6 - Extracted to reduce loadQuickTabsState complexity
- * @private
- * @param {Object} state - Loaded state object
- * @param {number} loadStartTime - When load started
- */
-function _processLoadedState(state, loadStartTime) {
-  // v1.6.3.5-v4 - Update cache with new valid state
-  _updateInMemoryCache(state.tabs || []);
-
-  quickTabsState = state;
-  filterInvalidTabs(quickTabsState);
-
-  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
-  lastLocalUpdateTime = Date.now();
-
-  _logStateLoadCompleted('success', quickTabsState.tabs?.length ?? 0, loadStartTime);
-  console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
 }
 
 /**
@@ -5998,435 +1713,62 @@ function updateUIStats(totalTabs, latestTimestamp) {
 }
 
 /**
- * Render the Quick Tabs Manager UI (debounced with serial queue)
+ * Render the Quick Tabs Manager UI (debounced)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
  * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
- * v1.6.3.8-v12 - FIX Issue #9: Serial render queue to prevent race conditions
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
-  // v1.6.3.8-v12 - FIX Issue #9: Use render queue with debouncing
-  _enqueueRender('renderUI');
-}
-
-/**
- * Enqueue a render request with debouncing
- * v1.6.3.8-v12 - FIX Issue #9: Buffer rapid changes before re-rendering
- * @private
- * @param {string} source - Source of the render request
- */
-function _enqueueRender(source) {
-  const timestamp = Date.now();
-
-  // Add to queue (with size limit)
-  if (_renderQueue.length < RENDER_QUEUE_MAX_SIZE) {
-    _renderQueue.push({ source, timestamp });
-  } else {
-    console.warn('[Manager] RENDER_QUEUE_FULL: Dropping render request', {
-      source,
-      queueSize: _renderQueue.length,
-      maxSize: RENDER_QUEUE_MAX_SIZE
-    });
-  }
-
-  // Clear existing debounce timer
-  if (_renderQueueDebounceTimer) {
-    clearTimeout(_renderQueueDebounceTimer);
-  }
-
-  // Debounce: wait for more changes before processing
-  _renderQueueDebounceTimer = setTimeout(() => {
-    _renderQueueDebounceTimer = null;
-    _processRenderQueue();
-  }, RENDER_QUEUE_DEBOUNCE_MS);
-
-  console.log('[Manager] RENDER_ENQUEUED:', {
-    source,
-    queueSize: _renderQueue.length,
-    renderInProgress: _renderInProgress,
-    timestamp
-  });
-}
-
-/**
- * Process the render queue serially
- * v1.6.3.8-v12 - FIX Issue #9: Ensure renders complete serially
- * v1.6.3.9-v4 - Phase 5: Enhanced logging format per spec
- * @private
- */
-async function _processRenderQueue() {
-  // If already rendering, wait - the current render will process remaining queue
-  if (_renderInProgress) {
-    console.log('[Manager] RENDER_QUEUE_WAITING: Render already in progress', {
-      queueSize: _renderQueue.length
-    });
-    return;
-  }
-
-  // If queue is empty, nothing to do
-  if (_renderQueue.length === 0) {
-    console.debug('[Manager] RENDER_QUEUE_EMPTY: Nothing to render');
-    return;
-  }
-
-  // Coalesce all queued renders into one
-  const coalescedSources = _renderQueue.map(r => r.source);
-  const queueStartTime = _renderQueue[0]?.timestamp || Date.now();
-  const latestRender = _renderQueue[_renderQueue.length - 1];
-  _renderQueue.length = 0; // Clear queue
-
-  // v1.6.3.9-v4 - Phase 5: RENDER_START log per spec
-  const startTime = performance.now();
-  console.debug('[Manager] RENDER_START queueSize=' + coalescedSources.length);
-
-  console.log('[Manager] RENDER_QUEUE_PROCESSING:', {
-    coalescedCount: coalescedSources.length,
-    sources: coalescedSources.slice(0, 5), // Log first 5 sources
-    queueDelayMs: Date.now() - queueStartTime
-  });
-
-  // Execute the render
-  _renderInProgress = true;
-  _startRenderStallTimer();
-
-  try {
-    await _executeQueuedRender();
-
-    // v1.6.3.9-v4 - Phase 5: Update lastRenderedRevision from latest render
-    if (latestRender?.revision !== undefined) {
-      sidebarLocalState.lastRenderedRevision = latestRender.revision;
-    }
-
-    // v1.6.3.9-v4 - Phase 5: RENDER_COMPLETE log per spec
-    const duration = performance.now() - startTime;
-    const tabCount = sidebarLocalState.tabs?.length ?? quickTabsState?.tabs?.length ?? 0;
-    console.info(
-      '[Manager] RENDER_COMPLETE duration=' + duration.toFixed(1) + 'ms tabCount=' + tabCount
-    );
-  } catch (err) {
-    // v1.6.3.9-v4 - Phase 5: RENDER_ERROR log per spec
-    console.error('[Manager] RENDER_ERROR error=' + err.message);
-    console.error('[Manager] RENDER_QUEUE_ERROR:', {
-      error: err.message,
-      stack: err.stack
-    });
-  } finally {
-    _renderInProgress = false;
-    _clearRenderStallTimer();
-
-    // Check if more renders were queued during this render
-    if (_renderQueue.length > 0) {
-      console.log('[Manager] RENDER_QUEUE_CONTINUE: More renders queued during execution', {
-        pendingCount: _renderQueue.length
-      });
-      // Use setTimeout to avoid stack overflow from deep recursion
-      setTimeout(() => _processRenderQueue(), 0);
-    }
-  }
-}
-
-/**
- * Execute a single queued render with checksum validation
- * v1.6.3.8-v12 - FIX Issue #9: Checksum before/after render
- * @private
- */
-async function _executeQueuedRender() {
-  const renderStartTime = Date.now();
-
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
-
+  
   // v1.6.4.0 - FIX Issue D: Capture state hash when debounce is set
   capturedStateHashAtDebounce = computeStateHash(quickTabsState);
   debounceSetTimestamp = Date.now();
-
-  // v1.6.3.8-v12 - FIX Issue #9: Capture pre-render checksum for validation
-  _preRenderStateHash = capturedStateHashAtDebounce;
-  const preRenderTabCount = quickTabsState?.tabs?.length ?? 0;
-  const preRenderTabIds = new Set((quickTabsState?.tabs || []).map(t => t.id));
-
-  console.log('[Manager] RENDER_CHECKSUM_PRE:', {
-    hash: _preRenderStateHash,
-    tabCount: preRenderTabCount,
-    timestamp: renderStartTime
-  });
-
-  // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
-  const staleCheckResult = await _checkAndReloadStaleState();
-  if (staleCheckResult.stateReloaded) {
-    console.log(
-      '[Manager] State changed while debounce was waiting, rendering with fresh state',
-      staleCheckResult
-    );
+  
+  // Clear any existing debounce timer
+  if (renderDebounceTimer) {
+    clearTimeout(renderDebounceTimer);
   }
-
-  // Recalculate hash after potential fresh load
-  const finalHash = computeStateHash(quickTabsState);
-  if (finalHash === lastRenderedHash) {
-    console.log('[Manager] Skipping render - state hash unchanged', {
-      hash: finalHash,
-      tabCount: quickTabsState?.tabs?.length ?? 0
-    });
+  
+  // Schedule the actual render
+  renderDebounceTimer = setTimeout(async () => {
+    renderDebounceTimer = null;
+    
+    // Only render if still pending (wasn't cancelled)
+    if (!pendingRenderUI) {
+      console.log('[Manager] Skipping debounced render - no longer pending');
+      return;
+    }
+    
     pendingRenderUI = false;
-    return;
-  }
-
-  // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
-  lastRenderedHash = finalHash;
-  lastRenderedStateHash = finalHash;
-
-  pendingRenderUI = false;
-
-  // Synchronize DOM mutation with requestAnimationFrame
-  await new Promise(resolve => {
-    requestAnimationFrame(async () => {
-      await _renderUIImmediate();
-      resolve();
-    });
-  });
-
-  // v1.6.3.8-v12 - FIX Issue #9: Post-render checksum validation
-  const postRenderHash = computeStateHash(quickTabsState);
-  const postRenderTabCount = quickTabsState?.tabs?.length ?? 0;
-  const postRenderTabIds = new Set((quickTabsState?.tabs || []).map(t => t.id));
-
-  console.log('[Manager] RENDER_CHECKSUM_POST:', {
-    preHash: _preRenderStateHash,
-    postHash: postRenderHash,
-    hashMatch: _preRenderStateHash === postRenderHash,
-    preTabCount: preRenderTabCount,
-    postTabCount: postRenderTabCount,
-    durationMs: Date.now() - renderStartTime
-  });
-
-  // v1.6.3.8-v12 - FIX Issue #9: Detect potential corruption
-  _validateRenderIntegrity({
-    preRenderHash: _preRenderStateHash,
-    postRenderHash,
-    preRenderTabCount,
-    postRenderTabCount,
-    preRenderTabIds,
-    postRenderTabIds,
-    renderStartTime
-  });
-}
-
-/**
- * Validate render integrity and trigger recovery if corruption detected
- * v1.6.3.8-v12 - FIX Issue #9: Detect and recover from render corruption
- * @private
- * @param {Object} context - Validation context
- */
-function _validateRenderIntegrity(context) {
-  const {
-    preRenderHash,
-    postRenderHash,
-    preRenderTabCount,
-    postRenderTabCount,
-    preRenderTabIds,
-    postRenderTabIds,
-    renderStartTime
-  } = context;
-
-  // Check for unexpected state changes during render
-  const hashChanged = preRenderHash !== postRenderHash;
-  const tabCountChanged = preRenderTabCount !== postRenderTabCount;
-
-  // Calculate missing tabs (tabs that existed before but not after)
-  const missingTabs = [...preRenderTabIds].filter(id => !postRenderTabIds.has(id));
-  const newTabs = [...postRenderTabIds].filter(id => !preRenderTabIds.has(id));
-
-  // v1.6.3.8-v12 - FIX: Extract corruption checks into helper functions
-  const hasTabsDisappeared = missingTabs.length > 0;
-  const hasNoNewTabs = newTabs.length === 0;
-  const hasCountDecreased = postRenderTabCount < preRenderTabCount;
-
-  // Corruption = tabs disappeared unexpectedly without any new tabs added
-  const possibleCorruption = _detectTabCorruption({
-    hasTabsDisappeared,
-    hasNoNewTabs,
-    tabCountChanged,
-    hasCountDecreased
-  });
-
-  if (possibleCorruption) {
-    _handlePossibleCorruption({
-      preRenderHash,
-      postRenderHash,
-      preRenderTabCount,
-      postRenderTabCount,
-      missingTabs,
-      renderStartTime
-    });
-  } else if (hashChanged) {
-    _handleStateDrift({
-      preRenderHash,
-      postRenderHash,
-      preRenderTabCount,
-      postRenderTabCount,
-      newTabs
-    });
-  }
-}
-
-/**
- * Detect tab corruption based on state changes
- * v1.6.3.8-v12 - FIX Issue #9: Extracted for testability and readability
- * @private
- * @param {Object} context - Context object with corruption indicators
- * @param {boolean} context.hasTabsDisappeared - True if tabs existed before but not after
- * @param {boolean} context.hasNoNewTabs - True if no new tabs were added
- * @param {boolean} context.tabCountChanged - True if tab count changed
- * @param {boolean} context.hasCountDecreased - True if tab count decreased
- * @returns {boolean} True if corruption is detected
- */
-function _detectTabCorruption(context) {
-  const { hasTabsDisappeared, hasNoNewTabs, tabCountChanged, hasCountDecreased } = context;
-  // Corruption = tabs disappeared unexpectedly without any new tabs added
-  return hasTabsDisappeared && hasNoNewTabs && tabCountChanged && hasCountDecreased;
-}
-
-/**
- * Handle possible corruption detection
- * v1.6.3.8-v12 - FIX Issue #9: Extracted for clarity and testability
- * @private
- * @param {Object} context - Corruption context
- */
-function _handlePossibleCorruption(context) {
-  console.error('[Manager] RENDER_CORRUPTION_DETECTED:', {
-    preHash: context.preRenderHash,
-    postHash: context.postRenderHash,
-    preTabCount: context.preRenderTabCount,
-    postTabCount: context.postRenderTabCount,
-    missingTabs: context.missingTabs,
-    renderDurationMs: Date.now() - context.renderStartTime,
-    recoveryAttempts: _renderCorruptionRecoveryAttempts
-  });
-
-  _triggerRenderCorruptionRecovery();
-}
-
-/**
- * Handle state drift (non-corruption state changes)
- * v1.6.3.8-v12 - FIX Issue #9: Extracted for clarity and testability
- * @private
- * @param {Object} context - Drift context
- */
-function _handleStateDrift(context) {
-  console.log('[Manager] RENDER_STATE_DRIFT:', {
-    reason: 'State changed during render (normal)',
-    preHash: context.preRenderHash,
-    postHash: context.postRenderHash,
-    tabCountDelta: context.postRenderTabCount - context.preRenderTabCount,
-    newTabsAdded: context.newTabs.length
-  });
-}
-
-/**
- * Trigger recovery from render corruption
- * v1.6.3.8-v12 - FIX Issue #9: Request full state refresh on corruption
- * @private
- */
-function _triggerRenderCorruptionRecovery() {
-  // Limit recovery attempts to prevent infinite loops
-  if (_renderCorruptionRecoveryAttempts >= MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS) {
-    console.error('[Manager] RENDER_RECOVERY_EXHAUSTED: Max recovery attempts reached', {
-      attempts: _renderCorruptionRecoveryAttempts,
-      max: MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS
-    });
-    _renderCorruptionRecoveryAttempts = 0; // Reset for future
-    return;
-  }
-
-  _renderCorruptionRecoveryAttempts++;
-
-  console.log('[Manager] RENDER_RECOVERY_TRIGGERED:', {
-    attempt: _renderCorruptionRecoveryAttempts,
-    max: MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS,
-    action: 'requesting_full_state_refresh'
-  });
-
-  // Request full state refresh from storage
-  _requestFullStateRefresh();
-}
-
-/**
- * Request full state refresh from storage
- * v1.6.3.8-v12 - FIX Issue #9: Recovery mechanism
- * @private
- */
-async function _requestFullStateRefresh() {
-  try {
-    console.log('[Manager] FULL_STATE_REFRESH: Reading fresh state from storage');
-
-    const result = await browser.storage.local.get(STATE_KEY);
-    const freshState = result?.[STATE_KEY];
-
-    if (freshState?.tabs) {
-      // Update local state with fresh data
-      quickTabsState = freshState;
-      _updateInMemoryCache(freshState.tabs);
-      lastLocalUpdateTime = Date.now();
-
-      console.log('[Manager] FULL_STATE_REFRESH_SUCCESS:', {
-        tabCount: freshState.tabs.length,
-        saveId: freshState.saveId,
-        timestamp: Date.now()
+    
+    // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
+    const staleCheckResult = await _checkAndReloadStaleState();
+    if (staleCheckResult.stateReloaded) {
+      console.log('[Manager] State changed while debounce was waiting, rendering with fresh state', staleCheckResult);
+    }
+    
+    // Recalculate hash after potential fresh load
+    const finalHash = computeStateHash(quickTabsState);
+    if (finalHash === lastRenderedHash) {
+      console.log('[Manager] Skipping render - state hash unchanged', {
+        hash: finalHash,
+        tabCount: quickTabsState?.tabs?.length ?? 0
       });
-
-      // v1.6.3.8-v12 - FIX: Use force render to bypass queue for recovery
-      // Using scheduleRender could re-trigger the same corruption, so bypass queue
-      setTimeout(() => {
-        _renderCorruptionRecoveryAttempts = 0; // Reset on successful refresh
-        _renderUIImmediate_force();
-      }, RENDER_RECOVERY_DELAY_MS);
-    } else {
-      console.warn('[Manager] FULL_STATE_REFRESH: No valid state in storage');
+      return;
     }
-  } catch (err) {
-    console.error('[Manager] FULL_STATE_REFRESH_FAILED:', {
-      error: err.message,
-      timestamp: Date.now()
+    
+    // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
+    // This ensures consistent state even on render failure
+    lastRenderedHash = finalHash;
+    lastRenderedStateHash = finalHash;
+    
+    // Synchronize DOM mutation with requestAnimationFrame
+    requestAnimationFrame(() => {
+      _renderUIImmediate();
     });
-  }
-}
-
-/**
- * Start the render stall detection timer
- * v1.6.3.8-v12 - FIX Issue #9: Detect stalled renders
- * @private
- */
-function _startRenderStallTimer() {
-  _clearRenderStallTimer();
-
-  _renderStallTimerId = setTimeout(() => {
-    console.error('[Manager] RENDER_STALL_DETECTED: Render took too long', {
-      timeoutMs: RENDER_STALL_TIMEOUT_MS,
-      renderInProgress: _renderInProgress
-    });
-
-    // Force reset the render state
-    _renderInProgress = false;
-    _renderStallTimerId = null;
-
-    // Process any pending renders
-    if (_renderQueue.length > 0) {
-      console.log('[Manager] RENDER_STALL_RECOVERY: Processing pending queue');
-      setTimeout(() => _processRenderQueue(), 0);
-    }
-  }, RENDER_STALL_TIMEOUT_MS);
-}
-
-/**
- * Clear the render stall detection timer
- * v1.6.3.8-v12 - FIX Issue #9: Cleanup stall timer
- * @private
- */
-function _clearRenderStallTimer() {
-  if (_renderStallTimerId) {
-    clearTimeout(_renderStallTimerId);
-    _renderStallTimerId = null;
-  }
+  }, RENDER_DEBOUNCE_MS);
 }
 
 /**
@@ -6438,25 +1780,15 @@ function _clearRenderStallTimer() {
 async function _checkAndReloadStaleState() {
   const currentHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
-
+  
   if (currentHash === capturedStateHashAtDebounce) {
-    return {
-      stateReloaded: false,
-      capturedHash: capturedStateHashAtDebounce,
-      currentHash,
-      debounceWaitMs: debounceWaitTime
-    };
+    return { stateReloaded: false, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
   }
-
+  
   // State changed during wait - fetch fresh state from storage to ensure consistency
   await _loadFreshStateFromStorage();
-
-  return {
-    stateReloaded: true,
-    capturedHash: capturedStateHashAtDebounce,
-    currentHash,
-    debounceWaitMs: debounceWaitTime
-  };
+  
+  return { stateReloaded: true, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
 }
 
 /**
@@ -6479,28 +1811,15 @@ async function _loadFreshStateFromStorage() {
 }
 
 /**
- * Force immediate render (bypasses debounce and queue)
+ * Force immediate render (bypasses debounce)
  * v1.6.3.7 - FIX Issue #3: Use for critical updates that can't wait
- * v1.6.3.8-v12 - FIX Issue #9: Also clears render queue
  */
 function _renderUIImmediate_force() {
   pendingRenderUI = false;
-
-  // v1.6.3.8-v12 - FIX Issue #9: Clear queue-related state
-  if (_renderQueueDebounceTimer) {
-    clearTimeout(_renderQueueDebounceTimer);
-    _renderQueueDebounceTimer = null;
-  }
-  _renderQueue.length = 0; // Clear pending renders
-  _renderInProgress = false; // Allow immediate render
-  _clearRenderStallTimer();
-
-  // Legacy debounce timer cleanup (kept for compatibility)
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
     renderDebounceTimer = null;
   }
-
   requestAnimationFrame(() => {
     _renderUIImmediate();
   });
@@ -6508,17 +1827,13 @@ function _renderUIImmediate_force() {
 
 /**
  * Internal render function - performs actual DOM manipulation
- * v1.6.3.7-v3 - FIX Issue #3: Uses reconciliation for differential updates
- *   - Prevents CSS animation flickering by keeping existing DOM elements
- *   - Only adds/removes DOM for actual changes
- *   - Updates existing elements in-place
  * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
  * v1.6.3.7 - FIX Issue #8: Enhanced render logging for debugging
  */
 async function _renderUIImmediate() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
-
+  
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
@@ -6534,7 +1849,7 @@ async function _renderUIImmediate() {
     _showEmptyState();
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
-
+    
     // v1.6.3.7 - FIX Issue #8: Log render exit
     console.log('[Manager] RENDER_UI: exit (empty state)', {
       triggerReason,
@@ -6555,13 +1870,16 @@ async function _renderUIImmediate() {
   const currentGroupKeys = new Set([...groups.keys()].map(String));
   cleanupPreviousGroupCounts(currentGroupKeys);
 
-  // v1.6.3.7-v3 - FIX Issue #3: Use reconciliation instead of full rebuild
-  await _reconcileGroups(groups, collapseState);
+  const groupsContainer = await _buildGroupsContainer(groups, collapseState);
+  checkAndRemoveEmptyGroups(groupsContainer, groups);
+
+  containersList.appendChild(groupsContainer);
+  attachCollapseEventListeners(groupsContainer, collapseState);
 
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
-
+  
   // v1.6.3.7 - FIX Issue #8: Log render exit with summary
   console.log('[Manager] RENDER_UI: exit', {
     triggerReason,
@@ -6569,7 +1887,7 @@ async function _renderUIImmediate() {
     groupsCreated: groups.size,
     durationMs: Date.now() - renderStartTime
   });
-
+  
   _logRenderComplete(allTabs, groups, renderStartTime);
 }
 
@@ -6599,32 +1917,22 @@ function _logRenderStart(allTabs) {
 
 /**
  * Show empty state UI
- * v1.6.3.7-v3 - FIX Issue #3: Clear DOM element tracking maps when empty
  * @private
  */
 function _showEmptyState() {
   containersList.style.display = 'none';
   emptyState.style.display = 'flex';
-
-  // v1.6.3.7-v3 - FIX Issue #3: Clear tracking maps when going to empty state
-  _itemElements.clear();
-  _groupElements.clear();
-  _groupsContainer = null;
-  containersList.innerHTML = '';
-
   console.log('[Manager] UI showing empty state (0 tabs)');
 }
 
 /**
- * Show content state UI (prepare for reconciliation)
- * v1.6.3.7-v3 - FIX Issue #3: No longer clears innerHTML, uses reconciliation instead
+ * Show content state UI
  * @private
  */
 function _showContentState() {
   containersList.style.display = 'block';
   emptyState.style.display = 'none';
-  // v1.6.3.7-v3 - FIX Issue #3: Removed innerHTML = '' to enable reconciliation
-  // DOM elements are now managed via _reconcileGroups()
+  containersList.innerHTML = '';
 }
 
 /**
@@ -6660,652 +1968,6 @@ async function _buildGroupsContainer(groups, collapseState) {
 
   return groupsContainer;
 }
-
-// ==================== v1.6.3.7-v3 DOM RECONCILIATION FUNCTIONS ====================
-// FIX Issue #3: Differential DOM updates to prevent CSS animation flickering
-
-/**
- * Reconcile groups - differential update of the groups container
- * v1.6.3.7-v3 - FIX Issue #3: Main reconciliation entry point
- * v1.6.4.17 - Refactored to flatten bumpy road (bumps=2)
- * @private
- * @param {Map} groups - Map of groupKey -> { quickTabs: [], tabInfo: {} }
- * @param {Object} collapseState - Collapse state for groups
- */
-async function _reconcileGroups(groups, collapseState) {
-  const startTime = Date.now();
-
-  _ensureGroupsContainerExists();
-
-  const sortedGroupKeys = _getSortedGroupKeys(groups);
-  await _fetchMissingTabInfo(sortedGroupKeys, groups);
-  _resortGroupKeys(sortedGroupKeys, groups);
-
-  const existingGroupKeys = new Set(_groupElements.keys());
-  const newGroupKeys = new Set(sortedGroupKeys.map(k => String(k)));
-
-  const diff = _calculateGroupsDiff(existingGroupKeys, newGroupKeys, sortedGroupKeys);
-  _logReconcileDiff(existingGroupKeys, newGroupKeys, diff);
-  _applyGroupsDiff(diff, groups, collapseState, sortedGroupKeys);
-
-  _reorderGroups(sortedGroupKeys);
-  attachCollapseEventListeners(_groupsContainer, collapseState);
-
-  console.log('[Manager] RECONCILE_COMPLETE:', {
-    durationMs: Date.now() - startTime,
-    finalGroupCount: _groupElements.size,
-    finalItemCount: _itemElements.size
-  });
-}
-
-/**
- * Ensure groups container exists and is in DOM
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- */
-function _ensureGroupsContainerExists() {
-  if (_groupsContainer && containersList.contains(_groupsContainer)) {
-    return;
-  }
-
-  _groupsContainer = document.createElement('div');
-  _groupsContainer.className = 'tab-groups-container';
-  containersList.innerHTML = '';
-  containersList.appendChild(_groupsContainer);
-  _groupElements.clear();
-  _itemElements.clear();
-
-  console.log('[Manager] RECONCILE: Created fresh groups container');
-}
-
-/**
- * Calculate diff between existing and new group keys
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- * @param {Set} existingGroupKeys - Keys currently in DOM
- * @param {Set} newGroupKeys - Keys in new state
- * @param {Array} sortedGroupKeys - Sorted array of group keys
- * @returns {Object} Diff with toRemove, toAdd, toUpdate arrays
- */
-function _calculateGroupsDiff(existingGroupKeys, newGroupKeys, sortedGroupKeys) {
-  return {
-    toRemove: [...existingGroupKeys].filter(k => !newGroupKeys.has(k)),
-    toAdd: sortedGroupKeys.filter(k => !existingGroupKeys.has(String(k))),
-    toUpdate: sortedGroupKeys.filter(k => existingGroupKeys.has(String(k)))
-  };
-}
-
-/**
- * Log reconcile diff summary
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- * @param {Set} existingGroupKeys - Keys currently in DOM
- * @param {Set} newGroupKeys - Keys in new state
- * @param {Object} diff - Calculated diff
- */
-function _logReconcileDiff(existingGroupKeys, newGroupKeys, diff) {
-  console.log('[Manager] RECONCILE_GROUPS:', {
-    existing: existingGroupKeys.size,
-    incoming: newGroupKeys.size,
-    toRemove: diff.toRemove.length,
-    toAdd: diff.toAdd.length,
-    toUpdate: diff.toUpdate.length
-  });
-}
-
-/**
- * Apply groups diff to DOM
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- * @param {Object} diff - Diff with toRemove, toAdd, toUpdate arrays
- * @param {Map} groups - Groups map
- * @param {Object} collapseState - Collapse state
- * @param {Array} sortedGroupKeys - Sorted group keys
- */
-function _applyGroupsDiff(diff, groups, collapseState, sortedGroupKeys) {
-  _removeDeletedGroups(diff.toRemove);
-  _updateExistingGroups(diff.toUpdate, groups, collapseState);
-  _addNewGroups(diff.toAdd, groups, collapseState, sortedGroupKeys);
-}
-
-/**
- * Remove deleted groups with exit animation
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- * @param {Array} groupsToRemove - Group keys to remove
- */
-function _removeDeletedGroups(groupsToRemove) {
-  for (const groupKey of groupsToRemove) {
-    _removeGroup(groupKey);
-  }
-}
-
-/**
- * Update existing groups in-place
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- * @param {Array} groupsToUpdate - Group keys to update
- * @param {Map} groups - Groups map
- * @param {Object} collapseState - Collapse state
- */
-function _updateExistingGroups(groupsToUpdate, groups, collapseState) {
-  for (const groupKey of groupsToUpdate) {
-    const group = groups.get(groupKey);
-    if (_shouldSkipGroup(group, groupKey)) {
-      _removeGroup(String(groupKey));
-      continue;
-    }
-    _updateGroup(String(groupKey), group, collapseState);
-  }
-}
-
-/**
- * Add new groups with entrance animation
- * v1.6.4.17 - Extracted from _reconcileGroups
- * @private
- * @param {Array} groupsToAdd - Group keys to add
- * @param {Map} groups - Groups map
- * @param {Object} collapseState - Collapse state
- * @param {Array} sortedGroupKeys - Sorted group keys for ordering
- */
-function _addNewGroups(groupsToAdd, groups, collapseState, sortedGroupKeys) {
-  for (const groupKey of groupsToAdd) {
-    const group = groups.get(groupKey);
-    if (_shouldSkipGroup(group, groupKey)) continue;
-    _addGroup(groupKey, group, collapseState, sortedGroupKeys);
-  }
-}
-
-/**
- * Remove a group from the DOM with exit animation
- * v1.6.3.7-v3 - FIX Issue #3: Animated group removal
- * @private
- * @param {string} groupKey - Group key to remove
- */
-function _removeGroup(groupKey) {
-  const groupEl = _groupElements.get(groupKey);
-  if (!groupEl) return;
-
-  console.log('[Manager] RECONCILE_REMOVE_GROUP:', { groupKey });
-
-  // Remove item tracking for this group's items
-  const itemsInGroup = groupEl.querySelectorAll('.quick-tab-item[data-tab-id]');
-  itemsInGroup.forEach(item => {
-    _itemElements.delete(item.dataset.tabId);
-  });
-
-  // Use animated removal from render-helpers
-  animateGroupRemoval(groupEl);
-  _groupElements.delete(groupKey);
-}
-
-/**
- * Add a new group to the DOM
- * v1.6.3.7-v3 - FIX Issue #3: New groups get entrance animation
- * @private
- * @param {string|number} groupKey - Group key
- * @param {Object} group - Group data
- * @param {Object} collapseState - Collapse state
- * @param {Array} sortedGroupKeys - Sorted keys for positioning
- */
-function _addGroup(groupKey, group, collapseState, sortedGroupKeys) {
-  console.log('[Manager] RECONCILE_ADD_GROUP:', {
-    groupKey,
-    tabCount: group.quickTabs?.length ?? 0
-  });
-
-  const detailsEl = renderTabGroup(groupKey, group, collapseState);
-  _groupElements.set(String(groupKey), detailsEl);
-
-  // Track all items in this new group and add new-item class for animation
-  const itemsInGroup = detailsEl.querySelectorAll('.quick-tab-item[data-tab-id]');
-  itemsInGroup.forEach(item => {
-    _itemElements.set(item.dataset.tabId, item);
-    // v1.6.3.7-v3 - FIX Issue #3: Items in new groups get entrance animation
-    item.classList.add('new-item');
-    setTimeout(() => item.classList.remove('new-item'), ANIMATION_DURATION_MS);
-  });
-
-  // Insert at correct position
-  const keyIndex = sortedGroupKeys.indexOf(groupKey);
-  const nextGroupKey = sortedGroupKeys[keyIndex + 1];
-  const nextGroupEl = nextGroupKey ? _groupElements.get(String(nextGroupKey)) : null;
-
-  if (nextGroupEl && _groupsContainer.contains(nextGroupEl)) {
-    _groupsContainer.insertBefore(detailsEl, nextGroupEl);
-  } else {
-    _groupsContainer.appendChild(detailsEl);
-  }
-}
-
-/**
- * Update an existing group in-place without recreating it
- * v1.6.3.7-v3 - FIX Issue #3: Updates header and reconciles items without animation
- * @private
- * @param {string} groupKey - Group key
- * @param {Object} group - Group data
- * @param {Object} _collapseState - Collapse state (unused, kept for API consistency)
- */
-function _updateGroup(groupKey, group, _collapseState) {
-  const groupEl = _groupElements.get(groupKey);
-  if (!groupEl) return;
-
-  // Update header elements (count, title, badges)
-  _updateGroupHeader(groupEl, groupKey, group);
-
-  // Reconcile items within the group
-  const content = groupEl.querySelector('.tab-group-content');
-  if (content) {
-    _reconcileGroupItems(content, group.quickTabs, groupKey);
-  }
-}
-
-/**
- * Update group header elements without recreating the group
- * v1.6.3.7-v3 - FIX Issue #3: In-place header updates
- * @private
- * @param {HTMLElement} groupEl - Group details element
- * @param {string} groupKey - Group key
- * @param {Object} group - Group data
- */
-function _updateGroupHeader(groupEl, groupKey, group) {
-  _updateCountBadge(groupEl, groupKey, group);
-  _updateGroupTitle(groupEl, group);
-}
-
-/**
- * Update count badge in group header
- * v1.6.4.18 - Extracted from _updateGroupHeader to reduce CC
- * @private
- * @param {HTMLElement} groupEl - Group details element
- * @param {string} groupKey - Group key
- * @param {Object} group - Group data
- */
-function _updateCountBadge(groupEl, groupKey, group) {
-  const countEl = groupEl.querySelector('.tab-group-count');
-  if (!countEl) {
-    return;
-  }
-
-  const newCount = group.quickTabs?.length ?? 0;
-  if (countEl.textContent === String(newCount)) {
-    return;
-  }
-
-  animateCountBadgeIfChanged(groupKey, newCount, countEl);
-  countEl.textContent = String(newCount);
-  countEl.dataset.count = String(newCount);
-}
-
-/**
- * Update title in group header
- * v1.6.4.18 - Extracted from _updateGroupHeader to reduce CC
- * @private
- * @param {HTMLElement} groupEl - Group details element
- * @param {Object} group - Group data
- */
-function _updateGroupTitle(groupEl, group) {
-  const titleEl = groupEl.querySelector('.tab-group-title');
-  if (!titleEl) {
-    return;
-  }
-
-  const newTitle = group.tabInfo?.title;
-  if (!newTitle || titleEl.textContent === newTitle) {
-    return;
-  }
-
-  titleEl.textContent = newTitle;
-  titleEl.title = group.tabInfo.url || '';
-}
-
-/**
- * Reconcile items within a group content element
- * v1.6.3.7-v3 - FIX Issue #3: Differential item updates within groups
- * @private
- * @param {HTMLElement} content - Group content element
- * @param {Array} quickTabs - Array of Quick Tab data
- * @param {string} groupKey - Group key for logging
- */
-function _reconcileGroupItems(content, quickTabs, groupKey) {
-  // Sort: active first, then minimized
-  const sortedTabs = [...quickTabs].sort((a, b) => {
-    return (isTabMinimizedHelper(a) ? 1 : 0) - (isTabMinimizedHelper(b) ? 1 : 0);
-  });
-
-  const existingItemIds = new Set();
-  content.querySelectorAll('.quick-tab-item[data-tab-id]').forEach(item => {
-    existingItemIds.add(item.dataset.tabId);
-  });
-
-  const newItemIds = new Set(sortedTabs.map(t => t.id));
-
-  // Calculate diff
-  const itemsToRemove = [...existingItemIds].filter(id => !newItemIds.has(id));
-  const itemsToAdd = sortedTabs.filter(t => !existingItemIds.has(t.id));
-  const itemsToUpdate = sortedTabs.filter(t => existingItemIds.has(t.id));
-
-  // 1. Remove deleted items
-  for (const itemId of itemsToRemove) {
-    _removeQuickTabItem(itemId, content);
-  }
-
-  // 2. Update existing items (in-place)
-  for (const tab of itemsToUpdate) {
-    _updateQuickTabItem(tab);
-  }
-
-  // 3. Add new items
-  for (const tab of itemsToAdd) {
-    _addQuickTabItem(tab, content, sortedTabs);
-  }
-
-  // Update section headers if needed
-  _updateSectionHeaders(content, sortedTabs);
-
-  console.log('[Manager] RECONCILE_GROUP_ITEMS:', {
-    groupKey,
-    removed: itemsToRemove.length,
-    added: itemsToAdd.length,
-    updated: itemsToUpdate.length
-  });
-}
-
-/**
- * Remove a Quick Tab item from the DOM
- * v1.6.3.7-v3 - FIX Issue #3: Item removal with exit animation
- * @private
- * @param {string} itemId - Quick Tab ID to remove
- * @param {HTMLElement} _content - Content container (unused, kept for API consistency)
- */
-function _removeQuickTabItem(itemId, _content) {
-  const item = _itemElements.get(itemId);
-  if (!item) return;
-
-  console.log('[Manager] RECONCILE_REMOVE_ITEM:', { itemId });
-
-  // Add removing class for exit animation
-  item.classList.add('removing');
-
-  // v1.6.3.7-v3 - FIX: Delete from tracking map immediately to prevent
-  // duplicate operations during animation, but keep DOM element until animation completes
-  _itemElements.delete(itemId);
-
-  // Remove DOM element after animation completes
-  setTimeout(() => {
-    if (item.parentNode) {
-      item.remove();
-    }
-  }, ANIMATION_DURATION_MS);
-}
-
-/**
- * Add a new Quick Tab item to the DOM
- * v1.6.3.7-v3 - FIX Issue #3: New items get entrance animation via .new-item class
- * @private
- * @param {Object} tab - Quick Tab data
- * @param {HTMLElement} content - Content container
- * @param {Array} sortedTabs - All tabs in sorted order for positioning
- */
-function _addQuickTabItem(tab, content, sortedTabs) {
-  const isMinimized = isTabMinimizedHelper(tab);
-  const item = renderQuickTabItem(tab, 'global', isMinimized);
-
-  // v1.6.3.7-v3 - FIX Issue #3: Add new-item class for entrance animation
-  item.classList.add('new-item');
-
-  _itemElements.set(tab.id, item);
-
-  // Find correct position
-  const tabIndex = sortedTabs.findIndex(t => t.id === tab.id);
-  const nextTab = sortedTabs[tabIndex + 1];
-  const nextItem = nextTab ? _itemElements.get(nextTab.id) : null;
-
-  // Insert at correct position (after section headers if applicable)
-  if (nextItem && content.contains(nextItem)) {
-    content.insertBefore(item, nextItem);
-  } else {
-    // Append at end
-    content.appendChild(item);
-  }
-
-  // v1.6.3.7-v3 - FIX Issue #3: Remove new-item class after animation completes
-  setTimeout(() => {
-    item.classList.remove('new-item');
-  }, ANIMATION_DURATION_MS);
-
-  console.log('[Manager] RECONCILE_ADD_ITEM:', {
-    itemId: tab.id,
-    isMinimized,
-    position: tabIndex
-  });
-}
-
-/**
- * Update an existing Quick Tab item in-place
- * v1.6.3.7-v3 - FIX Issue #3: In-place property updates without recreation
- * @private
- * @param {Object} tab - Quick Tab data
- */
-function _updateQuickTabItem(tab) {
-  const item = _itemElements.get(tab.id);
-  if (!item) return;
-
-  const isMinimized = isTabMinimizedHelper(tab);
-
-  // Update minimized state if changed
-  _updateItemMinimizedState(item, tab, isMinimized);
-
-  // Update title text
-  _updateItemTitle(item, tab);
-
-  // Update meta info (size/position)
-  _updateItemMeta(item, tab, isMinimized);
-
-  // Update domVerified warning indicator
-  _updateItemStatusIndicator(item, tab, isMinimized);
-}
-
-/**
- * Update the minimized state classes and related UI
- * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce _updateQuickTabItem complexity
- * @private
- */
-function _updateItemMinimizedState(item, tab, isMinimized) {
-  const wasMinimized = item.classList.contains('minimized');
-
-  if (isMinimized !== wasMinimized) {
-    item.classList.toggle('minimized', isMinimized);
-    item.classList.toggle('active', !isMinimized);
-
-    // Update action buttons (minimize <-> restore)
-    _updateItemActionButtons(item, tab, isMinimized);
-  }
-}
-
-/**
- * Update the title element of a Quick Tab item
- * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce _updateQuickTabItem complexity
- * @private
- */
-function _updateItemTitle(item, tab) {
-  const titleEl = item.querySelector('.tab-title');
-  const newTitle = tab.title || 'Quick Tab';
-
-  if (titleEl && titleEl.textContent !== newTitle) {
-    titleEl.textContent = newTitle;
-    titleEl.title = tab.title || tab.url;
-  }
-}
-
-/**
- * Update the meta element of a Quick Tab item
- * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce _updateQuickTabItem complexity
- * @private
- */
-function _updateItemMeta(item, tab, isMinimized) {
-  const metaEl = item.querySelector('.tab-meta');
-  if (!metaEl) return;
-
-  const newMeta = _buildMetaText(tab, isMinimized);
-  if (metaEl.textContent !== newMeta) {
-    metaEl.textContent = newMeta;
-  }
-}
-
-/**
- * Update status indicator for a Quick Tab item
- * v1.6.3.7-v3 - FIX Issue #3: In-place status indicator update
- * @private
- */
-function _updateItemStatusIndicator(item, tab, isMinimized) {
-  const indicator = item.querySelector('.status-indicator');
-  if (!indicator) return;
-
-  const indicatorClass = _getIndicatorClass(tab, isMinimized);
-
-  // Remove all indicator classes and add the correct one
-  indicator.classList.remove('green', 'yellow', 'orange');
-  indicator.classList.add(indicatorClass);
-
-  // Update tooltip for warning state
-  if (indicatorClass === 'orange') {
-    indicator.title = 'Warning: Window may not be visible. Try restoring again.';
-  } else {
-    indicator.title = '';
-  }
-}
-
-/**
- * Update action buttons for a Quick Tab item
- * v1.6.3.7-v3 - FIX Issue #3: Swap minimize/restore buttons on state change
- * @private
- */
-function _updateItemActionButtons(item, tab, isMinimized) {
-  const actionsEl = item.querySelector('.tab-actions');
-  if (!actionsEl) return;
-
-  // Clear existing buttons and add new ones
-  // Note: Event delegation is used, so no listeners to preserve
-  const newActions = _createTabActions(tab, isMinimized);
-  actionsEl.replaceChildren(...newActions.childNodes);
-}
-
-/**
- * Build meta text for a Quick Tab item
- * v1.6.3.7-v3 - FIX Issue #3: Helper for meta text generation
- * @private
- */
-function _buildMetaText(tab, isMinimized) {
-  const metaParts = [];
-
-  if (isMinimized) {
-    metaParts.push('Minimized');
-  }
-
-  if (tab.activeTabId) {
-    metaParts.push(`Tab ${tab.activeTabId}`);
-  }
-
-  const sizePosition = _formatSizePosition(tab);
-  if (sizePosition) {
-    metaParts.push(sizePosition);
-  }
-
-  if (tab.slotNumber) {
-    metaParts.push(`Slot ${tab.slotNumber}`);
-  }
-
-  return metaParts.join(' • ');
-}
-
-/**
- * Update section headers in group content
- * v1.6.3.7-v3 - FIX Issue #3: Update section counts without full rebuild
- * @private
- */
-function _updateSectionHeaders(content, sortedTabs) {
-  // v1.6.3.7-v3 - Optimized: Single pass to count active/minimized tabs
-  let activeCount = 0;
-  let minimizedCount = 0;
-  for (const tab of sortedTabs) {
-    if (isTabMinimizedHelper(tab)) {
-      minimizedCount++;
-    } else {
-      activeCount++;
-    }
-  }
-
-  const hasBothSections = activeCount > 0 && minimizedCount > 0;
-
-  if (hasBothSections) {
-    _updateSectionHeaderCounts(content, activeCount, minimizedCount);
-  } else {
-    _removeSectionElements(content);
-  }
-}
-
-/**
- * Update section header counts
- * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce nesting depth
- * @private
- */
-function _updateSectionHeaderCounts(content, activeCount, minimizedCount) {
-  const headers = content.querySelectorAll('.section-header');
-  if (headers[0]) headers[0].textContent = `Active (${activeCount})`;
-  if (headers[1]) headers[1].textContent = `Minimized (${minimizedCount})`;
-}
-
-/**
- * Remove section elements when only one type of tab exists
- * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce nesting depth
- * @private
- */
-function _removeSectionElements(content) {
-  const activeHeader = content.querySelector('.section-header');
-  const divider = content.querySelector('.section-divider');
-  const minimizedHeader = content.querySelectorAll('.section-header')[1];
-
-  if (activeHeader) activeHeader.remove();
-  if (divider) divider.remove();
-  if (minimizedHeader) minimizedHeader.remove();
-}
-
-/**
- * Reorder groups in the DOM to match sorted order
- * v1.6.3.7-v3 - FIX Issue #3: Ensure correct visual order without recreation
- * @private
- * @param {Array} sortedGroupKeys - Group keys in desired order
- */
-function _reorderGroups(sortedGroupKeys) {
-  let previousEl = null;
-
-  for (const groupKey of sortedGroupKeys) {
-    const groupEl = _groupElements.get(String(groupKey));
-    if (!groupEl) continue;
-
-    _repositionGroupElement(groupEl, previousEl);
-    previousEl = groupEl;
-  }
-}
-
-/**
- * Position a group element in the correct location in the DOM
- * v1.6.3.7-v3 - FIX Issue #3: Extracted to reduce nesting depth
- * @private
- */
-function _repositionGroupElement(groupEl, previousEl) {
-  if (previousEl && groupEl.previousElementSibling !== previousEl) {
-    previousEl.after(groupEl);
-    return;
-  }
-
-  if (!previousEl && _groupsContainer.firstChild !== groupEl) {
-    _groupsContainer.insertBefore(groupEl, _groupsContainer.firstChild);
-  }
-}
-
-// ==================== END DOM RECONCILIATION FUNCTIONS ====================
 
 /**
  * Get sorted group keys (orphaned last, closed before orphaned)
@@ -8043,43 +2705,21 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
-  // v1.6.3.7-v9 - FIX Issue #11: Add initialization guard
-  // v1.6.3.7-v10 - FIX Issue #11: Enhanced LISTENER_REGISTERED logging
-  // v1.6.3.7-v13 - Issue #6 (arch): Add storage health probe handling
-  // v1.6.3.8-v3 - FIX Issues #2, #5, #9, #15: Refactored to _initializeStorageListener()
-  //              with explicit registration verification pattern
-  // NOTE: Listener registration is now handled by _initializeStorageListener()
-  //       called from DOMContentLoaded initialization sequence
-  console.log('[Manager] STORAGE_LISTENER_SETUP: delegated to _initializeStorageListener()', {
-    timestamp: Date.now()
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    _handleStorageChange(changes[STATE_KEY]);
   });
 }
 
 /**
  * Setup browser tab activation listener for real-time context updates
  * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
- * v1.6.3.7-v9 - FIX Issue #11: Add initialization guards
  * When user switches between browser tabs, update the Manager to show
  * context-relevant Quick Tabs (those with originTabId matching current tab)
  */
 function setupTabSwitchListener() {
   // Listen for tab activation (user switches to a different tab)
   browser.tabs.onActivated.addListener(activeInfo => {
-    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
-    logListenerEntry('tabs.onActivated', { tabId: activeInfo.tabId });
-
-    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
-    if (!isFullyInitialized()) {
-      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: tabs.onActivated', {
-        initializationStarted,
-        initializationComplete,
-        tabId: activeInfo.tabId,
-        message: 'Skipping - sidebar not yet fully initialized',
-        timestamp: Date.now()
-      });
-      return;
-    }
-
     const newTabId = activeInfo.tabId;
 
     // Only process if tab actually changed
@@ -8105,21 +2745,6 @@ function setupTabSwitchListener() {
 
   // Also listen for window focus changes (user switches browser windows)
   browser.windows.onFocusChanged.addListener(async windowId => {
-    // v1.6.3.7-v9 - FIX Issue #11: Log listener entry
-    logListenerEntry('windows.onFocusChanged', { windowId });
-
-    // v1.6.3.7-v9 - FIX Issue #11: Guard against processing before initialization
-    if (!isFullyInitialized()) {
-      console.warn('[Manager] LISTENER_CALLED_BEFORE_INIT: windows.onFocusChanged', {
-        initializationStarted,
-        initializationComplete,
-        windowId,
-        message: 'Skipping - sidebar not yet fully initialized',
-        timestamp: Date.now()
-      });
-      return;
-    }
-
     if (windowId === browser.windows.WINDOW_ID_NONE) {
       return; // Window lost focus
     }
@@ -8144,7 +2769,7 @@ function setupTabSwitchListener() {
     }
   });
 
-  console.log('[Manager] v1.6.3.7-v9 Tab switch listener initialized with init guards');
+  console.log('[Manager] Tab switch listener initialized');
 }
 
 /**
@@ -8155,41 +2780,28 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime on storage.onChanged
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
- * v1.6.3.7-v6 - Gap #2 & Issue #7: Enhanced deduplication logging with channel source
- * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId validation for event ordering
- * v1.6.3.9-v4 - SIMPLIFIED: Removed complex buffering, kept basic revision validation
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
 
-  // v1.6.3.7-v9 - FIX Issue #6: Cancel any pending watchdog timer
-  _cancelStorageWatchdog();
+  // v1.6.3.7 - FIX Issue #8: Log storage listener entry
+  console.log('[Manager] STORAGE_LISTENER:', {
+    event: 'storage.onChanged',
+    oldSaveId: context.oldValue?.saveId || 'none',
+    newSaveId: context.newValue?.saveId || 'none',
+    timestamp: Date.now()
+  });
 
-  _logStorageMessageReceived(context);
+  // Log the storage change
   _logStorageChangeEvent(context);
+
+  // Log tab ID changes (added/removed)
   _logTabIdChanges(context);
+
+  // Log position/size updates
   _logPositionSizeChanges(context);
-
-  // v1.6.3.7-v12 - Issue #5: Track as storage-based fallback update (when BC unavailable)
-  _trackFallbackUpdate('storage');
-
-  // v1.6.3.7-v9 - FIX Issue #6: Validate sequence ID to ensure correct event ordering
-  if (!_validateSequenceId(context)) {
-    return; // Event is out of order (sequence ID), reject it
-  }
-
-  // v1.6.3.9-v4 - SIMPLIFIED: Validate revision (no buffering)
-  const revisionResult = _validateRevision(context);
-  if (!revisionResult.valid) {
-    return; // Stale revision, reject it
-  }
-
-  // v1.6.3.7-v6 - Gap #2: Special case - if oldValue was empty and newValue has tabs
-  if (_handleEmptyToPopulatedTransition(context)) {
-    return;
-  }
 
   // Check for and handle suspicious drops
   if (_isSuspiciousStorageDrop(context.oldTabCount, context.newTabCount, context.newValue)) {
@@ -8197,333 +2809,10 @@ function _handleStorageChange(change) {
     return;
   }
 
-  _processStorageChangeAnalysis(context);
-}
-
-// v1.6.3.9-v4 - REMOVED: _applyBufferedEvents (buffering removed)
-
-/**
- * Validate sequence ID for event ordering
- * v1.6.3.7-v9 - FIX Issue #6: Reject updates with sequenceId <= lastAppliedSequenceId
- * @private
- * @param {Object} context - Storage change context
- * @returns {boolean} True if valid (should process), false if out-of-order (reject)
- */
-function _validateSequenceId(context) {
-  const newSequenceId = context.newValue?.sequenceId;
-
-  // If no sequenceId, process the event (backward compatibility)
-  if (newSequenceId === undefined || newSequenceId === null) {
-    console.log(
-      '[Manager] SEQUENCE_VALIDATION: No sequenceId present, processing event (backward compat)',
-      {
-        saveId: context.newValue?.saveId,
-        timestamp: Date.now()
-      }
-    );
-    return true;
-  }
-
-  // Check if this is a newer event
-  if (newSequenceId <= lastAppliedSequenceId) {
-    console.warn('[Manager] SEQUENCE_VALIDATION_REJECTED: Out-of-order event detected', {
-      newSequenceId,
-      lastAppliedSequenceId,
-      saveId: context.newValue?.saveId,
-      decision: 'reject',
-      timestamp: Date.now()
-    });
-    return false;
-  }
-
-  // Valid sequence - update tracking and proceed
-  const previousSequenceId = lastAppliedSequenceId;
-  lastAppliedSequenceId = newSequenceId;
-
-  console.log('[Manager] SEQUENCE_VALIDATION_ACCEPTED:', {
-    previousSequenceId,
-    newSequenceId,
-    saveId: context.newValue?.saveId,
-    decision: 'process',
-    timestamp: Date.now()
-  });
-
-  return true;
-}
-
-// ==================== v1.6.3.8-v5 REVISION VALIDATION FUNCTIONS ====================
-// v1.6.3.9-v4 - SIMPLIFIED: Removed complex buffering, kept basic revision validation
-
-/**
- * Validate incoming revision number
- * v1.6.3.9-v4 - SIMPLIFIED: Reject stale updates, accept gaps without buffering
- * @private
- * @param {Object} context - Storage change context containing newValue
- * @returns {Object} { valid: boolean, reason: string }
- */
-function _validateRevision(context) {
-  const newRevision = context.newValue?.revision;
-  const now = Date.now();
-
-  // If no revision, allow for backward compatibility
-  if (newRevision === undefined || newRevision === null) {
-    console.log(
-      '[Manager] REVISION_VALIDATION: No revision present, processing (backward compat)',
-      {
-        saveId: context.newValue?.saveId,
-        sequenceId: context.newValue?.sequenceId,
-        timestamp: now
-      }
-    );
-    return { valid: true, reason: 'no_revision_backward_compat' };
-  }
-
-  // Check if this revision is stale (already processed or older)
-  if (newRevision <= _lastAppliedRevision) {
-    console.warn('[Manager] REVISION_REJECTED: Stale revision detected', {
-      incomingRevision: newRevision,
-      lastAppliedRevision: _lastAppliedRevision,
-      saveId: context.newValue?.saveId,
-      reason: newRevision === _lastAppliedRevision ? 'duplicate' : 'out_of_order',
-      timestamp: now
-    });
-    return { valid: false, reason: 'stale_revision' };
-  }
-
-  // v1.6.3.9-v4 - SIMPLIFIED: Accept gaps without buffering
-  const expectedRevision = _lastAppliedRevision + 1;
-  if (newRevision > expectedRevision) {
-    // Gap detected - log warning but accept anyway
-    console.warn('[Manager] REVISION_GAP_ACCEPTED: Gap detected but accepting', {
-      incomingRevision: newRevision,
-      expectedRevision,
-      lastAppliedRevision: _lastAppliedRevision,
-      gapSize: newRevision - expectedRevision,
-      saveId: context.newValue?.saveId,
-      timestamp: now
-    });
-  }
-
-  // Valid revision - accept and update tracking
-  const previousRevision = _lastAppliedRevision;
-  _lastAppliedRevision = newRevision;
-
-  console.log('[Manager] REVISION_ACCEPTED:', {
-    previousRevision,
-    newRevision,
-    saveId: context.newValue?.saveId,
-    timestamp: now
-  });
-
-  return { valid: true, reason: 'valid' };
-}
-
-// v1.6.3.9-v4 - REMOVED: Complete revision event buffering system:
-// - _bufferRevisionEvent() - stored out-of-order events by revision number
-// - _processBufferedRevisionEvents() - applied buffered events once gaps filled
-// - _applyBufferedEvents() - processed buffered events after current event
-// - _cleanupRevisionBuffer() - periodic cleanup of expired buffered events
-// - _startRevisionBufferCleanup() - interval to cleanup stale buffer entries
-// - _stopRevisionBufferCleanup() - cleanup on unload
-// Simplified architecture: just reject stale revisions, accept gaps without buffering
-
-/**
- * Cancel the storage watchdog timer
- * v1.6.3.7-v9 - FIX Issue #6: Helper function for watchdog management
- * @private
- */
-function _cancelStorageWatchdog() {
-  if (storageWatchdogTimerId !== null) {
-    clearTimeout(storageWatchdogTimerId);
-    storageWatchdogTimerId = null;
-  }
-}
-
-/**
- * Apply state from watchdog recovery
- * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
- * v1.6.3.9-v4 - SIMPLIFIED: Also update revision tracking
- * @private
- * @param {Object} currentState - State from storage
- * @param {string} expectedSaveId - Expected save ID
- */
-function _applyWatchdogRecoveryState(currentState, expectedSaveId) {
-  quickTabsState = currentState;
-  _updateInMemoryCache(currentState.tabs);
-  if (currentState.sequenceId) {
-    lastAppliedSequenceId = currentState.sequenceId;
-  }
-  // v1.6.3.9-v4 - SIMPLIFIED: Also update revision tracking
-  if (currentState.revision) {
-    _lastAppliedRevision = currentState.revision;
-  }
-  scheduleRender('storage-watchdog-recovery', expectedSaveId);
-}
-
-/**
- * Handle watchdog timeout and verify storage state
- * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
- * @private
- * @param {string} expectedSaveId - Expected save ID
- */
-async function _handleWatchdogTimeout(expectedSaveId) {
-  console.warn(
-    '[Manager] STORAGE_WATCHDOG_TIMEOUT: No storage.onChanged received within',
-    STORAGE_WATCHDOG_TIMEOUT_MS,
-    'ms'
-  );
-  console.log(
-    '[Manager] STORAGE_WATCHDOG: Explicitly re-reading storage to verify state consistency'
-  );
-
-  try {
-    const result = await browser.storage.local.get('quick_tabs_state_v2');
-    const currentState = result?.quick_tabs_state_v2;
-
-    if (currentState?.saveId === expectedSaveId) {
-      console.log(
-        '[Manager] STORAGE_WATCHDOG: Storage matches expected state - event may have been lost'
-      );
-      _applyWatchdogRecoveryState(currentState, expectedSaveId);
-    } else {
-      console.log('[Manager] STORAGE_WATCHDOG: Storage state differs from expected', {
-        expectedSaveId,
-        actualSaveId: currentState?.saveId,
-        actualSequenceId: currentState?.sequenceId
-      });
-    }
-  } catch (err) {
-    console.error('[Manager] STORAGE_WATCHDOG: Failed to re-read storage:', err.message);
-  }
-
-  storageWatchdogTimerId = null;
-}
-
-/**
- * Start watchdog timer for storage event verification
- * v1.6.3.7-v9 - FIX Issue #6: If no storage.onChanged within timeout, re-read storage
- * @param {string} expectedSaveId - Save ID we're expecting to receive
- */
-function _startStorageWatchdog(expectedSaveId) {
-  _cancelStorageWatchdog();
-
-  storageWatchdogTimerId = setTimeout(() => {
-    _handleWatchdogTimeout(expectedSaveId);
-  }, STORAGE_WATCHDOG_TIMEOUT_MS);
-}
-
-/**
- * Log storage message received with channel source
- * v1.6.3.7-v6 - Issue #7: Extracted for complexity reduction
- * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId to logging
- * v1.6.4.17 - Refactored to reduce CC from 10 to ~2
- * @private
- * @param {Object} context - Storage change context
- */
-function _logStorageMessageReceived(context) {
-  const messageData = _extractStorageMessageData(context);
-  const listenerData = _extractStorageListenerData(context);
-
-  console.log('[Manager] MESSAGE_RECEIVED [STORAGE]:', messageData);
-  console.log('[Manager] STORAGE_LISTENER:', listenerData);
-}
-
-/**
- * Extract data for MESSAGE_RECEIVED log
- * v1.6.4.17 - Extracted from _logStorageMessageReceived
- * @private
- * @param {Object} context - Storage change context
- * @returns {Object} Log data
- */
-function _extractStorageMessageData(context) {
-  const newVal = context.newValue || {};
-  return {
-    saveId: newVal.saveId || 'none',
-    sequenceId: newVal.sequenceId ?? 'none',
-    oldTabCount: context.oldTabCount,
-    newTabCount: context.newTabCount,
-    timestamp: Date.now()
-  };
-}
-
-/**
- * Extract data for STORAGE_LISTENER log
- * v1.6.4.17 - Extracted from _logStorageMessageReceived
- * @private
- * @param {Object} context - Storage change context
- * @returns {Object} Log data
- */
-function _extractStorageListenerData(context) {
-  const oldVal = context.oldValue || {};
-  const newVal = context.newValue || {};
-  return {
-    event: 'storage.onChanged',
-    oldSaveId: oldVal.saveId || 'none',
-    newSaveId: newVal.saveId || 'none',
-    oldSequenceId: oldVal.sequenceId ?? 'none',
-    newSequenceId: newVal.sequenceId ?? 'none',
-    lastAppliedSequenceId,
-    timestamp: Date.now()
-  };
-}
-
-/**
- * Handle special case: empty state to populated state transition
- * v1.6.3.7-v6 - Gap #2: Extracted for complexity reduction
- * v1.6.3.7-v6 - FIX Code Review: Use clearer positive check (> 0) instead of (<= 0)
- * @private
- * @param {Object} context - Storage change context
- * @returns {boolean} True if handled (early return), false otherwise
- */
-function _handleEmptyToPopulatedTransition(context) {
-  // Skip if not a transition from empty to populated
-  if (context.oldTabCount !== 0 || context.newTabCount <= 0) {
-    return false;
-  }
-
-  console.log(
-    '[Manager] STORAGE_SPECIAL_CASE: Old state was empty, new state has tabs - forcing render',
-    {
-      oldTabCount: context.oldTabCount,
-      newTabCount: context.newTabCount,
-      saveId: context.newValue?.saveId,
-      channel: 'STORAGE'
-    }
-  );
-
-  // Cancel pending initial load timeout since data arrived during wait period
-  _cancelInitialLoadTimeout();
-
-  _updateLocalStateCache(context.newValue);
-  lastLocalUpdateTime = Date.now();
-  scheduleRender('storage-empty-to-populated', context.newValue?.saveId);
-  return true;
-}
-
-/**
- * Cancel initial load timeout if it exists
- * v1.6.3.7-v6 - FIX Code Review: Extracted to prevent race conditions
- * @private
- */
-function _cancelInitialLoadTimeout() {
-  if (initialLoadTimeoutId !== null) {
-    clearTimeout(initialLoadTimeoutId);
-    initialLoadTimeoutId = null;
-    initialStateLoadComplete = true;
-    console.log('[Manager] INITIAL_LOAD_TIMEOUT_CANCELLED: Data received during wait period');
-  }
-}
-
-/**
- * Process storage change analysis and schedule update if needed
- * v1.6.3.7-v6 - Extracted for complexity reduction
- * @private
- * @param {Object} context - Storage change context
- */
-function _processStorageChangeAnalysis(context) {
+  // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
   const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
-
-  // Update lastLocalUpdateTime for ANY real data change
+  
+  // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
   if (changeAnalysis.hasDataChange) {
     lastLocalUpdateTime = Date.now();
     console.log('[Manager] STORAGE_LISTENER: lastLocalUpdateTime updated', {
@@ -8531,15 +2820,14 @@ function _processStorageChangeAnalysis(context) {
       reason: changeAnalysis.changeReason
     });
   }
-
-  // v1.6.3.7-v6 - Gap #2 & Gap #5: Log deduplication decision
+  
+  // v1.6.3.7 - FIX Issue #3: Skip renderUI if only metadata changed
   if (!changeAnalysis.requiresRender) {
-    console.log('[Manager] RENDER_SKIPPED:', {
-      reason: changeAnalysis.changeType === 'metadata-only' ? 'metadata_only' : 'no_changes',
-      channel: 'STORAGE',
+    console.log('[Manager] STORAGE_LISTENER: Skipping renderUI (metadata-only change)', {
       changeType: changeAnalysis.changeType,
-      skipReason: changeAnalysis.skipReason
+      reason: changeAnalysis.skipReason
     });
+    // Still update local state cache but don't re-render
     _updateLocalStateCache(context.newValue);
     return;
   }
@@ -8559,99 +2847,44 @@ function _processStorageChangeAnalysis(context) {
 function _analyzeStorageChange(oldValue, newValue) {
   const oldTabs = oldValue?.tabs || [];
   const newTabs = newValue?.tabs || [];
-
+  
   // Tab count change always requires render
   if (oldTabs.length !== newTabs.length) {
-    return _buildTabCountChangeResult(oldTabs, newTabs);
+    return {
+      requiresRender: true,
+      hasDataChange: true,
+      changeType: 'tab-count',
+      changeReason: `Tab count changed: ${oldTabs.length} → ${newTabs.length}`,
+      skipReason: null
+    };
   }
-
+  
   // Check for structural changes using helper
   const changeResults = _checkTabChanges(oldTabs, newTabs);
-
-  return _buildChangeResultFromTabAnalysis(changeResults);
-}
-
-/**
- * Build result for tab count change
- * v1.6.4.18 - Extracted from _analyzeStorageChange to reduce CC
- * @private
- * @param {Array} oldTabs - Previous tabs
- * @param {Array} newTabs - New tabs
- * @returns {Object} Change analysis result
- */
-function _buildTabCountChangeResult(oldTabs, newTabs) {
-  return {
-    requiresRender: true,
-    hasDataChange: true,
-    changeType: 'tab-count',
-    changeReason: `Tab count changed: ${oldTabs.length} → ${newTabs.length}`,
-    skipReason: null
-  };
-}
-
-/**
- * Build change result from tab analysis
- * v1.6.4.18 - Extracted from _analyzeStorageChange to reduce CC
- * @private
- * @param {Object} changeResults - Results from _checkTabChanges
- * @returns {Object} Change analysis result
- */
-function _buildChangeResultFromTabAnalysis(changeResults) {
-  // Metadata-only changes (z-index) don't require render
+  
+  // If only z-index changed, skip render
   if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
-    return _buildMetadataOnlyResult(changeResults);
+    return {
+      requiresRender: false,
+      hasDataChange: false,
+      changeType: 'metadata-only',
+      changeReason: 'z-index only',
+      skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
+    };
   }
-
-  // Data changes require render
+  
+  // If there are data changes, render is required
   if (changeResults.hasDataChange) {
-    return _buildDataChangeResult(changeResults);
+    return {
+      requiresRender: true,
+      hasDataChange: true,
+      changeType: 'data',
+      changeReason: changeResults.dataChangeReasons.join('; '),
+      skipReason: null
+    };
   }
-
-  // No changes
-  return _buildNoChangeResult();
-}
-
-/**
- * Build result for metadata-only change
- * v1.6.4.18 - Extracted from _analyzeStorageChange
- * @private
- * @param {Object} changeResults - Tab change analysis
- * @returns {Object} Change analysis result
- */
-function _buildMetadataOnlyResult(changeResults) {
-  return {
-    requiresRender: false,
-    hasDataChange: false,
-    changeType: 'metadata-only',
-    changeReason: 'z-index only',
-    skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
-  };
-}
-
-/**
- * Build result for data change
- * v1.6.4.18 - Extracted from _analyzeStorageChange
- * @private
- * @param {Object} changeResults - Tab change analysis
- * @returns {Object} Change analysis result
- */
-function _buildDataChangeResult(changeResults) {
-  return {
-    requiresRender: true,
-    hasDataChange: true,
-    changeType: 'data',
-    changeReason: changeResults.dataChangeReasons.join('; '),
-    skipReason: null
-  };
-}
-
-/**
- * Build result for no change
- * v1.6.4.18 - Extracted from _analyzeStorageChange
- * @private
- * @returns {Object} Change analysis result
- */
-function _buildNoChangeResult() {
+  
+  // No changes detected
   return {
     requiresRender: false,
     hasDataChange: false,
@@ -8664,7 +2897,6 @@ function _buildNoChangeResult() {
 /**
  * Check a single tab for data changes
  * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
- * v1.6.4.17 - Refactored to reduce CC from 9 to ~2
  * @private
  * @param {Object} oldTab - Previous tab state
  * @param {Object} newTab - New tab state
@@ -8672,74 +2904,27 @@ function _buildNoChangeResult() {
  */
 function _checkSingleTabDataChanges(oldTab, newTab) {
   const reasons = [];
-
-  _checkOriginTabIdChange(oldTab, newTab, reasons);
-  _checkMinimizedChange(oldTab, newTab, reasons);
-  _checkPositionChange(oldTab, newTab, reasons);
-  _checkSizeChange(oldTab, newTab, reasons);
-  _checkTitleUrlChange(oldTab, newTab, reasons);
-
+  
+  if (oldTab.originTabId !== newTab.originTabId) {
+    reasons.push(`originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`);
+  }
+  if (oldTab.minimized !== newTab.minimized) {
+    reasons.push(`minimized changed for ${newTab.id}`);
+  }
+  if (oldTab.left !== newTab.left || oldTab.top !== newTab.top) {
+    reasons.push(`position changed for ${newTab.id}`);
+  }
+  if (oldTab.width !== newTab.width || oldTab.height !== newTab.height) {
+    reasons.push(`size changed for ${newTab.id}`);
+  }
+  if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
+    reasons.push(`title/url changed for ${newTab.id}`);
+  }
+  
   return {
     hasDataChange: reasons.length > 0,
     reasons
   };
-}
-
-/**
- * Check for originTabId change
- * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
- * @private
- */
-function _checkOriginTabIdChange(oldTab, newTab, reasons) {
-  if (oldTab.originTabId !== newTab.originTabId) {
-    reasons.push(
-      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
-    );
-  }
-}
-
-/**
- * Check for minimized change
- * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
- * @private
- */
-function _checkMinimizedChange(oldTab, newTab, reasons) {
-  if (oldTab.minimized !== newTab.minimized) {
-    reasons.push(`minimized changed for ${newTab.id}`);
-  }
-}
-
-/**
- * Check for position change
- * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
- * @private
- */
-function _checkPositionChange(oldTab, newTab, reasons) {
-  if (oldTab.left !== newTab.left || oldTab.top !== newTab.top) {
-    reasons.push(`position changed for ${newTab.id}`);
-  }
-}
-
-/**
- * Check for size change
- * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
- * @private
- */
-function _checkSizeChange(oldTab, newTab, reasons) {
-  if (oldTab.width !== newTab.width || oldTab.height !== newTab.height) {
-    reasons.push(`size changed for ${newTab.id}`);
-  }
-}
-
-/**
- * Check for title/url change
- * v1.6.4.17 - Extracted from _checkSingleTabDataChanges
- * @private
- */
-function _checkTitleUrlChange(oldTab, newTab, reasons) {
-  if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
-    reasons.push(`title/url changed for ${newTab.id}`);
-  }
 }
 
 /**
@@ -8752,36 +2937,36 @@ function _checkTitleUrlChange(oldTab, newTab, reasons) {
  */
 function _checkTabChanges(oldTabs, newTabs) {
   const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-
+  
   let hasDataChange = false;
   let hasMetadataOnlyChange = false;
   const zIndexChanges = [];
   const dataChangeReasons = [];
-
+  
   for (const newTab of newTabs) {
     const oldTab = oldTabMap.get(newTab.id);
-
+    
     if (!oldTab) {
       // New tab ID - requires render
       hasDataChange = true;
       dataChangeReasons.push(`New tab: ${newTab.id}`);
       continue;
     }
-
+    
     // Check for data changes
     const dataResult = _checkSingleTabDataChanges(oldTab, newTab);
     if (dataResult.hasDataChange) {
       hasDataChange = true;
       dataChangeReasons.push(...dataResult.reasons);
     }
-
+    
     // Check for metadata-only changes (z-index)
     if (oldTab.zIndex !== newTab.zIndex) {
       hasMetadataOnlyChange = true;
       zIndexChanges.push({ id: newTab.id, old: oldTab.zIndex, new: newTab.zIndex });
     }
   }
-
+  
   return {
     hasDataChange,
     hasMetadataOnlyChange,
@@ -8835,75 +3020,27 @@ function _buildStorageChangeContext(change) {
  * Issue #8: Unified logStorageEvent() format for sequence analysis
  * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
  * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
- * v1.6.4.13 - Issue #5: Added [STORAGE] prefix for message routing logging
- * v1.6.4.17 - Refactored to reduce CC from 10 to ~3
  * @private
  * @param {Object} context - Storage change context
  */
 function _logStorageChangeEvent(context) {
-  const tabChanges = _calculateTabIdChanges(context);
-
-  _logStorageMessageReceived(context);
-  _logStorageChangedDetails(context, tabChanges);
-}
-
-/**
- * Calculate added and removed tab IDs between old and new state
- * v1.6.4.17 - Extracted from _logStorageChangeEvent
- * @private
- * @param {Object} context - Storage change context
- * @returns {Object} Object with addedIds and removedIds arrays
- */
-function _calculateTabIdChanges(context) {
+  // Issue #8: Determine what changed (added/removed tab IDs)
   const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
   const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
+  const addedIds = [...newIds].filter(id => !oldIds.has(id));
+  const removedIds = [...oldIds].filter(id => !newIds.has(id));
 
-  return {
-    addedIds: [...newIds].filter(id => !oldIds.has(id)),
-    removedIds: [...oldIds].filter(id => !newIds.has(id))
-  };
-}
-
-/**
- * Log MESSAGE_RECEIVED with [STORAGE] prefix
- * v1.6.4.17 - Extracted from _logStorageChangeEvent
- * @private
- * @param {Object} context - Storage change context
- */
-function _logStorageMessageReceivedPrefix(context) {
-  if (!DEBUG_MESSAGING) return;
-
-  console.log('[Manager] MESSAGE_RECEIVED [STORAGE] [storage.onChanged]:', {
-    saveId: context.newValue?.saveId,
-    tabCount: context.newTabCount,
-    delta: context.newTabCount - context.oldTabCount,
-    source: `tab-${context.sourceTabId || 'unknown'}`,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Log detailed storage change information
- * v1.6.4.17 - Extracted from _logStorageChangeEvent
- * @private
- * @param {Object} context - Storage change context
- * @param {Object} tabChanges - Calculated tab changes
- */
-function _logStorageChangedDetails(context, tabChanges) {
-  const delta = context.newTabCount - context.oldTabCount;
-  const saveId = context.newValue?.saveId || 'none';
-  const sourceTab = context.sourceTabId || 'unknown';
-
+  // Issue #8: Unified format for storage event logging
   console.log(
-    `[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${delta}), saveId: '${saveId}', source: tab-${sourceTab}`,
+    `[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${context.newTabCount - context.oldTabCount}), saveId: '${context.newValue?.saveId || 'none'}', source: tab-${context.sourceTabId || 'unknown'}`,
     {
       changes: {
-        added: tabChanges.addedIds,
-        removed: tabChanges.removedIds
+        added: addedIds,
+        removed: removedIds
       },
       oldTabCount: context.oldTabCount,
       newTabCount: context.newTabCount,
-      delta,
+      delta: context.newTabCount - context.oldTabCount,
       saveId: context.newValue?.saveId,
       transactionId: context.newValue?.transactionId,
       writingTabId: context.sourceTabId,
@@ -9256,57 +3393,30 @@ function _scheduleNormalUpdate() {
  */
 async function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
-
+  
   try {
+    // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
     const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
       timestamp: Date.now()
     });
-
-    _processCloseMinimizedResponse(response);
+    
+    if (response?.success || response?.timedOut) {
+      console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
+        closedCount: response?.closedCount || 0,
+        closedIds: response?.closedIds || [],
+        timedOut: response?.timedOut || false
+      });
+      
+      // Re-render UI to reflect the change
+      scheduleRender('close-minimized-success');
+    } else {
+      console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
+        error: response?.error || 'Unknown error'
+      });
+    }
   } catch (err) {
     console.error('[Manager] Error sending close minimized command:', err);
   }
-}
-
-/**
- * Process close minimized tabs response
- * v1.6.4.17 - Extracted to reduce closeMinimizedTabs CC
- * @private
- * @param {Object} response - Response from background
- */
-function _processCloseMinimizedResponse(response) {
-  const isSuccess = response?.success || response?.timedOut;
-
-  if (isSuccess) {
-    _logCloseMinimizedSuccess(response);
-    scheduleRender('close-minimized-success');
-  } else {
-    _logCloseMinimizedFailure(response);
-  }
-}
-
-/**
- * Log close minimized success
- * v1.6.4.17 - Extracted helper
- * @private
- */
-function _logCloseMinimizedSuccess(response) {
-  console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
-    closedCount: response?.closedCount || 0,
-    closedIds: response?.closedIds || [],
-    timedOut: response?.timedOut || false
-  });
-}
-
-/**
- * Log close minimized failure
- * v1.6.4.17 - Extracted helper
- * @private
- */
-function _logCloseMinimizedFailure(response) {
-  console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
-    error: response?.error || 'Unknown error'
-  });
 }
 
 /**
@@ -9403,19 +3513,6 @@ async function closeAllTabs() {
     const response = await _sendClearAllMessage();
     _logClearAllResponse(response, startTime);
 
-    // v1.6.3.7-v4 - FIX Issue #5: Handle explicit failure response with user feedback
-    if (!response?.success) {
-      const errorReason = response?.error || response?.reason || 'Unknown error';
-      console.error('[Manager] Close All: Operation FAILED:', {
-        reason: errorReason,
-        response,
-        durationMs: Date.now() - startTime
-      });
-      // Show user-facing error notification
-      _showCloseAllErrorNotification(errorReason);
-      return; // Don't reset local state if operation failed
-    }
-
     const hostInfoBeforeClear = quickTabHostInfo.size;
     quickTabHostInfo.clear();
 
@@ -9425,33 +3522,7 @@ async function closeAllTabs() {
     console.log('[Manager] Close All: UI updated, operation complete');
   } catch (err) {
     _logCloseAllError(err, startTime);
-    // v1.6.3.7-v4 - FIX Issue #5: Show user-facing error notification
-    _showCloseAllErrorNotification(err.message);
   }
-}
-
-/**
- * Show error notification to user when Close All fails
- * v1.6.3.7-v4 - FIX Issue #5: User feedback for failed operations
- * @private
- * @param {string} reason - Reason for failure
- */
-function _showCloseAllErrorNotification(reason) {
-  const notification = document.createElement('div');
-  notification.className = 'error-notification';
-  notification.textContent = `Close All failed: ${reason}`;
-  Object.assign(notification.style, ERROR_NOTIFICATION_STYLES);
-
-  document.body.appendChild(notification);
-
-  // Auto-remove after 5 seconds
-  setTimeout(() => {
-    if (notification.parentNode) {
-      notification.parentNode.removeChild(notification);
-    }
-  }, 5000);
-
-  console.log('[Manager] Close All: Error notification shown to user:', reason);
 }
 
 /**
@@ -10052,92 +4123,28 @@ async function closeQuickTab(quickTabId) {
  * v1.6.4.0 - FIX Issue A: Send ADOPT_TAB command to background instead of direct storage write
  *   - Manager sends command, background is sole writer
  *   - Background updates state, writes to storage, sends confirmation
- * v1.6.3.9-v5 - FIX Bug #3: Add fallback when currentBrowserTabId is null
  * @param {string} quickTabId - The Quick Tab ID to adopt
  * @param {number} targetTabId - The browser tab ID to adopt to
  */
 async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
   _logAdoptRequest(quickTabId, targetTabId);
 
-  // v1.6.3.9-v5 - FIX Bug #3: Validate targetTabId and fallback if null
-  let effectiveTargetTabId = targetTabId;
-  if (!_isValidTargetTabId(effectiveTargetTabId)) {
-    console.warn('[Manager] ADOPT_FALLBACK: targetTabId is invalid, attempting to get current tab ID', {
-      originalTargetTabId: targetTabId,
-      currentBrowserTabId,
-      timestamp: Date.now()
-    });
-
-    // Try to get current tab ID as fallback
-    effectiveTargetTabId = await _ensureValidTargetTabIdForAdoption();
-
-    if (!_isValidTargetTabId(effectiveTargetTabId)) {
-      console.error('[Manager] ❌ ADOPT_FAILED: Could not determine valid targetTabId for adopt', {
-        originalTargetTabId: targetTabId,
-        fallbackAttempted: true,
-        timestamp: Date.now()
-      });
-      _showErrorNotification('Cannot adopt: Unable to determine current tab. Please try again.');
-      return;
-    }
-
-    console.log('[Manager] ADOPT_FALLBACK: using fallback targetTabId', {
-      originalTargetTabId: targetTabId,
-      effectiveTargetTabId,
-      timestamp: Date.now()
-    });
+  // Validate targetTabId
+  if (!_isValidTargetTabId(targetTabId)) {
+    console.error('[Manager] ❌ Invalid targetTabId for adopt:', targetTabId);
+    return;
   }
 
   try {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
-    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', {
-      quickTabId,
-      targetTabId: effectiveTargetTabId
-    });
-
-    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId: effectiveTargetTabId });
-
-    _handleAdoptResponse(quickTabId, effectiveTargetTabId, response);
+    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', { quickTabId, targetTabId });
+    
+    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId });
+    
+    _handleAdoptResponse(quickTabId, targetTabId, response);
   } catch (err) {
     console.error('[Manager] ❌ Error sending adopt command:', err);
-    _showErrorNotification(`Adopt failed: ${err.message}`);
   }
-}
-
-/**
- * Ensure we have a valid target tab ID for adoption
- * v1.6.3.9-v5 - FIX Bug #3: Fallback mechanism for null currentBrowserTabId
- * @private
- * @returns {Promise<number|null>} Valid tab ID or null if unavailable
- */
-async function _ensureValidTargetTabIdForAdoption() {
-  // First try currentBrowserTabId
-  if (_isValidTargetTabId(currentBrowserTabId)) {
-    return currentBrowserTabId;
-  }
-
-  // Try browser.tabs.query
-  try {
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0]?.id) {
-      // Update currentBrowserTabId for future use
-      currentBrowserTabId = tabs[0].id;
-      console.log('[Manager] ADOPT_FALLBACK: got tab ID via tabs.query()', {
-        tabId: currentBrowserTabId,
-        timestamp: Date.now()
-      });
-      return currentBrowserTabId;
-    }
-  } catch (err) {
-    console.warn('[Manager] ADOPT_FALLBACK: tabs.query() failed', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-
-  // Final fallback: request from background (reusing shared helper)
-  await _requestCurrentTabIdFromBackground('adoption-fallback');
-  return currentBrowserTabId;
 }
 
 /**
@@ -10149,68 +4156,36 @@ async function _ensureValidTargetTabIdForAdoption() {
  * @param {Object} response - Response from background
  */
 function _handleAdoptResponse(quickTabId, targetTabId, response) {
-  const isSuccess = response?.success || response?.timedOut;
+  if (response?.success || response?.timedOut) {
+    // v1.6.4.0 - FIX Issue A: Command succeeded (or timed out with assumed success)
+    console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
+      quickTabId,
+      targetTabId,
+      oldOriginTabId: response?.oldOriginTabId,
+      timedOut: response?.timedOut || false
+    });
+    
+    // Update local tracking
+    quickTabHostInfo.set(quickTabId, {
+      hostTabId: targetTabId,
+      lastUpdate: Date.now(),
+      lastOperation: 'adopt',
+      confirmed: true
+    });
 
-  if (isSuccess) {
-    _handleAdoptSuccess(quickTabId, targetTabId, response);
+    // Invalidate cache for old tab (if response has it)
+    if (response?.oldOriginTabId) {
+      browserTabInfoCache.delete(response.oldOriginTabId);
+    }
+
+    // Re-render UI to reflect the change
+    scheduleRender('adopt-success');
   } else {
-    _handleAdoptFailure(quickTabId, targetTabId, response);
-  }
-}
-
-/**
- * Handle successful adoption
- * v1.6.4.17 - Extracted to reduce _handleAdoptResponse CC
- * @private
- */
-function _handleAdoptSuccess(quickTabId, targetTabId, response) {
-  console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
-    quickTabId,
-    targetTabId,
-    oldOriginTabId: response?.oldOriginTabId,
-    timedOut: response?.timedOut || false
-  });
-
-  _updateHostInfoAfterAdopt(quickTabId, targetTabId);
-  _invalidateOldTabCache(response);
-  scheduleRender('adopt-success');
-}
-
-/**
- * Handle failed adoption
- * v1.6.4.17 - Extracted to reduce _handleAdoptResponse CC
- * @private
- */
-function _handleAdoptFailure(quickTabId, targetTabId, response) {
-  console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
-    quickTabId,
-    targetTabId,
-    error: response?.error || 'Unknown error'
-  });
-}
-
-/**
- * Update host info after successful adoption
- * v1.6.4.17 - Extracted helper
- * @private
- */
-function _updateHostInfoAfterAdopt(quickTabId, targetTabId) {
-  quickTabHostInfo.set(quickTabId, {
-    hostTabId: targetTabId,
-    lastUpdate: Date.now(),
-    lastOperation: 'adopt',
-    confirmed: true
-  });
-}
-
-/**
- * Invalidate cache for old tab if response has it
- * v1.6.4.17 - Extracted helper
- * @private
- */
-function _invalidateOldTabCache(response) {
-  if (response?.oldOriginTabId) {
-    browserTabInfoCache.delete(response.oldOriginTabId);
+    console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
+      quickTabId,
+      targetTabId,
+      error: response?.error || 'Unknown error'
+    });
   }
 }
 
@@ -10228,7 +4203,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
     message: `${quickTabId} → tab-${targetTabId}`,
     timestamp: Date.now()
   });
-
+  
   // v1.6.3.7 - FIX Issue #7: Use standardized format for adoption flow tracking
   console.log('[Manager] ADOPTION_FLOW:', {
     quickTabId,
@@ -10238,7 +4213,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
     currentBrowserTabId,
     timestamp: Date.now()
   });
-
+  
   console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
     quickTabId,
     targetTabId,
@@ -10266,26 +4241,20 @@ function _isValidTargetTabId(targetTabId) {
  */
 async function _performAdoption(quickTabId, targetTabId) {
   const writeStartTime = Date.now();
-
+  
   // Read current state
   const stateResult = await _readStorageForAdoption(quickTabId, targetTabId);
   if (!stateResult.success) {
     return null;
   }
-
+  
   const { state, quickTab, tabIndex: _tabIndex, oldOriginTabId } = stateResult;
-
+  
   // Update and persist
   quickTab.originTabId = targetTabId;
   _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId);
-
-  const persistResult = await _persistAdoption({
-    quickTabId,
-    targetTabId,
-    state,
-    oldOriginTabId,
-    writeStartTime
-  });
+  
+  const persistResult = await _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime);
   return persistResult;
 }
 
@@ -10354,22 +4323,9 @@ function _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId) {
 /**
  * Persist adoption to storage
  * v1.6.3.7 - FIX Issue #7: Helper for adoption persistence with logging
- * v1.6.4.17 - Refactored to use options object (5 args → 1)
  * @private
- * @param {Object} options - Adoption options
- * @param {string} options.quickTabId - Quick Tab ID
- * @param {number} options.targetTabId - Target tab ID
- * @param {Object} options.state - State to persist
- * @param {number} options.oldOriginTabId - Previous origin tab ID
- * @param {number} options.writeStartTime - Write start timestamp
  */
-async function _persistAdoption({
-  quickTabId,
-  targetTabId,
-  state,
-  oldOriginTabId,
-  writeStartTime
-}) {
+async function _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeTimestamp = Date.now();
   const stateToWrite = {
