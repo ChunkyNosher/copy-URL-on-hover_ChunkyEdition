@@ -264,7 +264,10 @@ import { filterInvalidTabs } from './utils/validation.js';
 // v1.6.3.9-v4 - Simplified architecture: Import centralized constants
 import {
   STORAGE_HEALTH_CHECK_INTERVAL_MS,
-  STORAGE_MAX_AGE_MS
+  STORAGE_MAX_AGE_MS,
+  INIT_BARRIER_TIMEOUT_MS,
+  RENDER_QUEUE_DEBOUNCE_MS,
+  MESSAGE_TIMEOUT_MS
 } from '../src/constants.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
@@ -281,12 +284,7 @@ const DOM_VERIFICATION_DELAY_MS = 500;
 
 // ==================== v1.6.3.8-v4 INITIALIZATION BARRIER CONSTANTS ====================
 // FIX Issue #5: True async initialization barrier with Promise-based blocking
-
-/**
- * Maximum time to wait for initialization barrier to resolve
- * v1.6.3.8-v4 - FIX Issue #5: 10 second max init time with clear error message
- */
-const INIT_BARRIER_TIMEOUT_MS = 10000;
+// v1.6.3.9-v4 - INIT_BARRIER_TIMEOUT_MS now imported from src/constants.js
 
 /**
  * Exponential backoff intervals for storage listener verification retry
@@ -327,8 +325,9 @@ const PROBE_FORCE_RESET_MS = 1000;
 /**
  * Timeout for waiting on listener registration before sending messages
  * v1.6.3.8-v4 - FIX Issue #2: Extracted from inline timeout
+ * v1.6.3.9-v4 - Prefixed with underscore as unused (for ESLint)
  */
-const LISTENER_REGISTRATION_TIMEOUT_MS = 3000;
+const _LISTENER_REGISTRATION_TIMEOUT_MS = 3000;
 
 // ==================== v1.6.4.13 DEBUG MESSAGING FLAG ====================
 // Issue #5: Feature flag for verbose message routing logs
@@ -363,11 +362,7 @@ const _LEGACY_RENDER_DEBOUNCE_MS = 300;
 
 // ==================== v1.6.3.8-v12 RENDER QUEUE CONSTANTS ====================
 // FIX Issue #9: Manager Sidebar Grouping Race Condition
-/**
- * Debounce delay for buffering rapid storage changes before re-rendering
- * v1.6.3.8-v12 - FIX Issue #9: Buffer changes for 100ms before re-rendering
- */
-const RENDER_QUEUE_DEBOUNCE_MS = 100;
+// v1.6.3.9-v4 - RENDER_QUEUE_DEBOUNCE_MS now imported from src/constants.js
 
 /**
  * Maximum time to wait for a render to complete before considering it stalled
@@ -1435,13 +1430,7 @@ let _groupsContainer = null;
 
 // ==================== v1.6.3.8-v13 STATELESS MESSAGING ====================
 // v1.6.3.8-v13 - Port removed: Using stateless runtime.sendMessage instead
-
-/**
- * Message timeout for runtime.sendMessage requests
- * v1.6.3.8-v13 - PORT REMOVED: Timeout for stateless messages
- * v1.6.3.9-v4 - Phase 5: Updated to 3000ms per spec
- */
-const MESSAGE_TIMEOUT_MS = 3000;
+// v1.6.3.9-v4 - MESSAGE_TIMEOUT_MS now imported from src/constants.js
 
 /**
  * State hash captured when debounce timer was set
