@@ -3,7 +3,7 @@
  * Manages display and interaction with Quick Tabs across all containers
  *
  * ===============================================================================
- * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.9-v6)
+ * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.9-v7)
  * ===============================================================================
  *
  * FILTERING GUARANTEE:
@@ -38,10 +38,33 @@
  * ARCHITECTURE NOTES:
  *   - Primary sync: storage.onChanged listener
  *   - Request/response: runtime.sendMessage to background
+ *   - Secondary sync: runtime.onMessage listener for direct state pushes (v1.6.3.9-v7)
  *   - No BroadcastChannel (removed in v1.6.3.8-v6)
  *   - No runtime.Port (removed in v1.6.3.8-v13)
  *
  * ===============================================================================
+ *
+ * v1.6.3.9-v7 - GAP Analysis Fixes (Issues #1-6 from gap-analysis):
+ *   - GAP #1: Log capture infrastructure matching background.js pattern
+ *     - SIDEBAR_LOG_BUFFER with MAX_SIDEBAR_BUFFER_SIZE (2000)
+ *     - Console override (log/error/warn/info/debug) for capture
+ *     - getSidebarLogs(), clearSidebarLogs(), _exportSidebarLogs() APIs
+ *     - GET_SIDEBAR_LOGS/CLEAR_SIDEBAR_LOGS message handlers
+ *   - GAP #2: Enhanced runtime.onMessage listener for state push from background
+ *     - PUSH_STATE_UPDATE: Direct state update bypassing storage.onChanged
+ *     - ERROR_NOTIFICATION: Error notifications from background
+ *     - REQUEST_INIT_STATUS: Initialization status query
+ *   - GAP #3: Centralized constants in src/constants.js
+ *     - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE
+ *     - STORAGE_WATCHDOG_TIMEOUT_MS now imported (not locally defined)
+ *   - GAP #4: Refactored _routeRuntimeMessage to use lookup table (CC 13 → 3)
+ *     - _runtimeMessageHandlers lookup table for O(1) routing
+ *   - Issue #6: Dead Code Removal (~265 lines removed)
+ *     - REMOVED: _CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, _consecutiveConnectionFailures
+ *     - REMOVED: _stateLoadStartTime, _currentInitPhase (assignments only)
+ *     - REMOVED: logPortLifecycle(), _transitionConnectionState() (no-op stubs)
+ *     - REMOVED: _sendMessageToBackground(), _sendWithAck() (deprecated functions)
+ *     - REMOVED: _handleBroadcastCreate/Update/Delete/MinimizeRestore(), _findTabIndex(), _updateStateAfterMutation()
  *
  * v1.6.3.9-v6 - GAP Analysis Fixes (from docs/manual/1.6.4/ gap analysis):
  *   - GAP #11: Simplified initialization from ~8 variables to 4 (initializationPromise,
@@ -217,6 +240,118 @@
  * v1.6.3.5-v11 - FIX Issue #6: Manager list updates when last Quick Tab closed
  */
 
+// ==================== LOG CAPTURE FOR EXPORT ====================
+// v1.6.3.9-v7 - GAP #1: Log capture matching background.js pattern
+// Enables diagnostics export via messages
+const SIDEBAR_LOG_BUFFER = [];
+const MAX_SIDEBAR_BUFFER_SIZE = 2000;
+
+/**
+ * Safe JSON stringify that handles circular references
+ * v1.6.3.9-v7 - GAP #1: Prevent crashes from circular references in log data
+ * @param {*} obj - Object to stringify
+ * @returns {string} JSON string or fallback string
+ */
+function _safeStringify(obj) {
+  try {
+    return JSON.stringify(obj, null, 2);
+  } catch (_err) {
+    // Handle circular references or other stringify errors
+    return '[Object with circular reference or unstringifiable]';
+  }
+}
+
+/**
+ * Add a log entry to the sidebar log buffer
+ * v1.6.3.9-v7 - GAP #1: Log capture for diagnostics
+ * NOTE: Stores only the message string (not raw args) to reduce memory usage
+ * @param {string} type - Log type (DEBUG, INFO, WARN, ERROR)
+ * @param {...any} args - Log arguments
+ */
+function _addSidebarLog(type, ...args) {
+  if (SIDEBAR_LOG_BUFFER.length >= MAX_SIDEBAR_BUFFER_SIZE) {
+    SIDEBAR_LOG_BUFFER.shift();
+  }
+
+  // v1.6.3.9-v7 - Only store message string, not raw args (memory optimization)
+  SIDEBAR_LOG_BUFFER.push({
+    type: type,
+    timestamp: Date.now(),
+    message: args
+      .map(arg => (typeof arg === 'object' ? _safeStringify(arg) : String(arg)))
+      .join(' ')
+  });
+}
+
+// Override console methods to capture logs
+// v1.6.3.9-v7 - GAP #1: Console capture matching background.js pattern
+const _originalConsoleLog = console.log;
+const _originalConsoleError = console.error;
+const _originalConsoleWarn = console.warn;
+const _originalConsoleInfo = console.info;
+const _originalConsoleDebug = console.debug;
+
+console.log = function (...args) {
+  _addSidebarLog('DEBUG', ...args);
+  _originalConsoleLog.apply(console, args);
+};
+
+console.error = function (...args) {
+  _addSidebarLog('ERROR', ...args);
+  _originalConsoleError.apply(console, args);
+};
+
+console.warn = function (...args) {
+  _addSidebarLog('WARN', ...args);
+  _originalConsoleWarn.apply(console, args);
+};
+
+console.info = function (...args) {
+  _addSidebarLog('INFO', ...args);
+  _originalConsoleInfo.apply(console, args);
+};
+
+console.debug = function (...args) {
+  _addSidebarLog('DEBUG', ...args);
+  _originalConsoleDebug.apply(console, args);
+};
+
+/**
+ * Get sidebar logs for export
+ * v1.6.3.9-v7 - GAP #1: Log export API
+ * @param {number} [limit] - Maximum number of logs to return (default: all)
+ * @returns {Array} Array of log entries
+ */
+function getSidebarLogs(limit = null) {
+  if (limit && limit > 0) {
+    return SIDEBAR_LOG_BUFFER.slice(-limit);
+  }
+  return [...SIDEBAR_LOG_BUFFER];
+}
+
+/**
+ * Clear sidebar log buffer
+ * v1.6.3.9-v7 - GAP #1: Log management API
+ */
+function clearSidebarLogs() {
+  SIDEBAR_LOG_BUFFER.length = 0;
+}
+
+/**
+ * Export logs in standardized format
+ * v1.6.3.9-v7 - GAP #1: Standardized format `[Context] ACTION: key=value timestamp=X`
+ * NOTE: Prefixed with underscore as it's exported via message API, not direct call
+ * @param {number} [limit] - Maximum number of logs to return
+ * @returns {string} Formatted log string
+ */
+function _exportSidebarLogs(limit = null) {
+  const logs = getSidebarLogs(limit);
+  return logs.map(entry => {
+    const formattedTime = new Date(entry.timestamp).toISOString();
+    return `[Manager] ${entry.type}: message="${entry.message}" timestamp=${formattedTime}`;
+  }).join('\n');
+}
+
 // ==================== IMPORTS ====================
 // v1.6.3.8-v4 - Bundle size refactoring: Import utilities from sidebar modules
 // These modules contain shared constants and utility functions extracted for maintainability.
@@ -283,12 +418,16 @@ import { filterInvalidTabs } from './utils/validation.js';
 // v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports removed per user request - Port + storage.onChanged only
 // v1.6.3.9-v4 - Simplified architecture: Import centralized constants
+// v1.6.3.9-v7 - GAP #3: Added RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE, STORAGE_WATCHDOG_TIMEOUT_MS
 import {
   STORAGE_HEALTH_CHECK_INTERVAL_MS,
   STORAGE_MAX_AGE_MS,
   INIT_BARRIER_TIMEOUT_MS,
   RENDER_QUEUE_DEBOUNCE_MS,
-  MESSAGE_TIMEOUT_MS
+  MESSAGE_TIMEOUT_MS,
+  RENDER_STALL_TIMEOUT_MS,
+  RENDER_QUEUE_MAX_SIZE,
+  STORAGE_WATCHDOG_TIMEOUT_MS
 } from '../src/constants.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 // v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
@@ -297,6 +436,8 @@ import _PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.j
 // ==================== CONSTANTS ====================
 // v1.6.3.8-v4 - Bundle refactoring: Shared constants/utilities in ./modules/
 // Local constants remain here for now; modules provide a foundation for future refactoring.
+// v1.6.3.9-v7 - GAP #3: RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE, STORAGE_WATCHDOG_TIMEOUT_MS
+//               now imported from src/constants.js
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 const SAVEID_RECONCILED = 'reconciled';
@@ -385,18 +526,7 @@ const _LEGACY_RENDER_DEBOUNCE_MS = 300;
 // ==================== v1.6.3.8-v12 RENDER QUEUE CONSTANTS ====================
 // FIX Issue #9: Manager Sidebar Grouping Race Condition
 // v1.6.3.9-v4 - RENDER_QUEUE_DEBOUNCE_MS now imported from src/constants.js
-
-/**
- * Maximum time to wait for a render to complete before considering it stalled
- * v1.6.3.8-v12 - FIX Issue #9: Safety timeout for render operations
- */
-const RENDER_STALL_TIMEOUT_MS = 5000;
-
-/**
- * Maximum number of pending render requests to queue
- * v1.6.3.8-v12 - FIX Issue #9: Prevent memory issues from excessive queuing
- */
-const RENDER_QUEUE_MAX_SIZE = 10;
+// v1.6.3.9-v7 - GAP #3: RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE now imported from src/constants.js
 
 /**
  * Delay before rendering after corruption recovery to allow state to stabilize
@@ -429,34 +559,16 @@ const MESSAGE_ID_MAX_AGE_MS = 5000;
  */
 const MESSAGE_DEDUP_MAX_SIZE = 1000;
 
-// ==================== v1.6.3.9-v6 CONNECTION STATE (REMOVED) ====================
-// v1.6.3.9-v6 - GAP #15: CONNECTION_STATE removed - was dead code after port removal
-// Connection state is no longer tracked since port was removed in v1.6.3.8-v13
-// All state sync now uses storage.onChanged PRIMARY mechanism
-
-/**
- * @deprecated v1.6.3.9-v6 - CONNECTION_STATE removed (GAP #15 dead code cleanup)
- * Placeholder for backwards compatibility with logging functions that reference it
- */
-const _CONNECTION_STATE_DEPRECATED = 'connected';
+// ==================== v1.6.3.9-v7 CONNECTION STATE ====================
+// v1.6.3.9-v7 - Issue #6: Simplified connection state after port removal
+// Connection is always 'connected' since we use stateless runtime.sendMessage
+// Dead code removed: _CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, _consecutiveConnectionFailures
 
 /**
  * Current connection state (simplified - always 'connected' since port removal)
  * v1.6.3.9-v6 - GAP #15: Simplified to constant, no longer tracked
  */
 const connectionState = 'connected';
-
-/**
- * @deprecated v1.6.3.9-v6 - Not used after port removal
- * v1.6.3.9-v6 - GAP #18: Changed to const as it's never reassigned
- */
-const _lastConnectionStateChange = 0;
-
-/**
- * @deprecated v1.6.3.9-v6 - Not used after port removal
- * v1.6.3.9-v6 - GAP #18: Changed to const as it's never reassigned
- */
-const _consecutiveConnectionFailures = 0;
 
 // ==================== v1.6.3.7-v6 INITIALIZATION TRACKING ====================
 // Gap #1: State Loading & Initialization Race Condition
@@ -465,13 +577,6 @@ const _consecutiveConnectionFailures = 0;
  * v1.6.3.7-v6 - Gap #1: Wait 2 seconds before rendering empty if initial load is empty
  */
 let initialLoadTimeoutId = null;
-
-/**
- * Start time for state load duration tracking
- * v1.6.3.7-v6 - Gap #1: Track load duration for diagnostics
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- */
-let _stateLoadStartTime = 0;
 
 /**
  * Flag to track if initial state load has completed
@@ -513,12 +618,7 @@ function isFullyInitialized() {
  */
 let initializationComplete = false;
 
-/**
- * @deprecated v1.6.3.9-v6 - Removed, phase tracking simplified
- * Kept for backwards compatibility with code that sets this variable
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- */
-let _currentInitPhase = 'simplified';
+// v1.6.3.9-v7 - Issue #6: _currentInitPhase removed (was assigned but never read)
 
 // v1.6.3.7-v10 - FIX Code Review: Named constant for uninitialized timestamp
 const INIT_TIME_NOT_STARTED = -1;
@@ -916,11 +1016,7 @@ let _lastAppliedRevision = 0;
  */
 let storageWatchdogTimerId = null;
 
-/**
- * Watchdog timeout duration (ms)
- * v1.6.3.7-v9 - FIX Issue #6: 2 second timeout before explicit re-read
- */
-const STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
+// v1.6.3.9-v7 - GAP #3: STORAGE_WATCHDOG_TIMEOUT_MS now imported from src/constants.js
 
 // ==================== v1.6.3.8-v3 STORAGE LISTENER VERIFICATION ====================
 // FIX Issues #2, #5, #9, #15: Explicit storage.onChanged listener registration verification
@@ -1623,32 +1719,8 @@ function generateCorrelationId() {
   return `corr-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
-/**
- * Log port lifecycle event
- * v1.6.3.8-v13 - PORT REMOVED: Simplified logging
- * @param {string} event - Event name
- * @param {Object} details - Event details
- */
-// v1.6.3.9-v6 - GAP #15: logPortLifecycle simplified (dead code after port removal)
-// The function was logging lifecycle events for a port connection that no longer exists.
-// Keeping a minimal stub to avoid breaking any remaining callers.
-/**
- * @deprecated v1.6.3.9-v6 - GAP #15: Port removed, function is no-op
- */
-function logPortLifecycle(_event, _details = {}) {
-  // v1.6.3.9-v6 - NO-OP: Port removed in v1.6.3.8-v13
-}
-
-// v1.6.3.9-v6 - GAP #15: Connection state transition functions removed
-// All these functions were managing port connection states that no longer exist.
-// The connection state is now always 'connected' since we use stateless messaging.
-
-/**
- * @deprecated v1.6.3.9-v6 - GAP #15: Port removed, function is no-op
- */
-function _transitionConnectionState(_newState, _reason) {
-  // v1.6.3.9-v6 - NO-OP: Connection state no longer tracked
-}
+// v1.6.3.9-v7 - Issue #6: logPortLifecycle() removed (was no-op stub)
+// v1.6.3.9-v7 - Issue #6: _transitionConnectionState() removed (was no-op stub)
 
 // v1.6.3.9-v6 - GAP #15: REMOVED dead code functions:
 // - _updateConsecutiveFailures() - tracked port failures
@@ -2378,12 +2450,7 @@ function _logPortMessageReceived(message, entryTime) {
       timestamp: entryTime
     }
   );
-
-  logPortLifecycle('message', {
-    type: message.type,
-    action: message.action,
-    correlationId
-  });
+  // v1.6.3.9-v7 - Issue #6: logPortLifecycle() call removed (function was no-op)
 }
 
 /**
@@ -2708,52 +2775,8 @@ async function sendToBackground(message) {
   }
 }
 
-/**
- * Simple message sending helper with spec-compliant logging
- * v1.6.3.9-v4 - Phase 5: Wrapper with latency tracking and timeout handling per spec
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Message to send to background
- * @returns {Promise<Object>} Response from background
- */
-async function _sendMessageToBackground(message) {
-  const startTime = performance.now();
-
-  try {
-    const response = await Promise.race([
-      browser.runtime.sendMessage(message),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), MESSAGE_TIMEOUT_MS))
-    ]);
-
-    const latency = performance.now() - startTime;
-    console.debug(
-      '[Manager] MESSAGE_RECEIVED action=' +
-        (message.action ?? 'N/A') +
-        ' latency=' +
-        latency.toFixed(1) +
-        'ms'
-    );
-
-    return response;
-  } catch (err) {
-    if (err.message === 'Timeout') {
-      console.warn('[Manager] MESSAGE_TIMEOUT action=' + (message.action ?? 'N/A'));
-    }
-    throw err;
-  }
-}
-
-/**
- * Send message via port with acknowledgment tracking
- * v1.6.3.8-v13 - PORT REMOVED: Now delegates to sendToBackground
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @deprecated Use sendToBackground instead
- * @param {Object} message - Message to send
- * @returns {Promise<Object>} Acknowledgment response
- */
-function _sendWithAck(message) {
-  // v1.6.3.8-v13 - Delegate to stateless sendToBackground
-  return sendToBackground(message);
-}
+// v1.6.3.9-v7 - Issue #6: _sendMessageToBackground() removed (deprecated, never called)
+// v1.6.3.9-v7 - Issue #6: _sendWithAck() removed (deprecated, never called)
 
 /**
  * Send ACTION_REQUEST to background
@@ -3485,173 +3508,18 @@ function _trackFallbackUpdate(source, latencyMs = null) {
   }
 }
 
-// ==================== v1.6.3.9-v6 GAP #15: BROADCASTCHANNEL DEAD CODE REMOVED ====================
-// v1.6.3.9-v6 - GAP #15: BroadcastChannel functions removed - were all no-ops since v1.6.3.8-v6
+// ==================== v1.6.3.9-v7 GAP #15: BROADCASTCHANNEL DEAD CODE REMOVED ====================
+// v1.6.3.9-v7 - Issue #6: All broadcast handler functions removed (BC was removed in v1.6.3.8-v6)
 // storage.onChanged is now the PRIMARY sync mechanism, no BC fallback exists.
 //
-// REMOVED functions:
-// - handleBroadcastChannelMessage() - was NO-OP
-// - _checkBroadcastChannelHealth() - was NO-OP  
-// - _checkSequenceGap() - was NO-OP
-// - _generateBroadcastMessageIds() - not used without BC
-// - _logBroadcastMessageProcessed() - not used without BC
-// - _triggerStorageFallbackOnGap() - storage fallback now handled by health check
-// - _routeBroadcastMessage() - not used without BC
-// - handleBroadcastFullStateSync() - not used without BC
+// REMOVED functions in v1.6.3.9-v6:
+// - handleBroadcastChannelMessage(), _checkBroadcastChannelHealth(), _checkSequenceGap()
+// - _generateBroadcastMessageIds(), _logBroadcastMessageProcessed()
+// - _triggerStorageFallbackOnGap(), _routeBroadcastMessage(), handleBroadcastFullStateSync()
 //
-// v1.6.3.9-v6 - GAP #18: The following broadcast handlers are prefixed with underscore
-// as they are currently unused (BC was removed). Kept for potential future use.
-// - _handleBroadcastCreate()
-// - _handleBroadcastUpdate()
-// - _handleBroadcastDelete()
-// - _handleBroadcastMinimizeRestore()
-
-/**
- * Handle quick-tab-created broadcast
- * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.4.18 - Refactored to use shared helper to reduce code duplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message with data
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastCreate(message, messageId) {
-  const { quickTabId, data } = message;
-
-  if (!quickTabId || !data) {
-    return;
-  }
-
-  // Check if already exists
-  const existingIdx = _findTabIndex(quickTabId);
-  if (existingIdx >= 0) {
-    console.log('[Manager] Quick Tab already exists, skipping create:', quickTabId);
-    return;
-  }
-
-  // Add to state
-  if (!quickTabsState.tabs) {
-    quickTabsState.tabs = [];
-  }
-  quickTabsState.tabs.push(data);
-  _updateStateAfterMutation();
-
-  console.log('[Manager] BROADCAST_CREATE: added Quick Tab:', quickTabId);
-  scheduleRender('broadcast-create', messageId);
-}
-
-/**
- * Handle quick-tab-updated broadcast
- * v1.6.3.7-v3 - API #2: Update existing Quick Tab
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message with changes
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastUpdate(message, messageId) {
-  const { quickTabId, changes } = message;
-
-  if (!quickTabId || !changes) {
-    return;
-  }
-
-  // Find the tab
-  const tabIdx = _findTabIndex(quickTabId);
-  if (tabIdx < 0) {
-    console.log('[Manager] Quick Tab not found for update:', quickTabId);
-    return;
-  }
-
-  // Apply changes
-  Object.assign(quickTabsState.tabs[tabIdx], changes);
-  _updateStateAfterMutation();
-
-  console.log('[Manager] BROADCAST_UPDATE: updated Quick Tab:', quickTabId, changes);
-  scheduleRender('broadcast-update', messageId);
-}
-
-/**
- * Handle quick-tab-deleted broadcast
- * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastDelete(message, messageId) {
-  const { quickTabId } = message;
-
-  if (!quickTabId) {
-    return;
-  }
-
-  // Find and remove
-  const tabIdx = _findTabIndex(quickTabId);
-  if (tabIdx < 0) {
-    console.log('[Manager] Quick Tab not found for delete:', quickTabId);
-    return;
-  }
-
-  quickTabsState.tabs.splice(tabIdx, 1);
-  _updateStateAfterMutation();
-
-  console.log('[Manager] BROADCAST_DELETE: removed Quick Tab:', quickTabId);
-  scheduleRender('broadcast-delete', messageId);
-}
-
-/**
- * Find tab index by quickTabId
- * v1.6.4.18 - Extracted to reduce code duplication in broadcast handlers
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @returns {number} Tab index or -1 if not found
- */
-function _findTabIndex(quickTabId) {
-  return quickTabsState.tabs?.findIndex(t => t.id === quickTabId) ?? -1;
-}
-
-/**
- * Update state timestamps and cache after mutation
- * v1.6.4.18 - Extracted to reduce code duplication in broadcast handlers
- * @private
- */
-function _updateStateAfterMutation() {
-  quickTabsState.timestamp = Date.now();
-  _updateInMemoryCache(quickTabsState.tabs);
-  lastLocalUpdateTime = Date.now();
-}
-
-/**
- * Handle quick-tab-minimized and quick-tab-restored broadcasts
- * v1.6.3.7-v3 - API #2: Update minimized state
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastMinimizeRestore(message, messageId) {
-  const { quickTabId, changes } = message;
-
-  if (!quickTabId) {
-    return;
-  }
-
-  const tabIdx = _findTabIndex(quickTabId);
-  if (tabIdx < 0) {
-    return;
-  }
-
-  // Apply minimized state
-  if (changes && 'minimized' in changes) {
-    quickTabsState.tabs[tabIdx].minimized = changes.minimized;
-    _updateStateAfterMutation();
-
-    console.log('[Manager] BROADCAST_MINIMIZE:', quickTabId, 'minimized=', changes.minimized);
-    scheduleRender('broadcast-minimize', messageId);
-  }
-}
+// REMOVED functions in v1.6.3.9-v7 (Issue #6):
+// - _handleBroadcastCreate(), _handleBroadcastUpdate(), _handleBroadcastDelete()
+// - _handleBroadcastMinimizeRestore(), _findTabIndex(), _updateStateAfterMutation()
 
 // v1.6.3.9-v4 - BC removed: cleanupBroadcastChannel deleted
 
@@ -3900,9 +3768,30 @@ function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
 }
 
 /**
+ * Message handler lookup table for runtime messages
+ * v1.6.3.9-v7 - GAP #4: Refactored to reduce complexity (CC from 13 to ~3)
+ * @private
+ */
+const _runtimeMessageHandlers = {
+  'QUICK_TAB_STATE_UPDATED': _handleRuntimeStateUpdated,
+  'QUICK_TAB_DELETED': _handleRuntimeDeleted,
+  'QUICK_TAB_OPERATION_ACK': _handleOperationAck,
+  'STATE_UPDATE': _handleSidebarStateSync,
+  'QT_STATE_SYNC': _handleSidebarStateSync,
+  'STATE_REFRESH_REQUESTED': _handleSidebarStateRefresh,
+  'GET_SIDEBAR_LOGS': _handleGetSidebarLogs,
+  'CLEAR_SIDEBAR_LOGS': _handleClearSidebarLogs,
+  'PUSH_STATE_UPDATE': _handlePushStateUpdate,
+  'ERROR_NOTIFICATION': _handleErrorNotification,
+  'REQUEST_INIT_STATUS': _handleInitStatusRequest
+};
+
+/**
  * Route runtime message to appropriate handler
  * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
  * v1.6.3.9-v6 - GAP #16: Unified message routing with switch-based pattern
+ * v1.6.3.9-v7 - GAP #2: Added log export and state push handlers
+ * v1.6.3.9-v7 - GAP #4: Refactored to use lookup table (CC reduced from 13 to ~3)
  * @private
  * @param {Object} message - Incoming message
  * @param {Function} sendResponse - Response callback
@@ -3913,39 +3802,165 @@ function _routeRuntimeMessage(message, sendResponse, correlationId) {
   // v1.6.3.9-v6 - GAP #16: Unified routing - check both type and action fields
   const action = message.type || message.action;
   
-  switch (action) {
-    case 'QUICK_TAB_STATE_UPDATED':
-      _handleRuntimeStateUpdated(message, sendResponse, correlationId);
-      return true;
-      
-    case 'QUICK_TAB_DELETED':
-      _handleRuntimeDeleted(message, sendResponse, correlationId);
-      return true;
-      
-    case 'QUICK_TAB_OPERATION_ACK':
-      _handleOperationAck(message, sendResponse, correlationId);
-      return true;
-      
-    // v1.6.3.9-v6 - GAP #16: Additional message types for unified routing
-    case 'STATE_UPDATE':
-    case 'QT_STATE_SYNC':
-      _handleSidebarStateSync(message, sendResponse, correlationId);
-      return true;
-      
-    case 'STATE_REFRESH_REQUESTED':
-      _handleSidebarStateRefresh(message, sendResponse, correlationId);
-      return true;
-      
-    default:
-      // v1.6.3.9-v6 - GAP #16: Log unknown messages for debugging
-      console.debug('[Manager] UNKNOWN_MESSAGE: action=' + action, {
-        correlationId,
-        hasType: !!message.type,
-        hasAction: !!message.action,
-        timestamp: Date.now()
-      });
-      return false;
+  // v1.6.3.9-v7 - GAP #4: Use handler lookup table to reduce complexity
+  const handler = _runtimeMessageHandlers[action];
+  
+  if (handler) {
+    handler(message, sendResponse, correlationId);
+    return true;
   }
+  
+  // v1.6.3.9-v6 - GAP #16: Log unknown messages for debugging
+  console.debug('[Manager] UNKNOWN_MESSAGE: action=' + action, {
+    correlationId,
+    hasType: !!message.type,
+    hasAction: !!message.action,
+    timestamp: Date.now()
+  });
+  return false;
+}
+
+/**
+ * Handle GET_SIDEBAR_LOGS request - log export API
+ * v1.6.3.9-v7 - GAP #1: Log export via messages
+ * @private
+ * @param {Object} message - Request message with optional limit
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleGetSidebarLogs(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] GET_SIDEBAR_LOGS:', {
+    limit: message.limit,
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  const logs = getSidebarLogs(message.limit);
+  sendResponse({
+    success: true,
+    logs: logs,
+    count: logs.length,
+    correlationId
+  });
+}
+
+/**
+ * Handle CLEAR_SIDEBAR_LOGS request
+ * v1.6.3.9-v7 - GAP #1: Log management via messages
+ * @private
+ * @param {Object} message - Request message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleClearSidebarLogs(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] CLEAR_SIDEBAR_LOGS:', {
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  clearSidebarLogs();
+  sendResponse({ success: true, correlationId });
+}
+
+/**
+ * Handle PUSH_STATE_UPDATE - direct state push from background
+ * v1.6.3.9-v7 - GAP #2: Background can push state updates directly
+ * @private
+ * @param {Object} message - State update message with state payload
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handlePushStateUpdate(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] PUSH_STATE_UPDATE:', {
+    tabCount: message.state?.tabs?.length ?? 'N/A',
+    revision: message.revision,
+    correlationId,
+    path: 'runtime-onMessage-push',
+    timestamp: Date.now()
+  });
+  
+  // v1.6.3.9-v7 - Validate state structure before processing
+  if (message.state && Array.isArray(message.state.tabs)) {
+    // Direct state update - bypass storage.onChanged
+    const stateChange = { newValue: message.state };
+    _handleStorageChangedEvent({ [STATE_KEY]: stateChange });
+  } else if (message.state) {
+    console.warn('[Manager] PUSH_STATE_UPDATE: Invalid state structure', {
+      hasState: !!message.state,
+      hasTabs: !!message.state?.tabs,
+      isArray: Array.isArray(message.state?.tabs)
+    });
+  }
+  
+  sendResponse({ received: true, correlationId });
+}
+
+/**
+ * Sanitize error message to prevent XSS
+ * v1.6.3.9-v7 - GAP #2: Prevent XSS from background error messages
+ * @private
+ * @param {string} message - Raw error message
+ * @returns {string} Sanitized message safe for display
+ */
+function _sanitizeErrorMessage(message) {
+  if (typeof message !== 'string') return 'Unknown error';
+  // Escape HTML entities first (before any other processing)
+  // This prevents XSS by converting < to &lt; etc. before any tag manipulation
+  // Order matters: escape first, then limit length
+  return message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .substring(0, 500);
+}
+
+/**
+ * Handle ERROR_NOTIFICATION - error from background
+ * v1.6.3.9-v7 - GAP #2: Background can push error notifications
+ * @private
+ * @param {Object} message - Error message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleErrorNotification(message, sendResponse, correlationId) {
+  console.error('[Manager] [RUNTIME] ERROR_NOTIFICATION:', {
+    errorCode: message.errorCode,
+    errorMessage: message.errorMessage,
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  // Show error to user if UI is ready (with sanitization to prevent XSS)
+  if (_isInitPhaseComplete && message.errorMessage) {
+    _showErrorNotification(_sanitizeErrorMessage(message.errorMessage));
+  }
+  
+  sendResponse({ received: true, correlationId });
+}
+
+/**
+ * Handle REQUEST_INIT_STATUS - initialization status request
+ * v1.6.3.9-v7 - GAP #2: Background can query sidebar init state
+ * @private
+ * @param {Object} message - Request message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleInitStatusRequest(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] REQUEST_INIT_STATUS:', {
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  sendResponse({
+    success: true,
+    isInitialized: _isInitPhaseComplete,
+    storageListenerVerified: storageListenerVerified,
+    tabCount: quickTabsState?.tabs?.length ?? 0,
+    correlationId
+  });
 }
 
 /**
@@ -4897,32 +4912,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function _initializeManager() {
   // v1.6.3.8-v4 - FIX Issue #5: Create initialization barrier FIRST
   _initializeBarrier();
-  _currentInitPhase = 'flags';
+  // v1.6.3.9-v7 - Issue #6: _currentInitPhase assignments removed (dead code)
 
   _initializeFlags();
   _cacheDOMElements();
   _initializeSessionId();
 
   // v1.6.3.8-v4 - FIX Issue #1: Sequential initialization - port must connect first
-  _currentInitPhase = 'tab-id';
   await _initializeCurrentTabId();
 
   // v1.6.3.8-v4 - FIX Issue #1: Establish port connection before anything else
-  _currentInitPhase = 'port-connection';
   _initializeConnections();
 
   // v1.6.3.8-v4 - FIX Issue #6: Query background for state via port BEFORE storage read
-  _currentInitPhase = 'hydration';
   await _hydrateStateFromBackground();
 
   // v1.6.3.8-v4 - FIX Issue #1: Storage listener must be verified before state load
-  _currentInitPhase = 'storage-listener';
   await _initializeState();
 
-  _currentInitPhase = 'listeners';
   await _setupListeners();
 
-  _currentInitPhase = 'periodic-tasks';
   _startPeriodicTasks();
 
   // v1.6.3.8-v4 - FIX Issue #3: Setup visibility change listener
@@ -5137,8 +5146,7 @@ function _initializeConnections() {
  */
 async function _initializeState() {
   await loadContainerInfo();
-  // v1.6.3.9-v6 - GAP #18: Use renamed variable
-  _stateLoadStartTime = Date.now();
+  // v1.6.3.9-v7 - Issue #6: _stateLoadStartTime removed (was assigned but never read)
 
   await loadQuickTabsState();
   const tabCount = quickTabsState?.tabs?.length ?? 0;

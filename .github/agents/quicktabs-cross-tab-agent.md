@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v6), unified barrier init, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.9-v7), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,41 +38,28 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v7 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
 
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Response Helper** - `_buildResponse()` for correlationId responses
-- **Centralized Constants** - `WRITE_IGNORE_WINDOW_MS`, `STORAGE_CHANGE_COOLDOWN_MS`
+- **Log Capture** - Sidebar log buffer with GET_SIDEBAR_LOGS export
+- **Direct State Push** - PUSH_STATE_UPDATE bypasses storage.onChanged
+- **Error Notification** - ERROR_NOTIFICATION handler
+- **New Constants** - KEEPALIVE_INTERVAL_MS, STORAGE_WATCHDOG_TIMEOUT_MS
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (Previous):**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- Unified barrier init, render queue revision PRIMARY
+- `_buildResponse()` helper, centralized timing constants
 
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
+**Key Modules (v1.6.3.9-v7):**
 
-- **storage.onChanged PRIMARY** - Primary sync mechanism
-- **Storage Health Check** - Fallback polling every 5s if listener fails
-- **Single Barrier Init** - Simplified initialization
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
-
-**Key Modules (v1.6.3.9-v6):**
-
-| Module                                | Purpose                            |
-| ------------------------------------- | ---------------------------------- |
-| `src/constants.js`                    | Centralized constants (+timing)    |
-| `src/storage/storage-manager.js`      | Simplified persistence, checksum   |
-| `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder      |
-| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab()  |
+| Module                                | Purpose                           |
+| ------------------------------------- | --------------------------------- |
+| `src/constants.js`                    | Centralized constants (+v7)       |
+| `src/storage/storage-manager.js`      | Simplified persistence, checksum  |
+| `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
+| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
 
 **Storage Format:**
 
@@ -89,9 +76,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v6)
-- [ ] Storage health check fallback works (5s) (v1.6.3.9-v6)
-- [ ] Unified barrier init works (v1.6.3.9-v6)
+- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v7)
+- [ ] PUSH_STATE_UPDATE direct push works (v1.6.3.9-v7)
+- [ ] GET_SIDEBAR_LOGS export works (v1.6.3.9-v7)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
@@ -101,5 +88,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.9-v6 unified barrier,
-storage.onChanged PRIMARY, health check fallback.**
+**Your strength: Reliable cross-tab sync with v1.6.3.9-v7 logging,
+storage.onChanged PRIMARY, direct state push.**

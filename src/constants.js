@@ -482,3 +482,56 @@ export const WRITE_IGNORE_WINDOW_MS = 100;
  * @constant {number}
  */
 export const STORAGE_CHANGE_COOLDOWN_MS = 200;
+
+// =============================================================================
+// v1.6.3.9-v7 - GAP #3: ADDITIONAL CENTRALIZED CONSTANTS
+// =============================================================================
+// These constants were previously scattered or defined locally.
+
+/**
+ * Keepalive interval for background script connections (ms).
+ *
+ * Used to maintain background script activity in Manifest V3.
+ * 25 seconds is under the 30s service worker timeout.
+ *
+ * v1.6.3.9-v7 - GAP #3: Centralized from background.js local definition
+ *
+ * @constant {number}
+ */
+export const KEEPALIVE_INTERVAL_MS = 25000;
+
+/**
+ * Render stall timeout for detecting stuck renders (ms).
+ *
+ * Maximum time to wait for a render to complete before considering it stalled.
+ * 5 seconds allows for slow DOM updates on complex state.
+ *
+ * v1.6.3.9-v7 - GAP #3: Centralized from sidebar local definition
+ *
+ * @constant {number}
+ */
+export const RENDER_STALL_TIMEOUT_MS = 5000;
+
+/**
+ * Maximum render queue size to prevent memory issues.
+ *
+ * Limits queued render requests to prevent unbounded growth.
+ * 10 is sufficient for most rapid state change scenarios.
+ *
+ * v1.6.3.9-v7 - GAP #3: Centralized from sidebar local definition
+ *
+ * @constant {number}
+ */
+export const RENDER_QUEUE_MAX_SIZE = 10;
+
+/**
+ * Storage watchdog timeout for verifying storage.onChanged fires (ms).
+ *
+ * If no storage event within this window after an expected write,
+ * triggers explicit storage re-read.
+ *
+ * v1.6.3.9-v7 - GAP #3: Centralized from sidebar local definition
+ *
+ * @constant {number}
+ */
+export const STORAGE_WATCHDOG_TIMEOUT_MS = 2000;

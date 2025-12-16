@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.9-v6
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.9-v7
   unified barrier init, storage.onChanged PRIMARY
 tools: ['*']
 ---
@@ -37,28 +37,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Simplified Architecture
+**Version:** 1.6.3.9-v7 - Simplified Architecture
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
 
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
-- **Response Helper** - `_buildResponse()` for correlationId responses
+- **CONTENT_SCRIPT_READY** - Ready handshake for reliable hydration
+- **CONTENT_SCRIPT_UNLOADING** - beforeunload save for state preservation
+- **CURRENT_ORIGIN tracking** - For cross-tab coordination
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (Previous):**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Content Script Handlers** - `QT_STATE_SYNC` and `STATE_REFRESH_REQUESTED`
-
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
-
-- **Single Barrier Init** - Simplified initialization
-- **storage.onChanged PRIMARY** - Primary sync mechanism
-- **State Checksum** - `_computeStateChecksum()` for data integrity
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- Unified barrier init, `_buildResponse()` helper
 
 **Key Quick Tab Features:**
 
@@ -76,8 +65,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Unified barrier init works (v1.6.3.9-v6)
-- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v6)
+- [ ] CONTENT_SCRIPT_READY handshake works (v1.6.3.9-v7)
+- [ ] storage.onChanged PRIMARY works
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] originTabId set correctly on creation
@@ -86,5 +75,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.9-v6 unified barrier,
+**Your strength: Individual Quick Tab isolation with v1.6.3.9-v7 ready handshake,
 storage.onChanged PRIMARY, and proper per-tab scoping.**

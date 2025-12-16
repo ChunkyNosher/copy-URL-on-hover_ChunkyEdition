@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.9-v6), unified barrier init,
+  sync with Single Writer Authority (v1.6.3.9-v7), unified barrier init,
   single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v7 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -48,37 +48,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
 
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **Response Helper** - `_buildResponse()` for correlationId responses
-- **State Hash Validation** - `stateHashAtQueue` field for render queue validation
+- **Log Capture** - Sidebar log buffer with safe JSON stringify
+- **Message Handlers** - GET_SIDEBAR_LOGS, PUSH_STATE_UPDATE, ERROR_NOTIFICATION
+- **Centralized Constants** - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS
+- **Dead Code Removal** - ~259 lines removed
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (Previous):**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- Unified barrier init, render queue revision PRIMARY, state hash validation
+- ~218 lines dead code removed, `_buildResponse()` helper
 
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
-
-- **Single Barrier Init** - Replaces multi-phase initialization
-- **Storage Health Check** - Fallback polling every 5s
-- **State Checksum** - `_computeStateChecksum()` for data integrity
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
-
-**Key Modules (v1.6.3.9-v6):**
+**Key Modules (v1.6.3.9-v7):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
-| `src/constants.js`                | Centralized constants (+timing)     |
+| `src/constants.js`                | Centralized constants (+v7 timing)  |
 | `src/storage/schema-v2.js`        | Pure state utilities, version field |
 | `src/storage/storage-manager.js`  | Simplified persistence, checksum    |
 | `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
@@ -99,18 +85,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Unified barrier init works (v1.6.3.9-v6)
-- [ ] Render queue dedup works (revision PRIMARY) (v1.6.3.9-v6)
-- [ ] Storage health check works (5s fallback) (v1.6.3.9-v6)
+- [ ] Log capture works (GET_SIDEBAR_LOGS) (v1.6.3.9-v7)
+- [ ] Direct state push works (PUSH_STATE_UPDATE) (v1.6.3.9-v7)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering)
-- [ ] EventBus FIFO events work (native EventTarget)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.9-v6 unified barrier,
-storage.onChanged PRIMARY, render queue revision priority.**
+**Your strength: Complete Quick Tab system with v1.6.3.9-v7 logging, message
+infrastructure, storage.onChanged PRIMARY.**

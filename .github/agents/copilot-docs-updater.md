@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.9-v6.
+  documentation. Current version: v1.6.3.9-v7.
 tools: ['*']
 ---
 
@@ -56,7 +56,7 @@ nothing.
 | File Type                         | Maximum Size |
 | --------------------------------- | ------------ |
 | `.github/copilot-instructions.md` | **15KB**     |
-| `.github/agents/*.md`             | **15KB**     |
+| `.github/agents/*.md`             | **10KB**     |
 | README.md                         | **10KB**     |
 
 ### Prohibited Documentation Locations
@@ -69,33 +69,19 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.9-v6)
+## Current Extension State (v1.6.3.9-v7)
 
-### v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup
+### v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure
 
-- **GAP 11: Simplified Init** - Manager reduced from ~8 state variables to 4
-- **GAP 13: Unified Barrier** - Single barrier with resolve-only semantics
-- **GAP 14: Render Queue Dedup** - Revision as PRIMARY over saveId
-- **GAP 15: Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **GAP 16: Unified Routing** - Enhanced `_routeRuntimeMessage()` switch-based routing
-- **GAP 20: Response Helper** - `_buildResponse()` for correlationId responses
+- **GAP 1: Logging Capture** - Sidebar log capture with SIDEBAR_LOG_BUFFER
+- **GAP 2: Message Listener** - GET_SIDEBAR_LOGS, PUSH_STATE_UPDATE, etc.
+- **GAP 3: Centralized Constants** - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS
+- **GAP 6: Dead Code Removal** - ~259 lines removed (deprecated functions)
 
-### v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability
+### v1.6.3.9-v6 Features (Previous) - Sidebar & Background Cleanup
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
-
-### v1.6.3.9-v4 Features (Previous) - Architecture Simplification
-
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Single Barrier Init** - Replaces multi-phase initialization
-- **Storage Health Check** - Fallback polling every 5s
-
-### v1.6.3.9-v3 Features (Previous)
-
-- Dual Architecture (MessageRouter + message-handler), Diagnostic Logging
+- Unified barrier, render queue dedup, ~218 lines removed
+- `_buildResponse()` helper, centralized timing constants
 
 ### Architecture
 
@@ -108,9 +94,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.9-v6
-- [ ] **v1.6.3.9-v6:** Sidebar & background cleanup documented
-- [ ] **v1.6.3.9-v5:** Bug fixes documented (Tab ID, storage routing, etc.)
+- [ ] Version numbers match 1.6.3.9-v7
+- [ ] **v1.6.3.9-v7:** Logging & message infrastructure documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -120,12 +105,11 @@ nothing.
 
 | Error                  | Fix                         |
 | ---------------------- | --------------------------- |
-| v1.6.3.9-v4 or earlier | Update to 1.6.3.9-v6        |
+| v1.6.3.9-v5 or earlier | Update to 1.6.3.9-v7        |
 | "Pin to Page"          | Use "Solo/Mute"             |
 | Direct storage writes  | Use Single Writer Authority |
 | BroadcastChannel refs  | REMOVE - BC DELETED in v6   |
 | Port-based messaging   | REMOVE - Ports DELETED v12  |
-| Complex init layers    | REMOVE - Simplified in v4   |
 | CONNECTION_STATE refs  | REMOVE - Deleted in v6      |
 
 ---

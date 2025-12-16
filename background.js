@@ -8559,54 +8559,163 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
   }
 }
 
-// Register message handlers for Quick Tab coordination
-// This extends the existing runtime.onMessage listener
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // v1.6.3.7-v4 - FIX Issue #8: Handle HEALTH_PROBE for circuit breaker early recovery
-  // This handles probes sent via sendMessage when port is down
-  if (message.type === 'HEALTH_PROBE') {
-    console.log('[Background] HEALTH_PROBE via sendMessage received:', {
-      source: message.source,
-      timestamp: message.timestamp
-    });
+// =============================================================================
+// v1.6.3.9-v7 - Message Handler Functions (Extracted for complexity reduction)
+// =============================================================================
+
+/**
+ * Handle HEALTH_PROBE message
+ * v1.6.3.9-v7 - Extracted from inline handler
+ * @private
+ */
+function _handleHealthProbe(message, sendResponse) {
+  console.log('[Background] HEALTH_PROBE via sendMessage received:', {
+    source: message.source,
+    timestamp: message.timestamp
+  });
+  sendResponse({
+    success: true,
+    type: 'HEALTH_ACK',
+    healthy: true,
+    timestamp: Date.now(),
+    originalTimestamp: message.timestamp,
+    isInitialized,
+    cacheTabCount: globalQuickTabState.tabs?.length || 0
+  });
+  return true;
+}
+
+/**
+ * Handle BC_VERIFICATION_REQUEST message (deprecated)
+ * v1.6.3.9-v7 - Extracted from inline handler
+ * @private
+ */
+function _handleBCVerificationRequest(message, sendResponse) {
+  console.log('[Background] BC_VERIFICATION_REQUEST received (BC REMOVED):', {
+    requestId: message.requestId,
+    source: message.source,
+    timestamp: message.timestamp,
+    note: 'BroadcastChannel removed - use Port-based messaging'
+  });
+
+  sendResponse({
+    success: true,
+    type: 'BC_VERIFICATION_REQUEST_ACK',
+    bcAvailable: false,
+    deprecated: true,
+    message: 'BroadcastChannel removed - use Port-based messaging',
+    timestamp: Date.now()
+  });
+  return true;
+}
+
+/**
+ * Handle CONTENT_SCRIPT_UNLOAD message
+ * v1.6.3.9-v7 - Extracted from inline handler
+ * @private
+ */
+function _handleContentScriptUnload(message, sender, sendResponse) {
+  const tabId = message.tabId || sender?.tab?.id;
+  console.log('[Background] CONTENT_SCRIPT_UNLOAD received:', {
+    tabId,
+    reason: message.reason,
+    timestamp: message.timestamp,
+    senderTabId: sender?.tab?.id
+  });
+
+  _cleanupPortsForTab(tabId);
+  _cleanupQuickTabHostTracking(tabId);
+
+  sendResponse({
+    success: true,
+    type: 'CONTENT_SCRIPT_UNLOAD_ACK',
+    timestamp: Date.now()
+  });
+  return true;
+}
+
+/**
+ * Handle CONTENT_SCRIPT_READY message
+ * v1.6.3.9-v7 - Issue #8/#11: Content script ready handshake
+ * @private
+ */
+function _handleContentScriptReady(message, sender, sendResponse) {
+  const tabId = message.tabId || sender?.tab?.id;
+  const origin = message.origin || sender?.url || 'unknown';
+  
+  console.log('[Background] CONTENT_SCRIPT_READY received:', {
+    tabId,
+    origin,
+    url: message.url,
+    readyState: message.readyState,
+    timestamp: message.timestamp,
+    senderTabId: sender?.tab?.id
+  });
+
+  try {
+    const initialState = isInitialized ? globalQuickTabState : null;
     sendResponse({
       success: true,
-      type: 'HEALTH_ACK',
-      healthy: true,
-      timestamp: Date.now(),
-      originalTimestamp: message.timestamp,
-      isInitialized,
-      cacheTabCount: globalQuickTabState.tabs?.length || 0
-    });
-    return true;
-  }
-
-  // v1.6.3.8-v6 - BC REMOVED: BC_VERIFICATION_REQUEST returns deprecated response
-  if (message.type === 'BC_VERIFICATION_REQUEST') {
-    console.log('[Background] BC_VERIFICATION_REQUEST received (BC REMOVED):', {
-      requestId: message.requestId,
-      source: message.source,
-      timestamp: message.timestamp,
-      note: 'BroadcastChannel removed - use Port-based messaging'
-    });
-
-    sendResponse({
-      success: true,
-      type: 'BC_VERIFICATION_REQUEST_ACK',
-      bcAvailable: false,
-      deprecated: true,
-      message: 'BroadcastChannel removed - use Port-based messaging',
+      type: 'CONTENT_SCRIPT_READY_ACK',
+      initialState: initialState,
+      isBackgroundInitialized: isInitialized,
+      tabId: tabId,
       timestamp: Date.now()
     });
-    return true;
+  } catch (err) {
+    sendResponse({
+      success: false,
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+  return true;
+}
+
+/**
+ * Handle CONTENT_SCRIPT_UNLOADING message
+ * v1.6.3.9-v7 - Issue #13: Before cross-domain navigation
+ * @private
+ */
+function _handleContentScriptUnloading(message, sender, sendResponse) {
+  const tabId = message.tabId || sender?.tab?.id;
+  const origin = message.origin || 'unknown';
+  
+  console.log('[Background] CONTENT_SCRIPT_UNLOADING received:', {
+    tabId,
+    origin,
+    url: message.url,
+    timestamp: message.timestamp,
+    senderTabId: sender?.tab?.id,
+    note: 'Content script unloading - Quick Tabs state in storage will persist'
+  });
+
+  sendResponse({
+    success: true,
+    type: 'CONTENT_SCRIPT_UNLOADING_ACK',
+    timestamp: Date.now()
+  });
+  return true;
+}
+
+// Register message handlers for Quick Tab coordination
+// This extends the existing runtime.onMessage listener
+// v1.6.3.9-v7 - Refactored to use lookup table for reduced complexity
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Route by type first
+  if (message.type === 'HEALTH_PROBE') {
+    return _handleHealthProbe(message, sendResponse);
   }
 
-  // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
+  if (message.type === 'BC_VERIFICATION_REQUEST') {
+    return _handleBCVerificationRequest(message, sendResponse);
+  }
+
   if (message.type === 'QUICK_TAB_STATE_CHANGE') {
     handleQuickTabStateChange(message, sender)
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, error: err.message }));
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (message.type === 'MANAGER_COMMAND') {
@@ -8616,29 +8725,17 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // v1.6.3.8-v8 - Issue #19: Handle CONTENT_SCRIPT_UNLOAD from content script
-  // This provides explicit cleanup when content script is about to unload
+  // Route by action or type for unload messages
   if (message.action === 'CONTENT_SCRIPT_UNLOAD' || message.type === 'CONTENT_SCRIPT_UNLOAD') {
-    const tabId = message.tabId || sender?.tab?.id;
-    console.log('[Background] CONTENT_SCRIPT_UNLOAD received:', {
-      tabId,
-      reason: message.reason,
-      timestamp: message.timestamp,
-      senderTabId: sender?.tab?.id
-    });
+    return _handleContentScriptUnload(message, sender, sendResponse);
+  }
 
-    // Clean up any port associated with this tab
-    _cleanupPortsForTab(tabId);
+  if (message.action === 'CONTENT_SCRIPT_READY') {
+    return _handleContentScriptReady(message, sender, sendResponse);
+  }
 
-    // Clean up Quick Tab host tracking
-    _cleanupQuickTabHostTracking(tabId);
-
-    sendResponse({
-      success: true,
-      type: 'CONTENT_SCRIPT_UNLOAD_ACK',
-      timestamp: Date.now()
-    });
-    return true;
+  if (message.action === 'CONTENT_SCRIPT_UNLOADING') {
+    return _handleContentScriptUnloading(message, sender, sendResponse);
   }
 
   // Let other handlers process the message
