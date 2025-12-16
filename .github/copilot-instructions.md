@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.9-v4  
+**Version:** 1.6.3.9-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -24,7 +24,18 @@ Tabs Manager
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` now calls `_handleStorageChangedEvent()`
+- **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
+- **Response Format** - Background responses include `type` and `correlationId` via `_buildResponse()`
+- **Content Script Handlers** - `QT_STATE_SYNC` and `STATE_REFRESH_REQUESTED` message types
+- **MessageRouter Logging** - Full context logged when routing fails
+- **Tab Cleanup** - `browser.tabs.onRemoved` listener in Manager sidebar
+- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+
+**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
 
 - **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
 - **Centralized Constants** - `src/constants.js` expanded (+225 lines)
@@ -35,7 +46,7 @@ Tabs Manager
 - **\_generateQuickTabId()** - `qt-{timestamp}-{random}` format
 - **Orphan Cleanup** - Now removes orphans (not just marks)
 
-**v1.6.3.9-v3 Features (Retained):**
+**v1.6.3.9-v3 Features (Previous):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
@@ -65,7 +76,7 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v4)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v5)
 
 **Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
@@ -86,7 +97,31 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.9-v4: Simplified Architecture (NEW)
+### v1.6.3.9-v5: Bug Fixes & Reliability (NEW)
+
+**Critical Fixes:**
+
+- Tab ID initialization with background script fallback
+- Storage event routing via `_handleStorageChangedEvent()`
+- Adoption flow fallback for null tab IDs
+- Response format includes `type` and `correlationId`
+
+**High Priority Fixes:**
+
+- Comprehensive logging during storage event init
+- Tab affinity map cleanup interval starts at init
+- State sync via new `QT_STATE_SYNC` handler
+- Storage write cooldown bypass for destroy/cleanup
+- Content script `tabActivated` action handler
+
+**Medium Priority Fixes:**
+
+- `browser.tabs.onRemoved` listener in Manager sidebar
+- Legacy response format `{success, data}` accepted
+- Message dispatcher cross-routing (`type` + `action`)
+- Adoption queue timeout with enhanced logging
+
+### v1.6.3.9-v4: Simplified Architecture (Previous)
 
 **Manager Render Pipeline:**
 
@@ -120,7 +155,15 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 ---
 
-## 🆕 v1.6.3.9-v4 Patterns
+## 🆕 v1.6.3.9-v5 Patterns
+
+- **Tab ID Fallback** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Response Helper** - `_buildResponse()` with `type` and `correlationId`
+- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- **Legacy Format Support** - Accepts `{success, data}` response format
+
+### v1.6.3.9-v4 Patterns (Previous)
 
 - **Single Barrier Init** - Simple initialization, no multi-phase complexity
 - **Storage.onChanged PRIMARY** - Primary sync, health check fallback
@@ -130,7 +173,7 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
   backup
 - **Orphan Removal** - Cleanup now removes orphans instead of marking
 
-### v1.6.3.9-v3 Patterns (Retained)
+### v1.6.3.9-v3 Patterns (Previous)
 
 - **Dual Architecture** - MessageRouter (ACTION) + message-handler (TYPE)
 - **Diagnostic Logging** - Storage listener lifecycle, sync mechanism tracking
@@ -139,7 +182,7 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 - **Container Isolation** - `originContainerId` with Firefox Container support
 
-### Key Timing Constants (v1.6.3.9-v4)
+### Key Timing Constants (v1.6.3.9-v5)
 
 | Constant                           | Value                 | Purpose                        |
 | ---------------------------------- | --------------------- | ------------------------------ |
@@ -193,11 +236,13 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, **v1.6.3.9-v4:** Single barrier init, storage.onChanged PRIMARY,
-render queue debounce (100ms), storage health check (5s), state checksum,
-simplified persistence, orphan removal, **v1.6.3.9-v3:** Dual architecture
-(MessageRouter + message-handler), diagnostic logging, **v1.6.3.9-v2:**
-Container isolation, tabs API events.
+Authority, **v1.6.3.9-v5:** Tab ID fallback, storage event routing fix, response
+format with correlationId, message cross-routing, legacy format support,
+**v1.6.3.9-v4:** Single barrier init, storage.onChanged PRIMARY, render queue
+debounce (100ms), storage health check (5s), state checksum, simplified
+persistence, orphan removal, **v1.6.3.9-v3:** Dual architecture (MessageRouter +
+message-handler), diagnostic logging, **v1.6.3.9-v2:** Container isolation, tabs
+API events.
 
 ---
 

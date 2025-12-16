@@ -59,12 +59,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v4 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.9-v5 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Response Format** - Background responses include `type` and `correlationId`
+
+**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
 
 - **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
 - **Single Barrier Init** - Replaces multi-phase initialization
 
 **v1.6.3.9-v3 Features (Retained):**

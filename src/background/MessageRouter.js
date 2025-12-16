@@ -175,10 +175,19 @@ export class MessageRouter {
   /**
    * Handle unknown action
    * v1.6.3.8-v2 - Extracted for complexity reduction
+   * v1.6.3.9-v5 - FIX Bug #15: Add full message context logging when routing fails
    * @private
    */
-  _handleUnknownAction(action, sendResponse, requestId) {
-    console.warn(`[MessageRouter] No handler for action: ${action}`);
+  _handleUnknownAction(action, message, sendResponse, requestId) {
+    // v1.6.3.9-v5 - FIX Bug #15: Log full message context and metrics for unknown actions
+    console.warn('[MessageRouter] ROUTING_FAILED - No handler for action:', {
+      action,
+      requestId,
+      messageKeys: message ? Object.keys(message) : [],
+      hasType: !!message?.type,
+      hasAction: !!message?.action,
+      timestamp: Date.now()
+    });
     sendResponse(
       this._normalizeResponse({ success: false, error: `Unknown action: ${action}` }, requestId)
     );
@@ -322,7 +331,8 @@ export class MessageRouter {
 
     const handler = this.handlers.get(message.action);
     if (!handler) {
-      return this._handleUnknownAction(message.action, sendResponse, requestId);
+      // v1.6.3.9-v5 - FIX Bug #15: Pass full message for context logging
+      return this._handleUnknownAction(message.action, message, sendResponse, requestId);
     }
 
     try {

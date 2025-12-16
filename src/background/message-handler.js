@@ -106,39 +106,62 @@ export function initializeMessageHandler() {
 }
 
 /**
+ * Build a standardized response with type, correlationId, and timestamp
+ * v1.6.3.9-v5 - FIX Bug #13: Extracted to reduce handleMessage complexity
+ * @private
+ * @param {boolean} success - Whether the operation succeeded
+ * @param {Object} message - Original message for extracting type/correlationId
+ * @param {Object} payload - Additional payload fields to include
+ * @returns {Object} Standardized response object
+ */
+function _buildResponse(success, message, payload = {}) {
+  return {
+    success,
+    ...payload,
+    type: message?.type || 'UNKNOWN',
+    correlationId: message?.correlationId || null,
+    timestamp: Date.now()
+  };
+}
+
+/**
+ * Log first message received (diagnostic logging)
+ * v1.6.3.9-v5 - Extracted to reduce handleMessage complexity
+ * @private
+ */
+function _logFirstMessageIfNeeded(message, sender) {
+  if (firstMessageReceived) return;
+  firstMessageReceived = true;
+  console.log('[MessageHandler] FIRST_MESSAGE_RECEIVED:', {
+    type: message.type,
+    senderTabId: sender?.tab?.id,
+    timeSinceInit: handlerRegistrationTime ? Date.now() - handlerRegistrationTime : 'unknown',
+    timestamp: Date.now()
+  });
+}
+
+/**
  * Main message handler
+ * v1.6.3.9-v5 - Refactored to reduce complexity using helper functions
  *
  * @param {Object} message - Message object
  * @param {Object} sender - Message sender
  * @returns {Promise<Object>} Handler response
  */
 async function handleMessage(message, sender) {
-  // v1.6.3.8-v12 GAP-11 fix: Log first message received
-  if (!firstMessageReceived) {
-    firstMessageReceived = true;
-    console.log('[MessageHandler] FIRST_MESSAGE_RECEIVED:', {
-      type: message.type,
-      senderTabId: sender?.tab?.id,
-      timeSinceInit: handlerRegistrationTime ? Date.now() - handlerRegistrationTime : 'unknown',
-      timestamp: Date.now()
-    });
-  }
+  _logFirstMessageIfNeeded(message, sender);
 
   // Validate message
   const validation = MessageValidator.validate(message);
   if (!validation.valid) {
     console.warn('[MessageHandler] Invalid message:', validation.errors);
-    return {
-      success: false,
-      error: 'Invalid message',
-      details: validation.errors
-    };
+    return _buildResponse(false, message, { error: 'Invalid message', details: validation.errors });
   }
 
   const handler = messageHandlers[message.type];
   if (!handler) {
     console.warn('[MessageHandler] Unknown message type:', message.type);
-    return { success: false, error: `Unknown message type: ${message.type}` };
+    return _buildResponse(false, message, { error: `Unknown message type: ${message.type}` });
   }
 
   try {
@@ -148,10 +171,10 @@ async function handleMessage(message, sender) {
     });
 
     const result = await handler(message, sender);
-    return { success: true, ...result };
+    return _buildResponse(true, message, result);
   } catch (error) {
     console.error('[MessageHandler] Handler error:', error);
-    return { success: false, error: error.message };
+    return _buildResponse(false, message, { error: error.message });
   }
 }
 

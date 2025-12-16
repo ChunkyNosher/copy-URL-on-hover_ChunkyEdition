@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9-v4** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.9-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,11 +9,26 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.9-v4 Status:** Architecture Simplification - ~761 lines removed ✅
+**🔧 v1.6.3.9-v5 Status:** Bug Fixes & Reliability Improvements ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.9-v5
+
+**🐛 Bug Fixes & Reliability (December 2025) ✅**
+
+- ✅ **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- ✅ **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- ✅ **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
+- ✅ **Response Format** - Background responses include `type` and `correlationId`
+- ✅ **Content Script Handlers** - `QT_STATE_SYNC` and `STATE_REFRESH_REQUESTED`
+- ✅ **MessageRouter Logging** - Full context logged on routing failures
+- ✅ **Tab Cleanup Listener** - `browser.tabs.onRemoved` in Manager sidebar
+- ✅ **Message Cross-Routing** - Handles both `type` and `action` fields
+
+---
 
 ## 🎉 What's New in v1.6.3.9-v4
 
@@ -227,6 +242,6 @@ for details.
 
 ---
 
-**Version 1.6.3.9-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.9-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
