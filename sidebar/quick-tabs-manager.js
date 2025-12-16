@@ -52,6 +52,11 @@
  *   - NEW: _handleStorageChangedEvent() - simplified guard-based storage handler
  *   - NEW: _startStorageHealthCheckInterval() / _stopStorageHealthCheckInterval()
  *   - NEW: Helper functions to reduce complexity (_validateStorageEventStructure, etc.)
+ *   - NEW: scheduleRender() revision-based deduplication (RENDER_DEDUP logging)
+ *   - NEW: _processRenderQueue() with RENDER_START/RENDER_COMPLETE/RENDER_ERROR logging
+ *   - NEW: _handleOperationAck() for QUICK_TAB_OPERATION_ACK messages from background
+ *   - NEW: sendMessageToBackground() helper with latency tracking (MESSAGE_RECEIVED/MESSAGE_TIMEOUT)
+ *   - NEW: MESSAGE_TIMEOUT_MS updated to 3000ms per spec
  *   - ARCHITECTURE: Clean guard pattern for storage event validation
  *   - ARCHITECTURE: Health check fallback prevents silent storage listener failures
  *
@@ -1434,8 +1439,9 @@ let _groupsContainer = null;
 /**
  * Message timeout for runtime.sendMessage requests
  * v1.6.3.8-v13 - PORT REMOVED: Timeout for stateless messages
+ * v1.6.3.9-v4 - Phase 5: Updated to 3000ms per spec
  */
-const MESSAGE_TIMEOUT_MS = 5000;
+const MESSAGE_TIMEOUT_MS = 3000;
 
 /**
  * State hash captured when debounce timer was set
@@ -1808,14 +1814,25 @@ function _handleStateSyncResponse(response) {
  * v1.6.3.7-v5 - FIX Issue #4: Added saveId-based deduplication
  * v1.6.3.7-v6 - Gap #5: Enhanced deduplication logging with reason codes
  * v1.6.4.17 - Refactored to reduce CC from 11 to ~4
+ * v1.6.3.9-v4 - Phase 5: Added revision-based deduplication per spec
  * @param {string} source - Source of render trigger for logging
- * @param {string} [messageId] - Optional message ID for deduplication
+ * @param {string|number} [revisionOrMessageId] - Optional revision number or message ID for deduplication
  */
-function scheduleRender(source = 'unknown', messageId = null) {
+function scheduleRender(source = 'unknown', revisionOrMessageId = null) {
+  // v1.6.3.9-v4 - Phase 5: Revision-based deduplication check per spec
+  const revision = typeof revisionOrMessageId === 'number' ? revisionOrMessageId : null;
+  const messageId = typeof revisionOrMessageId === 'string' ? revisionOrMessageId : null;
+  
+  // v1.6.3.9-v4 - Check revision-based deduplication first
+  if (revision !== null && revision === sidebarLocalState.lastRenderedRevision) {
+    console.debug('[Manager] RENDER_DEDUP revision=' + revision);
+    return;
+  }
+  
   const context = _buildRenderContext(source, messageId);
 
   if (_shouldForceRender(context)) {
-    _proceedToRender(source, messageId, context.currentSaveId, context.currentHash);
+    _proceedToRender(source, messageId, context.currentSaveId, context.currentHash, revision);
     return;
   }
 
@@ -1823,7 +1840,7 @@ function scheduleRender(source = 'unknown', messageId = null) {
     return;
   }
 
-  _proceedToRender(source, messageId, context.currentSaveId, context.currentHash);
+  _proceedToRender(source, messageId, context.currentSaveId, context.currentHash, revision);
 }
 
 /**
@@ -1948,9 +1965,15 @@ function _checkHashDedup(context) {
 /**
  * Proceed with rendering after passing deduplication checks
  * v1.6.3.7-v6 - Gap #5: Extracted to support special case rendering
+ * v1.6.3.9-v4 - Phase 5: Added revision parameter for queue tracking
  * @private
+ * @param {string} source - Source of render trigger
+ * @param {string} messageId - Message ID for deduplication
+ * @param {string} currentSaveId - Current saveId
+ * @param {number} currentHash - Current state hash
+ * @param {number} [revision] - Optional revision number for queue tracking
  */
-function _proceedToRender(source, messageId, currentSaveId, currentHash) {
+function _proceedToRender(source, messageId, currentSaveId, currentHash, revision = null) {
   // v1.6.3.7-v5 - FIX Issue #4: Track this saveId as processed
   if (currentSaveId) {
     lastProcessedSaveId = currentSaveId;
@@ -1967,17 +1990,63 @@ function _proceedToRender(source, messageId, currentSaveId, currentHash) {
     _markMessageAsProcessed(messageId);
   }
 
+  // v1.6.3.9-v4 - Phase 5: RENDER_SCHEDULED log per spec format
+  console.debug('[Manager] RENDER_SCHEDULED source=' + source + ' revision=' + (revision ?? 'N/A'));
+  
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     messageId,
+    revision,
     saveId: currentSaveId,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
   });
 
-  // Route to the debounced renderUI
-  renderUI();
+  // v1.6.3.9-v4 - Phase 5: Enqueue with revision for tracking
+  _enqueueRenderWithRevision(source, revision);
+}
+
+/**
+ * Enqueue render with optional revision for tracking
+ * v1.6.3.9-v4 - Phase 5: Wrapper that adds revision to queue item
+ * @private
+ * @param {string} source - Source of render request
+ * @param {number} [revision] - Optional revision number
+ */
+function _enqueueRenderWithRevision(source, revision = null) {
+  const timestamp = Date.now();
+
+  // Add to queue (with size limit)
+  if (_renderQueue.length < RENDER_QUEUE_MAX_SIZE) {
+    _renderQueue.push({ source, timestamp, revision });
+  } else {
+    console.warn('[Manager] RENDER_QUEUE_FULL: Dropping render request', {
+      source,
+      queueSize: _renderQueue.length,
+      maxSize: RENDER_QUEUE_MAX_SIZE
+    });
+    return;
+  }
+
+  // Clear existing debounce timer
+  if (_renderQueueDebounceTimer) {
+    clearTimeout(_renderQueueDebounceTimer);
+  }
+
+  // Debounce: wait for more changes before processing
+  _renderQueueDebounceTimer = setTimeout(() => {
+    _renderQueueDebounceTimer = null;
+    _processRenderQueue();
+  }, RENDER_QUEUE_DEBOUNCE_MS);
+
+  console.log('[Manager] RENDER_ENQUEUED:', {
+    source,
+    revision,
+    queueSize: _renderQueue.length,
+    renderInProgress: _renderInProgress,
+    timestamp
+  });
 }
 
 /**
@@ -2608,6 +2677,35 @@ async function sendToBackground(message) {
     }
 
     return { success: false, error: err.message, correlationId };
+  }
+}
+
+/**
+ * Simple message sending helper with spec-compliant logging
+ * v1.6.3.9-v4 - Phase 5: Wrapper with latency tracking and timeout handling per spec
+ * @param {Object} message - Message to send to background
+ * @returns {Promise<Object>} Response from background
+ */
+async function sendMessageToBackground(message) {
+  const startTime = performance.now();
+
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage(message),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), MESSAGE_TIMEOUT_MS)
+      )
+    ]);
+
+    const latency = performance.now() - startTime;
+    console.debug('[Manager] MESSAGE_RECEIVED action=' + (message.action ?? 'N/A') + ' latency=' + latency.toFixed(1) + 'ms');
+
+    return response;
+  } catch (err) {
+    if (err.message === 'Timeout') {
+      console.warn('[Manager] MESSAGE_TIMEOUT action=' + (message.action ?? 'N/A'));
+    }
+    throw err;
   }
 }
 
@@ -3880,6 +3978,7 @@ console.log('[Manager] LISTENER_REGISTERED: browser.runtime.onMessage listener a
 /**
  * Process runtime message
  * v1.6.3.7-v5 - FIX Issue #9: Extracted to reduce nesting depth
+ * v1.6.3.9-v4 - Phase 5: Refactored to reduce complexity below 9
  * @private
  * @param {Object} message - Incoming message
  * @param {Function} sendResponse - Response callback
@@ -3896,12 +3995,38 @@ function _processRuntimeMessage(message, sendResponse) {
   }
 
   // v1.6.3.7-v9 - Issue #2: Generate correlationId if not present (for correlation tracking)
-  const correlationId =
-    message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const correlationId = _getOrGenerateCorrelationId(message);
 
   // v1.6.3.7-v9 - Issue #2: Unified MESSAGE_RECEIVED logging with [RUNTIME] prefix
-  // Matches format of [PORT] and [BC] paths
-  console.log(`[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || 'UNKNOWN'}]:`, {
+  _logRuntimeMessageReceived(message, correlationId, messageEntryTime);
+
+  // v1.6.3.9-v4 - Phase 5: Route to appropriate handler
+  const handled = _routeRuntimeMessage(message, sendResponse, correlationId);
+
+  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+  _logRuntimeMessageProcessed(message, correlationId, handled, messageEntryTime);
+
+  return handled;
+}
+
+/**
+ * Get existing correlation ID or generate a new one
+ * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
+ * @private
+ * @param {Object} message - Incoming message
+ * @returns {string} Correlation ID
+ */
+function _getOrGenerateCorrelationId(message) {
+  return message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+}
+
+/**
+ * Log runtime message received
+ * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
+ * @private
+ */
+function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
+  console.log(`[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`, {
     quickTabId: message.quickTabId,
     messageId: message.messageId,
     saveId: message.saveId,
@@ -3910,31 +4035,52 @@ function _processRuntimeMessage(message, sendResponse) {
     path: 'runtime-onMessage',
     timestamp: messageEntryTime
   });
+}
 
-  let handled = false;
-
+/**
+ * Route runtime message to appropriate handler
+ * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
+ * @private
+ * @param {Object} message - Incoming message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ * @returns {boolean} True if message was handled
+ */
+function _routeRuntimeMessage(message, sendResponse, correlationId) {
   if (message.type === 'QUICK_TAB_STATE_UPDATED') {
     _handleRuntimeStateUpdated(message, sendResponse, correlationId);
-    handled = true;
-  } else if (message.type === 'QUICK_TAB_DELETED') {
-    // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
+    return true;
+  }
+  
+  if (message.type === 'QUICK_TAB_DELETED') {
     _handleRuntimeDeleted(message, sendResponse, correlationId);
-    handled = true;
+    return true;
   }
+  
+  if (message.action === 'QUICK_TAB_OPERATION_ACK') {
+    _handleOperationAck(message, sendResponse, correlationId);
+    return true;
+  }
+  
+  return false;
+}
 
-  // v1.6.3.7-v9 - Issue #2: Log message exit with duration
+/**
+ * Log runtime message processed
+ * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
+ * @private
+ */
+function _logRuntimeMessageProcessed(message, correlationId, handled, messageEntryTime) {
+  if (!DEBUG_MESSAGING) return;
+  
   const processingDurationMs = Date.now() - messageEntryTime;
-  if (DEBUG_MESSAGING) {
-    console.log(`[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || 'UNKNOWN'}]:`, {
-      quickTabId: message.quickTabId,
-      correlationId,
-      handled,
-      durationMs: processingDurationMs,
-      timestamp: Date.now()
-    });
-  }
-
-  return handled;
+  console.log(`[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`, {
+    quickTabId: message.quickTabId,
+    correlationId,
+    handled,
+    durationMs: processingDurationMs,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -3992,6 +4138,52 @@ function _handleRuntimeDeleted(message, sendResponse, correlationId) {
   handleStateDeletedMessage(message.quickTabId);
   // v1.6.3.7-v4 - FIX Issue #4: Route through scheduleRender with messageId for deduplication
   scheduleRender('runtime-QUICK_TAB_DELETED', message.messageId);
+  sendResponse({ received: true, correlationId });
+}
+
+/**
+ * Handle QUICK_TAB_OPERATION_ACK from background
+ * v1.6.3.9-v4 - Phase 5: Operation acknowledgment from background
+ *   - Used when background confirms an operation succeeded
+ *   - If operationSequence is ahead of local state, trigger immediate render
+ *   - Prevents need to wait for storage.onChanged in latency-sensitive scenarios
+ * @private
+ * @param {Object} message - Operation ACK message
+ * @param {Object} message.operationId - Unique operation identifier
+ * @param {Object} message.operationSequence - Sequence number for ordering
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID for tracking
+ */
+function _handleOperationAck(message, sendResponse, correlationId) {
+  const { operationId, operationSequence } = message;
+
+  console.log('[Manager] OPERATION_ACK_RECEIVED:', {
+    operationId,
+    operationSequence,
+    currentWriteSequence: sidebarLocalState.writeSequence,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // If we're already ahead or equal, ignore (we already rendered from storage event)
+  if (operationSequence <= sidebarLocalState.writeSequence) {
+    console.debug('[Manager] OPERATION_ACK_SKIP: Already processed this sequence', {
+      operationSequence,
+      currentWriteSequence: sidebarLocalState.writeSequence
+    });
+    sendResponse({ received: true, correlationId });
+    return;
+  }
+
+  // Otherwise, if storage event is delayed, update immediately
+  sidebarLocalState.writeSequence = operationSequence;
+  scheduleRender('operation-ack', operationSequence);
+
+  console.info('[Manager] OPERATION_ACK_APPLIED:', {
+    operationId,
+    newWriteSequence: sidebarLocalState.writeSequence
+  });
+
   sendResponse({ received: true, correlationId });
 }
 
@@ -5807,6 +5999,7 @@ function _enqueueRender(source) {
 /**
  * Process the render queue serially
  * v1.6.3.8-v12 - FIX Issue #9: Ensure renders complete serially
+ * v1.6.3.9-v4 - Phase 5: Enhanced logging format per spec
  * @private
  */
 async function _processRenderQueue() {
@@ -5820,14 +6013,19 @@ async function _processRenderQueue() {
 
   // If queue is empty, nothing to do
   if (_renderQueue.length === 0) {
-    console.log('[Manager] RENDER_QUEUE_EMPTY: Nothing to render');
+    console.debug('[Manager] RENDER_QUEUE_EMPTY: Nothing to render');
     return;
   }
 
   // Coalesce all queued renders into one
   const coalescedSources = _renderQueue.map(r => r.source);
   const queueStartTime = _renderQueue[0]?.timestamp || Date.now();
+  const latestRender = _renderQueue[_renderQueue.length - 1];
   _renderQueue.length = 0; // Clear queue
+
+  // v1.6.3.9-v4 - Phase 5: RENDER_START log per spec
+  const startTime = performance.now();
+  console.debug('[Manager] RENDER_START queueSize=' + coalescedSources.length);
 
   console.log('[Manager] RENDER_QUEUE_PROCESSING:', {
     coalescedCount: coalescedSources.length,
@@ -5841,7 +6039,19 @@ async function _processRenderQueue() {
 
   try {
     await _executeQueuedRender();
+    
+    // v1.6.3.9-v4 - Phase 5: Update lastRenderedRevision from latest render
+    if (latestRender?.revision !== undefined) {
+      sidebarLocalState.lastRenderedRevision = latestRender.revision;
+    }
+    
+    // v1.6.3.9-v4 - Phase 5: RENDER_COMPLETE log per spec
+    const duration = performance.now() - startTime;
+    const tabCount = sidebarLocalState.tabs?.length ?? quickTabsState?.tabs?.length ?? 0;
+    console.info('[Manager] RENDER_COMPLETE duration=' + duration.toFixed(1) + 'ms tabCount=' + tabCount);
   } catch (err) {
+    // v1.6.3.9-v4 - Phase 5: RENDER_ERROR log per spec
+    console.error('[Manager] RENDER_ERROR error=' + err.message);
     console.error('[Manager] RENDER_QUEUE_ERROR:', {
       error: err.message,
       stack: err.stack
