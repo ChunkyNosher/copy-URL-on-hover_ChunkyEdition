@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.9-v4), simplified architecture,
+  sync with Single Writer Authority (v1.6.3.9-v5), simplified architecture,
   single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v4 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v5 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -48,10 +48,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Response Format** - Background responses include `type` and `correlationId`
+- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+
+**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
 
 - **Single Barrier Init** - Replaces multi-phase initialization
-- **Render Queue Debounce** - 100ms debounce with revision dedup
 - **Storage Health Check** - Fallback polling every 5s
 - **State Checksum** - `_computeStateChecksum()` for data integrity
 
@@ -60,7 +66,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
-**Key Modules (v1.6.3.9-v4):**
+**Key Modules (v1.6.3.9-v5):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
@@ -85,9 +91,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Single barrier init works (v1.6.3.9-v4)
-- [ ] Render queue debounce works (100ms) (v1.6.3.9-v4)
-- [ ] Storage health check works (5s fallback) (v1.6.3.9-v4)
+- [ ] Single barrier init works (v1.6.3.9-v5)
+- [ ] Render queue debounce works (100ms) (v1.6.3.9-v5)
+- [ ] Storage health check works (5s fallback) (v1.6.3.9-v5)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering)
@@ -98,5 +104,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.9-v4 simplified
+**Your strength: Complete Quick Tab system with v1.6.3.9-v5 simplified
 architecture, storage.onChanged PRIMARY, single barrier init.**

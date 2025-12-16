@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v4), simplified architecture, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.9-v5), simplified architecture, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,21 +38,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v4 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v5 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Response Format** - Background responses include `type` and `correlationId`
+- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+
+**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
 
 - **storage.onChanged PRIMARY** - Primary sync mechanism
 - **Storage Health Check** - Fallback polling every 5s if listener fails
 - **Single Barrier Init** - Simplified initialization
-- **Render Queue Debounce** - 100ms debounce with revision dedup
 
 **v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
-**Key Modules (v1.6.3.9-v4):**
+**Key Modules (v1.6.3.9-v5):**
 
 | Module                                | Purpose                            |
 | ------------------------------------- | ---------------------------------- |
@@ -76,9 +82,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v4)
-- [ ] Storage health check fallback works (5s) (v1.6.3.9-v4)
-- [ ] Single barrier init works (v1.6.3.9-v4)
+- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v5)
+- [ ] Storage health check fallback works (5s) (v1.6.3.9-v5)
+- [ ] Single barrier init works (v1.6.3.9-v5)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
@@ -88,5 +94,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.9-v4 simplified
+**Your strength: Reliable cross-tab sync with v1.6.3.9-v5 simplified
 architecture, storage.onChanged PRIMARY, health check fallback.**

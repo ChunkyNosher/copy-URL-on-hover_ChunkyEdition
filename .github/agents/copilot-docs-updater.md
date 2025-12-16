@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.9-v4.
+  documentation. Current version: v1.6.3.9-v5.
 tools: ['*']
 ---
 
@@ -69,18 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.9-v4)
+## Current Extension State (v1.6.3.9-v5)
 
-### v1.6.3.9-v4 Features (NEW) - Architecture Simplification
+### v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability
+
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
+- **Response Format** - Background responses include `type` and `correlationId`
+- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+
+### v1.6.3.9-v4 Features (Previous) - Architecture Simplification
 
 - **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
 - **Single Barrier Init** - Replaces multi-phase initialization
-- **Render Queue Debounce** - 100ms debounce with revision deduplication
 - **Storage Health Check** - Fallback polling every 5s
-- **State Checksum** - `_computeStateChecksum()` for data integrity
 
-### v1.6.3.9-v3 Features (Retained)
+### v1.6.3.9-v3 Features (Previous)
 
 - Dual Architecture (MessageRouter + message-handler), Diagnostic Logging
 
@@ -95,9 +100,9 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.9-v4
+- [ ] Version numbers match 1.6.3.9-v5
+- [ ] **v1.6.3.9-v5:** Bug fixes documented (Tab ID, storage routing, etc.)
 - [ ] **v1.6.3.9-v4:** Architecture simplification documented
-- [ ] **v1.6.3.9-v4:** New constants documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -107,7 +112,7 @@ nothing.
 
 | Error                  | Fix                         |
 | ---------------------- | --------------------------- |
-| v1.6.3.9-v3 or earlier | Update to 1.6.3.9-v4        |
+| v1.6.3.9-v3 or earlier | Update to 1.6.3.9-v5        |
 | "Pin to Page"          | Use "Solo/Mute"             |
 | Direct storage writes  | Use Single Writer Authority |
 | BroadcastChannel refs  | REMOVE - BC DELETED in v6   |

@@ -61,16 +61,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.9-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Response Format** - Background responses include `type` and `correlationId`
+- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+
+**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
 
 - **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
 - **Single Barrier Init** - Replaces multi-phase initialization
-- **Render Queue Debounce** - 100ms debounce with revision dedup
 
 **v1.6.3.9-v3 Features (Retained):**
 

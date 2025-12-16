@@ -1,0 +1,8 @@
+{
+  "id": "d6ccad7a-adda-4517-8f2d-c2c92659c2f0",
+  "title": "v1.6.3.9-v5 Documentation Update",
+  "details": "Updated documentation from v1.6.3.9-v4 to v1.6.3.9-v5 with bug fixes:\n\nKey v5 Features (Bug Fixes & Reliability):\n1. Tab ID Initialization - `currentBrowserTabId` fallback to background script\n2. Storage Event Routing - `_routeInitMessage()` → `_handleStorageChangedEvent()`\n3. Adoption Flow Fallback - Handles null `currentBrowserTabId` gracefully\n4. Response Format - Background responses include `type` and `correlationId`\n5. Content Script Handlers - `QT_STATE_SYNC` and `STATE_REFRESH_REQUESTED`\n6. MessageRouter Logging - Full context logged on routing failures\n7. Tab Cleanup Listener - `browser.tabs.onRemoved` in Manager sidebar\n8. Message Cross-Routing - Dispatcher handles both `type` and `action` fields\n\nFiles Updated: .github/copilot-instructions.md, README.md, 13 agent files (.github/agents/*.md)",
+  "category": "documentation",
+  "dateCreated": "2025-12-16T07:30:40.290Z",
+  "dateUpdated": "2025-12-16T07:30:40.290Z"
+}
