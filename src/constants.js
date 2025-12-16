@@ -449,3 +449,36 @@ export const PENDING_TAB_UPDATE_MAX_AGE_MS = 5000;
  * @constant {string}
  */
 export const DEFAULT_CONTAINER_ID = 'firefox-default';
+
+// =============================================================================
+// v1.6.3.9-v6 - GAP #5: CENTRALIZED BACKGROUND CONSTANTS
+// =============================================================================
+// These constants were moved from background.js to this centralized location
+// for consistency with the project architecture.
+
+/**
+ * Window for ignoring self-triggered storage events (ms).
+ *
+ * When background writes to storage, the storage.onChanged event will fire.
+ * This window prevents the background from processing its own writes as
+ * external changes.
+ *
+ * v1.6.1.6 - Memory leak fix: Self-write detection window
+ * v1.6.3.9-v6 - GAP #5: Moved from background.js to centralized constants
+ *
+ * @constant {number}
+ */
+export const WRITE_IGNORE_WINDOW_MS = 100;
+
+/**
+ * Cooldown period between storage change processing (ms).
+ *
+ * Prevents rapid duplicate processing of storage.onChanged events.
+ * Applied conditionally only when dedup filter triggers.
+ *
+ * v1.6.3.7-v9 - FIX Issue #5: Increased from 50ms to 200ms
+ * v1.6.3.9-v6 - GAP #5: Moved from background.js to centralized constants
+ *
+ * @constant {number}
+ */
+export const STORAGE_CHANGE_COOLDOWN_MS = 200;

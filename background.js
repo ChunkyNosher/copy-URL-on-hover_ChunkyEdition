@@ -24,6 +24,11 @@ import {
 } from './src/background/quick-tabs-v2-integration.js';
 // v1.6.3.9-v2 - Issue #6: Import tab events for container isolation and cleanup
 import { initializeTabEvents, getTabEventsDiagnostics } from './src/background/tab-events.js';
+// v1.6.3.9-v6 - GAP #5: Import centralized constants
+import {
+  WRITE_IGNORE_WINDOW_MS,
+  STORAGE_CHANGE_COOLDOWN_MS
+} from './src/constants.js';
 // v1.6.3.8-v8 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports and functions removed - Port + storage.onChanged ONLY
 // See Issue #13: Any remaining BC references are comments for historical context
@@ -125,17 +130,19 @@ const initializationStartTime = Date.now();
 // Prevents redundant broadcasts when state hasn't actually changed
 let lastBroadcastedStateHash = 0;
 
+// v1.6.3.9-v6 - GAP #5: WRITE_IGNORE_WINDOW_MS now imported from src/constants.js
 // v1.6.1.6 - Memory leak fix: Window for ignoring self-triggered storage events (ms)
-const WRITE_IGNORE_WINDOW_MS = 100;
+// const WRITE_IGNORE_WINDOW_MS = 100; // MOVED to src/constants.js
 
 // v1.6.3.7-v9 - FIX Issue #3: REMOVED IN_PROGRESS_TRANSACTIONS (dead code)
 // The set was declared but NEVER populated anywhere in the codebase
 // Transaction-based dedup is replaced by unified saveId-based deduplication
 // See _multiMethodDeduplication() for the unified dedup strategy
 
+// v1.6.3.9-v6 - GAP #5: STORAGE_CHANGE_COOLDOWN_MS now imported from src/constants.js
 // v1.6.3.7-v9 - FIX Issue #5: Increased cooldown from 50ms to 200ms
 // Cooldown is now applied conditionally only when dedup filter triggers
-const STORAGE_CHANGE_COOLDOWN_MS = 200;
+// const STORAGE_CHANGE_COOLDOWN_MS = 200; // MOVED to src/constants.js
 let lastStorageChangeProcessed = 0;
 
 // v1.6.3.7-v9 - FIX Issue #6: Sequence ID for event ordering validation
@@ -7693,6 +7700,31 @@ function generateCorrelationId(quickTabId = '') {
 }
 
 /**
+ * Build a standardized response object for message handlers.
+ *
+ * v1.6.3.9-v6 - GAP #20: Cross-component coordination with correlationId tracking
+ *
+ * All message responses include:
+ * - success: Whether the operation succeeded
+ * - correlationId: For end-to-end tracing
+ * - timestamp: When the response was generated
+ * - Additional data fields as provided
+ *
+ * @param {boolean} success - Whether the operation succeeded
+ * @param {Object} [data={}] - Additional response data
+ * @param {string|null} [correlationId=null] - Correlation ID for tracing
+ * @returns {Object} Standardized response object
+ */
+function _buildResponse(success, data = {}, correlationId = null) {
+  return {
+    success,
+    correlationId: correlationId || generateCorrelationId(),
+    timestamp: Date.now(),
+    ...data
+  };
+}
+
+/**
  * Log message dispatch (outgoing)
  * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
  * Logs sender tab ID, message type, timestamp (no payloads)
@@ -7854,7 +7886,8 @@ async function handleQuickTabStateChange(message, sender) {
   if (_isDeletionChange(changes, source)) {
     // v1.6.3.8-v7 - Issue #9: Pass correlationId for deletion tracing
     await _handleQuickTabDeletion(quickTabId, source, sourceTabId, correlationId);
-    return { success: true, correlationId };
+    // v1.6.3.9-v6 - GAP #20: Use _buildResponse for consistent response format
+    return _buildResponse(true, {}, correlationId);
   }
 
   // Update globalQuickTabState cache
@@ -7865,7 +7898,8 @@ async function handleQuickTabStateChange(message, sender) {
   // v1.6.3.8-v7 - Issue #9: Pass correlationId for tracing
   await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId, correlationId);
 
-  return { success: true, correlationId };
+  // v1.6.3.9-v6 - GAP #20: Use _buildResponse for consistent response format
+  return _buildResponse(true, {}, correlationId);
 }
 
 /**
