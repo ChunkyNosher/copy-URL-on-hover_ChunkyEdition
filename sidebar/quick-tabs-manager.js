@@ -3,7 +3,7 @@
  * Manages display and interaction with Quick Tabs across all containers
  *
  * ===============================================================================
- * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.9-v6)
+ * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.9-v7)
  * ===============================================================================
  *
  * FILTERING GUARANTEE:
@@ -38,10 +38,27 @@
  * ARCHITECTURE NOTES:
  *   - Primary sync: storage.onChanged listener
  *   - Request/response: runtime.sendMessage to background
+ *   - Secondary sync: runtime.onMessage listener for direct state pushes (v1.6.3.9-v7)
  *   - No BroadcastChannel (removed in v1.6.3.8-v6)
  *   - No runtime.Port (removed in v1.6.3.8-v13)
  *
  * ===============================================================================
+ *
+ * v1.6.3.9-v7 - GAP Analysis Fixes (Issues #1-5 from gap-analysis):
+ *   - GAP #1: Log capture infrastructure matching background.js pattern
+ *     - SIDEBAR_LOG_BUFFER with MAX_SIDEBAR_BUFFER_SIZE (2000)
+ *     - Console override (log/error/warn/info/debug) for capture
+ *     - getSidebarLogs(), clearSidebarLogs(), _exportSidebarLogs() APIs
+ *     - GET_SIDEBAR_LOGS/CLEAR_SIDEBAR_LOGS message handlers
+ *   - GAP #2: Enhanced runtime.onMessage listener for state push from background
+ *     - PUSH_STATE_UPDATE: Direct state update bypassing storage.onChanged
+ *     - ERROR_NOTIFICATION: Error notifications from background
+ *     - REQUEST_INIT_STATUS: Initialization status query
+ *   - GAP #3: Centralized constants in src/constants.js
+ *     - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE
+ *     - STORAGE_WATCHDOG_TIMEOUT_MS now imported (not locally defined)
+ *   - GAP #4: Refactored _routeRuntimeMessage to use lookup table (CC 13 → 3)
+ *     - _runtimeMessageHandlers lookup table for O(1) routing
  *
  * v1.6.3.9-v6 - GAP Analysis Fixes (from docs/manual/1.6.4/ gap analysis):
  *   - GAP #11: Simplified initialization from ~8 variables to 4 (initializationPromise,
@@ -217,6 +234,118 @@
  * v1.6.3.5-v11 - FIX Issue #6: Manager list updates when last Quick Tab closed
  */
 
+// ==================== LOG CAPTURE FOR EXPORT ====================
+// v1.6.3.9-v7 - GAP #1: Log capture matching background.js pattern
+// Enables diagnostics export via messages
+const SIDEBAR_LOG_BUFFER = [];
+const MAX_SIDEBAR_BUFFER_SIZE = 2000;
+
+/**
+ * Safe JSON stringify that handles circular references
+ * v1.6.3.9-v7 - GAP #1: Prevent crashes from circular references in log data
+ * @param {*} obj - Object to stringify
+ * @returns {string} JSON string or fallback string
+ */
+function _safeStringify(obj) {
+  try {
+    return JSON.stringify(obj, null, 2);
+  } catch (_err) {
+    // Handle circular references or other stringify errors
+    return '[Object with circular reference or unstringifiable]';
+  }
+}
+
+/**
+ * Add a log entry to the sidebar log buffer
+ * v1.6.3.9-v7 - GAP #1: Log capture for diagnostics
+ * NOTE: Stores only the message string (not raw args) to reduce memory usage
+ * @param {string} type - Log type (DEBUG, INFO, WARN, ERROR)
+ * @param {...any} args - Log arguments
+ */
+function _addSidebarLog(type, ...args) {
+  if (SIDEBAR_LOG_BUFFER.length >= MAX_SIDEBAR_BUFFER_SIZE) {
+    SIDEBAR_LOG_BUFFER.shift();
+  }
+
+  // v1.6.3.9-v7 - Only store message string, not raw args (memory optimization)
+  SIDEBAR_LOG_BUFFER.push({
+    type: type,
+    timestamp: Date.now(),
+    message: args
+      .map(arg => (typeof arg === 'object' ? _safeStringify(arg) : String(arg)))
+      .join(' ')
+  });
+}
+
+// Override console methods to capture logs
+// v1.6.3.9-v7 - GAP #1: Console capture matching background.js pattern
+const _originalConsoleLog = console.log;
+const _originalConsoleError = console.error;
+const _originalConsoleWarn = console.warn;
+const _originalConsoleInfo = console.info;
+const _originalConsoleDebug = console.debug;
+
+console.log = function (...args) {
+  _addSidebarLog('DEBUG', ...args);
+  _originalConsoleLog.apply(console, args);
+};
+
+console.error = function (...args) {
+  _addSidebarLog('ERROR', ...args);
+  _originalConsoleError.apply(console, args);
+};
+
+console.warn = function (...args) {
+  _addSidebarLog('WARN', ...args);
+  _originalConsoleWarn.apply(console, args);
+};
+
+console.info = function (...args) {
+  _addSidebarLog('INFO', ...args);
+  _originalConsoleInfo.apply(console, args);
+};
+
+console.debug = function (...args) {
+  _addSidebarLog('DEBUG', ...args);
+  _originalConsoleDebug.apply(console, args);
+};
+
+/**
+ * Get sidebar logs for export
+ * v1.6.3.9-v7 - GAP #1: Log export API
+ * @param {number} [limit] - Maximum number of logs to return (default: all)
+ * @returns {Array} Array of log entries
+ */
+function getSidebarLogs(limit = null) {
+  if (limit && limit > 0) {
+    return SIDEBAR_LOG_BUFFER.slice(-limit);
+  }
+  return [...SIDEBAR_LOG_BUFFER];
+}
+
+/**
+ * Clear sidebar log buffer
+ * v1.6.3.9-v7 - GAP #1: Log management API
+ */
+function clearSidebarLogs() {
+  SIDEBAR_LOG_BUFFER.length = 0;
+}
+
+/**
+ * Export logs in standardized format
+ * v1.6.3.9-v7 - GAP #1: Standardized format `[Context] ACTION: key=value timestamp=X`
+ * NOTE: Prefixed with underscore as it's exported via message API, not direct call
+ * @param {number} [limit] - Maximum number of logs to return
+ * @returns {string} Formatted log string
+ */
+function _exportSidebarLogs(limit = null) {
+  const logs = getSidebarLogs(limit);
+  return logs.map(entry => {
+    const formattedTime = new Date(entry.timestamp).toISOString();
+    return `[Manager] ${entry.type}: message="${entry.message}" timestamp=${formattedTime}`;
+  }).join('\n');
+}
+
 // ==================== IMPORTS ====================
 // v1.6.3.8-v4 - Bundle size refactoring: Import utilities from sidebar modules
 // These modules contain shared constants and utility functions extracted for maintainability.
@@ -283,12 +412,16 @@ import { filterInvalidTabs } from './utils/validation.js';
 // v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports removed per user request - Port + storage.onChanged only
 // v1.6.3.9-v4 - Simplified architecture: Import centralized constants
+// v1.6.3.9-v7 - GAP #3: Added RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE, STORAGE_WATCHDOG_TIMEOUT_MS
 import {
   STORAGE_HEALTH_CHECK_INTERVAL_MS,
   STORAGE_MAX_AGE_MS,
   INIT_BARRIER_TIMEOUT_MS,
   RENDER_QUEUE_DEBOUNCE_MS,
-  MESSAGE_TIMEOUT_MS
+  MESSAGE_TIMEOUT_MS,
+  RENDER_STALL_TIMEOUT_MS,
+  RENDER_QUEUE_MAX_SIZE,
+  STORAGE_WATCHDOG_TIMEOUT_MS
 } from '../src/constants.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 // v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
@@ -297,6 +430,8 @@ import _PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.j
 // ==================== CONSTANTS ====================
 // v1.6.3.8-v4 - Bundle refactoring: Shared constants/utilities in ./modules/
 // Local constants remain here for now; modules provide a foundation for future refactoring.
+// v1.6.3.9-v7 - GAP #3: RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE, STORAGE_WATCHDOG_TIMEOUT_MS
+//               now imported from src/constants.js
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 const SAVEID_RECONCILED = 'reconciled';
@@ -385,18 +520,7 @@ const _LEGACY_RENDER_DEBOUNCE_MS = 300;
 // ==================== v1.6.3.8-v12 RENDER QUEUE CONSTANTS ====================
 // FIX Issue #9: Manager Sidebar Grouping Race Condition
 // v1.6.3.9-v4 - RENDER_QUEUE_DEBOUNCE_MS now imported from src/constants.js
-
-/**
- * Maximum time to wait for a render to complete before considering it stalled
- * v1.6.3.8-v12 - FIX Issue #9: Safety timeout for render operations
- */
-const RENDER_STALL_TIMEOUT_MS = 5000;
-
-/**
- * Maximum number of pending render requests to queue
- * v1.6.3.8-v12 - FIX Issue #9: Prevent memory issues from excessive queuing
- */
-const RENDER_QUEUE_MAX_SIZE = 10;
+// v1.6.3.9-v7 - GAP #3: RENDER_STALL_TIMEOUT_MS, RENDER_QUEUE_MAX_SIZE now imported from src/constants.js
 
 /**
  * Delay before rendering after corruption recovery to allow state to stabilize
@@ -916,11 +1040,7 @@ let _lastAppliedRevision = 0;
  */
 let storageWatchdogTimerId = null;
 
-/**
- * Watchdog timeout duration (ms)
- * v1.6.3.7-v9 - FIX Issue #6: 2 second timeout before explicit re-read
- */
-const STORAGE_WATCHDOG_TIMEOUT_MS = 2000;
+// v1.6.3.9-v7 - GAP #3: STORAGE_WATCHDOG_TIMEOUT_MS now imported from src/constants.js
 
 // ==================== v1.6.3.8-v3 STORAGE LISTENER VERIFICATION ====================
 // FIX Issues #2, #5, #9, #15: Explicit storage.onChanged listener registration verification
@@ -3900,9 +4020,30 @@ function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
 }
 
 /**
+ * Message handler lookup table for runtime messages
+ * v1.6.3.9-v7 - GAP #4: Refactored to reduce complexity (CC from 13 to ~3)
+ * @private
+ */
+const _runtimeMessageHandlers = {
+  'QUICK_TAB_STATE_UPDATED': _handleRuntimeStateUpdated,
+  'QUICK_TAB_DELETED': _handleRuntimeDeleted,
+  'QUICK_TAB_OPERATION_ACK': _handleOperationAck,
+  'STATE_UPDATE': _handleSidebarStateSync,
+  'QT_STATE_SYNC': _handleSidebarStateSync,
+  'STATE_REFRESH_REQUESTED': _handleSidebarStateRefresh,
+  'GET_SIDEBAR_LOGS': _handleGetSidebarLogs,
+  'CLEAR_SIDEBAR_LOGS': _handleClearSidebarLogs,
+  'PUSH_STATE_UPDATE': _handlePushStateUpdate,
+  'ERROR_NOTIFICATION': _handleErrorNotification,
+  'REQUEST_INIT_STATUS': _handleInitStatusRequest
+};
+
+/**
  * Route runtime message to appropriate handler
  * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
  * v1.6.3.9-v6 - GAP #16: Unified message routing with switch-based pattern
+ * v1.6.3.9-v7 - GAP #2: Added log export and state push handlers
+ * v1.6.3.9-v7 - GAP #4: Refactored to use lookup table (CC reduced from 13 to ~3)
  * @private
  * @param {Object} message - Incoming message
  * @param {Function} sendResponse - Response callback
@@ -3913,39 +4054,165 @@ function _routeRuntimeMessage(message, sendResponse, correlationId) {
   // v1.6.3.9-v6 - GAP #16: Unified routing - check both type and action fields
   const action = message.type || message.action;
   
-  switch (action) {
-    case 'QUICK_TAB_STATE_UPDATED':
-      _handleRuntimeStateUpdated(message, sendResponse, correlationId);
-      return true;
-      
-    case 'QUICK_TAB_DELETED':
-      _handleRuntimeDeleted(message, sendResponse, correlationId);
-      return true;
-      
-    case 'QUICK_TAB_OPERATION_ACK':
-      _handleOperationAck(message, sendResponse, correlationId);
-      return true;
-      
-    // v1.6.3.9-v6 - GAP #16: Additional message types for unified routing
-    case 'STATE_UPDATE':
-    case 'QT_STATE_SYNC':
-      _handleSidebarStateSync(message, sendResponse, correlationId);
-      return true;
-      
-    case 'STATE_REFRESH_REQUESTED':
-      _handleSidebarStateRefresh(message, sendResponse, correlationId);
-      return true;
-      
-    default:
-      // v1.6.3.9-v6 - GAP #16: Log unknown messages for debugging
-      console.debug('[Manager] UNKNOWN_MESSAGE: action=' + action, {
-        correlationId,
-        hasType: !!message.type,
-        hasAction: !!message.action,
-        timestamp: Date.now()
-      });
-      return false;
+  // v1.6.3.9-v7 - GAP #4: Use handler lookup table to reduce complexity
+  const handler = _runtimeMessageHandlers[action];
+  
+  if (handler) {
+    handler(message, sendResponse, correlationId);
+    return true;
   }
+  
+  // v1.6.3.9-v6 - GAP #16: Log unknown messages for debugging
+  console.debug('[Manager] UNKNOWN_MESSAGE: action=' + action, {
+    correlationId,
+    hasType: !!message.type,
+    hasAction: !!message.action,
+    timestamp: Date.now()
+  });
+  return false;
+}
+
+/**
+ * Handle GET_SIDEBAR_LOGS request - log export API
+ * v1.6.3.9-v7 - GAP #1: Log export via messages
+ * @private
+ * @param {Object} message - Request message with optional limit
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleGetSidebarLogs(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] GET_SIDEBAR_LOGS:', {
+    limit: message.limit,
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  const logs = getSidebarLogs(message.limit);
+  sendResponse({
+    success: true,
+    logs: logs,
+    count: logs.length,
+    correlationId
+  });
+}
+
+/**
+ * Handle CLEAR_SIDEBAR_LOGS request
+ * v1.6.3.9-v7 - GAP #1: Log management via messages
+ * @private
+ * @param {Object} message - Request message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleClearSidebarLogs(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] CLEAR_SIDEBAR_LOGS:', {
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  clearSidebarLogs();
+  sendResponse({ success: true, correlationId });
+}
+
+/**
+ * Handle PUSH_STATE_UPDATE - direct state push from background
+ * v1.6.3.9-v7 - GAP #2: Background can push state updates directly
+ * @private
+ * @param {Object} message - State update message with state payload
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handlePushStateUpdate(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] PUSH_STATE_UPDATE:', {
+    tabCount: message.state?.tabs?.length ?? 'N/A',
+    revision: message.revision,
+    correlationId,
+    path: 'runtime-onMessage-push',
+    timestamp: Date.now()
+  });
+  
+  // v1.6.3.9-v7 - Validate state structure before processing
+  if (message.state && Array.isArray(message.state.tabs)) {
+    // Direct state update - bypass storage.onChanged
+    const stateChange = { newValue: message.state };
+    _handleStorageChangedEvent({ [STATE_KEY]: stateChange });
+  } else if (message.state) {
+    console.warn('[Manager] PUSH_STATE_UPDATE: Invalid state structure', {
+      hasState: !!message.state,
+      hasTabs: !!message.state?.tabs,
+      isArray: Array.isArray(message.state?.tabs)
+    });
+  }
+  
+  sendResponse({ received: true, correlationId });
+}
+
+/**
+ * Sanitize error message to prevent XSS
+ * v1.6.3.9-v7 - GAP #2: Prevent XSS from background error messages
+ * @private
+ * @param {string} message - Raw error message
+ * @returns {string} Sanitized message safe for display
+ */
+function _sanitizeErrorMessage(message) {
+  if (typeof message !== 'string') return 'Unknown error';
+  // Escape HTML entities first (before any other processing)
+  // This prevents XSS by converting < to &lt; etc. before any tag manipulation
+  // Order matters: escape first, then limit length
+  return message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .substring(0, 500);
+}
+
+/**
+ * Handle ERROR_NOTIFICATION - error from background
+ * v1.6.3.9-v7 - GAP #2: Background can push error notifications
+ * @private
+ * @param {Object} message - Error message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleErrorNotification(message, sendResponse, correlationId) {
+  console.error('[Manager] [RUNTIME] ERROR_NOTIFICATION:', {
+    errorCode: message.errorCode,
+    errorMessage: message.errorMessage,
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  // Show error to user if UI is ready (with sanitization to prevent XSS)
+  if (_isInitPhaseComplete && message.errorMessage) {
+    _showErrorNotification(_sanitizeErrorMessage(message.errorMessage));
+  }
+  
+  sendResponse({ received: true, correlationId });
+}
+
+/**
+ * Handle REQUEST_INIT_STATUS - initialization status request
+ * v1.6.3.9-v7 - GAP #2: Background can query sidebar init state
+ * @private
+ * @param {Object} message - Request message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleInitStatusRequest(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] REQUEST_INIT_STATUS:', {
+    correlationId,
+    timestamp: Date.now()
+  });
+  
+  sendResponse({
+    success: true,
+    isInitialized: _isInitPhaseComplete,
+    storageListenerVerified: storageListenerVerified,
+    tabCount: quickTabsState?.tabs?.length ?? 0,
+    correlationId
+  });
 }
 
 /**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.9-v6  
+**Version:** 1.6.3.9-v7  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -20,11 +20,21 @@ Tabs Manager
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Single Barrier Initialization** - Unified barrier with resolve-only semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
+- **Runtime.onMessage Secondary** - Direct state push from background (v7)
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
+
+- **GAP 1: Logging Capture** - Sidebar log capture matching background.js pattern
+- **GAP 2: Message Listener** - Enhanced runtime.onMessage for state push/errors
+- **GAP 3: Centralized Constants** - `KEEPALIVE_INTERVAL_MS`, `RENDER_STALL_TIMEOUT_MS`, etc.
+- **GAP 4: Routing Refactor** - `_routeRuntimeMessage()` uses lookup table (CC 13→3)
+- **Log Export API** - `GET_SIDEBAR_LOGS`, `CLEAR_SIDEBAR_LOGS` message handlers
+- **Direct State Push** - `PUSH_STATE_UPDATE` bypasses storage.onChanged delay
+
+**v1.6.3.9-v6 Features (Previous) - Sidebar & Background Cleanup:**
 
 - **GAP 11: Simplified Init** - Manager reduced from ~8 state variables to 4
 - **GAP 13: Unified Barrier** - Single barrier with resolve-only semantics
@@ -103,7 +113,26 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.9-v6: Sidebar & Background Cleanup (NEW)
+### v1.6.3.9-v7: Logging & Message Infrastructure (NEW)
+
+**Sidebar (quick-tabs-manager.js):**
+
+- Log capture: `SIDEBAR_LOG_BUFFER` with console override (matching background.js)
+- Log export API: `getSidebarLogs()`, `clearSidebarLogs()`, `_exportSidebarLogs()`
+- Message handlers: `GET_SIDEBAR_LOGS`, `CLEAR_SIDEBAR_LOGS`
+- Direct state push: `PUSH_STATE_UPDATE` bypasses storage.onChanged
+- Error notifications: `ERROR_NOTIFICATION` handler
+- Init status query: `REQUEST_INIT_STATUS` handler
+- Refactored routing: `_runtimeMessageHandlers` lookup table (CC 13→3)
+
+**Constants (src/constants.js):**
+
+- `KEEPALIVE_INTERVAL_MS` (25000ms) - moved from background.js
+- `RENDER_STALL_TIMEOUT_MS` (5000ms) - moved from sidebar
+- `RENDER_QUEUE_MAX_SIZE` (10) - moved from sidebar
+- `STORAGE_WATCHDOG_TIMEOUT_MS` (2000ms) - moved from sidebar
+
+### v1.6.3.9-v6: Sidebar & Background Cleanup (Previous)
 
 **Sidebar (quick-tabs-manager.js):**
 
@@ -154,7 +183,15 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 
 ---
 
-## 🆕 v1.6.3.9-v6 Patterns
+## 🆕 v1.6.3.9-v7 Patterns
+
+- **Log Capture** - Console override with buffer for diagnostics export
+- **Message Handler Lookup** - `_runtimeMessageHandlers` O(1) routing table
+- **Direct State Push** - `PUSH_STATE_UPDATE` bypasses storage.onChanged delay
+- **Error Notification** - Background can push errors to sidebar
+- **Init Status Query** - Background can query sidebar init state
+
+## 🆕 v1.6.3.9-v6 Patterns (Previous)
 
 - **Unified Barrier Init** - Single barrier with resolve-only semantics
 - **Render Queue Priority** - Revision PRIMARY over saveId for dedup
