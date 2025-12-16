@@ -59,7 +59,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
 **Key Modules (v1.6.3.9-v4):**
 

@@ -31,14 +31,14 @@ Tabs Manager
 - **Single Barrier Init** - Replaces multi-phase initialization
 - **Render Queue Debounce** - 100ms debounce with revision dedup
 - **Storage Health Check** - Fallback polling every 5s
-- **_computeStateChecksum()** - Data integrity verification
-- **_generateQuickTabId()** - `qt-{timestamp}-{random}` format
+- **\_computeStateChecksum()** - Data integrity verification
+- **\_generateQuickTabId()** - `qt-{timestamp}-{random}` format
 - **Orphan Cleanup** - Now removes orphans (not just marks)
 
 **v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
 **v1.6.3.9-v2 Features (Retained):**
 
@@ -126,7 +126,8 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 - **Storage.onChanged PRIMARY** - Primary sync, health check fallback
 - **Render Queue Debounce** - 100ms debounce with revision deduplication
 - **State Checksum** - `_computeStateChecksum()` for data integrity
-- **Simplified Persistence** - `_persistToStorage()` with validation + sync backup
+- **Simplified Persistence** - `_persistToStorage()` with validation + sync
+  backup
 - **Orphan Removal** - Cleanup now removes orphans instead of marking
 
 ### v1.6.3.9-v3 Patterns (Retained)
@@ -140,37 +141,37 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 ### Key Timing Constants (v1.6.3.9-v4)
 
-| Constant                              | Value             | Purpose                        |
-| ------------------------------------- | ----------------- | ------------------------------ |
-| `STORAGE_KEY`                         | 'quick_tabs_state_v2' | Storage key name           |
-| `INIT_BARRIER_TIMEOUT_MS`             | 10000             | Single barrier init timeout    |
-| `RENDER_QUEUE_DEBOUNCE_MS`            | 100               | Render queue debounce          |
-| `MESSAGE_TIMEOUT_MS`                  | 3000              | runtime.sendMessage timeout    |
-| `STORAGE_HEALTH_CHECK_INTERVAL_MS`    | 5000              | Health check fallback interval |
-| `STORAGE_MAX_AGE_MS`                  | 300000 (5min)     | Reject stale storage events    |
-| `STORAGE_DEDUP_WINDOW_MS`             | 300               | Self-write detection window    |
-| `MAX_QUICK_TABS`                      | 100               | Maximum Quick Tabs allowed     |
-| `QUICK_TAB_ID_PREFIX`                 | 'qt-'             | Quick Tab ID prefix            |
-| `ORPHAN_CLEANUP_INTERVAL_MS`          | 3600000 (1hr)     | Orphan cleanup interval        |
-| `DEFAULT_CONTAINER_ID`                | 'firefox-default' | Default container ID           |
+| Constant                           | Value                 | Purpose                        |
+| ---------------------------------- | --------------------- | ------------------------------ |
+| `STORAGE_KEY`                      | 'quick_tabs_state_v2' | Storage key name               |
+| `INIT_BARRIER_TIMEOUT_MS`          | 10000                 | Single barrier init timeout    |
+| `RENDER_QUEUE_DEBOUNCE_MS`         | 100                   | Render queue debounce          |
+| `MESSAGE_TIMEOUT_MS`               | 3000                  | runtime.sendMessage timeout    |
+| `STORAGE_HEALTH_CHECK_INTERVAL_MS` | 5000                  | Health check fallback interval |
+| `STORAGE_MAX_AGE_MS`               | 300000 (5min)         | Reject stale storage events    |
+| `STORAGE_DEDUP_WINDOW_MS`          | 300                   | Self-write detection window    |
+| `MAX_QUICK_TABS`                   | 100                   | Maximum Quick Tabs allowed     |
+| `QUICK_TAB_ID_PREFIX`              | 'qt-'                 | Quick Tab ID prefix            |
+| `ORPHAN_CLEANUP_INTERVAL_MS`       | 3600000 (1hr)         | Orphan cleanup interval        |
+| `DEFAULT_CONTAINER_ID`             | 'firefox-default'     | Default container ID           |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                                                        |
-| --------------------- | ------------------------------------------------------------------------------ |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                                              |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                         |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                                    |
-| TabStateManager       | `getTabState()`, `setTabState()`                                               |
-| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`                       |
-| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`            |
-| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)                      |
-| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`                    |
-| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                      |
-| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                           |
-| Manager               | `scheduleRender()`, `sendMessageToBackground()`, `_handleOperationAck()`       |
+| Class                 | Methods                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                                        |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                   |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                              |
+| TabStateManager       | `getTabState()`, `setTabState()`                                         |
+| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`                 |
+| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`      |
+| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)                |
+| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`              |
+| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                |
+| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                     |
+| Manager               | `scheduleRender()`, `sendMessageToBackground()`, `_handleOperationAck()` |
 
 ---
 
@@ -264,18 +265,18 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ### Key Files
 
-| File                                          | Features                                           |
-| --------------------------------------------- | -------------------------------------------------- |
-| `src/constants.js`                            | Centralized constants (+225 lines in v4)           |
-| `src/background/tab-events.js`                | Tabs API listeners (onActivated/Removed/Updated)   |
-| `src/utils/structured-logger.js`              | StructuredLogger class with contexts               |
-| `src/storage/schema-v2.js`                    | Container-aware queries, version field             |
-| `src/storage/storage-manager.js`              | Simplified persistence, checksum validation        |
-| `src/utils/browser-api.js`                    | Container functions, validateTabExists()           |
-| `src/messaging/message-router.js`             | ACTION-based routing (GET_CURRENT_TAB_ID, etc.)    |
-| `src/background/message-handler.js`           | TYPE-based v2 routing (QT_CREATED, etc.)           |
-| `background.js`                               | _computeStateChecksum(), _generateQuickTabId()     |
-| `sidebar/quick-tabs-manager.js`               | scheduleRender(), sendMessageToBackground()        |
+| File                                | Features                                         |
+| ----------------------------------- | ------------------------------------------------ |
+| `src/constants.js`                  | Centralized constants (+225 lines in v4)         |
+| `src/background/tab-events.js`      | Tabs API listeners (onActivated/Removed/Updated) |
+| `src/utils/structured-logger.js`    | StructuredLogger class with contexts             |
+| `src/storage/schema-v2.js`          | Container-aware queries, version field           |
+| `src/storage/storage-manager.js`    | Simplified persistence, checksum validation      |
+| `src/utils/browser-api.js`          | Container functions, validateTabExists()         |
+| `src/messaging/message-router.js`   | ACTION-based routing (GET_CURRENT_TAB_ID, etc.)  |
+| `src/background/message-handler.js` | TYPE-based v2 routing (QT_CREATED, etc.)         |
+| `background.js`                     | \_computeStateChecksum(), \_generateQuickTabId() |
+| `sidebar/quick-tabs-manager.js`     | scheduleRender(), sendMessageToBackground()      |
 
 ### Storage
 

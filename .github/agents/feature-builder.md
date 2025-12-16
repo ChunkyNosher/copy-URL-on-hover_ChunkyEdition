@@ -86,8 +86,8 @@ UI)
 - **Structured Logger** - `src/utils/structured-logger.js`
 
 **v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
-messaging, simplified BFCache.
-  idle timer
+messaging, simplified BFCache. idle timer
+
 - **Port Circuit Breaker** - closed→open→half-open with exponential backoff
 - **UI Performance** - Debounced renderUI (300ms), differential storage updates
 

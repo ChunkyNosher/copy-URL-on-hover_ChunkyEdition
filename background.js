@@ -206,16 +206,13 @@ function _computeStateChecksum(tabs) {
 
   // Create deterministic signature of state
   // Sort to ensure consistent ordering regardless of array order
-  const signatures = tabs
-    .map(_tabToSignature)
-    .sort()
-    .join('||');
+  const signatures = tabs.map(_tabToSignature).sort().join('||');
 
   // Simple hash (not cryptographic, just collision detection)
   let hash = 0;
   for (let i = 0; i < signatures.length; i++) {
     const char = signatures.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
 
@@ -299,21 +296,22 @@ async function _persistToStorage() {
 
     // Write to backup (non-blocking)
     if (ENABLE_SYNC_STORAGE_BACKUP) {
-      browser.storage.sync.set({
-        [SYNC_BACKUP_KEY]: {
-          tabs: stateToWrite.tabs,
-          lastModified: stateToWrite.lastModified,
-          checksum: stateToWrite.checksum
-        }
-      }).catch(err => {
-        console.warn('[Background] Sync backup failed:', err.message || err);
-      });
+      browser.storage.sync
+        .set({
+          [SYNC_BACKUP_KEY]: {
+            tabs: stateToWrite.tabs,
+            lastModified: stateToWrite.lastModified,
+            checksum: stateToWrite.checksum
+          }
+        })
+        .catch(err => {
+          console.warn('[Background] Sync backup failed:', err.message || err);
+        });
     }
 
     // Validate write-back
     const readBack = await browser.storage.local.get(STORAGE_KEY);
-    if (!readBack[STORAGE_KEY] ||
-        readBack[STORAGE_KEY].checksum !== stateToWrite.checksum) {
+    if (!readBack[STORAGE_KEY] || readBack[STORAGE_KEY].checksum !== stateToWrite.checksum) {
       console.error('[Background] WRITE VALIDATION FAILED - checksum mismatch', {
         expected: stateToWrite.checksum,
         actual: readBack[STORAGE_KEY]?.checksum
@@ -1296,7 +1294,9 @@ async function cleanupOrphanedQuickTabs() {
     );
 
     // v1.6.3.9-v4 - Remove orphans from state (per spec - was marking before)
-    globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => validTabIds.has(qt.originTabId));
+    globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt =>
+      validTabIds.has(qt.originTabId)
+    );
     globalQuickTabState.lastModified = Date.now();
     globalQuickTabState.lastUpdate = Date.now(); // Backwards compatibility
 

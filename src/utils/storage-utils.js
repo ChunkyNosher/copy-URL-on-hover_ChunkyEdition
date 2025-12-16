@@ -2089,10 +2089,7 @@ export function queueStorageWrite(
     .then(() => writeOperation())
     .catch(err => {
       // v1.6.3.9-v2 - FIX Issue #3: Log failure but allow chain to continue
-      console.error(
-        `[StorageUtils] Storage write FAILED [${transactionId}]:`,
-        err
-      );
+      console.error(`[StorageUtils] Storage write FAILED [${transactionId}]:`, err);
 
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
 

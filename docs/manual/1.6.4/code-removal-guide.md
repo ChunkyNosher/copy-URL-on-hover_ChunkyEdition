@@ -1,6 +1,7 @@
 # Code Removal Guide for Quick Tabs Architecture Migration
 
-**Document Purpose:** Identify all code that must be removed during migration to the simplified architecture  
+**Document Purpose:** Identify all code that must be removed during migration to
+the simplified architecture  
 **Target Audience:** GitHub Copilot Agent + Developers  
 **Status:** Critical - Use as reference during implementation  
 **Last Updated:** December 15, 2025
@@ -9,16 +10,22 @@
 
 ## EXECUTIVE SUMMARY
 
-This guide identifies **~1500+ lines of code** that should be removed from the current implementation. The removals fall into 5 major categories:
+This guide identifies **~1500+ lines of code** that should be removed from the
+current implementation. The removals fall into 5 major categories:
 
-1. **Port-based messaging infrastructure** (300+ lines) - Removed in v1.6.3.8-v13
+1. **Port-based messaging infrastructure** (300+ lines) - Removed in
+   v1.6.3.8-v13
 2. **Complex initialization layers** (400+ lines) - Simplified to single barrier
 3. **Multi-layer deduplication** (250+ lines) - Replaced by revision versioning
-4. **Storage verification & retry logic** (200+ lines) - Replaced by fallback patterns
-5. **Render queue corruption recovery** (150+ lines) - Simplified to basic recovery
+4. **Storage verification & retry logic** (200+ lines) - Replaced by fallback
+   patterns
+5. **Render queue corruption recovery** (150+ lines) - Simplified to basic
+   recovery
 
 ### Key Principle
+
 **Do NOT delete code blindly.** Each removal must account for:
+
 - Other code that might reference the deleted function
 - Stub patterns for backward compatibility
 - Order dependencies (some deletions enable others)
@@ -28,7 +35,9 @@ This guide identifies **~1500+ lines of code** that should be removed from the c
 ## REMOVAL CATEGORY 1: PORT-BASED MESSAGING (300+ lines)
 
 ### Current State in Repository
+
 Port-based messaging was removed in v1.6.3.8-v13 but may still have remnants in:
+
 - `sidebar/quick-tabs-manager.js`
 - Background script message handlers
 - Utility modules
@@ -38,6 +47,7 @@ Port-based messaging was removed in v1.6.3.8-v13 but may still have remnants in:
 #### Pattern 1A: Port Connection Functions
 
 **Pseudocode of what exists:**
+
 ```
 connectToBackground()
   └─ Create runtime.Port
@@ -65,6 +75,7 @@ _handlePortDisconnect()
 ```
 
 **Search patterns to find:**
+
 - `runtime.connect()`
 - `backgroundPort` variable references
 - `connectToBackground()` function calls
@@ -73,12 +84,15 @@ _handlePortDisconnect()
 - `_handlePortDisconnect()` function
 
 **Removal order:**
-1. Delete helper functions first (`_setupPortListeners`, `_handlePortDisconnect`)
+
+1. Delete helper functions first (`_setupPortListeners`,
+   `_handlePortDisconnect`)
 2. Delete main functions (`connectToBackground`, `_establishPortConnection`)
 3. Remove all `backgroundPort` variable declarations and initializations
 4. Remove port-related constants
 
 **Dependency warning:**
+
 - Check for `sendWithAck()` calls - replace with `sendToBackground()`
 - Check for port message queue flushes - these become no-ops
 - Background script may have port handlers - remove those too
@@ -88,6 +102,7 @@ _handlePortDisconnect()
 #### Pattern 1B: Heartbeat Mechanism
 
 **Pseudocode of what exists:**
+
 ```
 startHeartbeat()
   └─ Send heartbeat every 30s
@@ -113,6 +128,7 @@ _handlePortMessageWithQueue()
 ```
 
 **Search patterns:**
+
 - `startHeartbeat()`
 - `stopHeartbeat()`
 - `sendHeartbeat()`
@@ -123,12 +139,15 @@ _handlePortMessageWithQueue()
 - `_handlePortMessageWithQueue()`
 
 **Removal order:**
-1. Delete heartbeat functions (`startHeartbeat`, `stopHeartbeat`, `sendHeartbeat`)
+
+1. Delete heartbeat functions (`startHeartbeat`, `stopHeartbeat`,
+   `sendHeartbeat`)
 2. Remove heartbeat-related state variables
 3. Remove heartbeat constants
 4. Remove calls to `startHeartbeat()` / `stopHeartbeat()` throughout code
 
 **Dependency warning:**
+
 - Heartbeat failures may trigger reconnection logic - that can be deleted too
 - Some logging may reference heartbeat state - update log messages
 - Connection state transitions may rely on heartbeat - simplify to basic on/off
@@ -138,6 +157,7 @@ _handlePortMessageWithQueue()
 #### Pattern 1C: Port Message Queue
 
 **Pseudocode of what exists:**
+
 ```
 portMessageQueue = []
 
@@ -162,6 +182,7 @@ sendWithAck(message)
 ```
 
 **Search patterns:**
+
 - `portMessageQueue` variable
 - `_flushPortMessageQueue()` function
 - `_handleConnectionFailure()` function
@@ -170,6 +191,7 @@ sendWithAck(message)
 - `QUEUE_TTL_MS` constant
 
 **Removal order:**
+
 1. Delete queue flushing function (`_flushPortMessageQueue`)
 2. Delete connection failure handler (`_handleConnectionFailure`)
 3. Delete `sendWithAck()` - replace all calls with `sendToBackground()`
@@ -177,6 +199,7 @@ sendWithAck(message)
 5. Remove queue management intervals
 
 **Dependency warning:**
+
 - `sendWithAck()` is called from multiple places - systematic replacement needed
 - Queue management cleanup intervals still running - stop them
 - Some error paths may assume queue exists - simplify error handling
@@ -188,6 +211,7 @@ sendWithAck(message)
 **Pattern 1D: Port message listener in background**
 
 **Pseudocode of what exists:**
+
 ```
 browser.runtime.onConnect.addListener((port) => {
   if (port.name === 'quick-tabs-sidebar') {
@@ -206,28 +230,34 @@ _handleSidebarPortMessage(message, sender, sendResponse)
 ```
 
 **Search patterns:**
+
 - `browser.runtime.onConnect.addListener()`
 - Port name `'quick-tabs-sidebar'`
 - `setupPortHandler()` in background
 - `_handleSidebarPortMessage()` function
 
 **Removal order:**
+
 1. Delete port message listener setup
 2. Delete port handler functions
-3. Keep `browser.runtime.onMessage.addListener()` (this is still needed for stateless messages)
+3. Keep `browser.runtime.onMessage.addListener()` (this is still needed for
+   stateless messages)
 
 ---
 
 ## REMOVAL CATEGORY 2: COMPLEX INITIALIZATION LAYERS (400+ lines)
 
 ### Current State
-Current implementation has multiple initialization phases with listeners, verification, and message queueing. Proposed simplifies to single barrier.
+
+Current implementation has multiple initialization phases with listeners,
+verification, and message queueing. Proposed simplifies to single barrier.
 
 ### What to Remove
 
 #### Pattern 2A: Storage Listener Verification
 
 **Pseudocode of what exists:**
+
 ```
 _initializeStorageListener()
   └─ Complex verification with retries
@@ -248,6 +278,7 @@ STORAGE_VERIFICATION_RETRY_MS = [1000, 2000, 4000]
 ```
 
 **Search patterns:**
+
 - `_initializeStorageListener()` function
 - `_verifyStorageListenerWithRetry()` function
 - `STORAGE_VERIFICATION_RETRY_MS` constant
@@ -256,12 +287,14 @@ STORAGE_VERIFICATION_RETRY_MS = [1000, 2000, 4000]
 - Retry backoff logic
 
 **Removal order:**
+
 1. Delete verification functions
 2. Remove retry constants
 3. Remove test key writes (won't be needed)
 4. Simplify initialization to just: add listener, load state, render
 
 **Dependency warning:**
+
 - Current code may have fallback mode that disables storage - remove that flag
 - Logging may reference verification state - simplify log messages
 
@@ -270,6 +303,7 @@ STORAGE_VERIFICATION_RETRY_MS = [1000, 2000, 4000]
 #### Pattern 2B: Multi-Phase Initialization Tracking
 
 **Pseudocode of what exists:**
+
 ```
 State variables for tracking init phases:
 - initializationStarted (boolean)
@@ -291,6 +325,7 @@ if (!initializationStarted) {
 ```
 
 **Search patterns:**
+
 - `initializationStarted` variable
 - `initializationComplete` variable
 - `currentInitPhase` variable
@@ -300,13 +335,17 @@ if (!initializationStarted) {
 - Phase-based message queueing
 
 **Removal order:**
-1. Keep only: `initializationPromise`, `initializationResolve`, `initializationReject` (barrier pattern)
+
+1. Keep only: `initializationPromise`, `initializationResolve`,
+   `initializationReject` (barrier pattern)
 2. Delete all other init tracking variables
 3. Simplify phase detection to just: `await initializationPromise`
 4. Remove phase-specific message handling
 
 **Dependency warning:**
-- Listeners may check `initializationComplete` before processing - replace with barrier await
+
+- Listeners may check `initializationComplete` before processing - replace with
+  barrier await
 - Logging may emit phase names - update to simpler format
 - Error paths may have phase-specific recovery - generalize them
 
@@ -315,6 +354,7 @@ if (!initializationStarted) {
 #### Pattern 2C: Pre-Initialization Message Queue
 
 **Pseudocode of what exists:**
+
 ```
 preInitMessageQueue = []
 
@@ -337,6 +377,7 @@ _processQueuedMessages()
 ```
 
 **Search patterns:**
+
 - `preInitMessageQueue` variable
 - `_queueMessageDuringInit()` function
 - `_processQueuedMessages()` function
@@ -345,12 +386,14 @@ _processQueuedMessages()
 - Message timestamp tracking
 
 **Removal order:**
+
 1. Delete queue variables
 2. Delete queueing functions
 3. Replace all pre-init queue paths with direct barrier await
 4. Remove queue processing
 
 **Dependency warning:**
+
 - storage.onChanged listener may have complex queue logic - simplify it
 - Message handlers may check queue status - remove those checks
 - Logging may reference queue size - remove that instrumentation
@@ -360,6 +403,7 @@ _processQueuedMessages()
 #### Pattern 2D: Initialization Wait/Timeout Logic
 
 **Pseudocode of what exists:**
+
 ```
 initialLoadTimeoutId = null
 stateLoadStartTime = 0
@@ -381,6 +425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 ```
 
 **Search patterns:**
+
 - `initialLoadTimeoutId` variable
 - `stateLoadStartTime` variable
 - `INIT_BARRIER_TIMEOUT_MS` constant
@@ -388,6 +433,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 - Empty state render paths
 
 **Removal order:**
+
 1. Keep basic timeout in barrier (10s is reasonable)
 2. Remove "2 second wait before empty render" logic - just render loaded state
 3. Remove extra timeout tracking variables
@@ -398,13 +444,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 ## REMOVAL CATEGORY 3: MULTI-LAYER DEDUPLICATION (250+ lines)
 
 ### Current State
-Current has 4+ dedup layers: revision versioning, message ID tracking, checksum validation, and saveId checking. Proposed keeps only revision + checksum.
+
+Current has 4+ dedup layers: revision versioning, message ID tracking, checksum
+validation, and saveId checking. Proposed keeps only revision + checksum.
 
 ### What to Remove
 
 #### Pattern 3A: Message ID Deduplication Map
 
 **Pseudocode of what exists:**
+
 ```
 recentlyProcessedMessageIds = new Set()
 _messageIdTimestamps = new Map()
@@ -436,6 +485,7 @@ MESSAGE_DEDUP_MAX_SIZE = 1000
 ```
 
 **Search patterns:**
+
 - `recentlyProcessedMessageIds` variable
 - `_messageIdTimestamps` variable
 - `_addProcessedMessageId()` function
@@ -448,6 +498,7 @@ MESSAGE_DEDUP_MAX_SIZE = 1000
 - Correlation ID checking before processing
 
 **Removal order:**
+
 1. Delete dedup map variables
 2. Delete cleanup functions
 3. Delete eviction logic
@@ -455,6 +506,7 @@ MESSAGE_DEDUP_MAX_SIZE = 1000
 5. Remove dedup-related constants
 
 **Dependency warning:**
+
 - Message handlers use `_hasProcessedMessageId()` - remove those checks
 - Logging may show dedup map stats - remove that instrumentation
 - Cleanup interval still running - stop it
@@ -464,6 +516,7 @@ MESSAGE_DEDUP_MAX_SIZE = 1000
 #### Pattern 3B: Revision Event Buffering
 
 **Pseudocode of what exists:**
+
 ```
 _lastAppliedRevision = 0
 _revisionEventBuffer = []
@@ -498,6 +551,7 @@ REVISION_BUFFER_MAX_SIZE = 50
 ```
 
 **Search patterns:**
+
 - `_lastAppliedRevision` variable
 - `_revisionEventBuffer` variable
 - `_validateRevision()` function
@@ -510,6 +564,7 @@ REVISION_BUFFER_MAX_SIZE = 50
 - Revision validation logic
 
 **Removal order:**
+
 1. **KEEP** revision validation (check `if (revision <= lastRevision) return`)
 2. Delete buffer variables
 3. Delete buffer processing functions
@@ -518,6 +573,7 @@ REVISION_BUFFER_MAX_SIZE = 50
 6. Remove buffer-related constants
 
 **Why keep revision validation:**
+
 - Revision ordering is core to dedup strategy
 - Just reject stale revisions, don't buffer
 
@@ -526,6 +582,7 @@ REVISION_BUFFER_MAX_SIZE = 50
 #### Pattern 3C: SaveId Deduplication
 
 **Pseudocode of what exists:**
+
 ```
 globalState.saveId = null
 
@@ -544,6 +601,7 @@ SAVEID_CLEARED = 'cleared'
 ```
 
 **Search patterns:**
+
 - `saveId` variable in state
 - SaveId increment/tracking
 - SaveId checks in storage handlers
@@ -551,6 +609,7 @@ SAVEID_CLEARED = 'cleared'
 - `SAVEID_CLEARED` constant
 
 **Removal order:**
+
 1. Keep saveId in stored state (for potential future use)
 2. Remove saveId checks from `_handleStorageChangedEvent`
 3. Remove saveId comparison logic
@@ -558,6 +617,7 @@ SAVEID_CLEARED = 'cleared'
 5. Keep saveId writes but don't use for dedup
 
 **Why keep saveId writes:**
+
 - Minimal overhead (just an incrementing number)
 - May be useful for diagnostics
 - Removing would require storage schema change
@@ -567,6 +627,7 @@ SAVEID_CLEARED = 'cleared'
 #### Pattern 3D: Checksum Validation Complexity
 
 **Pseudocode of what exists:**
+
 ```
 function _computeStateChecksum(tabs)
   └─ Generate hash of state
@@ -592,6 +653,7 @@ _triggerRenderCorruptionRecovery()
 ```
 
 **Search patterns:**
+
 - `_computeStateChecksum()` function
 - `_validateRenderIntegrity()` function
 - `_triggerRenderCorruptionRecovery()` function
@@ -600,6 +662,7 @@ _triggerRenderCorruptionRecovery()
 - Corruption recovery attempts
 
 **Removal order:**
+
 1. **KEEP** `_computeStateChecksum()` for storage event validation
 2. **KEEP** checksum check in `_handleStorageChangedEvent()`
 3. Delete render integrity validation (check before render only)
@@ -607,11 +670,13 @@ _triggerRenderCorruptionRecovery()
 5. Simplify recovery to: request fresh state, don't try multiple retries
 
 **Why keep storage checksums:**
+
 - Detects corrupted storage writes
 - Essential for data integrity
 - Minimal overhead
 
 **Why remove render checksums:**
+
 - Render errors are less critical (UI visual glitch, not data loss)
 - Too invasive (checking before AND after)
 - Recovery is just "refresh state anyway"
@@ -621,13 +686,16 @@ _triggerRenderCorruptionRecovery()
 ## REMOVAL CATEGORY 4: STORAGE VERIFICATION & RETRY (200+ lines)
 
 ### Current State
-Complex retry logic with quota monitoring, exponential backoff, multiple fallback tiers.
+
+Complex retry logic with quota monitoring, exponential backoff, multiple
+fallback tiers.
 
 ### What to Remove
 
 #### Pattern 4A: Storage Listener Health Probes
 
 **Pseudocode of what exists:**
+
 ```
 _lastStorageEventTime = Date.now()
 
@@ -658,6 +726,7 @@ PROBE_FORCE_RESET_MS = 1000
 ```
 
 **Search patterns:**
+
 - `_lastStorageEventTime` variable
 - `_probeInProgress` flag
 - `_canStartProbe()` function
@@ -670,14 +739,15 @@ PROBE_FORCE_RESET_MS = 1000
 - Health check interval (5s)
 
 **Removal order:**
+
 1. Delete probe functions
 2. Delete probe-related state variables
 3. Remove probe constants
 4. Delete health check interval
 5. Keep simple: if no storage event for 5s, request state via message
 
-**Simplification:**
-Replace complex probes with simpler fallback:
+**Simplification:** Replace complex probes with simpler fallback:
+
 ```
 if (timeSinceLastStorageEvent > 5000) {
   sendMessageToBackground(GET_QUICK_TABS_STATE)
@@ -689,6 +759,7 @@ if (timeSinceLastStorageEvent > 5000) {
 #### Pattern 4B: Storage Quota Monitoring
 
 **Pseudocode of what exists:**
+
 ```
 storageQuotaStats = {
   lastCheckTime: 0,
@@ -714,6 +785,7 @@ _handleStorageQuotaExceeded()
 ```
 
 **Search patterns:**
+
 - `storageQuotaStats` variable
 - `_monitorStorageQuota()` function
 - `_handleStorageQuotaExceeded()` function
@@ -722,12 +794,14 @@ _handleStorageQuotaExceeded()
 - Cleanup logic based on quota
 
 **Removal order:**
+
 1. Delete quota monitoring function
 2. Delete quota stats object
 3. Remove quota check interval
 4. Keep simple: on write error, try once more, then log error
 
 **Why simplify:**
+
 - With only core Quick Tab state, quota is unlikely to be exceeded
 - If quota is exceeded, cleanup strategy is complex
 - Simpler: just log error, user can clear data
@@ -737,6 +811,7 @@ _handleStorageQuotaExceeded()
 #### Pattern 4C: Write Retry with Exponential Backoff
 
 **Pseudocode of what exists:**
+
 ```
 async function _persistToStorage()
   └─ Main persistence with retries
@@ -767,6 +842,7 @@ async function _retryWithBackoff(fn, attempts)
 ```
 
 **Search patterns:**
+
 - `_persistToStorage()` error handling section
 - `_handleStorageWriteFailure()` function
 - `_performWriteAttempt()` function
@@ -776,6 +852,7 @@ async function _retryWithBackoff(fn, attempts)
 - Retry attempt tracking
 
 **Removal order:**
+
 1. **KEEP** basic `_persistToStorage()` try/catch
 2. **KEEP** write validation (read-back checksum)
 3. Delete complex error classification
@@ -784,18 +861,22 @@ async function _retryWithBackoff(fn, attempts)
 6. Keep simple logging
 
 **Simplification:**
+
 ```javascript
 async function _persistToStorage() {
   try {
-    await browser.storage.local.set({ [STORAGE_KEY]: stateToWrite })
-    
+    await browser.storage.local.set({ [STORAGE_KEY]: stateToWrite });
+
     // Validate
-    const readBack = await browser.storage.local.get(STORAGE_KEY)
-    if (!readBack[STORAGE_KEY] || readBack[STORAGE_KEY].checksum !== stateToWrite.checksum) {
-      throw new Error('Checksum mismatch')
+    const readBack = await browser.storage.local.get(STORAGE_KEY);
+    if (
+      !readBack[STORAGE_KEY] ||
+      readBack[STORAGE_KEY].checksum !== stateToWrite.checksum
+    ) {
+      throw new Error('Checksum mismatch');
     }
   } catch (err) {
-    console.error('[Background] Storage write failed:', err)
+    console.error('[Background] Storage write failed:', err);
     // Let sidebar detect via health check fallback
   }
 }
@@ -806,6 +887,7 @@ async function _persistToStorage() {
 ## REMOVAL CATEGORY 5: RENDER QUEUE COMPLEXITY (150+ lines)
 
 ### Current State
+
 Render queue has stall detection, corruption recovery, complex state tracking.
 
 ### What to Remove
@@ -813,6 +895,7 @@ Render queue has stall detection, corruption recovery, complex state tracking.
 #### Pattern 5A: Render Stall Detection
 
 **Pseudocode of what exists:**
+
 ```
 _renderStallTimerId = null
 
@@ -837,6 +920,7 @@ RENDER_STALL_TIMEOUT_MS = 5000
 ```
 
 **Search patterns:**
+
 - `_renderStallTimerId` variable
 - `_startRenderStallTimer()` function
 - `_clearRenderStallTimer()` function
@@ -845,6 +929,7 @@ RENDER_STALL_TIMEOUT_MS = 5000
 - Stall recovery logic
 
 **Removal order:**
+
 1. Delete stall timer variables
 2. Delete stall detection functions
 3. Delete stall recovery logic
@@ -852,6 +937,7 @@ RENDER_STALL_TIMEOUT_MS = 5000
 5. Keep basic render timeout for safety (just log error)
 
 **Why simplify:**
+
 - DOM rendering on 100+ items shouldn't take 5s unless browser is broken
 - If it does, just log it; forcing recovery is complex
 - Better to monitor in testing, not production
@@ -861,6 +947,7 @@ RENDER_STALL_TIMEOUT_MS = 5000
 #### Pattern 5B: Render Corruption Validation
 
 **Pseudocode of what exists:**
+
 ```
 _renderInProgress = false
 
@@ -888,6 +975,7 @@ _triggerRenderCorruptionRecovery()
 ```
 
 **Search patterns:**
+
 - `_validateRenderIntegrity()` function
 - `_triggerRenderCorruptionRecovery()` function
 - `_executeQueuedRender()` function
@@ -896,12 +984,14 @@ _triggerRenderCorruptionRecovery()
 - Recovery attempt tracking
 
 **Removal order:**
+
 1. Delete `_validateRenderIntegrity()` before/after validation
 2. Keep basic try/catch in render
 3. Delete recovery attempt logic
 4. Simplify recovery to: just request fresh state, don't retry
 
 **Why simplify:**
+
 - Before/after validation is expensive
 - Render errors are UI issues, not data issues
 - Simple recovery: if render fails, get fresh state next
@@ -911,6 +1001,7 @@ _triggerRenderCorruptionRecovery()
 #### Pattern 5C: Render Queue Limits
 
 **Pseudocode of what exists:**
+
 ```
 _renderQueue = []
 
@@ -927,18 +1018,21 @@ RENDER_RECOVERY_DELAY_MS = 50
 ```
 
 **Search patterns:**
+
 - Queue size checks before adding
 - `RENDER_QUEUE_MAX_SIZE` constant
 - Queue capacity logging
 - Drop oldest queue entry logic
 
 **Removal order:**
+
 1. Remove queue size checks
 2. Keep debounce constant (100ms is good)
 3. Remove recovery delay constant (not used in simplified version)
 4. Keep queue as-is (small enough that size limit unnecessary)
 
 **Why simplify:**
+
 - Queue should rarely have >3 items in practice
 - Size check adds complexity for minimal benefit
 - If queue grows, that's a symptom to investigate, not handle
@@ -947,14 +1041,14 @@ RENDER_RECOVERY_DELAY_MS = 50
 
 ## REMOVAL CATEGORIES SUMMARY TABLE
 
-| Category | Lines | Functions | Constants | Variables |
-|----------|-------|-----------|-----------|-----------|
-| 1. Port Messaging | 300+ | 12+ | 10+ | 8+ |
-| 2. Initialization | 400+ | 8+ | 6+ | 12+ |
-| 3. Deduplication | 250+ | 15+ | 8+ | 8+ |
-| 4. Storage Retry | 200+ | 8+ | 4+ | 3+ |
-| 5. Render Stall | 150+ | 6+ | 2+ | 2+ |
-| **TOTAL** | **1300+** | **49+** | **30+** | **33+** |
+| Category          | Lines     | Functions | Constants | Variables |
+| ----------------- | --------- | --------- | --------- | --------- |
+| 1. Port Messaging | 300+      | 12+       | 10+       | 8+        |
+| 2. Initialization | 400+      | 8+        | 6+        | 12+       |
+| 3. Deduplication  | 250+      | 15+       | 8+        | 8+        |
+| 4. Storage Retry  | 200+      | 8+        | 4+        | 3+        |
+| 5. Render Stall   | 150+      | 6+        | 2+        | 2+        |
+| **TOTAL**         | **1300+** | **49+**   | **30+**   | **33+**   |
 
 ---
 
@@ -962,7 +1056,8 @@ RENDER_RECOVERY_DELAY_MS = 50
 
 ### Before Deleting Any Code
 
-- [ ] **Search for all references** - Use GitHub code search to find every call site
+- [ ] **Search for all references** - Use GitHub code search to find every call
+      site
 - [ ] **Identify dependents** - What functions call this function?
 - [ ] **Plan replacement** - What will replace this code?
 - [ ] **Check logging** - Are there log messages that reference this code?
@@ -972,23 +1067,27 @@ RENDER_RECOVERY_DELAY_MS = 50
 ### Deletion Order (Recommended)
 
 **Phase 1 - Safe deletions (no dependents):**
+
 1. Port verification functions (nothing depends on them)
 2. Dedup cleanup functions (just remove interval)
 3. Storage probes (nothing else calls them)
 4. Quota monitoring (standalone)
 
 **Phase 2 - Deletions with replacement:**
+
 1. Message ID dedup (remove all dedup checks)
 2. Revision buffering (keep validation, remove buffer)
 3. Heartbeat (replace with message timeout)
 4. Port handlers (move logic to storage.onChanged)
 
 **Phase 3 - Major refactoring:**
+
 1. Port connection (replace all sendWithAck with sendToBackground)
 2. Initialization phases (simplify to barrier)
 3. Pre-init queue (replace with barrier await)
 
 **Phase 4 - Cleanup:**
+
 1. Render stall detection (simplify render try/catch)
 2. Corruption recovery (keep validation, simplify recovery)
 3. Unused constants (clean up all removed constants)
@@ -998,29 +1097,35 @@ RENDER_RECOVERY_DELAY_MS = 50
 ## COMMON PITFALLS TO AVOID
 
 ### Pitfall 1: Incomplete Reference Cleanup
+
 **Problem:** Delete a function but forget to remove all calls to it
-**Prevention:** Use GitHub code search with regex `functionName\(`
-**Check:** Run linter to find undefined function references
+**Prevention:** Use GitHub code search with regex `functionName\(` **Check:**
+Run linter to find undefined function references
 
 ### Pitfall 2: State Variable Orphans
-**Problem:** Delete a function that sets a variable, but other code still reads it
-**Prevention:** Track all usages of state variables before deleting
-**Example:** Delete `_startHeartbeat()` but forget `lastHeartbeatResponse` is used elsewhere
+
+**Problem:** Delete a function that sets a variable, but other code still reads
+it **Prevention:** Track all usages of state variables before deleting
+**Example:** Delete `_startHeartbeat()` but forget `lastHeartbeatResponse` is
+used elsewhere
 
 ### Pitfall 3: Constant Dependencies
+
 **Problem:** Delete a constant but other code still references it
-**Prevention:** Search for constant name in all files
-**Example:** Delete `MESSAGE_ID_MAX_AGE_MS` but cleanup still uses it
+**Prevention:** Search for constant name in all files **Example:** Delete
+`MESSAGE_ID_MAX_AGE_MS` but cleanup still uses it
 
 ### Pitfall 4: Async/Promise Chain Breaks
-**Problem:** Delete await/promise that breaks async chains
-**Prevention:** Review all async contexts before deletion
-**Example:** Delete `await _verifyListener()` but promise chain still expects it
+
+**Problem:** Delete await/promise that breaks async chains **Prevention:**
+Review all async contexts before deletion **Example:** Delete
+`await _verifyListener()` but promise chain still expects it
 
 ### Pitfall 5: Fallback Path Removal
-**Problem:** Delete fallback code that's still needed
-**Prevention:** Understand ALL code paths before deletion
-**Example:** Delete fallback to port, but storage.onChanged is broken
+
+**Problem:** Delete fallback code that's still needed **Prevention:** Understand
+ALL code paths before deletion **Example:** Delete fallback to port, but
+storage.onChanged is broken
 
 ---
 
@@ -1043,12 +1148,14 @@ After deletions, verify:
 ## REFERENCES
 
 - Architecture specification: See main document sections on Components
-- Current code: `sidebar/quick-tabs-manager.js`, `background.js`, `sidebar/modules/`
-- Related issues: Port disconnection (v1.6.3.8-v13), initialization race (v1.6.3.8-v4)
+- Current code: `sidebar/quick-tabs-manager.js`, `background.js`,
+  `sidebar/modules/`
+- Related issues: Port disconnection (v1.6.3.8-v13), initialization race
+  (v1.6.3.8-v4)
 
 ---
 
 ## VERSION HISTORY
 
-- **v1.0** (Dec 15, 2025) - Initial removal guide created for migration to simplified architecture
-
+- **v1.0** (Dec 15, 2025) - Initial removal guide created for migration to
+  simplified architecture

@@ -1811,13 +1811,13 @@ function scheduleRender(source = 'unknown', revisionOrMessageId = null) {
   // v1.6.3.9-v4 - Phase 5: Revision-based deduplication check per spec
   const revision = typeof revisionOrMessageId === 'number' ? revisionOrMessageId : null;
   const messageId = typeof revisionOrMessageId === 'string' ? revisionOrMessageId : null;
-  
+
   // v1.6.3.9-v4 - Check revision-based deduplication first
   if (revision !== null && revision === sidebarLocalState.lastRenderedRevision) {
     console.debug('[Manager] RENDER_DEDUP revision=' + revision);
     return;
   }
-  
+
   const context = _buildRenderContext(source, messageId);
 
   if (_shouldForceRender(context)) {
@@ -1981,7 +1981,7 @@ function _proceedToRender(source, messageId, currentSaveId, currentHash, revisio
 
   // v1.6.3.9-v4 - Phase 5: RENDER_SCHEDULED log per spec format
   console.debug('[Manager] RENDER_SCHEDULED source=' + source + ' revision=' + (revision ?? 'N/A'));
-  
+
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     messageId,
@@ -2681,13 +2681,17 @@ async function sendMessageToBackground(message) {
   try {
     const response = await Promise.race([
       browser.runtime.sendMessage(message),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), MESSAGE_TIMEOUT_MS)
-      )
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), MESSAGE_TIMEOUT_MS))
     ]);
 
     const latency = performance.now() - startTime;
-    console.debug('[Manager] MESSAGE_RECEIVED action=' + (message.action ?? 'N/A') + ' latency=' + latency.toFixed(1) + 'ms');
+    console.debug(
+      '[Manager] MESSAGE_RECEIVED action=' +
+        (message.action ?? 'N/A') +
+        ' latency=' +
+        latency.toFixed(1) +
+        'ms'
+    );
 
     return response;
   } catch (err) {
@@ -3340,12 +3344,12 @@ function _isStaleRevision(newRevision) {
  */
 function _isStateEventTooOld(newState) {
   const stateTimestamp = newState.lastModified || newState.timestamp;
-  
+
   // If no timestamp available, accept the event (can't determine age)
   if (!stateTimestamp) {
     return false;
   }
-  
+
   const stateAge = Date.now() - stateTimestamp;
   if (stateAge > STORAGE_MAX_AGE_MS) {
     console.warn('[Manager] STORAGE_EVENT_OLD: Rejecting old event', {
@@ -4006,7 +4010,9 @@ function _processRuntimeMessage(message, sendResponse) {
  * @returns {string} Correlation ID
  */
 function _getOrGenerateCorrelationId(message) {
-  return message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  return (
+    message.correlationId || `runtime-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+  );
 }
 
 /**
@@ -4015,15 +4021,18 @@ function _getOrGenerateCorrelationId(message) {
  * @private
  */
 function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
-  console.log(`[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`, {
-    quickTabId: message.quickTabId,
-    messageId: message.messageId,
-    saveId: message.saveId,
-    correlationId,
-    from: 'runtime.onMessage',
-    path: 'runtime-onMessage',
-    timestamp: messageEntryTime
-  });
+  console.log(
+    `[Manager] MESSAGE_RECEIVED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`,
+    {
+      quickTabId: message.quickTabId,
+      messageId: message.messageId,
+      saveId: message.saveId,
+      correlationId,
+      from: 'runtime.onMessage',
+      path: 'runtime-onMessage',
+      timestamp: messageEntryTime
+    }
+  );
 }
 
 /**
@@ -4040,17 +4049,17 @@ function _routeRuntimeMessage(message, sendResponse, correlationId) {
     _handleRuntimeStateUpdated(message, sendResponse, correlationId);
     return true;
   }
-  
+
   if (message.type === 'QUICK_TAB_DELETED') {
     _handleRuntimeDeleted(message, sendResponse, correlationId);
     return true;
   }
-  
+
   if (message.action === 'QUICK_TAB_OPERATION_ACK') {
     _handleOperationAck(message, sendResponse, correlationId);
     return true;
   }
-  
+
   return false;
 }
 
@@ -4061,15 +4070,18 @@ function _routeRuntimeMessage(message, sendResponse, correlationId) {
  */
 function _logRuntimeMessageProcessed(message, correlationId, handled, messageEntryTime) {
   if (!DEBUG_MESSAGING) return;
-  
+
   const processingDurationMs = Date.now() - messageEntryTime;
-  console.log(`[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`, {
-    quickTabId: message.quickTabId,
-    correlationId,
-    handled,
-    durationMs: processingDurationMs,
-    timestamp: Date.now()
-  });
+  console.log(
+    `[Manager] MESSAGE_PROCESSED [RUNTIME] [${message.type || message.action || 'UNKNOWN'}]:`,
+    {
+      quickTabId: message.quickTabId,
+      correlationId,
+      handled,
+      durationMs: processingDurationMs,
+      timestamp: Date.now()
+    }
+  );
 }
 
 /**
@@ -6028,16 +6040,18 @@ async function _processRenderQueue() {
 
   try {
     await _executeQueuedRender();
-    
+
     // v1.6.3.9-v4 - Phase 5: Update lastRenderedRevision from latest render
     if (latestRender?.revision !== undefined) {
       sidebarLocalState.lastRenderedRevision = latestRender.revision;
     }
-    
+
     // v1.6.3.9-v4 - Phase 5: RENDER_COMPLETE log per spec
     const duration = performance.now() - startTime;
     const tabCount = sidebarLocalState.tabs?.length ?? quickTabsState?.tabs?.length ?? 0;
-    console.info('[Manager] RENDER_COMPLETE duration=' + duration.toFixed(1) + 'ms tabCount=' + tabCount);
+    console.info(
+      '[Manager] RENDER_COMPLETE duration=' + duration.toFixed(1) + 'ms tabCount=' + tabCount
+    );
   } catch (err) {
     // v1.6.3.9-v4 - Phase 5: RENDER_ERROR log per spec
     console.error('[Manager] RENDER_ERROR error=' + err.message);

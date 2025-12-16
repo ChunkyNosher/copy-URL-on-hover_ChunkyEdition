@@ -105,14 +105,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                   | Fix                         |
-| ----------------------- | --------------------------- |
-| v1.6.3.9-v3 or earlier  | Update to 1.6.3.9-v4        |
-| "Pin to Page"           | Use "Solo/Mute"             |
-| Direct storage writes   | Use Single Writer Authority |
-| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
-| Port-based messaging    | REMOVE - Ports DELETED v12  |
-| Complex init layers     | REMOVE - Simplified in v4   |
+| Error                  | Fix                         |
+| ---------------------- | --------------------------- |
+| v1.6.3.9-v3 or earlier | Update to 1.6.3.9-v4        |
+| "Pin to Page"          | Use "Solo/Mute"             |
+| Direct storage writes  | Use Single Writer Authority |
+| BroadcastChannel refs  | REMOVE - BC DELETED in v6   |
+| Port-based messaging   | REMOVE - Ports DELETED v12  |
+| Complex init layers    | REMOVE - Simplified in v4   |
 
 ---
 

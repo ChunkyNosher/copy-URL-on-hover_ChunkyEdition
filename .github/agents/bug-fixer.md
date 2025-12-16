@@ -52,7 +52,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
 **v1.6.3.9 Features (Retained):**
 
@@ -69,6 +69,7 @@ messaging, simplified BFCache.
 
 **v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
 key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
+
 - **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
 - **Listener Verification** - `_verifyPortListenerRegistration()` sends test
   message after connection

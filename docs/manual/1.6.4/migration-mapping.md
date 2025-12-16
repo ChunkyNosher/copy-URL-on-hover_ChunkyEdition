@@ -1,6 +1,7 @@
 # Migration Mapping Document
 
-**Document Purpose:** Show side-by-side comparison of old vs. new code patterns  
+**Document Purpose:** Show side-by-side comparison of old vs. new code
+patterns  
 **Target Audience:** GitHub Copilot Agent + Developers  
 **Status:** Important - Use as reference for understanding transformations  
 **Last Updated:** December 15, 2025
@@ -9,7 +10,9 @@
 
 ## EXECUTIVE SUMMARY
 
-This document maps current implementation patterns to proposed simplified patterns. Each section shows:
+This document maps current implementation patterns to proposed simplified
+patterns. Each section shows:
+
 - **Old Pattern:** How it works now (pseudocode)
 - **Problem:** Why it's complex
 - **New Pattern:** Simplified version
@@ -54,6 +57,7 @@ Total: ~400 lines of code
 ```
 
 **Problems:**
+
 - 4 initialization phases create complex state machine
 - Verification with retries adds 150+ lines
 - Phase guards in 10+ listener functions
@@ -73,7 +77,7 @@ function _createInitializationBarrier() {
     initializationResolve = resolve;
     initializationReject = reject;
   });
-  
+
   setTimeout(() => {
     if (!initializationResolve) return;
     initializationReject(new Error('Init timeout'));
@@ -99,6 +103,7 @@ Total: ~80 lines of code
 ```
 
 **Improvements:**
+
 - Single barrier promise (no state machine)
 - No listener verification (just trust it works)
 - Simple message queue (just array push)
@@ -108,6 +113,7 @@ Total: ~80 lines of code
 ### Migration Steps
 
 **Step 1: Add barrier variables**
+
 ```javascript
 let initializationPromise = null;
 let initializationResolve = null;
@@ -117,13 +123,14 @@ let _isInitPhaseComplete = false;
 ```
 
 **Step 2: Create barrier function**
+
 ```javascript
 function _createInitializationBarrier() {
   initializationPromise = new Promise((resolve, reject) => {
     initializationResolve = resolve;
     initializationReject = reject;
   });
-  
+
   setTimeout(() => {
     if (!initializationResolve) return;
     initializationReject(new Error('Initialization timeout'));
@@ -132,38 +139,40 @@ function _createInitializationBarrier() {
 ```
 
 **Step 3: Update storage listener**
+
 ```javascript
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
-  
+
   if (!_isInitPhaseComplete) {
     _initPhaseMessageQueue.push({ changes, timestamp: Date.now() });
     return;
   }
-  
+
   _handleStorageChangedEvent(changes);
 });
 ```
 
 **Step 4: Simplify DOMContentLoaded**
+
 ```javascript
 document.addEventListener('DOMContentLoaded', async () => {
   _createInitializationBarrier();
-  
+
   try {
     const initialState = await browser.runtime.sendMessage({
       action: 'GET_QUICK_TABS_STATE'
     });
-    
+
     sidebarLocalState = {
       tabs: initialState.tabs.slice(),
       lastModified: initialState.lastModified,
       revisionReceived: 0
     };
-    
+
     _isInitPhaseComplete = true;
     initializationResolve();
-    
+
     renderQuickTabsList(sidebarLocalState.tabs);
     _processInitPhaseMessageQueue();
   } catch (err) {
@@ -174,6 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 ```
 
 **Step 5: Delete old pattern**
+
 - Delete `_initializeStorageListener()`
 - Delete `_verifyStorageListenerWithRetry()`
 - Delete all phase tracking variables
@@ -192,27 +202,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 browser.storage.onChanged.addListener((changes, areaName) => {
   // Layer 1: Area check
   if (areaName !== 'local') return;
-  
+
   // Layer 2: Message ID dedup
   if (_hasProcessedMessageId(correlationId)) return;
   _addProcessedMessageId(correlationId);
-  
+
   // Layer 3: Revision buffering
   if (!_validateRevision(newState.revision)) {
     _bufferRevisionEvent(event);
     return;
   }
   _processBufferedRevisionEvents();
-  
+
   // Layer 4: Checksum validation
   if (computedChecksum !== newState.checksum) {
     _triggerCorruptionRecovery();
     return;
   }
-  
+
   // Layer 5: Age check
   if (event.age > 5 minutes) return;
-  
+
   // Finally: render
   scheduleRender();
 });
@@ -226,6 +236,7 @@ Total: ~250 lines of code
 ```
 
 **Problems:**
+
 - 5 validation layers create deep nesting
 - Message ID dedup with 2 maps + cleanup interval
 - Revision buffering with sorting/processing
@@ -240,21 +251,21 @@ Total: ~250 lines of code
 async function _handleStorageChangedEvent(changes) {
   const stateChange = changes['quick_tabs_state_v2'];
   if (!stateChange) return;
-  
+
   const newState = stateChange.newValue;
-  
+
   // Guard 1: Structure validation
   if (!newState || !Array.isArray(newState.tabs)) {
     console.warn('[Manager] Invalid state structure');
     return;
   }
-  
+
   // Guard 2: Revision ordering
   if (newState.revision <= sidebarLocalState.revisionReceived) {
     console.log('[Manager] Ignoring stale revision');
     return;
   }
-  
+
   // Guard 3: Corruption detection
   const expectedChecksum = _computeStateChecksum(newState.tabs);
   if (newState.checksum !== expectedChecksum) {
@@ -262,13 +273,13 @@ async function _handleStorageChangedEvent(changes) {
     _requestStateRepair();
     return;
   }
-  
+
   // Guard 4: Age check
   if (Date.now() - newState.lastModified > 300000) {
     console.warn('[Manager] Event too old');
     return;
   }
-  
+
   // Update and render
   sidebarLocalState = {
     tabs: newState.tabs.slice(),
@@ -276,7 +287,7 @@ async function _handleStorageChangedEvent(changes) {
     revisionReceived: newState.revision,
     writeSequence: newState.writeSequence
   };
-  
+
   scheduleRender('storage-event', newState.revision);
 }
 
@@ -284,6 +295,7 @@ Total: ~60 lines of code
 ```
 
 **Improvements:**
+
 - 4 simple sequential guards (no nesting)
 - No message ID dedup (revision handles ordering)
 - No buffering (just reject stale events)
@@ -294,6 +306,7 @@ Total: ~60 lines of code
 ### Migration Steps
 
 **Step 1: Remove message ID dedup**
+
 ```javascript
 // DELETE:
 recentlyProcessedMessageIds = new Set();
@@ -308,6 +321,7 @@ if (_hasProcessedMessageId(msg.correlationId)) return;
 ```
 
 **Step 2: Remove revision buffer**
+
 ```javascript
 // DELETE:
 _revisionEventBuffer = [];
@@ -322,11 +336,13 @@ if (newState.revision <= sidebarLocalState.revisionReceived) {
 ```
 
 **Step 3: Simplify storage listener**
+
 ```javascript
 // REPLACE complex listener with simple version (see New Pattern above)
 ```
 
 **Step 4: Remove phase/queue checks**
+
 ```javascript
 // REMOVE:
 if (!_isInitPhaseComplete) {
@@ -338,6 +354,7 @@ if (!_isInitPhaseComplete) {
 ```
 
 **Step 5: Delete cleanup intervals**
+
 ```javascript
 // DELETE:
 setInterval(_cleanupExpiredMessageIds, 5000);
@@ -362,19 +379,19 @@ function scheduleRender(source, revision) {
   if (_renderQueue.length >= RENDER_QUEUE_MAX_SIZE) {
     _renderQueue = _renderQueue.slice(-5);  // Keep only last 5
   }
-  
+
   // Dedup by multiple methods
   if (revision === _lastRenderedRevision) return;
   if (_hasProcessedRevision(revision)) return;
-  
+
   // Check for capacity
   if (_renderQueue.length > 10) {
     console.warn('Render queue full');
   }
-  
+
   clearTimeout(_renderDebounceTimer);
   _renderQueue.push({ source, revision, timestamp });
-  
+
   _renderDebounceTimer = setTimeout(() => {
     _processRenderQueue();
   }, RENDER_QUEUE_DEBOUNCE_MS);
@@ -384,25 +401,25 @@ async function _processRenderQueue() {
   if (_renderInProgress) return;
   _renderInProgress = true;
   _startRenderStallTimer();  // 5 second timeout
-  
+
   try {
     const latestRender = _renderQueue[_renderQueue.length - 1];
-    
+
     // Validation before render
     _validateRenderIntegrity();
-    
+
     // Render
     _renderQuickTabsWithReconciliation(tabs);
-    
+
     // Validation after render
     _validateRenderIntegrity();
-    
+
     // Handle corruption
     if (corruption detected) {
       _triggerRenderCorruptionRecovery();
       return;
     }
-    
+
     sidebarLocalState.lastRenderedRevision = latestRender.revision;
   } catch (err) {
     // Complex error handling
@@ -424,6 +441,7 @@ Total: ~150 lines of code
 ```
 
 **Problems:**
+
 - Stall detection with 5s timeout
 - Before/after corruption validation (expensive)
 - Corruption recovery attempts
@@ -443,16 +461,16 @@ function scheduleRender(source, revision) {
   if (revision === sidebarLocalState.lastRenderedRevision) {
     return;
   }
-  
+
   clearTimeout(_renderDebounceTimer);
-  
+
   // Enqueue
   _renderQueue.push({
     source,
     revision,
     timestamp: Date.now()
   });
-  
+
   // Debounce: wait 100ms before processing
   _renderDebounceTimer = setTimeout(() => {
     _processRenderQueue();
@@ -461,16 +479,16 @@ function scheduleRender(source, revision) {
 
 async function _processRenderQueue() {
   if (_renderInProgress || _renderQueue.length === 0) return;
-  
+
   _renderInProgress = true;
-  
+
   try {
     // Get latest state (may have multiple queued renders)
     const latestRender = _renderQueue[_renderQueue.length - 1];
-    
+
     // Render with DOM reconciliation
     _renderQuickTabsWithReconciliation(sidebarLocalState.tabs);
-    
+
     sidebarLocalState.lastRenderedRevision = latestRender.revision;
   } catch (err) {
     console.error('[Manager] Render error:', err);
@@ -478,7 +496,7 @@ async function _processRenderQueue() {
   } finally {
     _renderInProgress = false;
     _renderQueue.length = 0;
-    
+
     // If new renders queued during processing, schedule next batch
     if (_renderQueue.length > 0) {
       scheduleRender(_renderQueue[0].source, _renderQueue[0].revision);
@@ -490,6 +508,7 @@ Total: ~60 lines of code
 ```
 
 **Improvements:**
+
 - No stall detection (simple try/catch)
 - No before/after validation (just render)
 - No recovery attempts (just log error)
@@ -500,6 +519,7 @@ Total: ~60 lines of code
 ### Migration Steps
 
 **Step 1: Remove stall detection**
+
 ```javascript
 // DELETE:
 _renderStallTimerId = null;
@@ -510,11 +530,13 @@ RENDER_STALL_TIMEOUT_MS = 5000;
 ```
 
 **Step 2: Simplify scheduleRender()**
+
 ```javascript
 // REPLACE complex function with simple version (see New Pattern above)
 ```
 
-**Step 3: Simplify _processRenderQueue()**
+**Step 3: Simplify \_processRenderQueue()**
+
 ```javascript
 // DELETE:
 _validateRenderIntegrity() before render
@@ -529,6 +551,7 @@ Simple logging
 ```
 
 **Step 4: Remove validation functions**
+
 ```javascript
 // DELETE:
 _validateRenderIntegrity()
@@ -537,11 +560,12 @@ Recovery attempt logic
 ```
 
 **Step 5: Delete constants**
+
 ```javascript
 // DELETE:
-RENDER_STALL_TIMEOUT_MS
-RENDER_QUEUE_MAX_SIZE
-RENDER_RECOVERY_DELAY_MS
+RENDER_STALL_TIMEOUT_MS;
+RENDER_QUEUE_MAX_SIZE;
+RENDER_RECOVERY_DELAY_MS;
 ```
 
 ---
@@ -580,6 +604,7 @@ Total: ~300 lines of code
 ```
 
 **Problems:**
+
 - Multiple message paths create conditional logic
 - Port lifecycle management (connect/disconnect/reconnect)
 - Heartbeat mechanism adds complexity
@@ -595,7 +620,7 @@ async function sendMessageToBackground(message) {
   try {
     return await Promise.race([
       browser.runtime.sendMessage(message),
-      new Promise((_, reject) => 
+      new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout')), 3000)
       )
     ]);
@@ -617,7 +642,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 // Fallback: if storage stops firing, request state
 async function _checkStorageHealth() {
   const age = Date.now() - _lastStorageEventTime;
-  
+
   if (age > 5000) {
     const state = await sendMessageToBackground({
       action: 'GET_QUICK_TABS_STATE'
@@ -632,6 +657,7 @@ Total: ~80 lines of code
 ```
 
 **Improvements:**
+
 - Single message path (stateless)
 - No connection state tracking
 - No heartbeat mechanism
@@ -642,21 +668,22 @@ Total: ~80 lines of code
 ### Migration Steps
 
 **Step 1: Replace sendWithAck()**
+
 ```javascript
 // DELETE:
-sendWithAck()
-_handlePortMessageWithQueue()
-_flushPortMessageQueue()
-portMessageQueue
-QUEUE_TTL_MS
-PORT_QUEUE_MAX_SIZE
+sendWithAck();
+_handlePortMessageWithQueue();
+_flushPortMessageQueue();
+portMessageQueue;
+QUEUE_TTL_MS;
+PORT_QUEUE_MAX_SIZE;
 
 // REPLACE with:
 async function sendMessageToBackground(message) {
   try {
     return await Promise.race([
       browser.runtime.sendMessage(message),
-      new Promise((_, reject) => 
+      new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout')), 3000)
       )
     ]);
@@ -670,6 +697,7 @@ async function sendMessageToBackground(message) {
 ```
 
 **Step 2: Remove port connection**
+
 ```javascript
 // DELETE:
 connectToBackground()
@@ -682,6 +710,7 @@ Port lifecycle logic
 ```
 
 **Step 3: Remove heartbeat**
+
 ```javascript
 // DELETE:
 startHeartbeat()
@@ -695,6 +724,7 @@ Heartbeat failure logic
 ```
 
 **Step 4: Simplify health check**
+
 ```javascript
 // OLD: Complex probe with retries
 _checkStorageHealth()
@@ -729,7 +759,7 @@ async function _persistToStorage() {
   while (attempt < 3) {
     try {
       await browser.storage.local.set({ stateToWrite });
-      
+
       // Verify write
       const readBack = await browser.storage.local.get(key);
       if (!_validateReadback(readBack)) {
@@ -737,12 +767,12 @@ async function _persistToStorage() {
         await _backoffDelay(attempt);
         continue;
       }
-      
+
       // Success
       break;
     } catch (err) {
       attempt++;
-      
+
       if (err.name === 'QuotaExceededError') {
         _handleStorageQuotaExceeded();
       } else if (err.name === 'TimeoutError') {
@@ -774,6 +804,7 @@ Total: ~200 lines of code
 ```
 
 **Problems:**
+
 - Retry loop with 3 attempts
 - Exponential backoff logic
 - Error classification with 5+ types
@@ -792,13 +823,13 @@ async function _persistToStorage() {
     revision: _storageRevision,
     checksum: _computeStateChecksum(globalQuickTabState.tabs)
   };
-  
+
   try {
     // Write to primary storage
     await browser.storage.local.set({
       'quick_tabs_state_v2': stateToWrite
     });
-    
+
     // Write to backup (non-blocking)
     browser.storage.sync.set({
       'quick_tabs_backup_v1': {
@@ -809,10 +840,10 @@ async function _persistToStorage() {
     }).catch(err => {
       console.warn('[Background] Sync backup failed:', err);
     });
-    
+
     // Validate write-back
     const readBack = await browser.storage.local.get('quick_tabs_state_v2');
-    if (!readBack['quick_tabs_state_v2'] || 
+    if (!readBack['quick_tabs_state_v2'] ||
         readBack['quick_tabs_state_v2'].checksum !== stateToWrite.checksum) {
       console.error('[Background] WRITE VALIDATION FAILED');
       _triggerCorruptionRecovery();
@@ -827,6 +858,7 @@ Total: ~40 lines of code
 ```
 
 **Improvements:**
+
 - Write once, fail loudly (no retry)
 - Keep simple try/catch
 - Validation with checksum
@@ -838,6 +870,7 @@ Total: ~40 lines of code
 ### Migration Steps
 
 **Step 1: Remove retry logic**
+
 ```javascript
 // DELETE:
 Retry loop (while attempt < 3)
@@ -847,6 +880,7 @@ Retry attempt tracking
 ```
 
 **Step 2: Remove error classification**
+
 ```javascript
 // DELETE:
 _handleStorageWriteFailure()
@@ -856,6 +890,7 @@ Error type constants (QUOTA_ERROR, TIMEOUT_ERROR, etc.)
 ```
 
 **Step 3: Remove quota monitoring**
+
 ```javascript
 // DELETE:
 _monitorStorageQuota()
@@ -866,7 +901,8 @@ _handleStorageQuotaExceeded()
 Quota cleanup logic
 ```
 
-**Step 4: Simplify _persistToStorage()**
+**Step 4: Simplify \_persistToStorage()**
+
 ```javascript
 // REPLACE with simple version (see New Pattern above)
 ```
@@ -878,6 +914,7 @@ Quota cleanup logic
 Use this checklist to track pattern migrations:
 
 ### Initialization
+
 - [ ] Added `initializationPromise` barrier
 - [ ] Removed `_initializeStorageListener()`
 - [ ] Removed `_verifyStorageListenerWithRetry()`
@@ -886,6 +923,7 @@ Use this checklist to track pattern migrations:
 - [ ] Updated `DOMContentLoaded` handler
 
 ### State Sync
+
 - [ ] Removed message ID dedup maps
 - [ ] Removed revision event buffer
 - [ ] Simplified `_handleStorageChangedEvent()`
@@ -894,6 +932,7 @@ Use this checklist to track pattern migrations:
 - [ ] Kept checksum validation
 
 ### Render Queue
+
 - [ ] Removed `_renderStallTimerId`
 - [ ] Removed `_startRenderStallTimer()`
 - [ ] Simplified `scheduleRender()`
@@ -902,6 +941,7 @@ Use this checklist to track pattern migrations:
 - [ ] Kept basic try/catch
 
 ### Message Handling
+
 - [ ] Removed `sendWithAck()`
 - [ ] Removed port connection code
 - [ ] Removed heartbeat mechanism
@@ -909,6 +949,7 @@ Use this checklist to track pattern migrations:
 - [ ] Simplified health check
 
 ### Storage Persistence
+
 - [ ] Removed retry logic from `_persistToStorage()`
 - [ ] Removed error classification
 - [ ] Removed quota monitoring
@@ -920,4 +961,3 @@ Use this checklist to track pattern migrations:
 ## VERSION HISTORY
 
 - **v1.0** (Dec 15, 2025) - Initial migration mapping document
-

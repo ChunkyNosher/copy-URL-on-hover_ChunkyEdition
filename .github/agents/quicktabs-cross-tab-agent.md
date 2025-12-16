@@ -50,16 +50,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 **v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
 **Key Modules (v1.6.3.9-v4):**
 
-| Module                                | Purpose                           |
-| ------------------------------------- | --------------------------------- |
-| `src/constants.js`                    | Centralized constants (+225 lines)|
-| `src/storage/storage-manager.js`      | Simplified persistence, checksum  |
-| `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
-| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
+| Module                                | Purpose                            |
+| ------------------------------------- | ---------------------------------- |
+| `src/constants.js`                    | Centralized constants (+225 lines) |
+| `src/storage/storage-manager.js`      | Simplified persistence, checksum   |
+| `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder      |
+| `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab()  |
 
 **Storage Format:**
 

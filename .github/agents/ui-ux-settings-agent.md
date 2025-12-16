@@ -70,7 +70,7 @@ const relevantMemories = await searchMemories({
 **v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
+- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
 **v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
 messaging, simplified BFCache.

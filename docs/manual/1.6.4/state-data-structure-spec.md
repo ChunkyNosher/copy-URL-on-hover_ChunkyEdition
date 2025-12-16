@@ -1,6 +1,7 @@
 # State Data Structure Specification
 
-**Document Purpose:** Define exact schema and validation rules for Quick Tab state objects  
+**Document Purpose:** Define exact schema and validation rules for Quick Tab
+state objects  
 **Target Audience:** GitHub Copilot Agent + Developers  
 **Status:** Critical - Use as reference for state management implementation  
 **Last Updated:** December 15, 2025
@@ -9,7 +10,9 @@
 
 ## EXECUTIVE SUMMARY
 
-This document defines the complete data structure for Quick Tab state, including:
+This document defines the complete data structure for Quick Tab state,
+including:
+
 - Exact field names, types, and constraints
 - Validation rules for each field
 - Example values for testing
@@ -17,7 +20,9 @@ This document defines the complete data structure for Quick Tab state, including
 - Storage schema version management
 
 ### Key Principles
-- **Single Source of Truth:** Background script's `globalQuickTabState` is authoritative
+
+- **Single Source of Truth:** Background script's `globalQuickTabState` is
+  authoritative
 - **Type Safety:** Strict validation on all state reads/writes
 - **Backward Compatibility:** Schema versioning allows future evolution
 - **Deterministic:** Same input always produces same checksum
@@ -34,22 +39,22 @@ const globalQuickTabState = {
   version: 2,                    // Schema version (allows future evolution)
   lastModified: 1702000010000,   // Timestamp of last change (milliseconds)
   isInitialized: false,          // Guard against partial reads during init
-  
+
   // Core data
   tabs: [
     {
       // Unique identifier
       id: 'qt-1702000000000-abc123',     // Format: 'qt-{timestamp}-{randomId}'
-      
+
       // Quick Tab content
       url: 'https://example.com/page',   // Full URL from origin tab
       title: 'Page Title',               // Title of the page
       favicon: 'data:image/png;base64,...', // Base64 encoded favicon (optional)
-      
+
       // Origin information
       originTabId: 42,                   // Browser tab ID that created this
       originWindowId: 1,                 // Browser window ID (for cross-window support)
-      
+
       // UI state
       position: {
         left: 100,                       // X position in pixels (0+)
@@ -60,11 +65,11 @@ const globalQuickTabState = {
         height: 600                      // Height in pixels (100+)
       },
       minimized: false,                  // Whether Quick Tab is minimized
-      
+
       // Tracking
       creationTime: 1702000000000,       // When Quick Tab was created
       lastModified: 1702000010000,       // When Quick Tab was last changed
-      
+
       // Optional metadata
       zIndex: 1000,                      // Stacking order (for overlapping windows)
       containerColor: '#FF5733'          // User-defined color (optional)
@@ -86,6 +91,7 @@ const persistedState = {
 ### Field Specifications
 
 #### `globalQuickTabState.version`
+
 - **Type:** `number` (integer)
 - **Range:** 1-9 (single digit for simplicity)
 - **Current:** 2
@@ -94,6 +100,7 @@ const persistedState = {
 - **Example:** `2`
 
 #### `globalQuickTabState.lastModified`
+
 - **Type:** `number` (milliseconds since epoch)
 - **Range:** 1000000000000 to current timestamp
 - **Purpose:** Track when entire state was last changed
@@ -102,20 +109,24 @@ const persistedState = {
 - **Example:** `1702000010000`
 
 #### `globalQuickTabState.isInitialized`
+
 - **Type:** `boolean`
 - **Values:** `true` or `false`
 - **Purpose:** Guard against partial state reads during initialization
-- **Validation:** Must be explicitly set to `true` only after full load from storage
+- **Validation:** Must be explicitly set to `true` only after full load from
+  storage
 - **Update:** Set to `true` in background after state validation completes
 - **Example:** `true`
 
 #### `globalQuickTabState.tabs`
+
 - **Type:** `array` of Quick Tab objects
 - **Min length:** 0
 - **Max length:** 100+ (no hard limit, but 50-100 typical max)
 - **Purpose:** Store all Quick Tab objects
 - **Validation:** Each item must be valid Quick Tab object
-- **Update:** Add/remove/modify items when user creates/closes/updates Quick Tabs
+- **Update:** Add/remove/modify items when user creates/closes/updates Quick
+  Tabs
 - **Example:** `[{ id: 'qt-...', url: 'https://...', ... }, ...]`
 
 ---
@@ -137,7 +148,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
   minimized: false,
   creationTime: 1702000000000,
   lastModified: 1702000010000,
-  
+
   // Optional fields (may be null/undefined)
   title: 'Page Title',
   favicon: 'data:image/png;base64,...',
@@ -150,6 +161,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 ### Field Specifications
 
 #### `id`
+
 - **Type:** `string`
 - **Format:** `qt-{timestamp}-{randomId}`
   - `qt-`: Prefix (literal)
@@ -172,6 +184,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
   ```
 
 #### `url`
+
 - **Type:** `string`
 - **Format:** Valid HTTP/HTTPS URL
 - **Examples:**
@@ -189,6 +202,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
   - `data:` URLs may be supported (for HTML quick tabs)
 
 #### `title`
+
 - **Type:** `string` or `null`/`undefined`
 - **Max length:** 255 characters
 - **Examples:**
@@ -199,12 +213,15 @@ Each item in `globalQuickTabState.tabs` must conform to:
   - May be empty string (falsy)
   - No special character restrictions
   - Trimmed of leading/trailing whitespace
-- **Update:** Can be updated without changing `lastModified` of Quick Tab (minor change)
+- **Update:** Can be updated without changing `lastModified` of Quick Tab (minor
+  change)
 - **Derivation:** From `<title>` tag of the URL's HTML page
 
 #### `favicon`
+
 - **Type:** `string` (base64 encoded) or `null`/`undefined`
-- **Format:** `data:image/png;base64,{base64data}` or `data:image/jpeg;base64,{base64data}`
+- **Format:** `data:image/png;base64,{base64data}` or
+  `data:image/jpeg;base64,{base64data}`
 - **Max length:** 50,000 characters (~37KB binary)
 - **Examples:**
   - `"data:image/png;base64,iVBORw0KGgoAAAANS..."`
@@ -217,6 +234,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Derivation:** From `<link rel="icon">` of the page
 
 #### `originTabId`
+
 - **Type:** `number` (integer)
 - **Range:** 1 to 2147483647 (32-bit signed integer)
 - **Examples:** `42`, `1`, `999`
@@ -225,9 +243,11 @@ Each item in `globalQuickTabState.tabs` must conform to:
   - Must reference actual browser tab (validated via `browser.tabs.get()`)
   - Can become invalid if origin tab closes
 - **Update:** Immutable after creation
-- **Special Case:** If origin tab closes, Quick Tab becomes "orphaned" (still kept but marked as orphaned)
+- **Special Case:** If origin tab closes, Quick Tab becomes "orphaned" (still
+  kept but marked as orphaned)
 
 #### `originWindowId`
+
 - **Type:** `number` (integer) or `null`
 - **Range:** 1 to 2147483647
 - **Examples:** `1`, `42`, `null`
@@ -239,6 +259,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Optional:** Can be omitted from state (derived from originTabId)
 
 #### `position.left`
+
 - **Type:** `number` (non-negative integer or float)
 - **Range:** 0 to 65535
 - **Units:** CSS pixels
@@ -251,6 +272,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Initial Value:** Randomized on creation (to avoid overlap)
 
 #### `position.top`
+
 - **Type:** `number` (non-negative integer or float)
 - **Range:** 0 to 65535
 - **Units:** CSS pixels
@@ -263,6 +285,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Initial Value:** Randomized on creation
 
 #### `size.width`
+
 - **Type:** `number` (positive integer or float)
 - **Range:** 200 to 3000
 - **Units:** CSS pixels
@@ -275,6 +298,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Initial Value:** Default 800px
 
 #### `size.height`
+
 - **Type:** `number` (positive integer or float)
 - **Range:** 200 to 2000
 - **Units:** CSS pixels
@@ -287,6 +311,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Initial Value:** Default 600px
 
 #### `minimized`
+
 - **Type:** `boolean`
 - **Values:** `true` (hidden/minimized) or `false` (visible/maximized)
 - **Examples:** `true`, `false`
@@ -296,6 +321,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Initial Value:** `false` (all new Quick Tabs start maximized)
 
 #### `creationTime`
+
 - **Type:** `number` (milliseconds since epoch)
 - **Range:** Valid timestamp
 - **Examples:** `1702000000000`
@@ -307,6 +333,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Purpose:** Track age of Quick Tab for diagnostics and cleanup
 
 #### `lastModified`
+
 - **Type:** `number` (milliseconds since epoch)
 - **Range:** Valid timestamp
 - **Examples:** `1702000010000`
@@ -318,6 +345,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Purpose:** Detect stale/orphaned Quick Tabs
 
 #### `zIndex` (Optional)
+
 - **Type:** `number` (integer)
 - **Range:** 1 to 999999
 - **Examples:** `1000`, `100`, `50`
@@ -329,6 +357,7 @@ Each item in `globalQuickTabState.tabs` must conform to:
 - **Optional:** May be omitted (default to creation order)
 
 #### `containerColor` (Optional)
+
 - **Type:** `string` (hex color) or `null`
 - **Format:** `#RRGGBB`
 - **Examples:** `#FF5733`, `#000000`, `#FFFFFF`
@@ -358,17 +387,20 @@ const sidebarLocalState = {
 ### Field Specifications
 
 #### `sidebarLocalState.tabs`
+
 - **Type:** `array` of Quick Tab objects (deep copy)
 - **Purpose:** Local cache to render without querying background
 - **Update:** Updated from storage.onChanged events
 - **Validation:** Same rules as `globalQuickTabState.tabs`
 
 #### `sidebarLocalState.lastModified`
+
 - **Type:** `number` (timestamp)
 - **Purpose:** Track when state was last updated
 - **Update:** Set from storage event
 
 #### `sidebarLocalState.revisionReceived`
+
 - **Type:** `number` (integer)
 - **Range:** 0 to infinite
 - **Purpose:** Deduplicate storage events by revision number
@@ -377,6 +409,7 @@ const sidebarLocalState = {
 - **Example:** Last received was 1702000010001, next must be >= 1702000010002
 
 #### `sidebarLocalState.writeSequence`
+
 - **Type:** `number` (integer)
 - **Range:** 0 to infinite
 - **Purpose:** Track operation sequence for ordering
@@ -384,6 +417,7 @@ const sidebarLocalState = {
 - **Example:** `42`
 
 #### `sidebarLocalState.lastRenderedRevision`
+
 - **Type:** `number` (integer)
 - **Range:** 0 to infinite
 - **Purpose:** Prevent rendering same revision twice
@@ -410,11 +444,13 @@ const sidebarLocalState = {
 ```
 
 #### Storage Key Name
+
 - **Key:** `quick_tabs_state_v2`
 - **Rationale:** `v2` suffix allows schema evolution
 - **Immutable:** Key name never changes (until new schema version)
 
 #### `checksum` Field
+
 - **Type:** `string`
 - **Format:** `v{version}:{tabCount}:{hash}`
   - `v1`: Checksum version (for future compatibility)
@@ -425,17 +461,20 @@ const sidebarLocalState = {
   ```javascript
   function _computeStateChecksum(tabs) {
     const signatures = tabs
-      .map(t => `${t.id}|${t.position.left}|${t.position.top}|${t.size.width}|${t.size.height}|${t.minimized ? 1 : 0}`)
+      .map(
+        t =>
+          `${t.id}|${t.position.left}|${t.position.top}|${t.size.width}|${t.size.height}|${t.minimized ? 1 : 0}`
+      )
       .sort()
       .join('||');
-    
+
     let hash = 0;
     for (let i = 0; i < signatures.length; i++) {
       const char = signatures.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
-    
+
     return `v1:${tabs.length}:${Math.abs(hash).toString(16).padStart(8, '0')}`;
   }
   ```
@@ -443,12 +482,13 @@ const sidebarLocalState = {
 - **Purpose:** Detect corruption during storage I/O
 
 #### `revision` Field
+
 - **Type:** `number` (integer)
 - **Range:** Monotonically increasing
 - **Initialization:** `Date.now()` at first write
 - **Increment:** By 1 for each subsequent write
 - **Example:** `1702000010000`, `1702000010001`, `1702000010002`
-- **Validation Rule:** 
+- **Validation Rule:**
   - Each write increments by 1
   - Sidebar rejects events with `revision <= lastRevision`
 - **Purpose:** Deduplicate out-of-order storage.onChanged events
@@ -462,61 +502,91 @@ const sidebarLocalState = {
 ```javascript
 function validateQuickTab(tab) {
   const errors = [];
-  
+
   // Required fields
   if (!tab.id || typeof tab.id !== 'string' || !tab.id.startsWith('qt-')) {
     errors.push('Invalid id: must be string starting with "qt-"');
   }
-  
+
   if (!tab.url || typeof tab.url !== 'string' || !tab.url.startsWith('http')) {
     errors.push('Invalid url: must be http/https URL');
   }
-  
+
   if (typeof tab.originTabId !== 'number' || tab.originTabId < 1) {
     errors.push('Invalid originTabId: must be positive number');
   }
-  
-  if (!tab.position || typeof tab.position.left !== 'number' || tab.position.left < 0) {
+
+  if (
+    !tab.position ||
+    typeof tab.position.left !== 'number' ||
+    tab.position.left < 0
+  ) {
     errors.push('Invalid position.left: must be non-negative number');
   }
-  
-  if (!tab.position || typeof tab.position.top !== 'number' || tab.position.top < 0) {
+
+  if (
+    !tab.position ||
+    typeof tab.position.top !== 'number' ||
+    tab.position.top < 0
+  ) {
     errors.push('Invalid position.top: must be non-negative number');
   }
-  
+
   if (!tab.size || typeof tab.size.width !== 'number' || tab.size.width <= 0) {
     errors.push('Invalid size.width: must be positive number');
   }
-  
-  if (!tab.size || typeof tab.size.height !== 'number' || tab.size.height <= 0) {
+
+  if (
+    !tab.size ||
+    typeof tab.size.height !== 'number' ||
+    tab.size.height <= 0
+  ) {
     errors.push('Invalid size.height: must be positive number');
   }
-  
+
   if (typeof tab.minimized !== 'boolean') {
     errors.push('Invalid minimized: must be boolean');
   }
-  
-  if (typeof tab.creationTime !== 'number' || tab.creationTime < 1000000000000) {
+
+  if (
+    typeof tab.creationTime !== 'number' ||
+    tab.creationTime < 1000000000000
+  ) {
     errors.push('Invalid creationTime: must be valid timestamp');
   }
-  
-  if (typeof tab.lastModified !== 'number' || tab.lastModified < tab.creationTime) {
+
+  if (
+    typeof tab.lastModified !== 'number' ||
+    tab.lastModified < tab.creationTime
+  ) {
     errors.push('Invalid lastModified: must be >= creationTime');
   }
-  
+
   // Optional fields
-  if (tab.title !== undefined && tab.title !== null && typeof tab.title !== 'string') {
+  if (
+    tab.title !== undefined &&
+    tab.title !== null &&
+    typeof tab.title !== 'string'
+  ) {
     errors.push('Invalid title: must be string or null');
   }
-  
-  if (tab.favicon !== undefined && tab.favicon !== null && !tab.favicon.startsWith('data:image/')) {
+
+  if (
+    tab.favicon !== undefined &&
+    tab.favicon !== null &&
+    !tab.favicon.startsWith('data:image/')
+  ) {
     errors.push('Invalid favicon: must be data URI or null');
   }
-  
-  if (tab.containerColor !== undefined && tab.containerColor !== null && !/^#[0-9A-F]{6}$/i.test(tab.containerColor)) {
+
+  if (
+    tab.containerColor !== undefined &&
+    tab.containerColor !== null &&
+    !/^#[0-9A-F]{6}$/i.test(tab.containerColor)
+  ) {
     errors.push('Invalid containerColor: must be hex color or null');
   }
-  
+
   return {
     isValid: errors.length === 0,
     errors
@@ -529,27 +599,30 @@ function validateQuickTab(tab) {
 ```javascript
 function validateGlobalState(state) {
   const errors = [];
-  
+
   if (typeof state.version !== 'number' || state.version !== 2) {
     errors.push('Invalid version: must be 2');
   }
-  
-  if (typeof state.lastModified !== 'number' || state.lastModified < 1000000000000) {
+
+  if (
+    typeof state.lastModified !== 'number' ||
+    state.lastModified < 1000000000000
+  ) {
     errors.push('Invalid lastModified: must be valid timestamp');
   }
-  
+
   if (typeof state.isInitialized !== 'boolean') {
     errors.push('Invalid isInitialized: must be boolean');
   }
-  
+
   if (!Array.isArray(state.tabs)) {
     errors.push('Invalid tabs: must be array');
   }
-  
+
   if (state.tabs.length > 1000) {
     errors.push('Invalid tabs: array too large (max 1000)');
   }
-  
+
   // Validate each tab
   state.tabs.forEach((tab, index) => {
     const validation = validateQuickTab(tab);
@@ -557,7 +630,7 @@ function validateGlobalState(state) {
       errors.push(`Tab ${index}: ${validation.errors.join('; ')}`);
     }
   });
-  
+
   // Check for duplicate IDs
   const ids = new Set();
   state.tabs.forEach(tab => {
@@ -566,7 +639,7 @@ function validateGlobalState(state) {
     }
     ids.add(tab.id);
   });
-  
+
   return {
     isValid: errors.length === 0,
     errors
@@ -587,7 +660,7 @@ async function serializeStateToStorage(state) {
   if (!validation.isValid) {
     throw new Error(`Invalid state: ${validation.errors.join(', ')}`);
   }
-  
+
   // Create storage object
   const toStore = {
     tabs: state.tabs,
@@ -596,12 +669,12 @@ async function serializeStateToStorage(state) {
     revision: _storageRevision,
     checksum: _computeStateChecksum(state.tabs)
   };
-  
+
   // Write to storage
   await browser.storage.local.set({
-    'quick_tabs_state_v2': toStore
+    quick_tabs_state_v2: toStore
   });
-  
+
   return toStore;
 }
 ```
@@ -612,17 +685,17 @@ async function serializeStateToStorage(state) {
 async function deserializeStateFromStorage() {
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const stored = result['quick_tabs_state_v2'];
-  
+
   if (!stored) {
     console.warn('[Background] No stored state, starting with empty');
     return null;
   }
-  
+
   // Validate structure
   if (!Array.isArray(stored.tabs)) {
     throw new Error('Stored state missing tabs array');
   }
-  
+
   // Validate each tab
   const validation = validateGlobalState({
     version: 2,
@@ -630,17 +703,17 @@ async function deserializeStateFromStorage() {
     isInitialized: true,
     tabs: stored.tabs
   });
-  
+
   if (!validation.isValid) {
     throw new Error(`Invalid stored state: ${validation.errors.join(', ')}`);
   }
-  
+
   // Validate checksum
   const expectedChecksum = _computeStateChecksum(stored.tabs);
   if (stored.checksum && stored.checksum !== expectedChecksum) {
     throw new Error('Checksum mismatch - storage may be corrupted');
   }
-  
+
   return stored;
 }
 ```
@@ -683,7 +756,7 @@ const invalid1 = {
 const invalid2 = {
   id: 'qt-1702000000000-abc123',
   url: 'https://example.com',
-  originTabId: '42',  // Should be number
+  originTabId: '42', // Should be number
   position: { left: 100, top: 200 },
   size: { width: 800, height: 600 },
   minimized: false,
@@ -696,7 +769,7 @@ const invalid3 = {
   id: 'qt-1702000000000-abc123',
   url: 'https://example.com',
   originTabId: 42,
-  position: { left: -100, top: 200 },  // Negative not allowed
+  position: { left: -100, top: 200 }, // Negative not allowed
   size: { width: 800, height: 600 },
   minimized: false,
   creationTime: 1702000000000,
@@ -741,24 +814,29 @@ const validState = {
 ## EDGE CASES & SPECIAL HANDLING
 
 ### Orphaned Quick Tabs
+
 - **Definition:** Quick Tab whose `originTabId` no longer exists
-- **Detection:** Background checks during cleanup via `browser.tabs.get(originTabId)`
+- **Detection:** Background checks during cleanup via
+  `browser.tabs.get(originTabId)`
 - **Handling:** Keep in state but mark in sidebar (show "orphaned" indicator)
 - **Cleanup:** Can be deleted after 24 hours without interaction
 
 ### Empty State
+
 - **When:** No Quick Tabs exist
 - **Valid:** `{ version: 2, tabs: [], lastModified: now, isInitialized: true }`
 - **Display:** Sidebar shows "No Quick Tabs" message
 - **Rendering:** DOM should be empty
 
 ### Very Large State (100+ tabs)
+
 - **Performance:** Checksum computation is O(n)
 - **Serialization:** JSON.stringify might take 50-100ms
 - **Storage Write:** IndexedDB write takes ~30-50ms
 - **Expected:** Latency still within 200ms window
 
 ### Concurrent Modifications
+
 - **Race Condition:** Two tabs create Quick Tab simultaneously
 - **Prevention:** Both write different IDs (timestamp + random)
 - **Merging:** Background script uses last-write-wins for storage conflicts
@@ -769,4 +847,3 @@ const validState = {
 ## VERSION HISTORY
 
 - **v1.0** (Dec 15, 2025) - Initial specification for schema v2
-

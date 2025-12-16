@@ -409,15 +409,18 @@ class QuickTabsManager {
     // v1.6.3.7-v12 - Issue #12: Timeout reached - currentTabId still null
     // v1.6.3.8-v9 - FIX Section 1.3: Schedule delayed retry instead of just failing
     // v1.6.3.9-v3 - Issue #47-6: Use warn instead of error - graceful degradation is normal operation
-    console.warn('[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Timeout - proceeding with graceful degradation', {
-      currentTabId: this.currentTabId,
-      timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
-      elapsedMs: Date.now() - barrierStartTime,
-      consequence: 'Hydration deferred until currentTabId available (retry scheduled)',
-      note: 'This is expected behavior in stateless architecture - not a failure',
-      retryDelayMs: HYDRATION_RETRY_DELAY_MS,
-      timestamp: Date.now()
-    });
+    console.warn(
+      '[QuickTabsManager] CURRENT_TAB_ID_BARRIER: Timeout - proceeding with graceful degradation',
+      {
+        currentTabId: this.currentTabId,
+        timeoutMs: CURRENT_TAB_ID_WAIT_TIMEOUT_MS,
+        elapsedMs: Date.now() - barrierStartTime,
+        consequence: 'Hydration deferred until currentTabId available (retry scheduled)',
+        note: 'This is expected behavior in stateless architecture - not a failure',
+        retryDelayMs: HYDRATION_RETRY_DELAY_MS,
+        timestamp: Date.now()
+      }
+    );
 
     // v1.6.3.8-v9 - FIX Section 1.3: Schedule a delayed retry of hydration
     // This gives background script more time to respond with currentTabId
