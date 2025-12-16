@@ -4,9 +4,232 @@
  * GAP-7 FIX: Centralized deduplication timing constants to eliminate
  * inconsistent hardcoded values across the codebase.
  *
+ * v1.6.3.9-v4 - Simplified architecture constants from constants-config-reference.md
+ *
  * @module constants
- * @version 1.6.3.9-v2
+ * @version 1.6.3.9-v4
  */
+
+// =============================================================================
+// v1.6.3.9-v4 - STORAGE CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Storage key for Quick Tab state in browser.storage.local.
+ *
+ * v2 suffix allows schema evolution without data loss.
+ * Key name is immutable until new schema version.
+ *
+ * @constant {string}
+ */
+export const STORAGE_KEY = 'quick_tabs_state_v2';
+
+/**
+ * Whether to write state to browser.storage.sync as backup.
+ *
+ * Non-blocking backup (use .catch() for errors).
+ * Provides recovery if storage.local corrupted.
+ *
+ * @constant {boolean}
+ */
+export const ENABLE_SYNC_BACKUP = true;
+
+// =============================================================================
+// v1.6.3.9-v4 - INITIALIZATION CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Maximum time to wait for initialization to complete.
+ *
+ * 10 seconds is reasonable for startup.
+ * State load + validation should complete in <100ms.
+ * If init takes >10s, something is broken anyway.
+ *
+ * @constant {number}
+ */
+export const INIT_BARRIER_TIMEOUT_MS = 10000;
+
+// =============================================================================
+// v1.6.3.9-v4 - RENDER CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Buffer rapid state changes before rendering.
+ *
+ * 100ms is imperceptible to users (feels responsive).
+ * Batches multiple rapid storage events.
+ * Reduces DOM operations by 70-90%.
+ *
+ * @constant {number}
+ */
+export const RENDER_QUEUE_DEBOUNCE_MS = 100;
+
+// =============================================================================
+// v1.6.3.9-v4 - MESSAGE CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Timeout for runtime.sendMessage() calls.
+ *
+ * 3 seconds is standard for web timeouts.
+ * Background script should respond <100ms normally.
+ * Covers slow devices and startup delays.
+ *
+ * @constant {number}
+ */
+export const MESSAGE_TIMEOUT_MS = 3000;
+
+// =============================================================================
+// v1.6.3.9-v4 - HEALTH CHECK CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * How often to verify storage.onChanged is firing.
+ *
+ * 5 seconds is quick enough to detect broken storage listener.
+ * Not too frequent (minimal overhead).
+ *
+ * @constant {number}
+ */
+export const STORAGE_HEALTH_CHECK_INTERVAL_MS = 5000;
+
+/**
+ * Reject storage events older than this threshold.
+ *
+ * 5 minutes = 300,000ms.
+ * Events from before browser sleep/reload should be ignored.
+ * Prevents stale state from being applied.
+ *
+ * @constant {number}
+ */
+export const STORAGE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+// =============================================================================
+// v1.6.3.9-v4 - QUICK TAB ID CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Prefix for all Quick Tab IDs.
+ *
+ * 'qt-' is short and unambiguous.
+ * Always distinguishable from browser tab IDs.
+ *
+ * @constant {string}
+ */
+export const QUICK_TAB_ID_PREFIX = 'qt-';
+
+/**
+ * Length of random suffix in Quick Tab ID.
+ *
+ * 6 characters = 36^6 ≈ 2.1 billion combinations.
+ * Very low collision probability (0.0001% for 1000 IDs).
+ *
+ * @constant {number}
+ */
+export const QUICK_TAB_ID_RANDOM_LENGTH = 6;
+
+// =============================================================================
+// v1.6.3.9-v4 - SIZE CONSTRAINTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Minimum width of Quick Tab window (pixels).
+ *
+ * 200px is usable minimum for web content.
+ *
+ * @constant {number}
+ */
+export const MIN_QUICK_TAB_WIDTH = 200;
+
+/**
+ * Maximum width of Quick Tab window (pixels).
+ *
+ * 3000px covers most monitor widths including 4K.
+ *
+ * @constant {number}
+ */
+export const MAX_QUICK_TAB_WIDTH = 3000;
+
+/**
+ * Minimum height of Quick Tab window (pixels).
+ *
+ * 200px is minimum for readable content.
+ *
+ * @constant {number}
+ */
+export const MIN_QUICK_TAB_HEIGHT = 200;
+
+/**
+ * Maximum height of Quick Tab window (pixels).
+ *
+ * 2000px covers most monitor heights including 4K.
+ *
+ * @constant {number}
+ */
+export const MAX_QUICK_TAB_HEIGHT = 2000;
+
+// =============================================================================
+// v1.6.3.9-v4 - STATE LIMITS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Maximum Quick Tabs allowed simultaneously.
+ *
+ * 100 tabs = ~50-100KB state JSON.
+ * Checksum computation: O(n), ~10ms for 100 tabs.
+ * Render performance: Still responsive with DOM reconciliation.
+ *
+ * @constant {number}
+ */
+export const MAX_QUICK_TABS = 100;
+
+/**
+ * Maximum URL length allowed.
+ *
+ * 2048 is HTTP standard max URL length.
+ * Prevents storage bloat from malicious URLs.
+ *
+ * @constant {number}
+ */
+export const URL_MAX_LENGTH = 2048;
+
+/**
+ * Maximum title length.
+ *
+ * 255 is database field size standard.
+ * Most page titles are <100 characters.
+ *
+ * @constant {number}
+ */
+export const TITLE_MAX_LENGTH = 255;
+
+// =============================================================================
+// v1.6.3.9-v4 - ORPHAN CLEANUP CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * How often to run orphan cleanup task.
+ *
+ * 1 hour = 3,600,000ms.
+ * Not too frequent (minimal CPU overhead).
+ *
+ * @constant {number}
+ */
+export const ORPHAN_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+// =============================================================================
+// v1.6.3.9-v4 - CHECKSUM CONSTANTS (from constants-config-reference.md)
+// =============================================================================
+
+/**
+ * Version of checksum algorithm.
+ *
+ * 'v1' allows future checksum algorithms without conflicts.
+ * Current: Simple hash (not cryptographic).
+ *
+ * @constant {string}
+ */
+export const CHECKSUM_VERSION = 'v1';
 
 // =============================================================================
 // FIREFOX STORAGE LISTENER TIMING CONSTANTS

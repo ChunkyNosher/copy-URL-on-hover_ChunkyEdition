@@ -3,7 +3,7 @@
  * Manages display and interaction with Quick Tabs across all containers
  *
  * ===============================================================================
- * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.8-v14)
+ * MANAGER SIDEBAR FILTERING CONTRACT (v1.6.3.9-v4)
  * ===============================================================================
  *
  * FILTERING GUARANTEE:
@@ -42,6 +42,18 @@
  *   - No runtime.Port (removed in v1.6.3.8-v13)
  *
  * ===============================================================================
+ *
+ * v1.6.3.9-v4 - SIMPLIFIED ARCHITECTURE from ROBUST-QUICKTABS-ARCHITECTURE.md:
+ *   - NEW: Centralized constants import from src/constants.js
+ *   - NEW: STORAGE_HEALTH_CHECK_INTERVAL_MS (5s) - fallback polling when storage.onChanged silent
+ *   - NEW: STORAGE_MAX_AGE_MS (5min) - reject events older than this
+ *   - NEW: sidebarLocalState - simplified local state tracking
+ *   - NEW: _checkStorageHealth() - requests fresh state if no events for 5s
+ *   - NEW: _handleStorageChangedEvent() - simplified guard-based storage handler
+ *   - NEW: _startStorageHealthCheckInterval() / _stopStorageHealthCheckInterval()
+ *   - NEW: Helper functions to reduce complexity (_validateStorageEventStructure, etc.)
+ *   - ARCHITECTURE: Clean guard pattern for storage event validation
+ *   - ARCHITECTURE: Health check fallback prevents silent storage listener failures
  *
  * v1.6.3.8-v13 - FULL Port Removal: Replaced runtime.Port with stateless runtime.sendMessage
  *   - REMOVED: backgroundPort, _portOnMessageHandler, portMessageQueue
@@ -244,6 +256,11 @@ import {
 import { filterInvalidTabs } from './utils/validation.js';
 // v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
 // All BC imports removed per user request - Port + storage.onChanged only
+// v1.6.3.9-v4 - Simplified architecture: Import centralized constants
+import {
+  STORAGE_HEALTH_CHECK_INTERVAL_MS,
+  STORAGE_MAX_AGE_MS
+} from '../src/constants.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
 import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
@@ -1494,6 +1511,33 @@ let _renderCorruptionRecoveryAttempts = 0;
  * v1.6.3.8-v12 - FIX Issue #9: Prevent infinite recovery loops
  */
 const MAX_RENDER_CORRUPTION_RECOVERY_ATTEMPTS = 3;
+
+// ==================== v1.6.3.9-v4 SIMPLIFIED SIDEBAR LOCAL STATE ====================
+// From ROBUST-QUICKTABS-ARCHITECTURE.md - Simplified state structure
+/**
+ * Sidebar local state for tracking synced state and rendering
+ * v1.6.3.9-v4 - Simplified architecture from constants-config-reference.md
+ * @type {Object}
+ */
+const sidebarLocalState = {
+  tabs: [],
+  lastModified: 0,
+  revisionReceived: 0,
+  writeSequence: 0,
+  lastRenderedRevision: 0
+};
+
+/**
+ * Timestamp of last storage event received
+ * v1.6.3.9-v4 - Used for storage health check fallback
+ */
+let _lastStorageEventTime = Date.now();
+
+/**
+ * Interval ID for storage health check
+ * v1.6.3.9-v4 - Periodic verification that storage.onChanged is firing
+ */
+let _storageHealthCheckIntervalId = null;
 
 /**
  * Generate correlation ID for message acknowledgment
@@ -3064,6 +3108,222 @@ function _handleStorageProbeTimeout(probeTimestamp) {
         : 'never',
     timestamp: Date.now()
   });
+}
+
+// ==================== v1.6.3.9-v4 SIMPLIFIED STORAGE HEALTH CHECK ====================
+// From ROBUST-QUICKTABS-ARCHITECTURE.md - Fallback polling when storage.onChanged goes silent
+
+/**
+ * Check storage health and request state if no events received recently
+ * v1.6.3.9-v4 - Simplified health check from constants-config-reference.md
+ * @private
+ */
+async function _checkStorageHealth() {
+  const now = Date.now();
+  const timeSinceLastEvent = now - _lastStorageEventTime;
+
+  // Trigger health check if no events for 80% of the interval
+  // This provides more responsive detection of silent storage listeners
+  const healthCheckThreshold = STORAGE_HEALTH_CHECK_INTERVAL_MS * 0.8;
+  if (timeSinceLastEvent <= healthCheckThreshold) {
+    return;
+  }
+
+  console.warn('[Manager] STORAGE_HEALTH_CHECK: No events for', timeSinceLastEvent, 'ms');
+
+  try {
+    // Request fresh state from background via runtime.sendMessage
+    const response = await sendToBackground({
+      action: 'GET_QUICK_TABS_STATE',
+      source: 'health-check',
+      timestamp: now
+    });
+
+    if (response?.state) {
+      console.log('[Manager] STORAGE_HEALTH_CHECK: Got state via fallback', {
+        tabCount: response.state?.tabs?.length ?? 0,
+        revision: response.state?.revision,
+        timeSinceLastEventMs: timeSinceLastEvent
+      });
+
+      // Process through the same handler as storage.onChanged events
+      // This ensures consistent guard checks and state updates
+      _handleStorageChangedEvent({
+        [STATE_KEY]: { newValue: response.state }
+      });
+
+      _lastStorageEventTime = now;
+    }
+  } catch (err) {
+    console.error('[Manager] STORAGE_HEALTH_CHECK: Failed', {
+      error: err.message,
+      timeSinceLastEventMs: timeSinceLastEvent
+    });
+  }
+}
+
+/**
+ * Start the storage health check interval
+ * v1.6.3.9-v4 - From constants-config-reference.md
+ * @private
+ */
+function _startStorageHealthCheckInterval() {
+  if (_storageHealthCheckIntervalId) {
+    clearInterval(_storageHealthCheckIntervalId);
+  }
+
+  _storageHealthCheckIntervalId = setInterval(
+    _checkStorageHealth,
+    STORAGE_HEALTH_CHECK_INTERVAL_MS
+  );
+
+  console.log('[Manager] STORAGE_HEALTH_CHECK: Started', {
+    intervalMs: STORAGE_HEALTH_CHECK_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop the storage health check interval
+ * v1.6.3.9-v4 - Cleanup on unload
+ * @private
+ */
+function _stopStorageHealthCheckInterval() {
+  if (_storageHealthCheckIntervalId) {
+    clearInterval(_storageHealthCheckIntervalId);
+    _storageHealthCheckIntervalId = null;
+    console.log('[Manager] STORAGE_HEALTH_CHECK: Stopped');
+  }
+}
+
+// ==================== v1.6.3.9-v4 SIMPLIFIED STORAGE CHANGED EVENT HANDLER ====================
+// From ROBUST-QUICKTABS-ARCHITECTURE.md - Clean guard pattern for storage events
+
+/**
+ * Simplified storage changed event handler with clear guards
+ * v1.6.3.9-v4 - From ROBUST-QUICKTABS-ARCHITECTURE.md
+ * @param {Object} changes - Storage changes object
+ * @private
+ */
+/**
+ * Validate storage event structure
+ * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
+ * @param {Object} newState - The new state from storage
+ * @returns {boolean} True if valid
+ */
+function _validateStorageEventStructure(newState) {
+  if (!newState || !Array.isArray(newState.tabs)) {
+    console.warn('[Manager] STORAGE_EVENT_INVALID: Invalid state structure', {
+      hasNewState: !!newState,
+      hasTabs: !!newState?.tabs,
+      isArray: Array.isArray(newState?.tabs)
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Check if revision is stale
+ * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
+ * Uses _lastAppliedRevision for consistency with existing revision tracking
+ * @param {number} newRevision - The incoming revision
+ * @returns {boolean} True if stale (should reject)
+ */
+function _isStaleRevision(newRevision) {
+  if (newRevision === undefined) {
+    return false; // No revision = accept (backward compatibility)
+  }
+  // Use _lastAppliedRevision for consistency with existing revision tracking
+  if (newRevision <= _lastAppliedRevision) {
+    console.log('[Manager] STORAGE_EVENT_STALE: Ignoring stale revision', {
+      received: newRevision,
+      current: _lastAppliedRevision
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if state is too old
+ * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
+ * @param {Object} newState - The new state from storage
+ * @returns {boolean} True if too old (should reject)
+ */
+function _isStateEventTooOld(newState) {
+  const stateTimestamp = newState.lastModified || newState.timestamp;
+  
+  // If no timestamp available, accept the event (can't determine age)
+  if (!stateTimestamp) {
+    return false;
+  }
+  
+  const stateAge = Date.now() - stateTimestamp;
+  if (stateAge > STORAGE_MAX_AGE_MS) {
+    console.warn('[Manager] STORAGE_EVENT_OLD: Rejecting old event', {
+      ageMs: stateAge,
+      maxAgeMs: STORAGE_MAX_AGE_MS,
+      lastModified: stateTimestamp
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Update sidebar local state from new state
+ * v1.6.3.9-v4 - Extracted to reduce _handleStorageChangedEvent complexity
+ * @param {Object} newState - The new state from storage
+ */
+function _updateSidebarLocalState(newState) {
+  sidebarLocalState.tabs = newState.tabs.slice();
+  sidebarLocalState.lastModified = newState.lastModified || newState.timestamp || Date.now();
+  if (newState.revision !== undefined) {
+    sidebarLocalState.revisionReceived = newState.revision;
+    // Also update _lastAppliedRevision for consistency
+    _lastAppliedRevision = newState.revision;
+  }
+  if (newState.writeSequence !== undefined) {
+    sidebarLocalState.writeSequence = newState.writeSequence;
+  }
+}
+
+/**
+ * Simplified storage changed event handler with clear guards
+ * v1.6.3.9-v4 - From ROBUST-QUICKTABS-ARCHITECTURE.md
+ * @param {Object} changes - Storage changes object
+ * @private
+ */
+function _handleStorageChangedEvent(changes) {
+  const stateChange = changes[STATE_KEY];
+  if (!stateChange) return;
+
+  const newState = stateChange.newValue;
+
+  // Guard 1: Validate structure
+  if (!_validateStorageEventStructure(newState)) return;
+
+  // Guard 2: Revision ordering (if revision present)
+  if (_isStaleRevision(newState.revision)) return;
+
+  // Guard 3: Age check (reject events older than 5 minutes)
+  if (_isStateEventTooOld(newState)) return;
+
+  // Update last event time for health check
+  _lastStorageEventTime = Date.now();
+
+  // Update sidebar local state
+  _updateSidebarLocalState(newState);
+
+  console.log('[Manager] STORAGE_EVENT_ACCEPTED:', {
+    tabCount: newState.tabs.length,
+    revision: newState.revision,
+    saveId: newState.saveId
+  });
+
+  // Schedule render with revision for dedup
+  scheduleRender('storage-event', newState.saveId);
 }
 
 /**
@@ -4904,6 +5164,9 @@ function _startPeriodicTasks() {
 
   // v1.6.3.9-v4 - REMOVED: Revision buffer cleanup (buffering removed)
 
+  // v1.6.3.9-v4 - Start storage health check interval (fallback when storage.onChanged goes silent)
+  _startStorageHealthCheckInterval();
+
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
@@ -4949,6 +5212,9 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.8-v4 - FIX Issue #3: Stop visibility refresh interval
   _stopVisibilityRefreshInterval();
+
+  // v1.6.3.9-v4 - Stop storage health check interval
+  _stopStorageHealthCheckInterval();
 
   // v1.6.3.8-v4 - FIX Issue #3: Remove visibility change listener
   document.removeEventListener('visibilitychange', _handleVisibilityChange);
