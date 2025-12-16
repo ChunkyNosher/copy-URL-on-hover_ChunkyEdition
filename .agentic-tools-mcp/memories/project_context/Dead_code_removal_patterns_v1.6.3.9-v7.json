@@ -1,0 +1,8 @@
+{
+  "id": "766eef3f-da7e-4109-9034-320902d18621",
+  "title": "Dead code removal patterns v1.6.3.9-v7",
+  "details": "Dead code removal in sidebar/quick-tabs-manager.js (v1.6.3.9-v7):\n\n## Removed Code Patterns:\n1. Variables prefixed with underscore but never read (_CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, etc.)\n2. Variables assigned but never read (_stateLoadStartTime, _currentInitPhase)\n3. No-op stub functions kept for \"backwards compatibility\" but never called (logPortLifecycle, _transitionConnectionState)\n4. Deprecated wrapper functions that delegate to active functions (_sendWithAck → sendToBackground)\n5. Broadcast channel handlers that were dead code since BC removal in v1.6.3.8-v6\n\n## Still In Use (DO NOT REMOVE):\n- connectionState (used in logging)\n- initializationComplete (backwards compat alias, still read)\n- pendingAcks (used by handleAcknowledgment and _handleOperationConfirmation)\n- handlePortMessage / _routePortMessage (called from _routeInitMessage)\n- _sendActionRequest (called in CLOSE_MINIMIZED_TABS and ADOPT_TAB flows)\n\n## Verification Process:\n1. grep for function/variable name to find ALL usages\n2. Verify if usages are only declarations/assignments or actual reads/calls\n3. Check if callers themselves are dead code (cascading removal)\n4. Run npm run lint after removal to catch undefined errors\n5. Run npm test to verify no functionality broken",
+  "category": "project_context",
+  "dateCreated": "2025-12-16T20:55:38.532Z",
+  "dateUpdated": "2025-12-16T20:55:38.532Z"
+}

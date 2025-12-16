@@ -44,7 +44,7 @@
  *
  * ===============================================================================
  *
- * v1.6.3.9-v7 - GAP Analysis Fixes (Issues #1-5 from gap-analysis):
+ * v1.6.3.9-v7 - GAP Analysis Fixes (Issues #1-6 from gap-analysis):
  *   - GAP #1: Log capture infrastructure matching background.js pattern
  *     - SIDEBAR_LOG_BUFFER with MAX_SIDEBAR_BUFFER_SIZE (2000)
  *     - Console override (log/error/warn/info/debug) for capture
@@ -59,6 +59,12 @@
  *     - STORAGE_WATCHDOG_TIMEOUT_MS now imported (not locally defined)
  *   - GAP #4: Refactored _routeRuntimeMessage to use lookup table (CC 13 → 3)
  *     - _runtimeMessageHandlers lookup table for O(1) routing
+ *   - Issue #6: Dead Code Removal (~265 lines removed)
+ *     - REMOVED: _CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, _consecutiveConnectionFailures
+ *     - REMOVED: _stateLoadStartTime, _currentInitPhase (assignments only)
+ *     - REMOVED: logPortLifecycle(), _transitionConnectionState() (no-op stubs)
+ *     - REMOVED: _sendMessageToBackground(), _sendWithAck() (deprecated functions)
+ *     - REMOVED: _handleBroadcastCreate/Update/Delete/MinimizeRestore(), _findTabIndex(), _updateStateAfterMutation()
  *
  * v1.6.3.9-v6 - GAP Analysis Fixes (from docs/manual/1.6.4/ gap analysis):
  *   - GAP #11: Simplified initialization from ~8 variables to 4 (initializationPromise,
@@ -553,34 +559,16 @@ const MESSAGE_ID_MAX_AGE_MS = 5000;
  */
 const MESSAGE_DEDUP_MAX_SIZE = 1000;
 
-// ==================== v1.6.3.9-v6 CONNECTION STATE (REMOVED) ====================
-// v1.6.3.9-v6 - GAP #15: CONNECTION_STATE removed - was dead code after port removal
-// Connection state is no longer tracked since port was removed in v1.6.3.8-v13
-// All state sync now uses storage.onChanged PRIMARY mechanism
-
-/**
- * @deprecated v1.6.3.9-v6 - CONNECTION_STATE removed (GAP #15 dead code cleanup)
- * Placeholder for backwards compatibility with logging functions that reference it
- */
-const _CONNECTION_STATE_DEPRECATED = 'connected';
+// ==================== v1.6.3.9-v7 CONNECTION STATE ====================
+// v1.6.3.9-v7 - Issue #6: Simplified connection state after port removal
+// Connection is always 'connected' since we use stateless runtime.sendMessage
+// Dead code removed: _CONNECTION_STATE_DEPRECATED, _lastConnectionStateChange, _consecutiveConnectionFailures
 
 /**
  * Current connection state (simplified - always 'connected' since port removal)
  * v1.6.3.9-v6 - GAP #15: Simplified to constant, no longer tracked
  */
 const connectionState = 'connected';
-
-/**
- * @deprecated v1.6.3.9-v6 - Not used after port removal
- * v1.6.3.9-v6 - GAP #18: Changed to const as it's never reassigned
- */
-const _lastConnectionStateChange = 0;
-
-/**
- * @deprecated v1.6.3.9-v6 - Not used after port removal
- * v1.6.3.9-v6 - GAP #18: Changed to const as it's never reassigned
- */
-const _consecutiveConnectionFailures = 0;
 
 // ==================== v1.6.3.7-v6 INITIALIZATION TRACKING ====================
 // Gap #1: State Loading & Initialization Race Condition
@@ -589,13 +577,6 @@ const _consecutiveConnectionFailures = 0;
  * v1.6.3.7-v6 - Gap #1: Wait 2 seconds before rendering empty if initial load is empty
  */
 let initialLoadTimeoutId = null;
-
-/**
- * Start time for state load duration tracking
- * v1.6.3.7-v6 - Gap #1: Track load duration for diagnostics
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- */
-let _stateLoadStartTime = 0;
 
 /**
  * Flag to track if initial state load has completed
@@ -637,12 +618,7 @@ function isFullyInitialized() {
  */
 let initializationComplete = false;
 
-/**
- * @deprecated v1.6.3.9-v6 - Removed, phase tracking simplified
- * Kept for backwards compatibility with code that sets this variable
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- */
-let _currentInitPhase = 'simplified';
+// v1.6.3.9-v7 - Issue #6: _currentInitPhase removed (was assigned but never read)
 
 // v1.6.3.7-v10 - FIX Code Review: Named constant for uninitialized timestamp
 const INIT_TIME_NOT_STARTED = -1;
@@ -1743,32 +1719,8 @@ function generateCorrelationId() {
   return `corr-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
-/**
- * Log port lifecycle event
- * v1.6.3.8-v13 - PORT REMOVED: Simplified logging
- * @param {string} event - Event name
- * @param {Object} details - Event details
- */
-// v1.6.3.9-v6 - GAP #15: logPortLifecycle simplified (dead code after port removal)
-// The function was logging lifecycle events for a port connection that no longer exists.
-// Keeping a minimal stub to avoid breaking any remaining callers.
-/**
- * @deprecated v1.6.3.9-v6 - GAP #15: Port removed, function is no-op
- */
-function logPortLifecycle(_event, _details = {}) {
-  // v1.6.3.9-v6 - NO-OP: Port removed in v1.6.3.8-v13
-}
-
-// v1.6.3.9-v6 - GAP #15: Connection state transition functions removed
-// All these functions were managing port connection states that no longer exist.
-// The connection state is now always 'connected' since we use stateless messaging.
-
-/**
- * @deprecated v1.6.3.9-v6 - GAP #15: Port removed, function is no-op
- */
-function _transitionConnectionState(_newState, _reason) {
-  // v1.6.3.9-v6 - NO-OP: Connection state no longer tracked
-}
+// v1.6.3.9-v7 - Issue #6: logPortLifecycle() removed (was no-op stub)
+// v1.6.3.9-v7 - Issue #6: _transitionConnectionState() removed (was no-op stub)
 
 // v1.6.3.9-v6 - GAP #15: REMOVED dead code functions:
 // - _updateConsecutiveFailures() - tracked port failures
@@ -2498,12 +2450,7 @@ function _logPortMessageReceived(message, entryTime) {
       timestamp: entryTime
     }
   );
-
-  logPortLifecycle('message', {
-    type: message.type,
-    action: message.action,
-    correlationId
-  });
+  // v1.6.3.9-v7 - Issue #6: logPortLifecycle() call removed (function was no-op)
 }
 
 /**
@@ -2828,52 +2775,8 @@ async function sendToBackground(message) {
   }
 }
 
-/**
- * Simple message sending helper with spec-compliant logging
- * v1.6.3.9-v4 - Phase 5: Wrapper with latency tracking and timeout handling per spec
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Message to send to background
- * @returns {Promise<Object>} Response from background
- */
-async function _sendMessageToBackground(message) {
-  const startTime = performance.now();
-
-  try {
-    const response = await Promise.race([
-      browser.runtime.sendMessage(message),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), MESSAGE_TIMEOUT_MS))
-    ]);
-
-    const latency = performance.now() - startTime;
-    console.debug(
-      '[Manager] MESSAGE_RECEIVED action=' +
-        (message.action ?? 'N/A') +
-        ' latency=' +
-        latency.toFixed(1) +
-        'ms'
-    );
-
-    return response;
-  } catch (err) {
-    if (err.message === 'Timeout') {
-      console.warn('[Manager] MESSAGE_TIMEOUT action=' + (message.action ?? 'N/A'));
-    }
-    throw err;
-  }
-}
-
-/**
- * Send message via port with acknowledgment tracking
- * v1.6.3.8-v13 - PORT REMOVED: Now delegates to sendToBackground
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @deprecated Use sendToBackground instead
- * @param {Object} message - Message to send
- * @returns {Promise<Object>} Acknowledgment response
- */
-function _sendWithAck(message) {
-  // v1.6.3.8-v13 - Delegate to stateless sendToBackground
-  return sendToBackground(message);
-}
+// v1.6.3.9-v7 - Issue #6: _sendMessageToBackground() removed (deprecated, never called)
+// v1.6.3.9-v7 - Issue #6: _sendWithAck() removed (deprecated, never called)
 
 /**
  * Send ACTION_REQUEST to background
@@ -3605,173 +3508,18 @@ function _trackFallbackUpdate(source, latencyMs = null) {
   }
 }
 
-// ==================== v1.6.3.9-v6 GAP #15: BROADCASTCHANNEL DEAD CODE REMOVED ====================
-// v1.6.3.9-v6 - GAP #15: BroadcastChannel functions removed - were all no-ops since v1.6.3.8-v6
+// ==================== v1.6.3.9-v7 GAP #15: BROADCASTCHANNEL DEAD CODE REMOVED ====================
+// v1.6.3.9-v7 - Issue #6: All broadcast handler functions removed (BC was removed in v1.6.3.8-v6)
 // storage.onChanged is now the PRIMARY sync mechanism, no BC fallback exists.
 //
-// REMOVED functions:
-// - handleBroadcastChannelMessage() - was NO-OP
-// - _checkBroadcastChannelHealth() - was NO-OP  
-// - _checkSequenceGap() - was NO-OP
-// - _generateBroadcastMessageIds() - not used without BC
-// - _logBroadcastMessageProcessed() - not used without BC
-// - _triggerStorageFallbackOnGap() - storage fallback now handled by health check
-// - _routeBroadcastMessage() - not used without BC
-// - handleBroadcastFullStateSync() - not used without BC
+// REMOVED functions in v1.6.3.9-v6:
+// - handleBroadcastChannelMessage(), _checkBroadcastChannelHealth(), _checkSequenceGap()
+// - _generateBroadcastMessageIds(), _logBroadcastMessageProcessed()
+// - _triggerStorageFallbackOnGap(), _routeBroadcastMessage(), handleBroadcastFullStateSync()
 //
-// v1.6.3.9-v6 - GAP #18: The following broadcast handlers are prefixed with underscore
-// as they are currently unused (BC was removed). Kept for potential future use.
-// - _handleBroadcastCreate()
-// - _handleBroadcastUpdate()
-// - _handleBroadcastDelete()
-// - _handleBroadcastMinimizeRestore()
-
-/**
- * Handle quick-tab-created broadcast
- * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.4.18 - Refactored to use shared helper to reduce code duplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message with data
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastCreate(message, messageId) {
-  const { quickTabId, data } = message;
-
-  if (!quickTabId || !data) {
-    return;
-  }
-
-  // Check if already exists
-  const existingIdx = _findTabIndex(quickTabId);
-  if (existingIdx >= 0) {
-    console.log('[Manager] Quick Tab already exists, skipping create:', quickTabId);
-    return;
-  }
-
-  // Add to state
-  if (!quickTabsState.tabs) {
-    quickTabsState.tabs = [];
-  }
-  quickTabsState.tabs.push(data);
-  _updateStateAfterMutation();
-
-  console.log('[Manager] BROADCAST_CREATE: added Quick Tab:', quickTabId);
-  scheduleRender('broadcast-create', messageId);
-}
-
-/**
- * Handle quick-tab-updated broadcast
- * v1.6.3.7-v3 - API #2: Update existing Quick Tab
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message with changes
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastUpdate(message, messageId) {
-  const { quickTabId, changes } = message;
-
-  if (!quickTabId || !changes) {
-    return;
-  }
-
-  // Find the tab
-  const tabIdx = _findTabIndex(quickTabId);
-  if (tabIdx < 0) {
-    console.log('[Manager] Quick Tab not found for update:', quickTabId);
-    return;
-  }
-
-  // Apply changes
-  Object.assign(quickTabsState.tabs[tabIdx], changes);
-  _updateStateAfterMutation();
-
-  console.log('[Manager] BROADCAST_UPDATE: updated Quick Tab:', quickTabId, changes);
-  scheduleRender('broadcast-update', messageId);
-}
-
-/**
- * Handle quick-tab-deleted broadcast
- * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastDelete(message, messageId) {
-  const { quickTabId } = message;
-
-  if (!quickTabId) {
-    return;
-  }
-
-  // Find and remove
-  const tabIdx = _findTabIndex(quickTabId);
-  if (tabIdx < 0) {
-    console.log('[Manager] Quick Tab not found for delete:', quickTabId);
-    return;
-  }
-
-  quickTabsState.tabs.splice(tabIdx, 1);
-  _updateStateAfterMutation();
-
-  console.log('[Manager] BROADCAST_DELETE: removed Quick Tab:', quickTabId);
-  scheduleRender('broadcast-delete', messageId);
-}
-
-/**
- * Find tab index by quickTabId
- * v1.6.4.18 - Extracted to reduce code duplication in broadcast handlers
- * @private
- * @param {string} quickTabId - Quick Tab ID
- * @returns {number} Tab index or -1 if not found
- */
-function _findTabIndex(quickTabId) {
-  return quickTabsState.tabs?.findIndex(t => t.id === quickTabId) ?? -1;
-}
-
-/**
- * Update state timestamps and cache after mutation
- * v1.6.4.18 - Extracted to reduce code duplication in broadcast handlers
- * @private
- */
-function _updateStateAfterMutation() {
-  quickTabsState.timestamp = Date.now();
-  _updateInMemoryCache(quickTabsState.tabs);
-  lastLocalUpdateTime = Date.now();
-}
-
-/**
- * Handle quick-tab-minimized and quick-tab-restored broadcasts
- * v1.6.3.7-v3 - API #2: Update minimized state
- * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
- * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
- * @param {Object} message - Broadcast message
- * @param {string} messageId - Message ID for deduplication
- */
-function _handleBroadcastMinimizeRestore(message, messageId) {
-  const { quickTabId, changes } = message;
-
-  if (!quickTabId) {
-    return;
-  }
-
-  const tabIdx = _findTabIndex(quickTabId);
-  if (tabIdx < 0) {
-    return;
-  }
-
-  // Apply minimized state
-  if (changes && 'minimized' in changes) {
-    quickTabsState.tabs[tabIdx].minimized = changes.minimized;
-    _updateStateAfterMutation();
-
-    console.log('[Manager] BROADCAST_MINIMIZE:', quickTabId, 'minimized=', changes.minimized);
-    scheduleRender('broadcast-minimize', messageId);
-  }
-}
+// REMOVED functions in v1.6.3.9-v7 (Issue #6):
+// - _handleBroadcastCreate(), _handleBroadcastUpdate(), _handleBroadcastDelete()
+// - _handleBroadcastMinimizeRestore(), _findTabIndex(), _updateStateAfterMutation()
 
 // v1.6.3.9-v4 - BC removed: cleanupBroadcastChannel deleted
 
@@ -5164,32 +4912,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function _initializeManager() {
   // v1.6.3.8-v4 - FIX Issue #5: Create initialization barrier FIRST
   _initializeBarrier();
-  _currentInitPhase = 'flags';
+  // v1.6.3.9-v7 - Issue #6: _currentInitPhase assignments removed (dead code)
 
   _initializeFlags();
   _cacheDOMElements();
   _initializeSessionId();
 
   // v1.6.3.8-v4 - FIX Issue #1: Sequential initialization - port must connect first
-  _currentInitPhase = 'tab-id';
   await _initializeCurrentTabId();
 
   // v1.6.3.8-v4 - FIX Issue #1: Establish port connection before anything else
-  _currentInitPhase = 'port-connection';
   _initializeConnections();
 
   // v1.6.3.8-v4 - FIX Issue #6: Query background for state via port BEFORE storage read
-  _currentInitPhase = 'hydration';
   await _hydrateStateFromBackground();
 
   // v1.6.3.8-v4 - FIX Issue #1: Storage listener must be verified before state load
-  _currentInitPhase = 'storage-listener';
   await _initializeState();
 
-  _currentInitPhase = 'listeners';
   await _setupListeners();
 
-  _currentInitPhase = 'periodic-tasks';
   _startPeriodicTasks();
 
   // v1.6.3.8-v4 - FIX Issue #3: Setup visibility change listener
@@ -5404,8 +5146,7 @@ function _initializeConnections() {
  */
 async function _initializeState() {
   await loadContainerInfo();
-  // v1.6.3.9-v6 - GAP #18: Use renamed variable
-  _stateLoadStartTime = Date.now();
+  // v1.6.3.9-v7 - Issue #6: _stateLoadStartTime removed (was assigned but never read)
 
   await loadQuickTabsState();
   const tabCount = quickTabsState?.tabs?.length ?? 0;
