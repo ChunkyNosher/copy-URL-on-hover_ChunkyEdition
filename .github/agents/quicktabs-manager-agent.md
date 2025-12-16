@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v6), unified barrier init, scheduleRender() with revision dedup,
+  (v1.6.3.9-v7), unified barrier init, scheduleRender() with revision dedup,
   single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v7 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -45,40 +45,25 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, never writes storage
 - **MANAGER Pattern Actions** - close all, close minimized
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
-- **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
 
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Simplified Init** - Manager reduced from ~8 state variables to 4
-- **State Hash Validation** - `stateHashAtQueue` field in render queue
-- **Switch-Based Routing** - Enhanced `_routeRuntimeMessage()`
+- **Log Capture** - SIDEBAR_LOG_BUFFER with safe JSON stringify
+- **Log Export API** - GET_SIDEBAR_LOGS, CLEAR_SIDEBAR_LOGS handlers
+- **Direct State Push** - PUSH_STATE_UPDATE bypasses storage.onChanged
+- **Error Notification** - ERROR_NOTIFICATION handler for background errors
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (Previous):**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Tab Cleanup Listener** - `browser.tabs.onRemoved` in Manager sidebar
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- Unified barrier init, render queue revision PRIMARY, ~218 lines removed
+- `_routeRuntimeMessage()` with switch-based routing
 
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
-
-- **scheduleRender()** - Revision-based deduplication
-- **RENDER_QUEUE_DEBOUNCE_MS** = 100ms debounce
-- **sendMessageToBackground()** - Helper with 3s timeout
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
-
-**Key Modules (v1.6.3.9-v6):**
+**Key Modules (v1.6.3.9-v7):**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |
-| `src/constants.js`                 | Centralized constants         |
+| `src/constants.js`                 | Centralized constants (+v7)   |
 | `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
 | `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
 | `src/storage/schema-v2.js`         | Pure state utilities          |
@@ -98,19 +83,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] scheduleRender() works with revision dedup (v1.6.3.9-v6)
-- [ ] Render queue debounce works (100ms) (v1.6.3.9-v6)
-- [ ] sendMessageToBackground() works (3s timeout) (v1.6.3.9-v6)
+- [ ] Log capture works (SIDEBAR_LOG_BUFFER) (v1.6.3.9-v7)
+- [ ] GET_SIDEBAR_LOGS export works (v1.6.3.9-v7)
+- [ ] PUSH_STATE_UPDATE direct push works (v1.6.3.9-v7)
+- [ ] scheduleRender() works with revision dedup
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] MANAGER pattern works (close all, close minimized)
-- [ ] Manager shows ALL Quick Tabs (global, not filtered)
-- [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.9-v6 unified barrier,
+**Your strength: Manager coordination with v1.6.3.9-v7 logging infrastructure,
 scheduleRender() with revision dedup, MANAGER pattern actions.**

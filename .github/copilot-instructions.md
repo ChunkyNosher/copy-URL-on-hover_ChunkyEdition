@@ -134,98 +134,47 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 
 ### v1.6.3.9-v6: Sidebar & Background Cleanup (Previous)
 
-**Sidebar (quick-tabs-manager.js):**
-
-- Simplified initialization: 4 state variables (was ~8)
-- Unified barrier with resolve-only semantics
-- Render queue dedup: revision PRIMARY over saveId
-- ~218 lines dead code removed
-- Enhanced `_routeRuntimeMessage()` with switch-based routing
-- `stateHashAtQueue` field for state validation
-
-**Background Script (background.js):**
-
-- Port infrastructure remnants removed
-- `_buildResponse()` helper for correlationId responses
-- `version: 2` field added to globalQuickTabState
-
-**Constants (src/constants.js):**
-
-- `WRITE_IGNORE_WINDOW_MS` (100ms) - moved from background.js
-- `STORAGE_CHANGE_COOLDOWN_MS` (200ms) - moved from background.js
+- Simplified init (4 state vars), unified barrier, ~218 lines removed
+- Render queue dedup: revision PRIMARY, `stateHashAtQueue` validation
+- `_buildResponse()` helper, centralized timing constants
 
 ### v1.6.3.9-v5: Bug Fixes & Reliability (Previous)
 
-**Critical Fixes:**
-
-- Tab ID initialization with background script fallback
-- Storage event routing via `_handleStorageChangedEvent()`
-- Adoption flow fallback for null tab IDs
-- Response format includes `type` and `correlationId`
+- Tab ID fallback, storage event routing fix, response format fix
 
 ### v1.6.3.9-v4: Simplified Architecture (Previous)
 
-- `scheduleRender()` with revision-based deduplication
-- `_computeStateChecksum()` for data integrity
-- Storage health check fallback (5s polling)
-- Orphan cleanup now removes (not marks)
+- `scheduleRender()` with revision dedup, `_computeStateChecksum()`
+- Storage health check (5s), orphan removal
 
-### v1.6.3.9-v3: Diagnostic Logging (Retained)
+### v1.6.3.9-v3 & v2: Retained Features
 
-- `STORAGE_LISTENER_REGISTERED/FIRED` - Listener lifecycle
-- `STATE_SYNC_MECHANISM` - Which sync mechanism was used
-
-**Container Isolation (v2):**
-
-- `originContainerId` field in Quick Tab data structure
-- Container-aware queries: `getQuickTabsByOriginTabIdAndContainer()`
-- Backward compatible: defaults to `'firefox-default'`
+- **v3:** Dual architecture (MessageRouter + message-handler), diagnostic logging
+- **v2:** Container isolation (`originContainerId`), tabs API events
 
 ---
 
-## 🆕 v1.6.3.9-v7 Patterns
+## 🆕 Version Patterns Summary
 
-- **Log Capture** - Console override with buffer for diagnostics export
-- **Message Handler Lookup** - `_runtimeMessageHandlers` O(1) routing table
-- **Direct State Push** - `PUSH_STATE_UPDATE` bypasses storage.onChanged delay
-- **Error Notification** - Background can push errors to sidebar
-- **Init Status Query** - Background can query sidebar init state
+### v1.6.3.9-v7 Patterns (Current)
 
-## 🆕 v1.6.3.9-v6 Patterns (Previous)
+- Log capture with `SIDEBAR_LOG_BUFFER`, O(1) message routing
+- Direct state push (`PUSH_STATE_UPDATE`), error/init notifications
+- New constants: `KEEPALIVE_INTERVAL_MS`, `RENDER_STALL_TIMEOUT_MS`
 
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision PRIMARY over saveId for dedup
-- **Switch-Based Routing** - `_routeRuntimeMessage()` unified routing
-- **State Hash Validation** - `stateHashAtQueue` field in render queue
-- **Response Helper** - `_buildResponse()` with correlationId tracking
-- **Centralized Timing** - `WRITE_IGNORE_WINDOW_MS`, `STORAGE_CHANGE_COOLDOWN_MS`
+### v1.6.3.9-v6 Patterns (Previous)
 
-### v1.6.3.9-v5 Patterns (Previous)
+- Unified barrier init, render queue revision PRIMARY, state hash
+- `_buildResponse()` helper, centralized timing constants
 
-- **Tab ID Fallback** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+### v1.6.3.9-v5 & Earlier Patterns
 
-### v1.6.3.9-v4 Patterns (Previous)
+- **v5:** Tab ID fallback, storage event routing fix
+- **v4:** Single barrier, storage.onChanged PRIMARY, render debounce
+- **v3:** Dual architecture, diagnostic logging
+- **v2:** Container isolation
 
-- **Single Barrier Init** - Simple initialization, no multi-phase complexity
-- **Storage.onChanged PRIMARY** - Primary sync, health check fallback
-- **Render Queue Debounce** - 100ms debounce with revision deduplication
-- **State Checksum** - `_computeStateChecksum()` for data integrity
-- **Simplified Persistence** - `_persistToStorage()` with validation + sync
-  backup
-- **Orphan Removal** - Cleanup now removes orphans instead of marking
-
-### v1.6.3.9-v3 Patterns (Previous)
-
-- **Dual Architecture** - MessageRouter (ACTION) + message-handler (TYPE)
-- **Diagnostic Logging** - Storage listener lifecycle, sync mechanism tracking
-
-### v1.6.3.9-v2 Patterns (Retained)
-
-- **Container Isolation** - `originContainerId` with Firefox Container support
-
-### Key Timing Constants (v1.6.3.9-v6)
+### Key Timing Constants (v1.6.3.9-v7)
 
 | Constant                           | Value                 | Purpose                        |
 | ---------------------------------- | --------------------- | ------------------------------ |
@@ -240,6 +189,10 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 | `QUICK_TAB_ID_PREFIX`              | 'qt-'                 | Quick Tab ID prefix            |
 | `ORPHAN_CLEANUP_INTERVAL_MS`       | 3600000 (1hr)         | Orphan cleanup interval        |
 | `DEFAULT_CONTAINER_ID`             | 'firefox-default'     | Default container ID           |
+| `KEEPALIVE_INTERVAL_MS`            | 25000                 | Background keepalive (v7)      |
+| `RENDER_STALL_TIMEOUT_MS`          | 5000                  | Render stall detection (v7)    |
+| `RENDER_QUEUE_MAX_SIZE`            | 10                    | Max queued renders (v7)        |
+| `STORAGE_WATCHDOG_TIMEOUT_MS`      | 2000                  | Storage watchdog timeout (v7)  |
 
 ---
 
@@ -279,14 +232,7 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, **v1.6.3.9-v6:** Unified barrier init, render queue revision PRIMARY,
-switch-based routing, state hash validation, response helper, centralized timing
-constants, **v1.6.3.9-v5:** Tab ID fallback, storage event routing fix, message
-cross-routing, **v1.6.3.9-v4:** Single barrier init, storage.onChanged PRIMARY,
-render queue debounce (100ms), storage health check (5s), state checksum,
-simplified persistence, orphan removal, **v1.6.3.9-v3:** Dual architecture
-(MessageRouter + message-handler), diagnostic logging, **v1.6.3.9-v2:**
-Container isolation, tabs API events.
+Authority. See Version Patterns Summary above for version-specific patterns.
 
 ---
 
@@ -378,6 +324,10 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 **MESSAGE_TYPES:** `QT_POSITION_CHANGED`, `QT_SIZE_CHANGED`, `QT_MINIMIZED`,
 `QT_RESTORED`, `QT_CLOSED`, `MANAGER_CLOSE_ALL`, `MANAGER_CLOSE_MINIMIZED`,
 `QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
+
+**v1.6.3.9-v7 New Messages:** `GET_SIDEBAR_LOGS`, `CLEAR_SIDEBAR_LOGS`,
+`PUSH_STATE_UPDATE`, `ERROR_NOTIFICATION`, `REQUEST_INIT_STATUS`,
+`CONTENT_SCRIPT_READY`, `CONTENT_SCRIPT_UNLOADING`
 
 **Patterns:** LOCAL (no broadcast), GLOBAL (broadcast to all), MANAGER
 (manager-initiated)
