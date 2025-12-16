@@ -291,7 +291,8 @@ import {
   MESSAGE_TIMEOUT_MS
 } from '../src/constants.js';
 // v1.6.3.7-v8 - Phase 3A Optimization: Performance metrics
-import PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
+// v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
+import _PerformanceMetrics from '../src/features/quick-tabs/PerformanceMetrics.js';
 
 // ==================== CONSTANTS ====================
 // v1.6.3.8-v4 - Bundle refactoring: Shared constants/utilities in ./modules/
@@ -447,13 +448,15 @@ const connectionState = 'connected';
 
 /**
  * @deprecated v1.6.3.9-v6 - Not used after port removal
+ * v1.6.3.9-v6 - GAP #18: Changed to const as it's never reassigned
  */
-let _lastConnectionStateChange = 0;
+const _lastConnectionStateChange = 0;
 
 /**
- * @deprecated v1.6.3.9-v6 - Not used after port removal  
+ * @deprecated v1.6.3.9-v6 - Not used after port removal
+ * v1.6.3.9-v6 - GAP #18: Changed to const as it's never reassigned
  */
-let _consecutiveConnectionFailures = 0;
+const _consecutiveConnectionFailures = 0;
 
 // ==================== v1.6.3.7-v6 INITIALIZATION TRACKING ====================
 // Gap #1: State Loading & Initialization Race Condition
@@ -466,8 +469,9 @@ let initialLoadTimeoutId = null;
 /**
  * Start time for state load duration tracking
  * v1.6.3.7-v6 - Gap #1: Track load duration for diagnostics
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  */
-let stateLoadStartTime = 0;
+let _stateLoadStartTime = 0;
 
 /**
  * Flag to track if initial state load has completed
@@ -512,8 +516,9 @@ let initializationComplete = false;
 /**
  * @deprecated v1.6.3.9-v6 - Removed, phase tracking simplified
  * Kept for backwards compatibility with code that sets this variable
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  */
-let currentInitPhase = 'simplified';
+let _currentInitPhase = 'simplified';
 
 // v1.6.3.7-v10 - FIX Code Review: Named constant for uninitialized timestamp
 const INIT_TIME_NOT_STARTED = -1;
@@ -1455,9 +1460,10 @@ async function _initializeStorageListener() {
 /**
  * Check if storage listener is verified and Tier 3 fallback is enabled
  * v1.6.3.8-v3 - FIX Issue #5: Guard function for fallback decisions
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @returns {boolean} True if storage listener is verified working
  */
-function isStorageListenerVerified() {
+function _isStorageListenerVerified() {
   return storageListenerVerified;
 }
 
@@ -1788,7 +1794,8 @@ function _handleStateSyncResponse(response) {
 function scheduleRender(source = 'unknown', revisionOrMessageId = null) {
   // v1.6.3.9-v6 - GAP #14: Parse revision vs messageId
   const revision = typeof revisionOrMessageId === 'number' ? revisionOrMessageId : null;
-  const messageId = typeof revisionOrMessageId === 'string' ? revisionOrMessageId : null;
+  // v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
+  const _messageId = typeof revisionOrMessageId === 'string' ? revisionOrMessageId : null;
   
   // v1.6.3.9-v6 - GAP #14: Compute current saveId for fallback
   const currentSaveId = _getValidSaveId(quickTabsState?.saveId);
@@ -2704,10 +2711,11 @@ async function sendToBackground(message) {
 /**
  * Simple message sending helper with spec-compliant logging
  * v1.6.3.9-v4 - Phase 5: Wrapper with latency tracking and timeout handling per spec
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @param {Object} message - Message to send to background
  * @returns {Promise<Object>} Response from background
  */
-async function sendMessageToBackground(message) {
+async function _sendMessageToBackground(message) {
   const startTime = performance.now();
 
   try {
@@ -2737,11 +2745,12 @@ async function sendMessageToBackground(message) {
 /**
  * Send message via port with acknowledgment tracking
  * v1.6.3.8-v13 - PORT REMOVED: Now delegates to sendToBackground
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @deprecated Use sendToBackground instead
  * @param {Object} message - Message to send
  * @returns {Promise<Object>} Acknowledgment response
  */
-function sendWithAck(message) {
+function _sendWithAck(message) {
   // v1.6.3.8-v13 - Delegate to stateless sendToBackground
   return sendToBackground(message);
 }
@@ -2883,8 +2892,9 @@ const STORAGE_HEALTH_PROBE_KEY = '_sidebar_health_ping';
 /**
  * Track if fallback mode is active
  * v1.6.3.7-v13 - Issue #5, #12: Used for UI badge display
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  */
-let fallbackModeActive = false;
+let _fallbackModeActive = false;
 
 /**
  * Start fallback health monitoring
@@ -2900,7 +2910,7 @@ function _startFallbackHealthMonitoring() {
 
   // v1.6.3.8-v3 - FIX Issue #20: Reset stats at start of new monitoring cycle
   _resetFallbackStats();
-  fallbackModeActive = true;
+  _fallbackModeActive = true;
 
   // v1.6.3.7-v13 - Issue #6 (arch): Also start storage health probing
   _startStorageHealthProbe();
@@ -3019,7 +3029,7 @@ function _stopFallbackHealthMonitoring() {
     });
   }
   _stopStorageHealthProbe();
-  fallbackModeActive = false;
+  _fallbackModeActive = false;
   console.log('[Manager] Fallback health monitoring stopped');
 }
 
@@ -3489,21 +3499,23 @@ function _trackFallbackUpdate(source, latencyMs = null) {
 // - _routeBroadcastMessage() - not used without BC
 // - handleBroadcastFullStateSync() - not used without BC
 //
-// The following broadcast handlers are kept as they are still referenced by storage sync code:
-// - handleBroadcastCreate()
-// - handleBroadcastUpdate()
-// - handleBroadcastDelete()
-// - handleBroadcastMinimizeRestore()
+// v1.6.3.9-v6 - GAP #18: The following broadcast handlers are prefixed with underscore
+// as they are currently unused (BC was removed). Kept for potential future use.
+// - _handleBroadcastCreate()
+// - _handleBroadcastUpdate()
+// - _handleBroadcastDelete()
+// - _handleBroadcastMinimizeRestore()
 
 /**
  * Handle quick-tab-created broadcast
  * v1.6.3.7-v3 - API #2: Add new Quick Tab to state
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * v1.6.4.18 - Refactored to use shared helper to reduce code duplication
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @param {Object} message - Broadcast message with data
  * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastCreate(message, messageId) {
+function _handleBroadcastCreate(message, messageId) {
   const { quickTabId, data } = message;
 
   if (!quickTabId || !data) {
@@ -3533,10 +3545,11 @@ function handleBroadcastCreate(message, messageId) {
  * v1.6.3.7-v3 - API #2: Update existing Quick Tab
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @param {Object} message - Broadcast message with changes
  * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastUpdate(message, messageId) {
+function _handleBroadcastUpdate(message, messageId) {
   const { quickTabId, changes } = message;
 
   if (!quickTabId || !changes) {
@@ -3563,10 +3576,11 @@ function handleBroadcastUpdate(message, messageId) {
  * v1.6.3.7-v3 - API #2: Remove Quick Tab from state
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
  * v1.6.4.18 - Refactored to use shared helpers to reduce code duplication
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @param {Object} message - Broadcast message
  * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastDelete(message, messageId) {
+function _handleBroadcastDelete(message, messageId) {
   const { quickTabId } = message;
 
   if (!quickTabId) {
@@ -3613,10 +3627,11 @@ function _updateStateAfterMutation() {
  * Handle quick-tab-minimized and quick-tab-restored broadcasts
  * v1.6.3.7-v3 - API #2: Update minimized state
  * v1.6.3.7-v4 - FIX Issue #4: Pass messageId for deduplication
+ * v1.6.3.9-v6 - GAP #18: Prefixed with underscore as currently unused
  * @param {Object} message - Broadcast message
  * @param {string} messageId - Message ID for deduplication
  */
-function handleBroadcastMinimizeRestore(message, messageId) {
+function _handleBroadcastMinimizeRestore(message, messageId) {
   const { quickTabId, changes } = message;
 
   if (!quickTabId) {
@@ -3887,6 +3902,7 @@ function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
 /**
  * Route runtime message to appropriate handler
  * v1.6.3.9-v4 - Phase 5: Extracted to reduce _processRuntimeMessage complexity
+ * v1.6.3.9-v6 - GAP #16: Unified message routing with switch-based pattern
  * @private
  * @param {Object} message - Incoming message
  * @param {Function} sendResponse - Response callback
@@ -3894,22 +3910,87 @@ function _logRuntimeMessageReceived(message, correlationId, messageEntryTime) {
  * @returns {boolean} True if message was handled
  */
 function _routeRuntimeMessage(message, sendResponse, correlationId) {
-  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    _handleRuntimeStateUpdated(message, sendResponse, correlationId);
-    return true;
+  // v1.6.3.9-v6 - GAP #16: Unified routing - check both type and action fields
+  const action = message.type || message.action;
+  
+  switch (action) {
+    case 'QUICK_TAB_STATE_UPDATED':
+      _handleRuntimeStateUpdated(message, sendResponse, correlationId);
+      return true;
+      
+    case 'QUICK_TAB_DELETED':
+      _handleRuntimeDeleted(message, sendResponse, correlationId);
+      return true;
+      
+    case 'QUICK_TAB_OPERATION_ACK':
+      _handleOperationAck(message, sendResponse, correlationId);
+      return true;
+      
+    // v1.6.3.9-v6 - GAP #16: Additional message types for unified routing
+    case 'STATE_UPDATE':
+    case 'QT_STATE_SYNC':
+      _handleSidebarStateSync(message, sendResponse, correlationId);
+      return true;
+      
+    case 'STATE_REFRESH_REQUESTED':
+      _handleSidebarStateRefresh(message, sendResponse, correlationId);
+      return true;
+      
+    default:
+      // v1.6.3.9-v6 - GAP #16: Log unknown messages for debugging
+      console.debug('[Manager] UNKNOWN_MESSAGE: action=' + action, {
+        correlationId,
+        hasType: !!message.type,
+        hasAction: !!message.action,
+        timestamp: Date.now()
+      });
+      return false;
   }
+}
 
-  if (message.type === 'QUICK_TAB_DELETED') {
-    _handleRuntimeDeleted(message, sendResponse, correlationId);
-    return true;
-  }
+/**
+ * Handle STATE_UPDATE / QT_STATE_SYNC messages from background
+ * v1.6.3.9-v6 - GAP #16: Unified state sync handler
+ * @private
+ * @param {Object} message - State sync message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleSidebarStateSync(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] STATE_SYNC_RECEIVED:', {
+    quickTabId: message.quickTabId,
+    tabCount: message.tabs?.length ?? message.state?.tabs?.length ?? 'N/A',
+    correlationId,
+    path: 'runtime-onMessage',
+    timestamp: Date.now()
+  });
+  
+  // Trigger a state refresh from storage
+  scheduleRender('runtime-state-sync', message.revision);
+  sendResponse({ received: true, correlationId });
+}
 
-  if (message.action === 'QUICK_TAB_OPERATION_ACK') {
-    _handleOperationAck(message, sendResponse, correlationId);
-    return true;
-  }
-
-  return false;
+/**
+ * Handle STATE_REFRESH_REQUESTED messages from background
+ * v1.6.3.9-v6 - GAP #16: Handle refresh requests
+ * @private
+ * @param {Object} message - Refresh request message
+ * @param {Function} sendResponse - Response callback
+ * @param {string} correlationId - Correlation ID
+ */
+function _handleSidebarStateRefresh(message, sendResponse, correlationId) {
+  console.log('[Manager] [RUNTIME] REFRESH_REQUESTED:', {
+    reason: message.reason || 'unspecified',
+    correlationId,
+    path: 'runtime-onMessage',
+    timestamp: Date.now()
+  });
+  
+  // Request fresh state from storage
+  loadQuickTabsState().then(() => {
+    scheduleRender('runtime-refresh-requested');
+  });
+  sendResponse({ received: true, correlationId });
 }
 
 /**
@@ -4803,7 +4884,8 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-  _initializeManager();
+  // v1.6.3.9-v6 - GAP #18: Await async function to avoid require-await warning
+  await _initializeManager();
 });
 
 /**
@@ -4815,32 +4897,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function _initializeManager() {
   // v1.6.3.8-v4 - FIX Issue #5: Create initialization barrier FIRST
   _initializeBarrier();
-  currentInitPhase = 'flags';
+  _currentInitPhase = 'flags';
 
   _initializeFlags();
   _cacheDOMElements();
   _initializeSessionId();
 
   // v1.6.3.8-v4 - FIX Issue #1: Sequential initialization - port must connect first
-  currentInitPhase = 'tab-id';
+  _currentInitPhase = 'tab-id';
   await _initializeCurrentTabId();
 
   // v1.6.3.8-v4 - FIX Issue #1: Establish port connection before anything else
-  currentInitPhase = 'port-connection';
+  _currentInitPhase = 'port-connection';
   _initializeConnections();
 
   // v1.6.3.8-v4 - FIX Issue #6: Query background for state via port BEFORE storage read
-  currentInitPhase = 'hydration';
+  _currentInitPhase = 'hydration';
   await _hydrateStateFromBackground();
 
   // v1.6.3.8-v4 - FIX Issue #1: Storage listener must be verified before state load
-  currentInitPhase = 'storage-listener';
+  _currentInitPhase = 'storage-listener';
   await _initializeState();
 
-  currentInitPhase = 'listeners';
+  _currentInitPhase = 'listeners';
   await _setupListeners();
 
-  currentInitPhase = 'periodic-tasks';
+  _currentInitPhase = 'periodic-tasks';
   _startPeriodicTasks();
 
   // v1.6.3.8-v4 - FIX Issue #3: Setup visibility change listener
@@ -5055,7 +5137,8 @@ function _initializeConnections() {
  */
 async function _initializeState() {
   await loadContainerInfo();
-  stateLoadStartTime = Date.now();
+  // v1.6.3.9-v6 - GAP #18: Use renamed variable
+  _stateLoadStartTime = Date.now();
 
   await loadQuickTabsState();
   const tabCount = quickTabsState?.tabs?.length ?? 0;
