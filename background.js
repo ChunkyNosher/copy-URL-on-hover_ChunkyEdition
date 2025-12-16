@@ -102,6 +102,8 @@ const quickTabStates = new Map();
 // v1.5.8.13 - Enhanced with eager loading for Issue #35 and #51
 // v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md: Added lastModified field
 const globalQuickTabState = {
+  // v1.6.3.9-v6 - GAP 4: Schema version field per spec
+  version: 2,
   // v1.6.2.2 - Unified format: single tabs array for global visibility
   tabs: [],
   // v1.6.3.9-v4 - lastModified (per spec), aliased as lastUpdate for backwards compatibility
@@ -486,17 +488,8 @@ const RECOVERY_BACKOFF_BASE_MS = 500;
 const MAX_STATE_CHANGE_AGE_MS = 300000;
 
 // ==================== v1.6.3.8-v8 PORT DIAGNOSTIC DATA ROTATION (Issue #20) ====================
-/**
- * Maximum messageCount tracked before capping
- * v1.6.3.8-v8 - Issue #20: Cap messageCount to prevent unbounded growth
- */
-const MAX_MESSAGE_COUNT_TRACKED = 999999;
-
-/**
- * Idle duration before clearing port diagnostic data (24 hours)
- * v1.6.3.8-v8 - Issue #20: Clear old diagnostic data for idle ports
- */
-const PORT_IDLE_CLEANUP_MS = 86400000;
+// v1.6.3.9-v6 - GAP 1: Removed MAX_MESSAGE_COUNT_TRACKED and PORT_IDLE_CLEANUP_MS
+// These constants were part of port infrastructure which has been removed (v1.6.3.8-v12)
 
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
@@ -1201,12 +1194,8 @@ async function _handleKeepaliveAlarm() {
     // Perform a lightweight API call to ensure activity is registered
     await browser.tabs.query({ active: true, currentWindow: true });
 
-    // v1.6.3.8-v5 - FIX Issue #6: Only send sidebar pings after initialization
-    // Sending pings before init could reference uninitialized state
-    if (isInitialized) {
-      // v1.6.3.8 - Issue #2 (arch): Send proactive ALIVE ping to all connected sidebars
-      _sendAlivePingToSidebars();
-    }
+    // v1.6.3.9-v6 - GAP 1: Port infrastructure removed - no sidebar pings needed
+    // Sidebar now uses runtime.sendMessage and storage.onChanged for communication
 
     // Update keepalive health stats (success via alarm)
     const now = Date.now();
@@ -1231,32 +1220,9 @@ async function _handleKeepaliveAlarm() {
   }
 }
 
-/**
- * Send alive ping to a single sidebar
- * v1.6.3.8-v12 - Port infrastructure removed, this is now a no-op
- * @private
- * @param {string} _portId - Port ID (unused)
- * @param {Object} _portInfo - Port info (unused)
- * @param {Object} _alivePing - Ping message (unused)
- */
-function _sendAlivePingToPort(_portId, _portInfo, _alivePing) {
-  // v1.6.3.8-v12 - Port infrastructure removed, no-op
-}
-
-/**
- * Send proactive ALIVE ping to sidebar
- * v1.6.3.8-v12 - Port infrastructure removed, this is now a no-op
- * Sidebar communicates via runtime.sendMessage and storage.onChanged
- * @private
- */
-function _sendAlivePingToSidebars() {
-  // v1.6.3.8-v12 - Port infrastructure removed
-  // Sidebar now uses runtime.sendMessage and storage.onChanged for communication
-  // This function is kept as a no-op for keepalive alarm compatibility
-  if (DEBUG_DIAGNOSTICS) {
-    console.log('[Background] v1.6.3.8-v12 ALIVE_PING skipped (port infrastructure removed)');
-  }
-}
+// v1.6.3.9-v6 - GAP 1: Removed _sendAlivePingToPort and _sendAlivePingToSidebars
+// Port infrastructure was removed in v1.6.3.8-v12. These no-op functions are now deleted.
+// Sidebar communicates via runtime.sendMessage and storage.onChanged.
 
 /**
  * Cleanup orphaned Quick Tabs whose origin tabs no longer exist.
@@ -7068,8 +7034,9 @@ async function _sendStateUpdateViaPorts(quickTabId, changes, operation, correlat
 /**
  * Handle legacy action messages
  * v1.6.3.8-v12 - Simplified legacy action handler
+ * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
  */
-function handleLegacyAction(message, _portInfo) {
+function _handleLegacyAction(message, _portInfo) {
   if (message.action === 'MANAGER_COMMAND') {
     return handleManagerCommand(message);
   }
@@ -7126,8 +7093,9 @@ const STORAGE_WRITE_BACKOFF_INITIAL_MS = 100;
  * @param {Object} message - Sync request message
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} State sync response
+ * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
  */
-async function handleFullStateSyncRequest(message, portInfo) {
+async function _handleFullStateSyncRequest(message, portInfo) {
   const { currentCacheHash, currentCacheTabCount, timestamp } = message;
   const now = Date.now();
   const latencyMs = now - (timestamp || now);
@@ -7209,9 +7177,10 @@ function _processClosedTabCleanup(closedIds, saveId) {
  * Handle CLOSE_MINIMIZED_TABS command
  * v1.6.4.0 - FIX Issue A: Background as sole storage writer
  * v1.6.4.14 - FIX Complexity: Extracted helpers (cc=9 → cc=5)
+ * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
  * @returns {Promise<Object>} Command result
  */
-async function handleCloseMinimizedTabsCommand() {
+async function _handleCloseMinimizedTabsCommand() {
   console.log('[Background] Handling CLOSE_MINIMIZED_TABS command');
 
   // Check initialization
@@ -8851,9 +8820,10 @@ function isNotificationsAvailable() {
 /**
  * Notify when Quick Tab is created
  * v1.6.3.7-v3 - API #6: User feedback for creation
+ * v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
  * @param {Object} quickTab - Quick Tab data { id, title, url }
  */
-async function notifyQuickTabCreated(quickTab) {
+async function _notifyQuickTabCreated(quickTab) {
   if (!isNotificationsAvailable()) {
     return null;
   }
@@ -8935,7 +8905,8 @@ async function _createNotification({
   }
 }
 
-async function notifyStorageWarning(message) {
+// v1.6.3.9-v6 - Prefixed with _ (unused but kept for potential future use)
+async function _notifyStorageWarning(message) {
   return _createNotification({
     idPrefix: 'qt-storage-warning',
     title: 'Quick Tabs Storage Issue',

@@ -1,0 +1,8 @@
+{
+  "id": "712f4b45-a001-4710-a771-ca6949a3406f",
+  "title": "v1.6.3.9-v6 background.js cleanup",
+  "details": "In v1.6.3.9-v6, the following cleanup was performed in background.js:\n\n1. GAP 1 - Port infrastructure cleanup:\n   - Removed no-op functions: `_sendAlivePingToPort`, `_sendAlivePingToSidebars`\n   - Removed unused constants: `MAX_MESSAGE_COUNT_TRACKED`, `PORT_IDLE_CLEANUP_MS`\n   - Removed call to `_sendAlivePingToSidebars()` in keepalive alarm handler\n   - Port infrastructure was removed in v1.6.3.8-v12\n\n2. GAP 2 - MessageRouter verification:\n   - MessageRouter is properly integrated via `chrome.runtime.onMessage.addListener(messageRouter.createListener())`\n   - Dual architecture confirmed: MessageRouter (ACTION-based) + browser.runtime.onMessage (TYPE-based)\n   \n3. GAP 4 - State schema version:\n   - Added `version: 2` field to `globalQuickTabState`\n\n4. Lint fixes (prefixed with underscore):\n   - `handleLegacyAction` → `_handleLegacyAction`\n   - `handleFullStateSyncRequest` → `_handleFullStateSyncRequest`\n   - `handleCloseMinimizedTabsCommand` → `_handleCloseMinimizedTabsCommand`\n   - `notifyQuickTabCreated` → `_notifyQuickTabCreated`\n   - `notifyStorageWarning` → `_notifyStorageWarning`",
+  "category": "general",
+  "dateCreated": "2025-12-16T17:52:46.876Z",
+  "dateUpdated": "2025-12-16T17:52:46.876Z"
+}
