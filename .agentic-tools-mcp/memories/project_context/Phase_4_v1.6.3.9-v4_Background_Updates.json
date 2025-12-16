@@ -1,0 +1,8 @@
+{
+  "id": "70494991-18ce-40d0-b98e-8072454d36d7",
+  "title": "Phase 4 v1.6.3.9-v4 Background Updates",
+  "details": "Phase 4 of Quick Tabs Architecture Rework (v1.6.3.9-v4) implemented these changes in background.js:\n\n1. **_computeStateChecksum(tabs)** - Computes checksum in format `v1:{count}:{hash}`\n2. **_persistToStorage()** - Simplified persistence with checksum validation and sync backup\n3. **_generateQuickTabId()** - Generates IDs in format `qt-{timestamp}-{randomId}`\n4. **_triggerCorruptionRecovery()** - Async wrapper for corruption recovery\n5. **globalQuickTabState** - Added `lastModified` and `isInitialized` fields\n6. **cleanupOrphanedQuickTabs()** - Now removes orphans and uses _persistToStorage()\n\nKey patterns:\n- Checksum is computed from sorted tab signatures\n- Write validation compares checksum after read-back\n- Non-blocking backup to storage.sync\n- Corruption triggers handleStorageCorruption() async",
+  "category": "project_context",
+  "dateCreated": "2025-12-16T03:15:57.233Z",
+  "dateUpdated": "2025-12-16T03:15:57.233Z"
+}

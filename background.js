@@ -100,15 +100,20 @@ const quickTabStates = new Map();
 // v1.6.2.2 - ISSUE #35/#51 FIX: Unified format (no container separation)
 // This provides instant cross-origin sync (< 50ms latency)
 // v1.5.8.13 - Enhanced with eager loading for Issue #35 and #51
+// v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md: Added lastModified field
 const globalQuickTabState = {
   // v1.6.2.2 - Unified format: single tabs array for global visibility
   tabs: [],
-  lastUpdate: 0,
+  // v1.6.3.9-v4 - lastModified (per spec), aliased as lastUpdate for backwards compatibility
+  lastModified: 0,
+  lastUpdate: 0, // Deprecated alias - use lastModified
   // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
-  saveId: null
+  saveId: null,
+  // v1.6.3.9-v4 - Per spec: Track initialization status in state object
+  isInitialized: false
 };
 
-// Flag to track initialization status
+// Flag to track initialization status (external reference for backwards compatibility)
 let isInitialized = false;
 
 // v1.6.3.7-v10 - FIX Issue #11: Track initialization start time for listener entry logging
@@ -176,6 +181,209 @@ function _getNextRevision() {
  */
 function _getCurrentRevision() {
   return _globalRevisionCounter;
+}
+
+// ==================== v1.6.3.9-v4 STATE CHECKSUM & PERSISTENCE ====================
+// Per ROBUST-QUICKTABS-ARCHITECTURE.md: Simplified state management with checksum validation
+
+/**
+ * Compute a deterministic checksum for Quick Tab state.
+ *
+ * v1.6.3.9-v4 - Per state-data-structure-spec.md: Checksum for corruption detection
+ *
+ * Format: v{version}:{tabCount}:{hash}
+ * - version: Checksum algorithm version (v1)
+ * - tabCount: Number of tabs (quick sanity check)
+ * - hash: 8-character hex hash of all tab signatures
+ *
+ * @param {Array} tabs - Array of Quick Tab objects
+ * @returns {string} Checksum string in format 'v1:{count}:{hash}'
+ */
+function _computeStateChecksum(tabs) {
+  if (!Array.isArray(tabs) || tabs.length === 0) {
+    return 'v1:0:00000000';
+  }
+
+  // Create deterministic signature of state
+  // Sort to ensure consistent ordering regardless of array order
+  const signatures = tabs
+    .map(_tabToSignature)
+    .sort()
+    .join('||');
+
+  // Simple hash (not cryptographic, just collision detection)
+  let hash = 0;
+  for (let i = 0; i < signatures.length; i++) {
+    const char = signatures.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+
+  return `v1:${tabs.length}:${Math.abs(hash).toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * Get a numeric property from tab with fallbacks.
+ * v1.6.3.9-v4 - Helper to reduce _tabToSignature complexity
+ * @param {Object} t - Quick Tab object
+ * @param {string} primary - Primary property name
+ * @param {string} secondary - Secondary property path (e.g., 'position')
+ * @param {string} nested - Nested property name under secondary
+ * @param {number} defaultVal - Default value if not found
+ * @returns {number} Property value
+ */
+function _getTabProp(t, primary, secondary, nested, defaultVal) {
+  if (t[primary] != null) return t[primary];
+  if (t[secondary]?.[nested] != null) return t[secondary][nested];
+  return defaultVal;
+}
+
+/**
+ * Convert a Quick Tab object to a signature string for checksum.
+ * v1.6.3.9-v4 - Extracted to reduce _computeStateChecksum complexity
+ * @param {Object} t - Quick Tab object
+ * @returns {string} Signature string
+ */
+function _tabToSignature(t) {
+  const left = _getTabProp(t, 'left', 'position', 'left', 0);
+  const top = _getTabProp(t, 'top', 'position', 'top', 0);
+  const width = _getTabProp(t, 'width', 'size', 'width', 800);
+  const height = _getTabProp(t, 'height', 'size', 'height', 600);
+  const minimized = t.minimized ? 1 : 0;
+  return `${t.id}|${left}|${top}|${width}|${height}|${minimized}`;
+}
+
+/**
+ * Simplified storage persistence function.
+ *
+ * v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md Section 1: Background Script
+ *
+ * This function:
+ * 1. Writes state to primary storage (storage.local)
+ * 2. Writes backup to storage.sync (non-blocking)
+ * 3. Validates write via read-back checksum comparison
+ * 4. Triggers corruption recovery if validation fails
+ *
+ * @returns {Promise<boolean>} True if write succeeded and validated
+ */
+async function _persistToStorage() {
+  const STORAGE_KEY = 'quick_tabs_state_v2';
+
+  // Increment counters BEFORE write (per spec)
+  storageWriteSequenceId++;
+  _globalRevisionCounter++;
+
+  const stateToWrite = {
+    tabs: globalQuickTabState.tabs,
+    lastModified: Date.now(),
+    writeSequence: storageWriteSequenceId,
+    revision: _globalRevisionCounter,
+    checksum: _computeStateChecksum(globalQuickTabState.tabs),
+    // Preserve existing saveId format for backwards compatibility
+    saveId: `persist-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+    timestamp: Date.now()
+  };
+
+  console.log('[Background] _persistToStorage: Writing state', {
+    tabCount: stateToWrite.tabs.length,
+    revision: stateToWrite.revision,
+    writeSequence: stateToWrite.writeSequence,
+    checksum: stateToWrite.checksum
+  });
+
+  try {
+    // Write to primary storage
+    await browser.storage.local.set({
+      [STORAGE_KEY]: stateToWrite
+    });
+
+    // Write to backup (non-blocking)
+    if (ENABLE_SYNC_STORAGE_BACKUP) {
+      browser.storage.sync.set({
+        [SYNC_BACKUP_KEY]: {
+          tabs: stateToWrite.tabs,
+          lastModified: stateToWrite.lastModified,
+          checksum: stateToWrite.checksum
+        }
+      }).catch(err => {
+        console.warn('[Background] Sync backup failed:', err.message || err);
+      });
+    }
+
+    // Validate write-back
+    const readBack = await browser.storage.local.get(STORAGE_KEY);
+    if (!readBack[STORAGE_KEY] ||
+        readBack[STORAGE_KEY].checksum !== stateToWrite.checksum) {
+      console.error('[Background] WRITE VALIDATION FAILED - checksum mismatch', {
+        expected: stateToWrite.checksum,
+        actual: readBack[STORAGE_KEY]?.checksum
+      });
+      _triggerCorruptionRecovery();
+      return false;
+    }
+
+    // Update global state tracking
+    globalQuickTabState.lastUpdate = stateToWrite.lastModified;
+    globalQuickTabState.saveId = stateToWrite.saveId;
+
+    console.log('[Background] _persistToStorage: SUCCESS', {
+      tabCount: stateToWrite.tabs.length,
+      revision: stateToWrite.revision,
+      checksum: stateToWrite.checksum
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[Background] Storage write error:', err.message || err);
+    return false;
+  }
+}
+
+/**
+ * Generate a unique Quick Tab ID.
+ *
+ * v1.6.3.9-v4 - Per state-data-structure-spec.md: ID Generation
+ *
+ * Format: qt-{timestamp}-{randomId}
+ * - qt-: Prefix (always 'qt-')
+ * - timestamp: 13-digit millisecond timestamp
+ * - randomId: 6 random alphanumeric characters
+ *
+ * @returns {string} Unique Quick Tab ID
+ */
+function _generateQuickTabId() {
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(2, 8);
+  return `qt-${timestamp}-${randomId}`;
+}
+
+/**
+ * Trigger corruption recovery process.
+ *
+ * v1.6.3.9-v4 - Simplified wrapper for corruption recovery
+ *
+ * This is called when write validation fails (checksum mismatch).
+ * It logs the issue and triggers async recovery if available.
+ */
+function _triggerCorruptionRecovery() {
+  const operationId = _generateStorageOperationId();
+
+  console.error('[Background] _triggerCorruptionRecovery: Corruption detected', {
+    operationId,
+    tabCount: globalQuickTabState.tabs.length,
+    timestamp: Date.now()
+  });
+
+  // Delegate to the existing handleStorageCorruption if available
+  // This is a non-blocking call to avoid blocking the write path
+  setTimeout(() => {
+    handleStorageCorruption(operationId, {
+      tabs: globalQuickTabState.tabs,
+      timestamp: Date.now()
+    }).catch(err => {
+      console.error('[Background] Corruption recovery failed:', err.message || err);
+    });
+  }, 0);
 }
 
 // v1.6.3.4-v11 - FIX Issue #1, #8: Track last non-empty state timestamp to prevent clearing during transactions
@@ -1053,11 +1261,13 @@ function _sendAlivePingToSidebars() {
 }
 
 /**
- * Cleanup orphaned Quick Tabs whose origin tabs no longer exist
- * v1.6.3.7-v3 - API #4: Hourly orphan cleanup
+ * Cleanup orphaned Quick Tabs whose origin tabs no longer exist.
+ *
+ * v1.6.3.7-v3 - API #4: Hourly orphan cleanup via browser.alarms
+ * v1.6.3.9-v4 - Per ROBUST-QUICKTABS-ARCHITECTURE.md: Remove orphans and use _persistToStorage
  */
 async function cleanupOrphanedQuickTabs() {
-  console.log('[Background] Running orphaned Quick Tab cleanup...');
+  console.info('[Background] ORPHAN_CLEANUP_START tabCount=' + globalQuickTabState.tabs.length);
 
   const initGuard = checkInitializationGuard('cleanupOrphanedQuickTabs');
   if (!initGuard.initialized) {
@@ -1067,55 +1277,35 @@ async function cleanupOrphanedQuickTabs() {
 
   try {
     // Get all open browser tabs
-    const openTabs = await browser.tabs.query({});
-    const openTabIds = new Set(openTabs.map(t => t.id));
+    const allTabs = await browser.tabs.query({});
+    const validTabIds = new Set(allTabs.map(t => t.id));
 
     // Find orphaned Quick Tabs (their origin tab no longer exists)
-    const orphanedTabs = globalQuickTabState.tabs.filter(qt => {
-      const originTabId = qt.originTabId;
-      // Quick Tab is orphaned if it has an originTabId that is no longer open
-      return originTabId != null && !openTabIds.has(originTabId);
-    });
+    const orphaned = globalQuickTabState.tabs.filter(qt => !validTabIds.has(qt.originTabId));
 
-    if (orphanedTabs.length === 0) {
+    if (orphaned.length === 0) {
       console.log('[Background] No orphaned Quick Tabs found');
       return;
     }
 
     console.log(
       '[Background] Found',
-      orphanedTabs.length,
+      orphaned.length,
       'orphaned Quick Tabs:',
-      orphanedTabs.map(t => ({ id: t.id, originTabId: t.originTabId }))
+      orphaned.map(t => ({ id: t.id, originTabId: t.originTabId }))
     );
 
-    // Mark as orphaned in state instead of deleting (for user review in Manager)
-    for (const orphan of orphanedTabs) {
-      orphan.orphaned = true;
-    }
+    // v1.6.3.9-v4 - Remove orphans from state (per spec - was marking before)
+    globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => validTabIds.has(qt.originTabId));
+    globalQuickTabState.lastModified = Date.now();
+    globalQuickTabState.lastUpdate = Date.now(); // Backwards compatibility
 
-    // Update global state
-    globalQuickTabState.lastUpdate = Date.now();
+    // Persist using new simplified function
+    await _persistToStorage();
 
-    // Save to storage
-    // v1.6.3.7-v9 - FIX Issue #6: Add sequenceId for event ordering
-    // v1.6.3.8-v5 - FIX Issue #1: Add revision for monotonic versioning
-    const saveId = `cleanup-${Date.now()}`;
-    const sequenceId = _getNextStorageSequenceId();
-    const revision = _getNextRevision();
-    await browser.storage.local.set({
-      quick_tabs_state_v2: {
-        tabs: globalQuickTabState.tabs,
-        saveId,
-        sequenceId,
-        revision,
-        timestamp: Date.now()
-      }
-    });
-
-    console.log('[Background] Marked', orphanedTabs.length, 'Quick Tabs as orphaned');
+    console.info('[Background] ORPHAN_CLEANUP_COMPLETE removed=' + orphaned.length);
   } catch (err) {
-    console.error('[Background] Orphan cleanup failed:', err.message);
+    console.error('[Background] ORPHAN_CLEANUP_ERROR error=' + err.message);
   }
 }
 
