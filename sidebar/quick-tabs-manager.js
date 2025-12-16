@@ -806,36 +806,13 @@ let lastAppliedSequenceId = 0;
  */
 let _lastAppliedRevision = 0;
 
-/**
- * Event buffer for out-of-order handling
- * v1.6.3.8-v5 - FIX Issue #1: Buffer events keyed by revision when they arrive out of order
- * Structure: Map<revision, { data, timestamp }>
- */
-const _revisionEventBuffer = new Map();
-
-/**
- * Maximum age for buffered events (5 seconds)
- * v1.6.3.8-v5 - FIX Issue #1: Events older than this are discarded
- */
-const REVISION_BUFFER_MAX_AGE_MS = 5000;
-
-/**
- * Maximum buffer size before cleanup
- * v1.6.3.8-v5 - FIX Issue #1: Prevent memory bloat from stuck events
- */
-const REVISION_BUFFER_MAX_SIZE = 50;
-
-/**
- * Interval for buffer cleanup (10 seconds)
- * v1.6.3.8-v5 - FIX Issue #1: Periodic cleanup of stale buffered events
- */
-const REVISION_BUFFER_CLEANUP_INTERVAL_MS = 10000;
-
-/**
- * Timer ID for revision buffer cleanup
- * v1.6.3.8-v5 - FIX Issue #1: Track cleanup interval
- */
-let _revisionBufferCleanupTimerId = null;
+// v1.6.3.9-v4 - REMOVED: Revision buffer variables:
+// - _revisionEventBuffer Map (event buffering for out-of-order handling)
+// - REVISION_BUFFER_MAX_AGE_MS (5000ms max age)
+// - REVISION_BUFFER_MAX_SIZE (50 max buffer size)
+// - REVISION_BUFFER_CLEANUP_INTERVAL_MS (10000ms cleanup interval)
+// - _revisionBufferCleanupTimerId
+// (Complex buffering removed - simplified to just reject stale/accept gaps)
 
 /**
  * Watchdog timer ID for storage.onChanged verification
@@ -1461,88 +1438,12 @@ let debounceSetTimestamp = 0;
  */
 const pendingAcks = new Map();
 
-// v1.6.3.8-v13 - PORT REMOVED: Listener ready functions are no-ops
-
-/** @deprecated v1.6.3.8-v13 - Port removed */
-const listenerReadyPromise = Promise.resolve();
-/** @deprecated v1.6.3.8-v13 - Port removed */
-const _listenerReadyResolve = null;
-/** @deprecated v1.6.3.8-v13 - Port removed */
-const _listenerReadyReject = null;
-/** @deprecated v1.6.3.8-v13 - Port removed */
-const listenerFullyRegistered = true;
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _initListenerReadyPromise() {
-  // No-op - port removed
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _markListenerReady() {
-  // No-op - port removed
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _resetListenerReadyState() {
-  // No-op - port removed
-}
-
-// ==================== v1.6.3.7-v8 RECONNECTION GUARD ====================
-// FIX Issue #10: Prevent concurrent reconnection attempts
-/**
- * Atomic guard for reconnection - prevents multiple simultaneous attempts
- * v1.6.3.7-v8 - FIX Issue #10: Race condition prevention
- */
-const isReconnecting = false;
-
-// ==================== v1.6.3.7-v8 HEARTBEAT HYSTERESIS ====================
-// FIX Issue #13: Require consecutive failures before ZOMBIE
-/**
- * Number of consecutive heartbeat failures required before ZOMBIE transition
- * v1.6.3.7-v8 - FIX Issue #13: Hysteresis for heartbeat failure detection
- */
-const HEARTBEAT_FAILURES_BEFORE_ZOMBIE = 3;
-
-/**
- * Counter for consecutive heartbeat timeouts (separate from general failures)
- * v1.6.3.7-v8 - FIX Issue #13: Track timeout-specific failures for hysteresis
- */
-const consecutiveHeartbeatTimeouts = 0;
-
-// ==================== v1.6.3.7-v8 BACKGROUND ACTIVITY DETECTION ====================
-// FIX Issue #14: Detect Firefox background script termination
-/**
- * Interval for background activity check (10 seconds)
- * v1.6.3.7-v8 - FIX Issue #14: Detect idle background before Firefox terminates it
- */
-const BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS = 10000;
-
-/**
- * Warning threshold for stale background state (30 seconds)
- * v1.6.3.7-v8 - FIX Issue #14: Firefox terminates at 30s idle
- */
-const BACKGROUND_STALE_WARNING_THRESHOLD_MS = 30000;
-
-/**
- * Timestamp of last message received from background via port
- * v1.6.3.7-v8 - FIX Issue #14: Track background activity
- */
-const lastBackgroundMessageTime = Date.now();
-
-/**
- * Timer ID for background activity check
- * v1.6.3.7-v8 - FIX Issue #14: Periodic health check
- */
-const backgroundActivityCheckTimerId = null;
+// v1.6.3.9-v4 - PORT REMOVED: All port-related listener code removed:
+// - listenerReadyPromise, _listenerReadyResolve, _listenerReadyReject, listenerFullyRegistered
+// - _initListenerReadyPromise(), _markListenerReady(), _resetListenerReadyState()
+// - isReconnecting, HEARTBEAT_FAILURES_BEFORE_ZOMBIE, consecutiveHeartbeatTimeouts
+// - BACKGROUND_ACTIVITY_CHECK_INTERVAL_MS, BACKGROUND_STALE_WARNING_THRESHOLD_MS
+// - lastBackgroundMessageTime, backgroundActivityCheckTimerId
 
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention
@@ -1729,137 +1630,21 @@ function _logDisconnectedFallback() {
   );
 }
 
-/**
- * Connect to background script
- * v1.6.3.8-v13 - PORT REMOVED: No-op, using stateless runtime.sendMessage instead
- * @deprecated Port connection removed - using storage.onChanged + runtime.sendMessage
- */
-function connectToBackground() {
-  // v1.6.3.8-v13 - Port removed: No-op stub for backwards compatibility
-  console.log('[Manager] v1.6.3.8-v13 PORT_REMOVED: connectToBackground is now no-op');
-  console.log('[Manager] Using storage.onChanged (PRIMARY) + runtime.sendMessage (SECONDARY)');
-  connectionState = CONNECTION_STATE.CONNECTED;
-}
-
-// v1.6.3.8-v13 - PORT REMOVED: All port helper functions below are no-ops
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _canAttemptConnection() {
-  return false; // No port connection needed
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _prepareForReconnection() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _establishPortConnection() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _setupPortListeners() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _handlePortDisconnect() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _finalizeConnection() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _handlePortConnectionError(_err) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _verifyPortListenerRegistration() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _cleanupOldPortListener() {
-  // No-op
-}
-
-/**
- * Schedule reconnection - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED: No reconnection needed
- * @deprecated Port removed - using stateless messaging
- */
-function scheduleReconnect() {
-  // No-op - port removed
-}
-
-/**
- * Handle connection failure - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED
- * @deprecated Port removed
- */
-function handleConnectionFailure() {
-  // No-op - port removed
-}
-
-/**
- * Trip circuit breaker - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED: Circuit breaker not needed
- * @deprecated Port removed
- */
-function tripCircuitBreaker() {
-  // No-op - port removed
-}
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _startCircuitBreakerProbes() {
-  // No-op - port removed
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _stopCircuitBreakerProbes() {
-  // No-op - port removed
-}
+// v1.6.3.9-v4 - PORT REMOVED: Connection management, circuit breaker, and heartbeat functions removed:
+// - connectToBackground() - was no-op since v13
+// - _canAttemptConnection(), _prepareForReconnection(), _establishPortConnection()
+// - _setupPortListeners(), _handlePortDisconnect(), _finalizeConnection()
+// - _handlePortConnectionError(), _verifyPortListenerRegistration(), _cleanupOldPortListener()
+// - scheduleReconnect(), handleConnectionFailure(), tripCircuitBreaker()
+// - _startCircuitBreakerProbes(), _stopCircuitBreakerProbes()
+// - _handlePortMessageWithQueue(), waitForListenerReady(), _flushPortMessageQueue()
+// - All message queue helpers (_extractQueuedMessages, _validateAndSortQueuedMessages, etc.)
+// - _startBackgroundActivityCheck(), _stopBackgroundActivityCheck()
+// - startHeartbeat(), stopHeartbeat(), sendHeartbeat() and all heartbeat helpers
 
 /**
  * Probe background health with a lightweight ping
- * v1.6.3.8-v13 - Kept for health checks using runtime.sendMessage
+ * v1.6.3.9-v4 - Kept for health checks using runtime.sendMessage
  * @private
  * @returns {Promise<boolean>} True if background is healthy
  */
@@ -1875,268 +1660,8 @@ async function _probeBackgroundHealth() {
   }
 }
 
-// ==================== v1.6.3.8-v13 PORT MESSAGE HANDLING (SIMPLIFIED) ====================
-// v1.6.3.8-v13 - Port removed: Message queue no longer needed
-
-/**
- * Handle port message - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED: All message handling via storage.onChanged
- * @deprecated Port removed
- * @private
- */
-function _handlePortMessageWithQueue(_message) {
-  // No-op - port removed, using storage.onChanged instead
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- */
-async function waitForListenerReady(_timeoutMs = 5000) {
-  // No-op - always ready with stateless messaging
-  return Promise.resolve();
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _flushPortMessageQueue() {
-  // No-op - port removed
-}
-
-// v1.6.3.8-v13 - PORT REMOVED: All queue-related helper functions below are no-ops
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _extractQueuedMessages() {
-  return [];
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _validateAndSortQueuedMessages(_messages) {
-  return [];
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _partitionMessagesBySequence(_messages) {
-  return { sequencedMessages: [], unsequencedMessages: [] };
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _validateSequenceOrdering(_sequencedMessages) {
-  return { reorderDetected: false, gapsDetected: 0 };
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _checkSequenceIssue(_seq, _lastSeq, _msg) {
-  return { reorder: false, gap: false };
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _updateLastReceivedSequence(_sequencedMessages) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _logValidationSummaryIfNeeded(_messages, _sequenced, _unsequenced, _result) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _processQueuedMessages(_messages) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _processQueuedMessage(_message) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _getMessageType(message) {
-  if (!message) return 'unknown';
-  return message.type || message.action || 'unknown';
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _logQueuedMessageProcessing(_messageType) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _logQueuedMessageError(_messageType, _err) {
-  // No-op
-}
-
-// ==================== v1.6.3.8-v13 BACKGROUND ACTIVITY (SIMPLIFIED) ====================
-// v1.6.3.8-v13 - Port removed: Background activity checking simplified
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _startBackgroundActivityCheck() {
-  // No-op - port removed
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _stopBackgroundActivityCheck() {
-  // No-op - port removed
-}
-
-// ==================== v1.6.3.8-v13 HEARTBEAT (REMOVED) ====================
-// v1.6.3.8-v13 - Port removed: Heartbeat no longer needed with stateless messaging
-
-/**
- * Start heartbeat - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED: Heartbeat no longer needed
- * @deprecated Port removed - using stateless messaging
- */
-function startHeartbeat() {
-  // No-op - port removed, using stateless runtime.sendMessage
-  console.log('[Manager] v1.6.3.8-v13 PORT_REMOVED: startHeartbeat is now no-op');
-}
-
-/**
- * Stop heartbeat - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED
- * @deprecated Port removed
- */
-function stopHeartbeat() {
-  // No-op - port removed
-}
-
-/**
- * Send heartbeat - NO-OP in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED: Heartbeat no longer needed
- * @deprecated Port removed
- */
-async function sendHeartbeat() {
-  // No-op - port removed
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _logKeepaliveComplete(_success, _reason) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _triggerKeepaliveFallback(_err) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _logHeartbeatAttempt() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _handlePortDisconnected() {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _handleHeartbeatSuccess(_response, _startTime) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _handleHeartbeatFailure(_err) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _getHeartbeatFailureDiagnosis(_isTimeout, _isPortClosed) {
-  return 'Port removed';
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _processHeartbeatFailureRecovery(_isTimeout) {
-  // No-op
-}
-
-/**
- * @deprecated v1.6.3.8-v13 - Port removed
- * @private
- */
-function _getNextManagerPortMessageSequence() {
-  return 0;
-}
-
-/**
- * Send port message with timeout - REPLACED in v1.6.3.8-v13
- * v1.6.3.8-v13 - PORT REMOVED: Use sendToBackground instead
- * @deprecated Use sendToBackground instead
- */
-async function sendPortMessageWithTimeout(message, _timeoutMs) {
-  // v1.6.3.8-v13 - Delegate to stateless sendToBackground
-  return sendToBackground(message);
-}
-
 // ==================== v1.6.3.8-v13 STATE SYNC (SIMPLIFIED) ====================
-// v1.6.3.8-v13 - Port removed: State sync uses runtime.sendMessage
+// v1.6.3.9-v4 - Port removed: State sync uses runtime.sendMessage
 
 /**
  * State sync timeout (5 seconds)
@@ -3070,84 +2595,14 @@ function _sendActionRequest(action, payload) {
   });
 }
 
-// ==================== END PORT CONNECTION (v1.6.3.8-v13: PORT REMOVED) ====================
-// v1.6.3.8-v13 - Port-based messaging completely removed
+// ==================== END PORT CONNECTION (v1.6.3.9-v4: ALL REMOVED) ====================
+// v1.6.3.9-v4 - Port and BroadcastChannel completely removed
 // All communication now uses:
 // - storage.onChanged for state updates (PRIMARY)
 // - runtime.sendMessage for request/response patterns (SECONDARY)
 
-// ==================== v1.6.3.8-v5 BROADCAST CHANNEL REMOVED ====================
-// ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
-// v1.6.3.8-v13 - Port also removed. The new architecture uses:
-// - Layer 1: storage.onChanged for real-time state sync (PRIMARY)
-// - Layer 2: runtime.sendMessage for request/response patterns
-//
-// BroadcastChannel was removed because:
-// 1. Firefox Sidebar runs in separate origin context - BC messages never arrive
-// 2. Cross-origin iframes cannot receive BC messages due to W3C spec origin isolation
-// 3. Port-based messaging is more reliable and works across all contexts
-// 4. storage.onChanged provides reliable fallback for all scenarios
-//
-// All BC functions below are kept as NO-OP stubs for backwards compatibility.
-
-// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-const broadcastHandlerRef = null;
-
-// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-const bcVerificationPending = false;
-// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-const bcVerificationReceived = false;
-// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-const bcVerificationTimeoutId = null;
-
-// eslint-disable-next-line no-unused-vars -- BC removed, kept for compatibility
-const BC_VERIFICATION_TIMEOUT_MS = 1000;
-
-/**
- * Initialize BroadcastChannel for real-time updates
- * v1.6.3.8-v5 - NO-OP STUB: BroadcastChannel removed per architecture-redesign.md
- * The new architecture uses Port + storage.onChanged instead.
- */
-function initializeBroadcastChannel() {
-  console.log(
-    '[Manager] [BC] DEPRECATED: initializeBroadcastChannel called - BC removed per architecture-redesign.md'
-  );
-  console.log('[Manager] [BC] Using Port-based messaging (PRIMARY) + storage.onChanged (FALLBACK)');
-  // BC removed - just log and return
-  // All state sync now happens via Port + storage.onChanged
-}
-
-/**
- * Start BroadcastChannel verification handshake
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @private
- */
-function _startBCVerificationHandshake() {
-  // NO-OP - BC removed
-  console.log('[Manager] [BC] DEPRECATED: _startBCVerificationHandshake called - BC removed');
-}
-
-/**
- * Handle BC verification timeout
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @private
- */
-function _handleBCVerificationTimeout() {
-  // NO-OP - BC removed
-}
-
-/**
- * Handle BC verification PONG received
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- * @param {Object} message - PONG message from background
- * @private
- */
-function _handleBCVerificationPong(_message) {
-  // NO-OP - BC removed
-}
-
 // ==================== v1.6.3.7-v12/v13 FALLBACK HEALTH MONITORING ====================
-// v1.6.3.8-v5 - NOTE: "Fallback" now refers to storage.onChanged (Port is PRIMARY)
+// v1.6.3.9-v4 - NOTE: "Fallback" now refers to storage.onChanged as PRIMARY mechanism
 // Issue #5: Periodic fallback status logging when BC is unavailable
 // Issue #12: Enhanced health monitoring with stall detection and latency tracking
 // Issue #6 (arch): Storage tier health instrumentation
@@ -3754,17 +3209,13 @@ async function _triggerStorageFallbackOnGap(gapSize) {
  * Route broadcast message to appropriate handler
  * v1.6.3.7-v4 - FIX Complexity: Extracted from handleBroadcastChannelMessage
  * v1.6.3.7-v7 - FIX Issue #6: Added full-state-sync handler
- * v1.6.3.7-v13 - Issue #1 (arch): Added BC_VERIFICATION_PONG handling
+ * v1.6.3.9-v4 - SIMPLIFIED: BC verification removed
  * @private
  * @param {Object} message - BroadcastChannel message
  * @param {string} messageId - Generated message ID for deduplication
  */
 function _routeBroadcastMessage(message, messageId) {
-  // v1.6.3.7-v13 - Issue #1 (arch): Handle verification PONG first
-  if (message.type === 'BC_VERIFICATION_PONG') {
-    _handleBCVerificationPong(message);
-    return;
-  }
+  // v1.6.3.9-v4 - BC verification handling removed
 
   const handlers = {
     'quick-tab-created': handleBroadcastCreate,
@@ -3987,16 +3438,7 @@ function handleBroadcastMinimizeRestore(message, messageId) {
   }
 }
 
-/**
- * Cleanup BroadcastChannel on window unload
- * v1.6.3.8-v5 - NO-OP STUB: BC removed per architecture-redesign.md
- */
-function cleanupBroadcastChannel() {
-  // NO-OP - BC removed
-  console.log('[Manager] [BC] DEPRECATED: cleanupBroadcastChannel called - BC removed');
-}
-
-// ==================== END BROADCAST CHANNEL (DEPRECATED) ====================
+// v1.6.3.9-v4 - BC removed: cleanupBroadcastChannel deleted
 
 // ==================== v1.6.3.6-v11 COUNT BADGE ANIMATION ====================
 // FIX Issue #20: Diff-based rendering for count badge animation
@@ -5199,17 +4641,12 @@ async function _initializeCurrentTabId() {
  * @private
  */
 function _initializeConnections() {
-  // v1.6.3.8-v13 - PORT REMOVED: No port connection needed
+  // v1.6.3.9-v4 - SIMPLIFIED: No port/BC connection needed
   // storage.onChanged is PRIMARY, runtime.sendMessage is SECONDARY
-  console.log('[Manager] v1.6.3.8-v13 Initializing stateless messaging:');
+  console.log('[Manager] v1.6.3.9-v4 Initializing stateless messaging:');
   console.log('[Manager]   - PRIMARY: storage.onChanged for state sync');
   console.log('[Manager]   - SECONDARY: runtime.sendMessage for request/response');
-
-  // v1.6.3.8-v13 - connectToBackground is now a no-op
-  connectToBackground();
-
-  // v1.6.3.8-v3 - FIX Issue #1: BroadcastChannel is NO-OP (removed)
-  initializeBroadcastChannel();
+  connectionState = CONNECTION_STATE.CONNECTED;
 }
 
 /**
@@ -5459,14 +4896,13 @@ async function _checkStateFreshness() {
 /**
  * Start periodic background tasks
  * v1.6.4.17 - Extracted from DOMContentLoaded
- * v1.6.3.8-v5 - FIX Issue #1: Start revision buffer cleanup
+ * v1.6.3.9-v4 - SIMPLIFIED: Revision buffer cleanup removed
  * @private
  */
 function _startPeriodicTasks() {
   _startHostInfoCleanupInterval();
 
-  // v1.6.3.8-v5 - FIX Issue #1: Start revision buffer cleanup interval
-  _startRevisionBufferCleanup();
+  // v1.6.3.9-v4 - REMOVED: Revision buffer cleanup (buffering removed)
 
   setInterval(async () => {
     await loadQuickTabsState();
@@ -5503,11 +4939,7 @@ function _markInitializationComplete() {
 // v1.6.3.8-v3 - FIX Issue #19: Also clear quickTabHostInfo map
 // v1.6.3.8-v4 - FIX Issue #3: Also stop visibility refresh interval
 window.addEventListener('unload', () => {
-  // v1.6.3.7-v3 - API #2: Cleanup BroadcastChannel
-  cleanupBroadcastChannel();
-
-  // v1.6.3.8-v13 - PORT REMOVED: stopHeartbeat is now no-op
-  stopHeartbeat();
+  // v1.6.3.9-v4 - SIMPLIFIED: Removed port/BC cleanup
 
   // v1.6.3.7-v9 - Issue #10: Stop hostInfo cleanup interval
   _stopHostInfoCleanupInterval();
@@ -5521,8 +4953,7 @@ window.addEventListener('unload', () => {
   // v1.6.3.8-v4 - FIX Issue #3: Remove visibility change listener
   document.removeEventListener('visibilitychange', _handleVisibilityChange);
 
-  // v1.6.3.8-v5 - FIX Issue #1: Stop revision buffer cleanup interval
-  _stopRevisionBufferCleanup();
+  // v1.6.3.9-v4 - SIMPLIFIED: Removed revision buffer cleanup (code removed)
 
   // v1.6.3.8-v3 - FIX Issue #19: Clear quickTabHostInfo map to prevent memory leak
   const hostInfoEntriesBefore = quickTabHostInfo.size;
@@ -5533,8 +4964,8 @@ window.addEventListener('unload', () => {
     timestamp: Date.now()
   });
 
-  // v1.6.3.8-v13 - PORT REMOVED: No port to disconnect
-  console.log('[Manager] v1.6.3.8-v13 UNLOAD: Port removed, no disconnect needed');
+  // v1.6.3.9-v4 - Simplified unload logging
+  console.log('[Manager] v1.6.3.9-v4 UNLOAD: Cleanup complete');
 });
 
 /**
@@ -8196,7 +7627,7 @@ function setupTabSwitchListener() {
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.3.7-v6 - Gap #2 & Issue #7: Enhanced deduplication logging with channel source
  * v1.6.3.7-v9 - FIX Issue #6: Added sequenceId validation for event ordering
- * v1.6.3.8-v5 - FIX Issue #1: Added revision validation for monotonic ordering
+ * v1.6.3.9-v4 - SIMPLIFIED: Removed complex buffering, kept basic revision validation
  * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
@@ -8219,23 +7650,14 @@ function _handleStorageChange(change) {
     return; // Event is out of order (sequence ID), reject it
   }
 
-  // v1.6.3.8-v5 - FIX Issue #1: Validate revision for monotonic ordering
+  // v1.6.3.9-v4 - SIMPLIFIED: Validate revision (no buffering)
   const revisionResult = _validateRevision(context);
   if (!revisionResult.valid) {
     return; // Stale revision, reject it
   }
 
-  // v1.6.3.8-v5 - FIX Issue #1: If gap detected, buffer the event and return
-  if (revisionResult.shouldBuffer) {
-    _bufferRevisionEvent(context.newValue.revision, context.newValue);
-    return; // Wait for missing events
-  }
-
   // v1.6.3.7-v6 - Gap #2: Special case - if oldValue was empty and newValue has tabs
   if (_handleEmptyToPopulatedTransition(context)) {
-    // v1.6.3.8-v5 - FIX Issue #1: Process any buffered events after this one
-    const bufferedEvents = _processBufferedRevisionEvents();
-    _applyBufferedEvents(bufferedEvents);
     return;
   }
 
@@ -8246,42 +7668,9 @@ function _handleStorageChange(change) {
   }
 
   _processStorageChangeAnalysis(context);
-
-  // v1.6.3.8-v5 - FIX Issue #1: Process any buffered events after this one
-  const bufferedEvents = _processBufferedRevisionEvents();
-  _applyBufferedEvents(bufferedEvents);
 }
 
-/**
- * Apply buffered events after processing the current event
- * v1.6.3.8-v5 - FIX Issue #1: Process events that were buffered due to gaps
- * @private
- * @param {Array} bufferedEvents - Array of { revision, data } objects
- */
-function _applyBufferedEvents(bufferedEvents) {
-  if (!bufferedEvents || bufferedEvents.length === 0) {
-    return;
-  }
-
-  const now = Date.now();
-  console.log('[Manager] APPLYING_BUFFERED_EVENTS:', {
-    count: bufferedEvents.length,
-    revisions: bufferedEvents.map(e => e.revision),
-    timestamp: now
-  });
-
-  for (const event of bufferedEvents) {
-    // Create a mock context for the buffered event
-    const context = _buildStorageChangeContext({
-      oldValue: quickTabsState, // Use current state as "old"
-      newValue: event.data
-    });
-
-    // Skip validation since we already did it when buffering
-    // Process the change directly
-    _processStorageChangeAnalysis(context);
-  }
-}
+// v1.6.3.9-v4 - REMOVED: _applyBufferedEvents (buffering removed)
 
 /**
  * Validate sequence ID for event ordering
@@ -8333,14 +7722,14 @@ function _validateSequenceId(context) {
 }
 
 // ==================== v1.6.3.8-v5 REVISION VALIDATION FUNCTIONS ====================
-// FIX Issue #1 (comprehensive-diagnostic-report.md): Storage Event Ordering
+// v1.6.3.9-v4 - SIMPLIFIED: Removed complex buffering, kept basic revision validation
 
 /**
  * Validate incoming revision number
- * v1.6.3.8-v5 - FIX Issue #1: Reject stale updates with revision ≤ _lastAppliedRevision
+ * v1.6.3.9-v4 - SIMPLIFIED: Reject stale updates, accept gaps without buffering
  * @private
  * @param {Object} context - Storage change context containing newValue
- * @returns {Object} { valid: boolean, shouldBuffer: boolean, reason: string }
+ * @returns {Object} { valid: boolean, reason: string }
  */
 function _validateRevision(context) {
   const newRevision = context.newValue?.revision;
@@ -8356,7 +7745,7 @@ function _validateRevision(context) {
         timestamp: now
       }
     );
-    return { valid: true, shouldBuffer: false, reason: 'no_revision_backward_compat' };
+    return { valid: true, reason: 'no_revision_backward_compat' };
   }
 
   // Check if this revision is stale (already processed or older)
@@ -8368,24 +7757,21 @@ function _validateRevision(context) {
       reason: newRevision === _lastAppliedRevision ? 'duplicate' : 'out_of_order',
       timestamp: now
     });
-    return { valid: false, shouldBuffer: false, reason: 'stale_revision' };
+    return { valid: false, reason: 'stale_revision' };
   }
 
-  // Check if this revision is next in sequence
+  // v1.6.3.9-v4 - SIMPLIFIED: Accept gaps without buffering
   const expectedRevision = _lastAppliedRevision + 1;
   if (newRevision > expectedRevision) {
-    // Gap detected - this event arrived out of order
-    // Buffer it and wait for the missing events
-    console.log('[Manager] REVISION_GAP_DETECTED: Buffering out-of-order event', {
+    // Gap detected - log warning but accept anyway
+    console.warn('[Manager] REVISION_GAP_ACCEPTED: Gap detected but accepting', {
       incomingRevision: newRevision,
       expectedRevision,
       lastAppliedRevision: _lastAppliedRevision,
       gapSize: newRevision - expectedRevision,
       saveId: context.newValue?.saveId,
-      bufferSize: _revisionEventBuffer.size,
       timestamp: now
     });
-    return { valid: true, shouldBuffer: true, reason: 'gap_detected' };
   }
 
   // Valid revision - accept and update tracking
@@ -8399,164 +7785,17 @@ function _validateRevision(context) {
     timestamp: now
   });
 
-  return { valid: true, shouldBuffer: false, reason: 'valid_sequential' };
+  return { valid: true, reason: 'valid' };
 }
 
-/**
- * Buffer an out-of-order event for later processing
- * v1.6.3.8-v5 - FIX Issue #1: Store events that arrive ahead of their expected order
- * @private
- * @param {number} revision - Revision number of the event
- * @param {Object} data - Event data to buffer
- */
-function _bufferRevisionEvent(revision, data) {
-  const now = Date.now();
-
-  // Check buffer size and cleanup if needed
-  if (_revisionEventBuffer.size >= REVISION_BUFFER_MAX_SIZE) {
-    _cleanupRevisionBuffer(true); // Force cleanup
-  }
-
-  _revisionEventBuffer.set(revision, {
-    data,
-    timestamp: now
-  });
-
-  console.log('[Manager] REVISION_EVENT_BUFFERED:', {
-    revision,
-    saveId: data?.saveId,
-    bufferSize: _revisionEventBuffer.size,
-    timestamp: now
-  });
-}
-
-/**
- * Process buffered events in order after receiving expected revision
- * v1.6.3.8-v5 - FIX Issue #1: Apply buffered events once gaps are filled
- * @private
- * @returns {Array} Array of processed events
- */
-function _processBufferedRevisionEvents() {
-  const processed = [];
-  const now = Date.now();
-
-  // Process buffered events in order starting from current lastAppliedRevision + 1
-  let nextExpected = _lastAppliedRevision + 1;
-
-  while (_revisionEventBuffer.has(nextExpected)) {
-    const buffered = _revisionEventBuffer.get(nextExpected);
-    _revisionEventBuffer.delete(nextExpected);
-
-    // Skip if event is too old
-    if (now - buffered.timestamp > REVISION_BUFFER_MAX_AGE_MS) {
-      console.warn('[Manager] REVISION_BUFFER_EVENT_EXPIRED:', {
-        revision: nextExpected,
-        ageMs: now - buffered.timestamp,
-        maxAgeMs: REVISION_BUFFER_MAX_AGE_MS,
-        timestamp: now
-      });
-      nextExpected++;
-      continue;
-    }
-
-    _lastAppliedRevision = nextExpected;
-    processed.push({
-      revision: nextExpected,
-      data: buffered.data
-    });
-
-    console.log('[Manager] REVISION_BUFFER_EVENT_APPLIED:', {
-      revision: nextExpected,
-      saveId: buffered.data?.saveId,
-      ageMs: now - buffered.timestamp,
-      remainingBufferSize: _revisionEventBuffer.size,
-      timestamp: now
-    });
-
-    nextExpected++;
-  }
-
-  if (processed.length > 0) {
-    console.log('[Manager] REVISION_BUFFER_FLUSH_COMPLETE:', {
-      eventsProcessed: processed.length,
-      newLastAppliedRevision: _lastAppliedRevision,
-      remainingBufferSize: _revisionEventBuffer.size,
-      timestamp: now
-    });
-  }
-
-  return processed;
-}
-
-/**
- * Clean up stale entries from the revision buffer
- * v1.6.3.8-v5 - FIX Issue #1: Periodic cleanup of expired buffered events
- * @private
- * @param {boolean} force - Force cleanup regardless of age
- */
-function _cleanupRevisionBuffer(force = false) {
-  const now = Date.now();
-  const initialSize = _revisionEventBuffer.size;
-  let removedCount = 0;
-
-  for (const [revision, buffered] of _revisionEventBuffer.entries()) {
-    const age = now - buffered.timestamp;
-    if (force || age > REVISION_BUFFER_MAX_AGE_MS) {
-      _revisionEventBuffer.delete(revision);
-      removedCount++;
-      console.log('[Manager] REVISION_BUFFER_CLEANUP: Removed stale event', {
-        revision,
-        ageMs: age,
-        reason: force ? 'forced_cleanup' : 'expired',
-        timestamp: now
-      });
-    }
-  }
-
-  if (removedCount > 0) {
-    console.log('[Manager] REVISION_BUFFER_CLEANUP_COMPLETE:', {
-      initialSize,
-      removedCount,
-      finalSize: _revisionEventBuffer.size,
-      timestamp: now
-    });
-  }
-}
-
-/**
- * Start the revision buffer cleanup interval
- * v1.6.3.8-v5 - FIX Issue #1: Periodic cleanup to prevent memory bloat
- * @private
- */
-function _startRevisionBufferCleanup() {
-  if (_revisionBufferCleanupTimerId) {
-    clearInterval(_revisionBufferCleanupTimerId);
-  }
-
-  _revisionBufferCleanupTimerId = setInterval(() => {
-    _cleanupRevisionBuffer(false);
-  }, REVISION_BUFFER_CLEANUP_INTERVAL_MS);
-
-  console.log('[Manager] REVISION_BUFFER_CLEANUP_STARTED:', {
-    intervalMs: REVISION_BUFFER_CLEANUP_INTERVAL_MS,
-    maxAgeMs: REVISION_BUFFER_MAX_AGE_MS,
-    maxBufferSize: REVISION_BUFFER_MAX_SIZE,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Stop the revision buffer cleanup interval
- * v1.6.3.8-v5 - FIX Issue #1: Cleanup on unload
- * @private
- */
-function _stopRevisionBufferCleanup() {
-  if (_revisionBufferCleanupTimerId) {
-    clearInterval(_revisionBufferCleanupTimerId);
-    _revisionBufferCleanupTimerId = null;
-    console.log('[Manager] REVISION_BUFFER_CLEANUP_STOPPED');
-  }
-}
+// v1.6.3.9-v4 - REMOVED: Complete revision event buffering system:
+// - _bufferRevisionEvent() - stored out-of-order events by revision number
+// - _processBufferedRevisionEvents() - applied buffered events once gaps filled
+// - _applyBufferedEvents() - processed buffered events after current event
+// - _cleanupRevisionBuffer() - periodic cleanup of expired buffered events
+// - _startRevisionBufferCleanup() - interval to cleanup stale buffer entries
+// - _stopRevisionBufferCleanup() - cleanup on unload
+// Simplified architecture: just reject stale revisions, accept gaps without buffering
 
 /**
  * Cancel the storage watchdog timer
@@ -8573,7 +7812,7 @@ function _cancelStorageWatchdog() {
 /**
  * Apply state from watchdog recovery
  * v1.6.3.7-v9 - FIX Issue #6: Extracted helper to reduce nesting depth
- * v1.6.3.8-v5 - FIX Issue #1: Also update revision tracking
+ * v1.6.3.9-v4 - SIMPLIFIED: Also update revision tracking
  * @private
  * @param {Object} currentState - State from storage
  * @param {string} expectedSaveId - Expected save ID
@@ -8584,7 +7823,7 @@ function _applyWatchdogRecoveryState(currentState, expectedSaveId) {
   if (currentState.sequenceId) {
     lastAppliedSequenceId = currentState.sequenceId;
   }
-  // v1.6.3.8-v5 - FIX Issue #1: Also update revision tracking
+  // v1.6.3.9-v4 - SIMPLIFIED: Also update revision tracking
   if (currentState.revision) {
     _lastAppliedRevision = currentState.revision;
   }
