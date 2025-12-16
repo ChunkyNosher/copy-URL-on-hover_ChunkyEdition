@@ -43,6 +43,16 @@
  *
  * ===============================================================================
  *
+ * v1.6.3.9-v5 - FIX Critical Bugs #1-7 from issue-47-diagnostic:
+ *   - FIX #1: Ensure currentBrowserTabId initialization with fallback to background request
+ *   - FIX #2: Correct storage event handler routing - unified to _handleStorageChangedEvent()
+ *   - FIX #3: Add adoption flow fallback for null currentBrowserTabId
+ *   - FIX #4: Add missing logging in storage event initialization (queue/replay/guard)
+ *   - FIX #7: Verify tab affinity map cleanup interval started and onRemoved listener active
+ *   - NEW: _requestCurrentTabIdFromBackground() - fallback when tabs.query() fails
+ *   - NEW: Enhanced logging in _guardBeforeInit(), _queueMessageDuringInit(), _replayQueuedMessages()
+ *   - NEW: Adoption flow validates and requests currentBrowserTabId before proceeding
+ *
  * v1.6.3.9-v4 - SIMPLIFIED ARCHITECTURE from ROBUST-QUICKTABS-ARCHITECTURE.md:
  *   - NEW: Centralized constants import from src/constants.js
  *   - NEW: STORAGE_HEALTH_CHECK_INTERVAL_MS (5s) - fallback polling when storage.onChanged silent
@@ -677,22 +687,31 @@ function _resolveInitBarrier() {
 /**
  * Queue a message received before initialization is complete
  * v1.6.3.8-v4 - FIX Issue #9: Enforcing guard that queues messages
+ * v1.6.3.9-v5 - FIX Bug #4: Enhanced logging for storage event initialization
  * @param {string} source - Message source (port, storage, bc)
  * @param {Object} message - Message to queue
  * @private
  */
 function _queueMessageDuringInit(source, message) {
-  preInitMessageQueue.push({
+  const queueEntry = {
     source,
     message,
     timestamp: Date.now()
-  });
+  };
+  preInitMessageQueue.push(queueEntry);
 
+  // v1.6.3.9-v5 - FIX Bug #4: Enhanced logging with more context
+  // Consolidated log entry with all relevant details
   console.log('[Manager] INIT_MESSAGE_QUEUED:', {
     source,
     messageType: message?.type || message?.action || 'unknown',
     queueSize: preInitMessageQueue.length,
     initPhase: currentInitPhase,
+    initializationStarted,
+    initializationComplete,
+    hasNewValue: !!message?.newValue,
+    tabCount: message?.newValue?.tabs?.length ?? message?.tabs?.length ?? 'N/A',
+    saveId: message?.newValue?.saveId ?? message?.saveId ?? 'N/A',
     timestamp: Date.now()
   });
 }
@@ -700,30 +719,56 @@ function _queueMessageDuringInit(source, message) {
 /**
  * Replay queued messages after initialization barrier resolves
  * v1.6.3.8-v4 - FIX Issue #9: Process queued messages in order
+ * v1.6.3.9-v5 - FIX Bug #4: Enhanced logging for storage event replay
  * @private
  */
 function _replayQueuedMessages() {
   if (preInitMessageQueue.length === 0) {
     console.log('[Manager] INIT_MESSAGE_REPLAY: no queued messages', {
+      initPhase: currentInitPhase,
       timestamp: Date.now()
     });
     return;
   }
 
+  // v1.6.3.9-v5 - FIX Bug #4: Log detailed replay info
+  const storageMessages = preInitMessageQueue.filter(m => m.source === 'storage');
+  const portMessages = preInitMessageQueue.filter(m => m.source === 'port');
+
   console.log('[Manager] INIT_MESSAGE_REPLAY: starting', {
-    count: preInitMessageQueue.length,
+    totalCount: preInitMessageQueue.length,
+    storageMessageCount: storageMessages.length,
+    portMessageCount: portMessages.length,
+    initPhase: currentInitPhase,
+    timeSinceFirstQueued: preInitMessageQueue.length > 0 ?
+      Date.now() - preInitMessageQueue[0].timestamp : 0,
     timestamp: Date.now()
   });
 
   const messages = [...preInitMessageQueue];
   preInitMessageQueue.length = 0; // Clear queue
 
+  let successCount = 0;
+  let errorCount = 0;
+
   for (const item of messages) {
-    _processQueuedInitMessage(item);
+    try {
+      _processQueuedInitMessage(item);
+      successCount++;
+    } catch (err) {
+      errorCount++;
+      console.error('[Manager] INIT_MESSAGE_REPLAY: error in processing loop', {
+        source: item.source,
+        error: err.message,
+        timestamp: Date.now()
+      });
+    }
   }
 
   console.log('[Manager] INIT_MESSAGE_REPLAY: completed', {
     processedCount: messages.length,
+    successCount,
+    errorCount,
     timestamp: Date.now()
   });
 }
@@ -756,14 +801,36 @@ function _processQueuedInitMessage(item) {
 /**
  * Route a queued init message based on source
  * v1.6.3.8-v4 - FIX Issue #9: Extracted to reduce nesting depth
+ * v1.6.3.9-v5 - FIX Bug #2: Use _handleStorageChangedEvent() for consistency with v1.6.3.9-v4 architecture
+ *
+ * NOTE on storage message format transformation:
+ *   - Messages are queued from _guardBeforeInit() which passes the raw storage change object
+ *   - The v1.6.3.9-v4 handler _handleStorageChangedEvent() expects a 'changes' object format
+ *     where the state is at changes[STATE_KEY] (e.g., { quick_tabs_state_v2: { newValue: {...} } })
+ *   - This wrapper ensures consistent data format regardless of queue entry source
+ *
  * @param {Object} item - Queued message item with source, message
  * @private
  */
 function _routeInitMessage(item) {
+  console.log('[Manager] INIT_MESSAGE_ROUTE:', {
+    source: item.source,
+    messageType: item.message?.type || item.message?.action || 'unknown',
+    timestamp: Date.now()
+  });
+
   if (item.source === 'port') {
     handlePortMessage(item.message);
   } else if (item.source === 'storage') {
-    _handleStorageChange(item.message);
+    // v1.6.3.9-v5 - FIX Bug #2: Use the v1.6.3.9-v4 simplified handler for consistency
+    // Wrap in changes format expected by _handleStorageChangedEvent():
+    // { STATE_KEY: { newValue: {...}, oldValue: {...} } }
+    const changes = { [STATE_KEY]: item.message };
+    console.log('[Manager] INIT_MESSAGE_ROUTE: routing storage message to _handleStorageChangedEvent()', {
+      hasNewValue: !!item.message?.newValue,
+      timestamp: Date.now()
+    });
+    _handleStorageChangedEvent(changes);
   }
   // BC messages are demoted, so we skip them during replay
 }
@@ -4735,17 +4802,26 @@ async function _runHostInfoCleanupJob() {
 /**
  * Start the periodic cleanup job for quickTabHostInfo
  * v1.6.3.7-v9 - Issue #10: Run cleanup every 60 seconds
+ * v1.6.3.9-v5 - FIX Bug #7: Enhanced logging to verify cleanup interval started
  */
 function _startHostInfoCleanupInterval() {
   // Don't start if already running
   if (hostInfoCleanupIntervalId !== null) {
+    console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job already running, skipping start', {
+      intervalId: hostInfoCleanupIntervalId,
+      timestamp: Date.now()
+    });
     return;
   }
 
   hostInfoCleanupIntervalId = setInterval(_runHostInfoCleanupJob, HOST_INFO_CLEANUP_INTERVAL_MS);
+
+  // v1.6.3.9-v5 - FIX Bug #7: Enhanced logging
   console.log('[Manager] [HOST_INFO_CLEANUP] Cleanup job started:', {
+    intervalId: hostInfoCleanupIntervalId,
     intervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
     ttlMs: HOST_INFO_TTL_MS,
+    currentHostInfoSize: quickTabHostInfo.size,
     timestamp: Date.now()
   });
 }
@@ -4890,13 +4966,21 @@ function _handleBrowserTabRemoved(tabId, removeInfo) {
 /**
  * Initialize browser.tabs.onRemoved listener
  * v1.6.3.7-v9 - Issue #10: Listen for tab closures to clean up quickTabHostInfo
+ * v1.6.3.9-v5 - FIX Bug #7: Enhanced logging for listener registration
  */
 function _initBrowserTabsOnRemovedListener() {
   if (browser?.tabs?.onRemoved) {
     browser.tabs.onRemoved.addListener(_handleBrowserTabRemoved);
-    console.log('[Manager] LISTENER_REGISTERED: browser.tabs.onRemoved listener added');
+    console.log('[Manager] LISTENER_REGISTERED: browser.tabs.onRemoved', {
+      listenerFunction: '_handleBrowserTabRemoved',
+      purpose: 'Clean up quickTabHostInfo entries when browser tabs close',
+      currentHostInfoSize: quickTabHostInfo.size,
+      timestamp: Date.now()
+    });
   } else {
-    console.warn('[Manager] browser.tabs.onRemoved API not available');
+    console.warn('[Manager] LISTENER_REGISTRATION_FAILED: browser.tabs.onRemoved API not available', {
+      timestamp: Date.now()
+    });
   }
 }
 
@@ -5076,14 +5160,94 @@ function _cacheDOMElements() {
  * @private
  */
 async function _initializeCurrentTabId() {
+  console.log('[Manager] INIT_CURRENT_TAB_ID: starting', {
+    timestamp: Date.now()
+  });
+
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]) {
       currentBrowserTabId = tabs[0].id;
-      console.log('[Manager] Current browser tab ID:', currentBrowserTabId);
+      console.log('[Manager] INIT_CURRENT_TAB_ID: success via tabs.query()', {
+        currentBrowserTabId,
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // No tabs found - try fallback to background
+    console.warn('[Manager] INIT_CURRENT_TAB_ID: no active tab found, trying background fallback', {
+      timestamp: Date.now()
+    });
+    await _requestCurrentTabIdFromBackground('no-active-tab');
+  } catch (err) {
+    console.warn('[Manager] INIT_CURRENT_TAB_ID: tabs.query() failed, trying background fallback', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+    // Try fallback to background
+    await _requestCurrentTabIdFromBackground('query-failed');
+  }
+
+  // Final validation
+  if (currentBrowserTabId === null) {
+    console.error('[Manager] INIT_CURRENT_TAB_ID: FAILED - currentBrowserTabId is still null', {
+      message: 'Adoption and other tab-specific operations will not work',
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Request current tab ID from background script as fallback
+ * v1.6.3.9-v5 - FIX Bug #1: Fallback when browser.tabs.query() fails in sidebar context
+ * @param {string} [reason='unknown'] - Reason for fallback (for debugging context)
+ * @private
+ */
+async function _requestCurrentTabIdFromBackground(reason = 'unknown') {
+  console.log('[Manager] REQUESTING_TAB_ID_FROM_BACKGROUND:', {
+    reason,
+    timestamp: Date.now()
+  });
+
+  try {
+    // Use Promise.race to add timeout handling for unresponsive background
+    const timeoutPromise = new Promise((_resolve, reject) => {
+      setTimeout(() => reject(new Error('Background request timeout (3s)')), MESSAGE_TIMEOUT_MS);
+    });
+
+    const messagePromise = browser.runtime.sendMessage({
+      action: 'GET_CURRENT_TAB_ID',
+      source: 'sidebar-init',
+      reason
+    });
+
+    const response = await Promise.race([messagePromise, timeoutPromise]);
+
+    if (response?.success && response?.tabId) {
+      currentBrowserTabId = response.tabId;
+      console.log('[Manager] INIT_CURRENT_TAB_ID: success via background fallback', {
+        currentBrowserTabId,
+        reason,
+        timestamp: Date.now()
+      });
+    } else {
+      console.warn('[Manager] INIT_CURRENT_TAB_ID: background fallback returned invalid response', {
+        response,
+        reason,
+        timestamp: Date.now()
+      });
     }
   } catch (err) {
-    console.warn('[Manager] Could not get current tab ID:', err);
+    // Handle both timeout and extension context errors
+    const isContextInvalid = err.message?.includes('Extension context invalidated') ||
+                             err.message?.includes('Receiving end does not exist');
+    console.error('[Manager] INIT_CURRENT_TAB_ID: background fallback failed', {
+      error: err.message,
+      reason,
+      isContextInvalid,
+      timestamp: Date.now()
+    });
   }
 }
 
@@ -5350,9 +5514,15 @@ async function _checkStateFreshness() {
  * Start periodic background tasks
  * v1.6.4.17 - Extracted from DOMContentLoaded
  * v1.6.3.9-v4 - SIMPLIFIED: Revision buffer cleanup removed
+ * v1.6.3.9-v5 - FIX Bug #7: Enhanced logging to verify cleanup interval started
  * @private
  */
 function _startPeriodicTasks() {
+  console.log('[Manager] PERIODIC_TASKS_STARTING:', {
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.9-v5 - FIX Bug #7: Verify cleanup interval is started
   _startHostInfoCleanupInterval();
 
   // v1.6.3.9-v4 - REMOVED: Revision buffer cleanup (buffering removed)
@@ -5364,6 +5534,14 @@ function _startPeriodicTasks() {
     await loadQuickTabsState();
     renderUI();
   }, 10000);
+
+  // v1.6.3.9-v5 - FIX Bug #7: Log all periodic tasks started
+  console.log('[Manager] PERIODIC_TASKS_STARTED:', {
+    hostInfoCleanupInterval: hostInfoCleanupIntervalId !== null,
+    hostInfoCleanupIntervalMs: HOST_INFO_CLEANUP_INTERVAL_MS,
+    storagePollingMs: 10000,
+    timestamp: Date.now()
+  });
 }
 
 /**
@@ -10001,31 +10179,92 @@ async function closeQuickTab(quickTabId) {
  * v1.6.4.0 - FIX Issue A: Send ADOPT_TAB command to background instead of direct storage write
  *   - Manager sends command, background is sole writer
  *   - Background updates state, writes to storage, sends confirmation
+ * v1.6.3.9-v5 - FIX Bug #3: Add fallback when currentBrowserTabId is null
  * @param {string} quickTabId - The Quick Tab ID to adopt
  * @param {number} targetTabId - The browser tab ID to adopt to
  */
 async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
   _logAdoptRequest(quickTabId, targetTabId);
 
-  // Validate targetTabId
-  if (!_isValidTargetTabId(targetTabId)) {
-    console.error('[Manager] ❌ Invalid targetTabId for adopt:', targetTabId);
-    return;
+  // v1.6.3.9-v5 - FIX Bug #3: Validate targetTabId and fallback if null
+  let effectiveTargetTabId = targetTabId;
+  if (!_isValidTargetTabId(effectiveTargetTabId)) {
+    console.warn('[Manager] ADOPT_FALLBACK: targetTabId is invalid, attempting to get current tab ID', {
+      originalTargetTabId: targetTabId,
+      currentBrowserTabId,
+      timestamp: Date.now()
+    });
+
+    // Try to get current tab ID as fallback
+    effectiveTargetTabId = await _ensureValidTargetTabIdForAdoption();
+
+    if (!_isValidTargetTabId(effectiveTargetTabId)) {
+      console.error('[Manager] ❌ ADOPT_FAILED: Could not determine valid targetTabId for adopt', {
+        originalTargetTabId: targetTabId,
+        fallbackAttempted: true,
+        timestamp: Date.now()
+      });
+      _showErrorNotification('Cannot adopt: Unable to determine current tab. Please try again.');
+      return;
+    }
+
+    console.log('[Manager] ADOPT_FALLBACK: using fallback targetTabId', {
+      originalTargetTabId: targetTabId,
+      effectiveTargetTabId,
+      timestamp: Date.now()
+    });
   }
 
   try {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
     console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', {
       quickTabId,
-      targetTabId
+      targetTabId: effectiveTargetTabId
     });
 
-    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId });
+    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId: effectiveTargetTabId });
 
-    _handleAdoptResponse(quickTabId, targetTabId, response);
+    _handleAdoptResponse(quickTabId, effectiveTargetTabId, response);
   } catch (err) {
     console.error('[Manager] ❌ Error sending adopt command:', err);
+    _showErrorNotification(`Adopt failed: ${err.message}`);
   }
+}
+
+/**
+ * Ensure we have a valid target tab ID for adoption
+ * v1.6.3.9-v5 - FIX Bug #3: Fallback mechanism for null currentBrowserTabId
+ * @private
+ * @returns {Promise<number|null>} Valid tab ID or null if unavailable
+ */
+async function _ensureValidTargetTabIdForAdoption() {
+  // First try currentBrowserTabId
+  if (_isValidTargetTabId(currentBrowserTabId)) {
+    return currentBrowserTabId;
+  }
+
+  // Try browser.tabs.query
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      // Update currentBrowserTabId for future use
+      currentBrowserTabId = tabs[0].id;
+      console.log('[Manager] ADOPT_FALLBACK: got tab ID via tabs.query()', {
+        tabId: currentBrowserTabId,
+        timestamp: Date.now()
+      });
+      return currentBrowserTabId;
+    }
+  } catch (err) {
+    console.warn('[Manager] ADOPT_FALLBACK: tabs.query() failed', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+
+  // Final fallback: request from background (reusing shared helper)
+  await _requestCurrentTabIdFromBackground('adoption-fallback');
+  return currentBrowserTabId;
 }
 
 /**

@@ -1,0 +1,8 @@
+{
+  "id": "1de733d3-8c92-4145-9784-1bc32473d2a2",
+  "title": "Issue 47 Bug Fixes v1.6.3.9-v5",
+  "details": "Fixed critical bugs in Quick Tabs Manager (v1.6.3.9-v5):\n\nBUG #1: currentBrowserTabId initialization - Added _requestCurrentTabIdFromBackground() fallback function that sends GET_CURRENT_TAB_ID message to background when browser.tabs.query() fails in sidebar context.\n\nBUG #2: Storage event handler routing - Fixed _routeInitMessage() to use _handleStorageChangedEvent() (v1.6.3.9-v4 simplified handler) instead of _handleStorageChange(). Storage change objects are wrapped in { [STATE_KEY]: item.message } format.\n\nBUG #3: Adoption flow fallback - Added _ensureValidTargetTabIdForAdoption() that tries: 1) currentBrowserTabId, 2) browser.tabs.query(), 3) GET_CURRENT_TAB_ID from background. Shows error notification if all fail.\n\nBUG #4: Missing storage init logging - Enhanced _queueMessageDuringInit() with tabCount, saveId, hasNewValue fields. Enhanced _replayQueuedMessages() with separate storage/port message counts and success/error tracking.\n\nBUG #7: Tab affinity map cleanup - Verified _startHostInfoCleanupInterval() is called via _startPeriodicTasks(). Enhanced logging with intervalId visibility and PERIODIC_TASKS_STARTING/STARTED logs.",
+  "category": "project_context",
+  "dateCreated": "2025-12-16T05:01:12.494Z",
+  "dateUpdated": "2025-12-16T05:01:12.494Z"
+}
