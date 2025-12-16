@@ -182,6 +182,9 @@ const pendingAdoptionWriteQueue = [];
 // v1.6.4 - Issue #47-3: Maximum age for pending writes before discarding (10 seconds)
 const PENDING_WRITE_MAX_AGE_MS = 10000;
 
+// v1.6.3.9-v5 - FIX Bug #22: Buffer time after max age to check for stale writes
+const ADOPTION_TIMEOUT_BUFFER_MS = 100;
+
 // v1.6.4 - Issue #47-7: Failed write retry uses direct setTimeout retries
 // Simpler implementation vs. queue-based processing while achieving automatic retry behavior
 
@@ -346,6 +349,7 @@ export function setWritingTabId(tabId) {
 /**
  * Replay all pending adoption writes now that tab ID is available
  * v1.6.4 - Issue #47-3: Adoption flow implementation
+ * v1.6.3.9-v5 - FIX Bug #22: Enhanced logging to track replayed vs dropped writes
  * Called automatically when setWritingTabId() sets the first valid tab ID.
  * Can also be called manually if needed.
  * @export
@@ -365,14 +369,17 @@ export function replayPendingAdoptionWrites() {
   const writesToReplay = [...pendingAdoptionWriteQueue];
   pendingAdoptionWriteQueue.length = 0; // Clear queue before replay
 
-  console.log('[StorageUtils] ADOPTION_FLOW: Starting replay of pending writes:', {
+  // v1.6.3.9-v5 - FIX Bug #22: Log when tab ID becomes available for adoption queue
+  console.log('[StorageUtils] ADOPTION_FLOW: Tab ID now available, starting replay:', {
     count: writesToReplay.length,
     currentTabId: currentWritingTabId,
-    timestamp: now
+    timestamp: now,
+    trigger: 'setWritingTabId-called'
   });
 
   let replayedCount = 0;
   let skippedCount = 0;
+  const skippedTransactions = [];
 
   for (const pendingWrite of writesToReplay) {
     const ageMs = now - pendingWrite.timestamp;
@@ -385,6 +392,7 @@ export function replayPendingAdoptionWrites() {
         maxAgeMs: PENDING_WRITE_MAX_AGE_MS
       });
       skippedCount++;
+      skippedTransactions.push(pendingWrite.transactionId);
       continue;
     }
 
@@ -419,10 +427,13 @@ export function replayPendingAdoptionWrites() {
     replayedCount++;
   }
 
-  console.log('[StorageUtils] ADOPTION_FLOW: Replay initiated:', {
+  // v1.6.3.9-v5 - FIX Bug #22: Enhanced logging for tracking replayed vs dropped
+  console.log('[StorageUtils] ADOPTION_FLOW_SUMMARY:', {
     replayed: replayedCount,
     skipped: skippedCount,
-    total: writesToReplay.length
+    total: writesToReplay.length,
+    skippedTransactions: skippedTransactions.length > 0 ? skippedTransactions : 'none',
+    tabIdSetAt: now
   });
 }
 
@@ -1732,14 +1743,18 @@ function createTimeoutPromise(ms, operation) {
  * v1.6.3.5-v10 - FIX Issue #4: Stricter empty write protection
  *   - Tabs with 0 Quick Tabs should NEVER write unless forceEmpty=true
  *   - This prevents non-owner tabs from overwriting valid state
+ * v1.6.3.9-v5 - FIX Bug #17: Add isDestroyOperation param to bypass cooldown for cleanup
+ *   NOTE: isDestroyOperation has default value (false) for backward compatibility
+ *   Existing callers will continue to work without modification
  * @private
  * @param {number} tabCount - Number of tabs in state
  * @param {boolean} forceEmpty - Whether to force the empty write
  * @param {string} logPrefix - Log prefix for messages
  * @param {string} transactionId - Transaction ID for logging
+ * @param {boolean} [isDestroyOperation=false] - Whether this is a destroy/cleanup operation
  * @returns {boolean} True if write should be rejected
  */
-function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId) {
+function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId, isDestroyOperation = false) {
   if (tabCount > 0) {
     return false; // Not an empty write
   }
@@ -1765,6 +1780,14 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
   }
 
   console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
+
+  // v1.6.3.9-v5 - FIX Bug #17: Bypass cooldown for destroy/cleanup operations
+  // Destroy operations need to complete immediately to avoid orphaned state
+  if (isDestroyOperation) {
+    console.log(`${logPrefix} Empty write cooldown BYPASSED (destroy operation) [${transactionId}]`);
+    lastEmptyWriteTime = Date.now();
+    return false;
+  }
 
   const now = Date.now();
   if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {
@@ -2180,6 +2203,23 @@ function _queueWriteForAdoption(state, forceEmpty, logPrefix, transactionId) {
     pendingQueueLength: pendingAdoptionWriteQueue.length,
     timestamp: now
   });
+
+  // v1.6.3.9-v5 - FIX Bug #22: Schedule explicit timeout to warn about stale adoption queue
+  // This ensures visibility when writes are queued but never replayed
+  if (pendingAdoptionWriteQueue.length === 1) {
+    // First item in queue - schedule timeout warning
+    setTimeout(() => {
+      if (pendingAdoptionWriteQueue.length > 0 && currentWritingTabId === null) {
+        console.warn('[StorageUtils] ADOPTION_FLOW_TIMEOUT: Pending writes may be dropped:', {
+          pendingCount: pendingAdoptionWriteQueue.length,
+          timeoutMs: PENDING_WRITE_MAX_AGE_MS,
+          hint: 'Tab ID was never set via setWritingTabId()'
+        });
+        // Force cleanup of stale writes
+        _cleanupStaleAdoptionWrites(Date.now());
+      }
+    }, PENDING_WRITE_MAX_AGE_MS + ADOPTION_TIMEOUT_BUFFER_MS); // Check slightly after max age
+  }
 }
 
 /**
@@ -2314,7 +2354,11 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
 
   // Phase 2: Check empty write protection
-  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
+  // v1.6.3.9-v5 - FIX Bug #17: Detect destroy operations from logPrefix to bypass cooldown
+  const isDestroyOperation = logPrefix.toLowerCase().includes('destroy') ||
+                             logPrefix.toLowerCase().includes('cleanup') ||
+                             logPrefix.toLowerCase().includes('close');
+  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId, isDestroyOperation)) {
     return Promise.resolve(false);
   }
 

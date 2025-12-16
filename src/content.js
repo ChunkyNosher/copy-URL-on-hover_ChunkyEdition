@@ -4382,6 +4382,27 @@ const ACTION_HANDLERS = {
   CLOSE_MINIMIZED_QUICK_TABS: (message, sendResponse) => {
     _handleCloseMinimizedQuickTabs(sendResponse);
     return true;
+  },
+  // v1.6.3.9-v5 - FIX Bug #18: Handle tabActivated action broadcast from tab-events.js
+  // Updates Quick Tabs state when tab becomes active
+  tabActivated: (message, sendResponse) => {
+    console.log('[Content] tabActivated received:', {
+      tabId: message.tabId,
+      containerId: message.containerId,
+      timestamp: message.timestamp
+    });
+
+    try {
+      // Trigger state refresh when this tab becomes active
+      if (quickTabsManager) {
+        _requestStateRecovery('tab-activated');
+      }
+      sendResponse(_buildMessageResponse(true, { correlationId: message.correlationId }));
+    } catch (err) {
+      console.error('[Content] tabActivated error:', err);
+      sendResponse(_buildMessageResponse(false, { error: err.message, correlationId: message.correlationId }));
+    }
+    return true;
   }
 };
 
@@ -4526,6 +4547,50 @@ const TYPE_HANDLERS = {
     // This handler is mainly for logging and potential future use
     sendResponse(_buildMessageResponse(true, { correlationId: message.correlationId }));
     return true;
+  },
+
+  // v1.6.3.9-v5 - FIX Bug #14, #16: Handle QT_STATE_SYNC messages from background
+  // Processes state sync and triggers UI update for Quick Tabs
+  QT_STATE_SYNC: (message, sendResponse) => {
+    console.log('[Content] QT_STATE_SYNC received:', {
+      quickTabCount: message.state?.allQuickTabs?.length || 0,
+      correlationId: message.correlationId,
+      source: message.source || 'unknown'
+    });
+
+    try {
+      // Notify QuickTabsManager of state update if available
+      if (quickTabsManager) {
+        _notifyManagerOfStorageUpdate(message.state, 'QT_STATE_SYNC');
+      }
+      sendResponse(_buildMessageResponse(true, { correlationId: message.correlationId }));
+    } catch (err) {
+      console.error('[Content] QT_STATE_SYNC error:', err);
+      sendResponse(_buildMessageResponse(false, { error: err.message, correlationId: message.correlationId }));
+    }
+    return true;
+  },
+
+  // v1.6.3.9-v5 - FIX Bug #14: Handle STATE_REFRESH_REQUESTED messages from background
+  // Triggers state refresh when tab becomes active (per tab-events.js)
+  STATE_REFRESH_REQUESTED: (message, sendResponse) => {
+    console.log('[Content] STATE_REFRESH_REQUESTED received:', {
+      tabId: message.tabId,
+      containerId: message.containerId,
+      timestamp: message.timestamp
+    });
+
+    try {
+      // Trigger state refresh from storage
+      if (quickTabsManager) {
+        _requestStateRecovery('state-refresh-requested');
+      }
+      sendResponse(_buildMessageResponse(true, { correlationId: message.correlationId }));
+    } catch (err) {
+      console.error('[Content] STATE_REFRESH_REQUESTED error:', err);
+      sendResponse(_buildMessageResponse(false, { error: err.message, correlationId: message.correlationId }));
+    }
+    return true;
   }
 };
 
@@ -4627,35 +4692,63 @@ if (IS_TEST_MODE) {
 }
 
 /**
+ * Find handler for message in given handler map
+ * v1.6.3.9-v5 - Extracted to reduce _dispatchMessage complexity
+ * @private
+ */
+function _findHandler(key, handlerMap, mapName) {
+  if (key && handlerMap[key]) {
+    console.log(`[Content] Dispatching to ${mapName}:`, key);
+    return handlerMap[key];
+  }
+  return null;
+}
+
+/**
  * Main message dispatcher
  * Routes messages to appropriate handler based on action or type
  * v1.6.3.5-v10 - FIX Issue #3: Added entry/exit logging for message tracing
+ * v1.6.3.9-v5 - FIX Bug #21: Normalize handling of both type and action fields
+ * v1.6.3.9-v5 - Refactored to reduce complexity
+ *
+ * ROUTING PRIORITY:
+ * 1. message.action → ACTION_HANDLERS (primary action-based routing)
+ * 2. message.type → TYPE_HANDLERS (primary type-based routing)
+ * 3. message.type → ACTION_HANDLERS (cross-compat: type can route to action handlers)
+ * 4. message.action → TYPE_HANDLERS (cross-compat: action can route to type handlers)
+ *
+ * NOTE: Cross-compatibility routing (steps 3-4) exists to handle legacy message formats
+ * where some senders use 'type' but the handler is registered under 'action' and vice versa.
+ * This is intentional for backward compatibility with older message formats.
+ *
  * @private
  */
 function _dispatchMessage(message, _sender, sendResponse) {
-  // v1.6.3.5-v10 - FIX Issue #3: Log all incoming messages for diagnostic tracing
+  // v1.6.3.9-v5 - FIX Bug #21: Log which field is used for routing
+  const routingField = message.action ? 'action' : (message.type ? 'type' : 'unknown');
   console.log('[Content] Message received:', {
     action: message.action || 'none',
     type: message.type || 'none',
+    routingField,
     hasData: !!message.data
   });
 
-  // Check action-based handlers first
-  if (message.action && ACTION_HANDLERS[message.action]) {
-    console.log('[Content] Dispatching to ACTION_HANDLERS:', message.action);
-    return ACTION_HANDLERS[message.action](message, sendResponse);
-  }
+  // Try routing in order of priority (see JSDoc for explanation)
+  const handler =
+    _findHandler(message.action, ACTION_HANDLERS, 'ACTION_HANDLERS') ||
+    _findHandler(message.type, TYPE_HANDLERS, 'TYPE_HANDLERS') ||
+    _findHandler(message.type, ACTION_HANDLERS, 'ACTION_HANDLERS (type as action)') ||
+    _findHandler(message.action, TYPE_HANDLERS, 'TYPE_HANDLERS (action as type)');
 
-  // Check type-based handlers (test bridge)
-  if (message.type && TYPE_HANDLERS[message.type]) {
-    console.log('[Content] Dispatching to TYPE_HANDLERS:', message.type);
-    return TYPE_HANDLERS[message.type](message, sendResponse);
+  if (handler) {
+    return handler(message, sendResponse);
   }
 
   // v1.6.3.5-v10 - FIX Issue #3: Warn about unknown messages with available handlers
   console.warn('[Content] ⚠️ Unknown message - no handler found:', {
     action: message.action,
     type: message.type,
+    routingField,
     availableActions: Object.keys(ACTION_HANDLERS),
     availableTypes: Object.keys(TYPE_HANDLERS).slice(0, 10) // First 10 to avoid noise
   });
