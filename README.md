@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9-v3** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.9-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Solo/Mute visibility
 control**, **Per-Tab Isolation**, **Container Isolation**, Session Quick Tabs, and Persistent Floating
 Panel Manager.
@@ -9,32 +9,33 @@ Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.9-v3 Status:** Issue #47 Fixes - Diagnostic Logging & Adoption Flow ✅
+**🔧 v1.6.3.9-v4 Status:** Architecture Simplification - ~761 lines removed ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.9-v4
+
+**🔧 Architecture Simplification (December 2025) ✅**
+
+- ✅ **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
+- ✅ **Centralized Constants** - `src/constants.js` expanded (+225 lines)
+- ✅ **Single Barrier Init** - Replaces multi-phase initialization
+- ✅ **Render Queue Debounce** - 100ms debounce with revision deduplication
+- ✅ **Storage Health Check** - Fallback polling every 5s
+- ✅ **State Checksum** - `_computeStateChecksum()` for data integrity
+- ✅ **Simplified Persistence** - `_persistToStorage()` with validation
+- ✅ **Orphan Removal** - Cleanup now removes orphans instead of marking
+
+---
 
 ## 🎉 What's New in v1.6.3.9-v3
 
 **🔧 Issue #47 Comprehensive Fixes (December 2025) ✅**
 
 - ✅ **Dual Architecture Documentation** - MessageRouter (ACTION) vs message-handler (TYPE)
-- ✅ **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId writes
-- ✅ **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000ms → 2000ms
-- ✅ **Increased Fallback Timeout** - FALLBACK_SYNC_TIMEOUT_MS: 2000ms → 2500ms
-- ✅ **Write Retry** - Exponential backoff [100,200,400]ms with MAX_WRITE_RETRIES=3
-- ✅ **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM, ADOPTION_FLOW
-
----
-
-## 🎉 What's New in v1.6.3.9-v2
-
-**🔧 Self-Write Detection & Container Isolation (December 2025) ✅**
-
-- ✅ **Multi-Layer Self-Write Detection** - TransactionId → InstanceId → TabId → Timing
-- ✅ **Container Isolation** - `originContainerId` field for Firefox Containers
-- ✅ **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
+- ✅ **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
 
 ---
 
@@ -225,6 +226,6 @@ for details.
 
 ---
 
-**Version 1.6.3.9-v3** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.9-v4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

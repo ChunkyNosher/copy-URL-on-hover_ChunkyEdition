@@ -3,8 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.9
-  ownership validation, handler message routing
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.9-v4
+  simplified architecture, storage.onChanged PRIMARY
 tools: ['*']
 ---
 
@@ -37,32 +37,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v3 - Domain-Driven Design with Background-as-Coordinator
+**Version:** 1.6.3.9-v4 - Simplified Architecture
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+
+- **Single Barrier Init** - Simplified initialization
+- **storage.onChanged PRIMARY** - Primary sync mechanism
+- **State Checksum** - `_computeStateChecksum()` for data integrity
+
+**v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
-- **Write Retry** - Exponential backoff [100,200,400]ms
-
-**v1.6.3.9 Features (Retained):**
-
-- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`,
-  `_sendSizeChangedMessage()`
-- **CorrelationId Integration** - All messages use `generateCorrelationId()`
-- **Centralized Constants** - `src/constants.js` with timing values
-
-**v1.6.3.8-v12 Features (Retained):**
-
-- **Stateless messaging** - `runtime.sendMessage()` / `tabs.sendMessage()`
-- **Tab ID fetch timeout** - 2s with retry fallback
-- **Self-write detection** - 300ms window
-
-**v1.6.3.8-v9 Features (Retained):**
-
-- **DestroyHandler event order** - `statedeleted` emitted BEFORE Map deletion
-- **Handler readiness** - `startRendering()` called from `UICoordinator.init()`
 
 **Key Quick Tab Features:**
 
@@ -80,12 +65,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Ownership validation works (`_validateOwnership()`) (v1.6.3.9)
-- [ ] Handler message routing works (v1.6.3.9)
-- [ ] DestroyHandler event order works (emit before delete)
-- [ ] Handler readiness works (`startRendering()` from init)
-- [ ] Tab ID timeout 2s works with 2 retries, 300ms delay
-- [ ] Self-write detection works (300ms window)
+- [ ] Single barrier init works (v1.6.3.9-v4)
+- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v4)
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
 - [ ] originTabId set correctly on creation
@@ -94,5 +75,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.9 ownership
-validation, handler message routing, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.9-v4 simplified
+architecture, storage.onChanged PRIMARY, and proper per-tab scoping.**

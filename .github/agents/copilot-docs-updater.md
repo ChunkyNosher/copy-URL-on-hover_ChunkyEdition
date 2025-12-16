@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.9-v3.
+  documentation. Current version: v1.6.3.9-v4.
 tools: ['*']
 ---
 
@@ -69,20 +69,20 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.9-v3)
+## Current Extension State (v1.6.3.9-v4)
 
-### v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes
+### v1.6.3.9-v4 Features (NEW) - Architecture Simplification
 
-- **Dual Architecture Docs** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]`, `replayPendingAdoptionWrites()`
-- **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000→2000ms
-- **Increased Fallback Timeout** - FALLBACK_SYNC_TIMEOUT_MS: 2000→2500ms
-- **Write Retry** - Exponential backoff [100,200,400]ms
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM, ADOPTION_FLOW
+- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
+- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
+- **Single Barrier Init** - Replaces multi-phase initialization
+- **Render Queue Debounce** - 100ms debounce with revision deduplication
+- **Storage Health Check** - Fallback polling every 5s
+- **State Checksum** - `_computeStateChecksum()` for data integrity
 
-### v1.6.3.9-v2 Features (Retained)
+### v1.6.3.9-v3 Features (Retained)
 
-- Multi-Layer Self-Write Detection, Container Isolation, Tabs API Integration
+- Dual Architecture (MessageRouter + message-handler), Diagnostic Logging
 
 ### Architecture
 
@@ -95,9 +95,9 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.9-v3
-- [ ] **v1.6.3.9-v3:** Issue #47 fixes documented
-- [ ] **v1.6.3.9-v3:** Dual architecture documented
+- [ ] Version numbers match 1.6.3.9-v4
+- [ ] **v1.6.3.9-v4:** Architecture simplification documented
+- [ ] **v1.6.3.9-v4:** New constants documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -107,11 +107,12 @@ nothing.
 
 | Error                   | Fix                         |
 | ----------------------- | --------------------------- |
-| v1.6.3.9-v2 or earlier  | Update to 1.6.3.9-v3        |
+| v1.6.3.9-v3 or earlier  | Update to 1.6.3.9-v4        |
 | "Pin to Page"           | Use "Solo/Mute"             |
 | Direct storage writes   | Use Single Writer Authority |
 | BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
-| Circuit breaker refs    | REMOVE - CB DELETED in v12  |
+| Port-based messaging    | REMOVE - Ports DELETED v12  |
+| Complex init layers     | REMOVE - Simplified in v4   |
 
 ---
 

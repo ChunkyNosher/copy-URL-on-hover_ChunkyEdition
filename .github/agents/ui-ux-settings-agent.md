@@ -59,18 +59,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v3 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.9-v4 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
+
+- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
+- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
+- **Single Barrier Init** - Replaces multi-phase initialization
+
+**v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]` for null originTabId
 - **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
-
-**v1.6.3.9 Features (Retained):**
-
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - `src/utils/structured-logger.js`
 
 **v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
 messaging, simplified BFCache.

@@ -37,20 +37,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v3 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.9-v4 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
 
-- **Dual Architecture Docs** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]`, `replayPendingAdoptionWrites()`
-- **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000→2000ms
-- **Write Retry** - Exponential backoff [100,200,400]ms
+- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
+- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
+- **Single Barrier Init** - Replaces multi-phase initialization
+- **Render Queue Debounce** - 100ms debounce with revision dedup
+- **Storage Health Check** - Fallback polling every 5s
+
+**v1.6.3.9-v3 Features (Retained):**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
-
-**v1.6.3.9-v2 Features (Retained):** Self-Write Detection, Container Isolation,
-Tabs API Integration, Ownership History.
 
 **v1.6.3.9 Features (Retained):**
 

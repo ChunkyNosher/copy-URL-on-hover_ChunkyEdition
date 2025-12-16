@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.9-v3  
+**Version:** 1.6.3.9-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -18,45 +18,39 @@ Tabs Manager
 - **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Readback Validation** - Every storage write validated by read-back
+- **Single Barrier Initialization** - Simplified init pattern
+- **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.9-v3 Features (NEW) - Issue #47 Fixes:**
+**v1.6.3.9-v4 Features (NEW) - Architecture Simplification:**
 
-- **Dual Architecture Docs** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Adoption Flow** - `pendingAdoptionWriteQueue[]`, `replayPendingAdoptionWrites()`
-- **Reduced Tab ID Timeout** - CURRENT_TAB_ID_WAIT_TIMEOUT_MS: 5000→2000ms
-- **Increased Fallback Timeout** - FALLBACK_SYNC_TIMEOUT_MS: 2000→2500ms
-- **Write Retry** - Exponential backoff [100,200,400]ms, MAX_WRITE_RETRIES=3
-- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM, ADOPTION_FLOW
+- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
+- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
+- **Single Barrier Init** - Replaces multi-phase initialization
+- **Render Queue Debounce** - 100ms debounce with revision dedup
+- **Storage Health Check** - Fallback polling every 5s
+- **_computeStateChecksum()** - Data integrity verification
+- **_generateQuickTabId()** - `qt-{timestamp}-{random}` format
+- **Orphan Cleanup** - Now removes orphans (not just marks)
+
+**v1.6.3.9-v3 Features (Retained):**
+
+- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
+- **Diagnostic Logging** - STORAGE_LISTENER_*, STATE_SYNC_MECHANISM
 
 **v1.6.3.9-v2 Features (Retained):**
 
-- **Multi-Layer Self-Write Detection** - TransactionId → WritingInstanceId →
-  WritingTabId → Timing fallback
 - **Container Isolation** - `originContainerId` field, container-aware queries
 - **Tabs API Integration** - `src/background/tab-events.js` with 3 listeners
-- **Ownership History** - `previouslyOwnedTabIds` for empty write validation
-
-**v1.6.3.9 Features (Retained) - Gap Analysis Implementation:**
-
-- **Feature Flag Wiring** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Message Routing** - Handlers send MESSAGE_TYPES to background
-- **CorrelationId Integration** - All messages use `generateCorrelationId()`
-- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - `src/utils/structured-logger.js`
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
 MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
-**Deprecated/Removed:** `setPosition()`, `setSize()`,
-`updateQuickTabPosition()`, `updateQuickTabSize()`, `BroadcastChannelManager`
-(DELETED in v6), runtime.Port (DELETED in v12)
+**Deprecated/Removed:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
+runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 ---
 
@@ -71,17 +65,17 @@ MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v3)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v4)
 
-**Stateless messaging architecture (NO Port, NO BroadcastChannel):**
+**Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
 - `runtime.sendMessage()` - Content script → Background
 - `tabs.sendMessage()` - Background → Content script / Manager
-- `storage.onChanged` - Primary sync mechanism for state updates
-- `QT_STATE_SYNC` - Background broadcasts state updates to all tabs
-- `REQUEST_FULL_STATE_SYNC` - Request full state from background
+- `storage.onChanged` - **PRIMARY** sync mechanism for state updates
+- Storage health check fallback - Polling every 5s if listener fails
+- Single barrier initialization - Simple init pattern
 
-**Dual Architecture (v1.6.3.9-v3):**
+**Dual Architecture (Retained from v3):**
 
 - **MessageRouter.js** - ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL)
 - **message-handler.js** - TYPE-based v2 routing (QT_CREATED, QT_MINIMIZED)
@@ -92,33 +86,33 @@ MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.9-v3: Adoption Flow & Diagnostic Logging (NEW)
+### v1.6.3.9-v4: Simplified Architecture (NEW)
 
-**Adoption Flow (null originTabId handling):**
+**Manager Render Pipeline:**
 
-- `pendingAdoptionWriteQueue[]` - Queues writes when originTabId is null
-- `replayPendingAdoptionWrites()` - Called when currentTabId available
-- `PENDING_WRITE_MAX_AGE_MS` = 10000ms (queue item expiry)
+- `scheduleRender()` - Revision-based deduplication
+- `RENDER_QUEUE_DEBOUNCE_MS` = 100ms debounce
+- `RENDER_START/COMPLETE/ERROR` logging per spec
 
-**New Diagnostic Logs:**
+**Background Script Functions:**
+
+- `_computeStateChecksum()` - Data integrity verification
+- `_persistToStorage()` - Simplified with validation + sync backup
+- `_generateQuickTabId()` - Format: `qt-{timestamp}-{random}`
+- Orphan cleanup now removes orphans (instead of marking)
+
+**Storage Health Check:**
+
+- `STORAGE_HEALTH_CHECK_INTERVAL_MS` = 5000ms
+- Verifies storage.onChanged is firing
+- Falls back to polling if listener fails
+
+### v1.6.3.9-v3: Diagnostic Logging (Retained)
 
 - `STORAGE_LISTENER_REGISTERED/FIRED` - Listener lifecycle
-- `STORAGE_FALLBACK_POLLING_START/COMPLETE` - Fallback polling
 - `STATE_SYNC_MECHANISM` - Which sync mechanism was used
-- `STORAGE_WRITE_QUEUED` - Write queued for adoption
-- `ADOPTION_FLOW` - Replaying pending writes
-- `STORAGE_WRITE_RETRY_*` - Write retry logs
 
-### v1.6.3.9-v2: Self-Write Detection & Container Isolation (Retained)
-
-**Multi-Layer Self-Write Detection:**
-
-1. **Primary:** TransactionId match (`getLastWrittenTransactionId()`)
-2. **Secondary:** WritingInstanceId match (`getWritingInstanceId()`)
-3. **Tertiary:** WritingTabId match
-4. **Fallback:** Timing-based detection (legacy)
-
-**Container Isolation:**
+**Container Isolation (v2):**
 
 - `originContainerId` field in Quick Tab data structure
 - Container-aware queries: `getQuickTabsByOriginTabIdAndContainer()`
@@ -126,37 +120,39 @@ MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
 ---
 
-## 🆕 v1.6.3.9-v3 Patterns
+## 🆕 v1.6.3.9-v4 Patterns
+
+- **Single Barrier Init** - Simple initialization, no multi-phase complexity
+- **Storage.onChanged PRIMARY** - Primary sync, health check fallback
+- **Render Queue Debounce** - 100ms debounce with revision deduplication
+- **State Checksum** - `_computeStateChecksum()` for data integrity
+- **Simplified Persistence** - `_persistToStorage()` with validation + sync backup
+- **Orphan Removal** - Cleanup now removes orphans instead of marking
+
+### v1.6.3.9-v3 Patterns (Retained)
 
 - **Dual Architecture** - MessageRouter (ACTION) + message-handler (TYPE)
-- **Adoption Flow** - Queue writes when originTabId null, replay on availability
-- **Write Retry** - Exponential backoff [100,200,400]ms with MAX_WRITE_RETRIES=3
-- **Graceful Degradation** - Barrier timeout as warning, not error
 - **Diagnostic Logging** - Storage listener lifecycle, sync mechanism tracking
 
 ### v1.6.3.9-v2 Patterns (Retained)
 
-- **Multi-Layer Self-Write Detection** - 4 layers: TransactionId → InstanceId →
-  TabId → Timing
 - **Container Isolation** - `originContainerId` with Firefox Container support
-- **Ownership History** - `previouslyOwnedTabIds` for empty write validation
 
-### Key Timing Constants (v1.6.3.9-v3)
+### Key Timing Constants (v1.6.3.9-v4)
 
-| Constant                              | Value         | Purpose                                |
-| ------------------------------------- | ------------- | -------------------------------------- |
-| `CURRENT_TAB_ID_WAIT_TIMEOUT_MS`      | 2000          | Tab ID fetch timeout (was 5000)        |
-| `FALLBACK_SYNC_TIMEOUT_MS`            | 2500          | Fallback sync timeout (was 2000)       |
-| `PENDING_WRITE_MAX_AGE_MS`            | 10000         | Adoption queue item expiry             |
-| `MAX_WRITE_RETRIES`                   | 3             | Storage write retry count              |
-| `WRITE_RETRY_DELAYS`                  | [100,200,400] | Exponential backoff delays             |
-| `FIREFOX_STORAGE_LISTENER_LATENCY_MAX_MS` | 250       | Firefox listener latency max           |
-| `STORAGE_LATENCY_BUFFER_MS`           | 50            | Storage latency buffer                 |
-| `STORAGE_ORDERING_TOLERANCE_MS`       | 300           | Storage write ordering tolerance       |
-| `MESSAGE_DEDUP_WINDOW_MS`             | 50            | correlationId deduplication window     |
-| `TAB_ID_FETCH_RETRY_DELAY_MS`         | 300           | Tab ID fetch retry delay               |
-| `TAB_UPDATED_DEBOUNCE_MS`             | 500           | tabs.onUpdated debounce                |
-| `DEFAULT_CONTAINER_ID`                | 'firefox-default' | Default container ID               |
+| Constant                              | Value             | Purpose                        |
+| ------------------------------------- | ----------------- | ------------------------------ |
+| `STORAGE_KEY`                         | 'quick_tabs_state_v2' | Storage key name           |
+| `INIT_BARRIER_TIMEOUT_MS`             | 10000             | Single barrier init timeout    |
+| `RENDER_QUEUE_DEBOUNCE_MS`            | 100               | Render queue debounce          |
+| `MESSAGE_TIMEOUT_MS`                  | 3000              | runtime.sendMessage timeout    |
+| `STORAGE_HEALTH_CHECK_INTERVAL_MS`    | 5000              | Health check fallback interval |
+| `STORAGE_MAX_AGE_MS`                  | 300000 (5min)     | Reject stale storage events    |
+| `STORAGE_DEDUP_WINDOW_MS`             | 300               | Self-write detection window    |
+| `MAX_QUICK_TABS`                      | 100               | Maximum Quick Tabs allowed     |
+| `QUICK_TAB_ID_PREFIX`                 | 'qt-'             | Quick Tab ID prefix            |
+| `ORPHAN_CLEANUP_INTERVAL_MS`          | 3600000 (1hr)     | Orphan cleanup interval        |
+| `DEFAULT_CONTAINER_ID`                | 'firefox-default' | Default container ID           |
 
 ---
 
@@ -167,13 +163,14 @@ MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 | QuickTabStateMachine  | `canTransition()`, `transition()`                                              |
 | QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                         |
 | MapTransactionManager | `beginTransaction()`, `commitTransaction()`                                    |
-| TabStateManager (v3)  | `getTabState()`, `setTabState()`                                               |
-| StorageManager        | `readState()`, `writeStateWithValidation()`, `replayPendingAdoptionWrites()`   |
+| TabStateManager       | `getTabState()`, `setTabState()`                                               |
+| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`                       |
 | MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`            |
 | MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)                      |
 | EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`                    |
 | StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                      |
 | UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                           |
+| Manager               | `scheduleRender()`, `sendMessageToBackground()`, `_handleOperationAck()`       |
 
 ---
 
@@ -181,9 +178,7 @@ MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
 **Key Exports:** `STATE_KEY`, `SESSION_STATE_KEY`, `logStorageRead()`,
 `logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
-`validateOwnershipForWrite()`, `writeStateWithVerificationAndRetry()`,
-`getLastWrittenTransactionId()`, `queueStorageWrite()`,
-`replayPendingAdoptionWrites()`, `pendingAdoptionWriteQueue`
+`validateOwnershipForWrite()`, `_computeStateChecksum()`
 
 **Schema v2 Exports:** `validateStateWithDiagnostics()`, `version: 2` field,
 `getQuickTabsByOriginTabIdAndContainer()`, `getQuickTabsByContainerId()`
@@ -197,10 +192,11 @@ MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, **v1.6.3.9-v3:** Dual architecture (MessageRouter + message-handler),
-adoption flow, write retry with exponential backoff, diagnostic logging,
-graceful degradation, **v1.6.3.9-v2:** Multi-layer self-write detection,
-container isolation, tabs API events, ownership history.
+Authority, **v1.6.3.9-v4:** Single barrier init, storage.onChanged PRIMARY,
+render queue debounce (100ms), storage health check (5s), state checksum,
+simplified persistence, orphan removal, **v1.6.3.9-v3:** Dual architecture
+(MessageRouter + message-handler), diagnostic logging, **v1.6.3.9-v2:**
+Container isolation, tabs API events.
 
 ---
 
@@ -270,17 +266,16 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 | File                                          | Features                                           |
 | --------------------------------------------- | -------------------------------------------------- |
-| `src/constants.js`                            | Centralized timing constants (all values)          |
+| `src/constants.js`                            | Centralized constants (+225 lines in v4)           |
 | `src/background/tab-events.js`                | Tabs API listeners (onActivated/Removed/Updated)   |
 | `src/utils/structured-logger.js`              | StructuredLogger class with contexts               |
 | `src/storage/schema-v2.js`                    | Container-aware queries, version field             |
-| `src/storage/storage-manager.js`              | Dedup, readback, retry, adoption flow              |
-| `src/storage/storage-utils.js`                | Self-write detection, queueStorageWrite()          |
+| `src/storage/storage-manager.js`              | Simplified persistence, checksum validation        |
 | `src/utils/browser-api.js`                    | Container functions, validateTabExists()           |
 | `src/messaging/message-router.js`             | ACTION-based routing (GET_CURRENT_TAB_ID, etc.)    |
 | `src/background/message-handler.js`           | TYPE-based v2 routing (QT_CREATED, etc.)           |
-| `src/background/quick-tabs-v2-integration.js` | V2 initialization, feature flags                   |
-| `background.js`                               | Message handler, storage versioning                |
+| `background.js`                               | _computeStateChecksum(), _generateQuickTabId()     |
+| `sidebar/quick-tabs-manager.js`               | scheduleRender(), sendMessageToBackground()        |
 
 ### Storage
 
