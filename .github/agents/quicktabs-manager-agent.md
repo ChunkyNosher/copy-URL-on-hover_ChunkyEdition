@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v5), simplified architecture, scheduleRender() with revision dedup,
+  (v1.6.3.9-v6), unified barrier init, scheduleRender() with revision dedup,
   single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v5 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v6 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -48,7 +48,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Orphaned Tab Recovery** - Shows adoption UI for orphaned tabs
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+
+- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
+- **Simplified Init** - Manager reduced from ~8 state variables to 4
+- **State Hash Validation** - `stateHashAtQueue` field in render queue
+- **Switch-Based Routing** - Enhanced `_routeRuntimeMessage()`
+
+**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
@@ -66,7 +74,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
-**Key Modules (v1.6.3.9-v5):**
+**Key Modules (v1.6.3.9-v6):**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |
@@ -90,9 +98,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] scheduleRender() works with revision dedup (v1.6.3.9-v5)
-- [ ] Render queue debounce works (100ms) (v1.6.3.9-v5)
-- [ ] sendMessageToBackground() works (3s timeout) (v1.6.3.9-v5)
+- [ ] scheduleRender() works with revision dedup (v1.6.3.9-v6)
+- [ ] Render queue debounce works (100ms) (v1.6.3.9-v6)
+- [ ] sendMessageToBackground() works (3s timeout) (v1.6.3.9-v6)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] MANAGER pattern works (close all, close minimized)
@@ -104,5 +112,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.9-v5 simplified architecture,
+**Your strength: Manager coordination with v1.6.3.9-v6 unified barrier,
 scheduleRender() with revision dedup, MANAGER pattern actions.**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.9-v5  
+**Version:** 1.6.3.9-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -18,21 +18,30 @@ Tabs Manager
 - **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Single Barrier Initialization** - Simplified init pattern
+- **Single Barrier Initialization** - Unified barrier with resolve-only semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+
+- **GAP 11: Simplified Init** - Manager reduced from ~8 state variables to 4
+- **GAP 13: Unified Barrier** - Single barrier with resolve-only semantics
+- **GAP 14: Render Queue Dedup** - Revision as PRIMARY over saveId
+- **GAP 15: Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
+- **GAP 16: Unified Routing** - Enhanced `_routeRuntimeMessage()` with switch-based routing
+- **GAP 17: State Hash** - `stateHashAtQueue` field for render queue validation
+- **GAP 18: Lint Fixes** - 15+ unused import/variable warnings fixed
+- **GAP 20: Response Helper** - `_buildResponse()` for standardized correlationId responses
+- **Constants Centralized** - `WRITE_IGNORE_WINDOW_MS`, `STORAGE_CHANGE_COOLDOWN_MS` moved to `src/constants.js`
+
+**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` now calls `_handleStorageChangedEvent()`
+- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
 - **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
-- **Response Format** - Background responses include `type` and `correlationId` via `_buildResponse()`
-- **Content Script Handlers** - `QT_STATE_SYNC` and `STATE_REFRESH_REQUESTED` message types
-- **MessageRouter Logging** - Full context logged when routing fails
-- **Tab Cleanup** - `browser.tabs.onRemoved` listener in Manager sidebar
+- **Response Format** - Background responses include `type` and `correlationId`
 - **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
 
 **v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
@@ -40,13 +49,9 @@ Tabs Manager
 - **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
 - **Centralized Constants** - `src/constants.js` expanded (+225 lines)
 - **Single Barrier Init** - Replaces multi-phase initialization
-- **Render Queue Debounce** - 100ms debounce with revision dedup
 - **Storage Health Check** - Fallback polling every 5s
-- **\_computeStateChecksum()** - Data integrity verification
-- **\_generateQuickTabId()** - `qt-{timestamp}-{random}` format
-- **Orphan Cleanup** - Now removes orphans (not just marks)
 
-**v1.6.3.9-v3 Features (Previous):**
+**v1.6.3.9-v3 Features (Retained):**
 
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
@@ -61,7 +66,8 @@ TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
 MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
 **Deprecated/Removed:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
+runtime.Port (v12), complex init layers (v4), revision event buffering (v4),
+CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 
 ---
 
@@ -76,7 +82,7 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v5)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v6)
 
 **Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
@@ -84,7 +90,7 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 - `tabs.sendMessage()` - Background → Content script / Manager
 - `storage.onChanged` - **PRIMARY** sync mechanism for state updates
 - Storage health check fallback - Polling every 5s if listener fails
-- Single barrier initialization - Simple init pattern
+- Unified barrier initialization - Resolve-only semantics (v1.6.3.9-v6)
 
 **Dual Architecture (Retained from v3):**
 
@@ -97,7 +103,29 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.9-v5: Bug Fixes & Reliability (NEW)
+### v1.6.3.9-v6: Sidebar & Background Cleanup (NEW)
+
+**Sidebar (quick-tabs-manager.js):**
+
+- Simplified initialization: 4 state variables (was ~8)
+- Unified barrier with resolve-only semantics
+- Render queue dedup: revision PRIMARY over saveId
+- ~218 lines dead code removed
+- Enhanced `_routeRuntimeMessage()` with switch-based routing
+- `stateHashAtQueue` field for state validation
+
+**Background Script (background.js):**
+
+- Port infrastructure remnants removed
+- `_buildResponse()` helper for correlationId responses
+- `version: 2` field added to globalQuickTabState
+
+**Constants (src/constants.js):**
+
+- `WRITE_IGNORE_WINDOW_MS` (100ms) - moved from background.js
+- `STORAGE_CHANGE_COOLDOWN_MS` (200ms) - moved from background.js
+
+### v1.6.3.9-v5: Bug Fixes & Reliability (Previous)
 
 **Critical Fixes:**
 
@@ -106,41 +134,12 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 - Adoption flow fallback for null tab IDs
 - Response format includes `type` and `correlationId`
 
-**High Priority Fixes:**
-
-- Comprehensive logging during storage event init
-- Tab affinity map cleanup interval starts at init
-- State sync via new `QT_STATE_SYNC` handler
-- Storage write cooldown bypass for destroy/cleanup
-- Content script `tabActivated` action handler
-
-**Medium Priority Fixes:**
-
-- `browser.tabs.onRemoved` listener in Manager sidebar
-- Legacy response format `{success, data}` accepted
-- Message dispatcher cross-routing (`type` + `action`)
-- Adoption queue timeout with enhanced logging
-
 ### v1.6.3.9-v4: Simplified Architecture (Previous)
 
-**Manager Render Pipeline:**
-
-- `scheduleRender()` - Revision-based deduplication
-- `RENDER_QUEUE_DEBOUNCE_MS` = 100ms debounce
-- `RENDER_START/COMPLETE/ERROR` logging per spec
-
-**Background Script Functions:**
-
-- `_computeStateChecksum()` - Data integrity verification
-- `_persistToStorage()` - Simplified with validation + sync backup
-- `_generateQuickTabId()` - Format: `qt-{timestamp}-{random}`
-- Orphan cleanup now removes orphans (instead of marking)
-
-**Storage Health Check:**
-
-- `STORAGE_HEALTH_CHECK_INTERVAL_MS` = 5000ms
-- Verifies storage.onChanged is firing
-- Falls back to polling if listener fails
+- `scheduleRender()` with revision-based deduplication
+- `_computeStateChecksum()` for data integrity
+- Storage health check fallback (5s polling)
+- Orphan cleanup now removes (not marks)
 
 ### v1.6.3.9-v3: Diagnostic Logging (Retained)
 
@@ -155,13 +154,20 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 ---
 
-## 🆕 v1.6.3.9-v5 Patterns
+## 🆕 v1.6.3.9-v6 Patterns
+
+- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Render Queue Priority** - Revision PRIMARY over saveId for dedup
+- **Switch-Based Routing** - `_routeRuntimeMessage()` unified routing
+- **State Hash Validation** - `stateHashAtQueue` field in render queue
+- **Response Helper** - `_buildResponse()` with correlationId tracking
+- **Centralized Timing** - `WRITE_IGNORE_WINDOW_MS`, `STORAGE_CHANGE_COOLDOWN_MS`
+
+### v1.6.3.9-v5 Patterns (Previous)
 
 - **Tab ID Fallback** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Response Helper** - `_buildResponse()` with `type` and `correlationId`
 - **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
-- **Legacy Format Support** - Accepts `{success, data}` response format
 
 ### v1.6.3.9-v4 Patterns (Previous)
 
@@ -182,17 +188,17 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 - **Container Isolation** - `originContainerId` with Firefox Container support
 
-### Key Timing Constants (v1.6.3.9-v5)
+### Key Timing Constants (v1.6.3.9-v6)
 
 | Constant                           | Value                 | Purpose                        |
 | ---------------------------------- | --------------------- | ------------------------------ |
 | `STORAGE_KEY`                      | 'quick_tabs_state_v2' | Storage key name               |
-| `INIT_BARRIER_TIMEOUT_MS`          | 10000                 | Single barrier init timeout    |
+| `INIT_BARRIER_TIMEOUT_MS`          | 10000                 | Unified barrier init timeout   |
 | `RENDER_QUEUE_DEBOUNCE_MS`         | 100                   | Render queue debounce          |
 | `MESSAGE_TIMEOUT_MS`               | 3000                  | runtime.sendMessage timeout    |
 | `STORAGE_HEALTH_CHECK_INTERVAL_MS` | 5000                  | Health check fallback interval |
-| `STORAGE_MAX_AGE_MS`               | 300000 (5min)         | Reject stale storage events    |
-| `STORAGE_DEDUP_WINDOW_MS`          | 300                   | Self-write detection window    |
+| `WRITE_IGNORE_WINDOW_MS`           | 100                   | Self-write detection window    |
+| `STORAGE_CHANGE_COOLDOWN_MS`       | 200                   | Storage change cooldown        |
 | `MAX_QUICK_TABS`                   | 100                   | Maximum Quick Tabs allowed     |
 | `QUICK_TAB_ID_PREFIX`              | 'qt-'                 | Quick Tab ID prefix            |
 | `ORPHAN_CLEANUP_INTERVAL_MS`       | 3600000 (1hr)         | Orphan cleanup interval        |
@@ -236,13 +242,14 @@ runtime.Port (v12), complex init layers (v4), revision event buffering (v4)
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, **v1.6.3.9-v5:** Tab ID fallback, storage event routing fix, response
-format with correlationId, message cross-routing, legacy format support,
-**v1.6.3.9-v4:** Single barrier init, storage.onChanged PRIMARY, render queue
-debounce (100ms), storage health check (5s), state checksum, simplified
-persistence, orphan removal, **v1.6.3.9-v3:** Dual architecture (MessageRouter +
-message-handler), diagnostic logging, **v1.6.3.9-v2:** Container isolation, tabs
-API events.
+Authority, **v1.6.3.9-v6:** Unified barrier init, render queue revision PRIMARY,
+switch-based routing, state hash validation, response helper, centralized timing
+constants, **v1.6.3.9-v5:** Tab ID fallback, storage event routing fix, message
+cross-routing, **v1.6.3.9-v4:** Single barrier init, storage.onChanged PRIMARY,
+render queue debounce (100ms), storage health check (5s), state checksum,
+simplified persistence, orphan removal, **v1.6.3.9-v3:** Dual architecture
+(MessageRouter + message-handler), diagnostic logging, **v1.6.3.9-v2:**
+Container isolation, tabs API events.
 
 ---
 

@@ -1,0 +1,8 @@
+{
+  "id": "11453c96-72f8-4233-b209-9f5cc06ef197",
+  "title": "v1.6.3.9-v6 Docs Update",
+  "details": "Updated documentation from v1.6.3.9-v5 to v1.6.3.9-v6 with the following key features:\n\nKey v6 Features (Sidebar & Background Cleanup):\n1. GAP 11: Simplified Init - Manager reduced from ~8 state variables to 4\n2. GAP 13: Unified Barrier - Single barrier with resolve-only semantics\n3. GAP 14: Render Queue Priority - Revision as PRIMARY over saveId for dedup\n4. GAP 15: Dead Code Removal - ~218 lines removed (CONNECTION_STATE, port stubs)\n5. GAP 16: Unified Routing - Enhanced _routeRuntimeMessage() with switch-based routing\n6. GAP 17: State Hash - stateHashAtQueue field for render queue validation\n7. GAP 18: Lint Fixes - 15+ unused import/variable warnings fixed\n8. GAP 20: Response Helper - _buildResponse() for correlationId responses\n9. Constants Centralized - WRITE_IGNORE_WINDOW_MS, STORAGE_CHANGE_COOLDOWN_MS moved to src/constants.js\n\nFiles Updated:\n- .github/copilot-instructions.md (15KB limit maintained)\n- README.md (9.6KB)\n- All 13 agent files in .github/agents/\n\nVersion references changed from 1.6.3.9-v5 to 1.6.3.9-v6 in all files.",
+  "category": "documentation",
+  "dateCreated": "2025-12-16T18:52:28.211Z",
+  "dateUpdated": "2025-12-16T18:52:28.211Z"
+}

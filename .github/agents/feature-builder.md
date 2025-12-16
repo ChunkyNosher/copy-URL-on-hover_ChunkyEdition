@@ -60,12 +60,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.9-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+
+- **Simplified Init** - Manager reduced from ~8 state variables to 4
+- **Unified Barrier** - Single barrier with resolve-only semantics
+- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
+- **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
+- **Response Helper** - `_buildResponse()` for correlationId responses
+
+**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v5), simplified architecture, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.9-v6), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,9 +38,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v5 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.9-v6 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability:**
+**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+
+- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
+- **Response Helper** - `_buildResponse()` for correlationId responses
+- **Centralized Constants** - `WRITE_IGNORE_WINDOW_MS`, `STORAGE_CHANGE_COOLDOWN_MS`
+
+**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
@@ -58,11 +65,11 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
 - **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
 
-**Key Modules (v1.6.3.9-v5):**
+**Key Modules (v1.6.3.9-v6):**
 
 | Module                                | Purpose                            |
 | ------------------------------------- | ---------------------------------- |
-| `src/constants.js`                    | Centralized constants (+225 lines) |
+| `src/constants.js`                    | Centralized constants (+timing)    |
 | `src/storage/storage-manager.js`      | Simplified persistence, checksum   |
 | `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder      |
 | `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab()  |
@@ -82,9 +89,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v5)
-- [ ] Storage health check fallback works (5s) (v1.6.3.9-v5)
-- [ ] Single barrier init works (v1.6.3.9-v5)
+- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v6)
+- [ ] Storage health check fallback works (5s) (v1.6.3.9-v6)
+- [ ] Unified barrier init works (v1.6.3.9-v6)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
@@ -94,5 +101,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.9-v5 simplified
-architecture, storage.onChanged PRIMARY, health check fallback.**
+**Your strength: Reliable cross-tab sync with v1.6.3.9-v6 unified barrier,
+storage.onChanged PRIMARY, health check fallback.**

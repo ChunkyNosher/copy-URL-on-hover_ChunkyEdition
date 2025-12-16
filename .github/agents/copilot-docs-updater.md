@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.9-v5.
+  documentation. Current version: v1.6.3.9-v6.
 tools: ['*']
 ---
 
@@ -69,13 +69,21 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.9-v5)
+## Current Extension State (v1.6.3.9-v6)
 
-### v1.6.3.9-v5 Features (NEW) - Bug Fixes & Reliability
+### v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup
+
+- **GAP 11: Simplified Init** - Manager reduced from ~8 state variables to 4
+- **GAP 13: Unified Barrier** - Single barrier with resolve-only semantics
+- **GAP 14: Render Queue Dedup** - Revision as PRIMARY over saveId
+- **GAP 15: Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
+- **GAP 16: Unified Routing** - Enhanced `_routeRuntimeMessage()` switch-based routing
+- **GAP 20: Response Helper** - `_buildResponse()` for correlationId responses
+
+### v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability
 
 - **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
 - **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
 - **Response Format** - Background responses include `type` and `correlationId`
 - **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
 
@@ -100,9 +108,9 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.9-v5
+- [ ] Version numbers match 1.6.3.9-v6
+- [ ] **v1.6.3.9-v6:** Sidebar & background cleanup documented
 - [ ] **v1.6.3.9-v5:** Bug fixes documented (Tab ID, storage routing, etc.)
-- [ ] **v1.6.3.9-v4:** Architecture simplification documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -112,12 +120,13 @@ nothing.
 
 | Error                  | Fix                         |
 | ---------------------- | --------------------------- |
-| v1.6.3.9-v3 or earlier | Update to 1.6.3.9-v5        |
+| v1.6.3.9-v4 or earlier | Update to 1.6.3.9-v6        |
 | "Pin to Page"          | Use "Solo/Mute"             |
 | Direct storage writes  | Use Single Writer Authority |
 | BroadcastChannel refs  | REMOVE - BC DELETED in v6   |
 | Port-based messaging   | REMOVE - Ports DELETED v12  |
 | Complex init layers    | REMOVE - Simplified in v4   |
+| CONNECTION_STATE refs  | REMOVE - Deleted in v6      |
 
 ---
 
