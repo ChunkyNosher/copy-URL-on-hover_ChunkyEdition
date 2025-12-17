@@ -2,9 +2,11 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * v1.6.3.10-v3 - FIX Issue #47: ADOPTION_COMPLETED port message for immediate re-render
+ * v1.6.3.10-v3 - Phase 2: Tabs API Integration
+ *   - FIX Issue #47: ADOPTION_COMPLETED port message for immediate re-render
  *   - Background broadcasts ADOPTION_COMPLETED after storage write
  *   - Manager handles port message and triggers immediate scheduleRender()
+ *   - NEW: ORIGIN_TAB_CLOSED handler for orphan detection
  *
  * v1.6.3.10-v2 - FIX Manager UI Issues (Issues #1, #4, #8)
  *   - FIX Issue #1: Reduced render debounce 300ms→100ms, sliding-window debounce
@@ -1175,6 +1177,12 @@ function handlePortMessage(message) {
     handleAdoptionCompletion(message);
     return;
   }
+
+  // v1.6.3.10-v3 - Phase 2: Handle origin tab closed for orphan detection
+  if (message.type === 'ORIGIN_TAB_CLOSED') {
+    handleOriginTabClosed(message);
+    return;
+  }
 }
 
 /**
@@ -1291,6 +1299,36 @@ function handleAdoptionCompletion(message) {
   console.log('[Manager] ADOPTION_RENDER_SCHEDULED:', {
     adoptedQuickTabId,
     trigger: 'port-ADOPTION_COMPLETED'
+  });
+}
+
+/**
+ * Handle origin tab closed - mark Quick Tabs as orphaned in UI
+ * v1.6.3.10-v3 - Phase 2: Orphan detection
+ * @param {Object} message - Origin tab closed message
+ */
+function handleOriginTabClosed(message) {
+  const { originTabId, orphanedQuickTabIds, orphanedCount, timestamp } = message;
+
+  console.log('[Manager] ORIGIN_TAB_CLOSED received:', {
+    originTabId,
+    orphanedCount,
+    orphanedIds: orphanedQuickTabIds,
+    timeSinceBroadcast: Date.now() - timestamp
+  });
+
+  // Update cache staleness tracking
+  lastCacheSyncFromStorage = Date.now();
+
+  // Invalidate browser tab info cache for the closed tab
+  browserTabInfoCache.delete(originTabId);
+
+  // Schedule high-priority re-render to show orphan warnings
+  scheduleRender('origin-tab-closed');
+
+  console.log('[Manager] ORPHAN_RENDER_SCHEDULED:', {
+    orphanedCount,
+    trigger: 'port-ORIGIN_TAB_CLOSED'
   });
 }
 
