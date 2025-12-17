@@ -694,12 +694,15 @@ export class UICoordinator {
     const currentContainerId = this.currentContainerId ?? 'firefox-default';
 
     if (originContainerId !== currentContainerId) {
-      console.log(`${this._logPrefix} CONTAINER BLOCKED: Quick Tab belongs to different container:`, {
-        id: quickTab.id,
-        originContainerId,
-        currentContainerId,
-        originTabId: quickTab.originTabId
-      });
+      console.log(
+        `${this._logPrefix} CONTAINER BLOCKED: Quick Tab belongs to different container:`,
+        {
+          id: quickTab.id,
+          originContainerId,
+          currentContainerId,
+          originTabId: quickTab.originTabId
+        }
+      );
       return false;
     }
 

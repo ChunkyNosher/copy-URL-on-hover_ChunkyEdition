@@ -19,9 +19,11 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **🔧 Issue #47 Adoption Re-render & Tabs API Phase 2 (December 2025) ✅**
 
-- ✅ **Adoption Re-render** - ADOPTION_COMPLETED message for immediate Manager re-render
+- ✅ **Adoption Re-render** - ADOPTION_COMPLETED message for immediate Manager
+  re-render
 - ✅ **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
-- ✅ **Orphan Detection** - ORIGIN_TAB_CLOSED broadcast, isOrphaned/orphanedAt fields
+- ✅ **Orphan Detection** - ORIGIN_TAB_CLOSED broadcast, isOrphaned/orphanedAt
+  fields
 - ✅ **Smart Adoption Validation** - Validates target tab exists before adoption
 
 ---

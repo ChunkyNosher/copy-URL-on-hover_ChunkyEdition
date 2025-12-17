@@ -74,12 +74,14 @@ nothing.
 ### v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache Fixes
 
 - **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
-- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
+- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding
+  window
 - **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
 
 ### v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability
 
-- **Issue 2: Port Lifecycle** - State machine (connected/zombie/reconnecting/dead)
+- **Issue 2: Port Lifecycle** - State machine
+  (connected/zombie/reconnecting/dead)
 - **Issue 5: Heartbeat Timing** - 25s→15s interval, 5s→2s timeout
 - **Issue 6/7: Message Reliability** - 2 retries + 150ms backoff
 

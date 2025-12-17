@@ -414,7 +414,10 @@ export class CreateHandler {
    */
   _getOriginContainerId(options, defaults, quickTabId) {
     const originContainerId =
-      options.originContainerId ?? options.cookieStoreId ?? this.cookieStoreId ?? defaults.originContainerId;
+      options.originContainerId ??
+      options.cookieStoreId ??
+      this.cookieStoreId ??
+      defaults.originContainerId;
 
     console.log('[CreateHandler] 📦 CONTAINER_CONTEXT:', {
       quickTabId,

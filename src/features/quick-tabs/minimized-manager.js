@@ -96,7 +96,8 @@ export class MinimizedManager {
     const resolvedOriginTabId = this._resolveOriginTabId(id, tabWindow);
 
     // v1.6.3.10-v4 - FIX Issue #13: Resolve originContainerId for Firefox Multi-Account Container isolation
-    const resolvedOriginContainerId = tabWindow.originContainerId ?? tabWindow.cookieStoreId ?? null;
+    const resolvedOriginContainerId =
+      tabWindow.originContainerId ?? tabWindow.cookieStoreId ?? null;
 
     // Build snapshot object
     const snapshot = this._buildSnapshot(tabWindow, resolvedOriginTabId, resolvedOriginContainerId);

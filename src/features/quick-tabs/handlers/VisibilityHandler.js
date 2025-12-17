@@ -1526,14 +1526,11 @@ export class VisibilityHandler {
     // Only allow focus from owning tab to prevent z-index leakage
     if (tabWindow.originTabId !== null && tabWindow.originTabId !== undefined) {
       if (tabWindow.originTabId !== this.currentTabId) {
-        console.log(
-          `${this._logPrefix}[handleFocus] Cross-tab focus rejected:`,
-          {
-            id,
-            originTabId: tabWindow.originTabId,
-            currentTabId: this.currentTabId
-          }
-        );
+        console.log(`${this._logPrefix}[handleFocus] Cross-tab focus rejected:`, {
+          id,
+          originTabId: tabWindow.originTabId,
+          currentTabId: this.currentTabId
+        });
         return;
       }
     }

@@ -154,7 +154,10 @@ export class TabLifecycleHandler {
 
     // Log significant updates
     if (changeInfo.favIconUrl) {
-      console.log('[TAB_LIFECYCLE] Tab favicon updated:', { tabId, favIconUrl: changeInfo.favIconUrl });
+      console.log('[TAB_LIFECYCLE] Tab favicon updated:', {
+        tabId,
+        favIconUrl: changeInfo.favIconUrl
+      });
     }
     if (changeInfo.title) {
       console.log('[TAB_LIFECYCLE] Tab title updated:', { tabId, title: changeInfo.title });
@@ -171,7 +174,7 @@ export class TabLifecycleHandler {
 
     // O(1) update: Only update the previous and new active tabs
     const previousActiveId = this.activeTabId;
-    
+
     // Deactivate previous tab if it exists
     if (previousActiveId !== null && this.openTabs.has(previousActiveId)) {
       const previousTab = this.openTabs.get(previousActiveId);
@@ -200,7 +203,7 @@ export class TabLifecycleHandler {
 
     // Remove from our snapshot
     this.openTabs.delete(tabId);
-    
+
     // Clear active tab if this was the active tab
     if (this.activeTabId === tabId) {
       this.activeTabId = null;

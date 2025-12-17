@@ -1,4 +1,5 @@
 # Tabs API Deep Implementation: Post-Port-Messaging Integration
+
 ## Detailed Specification for Quick Tabs Origin Tracking, Lifecycle Management & Smart Adoption
 
 **Date:** December 17, 2025  
@@ -24,7 +25,8 @@
 
 ## Overview: What Tabs API Enables {#overview}
 
-After port-based adoption messaging is working, Tabs API integration adds these capabilities:
+After port-based adoption messaging is working, Tabs API integration adds these
+capabilities:
 
 ### User-Facing Features
 
@@ -104,34 +106,34 @@ class QuickTab {
   createdAt: number
   lastModified: number
   visibility: { ... }
-  
+
   // ===== NEW: TAB ORIGIN CONTEXT =====
-  
+
   // Primary origin tracking
   originTabId: number | null     // ID of tab that created this
                                  // null = unknown or created before tracking added
-  
+
   originTabTitle: string | null  // Title of origin tab when Quick Tab created
                                  // null = not captured yet
-  
+
   originTabUrl: string | null    // URL of origin tab when Quick Tab created
                                  // null = not captured yet
-  
+
   originDomain: string | null    // Domain extracted from originTabUrl
                                  // null = not captured yet
-  
+
   originFavicon: string | null   // Favicon URL from origin tab
                                  // null = not available, will be loaded async
-  
+
   // Lifecycle tracking
   isOrphaned: boolean            // true if origin tab was closed
                                  // Used to mark Quick Tabs for cleanup/warning
-  
+
   orphanedAt: number | null      // Timestamp when origin tab closed
                                  // null = not orphaned
-  
+
   originTabClosedTitle: string | null  // Title when closed (for context if needed)
-  
+
   // Container context (from Tabs API)
   cookieStoreId: string          // "firefox-default" or "firefox-container-N"
                                  // Already exists, will be used with Tabs API
@@ -162,7 +164,7 @@ class QuickTab {
   position: { left: 100, top: 100 },
   size: { width: 800, height: 600 },
   zIndex: 1000,
-  
+
   // NEW:
   originTabId: 42,
   originTabTitle: "StackOverflow - How to ...",
@@ -173,7 +175,7 @@ class QuickTab {
   orphanedAt: null,
   originTabClosedTitle: null,
   cookieStoreId: "firefox-default",
-  
+
   ...
 }
 ```
@@ -207,7 +209,8 @@ class StorageFormatMigrator {
 
 ### What Happens When Quick Tab Created
 
-When user copies/hovers URL or triggers Quick Tab creation, content script needs to capture origin tab information.
+When user copies/hovers URL or triggers Quick Tab creation, content script needs
+to capture origin tab information.
 
 ### Implementation: Enhanced URL_COPIED Event
 
@@ -230,28 +233,28 @@ async function handleCopyURL(url) {
   eventBus.emit(Events.URL_COPIED, {
     url,
     timestamp: Date.now(),
-    
+
     // NEW: Tab origin context
     originTabId: tabInfo.id,
     originTabTitle: tabInfo.title,
     originTabUrl: tabInfo.url,
     originDomain: new URL(tabInfo.url).hostname,
     originFavicon: tabInfo.favIconUrl || null,
-    
+
     // NEW: Container context
     cookieStoreId: tabInfo.cookieStoreId || 'firefox-default',
-    
+
     // For debugging
     originTabContext: {
       tabId: tabInfo.id,
       title: tabInfo.title,
       url: tabInfo.url,
       active: tabInfo.active,
-      status: tabInfo.status,    // "loading" or "complete"
+      status: tabInfo.status, // "loading" or "complete"
       favIconUrl: tabInfo.favIconUrl
     }
   });
-  
+
   console.log('[CONTENT] URL copied with tab context', {
     url,
     originTabId: tabInfo.id,
@@ -269,7 +272,7 @@ async function handleCopyURL(url) {
 messageRouter.register('GET_CURRENT_TAB_FULL_INFO', async (message, sender) => {
   // sender.tab is automatically populated by Firefox
   // Contains: id, title, url, favIconUrl, active, status, windowId, etc.
-  
+
   try {
     const tabInfo = {
       id: sender.tab.id,
@@ -277,7 +280,7 @@ messageRouter.register('GET_CURRENT_TAB_FULL_INFO', async (message, sender) => {
       url: sender.tab.url,
       favIconUrl: sender.tab.favIconUrl || null,
       active: sender.tab.active,
-      status: sender.tab.status,           // "loading" or "complete"
+      status: sender.tab.status, // "loading" or "complete"
       windowId: sender.tab.windowId,
       index: sender.tab.index,
       pinned: sender.tab.pinned,
@@ -307,53 +310,61 @@ messageRouter.register('GET_CURRENT_TAB_FULL_INFO', async (message, sender) => {
 
 ```javascript
 async function createQuickTabWithOriginContext(message, sender) {
-  const { url, originTabId, originTabTitle, originTabUrl, originDomain, originFavicon, cookieStoreId } = message;
-  
+  const {
+    url,
+    originTabId,
+    originTabTitle,
+    originTabUrl,
+    originDomain,
+    originFavicon,
+    cookieStoreId
+  } = message;
+
   const quickTab = new QuickTab({
     id: generateQuickTabId(),
     url,
     title: extractTitleFromUrl(url),
-    
+
     // Position/size defaults (user can customize)
     position: { left: 100, top: 100 },
     size: { width: 800, height: 600 },
     zIndex: 1000,
-    
+
     createdAt: Date.now(),
     lastModified: Date.now(),
-    
+
     // NEW: Origin context from content script
-    originTabId,           // Which tab created this
-    originTabTitle,        // Title of origin tab
-    originTabUrl,          // URL of origin tab
-    originDomain,          // Domain for grouping
-    originFavicon,         // Favicon if available
-    
+    originTabId, // Which tab created this
+    originTabTitle, // Title of origin tab
+    originTabUrl, // URL of origin tab
+    originDomain, // Domain for grouping
+    originFavicon, // Favicon if available
+
     // NEW: Lifecycle tracking
     isOrphaned: false,
     orphanedAt: null,
     originTabClosedTitle: null,
-    
+
     // Container context
     cookieStoreId,
-    
+
     visibility: {
       minimized: false,
-      soloedOnTabs: [originTabId],  // Show on origin tab by default
+      soloedOnTabs: [originTabId], // Show on origin tab by default
       mutedOnTabs: []
     }
   });
-  
+
   // Persist to storage
   await storage.saveQuickTab(quickTab);
-  
+
   console.log('[QUICKTAB] Created with origin context', {
     quickTabId: quickTab.id,
     url: quickTab.url,
     originTabId: quickTab.originTabId,
     originDomain: quickTab.originDomain
   });
-  
+
   return quickTab;
 }
 ```
@@ -381,23 +392,23 @@ class TabLifecycleHandler {
     this.quickTabsManager = quickTabsManager;
     this.storage = storage;
     this.portBroadcaster = portBroadcaster;
-    
+
     // Track which tabs are currently open
-    this.openTabs = new Map();  // tabId -> { id, title, url, favIconUrl, ... }
+    this.openTabs = new Map(); // tabId -> { id, title, url, favIconUrl, ... }
   }
 
   async start() {
     console.log('[TAB_LIFECYCLE] Handler starting...');
-    
+
     // Initialize open tabs snapshot
     await this.initializeOpenTabs();
-    
+
     // Set up listeners
     browser.tabs.onCreated.addListener(this.handleTabCreated.bind(this));
     browser.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
     browser.tabs.onActivated.addListener(this.handleTabActivated.bind(this));
     browser.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
-    
+
     console.log('[TAB_LIFECYCLE] Listeners registered');
   }
 
@@ -414,22 +425,29 @@ class TabLifecycleHandler {
           status: tab.status
         });
       }
-      console.log('[TAB_LIFECYCLE] Initialized with', this.openTabs.size, 'open tabs');
+      console.log(
+        '[TAB_LIFECYCLE] Initialized with',
+        this.openTabs.size,
+        'open tabs'
+      );
     } catch (error) {
       console.error('[TAB_LIFECYCLE] Error initializing:', error);
     }
   }
 
   async handleTabCreated(tab) {
-    console.log('[TAB_LIFECYCLE] Tab created', { tabId: tab.id, title: tab.title });
-    
+    console.log('[TAB_LIFECYCLE] Tab created', {
+      tabId: tab.id,
+      title: tab.title
+    });
+
     this.openTabs.set(tab.id, {
       id: tab.id,
       title: tab.title,
       url: tab.url,
       favIconUrl: tab.favIconUrl
     });
-    
+
     // Broadcast to Manager for any UI updates
     this.portBroadcaster.broadcast({
       type: 'TAB_CREATED',
@@ -443,55 +461,55 @@ class TabLifecycleHandler {
   async handleTabUpdated(tabId, changeInfo, tab) {
     // Called frequently as page loads, focus changes, etc.
     // Only broadcast significant changes
-    
+
     if (changeInfo.favIconUrl !== undefined) {
       console.log('[TAB_LIFECYCLE] Tab favicon updated', {
         tabId,
         favIconUrl: tab.favIconUrl
       });
-      
+
       // Update our snapshot
       this.openTabs.get(tabId).favIconUrl = tab.favIconUrl;
-      
+
       // Broadcast to Manager
       this.portBroadcaster.broadcast({
         type: 'TAB_FAVICON_UPDATED',
         tabId,
         favIconUrl: tab.favIconUrl
       });
-      
+
       // Update Quick Tabs that originated from this tab
       await this.updateOriginTabInfo(tabId, { favIconUrl: tab.favIconUrl });
     }
-    
+
     if (changeInfo.title !== undefined) {
       console.log('[TAB_LIFECYCLE] Tab title updated', {
         tabId,
         title: tab.title
       });
-      
+
       // Update our snapshot
       this.openTabs.get(tabId).title = tab.title;
-      
+
       // Broadcast to Manager
       this.portBroadcaster.broadcast({
         type: 'TAB_TITLE_UPDATED',
         tabId,
         title: tab.title
       });
-      
+
       // Update Quick Tabs that originated from this tab
       await this.updateOriginTabInfo(tabId, { originTabTitle: tab.title });
     }
-    
+
     if (changeInfo.status !== undefined) {
       console.log('[TAB_LIFECYCLE] Tab status changed', {
         tabId,
         status: changeInfo.status
       });
-      
+
       this.openTabs.get(tabId).status = tab.status;
-      
+
       // When tab finishes loading, favicon should be available
       if (changeInfo.status === 'complete') {
         this.portBroadcaster.broadcast({
@@ -499,10 +517,12 @@ class TabLifecycleHandler {
           tabId,
           favIconUrl: tab.favIconUrl
         });
-        
+
         // Update Quick Tabs favicon if now available
         if (tab.favIconUrl) {
-          await this.updateOriginTabInfo(tabId, { originFavicon: tab.favIconUrl });
+          await this.updateOriginTabInfo(tabId, {
+            originFavicon: tab.favIconUrl
+          });
         }
       }
     }
@@ -510,15 +530,15 @@ class TabLifecycleHandler {
 
   async handleTabActivated({ tabId, windowId }) {
     console.log('[TAB_LIFECYCLE] Tab activated', { tabId });
-    
+
     try {
       const tab = await browser.tabs.get(tabId);
-      
+
       // Update snapshot
       if (this.openTabs.has(tabId)) {
         this.openTabs.get(tabId).active = true;
       }
-      
+
       // Broadcast to Manager
       // Manager can use this to filter/show Quick Tabs for active tab
       this.portBroadcaster.broadcast({
@@ -535,10 +555,10 @@ class TabLifecycleHandler {
 
   async handleTabRemoved(tabId, removeInfo) {
     console.log('[TAB_LIFECYCLE] Tab removed', { tabId });
-    
+
     // Remove from snapshot
     this.openTabs.delete(tabId);
-    
+
     // Find all Quick Tabs that originated from this tab
     const orphanedQuickTabs = [];
     for (const [quickTabId, quickTab] of this.quickTabsManager.tabs) {
@@ -546,23 +566,23 @@ class TabLifecycleHandler {
         orphanedQuickTabs.push(quickTabId);
       }
     }
-    
+
     if (orphanedQuickTabs.length > 0) {
       console.log('[TAB_LIFECYCLE] Found orphaned Quick Tabs', {
         originTabId: tabId,
         orphanedCount: orphanedQuickTabs.length,
         orphanedIds: orphanedQuickTabs
       });
-      
+
       // Mark them as orphaned in storage
       for (const quickTabId of orphanedQuickTabs) {
         const quickTab = this.quickTabsManager.tabs.get(quickTabId);
         quickTab.isOrphaned = true;
         quickTab.orphanedAt = Date.now();
-        quickTab.originTabClosedTitle = quickTab.originTabTitle;  // Preserve for context
+        quickTab.originTabClosedTitle = quickTab.originTabTitle; // Preserve for context
         await this.storage.saveQuickTab(quickTab);
       }
-      
+
       // Broadcast to Manager so it can show warning badges
       this.portBroadcaster.broadcast({
         type: 'ORIGIN_TAB_CLOSED',
@@ -571,7 +591,7 @@ class TabLifecycleHandler {
         orphanedCount: orphanedQuickTabs.length
       });
     }
-    
+
     // Also prevent future adoptions to this tab
     // (validation happens during adoption handler)
   }
@@ -587,7 +607,7 @@ class TabLifecycleHandler {
           // Update the Quick Tab with new origin info
           Object.assign(quickTab, updates);
           await this.storage.saveQuickTab(quickTab);
-          
+
           console.log('[TAB_LIFECYCLE] Updated Quick Tab origin info', {
             quickTabId,
             originTabId,
@@ -596,7 +616,10 @@ class TabLifecycleHandler {
         }
       }
     } catch (error) {
-      console.error('[TAB_LIFECYCLE] Error updating Quick Tab origin info:', error);
+      console.error(
+        '[TAB_LIFECYCLE] Error updating Quick Tab origin info:',
+        error
+      );
     }
   }
 
@@ -612,10 +635,10 @@ class TabLifecycleHandler {
         reason: `Tab ${targetTabId} not found or closed`
       };
     }
-    
+
     // Check if tab is in same window (optional constraint)
     // Could be relaxed depending on feature requirements
-    
+
     return {
       valid: true
     };
@@ -673,12 +696,12 @@ Add to existing port message routing:
 
 // NEW tab lifecycle message types:
 const TAB_LIFECYCLE_MESSAGES = {
-  TAB_CREATED: 'TAB_CREATED',           // New tab opened
-  TAB_REMOVED: 'ORIGIN_TAB_CLOSED',     // Origin tab closed → Quick Tabs orphaned
-  TAB_FAVICON_UPDATED: 'TAB_FAVICON_UPDATED',  // Favicon loaded or changed
-  TAB_TITLE_UPDATED: 'TAB_TITLE_UPDATED',      // Tab title changed
-  TAB_ACTIVATED: 'TAB_ACTIVATED',       // User switched to this tab
-  TAB_LOADED: 'TAB_LOADED'              // Tab finished loading
+  TAB_CREATED: 'TAB_CREATED', // New tab opened
+  TAB_REMOVED: 'ORIGIN_TAB_CLOSED', // Origin tab closed → Quick Tabs orphaned
+  TAB_FAVICON_UPDATED: 'TAB_FAVICON_UPDATED', // Favicon loaded or changed
+  TAB_TITLE_UPDATED: 'TAB_TITLE_UPDATED', // Tab title changed
+  TAB_ACTIVATED: 'TAB_ACTIVATED', // User switched to this tab
+  TAB_LOADED: 'TAB_LOADED' // Tab finished loading
 };
 ```
 
@@ -687,7 +710,7 @@ const TAB_LIFECYCLE_MESSAGES = {
 ```javascript
 class PortBroadcaster {
   constructor() {
-    this.ports = new Map();  // connectionName -> Set of port instances
+    this.ports = new Map(); // connectionName -> Set of port instances
   }
 
   registerPort(connectionName, port) {
@@ -695,17 +718,21 @@ class PortBroadcaster {
       this.ports.set(connectionName, new Set());
     }
     this.ports.get(connectionName).add(port);
-    
+
     // Clean up on disconnect
     port.onDisconnect.addListener(() => {
       this.ports.get(connectionName).delete(port);
-      console.log(`[PORT_BROADCASTER] Port disconnected from ${connectionName}`);
+      console.log(
+        `[PORT_BROADCASTER] Port disconnected from ${connectionName}`
+      );
     });
   }
 
   broadcast(message, connectionName = 'manager') {
     if (!this.ports.has(connectionName)) {
-      console.warn(`[PORT_BROADCASTER] No ports connected for ${connectionName}`);
+      console.warn(
+        `[PORT_BROADCASTER] No ports connected for ${connectionName}`
+      );
       return false;
     }
 
@@ -722,11 +749,13 @@ class PortBroadcaster {
         sentCount++;
       } catch (error) {
         console.error(`[PORT_BROADCASTER] Failed to send message:`, error);
-        ports.delete(port);  // Remove dead port
+        ports.delete(port); // Remove dead port
       }
     }
 
-    console.log(`[PORT_BROADCASTER] Broadcast ${message.type} to ${sentCount} ports`);
+    console.log(
+      `[PORT_BROADCASTER] Broadcast ${message.type} to ${sentCount} ports`
+    );
     return sentCount > 0;
   }
 }
@@ -792,7 +821,7 @@ class PortBroadcaster {
 ```javascript
 function handlePortMessage(message) {
   const { type, timestamp } = message;
-  
+
   logPortLifecycle('message', { type, timestamp });
 
   // EXISTING HANDLERS
@@ -839,20 +868,22 @@ function handlePortMessage(message) {
 // Handler: Origin tab closed → mark Quick Tabs as orphaned
 function handleOriginTabClosed(message) {
   const { originTabId, orphanedQuickTabIds, orphanedCount } = message;
-  
+
   console.log('[MANAGER] Origin tab closed', {
     originTabId,
     orphanedCount,
     quickTabIds: orphanedQuickTabIds
   });
-  
+
   // Mark affected Quick Tabs as orphaned in UI
   for (const quickTabId of orphanedQuickTabIds) {
-    const quickTabElement = document.querySelector(`[data-quick-tab-id="${quickTabId}"]`);
+    const quickTabElement = document.querySelector(
+      `[data-quick-tab-id="${quickTabId}"]`
+    );
     if (quickTabElement) {
       quickTabElement.classList.add('orphaned');
       quickTabElement.title += ' (Origin tab closed)';
-      
+
       // Show warning badge
       const badge = quickTabElement.querySelector('.orphan-badge');
       if (!badge) {
@@ -864,7 +895,7 @@ function handleOriginTabClosed(message) {
       }
     }
   }
-  
+
   // Reload Quick Tabs state to sync orphan flags
   invalidateQuickTabStateCache();
   scheduleRender('tab-closed', { priority: 'HIGH' });
@@ -873,11 +904,13 @@ function handleOriginTabClosed(message) {
 // Handler: Favicon updated → refresh display
 function handleTabFaviconUpdated(message) {
   const { tabId, favIconUrl } = message;
-  
+
   console.log('[MANAGER] Tab favicon updated', { tabId, favIconUrl });
-  
+
   // Find and update all Quick Tabs that originated from this tab
-  const quickTabElements = document.querySelectorAll(`[data-origin-tab-id="${tabId}"]`);
+  const quickTabElements = document.querySelectorAll(
+    `[data-origin-tab-id="${tabId}"]`
+  );
   for (const element of quickTabElements) {
     const faviconImg = element.querySelector('.origin-favicon');
     if (faviconImg && favIconUrl) {
@@ -885,7 +918,7 @@ function handleTabFaviconUpdated(message) {
       faviconImg.style.display = 'inline';
     }
   }
-  
+
   // Update cache for this origin tab
   originTabMetadataCache.set(tabId, {
     ...originTabMetadataCache.get(tabId),
@@ -896,18 +929,20 @@ function handleTabFaviconUpdated(message) {
 // Handler: Tab title updated → refresh display
 function handleTabTitleUpdated(message) {
   const { tabId, title } = message;
-  
+
   console.log('[MANAGER] Tab title updated', { tabId, title });
-  
+
   // Find and update all Quick Tabs that originated from this tab
-  const quickTabElements = document.querySelectorAll(`[data-origin-tab-id="${tabId}"]`);
+  const quickTabElements = document.querySelectorAll(
+    `[data-origin-tab-id="${tabId}"]`
+  );
   for (const element of quickTabElements) {
     const originLink = element.querySelector('.origin-tab-link');
     if (originLink) {
       originLink.textContent = title;
     }
   }
-  
+
   // Update cache
   originTabMetadataCache.set(tabId, {
     ...originTabMetadataCache.get(tabId),
@@ -918,12 +953,12 @@ function handleTabTitleUpdated(message) {
 // Handler: Tab activated → optionally filter Quick Tabs for active tab
 function handleTabActivated(message) {
   const { tabId, windowId, title, url } = message;
-  
+
   console.log('[MANAGER] Tab activated', { tabId, title });
-  
+
   // Store current active tab
   currentActiveTab = { tabId, windowId, title, url };
-  
+
   // Optional: Filter Quick Tabs to show only those for active tab
   if (manager.config.filterByActiveTab) {
     scheduleRender('tab-activated', { priority: 'MEDIUM' });
@@ -933,9 +968,9 @@ function handleTabActivated(message) {
 // Handler: Tab loaded → update favicon if now available
 function handleTabLoaded(message) {
   const { tabId, favIconUrl } = message;
-  
+
   console.log('[MANAGER] Tab loaded', { tabId, favIconUrl });
-  
+
   // If favicon is now available, update Quick Tabs
   if (favIconUrl) {
     handleTabFaviconUpdated({ tabId, favIconUrl });
@@ -993,9 +1028,10 @@ function renderQuickTabItem(quickTab) {
     const originLink = document.createElement('a');
     originLink.className = 'origin-tab-link';
     originLink.href = '#';
-    originLink.textContent = quickTab.originTabTitle || `Tab #${quickTab.originTabId}`;
+    originLink.textContent =
+      quickTab.originTabTitle || `Tab #${quickTab.originTabId}`;
 
-    originLink.addEventListener('click', (e) => {
+    originLink.addEventListener('click', e => {
       e.preventDefault();
       // Activate the origin tab
       browser.tabs.update(quickTab.originTabId, { active: true });
@@ -1138,7 +1174,7 @@ function renderQuickTabItem(quickTab) {
 }
 
 .quick-tab-item.orphaned .adopt-btn {
-  display: none;  /* Can't adopt orphaned tabs */
+  display: none; /* Can't adopt orphaned tabs */
 }
 ```
 
@@ -1148,19 +1184,21 @@ function renderQuickTabItem(quickTab) {
 
 ### Smart Adoption Validation
 
-**File: `src/background/handlers/QuickTabHandler.js` - Enhanced adoption handler**
+**File: `src/background/handlers/QuickTabHandler.js` - Enhanced adoption
+handler**
 
 ```javascript
 async function handleAdoptTab(message) {
   const { adoptedTabId, targetTabId } = message;
-  
+
   console.log('[ADOPTTAB] Handling adoption', {
     adoptedTabId,
     targetTabId
   });
-  
+
   // NEW: Validate target tab exists and is suitable
-  const validation = await tabLifecycleHandler.validateAdoptionTarget(targetTabId);
+  const validation =
+    await tabLifecycleHandler.validateAdoptionTarget(targetTabId);
   if (!validation.valid) {
     console.error('[ADOPTTAB] Adoption validation failed:', validation.reason);
     return {
@@ -1170,7 +1208,7 @@ async function handleAdoptTab(message) {
       targetTabId
     };
   }
-  
+
   // Get Quick Tab to adopt
   const quickTab = quickTabsManager.tabs.get(adoptedTabId);
   if (!quickTab) {
@@ -1180,7 +1218,7 @@ async function handleAdoptTab(message) {
       adoptedTabId
     };
   }
-  
+
   // Orphaned Quick Tabs cannot be adopted
   if (quickTab.isOrphaned) {
     return {
@@ -1189,7 +1227,7 @@ async function handleAdoptTab(message) {
       adoptedTabId
     };
   }
-  
+
   // NEW: Get target tab metadata for validation
   const targetTabMetadata = tabLifecycleHandler.getTabMetadata(targetTabId);
   if (!targetTabMetadata) {
@@ -1200,10 +1238,10 @@ async function handleAdoptTab(message) {
       targetTabId
     };
   }
-  
+
   // Store old origin for later notification
   const oldOriginTabId = quickTab.originTabId;
-  
+
   // Perform adoption
   const oldZIndex = quickTab.zIndex;
   quickTab.originTabId = targetTabId;
@@ -1211,17 +1249,18 @@ async function handleAdoptTab(message) {
   quickTab.originTabUrl = targetTabMetadata.url;
   quickTab.originDomain = new URL(targetTabMetadata.url).hostname;
   quickTab.originFavicon = targetTabMetadata.favIconUrl || null;
-  quickTab.zIndex = Math.max(...quickTabsManager.tabs.values().map(qt => qt.zIndex)) + 1;
+  quickTab.zIndex =
+    Math.max(...quickTabsManager.tabs.values().map(qt => qt.zIndex)) + 1;
   quickTab.lastModified = Date.now();
-  
+
   // Update visibility to show on new tab
   if (!quickTab.visibility.soloedOnTabs.includes(targetTabId)) {
     quickTab.visibility.soloedOnTabs.push(targetTabId);
   }
-  
+
   // Persist adoption
   await storage.saveQuickTab(quickTab);
-  
+
   console.log('[ADOPTTAB] Adoption successful', {
     adoptedTabId,
     oldOriginTabId,
@@ -1229,7 +1268,7 @@ async function handleAdoptTab(message) {
     oldZIndex,
     newZIndex: quickTab.zIndex
   });
-  
+
   // Send adoption notification to Manager via port
   adoptionPort.postMessage({
     type: 'ADOPTION_COMPLETED',
@@ -1240,7 +1279,7 @@ async function handleAdoptTab(message) {
     newZIndex: quickTab.zIndex,
     timestamp: Date.now()
   });
-  
+
   return {
     success: true,
     adoptedTabId,
@@ -1260,16 +1299,16 @@ class OrphanCleanupHandler {
   constructor(quickTabsManager, storage) {
     this.quickTabsManager = quickTabsManager;
     this.storage = storage;
-    
+
     // Configuration
     this.autoCleanupEnabled = true;
-    this.orphanRetentionMs = 24 * 60 * 60 * 1000;  // Keep for 24 hours
+    this.orphanRetentionMs = 24 * 60 * 60 * 1000; // Keep for 24 hours
   }
 
   async start() {
     // Clean up orphans every 1 hour
     setInterval(() => this.cleanupOrphanedQuickTabs(), 60 * 60 * 1000);
-    
+
     // Also clean on startup
     await this.cleanupOrphanedQuickTabs();
   }
@@ -1304,7 +1343,11 @@ class OrphanCleanupHandler {
     }
 
     if (toDelete.length > 0) {
-      console.log('[ORPHAN_CLEANUP] Cleaned up', toDelete.length, 'old orphaned Quick Tabs');
+      console.log(
+        '[ORPHAN_CLEANUP] Cleaned up',
+        toDelete.length,
+        'old orphaned Quick Tabs'
+      );
     }
   }
 
@@ -1380,7 +1423,7 @@ class StorageManager {
     for (const [id, tab] of v1Tabs) {
       const v2Tab = {
         ...tab,
-        
+
         // Add new Tabs API properties with defaults
         originTabId: null,
         originTabTitle: null,
@@ -1390,11 +1433,11 @@ class StorageManager {
         isOrphaned: false,
         orphanedAt: null,
         originTabClosedTitle: null,
-        
+
         // cookieStoreId might already exist
         cookieStoreId: tab.cookieStoreId || 'firefox-default'
       };
-      
+
       v2Tabs.set(id, v2Tab);
     }
 
@@ -1442,7 +1485,7 @@ class StorageManager {
 function deserializeQuickTab(data) {
   return new QuickTab({
     ...data,
-    
+
     // Ensure new properties exist (for v1 Quick Tabs)
     originTabId: data.originTabId ?? null,
     originTabTitle: data.originTabTitle ?? null,
@@ -1466,17 +1509,16 @@ function deserializeQuickTab(data) {
 ```javascript
 // tests/TabLifecycleHandler.test.js
 describe('TabLifecycleHandler', () => {
-  
   test('marks Quick Tab as orphaned when origin tab closes', async () => {
     const handler = new TabLifecycleHandler(manager, storage, broadcaster);
-    
+
     // Create Quick Tab with originTabId = 5
     const quickTab = { id: 'qt-1', originTabId: 5, isOrphaned: false };
     manager.tabs.set('qt-1', quickTab);
-    
+
     // Simulate tab 5 being removed
     await handler.handleTabRemoved(5);
-    
+
     // Verify Quick Tab marked as orphaned
     expect(quickTab.isOrphaned).toBe(true);
     expect(quickTab.orphanedAt).toBeDefined();
@@ -1485,16 +1527,16 @@ describe('TabLifecycleHandler', () => {
   test('broadcasts ORIGIN_TAB_CLOSED message when tab closes', async () => {
     const handler = new TabLifecycleHandler(manager, storage, broadcaster);
     const broadcastSpy = jest.spyOn(broadcaster, 'broadcast');
-    
+
     // Create Quick Tabs with same origin
     const qt1 = { id: 'qt-1', originTabId: 5 };
     const qt2 = { id: 'qt-2', originTabId: 5 };
     manager.tabs.set('qt-1', qt1);
     manager.tabs.set('qt-2', qt2);
-    
+
     // Simulate tab 5 closing
     await handler.handleTabRemoved(5);
-    
+
     // Verify broadcast
     expect(broadcastSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1509,7 +1551,7 @@ describe('TabLifecycleHandler', () => {
   test('updates Quick Tab favicon when tab favicon updates', async () => {
     const handler = new TabLifecycleHandler(manager, storage, broadcaster);
     const saveSpy = jest.spyOn(storage, 'saveQuickTab');
-    
+
     // Create Quick Tab with orphanage tracking
     const quickTab = {
       id: 'qt-1',
@@ -1517,13 +1559,17 @@ describe('TabLifecycleHandler', () => {
       originFavicon: 'http://old.ico'
     };
     manager.tabs.set('qt-1', quickTab);
-    
+
     // Simulate tab favicon updating
-    await handler.handleTabUpdated(5, { favIconUrl: 'http://new.ico' }, {
-      id: 5,
-      favIconUrl: 'http://new.ico'
-    });
-    
+    await handler.handleTabUpdated(
+      5,
+      { favIconUrl: 'http://new.ico' },
+      {
+        id: 5,
+        favIconUrl: 'http://new.ico'
+      }
+    );
+
     // Verify favicon updated
     expect(quickTab.originFavicon).toBe('http://new.ico');
     expect(saveSpy).toHaveBeenCalledWith(quickTab);
@@ -1536,7 +1582,6 @@ describe('TabLifecycleHandler', () => {
 ```javascript
 // tests/integration/TabsAPI.integration.test.js
 describe('Tabs API Integration (End-to-End)', () => {
-  
   test('Complete flow: Create Quick Tab → Tab closes → Adoption prevented', async () => {
     // 1. Create Quick Tab with origin context
     const quickTab = await createQuickTabWithOriginContext({
@@ -1546,25 +1591,25 @@ describe('Tabs API Integration (End-to-End)', () => {
       originTabUrl: 'https://example.com',
       originFavicon: 'https://example.com/favicon.ico'
     });
-    
+
     // 2. Verify stored correctly
     const stored = await storage.getQuickTab(quickTab.id);
     expect(stored.originTabId).toBe(5);
     expect(stored.originDomain).toBe('example.com');
-    
+
     // 3. Simulate origin tab closing
     await tabLifecycleHandler.handleTabRemoved(5);
-    
+
     // 4. Verify orphaned
     const orphaned = await storage.getQuickTab(quickTab.id);
     expect(orphaned.isOrphaned).toBe(true);
-    
+
     // 5. Try to adopt to different tab
     const result = await handleAdoptTab({
       adoptedTabId: quickTab.id,
       targetTabId: 10
     });
-    
+
     // 6. Adoption should fail
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/orphaned/i);
@@ -1576,16 +1621,16 @@ describe('Tabs API Integration (End-to-End)', () => {
       postMessage: jest.fn(),
       onDisconnect: { addListener: jest.fn() }
     };
-    
+
     portBroadcaster.registerPort('manager', portMock);
-    
+
     // Create and orphan Quick Tab
     const qt = { id: 'qt-1', originTabId: 5 };
     manager.tabs.set('qt-1', qt);
-    
+
     // Close origin tab
     await tabLifecycleHandler.handleTabRemoved(5);
-    
+
     // Verify port message sent
     expect(portMock.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1646,11 +1691,13 @@ describe('Tabs API Integration (End-to-End)', () => {
 ### Files Modified/Created
 
 **New Files:**
+
 - `src/background/handlers/TabLifecycleHandler.js`
 - `src/background/handlers/OrphanCleanupHandler.js`
 - Tests: `tests/TabLifecycleHandler.test.js`, integration tests
 
 **Modified Files:**
+
 - `src/domain/QuickTab.js` - Add origin properties
 - `src/content.js` - Enhanced URL_COPIED event
 - `src/background/handlers/QuickTabHandler.js` - Smart adoption validation

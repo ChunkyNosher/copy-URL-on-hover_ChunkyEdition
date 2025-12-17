@@ -98,5 +98,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v2 render/circuit breaker/cache
-fixes, storage.onChanged PRIMARY.**
+**Your strength: Complete Quick Tab system with v1.6.3.10-v2 render/circuit
+breaker/cache fixes, storage.onChanged PRIMARY.**

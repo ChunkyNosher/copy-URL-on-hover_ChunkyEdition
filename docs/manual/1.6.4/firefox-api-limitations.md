@@ -1,18 +1,25 @@
 # Firefox WebExtensions API Limitations
 
 **Document Type**: Technical Reference  
-**Purpose**: Comprehensive catalog of Firefox WebExtensions API limitations affecting Quick Tabs  
+**Purpose**: Comprehensive catalog of Firefox WebExtensions API limitations
+affecting Quick Tabs  
 **Date**: December 16, 2025  
-**Source**: Canvas gap analysis + ROBUST-QUICKTABS-ARCHITECTURE.md + quick-tabs-manager.js codebase analysis  
+**Source**: Canvas gap analysis + ROBUST-QUICKTABS-ARCHITECTURE.md +
+quick-tabs-manager.js codebase analysis  
 **Scope**: copy-URL-on-hover_ChunkyEdition repository
 
 ---
 
 ## EXECUTIVE SUMMARY
 
-Firefox WebExtensions API has **13 documented limitations** that directly impact the Quick Tabs implementation. These are NOT bugs but **inherent constraints in the Firefox browser architecture** that must be worked around in application code. The proposed robust architecture specifically addresses 7 of these limitations.
+Firefox WebExtensions API has **13 documented limitations** that directly impact
+the Quick Tabs implementation. These are NOT bugs but **inherent constraints in
+the Firefox browser architecture** that must be worked around in application
+code. The proposed robust architecture specifically addresses 7 of these
+limitations.
 
 **Critical Limitations Affecting Quick Tabs**:
+
 - Sidebar cannot access browser.tabs API
 - Content scripts cannot query tabs
 - storage.onChanged event ordering is not guaranteed
@@ -34,7 +41,9 @@ Firefox WebExtensions API has **13 documented limitations** that directly impact
 
 **The Problem**:
 
-Sidebars run in a **special sandbox context** that is NOT a browser tab. Therefore, ANY call to:
+Sidebars run in a **special sandbox context** that is NOT a browser tab.
+Therefore, ANY call to:
+
 - `browser.tabs.getCurrent()`
 - `browser.tabs.query()`
 - `browser.tabs.get()`
@@ -56,24 +65,29 @@ let currentBrowserTabId = null;
  */
 function _requestCurrentTabIdFromBackground() {
   // Sidebar CANNOT use tabs.getCurrent() - must ask background
-  browser.runtime.sendMessage({
-    type: 'GET_CURRENT_TAB_ID'
-  }).then(response => {
-    currentBrowserTabId = response.tabId;
-  }).catch(err => {
-    console.warn('[Manager] Failed to get current tab ID:', err.message);
-    // Fallback to null - adoption flow will re-request
-  });
+  browser.runtime
+    .sendMessage({
+      type: 'GET_CURRENT_TAB_ID'
+    })
+    .then(response => {
+      currentBrowserTabId = response.tabId;
+    })
+    .catch(err => {
+      console.warn('[Manager] Failed to get current tab ID:', err.message);
+      // Fallback to null - adoption flow will re-request
+    });
 }
 ```
 
 **Impact**:
+
 - Sidebar cannot independently determine which browser tab is active
 - Must rely on background script to provide tab information
 - Creates dependency on background ↔ sidebar communication
 - If background doesn't respond, sidebar loses tab context
 
-**Workaround Applied**: Background script queries tabs.API and sends results via `runtime.sendMessage` to sidebar.
+**Workaround Applied**: Background script queries tabs.API and sends results via
+`runtime.sendMessage` to sidebar.
 
 ---
 
@@ -82,11 +96,13 @@ function _requestCurrentTabIdFromBackground() {
 **Mozilla Documentation Reference**:  
 [MDN: Sidebar Context](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/user_interface/Sidebars)
 
-> "Sidebars run in a content script-like environment but are not associated with any particular page."
+> "Sidebars run in a content script-like environment but are not associated with
+> any particular page."
 
 **The Problem**:
 
 Sidebar context cannot:
+
 - Send messages directly to content scripts
 - Use `tabs.sendMessage()`
 - Communicate with page scripts
@@ -111,6 +127,7 @@ async function adoptQuickTabToCurrentTab(quickTabId) {
 ```
 
 **Impact**:
+
 - Cannot directly notify content scripts of quick tab operations
 - All sidebar↔content script communication must route through background
 - Adds extra hop: Sidebar → Background → Content Script
@@ -128,13 +145,15 @@ async function adoptQuickTabToCurrentTab(quickTabId) {
 **The Problem**:
 
 Sidebar (despite being a WebExtension UI) cannot:
+
 - Access `window` object of any page
 - Read page cookies or localStorage
 - Manipulate page DOM
 - Trigger page events
 - Access page JavaScript objects
 
-**Impact**: Sidebar is completely isolated from web content for security. Must coordinate state entirely through storage and messaging APIs.
+**Impact**: Sidebar is completely isolated from web content for security. Must
+coordinate state entirely through storage and messaging APIs.
 
 ---
 
@@ -146,11 +165,14 @@ Sidebar (despite being a WebExtension UI) cannot:
 [MDN: Content Scripts - Available APIs](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#api_access)
 
 From MDN:
-> "Content scripts have access to a limited set of APIs" and "cannot access: ...tabs, windows, alarms, webRequest..."
+
+> "Content scripts have access to a limited set of APIs" and "cannot access:
+> ...tabs, windows, alarms, webRequest..."
 
 **The Problem**:
 
 Content scripts running on web pages cannot call:
+
 - `browser.tabs.query()` - Cannot find other tabs
 - `browser.tabs.getCurrent()` - Cannot identify own tab
 - `browser.tabs.update()` - Cannot update any tab
@@ -176,6 +198,7 @@ Content scripts running on web pages cannot call:
 ```
 
 **Impact**:
+
 - Content scripts cannot know their own tab ID without asking background
 - Cannot filter Quick Tabs by their own origin tab
 - Must request all contextual information from background script
@@ -190,7 +213,9 @@ Content scripts running on web pages cannot call:
 
 **The Problem**:
 
-Content scripts MUST be declared in manifest.json and are injected at specific times:
+Content scripts MUST be declared in manifest.json and are injected at specific
+times:
+
 - After document_start (before page scripts run)
 - After document_end (after page fully loaded)
 - After document_idle (after window.onload fires)
@@ -212,6 +237,7 @@ Cannot dynamically inject content scripts in sidebar or on-demand.
 ```
 
 **Impact**:
+
 - Content script injection timing is fixed and cannot be changed at runtime
 - If script crashes, won't auto-reinject
 - All tabs get the script by default (must use matches filter to restrict)
@@ -227,6 +253,7 @@ Cannot dynamically inject content scripts in sidebar or on-demand.
 **The Problem**:
 
 When a page navigates, its content script is unloaded:
+
 - Content script variables are cleared
 - In-flight messages are abandoned
 - Event listeners are removed
@@ -241,12 +268,13 @@ When a page navigates, its content script is unloaded:
 //   type: 'CREATE_QUICK_TAB',
 //   data: tabData
 // });
-// 
+//
 // If page navigates BEFORE response arrives, the message handler callback:
 // .then(response => { ... }) // ← Never fires, script already unloaded
 ```
 
 **Impact**:
+
 - Cannot guarantee message delivery during navigation
 - Race condition: "Did the operation complete before unload?"
 - Requires timeout-based recovery (assume operation failed after 3 seconds)
@@ -262,21 +290,24 @@ When a page navigates, its content script is unloaded:
 [MDN: storage.onChanged](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/onChanged)
 
 From MDN:
-> "When a storage item is changed, a storage.onChanged event is fired. Events are not guaranteed to be delivered in the order they occur."
+
+> "When a storage item is changed, a storage.onChanged event is fired. Events
+> are not guaranteed to be delivered in the order they occur."
 
 **The Problem**:
 
-Multiple rapid writes to storage may trigger `onChanged` events in arbitrary order:
+Multiple rapid writes to storage may trigger `onChanged` events in arbitrary
+order:
 
 ```javascript
 // Write 1: Add Quick Tab A
-browser.storage.local.set({ 'quick_tabs_state_v2': { tabs: [A] } });
+browser.storage.local.set({ quick_tabs_state_v2: { tabs: [A] } });
 
 // Write 2: Add Quick Tab B
-browser.storage.local.set({ 'quick_tabs_state_v2': { tabs: [A, B] } });
+browser.storage.local.set({ quick_tabs_state_v2: { tabs: [A, B] } });
 
 // Write 3: Add Quick Tab C
-browser.storage.local.set({ 'quick_tabs_state_v2': { tabs: [A, B, C] } });
+browser.storage.local.set({ quick_tabs_state_v2: { tabs: [A, B, C] } });
 
 // Events may fire in order: Event 1, Event 3, Event 2
 // Or: Event 2, Event 1, Event 3
@@ -294,16 +325,16 @@ let _lastAppliedRevision = 0;
 
 function _handleStorageOnChanged(changes, areaName) {
   if (areaName !== 'local' || !changes[STATE_KEY]) return;
-  
+
   const stateChange = changes[STATE_KEY].newValue;
   const revision = stateChange?.revision;
-  
+
   // v1.6.3.8-v5: Reject stale/old revisions
   if (revision <= _lastAppliedRevision) {
     console.log('STALE_EVENT: revision', revision, 'vs', _lastAppliedRevision);
     return; // Skip this event - we've already processed newer state
   }
-  
+
   _lastAppliedRevision = revision;
   // Process event
   _handleStorageChange(stateChange);
@@ -311,7 +342,9 @@ function _handleStorageOnChanged(changes, areaName) {
 ```
 
 **Impact**:
-- Sidebar may render stale data (Quick Tab from earlier write appears after newer one)
+
+- Sidebar may render stale data (Quick Tab from earlier write appears after
+  newer one)
 - Race condition: "Is this the latest state or an old event?"
 - Requires revision counters to establish ordering
 - Cannot assume event sequence matches write sequence
@@ -324,7 +357,10 @@ function _handleStorageOnChanged(changes, areaName) {
 [MDN: storage.sync](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/sync)
 
 From MDN:
-> "To store data that is synced across devices, use storage.sync. For an extension with a manifest_version of 3 or higher, the maximum size of any single item is 8KB. For manifest_version of 2, it is 5KB."
+
+> "To store data that is synced across devices, use storage.sync. For an
+> extension with a manifest_version of 3 or higher, the maximum size of any
+> single item is 8KB. For manifest_version of 2, it is 5KB."
 
 **The Problem**:
 
@@ -332,12 +368,14 @@ If Quick Tabs state grows beyond 5KB, write to storage.sync silently fails:
 
 ```javascript
 const quickTabsState = {
-  tabs: [ /* 50-100 Quick Tabs, each ~50-100 bytes */ ]
+  tabs: [
+    /* 50-100 Quick Tabs, each ~50-100 bytes */
+  ]
   // Total size grows from 5KB (20 Quick Tabs) → 15KB (60 Quick Tabs)
 };
 
 // This SILENTLY FAILS if > 5KB:
-browser.storage.sync.set({ 'quick_tabs_state': quickTabsState });
+browser.storage.sync.set({ quick_tabs_state: quickTabsState });
 // No error thrown, no event fired, write just doesn't happen
 ```
 
@@ -349,9 +387,11 @@ Storage Tier 2: storage.sync (5KB limit) ← BACKUP
 Storage Tier 3: browser.storage (session only) ← TEMP
 ```
 
-**Workaround Applied**: Use storage.local for main state (5MB+ quota), storage.sync for backups only if state < 5KB.
+**Workaround Applied**: Use storage.local for main state (5MB+ quota),
+storage.sync for backups only if state < 5KB.
 
 **Impact**:
+
 - Cannot sync large Quick Tabs collections across browsers
 - Backup strategy must compress or sample state before sync
 - Cross-device sync only works for small numbers of Quick Tabs
@@ -365,7 +405,9 @@ Storage Tier 3: browser.storage (session only) ← TEMP
 [MDN: storage.session](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/session)
 
 From MDN:
-> "session storage is cleared when the extension is closed or the browser is closed."
+
+> "session storage is cleared when the extension is closed or the browser is
+> closed."
 
 **The Problem**:
 
@@ -393,6 +435,7 @@ Although Firefox 115 supports it
 ```
 
 **Impact**:
+
 - Cannot use session storage as primary persistence layer
 - Must use storage.local (which IS persistent)
 - Session storage only suitable for temporary caches during browser runtime
@@ -441,24 +484,28 @@ const VISIBILITY_REFRESH_INTERVAL_MS = 15000;
 function _startKeepaliveHealthReport() {
   // Send ping every 15 seconds to keep background awake
   setInterval(() => {
-    browser.runtime.sendMessage({
-      type: 'HEALTH_PROBE',
-      timestamp: Date.now()
-    }).catch(err => {
-      console.warn('Keepalive failed:', err.message);
-      // Background may have terminated
-    });
+    browser.runtime
+      .sendMessage({
+        type: 'HEALTH_PROBE',
+        timestamp: Date.now()
+      })
+      .catch(err => {
+        console.warn('Keepalive failed:', err.message);
+        // Background may have terminated
+      });
   }, VISIBILITY_REFRESH_INTERVAL_MS);
 }
 ```
 
 **Impact**:
+
 - Background script restarts = state reloaded from disk (5-20ms latency hit)
 - If background terminates, first message causes restart delay
 - Requires keepalive messages to maintain state in memory
 - On restart, event listeners must be re-registered
 
 **Architecture Address**: ROBUST-QUICKTABS-ARCHITECTURE.md includes:
+
 > "Use keepalive mechanism with 15-second interval to keep background active"
 
 ---
@@ -469,11 +516,14 @@ function _startKeepaliveHealthReport() {
 [MDN: Port Disconnection](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port)
 
 From MDN documentation and Firefox behavior:
-> "In Firefox, port connections may be closed unexpectedly. Sidebars are particularly prone to port disconnection due to context switching."
+
+> "In Firefox, port connections may be closed unexpectedly. Sidebars are
+> particularly prone to port disconnection due to context switching."
 
 **The Problem**:
 
-A runtime.Port connection (sidebar ↔ background) can close for reasons outside developer control:
+A runtime.Port connection (sidebar ↔ background) can close for reasons outside
+developer control:
 
 ```javascript
 // Sidebar establishes port connection
@@ -501,11 +551,13 @@ port.postMessage({ type: 'CREATE_QUICK_TAB' }); // ← Port is closed!
 ```
 
 **Workaround Applied**: REMOVED port infrastructure entirely. Now uses:
+
 1. `runtime.sendMessage` (stateless) - each message independent
 2. `storage.onChanged` (primary sync) - reliable in Firefox
 3. No persistent connections to maintain
 
 **Impact**:
+
 - Persistent port connections are unreliable in sidebar context
 - Stateless messaging more robust (each message independent)
 - No need for heartbeat/keepalive for connections
@@ -526,14 +578,17 @@ port.postMessage({ type: 'CREATE_QUICK_TAB' }); // ← Port is closed!
 
 ```javascript
 // This promise rejects if background doesn't respond within ~5 seconds
-browser.runtime.sendMessage({
-  type: 'GET_QUICK_TABS_STATE'
-}).then(response => {
-  // If background takes too long, this never fires
-  // Promise rejects instead
-}).catch(err => {
-  // Error: "The message port closed before a response was received"
-});
+browser.runtime
+  .sendMessage({
+    type: 'GET_QUICK_TABS_STATE'
+  })
+  .then(response => {
+    // If background takes too long, this never fires
+    // Promise rejects instead
+  })
+  .catch(err => {
+    // Error: "The message port closed before a response was received"
+  });
 ```
 
 **Current Code Workaround** (from quick-tabs-manager.js):
@@ -546,11 +601,8 @@ async function sendToBackground(message) {
   try {
     const response = await Promise.race([
       browser.runtime.sendMessage(message),
-      new Promise((_, reject) => 
-        setTimeout(
-          () => reject(new Error('timeout')), 
-          MESSAGE_TIMEOUT_MS
-        )
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), MESSAGE_TIMEOUT_MS)
       )
     ]);
     return response;
@@ -565,6 +617,7 @@ async function sendToBackground(message) {
 ```
 
 **Impact**:
+
 - Cannot assume messages will always succeed
 - Must implement explicit timeout handling
 - Requires fallback mechanism (storage.onChanged)
@@ -582,14 +635,16 @@ If content script sends message then page navigates before handler returns:
 
 ```javascript
 // Content script sends message
-browser.runtime.sendMessage({
-  type: 'CREATE_QUICK_TAB',
-  data: currentPageData
-}).then(response => {
-  // Handler function
-  // But if page navigates HERE, script is unloaded
-  // Promise never resolves or rejects
-});
+browser.runtime
+  .sendMessage({
+    type: 'CREATE_QUICK_TAB',
+    data: currentPageData
+  })
+  .then(response => {
+    // Handler function
+    // But if page navigates HERE, script is unloaded
+    // Promise never resolves or rejects
+  });
 
 // Page navigates...
 // window.location = 'different-page.html'
@@ -604,12 +659,13 @@ browser.runtime.sendMessage({
 ```javascript
 // No direct workaround in sidebar
 // Issue manifests as: "Content script initiated Quick Tab creation but sidebar never updated"
-// 
+//
 // Sidebar recovery: Storage health check fires 5 seconds later, notices state didn't update,
 // requests fresh state from background via storage or message
 ```
 
 **Impact**:
+
 - Cannot guarantee message delivery completion during navigation
 - Requires timeout-based recovery (5 second health check)
 - Sidebar must explicitly refresh state if update doesn't arrive
@@ -626,7 +682,8 @@ browser.runtime.sendMessage({
 
 **The Problem**:
 
-Sidebar displays for ALL tabs regardless of origin. Cannot scope Quick Tabs per origin:
+Sidebar displays for ALL tabs regardless of origin. Cannot scope Quick Tabs per
+origin:
 
 ```javascript
 // Sidebar shows:
@@ -653,6 +710,7 @@ let currentBrowserTabId = null;
 ```
 
 **Impact**:
+
 - Sidebar must ask background for current tab info
 - Cannot automatically filter Quick Tabs to current tab
 - Sidebar typically shows ALL Quick Tabs (global view)
@@ -667,7 +725,8 @@ let currentBrowserTabId = null;
 
 **The Problem**:
 
-Content script cannot independently verify it's running in the correct tab context:
+Content script cannot independently verify it's running in the correct tab
+context:
 
 ```javascript
 // Content script on https://example.com
@@ -689,6 +748,7 @@ Content script cannot independently verify it's running in the correct tab conte
 ```
 
 **Impact**:
+
 - Content scripts must trust that they're in the right tab
 - Cannot detect if page has navigated to different origin
 - Must rely on background to send tab context
@@ -705,12 +765,13 @@ Content script cannot independently verify it's running in the correct tab conte
 
 **The Problem**:
 
-MV2 (and MV3 in Firefox) does NOT allow persistent WebSocket connections in background scripts:
+MV2 (and MV3 in Firefox) does NOT allow persistent WebSocket connections in
+background scripts:
 
 ```javascript
 // Cannot do this:
 const ws = new WebSocket('wss://example.com/stream');
-ws.onmessage = (event) => {
+ws.onmessage = event => {
   // Real-time updates from server
 };
 // Background terminates every 30s (Limitation 4.1)
@@ -724,6 +785,7 @@ Firefox MV2 Only: Chrome would need different background persistence strategy
 ```
 
 **Impact**:
+
 - No real-time streaming connections
 - Cannot maintain persistent server connections in background
 - Must use polling or stateless request/response pattern
@@ -764,6 +826,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 ```
 
 **Impact**:
+
 - Cannot build origin mapping automatically
 - Requires explicit handshake: background → content script
 - If handshake fails, content script cannot operate correctly
@@ -773,25 +836,25 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ## PART 8: SUMMARY TABLE OF LIMITATIONS
 
-| ID | Category | API/Feature | Limitation | Current Workaround | Severity |
-|---|----------|-------------|-----------|------------------|----------|
-| 1.1 | Sidebar | browser.tabs | Cannot access tabs API in sidebar | Ask background for tab info | HIGH |
-| 1.2 | Sidebar | tabs.sendMessage | Cannot send messages to content scripts | Route through background | HIGH |
-| 1.3 | Sidebar | Page access | Cannot access page DOM/context | Use storage + messaging only | MEDIUM |
-| 2.1 | Content Script | browser.tabs | Cannot access tabs API in scripts | Request from background | HIGH |
-| 2.2 | Content Script | Manifest | Must declare in manifest.json | Planned in manifest | LOW |
-| 2.3 | Content Script | Navigation | Script unloads on page navigation | Timeout + health check | HIGH |
-| 3.1 | Storage | storage.onChanged | Events not guaranteed ordered | Revision numbering | HIGH |
-| 3.2 | Storage | storage.sync | 5KB per-item quota limit | Use storage.local primary | MEDIUM |
-| 3.3 | Storage | storage.session | Clears on browser close | Use storage.local instead | LOW |
-| 4.1 | Background | Idle timeout | 30s idle termination | Keepalive messages | MEDIUM |
-| 4.2 | Background | Ports | Disconnect unpredictably | Use stateless sendMessage | HIGH |
-| 5.1 | Messaging | sendMessage | Implicit timeout on responses | Explicit timeout + fallback | MEDIUM |
-| 5.2 | Messaging | Navigation | Messages lost during navigation | Health check recovery | MEDIUM |
-| 6.1 | Origin | Sidebar scope | Cannot filter by tab origin | Global view + grouping | MEDIUM |
-| 6.2 | Origin | Content context | Cannot verify tab context | Trust + handshake | MEDIUM |
-| 7.1 | Architecture | WebSocket | No persistent connections | Polling + stateless API | LOW |
-| 7.2 | Architecture | Tab ID | No built-in tab ID mapping | Background coordination | HIGH |
+| ID  | Category       | API/Feature       | Limitation                              | Current Workaround           | Severity |
+| --- | -------------- | ----------------- | --------------------------------------- | ---------------------------- | -------- |
+| 1.1 | Sidebar        | browser.tabs      | Cannot access tabs API in sidebar       | Ask background for tab info  | HIGH     |
+| 1.2 | Sidebar        | tabs.sendMessage  | Cannot send messages to content scripts | Route through background     | HIGH     |
+| 1.3 | Sidebar        | Page access       | Cannot access page DOM/context          | Use storage + messaging only | MEDIUM   |
+| 2.1 | Content Script | browser.tabs      | Cannot access tabs API in scripts       | Request from background      | HIGH     |
+| 2.2 | Content Script | Manifest          | Must declare in manifest.json           | Planned in manifest          | LOW      |
+| 2.3 | Content Script | Navigation        | Script unloads on page navigation       | Timeout + health check       | HIGH     |
+| 3.1 | Storage        | storage.onChanged | Events not guaranteed ordered           | Revision numbering           | HIGH     |
+| 3.2 | Storage        | storage.sync      | 5KB per-item quota limit                | Use storage.local primary    | MEDIUM   |
+| 3.3 | Storage        | storage.session   | Clears on browser close                 | Use storage.local instead    | LOW      |
+| 4.1 | Background     | Idle timeout      | 30s idle termination                    | Keepalive messages           | MEDIUM   |
+| 4.2 | Background     | Ports             | Disconnect unpredictably                | Use stateless sendMessage    | HIGH     |
+| 5.1 | Messaging      | sendMessage       | Implicit timeout on responses           | Explicit timeout + fallback  | MEDIUM   |
+| 5.2 | Messaging      | Navigation        | Messages lost during navigation         | Health check recovery        | MEDIUM   |
+| 6.1 | Origin         | Sidebar scope     | Cannot filter by tab origin             | Global view + grouping       | MEDIUM   |
+| 6.2 | Origin         | Content context   | Cannot verify tab context               | Trust + handshake            | MEDIUM   |
+| 7.1 | Architecture   | WebSocket         | No persistent connections               | Polling + stateless API      | LOW      |
+| 7.2 | Architecture   | Tab ID            | No built-in tab ID mapping              | Background coordination      | HIGH     |
 
 ---
 
@@ -799,20 +862,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ### Which Limitations Are Addressed by ROBUST-QUICKTABS-ARCHITECTURE
 
-| Limitation | Addressed | How |
-|-----------|-----------|-----|
-| 1.1 - Sidebar tabs API | ✅ YES | Background queries tabs, sends results via message |
-| 1.2 - Sidebar message relay | ✅ YES | All sidebar↔content communication routes through background |
-| 2.1 - Content script tabs API | ✅ YES | Background provides tab info during init |
-| 2.3 - Content script navigation | ✅ YES | Health check detects missing updates, triggers refresh |
-| 3.1 - Storage event ordering | ✅ YES | Revision versioning enforces ordering |
-| 3.2 - storage.sync quota | ✅ YES | Use storage.local (5MB+) not storage.sync (5KB) |
-| 4.1 - Background idle timeout | ⚠️ PARTIAL | Keepalive every 15s prevents timeout |
-| 4.2 - Port disconnection | ✅ YES | Removed ports entirely, use stateless sendMessage |
-| 5.1 - Message timeout | ✅ YES | Explicit 3000ms timeout + storage fallback |
-| 5.2 - Navigation message loss | ✅ YES | 5s health check detects failure, requests fresh state |
-| 6.1 - Sidebar origin scope | ✅ YES | Manager shows global + grouping, content shows scoped |
-| 6.2 - Tab context verification | ✅ YES | Handshake + originTabId in writes |
+| Limitation                      | Addressed  | How                                                          |
+| ------------------------------- | ---------- | ------------------------------------------------------------ |
+| 1.1 - Sidebar tabs API          | ✅ YES     | Background queries tabs, sends results via message           |
+| 1.2 - Sidebar message relay     | ✅ YES     | All sidebar↔content communication routes through background |
+| 2.1 - Content script tabs API   | ✅ YES     | Background provides tab info during init                     |
+| 2.3 - Content script navigation | ✅ YES     | Health check detects missing updates, triggers refresh       |
+| 3.1 - Storage event ordering    | ✅ YES     | Revision versioning enforces ordering                        |
+| 3.2 - storage.sync quota        | ✅ YES     | Use storage.local (5MB+) not storage.sync (5KB)              |
+| 4.1 - Background idle timeout   | ⚠️ PARTIAL | Keepalive every 15s prevents timeout                         |
+| 4.2 - Port disconnection        | ✅ YES     | Removed ports entirely, use stateless sendMessage            |
+| 5.1 - Message timeout           | ✅ YES     | Explicit 3000ms timeout + storage fallback                   |
+| 5.2 - Navigation message loss   | ✅ YES     | 5s health check detects failure, requests fresh state        |
+| 6.1 - Sidebar origin scope      | ✅ YES     | Manager shows global + grouping, content shows scoped        |
+| 6.2 - Tab context verification  | ✅ YES     | Handshake + originTabId in writes                            |
 
 ---
 
@@ -825,7 +888,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 3. **Do** use revision counters to validate storage.onChanged event order
 4. **Do** keep keepalive interval ≤ 30 seconds to prevent background termination
 5. **Do NOT** rely on port connections - use stateless messaging only
-6. **Do** implement health checks (5 second interval) to detect missing storage events
+6. **Do** implement health checks (5 second interval) to detect missing storage
+   events
 7. **Do** provide explicit tab context initialization to content scripts
 8. **Do** use storage.local (not storage.sync) for Quick Tabs state
 
@@ -841,19 +905,25 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ## NOTES FOR DEVELOPERS
 
-These are **NOT bugs in Firefox** but **inherent architectural constraints** in WebExtensions:
+These are **NOT bugs in Firefox** but **inherent architectural constraints** in
+WebExtensions:
 
-1. **Security Model**: Sidebar/Content script isolation prevents one from directly accessing browser APIs
-2. **Performance Model**: Background script lifecycle management to prevent memory leaks
-3. **Reliability Model**: Event ordering guarantees are NOT provided for performance reasons
-4. **Quota Model**: Storage limits prevent extensions from consuming excessive space
+1. **Security Model**: Sidebar/Content script isolation prevents one from
+   directly accessing browser APIs
+2. **Performance Model**: Background script lifecycle management to prevent
+   memory leaks
+3. **Reliability Model**: Event ordering guarantees are NOT provided for
+   performance reasons
+4. **Quota Model**: Storage limits prevent extensions from consuming excessive
+   space
 
-The robust architecture works **WITH** these limitations instead of against them:
+The robust architecture works **WITH** these limitations instead of against
+them:
 
 - Uses storage as primary sync (most reliable in Firefox)
-- Uses messaging as secondary command path (stateless = no connection management)
+- Uses messaging as secondary command path (stateless = no connection
+  management)
 - Uses health checks for failure detection (replaces heartbeat complexity)
 - Uses revision counters for ordering (replaces event ordering guarantees)
 
 This is the **recommended approach for Firefox WebExtensions**.
-

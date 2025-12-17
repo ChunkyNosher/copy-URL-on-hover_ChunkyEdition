@@ -89,5 +89,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.10-v2 render/circuit breaker/cache
-fixes, storage.onChanged PRIMARY.**
+**Your strength: Reliable cross-tab sync with v1.6.3.10-v2 render/circuit
+breaker/cache fixes, storage.onChanged PRIMARY.**

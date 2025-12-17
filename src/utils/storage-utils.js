@@ -963,7 +963,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
 
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
-    
+
     // v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging
     console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
       transactionId,
@@ -980,7 +980,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
       suggestion:
         'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
     });
-    
+
     // v1.6.3.7 - FIX Issue #6: Log whether transaction should have matched
     console.warn('[StorageUtils] TRANSACTION_TIMEOUT diagnostic:', {
       transactionId,
@@ -994,7 +994,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
         'storage.onChanged listener not registered'
       ]
     });
-    
+
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
   }
   TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
@@ -1257,7 +1257,7 @@ function _extractOriginTabId(tab) {
  */
 function serializeTabForStorage(tab, isMinimized) {
   const extractedOriginTabId = _extractOriginTabId(tab);
-  
+
   // v1.6.3.10-v4 - FIX Issue #13: Extract originContainerId for Firefox Multi-Account Container isolation
   const extractedOriginContainerId = tab.originContainerId ?? tab.cookieStoreId ?? null;
 

@@ -18,36 +18,46 @@ Tabs Manager
 - **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Single Barrier Initialization** - Unified barrier with resolve-only semantics
+- **Single Barrier Initialization** - Unified barrier with resolve-only
+  semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Runtime.onMessage Secondary** - Direct state push from background
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.10-v3 Features (NEW) - Issue #47 Adoption Re-render & Tabs API Phase 2:**
+**v1.6.3.10-v3 Features (NEW) - Issue #47 Adoption Re-render & Tabs API Phase
+2:**
 
-- **Issue #47: Adoption Re-render** - `ADOPTION_COMPLETED` port message for immediate Manager re-render
+- **Issue #47: Adoption Re-render** - `ADOPTION_COMPLETED` port message for
+  immediate Manager re-render
 - **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
-- **Orphan Detection** - `ORIGIN_TAB_CLOSED` broadcast when origin tab closes, `isOrphaned`/`orphanedAt` fields
+- **Orphan Detection** - `ORIGIN_TAB_CLOSED` broadcast when origin tab closes,
+  `isOrphaned`/`orphanedAt` fields
 - **Smart Adoption Validation** - Validates target tab exists before adoption
-- **Port Message Types** - Added `ADOPTION_COMPLETED`, `ORIGIN_TAB_CLOSED` to port routing
+- **Port Message Types** - Added `ADOPTION_COMPLETED`, `ORIGIN_TAB_CLOSED` to
+  port routing
 
 **v1.6.3.10-v2 Features (Previous) - Render, Circuit Breaker & Cache Fixes:**
 
 - **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
-- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
-- **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`, `cacheHydrationComplete` flag, 30s staleness alert
+- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding
+  window
+- **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`,
+  `cacheHydrationComplete` flag, 30s staleness alert
 - **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
 - **Pending action queue** - Circuit breaker queues actions during open state
 
 **v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
 
-- **Issue 2: Port Lifecycle** - State machine (connected/zombie/reconnecting/dead), 500ms zombie detection
+- **Issue 2: Port Lifecycle** - State machine
+  (connected/zombie/reconnecting/dead), 500ms zombie detection
 - **Issue 3: Storage Concurrency** - Storage batching constants
 - **Issue 5: Heartbeat Timing** - 25s→15s interval, 5s→2s timeout, adaptive ≤20s
-- **Issue 6: Port/Message Logging** - `logPortStateTransition()`, enhanced structured logging
-- **Issue 7: Messaging Reliability** - 2 retries + 150ms backoff, `_sendMessageWithRetry()`
+- **Issue 6: Port/Message Logging** - `logPortStateTransition()`, enhanced
+  structured logging
+- **Issue 7: Messaging Reliability** - 2 retries + 150ms backoff,
+  `_sendMessageWithRetry()`
 - **PORT_STATE enum** - `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
 
 **v1.6.3.9-v7 & Earlier (Consolidated):** Logging capture, O(1) message routing,
@@ -97,7 +107,8 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 ### v1.6.3.10-v3: Issue #47 Adoption Re-render & Tabs API Phase 2 (NEW)
 
 - `ADOPTION_COMPLETED` port message for instant Manager re-render after adoption
-- `ORIGIN_TAB_CLOSED` broadcast when origin tab closes → marks Quick Tabs orphaned
+- `ORIGIN_TAB_CLOSED` broadcast when origin tab closes → marks Quick Tabs
+  orphaned
 - TabLifecycleHandler tracks open tabs in memory for O(1) validation
 - Smart adoption validation via `validateAdoptionTarget()`
 - `isOrphaned`/`orphanedAt` fields for orphaned Quick Tab tracking
@@ -136,7 +147,8 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 ### v1.6.3.9-v7 & Earlier (Consolidated)
 
 - **v7:** Log capture, direct state push, `_runtimeMessageHandlers` lookup table
-- **v5-v2:** Tab ID fallback, unified barrier, dual architecture, container isolation
+- **v5-v2:** Tab ID fallback, unified barrier, dual architecture, container
+  isolation
 
 ---
 
@@ -166,45 +178,46 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 
 ### v1.6.3.9-v7 & Earlier Patterns (Consolidated)
 
-Log capture, O(1) message routing, unified barrier, Tab ID fallback, dual architecture
+Log capture, O(1) message routing, unified barrier, Tab ID fallback, dual
+architecture
 
 ### Key Timing Constants (v1.6.3.10-v3)
 
-| Constant                           | Value                 | Purpose                               |
-| ---------------------------------- | --------------------- | ------------------------------------- |
-| `STORAGE_KEY`                      | 'quick_tabs_state_v2' | Storage key name                      |
-| `INIT_BARRIER_TIMEOUT_MS`          | 10000                 | Unified barrier init timeout          |
-| `RENDER_DEBOUNCE_MS`               | 100                   | Render queue debounce (was 300)       |
-| `RENDER_DEBOUNCE_MAX_WAIT_MS`      | 300                   | Sliding-window max cap (NEW)          |
-| `MESSAGE_TIMEOUT_MS`               | 3000                  | runtime.sendMessage timeout           |
-| `CIRCUIT_BREAKER_OPEN_DURATION_MS` | 3000                  | Circuit breaker cooldown (was 10000)  |
-| `CIRCUIT_BREAKER_SLIDING_WINDOW_MS`| 5000                  | Failure sliding window (NEW)          |
-| `RECONNECT_BACKOFF_MAX_MS`         | 2000                  | Max reconnect backoff (was 10000)     |
-| `HEARTBEAT_INTERVAL_MS`            | 15000                 | Heartbeat interval (was 25000)        |
-| `HEARTBEAT_TIMEOUT_MS`             | 2000                  | Heartbeat timeout (was 5000)          |
-| `CACHE_STALENESS_ALERT_MS`         | 30000                 | Cache staleness alert (NEW)           |
-| `MESSAGE_RETRY_COUNT`              | 2                     | Message retry attempts (NEW)          |
-| `MESSAGE_RETRY_DELAY_MS`           | 150                   | Message retry delay (NEW)             |
-| `STORAGE_HEALTH_CHECK_INTERVAL_MS` | 5000                  | Health check fallback interval        |
-| `MAX_QUICK_TABS`                   | 100                   | Maximum Quick Tabs allowed            |
+| Constant                            | Value                 | Purpose                              |
+| ----------------------------------- | --------------------- | ------------------------------------ |
+| `STORAGE_KEY`                       | 'quick_tabs_state_v2' | Storage key name                     |
+| `INIT_BARRIER_TIMEOUT_MS`           | 10000                 | Unified barrier init timeout         |
+| `RENDER_DEBOUNCE_MS`                | 100                   | Render queue debounce (was 300)      |
+| `RENDER_DEBOUNCE_MAX_WAIT_MS`       | 300                   | Sliding-window max cap (NEW)         |
+| `MESSAGE_TIMEOUT_MS`                | 3000                  | runtime.sendMessage timeout          |
+| `CIRCUIT_BREAKER_OPEN_DURATION_MS`  | 3000                  | Circuit breaker cooldown (was 10000) |
+| `CIRCUIT_BREAKER_SLIDING_WINDOW_MS` | 5000                  | Failure sliding window (NEW)         |
+| `RECONNECT_BACKOFF_MAX_MS`          | 2000                  | Max reconnect backoff (was 10000)    |
+| `HEARTBEAT_INTERVAL_MS`             | 15000                 | Heartbeat interval (was 25000)       |
+| `HEARTBEAT_TIMEOUT_MS`              | 2000                  | Heartbeat timeout (was 5000)         |
+| `CACHE_STALENESS_ALERT_MS`          | 30000                 | Cache staleness alert (NEW)          |
+| `MESSAGE_RETRY_COUNT`               | 2                     | Message retry attempts (NEW)         |
+| `MESSAGE_RETRY_DELAY_MS`            | 150                   | Message retry delay (NEW)            |
+| `STORAGE_HEALTH_CHECK_INTERVAL_MS`  | 5000                  | Health check fallback interval       |
+| `MAX_QUICK_TABS`                    | 100                   | Maximum Quick Tabs allowed           |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                                                  |
-| --------------------- | ------------------------------------------------------------------------ |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                                        |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                   |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                              |
-| TabStateManager       | `getTabState()`, `setTabState()`                                         |
-| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`                 |
-| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`      |
-| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)                |
-| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`              |
-| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                |
-| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                     |
-| Manager               | `scheduleRender()`, `sendMessageToBackground()`, `_handleOperationAck()` |
+| Class                 | Methods                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                                                    |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                               |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                                          |
+| TabStateManager       | `getTabState()`, `setTabState()`                                                     |
+| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`                             |
+| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`                  |
+| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)                            |
+| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`                          |
+| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                            |
+| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                                 |
+| Manager               | `scheduleRender()`, `sendMessageToBackground()`, `_handleOperationAck()`             |
 | TabLifecycleHandler   | `start()`, `stop()`, `handleTabRemoved()`, `validateAdoptionTarget()`, `isTabOpen()` |
 
 ---
@@ -295,18 +308,18 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ### Key Files
 
-| File                                | Features                                         |
-| ----------------------------------- | ------------------------------------------------ |
-| `src/constants.js`                  | Centralized constants (+225 lines in v4)         |
-| `src/background/tab-events.js`      | Tabs API listeners (onActivated/Removed/Updated) |
-| `src/utils/structured-logger.js`    | StructuredLogger class with contexts             |
-| `src/storage/schema-v2.js`          | Container-aware queries, version field           |
-| `src/storage/storage-manager.js`    | Simplified persistence, checksum validation      |
-| `src/utils/browser-api.js`          | Container functions, validateTabExists()         |
-| `src/messaging/message-router.js`   | ACTION-based routing (GET_CURRENT_TAB_ID, etc.)  |
-| `src/background/message-handler.js` | TYPE-based v2 routing (QT_CREATED, etc.)         |
-| `background.js`                     | \_computeStateChecksum(), \_generateQuickTabId() |
-| `sidebar/quick-tabs-manager.js`     | scheduleRender(), sendMessageToBackground()      |
+| File                                             | Features                                                    |
+| ------------------------------------------------ | ----------------------------------------------------------- |
+| `src/constants.js`                               | Centralized constants (+225 lines in v4)                    |
+| `src/background/tab-events.js`                   | Tabs API listeners (onActivated/Removed/Updated)            |
+| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts                        |
+| `src/storage/schema-v2.js`                       | Container-aware queries, version field                      |
+| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation                 |
+| `src/utils/browser-api.js`                       | Container functions, validateTabExists()                    |
+| `src/messaging/message-router.js`                | ACTION-based routing (GET_CURRENT_TAB_ID, etc.)             |
+| `src/background/message-handler.js`              | TYPE-based v2 routing (QT_CREATED, etc.)                    |
+| `background.js`                                  | \_computeStateChecksum(), \_generateQuickTabId()            |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()                 |
 | `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle events, orphan detection, adoption validation |
 
 ### Storage

@@ -154,14 +154,14 @@ function startKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
   }
-  
+
   // Immediate ping to register activity
   triggerIdleReset();
-  
+
   keepaliveIntervalId = setInterval(() => {
     triggerIdleReset();
   }, KEEPALIVE_INTERVAL_MS);
-  
+
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
 }
 
@@ -173,7 +173,7 @@ async function triggerIdleReset() {
   try {
     // Method 1: browser.tabs.query triggers event handlers which reset idle timer
     const tabs = await browser.tabs.query({});
-    
+
     // Method 2: Self-send a message (this resets the idle timer)
     // Note: This will be caught by our own listener but that's fine
     try {
@@ -181,7 +181,7 @@ async function triggerIdleReset() {
     } catch (_err) {
       // Expected to fail if no listener, but the message send itself resets the timer
     }
-    
+
     console.log('[Background] KEEPALIVE: idle timer reset via tabs.query + sendMessage', {
       tabCount: tabs.length,
       timestamp: Date.now()
@@ -448,10 +448,14 @@ async function initializeGlobalState() {
     if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
       initializationRetryCount++;
       const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
-      console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+      console.log(
+        `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
+      );
       setTimeout(() => initializeGlobalState(), backoffMs);
     } else {
-      console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+      console.error(
+        '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
+      );
       // Fall back to empty state after max retries
       globalQuickTabState.tabs = [];
       globalQuickTabState.lastUpdate = Date.now();
@@ -2033,7 +2037,7 @@ function _logCorruptionWarning(oldCount, newCount) {
 function _shouldIgnoreStorageChange(newValue, oldValue) {
   // v1.6.3.6-v12 - FIX Issue #3: Multi-method deduplication in priority order
   const dedupResult = _multiMethodDeduplication(newValue, oldValue);
-  
+
   // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for deduplication
   console.log('[Background][Storage] DEDUP_CHECK: Evaluating deduplication', {
     method: dedupResult.method,
@@ -2042,7 +2046,7 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
     contentHash: _computeQuickTabContentKey(newValue) || 'N/A',
     result: dedupResult.shouldSkip ? 'SKIP' : 'PROCESS'
   });
-  
+
   if (dedupResult.shouldSkip) {
     console.log('[Background] v1.6.3.6-v12 Storage change SKIPPED:', {
       method: dedupResult.method,
@@ -3475,8 +3479,8 @@ async function handleCloseMinimizedTabsCommand() {
   }
 
   // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(tab =>
-    tab.minimized === true || tab.visibility?.minimized === true
+  const minimizedTabs = globalQuickTabState.tabs.filter(
+    tab => tab.minimized === true || tab.visibility?.minimized === true
   );
 
   if (minimizedTabs.length === 0) {
@@ -3495,8 +3499,8 @@ async function handleCloseMinimizedTabsCommand() {
   await _broadcastCloseManyToAllTabs(closedIds);
 
   // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab =>
-    !(tab.minimized === true || tab.visibility?.minimized === true)
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
+    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
   );
   globalQuickTabState.lastUpdate = Date.now();
 
@@ -3559,13 +3563,15 @@ async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
  */
 function _sendCloseMessageToTabs(tabs, quickTabId) {
   for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      source: 'background-command'
-    }).catch(() => {
-      // Content script may not be loaded
-    });
+    browser.tabs
+      .sendMessage(tab.id, {
+        action: 'CLOSE_QUICK_TAB',
+        quickTabId,
+        source: 'background-command'
+      })
+      .catch(() => {
+        // Content script may not be loaded
+      });
   }
 }
 
@@ -3580,12 +3586,17 @@ async function writeStateWithVerificationAndRetry(operation) {
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
-    
+    const result = await _attemptStorageWriteWithVerification(
+      operation,
+      saveId,
+      attempt,
+      backoffMs
+    );
+
     if (result.success && result.verified) {
       return result;
     }
-    
+
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
@@ -3620,7 +3631,13 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite(operation, saveId, stateToWrite.tabs.length, attempt, backoffMs);
+    return await _verifyStorageWrite(
+      operation,
+      saveId,
+      stateToWrite.tabs.length,
+      attempt,
+      backoffMs
+    );
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -3646,13 +3663,16 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
-    operation,
-    expectedSaveId: saveId,
-    actualSaveId: readBack?.saveId,
-    backoffMs
-  });
-  
+  console.warn(
+    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
+    {
+      operation,
+      expectedSaveId: saveId,
+      actualSaveId: readBack?.saveId,
+      backoffMs
+    }
+  );
+
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -4270,9 +4290,7 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     const tabs = await browser.tabs.query({});
 
     // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
-    const pendingTabs = new Set(
-      tabs.filter(t => t.id !== excludeTabId).map(t => t.id)
-    );
+    const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
 
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);

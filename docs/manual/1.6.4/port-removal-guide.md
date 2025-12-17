@@ -2,7 +2,8 @@
 
 **Document Type**: Technical Implementation Guide  
 **Target**: GitHub Copilot Coding Agent + Development Team  
-**Purpose**: Identify and remove all remaining port-related code infrastructure  
+**Purpose**: Identify and remove all remaining port-related code
+infrastructure  
 **Date**: December 16, 2025  
 **Scope**: copy-URL-on-hover_ChunkyEdition repository
 
@@ -10,9 +11,16 @@
 
 ## EXECUTIVE SUMMARY
 
-The port infrastructure was officially removed in **v1.6.3.8-v13**, but analysis of the current codebase shows **significant dead code and misleading logic remains** that claims removal but still carries port-related patterns. The sidebar manager file (quick-tabs-manager.js) is ~8,000+ lines with extensive **removed but undocumented port code** still consuming file size and creating maintainability issues.
+The port infrastructure was officially removed in **v1.6.3.8-v13**, but analysis
+of the current codebase shows **significant dead code and misleading logic
+remains** that claims removal but still carries port-related patterns. The
+sidebar manager file (quick-tabs-manager.js) is ~8,000+ lines with extensive
+**removed but undocumented port code** still consuming file size and creating
+maintainability issues.
 
-**Critical Finding**: The code contains multiple **`@deprecated` markers, comments claiming removal, and no-op function stubs** that create false impressions of cleanup while actual port patterns persist.
+**Critical Finding**: The code contains multiple **`@deprecated` markers,
+comments claiming removal, and no-op function stubs** that create false
+impressions of cleanup while actual port patterns persist.
 
 ---
 
@@ -29,14 +37,19 @@ The port infrastructure was officially removed in **v1.6.3.8-v13**, but analysis
 // Circuit breaker, heartbeat, and reconnection constants no longer needed
 ```
 
-**Issue**: Comment claims deletion but surrounding context shows incomplete cleanup. The following should be deleted entirely:
+**Issue**: Comment claims deletion but surrounding context shows incomplete
+cleanup. The following should be deleted entirely:
 
-- **CONNECTION_STATE constants**: `_CONNECTION_STATE_DEPRECATED`, `connectionState` (set to 'connected'), `_lastConnectionStateChange`, `_consecutiveConnectionFailures`
+- **CONNECTION_STATE constants**: `_CONNECTION_STATE_DEPRECATED`,
+  `connectionState` (set to 'connected'), `_lastConnectionStateChange`,
+  `_consecutiveConnectionFailures`
   - These variables are marked as deprecated but still declared and initialized
-  - `connectionState = 'connected'` is redundant post-removal (connection state no longer tracked)
+  - `connectionState = 'connected'` is redundant post-removal (connection state
+    no longer tracked)
   - No code path actually uses these, making them pure dead weight
 
-**Lines Affected**: 
+**Lines Affected**:
+
 - Constant declaration: 4-5 lines per variable × 4 variables = ~20 lines
 - Comments claiming removal: ~5 lines
 - Total: ~25 lines of dead constants
@@ -44,7 +57,9 @@ The port infrastructure was officially removed in **v1.6.3.8-v13**, but analysis
 #### Why This Matters
 
 These constants create false signals in code review:
-- Developers see `connectionState = 'connected'` and might assume connection tracking exists
+
+- Developers see `connectionState = 'connected'` and might assume connection
+  tracking exists
 - The `@deprecated` markers suggest cleanup when variable still exists
 - `_lastConnectionStateChange = 0` will never be updated (true dead code)
 
@@ -76,16 +91,24 @@ function _transitionConnectionState(_newState, _reason) {
 ```
 
 **Problem**: These functions serve zero purpose:
+
 - `logPortLifecycle()` accepts parameters but does nothing (no-op)
-- `_transitionConnectionState()` claims to transition state but has no implementation
+- `_transitionConnectionState()` claims to transition state but has no
+  implementation
 - They exist ONLY to prevent "undefined function" errors in code that calls them
-- They are called from `_logPortMessageReceived()` and `_logPortMessageRouting()` functions
+- They are called from `_logPortMessageReceived()` and
+  `_logPortMessageRouting()` functions
 
 **All remaining callers of these no-op functions**:
 
 1. In `_logPortMessageReceived()` (~line 1250):
+
    ```javascript
-   logPortLifecycle('message', { type: message.type, action: message.action, correlationId });
+   logPortLifecycle('message', {
+     type: message.type,
+     action: message.action,
+     correlationId
+   });
    ```
 
 2. This call can be **deleted entirely** along with the stub function
@@ -116,16 +139,23 @@ let initializationComplete = false;
 let _currentInitPhase = 'simplified';
 ```
 
-**Problem**: These are **not backwards compatibility** – they're **dead variable declarations**:
+**Problem**: These are **not backwards compatibility** – they're **dead variable
+declarations**:
+
 - `initializationComplete` is assigned in `_resolveInitBarrier()` but never read
-- `_currentInitPhase = 'simplified'` is never read (the variable exists but serves no purpose)
+- `_currentInitPhase = 'simplified'` is never read (the variable exists but
+  serves no purpose)
 - These exist only as vestigial references to old logic
 
 **Where they're assigned** (can be removed):
-- Line ~1100: `initializationComplete = true;` in `_resolveInitBarrier()` function
-  - This assignment should be deleted; `_isInitPhaseComplete` is the source of truth
 
-**Why this matters**: Future developers will see these and wonder if they serve a purpose, creating confusion and potential for misuse.
+- Line ~1100: `initializationComplete = true;` in `_resolveInitBarrier()`
+  function
+  - This assignment should be deleted; `_isInitPhaseComplete` is the source of
+    truth
+
+**Why this matters**: Future developers will see these and wonder if they serve
+a purpose, creating confusion and potential for misuse.
 
 ---
 
@@ -137,7 +167,8 @@ let _currentInitPhase = 'simplified';
 
 #### Code Pattern to Clean Up
 
-Multiple version history comments reference removed port infrastructure that should be consolidated:
+Multiple version history comments reference removed port infrastructure that
+should be consolidated:
 
 ```javascript
  * v1.6.3.8-v13 - FULL Port Removal: Replaced runtime.Port with stateless runtime.sendMessage
@@ -152,10 +183,11 @@ Multiple version history comments reference removed port infrastructure that sho
  * ... [more items]
 ```
 
-**Issue**: The comments **claim** removal but don't verify it happened. A grep/search should confirm:
+**Issue**: The comments **claim** removal but don't verify it happened. A
+grep/search should confirm:
 
 1. **`backgroundPort` variable** - Should not exist anywhere in file
-2. **`_portOnMessageHandler` function** - Should not exist  
+2. **`_portOnMessageHandler` function** - Should not exist
 3. **`portMessageQueue` variable** - Should not exist
 4. **`_flushPortMessageQueue()` function** - Should not exist
 5. **All "try to route X via port first" logic** - Should be deleted
@@ -184,15 +216,18 @@ function handlePortMessage(message) {
 }
 ```
 
-**Problem**: The entire `handlePortMessage()` function should **not exist** if port is truly removed:
+**Problem**: The entire `handlePortMessage()` function should **not exist** if
+port is truly removed:
 
 - If `backgroundPort` no longer exists, this function cannot be called
-- Comments suggest it handles HEARTBEAT_ACK, STATE_UPDATE, etc. – all port-specific
+- Comments suggest it handles HEARTBEAT_ACK, STATE_UPDATE, etc. – all
+  port-specific
 - The function routes to `_routePortMessage()` which itself should not exist
 
-**Action Required**: 
+**Action Required**:
+
 - Verify `handlePortMessage()` is not called from anywhere
-- Verify `_routePortMessage()` is not called from anywhere  
+- Verify `_routePortMessage()` is not called from anywhere
 - Delete both functions entirely
 
 ---
@@ -227,6 +262,7 @@ function _handlePortStateUpdate(message) {
 ```
 
 **Why These Must Be Deleted**:
+
 - These functions only exist to handle port messages
 - If port is removed, there are no port messages to route
 - All routing handlers reference port-specific behavior
@@ -266,6 +302,7 @@ if (message.type === 'START_STORAGE_WATCHDOG') {
 ```
 
 These checks should be **deleted entirely** because:
+
 1. Port is gone → no port messages exist
 2. runtime.sendMessage is stateless → no acknowledgments via port
 3. Storage coordination is direct → no WATCHDOG messages
@@ -287,14 +324,17 @@ const pendingAcks = new Map();
 ```
 
 **Issue**: This map is:
+
 - Initialized but only used in port-related functions
 - Updated in `_handleOperationConfirmation()` which is port-specific
 - Never read by runtime.sendMessage-based code
 - Pure dead code taking up memory
 
 **What needs to happen**:
+
 - Delete the `pendingAcks` initialization
-- Delete any code that adds/removes entries: `pendingAcks.get()`, `pendingAcks.set()`, `pendingAcks.delete()`
+- Delete any code that adds/removes entries: `pendingAcks.get()`,
+  `pendingAcks.set()`, `pendingAcks.delete()`
 - Delete `handleAcknowledgment()` function that processes port acknowledgments
 
 ---
@@ -303,7 +343,8 @@ const pendingAcks = new Map();
 
 ### Category 4.1: Functions with Port-Related Comments But Changed Purpose
 
-**Location**: quick-tabs-manager.js, `_probeBackgroundHealth()` function (~line 900)
+**Location**: quick-tabs-manager.js, `_probeBackgroundHealth()` function
+(~line 900)
 
 #### Code Pattern
 
@@ -317,8 +358,13 @@ const pendingAcks = new Map();
 async function _probeBackgroundHealth() {
   try {
     const response = await Promise.race([
-      browser.runtime.sendMessage({ type: 'HEALTH_PROBE', timestamp: Date.now() }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
+      browser.runtime.sendMessage({
+        type: 'HEALTH_PROBE',
+        timestamp: Date.now()
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 500)
+      )
     ]);
     return response?.healthy === true || response?.type === 'HEALTH_ACK';
   } catch {
@@ -327,13 +373,16 @@ async function _probeBackgroundHealth() {
 }
 ```
 
-**Issue**: 
+**Issue**:
+
 - This function was part of port health checking
-- Comment says "Kept for health checks using runtime.sendMessage" but background doesn't send HEALTH_ACK via runtime
+- Comment says "Kept for health checks using runtime.sendMessage" but background
+  doesn't send HEALTH_ACK via runtime
 - Sending unsolicited HEALTH_PROBE messages creates overhead
 - Background script may not handle this message type
 
 **Verification Needed**:
+
 - Does background.js actually handle `HEALTH_PROBE` messages?
 - Is `_probeBackgroundHealth()` actually called?
 - Should this be deleted entirely or properly implemented?
@@ -354,13 +403,16 @@ async function _probeBackgroundHealth() {
 ```
 
 **Issue**: While comments claim storage is primary, code still contains:
+
 - Checks for `connectionState` (which no longer changes)
 - Port message handlers that "should" not exist
 - Heartbeat fallback logic patterns
 - Circuit breaker fallback references in comments
 
-**What needs to happen**: 
-- Audit EVERY comment mentioning "port", "fallback to storage", "Tier 3", "heartbeat"
+**What needs to happen**:
+
+- Audit EVERY comment mentioning "port", "fallback to storage", "Tier 3",
+  "heartbeat"
 - Verify the code below the comment matches what the comment claims
 - Delete comments that describe removed code
 - Update comments that claim behavior that no longer exists
@@ -373,7 +425,8 @@ async function _probeBackgroundHealth() {
 
 Check each function and delete if found:
 
-- [ ] `connectToBackground()` - Port connection setup (should not exist if port removed)
+- [ ] `connectToBackground()` - Port connection setup (should not exist if port
+      removed)
 - [ ] `_establishPortConnection()` - Port establishment (should not exist)
 - [ ] `_setupPortListeners()` - Port listener registration (should not exist)
 - [ ] `_handlePortDisconnect()` - Port disconnection handling (should not exist)
@@ -389,11 +442,13 @@ Check each function and delete if found:
 - [ ] `_flushPortMessageQueue()` - Port queue flushing (should not exist)
 - [ ] `waitForListenerReady()` - Port listener readiness (should not exist)
 - [ ] `_startBackgroundActivityCheck()` - Port health check (should not exist)
-- [ ] `_stopBackgroundActivityCheck()` - Port health check stop (should not exist)
+- [ ] `_stopBackgroundActivityCheck()` - Port health check stop (should not
+      exist)
 
 ### Verify Complete Removal With Grep
 
 For each function above, run:
+
 ```bash
 grep -n "functionName" sidebar/quick-tabs-manager.js
 ```
@@ -408,17 +463,22 @@ If any results appear, function or reference still exists and must be removed.
 
 - **Comments documenting removed code** - For historical context
 - **Version history notes** (v1.6.3.8-v13, etc.) - For audit trail
-- **`handlePortMessage()` function** - ONLY if called by actual port somewhere (verify first)
-- **Acknowledgment handling** - ONLY if runtime.sendMessage uses correlation IDs (verify first)
+- **`handlePortMessage()` function** - ONLY if called by actual port somewhere
+  (verify first)
+- **Acknowledgment handling** - ONLY if runtime.sendMessage uses correlation IDs
+  (verify first)
 
 ### Critical: Don't Remove These
 
 These are NOT port-related despite similar names:
+
 - `_storageListenerVerificationTimeout()` - Storage verification (keep)
-- `_handleStorageListenerVerification()` - Storage listener setup (keep)  
+- `_handleStorageListenerVerification()` - Storage listener setup (keep)
 - `_initStorageListenerReadyPromise()` - Storage initialization (keep)
-- Any `storage.onChanged` related code - This is the primary mechanism now (keep)
-- `sendToBackground()` function - This replaced port.postMessage (keep, verify it uses runtime.sendMessage)
+- Any `storage.onChanged` related code - This is the primary mechanism now
+  (keep)
+- `sendToBackground()` function - This replaced port.postMessage (keep, verify
+  it uses runtime.sendMessage)
 
 ---
 
@@ -437,6 +497,7 @@ These are NOT port-related despite similar names:
 ### Phase 2: Function Removal
 
 For each function in Part 6:
+
 - [ ] Search for all references to function
 - [ ] Delete function definition
 - [ ] Delete all calls to function
@@ -444,13 +505,15 @@ For each function in Part 6:
 
 ### Phase 3: Message Type Cleanup
 
-- [ ] Remove port-specific message type checks (HEARTBEAT_ACK, START_STORAGE_WATCHDOG, etc.)
+- [ ] Remove port-specific message type checks (HEARTBEAT_ACK,
+      START_STORAGE_WATCHDOG, etc.)
 - [ ] Verify all message handlers expect runtime.sendMessage (stateless)
 - [ ] Delete port-specific message routing logic
 
 ### Phase 4: Comment and Documentation Cleanup
 
-- [ ] Update file header to remove port removal notes (consolidate into single note)
+- [ ] Update file header to remove port removal notes (consolidate into single
+      note)
 - [ ] Remove `@deprecated` markers for port-related items
 - [ ] Update ARCHITECTURE comments to reflect actual current architecture
 - [ ] Keep version history for audit trail only
@@ -458,8 +521,9 @@ For each function in Part 6:
 ### Phase 5: Verification
 
 - [ ] Run `grep -r "backgroundPort"` - Should return 0 results
-- [ ] Run `grep -r "portMessageQueue"` - Should return 0 results  
-- [ ] Run `grep -r "_handlePortMessage"` - Should return only definitions in this removal guide
+- [ ] Run `grep -r "portMessageQueue"` - Should return 0 results
+- [ ] Run `grep -r "_handlePortMessage"` - Should return only definitions in
+      this removal guide
 - [ ] Run `grep -r "HEARTBEAT_ACK"` - Should return 0 results
 - [ ] Search for "port" in comments - Review context, remove irrelevant ones
 - [ ] File size should reduce from ~8,000+ lines to ~6,000-6,500 lines
@@ -473,6 +537,7 @@ For each function in Part 6:
 **File Size**: ~8,000+ lines → ~6,000-6,500 lines (20-25% reduction)
 
 **Lines Removed**:
+
 - Dead constants: ~25 lines
 - No-op functions: ~30 lines
 - Port message routing: ~150-200 lines
@@ -483,11 +548,13 @@ For each function in Part 6:
 - **Total estimated removal: 400-600 lines of pure dead code**
 
 **Code Quality Improvements**:
+
 - Reduced confusion about what's actually implemented
 - Faster code review (less dead code to parse)
 - Clearer initialization barrier logic
 - Elimination of misleading no-op functions
-- Proper separation: storage.onChanged (primary) vs runtime.sendMessage (command/response)
+- Proper separation: storage.onChanged (primary) vs runtime.sendMessage
+  (command/response)
 
 ---
 
@@ -495,12 +562,18 @@ For each function in Part 6:
 
 When implementing these changes:
 
-1. **Do NOT** assume a function is unused just because it has `@deprecated`. Verify with grep.
+1. **Do NOT** assume a function is unused just because it has `@deprecated`.
+   Verify with grep.
 2. **Do NOT** delete function stubs without checking all callers first.
-3. **Do verify** that every deletion doesn't break the initialization barrier or storage listener logic.
-4. **Do consolidate** version history comments into a single "Port removal history" section at the top.
-5. **Do test** that `_initializeStorageListener()` still works correctly after cleanup.
-6. **Do verify** that `handlePortMessage()` is truly never called (not called by any actual port).
+3. **Do verify** that every deletion doesn't break the initialization barrier or
+   storage listener logic.
+4. **Do consolidate** version history comments into a single "Port removal
+   history" section at the top.
+5. **Do test** that `_initializeStorageListener()` still works correctly after
+   cleanup.
+6. **Do verify** that `handlePortMessage()` is truly never called (not called by
+   any actual port).
 
-The goal is to remove port infrastructure **cleanly** while preserving the robust simplified architecture that storage.onChanged + runtime.sendMessage provides.
-
+The goal is to remove port infrastructure **cleanly** while preserving the
+robust simplified architecture that storage.onChanged + runtime.sendMessage
+provides.
