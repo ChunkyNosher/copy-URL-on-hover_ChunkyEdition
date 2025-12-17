@@ -2,6 +2,11 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.10-v2 - FIX Manager UI Issues (Issues #1, #4, #8)
+ *   - FIX Issue #1: Reduced render debounce 300ms→100ms, sliding-window debounce
+ *   - FIX Issue #4: Smart circuit breaker with sliding-window backoff, action queue
+ *   - FIX Issue #8: Cache staleness tracking, cache only for initial hydration
+ *
  * v1.6.3.10-v1 - FIX Critical Cross-Tab Sync Issues (Issues #2, #3, #5, #6, #7)
  *   - FIX Issue #2: Port lifecycle & zombie port detection with 500ms timeout
  *   - FIX Issue #3: Storage concurrency with write serialization (transactionId + sequence)
@@ -82,12 +87,17 @@ const DOM_VERIFICATION_DELAY_MS = 500;
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
-const RENDER_DEBOUNCE_MS = 300;
+// v1.6.3.10-v2 - FIX Issue #1: Reduced from 300ms to 100ms to match storage mutation frequency
+const RENDER_DEBOUNCE_MS = 100;
 // FIX Issue #5: Port Reconnect Circuit Breaker
 const RECONNECT_BACKOFF_INITIAL_MS = 100;
-const RECONNECT_BACKOFF_MAX_MS = 10000;
+// v1.6.3.10-v2 - FIX Issue #4: Reduced max backoff from 10000ms to 2000ms
+const RECONNECT_BACKOFF_MAX_MS = 2000;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
-const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
+// v1.6.3.10-v2 - FIX Issue #4: Reduced from 10000ms to 3000ms
+const CIRCUIT_BREAKER_OPEN_DURATION_MS = 3000;
+// v1.6.3.10-v2 - FIX Issue #4: Sliding window for failure tracking (failures older than this don't count)
+const CIRCUIT_BREAKER_SLIDING_WINDOW_MS = 5000;
 
 // ==================== v1.6.3.10-v1 CONSTANTS ====================
 // FIX Issue #2: Zombie port detection timeout (500ms)
@@ -95,6 +105,12 @@ const PORT_MESSAGE_TIMEOUT_MS = 500;
 // FIX Issue #7: Messaging retry configuration
 const MESSAGE_RETRY_COUNT = 2;
 const MESSAGE_RETRY_BACKOFF_MS = 150;
+
+// ==================== v1.6.3.10-v2 CONSTANTS ====================
+// FIX Issue #8: Cache staleness tracking
+const CACHE_STALENESS_ALERT_MS = 30000; // Alert if cache diverges for >30 seconds
+// FIX Issue #1: Sliding-window debounce maximum wait time
+const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -134,9 +150,15 @@ let lastRenderedStateHash = 0;
 //   Recovery operation: Manager uses cache when storage returns suspicious 0-tab results
 //   The cache should NEVER be used to overwrite background's authoritative state.
 //   See v1.6.3.5-architectural-issues.md Architecture Issue #6 for context.
+// v1.6.3.10-v2 - FIX Issue #8: Cache is now ONLY used for initial hydration, not ongoing fallback
+//   Cache staleness is tracked - alerts if >30 seconds without storage sync
 let inMemoryTabsCache = [];
 let lastKnownGoodTabCount = 0;
 const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 tab
+
+// v1.6.3.10-v2 - FIX Issue #8: Cache staleness tracking
+let lastCacheSyncFromStorage = 0; // Timestamp when cache was last synchronized with storage
+let cacheHydrationComplete = false; // Flag to track if initial hydration is done
 
 // UI Elements (cached for performance)
 let containersList;
@@ -228,11 +250,39 @@ const MAX_HEARTBEAT_FAILURES = 2;
  * Circuit breaker state
  * v1.6.3.7 - FIX Issue #5: Prevent thundering herd on reconnect
  * States: 'closed' (connected), 'open' (not trying), 'half-open' (attempting)
+ * v1.6.3.10-v2 - FIX Issue #4: Added sliding window tracking and action queue
  */
 let circuitBreakerState = 'closed';
 let circuitBreakerOpenTime = 0;
 let reconnectAttempts = 0;
 let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+
+// v1.6.3.10-v2 - FIX Issue #4: Sliding window failure tracking
+/**
+ * Track failure timestamps for sliding window analysis
+ * v1.6.3.10-v2 - FIX Issue #4: Only failures within CIRCUIT_BREAKER_SLIDING_WINDOW_MS count
+ * @type {number[]}
+ */
+let failureTimestamps = [];
+
+// v1.6.3.10-v2 - FIX Issue #4: Action queue for operations during circuit open
+/**
+ * Queue user actions during circuit breaker open state
+ * v1.6.3.10-v2 - FIX Issue #4: Actions are flushed on successful reconnect
+ * @type {Array<{action: string, payload: Object, timestamp: number}>}
+ */
+let pendingActionQueue = [];
+const MAX_PENDING_ACTIONS = 50; // Prevent queue from growing unbounded
+
+/**
+ * Failure reason classification
+ * v1.6.3.10-v2 - FIX Issue #4: Different failure types have different handling
+ */
+const FAILURE_REASON = {
+  TRANSIENT: 'transient',       // Network blip - exponential backoff
+  ZOMBIE_PORT: 'zombie-port',   // Port dead - immediate reconnect, no count
+  BACKGROUND_DEAD: 'background-dead' // Background unloaded - request state sync on reconnect
+};
 
 // ==================== v1.6.3.10-v1 PORT STATE MACHINE ====================
 // FIX Issue #2: Explicit port state tracking for zombie detection
@@ -257,9 +307,14 @@ let currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention
+// v1.6.3.10-v2 - FIX Issue #1: Added sliding-window debounce state
 let renderDebounceTimer = null;
 let lastRenderedHash = 0;
 let pendingRenderUI = false;
+
+// v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce tracking
+let debounceStartTimestamp = 0; // When the debounce window started
+let debounceExtensionCount = 0; // How many times we've extended the debounce
 
 /**
  * Generate correlation ID for message acknowledgment
@@ -333,6 +388,7 @@ function logPortStateTransition(fromState, toState, reason, context = {}) {
  * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
  * v1.6.3.10-v1 - FIX Issue #2: Port state machine tracking
+ * v1.6.3.10-v2 - FIX Issue #4: Flush pending action queue on successful reconnect
  */
 function connectToBackground() {
   const previousState = portState;
@@ -391,6 +447,9 @@ function connectToBackground() {
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
     
+    // v1.6.3.10-v2 - FIX Issue #4: Clear sliding window failures on successful connect
+    failureTimestamps = [];
+    
     // v1.6.3.10-v1 - FIX Issue #5: Reset adaptive heartbeat interval
     currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
@@ -400,8 +459,11 @@ function connectToBackground() {
     // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
+    
+    // v1.6.3.10-v2 - FIX Issue #4: Flush pending action queue on successful reconnect
+    _flushPendingActionQueue();
 
-    console.log('[Manager] v1.6.3.10-v1 Port connection established with state tracking');
+    console.log('[Manager] v1.6.3.10-v2 Port connection established with action queue flush');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
     logPortLifecycle('CONNECT_ERROR', { error: err.message, recoveryAction: 'scheduling reconnect' });
@@ -416,19 +478,44 @@ function connectToBackground() {
  * Schedule reconnection with exponential backoff
  * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
  * v1.6.3.10-v1 - FIX Issue #2: Zombie detection bypasses circuit breaker delay
+ * v1.6.3.10-v2 - FIX Issue #4: Sliding-window failure tracking
+ * @param {string} [failureReason=FAILURE_REASON.TRANSIENT] - Reason for failure
  */
-function scheduleReconnect() {
-  reconnectAttempts++;
+function scheduleReconnect(failureReason = FAILURE_REASON.TRANSIENT) {
+  // v1.6.3.10-v2 - FIX Issue #4: Zombie port doesn't count toward failures
+  if (failureReason === FAILURE_REASON.ZOMBIE_PORT) {
+    logPortLifecycle('RECONNECT_ZOMBIE_BYPASS', {
+      reason: 'zombie port detection - bypassing failure count',
+      failureTimestampsCount: failureTimestamps.length
+    });
+    // Don't increment failure count for zombie ports - reconnect immediately
+    setTimeout(() => {
+      console.log('[Manager] Attempting reconnect after zombie detection');
+      connectToBackground();
+    }, RECONNECT_BACKOFF_INITIAL_MS);
+    return;
+  }
+  
+  // v1.6.3.10-v2 - FIX Issue #4: Track failure with timestamp for sliding window
+  const now = Date.now();
+  failureTimestamps.push(now);
+  
+  // Remove failures older than the sliding window
+  _pruneOldFailures(now);
+  
+  reconnectAttempts = failureTimestamps.length;
   
   logPortLifecycle('RECONNECT_ATTEMPT_N', {
     attempt: reconnectAttempts,
     backoffMs: reconnectBackoffMs,
     maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    failureReason,
+    slidingWindowFailures: failureTimestamps.length,
     recoveryAction: `waiting ${reconnectBackoffMs}ms before retry`
   });
   
-  // Check if we should trip the circuit breaker
-  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+  // v1.6.3.10-v2 - FIX Issue #4: Only count recent failures for circuit breaker
+  if (failureTimestamps.length >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
     tripCircuitBreaker();
     return;
   }
@@ -444,8 +531,20 @@ function scheduleReconnect() {
 }
 
 /**
+ * Prune failure timestamps older than sliding window
+ * v1.6.3.10-v2 - FIX Issue #4: Failures older than CIRCUIT_BREAKER_SLIDING_WINDOW_MS don't count
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _pruneOldFailures(now) {
+  const windowStart = now - CIRCUIT_BREAKER_SLIDING_WINDOW_MS;
+  failureTimestamps = failureTimestamps.filter(ts => ts > windowStart);
+}
+
+/**
  * Force immediate reconnect (bypass circuit breaker)
  * v1.6.3.10-v1 - FIX Issue #2: Used when zombie port detected
+ * v1.6.3.10-v2 - FIX Issue #4: Zombie detection uses ZOMBIE_PORT failure reason
  * Zombie detection means background unloaded, not transient failure
  */
 function forceImmediateReconnect() {
@@ -457,7 +556,8 @@ function forceImmediateReconnect() {
     previousState: previousPortState
   });
   
-  // Reset circuit breaker - zombie detection is not a transient failure
+  // v1.6.3.10-v2 - FIX Issue #4: Reset circuit breaker - zombie is not a transient failure
+  // Clear failure timestamps to prevent zombie detection from polluting sliding window
   circuitBreakerState = 'half-open';
   circuitBreakerOpenTime = 0;
   reconnectAttempts = 0;
@@ -478,39 +578,40 @@ function forceImmediateReconnect() {
   
   stopHeartbeat();
   
-  // Immediate reconnect (no delay since zombie detection is confirmed)
-  connectToBackground();
+  // v1.6.3.10-v2 - FIX Issue #4: Use scheduleReconnect with ZOMBIE_PORT reason
+  // This bypasses the failure counting
+  scheduleReconnect(FAILURE_REASON.ZOMBIE_PORT);
 }
 
 /**
  * Handle connection failure
  * v1.6.3.7 - FIX Issue #5: Track failures for circuit breaker
+ * v1.6.3.10-v2 - FIX Issue #4: Pass failure reason for sliding window tracking
  */
 function handleConnectionFailure() {
-  // Note: scheduleReconnect() handles the increment, so we don't double-count here
-  if (reconnectAttempts >= CIRCUIT_BREAKER_FAILURE_THRESHOLD - 1) {
-    // One more failure will trip the breaker, call scheduleReconnect to handle it
-    scheduleReconnect();
-  } else {
-    scheduleReconnect();
-  }
+  // v1.6.3.10-v2 - FIX Issue #4: Always schedule reconnect, let sliding window handle thresholds
+  scheduleReconnect(FAILURE_REASON.TRANSIENT);
 }
 
 /**
  * Trip the circuit breaker to "open" state
  * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
  * v1.6.3.10-v1 - FIX Issue #6: Enhanced logging for circuit breaker events
+ * v1.6.3.10-v2 - FIX Issue #4: Clear failure timestamps, flush pending actions on reopen
  */
 function tripCircuitBreaker() {
   const previousState = circuitBreakerState;
   circuitBreakerState = 'open';
   circuitBreakerOpenTime = Date.now();
   
+  // v1.6.3.10-v2 - FIX Issue #4: Log pending actions that are queued
   logPortLifecycle('CIRCUIT_OPEN', {
     previousState,
     attempts: reconnectAttempts,
+    slidingWindowFailures: failureTimestamps.length,
     cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
     reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString(),
+    pendingActionsQueued: pendingActionQueue.length,
     recoveryAction: `will retry after ${CIRCUIT_BREAKER_OPEN_DURATION_MS / 1000}s cooldown`
   });
   
@@ -523,8 +624,95 @@ function tripCircuitBreaker() {
     circuitBreakerState = 'half-open';
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+    // v1.6.3.10-v2 - FIX Issue #4: Clear sliding window failures on reopen
+    failureTimestamps = [];
     connectToBackground();
   }, CIRCUIT_BREAKER_OPEN_DURATION_MS);
+}
+
+/**
+ * Queue a user action during circuit breaker open state
+ * v1.6.3.10-v2 - FIX Issue #4: Actions are queued and flushed on successful reconnect
+ * @param {string} action - Action name (e.g., 'MINIMIZE_QUICK_TAB')
+ * @param {Object} payload - Action payload
+ * @returns {boolean} True if queued, false if circuit is not open or queue full
+ */
+function _queuePendingAction(action, payload) {
+  if (circuitBreakerState !== 'open') {
+    return false; // Only queue when circuit is open
+  }
+  
+  if (pendingActionQueue.length >= MAX_PENDING_ACTIONS) {
+    console.warn('[Manager] Pending action queue full, discarding oldest action');
+    pendingActionQueue.shift(); // Remove oldest
+  }
+  
+  pendingActionQueue.push({
+    action,
+    payload,
+    timestamp: Date.now()
+  });
+  
+  console.log('[Manager] ACTION_QUEUED:', {
+    action,
+    payload,
+    queueLength: pendingActionQueue.length
+  });
+  
+  return true;
+}
+
+/**
+ * Flush pending action queue after successful reconnect
+ * v1.6.3.10-v2 - FIX Issue #4: Send queued actions to background
+ * v1.6.3.10-v2 - FIX Code Review: Prune stale actions and use sendMessageToAllTabs for broadcast
+ * @private
+ */
+async function _flushPendingActionQueue() {
+  if (pendingActionQueue.length === 0) {
+    return;
+  }
+  
+  // v1.6.3.10-v2 - FIX Code Review: Prune actions older than 30 seconds as stale
+  const MAX_ACTION_AGE_MS = 30000;
+  const now = Date.now();
+  const actionsToFlush = pendingActionQueue.filter(a => now - a.timestamp < MAX_ACTION_AGE_MS);
+  const staleCount = pendingActionQueue.length - actionsToFlush.length;
+  pendingActionQueue = [];
+  
+  console.log('[Manager] FLUSHING_PENDING_ACTIONS:', {
+    count: actionsToFlush.length,
+    staleDiscarded: staleCount,
+    actions: actionsToFlush.map(a => a.action)
+  });
+  
+  for (const queuedAction of actionsToFlush) {
+    await _flushSingleAction(queuedAction, now);
+  }
+}
+
+/**
+ * Flush a single queued action
+ * v1.6.3.10-v2 - FIX Code Review: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} queuedAction - Queued action object
+ * @param {number} now - Current timestamp
+ */
+async function _flushSingleAction(queuedAction, now) {
+  const { action, payload, timestamp } = queuedAction;
+  const age = now - timestamp;
+  console.log('[Manager] FLUSHING_ACTION:', { action, payload, ageMs: age });
+  
+  try {
+    const quickTabId = payload?.quickTabId;
+    if (quickTabId) {
+      await sendMessageToAllTabs(action, quickTabId);
+    } else {
+      await browser.runtime.sendMessage({ action, ...payload });
+    }
+  } catch (err) {
+    console.warn('[Manager] Failed to flush queued action:', { action, error: err.message });
+  }
 }
 
 // ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
@@ -1800,6 +1988,10 @@ function _handleEmptyStorageState() {
  *   Storage storms are detected when MULTIPLE tabs vanish unexpectedly.
  *   A single tab going to 0 is legitimate user action.
  * v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation instead of silently using cache
+ * v1.6.3.10-v2 - FIX Issue #8: Cache NOT used as fallback for corrupted storage
+ *   - Trigger immediate reconciliation instead
+ *   - Cache only used for initial hydration on page load
+ *   - Track cache staleness
  * @param {Object} state - Storage state
  * @returns {boolean} True if storm detected and handled
  */
@@ -1808,6 +2000,8 @@ function _detectStorageStorm(state) {
 
   // No storm if storage has tabs
   if (storageTabs.length !== 0) {
+    // v1.6.3.10-v2 - FIX Issue #8: Update cache sync timestamp when storage has valid data
+    lastCacheSyncFromStorage = Date.now();
     return false;
   }
 
@@ -1825,23 +2019,38 @@ function _detectStorageStorm(state) {
     // Clear the cache to accept the new 0-tab state
     inMemoryTabsCache = [];
     lastKnownGoodTabCount = 0;
+    lastCacheSyncFromStorage = Date.now();
     return false; // Not a storm - proceed with normal update
   }
 
+  // v1.6.3.10-v2 - FIX Issue #8: Check cache staleness - alert if >30 seconds without refresh
+  const cacheStalenessMs = Date.now() - lastCacheSyncFromStorage;
+  if (cacheStalenessMs > CACHE_STALENESS_ALERT_MS) {
+    console.warn('[Manager] CACHE_STALENESS_ALERT:', {
+      stalenessMs: cacheStalenessMs,
+      alertThresholdMs: CACHE_STALENESS_ALERT_MS,
+      cacheTabCount: inMemoryTabsCache.length,
+      lastSyncTimestamp: lastCacheSyncFromStorage
+    });
+  }
+
   // v1.6.3.6-v12 - FIX Issue #5: CACHE_DIVERGENCE - trigger reconciliation
-  console.warn('[Manager] v1.6.3.6-v12 CACHE_DIVERGENCE:', {
+  // v1.6.3.10-v2 - FIX Issue #8: Cache NOT used as fallback - reconciliation is authoritative
+  console.warn('[Manager] v1.6.3.10-v2 CACHE_DIVERGENCE (no fallback):', {
     storageTabCount: storageTabs.length,
     cacheTabCount: inMemoryTabsCache.length,
     lastKnownGoodCount: lastKnownGoodTabCount,
-    saveId: state.saveId
+    cacheStalenessMs,
+    saveId: state.saveId,
+    action: 'triggering immediate reconciliation'
   });
 
   // v1.6.3.6-v12 - FIX Issue #5: Trigger reconciliation with content scripts
+  // v1.6.3.10-v2 - FIX Issue #8: Do NOT use cache as fallback - let reconciliation determine truth
   _triggerCacheReconciliation();
 
-  // Temporarily use cache to prevent blank UI while reconciliation runs
-  quickTabsState = { tabs: inMemoryTabsCache, timestamp: Date.now() };
-  console.log('[Manager] Using in-memory cache temporarily during reconciliation');
+  // v1.6.3.10-v2 - FIX Issue #8: Return true to skip normal processing
+  // UI will be updated by reconciliation callback
   return true;
 }
 
@@ -1849,43 +2058,50 @@ function _detectStorageStorm(state) {
  * Trigger reconciliation with content scripts when cache diverges from storage
  * v1.6.3.6-v12 - FIX Issue #5: Query content scripts and restore to STORAGE if needed
  * v1.6.3.6-v12 - FIX Code Review: Use module-level imports instead of dynamic import
+ * v1.6.3.10-v2 - FIX Issue #8: Update cache sync timestamp after reconciliation
  */
 async function _triggerCacheReconciliation() {
-  console.log('[Manager] v1.6.3.6-v12 Starting cache reconciliation...');
+  console.log('[Manager] v1.6.3.10-v2 Starting cache reconciliation...');
 
   try {
     // Query all content scripts for their Quick Tabs
     // v1.6.3.6-v12 - FIX Code Review: Using module-level import
     const contentScriptTabs = await queryAllContentScriptsForQuickTabs();
 
-    console.log('[Manager] v1.6.3.6-v12 Reconciliation found:', {
+    console.log('[Manager] v1.6.3.10-v2 Reconciliation found:', {
       contentScriptTabCount: contentScriptTabs.length,
       cacheTabCount: inMemoryTabsCache.length
     });
 
     if (contentScriptTabs.length > 0) {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts have tabs - restore to STORAGE
-      console.warn('[Manager] CORRUPTION CONFIRMED: Content scripts have tabs but storage is empty');
-      console.log('[Manager] v1.6.3.6-v12 Restoring state to storage...');
+      console.warn('[Manager] CORRUPTION_CONFIRMED: Content scripts have tabs but storage is empty');
+      console.log('[Manager] v1.6.3.10-v2 Restoring state to storage...');
 
       const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
       quickTabsState = restoredState;
       inMemoryTabsCache = [...restoredState.tabs];
       lastKnownGoodTabCount = restoredState.tabs.length;
+      // v1.6.3.10-v2 - FIX Issue #8: Update cache sync timestamp
+      lastCacheSyncFromStorage = Date.now();
 
-      console.log('[Manager] v1.6.3.6-v12 Reconciliation complete: Restored', contentScriptTabs.length, 'tabs to storage');
+      console.log('[Manager] v1.6.3.10-v2 Reconciliation complete: Restored', contentScriptTabs.length, 'tabs to storage');
       renderUI(); // Re-render with restored state
     } else {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
-      console.log('[Manager] v1.6.3.6-v12 Content scripts confirm 0 tabs - accepting empty state');
+      console.log('[Manager] v1.6.3.10-v2 Content scripts confirm 0 tabs - accepting empty state');
       inMemoryTabsCache = [];
       lastKnownGoodTabCount = 0;
+      // v1.6.3.10-v2 - FIX Issue #8: Update cache sync timestamp
+      lastCacheSyncFromStorage = Date.now();
       quickTabsState = { tabs: [], timestamp: Date.now() };
       renderUI();
     }
   } catch (err) {
-    console.error('[Manager] v1.6.3.6-v12 Reconciliation error:', err.message);
-    // Keep using cache on error - better than showing blank
+    console.error('[Manager] v1.6.3.10-v2 Reconciliation error:', err.message);
+    // v1.6.3.10-v2 - FIX Issue #8: Do NOT use cache as fallback on error
+    // Log the error but don't silently mask storage issues
+    console.warn('[Manager] RECONCILIATION_ERROR: Not using cache fallback - showing current state');
   }
 }
 
@@ -1894,13 +2110,29 @@ async function _triggerCacheReconciliation() {
  * v1.6.3.5-v4 - Extracted to reduce loadQuickTabsState nesting depth
  * v1.6.3.5-v11 - FIX Issue #6: Also update cache when tabs.length is 0 (legitimate deletion)
  *   The cache must be cleared when tabs legitimately reach 0, not just updated when > 0.
+ * v1.6.3.10-v2 - FIX Issue #8: Track cache staleness timestamp
  * @param {Array} tabs - Tabs array from storage
  */
 function _updateInMemoryCache(tabs) {
+  // v1.6.3.10-v2 - FIX Issue #8: Always update cache sync timestamp
+  lastCacheSyncFromStorage = Date.now();
+  
+  // v1.6.3.10-v2 - FIX Issue #8: Mark initial hydration as complete
+  if (!cacheHydrationComplete && tabs.length >= 0) {
+    cacheHydrationComplete = true;
+    console.log('[Manager] CACHE_HYDRATION_COMPLETE:', {
+      tabCount: tabs.length,
+      timestamp: lastCacheSyncFromStorage
+    });
+  }
+  
   if (tabs.length > 0) {
     inMemoryTabsCache = [...tabs];
     lastKnownGoodTabCount = tabs.length;
-    console.log('[Manager] Updated in-memory cache:', { tabCount: tabs.length });
+    console.log('[Manager] Updated in-memory cache:', { 
+      tabCount: tabs.length,
+      syncTimestamp: lastCacheSyncFromStorage 
+    });
   } else if (lastKnownGoodTabCount === 1) {
     // v1.6.3.5-v11 - FIX Issue #6: Clear cache when going from 1→0 (single-tab deletion)
     console.log('[Manager] Clearing in-memory cache (single-tab deletion detected)');
@@ -2003,20 +2235,51 @@ function updateUIStats(totalTabs, latestTimestamp) {
  * Render the Quick Tabs Manager UI (debounced)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
  * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
+ * v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce that extends timer on new changes
+ *   - Reduced debounce from 300ms to 100ms
+ *   - Timer extends on each new change (up to RENDER_DEBOUNCE_MAX_WAIT_MS)
+ *   - Compares against CURRENT storage read, not captured hash
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
+  const now = Date.now();
+  
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
   
-  // v1.6.4.0 - FIX Issue D: Capture state hash when debounce is set
-  capturedStateHashAtDebounce = computeStateHash(quickTabsState);
-  debounceSetTimestamp = Date.now();
+  // v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce logic
+  const isNewDebounceWindow = debounceStartTimestamp === 0 || !renderDebounceTimer;
+  
+  if (isNewDebounceWindow) {
+    // Starting a new debounce window
+    debounceStartTimestamp = now;
+    debounceExtensionCount = 0;
+    capturedStateHashAtDebounce = computeStateHash(quickTabsState);
+  } else {
+    // Extending existing debounce window (state changed again)
+    debounceExtensionCount++;
+    
+    // v1.6.3.10-v2 - FIX Issue #1: Check if we've exceeded max wait time
+    const totalWaitTime = now - debounceStartTimestamp;
+    if (totalWaitTime >= RENDER_DEBOUNCE_MAX_WAIT_MS) {
+      // Force render now - we've waited long enough
+      _forceRenderOnMaxWait(totalWaitTime);
+      return;
+    }
+  }
+  
+  // v1.6.4.0 - FIX Issue D: Update captured hash to latest state
+  debounceSetTimestamp = now;
   
   // Clear any existing debounce timer
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
   }
+  
+  // v1.6.3.10-v2 - FIX Issue #1: Calculate remaining wait time for sliding window
+  const elapsedSinceStart = now - debounceStartTimestamp;
+  const remainingMaxWait = RENDER_DEBOUNCE_MAX_WAIT_MS - elapsedSinceStart;
+  const debounceTime = Math.min(RENDER_DEBOUNCE_MS, remainingMaxWait);
   
   // Schedule the actual render
   renderDebounceTimer = setTimeout(async () => {
@@ -2030,7 +2293,19 @@ function renderUI() {
     
     pendingRenderUI = false;
     
-    // v1.6.4.0 - FIX Issue D: Check if state changed during debounce wait
+    // v1.6.3.10-v2 - FIX Issue #1: Log debounce completion with sliding window stats
+    const completionTime = Date.now();
+    console.log('[Manager] RENDER_DEBOUNCE_COMPLETE:', {
+      totalWaitMs: completionTime - debounceStartTimestamp,
+      extensions: debounceExtensionCount,
+      finalDebounceMs: debounceTime
+    });
+    
+    // Reset sliding window tracking
+    debounceStartTimestamp = 0;
+    debounceExtensionCount = 0;
+    
+    // v1.6.3.10-v2 - FIX Issue #1: Fetch CURRENT state from storage, not captured hash
     const staleCheckResult = await _checkAndReloadStaleState();
     if (staleCheckResult.stateReloaded) {
       console.log('[Manager] State changed while debounce was waiting, rendering with fresh state', staleCheckResult);
@@ -2055,27 +2330,67 @@ function renderUI() {
     requestAnimationFrame(() => {
       _renderUIImmediate();
     });
-  }, RENDER_DEBOUNCE_MS);
+  }, debounceTime);
 }
 
 /**
  * Check for stale state during debounce and reload if needed
  * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * @private
- * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, debounceWaitMs: number }>}
+ * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
 async function _checkAndReloadStaleState() {
-  const currentHash = computeStateHash(quickTabsState);
+  const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
   
-  if (currentHash === capturedStateHashAtDebounce) {
-    return { stateReloaded: false, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
+  // v1.6.3.10-v2 - FIX Issue #1: Always fetch current storage state to compare
+  // This ensures we render the latest state even under storage churn
+  try {
+    const freshResult = await browser.storage.local.get(STATE_KEY);
+    const storageState = freshResult?.[STATE_KEY];
+    const storageHash = computeStateHash(storageState || {});
+    
+    // Compare in-memory state against storage state
+    if (storageHash === inMemoryHash) {
+      return { 
+        stateReloaded: false, 
+        capturedHash: capturedStateHashAtDebounce, 
+        currentHash: inMemoryHash, 
+        storageHash,
+        debounceWaitMs: debounceWaitTime 
+      };
+    }
+    
+    // Storage has different state - reload it
+    if (storageState?.tabs) {
+      quickTabsState = storageState;
+      _updateInMemoryCache(storageState.tabs);
+      console.log('[Manager] STALE_STATE_RELOADED:', {
+        inMemoryHash,
+        storageHash,
+        inMemoryTabCount: (quickTabsState?.tabs?.length ?? 0),
+        storageTabCount: storageState.tabs.length
+      });
+    }
+    
+    return { 
+      stateReloaded: true, 
+      capturedHash: capturedStateHashAtDebounce, 
+      currentHash: inMemoryHash, 
+      storageHash,
+      debounceWaitMs: debounceWaitTime 
+    };
+  } catch (err) {
+    console.warn('[Manager] Failed to check storage state, using in-memory:', err.message);
+    return { 
+      stateReloaded: false, 
+      capturedHash: capturedStateHashAtDebounce, 
+      currentHash: inMemoryHash, 
+      storageHash: 0,
+      debounceWaitMs: debounceWaitTime 
+    };
   }
-  
-  // State changed during wait - fetch fresh state from storage to ensure consistency
-  await _loadFreshStateFromStorage();
-  
-  return { stateReloaded: true, capturedHash: capturedStateHashAtDebounce, currentHash, debounceWaitMs: debounceWaitTime };
 }
 
 /**
@@ -2095,6 +2410,33 @@ async function _loadFreshStateFromStorage() {
   } catch (err) {
     console.warn('[Manager] Failed to load fresh state, using current:', err.message);
   }
+}
+
+/**
+ * Force render when max debounce wait time reached
+ * v1.6.3.10-v2 - FIX Issue #1: Extracted to reduce nesting depth in renderUI()
+ * @private
+ * @param {number} totalWaitTime - Total time waited since debounce started
+ */
+function _forceRenderOnMaxWait(totalWaitTime) {
+  console.log('[Manager] RENDER_DEBOUNCE_MAX_REACHED:', {
+    totalWaitMs: totalWaitTime,
+    extensions: debounceExtensionCount,
+    maxWaitMs: RENDER_DEBOUNCE_MAX_WAIT_MS
+  });
+  
+  // Clear timer and render immediately
+  if (renderDebounceTimer) {
+    clearTimeout(renderDebounceTimer);
+    renderDebounceTimer = null;
+  }
+  debounceStartTimestamp = 0;
+  debounceExtensionCount = 0;
+  pendingRenderUI = false;
+  
+  requestAnimationFrame(() => {
+    _renderUIImmediate();
+  });
 }
 
 /**
@@ -3924,6 +4266,7 @@ async function goToTab(tabId) {
  *   Cross-tab minimize was failing because message was only sent to active tab.
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
+ * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
  */
 async function minimizeQuickTab(quickTabId) {
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
@@ -3941,12 +4284,23 @@ async function minimizeQuickTab(quickTabId) {
     PENDING_OPERATIONS.delete(operationKey);
   }, OPERATION_TIMEOUT_MS);
 
+  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
+  if (circuitBreakerState === 'open') {
+    const queued = _queuePendingAction('MINIMIZE_QUICK_TAB', { quickTabId });
+    if (queued) {
+      _showErrorNotification('Connection temporarily unavailable. Action queued.');
+      PENDING_OPERATIONS.delete(operationKey);
+      return;
+    }
+  }
+
   // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
   const portViable = await verifyPortViability();
   if (!portViable) {
     console.warn('[Manager] Port not viable for minimize operation - waiting for reconnect');
-    // Port reconnect was triggered, let user try again
-    _showErrorNotification('Connection lost. Please try again.');
+    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
+    _queuePendingAction('MINIMIZE_QUICK_TAB', { quickTabId });
+    _showErrorNotification('Connection lost. Action queued for retry.');
     PENDING_OPERATIONS.delete(operationKey);
     return;
   }
@@ -4459,11 +4813,22 @@ async function restoreQuickTab(quickTabId) {
     return;
   }
 
+  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
+  if (circuitBreakerState === 'open') {
+    const queued = _queuePendingAction('RESTORE_QUICK_TAB', { quickTabId });
+    if (queued) {
+      _showErrorNotification('Connection temporarily unavailable. Action queued.');
+      return;
+    }
+  }
+
   // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
   const portViable = await verifyPortViability();
   if (!portViable) {
     console.warn('[Manager] Port not viable for restore operation - waiting for reconnect');
-    _showErrorNotification('Connection lost. Please try again.');
+    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
+    _queuePendingAction('RESTORE_QUICK_TAB', { quickTabId });
+    _showErrorNotification('Connection lost. Action queued for retry.');
     return;
   }
 
@@ -4581,13 +4946,25 @@ function _logRestoreVerificationResult(quickTabId, tab) {
 
 /**
  * Close a Quick Tab
+ * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
  */
 async function closeQuickTab(quickTabId) {
+  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
+  if (circuitBreakerState === 'open') {
+    const queued = _queuePendingAction('CLOSE_QUICK_TAB', { quickTabId });
+    if (queued) {
+      _showErrorNotification('Connection temporarily unavailable. Action queued.');
+      return;
+    }
+  }
+
   // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
   const portViable = await verifyPortViability();
   if (!portViable) {
     console.warn('[Manager] Port not viable for close operation - waiting for reconnect');
-    _showErrorNotification('Connection lost. Please try again.');
+    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
+    _queuePendingAction('CLOSE_QUICK_TAB', { quickTabId });
+    _showErrorNotification('Connection lost. Action queued for retry.');
     return;
   }
 
