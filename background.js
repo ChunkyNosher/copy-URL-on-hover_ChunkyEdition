@@ -3244,6 +3244,22 @@ async function handleAdoptAction(payload) {
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
 
+  // v1.6.3.10-v3 - FIX Issue #47: Broadcast adoption completion to all ports
+  // This enables Manager sidebar to re-render immediately after adoption
+  broadcastToAllPorts({
+    type: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    timestamp: Date.now()
+  });
+
+  console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId
+  });
+
   console.log('[Background] ADOPT_TAB complete:', {
     quickTabId,
     oldOriginTabId,

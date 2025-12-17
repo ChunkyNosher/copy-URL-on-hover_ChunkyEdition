@@ -2,6 +2,10 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.10-v3 - FIX Issue #47: ADOPTION_COMPLETED port message for immediate re-render
+ *   - Background broadcasts ADOPTION_COMPLETED after storage write
+ *   - Manager handles port message and triggers immediate scheduleRender()
+ *
  * v1.6.3.10-v2 - FIX Manager UI Issues (Issues #1, #4, #8)
  *   - FIX Issue #1: Reduced render debounce 300ms→100ms, sliding-window debounce
  *   - FIX Issue #4: Smart circuit breaker with sliding-window backoff, action queue
@@ -1165,6 +1169,12 @@ function handlePortMessage(message) {
     _handleStateSyncResponse(message);
     return;
   }
+
+  // v1.6.3.10-v3 - FIX Issue #47: Handle adoption completion for immediate re-render
+  if (message.type === 'ADOPTION_COMPLETED') {
+    handleAdoptionCompletion(message);
+    return;
+  }
 }
 
 /**
@@ -1246,6 +1256,42 @@ function handleStateUpdateBroadcast(message) {
     handleStateUpdateMessage(quickTabId, changes);
     // v1.6.4.0 - FIX Issue B: renderUI() removed - caller (handlePortMessage) now routes through scheduleRender()
   }
+}
+
+/**
+ * Handle adoption completion from background
+ * v1.6.3.10-v3 - FIX Issue #47: Adoption re-render fix
+ * @param {Object} message - Adoption completion message
+ */
+function handleAdoptionCompletion(message) {
+  const { adoptedQuickTabId, oldOriginTabId, newOriginTabId, timestamp } = message;
+
+  console.log('[Manager] ADOPTION_COMPLETED received via port:', {
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    timestamp,
+    timeSinceBroadcast: Date.now() - timestamp
+  });
+
+  // v1.6.3.10-v3 - FIX Issue #47: Update cache staleness tracking (uses Issue #8 infrastructure)
+  lastCacheSyncFromStorage = Date.now();
+
+  // Invalidate browser tab info cache for affected tabs
+  if (oldOriginTabId) {
+    browserTabInfoCache.delete(oldOriginTabId);
+  }
+  if (newOriginTabId) {
+    browserTabInfoCache.delete(newOriginTabId);
+  }
+
+  // v1.6.3.10-v3 - FIX Issue #1: Immediate re-render with high priority
+  scheduleRender('adoption-completed');
+
+  console.log('[Manager] ADOPTION_RENDER_SCHEDULED:', {
+    adoptedQuickTabId,
+    trigger: 'port-ADOPTION_COMPLETED'
+  });
 }
 
 /**
