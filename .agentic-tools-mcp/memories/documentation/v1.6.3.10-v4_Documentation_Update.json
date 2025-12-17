@@ -1,0 +1,8 @@
+{
+  "id": "1b4003ec-ac34-4986-9e98-0581a05d81c6",
+  "title": "v1.6.3.10-v4 Documentation Update",
+  "details": "Updated documentation from v1.6.3.10-v3 to v1.6.3.10-v4 with the following key features:\n\nKey v4 Features:\n1. Container Isolation - `originContainerId` field for Firefox Containers\n2. Cross-Tab Validation - `_isOwnedByCurrentTab()`, `_validateCrossTabOwnership()` in handlers\n3. Scripting API Fallback - `executeWithScriptingFallback()` for timeout recovery\n4. Transaction Cleanup - 30s timeout for stale transactions, 10s cleanup interval\n5. Background Restart Detection - `BACKGROUND_HANDSHAKE` message\n6. Enhanced Logging - Hydration filtering, tab ID retrieval, storage changes\n7. Mutex Tab Context - `${operation}-${currentTabId}-${id}` lock format\n\nKey Timing Constants (NEW in v4):\n- KEEPALIVE_INTERVAL_MS: 20000 (was 25000 in v3)\n- TRANSACTION_TIMEOUT_MS: 30000 (NEW)\n- TRANSACTION_CLEANUP_INTERVAL_MS: 10000 (NEW)\n- SCRIPTING_FALLBACK_TIMEOUT_MS: 2000 (NEW)\n\nFiles Updated:\n- manifest.json: version 1.6.3.10-v4\n- .github/copilot-instructions.md: Full v4 feature documentation\n- README.md: v4 features section\n- .github/agents/bug-fixer.md, bug-architect.md, feature-builder.md: Version context\n- .github/agents/quicktabs-unified-agent.md, quicktabs-cross-tab-agent.md: v4 features\n- .github/agents/copilot-docs-updater.md: Updated to v4",
+  "category": "documentation",
+  "dateCreated": "2025-12-17T18:46:48.882Z",
+  "dateUpdated": "2025-12-17T18:46:48.882Z"
+}

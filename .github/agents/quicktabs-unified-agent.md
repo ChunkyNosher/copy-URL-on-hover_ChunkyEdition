@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.10-v2), unified barrier init,
+  sync with Single Writer Authority (v1.6.3.10-v4), unified barrier init,
   single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v2 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v4 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -48,24 +48,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
+**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
 
-- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
-- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
-- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
-- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in handlers
+- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
+- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
+- **Mutex Tab Context** - `${operation}-${currentTabId}-${id}` lock format
 
-**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
+**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
 
-- Port state machine (connected/zombie/reconnecting/dead)
-- Heartbeat 15s interval, 2s timeout
-- Message retry: 2 retries + 150ms backoff
+- `ADOPTION_COMPLETED` port message for Manager re-render
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
-**Key Modules (v1.6.3.10-v2):**
+**Key Modules (v1.6.3.10-v4):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
-| `src/constants.js`                | Centralized constants (+v10 timing) |
+| `src/constants.js`                | Centralized constants (+v4 timing)  |
 | `src/storage/schema-v2.js`        | Pure state utilities, version field |
 | `src/storage/storage-manager.js`  | Simplified persistence, checksum    |
 | `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
@@ -86,9 +89,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Render debounce 100ms base, 300ms max cap (v1.6.3.10-v2)
-- [ ] Circuit breaker 3s open, 5s sliding window (v1.6.3.10-v2)
-- [ ] Cache staleness alert 30s (v1.6.3.10-v2)
+- [ ] Container isolation works (`originContainerId` filtering)
+- [ ] Cross-tab validation works (`_validateCrossTabOwnership()`)
+- [ ] Scripting API fallback works after 2s timeout
+- [ ] Transaction cleanup 30s timeout works
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering)
@@ -98,5 +102,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v2 render/circuit
-breaker/cache fixes, storage.onChanged PRIMARY.**
+**Your strength: Complete Quick Tab system with v1.6.3.10-v4 container isolation,
+cross-tab validation, storage.onChanged PRIMARY.**

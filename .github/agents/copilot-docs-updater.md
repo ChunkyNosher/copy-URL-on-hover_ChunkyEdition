@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.10-v2.
+  documentation. Current version: v1.6.3.10-v4.
 tools: ['*']
 ---
 
@@ -69,21 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.10-v2)
+## Current Extension State (v1.6.3.10-v4)
 
-### v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache Fixes
+### v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation
 
-- **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
-- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding
-  window
-- **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()`
+- **Scripting API Fallback** - `executeWithScriptingFallback()` for timeout
+  recovery
+- **Transaction Cleanup** - 30s timeout for stale transactions
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
 
-### v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability
+### v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API Phase 2
 
-- **Issue 2: Port Lifecycle** - State machine
-  (connected/zombie/reconnecting/dead)
-- **Issue 5: Heartbeat Timing** - 25s→15s interval, 5s→2s timeout
-- **Issue 6/7: Message Reliability** - 2 retries + 150ms backoff
+- Adoption Re-render via `ADOPTION_COMPLETED` message
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
 ### Architecture
 
@@ -96,8 +98,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.10-v2
-- [ ] **v1.6.3.10-v2:** Render, circuit breaker, cache fixes documented
+- [ ] Version numbers match 1.6.3.10-v4
+- [ ] **v1.6.3.10-v4:** Container isolation, cross-tab validation documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -107,7 +109,7 @@ nothing.
 
 | Error                  | Fix                         |
 | ---------------------- | --------------------------- |
-| v1.6.3.9-v7 or earlier | Update to 1.6.3.10-v2       |
+| v1.6.3.10-v3 or earlier| Update to 1.6.3.10-v4       |
 | "Pin to Page"          | Use "Solo/Mute"             |
 | Direct storage writes  | Use Single Writer Authority |
 | BroadcastChannel refs  | REMOVE - BC DELETED in v6   |

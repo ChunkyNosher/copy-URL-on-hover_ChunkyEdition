@@ -65,50 +65,30 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.10-v4 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
 
-- **Simplified Init** - Manager reduced from ~8 state variables to 4
-- **Unified Barrier** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **Response Helper** - `_buildResponse()` for correlationId responses
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in handlers
+- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
+- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background
-  script
-- **Storage Event Routing** - `_routeInitMessage()` →
-  `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- `ADOPTION_COMPLETED` port message for Manager re-render
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
+**v1.6.3.10-v2 & Earlier (Consolidated):**
 
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Single Barrier Init** - Replaces multi-phase initialization
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-
-**v1.6.3.9 Features (Retained):**
-
-- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`,
-  `_sendMinimizeMessage()`
-- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- **Centralized Constants** - `src/constants.js` with timing values
-
-**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
-messaging, simplified BFCache.
-
-**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
-key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
+- Render debounce 100ms, circuit breaker 3s open, cache staleness 30s alert
+- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
+- Unified barrier init, Tab ID fallback, dual architecture
 
 **Key Features:**
 
@@ -212,137 +192,25 @@ Only if:
 
 ## MCP Server Integration
 
-**MANDATORY MCP Usage During Architectural Work:**
+**MANDATORY:** Context7 (API docs), Perplexity (research), ESLint, CodeScene,
+Agentic-Tools (memories), Jest (tests), Codecov (coverage)
 
-**CRITICAL - Use During Implementation:**
-
-- **Context7:** Verify API usage against current docs DURING implementation ⭐
-- **Perplexity:** Double-check architectural approach, verify best practices ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Identify architectural hotspots alongside ESLint ⭐
-
-**CRITICAL - Testing (BEFORE and AFTER):**
-
-- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
-- **Jest unit tests:** Test extension AFTER changes (verify fix) ⭐
-- **Codecov:** Verify test coverage at end ⭐
-
-**Every Task:**
-
-- **Agentic-Tools:** Search memories before starting, store architectural
-  decisions after
-
-### Enhanced Architectural Workflow
-
-```
-1. Search memories (Agentic-Tools) | 2. Playwright Firefox/Chrome: Test BEFORE
-3. Perplexity: Research bug class + best practices (paste code)
-4. Context7: Get current API docs | 5. Analyze root cause (architectural)
-6. Design architectural solution
-7. Context7: Verify implementation vs docs
-8. Perplexity: Check for better approaches (paste relevant code)
-9. Implement fix with tests
-10. ESLint: Lint | 11. CodeScene: Identify hotspots
-12. Run all tests | 13. Playwright Firefox/Chrome: Test AFTER (verify)
-14. Codecov: Verify coverage
-15. Store decision (Agentic-Tools) | 16. GitHub: Update issue
-17. Commit memory (.agentic-tools-mcp/)
-```
+**Workflow:** Search memories → Test BEFORE → Research → Implement → Lint → Test
+AFTER → Store decisions → Commit memory
 
 ---
 
 ## Critical Areas Requiring Architectural Awareness
 
-### Global Visibility (v1.6.3.4)
+### Key Bug Patterns & Solutions
 
-**Common Root Causes:**
-
-- Using old container-based storage format
-- Using storage.sync instead of storage.local for Quick Tab state
-- Incorrect storage key or structure
-
-**Architectural Solution:**
-
-- Use unified storage format with tabs array
-- All Quick Tabs globally visible by default
-- Use shared storage utilities from `src/utils/storage-utils.js`
-
-### Solo/Mute State Bugs (v1.6.3.4)
-
-**Common Root Causes:**
-
-- Not using soloedOnTabs/mutedOnTabs arrays
-- Mutual exclusivity not enforced
-- Cross-tab sync via storage.onChanged issues
-
-**Architectural Solution:**
-
-- Use arrays for Solo/Mute state per tab
-- Enforce invariants at domain layer
-- Centralize state transition logic
-
-### Quick Tab Lifecycle Bugs (v1.6.3.4)
-
-**Common Root Causes:**
-
-- Initialization order dependencies
-- Async state access without checks
-- Missing cleanup on tab close
-- Storage write storms during rapid operations
-
-**Architectural Solution:**
-
-- Define strict lifecycle phases
-- Use initialization flags (like `isRendered()`)
-- Enforce cleanup patterns with `cleanupOrphanedQuickTabElements()`
-- Use debounced batch writes for destroy operations
-
-### Minimize/Restore Architecture (v1.6.3.5-v9)
-
-**Common Root Causes:**
-
-- State transition without validation
-- Multiple sources triggering same operation
-- Missing operation locks
-- Map corruption from untracked modifications
-- Position/size not persisted during drag/resize
-- Element reference stale after re-render
-
-**Architectural Solution (v1.6.3.5-v9 Summary):**
-
-- **State Machine:** QuickTabStateMachine - `canTransition()`, `transition()`
-  with logging
-- **Mediator Pattern:** QuickTabMediator - single entry point, operation locks,
-  rollback
-- **Map Transactions:** MapTransactionManager - atomic operations with snapshots
-- **DOM Instance Lookup:** `__quickTabWindow`, `data-quicktab-id` for orphan
-  recovery
-- **DragController.updateElement():** Updates element reference after re-render
-- **Debounced Persistence:** `_debouncedDragPersist()` with 200ms debounce
-- **closeAll Mutex:** `_closeAllInProgress` flag, 2000ms release
-
-### Sidebar Gesture Handling (v1.6.3.4)
-
-**Common Root Causes:**
-
-- Async operations losing Firefox gesture context
-- Sidebar operations failing silently
-
-**Architectural Solution:**
-
-- Use synchronous handlers within gesture context
-- Call synchronous helper functions, NOT async ones
-
-```javascript
-browser.commands.onCommand.addListener(command => {
-  if (command === 'toggle-quick-tabs-manager') {
-    _handleToggleSync(); // Synchronous, NOT async
-  }
-});
-```
+| Area               | Root Cause                              | Solution                                           |
+| ------------------ | --------------------------------------- | -------------------------------------------------- |
+| Global Visibility  | Wrong storage format/key                | Unified storage format, `storage.local`            |
+| Solo/Mute State    | Arrays not used, no mutual exclusivity  | `soloedOnTabs/mutedOnTabs` arrays, domain layer    |
+| Quick Tab Lifecycle| Init order, async access, no cleanup    | Strict phases, flags, `cleanupOrphanedQuickTabElements()` |
+| Minimize/Restore   | No validation, no locks, Map corruption | State machine, mediator, MapTransactionManager     |
+| Sidebar Gestures   | Async losing Firefox context            | Synchronous handlers only                          |
 
 ---
 

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v3  
+**Version:** 1.6.3.10-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -26,42 +26,35 @@ Tabs Manager
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.10-v3 Features (NEW) - Issue #47 Adoption Re-render & Tabs API Phase
-2:**
+**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
 
-- **Issue #47: Adoption Re-render** - `ADOPTION_COMPLETED` port message for
-  immediate Manager re-render
-- **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
-- **Orphan Detection** - `ORIGIN_TAB_CLOSED` broadcast when origin tab closes,
-  `isOrphaned`/`orphanedAt` fields
-- **Smart Adoption Validation** - Validates target tab exists before adoption
-- **Port Message Types** - Added `ADOPTION_COMPLETED`, `ORIGIN_TAB_CLOSED` to
-  port routing
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in VisibilityHandler, DestroyHandler
+- **Scripting API Fallback** - `executeWithScriptingFallback()` for timeout
+  recovery
+- **Transaction Cleanup** - 30s timeout for stale transactions, 10s cleanup
+  interval
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
+- **Enhanced Logging** - Hydration filtering, tab ID retrieval, storage changes
+- **Mutex Tab Context** - `${operation}-${currentTabId}-${id}` lock format
+
+**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API Phase 2:**
+
+- `ADOPTION_COMPLETED` port message for Manager re-render
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
+- Smart adoption validation via `validateAdoptionTarget()`
 
 **v1.6.3.10-v2 Features (Previous) - Render, Circuit Breaker & Cache Fixes:**
 
-- **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
-- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding
-  window
-- **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`,
-  `cacheHydrationComplete` flag, 30s staleness alert
-- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
-- **Pending action queue** - Circuit breaker queues actions during open state
+- Render Debounce 100ms base, 300ms max cap (sliding-window)
+- Circuit Breaker 3s open, 2s backoff max, 5s sliding window
+- Cache staleness alert 30s, `cacheHydrationComplete` flag
+- `FAILURE_REASON` enum: `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
 
-**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
-
-- **Issue 2: Port Lifecycle** - State machine
-  (connected/zombie/reconnecting/dead), 500ms zombie detection
-- **Issue 3: Storage Concurrency** - Storage batching constants
-- **Issue 5: Heartbeat Timing** - 25s→15s interval, 5s→2s timeout, adaptive ≤20s
-- **Issue 6: Port/Message Logging** - `logPortStateTransition()`, enhanced
-  structured logging
-- **Issue 7: Messaging Reliability** - 2 retries + 150ms backoff,
-  `_sendMessageWithRetry()`
-- **PORT_STATE enum** - `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
-
-**v1.6.3.9-v7 & Earlier (Consolidated):** Logging capture, O(1) message routing,
-unified barrier init, Tab ID fallback, dual architecture, container isolation
+**v1.6.3.10-v1 & Earlier (Consolidated):** Port state machine, heartbeat 15s/2s,
+message retry 2x+150ms, O(1) message routing, unified barrier init
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
@@ -83,7 +76,7 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.10-v3)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.10-v4)
 
 **Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
@@ -104,7 +97,7 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.10-v3: Issue #47 Adoption Re-render & Tabs API Phase 2 (NEW)
+### v1.6.3.10-v3: Issue #47 Adoption Re-render & Tabs API Phase 2 (Previous)
 
 - `ADOPTION_COMPLETED` port message for instant Manager re-render after adoption
 - `ORIGIN_TAB_CLOSED` broadcast when origin tab closes → marks Quick Tabs
@@ -113,48 +106,27 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 - Smart adoption validation via `validateAdoptionTarget()`
 - `isOrphaned`/`orphanedAt` fields for orphaned Quick Tab tracking
 
-### v1.6.3.10-v2: Render, Circuit Breaker & Cache (Previous)
+### v1.6.3.10-v2 & Earlier (Consolidated)
 
-**Render Debounce (Issue 1):**
-
-- `RENDER_DEBOUNCE_MS` 300ms→100ms for faster updates
-- Sliding-window debounce with 300ms max cap (`RENDER_DEBOUNCE_MAX_WAIT_MS`)
-- Force current storage read on render
-
-**Circuit Breaker (Issue 4):**
-
-- Open duration 10s→3s (`CIRCUIT_BREAKER_OPEN_DURATION_MS`)
-- Backoff max 10s→2s (`RECONNECT_BACKOFF_MAX_MS`)
-- 5s sliding window for failure counting (`CIRCUIT_BREAKER_SLIDING_WINDOW_MS`)
-- Pending action queue during open state
-- `FAILURE_REASON` enum: `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
-
-**Cache Handling (Issue 8):**
-
-- `lastCacheSyncFromStorage` timestamp tracking
-- `cacheHydrationComplete` flag for hydration state
-- 30s staleness alert (`CACHE_STALENESS_ALERT_MS`)
-- Immediate reconciliation (no fallback)
-
-### v1.6.3.10-v1: Port Lifecycle & Reliability (Previous)
-
-- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
-- 500ms zombie detection timeout, `verifyPortViability()`
-- Heartbeat 25s→15s interval, 5s→2s timeout, adaptive ≤20s
-- Message retry: 2 retries + 150ms backoff, `_sendMessageWithRetry()`
-- `logPortStateTransition()` for enhanced logging
-
-### v1.6.3.9-v7 & Earlier (Consolidated)
-
-- **v7:** Log capture, direct state push, `_runtimeMessageHandlers` lookup table
-- **v5-v2:** Tab ID fallback, unified barrier, dual architecture, container
-  isolation
+- Render debounce 100ms, circuit breaker 3s open, cache staleness 30s alert
+- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
+- Log capture, O(1) routing, unified barrier, Tab ID fallback
 
 ---
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v3 Patterns (Current)
+### v1.6.3.10-v4 Patterns (Current)
+
+- Container isolation via `originContainerId` field
+- Cross-tab ownership validation via `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()`
+- Scripting API fallback via `executeWithScriptingFallback()`
+- Background restart detection via `BACKGROUND_HANDSHAKE`
+- Transaction timeout cleanup (30s timeout, 10s cleanup interval)
+- Mutex locks include tab context: `${operation}-${currentTabId}-${id}`
+
+### v1.6.3.10-v3 Patterns (Previous)
 
 - `ADOPTION_COMPLETED` port message for instant adoption UI updates
 - `ORIGIN_TAB_CLOSED` port message for orphan detection
@@ -162,43 +134,31 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 - Smart adoption validation via `validateAdoptionTarget()`
 - `isOrphaned`/`orphanedAt` fields for orphaned Quick Tabs
 
-### v1.6.3.10-v2 Patterns (Previous)
+### v1.6.3.10-v2 & Earlier Patterns (Consolidated)
 
 - Sliding-window debounce (100ms base, 300ms max cap)
-- Circuit breaker 3s open duration, 2s max backoff, 5s sliding window
-- `FAILURE_REASON` enum for categorized failures
-- Cache staleness tracking with 30s alert, `cacheHydrationComplete` flag
+- Circuit breaker 3s open, 2s max backoff, 5s sliding window
+- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
+- O(1) message routing, unified barrier, Tab ID fallback
 
-### v1.6.3.10-v1 Patterns (Previous)
-
-- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
-- Heartbeat 15s interval, 2s timeout, adaptive ≤20s
-- Message retry: 2 retries + 150ms backoff
-- Enhanced port/message logging with `logPortStateTransition()`
-
-### v1.6.3.9-v7 & Earlier Patterns (Consolidated)
-
-Log capture, O(1) message routing, unified barrier, Tab ID fallback, dual
-architecture
-
-### Key Timing Constants (v1.6.3.10-v3)
+### Key Timing Constants (v1.6.3.10-v4)
 
 | Constant                            | Value                 | Purpose                              |
 | ----------------------------------- | --------------------- | ------------------------------------ |
 | `STORAGE_KEY`                       | 'quick_tabs_state_v2' | Storage key name                     |
 | `INIT_BARRIER_TIMEOUT_MS`           | 10000                 | Unified barrier init timeout         |
 | `RENDER_DEBOUNCE_MS`                | 100                   | Render queue debounce (was 300)      |
-| `RENDER_DEBOUNCE_MAX_WAIT_MS`       | 300                   | Sliding-window max cap (NEW)         |
+| `RENDER_DEBOUNCE_MAX_WAIT_MS`       | 300                   | Sliding-window max cap               |
 | `MESSAGE_TIMEOUT_MS`                | 3000                  | runtime.sendMessage timeout          |
-| `CIRCUIT_BREAKER_OPEN_DURATION_MS`  | 3000                  | Circuit breaker cooldown (was 10000) |
-| `CIRCUIT_BREAKER_SLIDING_WINDOW_MS` | 5000                  | Failure sliding window (NEW)         |
-| `RECONNECT_BACKOFF_MAX_MS`          | 2000                  | Max reconnect backoff (was 10000)    |
-| `HEARTBEAT_INTERVAL_MS`             | 15000                 | Heartbeat interval (was 25000)       |
-| `HEARTBEAT_TIMEOUT_MS`              | 2000                  | Heartbeat timeout (was 5000)         |
-| `CACHE_STALENESS_ALERT_MS`          | 30000                 | Cache staleness alert (NEW)          |
-| `MESSAGE_RETRY_COUNT`               | 2                     | Message retry attempts (NEW)         |
-| `MESSAGE_RETRY_DELAY_MS`            | 150                   | Message retry delay (NEW)            |
-| `STORAGE_HEALTH_CHECK_INTERVAL_MS`  | 5000                  | Health check fallback interval       |
+| `CIRCUIT_BREAKER_OPEN_DURATION_MS`  | 3000                  | Circuit breaker cooldown             |
+| `CIRCUIT_BREAKER_SLIDING_WINDOW_MS` | 5000                  | Failure sliding window               |
+| `RECONNECT_BACKOFF_MAX_MS`          | 2000                  | Max reconnect backoff                |
+| `KEEPALIVE_INTERVAL_MS`             | 20000                 | Keepalive interval (was 25000 in v3) |
+| `HEARTBEAT_INTERVAL_MS`             | 15000                 | Heartbeat interval                   |
+| `HEARTBEAT_TIMEOUT_MS`              | 2000                  | Heartbeat timeout                    |
+| `TRANSACTION_TIMEOUT_MS`            | 30000                 | Transaction expiration (NEW)         |
+| `TRANSACTION_CLEANUP_INTERVAL_MS`   | 10000                 | Stale transaction cleanup (NEW)      |
+| `SCRIPTING_FALLBACK_TIMEOUT_MS`     | 2000                  | Messaging timeout for Scripting API  |
 | `MAX_QUICK_TABS`                    | 100                   | Maximum Quick Tabs allowed           |
 
 ---
@@ -333,6 +293,8 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 **MESSAGE_TYPES:** `QT_POSITION_CHANGED`, `QT_SIZE_CHANGED`, `QT_MINIMIZED`,
 `QT_RESTORED`, `QT_CLOSED`, `MANAGER_CLOSE_ALL`, `MANAGER_CLOSE_MINIMIZED`,
 `QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
+
+**v1.6.3.10-v4 New Messages:** `BACKGROUND_HANDSHAKE`
 
 **v1.6.3.10-v3 New Messages:** `ADOPTION_COMPLETED`, `ORIGIN_TAB_CLOSED`
 

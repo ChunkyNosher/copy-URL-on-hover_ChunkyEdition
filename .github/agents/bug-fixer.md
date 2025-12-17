@@ -37,83 +37,30 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.10-v4 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
 
-- **Simplified Init** - Manager reduced from ~8 state variables to 4
-- **Unified Barrier** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **Response Helper** - `_buildResponse()` for correlationId responses
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in handlers
+- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
+- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background
-  script
-- **Storage Event Routing** - `_routeInitMessage()` →
-  `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- `ADOPTION_COMPLETED` port message for Manager re-render
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
+**v1.6.3.10-v2 & Earlier (Consolidated):**
 
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Single Barrier Init** - Replaces multi-phase initialization
-- **Storage Health Check** - Fallback polling every 5s
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
-
-**v1.6.3.9 Features (Retained):**
-
-- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`,
-  `_sendMinimizeMessage()`
-- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Storage Listener to UI** - `onStorageChanged()`, `syncState()` methods
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - `src/utils/structured-logger.js`
-
-**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
-messaging, simplified BFCache.
-
-**v1.6.3.8-v11 Features (Retained):** tabs.sendMessage messaging, single storage
-key, tab isolation, readback validation, correlationId dedup, EventBus FIFO.
-
-- **Message Error Handling** - `handlePortMessage()` wrapped in try-catch
-- **Listener Verification** - `_verifyPortListenerRegistration()` sends test
-  message after connection
-- **Refactored Message Handling** - Extracted `_logPortMessageReceived()`,
-  `_routePortMessage()`, `_handleQuickTabStateUpdate()` (complexity 10→4)
-
-**v1.6.3.7-v3 Features (Retained):**
-
-- **storage.session API** - Session Quick Tabs (`permanent: false`)
-- **sessions API** - Per-tab state management (TabStateManager.js)
-- **browser.alarms API** - Scheduled tasks (`cleanup-orphaned`,
-  `sync-session-state`)
-- **tabs.group() API** - Tab grouping (Firefox 138+, QuickTabGroupManager.js)
-- **DOM Reconciliation** - `_itemElements` Map for differential updates
-- **originTabId Fix** - Initialization in window.js `_initializeVisibility()`
-
-**v1.6.3.7-v2 Features (Retained):**
-
-- **Single Writer Authority** - Manager sends commands to background
-- **Unified Render Pipeline** - `scheduleRender(source)` with hash deduplication
-- **Orphaned Tab Recovery** - `orphaned: true` flag preservation
-
-**v1.6.3.7-v1 Features (Retained):**
-
-- **Background Keepalive** - `_startKeepalive()` every 20s resets Firefox 30s
-  idle timer
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-  (100ms→10s)
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+- Render debounce 100ms, circuit breaker 3s open, cache staleness 30s alert
+- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
+- Unified barrier init, Tab ID fallback, dual architecture
 
 **Key Features:**
 
