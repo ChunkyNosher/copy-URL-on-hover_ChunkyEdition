@@ -458,6 +458,7 @@ const sidebarLocalState = {
   - `hash`: 8-character hex hash of all tabs
 - **Example:** `v1:5:a1b2c3d4`
 - **Generation:**
+
   ```javascript
   function _computeStateChecksum(tabs) {
     const signatures = tabs
@@ -478,6 +479,7 @@ const sidebarLocalState = {
     return `v1:${tabs.length}:${Math.abs(hash).toString(16).padStart(8, '0')}`;
   }
   ```
+
 - **Validation:** Compare computed checksum with stored checksum
 - **Purpose:** Detect corruption during storage I/O
 

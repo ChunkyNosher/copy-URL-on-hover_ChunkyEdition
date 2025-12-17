@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v3** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v4** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,19 +9,35 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v3 Status:** Issue #47 Adoption Re-render & Tabs API Phase 2 ✅
+**🔧 v1.6.3.10-v4 Status:** Container Isolation & Cross-Tab Validation ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v4
+
+**🔧 Container Isolation & Cross-Tab Validation (December 2025) ✅**
+
+- ✅ **Container Isolation** - `originContainerId` field for Firefox Containers
+- ✅ **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in handlers
+- ✅ **Scripting API Fallback** - `executeWithScriptingFallback()` for timeout
+  recovery
+- ✅ **Transaction Cleanup** - 30s timeout for stale transactions
+- ✅ **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v3
 
-**🔧 Issue #47 Adoption Re-render & Tabs API Phase 2 (December 2025) ✅**
+**🔧 Adoption Re-render & Tabs API Phase 2 (Previous) ✅**
 
-- ✅ **Adoption Re-render** - ADOPTION_COMPLETED message for immediate Manager re-render
+- ✅ **Adoption Re-render** - ADOPTION_COMPLETED message for immediate Manager
+  re-render
 - ✅ **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
-- ✅ **Orphan Detection** - ORIGIN_TAB_CLOSED broadcast, isOrphaned/orphanedAt fields
+- ✅ **Orphan Detection** - ORIGIN_TAB_CLOSED broadcast, isOrphaned/orphanedAt
+  fields
 - ✅ **Smart Adoption Validation** - Validates target tab exists before adoption
 
 ---
@@ -235,6 +251,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v3** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

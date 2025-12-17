@@ -307,6 +307,14 @@ class QuickTabsManager {
     try {
       // Validate required fields
       if (!this._isValidTabData(tabData)) {
+        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
+        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+          id: tabData?.id,
+          originTabId: tabData?.originTabId,
+          currentTabId: this.currentTabId,
+          result: 'REJECT',
+          reason: 'invalidData'
+        });
         filterReasons.invalidData++;
         return { success: false, reason: 'invalidData' };
       }
@@ -314,12 +322,28 @@ class QuickTabsManager {
       // Check tab scope validation with reason tracking
       const skipResult = this._checkTabScopeWithReason(tabData);
       if (skipResult.skip) {
+        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
+        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+          id: tabData.id,
+          originTabId: tabData.originTabId,
+          currentTabId: this.currentTabId,
+          result: 'REJECT',
+          reason: skipResult.reason
+        });
         filterReasons[skipResult.reason]++;
         return { success: false, reason: skipResult.reason };
       }
 
       // Skip if tab already exists
       if (this.tabs.has(tabData.id)) {
+        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
+        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+          id: tabData.id,
+          originTabId: tabData.originTabId,
+          currentTabId: this.currentTabId,
+          result: 'REJECT',
+          reason: 'alreadyExists'
+        });
         console.log('[QuickTabsManager] Tab already exists, skipping hydration:', tabData.id);
         filterReasons.alreadyExists++;
         return { success: false, reason: 'alreadyExists' };
@@ -331,6 +355,14 @@ class QuickTabsManager {
         filterReasons.noHandler++;
         return { success: false, reason: 'noHandler' };
       }
+
+      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER (KEEP)
+      console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+        id: tabData.id,
+        originTabId: tabData.originTabId,
+        currentTabId: this.currentTabId,
+        result: 'KEEP'
+      });
 
       // Perform hydration
       console.log(
@@ -383,6 +415,12 @@ class QuickTabsManager {
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
   async _hydrateStateFromStorage() {
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration START
+    console.log('[Content][Hydration] START: Beginning Quick Tab hydration process', {
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
+    });
+
     // Check if browser storage API is available
     if (!this._isStorageApiAvailable()) {
       return { success: false, count: 0, reason: 'Storage API unavailable' };
@@ -403,6 +441,14 @@ class QuickTabsManager {
 
       // Hydrate each stored tab
       const hydratedCount = this._hydrateTabsFromStorage(storedState.tabs);
+
+      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration COMPLETE
+      console.log('[Content][Hydration] COMPLETE: Hydration finished', {
+        totalInStorage: storedState.tabs.length,
+        hydratedCount: hydratedCount,
+        filteredOutCount: storedState.tabs.length - hydratedCount,
+        currentTabId: this.currentTabId
+      });
 
       // Emit hydrated event for UICoordinator to render restored tabs
       this._emitHydratedEventIfNeeded(hydratedCount);
@@ -476,6 +522,15 @@ class QuickTabsManager {
    * @param {Object} tabData - Tab data from storage
    * @returns {Object} Options for createQuickTab
    */
+  /**
+   * Build options object for tab hydration
+   * v1.6.3.4 - Helper to reduce complexity
+   * v1.6.3.4-v11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
+   * v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {Object} Options for createQuickTab
+   */
   _buildHydrationOptions(tabData) {
     const defaults = QuickTabsManager.HYDRATION_DEFAULTS;
 
@@ -491,6 +546,9 @@ class QuickTabsManager {
       soloedOnTabs: this._getWithDefault(tabData.soloedOnTabs, defaults.soloedOnTabs),
       mutedOnTabs: this._getWithDefault(tabData.mutedOnTabs, defaults.mutedOnTabs),
       zIndex: this._getWithDefault(tabData.zIndex, defaults.zIndex),
+      // v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
+      originTabId: tabData.originTabId ?? null,
+      originContainerId: tabData.originContainerId ?? null,
       source: 'hydration'
     };
   }
@@ -691,6 +749,51 @@ class QuickTabsManager {
    * @param {Object} tabData - Quick Tab data
    * @returns {boolean} True if should render
    */
+  /**
+   * Check if container IDs match (container isolation) during hydration
+   * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _shouldRenderOnThisTab complexity
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {boolean} True if container check passes (or not applicable)
+   */
+  _checkContainerIsolationForHydration(tabData) {
+    const originContainerId = tabData.originContainerId;
+
+    // If no container context was set, skip container check
+    if (originContainerId === null || originContainerId === undefined) {
+      return true;
+    }
+
+    // Get current container context (default to 'firefox-default' if not set)
+    const currentContainerId = this.cookieStoreId ?? 'firefox-default';
+
+    if (originContainerId !== currentContainerId) {
+      console.log('[QuickTabsManager] CONTAINER BLOCKED during hydration:', {
+        id: tabData.id,
+        originContainerId,
+        currentContainerId,
+        originTabId: tabData.originTabId
+      });
+      return false;
+    }
+
+    console.log('[QuickTabsManager] Container check PASSED during hydration:', {
+      id: tabData.id,
+      originContainerId,
+      currentContainerId
+    });
+
+    return true;
+  }
+
+  /**
+   * Determine if a Quick Tab should render on this tab
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Cross-tab filtering logic
+   * v1.6.3.10-v4 - FIX Issue #13: Add container isolation check
+   * @private
+   * @param {Object} tabData - Quick Tab data
+   * @returns {boolean} True if should render
+   */
   _shouldRenderOnThisTab(tabData) {
     const currentTabId = this.currentTabId;
     const originTabId = tabData.originTabId;
@@ -707,8 +810,18 @@ class QuickTabsManager {
       return false;
     }
 
-    // Default: only render on originating tab
-    return originTabId === currentTabId;
+    // Check originTabId match
+    if (originTabId !== currentTabId) {
+      return false;
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #13: Container isolation check
+    if (!this._checkContainerIsolationForHydration(tabData)) {
+      return false;
+    }
+
+    // Default: passed all checks
+    return true;
   }
 
   /**
@@ -748,6 +861,7 @@ class QuickTabsManager {
    *   When restore/minimize was called, the methods didn't exist causing 100% failure rate.
    *   Now we create a real instance with minimized=true that has all methods but no DOM.
    * v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
+   * v1.6.3.10-v4 - FIX Issue #13: Pass originTabId and originContainerId for container isolation
    * @private
    * @param {Object} options - Quick Tab options
    */
@@ -773,6 +887,9 @@ class QuickTabsManager {
         zIndex: options.zIndex,
         // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
         currentTabId: this.currentTabId,
+        // v1.6.3.10-v4 - FIX Issue #13: Pass originTabId and originContainerId for container isolation
+        originTabId: options.originTabId ?? this.currentTabId,
+        originContainerId: options.originContainerId ?? this.cookieStoreId,
         // Wire up callbacks - these persist through restore cycles
         onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
         onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
@@ -786,6 +903,7 @@ class QuickTabsManager {
       });
 
       // v1.6.3.4-v7 - Log instance type to confirm real QuickTabWindow
+      // v1.6.3.10-v4 - FIX Issue #13: Include container ID in logging
       console.log('[QuickTabsManager] Created real QuickTabWindow instance:', {
         id: options.id,
         constructorName: tabWindow.constructor.name,
@@ -794,7 +912,9 @@ class QuickTabsManager {
         hasRestore: typeof tabWindow.restore === 'function',
         hasDestroy: typeof tabWindow.destroy === 'function',
         minimized: tabWindow.minimized,
-        url: tabWindow.url
+        url: tabWindow.url,
+        originTabId: tabWindow.originTabId,
+        originContainerId: tabWindow.originContainerId
       });
 
       // Store snapshot in minimizedManager for later restore
@@ -925,13 +1045,15 @@ class QuickTabsManager {
       Events: this.Events
     });
 
+    // v1.6.3.10-v4 - FIX Issue #16: Pass currentTabId for cross-tab validation
     this.destroyHandler = new DestroyHandler(
       this.tabs,
       this.minimizedManager,
       this.internalEventBus, // v1.6.3.3 - FIX Bug #6: Use internal bus for state:deleted so UICoordinator receives it
       this.currentZIndex,
       this.Events,
-      CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+      CONSTANTS.QUICK_TAB_BASE_Z_INDEX,
+      this.currentTabId // v1.6.3.10-v4 - FIX Issue #16: Pass for cross-tab validation
     );
   }
 
@@ -943,12 +1065,15 @@ class QuickTabsManager {
    * @private
    */
   _initializeCoordinators() {
+    // v1.6.3.10-v4 - FIX Issue #13: Pass cookieStoreId (container ID) to UICoordinator for container isolation
     this.uiCoordinator = new UICoordinator(
       this.state,
       this.minimizedManager,
       null, // panelManager removed in v1.6.3.4
       this.internalEventBus,
-      this.currentTabId // v1.6.3.5-v10 - Pass currentTabId for cross-tab filtering
+      this.currentTabId, // v1.6.3.5-v10 - Pass currentTabId for cross-tab filtering
+      {}, // handlers - will be set below
+      this.cookieStoreId // v1.6.3.10-v4 - FIX Issue #13: Pass container ID for Firefox Multi-Account Container isolation
     );
 
     // v1.6.3.5-v10 - FIX Issue #1-2: Set handlers for callback wiring during _createWindow()
@@ -1212,16 +1337,24 @@ class QuickTabsManager {
 
   /**
    * Handle solo toggle
+   * v1.6.3.10-v4 - Added source parameter for cross-tab validation logging
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {number[]} newSoloedTabs - Array of tab IDs
+   * @param {string} source - Source of action (default: 'UI')
    */
-  handleSoloToggle(quickTabId, newSoloedTabs) {
-    return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs);
+  handleSoloToggle(quickTabId, newSoloedTabs, source = 'UI') {
+    return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs, source);
   }
 
   /**
    * Handle mute toggle
+   * v1.6.3.10-v4 - Added source parameter for cross-tab validation logging
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {number[]} newMutedTabs - Array of tab IDs
+   * @param {string} source - Source of action (default: 'UI')
    */
-  handleMuteToggle(quickTabId, newMutedTabs) {
-    return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs);
+  handleMuteToggle(quickTabId, newMutedTabs, source = 'UI') {
+    return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs, source);
   }
 
   /**

@@ -285,8 +285,8 @@ const MAX_PENDING_ACTIONS = 50; // Prevent queue from growing unbounded
  * v1.6.3.10-v2 - FIX Issue #4: Different failure types have different handling
  */
 const FAILURE_REASON = {
-  TRANSIENT: 'transient',       // Network blip - exponential backoff
-  ZOMBIE_PORT: 'zombie-port',   // Port dead - immediate reconnect, no count
+  TRANSIENT: 'transient', // Network blip - exponential backoff
+  ZOMBIE_PORT: 'zombie-port', // Port dead - immediate reconnect, no count
   BACKGROUND_DEAD: 'background-dead' // Background unloaded - request state sync on reconnect
 };
 
@@ -346,14 +346,15 @@ function logPortLifecycle(event, details = {}) {
     portState,
     circuitBreakerState,
     timestamp: Date.now(),
-    timeSinceLastSuccess: lastSuccessfulPortMessage > 0 ? Date.now() - lastSuccessfulPortMessage : null,
+    timeSinceLastSuccess:
+      lastSuccessfulPortMessage > 0 ? Date.now() - lastSuccessfulPortMessage : null,
     ...details
   };
-  
+
   // v1.6.3.10-v1 - FIX Issue #6: Use appropriate log level based on event
   const errorEvents = ['ZOMBIE_DETECTED', 'HEARTBEAT_TIMEOUT', 'MESSAGE_TIMEOUT', 'CIRCUIT_OPEN'];
   const warnEvents = ['DISCONNECT', 'RECONNECT_ATTEMPT_N'];
-  
+
   if (errorEvents.includes(event)) {
     console.error(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, logEntry);
   } else if (warnEvents.includes(event)) {
@@ -367,7 +368,7 @@ function logPortLifecycle(event, details = {}) {
  * Log port state transition
  * v1.6.3.10-v1 - FIX Issue #6: Track all state transitions with context
  * @param {string} fromState - Previous state
- * @param {string} toState - New state  
+ * @param {string} toState - New state
  * @param {string} reason - Reason for transition
  * @param {Object} context - Additional context
  */
@@ -381,9 +382,9 @@ function logPortStateTransition(fromState, toState, reason, context = {}) {
     timestamp: Date.now(),
     ...context
   };
-  
+
   console.log('[Manager] PORT_STATE_TRANSITION:', logEntry);
-  
+
   // Update port state
   portState = toState;
 }
@@ -398,7 +399,7 @@ function logPortStateTransition(fromState, toState, reason, context = {}) {
  */
 function connectToBackground() {
   const previousState = portState;
-  
+
   // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
   if (circuitBreakerState === 'open') {
     const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
@@ -431,8 +432,11 @@ function connectToBackground() {
     // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
-      logPortLifecycle('DISCONNECT', { error: error?.message, recoveryAction: 'scheduling reconnect' });
-      
+      logPortLifecycle('DISCONNECT', {
+        error: error?.message,
+        recoveryAction: 'scheduling reconnect'
+      });
+
       // v1.6.3.10-v1 - FIX Issue #2: Update port state
       logPortStateTransition(portState, 'dead', `disconnected: ${error?.message || 'unknown'}`);
       backgroundPort = null;
@@ -452,10 +456,10 @@ function connectToBackground() {
     circuitBreakerState = 'closed';
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-    
+
     // v1.6.3.10-v2 - FIX Issue #4: Clear sliding window failures on successful connect
     failureTimestamps = [];
-    
+
     // v1.6.3.10-v1 - FIX Issue #5: Reset adaptive heartbeat interval
     currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
@@ -465,16 +469,19 @@ function connectToBackground() {
     // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
-    
+
     // v1.6.3.10-v2 - FIX Issue #4: Flush pending action queue on successful reconnect
     _flushPendingActionQueue();
 
     console.log('[Manager] v1.6.3.10-v2 Port connection established with action queue flush');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
-    logPortLifecycle('CONNECT_ERROR', { error: err.message, recoveryAction: 'scheduling reconnect' });
+    logPortLifecycle('CONNECT_ERROR', {
+      error: err.message,
+      recoveryAction: 'scheduling reconnect'
+    });
     logPortStateTransition(portState, 'dead', `connection failed: ${err.message}`);
-    
+
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
   }
@@ -501,16 +508,16 @@ function scheduleReconnect(failureReason = FAILURE_REASON.TRANSIENT) {
     }, RECONNECT_BACKOFF_INITIAL_MS);
     return;
   }
-  
+
   // v1.6.3.10-v2 - FIX Issue #4: Track failure with timestamp for sliding window
   const now = Date.now();
   failureTimestamps.push(now);
-  
+
   // Remove failures older than the sliding window
   _pruneOldFailures(now);
-  
+
   reconnectAttempts = failureTimestamps.length;
-  
+
   logPortLifecycle('RECONNECT_ATTEMPT_N', {
     attempt: reconnectAttempts,
     backoffMs: reconnectBackoffMs,
@@ -519,19 +526,19 @@ function scheduleReconnect(failureReason = FAILURE_REASON.TRANSIENT) {
     slidingWindowFailures: failureTimestamps.length,
     recoveryAction: `waiting ${reconnectBackoffMs}ms before retry`
   });
-  
+
   // v1.6.3.10-v2 - FIX Issue #4: Only count recent failures for circuit breaker
   if (failureTimestamps.length >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
     tripCircuitBreaker();
     return;
   }
-  
+
   // Schedule reconnect with current backoff
   setTimeout(() => {
     console.log('[Manager] Attempting reconnect (attempt', reconnectAttempts, ')');
     connectToBackground();
   }, reconnectBackoffMs);
-  
+
   // Calculate next backoff with exponential increase, capped at max
   reconnectBackoffMs = Math.min(reconnectBackoffMs * 2, RECONNECT_BACKOFF_MAX_MS);
 }
@@ -556,22 +563,22 @@ function _pruneOldFailures(now) {
 function forceImmediateReconnect() {
   // v1.6.3.10-v1 - FIX Code Review: Store previous state for proper logging
   const previousPortState = portState;
-  
+
   logPortLifecycle('ZOMBIE_DETECTED', {
     recoveryAction: 'forcing immediate reconnect (bypassing circuit breaker)',
     previousState: previousPortState
   });
-  
+
   // v1.6.3.10-v2 - FIX Issue #4: Reset circuit breaker - zombie is not a transient failure
   // Clear failure timestamps to prevent zombie detection from polluting sliding window
   circuitBreakerState = 'half-open';
   circuitBreakerOpenTime = 0;
   reconnectAttempts = 0;
   reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
-  
+
   // Mark port as zombie before reconnect attempt
   logPortStateTransition(previousPortState, 'zombie', 'message timeout detected');
-  
+
   // Clean up old port
   if (backgroundPort) {
     try {
@@ -581,9 +588,9 @@ function forceImmediateReconnect() {
     }
     backgroundPort = null;
   }
-  
+
   stopHeartbeat();
-  
+
   // v1.6.3.10-v2 - FIX Issue #4: Use scheduleReconnect with ZOMBIE_PORT reason
   // This bypasses the failure counting
   scheduleReconnect(FAILURE_REASON.ZOMBIE_PORT);
@@ -609,7 +616,7 @@ function tripCircuitBreaker() {
   const previousState = circuitBreakerState;
   circuitBreakerState = 'open';
   circuitBreakerOpenTime = Date.now();
-  
+
   // v1.6.3.10-v2 - FIX Issue #4: Log pending actions that are queued
   logPortLifecycle('CIRCUIT_OPEN', {
     previousState,
@@ -620,7 +627,7 @@ function tripCircuitBreaker() {
     pendingActionsQueued: pendingActionQueue.length,
     recoveryAction: `will retry after ${CIRCUIT_BREAKER_OPEN_DURATION_MS / 1000}s cooldown`
   });
-  
+
   // Schedule attempt to reopen circuit breaker
   setTimeout(() => {
     logPortLifecycle('CIRCUIT_HALF_OPEN', {
@@ -647,24 +654,24 @@ function _queuePendingAction(action, payload) {
   if (circuitBreakerState !== 'open') {
     return false; // Only queue when circuit is open
   }
-  
+
   if (pendingActionQueue.length >= MAX_PENDING_ACTIONS) {
     console.warn('[Manager] Pending action queue full, discarding oldest action');
     pendingActionQueue.shift(); // Remove oldest
   }
-  
+
   pendingActionQueue.push({
     action,
     payload,
     timestamp: Date.now()
   });
-  
+
   console.log('[Manager] ACTION_QUEUED:', {
     action,
     payload,
     queueLength: pendingActionQueue.length
   });
-  
+
   return true;
 }
 
@@ -678,20 +685,20 @@ async function _flushPendingActionQueue() {
   if (pendingActionQueue.length === 0) {
     return;
   }
-  
+
   // v1.6.3.10-v2 - FIX Code Review: Prune actions older than 30 seconds as stale
   const MAX_ACTION_AGE_MS = 30000;
   const now = Date.now();
   const actionsToFlush = pendingActionQueue.filter(a => now - a.timestamp < MAX_ACTION_AGE_MS);
   const staleCount = pendingActionQueue.length - actionsToFlush.length;
   pendingActionQueue = [];
-  
+
   console.log('[Manager] FLUSHING_PENDING_ACTIONS:', {
     count: actionsToFlush.length,
     staleDiscarded: staleCount,
     actions: actionsToFlush.map(a => a.action)
   });
-  
+
   for (const queuedAction of actionsToFlush) {
     await _flushSingleAction(queuedAction, now);
   }
@@ -708,7 +715,7 @@ async function _flushSingleAction(queuedAction, now) {
   const { action, payload, timestamp } = queuedAction;
   const age = now - timestamp;
   console.log('[Manager] FLUSHING_ACTION:', { action, payload, ageMs: age });
-  
+
   try {
     const quickTabId = payload?.quickTabId;
     if (quickTabId) {
@@ -766,22 +773,16 @@ function stopHeartbeat() {
  */
 function adjustHeartbeatInterval(latencyMs) {
   const previousInterval = currentHeartbeatInterval;
-  
+
   // If latency is high (>500ms), increase interval slightly to reduce load
   // But never exceed the maximum (20s) to maintain safety margin
   if (latencyMs > 500) {
-    currentHeartbeatInterval = Math.min(
-      currentHeartbeatInterval + 1000,
-      HEARTBEAT_INTERVAL_MAX_MS
-    );
+    currentHeartbeatInterval = Math.min(currentHeartbeatInterval + 1000, HEARTBEAT_INTERVAL_MAX_MS);
   } else if (latencyMs < 100 && currentHeartbeatInterval > HEARTBEAT_INTERVAL_MS) {
     // Low latency - can reduce interval back toward baseline
-    currentHeartbeatInterval = Math.max(
-      currentHeartbeatInterval - 500,
-      HEARTBEAT_INTERVAL_MS
-    );
+    currentHeartbeatInterval = Math.max(currentHeartbeatInterval - 500, HEARTBEAT_INTERVAL_MS);
   }
-  
+
   // If interval changed, restart heartbeat with new interval
   if (currentHeartbeatInterval !== previousInterval) {
     console.log('[Manager] HEARTBEAT_ADAPTIVE:', {
@@ -790,7 +791,7 @@ function adjustHeartbeatInterval(latencyMs) {
       observedLatencyMs: latencyMs,
       safetyMarginMs: 30000 - currentHeartbeatInterval
     });
-    
+
     // Restart heartbeat with new interval
     if (heartbeatIntervalId) {
       clearInterval(heartbeatIntervalId);
@@ -827,18 +828,21 @@ async function sendHeartbeat() {
 
   try {
     // v1.6.3.10-v1 - FIX Issue #2: Send heartbeat with short timeout for zombie detection
-    const response = await sendPortMessageWithTimeout({
-      type: 'HEARTBEAT',
-      timestamp,
-      source: 'sidebar'
-    }, HEARTBEAT_TIMEOUT_MS);
+    const response = await sendPortMessageWithTimeout(
+      {
+        type: 'HEARTBEAT',
+        timestamp,
+        source: 'sidebar'
+      },
+      HEARTBEAT_TIMEOUT_MS
+    );
 
     // Success - update tracking
     const latencyMs = Date.now() - timestamp;
     consecutiveHeartbeatFailures = 0;
     lastHeartbeatResponse = Date.now();
     lastSuccessfulPortMessage = Date.now();
-    
+
     // v1.6.3.10-v1 - FIX Issue #2: Confirm port is connected (not zombie)
     if (portState === 'zombie') {
       logPortStateTransition('zombie', 'connected', 'heartbeat success confirmed');
@@ -850,21 +854,22 @@ async function sendHeartbeat() {
       isInitialized: response?.isInitialized,
       adaptiveInterval: currentHeartbeatInterval
     });
-    
+
     // v1.6.3.10-v1 - FIX Issue #5: Adjust interval based on latency
     adjustHeartbeatInterval(latencyMs);
   } catch (err) {
     consecutiveHeartbeatFailures++;
-    
+
     // v1.6.3.10-v1 - FIX Issue #6: Enhanced failure logging with context
     logPortLifecycle('HEARTBEAT_TIMEOUT', {
       error: err.message,
       failures: consecutiveHeartbeatFailures,
       maxFailures: MAX_HEARTBEAT_FAILURES,
       timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-      recoveryAction: consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES 
-        ? 'forcing immediate reconnect' 
-        : 'will retry next heartbeat'
+      recoveryAction:
+        consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES
+          ? 'forcing immediate reconnect'
+          : 'will retry next heartbeat'
     });
 
     // v1.6.3.10-v1 - FIX Issue #2: Treat timeout as zombie port detection
@@ -914,7 +919,7 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
     // Set up timeout
     const timeout = setTimeout(() => {
       pendingAcks.delete(correlationId);
-      
+
       // v1.6.3.10-v1 - FIX Issue #6: Log timeout with context
       logPortLifecycle('MESSAGE_TIMEOUT', {
         messageType: message.type,
@@ -923,7 +928,7 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
         timeoutMs,
         recoveryAction: 'treating as zombie port'
       });
-      
+
       reject(new Error('Port message timeout'));
     }, timeoutMs);
 
@@ -942,7 +947,7 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
     } catch (err) {
       clearTimeout(timeout);
       pendingAcks.delete(correlationId);
-      
+
       // v1.6.3.10-v1 - FIX Issue #6: Log send failure
       logPortLifecycle('MESSAGE_SEND_FAILED', {
         messageType: message.type,
@@ -950,7 +955,7 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
         error: err.message,
         recoveryAction: 'treating as zombie port'
       });
-      
+
       reject(err);
     }
   });
@@ -969,15 +974,18 @@ async function verifyPortViability() {
     });
     return false;
   }
-  
+
   // Quick ping to verify background is responsive
   try {
-    await sendPortMessageWithTimeout({
-      type: 'HEARTBEAT',
-      timestamp: Date.now(),
-      source: 'viability-check'
-    }, PORT_MESSAGE_TIMEOUT_MS);
-    
+    await sendPortMessageWithTimeout(
+      {
+        type: 'HEARTBEAT',
+        timestamp: Date.now(),
+        source: 'viability-check'
+      },
+      PORT_MESSAGE_TIMEOUT_MS
+    );
+
     lastSuccessfulPortMessage = Date.now();
     logPortLifecycle('PORT_VIABILITY_CHECK', {
       result: 'success',
@@ -990,7 +998,7 @@ async function verifyPortViability() {
       error: err.message,
       recoveryAction: 'triggering reconnect'
     });
-    
+
     // Port is zombie - trigger reconnect
     forceImmediateReconnect();
     return false;
@@ -1053,7 +1061,12 @@ async function _requestFullStateSync() {
       console.warn('[Manager] State sync response did not include state:', response);
     }
   } catch (err) {
-    console.warn('[Manager] State sync timed out after', STATE_SYNC_TIMEOUT_MS, 'ms, proceeding with cached state (may be stale):', err.message);
+    console.warn(
+      '[Manager] State sync timed out after',
+      STATE_SYNC_TIMEOUT_MS,
+      'ms, proceeding with cached state (may be stale):',
+      err.message
+    );
   }
 }
 
@@ -1067,7 +1080,7 @@ function _handleStateSyncResponse(response) {
   const serverState = response.state;
   const serverTabCount = serverState?.tabs?.length ?? 0;
   const cacheTabCount = quickTabsState?.tabs?.length ?? 0;
-  
+
   const serverHash = computeStateHash(serverState);
   const cacheHash = computeStateHash(quickTabsState);
   const hashDiverged = serverHash !== cacheHash;
@@ -1081,14 +1094,20 @@ function _handleStateSyncResponse(response) {
   });
 
   if (hashDiverged) {
-    console.log('[Manager] STATE_DIVERGENCE_DETECTED: server has', serverTabCount, 'tabs, cache had', cacheTabCount, 'tabs - updating');
-    
+    console.log(
+      '[Manager] STATE_DIVERGENCE_DETECTED: server has',
+      serverTabCount,
+      'tabs, cache had',
+      cacheTabCount,
+      'tabs - updating'
+    );
+
     // Update local state from server
     quickTabsState = serverState;
     _updateInMemoryCache(serverState.tabs || []);
     lastKnownGoodTabCount = serverTabCount;
     lastLocalUpdateTime = Date.now();
-    
+
     // Trigger UI update
     scheduleRender('state-sync-divergence');
   } else {
@@ -1103,7 +1122,7 @@ function _handleStateSyncResponse(response) {
  */
 function scheduleRender(source = 'unknown') {
   const currentHash = computeStateHash(quickTabsState);
-  
+
   // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
   if (currentHash === lastRenderedStateHash) {
     console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
@@ -1165,7 +1184,7 @@ function handlePortMessage(message) {
     scheduleRender('port-STATE_UPDATE');
     return;
   }
-  
+
   // v1.6.4.0 - FIX Issue E: Handle full state sync response
   if (message.type === 'FULL_STATE_SYNC') {
     _handleStateSyncResponse(message);
@@ -2159,7 +2178,9 @@ async function _triggerCacheReconciliation() {
 
     if (contentScriptTabs.length > 0) {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts have tabs - restore to STORAGE
-      console.warn('[Manager] CORRUPTION_CONFIRMED: Content scripts have tabs but storage is empty');
+      console.warn(
+        '[Manager] CORRUPTION_CONFIRMED: Content scripts have tabs but storage is empty'
+      );
       console.log('[Manager] v1.6.3.10-v2 Restoring state to storage...');
 
       const restoredState = await restoreStateFromContentScripts(contentScriptTabs);
@@ -2169,7 +2190,11 @@ async function _triggerCacheReconciliation() {
       // v1.6.3.10-v2 - FIX Issue #8: Update cache sync timestamp
       lastCacheSyncFromStorage = Date.now();
 
-      console.log('[Manager] v1.6.3.10-v2 Reconciliation complete: Restored', contentScriptTabs.length, 'tabs to storage');
+      console.log(
+        '[Manager] v1.6.3.10-v2 Reconciliation complete: Restored',
+        contentScriptTabs.length,
+        'tabs to storage'
+      );
       renderUI(); // Re-render with restored state
     } else {
       // v1.6.3.6-v12 - FIX Issue #5: Content scripts also show 0 - accept 0 and clear cache
@@ -2185,7 +2210,9 @@ async function _triggerCacheReconciliation() {
     console.error('[Manager] v1.6.3.10-v2 Reconciliation error:', err.message);
     // v1.6.3.10-v2 - FIX Issue #8: Do NOT use cache as fallback on error
     // Log the error but don't silently mask storage issues
-    console.warn('[Manager] RECONCILIATION_ERROR: Not using cache fallback - showing current state');
+    console.warn(
+      '[Manager] RECONCILIATION_ERROR: Not using cache fallback - showing current state'
+    );
   }
 }
 
@@ -2200,7 +2227,7 @@ async function _triggerCacheReconciliation() {
 function _updateInMemoryCache(tabs) {
   // v1.6.3.10-v2 - FIX Issue #8: Always update cache sync timestamp
   lastCacheSyncFromStorage = Date.now();
-  
+
   // v1.6.3.10-v2 - FIX Issue #8: Mark initial hydration as complete
   if (!cacheHydrationComplete && tabs.length >= 0) {
     cacheHydrationComplete = true;
@@ -2209,13 +2236,13 @@ function _updateInMemoryCache(tabs) {
       timestamp: lastCacheSyncFromStorage
     });
   }
-  
+
   if (tabs.length > 0) {
     inMemoryTabsCache = [...tabs];
     lastKnownGoodTabCount = tabs.length;
-    console.log('[Manager] Updated in-memory cache:', { 
+    console.log('[Manager] Updated in-memory cache:', {
       tabCount: tabs.length,
-      syncTimestamp: lastCacheSyncFromStorage 
+      syncTimestamp: lastCacheSyncFromStorage
     });
   } else if (lastKnownGoodTabCount === 1) {
     // v1.6.3.5-v11 - FIX Issue #6: Clear cache when going from 1→0 (single-tab deletion)
@@ -2327,13 +2354,13 @@ function updateUIStats(totalTabs, latestTimestamp) {
  */
 function renderUI() {
   const now = Date.now();
-  
+
   // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
-  
+
   // v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce logic
   const isNewDebounceWindow = debounceStartTimestamp === 0 || !renderDebounceTimer;
-  
+
   if (isNewDebounceWindow) {
     // Starting a new debounce window
     debounceStartTimestamp = now;
@@ -2342,7 +2369,7 @@ function renderUI() {
   } else {
     // Extending existing debounce window (state changed again)
     debounceExtensionCount++;
-    
+
     // v1.6.3.10-v2 - FIX Issue #1: Check if we've exceeded max wait time
     const totalWaitTime = now - debounceStartTimestamp;
     if (totalWaitTime >= RENDER_DEBOUNCE_MAX_WAIT_MS) {
@@ -2351,32 +2378,32 @@ function renderUI() {
       return;
     }
   }
-  
+
   // v1.6.4.0 - FIX Issue D: Update captured hash to latest state
   debounceSetTimestamp = now;
-  
+
   // Clear any existing debounce timer
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
   }
-  
+
   // v1.6.3.10-v2 - FIX Issue #1: Calculate remaining wait time for sliding window
   const elapsedSinceStart = now - debounceStartTimestamp;
   const remainingMaxWait = RENDER_DEBOUNCE_MAX_WAIT_MS - elapsedSinceStart;
   const debounceTime = Math.min(RENDER_DEBOUNCE_MS, remainingMaxWait);
-  
+
   // Schedule the actual render
   renderDebounceTimer = setTimeout(async () => {
     renderDebounceTimer = null;
-    
+
     // Only render if still pending (wasn't cancelled)
     if (!pendingRenderUI) {
       console.log('[Manager] Skipping debounced render - no longer pending');
       return;
     }
-    
+
     pendingRenderUI = false;
-    
+
     // v1.6.3.10-v2 - FIX Issue #1: Log debounce completion with sliding window stats
     const completionTime = Date.now();
     console.log('[Manager] RENDER_DEBOUNCE_COMPLETE:', {
@@ -2384,17 +2411,20 @@ function renderUI() {
       extensions: debounceExtensionCount,
       finalDebounceMs: debounceTime
     });
-    
+
     // Reset sliding window tracking
     debounceStartTimestamp = 0;
     debounceExtensionCount = 0;
-    
+
     // v1.6.3.10-v2 - FIX Issue #1: Fetch CURRENT state from storage, not captured hash
     const staleCheckResult = await _checkAndReloadStaleState();
     if (staleCheckResult.stateReloaded) {
-      console.log('[Manager] State changed while debounce was waiting, rendering with fresh state', staleCheckResult);
+      console.log(
+        '[Manager] State changed while debounce was waiting, rendering with fresh state',
+        staleCheckResult
+      );
     }
-    
+
     // Recalculate hash after potential fresh load
     const finalHash = computeStateHash(quickTabsState);
     if (finalHash === lastRenderedHash) {
@@ -2404,12 +2434,12 @@ function renderUI() {
       });
       return;
     }
-    
+
     // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
     // This ensures consistent state even on render failure
     lastRenderedHash = finalHash;
     lastRenderedStateHash = finalHash;
-    
+
     // Synchronize DOM mutation with requestAnimationFrame
     requestAnimationFrame(() => {
       _renderUIImmediate();
@@ -2427,25 +2457,25 @@ function renderUI() {
 async function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
-  
+
   // v1.6.3.10-v2 - FIX Issue #1: Always fetch current storage state to compare
   // This ensures we render the latest state even under storage churn
   try {
     const freshResult = await browser.storage.local.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
     const storageHash = computeStateHash(storageState || {});
-    
+
     // Compare in-memory state against storage state
     if (storageHash === inMemoryHash) {
-      return { 
-        stateReloaded: false, 
-        capturedHash: capturedStateHashAtDebounce, 
-        currentHash: inMemoryHash, 
+      return {
+        stateReloaded: false,
+        capturedHash: capturedStateHashAtDebounce,
+        currentHash: inMemoryHash,
         storageHash,
-        debounceWaitMs: debounceWaitTime 
+        debounceWaitMs: debounceWaitTime
       };
     }
-    
+
     // Storage has different state - reload it
     if (storageState?.tabs) {
       quickTabsState = storageState;
@@ -2453,26 +2483,26 @@ async function _checkAndReloadStaleState() {
       console.log('[Manager] STALE_STATE_RELOADED:', {
         inMemoryHash,
         storageHash,
-        inMemoryTabCount: (quickTabsState?.tabs?.length ?? 0),
+        inMemoryTabCount: quickTabsState?.tabs?.length ?? 0,
         storageTabCount: storageState.tabs.length
       });
     }
-    
-    return { 
-      stateReloaded: true, 
-      capturedHash: capturedStateHashAtDebounce, 
-      currentHash: inMemoryHash, 
+
+    return {
+      stateReloaded: true,
+      capturedHash: capturedStateHashAtDebounce,
+      currentHash: inMemoryHash,
       storageHash,
-      debounceWaitMs: debounceWaitTime 
+      debounceWaitMs: debounceWaitTime
     };
   } catch (err) {
     console.warn('[Manager] Failed to check storage state, using in-memory:', err.message);
-    return { 
-      stateReloaded: false, 
-      capturedHash: capturedStateHashAtDebounce, 
-      currentHash: inMemoryHash, 
+    return {
+      stateReloaded: false,
+      capturedHash: capturedStateHashAtDebounce,
+      currentHash: inMemoryHash,
       storageHash: 0,
-      debounceWaitMs: debounceWaitTime 
+      debounceWaitMs: debounceWaitTime
     };
   }
 }
@@ -2508,7 +2538,7 @@ function _forceRenderOnMaxWait(totalWaitTime) {
     extensions: debounceExtensionCount,
     maxWaitMs: RENDER_DEBOUNCE_MAX_WAIT_MS
   });
-  
+
   // Clear timer and render immediately
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
@@ -2517,7 +2547,7 @@ function _forceRenderOnMaxWait(totalWaitTime) {
   debounceStartTimestamp = 0;
   debounceExtensionCount = 0;
   pendingRenderUI = false;
-  
+
   requestAnimationFrame(() => {
     _renderUIImmediate();
   });
@@ -2546,7 +2576,7 @@ function _renderUIImmediate_force() {
 async function _renderUIImmediate() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
-  
+
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
@@ -2562,7 +2592,7 @@ async function _renderUIImmediate() {
     _showEmptyState();
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
-    
+
     // v1.6.3.7 - FIX Issue #8: Log render exit
     console.log('[Manager] RENDER_UI: exit (empty state)', {
       triggerReason,
@@ -2592,7 +2622,7 @@ async function _renderUIImmediate() {
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
-  
+
   // v1.6.3.7 - FIX Issue #8: Log render exit with summary
   console.log('[Manager] RENDER_UI: exit', {
     triggerReason,
@@ -2600,7 +2630,7 @@ async function _renderUIImmediate() {
     groupsCreated: groups.size,
     durationMs: Date.now() - renderStartTime
   });
-  
+
   _logRenderComplete(allTabs, groups, renderStartTime);
 }
 
@@ -2653,6 +2683,15 @@ function _showContentState() {
  * @private
  */
 function _logGroupRendering(groups) {
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for Manager display GROUPING
+  console.log('[Manager][Display] GROUPING: Organizing Quick Tabs by originTabId', {
+    totalQuickTabs: [...groups.values()].reduce((sum, g) => sum + g.length, 0),
+    groups: [...groups.entries()].map(([tabId, tabs]) => ({
+      originTabId: tabId,
+      count: tabs.length
+    }))
+  });
+
   console.log('[Manager] Issue #1: Rendering groups directly (no global header)', {
     groupCount: groups.size,
     groupKeys: [...groups.keys()]
@@ -3524,7 +3563,7 @@ function _handleStorageChange(change) {
 
   // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
   const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
-  
+
   // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
   if (changeAnalysis.hasDataChange) {
     lastLocalUpdateTime = Date.now();
@@ -3533,7 +3572,7 @@ function _handleStorageChange(change) {
       reason: changeAnalysis.changeReason
     });
   }
-  
+
   // v1.6.3.7 - FIX Issue #3: Skip renderUI if only metadata changed
   if (!changeAnalysis.requiresRender) {
     console.log('[Manager] STORAGE_LISTENER: Skipping renderUI (metadata-only change)', {
@@ -3560,7 +3599,7 @@ function _handleStorageChange(change) {
 function _analyzeStorageChange(oldValue, newValue) {
   const oldTabs = oldValue?.tabs || [];
   const newTabs = newValue?.tabs || [];
-  
+
   // Tab count change always requires render
   if (oldTabs.length !== newTabs.length) {
     return {
@@ -3571,10 +3610,10 @@ function _analyzeStorageChange(oldValue, newValue) {
       skipReason: null
     };
   }
-  
+
   // Check for structural changes using helper
   const changeResults = _checkTabChanges(oldTabs, newTabs);
-  
+
   // If only z-index changed, skip render
   if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
     return {
@@ -3585,7 +3624,7 @@ function _analyzeStorageChange(oldValue, newValue) {
       skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
     };
   }
-  
+
   // If there are data changes, render is required
   if (changeResults.hasDataChange) {
     return {
@@ -3596,7 +3635,7 @@ function _analyzeStorageChange(oldValue, newValue) {
       skipReason: null
     };
   }
-  
+
   // No changes detected
   return {
     requiresRender: false,
@@ -3617,9 +3656,11 @@ function _analyzeStorageChange(oldValue, newValue) {
  */
 function _checkSingleTabDataChanges(oldTab, newTab) {
   const reasons = [];
-  
+
   if (oldTab.originTabId !== newTab.originTabId) {
-    reasons.push(`originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`);
+    reasons.push(
+      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
+    );
   }
   if (oldTab.minimized !== newTab.minimized) {
     reasons.push(`minimized changed for ${newTab.id}`);
@@ -3633,7 +3674,7 @@ function _checkSingleTabDataChanges(oldTab, newTab) {
   if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
     reasons.push(`title/url changed for ${newTab.id}`);
   }
-  
+
   return {
     hasDataChange: reasons.length > 0,
     reasons
@@ -3650,36 +3691,36 @@ function _checkSingleTabDataChanges(oldTab, newTab) {
  */
 function _checkTabChanges(oldTabs, newTabs) {
   const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-  
+
   let hasDataChange = false;
   let hasMetadataOnlyChange = false;
   const zIndexChanges = [];
   const dataChangeReasons = [];
-  
+
   for (const newTab of newTabs) {
     const oldTab = oldTabMap.get(newTab.id);
-    
+
     if (!oldTab) {
       // New tab ID - requires render
       hasDataChange = true;
       dataChangeReasons.push(`New tab: ${newTab.id}`);
       continue;
     }
-    
+
     // Check for data changes
     const dataResult = _checkSingleTabDataChanges(oldTab, newTab);
     if (dataResult.hasDataChange) {
       hasDataChange = true;
       dataChangeReasons.push(...dataResult.reasons);
     }
-    
+
     // Check for metadata-only changes (z-index)
     if (oldTab.zIndex !== newTab.zIndex) {
       hasMetadataOnlyChange = true;
       zIndexChanges.push({ id: newTab.id, old: oldTab.zIndex, new: newTab.zIndex });
     }
   }
-  
+
   return {
     hasDataChange,
     hasMetadataOnlyChange,
@@ -4106,20 +4147,20 @@ function _scheduleNormalUpdate() {
  */
 async function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
-  
+
   try {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
     const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
       timestamp: Date.now()
     });
-    
+
     if (response?.success || response?.timedOut) {
       console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
         closedCount: response?.closedCount || 0,
         closedIds: response?.closedIds || [],
         timedOut: response?.timedOut || false
       });
-      
+
       // Re-render UI to reflect the change
       scheduleRender('close-minimized-success');
     } else {
@@ -4395,12 +4436,26 @@ async function minimizeQuickTab(quickTabId) {
   const originTabId = tabData?.originTabId;
   const targetTabId = hostInfo?.hostTabId || originTabId;
 
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
+    operation: 'MINIMIZE',
+    quickTabId: quickTabId,
+    quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId: targetTabId,
+    decision: 'ALLOW'
+  });
+
   // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
-  const result = await _sendMessageWithRetry({
-    action: 'MINIMIZE_QUICK_TAB',
-    quickTabId
-  }, targetTabId, 'minimize');
-  
+  const result = await _sendMessageWithRetry(
+    {
+      action: 'MINIMIZE_QUICK_TAB',
+      quickTabId
+    },
+    targetTabId,
+    'minimize'
+  );
+
   if (result.success) {
     console.log(`[Manager] Minimized Quick Tab ${quickTabId}`, {
       method: result.method,
@@ -4456,7 +4511,7 @@ async function _trySingleTargetedMessage(message, targetTabId, operation, retry)
     targetTabId,
     retry
   });
-  
+
   try {
     const response = await _sendMessageWithTimeout(targetTabId, message, PORT_MESSAGE_TIMEOUT_MS);
     if (response?.success) {
@@ -4492,7 +4547,7 @@ async function _trySingleTargetedMessage(message, targetTabId, operation, retry)
  */
 async function _sendMessageWithRetry(message, targetTabId, operation) {
   let attempts = 0;
-  
+
   // v1.6.3.10-v1 - FIX Issue #7: Try targeted message first (if target known)
   if (targetTabId) {
     const targetedResult = await _attemptTargetedMessageWithRetry(message, targetTabId, operation);
@@ -4506,7 +4561,7 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
     }
     attempts = MESSAGE_RETRY_COUNT + 1; // Count all targeted attempts
   }
-  
+
   // v1.6.3.10-v1 - FIX Issue #7: Fall back to broadcast
   return _sendMessageViaBroadcast(message, operation, attempts);
 }
@@ -4522,11 +4577,11 @@ async function _sendMessageViaBroadcast(message, operation, previousAttempts) {
     previousAttempts,
     reason: previousAttempts > 0 ? 'targeted messages failed' : 'no target tab'
   });
-  
+
   try {
     const broadcastResult = await sendMessageToAllTabs(message.action, message.quickTabId);
     const totalAttempts = previousAttempts + 1;
-    
+
     if (broadcastResult.success > 0) {
       logPortLifecycle('MESSAGE_ACK_RECEIVED', {
         operation,
@@ -4537,10 +4592,20 @@ async function _sendMessageViaBroadcast(message, operation, previousAttempts) {
       });
       return { success: true, method: 'broadcast', attempts: totalAttempts };
     }
-    
-    return { success: false, method: 'broadcast', attempts: totalAttempts, error: 'No tabs responded' };
+
+    return {
+      success: false,
+      method: 'broadcast',
+      attempts: totalAttempts,
+      error: 'No tabs responded'
+    };
   } catch (err) {
-    return { success: false, method: 'broadcast', attempts: previousAttempts + 1, error: err.message };
+    return {
+      success: false,
+      method: 'broadcast',
+      attempts: previousAttempts + 1,
+      error: err.message
+    };
   }
 }
 
@@ -4558,8 +4623,9 @@ function _sendMessageWithTimeout(tabId, message, timeoutMs) {
     const timer = setTimeout(() => {
       reject(new Error(`Message timeout after ${timeoutMs}ms`));
     }, timeoutMs);
-    
-    browser.tabs.sendMessage(tabId, message)
+
+    browser.tabs
+      .sendMessage(tabId, message)
       .then(response => {
         clearTimeout(timer);
         resolve(response);
@@ -4922,14 +4988,32 @@ async function restoreQuickTab(quickTabId) {
   // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const targetTabId = hostInfo?.hostTabId || validation.tabData.originTabId;
-  
-  const result = await _sendMessageWithRetry({
-    action: 'RESTORE_QUICK_TAB',
-    quickTabId
-  }, targetTabId, 'restore');
-  
-  _logRestoreResult(quickTabId, { success: result.success, confirmedBy: result.targetTabId }, startTime);
-  
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
+    operation: 'RESTORE',
+    quickTabId: quickTabId,
+    quickTabOriginTabId: validation.tabData.originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId: targetTabId,
+    decision: 'ALLOW'
+  });
+
+  const result = await _sendMessageWithRetry(
+    {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId
+    },
+    targetTabId,
+    'restore'
+  );
+
+  _logRestoreResult(
+    quickTabId,
+    { success: result.success, confirmedBy: result.targetTabId },
+    startTime
+  );
+
   if (result.success) {
     // v1.6.3.10-v1 - Update host info after successful restore
     if (result.targetTabId) {
@@ -5056,19 +5140,33 @@ async function closeQuickTab(quickTabId) {
   const tabData = findTabInState(quickTabId, quickTabsState);
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const targetTabId = hostInfo?.hostTabId || tabData?.originTabId;
-  
-  const result = await _sendMessageWithRetry({
-    action: 'CLOSE_QUICK_TAB',
-    quickTabId
-  }, targetTabId, 'close');
-  
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
+    operation: 'CLOSE',
+    quickTabId: quickTabId,
+    quickTabOriginTabId: tabData?.originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId: targetTabId,
+    decision: 'ALLOW'
+  });
+
+  const result = await _sendMessageWithRetry(
+    {
+      action: 'CLOSE_QUICK_TAB',
+      quickTabId
+    },
+    targetTabId,
+    'close'
+  );
+
   if (result.success) {
     console.log(`[Manager] Closed Quick Tab ${quickTabId}`, {
       method: result.method,
       targetTabId: result.targetTabId,
       attempts: result.attempts
     });
-    
+
     // Clean up local tracking
     quickTabHostInfo.delete(quickTabId);
   } else {
@@ -5102,10 +5200,13 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
 
   try {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
-    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', { quickTabId, targetTabId });
-    
+    console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', {
+      quickTabId,
+      targetTabId
+    });
+
     const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId });
-    
+
     _handleAdoptResponse(quickTabId, targetTabId, response);
   } catch (err) {
     console.error('[Manager] ❌ Error sending adopt command:', err);
@@ -5129,7 +5230,7 @@ function _handleAdoptResponse(quickTabId, targetTabId, response) {
       oldOriginTabId: response?.oldOriginTabId,
       timedOut: response?.timedOut || false
     });
-    
+
     // Update local tracking
     quickTabHostInfo.set(quickTabId, {
       hostTabId: targetTabId,
@@ -5168,7 +5269,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
     message: `${quickTabId} → tab-${targetTabId}`,
     timestamp: Date.now()
   });
-  
+
   // v1.6.3.7 - FIX Issue #7: Use standardized format for adoption flow tracking
   console.log('[Manager] ADOPTION_FLOW:', {
     quickTabId,
@@ -5178,7 +5279,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
     currentBrowserTabId,
     timestamp: Date.now()
   });
-  
+
   console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
     quickTabId,
     targetTabId,
@@ -5206,20 +5307,26 @@ function _isValidTargetTabId(targetTabId) {
  */
 async function _performAdoption(quickTabId, targetTabId) {
   const writeStartTime = Date.now();
-  
+
   // Read current state
   const stateResult = await _readStorageForAdoption(quickTabId, targetTabId);
   if (!stateResult.success) {
     return null;
   }
-  
+
   const { state, quickTab, tabIndex: _tabIndex, oldOriginTabId } = stateResult;
-  
+
   // Update and persist
   quickTab.originTabId = targetTabId;
   _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId);
-  
-  const persistResult = await _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime);
+
+  const persistResult = await _persistAdoption(
+    quickTabId,
+    targetTabId,
+    state,
+    oldOriginTabId,
+    writeStartTime
+  );
   return persistResult;
 }
 

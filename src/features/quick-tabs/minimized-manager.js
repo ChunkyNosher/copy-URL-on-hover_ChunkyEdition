@@ -78,6 +78,7 @@ export class MinimizedManager {
    * Add a minimized Quick Tab with immutable position/size snapshot
    * v1.6.3.4-v4 - FIX Issue #4: Store position/size as immutable snapshot to prevent corruption
    * v1.6.3.6-v8 - FIX Issue #3: Extract originTabId from ID pattern when null
+   * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - QuickTabWindow instance
    */
@@ -91,7 +92,30 @@ export class MinimizedManager {
       return;
     }
 
-    // v1.6.3.6-v8 - FIX Issue #3: Resolve originTabId with fallback to ID pattern
+    // Resolve originTabId with fallback to ID pattern
+    const resolvedOriginTabId = this._resolveOriginTabId(id, tabWindow);
+
+    // v1.6.3.10-v4 - FIX Issue #13: Resolve originContainerId for Firefox Multi-Account Container isolation
+    const resolvedOriginContainerId =
+      tabWindow.originContainerId ?? tabWindow.cookieStoreId ?? null;
+
+    // Build snapshot object
+    const snapshot = this._buildSnapshot(tabWindow, resolvedOriginTabId, resolvedOriginContainerId);
+    this.minimizedTabs.set(id, snapshot);
+
+    // Log snapshot capture
+    this._logSnapshotCapture(id, snapshot, resolvedOriginTabId !== tabWindow.originTabId);
+  }
+
+  /**
+   * Resolve originTabId with fallback to ID pattern extraction
+   * v1.6.3.10-v4 - FIX: Extract to reduce add() complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - QuickTabWindow instance
+   * @returns {number|null} Resolved originTabId
+   */
+  _resolveOriginTabId(id, tabWindow) {
     let resolvedOriginTabId = tabWindow.originTabId;
     if (resolvedOriginTabId === null || resolvedOriginTabId === undefined) {
       const extractedTabId = extractTabIdFromQuickTabId(id);
@@ -109,12 +133,20 @@ export class MinimizedManager {
         });
       }
     }
+    return resolvedOriginTabId;
+  }
 
-    // v1.6.3.4-v4 - FIX Issue #4: Store immutable snapshot of position/size
-    // This prevents corruption if a duplicate window overwrites the original's properties
-    // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
-    // v1.6.3.6-v8 - FIX Issue #3: Use resolved originTabId (may be from ID pattern)
-    const snapshot = {
+  /**
+   * Build immutable snapshot object from tabWindow
+   * v1.6.3.10-v4 - FIX: Extract to reduce add() complexity
+   * @private
+   * @param {Object} tabWindow - QuickTabWindow instance
+   * @param {number|null} resolvedOriginTabId - Resolved originTabId
+   * @param {string|null} resolvedOriginContainerId - Resolved originContainerId
+   * @returns {Object} Snapshot object
+   */
+  _buildSnapshot(tabWindow, resolvedOriginTabId, resolvedOriginContainerId) {
+    return {
       window: tabWindow,
       savedPosition: {
         left: tabWindow.left ?? DEFAULT_POSITION_LEFT,
@@ -124,19 +156,27 @@ export class MinimizedManager {
         width: tabWindow.width ?? DEFAULT_SIZE_WIDTH,
         height: tabWindow.height ?? DEFAULT_SIZE_HEIGHT
       },
-      // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
-      // v1.6.3.6-v8 - FIX Issue #3: Use resolved originTabId from ID pattern fallback
-      savedOriginTabId: resolvedOriginTabId
+      savedOriginTabId: resolvedOriginTabId,
+      savedOriginContainerId: resolvedOriginContainerId
     };
-    this.minimizedTabs.set(id, snapshot);
+  }
 
-    // v1.6.3.6-v8 - FIX Issue #3: Diagnostic logging for snapshot capture
+  /**
+   * Log snapshot capture for debugging
+   * v1.6.3.10-v4 - FIX: Extract to reduce add() complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} snapshot - Snapshot object
+   * @param {boolean} wasRecoveredFromIdPattern - Whether originTabId was recovered from ID pattern
+   */
+  _logSnapshotCapture(id, snapshot, wasRecoveredFromIdPattern) {
     console.log('[MinimizedManager] 📸 SNAPSHOT_CAPTURED:', {
       id,
       savedPosition: snapshot.savedPosition,
       savedSize: snapshot.savedSize,
       savedOriginTabId: snapshot.savedOriginTabId,
-      wasRecoveredFromIdPattern: resolvedOriginTabId !== tabWindow.originTabId
+      savedOriginContainerId: snapshot.savedOriginContainerId,
+      wasRecoveredFromIdPattern
     });
   }
 
@@ -198,6 +238,7 @@ export class MinimizedManager {
   /**
    * Handle duplicate restore attempts
    * v1.6.3.5 - Extracted to reduce restore() complexity
+   * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId in duplicate restore result
    * @private
    */
   _handleDuplicateRestore(id) {
@@ -218,6 +259,8 @@ export class MinimizedManager {
         },
         // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation during restore
         originTabId: existingSnapshot.savedOriginTabId ?? null,
+        // v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
+        originContainerId: existingSnapshot.savedOriginContainerId ?? null,
         duplicate: true
       };
     }
@@ -273,6 +316,7 @@ export class MinimizedManager {
   /**
    * Apply snapshot to tabWindow and verify application
    * v1.6.3.5 - Extracted to reduce restore() complexity
+   * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
    * @private
    */
   _applyAndVerifySnapshot(id, snapshot, snapshotSource) {
@@ -285,14 +329,18 @@ export class MinimizedManager {
     const savedHeight = snapshot.savedSize.height;
     // v1.6.3.6-v6 - FIX: Retrieve saved originTabId for cross-tab validation
     const savedOriginTabId = snapshot.savedOriginTabId ?? null;
+    // v1.6.3.10-v4 - FIX Issue #13: Retrieve saved originContainerId for container isolation
+    const savedOriginContainerId = snapshot.savedOriginContainerId ?? null;
 
     // Log snapshot source and dimensions
+    // v1.6.3.10-v4 - FIX Issue #13: Include container ID in logging
     console.log('[MinimizedManager] restore() snapshot lookup:', {
       id,
       source: snapshotSource,
       savedPosition: { left: savedLeft, top: savedTop },
       savedSize: { width: savedWidth, height: savedHeight },
-      savedOriginTabId
+      savedOriginTabId,
+      savedOriginContainerId
     });
 
     // Log dimensions before applying
@@ -302,7 +350,8 @@ export class MinimizedManager {
       top: tabWindow.top,
       width: tabWindow.width,
       height: tabWindow.height,
-      originTabId: tabWindow.originTabId
+      originTabId: tabWindow.originTabId,
+      originContainerId: tabWindow.originContainerId
     });
 
     // Apply snapshot to instance
@@ -320,14 +369,25 @@ export class MinimizedManager {
       });
     }
 
+    // v1.6.3.10-v4 - FIX Issue #13: Apply originContainerId to tabWindow for container isolation
+    if (savedOriginContainerId !== null && savedOriginContainerId !== undefined) {
+      tabWindow.originContainerId = savedOriginContainerId;
+      console.log('[MinimizedManager] Restored originContainerId:', {
+        id,
+        originContainerId: savedOriginContainerId
+      });
+    }
+
     // Verify application
     this._verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight);
 
+    // v1.6.3.10-v4 - FIX Issue #13: Include container ID in logging
     console.log('[MinimizedManager] Snapshot applied:', {
       id,
       position: { left: savedLeft, top: savedTop },
       size: { width: savedWidth, height: savedHeight },
-      originTabId: savedOriginTabId
+      originTabId: savedOriginTabId,
+      originContainerId: savedOriginContainerId
     });
 
     return {
@@ -335,7 +395,9 @@ export class MinimizedManager {
       position: { left: savedLeft, top: savedTop },
       size: { width: savedWidth, height: savedHeight },
       // v1.6.3.6-v6 - FIX: Include originTabId in return value for cross-tab validation
-      originTabId: savedOriginTabId
+      originTabId: savedOriginTabId,
+      // v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
+      originContainerId: savedOriginContainerId
     };
   }
 
@@ -480,38 +542,62 @@ export class MinimizedManager {
   }
 
   /**
+   * Find snapshot from minimizedTabs or pendingClearSnapshots
+   * v1.6.3.10-v4 - FIX: Extract to reduce getSnapshot complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {Object|null} Snapshot or null
+   */
+  _findSnapshotById(id) {
+    let snapshot = this.minimizedTabs.get(id);
+    if (!snapshot) {
+      snapshot = this.pendingClearSnapshots.get(id);
+    }
+    return snapshot;
+  }
+
+  /**
+   * Build return value for getSnapshot
+   * v1.6.3.10-v4 - FIX: Extract to reduce getSnapshot complexity
+   * @private
+   * @param {Object} snapshot - Snapshot object
+   * @returns {Object} Formatted snapshot data
+   */
+  _formatSnapshotData(snapshot) {
+    return {
+      position: { left: snapshot.savedPosition.left, top: snapshot.savedPosition.top },
+      size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height },
+      originTabId: snapshot.savedOriginTabId ?? null,
+      originContainerId: snapshot.savedOriginContainerId ?? null
+    };
+  }
+
+  /**
    * Get snapshot data for a minimized tab without restoring
    * v1.6.3.4-v5 - FIX Bug #5: Allow reading snapshot data for verification
    * v1.6.3.4-v10 - FIX Issue #1: Also check pendingClearSnapshots for recently restored tabs
+   * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
    * @param {string} id - Quick Tab ID
    * @returns {Object|null} Snapshot data or null if not found
    */
   getSnapshot(id) {
-    // Check active minimized tabs first
-    let snapshot = this.minimizedTabs.get(id);
+    const snapshot = this._findSnapshotById(id);
 
-    // v1.6.3.4-v10 - FIX Issue #1: Also check pending clear snapshots
-    if (!snapshot) {
-      snapshot = this.pendingClearSnapshots.get(id);
+    if (!snapshot || !snapshot.savedPosition || !snapshot.savedSize) {
+      console.log('[MinimizedManager] getSnapshot not found for:', id);
+      return null;
     }
 
-    if (snapshot && snapshot.savedPosition && snapshot.savedSize) {
-      console.log('[MinimizedManager] getSnapshot found for:', id, {
-        source: this.minimizedTabs.has(id) ? 'minimizedTabs' : 'pendingClearSnapshots',
-        position: snapshot.savedPosition,
-        size: snapshot.savedSize,
-        // v1.6.3.6-v6 - FIX: Include originTabId in logging
-        originTabId: snapshot.savedOriginTabId ?? null
-      });
-      return {
-        position: { left: snapshot.savedPosition.left, top: snapshot.savedPosition.top },
-        size: { width: snapshot.savedSize.width, height: snapshot.savedSize.height },
-        // v1.6.3.6-v6 - FIX: Include originTabId for cross-tab validation
-        originTabId: snapshot.savedOriginTabId ?? null
-      };
-    }
-    console.log('[MinimizedManager] getSnapshot not found for:', id);
-    return null;
+    // Log found snapshot
+    console.log('[MinimizedManager] getSnapshot found for:', id, {
+      source: this.minimizedTabs.has(id) ? 'minimizedTabs' : 'pendingClearSnapshots',
+      position: snapshot.savedPosition,
+      size: snapshot.savedSize,
+      originTabId: snapshot.savedOriginTabId ?? null,
+      originContainerId: snapshot.savedOriginContainerId ?? null
+    });
+
+    return this._formatSnapshotData(snapshot);
   }
 
   /**

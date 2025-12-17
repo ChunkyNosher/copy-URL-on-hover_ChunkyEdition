@@ -1,9 +1,11 @@
 # Port-Based Messaging Deep Dive: Why It Solves Issue #47
+
 ## Complete Technical Analysis with Code Examples and Proof
 
 **Date:** December 17, 2025  
 **Repository:** `ChunkyNosher/copy-URL-on-hover_ChunkyEdition`  
-**Focus:** Understanding port-based messaging, how it works, why it fails sometimes, and why it's the solution to adoption re-render timing issues
+**Focus:** Understanding port-based messaging, how it works, why it fails
+sometimes, and why it's the solution to adoption re-render timing issues
 
 ---
 
@@ -11,25 +13,35 @@
 
 **The Problem Your Extension Might Have Faced Before:**
 
-If past versions of your extension attempted port-based messaging and failed, it was likely due to:
+If past versions of your extension attempted port-based messaging and failed, it
+was likely due to:
 
-1. **Port lifecycle mismanagement** - Not properly handling `onDisconnect` events, leading to dead ports
-2. **Incorrect sender detection** - Background script receiving its own messages (pre-Firefox 51 bug)
-3. **Port not yet established** - Attempting to send before `onConnect` listener was active
-4. **Race condition with content script loading** - Port connection happens after page load starts
-5. **Missing error handling** - Silent failures when attempting `postMessage()` on disconnected ports
+1. **Port lifecycle mismanagement** - Not properly handling `onDisconnect`
+   events, leading to dead ports
+2. **Incorrect sender detection** - Background script receiving its own messages
+   (pre-Firefox 51 bug)
+3. **Port not yet established** - Attempting to send before `onConnect` listener
+   was active
+4. **Race condition with content script loading** - Port connection happens
+   after page load starts
+5. **Missing error handling** - Silent failures when attempting `postMessage()`
+   on disconnected ports
 
 **Why Port-Based Messaging Actually Works (When Implemented Correctly):**
 
 From official Mozilla documentation:
 
-> "Messages sent on a port are guaranteed to be delivered in order." - Mozilla Developer Network
+> "Messages sent on a port are guaranteed to be delivered in order." - Mozilla
+> Developer Network
 
 From Chrome Developer Documentation:
 
-> "Use the connection-based approach if you want to guarantee the delivery of a message to a specific endpoint." - Chrome for Developers
+> "Use the connection-based approach if you want to guarantee the delivery of a
+> message to a specific endpoint." - Chrome for Developers
 
-**The guarantee is:** Messages sent via port are **FIFO (First-In-First-Out) ordered** within that port connection. This contrasts with `storage.onChanged` which is NOT ordered relative to `storage.local.set()` promises.
+**The guarantee is:** Messages sent via port are **FIFO (First-In-First-Out)
+ordered** within that port connection. This contrasts with `storage.onChanged`
+which is NOT ordered relative to `storage.local.set()` promises.
 
 ---
 
@@ -37,7 +49,8 @@ From Chrome Developer Documentation:
 
 ### Simple Explanation
 
-Think of port-based messaging like opening a dedicated phone line between two parts of your extension:
+Think of port-based messaging like opening a dedicated phone line between two
+parts of your extension:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -94,8 +107,9 @@ Think of port-based messaging like opening a dedicated phone line between two pa
 
 ```javascript
 // No guaranteed ordering relative to storage
-browser.runtime.sendMessage({ action: 'GET_DATA' })
-  .then(response => console.log(response))
+browser.runtime
+  .sendMessage({ action: 'GET_DATA' })
+  .then(response => console.log(response));
 ```
 
 ❌ Use for: Fire-and-forget commands  
@@ -122,35 +136,49 @@ port.onMessage.addListener(response => console.log(response))
 
 ### Mozilla (Firefox) - From Official MDN
 
-**Source:** [runtime.connect() - Mozilla Developer Network](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/connect)
+**Source:**
+[runtime.connect() - Mozilla Developer Network](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/connect)
 
 Direct Quote:
 
-> "Make a connection between different contexts inside the extension. This connection enables the extension to exchange messages with itself or any other extension (if extensionId is specified)."
+> "Make a connection between different contexts inside the extension. This
+> connection enables the extension to exchange messages with itself or any other
+> extension (if extensionId is specified)."
 
 Key Point: The connection is **persistent** and **ordered**.
 
-**Source:** [runtime.onConnect - Mozilla Developer Network](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/onConnect)
+**Source:**
+[runtime.onConnect - Mozilla Developer Network](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/onConnect)
 
-> "Fired when an extension process receives a connection request from another extension or other extension context."
+> "Fired when an extension process receives a connection request from another
+> extension or other extension context."
 
-**For Port Ordering Specifically:** From Chrome Developer Documentation (identical behavior in Firefox):
+**For Port Ordering Specifically:** From Chrome Developer Documentation
+(identical behavior in Firefox):
 
-> "Use the connection-based approach if you want to guarantee the delivery of a message to a specific endpoint."
+> "Use the connection-based approach if you want to guarantee the delivery of a
+> message to a specific endpoint."
 
 ### Chrome (Chromium) - From Official Chrome Docs
 
-**Source:** [Message passing - Chrome for Developers](https://developer.chrome.com/docs/extensions/develop/concepts/messaging)
+**Source:**
+[Message passing - Chrome for Developers](https://developer.chrome.com/docs/extensions/develop/concepts/messaging)
 
 Direct Quote:
 
-> "Ports are designed as a two-way communication mechanism between different parts of an extension."
+> "Ports are designed as a two-way communication mechanism between different
+> parts of an extension."
 
-> "When part of an extension calls tabs.connect(), runtime.connect() or runtime.connectNative(), it creates a Port that can immediately send messages using postMessage()."
+> "When part of an extension calls tabs.connect(), runtime.connect() or
+> runtime.connectNative(), it creates a Port that can immediately send messages
+> using postMessage()."
 
 **Critical Quote on Ordering:**
 
-> "If there are multiple frames in a tab, calling tabs.connect() invokes the runtime.onConnect event once for each frame in the tab. Similarly, if runtime.connect() is called, then the onConnect event can fire once for every frame in the extension process."
+> "If there are multiple frames in a tab, calling tabs.connect() invokes the
+> runtime.onConnect event once for each frame in the tab. Similarly, if
+> runtime.connect() is called, then the onConnect event can fire once for every
+> frame in the extension process."
 
 This emphasizes that each port connection is **individual and ordered**.
 
@@ -163,7 +191,8 @@ From web standards and implementation details:
 3. **Messages are delivered in the order they were sent**
 4. **No message can "skip ahead" of previous messages on the same port**
 
-This is analogous to TCP/IP packet ordering at the network layer—messages are sequenced and guaranteed in-order delivery.
+This is analogous to TCP/IP packet ordering at the network layer—messages are
+sequenced and guaranteed in-order delivery.
 
 ---
 
@@ -242,20 +271,20 @@ Risk: ZERO (guaranteed by spec)
 ```javascript
 // Step 1: Create a persistent connection
 const port = browser.runtime.connect({
-  name: 'adoption-channel'  // Named channel for identification
-})
+  name: 'adoption-channel' // Named channel for identification
+});
 
 // Step 2: Set up listener for responses
-port.onMessage.addListener((message) => {
-  console.log('Received from background:', message)
+port.onMessage.addListener(message => {
+  console.log('Received from background:', message);
   // Process response
-})
+});
 
 // Step 3: Set up disconnect listener
 port.onDisconnect.addListener(() => {
-  console.log('Port disconnected!')
+  console.log('Port disconnected!');
   // Cleanup, try to reconnect, etc.
-})
+});
 ```
 
 **What Happens Behind Scenes:**
@@ -273,36 +302,36 @@ port.onDisconnect.addListener(() => {
 
 ```javascript
 // Step 1: Listen for incoming connections
-browser.runtime.onConnect.addListener((port) => {
-  console.log('Connection received from:', port.name)
-  
+browser.runtime.onConnect.addListener(port => {
+  console.log('Connection received from:', port.name);
+
   // Step 2: Verify it's the expected connection
   if (port.name !== 'adoption-channel') {
-    return  // Ignore other ports
+    return; // Ignore other ports
   }
-  
+
   // Step 3: Store port for later use
-  adoptionPort = port
-  
+  adoptionPort = port;
+
   // Step 4: Set up listener for messages
-  port.onMessage.addListener((message) => {
-    console.log('Received message:', message.type)
-    handleAdoptionMessage(message)
-  })
-  
+  port.onMessage.addListener(message => {
+    console.log('Received message:', message.type);
+    handleAdoptionMessage(message);
+  });
+
   // Step 5: Set up disconnect listener
   port.onDisconnect.addListener(() => {
-    console.log('Port disconnected')
-    adoptionPort = null  // Cleanup
+    console.log('Port disconnected');
+    adoptionPort = null; // Cleanup
     // Optionally attempt to reconnect
-  })
-  
+  });
+
   // Step 6: Confirm connection is ready
   port.postMessage({
     type: 'CONNECTION_READY',
     timestamp: Date.now()
-  })
-})
+  });
+});
 ```
 
 ### 3. Sending Messages (The Adoption Flow)
@@ -311,16 +340,16 @@ browser.runtime.onConnect.addListener((port) => {
 
 ```javascript
 async function handleAdoption(message) {
-  const { adoptedTabId, newOriginTabId } = message
-  
+  const { adoptedTabId, newOriginTabId } = message;
+
   // 1. Perform adoption logic
-  const adoptionResult = await performAdoption(adoptedTabId, newOriginTabId)
-  
+  const adoptionResult = await performAdoption(adoptedTabId, newOriginTabId);
+
   // 2. Write to storage
   await browser.storage.local.set({
     [`qt-${adoptedTabId}`]: adoptionResult.updatedQuickTab
-  })
-  
+  });
+
   // 3. **CRITICAL**: Send explicit port notification IMMEDIATELY
   // Don't wait for storage.onChanged listener
   if (adoptionPort && adoptionPort.onDisconnect !== undefined) {
@@ -332,15 +361,15 @@ async function handleAdoption(message) {
       oldOriginTabId: adoptionResult.oldOriginTabId,
       zIndexIncrement: adoptionResult.zIndexIncrement,
       timestamp: Date.now()
-    })
-    
+    });
+
     console.log('[ADOPTION] Port notification sent', {
       adoptedTabId,
       newOriginTabId,
       timestamp: Date.now()
-    })
+    });
   } else {
-    console.error('[ADOPTION] Port not available for notification')
+    console.error('[ADOPTION] Port not available for notification');
   }
 }
 ```
@@ -353,66 +382,66 @@ async function handleAdoption(message) {
 // Setup: Establish connection to background
 const backgroundPort = browser.runtime.connect({
   name: 'adoption-channel'
-})
+});
 
 // Handler: Receive adoption notifications
-backgroundPort.onMessage.addListener((message) => {
-  console.log('[MANAGER] Received port message:', message.type)
-  
+backgroundPort.onMessage.addListener(message => {
+  console.log('[MANAGER] Received port message:', message.type);
+
   if (message.type === 'ADOPTION_COMPLETED') {
-    handleAdoptionCompletion(message)
+    handleAdoptionCompletion(message);
   } else if (message.type === 'CONNECTION_READY') {
-    console.log('[MANAGER] Background confirmed connection ready')
-    setManagerReady(true)
+    console.log('[MANAGER] Background confirmed connection ready');
+    setManagerReady(true);
   }
-})
+});
 
 // Logic: Handle adoption completion
 async function handleAdoptionCompletion(data) {
-  const { adoptedQuickTabId, oldOriginTabId, newOriginTabId } = data
-  
+  const { adoptedQuickTabId, oldOriginTabId, newOriginTabId } = data;
+
   console.log('[MANAGER] Adoption received, re-rendering...', {
     adoptedId: adoptedQuickTabId,
     oldSection: oldOriginTabId,
     newSection: newOriginTabId
-  })
-  
+  });
+
   // 1. Invalidate storage cache immediately
   // (bypass polling delay)
-  invalidateQuickTabStateCache()
-  
+  invalidateQuickTabStateCache();
+
   // 2. Reload storage (will reflect adoption immediately)
-  const updatedState = await loadQuickTabsState()
-  
+  const updatedState = await loadQuickTabsState();
+
   // 3. Render only affected sections (not entire UI)
   const oldTabQuickTabs = updatedState.tabs.filter(
     tab => tab.originTabId === oldOriginTabId
-  )
+  );
   const newTabQuickTabs = updatedState.tabs.filter(
     tab => tab.originTabId === newOriginTabId
-  )
-  
+  );
+
   // 4. Update DOM
-  renderQuickTabsForTab(oldOriginTabId, oldTabQuickTabs)
-  renderQuickTabsForTab(newOriginTabId, newTabQuickTabs)
-  
+  renderQuickTabsForTab(oldOriginTabId, oldTabQuickTabs);
+  renderQuickTabsForTab(newOriginTabId, newTabQuickTabs);
+
   console.log('[MANAGER] Adoption UI updated successfully', {
     adoptedId: adoptedQuickTabId,
     timestamp: Date.now()
-  })
+  });
 }
 
 // Disconnect handler
 backgroundPort.onDisconnect.addListener(() => {
-  console.warn('[MANAGER] Port disconnected from background')
-  setManagerReady(false)
-  
+  console.warn('[MANAGER] Port disconnected from background');
+  setManagerReady(false);
+
   // Optional: Attempt to reconnect after delay
   setTimeout(() => {
-    console.log('[MANAGER] Attempting to reconnect...')
-    attemptReconnection()
-  }, 2000)
-})
+    console.log('[MANAGER] Attempting to reconnect...');
+    attemptReconnection();
+  }, 2000);
+});
 ```
 
 ---
@@ -425,33 +454,34 @@ backgroundPort.onDisconnect.addListener(() => {
 
 ```javascript
 // Background Script
-const port = browser.runtime.connect({name: 'test'})
-port.postMessage({data: 'hello'})  // Sent before receiver ready!
+const port = browser.runtime.connect({ name: 'test' });
+port.postMessage({ data: 'hello' }); // Sent before receiver ready!
 
 // Content Script (hasn't loaded yet or listener not ready)
-browser.runtime.onConnect.addListener((port) => {
+browser.runtime.onConnect.addListener(port => {
   // May never receive the message sent above!
-})
+});
 ```
 
-**Why It Fails:** Message sent before receiver's `onConnect` listener is established.
+**Why It Fails:** Message sent before receiver's `onConnect` listener is
+established.
 
 **Solution:** Wait for receiver readiness or use heartbeat.
 
 ```javascript
 // Background Script
-const port = browser.runtime.connect({name: 'test'})
+const port = browser.runtime.connect({ name: 'test' });
 
 // Wait for acknowledgment before sending critical messages
-port.onMessage.addListener((msg) => {
+port.onMessage.addListener(msg => {
   if (msg.type === 'CONNECTION_READY') {
     // NOW safe to send critical data
-    port.postMessage({data: 'adoption', type: 'ADOPTION_COMPLETED'})
+    port.postMessage({ data: 'adoption', type: 'ADOPTION_COMPLETED' });
   }
-})
+});
 
 // Request receiver to confirm ready
-port.postMessage({type: 'PING'})
+port.postMessage({ type: 'PING' });
 ```
 
 ### Failure #2: Sending on Disconnected Port
@@ -461,8 +491,8 @@ port.postMessage({type: 'PING'})
 ```javascript
 // Attempting to send after port is dead
 try {
-  adoptionPort.postMessage({type: 'ADOPTION_COMPLETED'})
-} catch(e) {
+  adoptionPort.postMessage({ type: 'ADOPTION_COMPLETED' });
+} catch (e) {
   // Port was disconnected but no error!
   // In Firefox, this silently fails without throwing
 }
@@ -475,21 +505,21 @@ try {
 ```javascript
 function sendAdoptionNotification(data) {
   if (!adoptionPort) {
-    console.error('Port not established')
-    return false
+    console.error('Port not established');
+    return false;
   }
-  
+
   try {
     adoptionPort.postMessage({
       type: 'ADOPTION_COMPLETED',
       ...data
-    })
-    console.log('Adoption message sent via port')
-    return true
+    });
+    console.log('Adoption message sent via port');
+    return true;
   } catch (error) {
-    console.error('Failed to send via port:', error)
+    console.error('Failed to send via port:', error);
     // Attempt to reconnect or use fallback
-    return false
+    return false;
   }
 }
 ```
@@ -507,49 +537,50 @@ T0+200ms: Content script loads `browser.runtime.onConnect` listener
 But adoption message sent at T0+150ms is missed!
 ```
 
-**Why It Fails:** Port connection happens at different times across tab lifecycle.
+**Why It Fails:** Port connection happens at different times across tab
+lifecycle.
 
 **Solution:** Use heartbeat pattern.
 
 ```javascript
 // Background Script - Establish port with retry
-let adoptionPort = null
+let adoptionPort = null;
 
 function ensurePortConnection() {
-  if (adoptionPort) return Promise.resolve(adoptionPort)
-  
-  return new Promise((resolve) => {
+  if (adoptionPort) return Promise.resolve(adoptionPort);
+
+  return new Promise(resolve => {
     const attemptConnect = () => {
-      adoptionPort = browser.runtime.connect({name: 'adoption'})
-      
-      adoptionPort.onMessage.addListener((msg) => {
+      adoptionPort = browser.runtime.connect({ name: 'adoption' });
+
+      adoptionPort.onMessage.addListener(msg => {
         if (msg.type === 'CONNECTION_ACK') {
-          console.log('Port established and ready')
-          resolve(adoptionPort)
+          console.log('Port established and ready');
+          resolve(adoptionPort);
         }
-      })
-      
+      });
+
       adoptionPort.onDisconnect.addListener(() => {
-        console.log('Port disconnected, will retry')
-        adoptionPort = null
-        setTimeout(attemptConnect, 1000)  // Retry every second
-      })
-      
+        console.log('Port disconnected, will retry');
+        adoptionPort = null;
+        setTimeout(attemptConnect, 1000); // Retry every second
+      });
+
       // Send ping to check readiness
-      adoptionPort.postMessage({type: 'PING'})
-    }
-    
-    attemptConnect()
-  })
+      adoptionPort.postMessage({ type: 'PING' });
+    };
+
+    attemptConnect();
+  });
 }
 
 // Use before sending adoption messages
 async function sendAdoptionSafely(data) {
-  await ensurePortConnection()
+  await ensurePortConnection();
   adoptionPort.postMessage({
     type: 'ADOPTION_COMPLETED',
     ...data
-  })
+  });
 }
 ```
 
@@ -562,23 +593,23 @@ async function sendAdoptionSafely(data) {
 **Solution:** Check sender (modern Firefox handles this, but be defensive).
 
 ```javascript
-browser.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'adoption-channel') return
-  
+browser.runtime.onConnect.addListener(port => {
+  if (port.name !== 'adoption-channel') return;
+
   port.onMessage.addListener((message, sender) => {
     // Defensive check (shouldn't be needed in Firefox 51+)
     if (sender && sender.url) {
       // Verify it's not from same context
       if (sender.url === browser.runtime.getURL('background.js')) {
-        console.warn('Ignoring message from self')
-        return
+        console.warn('Ignoring message from self');
+        return;
       }
     }
-    
+
     // Process message safely
-    handleAdoptionMessage(message)
-  })
-})
+    handleAdoptionMessage(message);
+  });
+});
 ```
 
 ### Failure #5: Not Cleaning Up Ports
@@ -588,7 +619,7 @@ browser.runtime.onConnect.addListener((port) => {
 ```javascript
 // Ports created but never closed, accumulating
 for (let i = 0; i < 100; i++) {
-  const port = browser.runtime.connect({name: 'temp'})
+  const port = browser.runtime.connect({ name: 'temp' });
   // Port left hanging, never disconnected
 }
 ```
@@ -601,68 +632,70 @@ for (let i = 0; i < 100; i++) {
 // Proper cleanup pattern
 class PortManager {
   constructor() {
-    this.ports = new Map()
+    this.ports = new Map();
   }
-  
+
   connect(name) {
     if (this.ports.has(name)) {
-      return this.ports.get(name)
+      return this.ports.get(name);
     }
-    
-    const port = browser.runtime.connect({name})
-    
+
+    const port = browser.runtime.connect({ name });
+
     port.onDisconnect.addListener(() => {
-      console.log(`Port ${name} disconnected, cleaning up`)
-      this.ports.delete(name)
-    })
-    
-    this.ports.set(name, port)
-    return port
+      console.log(`Port ${name} disconnected, cleaning up`);
+      this.ports.delete(name);
+    });
+
+    this.ports.set(name, port);
+    return port;
   }
-  
+
   disconnect(name) {
     if (this.ports.has(name)) {
-      this.ports.get(name).disconnect()
-      this.ports.delete(name)
+      this.ports.get(name).disconnect();
+      this.ports.delete(name);
     }
   }
-  
+
   disconnectAll() {
     for (const [name, port] of this.ports) {
       try {
-        port.disconnect()
+        port.disconnect();
       } catch (e) {
-        console.warn(`Failed to disconnect ${name}:`, e)
+        console.warn(`Failed to disconnect ${name}:`, e);
       }
     }
-    this.ports.clear()
+    this.ports.clear();
   }
 }
 
 // Usage
-const portManager = new PortManager()
-const adoptionPort = portManager.connect('adoption-channel')
+const portManager = new PortManager();
+const adoptionPort = portManager.connect('adoption-channel');
 
 // On cleanup
-portManager.disconnectAll()
+portManager.disconnectAll();
 ```
 
 ---
 
 ## Why Previous Attempts May Have Failed
 
-Based on the diagnostic logs and architecture analysis, here are likely reasons past port implementations didn't work:
+Based on the diagnostic logs and architecture analysis, here are likely reasons
+past port implementations didn't work:
 
 ### Possible Reason #1: Port Not Re-established After Content Script Reload
 
-When page reloads, content script is reinjected but background script persists. If the old port reference is kept:
+When page reloads, content script is reinjected but background script persists.
+If the old port reference is kept:
 
 ```javascript
 // ❌ BAD: Old port becomes invalid after tab reload
-let managerPort = browser.runtime.connect({name: 'manager'})
+let managerPort = browser.runtime.connect({ name: 'manager' });
 // ... if tab reloads, port is now dead
 // ... but code doesn't know this
-managerPort.postMessage({type: 'UPDATE'})  // Silently fails
+managerPort.postMessage({ type: 'UPDATE' }); // Silently fails
 ```
 
 **Fix:**
@@ -671,15 +704,16 @@ managerPort.postMessage({type: 'UPDATE'})  // Silently fails
 // ✅ GOOD: Establish new port on each tab load
 window.addEventListener('load', () => {
   // Reconnect after page load
-  if (managerPort) managerPort.disconnect()
-  managerPort = browser.runtime.connect({name: 'manager'})
-  setupPortListeners()
-})
+  if (managerPort) managerPort.disconnect();
+  managerPort = browser.runtime.connect({ name: 'manager' });
+  setupPortListeners();
+});
 ```
 
 ### Possible Reason #2: Port Connected But Manager Listener Not Ready
 
-Background sends adoption notification before Manager's `onMessage` listener is attached:
+Background sends adoption notification before Manager's `onMessage` listener is
+attached:
 
 ```javascript
 // ❌ BAD: Race condition
@@ -697,21 +731,21 @@ adoptionPort.onMessage.addListener(...)  // Misses message at T0
 // ✅ GOOD: Attach listener BEFORE any possibility of messages
 function setupManager() {
   // Step 1: Establish port
-  const port = browser.runtime.connect({name: 'adoption'})
-  
+  const port = browser.runtime.connect({ name: 'adoption' });
+
   // Step 2: IMMEDIATELY attach listener (before anything else)
-  port.onMessage.addListener((message) => {
+  port.onMessage.addListener(message => {
     if (message.type === 'ADOPTION_COMPLETED') {
-      handleAdoptionCompletion(message)
+      handleAdoptionCompletion(message);
     }
-  })
-  
+  });
+
   // Step 3: Only AFTER listener ready, notify background
-  port.postMessage({type: 'MANAGER_READY'})
+  port.postMessage({ type: 'MANAGER_READY' });
 }
 
 // Call this EARLY in page load, not after DOM parsing
-setupManager()
+setupManager();
 ```
 
 ### Possible Reason #3: Port Stored in Sidebar But Content Script Connects
@@ -721,17 +755,17 @@ If Manager is in sidebar and content script is on page:
 ```javascript
 // ❌ BAD: Mixing contexts
 // Sidebar manager:
-const port = browser.runtime.connect({name: 'adoption'})
+const port = browser.runtime.connect({ name: 'adoption' });
 
 // Background listening for:
-browser.runtime.onConnect.addListener((port) => {
+browser.runtime.onConnect.addListener(port => {
   if (port.name === 'adoption') {
     // But manager might be in sidebar, not content script!
   }
-})
+});
 
 // Content script tries to send:
-browser.runtime.sendMessage({type: 'ADOPTION'})  // Different protocol!
+browser.runtime.sendMessage({ type: 'ADOPTION' }); // Different protocol!
 ```
 
 **Fix:**
@@ -739,23 +773,23 @@ browser.runtime.sendMessage({type: 'ADOPTION'})  // Different protocol!
 ```javascript
 // ✅ GOOD: Use consistent protocol everywhere
 // Background:
-browser.runtime.onConnect.addListener((port) => {
+browser.runtime.onConnect.addListener(port => {
   if (port.name === 'adoption') {
-    adoptionPort = port  // Works for sidebar OR content script
-    
-    port.onMessage.addListener((message) => {
+    adoptionPort = port; // Works for sidebar OR content script
+
+    port.onMessage.addListener(message => {
       if (message.type === 'ADOPTION_COMPLETED') {
-        handleAdoption(message)
+        handleAdoption(message);
       }
-    })
+    });
   }
-})
+});
 
 // Both sidebar AND content script:
-const adoptionPort = browser.runtime.connect({name: 'adoption'})
-adoptionPort.onMessage.addListener((message) => {
+const adoptionPort = browser.runtime.connect({ name: 'adoption' });
+adoptionPort.onMessage.addListener(message => {
   // Both contexts receive messages on same port
-})
+});
 ```
 
 ---
@@ -764,7 +798,8 @@ adoptionPort.onMessage.addListener((message) => {
 
 ### Phase 1: Basic Port Connection
 
-- [ ] Background script has `browser.runtime.onConnect` listener ready BEFORE any tabs load
+- [ ] Background script has `browser.runtime.onConnect` listener ready BEFORE
+      any tabs load
 - [ ] Listener checks `port.name` to identify which port it is
 - [ ] Port stored in variable (e.g., `adoptionPort`) at module scope
 - [ ] Add `port.onDisconnect` listener for cleanup
@@ -789,7 +824,8 @@ adoptionPort.onMessage.addListener((message) => {
 
 ### Phase 4: Adoption-Specific Handling
 
-- [ ] After adoption storage write, immediately send port message (don't wait for storage event)
+- [ ] After adoption storage write, immediately send port message (don't wait
+      for storage event)
 - [ ] Manager receives ADOPTION_COMPLETED on port (not via polling)
 - [ ] Manager invalidates cache on port message (not just polling)
 - [ ] Manager schedules high-priority re-render (bypass debounce)
@@ -816,14 +852,21 @@ adoptionPort.onMessage.addListener((message) => {
 
 ## Why Past Implementations May Have Looked Like They Failed
 
-Even if previous attempts used ports, they might have looked like failures because:
+Even if previous attempts used ports, they might have looked like failures
+because:
 
-1. **Logging was missing** - No visible indication that port was sending/receiving adoption messages
-2. **Manager was still polling** - Even though port was working, polling happened in parallel, creating confusion
-3. **Race conditions still existed** - Port working but Manager cache invalidation logic was still race-prone
-4. **Adoption message format was wrong** - Port sending message but Manager not recognizing message type
-5. **Port lifecycle not managed** - Ports opened but not properly closed, leading to accumulation
-6. **Error handling silent** - Port failures went unlogged, looked like nothing happened
+1. **Logging was missing** - No visible indication that port was
+   sending/receiving adoption messages
+2. **Manager was still polling** - Even though port was working, polling
+   happened in parallel, creating confusion
+3. **Race conditions still existed** - Port working but Manager cache
+   invalidation logic was still race-prone
+4. **Adoption message format was wrong** - Port sending message but Manager not
+   recognizing message type
+5. **Port lifecycle not managed** - Ports opened but not properly closed,
+   leading to accumulation
+6. **Error handling silent** - Port failures went unlogged, looked like nothing
+   happened
 
 ---
 
@@ -836,12 +879,12 @@ Looking at your existing codebase:
 ```javascript
 function handlePortMessage(message) {
   logPortLifecycle('message', { type: message.type, action: message.action });
-  
+
   if (message.type === 'HEARTBEAT_ACK') {
     handleAcknowledgment(message);
     return;
   }
-  
+
   // ... more handlers
 }
 ```
@@ -867,29 +910,33 @@ function handlePortMessage(message) {
 // Step 1: Background sends adoption notification (1 line)
 adoptionPort.postMessage({
   type: 'ADOPTION_COMPLETED',
-  adoptedTabId, newOriginTabId
-})
+  adoptedTabId,
+  newOriginTabId
+});
 
 // Step 2: Manager handles adoption message (add to handlePortMessage)
 if (message.type === 'ADOPTION_COMPLETED') {
-  handleAdoptionCompletion(message)
-  return
+  handleAdoptionCompletion(message);
+  return;
 }
 
 // Step 3: Manager re-renders on adoption (3 lines)
 function handleAdoptionCompletion(data) {
-  invalidateQuickTabStateCache()
-  scheduleRender('adoption-completed')
+  invalidateQuickTabStateCache();
+  scheduleRender('adoption-completed');
 }
 ```
 
-**That's literally all that's needed.** The entire port infrastructure is already there.
+**That's literally all that's needed.** The entire port infrastructure is
+already there.
 
 ---
 
 ## Conclusion
 
-Port-based messaging **is not a new concept** in your extension—it's already being used successfully for heartbeats and other state updates. The adoption re-render just needs to be added to the existing port handler.
+Port-based messaging **is not a new concept** in your extension—it's already
+being used successfully for heartbeats and other state updates. The adoption
+re-render just needs to be added to the existing port handler.
 
 **Why it will work:**
 
@@ -907,4 +954,5 @@ Port-based messaging **is not a new concept** in your extension—it's already b
 4. Race conditions still in place despite port being ready
 5. Insufficient logging to debug what was happening
 
-**The solution:** Add adoption to the existing port message handling. It's ~5-10 lines of code addition to working infrastructure.
+**The solution:** Add adoption to the existing port message handling. It's ~5-10
+lines of code addition to working infrastructure.

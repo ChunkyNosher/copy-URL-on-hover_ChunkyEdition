@@ -74,8 +74,10 @@ const relevantMemories = await searchMemories({
 
 **v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
+- **Tab ID Initialization** - `currentBrowserTabId` fallback to background
+  script
+- **Storage Event Routing** - `_routeInitMessage()` →
+  `_handleStorageChangedEvent()`
 - **Response Format** - Background responses include `type` and `correlationId`
 - **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
 

@@ -12,6 +12,7 @@
  * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
  * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
  * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
+ * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation for all destruction operations
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
@@ -25,8 +26,9 @@
  * - Persist state to storage after destruction (debounced to prevent write storms)
  * - Log all destroy operations with source indication
  * - Prevent deletion loops via _destroyedIds tracking
+ * - Cross-tab ownership validation to prevent unauthorized deletions
  *
- * @version 1.6.3.7
+ * @version 1.6.3.10-v4
  */
 
 import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
@@ -54,14 +56,25 @@ export class DestroyHandler {
    * @param {Object} currentZIndex - Reference object with value property for z-index
    * @param {Object} Events - Events constants object
    * @param {number} baseZIndex - Base z-index value to reset to
+   * @param {number} currentTabId - Current browser tab ID (v1.6.3.10-v4)
    */
-  constructor(quickTabsMap, minimizedManager, eventBus, currentZIndex, Events, baseZIndex) {
+  constructor(
+    quickTabsMap,
+    minimizedManager,
+    eventBus,
+    currentZIndex,
+    Events,
+    baseZIndex,
+    currentTabId = null
+  ) {
     this.quickTabsMap = quickTabsMap;
     this.minimizedManager = minimizedManager;
     this.eventBus = eventBus;
     this.currentZIndex = currentZIndex;
     this.Events = Events;
     this.baseZIndex = baseZIndex;
+    // v1.6.3.10-v4 - FIX Issue #16: Add currentTabId for cross-tab validation
+    this.currentTabId = currentTabId;
 
     // v1.6.3.4-v5 - FIX Bug #8: Debounce timer for storage writes
     this._storageDebounceTimer = null;
@@ -82,6 +95,58 @@ export class DestroyHandler {
   }
 
   /**
+   * Check if a tabWindow is owned by the current tab
+   * v1.6.3.10-v4 - FIX Issue #16: Extracted for consistency with VisibilityHandler
+   * @private
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @returns {boolean} True if owned by current tab or ownership is unset
+   */
+  _isOwnedByCurrentTab(tabWindow) {
+    // If originTabId is not set, consider it owned (backwards compatibility)
+    if (tabWindow.originTabId === null || tabWindow.originTabId === undefined) {
+      return true;
+    }
+    // If currentTabId is not set, skip validation (Manager context)
+    if (!this.currentTabId) {
+      return true;
+    }
+    // Check if originTabId matches current tab
+    return tabWindow.originTabId === this.currentTabId;
+  }
+
+  /**
+   * Validate cross-tab ownership for destruction operations
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation helper
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Operation name for logging
+   * @param {string} source - Source of action
+   * @returns {{ valid: boolean, tabWindow?: Object }}
+   */
+  _validateCrossTabOwnership(id, operation, source = 'unknown') {
+    const tabWindow = this.quickTabsMap.get(id);
+    if (!tabWindow) {
+      return { valid: true, tabWindow: null }; // Let caller handle missing tab
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #16: Use shared ownership check
+    if (!this._isOwnedByCurrentTab(tabWindow)) {
+      console.warn(
+        `[DestroyHandler] CROSS-TAB BLOCKED: Cannot ${operation} Quick Tab from different tab:`,
+        {
+          id,
+          originTabId: tabWindow.originTabId,
+          currentTabId: this.currentTabId,
+          source
+        }
+      );
+      return { valid: false, tabWindow };
+    }
+
+    return { valid: true, tabWindow };
+  }
+
+  /**
    * Handle Quick Tab destruction
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
@@ -90,6 +155,7 @@ export class DestroyHandler {
    * v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
    * v1.6.3.4 - FIX Issues #4, #6, #7: Add source parameter, enhanced logging
    * v1.6.3.4-v10 - FIX Issue #6: Check batch Set membership instead of boolean flag
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
@@ -100,6 +166,12 @@ export class DestroyHandler {
     if (this._destroyedIds.has(id)) {
       console.log(`[DestroyHandler] SKIPPED: ID already destroyed (source: ${source}):`, id);
       return;
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation for deletion
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'destroy', source);
+    if (!ownershipValidation.valid) {
+      return; // Don't destroy - not owned by this tab
     }
 
     // v1.6.3.4 - FIX Issue #6: Log with source indication
@@ -296,12 +368,20 @@ export class DestroyHandler {
   /**
    * Close Quick Tab by ID (calls tab.destroy() method)
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', etc.)
    */
   closeById(id, source = 'Manager') {
     console.log(`[DestroyHandler] closeById called (source: ${source}):`, id);
+
+    // v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation for close
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'close', source);
+    if (!ownershipValidation.valid) {
+      return; // Don't close - not owned by this tab
+    }
+
     const tabWindow = this.quickTabsMap.get(id);
     if (tabWindow && tabWindow.destroy) {
       tabWindow.destroy();
@@ -316,6 +396,7 @@ export class DestroyHandler {
   /**
    * Unified entry point for Quick Tab destruction
    * v1.6.3.7 - FIX Issue #3: Unify UI and Manager deletion paths
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
    *
    * This method provides a single authoritative deletion path that both UI button
    * and Manager close button should use. It ensures:
@@ -338,6 +419,12 @@ export class DestroyHandler {
     if (this._destroyedIds.has(id)) {
       console.log('[DestroyHandler] initiateDestruction SKIPPED - already destroyed:', id);
       return;
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'initiateDestruction', source);
+    if (!ownershipValidation.valid) {
+      return; // Don't destroy - not owned by this tab
     }
 
     // Step 1: Local cleanup - handleDestroy handles Map, minimizedManager, DOM, and events

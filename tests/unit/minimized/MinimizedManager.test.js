@@ -60,11 +60,13 @@ describe('MinimizedManager', () => {
       // v1.6.3.4-v4 - Updated: Logs include snapshot details
       // v1.6.4 - Updated: Logs now include savedOriginTabId
       // v1.6.3.6-v8 - Updated: New log format with SNAPSHOT_CAPTURED prefix and wasRecoveredFromIdPattern
+      // v1.6.3.10-v4 - Updated: Include savedOriginContainerId for Firefox Multi-Account Container isolation
       expect(console.log).toHaveBeenCalledWith('[MinimizedManager] 📸 SNAPSHOT_CAPTURED:', {
         id: 'test-tab-1',
         savedPosition: { left: 100, top: 200 },
         savedSize: { width: 800, height: 600 },
         savedOriginTabId: undefined,
+        savedOriginContainerId: null,
         wasRecoveredFromIdPattern: false
       });
     });

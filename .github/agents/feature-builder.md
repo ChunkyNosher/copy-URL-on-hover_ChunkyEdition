@@ -60,49 +60,31 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.10-v4 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
 
-- **Simplified Init** - Manager reduced from ~8 state variables to 4
-- **Unified Barrier** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **Response Helper** - `_buildResponse()` for correlationId responses
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in handlers
+- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
+- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
+**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
 
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
+- `ADOPTION_COMPLETED` port message for Manager re-render
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
+**v1.6.3.10-v2 & Earlier (Consolidated):**
 
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Single Barrier Init** - Replaces multi-phase initialization
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-
-**v1.6.3.9 Features (Retained):**
-
-- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Handler Message Routing** - `_sendPositionChangedMessage()`,
-  `_sendMinimizeMessage()`
-- **Ownership Validation** - `_validateOwnership()` checks `originTabId`
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - `src/utils/structured-logger.js`
-
-**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
-messaging, simplified BFCache. idle timer
-
-- **Port Circuit Breaker** - closed→open→half-open with exponential backoff
-- **UI Performance** - Debounced renderUI (300ms), differential storage updates
+- Render debounce 100ms, circuit breaker 3s open, cache staleness 30s alert
+- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
+- Unified barrier init, dual architecture
 
 **Key Architecture Layers:**
 

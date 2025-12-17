@@ -141,6 +141,25 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
+// ==================== v1.6.3.10-v4 CONSTANTS ====================
+// FIX Issue #3/6: Firefox timeout recovery - transaction cleanup
+const TRANSACTION_TIMEOUT_MS = 30000; // 30s - matches Firefox background timeout
+const TRANSACTION_CLEANUP_INTERVAL_MS = 10000; // 10s - cleanup stale transactions
+// Map to track transaction start times: transactionId -> startTime
+const transactionStartTimes = new Map();
+
+// FIX Issue #7: State divergence detection - write retry timeout
+// Note: Reserved constant for future storage write retry sequence implementation
+const _STORAGE_WRITE_SEQUENCE_TIMEOUT_MS = 15000; // 15s max for entire retry sequence
+
+// FIX Enhancement #1 & #2: Scripting API fallback for messaging failures
+const MESSAGING_TIMEOUT_MS = 2000; // 2s timeout for messaging before fallback
+
+// FIX Issue #3/6: Background restart detection - track startup time
+const backgroundStartupTime = Date.now();
+// Note: Reserved constant for future restart tracking implementation
+const _backgroundRestartCount = 0; // Reserved for future use tracking restarts
+
 // ==================== v1.6.3.7 KEEPALIVE MECHANISM ====================
 // FIX Issue #1: Firefox 117+ Bug 1851373 - runtime.Port does NOT reset the idle timer
 // Use runtime.sendMessage periodically as it DOES reset the idle timer
@@ -154,14 +173,14 @@ function startKeepalive() {
   if (keepaliveIntervalId) {
     clearInterval(keepaliveIntervalId);
   }
-  
+
   // Immediate ping to register activity
   triggerIdleReset();
-  
+
   keepaliveIntervalId = setInterval(() => {
     triggerIdleReset();
   }, KEEPALIVE_INTERVAL_MS);
-  
+
   console.log('[Background] v1.6.3.7 Keepalive started (every', KEEPALIVE_INTERVAL_MS / 1000, 's)');
 }
 
@@ -173,7 +192,7 @@ async function triggerIdleReset() {
   try {
     // Method 1: browser.tabs.query triggers event handlers which reset idle timer
     const tabs = await browser.tabs.query({});
-    
+
     // Method 2: Self-send a message (this resets the idle timer)
     // Note: This will be caught by our own listener but that's fine
     try {
@@ -181,7 +200,7 @@ async function triggerIdleReset() {
     } catch (_err) {
       // Expected to fail if no listener, but the message send itself resets the timer
     }
-    
+
     console.log('[Background] KEEPALIVE: idle timer reset via tabs.query + sendMessage', {
       tabCount: tabs.length,
       timestamp: Date.now()
@@ -208,6 +227,256 @@ startKeepalive();
 
 // v1.6.3.10-v3 - Phase 2: Initialize Tab Lifecycle Handler
 tabLifecycleHandler.start();
+
+// ==================== v1.6.3.10-v4 TRANSACTION TIMEOUT CLEANUP ====================
+// FIX Issue #7: Clean up stale transactions that may have been abandoned due to Firefox timeout
+
+/**
+ * Track a new transaction with start time
+ * v1.6.3.10-v4 - FIX Issue #7: Track when transactions start for timeout cleanup
+ * Note: Exported API for use by storage write operations
+ * @param {string} transactionId - Transaction ID to track
+ */
+function _trackTransaction(transactionId) {
+  if (!transactionId) return;
+  IN_PROGRESS_TRANSACTIONS.add(transactionId);
+  transactionStartTimes.set(transactionId, Date.now());
+  console.log('[Background] v1.6.3.10-v4 Transaction tracked:', {
+    transactionId,
+    activeCount: IN_PROGRESS_TRANSACTIONS.size
+  });
+}
+
+/**
+ * Complete a transaction and remove from tracking
+ * v1.6.3.10-v4 - FIX Issue #7: Clean completion of transaction
+ * Note: Exported API for use by storage write operations
+ * @param {string} transactionId - Transaction ID to complete
+ */
+function _completeTransaction(transactionId) {
+  if (!transactionId) return;
+  IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+  transactionStartTimes.delete(transactionId);
+  console.log('[Background] v1.6.3.10-v4 Transaction completed:', {
+    transactionId,
+    remainingCount: IN_PROGRESS_TRANSACTIONS.size
+  });
+}
+
+/**
+ * Clean up stale transactions that have exceeded the timeout
+ * v1.6.3.10-v4 - FIX Issue #7: Prevent stale transactionIds from blocking deduplication
+ */
+function cleanupStaleTransactions() {
+  const now = Date.now();
+  const staleTransactions = [];
+
+  for (const [transactionId, startTime] of transactionStartTimes.entries()) {
+    if (now - startTime > TRANSACTION_TIMEOUT_MS) {
+      staleTransactions.push({ transactionId, startTime, ageMs: now - startTime });
+    }
+  }
+
+  if (staleTransactions.length > 0) {
+    console.warn('[Background] v1.6.3.10-v4 Cleaning up stale transactions:', {
+      count: staleTransactions.length,
+      transactions: staleTransactions
+    });
+
+    for (const { transactionId } of staleTransactions) {
+      IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+      transactionStartTimes.delete(transactionId);
+    }
+  }
+}
+
+// Start transaction cleanup interval
+const _transactionCleanupIntervalId = setInterval(
+  cleanupStaleTransactions,
+  TRANSACTION_CLEANUP_INTERVAL_MS
+);
+
+console.log(
+  '[Background] v1.6.3.10-v4 Transaction cleanup started (every',
+  TRANSACTION_CLEANUP_INTERVAL_MS / 1000,
+  's)'
+);
+
+// ==================== v1.6.3.10-v4 SCRIPTING API FALLBACK ====================
+// FIX Enhancement #1 & #2: Scripting API injection for atomic operations and timeout recovery
+
+/**
+ * Execute operation with messaging, falling back to Scripting API if messaging fails
+ * v1.6.3.10-v4 - FIX Enhancement #1 & #2: Atomic operations + timeout recovery
+ * Note: Exported API - call from EXECUTE_COMMAND handlers when messaging fails
+ * @param {number} tabId - Browser tab ID to execute operation in
+ * @param {string} operation - Operation type (e.g., 'RESTORE_QUICK_TAB', 'MINIMIZE_QUICK_TAB')
+ * @param {Object} params - Parameters for the operation
+ * @returns {Promise<Object>} Operation result
+ */
+async function _executeWithScriptingFallback(tabId, operation, params) {
+  const correlationId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  console.log('[Background] v1.6.3.10-v4 executeWithScriptingFallback:', {
+    tabId,
+    operation,
+    correlationId
+  });
+
+  try {
+    // Try messaging first (fast path)
+    const result = await Promise.race([
+      browser.tabs.sendMessage(tabId, { type: operation, ...params, correlationId }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Messaging timeout')), MESSAGING_TIMEOUT_MS)
+      )
+    ]);
+
+    console.log('[Background] v1.6.3.10-v4 Messaging succeeded:', {
+      operation,
+      correlationId,
+      result
+    });
+    return result;
+  } catch (err) {
+    // Messaging failed - fall back to Scripting API
+    console.log('[Background] v1.6.3.10-v4 Messaging failed, falling back to Scripting API:', {
+      operation,
+      error: err.message,
+      correlationId
+    });
+    return _executeViaScripting(tabId, operation, params, correlationId);
+  }
+}
+
+/**
+ * Execute operation via Scripting API injection
+ * v1.6.3.10-v4 - FIX Enhancement #2: Direct execution without messaging dependency
+ * @param {number} tabId - Browser tab ID
+ * @param {string} operation - Operation type
+ * @param {Object} params - Operation parameters
+ * @param {string} correlationId - Correlation ID for tracing
+ * @returns {Promise<Object>} Operation result
+ */
+async function _executeViaScripting(tabId, operation, params, correlationId) {
+  try {
+    const results = await browser.scripting.executeScript({
+      target: { tabId },
+      func: executeScriptedOperation,
+      args: [operation, params, correlationId]
+    });
+
+    const result = results[0]?.result;
+    console.log('[Background] v1.6.3.10-v4 Scripting API execution result:', {
+      operation,
+      correlationId,
+      result
+    });
+    return result || { success: false, error: 'No result from scripted execution' };
+  } catch (err) {
+    console.error('[Background] v1.6.3.10-v4 Scripting API failed:', {
+      operation,
+      error: err.message,
+      correlationId
+    });
+    return { success: false, error: err.message, fallbackFailed: true };
+  }
+}
+
+/**
+ * Scripted operation function injected into content script context
+ * v1.6.3.10-v4 - FIX Enhancement #1: Atomic execution in content script
+ * IMPORTANT: This function runs in the content script context via browser.scripting.executeScript
+ * It must be COMPLETELY SELF-CONTAINED - no external function references allowed!
+ * @param {string} operation - Operation type
+ * @param {Object} params - Operation parameters
+ * @param {string} correlationId - Correlation ID for tracing
+ * @returns {Object} Operation result
+ */
+function executeScriptedOperation(operation, params, correlationId) {
+  // Access the Quick Tabs manager from content script globals
+  // Validate structure to guard against tampering in content script context
+  const extension = window.CopyURLExtension;
+  if (
+    !extension ||
+    typeof extension !== 'object' ||
+    !extension.quickTabsManager ||
+    typeof extension.quickTabsManager !== 'object'
+  ) {
+    return { success: false, error: 'QuickTabsManager not available', correlationId };
+  }
+
+  const manager = extension.quickTabsManager;
+  const quickTabId = params.quickTabId;
+
+  console.log('[Content-Injected] v1.6.3.10-v4 Executing scripted operation:', {
+    operation,
+    quickTabId,
+    correlationId
+  });
+
+  // Self-contained handler lookup (must be inline, not external function)
+  const executeOperation = () => {
+    switch (operation) {
+      case 'RESTORE_QUICK_TAB':
+        if (!manager.restoreById) return false;
+        manager.restoreById(quickTabId, 'scripting-fallback');
+        return true;
+
+      case 'MINIMIZE_QUICK_TAB':
+        if (!manager.minimizeById) return false;
+        manager.minimizeById(quickTabId, 'scripting-fallback');
+        return true;
+
+      case 'CLOSE_QUICK_TAB':
+        if (!manager.closeById) return false;
+        manager.closeById(quickTabId);
+        return true;
+
+      case 'FOCUS_QUICK_TAB':
+        if (!manager.visibilityHandler?.handleFocus) return false;
+        manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
+        return true;
+
+      default:
+        return null; // Unknown operation
+    }
+  };
+
+  try {
+    const result = executeOperation();
+
+    if (result === null) {
+      return { success: false, error: `Unknown operation: ${operation}`, correlationId };
+    }
+
+    if (result) {
+      return { success: true, operation, quickTabId, correlationId };
+    }
+
+    return { success: false, error: 'Handler not available', correlationId };
+  } catch (err) {
+    return { success: false, error: err.message, correlationId };
+  }
+}
+
+// ==================== v1.6.3.10-v4 BACKGROUND RESTART DETECTION ====================
+// FIX Issue #3/6: Notify content scripts of background restart for port reconnection
+
+/**
+ * Get background script startup info for port handshake
+ * v1.6.3.10-v4 - FIX Issue #3/6: Background restart detection
+ * @returns {Object} Startup info
+ */
+function getBackgroundStartupInfo() {
+  return {
+    startupTime: backgroundStartupTime,
+    restartCount: _backgroundRestartCount,
+    uptime: Date.now() - backgroundStartupTime
+  };
+}
+
+// ==================== END v1.6.3.10-v4 ADDITIONS ====================
 
 /**
  * Valid URL protocols for Quick Tab creation
@@ -448,10 +717,14 @@ async function initializeGlobalState() {
     if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
       initializationRetryCount++;
       const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
-      console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+      console.log(
+        `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
+      );
       setTimeout(() => initializeGlobalState(), backoffMs);
     } else {
-      console.error('[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state');
+      console.error(
+        '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
+      );
       // Fall back to empty state after max retries
       globalQuickTabState.tabs = [];
       globalQuickTabState.lastUpdate = Date.now();
@@ -1979,6 +2252,15 @@ function _logStorageChange(oldValue, newValue) {
   const oldCount = _getTabCount(oldValue);
   const newCount = _getTabCount(newValue);
 
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for storage changes
+  console.log('[Background][Storage] CHANGE_RECEIVED: Storage change event detected', {
+    key: 'quick_tabs_state_v2',
+    hasOldValue: !!oldValue,
+    hasNewValue: !!newValue,
+    tabCountBefore: oldCount,
+    tabCountAfter: newCount
+  });
+
   console.log('[Background] ┌─ storage.onChanged RECEIVED ─────────────────────────');
   console.log('[Background] │ tabs:', oldCount, '→', newCount);
   console.log(
@@ -2024,6 +2306,16 @@ function _logCorruptionWarning(oldCount, newCount) {
 function _shouldIgnoreStorageChange(newValue, oldValue) {
   // v1.6.3.6-v12 - FIX Issue #3: Multi-method deduplication in priority order
   const dedupResult = _multiMethodDeduplication(newValue, oldValue);
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for deduplication
+  console.log('[Background][Storage] DEDUP_CHECK: Evaluating deduplication', {
+    method: dedupResult.method,
+    saveId: newValue?.saveId,
+    transactionId: newValue?.transactionId,
+    contentHash: _computeQuickTabContentKey(newValue) || 'N/A',
+    result: dedupResult.shouldSkip ? 'SKIP' : 'PROCESS'
+  });
+
   if (dedupResult.shouldSkip) {
     console.log('[Background] v1.6.3.6-v12 Storage change SKIPPED:', {
       method: dedupResult.method,
@@ -2325,6 +2617,13 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
 function _processStorageUpdate(newValue) {
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
+    console.log('[Background][Storage] BROADCAST_DECISION:', {
+      decision: 'SKIP',
+      reason: 'tabs empty or missing - clearing cache instead',
+      targetTabCount: 0,
+      filteredCount: 0
+    });
     _clearCacheForEmptyStorage(newValue);
     return;
   }
@@ -2335,11 +2634,27 @@ function _processStorageUpdate(newValue) {
 
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
+    console.log('[Background][Storage] BROADCAST_DECISION:', {
+      decision: 'SKIP',
+      reason: 'state unchanged (same hash and saveId)',
+      targetTabCount: newValue?.tabs?.length ?? 0,
+      filteredCount: 0
+    });
     return;
   }
 
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
+  const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
+  console.log('[Background][Storage] BROADCAST_DECISION:', {
+    decision: 'UPDATE_CACHE',
+    reason: 'proceeding with cache update (tabs sync via storage.onChanged)',
+    targetTabCount: filteredValue.tabs?.length ?? 0,
+    filteredCount: filteredCount
+  });
 
   // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
   // Each tab handles its own sync via storage.onChanged listener in StorageManager
@@ -2895,6 +3210,21 @@ function handlePortConnect(port) {
   // Store portId on the port for later reference
   port._portId = portId;
 
+  // v1.6.3.10-v4 - FIX Issue #3/6: Send background startup info for restart detection
+  // This allows content scripts to detect if background was restarted and re-sync state
+  try {
+    port.postMessage({
+      type: 'BACKGROUND_HANDSHAKE',
+      ...getBackgroundStartupInfo(),
+      portId,
+      tabId,
+      timestamp: Date.now()
+    });
+    console.log('[Background] v1.6.3.10-v4 Sent BACKGROUND_HANDSHAKE to port:', { portId, origin });
+  } catch (err) {
+    console.warn('[Background] v1.6.3.10-v4 Failed to send handshake:', err.message);
+  }
+
   // Handle messages from this port
   port.onMessage.addListener(message => {
     handlePortMessage(port, portId, message);
@@ -2990,6 +3320,16 @@ function routePortMessage(message, portInfo) {
     case 'REQUEST_FULL_STATE_SYNC':
       return handleFullStateSyncRequest(message, portInfo);
 
+    // v1.6.3.10-v4 - FIX Issue #3/6: Handle background info request for restart detection
+    case 'GET_BACKGROUND_INFO':
+      return Promise.resolve({
+        success: true,
+        type: 'BACKGROUND_INFO',
+        ...getBackgroundStartupInfo(),
+        isInitialized,
+        timestamp: Date.now()
+      });
+
     default:
       // Fallback to action-based routing for backwards compatibility
       if (action) {
@@ -3003,6 +3343,7 @@ function routePortMessage(message, portInfo) {
 /**
  * Handle HEARTBEAT message to keep background script alive
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat mechanism prevents Firefox 30s termination
+ * v1.6.3.10-v4 - FIX Issue #3/6: Include background startup info for restart detection
  * @param {Object} message - Heartbeat message
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Heartbeat acknowledgment
@@ -3025,6 +3366,7 @@ function handleHeartbeat(message, portInfo) {
     isInitialized
   });
 
+  // v1.6.3.10-v4 - FIX Issue #3/6: Include startup info for restart detection
   return Promise.resolve({
     success: true,
     type: 'HEARTBEAT_ACK',
@@ -3032,7 +3374,8 @@ function handleHeartbeat(message, portInfo) {
     timestamp: now,
     latencyMs,
     backgroundAlive: true,
-    isInitialized
+    isInitialized,
+    ...getBackgroundStartupInfo()
   });
 }
 
@@ -3433,8 +3776,8 @@ async function handleCloseMinimizedTabsCommand() {
   }
 
   // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(tab =>
-    tab.minimized === true || tab.visibility?.minimized === true
+  const minimizedTabs = globalQuickTabState.tabs.filter(
+    tab => tab.minimized === true || tab.visibility?.minimized === true
   );
 
   if (minimizedTabs.length === 0) {
@@ -3453,8 +3796,8 @@ async function handleCloseMinimizedTabsCommand() {
   await _broadcastCloseManyToAllTabs(closedIds);
 
   // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab =>
-    !(tab.minimized === true || tab.visibility?.minimized === true)
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
+    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
   );
   globalQuickTabState.lastUpdate = Date.now();
 
@@ -3517,13 +3860,15 @@ async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
  */
 function _sendCloseMessageToTabs(tabs, quickTabId) {
   for (const tab of tabs) {
-    browser.tabs.sendMessage(tab.id, {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      source: 'background-command'
-    }).catch(() => {
-      // Content script may not be loaded
-    });
+    browser.tabs
+      .sendMessage(tab.id, {
+        action: 'CLOSE_QUICK_TAB',
+        quickTabId,
+        source: 'background-command'
+      })
+      .catch(() => {
+        // Content script may not be loaded
+      });
   }
 }
 
@@ -3538,12 +3883,17 @@ async function writeStateWithVerificationAndRetry(operation) {
   let backoffMs = STORAGE_WRITE_BACKOFF_INITIAL_MS;
 
   for (let attempt = 1; attempt <= STORAGE_WRITE_MAX_RETRIES; attempt++) {
-    const result = await _attemptStorageWriteWithVerification(operation, saveId, attempt, backoffMs);
-    
+    const result = await _attemptStorageWriteWithVerification(
+      operation,
+      saveId,
+      attempt,
+      backoffMs
+    );
+
     if (result.success && result.verified) {
       return result;
     }
-    
+
     if (result.needsRetry && attempt < STORAGE_WRITE_MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, backoffMs));
       backoffMs *= 2; // Exponential backoff
@@ -3578,7 +3928,13 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite(operation, saveId, stateToWrite.tabs.length, attempt, backoffMs);
+    return await _verifyStorageWrite(
+      operation,
+      saveId,
+      stateToWrite.tabs.length,
+      attempt,
+      backoffMs
+    );
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -3604,13 +3960,16 @@ async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoff
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
-    operation,
-    expectedSaveId: saveId,
-    actualSaveId: readBack?.saveId,
-    backoffMs
-  });
-  
+  console.warn(
+    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
+    {
+      operation,
+      expectedSaveId: saveId,
+      actualSaveId: readBack?.saveId,
+      backoffMs
+    }
+  );
+
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -4228,9 +4587,7 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     const tabs = await browser.tabs.query({});
 
     // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
-    const pendingTabs = new Set(
-      tabs.filter(t => t.id !== excludeTabId).map(t => t.id)
-    );
+    const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
 
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);

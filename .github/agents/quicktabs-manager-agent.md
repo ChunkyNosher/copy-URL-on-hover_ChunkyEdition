@@ -62,12 +62,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Modules (v1.6.3.10-v2):**
 
-| Module                             | Purpose                        |
-| ---------------------------------- | ------------------------------ |
-| `src/constants.js`                 | Centralized constants (+v10)   |
-| `sidebar/manager-state-handler.js` | Manager Pattern C actions      |
-| `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder  |
-| `src/storage/schema-v2.js`         | Pure state utilities           |
+| Module                             | Purpose                       |
+| ---------------------------------- | ----------------------------- |
+| `src/constants.js`                 | Centralized constants (+v10)  |
+| `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
+| `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
+| `src/storage/schema-v2.js`         | Pure state utilities          |
 
 ---
 
@@ -97,5 +97,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.10-v2 render/circuit breaker/cache
-fixes, scheduleRender() with revision dedup, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.10-v2 render/circuit
+breaker/cache fixes, scheduleRender() with revision dedup, MANAGER pattern
+actions.**

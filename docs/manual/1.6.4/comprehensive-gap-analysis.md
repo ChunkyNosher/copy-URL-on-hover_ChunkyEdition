@@ -2,23 +2,34 @@
 
 **Document Status:** Complete Architecture Gap Assessment  
 **Analysis Date:** December 16, 2025  
-**Scope:** compare-URL-on-hover_ChunkyEdition repository structure against ROBUST-QUICKTABS-ARCHITECTURE.md and supporting specification documents  
+**Scope:** compare-URL-on-hover_ChunkyEdition repository structure against
+ROBUST-QUICKTABS-ARCHITECTURE.md and supporting specification documents  
 **Target Audience:** GitHub Copilot Coding Agent + Development Team
 
 ---
 
 ## EXECUTIVE SUMMARY
 
-Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against the proposed simplified architecture reveals **critical misalignment** between current implementation and proposed design. The current codebase has accumulated significant technical debt through multiple iteration cycles focusing on band-aid fixes rather than architectural improvements.
+Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against
+the proposed simplified architecture reveals **critical misalignment** between
+current implementation and proposed design. The current codebase has accumulated
+significant technical debt through multiple iteration cycles focusing on
+band-aid fixes rather than architectural improvements.
 
 ### Key Findings
 
-- **Massive Feature Creep:** Current background.js is **~10,000+ lines** vs proposed **<2,000 lines**
-- **Dead Code**: Significant deprecated/unused functions still consuming resources
-- **Port Infrastructure:** v1.6.3.8-v12 claims port removal but extensive port-related code remains
-- **Sidebar Complexity:** quick-tabs-manager.js (~8,000+ lines) vs proposed streamlined version
-- **Specification Adherence:** State structure spec not fully implemented in current codebase
-- **Firefox API Limitations:** Issues 7-13 (from canvas source content) not properly addressed
+- **Massive Feature Creep:** Current background.js is **~10,000+ lines** vs
+  proposed **<2,000 lines**
+- **Dead Code**: Significant deprecated/unused functions still consuming
+  resources
+- **Port Infrastructure:** v1.6.3.8-v12 claims port removal but extensive
+  port-related code remains
+- **Sidebar Complexity:** quick-tabs-manager.js (~8,000+ lines) vs proposed
+  streamlined version
+- **Specification Adherence:** State structure spec not fully implemented in
+  current codebase
+- **Firefox API Limitations:** Issues 7-13 (from canvas source content) not
+  properly addressed
 
 ---
 
@@ -30,11 +41,13 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
 
 **File Size:** ~10,000+ lines (309KB)  
 **Version:** v1.6.3.9-v6 / v1.6.4.14  
-**Architecture:** Multi-layered with port infrastructure, complex dedup, quota monitoring
+**Architecture:** Multi-layered with port infrastructure, complex dedup, quota
+monitoring
 
 **Current Components (NOT in proposed spec):**
 
-1. **Dead Code from Port Infrastructure (300+ lines marked for deletion in v1.6.3.8-v12)**
+1. **Dead Code from Port Infrastructure (300+ lines marked for deletion in
+   v1.6.3.8-v12)**
    - `_sendAlivePingToPort()` - Marked deleted in v1.6.3.8-v12 but may persist
    - Port registry functions
    - Port message batching logic
@@ -53,7 +66,8 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
    - `dedupStatsHistory` array with 5-minute buckets
    - Rate-limited logging with sampling
    - `_calculateAvgSkipRate()`, `_logDedupStats()`, etc.
-   - **Proposed Spec:** Not detailed - current implementation appears to exceed requirements
+   - **Proposed Spec:** Not detailed - current implementation appears to exceed
+     requirements
 
 4. **Keepalive Health Reporting (200+ lines)**
    - `_startKeepaliveHealthReport()` with 60s interval
@@ -91,9 +105,11 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
 **Required Components:**
 
 1. ✅ **Core State Management**
-   - `globalQuickTabState` object with `version`, `lastModified`, `isInitialized`, `tabs`
+   - `globalQuickTabState` object with `version`, `lastModified`,
+     `isInitialized`, `tabs`
    - State persistence via `_persistToStorage()`
-   - **Current:** Present but has additional tracking fields (`saveId`, `lastUpdate` alias, `lastBroadcastedStateHash`)
+   - **Current:** Present but has additional tracking fields (`saveId`,
+     `lastUpdate` alias, `lastBroadcastedStateHash`)
 
 2. ✅ **Message Handlers**
    - `browser.runtime.onMessage.addListener()`
@@ -104,28 +120,31 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
    - Checksum validation (`_computeStateChecksum()`)
    - Write validation (`validateStorageWrite()`)
    - Basic recovery (`_triggerCorruptionRecovery()`)
-   - **Current:** Present BUT with excessive complexity (validation context objects, per-check extractors, etc.)
+   - **Current:** Present BUT with excessive complexity (validation context
+     objects, per-check extractors, etc.)
 
 4. ✅ **Keepalive Mechanism**
    - `startKeepalive()` with simple interval
    - `triggerIdleReset()` with tabs.query + runtime.sendMessage
-   - **Current:** Present BUT with extensive health tracking, rate-limited logging, consecutive failure counting
+   - **Current:** Present BUT with extensive health tracking, rate-limited
+     logging, consecutive failure counting
 
 5. ❌ **Port Infrastructure**
    - **Should be:** REMOVED completely
-   - **Current Status:** CLAIMED removed in v1.6.3.8-v12 but uncertain if fully deleted
+   - **Current Status:** CLAIMED removed in v1.6.3.8-v12 but uncertain if fully
+     deleted
 
 #### Gaps Identified
 
-| Gap ID | Component | Current | Proposed | Issue |
-|--------|-----------|---------|----------|-------|
-| **GAP-1** | Port Infrastructure | 500+ lines claimed removed | 0 lines | Cleanup incomplete or falsely reported |
-| **GAP-2** | Quota Monitoring | 200+ lines active | Not specified | Over-engineered, not in requirements |
-| **GAP-3** | Dedup Statistics | 150+ lines with history | Basic stats only | Excessive tracking/logging |
-| **GAP-4** | Keepalive Health Reporting | 200+ lines | Basic keepalive only | Over-instrumented |
-| **GAP-5** | Initialization Complexity | 150+ lines with phases | Simple barrier pattern | Outdated multi-phase pattern |
-| **GAP-6** | Phase 3A Optimization | 100+ lines new code | Not mentioned | Scope creep - added without spec |
-| **GAP-7** | Recovery Strategies | 300+ lines elaborate | Simple recovery | Complexity creep from Issue #4 |
+| Gap ID    | Component                  | Current                    | Proposed               | Issue                                  |
+| --------- | -------------------------- | -------------------------- | ---------------------- | -------------------------------------- |
+| **GAP-1** | Port Infrastructure        | 500+ lines claimed removed | 0 lines                | Cleanup incomplete or falsely reported |
+| **GAP-2** | Quota Monitoring           | 200+ lines active          | Not specified          | Over-engineered, not in requirements   |
+| **GAP-3** | Dedup Statistics           | 150+ lines with history    | Basic stats only       | Excessive tracking/logging             |
+| **GAP-4** | Keepalive Health Reporting | 200+ lines                 | Basic keepalive only   | Over-instrumented                      |
+| **GAP-5** | Initialization Complexity  | 150+ lines with phases     | Simple barrier pattern | Outdated multi-phase pattern           |
+| **GAP-6** | Phase 3A Optimization      | 100+ lines new code        | Not mentioned          | Scope creep - added without spec       |
+| **GAP-7** | Recovery Strategies        | 300+ lines elaborate       | Simple recovery        | Complexity creep from Issue #4         |
 
 ---
 
@@ -134,7 +153,8 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
 #### Current State
 
 **File Size:** ~8,000+ lines (348KB)  
-**Architecture:** Port-based communication + storage listener + multi-layer dedup
+**Architecture:** Port-based communication + storage listener + multi-layer
+dedup
 
 **Current Components (NOT in proposed spec):**
 
@@ -206,7 +226,8 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
    - `_renderQueue` array
    - `scheduleRender()` with debounce
    - `_processRenderQueue()` serialization
-   - **Current:** Present BUT with stall detection, corruption validation, size limits, recovery logic
+   - **Current:** Present BUT with stall detection, corruption validation, size
+     limits, recovery logic
 
 3. ✅ **State Validation Guards**
    - Revision checking
@@ -221,15 +242,15 @@ Analysis of the current production codebase (v1.6.3.9-v6 / v1.6.4.14) against th
 
 #### Gaps Identified
 
-| Gap ID | Component | Current Lines | Proposed Lines | Ratio | Issue |
-|--------|-----------|----------------|-----------------|-------|-------|
-| **GAP-8** | Port Connection | 500+ | 0 | 500 lines over | Should be deleted per v1.6.3.8-v12 removal |
-| **GAP-9** | Initialization | 400+ | ~50 | 8x over | Multi-phase should become simple barrier |
-| **GAP-10** | Deduplication | 250+ | ~30 | 8x over | Multi-layer dedup should become single revision check |
-| **GAP-11** | Render Stall Detection | 100+ | 0 | 100 lines over | Not in requirements, causes complexity |
-| **GAP-12** | Render Corruption Validation | 80+ | 0 | 80 lines over | Not in requirements |
-| **GAP-13** | Storage Probes | 150+ | 0 | 150 lines over | Not in requirements, causes complexity |
-| **GAP-14** | Heartbeat Mechanism | 100+ | 0 | 100 lines over | Not in requirements, port removal related |
+| Gap ID     | Component                    | Current Lines | Proposed Lines | Ratio          | Issue                                                 |
+| ---------- | ---------------------------- | ------------- | -------------- | -------------- | ----------------------------------------------------- |
+| **GAP-8**  | Port Connection              | 500+          | 0              | 500 lines over | Should be deleted per v1.6.3.8-v12 removal            |
+| **GAP-9**  | Initialization               | 400+          | ~50            | 8x over        | Multi-phase should become simple barrier              |
+| **GAP-10** | Deduplication                | 250+          | ~30            | 8x over        | Multi-layer dedup should become single revision check |
+| **GAP-11** | Render Stall Detection       | 100+          | 0              | 100 lines over | Not in requirements, causes complexity                |
+| **GAP-12** | Render Corruption Validation | 80+           | 0              | 80 lines over  | Not in requirements                                   |
+| **GAP-13** | Storage Probes               | 150+          | 0              | 150 lines over | Not in requirements, causes complexity                |
+| **GAP-14** | Heartbeat Mechanism          | 100+          | 0              | 100 lines over | Not in requirements, port removal related             |
 
 ---
 
@@ -244,8 +265,8 @@ const globalQuickTabState = {
   version: 2,
   tabs: [],
   lastModified: 0,
-  lastUpdate: 0,           // ← NOT in spec (deprecated alias)
-  saveId: null,            // ← NOT in spec (tracking only)
+  lastUpdate: 0, // ← NOT in spec (deprecated alias)
+  saveId: null, // ← NOT in spec (tracking only)
   isInitialized: false
 };
 ```
@@ -253,9 +274,9 @@ const globalQuickTabState = {
 **Additional Tracking (NOT in spec):**
 
 ```javascript
-let lastBroadcastedStateHash = 0;  // ← Extra field
-let lastNonEmptyStateTimestamp = Date.now();  // ← Extra tracking
-let consecutiveZeroTabReads = 0;  // ← Extra tracking
+let lastBroadcastedStateHash = 0; // ← Extra field
+let lastNonEmptyStateTimestamp = Date.now(); // ← Extra tracking
+let consecutiveZeroTabReads = 0; // ← Extra tracking
 ```
 
 ### 2.2 Proposed Global State Object
@@ -303,14 +324,14 @@ const persistedState = {
 
 ### 2.4 Compliance Gap
 
-| Field | Spec | Current | Status |
-|-------|------|---------|--------|
-| `version` | ✅ Required | ✅ Present | OK |
-| `lastModified` | ✅ Required | ✅ Present | OK |
-| `isInitialized` | ✅ Required | ✅ Present | OK |
-| `tabs` | ✅ Required | ✅ Present | OK |
-| `lastUpdate` | ❌ NOT in spec | ⚠️ Present | **Alias for backwards compat - cleanup needed** |
-| `saveId` | ❌ NOT in spec | ⚠️ Present | **Tracking field - should be in persisted state only** |
+| Field                      | Spec           | Current    | Status                                                 |
+| -------------------------- | -------------- | ---------- | ------------------------------------------------------ |
+| `version`                  | ✅ Required    | ✅ Present | OK                                                     |
+| `lastModified`             | ✅ Required    | ✅ Present | OK                                                     |
+| `isInitialized`            | ✅ Required    | ✅ Present | OK                                                     |
+| `tabs`                     | ✅ Required    | ✅ Present | OK                                                     |
+| `lastUpdate`               | ❌ NOT in spec | ⚠️ Present | **Alias for backwards compat - cleanup needed**        |
+| `saveId`                   | ❌ NOT in spec | ⚠️ Present | **Tracking field - should be in persisted state only** |
 | `lastBroadcastedStateHash` | ❌ NOT in spec | ⚠️ Present | **Should not exist - violates single source of truth** |
 
 ---
@@ -346,6 +367,7 @@ const persistedState = {
 ```
 
 **Problems:**
+
 - Multiple communication paths = race conditions
 - Port infrastructure claims removal but still in use?
 - BroadcastChannel claim: "COMPLETELY REMOVED" but unclear if actually deleted
@@ -379,6 +401,7 @@ const persistedState = {
 ```
 
 **Advantages:**
+
 - Single message path (runtime.message) for commands
 - Single storage path (storage.onChanged) for state
 - Sidebar initialization via simple request/response
@@ -436,28 +459,33 @@ const persistedState = {
 
 ### Issues Referenced in Canvas Source Content
 
-**Canvas source document identifies 7 Firefox-specific API constraints NOT addressed in current codebase:**
+**Canvas source document identifies 7 Firefox-specific API constraints NOT
+addressed in current codebase:**
 
-| Issue | Component | Problem | Current Status | Spec Address |
-|-------|-----------|---------|-----------------|----------------|
-| **Issue 7** | Sidebar | Cannot identify tab context | Not addressed | Requires originTabId in writes |
-| **Issue 8** | Content Script | Init after DOMContentLoaded | Partially addressed | Should check readyState |
-| **Issue 9** | Storage Events | Arbitrary event ordering | Addressed via revision | But spec not fully followed |
-| **Issue 10** | Content Script | No tabs API access | Known limitation | Content scripts properly scoped |
-| **Issue 11** | Tabs API | onUpdated fires too early | Partially addressed | Should use ready handshake |
-| **Issue 12** | Background | 30s idle termination | Addressed via keepalive | But health tracking excessive |
-| **Issue 13** | Content Script | Navigation unloads script | Not addressed | Origin filtering needed |
+| Issue        | Component      | Problem                     | Current Status          | Spec Address                    |
+| ------------ | -------------- | --------------------------- | ----------------------- | ------------------------------- |
+| **Issue 7**  | Sidebar        | Cannot identify tab context | Not addressed           | Requires originTabId in writes  |
+| **Issue 8**  | Content Script | Init after DOMContentLoaded | Partially addressed     | Should check readyState         |
+| **Issue 9**  | Storage Events | Arbitrary event ordering    | Addressed via revision  | But spec not fully followed     |
+| **Issue 10** | Content Script | No tabs API access          | Known limitation        | Content scripts properly scoped |
+| **Issue 11** | Tabs API       | onUpdated fires too early   | Partially addressed     | Should use ready handshake      |
+| **Issue 12** | Background     | 30s idle termination        | Addressed via keepalive | But health tracking excessive   |
+| **Issue 13** | Content Script | Navigation unloads script   | Not addressed           | Origin filtering needed         |
 
 ### Specification Compliance Gaps
 
 **The proposed spec assumes these limitations are addressed:**
 
-1. ✅ **Monotonic revision versioning** - current implements but spec has simpler approach
+1. ✅ **Monotonic revision versioning** - current implements but spec has
+   simpler approach
 2. ✅ **Checksum validation** - current implements but spec simpler
-3. ✅ **State structure isolation** - spec requires, current partially implements
+3. ✅ **State structure isolation** - spec requires, current partially
+   implements
 4. ❌ **Origin filtering** - NOT mentioned in current code
-5. ❌ **Ready handshake for content scripts** - mentioned in canvas but not implemented
-6. ❌ **Cross-domain navigation handling** - mentioned in canvas but not addressed
+5. ❌ **Ready handshake for content scripts** - mentioned in canvas but not
+   implemented
+6. ❌ **Cross-domain navigation handling** - mentioned in canvas but not
+   addressed
 
 ---
 
@@ -477,17 +505,17 @@ const persistedState = {
 
 ### Implementation Coverage Analysis
 
-| Document | Spec Covered | Current Implementation | Gap |
-|----------|-------------|------------------------|-----|
-| Architecture | 95% | 60% | Port removal incomplete, optimization creep |
-| File Changes | 85% | 50% | Sidebar complexity not addressed, port persists |
-| State Structure | 90% | 70% | Extra fields, aliases, missing origin filtering |
-| Message Protocol | 95% | 80% | Port messages still mixed in |
-| Constants | 80% | 70% | Phase 3A constants added but not in spec |
-| Logging | 100% | 60% | Dedup stats excessive, health reporting over-detailed |
-| Testing | 0% | 0% | No test implementation started |
-| Migration | 0% | 0% | No migration code written |
-| Code Removal | 0% | 10% | Port infrastructure claims removal but unclear |
+| Document         | Spec Covered | Current Implementation | Gap                                                   |
+| ---------------- | ------------ | ---------------------- | ----------------------------------------------------- |
+| Architecture     | 95%          | 60%                    | Port removal incomplete, optimization creep           |
+| File Changes     | 85%          | 50%                    | Sidebar complexity not addressed, port persists       |
+| State Structure  | 90%          | 70%                    | Extra fields, aliases, missing origin filtering       |
+| Message Protocol | 95%          | 80%                    | Port messages still mixed in                          |
+| Constants        | 80%          | 70%                    | Phase 3A constants added but not in spec              |
+| Logging          | 100%         | 60%                    | Dedup stats excessive, health reporting over-detailed |
+| Testing          | 0%           | 0%                     | No test implementation started                        |
+| Migration        | 0%           | 0%                     | No migration code written                             |
+| Code Removal     | 0%           | 10%                    | Port infrastructure claims removal but unclear        |
 
 ---
 
@@ -495,17 +523,18 @@ const persistedState = {
 
 ### 6.1 Undocumented Firefox API Behaviors
 
-From Mozilla Developer Network and Firefox bug tracker (referenced in canvas source):
+From Mozilla Developer Network and Firefox bug tracker (referenced in canvas
+source):
 
-| Behavior | Documentation | Current Handling | Required Fix |
-|----------|---------------|------------------|----------------|
-| **storage.onChanged event ordering** | Not guaranteed (MDN) | Relies on revision versioning | ✅ Implemented but complex |
-| **Content script injection timing** | After document_idle (MDN) | Assumed in some code | ⚠️ Some edge cases not covered |
-| **Background script idle timeout** | 30 seconds (Firefox 117+, Bug 1851373) | Addressed via keepalive | ⚠️ Over-instrumented |
-| **Port message queueing** | Events buffered asynchronously | Assumed ordering | ❌ No ordering guarantee |
-| **Sidebar as special context** | Cannot access browser.tabs (MDN) | Acknowledged but partial workaround | ⚠️ Still tries tab queries in some paths |
-| **storage.sync quota** | 5KB per item, 100KB total | Not enforced in code | ❌ May silently fail |
-| **Session storage availability** | Firefox 115+ | Checked at runtime | ✅ Proper feature detection |
+| Behavior                             | Documentation                          | Current Handling                    | Required Fix                             |
+| ------------------------------------ | -------------------------------------- | ----------------------------------- | ---------------------------------------- |
+| **storage.onChanged event ordering** | Not guaranteed (MDN)                   | Relies on revision versioning       | ✅ Implemented but complex               |
+| **Content script injection timing**  | After document_idle (MDN)              | Assumed in some code                | ⚠️ Some edge cases not covered           |
+| **Background script idle timeout**   | 30 seconds (Firefox 117+, Bug 1851373) | Addressed via keepalive             | ⚠️ Over-instrumented                     |
+| **Port message queueing**            | Events buffered asynchronously         | Assumed ordering                    | ❌ No ordering guarantee                 |
+| **Sidebar as special context**       | Cannot access browser.tabs (MDN)       | Acknowledged but partial workaround | ⚠️ Still tries tab queries in some paths |
+| **storage.sync quota**               | 5KB per item, 100KB total              | Not enforced in code                | ❌ May silently fail                     |
+| **Session storage availability**     | Firefox 115+                           | Checked at runtime                  | ✅ Proper feature detection              |
 
 ### 6.2 Undocumented Current Behavior
 
@@ -544,8 +573,9 @@ From Mozilla Developer Network and Firefox bug tracker (referenced in canvas sou
 **Not documented in spec:**
 
 1. **Quick Tab ID format (currently implemented):**
+
    ```javascript
-   format: qt-{timestamp}-{randomId}
+   format: qt - { timestamp } - { randomId };
    // From state-data-structure-spec: qt-{timestamp}-{randomId}
    // ✅ Matches spec
    ```
@@ -610,18 +640,22 @@ From Mozilla Developer Network and Firefox bug tracker (referenced in canvas sou
 #### Sidebar Limitations
 
 **From MDN tabs.getCurrent():**
+
 > "Note: This function is only works in contexts where there is a browser tab."
 
 **Current Issue:**
+
 - Sidebar tries to identify source tab of storage events
 - Can't use browser.tabs API directly
 - Canvas doc Issue #7 identifies this as CRITICAL
 
 **Current Code:**
+
 - No workaround visible in quick-tabs-manager.js
 - Assumption that background coordinates instead
 
 **Fix Needed:**
+
 - Strictly implement sender identification in background
 - Never try tabs.query from sidebar
 - Pass originTabId in ALL storage writes
@@ -629,18 +663,23 @@ From Mozilla Developer Network and Firefox bug tracker (referenced in canvas sou
 #### Content Script API Restrictions
 
 **From MDN (Content Scripts):**
-> Content scripts "have access to a limited set of APIs" and "cannot access tabs, windows, alarms, webRequest"
+
+> Content scripts "have access to a limited set of APIs" and "cannot access
+> tabs, windows, alarms, webRequest"
 
 **Current Issue:**
+
 - Some code may assume content scripts can query tabs
 - Canvas doc Issue #10 identifies this as MEDIUM severity
 
 **Current Code:**
+
 - Background properly handles tab queries
 - Content scripts use runtime.sendMessage correctly
 - ✅ Appears proper
 
 **Fix Needed:**
+
 - Code review to ensure no content script tab access attempts
 
 ---
@@ -709,27 +748,27 @@ From Mozilla Developer Network and Firefox bug tracker (referenced in canvas sou
 
 ## SUMMARY TABLE: ALL GAPS
 
-| Gap | Category | Severity | Lines Over | Impact |
-|-----|----------|----------|------------|--------|
-| GAP-1 | Port Infrastructure | HIGH | 500+ | Cleanup incomplete |
-| GAP-2 | Quota Monitoring | MEDIUM | 200+ | Over-engineered |
-| GAP-3 | Dedup Statistics | MEDIUM | 150+ | Excessive tracking |
-| GAP-4 | Keepalive Health | MEDIUM | 200+ | Over-instrumented |
-| GAP-5 | Initialization Complexity | HIGH | 150+ | Multi-phase instead of simple |
-| GAP-6 | Phase 3A Code | MEDIUM | 100+ | Not in spec |
-| GAP-7 | Recovery Elaborate | MEDIUM | 300+ | More complex than spec |
-| GAP-8 | Sidebar Port Code | HIGH | 500+ | Should be deleted |
-| GAP-9 | Sidebar Init | HIGH | 400+ | Should be ~50 lines |
-| GAP-10 | Sidebar Dedup | HIGH | 250+ | Should be ~30 lines |
-| GAP-11 | Render Stall | MEDIUM | 100+ | Not needed |
-| GAP-12 | Render Validation | MEDIUM | 80+ | Not needed |
-| GAP-13 | Storage Probes | MEDIUM | 150+ | Not needed |
-| GAP-14 | Heartbeat | MEDIUM | 100+ | Should be deleted |
-| GAP-15 | Origin Filtering | HIGH | 0 | Missing implementation |
-| GAP-16 | Ready Handshake | HIGH | 0 | Missing implementation |
-| GAP-17 | Cross-Domain Handling | HIGH | 0 | Missing implementation |
-| GAP-18 | Migration Code | HIGH | 0 | Not implemented |
-| GAP-19 | Test Implementation | HIGH | 0 | Not implemented |
+| Gap    | Category                  | Severity | Lines Over | Impact                        |
+| ------ | ------------------------- | -------- | ---------- | ----------------------------- |
+| GAP-1  | Port Infrastructure       | HIGH     | 500+       | Cleanup incomplete            |
+| GAP-2  | Quota Monitoring          | MEDIUM   | 200+       | Over-engineered               |
+| GAP-3  | Dedup Statistics          | MEDIUM   | 150+       | Excessive tracking            |
+| GAP-4  | Keepalive Health          | MEDIUM   | 200+       | Over-instrumented             |
+| GAP-5  | Initialization Complexity | HIGH     | 150+       | Multi-phase instead of simple |
+| GAP-6  | Phase 3A Code             | MEDIUM   | 100+       | Not in spec                   |
+| GAP-7  | Recovery Elaborate        | MEDIUM   | 300+       | More complex than spec        |
+| GAP-8  | Sidebar Port Code         | HIGH     | 500+       | Should be deleted             |
+| GAP-9  | Sidebar Init              | HIGH     | 400+       | Should be ~50 lines           |
+| GAP-10 | Sidebar Dedup             | HIGH     | 250+       | Should be ~30 lines           |
+| GAP-11 | Render Stall              | MEDIUM   | 100+       | Not needed                    |
+| GAP-12 | Render Validation         | MEDIUM   | 80+        | Not needed                    |
+| GAP-13 | Storage Probes            | MEDIUM   | 150+       | Not needed                    |
+| GAP-14 | Heartbeat                 | MEDIUM   | 100+       | Should be deleted             |
+| GAP-15 | Origin Filtering          | HIGH     | 0          | Missing implementation        |
+| GAP-16 | Ready Handshake           | HIGH     | 0          | Missing implementation        |
+| GAP-17 | Cross-Domain Handling     | HIGH     | 0          | Missing implementation        |
+| GAP-18 | Migration Code            | HIGH     | 0          | Not implemented               |
+| GAP-19 | Test Implementation       | HIGH     | 0          | Not implemented               |
 
 ---
 
@@ -738,7 +777,7 @@ From Mozilla Developer Network and Firefox bug tracker (referenced in canvas sou
 ### Phase 1: Immediate Cleanup (High Priority)
 
 1. **Verify and complete port infrastructure removal**
-   - Confirm _sendAlivePingToPort() deleted
+   - Confirm \_sendAlivePingToPort() deleted
    - Check for any remaining port connection code
    - Ensure BroadcastChannel fully removed
 
@@ -802,16 +841,23 @@ From Mozilla Developer Network and Firefox bug tracker (referenced in canvas sou
 
 ## CONCLUSION
 
-The current implementation has diverged significantly from the proposed simplified architecture. While core functionality is present, there is substantial technical debt from multiple iteration cycles trying to fix issues with increasingly complex solutions. The proposed ROBUST-QUICKTABS-ARCHITECTURE represents a return to simplicity and correctness rather than a complete rewrite.
+The current implementation has diverged significantly from the proposed
+simplified architecture. While core functionality is present, there is
+substantial technical debt from multiple iteration cycles trying to fix issues
+with increasingly complex solutions. The proposed ROBUST-QUICKTABS-ARCHITECTURE
+represents a return to simplicity and correctness rather than a complete
+rewrite.
 
 **Estimated effort to align with proposed spec:** 40-60 hours  
-**Risk of proceeding without cleanup:** High - continued complexity creep with each bug fix  
-**Benefit of cleanup:** Reduced maintenance burden, clearer code, better Firefox API compatibility
+**Risk of proceeding without cleanup:** High - continued complexity creep with
+each bug fix  
+**Benefit of cleanup:** Reduced maintenance burden, clearer code, better Firefox
+API compatibility
 
 **Critical path items:**
+
 1. Complete port infrastructure removal (verify actual deletion)
 2. Implement origin filtering for Issue #13
 3. Add content script ready handshake for Issue #11
 4. Simplify initialization to barrier pattern
 5. Implement test suite for validation
-

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v2), unified barrier init, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.10-v4), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,26 +38,29 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v2 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v4 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
+**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
 
-- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
-- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
-- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
-- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
+  `_validateCrossTabOwnership()` in VisibilityHandler, DestroyHandler
+- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
+- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
+- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
+- **Mutex Tab Context** - `${operation}-${currentTabId}-${id}` lock format
 
-**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
+**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
 
-- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
-- Heartbeat 15s interval, 2s timeout
-- Message retry: 2 retries + 150ms backoff
+- `ADOPTION_COMPLETED` port message for Manager re-render
+- TabLifecycleHandler for browser tab lifecycle events
+- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
-**Key Modules (v1.6.3.10-v2):**
+**Key Modules (v1.6.3.10-v4):**
 
 | Module                                | Purpose                           |
 | ------------------------------------- | --------------------------------- |
-| `src/constants.js`                    | Centralized constants (+v10)      |
+| `src/constants.js`                    | Centralized constants (+v4)       |
 | `src/storage/storage-manager.js`      | Simplified persistence, checksum  |
 | `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
 | `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
@@ -66,7 +69,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ```javascript
 {
-  allQuickTabs: [{ id, originTabId, url, position, size, minimized, ... }],
+  allQuickTabs: [{ id, originTabId, originContainerId, url, position, size, minimized, ... }],
   correlationId: 'unique-id', timestamp: Date.now(), version: 2
 }
 ```
@@ -77,9 +80,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] storage.onChanged PRIMARY works (v1.6.3.10-v2)
-- [ ] Circuit breaker 3s open, 5s sliding window (v1.6.3.10-v2)
-- [ ] Cache staleness alert 30s (v1.6.3.10-v2)
+- [ ] Container isolation works (`originContainerId` filtering)
+- [ ] Cross-tab validation works (`_validateCrossTabOwnership()`)
+- [ ] Scripting API fallback works after 2s timeout
+- [ ] storage.onChanged PRIMARY works
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
@@ -89,5 +93,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.10-v2 render/circuit breaker/cache
-fixes, storage.onChanged PRIMARY.**
+**Your strength: Reliable cross-tab sync with v1.6.3.10-v4 container isolation,
+cross-tab validation, storage.onChanged PRIMARY.**

@@ -103,6 +103,7 @@ export class UICoordinator {
    * @param {Object} [handlers.updateHandler] - UpdateHandler for position/size callbacks
    * @param {Object} [handlers.visibilityHandler] - VisibilityHandler for focus/minimize callbacks
    * @param {Object} [handlers.destroyHandler] - DestroyHandler for close callback
+   * @param {string} [currentContainerId=null] - v1.6.3.10-v4 FIX Issue #13: Current Firefox container ID
    */
   constructor(
     stateManager,
@@ -110,7 +111,8 @@ export class UICoordinator {
     panelManager,
     eventBus,
     currentTabId = null,
-    handlers = {}
+    handlers = {},
+    currentContainerId = null
   ) {
     this.stateManager = stateManager;
     this.minimizedManager = minimizedManager;
@@ -118,6 +120,8 @@ export class UICoordinator {
     this.eventBus = eventBus;
     // v1.6.3.5-v8 - FIX Issue #1: Store current tab ID for cross-tab filtering
     this.currentTabId = currentTabId;
+    // v1.6.3.10-v4 - FIX Issue #13: Store current container ID for Firefox Multi-Account Container isolation
+    this.currentContainerId = currentContainerId;
     // v1.6.3.5-v8 - FIX Issue #10: Create log prefix with Tab ID for enhanced logging
     this._logPrefix = `[UICoordinator][Tab ${currentTabId ?? 'unknown'}]`;
     this.renderedTabs = new Map(); // id -> QuickTabWindow
@@ -671,9 +675,95 @@ export class UICoordinator {
    * @param {Object} quickTab - Quick Tab entity with originTabId property
    * @returns {boolean} True if Quick Tab should render on this tab
    */
-  _shouldRenderOnThisTab(quickTab) {
-    // If we don't know our tab ID, REJECT rendering to prevent cross-tab contamination
-    // v1.6.3.6-v6 - FIX: Changed from allowing to rejecting when currentTabId is null
+  /**
+   * Check if container IDs match (container isolation)
+   * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _shouldRenderOnThisTab complexity
+   * @private
+   * @param {Object} quickTab - Quick Tab entity
+   * @returns {boolean} True if container check passes (or not applicable)
+   */
+  _checkContainerIsolation(quickTab) {
+    const originContainerId = quickTab.originContainerId;
+
+    // If no container context was set, skip container check
+    if (originContainerId === null || originContainerId === undefined) {
+      return true;
+    }
+
+    // Get current container context (default to 'firefox-default' if not set)
+    const currentContainerId = this.currentContainerId ?? 'firefox-default';
+
+    if (originContainerId !== currentContainerId) {
+      console.log(
+        `${this._logPrefix} CONTAINER BLOCKED: Quick Tab belongs to different container:`,
+        {
+          id: quickTab.id,
+          originContainerId,
+          currentContainerId,
+          originTabId: quickTab.originTabId
+        }
+      );
+      return false;
+    }
+
+    console.log(`${this._logPrefix} Container check PASSED:`, {
+      id: quickTab.id,
+      originContainerId,
+      currentContainerId
+    });
+
+    return true;
+  }
+
+  /**
+   * Try to recover originTabId from Quick Tab ID pattern
+   * v1.6.3.10-v4 - FIX: Extract to reduce _shouldRenderOnThisTab complexity
+   * @private
+   * @param {Object} quickTab - Quick Tab entity
+   * @returns {boolean} True if recovery succeeded and tab should render, false to reject
+   */
+  _tryRecoverOriginTabId(quickTab) {
+    const extractedTabId = this._extractTabIdFromQuickTabId(quickTab.id);
+
+    console.log(`${this._logPrefix} RENDER RECOVERY - Attempting tab ID extraction:`, {
+      id: quickTab.id,
+      extractedTabId,
+      currentTabId: this.currentTabId,
+      willRecover: extractedTabId === this.currentTabId
+    });
+
+    if (extractedTabId === this.currentTabId) {
+      // Recovery successful: ID pattern matches current tab
+      quickTab.originTabId = extractedTabId;
+      console.log(`${this._logPrefix} RENDER RECOVERED - originTabId patched from ID pattern:`, {
+        id: quickTab.id,
+        patchedOriginTabId: extractedTabId
+      });
+      return true;
+    }
+
+    // Recovery failed
+    console.warn(
+      `${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`,
+      {
+        quickTabId: quickTab.id,
+        extractedTabId,
+        currentTabId: this.currentTabId,
+        url: quickTab.url,
+        reason: 'Orphaned Quick Tab - originTabId null and ID pattern does not match current tab'
+      }
+    );
+    return false;
+  }
+
+  /**
+   * Validate currentTabId is set for ownership check
+   * v1.6.3.10-v4 - FIX: Extract to reduce _shouldRenderOnThisTab complexity
+   * @private
+   * @param {Object} quickTab - Quick Tab entity
+   * @returns {boolean} True if currentTabId is valid, false to reject
+   */
+  _hasValidCurrentTabId(quickTab) {
     if (this.currentTabId === null || this.currentTabId === undefined) {
       console.warn(
         `${this._logPrefix} CROSS-TAB BLOCKED: No currentTabId set - cannot verify ownership:`,
@@ -685,64 +775,62 @@ export class UICoordinator {
       );
       return false;
     }
+    return true;
+  }
 
-    // If Quick Tab has no originTabId, try to recover from ID pattern
-    // v1.6.3.6-v7 - FIX Issue #2: Manager restore can lose originTabId during serialization
-    const originTabId = quickTab.originTabId;
-    if (originTabId === null || originTabId === undefined) {
-      const extractedTabId = this._extractTabIdFromQuickTabId(quickTab.id);
-
-      console.log(`${this._logPrefix} RENDER RECOVERY - Attempting tab ID extraction:`, {
+  /**
+   * Check if originTabId matches currentTabId
+   * v1.6.3.10-v4 - FIX: Extract to reduce _shouldRenderOnThisTab complexity
+   * @private
+   * @param {Object} quickTab - Quick Tab entity
+   * @returns {boolean} True if matches, false to reject
+   */
+  _checkOriginTabIdMatch(quickTab) {
+    const resolvedOriginTabId = quickTab.originTabId;
+    if (resolvedOriginTabId !== this.currentTabId) {
+      console.log(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab belongs to different tab:`, {
         id: quickTab.id,
-        extractedTabId,
-        currentTabId: this.currentTabId,
-        willRecover: extractedTabId === this.currentTabId
+        originTabId: resolvedOriginTabId,
+        currentTabId: this.currentTabId
       });
+      return false;
+    }
+    return true;
+  }
 
-      if (extractedTabId === this.currentTabId) {
-        // v1.6.3.6-v7 - Recovery successful: ID pattern matches current tab
-        // Patch the originTabId so subsequent operations have correct value
-        quickTab.originTabId = extractedTabId;
-        console.log(`${this._logPrefix} RENDER RECOVERED - originTabId patched from ID pattern:`, {
-          id: quickTab.id,
-          patchedOriginTabId: extractedTabId
-        });
-        return true;
-      }
-
-      // v1.6.3.6-v6 - FIX Cross-Tab State Contamination: Reject if recovery failed
-      console.warn(
-        `${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab has null/undefined originTabId - REJECTED:`,
-        {
-          quickTabId: quickTab.id,
-          originTabId,
-          extractedTabId,
-          currentTabId: this.currentTabId,
-          url: quickTab.url,
-          reason: 'Orphaned Quick Tab - originTabId null and ID pattern does not match current tab'
-        }
-      );
+  _shouldRenderOnThisTab(quickTab) {
+    // Validate currentTabId is set
+    if (!this._hasValidCurrentTabId(quickTab)) {
       return false;
     }
 
-    // Only render if this is the origin tab
-    const shouldRender = originTabId === this.currentTabId;
-
-    if (!shouldRender) {
-      console.log(`${this._logPrefix} CROSS-TAB BLOCKED: Quick Tab belongs to different tab:`, {
-        id: quickTab.id,
-        originTabId,
-        currentTabId: this.currentTabId
-      });
-    } else {
-      console.log(`${this._logPrefix} Cross-tab check PASSED:`, {
-        id: quickTab.id,
-        originTabId,
-        currentTabId: this.currentTabId
-      });
+    // If Quick Tab has no originTabId, try to recover from ID pattern
+    const originTabId = quickTab.originTabId;
+    if (originTabId === null || originTabId === undefined) {
+      if (!this._tryRecoverOriginTabId(quickTab)) {
+        return false;
+      }
     }
 
-    return shouldRender;
+    // Check if originTabId matches (after potential recovery)
+    if (!this._checkOriginTabIdMatch(quickTab)) {
+      return false;
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #13: Container isolation check
+    if (!this._checkContainerIsolation(quickTab)) {
+      return false;
+    }
+
+    console.log(`${this._logPrefix} Cross-tab check PASSED:`, {
+      id: quickTab.id,
+      originTabId: quickTab.originTabId,
+      currentTabId: this.currentTabId,
+      originContainerId: quickTab.originContainerId ?? 'not set',
+      currentContainerId: this.currentContainerId ?? 'not set'
+    });
+
+    return true;
   }
 
   /**

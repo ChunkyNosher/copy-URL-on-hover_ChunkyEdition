@@ -963,7 +963,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
 
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
-    
+
     // v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging
     console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
       transactionId,
@@ -980,7 +980,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
       suggestion:
         'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
     });
-    
+
     // v1.6.3.7 - FIX Issue #6: Log whether transaction should have matched
     console.warn('[StorageUtils] TRANSACTION_TIMEOUT diagnostic:', {
       transactionId,
@@ -994,7 +994,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
         'storage.onChanged listener not registered'
       ]
     });
-    
+
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
   }
   TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
@@ -1214,12 +1214,17 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {Object} Serialized tab data for storage
  */
-function serializeTabForStorage(tab, isMinimized) {
-  // v1.6.3.7 - FIX Issue #7: Log originTabId extraction
+/**
+ * Extract originTabId with fallback
+ * v1.6.3.10-v4 - FIX: Extract to reduce serializeTabForStorage complexity
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @returns {number|null} Extracted originTabId
+ */
+function _extractOriginTabId(tab) {
   const extractedOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
-  
-  // v1.6.3.7 - FIX Issue #7: Adoption flow logging - only log when originTabId is problematic (null)
-  // This prevents excessive logging in normal operation while still catching adoption failures
+
+  // Log when originTabId is problematic (null)
   if (extractedOriginTabId === null) {
     console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
       quickTabId: tab.id,
@@ -1230,6 +1235,31 @@ function serializeTabForStorage(tab, isMinimized) {
       result: 'null'
     });
   }
+
+  return extractedOriginTabId;
+}
+
+/**
+ * Serialize a single Quick Tab to storage format
+ * v1.6.3.4-v2 - FIX Bug #1: Extracted to reduce complexity
+ * v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
+ * v1.6.3.4 - FIX Issue #3: Include zIndex in serialized data for persistence
+ * v1.6.3.5-v2 - FIX Report 1 Issue #2: Include originTabId for cross-tab filtering
+ * v1.6.3.7 - FIX Issue #2, #7: Enhanced originTabId preservation with logging
+ *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
+ *   - Issue #7: Log originTabId extraction for debugging adoption data flow
+ * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
+ * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @param {boolean} isMinimized - Whether tab is minimized
+ * @returns {Object} Serialized tab data for storage
+ */
+function serializeTabForStorage(tab, isMinimized) {
+  const extractedOriginTabId = _extractOriginTabId(tab);
+
+  // v1.6.3.10-v4 - FIX Issue #13: Extract originContainerId for Firefox Multi-Account Container isolation
+  const extractedOriginContainerId = tab.originContainerId ?? tab.cookieStoreId ?? null;
 
   return {
     id: String(tab.id),
@@ -1265,7 +1295,9 @@ function serializeTabForStorage(tab, isMinimized) {
     mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
     // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
-    originTabId: extractedOriginTabId
+    originTabId: extractedOriginTabId,
+    // v1.6.3.10-v4 - FIX Issue #13: Track originating container ID for Firefox Multi-Account Container isolation
+    originContainerId: extractedOriginContainerId
   };
 }
 
