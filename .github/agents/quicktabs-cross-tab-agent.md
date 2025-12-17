@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v7), unified barrier init, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.10-v2), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,25 +38,26 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v2 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
+**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
 
-- **Log Capture** - Sidebar log buffer with GET_SIDEBAR_LOGS export
-- **Direct State Push** - PUSH_STATE_UPDATE bypasses storage.onChanged
-- **Error Notification** - ERROR_NOTIFICATION handler
-- **New Constants** - KEEPALIVE_INTERVAL_MS, STORAGE_WATCHDOG_TIMEOUT_MS
+- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
+- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
+- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
+- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
 
-**v1.6.3.9-v6 Features (Previous):**
+**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
 
-- Unified barrier init, render queue revision PRIMARY
-- `_buildResponse()` helper, centralized timing constants
+- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
+- Heartbeat 15s interval, 2s timeout
+- Message retry: 2 retries + 150ms backoff
 
-**Key Modules (v1.6.3.9-v7):**
+**Key Modules (v1.6.3.10-v2):**
 
 | Module                                | Purpose                           |
 | ------------------------------------- | --------------------------------- |
-| `src/constants.js`                    | Centralized constants (+v7)       |
+| `src/constants.js`                    | Centralized constants (+v10)      |
 | `src/storage/storage-manager.js`      | Simplified persistence, checksum  |
 | `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
 | `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
@@ -76,9 +77,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] storage.onChanged PRIMARY works (v1.6.3.9-v7)
-- [ ] PUSH_STATE_UPDATE direct push works (v1.6.3.9-v7)
-- [ ] GET_SIDEBAR_LOGS export works (v1.6.3.9-v7)
+- [ ] storage.onChanged PRIMARY works (v1.6.3.10-v2)
+- [ ] Circuit breaker 3s open, 5s sliding window (v1.6.3.10-v2)
+- [ ] Cache staleness alert 30s (v1.6.3.10-v2)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
@@ -88,5 +89,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.9-v7 logging,
-storage.onChanged PRIMARY, direct state push.**
+**Your strength: Reliable cross-tab sync with v1.6.3.10-v2 render/circuit breaker/cache
+fixes, storage.onChanged PRIMARY.**

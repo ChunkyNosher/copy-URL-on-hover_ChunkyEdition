@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.9-v7), unified barrier init, scheduleRender() with revision dedup,
+  (v1.6.3.10-v2), unified barrier init, scheduleRender() with revision dedup,
   single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v2 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -47,26 +47,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
+**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
 
-- **Log Capture** - SIDEBAR_LOG_BUFFER with safe JSON stringify
-- **Log Export API** - GET_SIDEBAR_LOGS, CLEAR_SIDEBAR_LOGS handlers
-- **Direct State Push** - PUSH_STATE_UPDATE bypasses storage.onChanged
-- **Error Notification** - ERROR_NOTIFICATION handler for background errors
+- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
+- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
+- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
+- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
 
-**v1.6.3.9-v6 Features (Previous):**
+**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
 
-- Unified barrier init, render queue revision PRIMARY, ~218 lines removed
-- `_routeRuntimeMessage()` with switch-based routing
+- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
+- Heartbeat 15s interval, 2s timeout
+- Message retry: 2 retries + 150ms backoff
 
-**Key Modules (v1.6.3.9-v7):**
+**Key Modules (v1.6.3.10-v2):**
 
-| Module                             | Purpose                       |
-| ---------------------------------- | ----------------------------- |
-| `src/constants.js`                 | Centralized constants (+v7)   |
-| `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
-| `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
-| `src/storage/schema-v2.js`         | Pure state utilities          |
+| Module                             | Purpose                        |
+| ---------------------------------- | ------------------------------ |
+| `src/constants.js`                 | Centralized constants (+v10)   |
+| `sidebar/manager-state-handler.js` | Manager Pattern C actions      |
+| `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder  |
+| `src/storage/schema-v2.js`         | Pure state utilities           |
 
 ---
 
@@ -83,9 +84,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Log capture works (SIDEBAR_LOG_BUFFER) (v1.6.3.9-v7)
-- [ ] GET_SIDEBAR_LOGS export works (v1.6.3.9-v7)
-- [ ] PUSH_STATE_UPDATE direct push works (v1.6.3.9-v7)
+- [ ] Render debounce 100ms base, 300ms max cap (v1.6.3.10-v2)
+- [ ] Circuit breaker 3s open, 5s sliding window (v1.6.3.10-v2)
+- [ ] Cache staleness alert 30s (v1.6.3.10-v2)
 - [ ] scheduleRender() works with revision dedup
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
@@ -96,5 +97,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.9-v7 logging infrastructure,
-scheduleRender() with revision dedup, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.10-v2 render/circuit breaker/cache
+fixes, scheduleRender() with revision dedup, MANAGER pattern actions.**
