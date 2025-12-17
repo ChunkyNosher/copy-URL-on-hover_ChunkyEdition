@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.9-v7.
+  documentation. Current version: v1.6.3.10-v2.
 tools: ['*']
 ---
 
@@ -69,19 +69,19 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.9-v7)
+## Current Extension State (v1.6.3.10-v2)
 
-### v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure
+### v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache Fixes
 
-- **GAP 1: Logging Capture** - Sidebar log capture with SIDEBAR_LOG_BUFFER
-- **GAP 2: Message Listener** - GET_SIDEBAR_LOGS, PUSH_STATE_UPDATE, etc.
-- **GAP 3: Centralized Constants** - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS
-- **GAP 6: Dead Code Removal** - ~259 lines removed (deprecated functions)
+- **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
+- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
+- **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
 
-### v1.6.3.9-v6 Features (Previous) - Sidebar & Background Cleanup
+### v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability
 
-- Unified barrier, render queue dedup, ~218 lines removed
-- `_buildResponse()` helper, centralized timing constants
+- **Issue 2: Port Lifecycle** - State machine (connected/zombie/reconnecting/dead)
+- **Issue 5: Heartbeat Timing** - 25s→15s interval, 5s→2s timeout
+- **Issue 6/7: Message Reliability** - 2 retries + 150ms backoff
 
 ### Architecture
 
@@ -94,8 +94,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.9-v7
-- [ ] **v1.6.3.9-v7:** Logging & message infrastructure documented
+- [ ] Version numbers match 1.6.3.10-v2
+- [ ] **v1.6.3.10-v2:** Render, circuit breaker, cache fixes documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -105,7 +105,7 @@ nothing.
 
 | Error                  | Fix                         |
 | ---------------------- | --------------------------- |
-| v1.6.3.9-v5 or earlier | Update to 1.6.3.9-v7        |
+| v1.6.3.9-v7 or earlier | Update to 1.6.3.10-v2       |
 | "Pin to Page"          | Use "Solo/Mute"             |
 | Direct storage writes  | Use Single Writer Authority |
 | BroadcastChannel refs  | REMOVE - BC DELETED in v6   |

@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.9-v7
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v2
   unified barrier init, storage.onChanged PRIMARY
 tools: ['*']
 ---
@@ -37,17 +37,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.9-v7 - Simplified Architecture
+**Version:** 1.6.3.10-v2 - Simplified Architecture
 
-**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
+**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
 
-- **CONTENT_SCRIPT_READY** - Ready handshake for reliable hydration
-- **CONTENT_SCRIPT_UNLOADING** - beforeunload save for state preservation
-- **CURRENT_ORIGIN tracking** - For cross-tab coordination
+- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
+- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
+- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
 
-**v1.6.3.9-v6 Features (Previous):**
+**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
 
-- Unified barrier init, `_buildResponse()` helper
+- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
+- Heartbeat 15s interval, 2s timeout
+- Message retry: 2 retries + 150ms backoff
 
 **Key Quick Tab Features:**
 
@@ -65,7 +67,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] CONTENT_SCRIPT_READY handshake works (v1.6.3.9-v7)
+- [ ] Render debounce 100ms base, 300ms max cap (v1.6.3.10-v2)
 - [ ] storage.onChanged PRIMARY works
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
@@ -75,5 +77,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.9-v7 ready handshake,
+**Your strength: Individual Quick Tab isolation with v1.6.3.10-v2 render fixes,
 storage.onChanged PRIMARY, and proper per-tab scoping.**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.9-v7  
+**Version:** 1.6.3.10-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -20,64 +20,50 @@ Tabs Manager
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Single Barrier Initialization** - Unified barrier with resolve-only semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Runtime.onMessage Secondary** - Direct state push from background (v7)
+- **Runtime.onMessage Secondary** - Direct state push from background
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.9-v7 Features (NEW) - Logging & Message Infrastructure:**
+**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache Fixes:**
 
-- **GAP 1: Logging Capture** - Sidebar log capture matching background.js pattern
-- **GAP 2: Message Listener** - Enhanced runtime.onMessage for state push/errors
-- **GAP 3: Centralized Constants** - `KEEPALIVE_INTERVAL_MS`, `RENDER_STALL_TIMEOUT_MS`, etc.
-- **GAP 4: Routing Refactor** - `_routeRuntimeMessage()` uses lookup table (CC 13→3)
-- **Log Export API** - `GET_SIDEBAR_LOGS`, `CLEAR_SIDEBAR_LOGS` message handlers
-- **Direct State Push** - `PUSH_STATE_UPDATE` bypasses storage.onChanged delay
+- **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
+- **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
+- **Issue 8: Cache Handling** - `lastCacheSyncFromStorage`, `cacheHydrationComplete` flag, 30s staleness alert
+- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
+- **Pending action queue** - Circuit breaker queues actions during open state
+
+**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
+
+- **Issue 2: Port Lifecycle** - State machine (connected/zombie/reconnecting/dead), 500ms zombie detection
+- **Issue 3: Storage Concurrency** - Storage batching constants
+- **Issue 5: Heartbeat Timing** - 25s→15s interval, 5s→2s timeout, adaptive ≤20s
+- **Issue 6: Port/Message Logging** - `logPortStateTransition()`, enhanced structured logging
+- **Issue 7: Messaging Reliability** - 2 retries + 150ms backoff, `_sendMessageWithRetry()`
+- **PORT_STATE enum** - `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
+
+**v1.6.3.9-v7 Features (Previous) - Logging & Message Infrastructure:**
+
+- **Logging Capture** - Sidebar log capture matching background.js pattern
+- **Message Listener** - Enhanced runtime.onMessage for state push/errors
+- **Centralized Constants** - `KEEPALIVE_INTERVAL_MS`, `RENDER_STALL_TIMEOUT_MS`, etc.
+- **Routing Refactor** - `_routeRuntimeMessage()` uses lookup table (CC 13→3)
 
 **v1.6.3.9-v6 Features (Previous) - Sidebar & Background Cleanup:**
 
-- **GAP 11: Simplified Init** - Manager reduced from ~8 state variables to 4
-- **GAP 13: Unified Barrier** - Single barrier with resolve-only semantics
-- **GAP 14: Render Queue Dedup** - Revision as PRIMARY over saveId
-- **GAP 15: Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **GAP 16: Unified Routing** - Enhanced `_routeRuntimeMessage()` with switch-based routing
-- **GAP 17: State Hash** - `stateHashAtQueue` field for render queue validation
-- **GAP 18: Lint Fixes** - 15+ unused import/variable warnings fixed
-- **GAP 20: Response Helper** - `_buildResponse()` for standardized correlationId responses
-- **Constants Centralized** - `WRITE_IGNORE_WINDOW_MS`, `STORAGE_CHANGE_COOLDOWN_MS` moved to `src/constants.js`
+- Unified barrier, render queue revision PRIMARY, ~218 lines removed
+- `_buildResponse()` helper for standardized correlationId responses
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
-
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background script
-- **Storage Event Routing** - `_routeInitMessage()` → `_handleStorageChangedEvent()`
-- **Adoption Flow Fallback** - Handles null `currentBrowserTabId` gracefully
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
-
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
-
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Centralized Constants** - `src/constants.js` expanded (+225 lines)
-- **Single Barrier Init** - Replaces multi-phase initialization
-- **Storage Health Check** - Fallback polling every 5s
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-- **Diagnostic Logging** - STORAGE*LISTENER*\*, STATE_SYNC_MECHANISM
-
-**v1.6.3.9-v2 Features (Retained):**
-
-- **Container Isolation** - `originContainerId` field, container-aware queries
-- **Tabs API Integration** - `src/background/tab-events.js` with 3 listeners
+**v1.6.3.9-v5 & Earlier (Retained):** Tab ID fallback, storage event routing,
+centralized constants, dual architecture (MessageRouter + message-handler),
+container isolation (`originContainerId`), tabs API events
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
 MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
 
 **Deprecated/Removed:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-runtime.Port (v12), complex init layers (v4), revision event buffering (v4),
-CONNECTION_STATE enum (v6), port lifecycle functions (v6)
+runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 
 ---
 
@@ -92,7 +78,7 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.9-v6)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.10-v2)
 
 **Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
@@ -100,7 +86,7 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 - `tabs.sendMessage()` - Background → Content script / Manager
 - `storage.onChanged` - **PRIMARY** sync mechanism for state updates
 - Storage health check fallback - Polling every 5s if listener fails
-- Unified barrier initialization - Resolve-only semantics (v1.6.3.9-v6)
+- Unified barrier initialization - Resolve-only semantics
 
 **Dual Architecture (Retained from v3):**
 
@@ -113,86 +99,89 @@ CONNECTION_STATE enum (v6), port lifecycle functions (v6)
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.9-v7: Logging & Message Infrastructure (NEW)
+### v1.6.3.10-v2: Render, Circuit Breaker & Cache (NEW)
 
-**Sidebar (quick-tabs-manager.js):**
+**Render Debounce (Issue 1):**
 
-- Log capture: `SIDEBAR_LOG_BUFFER` with console override (matching background.js)
-- Log export API: `getSidebarLogs()`, `clearSidebarLogs()`, `_exportSidebarLogs()`
-- Message handlers: `GET_SIDEBAR_LOGS`, `CLEAR_SIDEBAR_LOGS`
-- Direct state push: `PUSH_STATE_UPDATE` bypasses storage.onChanged
-- Error notifications: `ERROR_NOTIFICATION` handler
-- Init status query: `REQUEST_INIT_STATUS` handler
-- Refactored routing: `_runtimeMessageHandlers` lookup table (CC 13→3)
+- `RENDER_DEBOUNCE_MS` 300ms→100ms for faster updates
+- Sliding-window debounce with 300ms max cap (`RENDER_DEBOUNCE_MAX_WAIT_MS`)
+- Force current storage read on render
 
-**Constants (src/constants.js):**
+**Circuit Breaker (Issue 4):**
 
-- `KEEPALIVE_INTERVAL_MS` (25000ms) - moved from background.js
-- `RENDER_STALL_TIMEOUT_MS` (5000ms) - moved from sidebar
-- `RENDER_QUEUE_MAX_SIZE` (10) - moved from sidebar
-- `STORAGE_WATCHDOG_TIMEOUT_MS` (2000ms) - moved from sidebar
+- Open duration 10s→3s (`CIRCUIT_BREAKER_OPEN_DURATION_MS`)
+- Backoff max 10s→2s (`RECONNECT_BACKOFF_MAX_MS`)
+- 5s sliding window for failure counting (`CIRCUIT_BREAKER_SLIDING_WINDOW_MS`)
+- Pending action queue during open state
+- `FAILURE_REASON` enum: `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
 
-### v1.6.3.9-v6: Sidebar & Background Cleanup (Previous)
+**Cache Handling (Issue 8):**
 
-- Simplified init (4 state vars), unified barrier, ~218 lines removed
-- Render queue dedup: revision PRIMARY, `stateHashAtQueue` validation
-- `_buildResponse()` helper, centralized timing constants
+- `lastCacheSyncFromStorage` timestamp tracking
+- `cacheHydrationComplete` flag for hydration state
+- 30s staleness alert (`CACHE_STALENESS_ALERT_MS`)
+- Immediate reconciliation (no fallback)
 
-### v1.6.3.9-v5: Bug Fixes & Reliability (Previous)
+### v1.6.3.10-v1: Port Lifecycle & Reliability (Previous)
 
-- Tab ID fallback, storage event routing fix, response format fix
+- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
+- 500ms zombie detection timeout, `verifyPortViability()`
+- Heartbeat 25s→15s interval, 5s→2s timeout, adaptive ≤20s
+- Message retry: 2 retries + 150ms backoff, `_sendMessageWithRetry()`
+- `logPortStateTransition()` for enhanced logging
 
-### v1.6.3.9-v4: Simplified Architecture (Previous)
+### v1.6.3.9-v7 & Earlier (Consolidated)
 
-- `scheduleRender()` with revision dedup, `_computeStateChecksum()`
-- Storage health check (5s), orphan removal
-
-### v1.6.3.9-v3 & v2: Retained Features
-
-- **v3:** Dual architecture (MessageRouter + message-handler), diagnostic logging
-- **v2:** Container isolation (`originContainerId`), tabs API events
+- **v7:** Log capture, direct state push, `_runtimeMessageHandlers` lookup table
+- **v6:** Unified barrier, render queue revision PRIMARY, ~218 lines removed
+- **v5-v2:** Tab ID fallback, storage health check (5s), dual architecture, container isolation
 
 ---
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.9-v7 Patterns (Current)
+### v1.6.3.10-v2 Patterns (Current)
 
-- Log capture with `SIDEBAR_LOG_BUFFER`, O(1) message routing
-- Direct state push (`PUSH_STATE_UPDATE`), error/init notifications
-- New constants: `KEEPALIVE_INTERVAL_MS`, `RENDER_STALL_TIMEOUT_MS`
+- Sliding-window debounce (100ms base, 300ms max cap)
+- Circuit breaker 3s open duration, 2s max backoff, 5s sliding window
+- `FAILURE_REASON` enum for categorized failures
+- Cache staleness tracking with 30s alert, `cacheHydrationComplete` flag
 
-### v1.6.3.9-v6 Patterns (Previous)
+### v1.6.3.10-v1 Patterns (Previous)
 
-- Unified barrier init, render queue revision PRIMARY, state hash
-- `_buildResponse()` helper, centralized timing constants
+- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
+- Heartbeat 15s interval, 2s timeout, adaptive ≤20s
+- Message retry: 2 retries + 150ms backoff
+- Enhanced port/message logging with `logPortStateTransition()`
 
-### v1.6.3.9-v5 & Earlier Patterns
+### v1.6.3.9-v7 & Earlier Patterns
 
+- **v7:** Log capture, O(1) message routing, direct state push
+- **v6:** Unified barrier init, render queue revision PRIMARY
 - **v5:** Tab ID fallback, storage event routing fix
-- **v4:** Single barrier, storage.onChanged PRIMARY, render debounce
+- **v4:** Single barrier, storage.onChanged PRIMARY
 - **v3:** Dual architecture, diagnostic logging
 - **v2:** Container isolation
 
-### Key Timing Constants (v1.6.3.9-v7)
+### Key Timing Constants (v1.6.3.10-v2)
 
-| Constant                           | Value                 | Purpose                        |
-| ---------------------------------- | --------------------- | ------------------------------ |
-| `STORAGE_KEY`                      | 'quick_tabs_state_v2' | Storage key name               |
-| `INIT_BARRIER_TIMEOUT_MS`          | 10000                 | Unified barrier init timeout   |
-| `RENDER_QUEUE_DEBOUNCE_MS`         | 100                   | Render queue debounce          |
-| `MESSAGE_TIMEOUT_MS`               | 3000                  | runtime.sendMessage timeout    |
-| `STORAGE_HEALTH_CHECK_INTERVAL_MS` | 5000                  | Health check fallback interval |
-| `WRITE_IGNORE_WINDOW_MS`           | 100                   | Self-write detection window    |
-| `STORAGE_CHANGE_COOLDOWN_MS`       | 200                   | Storage change cooldown        |
-| `MAX_QUICK_TABS`                   | 100                   | Maximum Quick Tabs allowed     |
-| `QUICK_TAB_ID_PREFIX`              | 'qt-'                 | Quick Tab ID prefix            |
-| `ORPHAN_CLEANUP_INTERVAL_MS`       | 3600000 (1hr)         | Orphan cleanup interval        |
-| `DEFAULT_CONTAINER_ID`             | 'firefox-default'     | Default container ID           |
-| `KEEPALIVE_INTERVAL_MS`            | 25000                 | Background keepalive (v7)      |
-| `RENDER_STALL_TIMEOUT_MS`          | 5000                  | Render stall detection (v7)    |
-| `RENDER_QUEUE_MAX_SIZE`            | 10                    | Max queued renders (v7)        |
-| `STORAGE_WATCHDOG_TIMEOUT_MS`      | 2000                  | Storage watchdog timeout (v7)  |
+| Constant                           | Value                 | Purpose                               |
+| ---------------------------------- | --------------------- | ------------------------------------- |
+| `STORAGE_KEY`                      | 'quick_tabs_state_v2' | Storage key name                      |
+| `INIT_BARRIER_TIMEOUT_MS`          | 10000                 | Unified barrier init timeout          |
+| `RENDER_DEBOUNCE_MS`               | 100                   | Render queue debounce (was 300)       |
+| `RENDER_DEBOUNCE_MAX_WAIT_MS`      | 300                   | Sliding-window max cap (NEW)          |
+| `MESSAGE_TIMEOUT_MS`               | 3000                  | runtime.sendMessage timeout           |
+| `CIRCUIT_BREAKER_OPEN_DURATION_MS` | 3000                  | Circuit breaker cooldown (was 10000)  |
+| `CIRCUIT_BREAKER_SLIDING_WINDOW_MS`| 5000                  | Failure sliding window (NEW)          |
+| `RECONNECT_BACKOFF_MAX_MS`         | 2000                  | Max reconnect backoff (was 10000)     |
+| `HEARTBEAT_INTERVAL_MS`            | 15000                 | Heartbeat interval (was 25000)        |
+| `HEARTBEAT_TIMEOUT_MS`             | 2000                  | Heartbeat timeout (was 5000)          |
+| `CACHE_STALENESS_ALERT_MS`         | 30000                 | Cache staleness alert (NEW)           |
+| `MESSAGE_RETRY_COUNT`              | 2                     | Message retry attempts (NEW)          |
+| `MESSAGE_RETRY_DELAY_MS`           | 150                   | Message retry delay (NEW)             |
+| `STORAGE_HEALTH_CHECK_INTERVAL_MS` | 5000                  | Health check fallback interval        |
+| `MAX_QUICK_TABS`                   | 100                   | Maximum Quick Tabs allowed            |
 
 ---
 

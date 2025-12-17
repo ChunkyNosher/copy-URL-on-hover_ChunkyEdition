@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.9-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v2** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,31 +9,31 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.9-v7 Status:** Logging & Message Infrastructure ✅
+**🔧 v1.6.3.10-v2 Status:** Render, Circuit Breaker & Cache Fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.9-v7
+## 🎉 What's New in v1.6.3.10-v2
 
-**🔧 Logging & Message Infrastructure (December 2025) ✅**
+**🔧 Render, Circuit Breaker & Cache Fixes (December 2025) ✅**
 
-- ✅ **Sidebar Log Capture** - Log buffer with safe JSON stringify and export API
-- ✅ **Enhanced Message Handlers** - GET_SIDEBAR_LOGS, PUSH_STATE_UPDATE, etc.
-- ✅ **Centralized Constants** - KEEPALIVE_INTERVAL_MS, RENDER_STALL_TIMEOUT_MS
-- ✅ **Dead Code Removal** - ~259 lines removed (deprecated functions/variables)
-- ✅ **Firefox API Workarounds** - Ready handshake, keepalive alarm, beforeunload save
+- ✅ **Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
+- ✅ **Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
+- ✅ **Cache Handling** - lastCacheSyncFromStorage, 30s staleness alert
+- ✅ **FAILURE_REASON Enum** - TRANSIENT, ZOMBIE_PORT, BACKGROUND_DEAD
+- ✅ **Pending Action Queue** - Circuit breaker queues actions during open state
 
 ---
 
-## 🎉 What's New in v1.6.3.9-v6
+## 🎉 What's New in v1.6.3.10-v1
 
-**🔧 Sidebar & Background Cleanup (Previous) ✅**
+**🔧 Port Lifecycle & Reliability (Previous) ✅**
 
-- ✅ **Simplified Initialization** - Manager reduced from ~8 state variables to 4
-- ✅ **Unified Barrier** - Single barrier with resolve-only semantics
-- ✅ **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
+- ✅ **Port State Machine** - connected/zombie/reconnecting/dead states
+- ✅ **Heartbeat Timing** - 25s→15s interval, 5s→2s timeout, adaptive ≤20s
+- ✅ **Messaging Reliability** - 2 retries + 150ms backoff
 
 ---
 
@@ -224,6 +224,6 @@ for details.
 
 ---
 
-**Version 1.6.3.9-v7** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
