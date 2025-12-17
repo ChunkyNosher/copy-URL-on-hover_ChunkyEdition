@@ -39,11 +39,17 @@
  *   - Log originTabId in _performTabWindowRestore() before and after restore
  *   - Log originTabId in _verifyRestoreAndEmit() verification
  *   - Log originTabId in _emitRestoreStateUpdateSync() event payload
+ * v1.6.3.10-v4 - FIX Critical Cross-Tab Operation Validation (Issues 9-16):
+ *   - Issue #9: Cross-tab ownership validation for all visibility operations
+ *   - Issue #10: Focus operation z-index leakage prevention
+ *   - Issue #14: Mutex lock pattern includes tab context to prevent cross-tab conflicts
+ *   - Issue #15: Storage persistence filter - only persist owned Quick Tabs
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
  * - Storage used for persistence and hydration, not for cross-tab sync
  * - Mutex/lock pattern prevents duplicate operations from multiple sources
+ * - Cross-tab validation ensures operations only affect owned Quick Tabs
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -54,8 +60,9 @@
  * - Update button appearances
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
+ * - Cross-tab ownership validation for all operations
  *
- * @version 1.6.3.5-v11
+ * @version 1.6.3.10-v4
  */
 
 import {
@@ -147,13 +154,74 @@ export class VisibilityHandler {
   }
 
   /**
+   * Check if a tabWindow is owned by the current tab
+   * v1.6.3.10-v4 - FIX Issue #9: Extracted to reduce duplication (Code Review feedback)
+   * @private
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @returns {boolean} True if owned by current tab or ownership is unset
+   */
+  _isOwnedByCurrentTab(tabWindow) {
+    // If originTabId is not set, consider it owned (backwards compatibility)
+    if (tabWindow.originTabId === null || tabWindow.originTabId === undefined) {
+      return true;
+    }
+    // Check if originTabId matches current tab
+    return tabWindow.originTabId === this.currentTabId;
+  }
+
+  /**
+   * Validate cross-tab ownership for an operation
+   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation helper
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Operation name for logging
+   * @param {string} source - Source of action
+   * @returns {{ valid: boolean, tabWindow?: Object, result?: Object }}
+   */
+  _validateCrossTabOwnership(id, operation, source = 'unknown') {
+    const tabWindow = this.quickTabsMap.get(id);
+    if (!tabWindow) {
+      return { valid: true, tabWindow: null }; // Let caller handle missing tab
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #9: Use shared ownership check
+    if (!this._isOwnedByCurrentTab(tabWindow)) {
+      console.warn(
+        `${this._logPrefix} CROSS-TAB BLOCKED: Cannot ${operation} Quick Tab from different tab:`,
+        {
+          id,
+          originTabId: tabWindow.originTabId,
+          currentTabId: this.currentTabId,
+          source
+        }
+      );
+      return {
+        valid: false,
+        tabWindow,
+        result: { success: false, error: 'Cross-tab operation rejected' }
+      };
+    }
+
+    return { valid: true, tabWindow };
+  }
+
+  /**
    * Handle solo toggle from Quick Tab window or panel
    * v1.6.3 - Local only (no cross-tab sync)
+   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
    *
    * @param {string} quickTabId - Quick Tab ID
    * @param {number[]} newSoloedTabs - Array of tab IDs where Quick Tab should be visible
+   * @param {string} source - Source of action
+   * @returns {{ success: boolean, error?: string }}
    */
-  handleSoloToggle(quickTabId, newSoloedTabs) {
+  handleSoloToggle(quickTabId, newSoloedTabs, source = 'unknown') {
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const validation = this._validateCrossTabOwnership(quickTabId, 'solo toggle', source);
+    if (!validation.valid) {
+      return validation.result;
+    }
+
     this._handleVisibilityToggle(quickTabId, {
       mode: 'SOLO',
       newTabs: newSoloedTabs,
@@ -161,16 +229,26 @@ export class VisibilityHandler {
       clearProperty: 'mutedOnTabs',
       updateButton: this._updateSoloButton.bind(this)
     });
+    return { success: true };
   }
 
   /**
    * Handle mute toggle from Quick Tab window or panel
    * v1.6.3 - Local only (no cross-tab sync)
+   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
    *
    * @param {string} quickTabId - Quick Tab ID
    * @param {number[]} newMutedTabs - Array of tab IDs where Quick Tab should be hidden
+   * @param {string} source - Source of action
+   * @returns {{ success: boolean, error?: string }}
    */
-  handleMuteToggle(quickTabId, newMutedTabs) {
+  handleMuteToggle(quickTabId, newMutedTabs, source = 'unknown') {
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const validation = this._validateCrossTabOwnership(quickTabId, 'mute toggle', source);
+    if (!validation.valid) {
+      return validation.result;
+    }
+
     this._handleVisibilityToggle(quickTabId, {
       mode: 'MUTE',
       newTabs: newMutedTabs,
@@ -178,6 +256,7 @@ export class VisibilityHandler {
       clearProperty: 'soloedOnTabs',
       updateButton: this._updateMuteButton.bind(this)
     });
+    return { success: true };
   }
 
   /**
@@ -338,7 +417,8 @@ export class VisibilityHandler {
    * @returns {boolean} True if lock acquired, false if operation already in progress
    */
   _tryAcquireLock(operation, id) {
-    const lockKey = `${operation}-${id}`;
+    // v1.6.3.10-v4 - FIX Issue #14: Include tab context to prevent cross-tab lock conflicts
+    const lockKey = `${operation}-${this.currentTabId}-${id}`;
     const now = Date.now();
     const existingLock = this._operationLocks.get(lockKey);
 
@@ -356,12 +436,14 @@ export class VisibilityHandler {
   /**
    * Release a lock for an operation
    * v1.6.3.2 - FIX Issue #2: Mutex pattern cleanup
+   * v1.6.3.10-v4 - FIX Issue #14: Include tab context in lock key
    * @private
    * @param {string} operation - Operation type ('minimize' or 'restore')
    * @param {string} id - Quick Tab ID
    */
   _releaseLock(operation, id) {
-    const lockKey = `${operation}-${id}`;
+    // v1.6.3.10-v4 - FIX Issue #14: Include tab context in lock key
+    const lockKey = `${operation}-${this.currentTabId}-${id}`;
     this._operationLocks.delete(lockKey);
   }
 
@@ -465,12 +547,19 @@ export class VisibilityHandler {
    * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
    * v1.6.3.4-v8 - FIX Issue #3: Suppress callbacks during handler-initiated operations
    * v1.6.3.5-v11 - FIX Issue #4: Check tabWindow.isMinimizing flag for operation-specific suppression
+   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
+    if (!ownershipValidation.valid) {
+      return ownershipValidation.result;
+    }
+
     const tabWindow = this.quickTabsMap.get(id);
 
     // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
@@ -679,11 +768,18 @@ export class VisibilityHandler {
    *   - Issue #2: Update entity.minimized = false in quickTabsMap after restore
    *   - Issue #7: Entity state is single source of truth - update FIRST
    * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
+   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleRestore(id, source = 'unknown') {
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'restore', source);
+    if (!ownershipValidation.valid) {
+      return ownershipValidation.result;
+    }
+
     // v1.6.3.2 - Check preconditions for restore
     if (!this._canProceedWithRestore(id, source)) {
       return { success: false, error: 'Operation blocked (lock held or pending)' };
@@ -1407,6 +1503,7 @@ export class VisibilityHandler {
    *   - Issue #8: Defensive checks for container existence and DOM attachment
    *   - Issue #9: Comprehensive z-index operation logging
    * v1.6.3.5-v12 - FIX Issue #2: Add fallback DOM query for z-index update
+   * v1.6.3.10-v4 - FIX Issues #9, #10: Cross-tab ownership validation
    *
    * @param {string} id - Quick Tab ID
    */
@@ -1424,6 +1521,22 @@ export class VisibilityHandler {
     if (!validation.valid) return;
 
     const { tabWindow, hasContainer, isAttachedToDOM } = validation;
+
+    // v1.6.3.10-v4 - FIX Issues #9, #10: Cross-tab ownership validation
+    // Only allow focus from owning tab to prevent z-index leakage
+    if (tabWindow.originTabId !== null && tabWindow.originTabId !== undefined) {
+      if (tabWindow.originTabId !== this.currentTabId) {
+        console.log(
+          `${this._logPrefix}[handleFocus] Cross-tab focus rejected:`,
+          {
+            id,
+            originTabId: tabWindow.originTabId,
+            currentTabId: this.currentTabId
+          }
+        );
+        return;
+      }
+    }
 
     // Store old z-index for logging
     const oldZIndex = tabWindow.zIndex;
@@ -1651,10 +1764,41 @@ export class VisibilityHandler {
   }
 
   /**
+   * Filter quickTabsMap to only include tabs owned by this tab
+   * v1.6.3.10-v4 - FIX Issue #15: Extract ownership filter to reduce _persistToStorage complexity
+   * @private
+   * @returns {Map} Map of owned Quick Tabs only
+   */
+  _filterOwnedTabs() {
+    const ownedTabs = new Map();
+    for (const [id, tabWindow] of this.quickTabsMap) {
+      // v1.6.3.10-v4 - FIX Issue #15: Use shared ownership check (Code Review feedback)
+      if (this._isOwnedByCurrentTab(tabWindow)) {
+        ownedTabs.set(id, tabWindow);
+      } else {
+        console.log('[VisibilityHandler] Filtering out cross-tab Quick Tab from persist:', {
+          id,
+          originTabId: tabWindow.originTabId,
+          currentTabId: this.currentTabId
+        });
+      }
+    }
+
+    console.log('[VisibilityHandler] Ownership filter result:', {
+      totalTabs: this.quickTabsMap.size,
+      ownedTabs: ownedTabs.size,
+      filteredOut: this.quickTabsMap.size - ownedTabs.size
+    });
+
+    return ownedTabs;
+  }
+
+  /**
    * Persist current state to browser.storage.local
    * v1.6.3.4 - FIX Bug #2: Persist to storage after minimize/restore
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v6 - FIX Issue #6: Validate counts and state before persist
+   * v1.6.3.10-v4 - FIX Issue #15: Only persist Quick Tabs owned by this tab
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
@@ -1663,7 +1807,10 @@ export class VisibilityHandler {
     // v1.6.3.4-v2 - FIX Bug #1: Log position/size data when persisting
     console.log('[VisibilityHandler] Building state for storage persist...');
 
-    const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+    // v1.6.3.10-v4 - FIX Issue #15: Only persist Quick Tabs owned by this tab
+    const ownedTabs = this._filterOwnedTabs();
+
+    const state = buildStateForStorage(ownedTabs, this.minimizedManager);
 
     // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {

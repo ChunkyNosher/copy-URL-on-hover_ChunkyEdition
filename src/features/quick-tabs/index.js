@@ -925,13 +925,15 @@ class QuickTabsManager {
       Events: this.Events
     });
 
+    // v1.6.3.10-v4 - FIX Issue #16: Pass currentTabId for cross-tab validation
     this.destroyHandler = new DestroyHandler(
       this.tabs,
       this.minimizedManager,
       this.internalEventBus, // v1.6.3.3 - FIX Bug #6: Use internal bus for state:deleted so UICoordinator receives it
       this.currentZIndex,
       this.Events,
-      CONSTANTS.QUICK_TAB_BASE_Z_INDEX
+      CONSTANTS.QUICK_TAB_BASE_Z_INDEX,
+      this.currentTabId // v1.6.3.10-v4 - FIX Issue #16: Pass for cross-tab validation
     );
   }
 
@@ -1212,16 +1214,24 @@ class QuickTabsManager {
 
   /**
    * Handle solo toggle
+   * v1.6.3.10-v4 - Added source parameter for cross-tab validation logging
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {number[]} newSoloedTabs - Array of tab IDs
+   * @param {string} source - Source of action (default: 'UI')
    */
-  handleSoloToggle(quickTabId, newSoloedTabs) {
-    return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs);
+  handleSoloToggle(quickTabId, newSoloedTabs, source = 'UI') {
+    return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs, source);
   }
 
   /**
    * Handle mute toggle
+   * v1.6.3.10-v4 - Added source parameter for cross-tab validation logging
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {number[]} newMutedTabs - Array of tab IDs
+   * @param {string} source - Source of action (default: 'UI')
    */
-  handleMuteToggle(quickTabId, newMutedTabs) {
-    return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs);
+  handleMuteToggle(quickTabId, newMutedTabs, source = 'UI') {
+    return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs, source);
   }
 
   /**
