@@ -401,6 +401,7 @@ async function getCurrentTabIdFromBackground() {
 // FIX Issue #11: Persistent port connection to background script
 // FIX Issue #12: Port lifecycle logging
 // FIX Issue #17: Port cleanup on tab close
+// v1.6.3.10-v4 - FIX Issue #3/6: Background restart detection
 
 /**
  * Port connection to background script
@@ -413,6 +414,11 @@ let backgroundPort = null;
  * v1.6.3.6-v11 - Used for port name and logging
  */
 let cachedTabId = null;
+
+/**
+ * v1.6.3.10-v4 - FIX Issue #3/6: Track last known background startup time for restart detection
+ */
+let lastKnownBackgroundStartupTime = null;
 
 /**
  * Log port lifecycle event
@@ -429,8 +435,39 @@ function logContentPortLifecycle(event, details = {}) {
 }
 
 /**
+ * Handle background restart detection and state re-sync
+ * v1.6.3.10-v4 - FIX Issue #3/6: Detect when background script was restarted
+ * @param {number} newStartupTime - New background startup time
+ */
+function handleBackgroundRestartDetected(newStartupTime) {
+  console.warn('[Content] v1.6.3.10-v4 BACKGROUND RESTART DETECTED:', {
+    previousStartupTime: lastKnownBackgroundStartupTime,
+    newStartupTime,
+    tabId: cachedTabId
+  });
+
+  lastKnownBackgroundStartupTime = newStartupTime;
+
+  // Request full state sync after background restart
+  if (backgroundPort) {
+    try {
+      backgroundPort.postMessage({
+        type: 'REQUEST_FULL_STATE_SYNC',
+        reason: 'background-restart-detected',
+        tabId: cachedTabId,
+        timestamp: Date.now()
+      });
+      console.log('[Content] v1.6.3.10-v4 Requested state sync after background restart');
+    } catch (err) {
+      console.error('[Content] v1.6.3.10-v4 Failed to request state sync:', err.message);
+    }
+  }
+}
+
+/**
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
+ * v1.6.3.10-v4 - FIX Issue #3/6: Handle background handshake for restart detection
  * @param {number} tabId - Current tab ID
  */
 function connectContentToBackground(tabId) {
@@ -468,8 +505,48 @@ function connectContentToBackground(tabId) {
 }
 
 /**
+ * Process startup time from background for restart detection
+ * v1.6.3.10-v4 - FIX Issue #3/6: Helper to reduce nesting depth
+ * @private
+ * @param {number} startupTime - Background startup time
+ */
+function _processBackgroundStartupTime(startupTime) {
+  // Use explicit null check - startupTime of 0 would be valid (though unlikely)
+  if (startupTime == null) return;
+
+  if (lastKnownBackgroundStartupTime === null) {
+    // First connection - just record the startup time
+    lastKnownBackgroundStartupTime = startupTime;
+    console.log('[Content] v1.6.3.10-v4 Background startup time recorded:', startupTime);
+    return;
+  }
+
+  if (startupTime !== lastKnownBackgroundStartupTime) {
+    // Background was restarted - trigger re-sync
+    handleBackgroundRestartDetected(startupTime);
+  }
+}
+
+/**
+ * Handle background handshake message
+ * v1.6.3.10-v4 - FIX Issue #3/6: Helper to reduce nesting depth
+ * Note: Currently logs handshake info for debugging. Future enhancement: store
+ * additional handshake metadata for connection quality monitoring.
+ * @private
+ * @param {Object} message - Handshake message
+ */
+function _handleBackgroundHandshake(message) {
+  console.log('[Content] v1.6.3.10-v4 Background handshake received:', {
+    startupTime: message.startupTime,
+    uptime: message.uptime,
+    portId: message.portId
+  });
+}
+
+/**
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #11: Process messages from background
+ * v1.6.3.10-v4 - FIX Issue #3/6: Handle background handshake for restart detection
  * @param {Object} message - Message from background
  */
 function handleContentPortMessage(message) {
@@ -477,6 +554,17 @@ function handleContentPortMessage(message) {
     type: message.type,
     action: message.action
   });
+
+  // v1.6.3.10-v4 - FIX Issue #3/6: Handle background handshake for restart detection
+  if (message.type === 'BACKGROUND_HANDSHAKE' || message.type === 'HEARTBEAT_ACK') {
+    _processBackgroundStartupTime(message.startupTime);
+
+    // BACKGROUND_HANDSHAKE is informational only, don't need further processing
+    if (message.type === 'BACKGROUND_HANDSHAKE') {
+      _handleBackgroundHandshake(message);
+      return;
+    }
+  }
 
   // Handle broadcasts
   if (message.type === 'BROADCAST') {
