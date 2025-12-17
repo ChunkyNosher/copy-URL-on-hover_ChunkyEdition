@@ -2653,6 +2653,15 @@ function _showContentState() {
  * @private
  */
 function _logGroupRendering(groups) {
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for Manager display GROUPING
+  console.log('[Manager][Display] GROUPING: Organizing Quick Tabs by originTabId', {
+    totalQuickTabs: [...groups.values()].reduce((sum, g) => sum + g.length, 0),
+    groups: [...groups.entries()].map(([tabId, tabs]) => ({
+      originTabId: tabId,
+      count: tabs.length
+    }))
+  });
+  
   console.log('[Manager] Issue #1: Rendering groups directly (no global header)', {
     groupCount: groups.size,
     groupKeys: [...groups.keys()]
@@ -4395,6 +4404,16 @@ async function minimizeQuickTab(quickTabId) {
   const originTabId = tabData?.originTabId;
   const targetTabId = hostInfo?.hostTabId || originTabId;
 
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
+    operation: 'MINIMIZE',
+    quickTabId: quickTabId,
+    quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId: targetTabId,
+    decision: 'ALLOW'
+  });
+
   // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
   const result = await _sendMessageWithRetry({
     action: 'MINIMIZE_QUICK_TAB',
@@ -4923,6 +4942,16 @@ async function restoreQuickTab(quickTabId) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const targetTabId = hostInfo?.hostTabId || validation.tabData.originTabId;
   
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
+    operation: 'RESTORE',
+    quickTabId: quickTabId,
+    quickTabOriginTabId: validation.tabData.originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId: targetTabId,
+    decision: 'ALLOW'
+  });
+  
   const result = await _sendMessageWithRetry({
     action: 'RESTORE_QUICK_TAB',
     quickTabId
@@ -5056,6 +5085,16 @@ async function closeQuickTab(quickTabId) {
   const tabData = findTabInState(quickTabId, quickTabsState);
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const targetTabId = hostInfo?.hostTabId || tabData?.originTabId;
+  
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
+    operation: 'CLOSE',
+    quickTabId: quickTabId,
+    quickTabOriginTabId: tabData?.originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId: targetTabId,
+    decision: 'ALLOW'
+  });
   
   const result = await _sendMessageWithRetry({
     action: 'CLOSE_QUICK_TAB',

@@ -1,0 +1,8 @@
+{
+  "id": "4a4f54eb-c182-47d3-ad2d-970f1f1cd821",
+  "title": "Quick Tabs logging format conventions",
+  "details": "The Quick Tabs extension uses consistent logging format with prefixes like [Component][Operation] followed by action types like START, COMPLETE, FILTER, VALIDATION, REQUEST, RESPONSE, FAILURE. When adding diagnostic logging to this extension:\n\n1. Content script logging uses [Content][Operation] prefix (e.g., [Content][TabID], [Content][Hydration])\n2. Background script logging uses [Background][Storage] prefix for storage operations\n3. Manager sidebar logging uses [Manager][Display] or [Manager][Operation] prefix\n4. Each log statement includes a structured context object with relevant data fields\n5. Version comments use format: v1.6.3.10-vX - FIX Issue #N: Description\n\nKey files for logging:\n- src/content.js - Content script tab ID retrieval\n- src/features/quick-tabs/index.js - Hydration process\n- background.js - Storage change handler and deduplication\n- sidebar/quick-tabs-manager.js - Manager display and operations",
+  "category": "general",
+  "dateCreated": "2025-12-17T16:48:38.272Z",
+  "dateUpdated": "2025-12-17T16:48:38.272Z"
+}

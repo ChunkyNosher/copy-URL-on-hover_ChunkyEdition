@@ -357,31 +357,41 @@ function logQuickTabsInitError(qtErr) {
  * @returns {Promise<number|null>} Current tab ID or null if unavailable
  */
 async function getCurrentTabIdFromBackground() {
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for tab ID retrieval
+  console.log('[Content][TabID] REQUEST: Sending tab ID request to background');
+  const startTime = Date.now();
+
   try {
-    console.log('[Content] Requesting current tab ID from background...');
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
+    const duration = Date.now() - startTime;
 
     // v1.6.3.6-v4 - FIX Issue #1: Enhanced validation logging
     if (response?.success && typeof response.tabId === 'number') {
-      console.log('[Content] Got current tab ID from background:', {
+      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for successful response
+      console.log('[Content][TabID] RESPONSE: Received tab ID from background', {
         tabId: response.tabId,
-        success: response.success
+        duration: `${duration}ms`,
+        success: true
       });
       return response.tabId;
     }
 
     // v1.6.3.6-v4 - Log detailed error information
-    console.warn('[Content] Background returned invalid tab ID response:', {
+    // v1.6.3.10-v4 - FIX Issue #1: Enhanced failure logging
+    console.warn('[Content][TabID] FAILURE: Background returned invalid tab ID response', {
       response,
       success: response?.success,
       tabId: response?.tabId,
-      error: response?.error
+      error: response?.error,
+      duration: `${duration}ms`
     });
     return null;
   } catch (err) {
-    console.warn('[Content] Failed to get tab ID from background:', {
+    const duration = Date.now() - startTime;
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for request failure
+    console.error('[Content][TabID] FAILURE: Failed to get tab ID from background', {
       error: err.message,
-      stack: err.stack
+      duration: `${duration}ms`
     });
     return null;
   }

@@ -1979,6 +1979,15 @@ function _logStorageChange(oldValue, newValue) {
   const oldCount = _getTabCount(oldValue);
   const newCount = _getTabCount(newValue);
 
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for storage changes
+  console.log('[Background][Storage] CHANGE_RECEIVED: Storage change event detected', {
+    key: 'quick_tabs_state_v2',
+    hasOldValue: !!oldValue,
+    hasNewValue: !!newValue,
+    tabCountBefore: oldCount,
+    tabCountAfter: newCount
+  });
+
   console.log('[Background] ┌─ storage.onChanged RECEIVED ─────────────────────────');
   console.log('[Background] │ tabs:', oldCount, '→', newCount);
   console.log(
@@ -2024,6 +2033,16 @@ function _logCorruptionWarning(oldCount, newCount) {
 function _shouldIgnoreStorageChange(newValue, oldValue) {
   // v1.6.3.6-v12 - FIX Issue #3: Multi-method deduplication in priority order
   const dedupResult = _multiMethodDeduplication(newValue, oldValue);
+  
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for deduplication
+  console.log('[Background][Storage] DEDUP_CHECK: Evaluating deduplication', {
+    method: dedupResult.method,
+    saveId: newValue?.saveId,
+    transactionId: newValue?.transactionId,
+    contentHash: _computeQuickTabContentKey(newValue) || 'N/A',
+    result: dedupResult.shouldSkip ? 'SKIP' : 'PROCESS'
+  });
+  
   if (dedupResult.shouldSkip) {
     console.log('[Background] v1.6.3.6-v12 Storage change SKIPPED:', {
       method: dedupResult.method,
@@ -2325,6 +2344,13 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
 function _processStorageUpdate(newValue) {
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
+    console.log('[Background][Storage] BROADCAST_DECISION:', {
+      decision: 'SKIP',
+      reason: 'tabs empty or missing - clearing cache instead',
+      targetTabCount: 0,
+      filteredCount: 0
+    });
     _clearCacheForEmptyStorage(newValue);
     return;
   }
@@ -2335,11 +2361,27 @@ function _processStorageUpdate(newValue) {
 
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
+    console.log('[Background][Storage] BROADCAST_DECISION:', {
+      decision: 'SKIP',
+      reason: 'state unchanged (same hash and saveId)',
+      targetTabCount: newValue?.tabs?.length ?? 0,
+      filteredCount: 0
+    });
     return;
   }
 
   // Filter out tabs with invalid URLs
   const filteredValue = filterValidTabs(newValue);
+  const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
+  console.log('[Background][Storage] BROADCAST_DECISION:', {
+    decision: 'UPDATE_CACHE',
+    reason: 'proceeding with cache update (tabs sync via storage.onChanged)',
+    targetTabCount: filteredValue.tabs?.length ?? 0,
+    filteredCount: filteredCount
+  });
 
   // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
   // Each tab handles its own sync via storage.onChanged listener in StorageManager

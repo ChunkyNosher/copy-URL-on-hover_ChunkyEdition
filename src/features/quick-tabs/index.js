@@ -307,6 +307,14 @@ class QuickTabsManager {
     try {
       // Validate required fields
       if (!this._isValidTabData(tabData)) {
+        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
+        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+          id: tabData?.id,
+          originTabId: tabData?.originTabId,
+          currentTabId: this.currentTabId,
+          result: 'REJECT',
+          reason: 'invalidData'
+        });
         filterReasons.invalidData++;
         return { success: false, reason: 'invalidData' };
       }
@@ -314,12 +322,28 @@ class QuickTabsManager {
       // Check tab scope validation with reason tracking
       const skipResult = this._checkTabScopeWithReason(tabData);
       if (skipResult.skip) {
+        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
+        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+          id: tabData.id,
+          originTabId: tabData.originTabId,
+          currentTabId: this.currentTabId,
+          result: 'REJECT',
+          reason: skipResult.reason
+        });
         filterReasons[skipResult.reason]++;
         return { success: false, reason: skipResult.reason };
       }
 
       // Skip if tab already exists
       if (this.tabs.has(tabData.id)) {
+        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
+        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+          id: tabData.id,
+          originTabId: tabData.originTabId,
+          currentTabId: this.currentTabId,
+          result: 'REJECT',
+          reason: 'alreadyExists'
+        });
         console.log('[QuickTabsManager] Tab already exists, skipping hydration:', tabData.id);
         filterReasons.alreadyExists++;
         return { success: false, reason: 'alreadyExists' };
@@ -331,6 +355,14 @@ class QuickTabsManager {
         filterReasons.noHandler++;
         return { success: false, reason: 'noHandler' };
       }
+
+      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER (KEEP)
+      console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+        id: tabData.id,
+        originTabId: tabData.originTabId,
+        currentTabId: this.currentTabId,
+        result: 'KEEP'
+      });
 
       // Perform hydration
       console.log(
@@ -383,6 +415,12 @@ class QuickTabsManager {
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
   async _hydrateStateFromStorage() {
+    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration START
+    console.log('[Content][Hydration] START: Beginning Quick Tab hydration process', {
+      currentTabId: this.currentTabId,
+      timestamp: Date.now()
+    });
+
     // Check if browser storage API is available
     if (!this._isStorageApiAvailable()) {
       return { success: false, count: 0, reason: 'Storage API unavailable' };
@@ -403,6 +441,14 @@ class QuickTabsManager {
 
       // Hydrate each stored tab
       const hydratedCount = this._hydrateTabsFromStorage(storedState.tabs);
+
+      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration COMPLETE
+      console.log('[Content][Hydration] COMPLETE: Hydration finished', {
+        totalInStorage: storedState.tabs.length,
+        hydratedCount: hydratedCount,
+        filteredOutCount: storedState.tabs.length - hydratedCount,
+        currentTabId: this.currentTabId
+      });
 
       // Emit hydrated event for UICoordinator to render restored tabs
       this._emitHydratedEventIfNeeded(hydratedCount);
