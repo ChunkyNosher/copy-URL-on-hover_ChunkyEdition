@@ -592,14 +592,9 @@ html {
 }
 
 /* Issue #12: Item entrance animation */
-/* v1.6.3.7-v3 - FIX Issue #3: Animation only for newly added items via .new-item class */
 .tab-group-content .quick-tab-item {
   padding-left: 12px;
-  /* Removed animation here - now only triggered via .new-item class */
-}
-
-/* v1.6.3.7-v3 - FIX Issue #3: Entrance animation only for NEW items */
-.tab-group-content .quick-tab-item.new-item {
+  /* Issue #12: Stagger animation for items */
   animation: itemFadeIn var(--animation-duration) var(--animation-timing);
 }
 
@@ -611,23 +606,6 @@ html {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-/* v1.6.3.7-v3 - FIX Issue #3: Exit animation for removed items */
-.tab-group-content .quick-tab-item.removing {
-  animation: itemFadeOut var(--animation-duration) var(--animation-timing) forwards;
-  pointer-events: none;
-}
-
-@keyframes itemFadeOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-8px);
   }
 }
 

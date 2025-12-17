@@ -10,8 +10,6 @@
 
 import browser from 'webextension-polyfill';
 
-// v1.6.3.8-v6 - ARCHITECTURE: BroadcastChannel COMPLETELY REMOVED
-// All BC imports and functions removed per user request - Port + storage.onChanged only
 import { createQuickTabWindow } from '../window.js';
 
 /**
@@ -19,7 +17,6 @@ import { createQuickTabWindow } from '../window.js';
  * v1.6.3 - Single-tab Quick Tabs (no storage persistence or cross-tab sync)
  * v1.6.3.2 - Added showDebugId setting support for Debug ID display
  * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator Map
- * v1.6.3.7-v4 - FIX Issue #2: Broadcast creation via BroadcastChannel
  *
  * Responsibilities:
  * - Generate ID if not provided
@@ -220,7 +217,6 @@ export class CreateHandler {
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Capture originTabId for cross-tab filtering
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator Map
-   * v1.6.3.7-v4 - FIX Issue #2: Broadcast creation via BroadcastChannel
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -244,9 +240,6 @@ export class CreateHandler {
     // This allows UICoordinator to register the window in its renderedTabs Map
     this._emitWindowCreatedEvent(id, tabWindow);
 
-    // v1.6.3.8-v6 - REMOVED: BroadcastChannel broadcasting
-    // Port-based messaging via storage.onChanged is now the primary sync mechanism
-
     console.log('[CreateHandler] Quick Tab created successfully:', id);
 
     return {
@@ -255,13 +248,9 @@ export class CreateHandler {
     };
   }
 
-  // v1.6.3.8-v6 - REMOVED: _broadcastCreation method
-  // BroadcastChannel removed - port-based messaging is now primary
-
   /**
    * Get default option values
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
-   * v1.6.3.7-v3 - API #1: Add permanent default (true for local storage)
    * @private
    */
   _getDefaults() {
@@ -275,8 +264,7 @@ export class CreateHandler {
       soloedOnTabs: [],
       mutedOnTabs: [],
       showDebugId: false, // v1.6.3.2 - Default for Debug ID display
-      originTabId: null, // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
-      permanent: true // v1.6.3.7-v3 - API #1: true = local storage, false = session storage
+      originTabId: null // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
     };
   }
 
@@ -285,7 +273,6 @@ export class CreateHandler {
    * v1.6.3.2 - Added showDebugId setting for Debug ID display feature
    * v1.6.3.2 - Refactored to reduce complexity by extracting geometry options
    * v1.6.3.6-v8 - FIX Issue #1: Pass id to _buildVisibilityOptions for pattern extraction
-   * v1.6.3.7-v3 - API #1: Include permanent property in built options
    * @private
    */
   _buildTabOptions(id, cookieStoreId, options, defaults) {
@@ -294,7 +281,6 @@ export class CreateHandler {
       url: options.url,
       cookieStoreId,
       zIndex: this.currentZIndex.value,
-      permanent: options.permanent ?? defaults.permanent, // v1.6.3.7-v3 - API #1
       ...this._buildGeometryOptions(options, defaults),
       ...this._buildVisibilityOptions(options, defaults, id),
       ...this._extractCallbacks(options)

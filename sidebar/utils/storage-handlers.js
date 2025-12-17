@@ -2,18 +2,13 @@
  * Storage Handlers Utility Module
  * Extracted from quick-tabs-manager.js to reduce code complexity
  *
- * v1.6.3.8-v5 - ARCHITECTURE: BroadcastChannel removed per architecture-redesign.md
- * The new architecture uses:
- * - Layer 1a: runtime.Port for real-time metadata sync (PRIMARY)
- * - Layer 2: storage.local with monotonic revision versioning + storage.onChanged (FALLBACK)
- *
  * Handles:
  * - Storage change detection and handling
  * - Tab change identification
  * - Suspicious storage drop detection
  * - Reconciliation with content scripts
  *
- * @version 1.6.3.8-v5
+ * @version 1.6.4.11
  */
 
 // Storage keys
@@ -23,56 +18,8 @@ const STATE_KEY = 'quick_tabs_state_v2';
 const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 
-// ==================== v1.6.3.8-v5 SIMPLIFIED DEBOUNCE ====================
-// BroadcastChannel removed - use fixed debounce timing for storage.onChanged
-
-/**
- * Default debounce for storage.onChanged events
- * v1.6.3.8-v5 - Fixed debounce since BC removed, using storage.onChanged as primary
- */
-const STORAGE_READ_DEBOUNCE_MS = 200;
-
-/**
- * Notify that a port message was received (for activity tracking)
- * v1.6.3.8-v5 - Replaces notifyBroadcastMessageReceived() - NO-OP stub for compatibility
- * @deprecated BC removed - use Port-based messaging (runtime.Port) or storage.onChanged instead
- */
-export function notifyBroadcastMessageReceived() {
-  // NO-OP - BroadcastChannel removed per architecture-redesign.md
-  // Port-based messaging does not require tier tracking
-}
-
-/**
- * Get effective debounce for storage operations
- * v1.6.3.8-v5 - Fixed debounce since BC removed
- * @returns {number} Current debounce value in ms
- */
-export function getEffectiveDebounceMs() {
-  return STORAGE_READ_DEBOUNCE_MS;
-}
-
-/**
- * Get current tier status for diagnostics
- * v1.6.3.8-v5 - Simplified since BC removed
- * @returns {Object} Tier status information
- * @deprecated BC removed - returns stub data for compatibility
- */
-export function getTierStatus() {
-  return {
-    isTier1Active: false,
-    debounceMs: STORAGE_READ_DEBOUNCE_MS,
-    lastBroadcastMessageTime: 0,
-    timeSinceLastBCMs: -1,
-    tier1InactiveThresholdMs: 0,
-    hysteresis: {
-      recentMessageCount: 0,
-      requiredForActive: 0,
-      windowMs: 0,
-      confidence: 'N/A'
-    },
-    note: 'BroadcastChannel removed per architecture-redesign.md - using Port + storage.onChanged'
-  };
-}
+// Debounce timing
+const STORAGE_READ_DEBOUNCE_MS = 50;
 
 /**
  * Identify tabs that changed position or size between two state snapshots
@@ -357,15 +304,11 @@ export function createStorageChangeHandler(deps) {
 
   /**
    * Schedule debounced storage update
-   * v1.6.3.7-v8 - FIX Issue #12: Use dynamic debounce based on active tier
    */
   function scheduleStorageUpdate() {
     if (storageReadDebounceTimer) {
       clearTimeout(storageReadDebounceTimer);
     }
-
-    // v1.6.3.7-v8 - FIX Issue #12: Get effective debounce based on tier status
-    const effectiveDebounceMs = getEffectiveDebounceMs();
 
     storageReadDebounceTimer = setTimeout(async () => {
       storageReadDebounceTimer = null;
@@ -376,7 +319,7 @@ export function createStorageChangeHandler(deps) {
         lastRenderedStateHash = newHash;
         renderUI();
       }
-    }, effectiveDebounceMs);
+    }, STORAGE_READ_DEBOUNCE_MS);
   }
 
   /**
@@ -451,11 +394,4 @@ export function createStorageChangeHandler(deps) {
   };
 }
 
-export {
-  STATE_KEY,
-  SAVEID_RECONCILED,
-  SAVEID_CLEARED,
-  STORAGE_READ_DEBOUNCE_MS
-  // v1.6.3.7-v8 - FIX Issue #12: New functions already exported at definition:
-  // notifyBroadcastMessageReceived, getEffectiveDebounceMs, getTierStatus
-};
+export { STATE_KEY, SAVEID_RECONCILED, SAVEID_CLEARED, STORAGE_READ_DEBOUNCE_MS };

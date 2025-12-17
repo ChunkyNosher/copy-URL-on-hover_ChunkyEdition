@@ -93,14 +93,6 @@ export class MapTransactionManager {
      */
     this._locked = false;
 
-    /**
-     * v1.6.4.8 - Issue #4: Rollback callback stack for cascading rollback
-     * Each entry contains { step, rollbackFn, snapshot }
-     * @type {Array<{ step: string, rollbackFn: Function, snapshot: Object }>}
-     * @private
-     */
-    this._rollbackCallbacks = [];
-
     console.log(`[MapTransactionManager] Initialized for ${mapName}`);
   }
 
@@ -145,102 +137,6 @@ export class MapTransactionManager {
     };
 
     console.log(`[MapTransactionManager] ${operation}:`, logData);
-  }
-
-  /**
-   * v1.6.4.8 - Issue #4: Register a rollback callback for cascading rollback
-   * @param {string} step - Step name for logging
-   * @param {Function} rollbackFn - Function to call on rollback (receives snapshot)
-   * @param {Object} [snapshot] - Optional state snapshot to pass to rollbackFn
-   */
-  registerRollbackCallback(step, rollbackFn, snapshot = null) {
-    if (typeof rollbackFn !== 'function') {
-      console.warn(
-        '[MapTransactionManager] registerRollbackCallback: rollbackFn must be a function'
-      );
-      return;
-    }
-
-    this._rollbackCallbacks.push({
-      step,
-      rollbackFn,
-      snapshot,
-      registeredAt: Date.now()
-    });
-
-    console.log('[MapTransactionManager] Registered rollback callback:', {
-      step,
-      totalCallbacks: this._rollbackCallbacks.length,
-      hasSnapshot: !!snapshot
-    });
-  }
-
-  /**
-   * v1.6.4.8 - Issue #4: Execute all rollback callbacks in LIFO order
-   * @param {string} failedAt - Step name where failure occurred
-   * @returns {Promise<{ success: boolean, stepsRolledBack: number, errors: string[] }>}
-   */
-  async executeCascadingRollback(failedAt) {
-    const totalSteps = this._rollbackCallbacks.length;
-    if (totalSteps === 0) {
-      console.log('[MapTransactionManager] No rollback callbacks registered');
-      return { success: true, stepsRolledBack: 0, errors: [] };
-    }
-
-    console.log('[MapTransactionManager] ⚠️ Executing cascading rollback:', {
-      failedAt,
-      totalSteps
-    });
-
-    let stepsRolledBack = 0;
-    const errors = [];
-
-    // Execute in LIFO order (reverse)
-    while (this._rollbackCallbacks.length > 0) {
-      const { step, rollbackFn, snapshot } = this._rollbackCallbacks.pop();
-      console.log('[MapTransactionManager] Rolling back step:', {
-        step,
-        hasSnapshot: !!snapshot,
-        remainingSteps: this._rollbackCallbacks.length
-      });
-
-      try {
-        await rollbackFn(snapshot);
-        stepsRolledBack++;
-        console.log('[MapTransactionManager] ✓ Rollback step succeeded:', { step });
-      } catch (err) {
-        const errorMsg = `Step '${step}' failed: ${err.message}`;
-        errors.push(errorMsg);
-        console.error('[MapTransactionManager] ✗ Rollback step failed:', {
-          step,
-          error: err.message
-        });
-        // Continue rolling back other steps even if one fails
-      }
-    }
-
-    console.log('[MapTransactionManager] Cascading rollback complete:', {
-      stepsRolledBack,
-      totalSteps,
-      errorCount: errors.length
-    });
-
-    return {
-      success: errors.length === 0,
-      stepsRolledBack,
-      errors
-    };
-  }
-
-  /**
-   * v1.6.4.8 - Issue #4: Clear all rollback callbacks (on success)
-   */
-  clearRollbackCallbacks() {
-    const count = this._rollbackCallbacks.length;
-    this._rollbackCallbacks = [];
-    if (count > 0) {
-      console.log('[MapTransactionManager] Cleared rollback callbacks:', { count });
-    }
   }
 
   /**
@@ -421,19 +317,15 @@ export class MapTransactionManager {
     this._stagedOperations = [];
     this._locked = false;
 
-    // v1.6.4.8 - Issue #4: Clear rollback callbacks on successful commit
-    this.clearRollbackCallbacks();
-
     return { success: true };
   }
 
   /**
    * Rollback the current transaction
    * Restores Map to state captured at beginTransaction()
-   * v1.6.4.8 - Issue #4: Also executes cascading rollback callbacks
-   * @returns {Promise<boolean>} True if rollback was performed
+   * @returns {boolean} True if rollback was performed
    */
-  async rollbackTransaction() {
+  rollbackTransaction() {
     if (!this._activeTransaction) {
       console.warn('[MapTransactionManager] No active transaction to rollback');
       return false;
@@ -450,15 +342,11 @@ export class MapTransactionManager {
       this._map.set(key, value);
     }
 
-    // v1.6.4.8 - Issue #4: Execute cascading rollback callbacks
-    const rollbackResult = await this.executeCascadingRollback(transactionId);
-
     console.log('[MapTransactionManager] Transaction ROLLBACK:', {
       transactionId,
       restoredSize: this._map.size,
       restoredKeys: this.getMapKeys(),
-      droppedOperations: this._stagedOperations.length,
-      cascadingRollback: rollbackResult
+      droppedOperations: this._stagedOperations.length
     });
 
     // Clean up transaction state
@@ -619,9 +507,7 @@ export class MapTransactionManager {
       transactionId: this.getTransactionId(),
       stagedOperationsCount: this._stagedOperations.length,
       totalTransactions: this._transactionCounter,
-      locked: this._locked,
-      // v1.6.4.8 - Issue #4: Include rollback callback count
-      pendingRollbackCallbacks: this._rollbackCallbacks.length
+      locked: this._locked
     };
   }
 }

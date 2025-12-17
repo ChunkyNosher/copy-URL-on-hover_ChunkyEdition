@@ -19,14 +19,6 @@
  *   - Issue #1: Async Tab ID Race - Block writes with unknown tab ID instead of allowing
  *   - Issue #2: Circuit breaker to block all writes when pendingWriteCount > 15
  *   - Issue #4: Empty state corruption fixed by Issue #1's fail-closed approach
- * v1.6.3.7-v3 - API #1: storage.session support
- *   - Added SESSION_STATE_KEY for session-only Quick Tabs
- *   - Added routeTabToStorage() for permanent/session routing
- *   - Added loadAllQuickTabs() to load from both storage layers
- *   - Added saveSessionQuickTabs() for session storage writes
- * v1.6.3.8-v8 - FIX Critical Issues from diagnostic reports:
- *   - Issue #3: Increased transaction timeout from 500ms to 1000ms for Firefox listener delay
- *   - Firefox fires storage.onChanged 100-250ms AFTER write (Bugzilla #1554088)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -36,16 +28,10 @@
  * @module storage-utils
  */
 
-// v1.6.3.9-v2 - Issue #6: Import DEFAULT_CONTAINER_ID from centralized constants
-import { DEFAULT_CONTAINER_ID } from '../constants.js';
 import { CONSTANTS } from '../core/config.js';
 
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
 export const STATE_KEY = 'quick_tabs_state_v2';
-
-// v1.6.3.7-v3 - API #1: Session storage key for session-only Quick Tabs
-// Session storage auto-clears when browser closes (no stale data persistence)
-export const SESSION_STATE_KEY = 'quick_tabs_session_state';
 
 // v1.6.3.4-v2 - FIX Bug #1: Timeout for storage operations (5 seconds)
 // v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
@@ -148,13 +134,11 @@ const TRANSACTION_CLEANUP_TIMEOUTS = new Map();
 const TRANSACTION_WARNING_TIMEOUTS = new Map();
 // v1.6.3.6 - FIX Issue #4: Reduced from 5000ms to 2000ms to prevent transaction backlog
 // v1.6.3.6-v3 - FIX Issue #5: Reduced from 2000ms to 500ms for faster loop detection
-// v1.6.3.8-v8 - FIX Issue #3: Increased from 500ms to 1000ms for Firefox's 100-250ms listener delay
-// Firefox fires storage.onChanged 100-250ms AFTER write completes (per Bugzilla #1554088)
-// Setting to 1000ms provides 750ms buffer for normal delays and avoids false timeouts
-const TRANSACTION_FALLBACK_CLEANUP_MS = 1000;
-// v1.6.3.6-v3 - FIX Issue #3: Intermediate warning at 500ms (half of TRANSACTION_FALLBACK_CLEANUP_MS)
-// v1.6.3.8-v8 - FIX Issue #3: Increased from 250ms to 500ms to match new timeout
-const ESCALATION_WARNING_MS = 500;
+// Fallback cleanup delay - only used if storage.onChanged never fires
+// Normal writes complete in 50-100ms; 500ms catches loops before browser freezes
+const TRANSACTION_FALLBACK_CLEANUP_MS = 500;
+// v1.6.3.6-v3 - FIX Issue #3: Intermediate warning at 250ms (half of TRANSACTION_FALLBACK_CLEANUP_MS)
+const ESCALATION_WARNING_MS = 250;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades
@@ -174,29 +158,12 @@ let storageWriteQueuePromise = Promise.resolve();
 let pendingWriteCount = 0;
 let lastCompletedTransactionId = null;
 
-// v1.6.4 - Issue #47-3: Pending write queue for adoption flow
-// When originTabId is null during initialization, writes are queued here
-// and replayed when currentTabId becomes available via setWritingTabId()
-const pendingAdoptionWriteQueue = [];
-
-// v1.6.4 - Issue #47-3: Maximum age for pending writes before discarding (10 seconds)
-const PENDING_WRITE_MAX_AGE_MS = 10000;
-
-// v1.6.3.9-v5 - FIX Bug #22: Buffer time after max age to check for stale writes
-const ADOPTION_TIMEOUT_BUFFER_MS = 100;
-
-// v1.6.4 - Issue #47-7: Failed write retry uses direct setTimeout retries
-// Simpler implementation vs. queue-based processing while achieving automatic retry behavior
-
-// v1.6.4 - Issue #47-7: Retry configuration
-const MAX_WRITE_RETRIES = 3;
-const WRITE_RETRY_DELAYS = [100, 200, 400]; // Exponential backoff: 100ms, 200ms, 400ms
-
-// v1.6.3.8-v12 - FIX Issue #16: Circuit breaker removed in favor of stateless architecture
-// The write queue is now self-limiting with Promise-based messaging and storage.onChanged fallback
-// Constants kept for reference but not used in active code path:
-// const CIRCUIT_BREAKER_THRESHOLD = 15;
-// const CIRCUIT_BREAKER_RESET_THRESHOLD = 10;
+// v1.6.3.6-v3 - FIX Issue #2: Circuit breaker to prevent infinite storage write loops
+// When pendingWriteCount exceeds this threshold, ALL new writes are blocked
+const CIRCUIT_BREAKER_THRESHOLD = 15;
+const CIRCUIT_BREAKER_RESET_THRESHOLD = 10; // Auto-reset when queue drains below this
+let circuitBreakerTripped = false;
+let circuitBreakerTripTime = null;
 
 // v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
 // Stores state snapshots for rollback on failure
@@ -236,7 +203,6 @@ const WRITING_INSTANCE_ID = (() => {
 
 // v1.6.3.6-v2 - FIX Issue #1: Track last written transaction ID for deterministic self-write detection
 // This provides a secondary check independent of writingInstanceId matching
-// v1.6.3.9-v3 - Issue #1: Export getter for content.js to use as PRIMARY detection method
 let lastWrittenTransactionId = null;
 
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs
@@ -312,7 +278,6 @@ function _isValidPositiveInteger(tabId) {
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Allow content scripts to set tab ID
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the tab ID from background script and pass it here.
- * v1.6.4 - Issue #47-3: Replay pending adoption writes when tab ID becomes available
  *
  * @param {number} tabId - The browser tab ID to use for ownership tracking (must be positive integer)
  */
@@ -332,108 +297,7 @@ export function setWritingTabId(tabId) {
   currentWritingTabId = tabId;
   console.log('[StorageUtils] Writing tab ID set explicitly:', {
     oldTabId,
-    newTabId: tabId,
-    pendingAdoptionWrites: pendingAdoptionWriteQueue.length
-  });
-
-  // v1.6.4 - Issue #47-3: Replay pending adoption writes now that tab ID is available
-  if (oldTabId === null && pendingAdoptionWriteQueue.length > 0) {
-    console.log('[StorageUtils] ADOPTION_FLOW: Tab ID now available, replaying pending writes:', {
-      tabId,
-      pendingCount: pendingAdoptionWriteQueue.length
-    });
-    replayPendingAdoptionWrites();
-  }
-}
-
-/**
- * Replay all pending adoption writes now that tab ID is available
- * v1.6.4 - Issue #47-3: Adoption flow implementation
- * v1.6.3.9-v5 - FIX Bug #22: Enhanced logging to track replayed vs dropped writes
- * Called automatically when setWritingTabId() sets the first valid tab ID.
- * Can also be called manually if needed.
- * @export
- */
-export function replayPendingAdoptionWrites() {
-  if (currentWritingTabId === null) {
-    console.warn('[StorageUtils] ADOPTION_FLOW: Cannot replay - tab ID still null');
-    return;
-  }
-
-  if (pendingAdoptionWriteQueue.length === 0) {
-    console.log('[StorageUtils] ADOPTION_FLOW: No pending writes to replay');
-    return;
-  }
-
-  const now = Date.now();
-  const writesToReplay = [...pendingAdoptionWriteQueue];
-  pendingAdoptionWriteQueue.length = 0; // Clear queue before replay
-
-  // v1.6.3.9-v5 - FIX Bug #22: Log when tab ID becomes available for adoption queue
-  console.log('[StorageUtils] ADOPTION_FLOW: Tab ID now available, starting replay:', {
-    count: writesToReplay.length,
-    currentTabId: currentWritingTabId,
-    timestamp: now,
-    trigger: 'setWritingTabId-called'
-  });
-
-  let replayedCount = 0;
-  let skippedCount = 0;
-  const skippedTransactions = [];
-
-  for (const pendingWrite of writesToReplay) {
-    const ageMs = now - pendingWrite.timestamp;
-
-    // Skip stale writes
-    if (ageMs > PENDING_WRITE_MAX_AGE_MS) {
-      console.warn('[StorageUtils] ADOPTION_FLOW: Skipping stale pending write:', {
-        transactionId: pendingWrite.transactionId,
-        ageMs,
-        maxAgeMs: PENDING_WRITE_MAX_AGE_MS
-      });
-      skippedCount++;
-      skippedTransactions.push(pendingWrite.transactionId);
-      continue;
-    }
-
-    console.log('[StorageUtils] ADOPTION_FLOW: Replaying write:', {
-      transactionId: pendingWrite.transactionId,
-      tabCount: pendingWrite.state?.tabs?.length || 0,
-      ageMs
-    });
-
-    // Replay the write with the new tab ID
-    // Intentionally not awaiting to avoid blocking the current operation.
-    // Each replay is independent and writes are deduplicated by transactionId.
-    // Using fire-and-forget pattern here; storage.onChanged provides eventual consistency.
-    persistStateToStorage(
-      pendingWrite.state,
-      pendingWrite.logPrefix || '[StorageUtils-AdoptionReplay]',
-      pendingWrite.forceEmpty
-    )
-      .then(success => {
-        console.log('[StorageUtils] ADOPTION_FLOW: Replay completed:', {
-          transactionId: pendingWrite.transactionId,
-          success
-        });
-      })
-      .catch(err => {
-        console.error('[StorageUtils] ADOPTION_FLOW: Replay failed:', {
-          transactionId: pendingWrite.transactionId,
-          error: err.message
-        });
-      });
-
-    replayedCount++;
-  }
-
-  // v1.6.3.9-v5 - FIX Bug #22: Enhanced logging for tracking replayed vs dropped
-  console.log('[StorageUtils] ADOPTION_FLOW_SUMMARY:', {
-    replayed: replayedCount,
-    skipped: skippedCount,
-    total: writesToReplay.length,
-    skippedTransactions: skippedTransactions.length > 0 ? skippedTransactions : 'none',
-    tabIdSetAt: now
+    newTabId: tabId
   });
 }
 
@@ -443,16 +307,6 @@ export function replayPendingAdoptionWrites() {
  */
 export function getWritingInstanceId() {
   return WRITING_INSTANCE_ID;
-}
-
-/**
- * Get the last written transaction ID for deterministic self-write detection
- * v1.6.3.9-v3 - Issue #1: Export for content.js to use as PRIMARY detection method
- * This is the most reliable detection because it's set AFTER successful write completion.
- * @returns {string|null} Last written transaction ID or null if no write has occurred
- */
-export function getLastWrittenTransactionId() {
-  return lastWrittenTransactionId;
 }
 
 /**
@@ -594,64 +448,51 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
 /**
  * Handle empty write validation for ownership checking
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
- * v1.6.3.9-v3 - Issue #2: Fix "Empty Write Paradox" - allow cleanup writes with ownership history
- *   Previously required BOTH forceEmpty=true AND hasOwnershipHistory.
- *   Now allows empty writes when tab has ownership history (proves it legitimately
- *   owned Quick Tabs before and is cleaning up its state).
- *   forceEmpty=true is now a BYPASS for system cleanup operations.
  * @private
  */
 function _handleEmptyWriteValidation(tabId, forceEmpty) {
   const hasOwnershipHistory = previouslyOwnedTabIds.has(tabId);
 
-  // v1.6.3.9-v3 - Issue #2: Allow cleanup writes from tabs with ownership history
-  // hasOwnershipHistory is true when tabId exists in `previouslyOwnedTabIds` Set,
-  // which is populated when a tab creates/owns Quick Tabs. A tab that previously
-  // owned Quick Tabs can legitimately end up with 0 Quick Tabs (user closed all
-  // their Quick Tabs). This is a valid state transition, not an error.
-  if (hasOwnershipHistory) {
-    console.log('[StorageUtils] Empty write allowed (cleanup with ownership history):', {
+  if (!forceEmpty) {
+    console.warn('[StorageUtils] Storage write BLOCKED - no owned tabs:', {
       currentTabId: tabId,
+      tabCount: 0,
       forceEmpty,
       hasOwnershipHistory,
-      reason: 'Tab previously owned Quick Tabs - cleanup permitted'
+      reason: 'Empty write requires forceEmpty=true'
     });
     return {
-      shouldWrite: true,
+      shouldWrite: false,
       ownedTabs: [],
-      reason: 'cleanup write with ownership history'
+      reason: 'empty write blocked - forceEmpty required'
     };
   }
 
-  // v1.6.3.9-v3 - Issue #2: forceEmpty=true bypasses ownership check
-  // Used for system-level cleanup operations (e.g., Close All from Manager)
-  if (forceEmpty) {
-    console.log('[StorageUtils] Empty write allowed (forceEmpty bypass):', {
+  if (!hasOwnershipHistory) {
+    console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
       currentTabId: tabId,
+      tabCount: 0,
       forceEmpty,
       hasOwnershipHistory,
-      reason: 'System cleanup operation'
+      reason: 'Tab never owned Quick Tabs, cannot write empty state'
     });
     return {
-      shouldWrite: true,
+      shouldWrite: false,
       ownedTabs: [],
-      reason: 'forceEmpty bypass for system cleanup'
+      reason: 'empty write blocked - no ownership history'
     };
   }
 
-  // Block: Tab has no ownership history AND forceEmpty=false
-  // This prevents non-owner tabs from accidentally corrupting storage with empty state
-  console.warn('[StorageUtils] Storage write BLOCKED - no ownership history:', {
+  // Tab has ownership history and forceEmpty=true - allow empty write
+  console.log('[StorageUtils] Empty write allowed:', {
     currentTabId: tabId,
-    tabCount: 0,
     forceEmpty,
-    hasOwnershipHistory,
-    reason: 'Tab never owned Quick Tabs, cannot write empty state'
+    hasOwnershipHistory
   });
   return {
-    shouldWrite: false,
+    shouldWrite: true,
     ownedTabs: [],
-    reason: 'empty write blocked - no ownership history (non-owner tab)'
+    reason: 'intentional empty write with ownership history'
   };
 }
 
@@ -677,23 +518,18 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
   const tabId = currentTabId ?? currentWritingTabId;
 
   // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
-  // v1.6.4 - Issue #47-3: Queue writes for adoption flow when tab ID is unknown
-  // Instead of simply blocking, we return a special status that indicates
-  // the write should be queued for later replay when tab ID becomes available
+  // Previously this allowed writes with unknown tab ID, which caused:
+  // - Self-write detection to fail (isSelfWrite returns false)
+  // - Empty state corruption from non-owner tabs
+  // Now we block writes until tab ID is initialized
   if (tabId === null) {
-    console.warn('[StorageUtils] STORAGE_WRITE_BLOCKED - unknown tab ID (initialization race):', {
+    console.warn('[StorageUtils] Storage write BLOCKED - unknown tab ID (initialization race?):', {
       tabCount: tabs.length,
       forceEmpty,
-      pendingQueueLength: pendingAdoptionWriteQueue.length,
       suggestion:
-        'Write will be queued for adoption flow - setWritingTabId() will replay when tab ID available'
+        'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
     });
-    return {
-      shouldWrite: false,
-      ownedTabs: [],
-      reason: 'unknown tab ID - queued for adoption',
-      queueForAdoption: true // v1.6.4 - Signal to caller to queue the write
-    };
+    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety' };
   }
 
   // Filter to only tabs owned by this tab
@@ -1127,7 +963,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
 
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
-
+    
     // v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging
     console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
       transactionId,
@@ -1144,7 +980,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
       suggestion:
         'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
     });
-
+    
     // v1.6.3.7 - FIX Issue #6: Log whether transaction should have matched
     console.warn('[StorageUtils] TRANSACTION_TIMEOUT diagnostic:', {
       transactionId,
@@ -1158,7 +994,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
         'storage.onChanged listener not registered'
       ]
     });
-
+    
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
   }
   TRANSACTION_CLEANUP_TIMEOUTS.delete(transactionId);
@@ -1364,48 +1200,6 @@ function _getArrayValue(tab, flatKey, nestedKey) {
 }
 
 /**
- * Log when originTabId is undefined on instance (will become null)
- * v1.6.3.7-v3 - FIX Issue #4: Helper for adoption flow diagnostic logging
- * @private
- * @param {Object} tab - Quick Tab instance
- * @param {*} rawOriginTabId - Raw value from instance
- * @param {*} rawActiveTabId - Fallback value from instance
- */
-function _logOriginTabIdUndefined(tab, rawOriginTabId, rawActiveTabId) {
-  if (rawOriginTabId !== undefined) return;
-  console.log(
-    '[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId read from instance:',
-    {
-      quickTabId: tab.id,
-      rawOriginTabId: 'undefined',
-      rawActiveTabId: rawActiveTabId !== undefined ? rawActiveTabId : 'undefined',
-      willFallbackTo: rawActiveTabId ?? 'null'
-    }
-  );
-}
-
-/**
- * Log when final extracted originTabId is null
- * v1.6.3.7-v3 - FIX Issue #4: Helper for adoption flow diagnostic logging
- * @private
- * @param {Object} tab - Quick Tab instance
- * @param {*} extractedOriginTabId - Final extracted value
- * @param {*} rawOriginTabId - Raw value from instance
- * @param {*} rawActiveTabId - Fallback value from instance
- */
-function _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiveTabId) {
-  if (extractedOriginTabId !== null) return;
-  console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
-    quickTabId: tab.id,
-    originTabId: extractedOriginTabId,
-    hasOriginTabId: rawOriginTabId !== undefined && rawOriginTabId !== null,
-    hasActiveTabId: rawActiveTabId !== undefined && rawActiveTabId !== null,
-    action: 'serialize',
-    result: 'null'
-  });
-}
-
-/**
  * Serialize a single Quick Tab to storage format
  * v1.6.3.4-v2 - FIX Bug #1: Extracted to reduce complexity
  * v1.6.3.4-v3 - FIX TypeError: Handle both flat (left/top) and nested (position.left) formats
@@ -1414,9 +1208,6 @@ function _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiv
  * v1.6.3.7 - FIX Issue #2, #7: Enhanced originTabId preservation with logging
  *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
  *   - Issue #7: Log originTabId extraction for debugging adoption data flow
- * v1.6.3.7-v3 - FIX Issue #4: Enhanced diagnostic logging for originTabId adoption flow
- *   - Log raw instance value BEFORE fallback chain to detect undefined → null conversion
- *   - Extracted logging helpers to reduce function complexity
  * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
  * @private
  * @param {Object} tab - Quick Tab instance
@@ -1424,19 +1215,21 @@ function _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiv
  * @returns {Object} Serialized tab data for storage
  */
 function serializeTabForStorage(tab, isMinimized) {
-  // v1.6.3.7-v3 - FIX Issue #4: Enhanced logging to trace originTabId extraction
-  // Log the raw instance value BEFORE the fallback chain to detect undefined → null conversion
-  const rawOriginTabId = tab.originTabId;
-  const rawActiveTabId = tab.activeTabId;
-
-  // v1.6.3.7-v3 - FIX Issue #4: Log when undefined is being converted to null
-  _logOriginTabIdUndefined(tab, rawOriginTabId, rawActiveTabId);
-
-  // v1.6.3.7 - FIX Issue #7: Extract originTabId with fallback chain
-  const extractedOriginTabId = rawOriginTabId ?? rawActiveTabId ?? null;
-
+  // v1.6.3.7 - FIX Issue #7: Log originTabId extraction
+  const extractedOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
+  
   // v1.6.3.7 - FIX Issue #7: Adoption flow logging - only log when originTabId is problematic (null)
-  _logOriginTabIdNull(tab, extractedOriginTabId, rawOriginTabId, rawActiveTabId);
+  // This prevents excessive logging in normal operation while still catching adoption failures
+  if (extractedOriginTabId === null) {
+    console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
+      quickTabId: tab.id,
+      originTabId: extractedOriginTabId,
+      hasOriginTabId: tab.originTabId !== undefined && tab.originTabId !== null,
+      hasActiveTabId: tab.activeTabId !== undefined && tab.activeTabId !== null,
+      action: 'serialize',
+      result: 'null'
+    });
+  }
 
   return {
     id: String(tab.id),
@@ -1472,11 +1265,7 @@ function serializeTabForStorage(tab, isMinimized) {
     mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
     // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
-    originTabId: extractedOriginTabId,
-    // v1.6.3.9-v2 - Issue #6: Container Isolation at Storage Level
-    // Firefox containers are identified by cookieStoreId (Firefox 55+)
-    // Default to DEFAULT_CONTAINER_ID for backward compatibility with existing Quick Tabs
-    originContainerId: String(tab.originContainerId || tab.cookieStoreId || DEFAULT_CONTAINER_ID)
+    originTabId: extractedOriginTabId
   };
 }
 
@@ -1743,18 +1532,14 @@ function createTimeoutPromise(ms, operation) {
  * v1.6.3.5-v10 - FIX Issue #4: Stricter empty write protection
  *   - Tabs with 0 Quick Tabs should NEVER write unless forceEmpty=true
  *   - This prevents non-owner tabs from overwriting valid state
- * v1.6.3.9-v5 - FIX Bug #17: Add isDestroyOperation param to bypass cooldown for cleanup
- *   NOTE: isDestroyOperation has default value (false) for backward compatibility
- *   Existing callers will continue to work without modification
  * @private
  * @param {number} tabCount - Number of tabs in state
  * @param {boolean} forceEmpty - Whether to force the empty write
  * @param {string} logPrefix - Log prefix for messages
  * @param {string} transactionId - Transaction ID for logging
- * @param {boolean} [isDestroyOperation=false] - Whether this is a destroy/cleanup operation
  * @returns {boolean} True if write should be rejected
  */
-function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId, isDestroyOperation = false) {
+function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId) {
   if (tabCount > 0) {
     return false; // Not an empty write
   }
@@ -1780,14 +1565,6 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId,
   }
 
   console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
-
-  // v1.6.3.9-v5 - FIX Bug #17: Bypass cooldown for destroy/cleanup operations
-  // Destroy operations need to complete immediately to avoid orphaned state
-  if (isDestroyOperation) {
-    console.log(`${logPrefix} Empty write cooldown BYPASSED (destroy operation) [${transactionId}]`);
-    lastEmptyWriteTime = Date.now();
-    return false;
-  }
 
   const now = Date.now();
   if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {
@@ -1877,21 +1654,9 @@ function _trackDuplicateSaveIdWrite(saveId, transactionId, _logPrefix) {
  * v1.6.3.4-v12 - FIX Issue #1, #6: Enhanced logging with transaction sequencing
  * v1.6.3.6-v2 - FIX Issue #1, #2: Update lastWrittenTransactionId, add duplicate saveId tracking
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage write operation logging
- * v1.6.4 - Issue #47-7: Add retry queue for failed writes with exponential backoff
  * @private
- * @param {Object} stateWithTxn - State to write with transaction metadata
- * @param {number} tabCount - Number of tabs in state
- * @param {string} logPrefix - Log prefix
- * @param {string} transactionId - Transaction ID
- * @param {number} [retryCount=0] - Current retry attempt count
  */
-async function _executeStorageWrite(
-  stateWithTxn,
-  tabCount,
-  logPrefix,
-  transactionId,
-  retryCount = 0
-) {
+async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     console.warn(`${logPrefix} Storage API not available, cannot persist`);
@@ -1951,7 +1716,15 @@ async function _executeStorageWrite(
 
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
 
-    // v1.6.3.8-v12 - FIX Issue #16: Circuit breaker removed - no longer needed with stateless architecture
+    // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
+    if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
+      const tripDuration = Date.now() - circuitBreakerTripTime;
+      circuitBreakerTripped = false;
+      circuitBreakerTripTime = null;
+      console.log(
+        `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
+      );
+    }
 
     // v1.6.3.6-v5 - Log storage write complete (success)
     logStorageWrite(operationId, STATE_KEY, 'complete', {
@@ -1977,20 +1750,6 @@ async function _executeStorageWrite(
     });
 
     console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
-
-    // v1.6.4 - Issue #47-7: Queue for retry if under max retries
-    if (retryCount < MAX_WRITE_RETRIES) {
-      _scheduleWriteRetry(stateWithTxn, tabCount, logPrefix, transactionId, retryCount);
-    } else {
-      console.error(`${logPrefix} STORAGE_WRITE_RETRY_EXHAUSTED [${transactionId}]:`, {
-        retryCount,
-        maxRetries: MAX_WRITE_RETRIES,
-        error: err.message,
-        tabCount,
-        timestamp: Date.now()
-      });
-    }
-
     return false;
   } finally {
     // v1.6.3.4-v3 - FIX: Always clear timeout to prevent memory leak
@@ -2001,54 +1760,6 @@ async function _executeStorageWrite(
     // The cleanupTransactionId() function is called from shouldProcessStorageChange() when
     // storage.onChanged is received, providing immediate cleanup in the normal case
   }
-}
-
-/**
- * Schedule a failed write for retry with exponential backoff
- * v1.6.4 - Issue #47-7: Error recovery for failed storage writes
- * @private
- * @param {Object} stateWithTxn - State to write
- * @param {number} tabCount - Number of tabs
- * @param {string} logPrefix - Log prefix
- * @param {string} transactionId - Transaction ID
- * @param {number} currentRetry - Current retry count
- */
-function _scheduleWriteRetry(stateWithTxn, tabCount, logPrefix, transactionId, currentRetry) {
-  const nextRetry = currentRetry + 1;
-  // Safe bounds check: use Math.min to cap at maximum delay (400ms)
-  // When currentRetry >= WRITE_RETRY_DELAYS.length, all subsequent retries use max delay
-  // This is intentional: exponential backoff caps at maximum delay to prevent excessive waits
-  const delayIndex = Math.min(currentRetry, WRITE_RETRY_DELAYS.length - 1);
-  const delayMs = WRITE_RETRY_DELAYS[delayIndex];
-
-  console.log(`${logPrefix} STORAGE_WRITE_RETRY_SCHEDULED [${transactionId}]:`, {
-    retryAttempt: nextRetry,
-    maxRetries: MAX_WRITE_RETRIES,
-    delayMs,
-    tabCount,
-    timestamp: Date.now()
-  });
-
-  // Schedule retry with exponential backoff
-  setTimeout(() => {
-    console.log(`${logPrefix} STORAGE_WRITE_RETRY_EXECUTING [${transactionId}]:`, {
-      retryAttempt: nextRetry,
-      tabCount
-    });
-
-    // Queue the retry operation through the normal write queue
-    queueStorageWrite(
-      () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, nextRetry),
-      logPrefix,
-      `${transactionId}-retry-${nextRetry}`
-    ).then(success => {
-      if (success) {
-        console.log(`${logPrefix} STORAGE_WRITE_RETRY_SUCCESS [${transactionId}]:`, {
-          retryAttempt: nextRetry
-        });
-      }
-    });
-  }, delayMs);
 }
 
 /**
@@ -2073,9 +1784,25 @@ export function queueStorageWrite(
   logPrefix = '[StorageUtils]',
   transactionId = ''
 ) {
-  // v1.6.3.8-v12 - FIX Issue #16: Removed circuit breaker in favor of stateless architecture
-  // With Promise-based messaging and storage.onChanged fallback, the write queue is self-limiting
-  // Backlog warnings remain for diagnostics
+  // v1.6.3.6-v3 - FIX Issue #2: Circuit breaker check BEFORE incrementing pendingWriteCount
+  // This prevents infinite storage write loops from overwhelming the system
+  if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    if (!circuitBreakerTripped) {
+      circuitBreakerTripped = true;
+      circuitBreakerTripTime = Date.now();
+      console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
+      console.error(
+        `[StorageUtils] Blocking ALL new storage writes (threshold: ${CIRCUIT_BREAKER_THRESHOLD})`
+      );
+      console.error('[StorageUtils] Current queue depth:', pendingWriteCount);
+      console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
+      console.error(
+        '[StorageUtils] To recover: Close tabs using this extension, then go to about:addons, disable and re-enable the extension'
+      );
+    }
+    console.error(`[StorageUtils] Write BLOCKED by circuit breaker [${transactionId}]`);
+    return Promise.resolve(false);
+  }
 
   // v1.6.3.4-v12 - FIX Issue #6: Log queue state with previous transaction
   pendingWriteCount++;
@@ -2086,45 +1813,46 @@ export function queueStorageWrite(
     queueDepth: pendingWriteCount
   });
 
-  // v1.6.3.8-v12 - FIX Code Review: Consistent severity progression for backlog warnings
-  // >10 = error (critical), >5 = warn (concerning), otherwise just log
+  // v1.6.3.6-v2 - FIX Issue #2: Backlog detection warnings
   if (pendingWriteCount > 10) {
     console.error(
-      `[StorageUtils] ⚠️⚠️ CRITICAL BACKLOG: ${pendingWriteCount} pending writes - may indicate infinite loop`
+      `[StorageUtils] ⚠️⚠️⚠️ CRITICAL STORAGE WRITE BACKLOG: ${pendingWriteCount} pending transactions!`
     );
+    console.error('[StorageUtils] This strongly indicates an infinite storage write loop.');
     console.error(
-      `[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`
+      '[StorageUtils] Check for self-write detection failure in storage.onChanged listener.'
     );
+    console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
+    console.error(`[StorageUtils] Current transaction: ${transactionId}`);
   } else if (pendingWriteCount > 5) {
     console.warn(
-      `[StorageUtils] ⚠️ HIGH BACKLOG: ${pendingWriteCount} pending writes - monitoring for issues`
+      `[StorageUtils] ⚠️ STORAGE WRITE BACKLOG DETECTED: ${pendingWriteCount} pending transactions`
+    );
+    console.warn(
+      '[StorageUtils] Possible infinite loop - check storage.onChanged listener for self-write.'
+    );
+    console.warn(
+      `[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`
     );
   }
 
   // Chain this operation to the previous one
-  // v1.6.3.9-v2 - FIX Issue #3: Proper Promise chain semantics without orphaned rejections
-  // The catch handler must:
-  // 1. Log the error for debugging
-  // 2. Update pendingWriteCount
-  // 3. Resolve gracefully (not reject) to allow subsequent writes to proceed
-  // The queue assignment stays chained to prevent orphaned rejections
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(() => writeOperation())
     .catch(err => {
-      // v1.6.3.9-v2 - FIX Issue #3: Log failure but allow chain to continue
-      console.error(`[StorageUtils] Storage write FAILED [${transactionId}]:`, err);
+      // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
+      const droppedWrites = pendingWriteCount - 1; // Current write failed, others are dropped
+      console.error(
+        `[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`,
+        err
+      );
 
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-
-      // v1.6.3.9-v2 - FIX Issue #3: Return false instead of rejecting
-      // Rejecting here creates an orphaned rejection because:
-      // - The caller receives this rejected promise
-      // - But if we reset storageWriteQueuePromise separately, the chain is broken
-      // By returning false, we:
-      // - Signal failure to the caller (false indicates write failed)
-      // - Allow the Promise chain to continue cleanly for subsequent writes
-      // - Avoid unhandled rejection warnings
-      // The caller should check the return value, not rely on rejection
+      // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
+      // Without this reset, the `false` return value contaminates subsequent writes
+      // because the Promise chain carries the error state forward.
+      // By resetting to a fresh Promise.resolve(), subsequent writes start fresh.
+      storageWriteQueuePromise = Promise.resolve();
       return false;
     });
 
@@ -2135,124 +1863,27 @@ export function queueStorageWrite(
  * Validate ownership for persist operation
  * v1.6.3.5-v4 - Extracted to reduce persistStateToStorage complexity
  * v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to validateOwnershipForWrite for proper empty write validation
- * v1.6.4 - Issue #47-3: Queue writes for adoption when tab ID is unknown
  * @private
  * @param {Object} state - State to validate
  * @param {boolean} forceEmpty - Whether empty writes are forced
  * @param {string} logPrefix - Logging prefix
  * @param {string} transactionId - Transaction ID for logging
- * @returns {{ shouldProceed: boolean, queuedForAdoption: boolean }}
+ * @returns {{ shouldProceed: boolean }}
  */
 function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) {
   // v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to ownership validation
   // This allows validateOwnershipForWrite to properly handle empty writes
   const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId, forceEmpty);
   if (!ownershipCheck.shouldWrite) {
-    // v1.6.4 - Issue #47-3: Queue for adoption flow if indicated
-    if (ownershipCheck.queueForAdoption) {
-      _queueWriteForAdoption(state, forceEmpty, logPrefix, transactionId);
-      console.log(`${logPrefix} STORAGE_WRITE_QUEUED for adoption [${transactionId}]:`, {
-        reason: ownershipCheck.reason,
-        currentTabId: currentWritingTabId,
-        tabCount: state.tabs.length,
-        pendingQueueLength: pendingAdoptionWriteQueue.length
-      });
-      return { shouldProceed: false, queuedForAdoption: true };
-    }
-
     console.warn(`${logPrefix} Storage write BLOCKED [${transactionId}]:`, {
       reason: ownershipCheck.reason,
       currentTabId: currentWritingTabId,
       tabCount: state.tabs.length,
       forceEmpty
     });
-    return { shouldProceed: false, queuedForAdoption: false };
+    return { shouldProceed: false };
   }
-  return { shouldProceed: true, queuedForAdoption: false };
-}
-
-/**
- * Queue a write operation for later replay when tab ID becomes available
- * v1.6.4 - Issue #47-3: Adoption flow implementation
- * @private
- * @param {Object} state - State to persist
- * @param {boolean} forceEmpty - Whether empty writes are forced
- * @param {string} logPrefix - Log prefix
- * @param {string} transactionId - Transaction ID
- */
-function _queueWriteForAdoption(state, forceEmpty, logPrefix, transactionId) {
-  const now = Date.now();
-
-  // Remove stale entries before adding new one
-  _cleanupStaleAdoptionWrites(now);
-
-  // Queue the write for later
-  // Note: JSON.parse(JSON.stringify()) is safe here because state objects are
-  // always JSON-serializable (they're stored in browser.storage.local)
-  pendingAdoptionWriteQueue.push({
-    state: JSON.parse(JSON.stringify(state)), // Deep copy to prevent mutation
-    forceEmpty,
-    logPrefix,
-    transactionId,
-    timestamp: now
-  });
-
-  console.log('[StorageUtils] ADOPTION_FLOW: Write queued for later replay:', {
-    transactionId,
-    tabCount: state.tabs?.length || 0,
-    pendingQueueLength: pendingAdoptionWriteQueue.length,
-    timestamp: now
-  });
-
-  // v1.6.3.9-v5 - FIX Bug #22: Schedule explicit timeout to warn about stale adoption queue
-  // This ensures visibility when writes are queued but never replayed
-  if (pendingAdoptionWriteQueue.length === 1) {
-    // First item in queue - schedule timeout warning
-    setTimeout(() => {
-      if (pendingAdoptionWriteQueue.length > 0 && currentWritingTabId === null) {
-        console.warn('[StorageUtils] ADOPTION_FLOW_TIMEOUT: Pending writes may be dropped:', {
-          pendingCount: pendingAdoptionWriteQueue.length,
-          timeoutMs: PENDING_WRITE_MAX_AGE_MS,
-          hint: 'Tab ID was never set via setWritingTabId()'
-        });
-        // Force cleanup of stale writes
-        _cleanupStaleAdoptionWrites(Date.now());
-      }
-    }, PENDING_WRITE_MAX_AGE_MS + ADOPTION_TIMEOUT_BUFFER_MS); // Check slightly after max age
-  }
-}
-
-/**
- * Clean up stale adoption writes older than PENDING_WRITE_MAX_AGE_MS
- * v1.6.4 - Issue #47-3: Prevent memory leaks from abandoned writes
- * @private
- * @param {number} now - Current timestamp
- */
-function _cleanupStaleAdoptionWrites(now) {
-  const initialLength = pendingAdoptionWriteQueue.length;
-  let removedCount = 0;
-
-  // Filter in place - keep only non-stale writes
-  for (let i = pendingAdoptionWriteQueue.length - 1; i >= 0; i--) {
-    const write = pendingAdoptionWriteQueue[i];
-    if (now - write.timestamp > PENDING_WRITE_MAX_AGE_MS) {
-      console.warn('[StorageUtils] ADOPTION_FLOW: Discarding stale write:', {
-        transactionId: write.transactionId,
-        ageMs: now - write.timestamp,
-        maxAgeMs: PENDING_WRITE_MAX_AGE_MS
-      });
-      pendingAdoptionWriteQueue.splice(i, 1);
-      removedCount++;
-    }
-  }
-
-  if (removedCount > 0) {
-    console.log('[StorageUtils] ADOPTION_FLOW: Cleaned up stale writes:', {
-      removed: removedCount,
-      remaining: pendingAdoptionWriteQueue.length,
-      initialLength
-    });
-  }
+  return { shouldProceed: true };
 }
 
 /**
@@ -2354,11 +1985,7 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
 
   // Phase 2: Check empty write protection
-  // v1.6.3.9-v5 - FIX Bug #17: Detect destroy operations from logPrefix to bypass cooldown
-  const isDestroyOperation = logPrefix.toLowerCase().includes('destroy') ||
-                             logPrefix.toLowerCase().includes('cleanup') ||
-                             logPrefix.toLowerCase().includes('close');
-  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId, isDestroyOperation)) {
+  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
     return Promise.resolve(false);
   }
 
@@ -2389,360 +2016,4 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
     logPrefix,
     transactionId
   );
-}
-
-// ==================== v1.6.3.7-v3 SESSION STORAGE FUNCTIONS ====================
-// API #1: storage.session - Session-Scoped Quick Tabs
-// Session Quick Tabs auto-clear when browser closes (no stale data persistence)
-
-/**
- * ===============================================================================
- * GAP-20 SESSION STORAGE DECISION (v1.6.3.8-v14)
- * ===============================================================================
- * STATUS: RESERVED FOR FUTURE USE - Functions exist but are not currently called
- *
- * INTENDED FEATURE:
- * - Session-only Quick Tabs (permanent: false) auto-clear on browser close
- * - Use storage.session API (Firefox MV2+) for ephemeral Quick Tabs
- * - Regular Quick Tabs persist in storage.local (permanent by default)
- *
- * CURRENT STATE:
- * - No UI toggle for "permanent" property exists
- * - No handlers check `tab.permanent` property to route storage
- * - Functions are implemented and tested but not integrated
- *
- * INTEGRATION PATH (when feature is needed):
- * 1. Add "Make Temporary" toggle to Quick Tab context menu
- * 2. Call routeTabsToStorageLayers() before persistence
- * 3. Call saveSessionQuickTabs() for tabs with permanent: false
- * 4. Call loadAllQuickTabs() for unified state hydration
- *
- * DO NOT DELETE - Keep for future "Session Quick Tabs" feature implementation.
- * See docs/manual/1.6.4/gap-analysis-part-2.md for full context.
- * ===============================================================================
- */
-
-/**
- * Check if storage.session API is available
- * v1.6.3.7-v3 - API #1: Session storage availability check
- * v1.6.3.8-v14 - GAP-20: RESERVED - Not currently called (see decision above)
- * @returns {boolean} True if storage.session is available
- */
-export function isSessionStorageAvailable() {
-  const browserAPI = getBrowserStorageAPI();
-  return !!(browserAPI?.storage?.session?.set && browserAPI?.storage?.session?.get);
-}
-
-/**
- * Separate tabs into permanent and session-only categories
- * v1.6.3.7-v3 - API #1: Route tabs based on permanent property
- * @param {Array} tabs - Array of Quick Tab data
- * @returns {{ permanentTabs: Array, sessionTabs: Array }}
- */
-export function routeTabsToStorageLayers(tabs) {
-  if (!Array.isArray(tabs)) {
-    return { permanentTabs: [], sessionTabs: [] };
-  }
-
-  // Session tabs have permanent === false (explicit)
-  // All other tabs go to permanent storage (default behavior)
-  const sessionTabs = tabs.filter(tab => tab.permanent === false);
-  const permanentTabs = tabs.filter(tab => tab.permanent !== false);
-
-  console.log('[StorageUtils] Routed tabs to storage layers:', {
-    permanentCount: permanentTabs.length,
-    sessionCount: sessionTabs.length
-  });
-
-  return { permanentTabs, sessionTabs };
-}
-
-/**
- * Save session-only Quick Tabs to storage.session
- * v1.6.3.7-v3 - API #1: Session storage write
- * @param {Array} sessionTabs - Array of session Quick Tab data
- * @param {string} logPrefix - Log prefix for messages
- * @returns {Promise<boolean>} True if saved successfully
- */
-export async function saveSessionQuickTabs(sessionTabs, logPrefix = '[StorageUtils]') {
-  if (!isSessionStorageAvailable()) {
-    console.warn(`${logPrefix} storage.session not available`);
-    return false;
-  }
-
-  const browserAPI = getBrowserStorageAPI();
-
-  try {
-    const state = {
-      tabs: sessionTabs,
-      saveId: generateSaveId(),
-      timestamp: Date.now()
-    };
-
-    await browserAPI.storage.session.set({ [SESSION_STATE_KEY]: state });
-    console.log(`${logPrefix} Saved ${sessionTabs.length} session Quick Tabs to storage.session`);
-    return true;
-  } catch (err) {
-    console.error(`${logPrefix} Failed to save session Quick Tabs:`, err.message);
-    return false;
-  }
-}
-
-/**
- * Load session-only Quick Tabs from storage.session
- * v1.6.3.7-v3 - API #1: Session storage read
- * @param {string} logPrefix - Log prefix for messages
- * @returns {Promise<Array>} Array of session Quick Tabs (empty if none)
- */
-export async function loadSessionQuickTabs(logPrefix = '[StorageUtils]') {
-  if (!isSessionStorageAvailable()) {
-    console.log(`${logPrefix} storage.session not available, returning empty array`);
-    return [];
-  }
-
-  const browserAPI = getBrowserStorageAPI();
-
-  try {
-    const result = await browserAPI.storage.session.get(SESSION_STATE_KEY);
-    const state = result?.[SESSION_STATE_KEY];
-
-    if (!state?.tabs || !Array.isArray(state.tabs)) {
-      console.log(`${logPrefix} No session Quick Tabs found`);
-      return [];
-    }
-
-    console.log(`${logPrefix} Loaded ${state.tabs.length} session Quick Tabs from storage.session`);
-    return state.tabs;
-  } catch (err) {
-    console.error(`${logPrefix} Failed to load session Quick Tabs:`, err.message);
-    return [];
-  }
-}
-
-/**
- * Load all Quick Tabs from both storage layers (local + session)
- * v1.6.3.7-v3 - API #1: Unified loading from both storage layers
- * @param {string} logPrefix - Log prefix for messages
- * @returns {Promise<{ tabs: Array, saveId: string, timestamp: number }>}
- */
-export async function loadAllQuickTabs(logPrefix = '[StorageUtils]') {
-  const browserAPI = getBrowserStorageAPI();
-  if (!browserAPI) {
-    console.warn(`${logPrefix} Browser API not available`);
-    return { tabs: [], saveId: null, timestamp: 0 };
-  }
-
-  // Load from local storage (permanent tabs)
-  let permanentTabs = [];
-  let permanentSaveId = null;
-  let permanentTimestamp = 0;
-
-  try {
-    const localResult = await browserAPI.storage.local.get(STATE_KEY);
-    const localState = localResult?.[STATE_KEY];
-
-    if (localState?.tabs && Array.isArray(localState.tabs)) {
-      permanentTabs = localState.tabs;
-      permanentSaveId = localState.saveId;
-      permanentTimestamp = localState.timestamp || 0;
-    }
-  } catch (err) {
-    console.error(`${logPrefix} Failed to load permanent Quick Tabs:`, err.message);
-  }
-
-  // Load from session storage (session-only tabs)
-  const sessionTabs = await loadSessionQuickTabs(logPrefix);
-
-  // Merge results (permanent tabs first, then session tabs)
-  const allTabs = [...permanentTabs, ...sessionTabs];
-
-  console.log(`${logPrefix} Loaded Quick Tabs from all layers:`, {
-    permanentCount: permanentTabs.length,
-    sessionCount: sessionTabs.length,
-    totalCount: allTabs.length
-  });
-
-  return {
-    tabs: allTabs,
-    saveId: permanentSaveId || generateSaveId(),
-    timestamp: permanentTimestamp || Date.now()
-  };
-}
-
-/**
- * Clear all session Quick Tabs from storage.session
- * v1.6.3.7-v3 - API #1: Session storage clear
- * @param {string} logPrefix - Log prefix for messages
- * @returns {Promise<boolean>} True if cleared successfully
- */
-export async function clearSessionQuickTabs(logPrefix = '[StorageUtils]') {
-  if (!isSessionStorageAvailable()) {
-    return false;
-  }
-
-  const browserAPI = getBrowserStorageAPI();
-
-  try {
-    await browserAPI.storage.session.remove(SESSION_STATE_KEY);
-    console.log(`${logPrefix} Cleared session Quick Tabs from storage.session`);
-    return true;
-  } catch (err) {
-    console.error(`${logPrefix} Failed to clear session Quick Tabs:`, err.message);
-    return false;
-  }
-}
-
-// ==================== END SESSION STORAGE FUNCTIONS ====================
-
-// ==================== v1.6.3.8-v10 STORAGE WRITE WITH RETRY ====================
-// FIX Issue #9: Fire-and-Forget Storage Persistence - Add retry logic
-
-/**
- * Storage write retry configuration
- * v1.6.3.8-v10 - FIX Issue #9: Exponential backoff for storage writes
- */
-const STORAGE_WRITE_MAX_RETRIES = 3;
-const STORAGE_WRITE_INITIAL_DELAY_MS = 100;
-const STORAGE_WRITE_MAX_DELAY_MS = 500;
-
-/**
- * Handle storage write retry delay to reduce nesting depth
- * v1.6.3.8-v10 - FIX ESLint max-depth: Extracted to flatten control flow
- * @private
- * @param {number} attempt - Current attempt number
- * @param {number} maxRetries - Maximum retries
- * @param {number} delay - Current delay
- * @returns {Promise<number>} Next delay value
- */
-async function _handleStorageWriteRetryDelay(attempt, maxRetries, delay) {
-  if (attempt >= maxRetries) {
-    return delay; // No need to wait on last attempt
-  }
-  await new Promise(resolve => setTimeout(resolve, delay));
-  return Math.min(delay * 2, STORAGE_WRITE_MAX_DELAY_MS);
-}
-
-/**
- * Write to storage with exponential backoff retry
- * v1.6.3.8-v10 - FIX Issue #9: Robust storage write with retry logic
- * @param {string} key - Storage key
- * @param {Object} value - Value to store
- * @param {Object} options - Optional configuration
- * @param {string} [options.logPrefix='[StorageUtils]'] - Log prefix
- * @param {number} [options.maxRetries=3] - Maximum retry attempts
- * @param {number} [options.initialDelay=100] - Initial retry delay in ms
- * @returns {Promise<{success: boolean, attempts: number, error: string|null}>}
- */
-export async function writeStorageWithRetry(key, value, options = {}) {
-  const {
-    logPrefix = '[StorageUtils]',
-    maxRetries = STORAGE_WRITE_MAX_RETRIES,
-    initialDelay = STORAGE_WRITE_INITIAL_DELAY_MS
-  } = options;
-
-  const browserAPI = getBrowserStorageAPI();
-  if (!browserAPI?.storage?.local) {
-    console.error(`${logPrefix} STORAGE_WRITE_FAILED: Browser storage API unavailable`);
-    return { success: false, attempts: 0, error: 'storage API unavailable' };
-  }
-
-  let delay = initialDelay;
-  let lastError = null;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`${logPrefix} STORAGE_WRITE_ATTEMPT:`, {
-        key,
-        attempt,
-        maxRetries,
-        timestamp: Date.now()
-      });
-
-      await browserAPI.storage.local.set({ [key]: value });
-
-      console.log(`${logPrefix} STORAGE_WRITE_SUCCESS:`, {
-        key,
-        attempt,
-        timestamp: Date.now()
-      });
-
-      return { success: true, attempts: attempt, error: null };
-    } catch (err) {
-      lastError = err;
-
-      console.warn(`${logPrefix} STORAGE_WRITE_FAILED:`, {
-        key,
-        attempt,
-        maxRetries,
-        error: err.message,
-        willRetry: attempt < maxRetries,
-        timestamp: Date.now()
-      });
-
-      // Wait before retry using helper to reduce nesting depth
-      delay = await _handleStorageWriteRetryDelay(attempt, maxRetries, delay);
-    }
-  }
-
-  // All retries exhausted
-  console.error(`${logPrefix} STORAGE_WRITE_ALL_RETRIES_EXHAUSTED:`, {
-    key,
-    attempts: maxRetries,
-    error: lastError?.message,
-    timestamp: Date.now()
-  });
-
-  return { success: false, attempts: maxRetries, error: lastError?.message || 'unknown error' };
-}
-
-/**
- * Write to storage with verification (write, read back, compare)
- * v1.6.3.8-v10 - FIX Issue #9: Verify write succeeded by reading back
- * @param {string} key - Storage key
- * @param {Object} value - Value to store
- * @param {Object} options - Optional configuration
- * @returns {Promise<{success: boolean, verified: boolean, error: string|null}>}
- */
-export async function writeStateWithVerificationAndRetry(key, value, options = {}) {
-  const { logPrefix = '[StorageUtils]' } = options;
-
-  // Step 1: Write with retry
-  const writeResult = await writeStorageWithRetry(key, value, options);
-  if (!writeResult.success) {
-    return { success: false, verified: false, error: writeResult.error };
-  }
-
-  // Step 2: Verify by reading back
-  const browserAPI = getBrowserStorageAPI();
-  try {
-    const readResult = await browserAPI.storage.local.get(key);
-    const readValue = readResult?.[key];
-
-    // Simple verification: check if key exists and has same saveId if present
-    const verified = readValue !== undefined && readValue !== null;
-
-    if (verified) {
-      console.log(`${logPrefix} STORAGE_WRITE_VERIFIED:`, {
-        key,
-        saveIdMatch: value?.saveId === readValue?.saveId,
-        timestamp: Date.now()
-      });
-    } else {
-      console.warn(`${logPrefix} STORAGE_WRITE_VERIFICATION_FAILED:`, {
-        key,
-        valueFound: !!readValue,
-        timestamp: Date.now()
-      });
-    }
-
-    return { success: true, verified, error: null };
-  } catch (err) {
-    console.warn(`${logPrefix} STORAGE_WRITE_VERIFICATION_ERROR:`, {
-      key,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    // Write succeeded, verification failed - return success but not verified
-    return { success: true, verified: false, error: err.message };
-  }
 }

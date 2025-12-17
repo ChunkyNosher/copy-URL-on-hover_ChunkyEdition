@@ -52,28 +52,6 @@ const VALID_TRANSITIONS = new Map([
 const MAX_HISTORY_SIZE = 20;
 
 /**
- * Timeout for intermediate states (MINIMIZING, RESTORING) in milliseconds
- * v1.6.4.8 - Issue #1: State timeout watchers
- * @type {number}
- */
-const INTERMEDIATE_STATE_TIMEOUT_MS = 7000; // 7 seconds
-
-/**
- * Intermediate states that require timeout monitoring
- * @type {Set<string>}
- */
-const INTERMEDIATE_STATES = new Set(['MINIMIZING', 'RESTORING']);
-
-/**
- * Fallback states for each intermediate state on timeout
- * @type {Map<string, string>}
- */
-const TIMEOUT_FALLBACK_STATES = new Map([
-  ['MINIMIZING', 'VISIBLE'],
-  ['RESTORING', 'MINIMIZED']
-]);
-
-/**
  * State transition entry for history tracking
  * @typedef {Object} StateTransition
  * @property {string} fromState - Previous state
@@ -107,14 +85,6 @@ export class QuickTabStateMachine {
      * @type {boolean}
      */
     this.enforceTransitions = true;
-
-    /**
-     * Active state timeout watchers
-     * v1.6.4.8 - Issue #1: Track timeout timers for intermediate states
-     * @type {Map<string, { timerId: number, fromState: string, enteredAt: number }>}
-     * @private
-     */
-    this._stateTimeouts = new Map();
 
     console.log('[QuickTabStateMachine] Initialized');
   }
@@ -207,15 +177,6 @@ export class QuickTabStateMachine {
     // Add to history
     this._addToHistory(id, transitionEntry);
 
-    // v1.6.4.8 - Issue #1: Manage timeout watchers for intermediate states
-    if (INTERMEDIATE_STATES.has(toState)) {
-      // Starting an intermediate state - start timeout watcher
-      this._watchStateTimeout(id, toState, fromState);
-    } else {
-      // Leaving intermediate state or entering stable state - cancel any watcher
-      this._cancelStateTimeout(id);
-    }
-
     // Log successful transition
     console.log('[QuickTabStateMachine] Transition:', {
       id,
@@ -226,103 +187,6 @@ export class QuickTabStateMachine {
     });
 
     return { success: true, fromState, toState };
-  }
-
-  /**
-   * Start a timeout watcher for an intermediate state
-   * v1.6.4.8 - Issue #1: State timeout watchers
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {string} state - Current state (MINIMIZING or RESTORING)
-   * @param {string} previousState - State before entering intermediate state
-   */
-  _watchStateTimeout(id, state, previousState) {
-    // Clear any existing timeout for this ID
-    this._cancelStateTimeout(id);
-
-    if (!INTERMEDIATE_STATES.has(state)) {
-      return; // Not an intermediate state, no timeout needed
-    }
-
-    const enteredAt = Date.now();
-    const fallbackState = TIMEOUT_FALLBACK_STATES.get(state) || previousState;
-
-    const timerId = setTimeout(() => {
-      const currentState = this.getState(id);
-
-      // Only recover if still stuck in the intermediate state
-      if (currentState === state) {
-        console.error(
-          '[QuickTabStateMachine] ⚠️ TIMEOUT: Stuck in intermediate state, recovering:',
-          {
-            id,
-            stuckState: state,
-            stuckDurationMs: Date.now() - enteredAt,
-            fallbackState,
-            originalPreviousState: previousState
-          }
-        );
-
-        // Force transition back to stable state
-        this._states.set(id, fallbackState);
-        this._addToHistory(id, {
-          fromState: state,
-          toState: fallbackState,
-          timestamp: Date.now(),
-          source: 'timeout-recovery',
-          metadata: {
-            type: 'timeout_recovery',
-            stuckDurationMs: Date.now() - enteredAt,
-            originalTimeout: INTERMEDIATE_STATE_TIMEOUT_MS
-          }
-        });
-
-        console.log('[QuickTabStateMachine] Recovered from stuck state:', {
-          id,
-          recoveredTo: fallbackState
-        });
-      }
-
-      // Clean up timeout tracking
-      this._stateTimeouts.delete(id);
-    }, INTERMEDIATE_STATE_TIMEOUT_MS);
-
-    this._stateTimeouts.set(id, { timerId, fromState: previousState, enteredAt });
-    console.log('[QuickTabStateMachine] Started timeout watcher:', {
-      id,
-      state,
-      timeoutMs: INTERMEDIATE_STATE_TIMEOUT_MS
-    });
-  }
-
-  /**
-   * Cancel a timeout watcher for a Quick Tab
-   * v1.6.4.8 - Issue #1: State timeout watchers
-   * @param {string} id - Quick Tab ID
-   * @returns {boolean} True if a timeout was cancelled
-   */
-  cancelStateTimeout(id) {
-    return this._cancelStateTimeout(id);
-  }
-
-  /**
-   * Internal method to cancel timeout watcher
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @returns {boolean} True if cancelled
-   */
-  _cancelStateTimeout(id) {
-    const timeout = this._stateTimeouts.get(id);
-    if (timeout) {
-      clearTimeout(timeout.timerId);
-      this._stateTimeouts.delete(id);
-      console.log('[QuickTabStateMachine] Cancelled timeout watcher:', {
-        id,
-        wasPendingForMs: Date.now() - timeout.enteredAt
-      });
-      return true;
-    }
-    return false;
   }
 
   /**
@@ -395,9 +259,6 @@ export class QuickTabStateMachine {
    * @param {string} id - Quick Tab ID
    */
   remove(id) {
-    // v1.6.4.8 - Issue #1: Cancel any timeout watchers
-    this._cancelStateTimeout(id);
-
     const hadState = this._states.delete(id);
     const hadHistory = this._history.delete(id);
 
@@ -425,22 +286,10 @@ export class QuickTabStateMachine {
       stateCounts[state] = (stateCounts[state] || 0) + 1;
     }
 
-    // v1.6.4.8 - Issue #1: Include timeout watcher stats
-    const pendingTimeouts = [];
-    const now = Date.now();
-    for (const [id, timeout] of this._stateTimeouts) {
-      pendingTimeouts.push({
-        id,
-        pendingForMs: now - timeout.enteredAt,
-        fromState: timeout.fromState
-      });
-    }
-
     return {
       trackedCount: this._states.size,
       stateCounts,
-      enforcing: this.enforceTransitions,
-      pendingTimeouts
+      enforcing: this.enforceTransitions
     };
   }
 
@@ -448,12 +297,6 @@ export class QuickTabStateMachine {
    * Clear all state tracking (for testing/reset)
    */
   clear() {
-    // v1.6.4.8 - Issue #1: Cancel all timeout watchers
-    for (const [id, timeout] of this._stateTimeouts) {
-      clearTimeout(timeout.timerId);
-    }
-    this._stateTimeouts.clear();
-
     this._states.clear();
     this._history.clear();
     console.log('[QuickTabStateMachine] Cleared all state tracking');

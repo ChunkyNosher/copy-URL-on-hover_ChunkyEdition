@@ -890,28 +890,9 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 /**
  * v1.6.3.4 - FIX Bug #5: Helper to handle coordinated clear response
  * Extracted to reduce max-depth
- * v1.6.3.7-v5 - FIX Issue #2: Enhanced to log all response metrics with correlation ID
  * @param {Object} response - Response from background script
- * @param {string} correlationId - Correlation ID for end-to-end tracing
  */
-function _handleClearResponse(response, correlationId) {
-  const timestamp = Date.now();
-
-  // v1.6.3.7-v5 - FIX Issue #2: Log all response metrics
-  console.log(
-    `[Settings] CLEAR_ALL_RESPONSE | correlationId=${correlationId} | timestamp=${timestamp} | ` +
-      `success=${response?.success} | successCount=${response?.successCount ?? 'N/A'} | ` +
-      `failCount=${response?.failCount ?? 'N/A'} | totalTabs=${response?.totalTabs ?? 'N/A'}`
-  );
-
-  // v1.6.3.7-v5 - FIX Issue #2: Warn if any tabs failed to close
-  if (response?.failCount > 0) {
-    console.warn(
-      `[Settings] CLEAR_ALL_RESPONSE WARNING | correlationId=${correlationId} | ` +
-        `${response.failCount} Quick Tab(s) failed to close`
-    );
-  }
-
+function _handleClearResponse(response) {
   if (response && response.success) {
     showStatus('✓ Quick Tab storage cleared! Settings preserved.');
   } else {
@@ -921,7 +902,6 @@ function _handleClearResponse(response, correlationId) {
 
 // Clear Quick Tab storage button
 // v1.6.3.4 - FIX Bug #5: Coordinate through background script to prevent storage write storm
-// v1.6.3.7-v5 - FIX Issue #1: Added comprehensive logging with correlation ID
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
   const confirmed = confirm(
     'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
@@ -931,14 +911,6 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     return;
   }
 
-  // v1.6.3.7-v5 - FIX Issue #1: Generate correlation ID and log initiation
-  const correlationId = `clear-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  const timestamp = Date.now();
-
-  console.log(
-    `[Settings] CLEAR_ALL_COMMAND_INITIATED | correlationId=${correlationId} | timestamp=${timestamp}`
-  );
-
   try {
     // v1.6.3.4 - FIX Bug #5: Send coordinated clear to background script
     // Background will: 1) Clear storage once 2) Broadcast QUICK_TABS_CLEARED to all tabs
@@ -946,12 +918,10 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     const response = await browserAPI.runtime.sendMessage({
       action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
     });
-    _handleClearResponse(response, correlationId);
+    _handleClearResponse(response);
   } catch (err) {
     showStatus('✗ Error clearing storage: ' + err.message);
-    console.error(
-      `[Settings] CLEAR_ALL_ERROR | correlationId=${correlationId} | error=${err.message}`
-    );
+    console.error('Error clearing Quick Tab storage:', err);
   }
 });
 

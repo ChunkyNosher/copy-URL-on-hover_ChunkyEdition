@@ -179,21 +179,21 @@ export class ResizeHandle {
     const dy = e.clientY - this.startState.y;
 
     const newDimensions = this.calculateNewDimensions(dx, dy);
-
+    
     // v1.6.3.7 - FIX Issue #4: Store pending dimensions and schedule rAF
     this.pendingDimensions = newDimensions;
-
+    
     // Skip if rAF is already scheduled
     if (this.rafId) return;
-
+    
     this.rafId = requestAnimationFrame(() => {
       this.rafId = null;
-
+      
       // Double-check state in case of rapid cleanup
       if (this.destroyed || !this.isResizing || !this.pendingDimensions) return;
-
+      
       const dims = this.pendingDimensions;
-
+      
       // Apply dimensions
       Object.assign(this.window, dims);
 
@@ -403,14 +403,14 @@ export class ResizeHandle {
    */
   destroy() {
     this.destroyed = true;
-
+    
     // v1.6.3.7 - FIX Issue #4: Cancel pending animation frame
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
     this.pendingDimensions = null;
-
+    
     this._removeListeners();
 
     if (this.element) {
