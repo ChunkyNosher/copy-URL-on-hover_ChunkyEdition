@@ -522,6 +522,15 @@ class QuickTabsManager {
    * @param {Object} tabData - Tab data from storage
    * @returns {Object} Options for createQuickTab
    */
+  /**
+   * Build options object for tab hydration
+   * v1.6.3.4 - Helper to reduce complexity
+   * v1.6.3.4-v11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
+   * v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {Object} Options for createQuickTab
+   */
   _buildHydrationOptions(tabData) {
     const defaults = QuickTabsManager.HYDRATION_DEFAULTS;
 
@@ -537,6 +546,9 @@ class QuickTabsManager {
       soloedOnTabs: this._getWithDefault(tabData.soloedOnTabs, defaults.soloedOnTabs),
       mutedOnTabs: this._getWithDefault(tabData.mutedOnTabs, defaults.mutedOnTabs),
       zIndex: this._getWithDefault(tabData.zIndex, defaults.zIndex),
+      // v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
+      originTabId: tabData.originTabId ?? null,
+      originContainerId: tabData.originContainerId ?? null,
       source: 'hydration'
     };
   }
@@ -737,6 +749,51 @@ class QuickTabsManager {
    * @param {Object} tabData - Quick Tab data
    * @returns {boolean} True if should render
    */
+  /**
+   * Check if container IDs match (container isolation) during hydration
+   * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _shouldRenderOnThisTab complexity
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {boolean} True if container check passes (or not applicable)
+   */
+  _checkContainerIsolationForHydration(tabData) {
+    const originContainerId = tabData.originContainerId;
+
+    // If no container context was set, skip container check
+    if (originContainerId === null || originContainerId === undefined) {
+      return true;
+    }
+
+    // Get current container context (default to 'firefox-default' if not set)
+    const currentContainerId = this.cookieStoreId ?? 'firefox-default';
+
+    if (originContainerId !== currentContainerId) {
+      console.log('[QuickTabsManager] CONTAINER BLOCKED during hydration:', {
+        id: tabData.id,
+        originContainerId,
+        currentContainerId,
+        originTabId: tabData.originTabId
+      });
+      return false;
+    }
+
+    console.log('[QuickTabsManager] Container check PASSED during hydration:', {
+      id: tabData.id,
+      originContainerId,
+      currentContainerId
+    });
+
+    return true;
+  }
+
+  /**
+   * Determine if a Quick Tab should render on this tab
+   * v1.6.3.5-v2 - FIX Report 1 Issue #2: Cross-tab filtering logic
+   * v1.6.3.10-v4 - FIX Issue #13: Add container isolation check
+   * @private
+   * @param {Object} tabData - Quick Tab data
+   * @returns {boolean} True if should render
+   */
   _shouldRenderOnThisTab(tabData) {
     const currentTabId = this.currentTabId;
     const originTabId = tabData.originTabId;
@@ -753,8 +810,18 @@ class QuickTabsManager {
       return false;
     }
 
-    // Default: only render on originating tab
-    return originTabId === currentTabId;
+    // Check originTabId match
+    if (originTabId !== currentTabId) {
+      return false;
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #13: Container isolation check
+    if (!this._checkContainerIsolationForHydration(tabData)) {
+      return false;
+    }
+
+    // Default: passed all checks
+    return true;
   }
 
   /**
@@ -794,6 +861,7 @@ class QuickTabsManager {
    *   When restore/minimize was called, the methods didn't exist causing 100% failure rate.
    *   Now we create a real instance with minimized=true that has all methods but no DOM.
    * v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
+   * v1.6.3.10-v4 - FIX Issue #13: Pass originTabId and originContainerId for container isolation
    * @private
    * @param {Object} options - Quick Tab options
    */
@@ -819,6 +887,9 @@ class QuickTabsManager {
         zIndex: options.zIndex,
         // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
         currentTabId: this.currentTabId,
+        // v1.6.3.10-v4 - FIX Issue #13: Pass originTabId and originContainerId for container isolation
+        originTabId: options.originTabId ?? this.currentTabId,
+        originContainerId: options.originContainerId ?? this.cookieStoreId,
         // Wire up callbacks - these persist through restore cycles
         onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
         onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
@@ -832,6 +903,7 @@ class QuickTabsManager {
       });
 
       // v1.6.3.4-v7 - Log instance type to confirm real QuickTabWindow
+      // v1.6.3.10-v4 - FIX Issue #13: Include container ID in logging
       console.log('[QuickTabsManager] Created real QuickTabWindow instance:', {
         id: options.id,
         constructorName: tabWindow.constructor.name,
@@ -840,7 +912,9 @@ class QuickTabsManager {
         hasRestore: typeof tabWindow.restore === 'function',
         hasDestroy: typeof tabWindow.destroy === 'function',
         minimized: tabWindow.minimized,
-        url: tabWindow.url
+        url: tabWindow.url,
+        originTabId: tabWindow.originTabId,
+        originContainerId: tabWindow.originContainerId
       });
 
       // Store snapshot in minimizedManager for later restore
@@ -991,12 +1065,15 @@ class QuickTabsManager {
    * @private
    */
   _initializeCoordinators() {
+    // v1.6.3.10-v4 - FIX Issue #13: Pass cookieStoreId (container ID) to UICoordinator for container isolation
     this.uiCoordinator = new UICoordinator(
       this.state,
       this.minimizedManager,
       null, // panelManager removed in v1.6.3.4
       this.internalEventBus,
-      this.currentTabId // v1.6.3.5-v10 - Pass currentTabId for cross-tab filtering
+      this.currentTabId, // v1.6.3.5-v10 - Pass currentTabId for cross-tab filtering
+      {}, // handlers - will be set below
+      this.cookieStoreId // v1.6.3.10-v4 - FIX Issue #13: Pass container ID for Firefox Multi-Account Container isolation
     );
 
     // v1.6.3.5-v10 - FIX Issue #1-2: Set handlers for callback wiring during _createWindow()

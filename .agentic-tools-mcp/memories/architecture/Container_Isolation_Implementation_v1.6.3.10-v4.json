@@ -1,0 +1,8 @@
+{
+  "id": "a12acdf0-cc81-482a-8060-47b08821ce38",
+  "title": "Container Isolation Implementation v1.6.3.10-v4",
+  "details": "Container isolation for Firefox Multi-Account Containers was implemented in v1.6.3.10-v4. Quick Tabs now track `originContainerId` field in addition to `originTabId`. The container ID is captured from `options.originContainerId`, `options.cookieStoreId`, or `this.cookieStoreId` during Quick Tab creation. UICoordinator and QuickTabsManager both check container match in `_shouldRenderOnThisTab()`. Storage serialization includes `originContainerId`. MinimizedManager snapshots preserve `savedOriginContainerId`. Container check returns true if no container context was set (backward compatibility).",
+  "category": "architecture",
+  "dateCreated": "2025-12-17T17:06:44.075Z",
+  "dateUpdated": "2025-12-17T17:06:44.075Z"
+}

@@ -251,6 +251,7 @@ export class CreateHandler {
   /**
    * Get default option values
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
+   * v1.6.3.10-v4 - FIX Issue #13: Add originContainerId default for container isolation
    * @private
    */
   _getDefaults() {
@@ -264,7 +265,8 @@ export class CreateHandler {
       soloedOnTabs: [],
       mutedOnTabs: [],
       showDebugId: false, // v1.6.3.2 - Default for Debug ID display
-      originTabId: null // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
+      originTabId: null, // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
+      originContainerId: null // v1.6.3.10-v4 - FIX Issue #13: Track originating container for Firefox Multi-Account Containers
     };
   }
 
@@ -386,6 +388,44 @@ export class CreateHandler {
   }
 
   /**
+   * Determine the source of the origin container ID for logging
+   * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _buildVisibilityOptions complexity
+   * @private
+   * @param {string|null} originContainerId - Resolved container ID
+   * @param {Object} options - Creation options
+   * @returns {string} Source name for logging
+   */
+  _getContainerIdSource(originContainerId, options) {
+    if (originContainerId === options.originContainerId) return 'options.originContainerId';
+    if (originContainerId === options.cookieStoreId) return 'options.cookieStoreId';
+    if (originContainerId === this.cookieStoreId) return 'this.cookieStoreId';
+    return 'defaults';
+  }
+
+  /**
+   * Resolve origin container ID with fallback priority
+   * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _buildVisibilityOptions complexity
+   * Priority: options.originContainerId > options.cookieStoreId > this.cookieStoreId > defaults
+   * @private
+   * @param {Object} options - Creation options
+   * @param {Object} defaults - Default values
+   * @param {string} quickTabId - Quick Tab ID for logging
+   * @returns {string|null} Resolved container ID
+   */
+  _getOriginContainerId(options, defaults, quickTabId) {
+    const originContainerId =
+      options.originContainerId ?? options.cookieStoreId ?? this.cookieStoreId ?? defaults.originContainerId;
+
+    console.log('[CreateHandler] 📦 CONTAINER_CONTEXT:', {
+      quickTabId,
+      originContainerId,
+      source: this._getContainerIdSource(originContainerId, options)
+    });
+
+    return originContainerId;
+  }
+
+  /**
    * Build visibility-related options (minimized, solo, mute, debug)
    * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Include originTabId
@@ -394,6 +434,7 @@ export class CreateHandler {
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #2: Add logging when originTabId is null
    *   Extracted helpers to reduce complexity
    * v1.6.3.6-v8 - FIX Issue #1: Pass quickTabId to _getOriginTabId for pattern extraction
+   * v1.6.3.10-v4 - FIX Issue #13: Add originContainerId for Firefox Multi-Account Container isolation
    * @private
    * @param {Object} options - Creation options
    * @param {Object} defaults - Default values
@@ -421,12 +462,16 @@ export class CreateHandler {
 
     this._logOriginTabIdAssignment(originTabId, options, defaults);
 
+    // v1.6.3.10-v4 - FIX Issue #13: Capture origin container ID for Firefox Multi-Account Container isolation
+    const originContainerId = this._getOriginContainerId(options, defaults, quickTabId);
+
     return {
       minimized: options.minimized ?? defaults.minimized,
       soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
       mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
       showDebugId: options.showDebugId ?? this.showDebugIdSetting,
       originTabId,
+      originContainerId, // v1.6.3.10-v4 - FIX Issue #13: Include container ID
       // v1.6.3.6-v4 - FIX Issue #2: Also pass currentTabId to window for operations
       currentTabId: options.currentTabId
     };
