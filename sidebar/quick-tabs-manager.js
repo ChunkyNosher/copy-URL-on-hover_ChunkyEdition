@@ -2,6 +2,12 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.10-v3 - Phase 2: Tabs API Integration
+ *   - FIX Issue #47: ADOPTION_COMPLETED port message for immediate re-render
+ *   - Background broadcasts ADOPTION_COMPLETED after storage write
+ *   - Manager handles port message and triggers immediate scheduleRender()
+ *   - NEW: ORIGIN_TAB_CLOSED handler for orphan detection
+ *
  * v1.6.3.10-v2 - FIX Manager UI Issues (Issues #1, #4, #8)
  *   - FIX Issue #1: Reduced render debounce 300ms→100ms, sliding-window debounce
  *   - FIX Issue #4: Smart circuit breaker with sliding-window backoff, action queue
@@ -1165,6 +1171,18 @@ function handlePortMessage(message) {
     _handleStateSyncResponse(message);
     return;
   }
+
+  // v1.6.3.10-v3 - FIX Issue #47: Handle adoption completion for immediate re-render
+  if (message.type === 'ADOPTION_COMPLETED') {
+    handleAdoptionCompletion(message);
+    return;
+  }
+
+  // v1.6.3.10-v3 - Phase 2: Handle origin tab closed for orphan detection
+  if (message.type === 'ORIGIN_TAB_CLOSED') {
+    handleOriginTabClosed(message);
+    return;
+  }
 }
 
 /**
@@ -1246,6 +1264,72 @@ function handleStateUpdateBroadcast(message) {
     handleStateUpdateMessage(quickTabId, changes);
     // v1.6.4.0 - FIX Issue B: renderUI() removed - caller (handlePortMessage) now routes through scheduleRender()
   }
+}
+
+/**
+ * Handle adoption completion from background
+ * v1.6.3.10-v3 - FIX Issue #47: Adoption re-render fix
+ * @param {Object} message - Adoption completion message
+ */
+function handleAdoptionCompletion(message) {
+  const { adoptedQuickTabId, oldOriginTabId, newOriginTabId, timestamp } = message;
+
+  console.log('[Manager] ADOPTION_COMPLETED received via port:', {
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    timestamp,
+    timeSinceBroadcast: Date.now() - timestamp
+  });
+
+  // v1.6.3.10-v3 - FIX Issue #47: Update cache staleness tracking (uses Issue #8 infrastructure)
+  lastCacheSyncFromStorage = Date.now();
+
+  // Invalidate browser tab info cache for affected tabs
+  if (oldOriginTabId) {
+    browserTabInfoCache.delete(oldOriginTabId);
+  }
+  if (newOriginTabId) {
+    browserTabInfoCache.delete(newOriginTabId);
+  }
+
+  // v1.6.3.10-v3 - FIX Issue #1: Immediate re-render with high priority
+  scheduleRender('adoption-completed');
+
+  console.log('[Manager] ADOPTION_RENDER_SCHEDULED:', {
+    adoptedQuickTabId,
+    trigger: 'port-ADOPTION_COMPLETED'
+  });
+}
+
+/**
+ * Handle origin tab closed - mark Quick Tabs as orphaned in UI
+ * v1.6.3.10-v3 - Phase 2: Orphan detection
+ * @param {Object} message - Origin tab closed message
+ */
+function handleOriginTabClosed(message) {
+  const { originTabId, orphanedQuickTabIds, orphanedCount, timestamp } = message;
+
+  console.log('[Manager] ORIGIN_TAB_CLOSED received:', {
+    originTabId,
+    orphanedCount,
+    orphanedIds: orphanedQuickTabIds,
+    timeSinceBroadcast: Date.now() - timestamp
+  });
+
+  // Update cache staleness tracking
+  lastCacheSyncFromStorage = Date.now();
+
+  // Invalidate browser tab info cache for the closed tab
+  browserTabInfoCache.delete(originTabId);
+
+  // Schedule high-priority re-render to show orphan warnings
+  scheduleRender('origin-tab-closed');
+
+  console.log('[Manager] ORPHAN_RENDER_SCHEDULED:', {
+    orphanedCount,
+    trigger: 'port-ORIGIN_TAB_CLOSED'
+  });
 }
 
 /**

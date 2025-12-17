@@ -3,11 +3,14 @@
 // Also handles sidebar panel communication
 // Also handles webRequest to remove X-Frame-Options for Quick Tabs
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
+// v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
 import { TabHandler } from './src/background/handlers/TabHandler.js';
+// v1.6.3.10-v3 - Phase 2: Tabs API Integration - Tab lifecycle handler
+import { TabLifecycleHandler } from './src/background/handlers/TabLifecycleHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
 
 const runtimeAPI =
@@ -85,6 +88,9 @@ const globalQuickTabState = {
   // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
   saveId: null
 };
+
+// v1.6.3.10-v3 - Phase 2: Tab lifecycle handler instance
+const tabLifecycleHandler = new TabLifecycleHandler();
 
 // Flag to track initialization status
 let isInitialized = false;
@@ -199,6 +205,9 @@ function _stopKeepalive() {
 
 // Start keepalive on script load
 startKeepalive();
+
+// v1.6.3.10-v3 - Phase 2: Initialize Tab Lifecycle Handler
+tabLifecycleHandler.start();
 
 /**
  * Valid URL protocols for Quick Tab creation
@@ -3199,12 +3208,20 @@ function handleLegacyAction(message, portInfo) {
 /**
  * Handle adopt action (atomic single write)
  * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
  * @param {Object} payload - Adoption payload
  */
 async function handleAdoptAction(payload) {
   const { quickTabId, targetTabId } = payload;
 
   console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
+
+  // v1.6.3.10-v3 - Phase 2: Validate target tab exists using TabLifecycleHandler
+  const validation = tabLifecycleHandler.validateAdoptionTarget(targetTabId);
+  if (!validation.valid) {
+    console.error('[Background] ADOPT_TAB validation failed:', validation.reason);
+    return { success: false, error: validation.reason };
+  }
 
   // Read entire state
   const result = await browser.storage.local.get('quick_tabs_state_v2');
@@ -3223,6 +3240,13 @@ async function handleAdoptAction(payload) {
   const oldOriginTabId = state.tabs[tabIndex].originTabId;
   state.tabs[tabIndex].originTabId = targetTabId;
 
+  // v1.6.3.10-v3 - Phase 2: Clear orphan status if Quick Tab was orphaned
+  if (state.tabs[tabIndex].isOrphaned) {
+    delete state.tabs[tabIndex].isOrphaned;
+    delete state.tabs[tabIndex].orphanedAt;
+    console.log('[Background] ADOPT_TAB: Clearing orphan status for Quick Tab:', quickTabId);
+  }
+
   // Single atomic write
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   await browser.storage.local.set({
@@ -3239,10 +3263,29 @@ async function handleAdoptAction(payload) {
   const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (cachedTab) {
     cachedTab.originTabId = targetTabId;
+    // v1.6.3.10-v3 - Phase 2: Clear orphan status in cache
+    delete cachedTab.isOrphaned;
+    delete cachedTab.orphanedAt;
   }
 
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
+
+  // v1.6.3.10-v3 - FIX Issue #47: Broadcast adoption completion to all ports
+  // This enables Manager sidebar to re-render immediately after adoption
+  broadcastToAllPorts({
+    type: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    timestamp: Date.now()
+  });
+
+  console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId
+  });
 
   console.log('[Background] ADOPT_TAB complete:', {
     quickTabId,
@@ -3612,10 +3655,12 @@ console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
 
 // ==================== v1.6.3.6-v11 TAB LIFECYCLE EVENTS ====================
 // FIX Issue #16: Track browser tab lifecycle for orphan detection
+// v1.6.3.10-v3 - Phase 2: Enhanced orphan detection with ORIGIN_TAB_CLOSED broadcast
 
 /**
  * Handle browser tab removal
  * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
+ * v1.6.3.10-v3 - Phase 2: Enhanced orphan detection with isOrphaned flag and ORIGIN_TAB_CLOSED broadcast
  * @param {number} tabId - ID of the removed tab
  * @param {Object} removeInfo - Removal info
  */
@@ -3630,26 +3675,58 @@ function handleTabRemoved(tabId, removeInfo) {
     return;
   }
 
-  console.log('[Background] Quick Tabs orphaned by tab closure:', {
-    tabId,
-    count: orphanedQuickTabs.length,
-    quickTabIds: orphanedQuickTabs.map(t => t.id)
+  const orphanedIds = orphanedQuickTabs.map(t => t.id);
+  // Use single timestamp for consistency across all operations
+  const operationTimestamp = Date.now();
+
+  console.log('[Background] ORIGIN_TAB_CLOSED - Found orphaned Quick Tabs:', {
+    closedTabId: tabId,
+    orphanedCount: orphanedIds.length,
+    orphanedIds
   });
+
+  // v1.6.3.10-v3 - Phase 2: Mark them as orphaned in cache
+  for (const qt of orphanedQuickTabs) {
+    qt.isOrphaned = true;
+    qt.orphanedAt = operationTimestamp;
+  }
 
   // Remove from host tracking
   for (const qt of orphanedQuickTabs) {
     quickTabHostTabs.delete(qt.id);
   }
 
-  // Broadcast tab lifecycle change to all connected ports
+  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
+  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
+  broadcastToAllPorts({
+    type: 'ORIGIN_TAB_CLOSED',
+    originTabId: tabId,
+    orphanedQuickTabIds: orphanedIds,
+    orphanedCount: orphanedIds.length,
+    timestamp: operationTimestamp
+  });
+
+  // Also broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
   broadcastToAllPorts({
     type: 'BROADCAST',
     action: 'TAB_LIFECYCLE_CHANGE',
     event: 'tab-removed',
     tabId,
-    affectedQuickTabs: orphanedQuickTabs.map(t => t.id),
-    timestamp: Date.now()
+    affectedQuickTabs: orphanedIds,
+    timestamp: operationTimestamp
   });
+
+  // v1.6.3.10-v3 - Phase 2: Save orphan status to storage
+  const saveId = `orphan-${tabId}-${operationTimestamp}`;
+  browser.storage.local
+    .set({
+      quick_tabs_state_v2: {
+        tabs: globalQuickTabState.tabs,
+        saveId,
+        timestamp: operationTimestamp
+      }
+    })
+    .catch(err => console.error('[Background] Error saving orphan status:', err));
 
   // Clean up ports associated with this tab
   for (const [portId, portInfo] of portRegistry.entries()) {

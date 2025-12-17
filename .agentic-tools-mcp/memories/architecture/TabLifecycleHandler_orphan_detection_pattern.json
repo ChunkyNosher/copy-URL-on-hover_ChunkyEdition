@@ -1,0 +1,8 @@
+{
+  "id": "e6fbb348-57ea-4104-ba07-d71d822e07eb",
+  "title": "TabLifecycleHandler orphan detection pattern",
+  "details": "The TabLifecycleHandler class in src/background/handlers/TabLifecycleHandler.js manages browser tab lifecycle events for Quick Tab orphan detection:\n\n1. **Key Pattern**: Use a handler class to track tab state (openTabs Map) and the currently active tab (activeTabId) for efficient O(1) updates\n\n2. **Listener Cleanup**: Always store bound handlers in an object (this._boundHandlers) so they can be properly removed via a stop() method to prevent memory leaks\n\n3. **Event Flow**: \n   - tabs.onRemoved → handleTabRemoved returns closed tabId\n   - background.js handleTabRemoved() marks Quick Tabs with isOrphaned and orphanedAt\n   - Broadcasts ORIGIN_TAB_CLOSED message with orphanedQuickTabIds\n   - Manager handles message and calls scheduleRender()\n\n4. **Adoption Validation**: Use tabLifecycleHandler.validateAdoptionTarget(targetTabId) before processing ADOPT_TAB actions\n\n5. **Single Timestamp**: Use const operationTimestamp = Date.now() at start of operation and reuse for all related storage writes/broadcasts",
+  "category": "architecture",
+  "dateCreated": "2025-12-17T06:00:34.284Z",
+  "dateUpdated": "2025-12-17T06:00:34.284Z"
+}
