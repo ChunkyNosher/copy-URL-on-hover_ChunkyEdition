@@ -3692,8 +3692,14 @@ async function handleAdoptAction(payload) {
     adoptedQuickTabId: quickTabId,
     oldOriginTabId,
     newOriginTabId: targetTabId,
+    // v1.6.4.13 - FIX BUG #4: Include previousOriginTabId for content script cache lookup
+    previousOriginTabId: oldOriginTabId,
     timestamp: Date.now()
   });
+
+  // v1.6.4.13 - FIX BUG #4: Also broadcast to all content scripts via tabs.sendMessage
+  // This updates their local cache so restore operations use the correct originTabId
+  _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
 
   console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
     quickTabId,
@@ -3708,6 +3714,103 @@ async function handleAdoptAction(payload) {
   });
 
   return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+}
+
+/**
+ * Broadcast ADOPTION_COMPLETED to all content scripts via tabs.sendMessage
+ * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ *
+ * This ensures all content scripts update their local Quick Tab cache
+ * with the new originTabId after adoption. Without this, restore operations
+ * would use stale cache data and target the wrong tab.
+ *
+ * @private
+ * @param {string} quickTabId - The Quick Tab that was adopted
+ * @param {number} oldOriginTabId - The previous owner tab ID
+ * @param {number} newOriginTabId - The new owner tab ID
+ */
+async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOriginTabId) {
+  const timestamp = Date.now();
+  const message = {
+    action: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    previousOriginTabId: oldOriginTabId,
+    newOriginTabId,
+    timestamp
+  };
+
+  console.log('[Background] ADOPTION_BROADCAST_TO_TABS: Starting broadcast to all content scripts:', {
+    quickTabId,
+    previousOriginTabId: oldOriginTabId,
+    newOriginTabId
+  });
+
+  try {
+    const tabs = await browser.tabs.query({});
+    const results = await _sendAdoptionToTabs(tabs, message, quickTabId);
+
+    console.log('[Background] ADOPTION_BROADCAST_TO_TABS_COMPLETE:', {
+      quickTabId,
+      totalTabs: tabs.length,
+      successCount: results.successCount,
+      errorCount: results.errorCount,
+      durationMs: Date.now() - timestamp
+    });
+  } catch (err) {
+    console.error('[Background] ADOPTION_BROADCAST_TO_TABS_ERROR:', {
+      quickTabId,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Send adoption message to a list of tabs
+ * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * @private
+ * @param {Array} tabs - List of browser tabs
+ * @param {Object} message - Adoption message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {Promise<{successCount: number, errorCount: number}>}
+ */
+async function _sendAdoptionToTabs(tabs, message, quickTabId) {
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const tab of tabs) {
+    const result = await _sendAdoptionToSingleTab(tab.id, message, quickTabId);
+    if (result.success) {
+      successCount++;
+    } else {
+      errorCount++;
+    }
+  }
+
+  return { successCount, errorCount };
+}
+
+/**
+ * Send adoption message to a single tab
+ * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * @private
+ * @param {number} tabId - Browser tab ID
+ * @param {Object} message - Adoption message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {Promise<{success: boolean}>}
+ */
+async function _sendAdoptionToSingleTab(tabId, message, quickTabId) {
+  try {
+    await browser.tabs.sendMessage(tabId, message);
+    console.log('[Background] ADOPTION_BROADCAST_TO_TAB:', {
+      tabId,
+      quickTabId,
+      status: 'sent'
+    });
+    return { success: true };
+  } catch (_err) {
+    // Content script may not be loaded in this tab - this is expected
+    return { success: false };
+  }
 }
 
 /**

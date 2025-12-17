@@ -2252,6 +2252,97 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
   sendResponse({ success: true, message: 'Handled by individual CLOSE_QUICK_TAB messages' });
 }
 
+/**
+ * Handle ADOPTION_COMPLETED broadcast from background
+ * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ *
+ * This handler updates the local Quick Tab cache when adoption occurs.
+ * Without this, content scripts have stale originTabId values which causes
+ * restore operations to target the wrong tab after adoption.
+ *
+ * @private
+ * @param {Object} message - Adoption completion message
+ * @param {string} message.adoptedQuickTabId - The Quick Tab that was adopted
+ * @param {number} message.previousOriginTabId - The old owner tab ID
+ * @param {number} message.newOriginTabId - The new owner tab ID
+ * @param {number} message.timestamp - When adoption occurred
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleAdoptionCompleted(message, sendResponse) {
+  const { adoptedQuickTabId, previousOriginTabId, newOriginTabId, timestamp } = message;
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+
+  // Log cache state BEFORE adoption update
+  const tabEntry = quickTabsManager?.tabs?.get(adoptedQuickTabId);
+  const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
+
+  console.log('[Content] ADOPTION_CACHE_UPDATE_START:', {
+    adoptedQuickTabId,
+    currentTabId,
+    previousOriginTabId,
+    newOriginTabId,
+    hasInMap: !!tabEntry,
+    hasSnapshot: !!minimizedSnapshot,
+    cacheOriginTabId: tabEntry?.originTabId ?? minimizedSnapshot?.originTabId ?? 'not-in-cache',
+    timestamp: Date.now()
+  });
+
+  let cacheUpdated = false;
+
+  // Update the Quick Tab's originTabId in local tabs map if present
+  if (tabEntry) {
+    console.log('[Content] ADOPTION_CACHE_BEFORE:', {
+      adoptedQuickTabId,
+      oldOriginTabId: tabEntry.originTabId,
+      location: 'tabs-map'
+    });
+
+    tabEntry.originTabId = newOriginTabId;
+    cacheUpdated = true;
+
+    console.log('[Content] ADOPTION_CACHE_AFTER:', {
+      adoptedQuickTabId,
+      newOriginTabId: tabEntry.originTabId,
+      location: 'tabs-map'
+    });
+  }
+
+  // Update the Quick Tab's originTabId in minimized snapshots if present
+  if (minimizedSnapshot) {
+    console.log('[Content] ADOPTION_CACHE_BEFORE:', {
+      adoptedQuickTabId,
+      oldOriginTabId: minimizedSnapshot.originTabId,
+      location: 'minimized-snapshot'
+    });
+
+    minimizedSnapshot.originTabId = newOriginTabId;
+    cacheUpdated = true;
+
+    console.log('[Content] ADOPTION_CACHE_AFTER:', {
+      adoptedQuickTabId,
+      newOriginTabId: minimizedSnapshot.originTabId,
+      location: 'minimized-snapshot'
+    });
+  }
+
+  // Log result
+  console.log('[Content] ADOPTION_CACHE_UPDATE_COMPLETE:', {
+    adoptedQuickTabId,
+    currentTabId,
+    cacheUpdated,
+    previousOriginTabId,
+    newOriginTabId,
+    timeSinceAdoption: Date.now() - timestamp
+  });
+
+  sendResponse({
+    success: true,
+    cacheUpdated,
+    currentTabId,
+    timestamp: Date.now()
+  });
+}
+
 // ==================== TEST BRIDGE HANDLER FUNCTIONS ====================
 // v1.6.3.6-v11 - FIX Bundle Size Issue #3: Conditional test infrastructure
 // Test handlers are only included in test builds (process.env.TEST_MODE === 'true')
@@ -2836,6 +2927,18 @@ const ACTION_HANDLERS = {
   },
   CLOSE_MINIMIZED_QUICK_TABS: (message, sendResponse) => {
     _handleCloseMinimizedQuickTabs(sendResponse);
+    return true;
+  },
+  // v1.6.4.13 - FIX BUG #4: Handle ADOPTION_COMPLETED to update local cache
+  // This prevents cross-tab restore from using wrong tab context after adoption
+  ADOPTION_COMPLETED: (message, sendResponse) => {
+    console.log('[Content] Received ADOPTION_COMPLETED broadcast:', {
+      adoptedQuickTabId: message.adoptedQuickTabId,
+      previousOriginTabId: message.previousOriginTabId,
+      newOriginTabId: message.newOriginTabId,
+      timestamp: message.timestamp
+    });
+    _handleAdoptionCompleted(message, sendResponse);
     return true;
   }
 };

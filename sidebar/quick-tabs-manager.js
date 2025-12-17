@@ -88,6 +88,7 @@ import {
   filterMinimizedFromState,
   validateRestoreTabData,
   findTabInState,
+  determineRestoreSource,
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
@@ -1298,6 +1299,7 @@ function handleStateUpdateBroadcast(message) {
  * Handle adoption completion from background
  * v1.6.3.10-v3 - FIX Issue #47: Adoption re-render fix
  * v1.6.3.10-v5 - FIX Bug #3: Surgical DOM update to prevent all Quick Tabs animating
+ * v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
  * @param {Object} message - Adoption completion message
  */
 async function handleAdoptionCompletion(message) {
@@ -1320,6 +1322,23 @@ async function handleAdoptionCompletion(message) {
   }
   if (newOriginTabId) {
     browserTabInfoCache.delete(newOriginTabId);
+  }
+
+  // v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to reflect new owner
+  // This ensures restore operations route to the correct tab after adoption
+  if (adoptedQuickTabId && newOriginTabId) {
+    const previousHostInfo = quickTabHostInfo.get(adoptedQuickTabId);
+    quickTabHostInfo.set(adoptedQuickTabId, {
+      hostTabId: newOriginTabId,
+      lastUpdate: Date.now(),
+      lastOperation: 'adoption',
+      confirmed: true
+    });
+    console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
+      adoptedQuickTabId,
+      previousHostTabId: previousHostInfo?.hostTabId ?? null,
+      newHostTabId: newOriginTabId
+    });
   }
 
   // v1.6.3.10-v5 - FIX Bug #3: Attempt surgical DOM update first
@@ -5193,27 +5212,46 @@ function _sendRestoreMessage(quickTabId, tabData) {
 
 /**
  * Resolve the target tab ID for restore operation
+ * v1.6.4.13 - FIX BUG #4: Prioritize originTabId from storage over quickTabHostInfo
+ *
+ * After adoption, storage contains the correct originTabId but quickTabHostInfo
+ * may still have the old host tab ID. We should prioritize storage (tabData.originTabId)
+ * as the source of truth.
+ *
  * @private
  */
 function _resolveRestoreTarget(quickTabId, tabData) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
-  return hostInfo?.hostTabId || tabData.originTabId || null;
+
+  // v1.6.4.13 - FIX BUG #4: Prioritize storage originTabId over quickTabHostInfo
+  // After adoption, storage has the correct originTabId but hostInfo may be stale
+  if (tabData.originTabId) {
+    return tabData.originTabId;
+  }
+
+  // Fall back to hostInfo if no originTabId in storage
+  return hostInfo?.hostTabId || null;
 }
 
 /**
  * Log restore target resolution details
+ * v1.6.4.13 - FIX BUG #4: Enhanced logging to show source of truth
+ * v1.6.4.13 - Use shared determineRestoreSource utility to reduce code duplication
  * @private
  */
 function _logRestoreTargetResolution(quickTabId, tabData, targetTabId) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
-  const source = hostInfo ? 'quickTabHostInfo' : tabData.originTabId ? 'originTabId' : 'broadcast';
+  // v1.6.4.13 - Use shared utility for source determination
+  const source = determineRestoreSource(tabData, hostInfo);
 
   console.log('[Manager] 🎯 RESTORE_TARGET_RESOLUTION:', {
     quickTabId,
     targetTabId,
     hostInfoTabId: hostInfo?.hostTabId,
     originTabId: tabData.originTabId,
-    source
+    source,
+    // v1.6.4.13 - Show if hostInfo was overridden by storage originTabId
+    hostInfoOverridden: hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
   });
 }
 
