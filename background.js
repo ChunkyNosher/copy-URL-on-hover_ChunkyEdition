@@ -2354,14 +2354,29 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 /**
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
+ * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced self-write detection logging
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _multiMethodDeduplication(newValue, oldValue) {
+  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Log which detection layer matched
+  const logDetectionMatch = (method, reason) => {
+    console.log('[Background] v1.6.3.10-v5 Self-write detected:', {
+      method,
+      reason,
+      transactionId: newValue?.transactionId,
+      writingInstanceId: newValue?.writingInstanceId,
+      writingTabId: newValue?.writingTabId,
+      saveId: newValue?.saveId,
+      timestamp: Date.now()
+    });
+  };
+
   // Method 1: transactionId (highest priority - deterministic)
   // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
   if (_isTransactionSelfWrite(newValue)) {
+    logDetectionMatch('transactionId', `Transaction ${newValue.transactionId} in progress`);
     return {
       shouldSkip: true,
       method: 'transactionId',
@@ -2371,6 +2386,7 @@ function _multiMethodDeduplication(newValue, oldValue) {
 
   // Method 2: saveId + timestamp comparison (catches duplicates from same source)
   if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
+    logDetectionMatch('saveId+timestamp', 'Same saveId and timestamp within window');
     return {
       shouldSkip: true,
       method: 'saveId+timestamp',
@@ -2380,6 +2396,7 @@ function _multiMethodDeduplication(newValue, oldValue) {
 
   // Method 3: Content hash comparison (catches Firefox spurious events)
   if (_isContentHashDuplicate(newValue, oldValue)) {
+    logDetectionMatch('contentHash', 'Identical content with same saveId');
     return {
       shouldSkip: true,
       method: 'contentHash',
@@ -2434,14 +2451,33 @@ function _isContentHashDuplicate(newValue, oldValue) {
  * Check if this is a self-write via transaction ID
  * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
  * v1.6.3.6-v12 - Note: This is also called by _multiMethodDeduplication() as Method 1
+ * v1.6.3.10-v5 - FIX Issue #7: Add lazy cleanup of stale transactions during lookup
  * Other self-write detection methods are handled by content scripts
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if self-write
  */
 function _isTransactionSelfWrite(newValue) {
+  const transactionId = newValue?.transactionId;
+
   // Check transaction ID - the most deterministic method
-  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
-    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
+  if (transactionId && IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+    // v1.6.3.10-v5 - FIX Issue #7: Lazy cleanup - check if transaction is stale during lookup
+    const startTime = transactionStartTimes.get(transactionId);
+    const now = Date.now();
+
+    // If transaction is stale (exceeded timeout), clean it up and don't treat as self-write
+    if (startTime && now - startTime > TRANSACTION_TIMEOUT_MS) {
+      console.warn('[Background] v1.6.3.10-v5 Lazy cleanup - stale transaction found:', {
+        transactionId,
+        ageMs: now - startTime,
+        timeoutMs: TRANSACTION_TIMEOUT_MS
+      });
+      IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+      transactionStartTimes.delete(transactionId);
+      return false;
+    }
+
+    console.log('[Background] Ignoring self-write (transaction):', transactionId);
     return true;
   }
 
@@ -3044,16 +3080,18 @@ const portRegistry = new Map();
 let portIdCounter = 0;
 
 /**
- * Port cleanup interval (5 minutes)
+ * Port cleanup interval
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup
+ * v1.6.3.10-v5 - FIX Issue #5: Reduced from 5 min to 30s to prevent memory pressure
  */
-const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const PORT_CLEANUP_INTERVAL_MS = 30 * 1000; // 30 seconds
 
 /**
- * Port inactivity threshold for logging warnings (10 minutes)
+ * Port inactivity threshold for logging warnings
  * v1.6.3.6-v11 - FIX Issue #17: Inactivity monitoring
+ * v1.6.3.10-v5 - FIX Issue #5: Reduced from 10 min to 60s for faster cleanup
  */
-const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
+const PORT_INACTIVITY_THRESHOLD_MS = 60 * 1000; // 60 seconds
 
 /**
  * Generate unique port ID
@@ -3232,19 +3270,31 @@ function handlePortConnect(port) {
   port._portId = portId;
 
   // v1.6.3.10-v4 - FIX Issue #3/6: Send background startup info for restart detection
-  // This allows content scripts to detect if background was restarted and re-sync state
-  try {
-    port.postMessage({
-      type: 'BACKGROUND_HANDSHAKE',
-      ...getBackgroundStartupInfo(),
-      portId,
-      tabId,
-      timestamp: Date.now()
-    });
-    console.log('[Background] v1.6.3.10-v4 Sent BACKGROUND_HANDSHAKE to port:', { portId, origin });
-  } catch (err) {
-    console.warn('[Background] v1.6.3.10-v4 Failed to send handshake:', err.message);
-  }
+  // v1.6.3.10-v5 - FIX Issue #6: Wait for initialization before sending handshake
+  // This prevents content scripts from receiving handshake with isInitialized=false
+  // and then sending operations before background is ready
+  (async () => {
+    try {
+      // Wait for initialization (max 5 seconds)
+      const initReady = await waitForInitialization(5000);
+
+      port.postMessage({
+        type: 'BACKGROUND_HANDSHAKE',
+        ...getBackgroundStartupInfo(),
+        isInitialized: initReady, // v1.6.3.10-v5: Include init status
+        portId,
+        tabId,
+        timestamp: Date.now()
+      });
+      console.log('[Background] v1.6.3.10-v5 Sent BACKGROUND_HANDSHAKE to port:', {
+        portId,
+        origin,
+        isInitialized: initReady
+      });
+    } catch (err) {
+      console.warn('[Background] v1.6.3.10-v5 Failed to send handshake:', err.message);
+    }
+  })();
 
   // Handle messages from this port
   port.onMessage.addListener(message => {
@@ -4139,18 +4189,50 @@ console.log('[Background] v1.6.3.6-v11 Tab lifecycle events initialized');
 let messageIdCounter = 0;
 
 /**
+ * Counter wrap limit to prevent integer overflow
+ * v1.6.3.10-v5 - FIX Code Review: Centralized constant
+ */
+const COUNTER_WRAP_LIMIT = 1000000;
+
+/**
  * Generate unique message ID for correlation
  * v1.6.3.6-v5 - FIX Issue #4c: Correlation IDs for message tracing
+ * v1.6.3.10-v5 - FIX Issue #11: Message ID counter wrapping to prevent overflow
  * @returns {string} Unique message ID
  */
 function generateMessageId() {
-  messageIdCounter++;
+  // v1.6.3.10-v5 - FIX Issue #11: Wrap counter to prevent overflow
+  messageIdCounter = (messageIdCounter + 1) % COUNTER_WRAP_LIMIT;
   return `msg-${Date.now()}-${messageIdCounter}`;
+}
+
+// v1.6.3.10-v5 - FIX Issue #11: Message logging throttle infrastructure
+// Throttle period (1 second) to reduce console spam under heavy load
+const LOGGING_THROTTLE_MS = 1000;
+// Track last logged time per log type
+let _lastDispatchLogTime = 0;
+let _lastReceiptLogTime = 0;
+let _lastDeletionLogTime = 0;
+// Debug mode flag - set to true to enable verbose logging
+// v1.6.3.10-v5 - Use globalThis for service worker compatibility
+const _debugModeEnabled =
+  typeof globalThis !== 'undefined' && globalThis.DEBUG_MODE === true;
+
+/**
+ * Check if logging should be throttled for a specific log type
+ * v1.6.3.10-v5 - FIX Issue #11: Logging throttle to reduce console spam
+ * @private
+ * @param {number} lastLogTime - Last logged time for this type
+ * @returns {boolean} True if logging should be throttled (skipped)
+ */
+function _shouldThrottleLog(lastLogTime) {
+  return Date.now() - lastLogTime < LOGGING_THROTTLE_MS && !_debugModeEnabled;
 }
 
 /**
  * Log message dispatch (outgoing)
  * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
+ * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
  * Logs sender tab ID, message type, timestamp (no payloads)
  * @param {string} messageId - Unique message ID for correlation
  * @param {string} messageType - Type of message being sent
@@ -4158,6 +4240,12 @@ function generateMessageId() {
  * @param {string} target - Target description ('broadcast', 'sidebar', or specific tab ID)
  */
 function logMessageDispatch(messageId, messageType, senderTabId, target) {
+  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
+  if (_shouldThrottleLog(_lastDispatchLogTime)) {
+    return;
+  }
+  _lastDispatchLogTime = Date.now();
+
   console.log('[Background] 📤 MESSAGE DISPATCH:', {
     messageId,
     messageType,
@@ -4170,12 +4258,19 @@ function logMessageDispatch(messageId, messageType, senderTabId, target) {
 /**
  * Log message receipt (incoming)
  * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message logging
+ * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
  * Logs receiver context, message type, timestamp
  * @param {string} messageId - Unique message ID for correlation (if available)
  * @param {string} messageType - Type of message received
  * @param {number} senderTabId - Sender tab ID
  */
 function logMessageReceipt(messageId, messageType, senderTabId) {
+  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
+  if (_shouldThrottleLog(_lastReceiptLogTime)) {
+    return;
+  }
+  _lastReceiptLogTime = Date.now();
+
   console.log('[Background] 📥 MESSAGE RECEIPT:', {
     messageId: messageId || 'N/A',
     messageType,
@@ -4187,6 +4282,7 @@ function logMessageReceipt(messageId, messageType, senderTabId) {
 /**
  * Log deletion event propagation
  * v1.6.3.6-v5 - FIX Issue #4e: State deletion propagation logging
+ * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
  * Logs when deletion event is submitted and received
  * @param {string} correlationId - Unique ID for end-to-end tracing
  * @param {string} phase - 'submit' or 'received'
@@ -4194,6 +4290,12 @@ function logMessageReceipt(messageId, messageType, senderTabId) {
  * @param {Object} details - Additional context (source, target tabs, etc.)
  */
 function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) {
+  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
+  if (_shouldThrottleLog(_lastDeletionLogTime)) {
+    return;
+  }
+  _lastDeletionLogTime = Date.now();
+
   if (phase === 'submit') {
     console.log('[Background] 🗑️ DELETION SUBMIT:', {
       correlationId,
@@ -4373,41 +4475,67 @@ function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
 }
 
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #4: Broadcast deduplication and circuit breaker
+// v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker instead of global
 // Track recent broadcasts to prevent storms
-const _broadcastHistory = [];
+let _broadcastHistory = []; // Use let for cleanup mutation in Issue #10 fix
 // 100ms window chosen based on typical user interaction timing - broadcasts within this window
 // are likely duplicates from the same user action (e.g., drag event fires multiple times)
 const BROADCAST_HISTORY_WINDOW_MS = 100;
 // Limit of 10 broadcasts per window based on empirical observation that legitimate operations
 // rarely generate more than 2-3 broadcasts per 100ms. 10 provides safety margin while catching loops.
 const BROADCAST_CIRCUIT_BREAKER_LIMIT = 10;
-let _circuitBreakerTripped = false;
-let _lastCircuitBreakerReset = 0;
+// v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker state
+// Map: quickTabId -> { tripped: boolean, resetTime: number }
+const _perTabCircuitBreakers = new Map();
+// Circuit breaker cooldown period (1 second)
+const CIRCUIT_BREAKER_COOLDOWN_MS = 1000;
 
 /**
- * Try to reset circuit breaker if cooldown elapsed
+ * Try to reset circuit breaker for a specific Quick Tab if cooldown elapsed
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker
  * @private
+ * @param {string} quickTabId - Quick Tab ID
  * @param {number} now - Current timestamp
+ * @returns {boolean} True if circuit breaker was reset or not tripped
  */
-function _tryResetCircuitBreaker(now) {
-  if (_circuitBreakerTripped && now - _lastCircuitBreakerReset > 1000) {
-    _circuitBreakerTripped = false;
-    console.log('[Background] Broadcast circuit breaker RESET');
+function _tryResetPerTabCircuitBreaker(quickTabId, now) {
+  const state = _perTabCircuitBreakers.get(quickTabId);
+  if (!state || !state.tripped) {
+    return true; // Not tripped
   }
+
+  if (now - state.resetTime > CIRCUIT_BREAKER_COOLDOWN_MS) {
+    _perTabCircuitBreakers.delete(quickTabId);
+    console.log('[Background] Per-tab circuit breaker RESET for:', quickTabId);
+    return true; // Reset
+  }
+
+  return false; // Still tripped
+}
+
+/**
+ * Check if per-tab circuit breaker is tripped
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if circuit breaker is tripped
+ */
+function _isPerTabCircuitBreakerTripped(quickTabId, now) {
+  return !_tryResetPerTabCircuitBreaker(quickTabId, now);
 }
 
 /**
  * Clean up expired entries from broadcast history
+ * v1.6.3.10-v5 - FIX Issue #10: Cleanup BEFORE duplicate check to prevent race condition
  * @private
  * @param {number} now - Current timestamp
  */
 function _cleanupBroadcastHistory(now) {
-  while (
-    _broadcastHistory.length > 0 &&
-    now - _broadcastHistory[0].time > BROADCAST_HISTORY_WINDOW_MS
-  ) {
-    _broadcastHistory.shift();
-  }
+  // v1.6.3.10-v5 - FIX Issue #10: Use filter for atomic cleanup before checks
+  _broadcastHistory = _broadcastHistory.filter(
+    entry => now - entry.time <= BROADCAST_HISTORY_WINDOW_MS
+  );
 }
 
 /**
@@ -4424,27 +4552,34 @@ function _isDuplicateBroadcast(quickTabId, changesHash) {
 }
 
 /**
- * Trip the circuit breaker and return blocked response
+ * Trip the circuit breaker for a specific Quick Tab
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker
  * @private
+ * @param {string} quickTabId - Quick Tab ID
  * @param {number} now - Current timestamp
  * @returns {{ allowed: boolean, reason: string }}
  */
-function _tripCircuitBreaker(now) {
-  _circuitBreakerTripped = true;
-  _lastCircuitBreakerReset = now;
+function _tripPerTabCircuitBreaker(quickTabId, now) {
+  _perTabCircuitBreakers.set(quickTabId, { tripped: true, resetTime: now });
   console.error(
-    '[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within',
+    '[Background] ⚠️ PER-TAB CIRCUIT BREAKER TRIPPED for',
+    quickTabId,
+    '- too many broadcasts within',
     BROADCAST_HISTORY_WINDOW_MS,
     'ms'
   );
-  console.error('[Background] Broadcasts in window:', _broadcastHistory.length);
-  return { allowed: false, reason: 'circuit breaker limit exceeded' };
+  // Count broadcasts for this specific Quick Tab
+  const tabBroadcastCount = _broadcastHistory.filter(e => e.quickTabId === quickTabId).length;
+  console.error('[Background] Broadcasts for this Quick Tab in window:', tabBroadcastCount);
+  return { allowed: false, reason: 'per-tab circuit breaker limit exceeded' };
 }
 
 /**
  * Check if broadcast should be allowed (circuit breaker + deduplication)
  * v1.6.3.6-v4 - FIX Issue #4: Prevent broadcast storms
  * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker (not global)
+ * v1.6.3.10-v5 - FIX Issue #10: Cleanup before duplicate check to prevent race condition
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @returns {{ allowed: boolean, reason: string }}
@@ -4452,20 +4587,23 @@ function _tripCircuitBreaker(now) {
 function _shouldAllowBroadcast(quickTabId, changes) {
   const now = Date.now();
 
-  _tryResetCircuitBreaker(now);
-  if (_circuitBreakerTripped) {
-    return { allowed: false, reason: 'circuit breaker tripped' };
-  }
-
+  // v1.6.3.10-v5 - FIX Issue #10: Cleanup BEFORE any checks to prevent race condition
   _cleanupBroadcastHistory(now);
+
+  // v1.6.3.10-v5 - FIX Issue #9: Check per-tab circuit breaker (not global)
+  if (_isPerTabCircuitBreakerTripped(quickTabId, now)) {
+    return { allowed: false, reason: 'per-tab circuit breaker tripped' };
+  }
 
   const changesHash = JSON.stringify(changes);
   if (_isDuplicateBroadcast(quickTabId, changesHash)) {
     return { allowed: false, reason: 'duplicate broadcast within window' };
   }
 
-  if (_broadcastHistory.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
-    return _tripCircuitBreaker(now);
+  // v1.6.3.10-v5 - FIX Issue #9: Count broadcasts per Quick Tab, not global
+  const tabBroadcastCount = _broadcastHistory.filter(e => e.quickTabId === quickTabId).length;
+  if (tabBroadcastCount >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
+    return _tripPerTabCircuitBreaker(quickTabId, now);
   }
 
   _broadcastHistory.push({ time: now, quickTabId, changesHash });

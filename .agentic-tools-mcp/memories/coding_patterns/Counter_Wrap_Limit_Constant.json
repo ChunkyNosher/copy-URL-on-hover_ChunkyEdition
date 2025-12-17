@@ -1,0 +1,8 @@
+{
+  "id": "9bd7e4ed-598a-4884-82f1-97e0257f1284",
+  "title": "Counter Wrap Limit Constant",
+  "details": "Use COUNTER_WRAP_LIMIT = 1000000 constant for counter wrapping to prevent integer overflow. Used in: background.js (messageIdCounter), storage-utils.js (writeCounter for transaction IDs). Pattern: counter = (counter + 1) % COUNTER_WRAP_LIMIT",
+  "category": "coding_patterns",
+  "dateCreated": "2025-12-17T20:55:19.378Z",
+  "dateUpdated": "2025-12-17T20:55:19.378Z"
+}

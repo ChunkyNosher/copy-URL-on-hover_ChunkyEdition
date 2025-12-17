@@ -1,0 +1,8 @@
+{
+  "id": "2b583ef6-f1e1-424a-829f-21dddd2c3fc3",
+  "title": "Port Reconnection Backoff Pattern",
+  "details": "v1.6.3.10-v5 implemented exponential backoff for port reconnection in content.js. Pattern uses:\n- Initial delay: 150ms (midpoint of 100-200ms range)\n- Backoff multiplier: 1.5x per retry\n- Maximum delay: 8000ms cap\n- Jitter: ±20% randomization to prevent thundering herd\n- Counter reset on successful connection\nKey constants: INITIAL_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS, RECONNECT_BACKOFF_MULTIPLIER, RECONNECT_JITTER_RANGE",
+  "category": "architecture",
+  "dateCreated": "2025-12-17T20:55:19.375Z",
+  "dateUpdated": "2025-12-17T20:55:19.375Z"
+}

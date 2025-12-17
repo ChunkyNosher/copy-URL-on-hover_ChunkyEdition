@@ -181,6 +181,8 @@ let ownershipValidationEnabled = true;
 // v1.6.3.6-v2 - FIX: Triple-source entropy to prevent collisions even for simultaneous tab loads
 // Uses: performance.now() (high resolution), Math.random(), crypto.getRandomValues(), module-level counter
 let writeCounter = 0; // v1.6.3.6-v2: Module-level counter for unique IDs
+// v1.6.3.10-v5 - FIX Code Review: Counter wrap limit constant
+const COUNTER_WRAP_LIMIT = 1000000;
 const WRITING_INSTANCE_ID = (() => {
   // Use performance.now() for higher resolution than Date.now()
   const highResTime =
@@ -423,26 +425,33 @@ function _filterOwnedTabs(tabs, tabId) {
 /**
  * Log ownership filtering decision
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
+ * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced logging with filtered tab details
  * @private
  */
 function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
   const nonOwnedCount = tabs.length - ownedTabs.length;
-  if (nonOwnedCount > 0) {
-    console.log('[StorageUtils] Ownership filtering:', {
-      currentTabId: tabId,
-      totalTabs: tabs.length,
-      ownedTabs: ownedTabs.length,
-      filteredOut: nonOwnedCount,
-      filteredIds: tabs
-        .filter(
-          t => t.originTabId !== tabId && t.originTabId !== null && t.originTabId !== undefined
-        )
-        .map(t => ({
-          id: t.id,
-          originTabId: t.originTabId
-        }))
-    });
-  }
+  const filteredTabs = tabs.filter(
+    t => t.originTabId !== tabId && t.originTabId !== null && t.originTabId !== undefined
+  );
+
+  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Always log filtering decision for traceability
+  console.log('[StorageUtils] v1.6.3.10-v5 Ownership filtering:', {
+    currentTabId: tabId,
+    totalTabs: tabs.length,
+    ownedTabs: ownedTabs.length,
+    filteredOut: nonOwnedCount,
+    // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Include which tabs filtered out and originTabId values
+    filteredTabDetails:
+      filteredTabs.length > 0
+        ? filteredTabs.map(t => ({
+            quickTabId: t.id,
+            originTabId: t.originTabId,
+            url: t.url?.substring(0, 50) + (t.url?.length > 50 ? '...' : '')
+          }))
+        : [],
+    // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Include owned tab IDs for correlation
+    ownedTabIds: ownedTabs.map(t => t.id)
+  });
 }
 
 /**
@@ -771,14 +780,29 @@ export function generateSaveId() {
  * Generate unique transaction ID for storage write tracking
  * v1.6.3.4-v6 - FIX Issue #1: Transaction IDs for atomic storage writes
  * v1.6.3.6-v2 - FIX Issue #1: Include writeCounter for truly unique IDs
- * Format: 'txn-timestamp-counter-random6chars'
+ * v1.6.3.10-v5 - FIX Issue #8: Higher entropy - include tabId, wrap counter, use crypto
+ * Format: 'txn-timestamp-tabId-counter-random8chars'
  *
  * @returns {string} Unique transaction ID
  */
 export function generateTransactionId() {
-  // Increment counter for each transaction (prevents collisions even in same millisecond)
-  writeCounter++;
-  return `txn-${Date.now()}-${writeCounter}-${Math.random().toString(36).slice(2, 8)}`;
+  // v1.6.3.10-v5 - FIX Issue #8: Wrap counter to prevent overflow
+  writeCounter = (writeCounter + 1) % COUNTER_WRAP_LIMIT;
+
+  // v1.6.3.10-v5 - FIX Issue #8: Include tabId for additional uniqueness
+  const tabId = currentWritingTabId ?? 0;
+
+  // v1.6.3.10-v5 - FIX Issue #8: Use crypto.getRandomValues for higher entropy
+  let randomPart;
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const array = new Uint8Array(4);
+    crypto.getRandomValues(array);
+    randomPart = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  } else {
+    randomPart = Math.random().toString(36).slice(2, 10);
+  }
+
+  return `txn-${Date.now()}-${tabId}-${writeCounter}-${randomPart}`;
 }
 
 /**
@@ -1998,6 +2022,7 @@ function _logPersistInitiation(options) {
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Ownership validation extracted
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting phases
+ * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced phase logging with correlation ID
  *
  * @param {Object} state - State object to persist
  * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
@@ -2006,10 +2031,22 @@ function _logPersistInitiation(options) {
  */
 export function persistStateToStorage(state, logPrefix = '[StorageUtils]', forceEmpty = false) {
   const transactionId = generateTransactionId();
-  console.log(`${logPrefix} Storage write STARTED [${transactionId}]`);
+  const startTime = Date.now();
+
+  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced phase logging
+  console.log(`${logPrefix} v1.6.3.10-v5 Storage transaction STARTED:`, {
+    transactionId,
+    phase: 'init',
+    tabCount: state?.tabs?.length ?? 0,
+    timestamp: startTime
+  });
 
   // Phase 1: Validate state structure
   if (!_validateStateStructure(state, logPrefix).valid) {
+    console.log(`${logPrefix} v1.6.3.10-v5 Transaction FAILED at phase: validate-structure`, {
+      transactionId,
+      durationMs: Date.now() - startTime
+    });
     return Promise.resolve(false);
   }
 
@@ -2018,27 +2055,53 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
 
   // Phase 2: Check empty write protection
   if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
+    console.log(`${logPrefix} v1.6.3.10-v5 Transaction BLOCKED at phase: empty-check`, {
+      transactionId,
+      tabCount,
+      forceEmpty,
+      durationMs: Date.now() - startTime
+    });
     return Promise.resolve(false);
   }
 
   // Phase 3: Validate ownership
-  if (!_validatePersistOwnership(state, forceEmpty, logPrefix, transactionId).shouldProceed) {
+  const ownershipResult = _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId);
+  if (!ownershipResult.shouldProceed) {
+    console.log(`${logPrefix} v1.6.3.10-v5 Transaction BLOCKED at phase: ownership-filter`, {
+      transactionId,
+      durationMs: Date.now() - startTime
+    });
     return Promise.resolve(false);
   }
 
   // Phase 4: Check for state changes
   if (!hasStateChanged(state)) {
-    console.log(`${logPrefix} Storage write SKIPPED [${transactionId}] (no changes)`);
+    console.log(`${logPrefix} v1.6.3.10-v5 Transaction SKIPPED at phase: hash-check`, {
+      transactionId,
+      reason: 'no changes',
+      durationMs: Date.now() - startTime
+    });
     return Promise.resolve(true);
   }
 
   // Phase 5: Validate state content
   const validation = validateStateForPersist(state);
   if (!validation.valid) {
-    console.error(`${logPrefix} State validation failed [${transactionId}]:`, validation.errors);
+    console.error(`${logPrefix} v1.6.3.10-v5 State validation failed at phase: validate-content`, {
+      transactionId,
+      errors: validation.errors,
+      durationMs: Date.now() - startTime
+    });
   }
 
   // Phase 6: Log and execute write
+  console.log(`${logPrefix} v1.6.3.10-v5 Transaction EXECUTING phase: write`, {
+    transactionId,
+    tabCount,
+    minimizedCount,
+    durationMs: Date.now() - startTime
+  });
+
   _logPersistInitiation({ logPrefix, transactionId, tabCount, minimizedCount, forceEmpty });
 
   const stateWithTxn = _prepareStateForWrite(state, transactionId);
