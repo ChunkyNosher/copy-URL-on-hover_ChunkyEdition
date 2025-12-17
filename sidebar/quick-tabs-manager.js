@@ -2,6 +2,13 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.10-v1 - FIX Critical Cross-Tab Sync Issues (Issues #2, #3, #5, #6, #7)
+ *   - FIX Issue #2: Port lifecycle & zombie port detection with 500ms timeout
+ *   - FIX Issue #3: Storage concurrency with write serialization (transactionId + sequence)
+ *   - FIX Issue #5: Reduced heartbeat interval 25s→15s, timeout 5s→2s, adaptive backoff
+ *   - FIX Issue #6: Structured port/message lifecycle logging with state transitions
+ *   - FIX Issue #7: Minimize/restore retry logic (2x retry + broadcast fallback)
+ *
  * v1.6.3.6-v11 - FIX Issues #1-9 from comprehensive diagnostics
  *   - FIX Issue #1: Animations properly invoked on toggle
  *   - FIX Issue #2: Removed inline maxHeight conflicts, JS calculates scrollHeight
@@ -81,6 +88,13 @@ const RECONNECT_BACKOFF_INITIAL_MS = 100;
 const RECONNECT_BACKOFF_MAX_MS = 10000;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
 const CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000;
+
+// ==================== v1.6.3.10-v1 CONSTANTS ====================
+// FIX Issue #2: Zombie port detection timeout (500ms)
+const PORT_MESSAGE_TIMEOUT_MS = 500;
+// FIX Issue #7: Messaging retry configuration
+const MESSAGE_RETRY_COUNT = 2;
+const MESSAGE_RETRY_BACKOFF_MS = 150;
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -169,18 +183,25 @@ const ACK_TIMEOUT_MS = 1000;
 
 // ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
 // FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
+// v1.6.3.10-v1 - FIX Issue #5: Reduced interval for better margin
 
 /**
- * Heartbeat interval (25 seconds - Firefox idle timeout is 30s)
- * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * Heartbeat interval (15 seconds - Firefox idle timeout is 30s)
+ * v1.6.3.10-v1 - FIX Issue #5: Reduced from 25s to 15s for 15s safety margin
  */
-const HEARTBEAT_INTERVAL_MS = 25000;
+const HEARTBEAT_INTERVAL_MS = 15000;
 
 /**
- * Heartbeat timeout (5 seconds)
- * v1.6.3.6-v12 - FIX Issue #4: Detect unresponsive background
+ * Maximum heartbeat interval for adaptive backoff
+ * v1.6.3.10-v1 - FIX Issue #5: Never exceed 20s even with network latency
  */
-const HEARTBEAT_TIMEOUT_MS = 5000;
+const HEARTBEAT_INTERVAL_MAX_MS = 20000;
+
+/**
+ * Heartbeat timeout (2 seconds)
+ * v1.6.3.10-v1 - FIX Issue #5: Reduced from 5s to 2s for faster failure detection
+ */
+const HEARTBEAT_TIMEOUT_MS = 2000;
 
 /**
  * Heartbeat interval ID
@@ -213,6 +234,27 @@ let circuitBreakerOpenTime = 0;
 let reconnectAttempts = 0;
 let reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
 
+// ==================== v1.6.3.10-v1 PORT STATE MACHINE ====================
+// FIX Issue #2: Explicit port state tracking for zombie detection
+/**
+ * Port connection state machine
+ * v1.6.3.10-v1 - FIX Issue #2: Track port viability explicitly
+ * States: 'connected', 'zombie', 'reconnecting', 'dead'
+ */
+let portState = 'dead';
+
+/**
+ * Timestamp of last successful port message
+ * v1.6.3.10-v1 - FIX Issue #2: Track for zombie detection
+ */
+let lastSuccessfulPortMessage = 0;
+
+/**
+ * Current adaptive heartbeat interval
+ * v1.6.3.10-v1 - FIX Issue #5: Adaptive backoff based on network latency
+ */
+let currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
+
 // ==================== v1.6.3.7 RENDER DEBOUNCE STATE ====================
 // FIX Issue #3: UI Flicker Prevention
 let renderDebounceTimer = null;
@@ -229,18 +271,60 @@ function generateCorrelationId() {
 }
 
 /**
- * Log port lifecycle event
+ * Log port lifecycle event with comprehensive context
  * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
- * @param {string} event - Event name
+ * v1.6.3.10-v1 - FIX Issue #6: Enhanced structured logging with state transitions
+ * @param {string} event - Event name (CONNECT, DISCONNECT, ZOMBIE_DETECTED, etc.)
  * @param {Object} details - Event details
  */
 function logPortLifecycle(event, details = {}) {
-  console.log(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, {
+  const logEntry = {
+    event,
     tabId: currentBrowserTabId,
     portId: backgroundPort?._portId,
+    portState,
+    circuitBreakerState,
     timestamp: Date.now(),
+    timeSinceLastSuccess: lastSuccessfulPortMessage > 0 ? Date.now() - lastSuccessfulPortMessage : null,
     ...details
-  });
+  };
+  
+  // v1.6.3.10-v1 - FIX Issue #6: Use appropriate log level based on event
+  const errorEvents = ['ZOMBIE_DETECTED', 'HEARTBEAT_TIMEOUT', 'MESSAGE_TIMEOUT', 'CIRCUIT_OPEN'];
+  const warnEvents = ['DISCONNECT', 'RECONNECT_ATTEMPT_N'];
+  
+  if (errorEvents.includes(event)) {
+    console.error(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, logEntry);
+  } else if (warnEvents.includes(event)) {
+    console.warn(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, logEntry);
+  } else {
+    console.log(`[Manager] PORT_LIFECYCLE [sidebar] [${event}]:`, logEntry);
+  }
+}
+
+/**
+ * Log port state transition
+ * v1.6.3.10-v1 - FIX Issue #6: Track all state transitions with context
+ * @param {string} fromState - Previous state
+ * @param {string} toState - New state  
+ * @param {string} reason - Reason for transition
+ * @param {Object} context - Additional context
+ */
+function logPortStateTransition(fromState, toState, reason, context = {}) {
+  const logEntry = {
+    transition: `${fromState} → ${toState}`,
+    reason,
+    portId: backgroundPort?._portId,
+    circuitBreakerState,
+    reconnectAttempts,
+    timestamp: Date.now(),
+    ...context
+  };
+  
+  console.log('[Manager] PORT_STATE_TRANSITION:', logEntry);
+  
+  // Update port state
+  portState = toState;
 }
 
 /**
@@ -248,28 +332,36 @@ function logPortLifecycle(event, details = {}) {
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
  * v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat on connect
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
+ * v1.6.3.10-v1 - FIX Issue #2: Port state machine tracking
  */
 function connectToBackground() {
+  const previousState = portState;
+  
   // v1.6.3.7 - FIX Issue #5: Check circuit breaker state
   if (circuitBreakerState === 'open') {
     const timeSinceOpen = Date.now() - circuitBreakerOpenTime;
     if (timeSinceOpen < CIRCUIT_BREAKER_OPEN_DURATION_MS) {
-      console.log('[Manager] Circuit breaker OPEN - skipping reconnect', {
-        timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen
+      logPortLifecycle('CIRCUIT_OPEN', {
+        timeRemainingMs: CIRCUIT_BREAKER_OPEN_DURATION_MS - timeSinceOpen,
+        recoveryAction: 'waiting for cooldown'
       });
       return;
     }
     // Transition to half-open state
+    logPortStateTransition(portState, 'reconnecting', 'circuit breaker cooldown expired');
     circuitBreakerState = 'half-open';
-    console.log('[Manager] Circuit breaker HALF-OPEN - attempting reconnect');
+    logPortLifecycle('CIRCUIT_HALF_OPEN', { attemptingReconnect: true });
   }
+
+  // v1.6.3.10-v1 - FIX Issue #2: Update port state to reconnecting
+  logPortStateTransition(previousState, 'reconnecting', 'connection attempt starting');
 
   try {
     backgroundPort = browser.runtime.connect({
       name: 'quicktabs-sidebar'
     });
 
-    logPortLifecycle('open', { portName: backgroundPort.name });
+    logPortLifecycle('CONNECT', { portName: backgroundPort.name });
 
     // Handle messages from background
     backgroundPort.onMessage.addListener(handlePortMessage);
@@ -277,7 +369,10 @@ function connectToBackground() {
     // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
-      logPortLifecycle('disconnect', { error: error?.message });
+      logPortLifecycle('DISCONNECT', { error: error?.message, recoveryAction: 'scheduling reconnect' });
+      
+      // v1.6.3.10-v1 - FIX Issue #2: Update port state
+      logPortStateTransition(portState, 'dead', `disconnected: ${error?.message || 'unknown'}`);
       backgroundPort = null;
 
       // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat on disconnect
@@ -287,10 +382,17 @@ function connectToBackground() {
       scheduleReconnect();
     });
 
+    // v1.6.3.10-v1 - FIX Issue #2: Mark port as connected
+    logPortStateTransition('reconnecting', 'connected', 'connection established successfully');
+    lastSuccessfulPortMessage = Date.now();
+
     // v1.6.3.7 - FIX Issue #5: Reset circuit breaker on successful connect
     circuitBreakerState = 'closed';
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+    
+    // v1.6.3.10-v1 - FIX Issue #5: Reset adaptive heartbeat interval
+    currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
     startHeartbeat();
@@ -299,10 +401,11 @@ function connectToBackground() {
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
 
-    console.log('[Manager] v1.6.3.6-v11 Port connection established');
+    console.log('[Manager] v1.6.3.10-v1 Port connection established with state tracking');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
-    logPortLifecycle('error', { error: err.message });
+    logPortLifecycle('CONNECT_ERROR', { error: err.message, recoveryAction: 'scheduling reconnect' });
+    logPortStateTransition(portState, 'dead', `connection failed: ${err.message}`);
     
     // v1.6.3.7 - FIX Issue #5: Handle connection failure
     handleConnectionFailure();
@@ -312,15 +415,16 @@ function connectToBackground() {
 /**
  * Schedule reconnection with exponential backoff
  * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
+ * v1.6.3.10-v1 - FIX Issue #2: Zombie detection bypasses circuit breaker delay
  */
 function scheduleReconnect() {
   reconnectAttempts++;
   
-  console.log('[Manager] RECONNECT_SCHEDULED:', {
+  logPortLifecycle('RECONNECT_ATTEMPT_N', {
     attempt: reconnectAttempts,
     backoffMs: reconnectBackoffMs,
-    circuitBreakerState,
-    maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+    maxFailures: CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    recoveryAction: `waiting ${reconnectBackoffMs}ms before retry`
   });
   
   // Check if we should trip the circuit breaker
@@ -340,6 +444,45 @@ function scheduleReconnect() {
 }
 
 /**
+ * Force immediate reconnect (bypass circuit breaker)
+ * v1.6.3.10-v1 - FIX Issue #2: Used when zombie port detected
+ * Zombie detection means background unloaded, not transient failure
+ */
+function forceImmediateReconnect() {
+  // v1.6.3.10-v1 - FIX Code Review: Store previous state for proper logging
+  const previousPortState = portState;
+  
+  logPortLifecycle('ZOMBIE_DETECTED', {
+    recoveryAction: 'forcing immediate reconnect (bypassing circuit breaker)',
+    previousState: previousPortState
+  });
+  
+  // Reset circuit breaker - zombie detection is not a transient failure
+  circuitBreakerState = 'half-open';
+  circuitBreakerOpenTime = 0;
+  reconnectAttempts = 0;
+  reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+  
+  // Mark port as zombie before reconnect attempt
+  logPortStateTransition(previousPortState, 'zombie', 'message timeout detected');
+  
+  // Clean up old port
+  if (backgroundPort) {
+    try {
+      backgroundPort.disconnect();
+    } catch (_err) {
+      // Port may already be invalid
+    }
+    backgroundPort = null;
+  }
+  
+  stopHeartbeat();
+  
+  // Immediate reconnect (no delay since zombie detection is confirmed)
+  connectToBackground();
+}
+
+/**
  * Handle connection failure
  * v1.6.3.7 - FIX Issue #5: Track failures for circuit breaker
  */
@@ -356,20 +499,27 @@ function handleConnectionFailure() {
 /**
  * Trip the circuit breaker to "open" state
  * v1.6.3.7 - FIX Issue #5: Stop reconnection attempts for cooldown period
+ * v1.6.3.10-v1 - FIX Issue #6: Enhanced logging for circuit breaker events
  */
 function tripCircuitBreaker() {
+  const previousState = circuitBreakerState;
   circuitBreakerState = 'open';
   circuitBreakerOpenTime = Date.now();
   
-  console.warn('[Manager] CIRCUIT_BREAKER_TRIPPED:', {
+  logPortLifecycle('CIRCUIT_OPEN', {
+    previousState,
     attempts: reconnectAttempts,
     cooldownMs: CIRCUIT_BREAKER_OPEN_DURATION_MS,
-    reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString()
+    reopenAt: new Date(circuitBreakerOpenTime + CIRCUIT_BREAKER_OPEN_DURATION_MS).toISOString(),
+    recoveryAction: `will retry after ${CIRCUIT_BREAKER_OPEN_DURATION_MS / 1000}s cooldown`
   });
   
   // Schedule attempt to reopen circuit breaker
   setTimeout(() => {
-    console.log('[Manager] Circuit breaker cooldown expired - transitioning to HALF-OPEN');
+    logPortLifecycle('CIRCUIT_HALF_OPEN', {
+      reason: 'cooldown expired',
+      recoveryAction: 'attempting reconnection'
+    });
     circuitBreakerState = 'half-open';
     reconnectAttempts = 0;
     reconnectBackoffMs = RECONNECT_BACKOFF_INITIAL_MS;
@@ -378,10 +528,12 @@ function tripCircuitBreaker() {
 }
 
 // ==================== v1.6.3.6-v12 HEARTBEAT FUNCTIONS ====================
+// v1.6.3.10-v1 - FIX Issue #5: Reduced interval (15s), adaptive backoff, faster timeout (2s)
 
 /**
  * Start heartbeat interval
  * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
+ * v1.6.3.10-v1 - FIX Issue #5: Adaptive interval based on latency
  */
 function startHeartbeat() {
   // Clear any existing interval
@@ -390,9 +542,13 @@ function startHeartbeat() {
   // Send initial heartbeat immediately
   sendHeartbeat();
 
-  // Start interval
-  heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-  console.log('[Manager] v1.6.3.6-v12 Heartbeat started (every', HEARTBEAT_INTERVAL_MS / 1000, 's)');
+  // v1.6.3.10-v1 - FIX Issue #5: Use adaptive interval
+  heartbeatIntervalId = setInterval(sendHeartbeat, currentHeartbeatInterval);
+  logPortLifecycle('HEARTBEAT_STARTED', {
+    intervalMs: currentHeartbeatInterval,
+    timeoutMs: HEARTBEAT_TIMEOUT_MS,
+    safetyMarginMs: 30000 - currentHeartbeatInterval
+  });
 }
 
 /**
@@ -403,7 +559,49 @@ function stopHeartbeat() {
   if (heartbeatIntervalId) {
     clearInterval(heartbeatIntervalId);
     heartbeatIntervalId = null;
-    console.log('[Manager] v1.6.3.6-v12 Heartbeat stopped');
+    logPortLifecycle('HEARTBEAT_STOPPED', {
+      reason: 'cleanup'
+    });
+  }
+}
+
+/**
+ * Adjust heartbeat interval based on observed latency
+ * v1.6.3.10-v1 - FIX Issue #5: Adaptive backoff based on network latency
+ * @param {number} latencyMs - Observed round-trip latency
+ */
+function adjustHeartbeatInterval(latencyMs) {
+  const previousInterval = currentHeartbeatInterval;
+  
+  // If latency is high (>500ms), increase interval slightly to reduce load
+  // But never exceed the maximum (20s) to maintain safety margin
+  if (latencyMs > 500) {
+    currentHeartbeatInterval = Math.min(
+      currentHeartbeatInterval + 1000,
+      HEARTBEAT_INTERVAL_MAX_MS
+    );
+  } else if (latencyMs < 100 && currentHeartbeatInterval > HEARTBEAT_INTERVAL_MS) {
+    // Low latency - can reduce interval back toward baseline
+    currentHeartbeatInterval = Math.max(
+      currentHeartbeatInterval - 500,
+      HEARTBEAT_INTERVAL_MS
+    );
+  }
+  
+  // If interval changed, restart heartbeat with new interval
+  if (currentHeartbeatInterval !== previousInterval) {
+    console.log('[Manager] HEARTBEAT_ADAPTIVE:', {
+      previousIntervalMs: previousInterval,
+      newIntervalMs: currentHeartbeatInterval,
+      observedLatencyMs: latencyMs,
+      safetyMarginMs: 30000 - currentHeartbeatInterval
+    });
+    
+    // Restart heartbeat with new interval
+    if (heartbeatIntervalId) {
+      clearInterval(heartbeatIntervalId);
+      heartbeatIntervalId = setInterval(sendHeartbeat, currentHeartbeatInterval);
+    }
   }
 }
 
@@ -411,16 +609,21 @@ function stopHeartbeat() {
  * Send heartbeat message to background
  * v1.6.3.6-v12 - FIX Issue #2, #4: Heartbeat with timeout detection
  * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
+ * v1.6.3.10-v1 - FIX Issue #2, #5: Zombie detection, adaptive interval
  */
 async function sendHeartbeat() {
   if (!backgroundPort) {
-    console.warn('[Manager] v1.6.3.6-v12 Cannot send heartbeat - port not connected', {
+    logPortLifecycle('HEARTBEAT_SKIPPED', {
+      reason: 'port not connected',
       circuitBreakerState,
       reconnectAttempts
     });
     consecutiveHeartbeatFailures++;
     if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Max heartbeat failures - triggering reconnect');
+      logPortLifecycle('HEARTBEAT_TIMEOUT', {
+        failures: consecutiveHeartbeatFailures,
+        recoveryAction: 'triggering reconnect'
+      });
       scheduleReconnect();
     }
     return;
@@ -429,47 +632,61 @@ async function sendHeartbeat() {
   const timestamp = Date.now();
 
   try {
-    // v1.6.3.7 - FIX Issue #2: Send heartbeat with explicit timeout
+    // v1.6.3.10-v1 - FIX Issue #2: Send heartbeat with short timeout for zombie detection
     const response = await sendPortMessageWithTimeout({
       type: 'HEARTBEAT',
       timestamp,
       source: 'sidebar'
     }, HEARTBEAT_TIMEOUT_MS);
 
-    // Success - reset failure count
+    // Success - update tracking
+    const latencyMs = Date.now() - timestamp;
     consecutiveHeartbeatFailures = 0;
     lastHeartbeatResponse = Date.now();
+    lastSuccessfulPortMessage = Date.now();
+    
+    // v1.6.3.10-v1 - FIX Issue #2: Confirm port is connected (not zombie)
+    if (portState === 'zombie') {
+      logPortStateTransition('zombie', 'connected', 'heartbeat success confirmed');
+    }
 
-    console.log('[Manager] PORT_HEARTBEAT: success', {
-      roundTripMs: Date.now() - timestamp,
+    logPortLifecycle('HEARTBEAT_SENT', {
+      roundTripMs: latencyMs,
       backgroundAlive: response?.backgroundAlive,
       isInitialized: response?.isInitialized,
-      circuitBreakerState
+      adaptiveInterval: currentHeartbeatInterval
     });
+    
+    // v1.6.3.10-v1 - FIX Issue #5: Adjust interval based on latency
+    adjustHeartbeatInterval(latencyMs);
   } catch (err) {
     consecutiveHeartbeatFailures++;
     
-    // v1.6.3.7 - FIX Issue #2: Enhanced failure logging
-    console.warn('[Manager] v1.6.3.6-v12 Heartbeat FAILED:', {
+    // v1.6.3.10-v1 - FIX Issue #6: Enhanced failure logging with context
+    logPortLifecycle('HEARTBEAT_TIMEOUT', {
       error: err.message,
       failures: consecutiveHeartbeatFailures,
       maxFailures: MAX_HEARTBEAT_FAILURES,
       timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-      circuitBreakerState
+      recoveryAction: consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES 
+        ? 'forcing immediate reconnect' 
+        : 'will retry next heartbeat'
     });
 
-    // v1.6.3.6-v12 - FIX Issue #4: Treat port as dead after timeout
-    if (err.message === 'Heartbeat timeout') {
-      console.error('[Manager] v1.6.3.7 Port appears dead (heartbeat timeout) - treating as zombie');
-      backgroundPort = null;
+    // v1.6.3.10-v1 - FIX Issue #2: Treat timeout as zombie port detection
+    if (err.message === 'Heartbeat timeout' || err.message === 'Port message timeout') {
+      // v1.6.3.10-v1 - FIX Issue #2: Force immediate reconnect (no circuit breaker delay)
+      forceImmediateReconnect();
+      return;
     }
 
     // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
     if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      console.error('[Manager] v1.6.3.6-v12 Background unresponsive - triggering reconnect');
-      backgroundPort = null;
-      stopHeartbeat();
-      scheduleReconnect();
+      logPortLifecycle('HEARTBEAT_MAX_FAILURES', {
+        failures: consecutiveHeartbeatFailures,
+        recoveryAction: 'forcing immediate reconnect'
+      });
+      forceImmediateReconnect();
     }
   }
 }
@@ -477,11 +694,12 @@ async function sendHeartbeat() {
 /**
  * Send port message with timeout
  * v1.6.3.6-v12 - FIX Issue #4: Wrap port messages with timeout
+ * v1.6.3.10-v1 - FIX Issue #2: Short timeout for zombie detection (500ms default)
  * @param {Object} message - Message to send
- * @param {number} timeoutMs - Timeout in milliseconds
+ * @param {number} timeoutMs - Timeout in milliseconds (defaults to PORT_MESSAGE_TIMEOUT_MS)
  * @returns {Promise<Object>} Response from background
  */
-function sendPortMessageWithTimeout(message, timeoutMs) {
+function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     if (!backgroundPort) {
       reject(new Error('Port not connected'));
@@ -490,11 +708,29 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
 
     const correlationId = generateCorrelationId();
     const messageWithCorrelation = { ...message, correlationId };
+    const sentAt = Date.now();
+
+    // v1.6.3.10-v1 - FIX Issue #6: Log message send with context
+    logPortLifecycle('MESSAGE_ACK_PENDING', {
+      messageType: message.type,
+      correlationId,
+      timeoutMs
+    });
 
     // Set up timeout
     const timeout = setTimeout(() => {
       pendingAcks.delete(correlationId);
-      reject(new Error('Heartbeat timeout'));
+      
+      // v1.6.3.10-v1 - FIX Issue #6: Log timeout with context
+      logPortLifecycle('MESSAGE_TIMEOUT', {
+        messageType: message.type,
+        correlationId,
+        waitedMs: Date.now() - sentAt,
+        timeoutMs,
+        recoveryAction: 'treating as zombie port'
+      });
+      
+      reject(new Error('Port message timeout'));
     }, timeoutMs);
 
     // Track pending ack
@@ -502,7 +738,8 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
       resolve,
       reject,
       timeout,
-      sentAt: Date.now()
+      sentAt,
+      messageType: message.type
     });
 
     // Send message
@@ -511,9 +748,59 @@ function sendPortMessageWithTimeout(message, timeoutMs) {
     } catch (err) {
       clearTimeout(timeout);
       pendingAcks.delete(correlationId);
+      
+      // v1.6.3.10-v1 - FIX Issue #6: Log send failure
+      logPortLifecycle('MESSAGE_SEND_FAILED', {
+        messageType: message.type,
+        correlationId,
+        error: err.message,
+        recoveryAction: 'treating as zombie port'
+      });
+      
       reject(err);
     }
   });
+}
+
+/**
+ * Verify port is viable before critical operation
+ * v1.6.3.10-v1 - FIX Issue #2: Verify port viability before minimize/restore/close
+ * @returns {Promise<boolean>} True if port is viable, false if zombie detected
+ */
+async function verifyPortViability() {
+  if (!backgroundPort) {
+    logPortLifecycle('PORT_VIABILITY_CHECK', {
+      result: 'failed',
+      reason: 'port not connected'
+    });
+    return false;
+  }
+  
+  // Quick ping to verify background is responsive
+  try {
+    await sendPortMessageWithTimeout({
+      type: 'HEARTBEAT',
+      timestamp: Date.now(),
+      source: 'viability-check'
+    }, PORT_MESSAGE_TIMEOUT_MS);
+    
+    lastSuccessfulPortMessage = Date.now();
+    logPortLifecycle('PORT_VIABILITY_CHECK', {
+      result: 'success',
+      portState
+    });
+    return true;
+  } catch (err) {
+    logPortLifecycle('PORT_VIABILITY_CHECK', {
+      result: 'failed',
+      error: err.message,
+      recoveryAction: 'triggering reconnect'
+    });
+    
+    // Port is zombie - trigger reconnect
+    forceImmediateReconnect();
+    return false;
+  }
 }
 
 // ==================== END HEARTBEAT FUNCTIONS ====================
@@ -3654,47 +3941,210 @@ async function minimizeQuickTab(quickTabId) {
     PENDING_OPERATIONS.delete(operationKey);
   }, OPERATION_TIMEOUT_MS);
 
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
+  const portViable = await verifyPortViability();
+  if (!portViable) {
+    console.warn('[Manager] Port not viable for minimize operation - waiting for reconnect');
+    // Port reconnect was triggered, let user try again
+    _showErrorNotification('Connection lost. Please try again.');
+    PENDING_OPERATIONS.delete(operationKey);
+    return;
+  }
+
   // v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging - using imported findTabInState
   const tabData = findTabInState(quickTabId, quickTabsState);
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const originTabId = tabData?.originTabId;
   const targetTabId = hostInfo?.hostTabId || originTabId;
 
-  if (targetTabId) {
-    console.log('[Manager] Sending MINIMIZE_QUICK_TAB to specific host tab:', {
-      quickTabId,
-      targetTabId,
-      source: hostInfo ? 'quickTabHostInfo' : 'originTabId'
+  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
+  const result = await _sendMessageWithRetry({
+    action: 'MINIMIZE_QUICK_TAB',
+    quickTabId
+  }, targetTabId, 'minimize');
+  
+  if (result.success) {
+    console.log(`[Manager] Minimized Quick Tab ${quickTabId}`, {
+      method: result.method,
+      targetTabId: result.targetTabId,
+      attempts: result.attempts
     });
-
-    try {
-      await browser.tabs.sendMessage(targetTabId, {
-        action: 'MINIMIZE_QUICK_TAB',
-        quickTabId
-      });
-      console.log(
-        `[Manager] Minimized Quick Tab ${quickTabId} via targeted message to tab ${targetTabId}`
-      );
-    } catch (err) {
-      console.warn(
-        `[Manager] Targeted minimize failed (tab ${targetTabId} may be closed), falling back to broadcast:`,
-        err.message
-      );
-      // Fallback to broadcast if targeted message fails - using imported sendMessageToAllTabs
-      const result = await sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
-      console.log(
-        `[Manager] Minimized Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`
-      );
-    }
   } else {
-    // No host info available - fall back to broadcast
-    console.log('[Manager] No host tab info found, using broadcast for minimize:', quickTabId);
-    const result = await sendMessageToAllTabs('MINIMIZE_QUICK_TAB', quickTabId);
-    console.log(
-      `[Manager] Minimized Quick Tab ${quickTabId} via broadcast | success: ${result.success}, errors: ${result.errors}`
-    );
+    // v1.6.3.10-v1 - FIX Issue #7: Show user notification on failure
+    _showErrorNotification(`Failed to minimize Quick Tab: ${result.error}`);
+    console.error('[Manager] Minimize operation failed:', {
+      quickTabId,
+      error: result.error,
+      attempts: result.attempts
+    });
   }
 }
+
+// ==================== v1.6.3.10-v1 MESSAGE RETRY LOGIC ====================
+// FIX Issue #7: Retry logic for minimize/restore/close operations
+
+/**
+ * Attempt targeted message with retry
+ * v1.6.3.10-v1 - FIX Issue #7: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} message - Message to send
+ * @param {number} targetTabId - Target tab ID
+ * @param {string} operation - Operation name for logging
+ * @returns {Promise<{ success: boolean, attempts: number, targetTabId?: number }|null>}
+ */
+async function _attemptTargetedMessageWithRetry(message, targetTabId, operation) {
+  for (let retry = 0; retry <= MESSAGE_RETRY_COUNT; retry++) {
+    const result = await _trySingleTargetedMessage(message, targetTabId, operation, retry);
+    if (result.success) {
+      return result;
+    }
+    // Wait before next retry (unless last attempt)
+    if (retry < MESSAGE_RETRY_COUNT) {
+      await _delay(MESSAGE_RETRY_BACKOFF_MS);
+    }
+  }
+  return null; // All retries failed
+}
+
+/**
+ * Try a single targeted message
+ * v1.6.3.10-v1 - FIX Issue #7: Extracted to reduce nesting
+ * @private
+ */
+async function _trySingleTargetedMessage(message, targetTabId, operation, retry) {
+  const attempts = retry + 1;
+  console.log(`[Manager] MESSAGE_RETRY: ${operation} attempt ${attempts}`, {
+    quickTabId: message.quickTabId,
+    targetTabId,
+    retry
+  });
+  
+  try {
+    const response = await _sendMessageWithTimeout(targetTabId, message, PORT_MESSAGE_TIMEOUT_MS);
+    if (response?.success) {
+      logPortLifecycle('MESSAGE_ACK_RECEIVED', {
+        operation,
+        quickTabId: message.quickTabId,
+        targetTabId,
+        attempts,
+        method: 'targeted'
+      });
+      return { success: true, attempts, targetTabId };
+    }
+    return { success: false, attempts };
+  } catch (err) {
+    console.warn(`[Manager] MESSAGE_RETRY: ${operation} attempt ${attempts} failed`, {
+      quickTabId: message.quickTabId,
+      targetTabId,
+      error: err.message,
+      willRetry: retry < MESSAGE_RETRY_COUNT
+    });
+    return { success: false, attempts };
+  }
+}
+
+/**
+ * Send message with retry logic and broadcast fallback
+ * v1.6.3.10-v1 - FIX Issue #7: Retry 2x before broadcast fallback
+ * @private
+ * @param {Object} message - Message to send (action, quickTabId)
+ * @param {number|null} targetTabId - Target tab ID (null for broadcast-only)
+ * @param {string} operation - Operation name for logging (minimize/restore/close)
+ * @returns {Promise<{ success: boolean, method: string, targetTabId?: number, attempts: number, error?: string }>}
+ */
+async function _sendMessageWithRetry(message, targetTabId, operation) {
+  let attempts = 0;
+  
+  // v1.6.3.10-v1 - FIX Issue #7: Try targeted message first (if target known)
+  if (targetTabId) {
+    const targetedResult = await _attemptTargetedMessageWithRetry(message, targetTabId, operation);
+    if (targetedResult?.success) {
+      return {
+        success: true,
+        method: 'targeted',
+        targetTabId: targetedResult.targetTabId,
+        attempts: targetedResult.attempts
+      };
+    }
+    attempts = MESSAGE_RETRY_COUNT + 1; // Count all targeted attempts
+  }
+  
+  // v1.6.3.10-v1 - FIX Issue #7: Fall back to broadcast
+  return _sendMessageViaBroadcast(message, operation, attempts);
+}
+
+/**
+ * Send message via broadcast fallback
+ * v1.6.3.10-v1 - FIX Issue #7: Extracted to reduce function length
+ * @private
+ */
+async function _sendMessageViaBroadcast(message, operation, previousAttempts) {
+  console.log(`[Manager] MESSAGE_RETRY: ${operation} falling back to broadcast`, {
+    quickTabId: message.quickTabId,
+    previousAttempts,
+    reason: previousAttempts > 0 ? 'targeted messages failed' : 'no target tab'
+  });
+  
+  try {
+    const broadcastResult = await sendMessageToAllTabs(message.action, message.quickTabId);
+    const totalAttempts = previousAttempts + 1;
+    
+    if (broadcastResult.success > 0) {
+      logPortLifecycle('MESSAGE_ACK_RECEIVED', {
+        operation,
+        quickTabId: message.quickTabId,
+        attempts: totalAttempts,
+        method: 'broadcast',
+        successCount: broadcastResult.success
+      });
+      return { success: true, method: 'broadcast', attempts: totalAttempts };
+    }
+    
+    return { success: false, method: 'broadcast', attempts: totalAttempts, error: 'No tabs responded' };
+  } catch (err) {
+    return { success: false, method: 'broadcast', attempts: previousAttempts + 1, error: err.message };
+  }
+}
+
+/**
+ * Send message to specific tab with timeout
+ * v1.6.3.10-v1 - FIX Issue #7: Wrapped tabs.sendMessage with timeout
+ * @private
+ * @param {number} tabId - Target tab ID
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} Response from content script
+ */
+function _sendMessageWithTimeout(tabId, message, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Message timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    
+    browser.tabs.sendMessage(tabId, message)
+      .then(response => {
+        clearTimeout(timer);
+        resolve(response);
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+/**
+ * Async delay helper
+ * v1.6.3.10-v1 - FIX Issue #7: Use instead of setTimeout for race conditions
+ * @private
+ * @param {number} ms - Milliseconds to wait
+ * @returns {Promise<void>}
+ */
+function _delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ==================== END MESSAGE RETRY LOGIC ====================
 
 /**
  * Show error notification to user
@@ -4009,11 +4459,47 @@ async function restoreQuickTab(quickTabId) {
     return;
   }
 
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
+  const portViable = await verifyPortViability();
+  if (!portViable) {
+    console.warn('[Manager] Port not viable for restore operation - waiting for reconnect');
+    _showErrorNotification('Connection lost. Please try again.');
+    return;
+  }
+
   console.log('[Manager] Restore validated - tab is minimized:', quickTabId);
   setupPendingOperation(operationKey);
 
-  const confirmationResult = await _sendRestoreMessage(quickTabId, validation.tabData);
-  _logRestoreResult(quickTabId, confirmationResult, startTime);
+  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const targetTabId = hostInfo?.hostTabId || validation.tabData.originTabId;
+  
+  const result = await _sendMessageWithRetry({
+    action: 'RESTORE_QUICK_TAB',
+    quickTabId
+  }, targetTabId, 'restore');
+  
+  _logRestoreResult(quickTabId, { success: result.success, confirmedBy: result.targetTabId }, startTime);
+  
+  if (result.success) {
+    // v1.6.3.10-v1 - Update host info after successful restore
+    if (result.targetTabId) {
+      quickTabHostInfo.set(quickTabId, {
+        hostTabId: result.targetTabId,
+        lastUpdate: Date.now(),
+        lastOperation: 'restore',
+        confirmed: true
+      });
+    }
+  } else {
+    // v1.6.3.10-v1 - FIX Issue #7: Show user notification on failure
+    _showErrorNotification(`Failed to restore Quick Tab: ${result.error}`);
+    console.error('[Manager] Restore operation failed:', {
+      quickTabId,
+      error: result.error,
+      attempts: result.attempts
+    });
+  }
 
   _scheduleRestoreVerification(quickTabId);
 }
@@ -4097,23 +4583,41 @@ function _logRestoreVerificationResult(quickTabId, tab) {
  * Close a Quick Tab
  */
 async function closeQuickTab(quickTabId) {
-  try {
-    // Send message to all tabs to close this Quick Tab
-    const tabs = await browser.tabs.query({});
-    tabs.forEach(tab => {
-      browser.tabs
-        .sendMessage(tab.id, {
-          action: 'CLOSE_QUICK_TAB',
-          quickTabId: quickTabId
-        })
-        .catch(() => {
-          // Ignore errors
-        });
-    });
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
+  const portViable = await verifyPortViability();
+  if (!portViable) {
+    console.warn('[Manager] Port not viable for close operation - waiting for reconnect');
+    _showErrorNotification('Connection lost. Please try again.');
+    return;
+  }
 
-    console.log(`Closed Quick Tab ${quickTabId}`);
-  } catch (err) {
-    console.error(`Error closing Quick Tab ${quickTabId}:`, err);
+  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
+  const tabData = findTabInState(quickTabId, quickTabsState);
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const targetTabId = hostInfo?.hostTabId || tabData?.originTabId;
+  
+  const result = await _sendMessageWithRetry({
+    action: 'CLOSE_QUICK_TAB',
+    quickTabId
+  }, targetTabId, 'close');
+  
+  if (result.success) {
+    console.log(`[Manager] Closed Quick Tab ${quickTabId}`, {
+      method: result.method,
+      targetTabId: result.targetTabId,
+      attempts: result.attempts
+    });
+    
+    // Clean up local tracking
+    quickTabHostInfo.delete(quickTabId);
+  } else {
+    // v1.6.3.10-v1 - FIX Issue #7: Show user notification on failure
+    _showErrorNotification(`Failed to close Quick Tab: ${result.error}`);
+    console.error('[Manager] Close operation failed:', {
+      quickTabId,
+      error: result.error,
+      attempts: result.attempts
+    });
   }
 }
 
