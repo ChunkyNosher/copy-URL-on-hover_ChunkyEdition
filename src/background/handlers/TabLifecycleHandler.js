@@ -189,19 +189,22 @@ export class TabLifecycleHandler {
   }
 
   /**
-   * Handle tab removed - this is where we detect orphaned Quick Tabs
+   * Handle tab removed - updates internal state tracking
+   * Note: Orphan detection is handled by background.js handleTabRemoved
+   * This method keeps the TabLifecycleHandler's internal state in sync
    * @param {number} tabId - ID of closed tab
-   * @param {Object} removeInfo - Removal details
-   * @returns {number} The closed tab ID for orphan detection by background script
+   * @param {Object} removeInfo - Removal details (isWindowClosing, windowId)
    */
   handleTabRemoved(tabId, removeInfo) {
     console.log('[TAB_LIFECYCLE] Tab removed:', { tabId, removeInfo });
 
     // Remove from our snapshot
     this.openTabs.delete(tabId);
-
-    // Return the closed tab ID for orphan detection by background script
-    return tabId;
+    
+    // Clear active tab if this was the active tab
+    if (this.activeTabId === tabId) {
+      this.activeTabId = null;
+    }
   }
 
   /**
