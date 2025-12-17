@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v2  
+**Version:** 1.6.3.10-v3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -25,7 +25,15 @@ Tabs Manager
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache Fixes:**
+**v1.6.3.10-v3 Features (NEW) - Issue #47 Adoption Re-render & Tabs API Phase 2:**
+
+- **Issue #47: Adoption Re-render** - `ADOPTION_COMPLETED` port message for immediate Manager re-render
+- **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
+- **Orphan Detection** - `ORIGIN_TAB_CLOSED` broadcast when origin tab closes, `isOrphaned`/`orphanedAt` fields
+- **Smart Adoption Validation** - Validates target tab exists before adoption
+- **Port Message Types** - Added `ADOPTION_COMPLETED`, `ORIGIN_TAB_CLOSED` to port routing
+
+**v1.6.3.10-v2 Features (Previous) - Render, Circuit Breaker & Cache Fixes:**
 
 - **Issue 1: Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
 - **Issue 4: Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
@@ -42,21 +50,8 @@ Tabs Manager
 - **Issue 7: Messaging Reliability** - 2 retries + 150ms backoff, `_sendMessageWithRetry()`
 - **PORT_STATE enum** - `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
 
-**v1.6.3.9-v7 Features (Previous) - Logging & Message Infrastructure:**
-
-- **Logging Capture** - Sidebar log capture matching background.js pattern
-- **Message Listener** - Enhanced runtime.onMessage for state push/errors
-- **Centralized Constants** - `KEEPALIVE_INTERVAL_MS`, `RENDER_STALL_TIMEOUT_MS`, etc.
-- **Routing Refactor** - `_routeRuntimeMessage()` uses lookup table (CC 13→3)
-
-**v1.6.3.9-v6 Features (Previous) - Sidebar & Background Cleanup:**
-
-- Unified barrier, render queue revision PRIMARY, ~218 lines removed
-- `_buildResponse()` helper for standardized correlationId responses
-
-**v1.6.3.9-v5 & Earlier (Retained):** Tab ID fallback, storage event routing,
-centralized constants, dual architecture (MessageRouter + message-handler),
-container isolation (`originContainerId`), tabs API events
+**v1.6.3.9-v7 & Earlier (Consolidated):** Logging capture, O(1) message routing,
+unified barrier init, Tab ID fallback, dual architecture, container isolation
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
@@ -78,7 +73,7 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.10-v2)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.10-v3)
 
 **Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
@@ -99,7 +94,15 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.10-v2: Render, Circuit Breaker & Cache (NEW)
+### v1.6.3.10-v3: Issue #47 Adoption Re-render & Tabs API Phase 2 (NEW)
+
+- `ADOPTION_COMPLETED` port message for instant Manager re-render after adoption
+- `ORIGIN_TAB_CLOSED` broadcast when origin tab closes → marks Quick Tabs orphaned
+- TabLifecycleHandler tracks open tabs in memory for O(1) validation
+- Smart adoption validation via `validateAdoptionTarget()`
+- `isOrphaned`/`orphanedAt` fields for orphaned Quick Tab tracking
+
+### v1.6.3.10-v2: Render, Circuit Breaker & Cache (Previous)
 
 **Render Debounce (Issue 1):**
 
@@ -133,14 +136,21 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 ### v1.6.3.9-v7 & Earlier (Consolidated)
 
 - **v7:** Log capture, direct state push, `_runtimeMessageHandlers` lookup table
-- **v6:** Unified barrier, render queue revision PRIMARY, ~218 lines removed
-- **v5-v2:** Tab ID fallback, storage health check (5s), dual architecture, container isolation
+- **v5-v2:** Tab ID fallback, unified barrier, dual architecture, container isolation
 
 ---
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v2 Patterns (Current)
+### v1.6.3.10-v3 Patterns (Current)
+
+- `ADOPTION_COMPLETED` port message for instant adoption UI updates
+- `ORIGIN_TAB_CLOSED` port message for orphan detection
+- TabLifecycleHandler for browser.tabs event tracking
+- Smart adoption validation via `validateAdoptionTarget()`
+- `isOrphaned`/`orphanedAt` fields for orphaned Quick Tabs
+
+### v1.6.3.10-v2 Patterns (Previous)
 
 - Sliding-window debounce (100ms base, 300ms max cap)
 - Circuit breaker 3s open duration, 2s max backoff, 5s sliding window
@@ -154,16 +164,11 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 - Message retry: 2 retries + 150ms backoff
 - Enhanced port/message logging with `logPortStateTransition()`
 
-### v1.6.3.9-v7 & Earlier Patterns
+### v1.6.3.9-v7 & Earlier Patterns (Consolidated)
 
-- **v7:** Log capture, O(1) message routing, direct state push
-- **v6:** Unified barrier init, render queue revision PRIMARY
-- **v5:** Tab ID fallback, storage event routing fix
-- **v4:** Single barrier, storage.onChanged PRIMARY
-- **v3:** Dual architecture, diagnostic logging
-- **v2:** Container isolation
+Log capture, O(1) message routing, unified barrier, Tab ID fallback, dual architecture
 
-### Key Timing Constants (v1.6.3.10-v2)
+### Key Timing Constants (v1.6.3.10-v3)
 
 | Constant                           | Value                 | Purpose                               |
 | ---------------------------------- | --------------------- | ------------------------------------- |
@@ -200,6 +205,7 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 | StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                |
 | UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                     |
 | Manager               | `scheduleRender()`, `sendMessageToBackground()`, `_handleOperationAck()` |
+| TabLifecycleHandler   | `start()`, `stop()`, `handleTabRemoved()`, `validateAdoptionTarget()`, `isTabOpen()` |
 
 ---
 
@@ -301,6 +307,7 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 | `src/background/message-handler.js` | TYPE-based v2 routing (QT_CREATED, etc.)         |
 | `background.js`                     | \_computeStateChecksum(), \_generateQuickTabId() |
 | `sidebar/quick-tabs-manager.js`     | scheduleRender(), sendMessageToBackground()      |
+| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle events, orphan detection, adoption validation |
 
 ### Storage
 
@@ -313,6 +320,8 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 **MESSAGE_TYPES:** `QT_POSITION_CHANGED`, `QT_SIZE_CHANGED`, `QT_MINIMIZED`,
 `QT_RESTORED`, `QT_CLOSED`, `MANAGER_CLOSE_ALL`, `MANAGER_CLOSE_MINIMIZED`,
 `QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
+
+**v1.6.3.10-v3 New Messages:** `ADOPTION_COMPLETED`, `ORIGIN_TAB_CLOSED`
 
 **v1.6.3.9-v7 New Messages:** `GET_SIDEBAR_LOGS`, `CLEAR_SIDEBAR_LOGS`,
 `PUSH_STATE_UPDATE`, `ERROR_NOTIFICATION`, `REQUEST_INIT_STATUS`,

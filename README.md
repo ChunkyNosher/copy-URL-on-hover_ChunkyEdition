@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v2** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v3** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,15 +9,26 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v2 Status:** Render, Circuit Breaker & Cache Fixes ✅
+**🔧 v1.6.3.10-v3 Status:** Issue #47 Adoption Re-render & Tabs API Phase 2 ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v3
+
+**🔧 Issue #47 Adoption Re-render & Tabs API Phase 2 (December 2025) ✅**
+
+- ✅ **Adoption Re-render** - ADOPTION_COMPLETED message for immediate Manager re-render
+- ✅ **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
+- ✅ **Orphan Detection** - ORIGIN_TAB_CLOSED broadcast, isOrphaned/orphanedAt fields
+- ✅ **Smart Adoption Validation** - Validates target tab exists before adoption
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v2
 
-**🔧 Render, Circuit Breaker & Cache Fixes (December 2025) ✅**
+**🔧 Render, Circuit Breaker & Cache Fixes ✅**
 
 - ✅ **Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
 - ✅ **Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
@@ -224,6 +235,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v2** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v3** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
