@@ -4,6 +4,7 @@
 // Also handles webRequest to remove X-Frame-Options for Quick Tabs
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
+// v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -154,6 +155,27 @@ const _STORAGE_WRITE_SEQUENCE_TIMEOUT_MS = 15000; // 15s max for entire retry se
 
 // FIX Enhancement #1 & #2: Scripting API fallback for messaging failures
 const MESSAGING_TIMEOUT_MS = 2000; // 2s timeout for messaging before fallback
+
+/**
+ * Generate unique correlation ID for tracing operations
+ * v1.6.3.10-v5 - FIX Code Review: Extracted to reduce duplication
+ * @param {string} prefix - Prefix for the ID (e.g., 'exec', 'cmd')
+ * @returns {string} Unique correlation ID
+ */
+function generateCorrelationId(prefix = 'op') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Create a timeout promise for Promise.race() usage
+ * v1.6.3.10-v5 - FIX Code Review: Extracted to reduce duplication
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @param {string} errorMessage - Error message for timeout
+ * @returns {Promise<never>} Promise that rejects after timeout
+ */
+function createTimeoutPromise(timeoutMs, errorMessage = 'Operation timeout') {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error(errorMessage)), timeoutMs));
+}
 
 // FIX Issue #3/6: Background restart detection - track startup time
 const backgroundStartupTime = Date.now();
@@ -308,6 +330,7 @@ console.log(
 /**
  * Execute operation with messaging, falling back to Scripting API if messaging fails
  * v1.6.3.10-v4 - FIX Enhancement #1 & #2: Atomic operations + timeout recovery
+ * v1.6.3.10-v5 - FIX Code Review: Use extracted helper functions
  * Note: Exported API - call from EXECUTE_COMMAND handlers when messaging fails
  * @param {number} tabId - Browser tab ID to execute operation in
  * @param {string} operation - Operation type (e.g., 'RESTORE_QUICK_TAB', 'MINIMIZE_QUICK_TAB')
@@ -315,7 +338,7 @@ console.log(
  * @returns {Promise<Object>} Operation result
  */
 async function _executeWithScriptingFallback(tabId, operation, params) {
-  const correlationId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const correlationId = generateCorrelationId('exec');
 
   console.log('[Background] v1.6.3.10-v4 executeWithScriptingFallback:', {
     tabId,
@@ -327,9 +350,7 @@ async function _executeWithScriptingFallback(tabId, operation, params) {
     // Try messaging first (fast path)
     const result = await Promise.race([
       browser.tabs.sendMessage(tabId, { type: operation, ...params, correlationId }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Messaging timeout')), MESSAGING_TIMEOUT_MS)
-      )
+      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
 
     console.log('[Background] v1.6.3.10-v4 Messaging succeeded:', {
@@ -4733,9 +4754,14 @@ const VALID_MANAGER_COMMANDS = new Set([
 /**
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
- * @param {string} command - Command to execute
+ * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
+ *   - Adds 2-second timeout to messaging calls
+ *   - Falls back to browser.scripting.executeScript on timeout/failure
+ *   - Ensures atomic operation completion even when messaging fails
+ * @param {string} command - Command to execute (MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, CLOSE_QUICK_TAB, FOCUS_QUICK_TAB)
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
+ * @returns {Promise<Object>} Result object with success status and optional error
  */
 async function executeManagerCommand(command, quickTabId, hostTabId) {
   // v1.6.3.5-v3 - FIX Code Review: Validate command against allowlist
@@ -4757,18 +4783,45 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     hostTabId
   });
 
+  // v1.6.3.10-v5 - FIX Issue #1 & #2: Use timeout-protected messaging with Scripting API fallback
+  // This ensures atomic operation completion even when messaging fails or times out
   try {
-    const response = await browser.tabs.sendMessage(hostTabId, executeMessage);
+    const response = await Promise.race([
+      browser.tabs.sendMessage(hostTabId, executeMessage),
+      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
+    ]);
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    console.error('[Background] Failed to execute command:', {
+    // v1.6.3.10-v5 - FIX Issue #2: Fall back to Scripting API on messaging failure/timeout
+    console.log('[Background] v1.6.3.10-v5 Messaging failed, falling back to Scripting API:', {
       command,
       quickTabId,
       hostTabId,
       error: err.message
     });
-    return { success: false, error: err.message };
+
+    // Use Scripting API for atomic execution
+    try {
+      const correlationId = generateCorrelationId('cmd');
+      const fallbackResult = await _executeViaScripting(
+        hostTabId,
+        command,
+        { quickTabId },
+        correlationId
+      );
+      console.log('[Background] v1.6.3.10-v5 Scripting fallback result:', fallbackResult);
+      return fallbackResult;
+    } catch (fallbackErr) {
+      console.error('[Background] v1.6.3.10-v5 Both messaging and scripting failed:', {
+        command,
+        quickTabId,
+        hostTabId,
+        messagingError: err.message,
+        scriptingError: fallbackErr.message
+      });
+      return { success: false, error: fallbackErr.message, fallbackFailed: true };
+    }
   }
 }
 

@@ -1,0 +1,8 @@
+{
+  "id": "2268e227-97c5-4b74-af8e-c4e6d124cea7",
+  "title": "Version tags in log messages",
+  "details": "The copy-URL-on-hover_ChunkyEdition extension uses version tags in console.log messages to document when features were introduced. When refactoring existing code:\n- Keep original version tags in log messages (they document feature introduction)\n- Update docstrings with new version info\n- Update file headers with new version info\n\nExample: _executeWithScriptingFallback() was introduced in v1.6.3.10-v4 and refactored in v1.6.3.10-v5. The log messages keep v4 tags, but docstrings note v5 changes.",
+  "category": "implementation_patterns",
+  "dateCreated": "2025-12-17T20:38:18.050Z",
+  "dateUpdated": "2025-12-17T20:38:18.050Z"
+}

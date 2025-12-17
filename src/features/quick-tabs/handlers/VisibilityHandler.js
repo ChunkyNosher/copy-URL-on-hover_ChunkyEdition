@@ -44,12 +44,16 @@
  *   - Issue #10: Focus operation z-index leakage prevention
  *   - Issue #14: Mutex lock pattern includes tab context to prevent cross-tab conflicts
  *   - Issue #15: Storage persistence filter - only persist owned Quick Tabs
+ * v1.6.3.10-v5 - Note: Remote invocations from Manager sidebar now use Scripting API fallback
+ *   - See background.js executeManagerCommand() for timeout-protected messaging
+ *   - Falls back to browser.scripting.executeScript on messaging failure
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
  * - Storage used for persistence and hydration, not for cross-tab sync
  * - Mutex/lock pattern prevents duplicate operations from multiple sources
  * - Cross-tab validation ensures operations only affect owned Quick Tabs
+ * - v1.6.3.10-v5: Remote commands from Manager use Scripting API fallback for reliability
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -62,7 +66,7 @@
  * - Persist state to storage after visibility changes
  * - Cross-tab ownership validation for all operations
  *
- * @version 1.6.3.10-v4
+ * @version 1.6.3.10-v5
  */
 
 import {
