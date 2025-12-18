@@ -3067,6 +3067,205 @@ function _handleAdoptionCompleted(message, sendResponse) {
   });
 }
 
+// ==================== v1.6.4.14 FIX Issue #17: TAB ACTIVATED HANDLER ====================
+// Handle tabActivated action from background when a tab becomes active
+// This enables content script hydration and adoption state refresh
+
+/**
+ * Handle tabActivated message from background
+ * v1.6.4.14 - FIX Issue #17: Missing tabActivated handler in content script
+ *
+ * This handler is called when background broadcasts tabActivated due to
+ * chrome.tabs.onActivated. It triggers:
+ * 1. Hydration if Quick Tabs exist for this tab
+ * 2. Update currentTabId context
+ * 3. Refresh adoption state
+ *
+ * @private
+ * @param {Object} message - Tab activated message
+ * @param {number} message.tabId - The tab ID that was activated
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleTabActivated(message, sendResponse) {
+  const { tabId } = message;
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+
+  console.log('[Content] TAB_ACTIVATED_HANDLER: Processing tab activation:', {
+    receivedTabId: tabId,
+    currentTabId,
+    hasQuickTabsManager: !!quickTabsManager,
+    timestamp: Date.now()
+  });
+
+  // v1.6.4.14 - FIX Issue #16: Refresh adoption state on tab activation
+  // After adoption, content scripts need to refresh their cache to pick up
+  // new originTabId values
+  let stateUpdated = false;
+
+  // Update currentTabId if provided and manager exists
+  if (quickTabsManager && typeof tabId === 'number') {
+    // Note: We don't update currentTabId here as it should remain the tab's own ID
+    // The tabId in the message is which tab was activated (this one)
+    console.log('[Content] TAB_ACTIVATED_HANDLER: Tab is now active:', {
+      tabId,
+      isThisTab: tabId === currentTabId
+    });
+  }
+
+  // Trigger hydration if Quick Tabs manager exists
+  // This helps restore state after tab becomes visible
+  if (quickTabsManager?.hydrateFromStorage) {
+    console.log('[Content] TAB_ACTIVATED_HANDLER: Triggering hydration');
+    try {
+      // Trigger async hydration (don't await in handler)
+      quickTabsManager.hydrateFromStorage().then(result => {
+        console.log('[Content] TAB_ACTIVATED_HANDLER: Hydration complete:', result);
+      }).catch(err => {
+        console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration failed:', err.message);
+      });
+      stateUpdated = true;
+    } catch (err) {
+      console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration error:', err.message);
+    }
+  }
+
+  sendResponse({
+    success: true,
+    handled: true,
+    stateUpdated,
+    currentTabId,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND message
+ * v1.6.4.14 - FIX Issue #17: State sync on tab activation
+ *
+ * Background sends full Quick Tab state when a tab becomes active.
+ * This ensures content script has latest state including any adoption changes.
+ *
+ * @private
+ * @param {Object} message - State sync message
+ * @param {Object} message.state - Full Quick Tab state from background
+ * @param {Array} message.state.tabs - Array of Quick Tab objects
+ * @param {number} message.state.lastUpdate - Timestamp of last update
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleStateSyncFromBackground(message, sendResponse) {
+  const { state } = message;
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+
+  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Processing state sync:', {
+    tabCount: state?.tabs?.length ?? 0,
+    lastUpdate: state?.lastUpdate,
+    currentTabId,
+    timestamp: Date.now()
+  });
+
+  if (!state?.tabs || !Array.isArray(state.tabs)) {
+    console.log('[Content] STATE_SYNC_FROM_BACKGROUND: No tabs in state');
+    sendResponse({
+      success: true,
+      synced: false,
+      reason: 'no-tabs-in-state',
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  // v1.6.4.14 - FIX Issue #16: Update local cache with new originTabId values from adoption
+  const updatedCount = _syncStateTabs(state.tabs, currentTabId);
+
+  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Sync complete:', {
+    totalTabs: state.tabs.length,
+    updatedCount,
+    currentTabId,
+    timestamp: Date.now()
+  });
+
+  sendResponse({
+    success: true,
+    synced: true,
+    updatedCount,
+    totalTabs: state.tabs.length,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Sync tabs from state to local cache
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ * @param {Array} tabs - Array of tab data objects
+ * @param {number|null} currentTabId - Current tab ID
+ * @returns {number} Count of updated entries
+ */
+function _syncStateTabs(tabs, currentTabId) {
+  let updatedCount = 0;
+
+  for (const tabData of tabs) {
+    updatedCount += _syncSingleTabEntry(tabData);
+    updatedCount += _syncSingleTabSnapshot(tabData);
+    _trackAdoptionIfNeeded(tabData, currentTabId);
+  }
+
+  return updatedCount;
+}
+
+/**
+ * Sync single tab entry in tabs map
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _syncSingleTabEntry(tabData) {
+  const tabEntry = quickTabsManager?.tabs?.get(tabData.id);
+  if (!tabEntry || tabEntry.originTabId === tabData.originTabId) {
+    return 0;
+  }
+
+  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Updating originTabId:', {
+    quickTabId: tabData.id,
+    oldOriginTabId: tabEntry.originTabId,
+    newOriginTabId: tabData.originTabId
+  });
+  tabEntry.originTabId = tabData.originTabId;
+  return 1;
+}
+
+/**
+ * Sync single tab snapshot in minimized manager
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _syncSingleTabSnapshot(tabData) {
+  const snapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(tabData.id);
+  if (!snapshot || snapshot.originTabId === tabData.originTabId) {
+    return 0;
+  }
+
+  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Updating snapshot originTabId:', {
+    quickTabId: tabData.id,
+    oldOriginTabId: snapshot.originTabId,
+    newOriginTabId: tabData.originTabId
+  });
+  snapshot.originTabId = tabData.originTabId;
+  return 1;
+}
+
+/**
+ * Track adoption if tab belongs to different origin
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _trackAdoptionIfNeeded(tabData, currentTabId) {
+  if (tabData.originTabId !== currentTabId) {
+    _trackAdoptedQuickTab(tabData.id, tabData.originTabId);
+  }
+}
+
+// ==================== END TAB ACTIVATED HANDLER ====================
+
 // ==================== TEST BRIDGE HANDLER FUNCTIONS ====================
 // v1.6.3.6-v11 - FIX Bundle Size Issue #3: Conditional test infrastructure
 // Test handlers are only included in test builds (process.env.TEST_MODE === 'true')
@@ -3663,6 +3862,28 @@ const ACTION_HANDLERS = {
       timestamp: message.timestamp
     });
     _handleAdoptionCompleted(message, sendResponse);
+    return true;
+  },
+  // v1.6.4.14 - FIX Issue #17: Handle tabActivated action from background
+  // Background broadcasts this when a tab becomes active via chrome.tabs.onActivated
+  tabActivated: (message, sendResponse) => {
+    console.log('[Content] Received tabActivated broadcast:', {
+      tabId: message.tabId,
+      currentTabId: quickTabsManager?.currentTabId,
+      timestamp: Date.now()
+    });
+    _handleTabActivated(message, sendResponse);
+    return true;
+  },
+  // v1.6.4.14 - FIX Issue #17: Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND action
+  // Background sends this with full state when tab becomes active
+  SYNC_QUICK_TAB_STATE_FROM_BACKGROUND: (message, sendResponse) => {
+    console.log('[Content] Received SYNC_QUICK_TAB_STATE_FROM_BACKGROUND:', {
+      tabCount: message.state?.tabs?.length ?? 0,
+      lastUpdate: message.state?.lastUpdate,
+      timestamp: Date.now()
+    });
+    _handleStateSyncFromBackground(message, sendResponse);
     return true;
   }
 };

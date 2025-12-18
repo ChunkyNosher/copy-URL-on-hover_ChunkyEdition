@@ -3716,6 +3716,7 @@ function handleLegacyAction(message, portInfo) {
  * Handle adopt action (atomic single write)
  * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
  * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
+ * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
  * @param {Object} payload - Adoption payload
  */
 async function handleAdoptAction(payload) {
@@ -3754,18 +3755,57 @@ async function handleAdoptAction(payload) {
     console.log('[Background] ADOPT_TAB: Clearing orphan status for Quick Tab:', quickTabId);
   }
 
-  // Single atomic write
+  // v1.6.4.14 - FIX Issue #21: Single atomic write with verification BEFORE broadcast
+  // If storage write fails, we must NOT broadcast ADOPTION_COMPLETED
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
-  await browser.storage.local.set({
-    quick_tabs_state_v2: {
-      tabs: state.tabs,
-      saveId,
-      timestamp: Date.now(),
-      writingTabId: targetTabId,
-      writingInstanceId: `background-adopt-${Date.now()}`
+  const writeStartTime = Date.now();
+  
+  try {
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: state.tabs,
+        saveId,
+        timestamp: Date.now(),
+        writingTabId: targetTabId,
+        writingInstanceId: `background-adopt-${Date.now()}`
+      }
+    });
+    
+    // v1.6.4.14 - FIX Issue #21: Verify write succeeded by reading back
+    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
+    const verifiedState = verifyResult?.quick_tabs_state_v2;
+    
+    if (!verifiedState || verifiedState.saveId !== saveId) {
+      console.error('[Background] ADOPT_TAB: Storage write verification FAILED:', {
+        expectedSaveId: saveId,
+        actualSaveId: verifiedState?.saveId,
+        durationMs: Date.now() - writeStartTime
+      });
+      return { 
+        success: false, 
+        error: 'Storage write verification failed',
+        reason: 'storage-verification-failed'
+      };
     }
-  });
+    
+    console.log('[Background] ADOPT_TAB: Storage write verified:', {
+      saveId,
+      durationMs: Date.now() - writeStartTime
+    });
+  } catch (writeErr) {
+    console.error('[Background] ADOPT_TAB: Storage write FAILED:', {
+      error: writeErr.message,
+      quickTabId,
+      targetTabId
+    });
+    return { 
+      success: false, 
+      error: `Storage write failed: ${writeErr.message}`,
+      reason: 'storage-write-error'
+    };
+  }
 
+  // v1.6.4.14 - Storage write verified - now safe to update cache and broadcast
   // Update global cache
   const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (cachedTab) {
@@ -3791,8 +3831,9 @@ async function handleAdoptAction(payload) {
   });
 
   // v1.6.4.13 - FIX BUG #4: Also broadcast to all content scripts via tabs.sendMessage
+  // v1.6.4.14 - FIX Issue #19: Use retry mechanism with classified errors
   // This updates their local cache so restore operations use the correct originTabId
-  _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
 
   console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
     quickTabId,
@@ -3812,6 +3853,8 @@ async function handleAdoptAction(payload) {
 /**
  * Broadcast ADOPTION_COMPLETED to all content scripts via tabs.sendMessage
  * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.4.14 - FIX Issue #19: Retry mechanism for transient failures
+ * v1.6.4.14 - FIX Issue #23: Classified error metrics (permanent vs transient)
  *
  * This ensures all content scripts update their local Quick Tab cache
  * with the new originTabId after adoption. Without this, restore operations
@@ -3840,13 +3883,16 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
 
   try {
     const tabs = await browser.tabs.query({});
-    const results = await _sendAdoptionToTabs(tabs, message, quickTabId);
+    const results = await _sendAdoptionToTabsWithRetry(tabs, message, quickTabId);
 
+    // v1.6.4.14 - FIX Issue #23: Log classified metrics
     console.log('[Background] ADOPTION_BROADCAST_TO_TABS_COMPLETE:', {
       quickTabId,
       totalTabs: tabs.length,
-      successCount: results.successCount,
-      errorCount: results.errorCount,
+      sent: results.successCount + results.permanentFailures + results.transientFailures,
+      succeeded: results.successCount,
+      permanent_failures: results.permanentFailures,
+      transient_failures: results.transientFailures,
       durationMs: Date.now() - timestamp
     });
   } catch (err) {
@@ -3857,41 +3903,194 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
   }
 }
 
+// v1.6.4.14 - FIX Issue #19: Constants for retry mechanism
+const ADOPTION_BROADCAST_MAX_RETRIES = 3;
+const ADOPTION_BROADCAST_RETRY_DELAY_MS = 200;
+
 /**
- * Send adoption message to a list of tabs
- * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * Classify error as permanent or transient
+ * v1.6.4.14 - FIX Issue #19: Error classification for retry decisions
+ * @private
+ * @param {Error} error - The error to classify
+ * @returns {{ isPermanent: boolean, reason: string }}
+ */
+function _classifyBroadcastError(error) {
+  const errorMessage = error?.message || String(error);
+  
+  // Permanent errors - tab doesn't exist or can't receive messages
+  const permanentPatterns = [
+    'No tab with id',
+    'Invalid tab ID',
+    'Tab not found',
+    'Cannot access',
+    'Permission denied',
+    'extension context invalidated'
+  ];
+  
+  for (const pattern of permanentPatterns) {
+    if (errorMessage.includes(pattern)) {
+      return { isPermanent: true, reason: pattern };
+    }
+  }
+  
+  // Transient errors - tab exists but content script may not be ready
+  const transientPatterns = [
+    'Receiving end does not exist',
+    'Could not establish connection',
+    'Message manager disconnected',
+    'Connection was reset'
+  ];
+  
+  for (const pattern of transientPatterns) {
+    if (errorMessage.includes(pattern)) {
+      return { isPermanent: false, reason: pattern };
+    }
+  }
+  
+  // Default: treat unknown errors as transient (will retry)
+  return { isPermanent: false, reason: 'unknown-error' };
+}
+
+/**
+ * Send adoption message to a list of tabs with retry for transient failures
+ * v1.6.4.14 - FIX Issue #19: Retry mechanism with error classification
+ * v1.6.4.14 - FIX Issue #23: Classified error metrics
  * @private
  * @param {Array} tabs - List of browser tabs
  * @param {Object} message - Adoption message to send
  * @param {string} quickTabId - Quick Tab ID for logging
- * @returns {Promise<{successCount: number, errorCount: number}>}
+ * @returns {Promise<{successCount: number, permanentFailures: number, transientFailures: number}>}
  */
-async function _sendAdoptionToTabs(tabs, message, quickTabId) {
-  let successCount = 0;
-  let errorCount = 0;
-
-  for (const tab of tabs) {
-    const result = await _sendAdoptionToSingleTab(tab.id, message, quickTabId);
-    if (result.success) {
-      successCount++;
-    } else {
-      errorCount++;
-    }
+async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
+  // Track tabs that need retry
+  const pendingTabs = tabs.map(tab => ({ tabId: tab.id, retryCount: 0 }));
+  const completedTabs = new Set();
+  const metrics = { successCount: 0, permanentFailures: 0, transientFailures: 0 };
+  
+  // First pass - try all tabs
+  await _sendAdoptionFirstPass(pendingTabs, completedTabs, metrics, message, quickTabId);
+  
+  // Retry pass for transient failures
+  const tabsToRetry = pendingTabs.filter(p => !completedTabs.has(p.tabId));
+  if (tabsToRetry.length > 0) {
+    await _sendAdoptionRetryPass(tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId);
   }
 
-  return { successCount, errorCount };
+  return metrics;
 }
 
 /**
- * Send adoption message to a single tab
- * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * First pass of adoption broadcast - try all tabs once
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+async function _sendAdoptionFirstPass(pendingTabs, completedTabs, metrics, message, quickTabId) {
+  for (const pending of pendingTabs) {
+    const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
+    _processSendResult(result, pending.tabId, completedTabs, metrics);
+  }
+}
+
+/**
+ * Process send result and update metrics
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _processSendResult(result, tabId, completedTabs, metrics) {
+  if (result.success) {
+    metrics.successCount++;
+    completedTabs.add(tabId);
+  } else if (result.isPermanent) {
+    metrics.permanentFailures++;
+    completedTabs.add(tabId);
+  }
+  // Transient failures will be retried
+}
+
+/**
+ * Retry pass of adoption broadcast - retry transient failures
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+async function _sendAdoptionRetryPass(tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId) {
+  console.log('[Background] ADOPTION_BROADCAST_RETRY: Retrying transient failures:', {
+    quickTabId,
+    tabCount: tabsToRetry.length,
+    maxRetries: ADOPTION_BROADCAST_MAX_RETRIES
+  });
+  
+  for (let retryAttempt = 1; retryAttempt <= ADOPTION_BROADCAST_MAX_RETRIES; retryAttempt++) {
+    // Wait before retry
+    await new Promise(resolve => setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt));
+    
+    await _sendAdoptionRetryAttempt(tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt);
+    
+    // Check if all tabs are handled
+    if (completedTabs.size === pendingTabs.length) {
+      break;
+    }
+  }
+  
+  // Count remaining as transient failures
+  _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId);
+}
+
+/**
+ * Single retry attempt for all pending tabs
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+async function _sendAdoptionRetryAttempt(tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt) {
+  for (const pending of tabsToRetry) {
+    if (completedTabs.has(pending.tabId)) continue;
+    
+    pending.retryCount++;
+    const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
+    
+    if (result.success) {
+      metrics.successCount++;
+      completedTabs.add(pending.tabId);
+      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', {
+        tabId: pending.tabId,
+        quickTabId,
+        attempt: retryAttempt
+      });
+    } else if (result.isPermanent) {
+      metrics.permanentFailures++;
+      completedTabs.add(pending.tabId);
+    }
+  }
+}
+
+/**
+ * Count remaining tabs as transient failures
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId) {
+  for (const pending of tabsToRetry) {
+    if (!completedTabs.has(pending.tabId)) {
+      metrics.transientFailures++;
+      console.log('[Background] ADOPTION_BROADCAST_FINAL_FAILURE:', {
+        tabId: pending.tabId,
+        quickTabId,
+        retryCount: pending.retryCount,
+        failureType: 'transient'
+      });
+    }
+  }
+}
+
+/**
+ * Send adoption message to a single tab with error classification
+ * v1.6.4.14 - FIX Issue #19 & #23: Classified error handling
  * @private
  * @param {number} tabId - Browser tab ID
  * @param {Object} message - Adoption message to send
  * @param {string} quickTabId - Quick Tab ID for logging
- * @returns {Promise<{success: boolean}>}
+ * @returns {Promise<{success: boolean, isPermanent?: boolean, reason?: string}>}
  */
-async function _sendAdoptionToSingleTab(tabId, message, quickTabId) {
+async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
   try {
     await browser.tabs.sendMessage(tabId, message);
     console.log('[Background] ADOPTION_BROADCAST_TO_TAB:', {
@@ -3900,9 +4099,24 @@ async function _sendAdoptionToSingleTab(tabId, message, quickTabId) {
       status: 'sent'
     });
     return { success: true };
-  } catch (_err) {
-    // Content script may not be loaded in this tab - this is expected
-    return { success: false };
+  } catch (err) {
+    const classification = _classifyBroadcastError(err);
+    
+    // Only log if permanent or first transient (to reduce noise)
+    if (classification.isPermanent) {
+      console.log('[Background] ADOPTION_BROADCAST_PERMANENT_FAILURE:', {
+        tabId,
+        quickTabId,
+        reason: classification.reason,
+        error: err.message
+      });
+    }
+    
+    return { 
+      success: false, 
+      isPermanent: classification.isPermanent,
+      reason: classification.reason
+    };
   }
 }
 
