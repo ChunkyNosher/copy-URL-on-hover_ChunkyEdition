@@ -52,6 +52,12 @@ export const STATE_KEY = 'quick_tabs_state_v2';
 // v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
 const STORAGE_TIMEOUT_MS = 2000;
 
+// v1.6.3.10-v6 - FIX Issue A20: Retry configuration for storage write failures
+// Exponential backoff delays between retries (not including initial attempt)
+// Total attempts = 1 (initial) + STORAGE_RETRY_DELAYS_MS.length (retries) = 4 attempts
+const STORAGE_RETRY_DELAYS_MS = [100, 500, 1000];
+const STORAGE_MAX_RETRIES = STORAGE_RETRY_DELAYS_MS.length;
+
 // v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
 const DEFAULT_ZINDEX = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
 
@@ -2337,11 +2343,110 @@ function _trackDuplicateSaveIdWrite(saveId, transactionId, _logPrefix) {
 }
 
 /**
- * Perform the actual storage write operation
+ * Sleep utility for retry delays
+ * v1.6.3.10-v6 - FIX Issue A20: Helper for exponential backoff
+ * @private
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+function _sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Attempt a single storage write operation
+ * v1.6.3.10-v6 - FIX Issue A20: Extracted from _executeStorageWrite for retry support
+ * @private
+ * @param {Object} browserAPI - Browser storage API
+ * @param {Object} stateWithTxn - State with transaction metadata
+ * @param {string} logPrefix - Log prefix
+ * @param {number} attemptNumber - Current attempt (1-based)
+ * @returns {Promise<boolean>} True if write succeeded
+ */
+async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attemptNumber) {
+  const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
+
+  try {
+    const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
+    await Promise.race([storagePromise, timeout.promise]);
+    return true;
+  } catch (err) {
+    console.warn(`${logPrefix} Storage write attempt ${attemptNumber} failed:`, err.message || err);
+    return false;
+  } finally {
+    timeout.clear();
+  }
+}
+
+/**
+ * Handle successful storage write - update state and log
+ * v1.6.3.10-v6 - FIX Issue A20: Extracted to reduce _executeStorageWrite complexity
+ * @private
+ * @param {string} operationId - Operation ID for logging
+ * @param {string} transactionId - Transaction ID
+ * @param {number} tabCount - Number of tabs written
+ * @param {number} startTime - Start time for duration calculation
+ * @param {number} attempt - Attempt number (1-based)
+ * @param {string} logPrefix - Log prefix
+ */
+function _handleSuccessfulWrite(operationId, transactionId, tabCount, startTime, attempt, logPrefix) {
+  const durationMs = Date.now() - startTime;
+
+  // v1.6.3.4-v8 - Update previous tab count after successful write
+  previousTabCount = tabCount;
+
+  // v1.6.3.4-v12 - FIX Issue #6: Update last completed transaction
+  lastCompletedTransactionId = transactionId;
+
+  // v1.6.3.6-v2 - FIX Issue #1: Update lastWrittenTransactionId for self-write detection
+  lastWrittenTransactionId = transactionId;
+
+  pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+
+  // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
+  _checkCircuitBreakerReset();
+
+  // v1.6.3.6-v5 - Log storage write complete (success)
+  logStorageWrite(operationId, STATE_KEY, 'complete', {
+    success: true,
+    tabCount,
+    durationMs,
+    transactionId,
+    // v1.6.3.10-v6 - FIX Issue A20: Log retry attempt number
+    attempt
+  });
+
+  // v1.6.3.10-v6 - FIX Issue A20: Log if retry was needed
+  if (attempt > 1) {
+    console.log(`${logPrefix} Storage write SUCCEEDED after ${attempt} attempts [${transactionId}]`);
+  } else {
+    console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
+  }
+}
+
+/**
+ * Check and reset circuit breaker if queue has drained
+ * v1.6.3.10-v6 - FIX Issue A20: Extracted to reduce nesting depth
+ * @private
+ */
+function _checkCircuitBreakerReset() {
+  if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
+    const tripDuration = Date.now() - circuitBreakerTripTime;
+    circuitBreakerTripped = false;
+    circuitBreakerTripTime = null;
+    console.log(
+      `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
+    );
+  }
+}
+
+/**
+ * Perform the actual storage write operation with retry logic
  * v1.6.3.4-v8 - FIX Issue #7: Extracted for queue implementation
  * v1.6.3.4-v12 - FIX Issue #1, #6: Enhanced logging with transaction sequencing
  * v1.6.3.6-v2 - FIX Issue #1, #2: Update lastWrittenTransactionId, add duplicate saveId tracking
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage write operation logging
+ * v1.6.3.10-v6 - FIX Issue A20: Added exponential backoff retry (100ms, 500ms, 1000ms)
  * @private
  */
 async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
@@ -2382,72 +2487,44 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     tabCount
   });
 
-  // v1.6.3.4-v2 - FIX Bug #1: Create timeout with cleanup to prevent race condition
-  const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
+  // v1.6.3.10-v6 - FIX Issue A20: Retry loop with exponential backoff
+  // Total attempts = STORAGE_MAX_RETRIES + 1 (1 initial + N retries)
+  const totalAttempts = STORAGE_MAX_RETRIES + 1;
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
 
-  try {
-    // v1.6.3.4-v2 - FIX Bug #1: Wrap storage.local.set with timeout
-    const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
-
-    await Promise.race([storagePromise, timeout.promise]);
-
-    const durationMs = Date.now() - startTime;
-
-    // v1.6.3.4-v8 - Update previous tab count after successful write
-    previousTabCount = tabCount;
-
-    // v1.6.3.4-v12 - FIX Issue #6: Update last completed transaction
-    lastCompletedTransactionId = transactionId;
-
-    // v1.6.3.6-v2 - FIX Issue #1: Update lastWrittenTransactionId for self-write detection
-    lastWrittenTransactionId = transactionId;
-
-    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-
-    // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
-    if (circuitBreakerTripped && pendingWriteCount < CIRCUIT_BREAKER_RESET_THRESHOLD) {
-      const tripDuration = Date.now() - circuitBreakerTripTime;
-      circuitBreakerTripped = false;
-      circuitBreakerTripTime = null;
-      console.log(
-        `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
-      );
+    if (success) {
+      _handleSuccessfulWrite(operationId, transactionId, tabCount, startTime, attempt, logPrefix);
+      return true;
     }
 
-    // v1.6.3.6-v5 - Log storage write complete (success)
-    logStorageWrite(operationId, STATE_KEY, 'complete', {
-      success: true,
-      tabCount,
-      durationMs,
-      transactionId
-    });
-
-    console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
-    return true;
-  } catch (err) {
-    const durationMs = Date.now() - startTime;
-
-    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-
-    // v1.6.3.6-v5 - Log storage write complete (failure)
-    logStorageWrite(operationId, STATE_KEY, 'complete', {
-      success: false,
-      tabCount,
-      durationMs,
-      transactionId
-    });
-
-    console.error(`${logPrefix} Storage write FAILED [${transactionId}]:`, err.message || err);
-    return false;
-  } finally {
-    // v1.6.3.4-v3 - FIX: Always clear timeout to prevent memory leak
-    timeout.clear();
-
-    // v1.6.3.5-v5 - FIX Issue #7: Transaction cleanup is now event-driven
-    // The fallback cleanup scheduled above will handle cases where storage.onChanged doesn't fire
-    // The cleanupTransactionId() function is called from shouldProcessStorageChange() when
-    // storage.onChanged is received, providing immediate cleanup in the normal case
+    // v1.6.3.10-v6 - FIX Issue A20: Wait before next retry (if more attempts remain)
+    // Only sleep if: 1) not the last attempt AND 2) there's a valid delay in the array
+    const hasMoreAttempts = attempt < totalAttempts;
+    const delayIndex = attempt - 1; // 0-indexed delay for attempt 1, 1-indexed for attempt 2, etc.
+    if (hasMoreAttempts && delayIndex < STORAGE_RETRY_DELAYS_MS.length) {
+      const delayMs = STORAGE_RETRY_DELAYS_MS[delayIndex];
+      console.log(`${logPrefix} Retrying storage write in ${delayMs}ms (attempt ${attempt + 1}/${totalAttempts}) [${transactionId}]`);
+      await _sleep(delayMs);
+    }
   }
+
+  // v1.6.3.10-v6 - FIX Issue A20: All retries exhausted
+  const durationMs = Date.now() - startTime;
+  pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+
+  // v1.6.3.6-v5 - Log storage write complete (failure)
+  logStorageWrite(operationId, STATE_KEY, 'complete', {
+    success: false,
+    tabCount,
+    durationMs,
+    transactionId,
+    // v1.6.3.10-v6 - FIX Issue A20: Log total attempts
+    attempts: STORAGE_MAX_RETRIES + 1
+  });
+
+  console.error(`${logPrefix} Storage write FAILED after ${STORAGE_MAX_RETRIES + 1} attempts [${transactionId}]`);
+  return false;
 }
 
 /**

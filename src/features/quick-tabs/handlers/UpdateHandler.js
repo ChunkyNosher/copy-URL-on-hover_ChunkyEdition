@@ -14,6 +14,9 @@
  * v1.6.3.5-v8 - FIX Diagnostic Issue #3:
  *   - Re-wire window reference after restore using eventBus
  *   - Enhanced tab recovery for post-restore updates
+ * v1.6.3.10-v6 - FIX Issue A3: Check MINIMIZED state before persisting position/size
+ *   - Prevents race condition where position data persists during 300ms debounce window
+ *     after tab is minimized
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -24,7 +27,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.3.5-v8
+ * @version 1.6.3.10-v6
  */
 
 import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
@@ -336,11 +339,25 @@ export class UpdateHandler {
   }
 
   /**
+   * Check if a tab ID corresponds to a minimized tab
+   * v1.6.3.10-v6 - FIX Issue A3: Helper for minimized state check
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if tab is minimized
+   */
+  _isTabMinimized(id) {
+    return this.minimizedManager?.isMinimized?.(id) ?? false;
+  }
+
+  /**
    * Actually perform the storage write (called after debounce)
    * v1.6.3.4 - FIX Issue #2: Only writes if state actually changed
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v10 - FIX Issue #5: Compare both parts of 64-bit hash
    * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
+   * v1.6.3.10-v6 - FIX Issue A3: Skip persist if all updated tabs are now minimized
+   *   This prevents race condition where position data persists during 300ms debounce
+   *   window after tab is minimized
    * @private
    * @returns {Promise<void>}
    */
@@ -351,6 +368,20 @@ export class UpdateHandler {
       hasMinimizedManager: !!this.minimizedManager,
       timestamp: Date.now()
     });
+
+    // v1.6.3.10-v6 - FIX Issue A3: Check if any non-minimized tabs exist
+    // If all tabs are minimized, skip the persist since it would be stale
+    let nonMinimizedCount = 0;
+    for (const [id] of this.quickTabsMap) {
+      if (!this._isTabMinimized(id)) {
+        nonMinimizedCount++;
+      }
+    }
+
+    if (nonMinimizedCount === 0 && this.quickTabsMap.size > 0) {
+      console.log('[UpdateHandler] _doPersist SKIPPED: All tabs are minimized, position/size changes are stale');
+      return;
+    }
 
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
 
