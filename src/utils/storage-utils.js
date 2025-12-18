@@ -571,8 +571,31 @@ export function normalizeOriginContainerId(value, context = 'unknown') {
     return null;
   }
 
-  // Valid container ID - return as-is (already a string)
+  // Valid container ID - return trimmed value
   return trimmedValue;
+}
+
+/**
+ * Check if container IDs match for ownership validation
+ * v1.6.3.10-v6 - FIX Code Review: Extract duplicated container matching logic
+ * If originContainerId is null, this is a legacy Quick Tab created before v1.6.3.10-v4
+ * Allow these to be modified by any tab that matches the originTabId (backwards compatibility)
+ * @private
+ * @param {string|null} normalizedOriginContainerId - Normalized origin container ID
+ * @param {string|null} currentContainerId - Current tab's container ID
+ * @returns {boolean} True if containers match (or legacy fallback applies)
+ */
+function _isContainerMatch(normalizedOriginContainerId, currentContainerId) {
+  // Legacy Quick Tab (null originContainerId) - always matches
+  if (normalizedOriginContainerId === null) {
+    return true;
+  }
+  // Current container unknown - allow (can't validate)
+  if (currentContainerId === null) {
+    return true;
+  }
+  // Both have values - compare them
+  return normalizedOriginContainerId === currentContainerId;
 }
 
 /**
@@ -705,16 +728,12 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null, curren
   // v1.6.3.10-v6 - FIX Issue #13: Check tab ID match first
   const isTabIdMatch = normalizedOriginTabId === tabId;
 
-  // v1.6.3.10-v6 - FIX Issue #13: Check container ID match
-  // If originContainerId is null, this is a legacy Quick Tab created before v1.6.3.10-v4
-  // Allow these to be modified by any tab that matches the originTabId (backwards compatibility)
-  let isContainerMatch = true;
-  if (normalizedOriginContainerId !== null && containerId !== null) {
-    isContainerMatch = normalizedOriginContainerId === containerId;
-  }
+  // v1.6.3.10-v6 - FIX Issue #13: Check container ID match using helper
+  // v1.6.3.10-v6 - FIX Code Review: Use _isContainerMatch helper to reduce duplication
+  const isContainerMatchResult = _isContainerMatch(normalizedOriginContainerId, containerId);
 
   // v1.6.3.10-v6 - FIX Issue #13: Both must match for ownership
-  const isOwner = isTabIdMatch && isContainerMatch;
+  const isOwner = isTabIdMatch && isContainerMatchResult;
 
   // v1.6.3.10-v6 - FIX Issue #8: Log comparison values, types, and result including container info
   console.log('[StorageUtils] canCurrentTabModifyQuickTab: Ownership comparison', {
@@ -731,7 +750,7 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null, curren
     originContainerIdRaw: tabData.originContainerId,
     normalizedOriginContainerId,
     currentContainerId: containerId,
-    isContainerMatch,
+    isContainerMatch: isContainerMatchResult,
     isLegacyQuickTab: normalizedOriginContainerId === null,
     // Final result
     comparisonResult: isOwner,
@@ -790,15 +809,12 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
     // v1.6.3.10-v6 - FIX Issue #13: Check tab ID match
     const isTabIdMatch = normalizedOriginTabId === tabId;
 
-    // v1.6.3.10-v6 - FIX Issue #13: Check container ID match
-    // If originContainerId is null, this is a legacy Quick Tab - allow it if tab ID matches
-    let isContainerMatch = true;
-    if (normalizedOriginContainerId !== null && normalizedCurrentContainerId !== null) {
-      isContainerMatch = normalizedOriginContainerId === normalizedCurrentContainerId;
-    }
+    // v1.6.3.10-v6 - FIX Issue #13: Check container ID match using helper
+    // v1.6.3.10-v6 - FIX Code Review: Use _isContainerMatch helper to reduce duplication
+    const isContainerMatchResult = _isContainerMatch(normalizedOriginContainerId, normalizedCurrentContainerId);
 
     // v1.6.3.10-v6 - FIX Issue #13: Both must match for ownership
-    const isOwned = isTabIdMatch && isContainerMatch;
+    const isOwned = isTabIdMatch && isContainerMatchResult;
 
     // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging with type information including container info
     console.log('[StorageUtils] _filterOwnedTabs: Tab ownership check', {
@@ -815,7 +831,7 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
       originContainerIdRaw: tab.originContainerId,
       normalizedOriginContainerId,
       currentContainerId: normalizedCurrentContainerId,
-      isContainerMatch,
+      isContainerMatch: isContainerMatchResult,
       isLegacyQuickTab: normalizedOriginContainerId === null,
       // Final result
       comparisonResult: isOwned,
@@ -1786,11 +1802,30 @@ function _extractOriginTabId(tab) {
 }
 
 /**
+ * Determine the source field for originContainerId
+ * v1.6.3.10-v6 - FIX Code Review: Extract to reduce _extractOriginContainerId complexity
+ * Similar to _getOriginTabIdSourceField for consistency
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @returns {string} Source field name ('originContainerId', 'cookieStoreId', or 'none')
+ */
+function _getOriginContainerIdSourceField(tab) {
+  if (tab.originContainerId !== undefined && tab.originContainerId !== null) {
+    return 'originContainerId';
+  }
+  if (tab.cookieStoreId !== undefined && tab.cookieStoreId !== null) {
+    return 'cookieStoreId';
+  }
+  return 'none';
+}
+
+/**
  * Extract originContainerId with proper validation
  * v1.6.3.10-v6 - FIX Issue #13: Add _extractOriginContainerId helper for Firefox Multi-Account Container isolation
  *   - Uses normalizeOriginContainerId() for validation (strings like "firefox-default")
  *   - Fallback to cookieStoreId if originContainerId not present
  *   - Adds detailed logging showing extraction source and result
+ * v1.6.3.10-v6 - FIX Code Review: Use _getOriginContainerIdSourceField helper
  * @private
  * @param {Object} tab - Quick Tab instance
  * @returns {string|null} Extracted and normalized originContainerId
@@ -1798,11 +1833,8 @@ function _extractOriginTabId(tab) {
 function _extractOriginContainerId(tab) {
   // Get raw value from tab (prefer originContainerId, fallback to cookieStoreId)
   const rawOriginContainerId = tab.originContainerId ?? tab.cookieStoreId ?? null;
-  const sourceField = tab.originContainerId !== undefined && tab.originContainerId !== null
-    ? 'originContainerId'
-    : tab.cookieStoreId !== undefined && tab.cookieStoreId !== null
-      ? 'cookieStoreId'
-      : 'none';
+  // v1.6.3.10-v6 - FIX Code Review: Use helper for source field determination
+  const sourceField = _getOriginContainerIdSourceField(tab);
 
   // v1.6.3.10-v6 - FIX Issue #13: Log raw value and type before normalization
   console.log('[StorageUtils] _extractOriginContainerId: Extraction started', {
