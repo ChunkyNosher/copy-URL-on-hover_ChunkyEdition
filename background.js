@@ -4,6 +4,7 @@
 // Also handles webRequest to remove X-Frame-Options for Quick Tabs
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
+// v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -154,6 +155,27 @@ const _STORAGE_WRITE_SEQUENCE_TIMEOUT_MS = 15000; // 15s max for entire retry se
 
 // FIX Enhancement #1 & #2: Scripting API fallback for messaging failures
 const MESSAGING_TIMEOUT_MS = 2000; // 2s timeout for messaging before fallback
+
+/**
+ * Generate unique correlation ID for tracing operations
+ * v1.6.3.10-v5 - FIX Code Review: Extracted to reduce duplication
+ * @param {string} prefix - Prefix for the ID (e.g., 'exec', 'cmd')
+ * @returns {string} Unique correlation ID
+ */
+function generateCorrelationId(prefix = 'op') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Create a timeout promise for Promise.race() usage
+ * v1.6.3.10-v5 - FIX Code Review: Extracted to reduce duplication
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @param {string} errorMessage - Error message for timeout
+ * @returns {Promise<never>} Promise that rejects after timeout
+ */
+function createTimeoutPromise(timeoutMs, errorMessage = 'Operation timeout') {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error(errorMessage)), timeoutMs));
+}
 
 // FIX Issue #3/6: Background restart detection - track startup time
 const backgroundStartupTime = Date.now();
@@ -308,6 +330,7 @@ console.log(
 /**
  * Execute operation with messaging, falling back to Scripting API if messaging fails
  * v1.6.3.10-v4 - FIX Enhancement #1 & #2: Atomic operations + timeout recovery
+ * v1.6.3.10-v5 - FIX Code Review: Use extracted helper functions
  * Note: Exported API - call from EXECUTE_COMMAND handlers when messaging fails
  * @param {number} tabId - Browser tab ID to execute operation in
  * @param {string} operation - Operation type (e.g., 'RESTORE_QUICK_TAB', 'MINIMIZE_QUICK_TAB')
@@ -315,7 +338,7 @@ console.log(
  * @returns {Promise<Object>} Operation result
  */
 async function _executeWithScriptingFallback(tabId, operation, params) {
-  const correlationId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const correlationId = generateCorrelationId('exec');
 
   console.log('[Background] v1.6.3.10-v4 executeWithScriptingFallback:', {
     tabId,
@@ -327,9 +350,7 @@ async function _executeWithScriptingFallback(tabId, operation, params) {
     // Try messaging first (fast path)
     const result = await Promise.race([
       browser.tabs.sendMessage(tabId, { type: operation, ...params, correlationId }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Messaging timeout')), MESSAGING_TIMEOUT_MS)
-      )
+      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
 
     console.log('[Background] v1.6.3.10-v4 Messaging succeeded:', {
@@ -2333,14 +2354,29 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
 /**
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
+ * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced self-write detection logging
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
 function _multiMethodDeduplication(newValue, oldValue) {
+  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Log which detection layer matched
+  const logDetectionMatch = (method, reason) => {
+    console.log('[Background] v1.6.3.10-v5 Self-write detected:', {
+      method,
+      reason,
+      transactionId: newValue?.transactionId,
+      writingInstanceId: newValue?.writingInstanceId,
+      writingTabId: newValue?.writingTabId,
+      saveId: newValue?.saveId,
+      timestamp: Date.now()
+    });
+  };
+
   // Method 1: transactionId (highest priority - deterministic)
   // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
   if (_isTransactionSelfWrite(newValue)) {
+    logDetectionMatch('transactionId', `Transaction ${newValue.transactionId} in progress`);
     return {
       shouldSkip: true,
       method: 'transactionId',
@@ -2350,6 +2386,7 @@ function _multiMethodDeduplication(newValue, oldValue) {
 
   // Method 2: saveId + timestamp comparison (catches duplicates from same source)
   if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
+    logDetectionMatch('saveId+timestamp', 'Same saveId and timestamp within window');
     return {
       shouldSkip: true,
       method: 'saveId+timestamp',
@@ -2359,6 +2396,7 @@ function _multiMethodDeduplication(newValue, oldValue) {
 
   // Method 3: Content hash comparison (catches Firefox spurious events)
   if (_isContentHashDuplicate(newValue, oldValue)) {
+    logDetectionMatch('contentHash', 'Identical content with same saveId');
     return {
       shouldSkip: true,
       method: 'contentHash',
@@ -2413,14 +2451,33 @@ function _isContentHashDuplicate(newValue, oldValue) {
  * Check if this is a self-write via transaction ID
  * v1.6.3.6-v2 - FIX Issue #1: Simplified from _isAnySelfWrite to only check transaction ID
  * v1.6.3.6-v12 - Note: This is also called by _multiMethodDeduplication() as Method 1
+ * v1.6.3.10-v5 - FIX Issue #7: Add lazy cleanup of stale transactions during lookup
  * Other self-write detection methods are handled by content scripts
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if self-write
  */
 function _isTransactionSelfWrite(newValue) {
+  const transactionId = newValue?.transactionId;
+
   // Check transaction ID - the most deterministic method
-  if (newValue?.transactionId && IN_PROGRESS_TRANSACTIONS.has(newValue.transactionId)) {
-    console.log('[Background] Ignoring self-write (transaction):', newValue.transactionId);
+  if (transactionId && IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+    // v1.6.3.10-v5 - FIX Issue #7: Lazy cleanup - check if transaction is stale during lookup
+    const startTime = transactionStartTimes.get(transactionId);
+    const now = Date.now();
+
+    // If transaction is stale (exceeded timeout), clean it up and don't treat as self-write
+    if (startTime && now - startTime > TRANSACTION_TIMEOUT_MS) {
+      console.warn('[Background] v1.6.3.10-v5 Lazy cleanup - stale transaction found:', {
+        transactionId,
+        ageMs: now - startTime,
+        timeoutMs: TRANSACTION_TIMEOUT_MS
+      });
+      IN_PROGRESS_TRANSACTIONS.delete(transactionId);
+      transactionStartTimes.delete(transactionId);
+      return false;
+    }
+
+    console.log('[Background] Ignoring self-write (transaction):', transactionId);
     return true;
   }
 
@@ -3023,16 +3080,18 @@ const portRegistry = new Map();
 let portIdCounter = 0;
 
 /**
- * Port cleanup interval (5 minutes)
+ * Port cleanup interval
  * v1.6.3.6-v11 - FIX Issue #17: Periodic cleanup
+ * v1.6.3.10-v5 - FIX Issue #5: Reduced from 5 min to 30s to prevent memory pressure
  */
-const PORT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const PORT_CLEANUP_INTERVAL_MS = 30 * 1000; // 30 seconds
 
 /**
- * Port inactivity threshold for logging warnings (10 minutes)
+ * Port inactivity threshold for logging warnings
  * v1.6.3.6-v11 - FIX Issue #17: Inactivity monitoring
+ * v1.6.3.10-v5 - FIX Issue #5: Reduced from 10 min to 60s for faster cleanup
  */
-const PORT_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
+const PORT_INACTIVITY_THRESHOLD_MS = 60 * 1000; // 60 seconds
 
 /**
  * Generate unique port ID
@@ -3211,19 +3270,31 @@ function handlePortConnect(port) {
   port._portId = portId;
 
   // v1.6.3.10-v4 - FIX Issue #3/6: Send background startup info for restart detection
-  // This allows content scripts to detect if background was restarted and re-sync state
-  try {
-    port.postMessage({
-      type: 'BACKGROUND_HANDSHAKE',
-      ...getBackgroundStartupInfo(),
-      portId,
-      tabId,
-      timestamp: Date.now()
-    });
-    console.log('[Background] v1.6.3.10-v4 Sent BACKGROUND_HANDSHAKE to port:', { portId, origin });
-  } catch (err) {
-    console.warn('[Background] v1.6.3.10-v4 Failed to send handshake:', err.message);
-  }
+  // v1.6.3.10-v5 - FIX Issue #6: Wait for initialization before sending handshake
+  // This prevents content scripts from receiving handshake with isInitialized=false
+  // and then sending operations before background is ready
+  (async () => {
+    try {
+      // Wait for initialization (max 5 seconds)
+      const initReady = await waitForInitialization(5000);
+
+      port.postMessage({
+        type: 'BACKGROUND_HANDSHAKE',
+        ...getBackgroundStartupInfo(),
+        isInitialized: initReady, // v1.6.3.10-v5: Include init status
+        portId,
+        tabId,
+        timestamp: Date.now()
+      });
+      console.log('[Background] v1.6.3.10-v5 Sent BACKGROUND_HANDSHAKE to port:', {
+        portId,
+        origin,
+        isInitialized: initReady
+      });
+    } catch (err) {
+      console.warn('[Background] v1.6.3.10-v5 Failed to send handshake:', err.message);
+    }
+  })();
 
   // Handle messages from this port
   port.onMessage.addListener(message => {
@@ -3621,8 +3692,14 @@ async function handleAdoptAction(payload) {
     adoptedQuickTabId: quickTabId,
     oldOriginTabId,
     newOriginTabId: targetTabId,
+    // v1.6.4.13 - FIX BUG #4: Include previousOriginTabId for content script cache lookup
+    previousOriginTabId: oldOriginTabId,
     timestamp: Date.now()
   });
+
+  // v1.6.4.13 - FIX BUG #4: Also broadcast to all content scripts via tabs.sendMessage
+  // This updates their local cache so restore operations use the correct originTabId
+  _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
 
   console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
     quickTabId,
@@ -3637,6 +3714,103 @@ async function handleAdoptAction(payload) {
   });
 
   return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+}
+
+/**
+ * Broadcast ADOPTION_COMPLETED to all content scripts via tabs.sendMessage
+ * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ *
+ * This ensures all content scripts update their local Quick Tab cache
+ * with the new originTabId after adoption. Without this, restore operations
+ * would use stale cache data and target the wrong tab.
+ *
+ * @private
+ * @param {string} quickTabId - The Quick Tab that was adopted
+ * @param {number} oldOriginTabId - The previous owner tab ID
+ * @param {number} newOriginTabId - The new owner tab ID
+ */
+async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOriginTabId) {
+  const timestamp = Date.now();
+  const message = {
+    action: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    previousOriginTabId: oldOriginTabId,
+    newOriginTabId,
+    timestamp
+  };
+
+  console.log('[Background] ADOPTION_BROADCAST_TO_TABS: Starting broadcast to all content scripts:', {
+    quickTabId,
+    previousOriginTabId: oldOriginTabId,
+    newOriginTabId
+  });
+
+  try {
+    const tabs = await browser.tabs.query({});
+    const results = await _sendAdoptionToTabs(tabs, message, quickTabId);
+
+    console.log('[Background] ADOPTION_BROADCAST_TO_TABS_COMPLETE:', {
+      quickTabId,
+      totalTabs: tabs.length,
+      successCount: results.successCount,
+      errorCount: results.errorCount,
+      durationMs: Date.now() - timestamp
+    });
+  } catch (err) {
+    console.error('[Background] ADOPTION_BROADCAST_TO_TABS_ERROR:', {
+      quickTabId,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Send adoption message to a list of tabs
+ * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * @private
+ * @param {Array} tabs - List of browser tabs
+ * @param {Object} message - Adoption message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {Promise<{successCount: number, errorCount: number}>}
+ */
+async function _sendAdoptionToTabs(tabs, message, quickTabId) {
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const tab of tabs) {
+    const result = await _sendAdoptionToSingleTab(tab.id, message, quickTabId);
+    if (result.success) {
+      successCount++;
+    } else {
+      errorCount++;
+    }
+  }
+
+  return { successCount, errorCount };
+}
+
+/**
+ * Send adoption message to a single tab
+ * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * @private
+ * @param {number} tabId - Browser tab ID
+ * @param {Object} message - Adoption message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {Promise<{success: boolean}>}
+ */
+async function _sendAdoptionToSingleTab(tabId, message, quickTabId) {
+  try {
+    await browser.tabs.sendMessage(tabId, message);
+    console.log('[Background] ADOPTION_BROADCAST_TO_TAB:', {
+      tabId,
+      quickTabId,
+      status: 'sent'
+    });
+    return { success: true };
+  } catch (_err) {
+    // Content script may not be loaded in this tab - this is expected
+    return { success: false };
+  }
 }
 
 /**
@@ -4118,18 +4292,50 @@ console.log('[Background] v1.6.3.6-v11 Tab lifecycle events initialized');
 let messageIdCounter = 0;
 
 /**
+ * Counter wrap limit to prevent integer overflow
+ * v1.6.3.10-v5 - FIX Code Review: Centralized constant
+ */
+const COUNTER_WRAP_LIMIT = 1000000;
+
+/**
  * Generate unique message ID for correlation
  * v1.6.3.6-v5 - FIX Issue #4c: Correlation IDs for message tracing
+ * v1.6.3.10-v5 - FIX Issue #11: Message ID counter wrapping to prevent overflow
  * @returns {string} Unique message ID
  */
 function generateMessageId() {
-  messageIdCounter++;
+  // v1.6.3.10-v5 - FIX Issue #11: Wrap counter to prevent overflow
+  messageIdCounter = (messageIdCounter + 1) % COUNTER_WRAP_LIMIT;
   return `msg-${Date.now()}-${messageIdCounter}`;
+}
+
+// v1.6.3.10-v5 - FIX Issue #11: Message logging throttle infrastructure
+// Throttle period (1 second) to reduce console spam under heavy load
+const LOGGING_THROTTLE_MS = 1000;
+// Track last logged time per log type
+let _lastDispatchLogTime = 0;
+let _lastReceiptLogTime = 0;
+let _lastDeletionLogTime = 0;
+// Debug mode flag - set to true to enable verbose logging
+// v1.6.3.10-v5 - Use globalThis for service worker compatibility
+const _debugModeEnabled =
+  typeof globalThis !== 'undefined' && globalThis.DEBUG_MODE === true;
+
+/**
+ * Check if logging should be throttled for a specific log type
+ * v1.6.3.10-v5 - FIX Issue #11: Logging throttle to reduce console spam
+ * @private
+ * @param {number} lastLogTime - Last logged time for this type
+ * @returns {boolean} True if logging should be throttled (skipped)
+ */
+function _shouldThrottleLog(lastLogTime) {
+  return Date.now() - lastLogTime < LOGGING_THROTTLE_MS && !_debugModeEnabled;
 }
 
 /**
  * Log message dispatch (outgoing)
  * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
+ * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
  * Logs sender tab ID, message type, timestamp (no payloads)
  * @param {string} messageId - Unique message ID for correlation
  * @param {string} messageType - Type of message being sent
@@ -4137,6 +4343,12 @@ function generateMessageId() {
  * @param {string} target - Target description ('broadcast', 'sidebar', or specific tab ID)
  */
 function logMessageDispatch(messageId, messageType, senderTabId, target) {
+  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
+  if (_shouldThrottleLog(_lastDispatchLogTime)) {
+    return;
+  }
+  _lastDispatchLogTime = Date.now();
+
   console.log('[Background] 📤 MESSAGE DISPATCH:', {
     messageId,
     messageType,
@@ -4149,12 +4361,19 @@ function logMessageDispatch(messageId, messageType, senderTabId, target) {
 /**
  * Log message receipt (incoming)
  * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message logging
+ * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
  * Logs receiver context, message type, timestamp
  * @param {string} messageId - Unique message ID for correlation (if available)
  * @param {string} messageType - Type of message received
  * @param {number} senderTabId - Sender tab ID
  */
 function logMessageReceipt(messageId, messageType, senderTabId) {
+  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
+  if (_shouldThrottleLog(_lastReceiptLogTime)) {
+    return;
+  }
+  _lastReceiptLogTime = Date.now();
+
   console.log('[Background] 📥 MESSAGE RECEIPT:', {
     messageId: messageId || 'N/A',
     messageType,
@@ -4166,6 +4385,7 @@ function logMessageReceipt(messageId, messageType, senderTabId) {
 /**
  * Log deletion event propagation
  * v1.6.3.6-v5 - FIX Issue #4e: State deletion propagation logging
+ * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
  * Logs when deletion event is submitted and received
  * @param {string} correlationId - Unique ID for end-to-end tracing
  * @param {string} phase - 'submit' or 'received'
@@ -4173,6 +4393,12 @@ function logMessageReceipt(messageId, messageType, senderTabId) {
  * @param {Object} details - Additional context (source, target tabs, etc.)
  */
 function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) {
+  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
+  if (_shouldThrottleLog(_lastDeletionLogTime)) {
+    return;
+  }
+  _lastDeletionLogTime = Date.now();
+
   if (phase === 'submit') {
     console.log('[Background] 🗑️ DELETION SUBMIT:', {
       correlationId,
@@ -4352,41 +4578,67 @@ function _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId) {
 }
 
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #4: Broadcast deduplication and circuit breaker
+// v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker instead of global
 // Track recent broadcasts to prevent storms
-const _broadcastHistory = [];
+let _broadcastHistory = []; // Use let for cleanup mutation in Issue #10 fix
 // 100ms window chosen based on typical user interaction timing - broadcasts within this window
 // are likely duplicates from the same user action (e.g., drag event fires multiple times)
 const BROADCAST_HISTORY_WINDOW_MS = 100;
 // Limit of 10 broadcasts per window based on empirical observation that legitimate operations
 // rarely generate more than 2-3 broadcasts per 100ms. 10 provides safety margin while catching loops.
 const BROADCAST_CIRCUIT_BREAKER_LIMIT = 10;
-let _circuitBreakerTripped = false;
-let _lastCircuitBreakerReset = 0;
+// v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker state
+// Map: quickTabId -> { tripped: boolean, resetTime: number }
+const _perTabCircuitBreakers = new Map();
+// Circuit breaker cooldown period (1 second)
+const CIRCUIT_BREAKER_COOLDOWN_MS = 1000;
 
 /**
- * Try to reset circuit breaker if cooldown elapsed
+ * Try to reset circuit breaker for a specific Quick Tab if cooldown elapsed
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker
  * @private
+ * @param {string} quickTabId - Quick Tab ID
  * @param {number} now - Current timestamp
+ * @returns {boolean} True if circuit breaker was reset or not tripped
  */
-function _tryResetCircuitBreaker(now) {
-  if (_circuitBreakerTripped && now - _lastCircuitBreakerReset > 1000) {
-    _circuitBreakerTripped = false;
-    console.log('[Background] Broadcast circuit breaker RESET');
+function _tryResetPerTabCircuitBreaker(quickTabId, now) {
+  const state = _perTabCircuitBreakers.get(quickTabId);
+  if (!state || !state.tripped) {
+    return true; // Not tripped
   }
+
+  if (now - state.resetTime > CIRCUIT_BREAKER_COOLDOWN_MS) {
+    _perTabCircuitBreakers.delete(quickTabId);
+    console.log('[Background] Per-tab circuit breaker RESET for:', quickTabId);
+    return true; // Reset
+  }
+
+  return false; // Still tripped
+}
+
+/**
+ * Check if per-tab circuit breaker is tripped
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if circuit breaker is tripped
+ */
+function _isPerTabCircuitBreakerTripped(quickTabId, now) {
+  return !_tryResetPerTabCircuitBreaker(quickTabId, now);
 }
 
 /**
  * Clean up expired entries from broadcast history
+ * v1.6.3.10-v5 - FIX Issue #10: Cleanup BEFORE duplicate check to prevent race condition
  * @private
  * @param {number} now - Current timestamp
  */
 function _cleanupBroadcastHistory(now) {
-  while (
-    _broadcastHistory.length > 0 &&
-    now - _broadcastHistory[0].time > BROADCAST_HISTORY_WINDOW_MS
-  ) {
-    _broadcastHistory.shift();
-  }
+  // v1.6.3.10-v5 - FIX Issue #10: Use filter for atomic cleanup before checks
+  _broadcastHistory = _broadcastHistory.filter(
+    entry => now - entry.time <= BROADCAST_HISTORY_WINDOW_MS
+  );
 }
 
 /**
@@ -4403,27 +4655,34 @@ function _isDuplicateBroadcast(quickTabId, changesHash) {
 }
 
 /**
- * Trip the circuit breaker and return blocked response
+ * Trip the circuit breaker for a specific Quick Tab
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker
  * @private
+ * @param {string} quickTabId - Quick Tab ID
  * @param {number} now - Current timestamp
  * @returns {{ allowed: boolean, reason: string }}
  */
-function _tripCircuitBreaker(now) {
-  _circuitBreakerTripped = true;
-  _lastCircuitBreakerReset = now;
+function _tripPerTabCircuitBreaker(quickTabId, now) {
+  _perTabCircuitBreakers.set(quickTabId, { tripped: true, resetTime: now });
   console.error(
-    '[Background] ⚠️ BROADCAST CIRCUIT BREAKER TRIPPED - too many broadcasts within',
+    '[Background] ⚠️ PER-TAB CIRCUIT BREAKER TRIPPED for',
+    quickTabId,
+    '- too many broadcasts within',
     BROADCAST_HISTORY_WINDOW_MS,
     'ms'
   );
-  console.error('[Background] Broadcasts in window:', _broadcastHistory.length);
-  return { allowed: false, reason: 'circuit breaker limit exceeded' };
+  // Count broadcasts for this specific Quick Tab
+  const tabBroadcastCount = _broadcastHistory.filter(e => e.quickTabId === quickTabId).length;
+  console.error('[Background] Broadcasts for this Quick Tab in window:', tabBroadcastCount);
+  return { allowed: false, reason: 'per-tab circuit breaker limit exceeded' };
 }
 
 /**
  * Check if broadcast should be allowed (circuit breaker + deduplication)
  * v1.6.3.6-v4 - FIX Issue #4: Prevent broadcast storms
  * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker (not global)
+ * v1.6.3.10-v5 - FIX Issue #10: Cleanup before duplicate check to prevent race condition
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @returns {{ allowed: boolean, reason: string }}
@@ -4431,20 +4690,23 @@ function _tripCircuitBreaker(now) {
 function _shouldAllowBroadcast(quickTabId, changes) {
   const now = Date.now();
 
-  _tryResetCircuitBreaker(now);
-  if (_circuitBreakerTripped) {
-    return { allowed: false, reason: 'circuit breaker tripped' };
-  }
-
+  // v1.6.3.10-v5 - FIX Issue #10: Cleanup BEFORE any checks to prevent race condition
   _cleanupBroadcastHistory(now);
+
+  // v1.6.3.10-v5 - FIX Issue #9: Check per-tab circuit breaker (not global)
+  if (_isPerTabCircuitBreakerTripped(quickTabId, now)) {
+    return { allowed: false, reason: 'per-tab circuit breaker tripped' };
+  }
 
   const changesHash = JSON.stringify(changes);
   if (_isDuplicateBroadcast(quickTabId, changesHash)) {
     return { allowed: false, reason: 'duplicate broadcast within window' };
   }
 
-  if (_broadcastHistory.length >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
-    return _tripCircuitBreaker(now);
+  // v1.6.3.10-v5 - FIX Issue #9: Count broadcasts per Quick Tab, not global
+  const tabBroadcastCount = _broadcastHistory.filter(e => e.quickTabId === quickTabId).length;
+  if (tabBroadcastCount >= BROADCAST_CIRCUIT_BREAKER_LIMIT) {
+    return _tripPerTabCircuitBreaker(quickTabId, now);
   }
 
   _broadcastHistory.push({ time: now, quickTabId, changesHash });
@@ -4733,9 +4995,14 @@ const VALID_MANAGER_COMMANDS = new Set([
 /**
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
- * @param {string} command - Command to execute
+ * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
+ *   - Adds 2-second timeout to messaging calls
+ *   - Falls back to browser.scripting.executeScript on timeout/failure
+ *   - Ensures atomic operation completion even when messaging fails
+ * @param {string} command - Command to execute (MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, CLOSE_QUICK_TAB, FOCUS_QUICK_TAB)
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
+ * @returns {Promise<Object>} Result object with success status and optional error
  */
 async function executeManagerCommand(command, quickTabId, hostTabId) {
   // v1.6.3.5-v3 - FIX Code Review: Validate command against allowlist
@@ -4757,18 +5024,45 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     hostTabId
   });
 
+  // v1.6.3.10-v5 - FIX Issue #1 & #2: Use timeout-protected messaging with Scripting API fallback
+  // This ensures atomic operation completion even when messaging fails or times out
   try {
-    const response = await browser.tabs.sendMessage(hostTabId, executeMessage);
+    const response = await Promise.race([
+      browser.tabs.sendMessage(hostTabId, executeMessage),
+      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
+    ]);
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    console.error('[Background] Failed to execute command:', {
+    // v1.6.3.10-v5 - FIX Issue #2: Fall back to Scripting API on messaging failure/timeout
+    console.log('[Background] v1.6.3.10-v5 Messaging failed, falling back to Scripting API:', {
       command,
       quickTabId,
       hostTabId,
       error: err.message
     });
-    return { success: false, error: err.message };
+
+    // Use Scripting API for atomic execution
+    try {
+      const correlationId = generateCorrelationId('cmd');
+      const fallbackResult = await _executeViaScripting(
+        hostTabId,
+        command,
+        { quickTabId },
+        correlationId
+      );
+      console.log('[Background] v1.6.3.10-v5 Scripting fallback result:', fallbackResult);
+      return fallbackResult;
+    } catch (fallbackErr) {
+      console.error('[Background] v1.6.3.10-v5 Both messaging and scripting failed:', {
+        command,
+        quickTabId,
+        hostTabId,
+        messagingError: err.message,
+        scriptingError: fallbackErr.message
+      });
+      return { success: false, error: fallbackErr.message, fallbackFailed: true };
+    }
   }
 }
 

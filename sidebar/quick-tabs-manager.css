@@ -1,4 +1,10 @@
 /* Quick Tabs Manager Sidebar Styles */
+/* v1.6.3.10-v5 - FIX Bug #3: Animation Playing for All Quick Tabs During Single Adoption
+ * - Removed automatic itemFadeIn animation that triggered on all items during re-render
+ * - Added .adoption-animation class for targeted animation of adopted Quick Tab only
+ * - Added adoptionSlideIn keyframes with green highlight for adoption feedback
+ * - Existing items no longer animate when a single Quick Tab is adopted
+ */
 /* v1.6.3.6-v11 - FIX Issues #1-9: Comprehensive diagnostics fixes
  * - Issue #1: Animation timing coordinated at 0.35s
  * - Issue #2: Removed inline maxHeight conflicts
@@ -594,7 +600,34 @@ html {
 /* Issue #12: Item entrance animation */
 .tab-group-content .quick-tab-item {
   padding-left: 12px;
-  /* Issue #12: Stagger animation for items */
+  /* v1.6.3.10-v5 - FIX Bug #3: Removed automatic animation to prevent all items animating
+   * Animation now only applies to items with explicit animation classes
+   * This prevents the bug where adopting one Quick Tab caused all items to animate
+   */
+}
+
+/* v1.6.3.10-v5 - FIX Bug #3: Adoption animation - only applied to the specific adopted Quick Tab */
+.tab-group-content .quick-tab-item.adoption-animation {
+  animation: adoptionSlideIn var(--animation-duration) var(--animation-timing);
+}
+
+@keyframes adoptionSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+    background-color: rgba(76, 175, 80, 0.2); /* Green highlight */
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    background-color: transparent;
+  }
+}
+
+/* v1.6.3.10-v5 - FIX Bug #3: Initial render animation - only for newly created groups 
+ * This animation only triggers when a group is first expanded, not on every render
+ */
+.tab-group-content .quick-tab-item.initial-render {
   animation: itemFadeIn var(--animation-duration) var(--animation-timing);
 }
 

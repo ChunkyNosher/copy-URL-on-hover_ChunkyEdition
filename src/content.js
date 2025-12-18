@@ -420,6 +420,71 @@ let cachedTabId = null;
  */
 let lastKnownBackgroundStartupTime = null;
 
+// ==================== v1.6.3.10-v5 PORT RECONNECTION BACKOFF ====================
+// FIX Issue #4: Exponential backoff with jitter to prevent thundering herd
+
+/**
+ * Reconnection attempt counter for exponential backoff
+ * v1.6.3.10-v5 - FIX Issue #4: Track attempts for backoff calculation
+ */
+let reconnectionAttempts = 0;
+
+/**
+ * Initial reconnection delay (milliseconds)
+ * v1.6.3.10-v5 - FIX Issue #4: Start with 150ms (midpoint of 100-200ms range)
+ */
+const INITIAL_RECONNECT_DELAY_MS = 150;
+
+/**
+ * Maximum reconnection delay (milliseconds)
+ * v1.6.3.10-v5 - FIX Issue #4: Cap at 8 seconds
+ */
+const MAX_RECONNECT_DELAY_MS = 8000;
+
+/**
+ * Backoff multiplier per retry
+ * v1.6.3.10-v5 - FIX Issue #4: Multiply delay by 1.5x per attempt
+ */
+const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
+
+/**
+ * Jitter range (±20% randomization)
+ * v1.6.3.10-v5 - FIX Issue #4: Spread reconnections to avoid thundering herd
+ */
+const RECONNECT_JITTER_RANGE = 0.2;
+
+/**
+ * Calculate reconnection delay with exponential backoff and jitter
+ * v1.6.3.10-v5 - FIX Issue #4: Prevent thundering herd effect
+ * @returns {number} Delay in milliseconds
+ */
+function _calculateReconnectDelay() {
+  // Exponential backoff: initialDelay * multiplier^attempts
+  const baseDelay = Math.min(
+    INITIAL_RECONNECT_DELAY_MS * Math.pow(RECONNECT_BACKOFF_MULTIPLIER, reconnectionAttempts),
+    MAX_RECONNECT_DELAY_MS
+  );
+
+  // Add jitter (±20% randomization)
+  const jitterMultiplier = 1 + (Math.random() * 2 - 1) * RECONNECT_JITTER_RANGE;
+  const delayWithJitter = Math.round(baseDelay * jitterMultiplier);
+
+  return Math.max(INITIAL_RECONNECT_DELAY_MS, Math.min(delayWithJitter, MAX_RECONNECT_DELAY_MS));
+}
+
+/**
+ * Reset reconnection attempt counter after successful connection
+ * v1.6.3.10-v5 - FIX Issue #4: Reset backoff on success
+ */
+function _resetReconnectionAttempts() {
+  if (reconnectionAttempts > 0) {
+    console.log('[Content] v1.6.3.10-v5 Reconnection successful, resetting attempt count from:', reconnectionAttempts);
+    reconnectionAttempts = 0;
+  }
+}
+
+// ==================== END v1.6.3.10-v5 PORT RECONNECTION BACKOFF ====================
+
 /**
  * Log port lifecycle event
  * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
@@ -437,9 +502,12 @@ function logContentPortLifecycle(event, details = {}) {
 /**
  * Handle background restart detection and state re-sync
  * v1.6.3.10-v4 - FIX Issue #3/6: Detect when background script was restarted
+ * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Add port operation timing instrumentation
  * @param {number} newStartupTime - New background startup time
  */
 function handleBackgroundRestartDetected(newStartupTime) {
+  const operationStart = Date.now();
+
   console.warn('[Content] v1.6.3.10-v4 BACKGROUND RESTART DETECTED:', {
     previousStartupTime: lastKnownBackgroundStartupTime,
     newStartupTime,
@@ -451,15 +519,24 @@ function handleBackgroundRestartDetected(newStartupTime) {
   // Request full state sync after background restart
   if (backgroundPort) {
     try {
+      const messageStart = Date.now();
       backgroundPort.postMessage({
         type: 'REQUEST_FULL_STATE_SYNC',
         reason: 'background-restart-detected',
         tabId: cachedTabId,
         timestamp: Date.now()
       });
-      console.log('[Content] v1.6.3.10-v4 Requested state sync after background restart');
+      // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Log port messaging timing
+      console.log('[Content] v1.6.3.10-v5 State sync request sent:', {
+        messageLatencyMs: Date.now() - messageStart,
+        totalOperationMs: Date.now() - operationStart,
+        tabId: cachedTabId
+      });
     } catch (err) {
-      console.error('[Content] v1.6.3.10-v4 Failed to request state sync:', err.message);
+      console.error('[Content] v1.6.3.10-v5 Failed to request state sync:', {
+        error: err.message,
+        operationDurationMs: Date.now() - operationStart
+      });
     }
   }
 }
@@ -468,6 +545,7 @@ function handleBackgroundRestartDetected(newStartupTime) {
  * Connect to background script via persistent port
  * v1.6.3.6-v11 - FIX Issue #11: Establish persistent connection
  * v1.6.3.10-v4 - FIX Issue #3/6: Handle background handshake for restart detection
+ * v1.6.3.10-v5 - FIX Issue #4: Exponential backoff with jitter for reconnection
  * @param {number} tabId - Current tab ID
  */
 function connectContentToBackground(tabId) {
@@ -480,6 +558,9 @@ function connectContentToBackground(tabId) {
 
     logContentPortLifecycle('open', { portName: backgroundPort.name });
 
+    // v1.6.3.10-v5 - FIX Issue #4: Reset reconnection counter on successful connection
+    _resetReconnectionAttempts();
+
     // Handle messages from background
     backgroundPort.onMessage.addListener(handleContentPortMessage);
 
@@ -489,18 +570,37 @@ function connectContentToBackground(tabId) {
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
 
-      // Attempt reconnection after delay (only if tab still active)
+      // v1.6.3.10-v5 - FIX Issue #4: Exponential backoff with jitter
+      reconnectionAttempts++;
+      const reconnectDelay = _calculateReconnectDelay();
+
+      console.log('[Content] v1.6.3.10-v5 Scheduling reconnection:', {
+        attempt: reconnectionAttempts,
+        delayMs: reconnectDelay
+      });
+
+      // Attempt reconnection after calculated delay (only if tab still active)
       setTimeout(() => {
         if (!backgroundPort && document.visibilityState !== 'hidden') {
           connectContentToBackground(tabId);
         }
-      }, 2000);
+      }, reconnectDelay);
     });
 
-    console.log('[Content] v1.6.3.6-v11 Port connection established to background');
+    console.log('[Content] v1.6.3.10-v5 Port connection established to background');
   } catch (err) {
     console.error('[Content] Failed to connect to background:', err.message);
     logContentPortLifecycle('error', { error: err.message });
+
+    // v1.6.3.10-v5 - FIX Issue #4: Backoff on connection error too
+    reconnectionAttempts++;
+    const reconnectDelay = _calculateReconnectDelay();
+
+    setTimeout(() => {
+      if (!backgroundPort && document.visibilityState !== 'hidden') {
+        connectContentToBackground(tabId);
+      }
+    }, reconnectDelay);
   }
 }
 
@@ -2152,6 +2252,97 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
   sendResponse({ success: true, message: 'Handled by individual CLOSE_QUICK_TAB messages' });
 }
 
+/**
+ * Handle ADOPTION_COMPLETED broadcast from background
+ * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ *
+ * This handler updates the local Quick Tab cache when adoption occurs.
+ * Without this, content scripts have stale originTabId values which causes
+ * restore operations to target the wrong tab after adoption.
+ *
+ * @private
+ * @param {Object} message - Adoption completion message
+ * @param {string} message.adoptedQuickTabId - The Quick Tab that was adopted
+ * @param {number} message.previousOriginTabId - The old owner tab ID
+ * @param {number} message.newOriginTabId - The new owner tab ID
+ * @param {number} message.timestamp - When adoption occurred
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleAdoptionCompleted(message, sendResponse) {
+  const { adoptedQuickTabId, previousOriginTabId, newOriginTabId, timestamp } = message;
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+
+  // Log cache state BEFORE adoption update
+  const tabEntry = quickTabsManager?.tabs?.get(adoptedQuickTabId);
+  const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
+
+  console.log('[Content] ADOPTION_CACHE_UPDATE_START:', {
+    adoptedQuickTabId,
+    currentTabId,
+    previousOriginTabId,
+    newOriginTabId,
+    hasInMap: !!tabEntry,
+    hasSnapshot: !!minimizedSnapshot,
+    cacheOriginTabId: tabEntry?.originTabId ?? minimizedSnapshot?.originTabId ?? 'not-in-cache',
+    timestamp: Date.now()
+  });
+
+  let cacheUpdated = false;
+
+  // Update the Quick Tab's originTabId in local tabs map if present
+  if (tabEntry) {
+    console.log('[Content] ADOPTION_CACHE_BEFORE:', {
+      adoptedQuickTabId,
+      oldOriginTabId: tabEntry.originTabId,
+      location: 'tabs-map'
+    });
+
+    tabEntry.originTabId = newOriginTabId;
+    cacheUpdated = true;
+
+    console.log('[Content] ADOPTION_CACHE_AFTER:', {
+      adoptedQuickTabId,
+      newOriginTabId: tabEntry.originTabId,
+      location: 'tabs-map'
+    });
+  }
+
+  // Update the Quick Tab's originTabId in minimized snapshots if present
+  if (minimizedSnapshot) {
+    console.log('[Content] ADOPTION_CACHE_BEFORE:', {
+      adoptedQuickTabId,
+      oldOriginTabId: minimizedSnapshot.originTabId,
+      location: 'minimized-snapshot'
+    });
+
+    minimizedSnapshot.originTabId = newOriginTabId;
+    cacheUpdated = true;
+
+    console.log('[Content] ADOPTION_CACHE_AFTER:', {
+      adoptedQuickTabId,
+      newOriginTabId: minimizedSnapshot.originTabId,
+      location: 'minimized-snapshot'
+    });
+  }
+
+  // Log result
+  console.log('[Content] ADOPTION_CACHE_UPDATE_COMPLETE:', {
+    adoptedQuickTabId,
+    currentTabId,
+    cacheUpdated,
+    previousOriginTabId,
+    newOriginTabId,
+    timeSinceAdoption: Date.now() - timestamp
+  });
+
+  sendResponse({
+    success: true,
+    cacheUpdated,
+    currentTabId,
+    timestamp: Date.now()
+  });
+}
+
 // ==================== TEST BRIDGE HANDLER FUNCTIONS ====================
 // v1.6.3.6-v11 - FIX Bundle Size Issue #3: Conditional test infrastructure
 // Test handlers are only included in test builds (process.env.TEST_MODE === 'true')
@@ -2736,6 +2927,18 @@ const ACTION_HANDLERS = {
   },
   CLOSE_MINIMIZED_QUICK_TABS: (message, sendResponse) => {
     _handleCloseMinimizedQuickTabs(sendResponse);
+    return true;
+  },
+  // v1.6.4.13 - FIX BUG #4: Handle ADOPTION_COMPLETED to update local cache
+  // This prevents cross-tab restore from using wrong tab context after adoption
+  ADOPTION_COMPLETED: (message, sendResponse) => {
+    console.log('[Content] Received ADOPTION_COMPLETED broadcast:', {
+      adoptedQuickTabId: message.adoptedQuickTabId,
+      previousOriginTabId: message.previousOriginTabId,
+      newOriginTabId: message.newOriginTabId,
+      timestamp: message.timestamp
+    });
+    _handleAdoptionCompleted(message, sendResponse);
     return true;
   }
 };

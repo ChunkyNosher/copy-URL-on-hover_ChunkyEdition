@@ -2,6 +2,14 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.3.10-v5 - FIX Bug #3: Animation Playing for All Quick Tabs During Single Adoption
+ *   - Implemented surgical DOM update for adoption events
+ *   - Only adopted Quick Tab animates, other Quick Tabs untouched
+ *   - Added _performSurgicalAdoptionUpdate() for targeted DOM manipulation
+ *   - Added _moveQuickTabBetweenGroups() for cross-group moves without re-render
+ *   - CSS animation classes now only applied to specific elements
+ *   - Removed automatic itemFadeIn animation on all Quick Tab items
+ *
  * v1.6.3.10-v3 - Phase 2: Tabs API Integration
  *   - FIX Issue #47: ADOPTION_COMPLETED port message for immediate re-render
  *   - Background broadcasts ADOPTION_COMPLETED after storage write
@@ -64,7 +72,8 @@ import {
   groupQuickTabsByOriginTab,
   logStateTransition,
   STATE_OPEN,
-  STATE_CLOSED
+  STATE_CLOSED,
+  ANIMATION_DURATION_MS
 } from './utils/render-helpers.js';
 import {
   STORAGE_READ_DEBOUNCE_MS,
@@ -79,6 +88,7 @@ import {
   filterMinimizedFromState,
   validateRestoreTabData,
   findTabInState,
+  determineRestoreSource,
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
@@ -1288,9 +1298,11 @@ function handleStateUpdateBroadcast(message) {
 /**
  * Handle adoption completion from background
  * v1.6.3.10-v3 - FIX Issue #47: Adoption re-render fix
+ * v1.6.3.10-v5 - FIX Bug #3: Surgical DOM update to prevent all Quick Tabs animating
+ * v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
  * @param {Object} message - Adoption completion message
  */
-function handleAdoptionCompletion(message) {
+async function handleAdoptionCompletion(message) {
   const { adoptedQuickTabId, oldOriginTabId, newOriginTabId, timestamp } = message;
 
   console.log('[Manager] ADOPTION_COMPLETED received via port:', {
@@ -1312,13 +1324,518 @@ function handleAdoptionCompletion(message) {
     browserTabInfoCache.delete(newOriginTabId);
   }
 
-  // v1.6.3.10-v3 - FIX Issue #1: Immediate re-render with high priority
-  scheduleRender('adoption-completed');
+  // v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to reflect new owner
+  // This ensures restore operations route to the correct tab after adoption
+  if (adoptedQuickTabId && newOriginTabId) {
+    const previousHostInfo = quickTabHostInfo.get(adoptedQuickTabId);
+    quickTabHostInfo.set(adoptedQuickTabId, {
+      hostTabId: newOriginTabId,
+      lastUpdate: Date.now(),
+      lastOperation: 'adoption',
+      confirmed: true
+    });
+    console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
+      adoptedQuickTabId,
+      previousHostTabId: previousHostInfo?.hostTabId ?? null,
+      newHostTabId: newOriginTabId
+    });
+  }
 
-  console.log('[Manager] ADOPTION_RENDER_SCHEDULED:', {
+  // v1.6.3.10-v5 - FIX Bug #3: Attempt surgical DOM update first
+  // This prevents all Quick Tabs from animating when only one was adopted
+  const surgicalUpdateSuccess = await _performSurgicalAdoptionUpdate(
     adoptedQuickTabId,
-    trigger: 'port-ADOPTION_COMPLETED'
+    oldOriginTabId,
+    newOriginTabId
+  );
+
+  if (surgicalUpdateSuccess) {
+    console.log('[Manager] ADOPTION_SURGICAL_UPDATE_SUCCESS:', {
+      adoptedQuickTabId,
+      oldOriginTabId,
+      newOriginTabId,
+      message: 'Only adopted Quick Tab updated - no full rebuild'
+    });
+  } else {
+    // Fall back to full render if surgical update fails
+    console.log('[Manager] ADOPTION_SURGICAL_UPDATE_FAILED, falling back to full render:', {
+      adoptedQuickTabId,
+      reason: 'surgical update returned false'
+    });
+    scheduleRender('adoption-completed-fallback');
+  }
+}
+
+/**
+ * Perform surgical DOM update for adoption - only update the adopted Quick Tab
+ * v1.6.3.10-v5 - FIX Bug #3: Prevents animation on all Quick Tabs during single adoption
+ * @private
+ * @param {string} adoptedQuickTabId - ID of the adopted Quick Tab
+ * @param {number|string|null} oldOriginTabId - Previous origin tab ID (may be 'orphaned' or null)
+ * @param {number} newOriginTabId - New origin tab ID
+ * @returns {Promise<boolean>} True if surgical update succeeded, false if full render needed
+ */
+async function _performSurgicalAdoptionUpdate(adoptedQuickTabId, oldOriginTabId, newOriginTabId) {
+  const startTime = Date.now();
+
+  try {
+    // Step 1: Load fresh state from storage
+    const stateLoadResult = await _loadFreshAdoptionState(adoptedQuickTabId);
+    if (!stateLoadResult.success) {
+      return false;
+    }
+
+    const { adoptedTab } = stateLoadResult;
+
+    // Step 2: Try to move existing element between groups
+    const existingElement = _findQuickTabDOMElement(adoptedQuickTabId);
+    const moveResult = await _tryMoveExistingElement(
+      existingElement,
+      adoptedTab,
+      oldOriginTabId,
+      newOriginTabId,
+      adoptedQuickTabId,
+      startTime
+    );
+
+    if (moveResult.handled) {
+      return moveResult.success;
+    }
+
+    // Step 3: Try inserting into correct group as fallback
+    return await _tryInsertAsNewElement(
+      adoptedTab,
+      existingElement,
+      oldOriginTabId,
+      newOriginTabId,
+      adoptedQuickTabId,
+      startTime
+    );
+  } catch (err) {
+    console.error('[Manager] SURGICAL_UPDATE_ERROR:', {
+      adoptedQuickTabId,
+      error: err.message,
+      durationMs: Date.now() - startTime
+    });
+    return false;
+  }
+}
+
+/**
+ * Load fresh state from storage for adoption surgical update
+ * @private
+ * @param {string} adoptedQuickTabId - ID of the adopted Quick Tab
+ * @returns {Promise<{success: boolean, adoptedTab?: Object}>}
+ */
+async function _loadFreshAdoptionState(adoptedQuickTabId) {
+  const result = await browser.storage.local.get(STATE_KEY);
+  const state = result?.[STATE_KEY];
+
+  if (!state?.tabs) {
+    console.warn('[Manager] SURGICAL_UPDATE: No tabs in storage');
+    return { success: false };
+  }
+
+  // Update local state
+  quickTabsState = state;
+  _updateInMemoryCache(state.tabs);
+
+  // Find the adopted Quick Tab
+  const adoptedTab = state.tabs.find(t => t.id === adoptedQuickTabId);
+  if (!adoptedTab) {
+    console.warn('[Manager] SURGICAL_UPDATE: Adopted Quick Tab not found in state:', {
+      adoptedQuickTabId
+    });
+    return { success: false };
+  }
+
+  return { success: true, adoptedTab };
+}
+
+/**
+ * Try to move an existing DOM element between groups
+ * @private
+ * @returns {Promise<{handled: boolean, success: boolean}>}
+ */
+async function _tryMoveExistingElement(
+  existingElement,
+  adoptedTab,
+  oldOriginTabId,
+  newOriginTabId,
+  adoptedQuickTabId,
+  startTime
+) {
+  if (!existingElement) {
+    return { handled: false, success: false };
+  }
+
+  const moved = await _moveQuickTabBetweenGroups(
+    existingElement,
+    adoptedTab,
+    oldOriginTabId,
+    newOriginTabId
+  );
+
+  if (!moved) {
+    return { handled: false, success: false };
+  }
+
+  console.log('[Manager] SURGICAL_UPDATE_COMPLETE:', {
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    method: 'move-between-groups',
+    durationMs: Date.now() - startTime
   });
+  return { handled: true, success: true };
+}
+
+/**
+ * Try to insert as a new element in the target group
+ * @private
+ * @returns {Promise<boolean>}
+ */
+async function _tryInsertAsNewElement(
+  adoptedTab,
+  existingElement,
+  oldOriginTabId,
+  newOriginTabId,
+  adoptedQuickTabId,
+  startTime
+) {
+  const inserted = await _insertQuickTabIntoGroup(adoptedTab, newOriginTabId);
+
+  if (!inserted) {
+    console.warn('[Manager] SURGICAL_UPDATE: Could not insert into target group');
+    return false;
+  }
+
+  // Remove from old location if it exists there
+  if (existingElement) {
+    _removeQuickTabFromDOM(existingElement, oldOriginTabId);
+  }
+
+  console.log('[Manager] SURGICAL_UPDATE_COMPLETE:', {
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    method: 'insert-into-group',
+    durationMs: Date.now() - startTime
+  });
+  return true;
+}
+
+/**
+ * Find existing DOM element for a Quick Tab by ID
+ * v1.6.3.10-v5 - FIX Bug #3: Helper for surgical DOM updates
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {HTMLElement|null} The DOM element or null if not found
+ */
+function _findQuickTabDOMElement(quickTabId) {
+  return containersList.querySelector(`.quick-tab-item[data-tab-id="${quickTabId}"]`);
+}
+
+/**
+ * Move a Quick Tab DOM element between groups
+ * v1.6.3.10-v5 - FIX Bug #3: Moves element without recreating (prevents animation)
+ * @private
+ * @param {HTMLElement} element - The Quick Tab DOM element to move
+ * @param {Object} tabData - Updated Quick Tab data
+ * @param {number|string|null} oldOriginTabId - Previous group key
+ * @param {number} newOriginTabId - New group key
+ * @returns {boolean} True if move succeeded
+ */
+function _moveQuickTabBetweenGroups(element, tabData, oldOriginTabId, newOriginTabId) {
+  // Find the target group
+  const targetGroup = containersList.querySelector(
+    `.tab-group[data-origin-tab-id="${newOriginTabId}"]`
+  );
+
+  if (!targetGroup) {
+    // Target group doesn't exist - need to create it
+    console.log('[Manager] SURGICAL_UPDATE: Target group not found, will create:', {
+      newOriginTabId
+    });
+    return false;
+  }
+
+  const targetContent = targetGroup.querySelector('.tab-group-content');
+  if (!targetContent) {
+    console.warn('[Manager] SURGICAL_UPDATE: Target group has no content container');
+    return false;
+  }
+
+  // Perform the actual move
+  return _executeElementMove(element, tabData, targetContent, oldOriginTabId, newOriginTabId);
+}
+
+/**
+ * Execute the DOM move operation for a Quick Tab element
+ * v1.6.3.10-v5 - FIX Bug #3: Extracted to reduce nesting depth
+ * @private
+ * @param {HTMLElement} element - Element to move
+ * @param {Object} tabData - Tab data
+ * @param {HTMLElement} targetContent - Target content container
+ * @param {number|string|null} oldOriginTabId - Old group key
+ * @param {number} newOriginTabId - New group key
+ * @returns {boolean} True if successful
+ */
+function _executeElementMove(element, tabData, targetContent, oldOriginTabId, newOriginTabId) {
+  // Remove element from current parent (without animation)
+  const oldParent = element.parentElement;
+  element.remove();
+
+  // Update element attributes if needed (e.g., remove orphaned styling)
+  element.classList.remove('orphaned-item');
+
+  // Add adoption animation class ONLY to this element
+  element.classList.add('adoption-animation');
+
+  // Insert into target group's content at correct position
+  const isMinimized = isTabMinimizedHelper(tabData);
+  const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
+
+  if (insertionPoint) {
+    targetContent.insertBefore(element, insertionPoint);
+  } else {
+    targetContent.appendChild(element);
+  }
+
+  // Update group counts
+  _updateGroupCountAfterMove(oldOriginTabId, newOriginTabId);
+
+  // Clean up old group if it's now empty
+  _cleanupEmptySourceGroup(oldParent, oldOriginTabId);
+
+  // Remove animation class after animation completes
+  setTimeout(() => {
+    element.classList.remove('adoption-animation');
+  }, ANIMATION_DURATION_MS);
+
+  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
+    quickTabId: tabData.id,
+    fromGroup: oldOriginTabId,
+    toGroup: newOriginTabId,
+    targetGroupFound: true
+  });
+
+  return true;
+}
+
+/**
+ * Find the correct insertion point within a group's content
+ * v1.6.3.10-v5 - FIX Bug #3: Helper for surgical DOM insertion
+ * @private
+ * @param {HTMLElement} content - The group content container
+ * @param {boolean} isMinimized - Whether the Quick Tab is minimized
+ * @returns {HTMLElement|null} The element to insert before, or null to append
+ */
+function _findInsertionPoint(content, isMinimized) {
+  if (isMinimized) {
+    // Minimized tabs go at the end
+    return null;
+  }
+
+  // Active tabs go before minimized tabs
+  // Find the first minimized item or section divider
+  const minimizedItem = content.querySelector('.quick-tab-item.minimized');
+  const sectionDivider = content.querySelector('.section-divider');
+
+  return sectionDivider || minimizedItem || null;
+}
+
+/**
+ * Insert a Quick Tab into its target group
+ * v1.6.3.10-v5 - FIX Bug #3: Creates element and inserts with animation
+ * @private
+ * @param {Object} tabData - Quick Tab data
+ * @param {number} targetOriginTabId - Target group's origin tab ID
+ * @returns {boolean} True if insertion succeeded
+ */
+function _insertQuickTabIntoGroup(tabData, targetOriginTabId) {
+  const targetGroup = containersList.querySelector(
+    `.tab-group[data-origin-tab-id="${targetOriginTabId}"]`
+  );
+
+  if (!targetGroup) {
+    console.log('[Manager] SURGICAL_INSERT: Target group not found:', { targetOriginTabId });
+    return false;
+  }
+
+  const targetContent = targetGroup.querySelector('.tab-group-content');
+  if (!targetContent) {
+    return false;
+  }
+
+  // Create and insert the element
+  return _createAndInsertQuickTabElement(tabData, targetContent, targetOriginTabId);
+}
+
+/**
+ * Create and insert a Quick Tab element into target content
+ * v1.6.3.10-v5 - FIX Bug #3: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} tabData - Quick Tab data
+ * @param {HTMLElement} targetContent - Target content container
+ * @param {number} targetOriginTabId - Target group's origin tab ID
+ * @returns {boolean} True if successful
+ */
+function _createAndInsertQuickTabElement(tabData, targetContent, targetOriginTabId) {
+  // Create the Quick Tab element
+  const isMinimized = isTabMinimizedHelper(tabData);
+  const newElement = renderQuickTabItem(tabData, 'global', isMinimized);
+
+  // Add adoption animation class ONLY to this new element
+  newElement.classList.add('adoption-animation');
+
+  // Find insertion point and insert
+  const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
+  if (insertionPoint) {
+    targetContent.insertBefore(newElement, insertionPoint);
+  } else {
+    targetContent.appendChild(newElement);
+  }
+
+  // Update group count
+  _incrementGroupCount(targetOriginTabId);
+
+  // Remove animation class after animation completes
+  setTimeout(() => {
+    newElement.classList.remove('adoption-animation');
+  }, ANIMATION_DURATION_MS);
+
+  console.log('[Manager] SURGICAL_INSERT_COMPLETE:', {
+    quickTabId: tabData.id,
+    targetGroup: targetOriginTabId
+  });
+
+  return true;
+}
+
+/**
+ * Remove a Quick Tab element from DOM and clean up source group
+ * v1.6.3.10-v5 - FIX Bug #3: Helper for surgical removal
+ * @private
+ * @param {HTMLElement} element - The element to remove
+ * @param {number|string|null} sourceGroupKey - The source group's key
+ */
+function _removeQuickTabFromDOM(element, sourceGroupKey) {
+  const parent = element.parentElement;
+  element.remove();
+
+  // Update source group count
+  _decrementGroupCount(sourceGroupKey);
+
+  // Clean up empty source group
+  _cleanupEmptySourceGroup(parent, sourceGroupKey);
+}
+
+/**
+ * Update group counts after moving a Quick Tab
+ * v1.6.3.10-v5 - FIX Bug #3: Updates count badges without re-render
+ * @private
+ * @param {number|string|null} oldGroupKey - Previous group key
+ * @param {number} newGroupKey - New group key
+ */
+function _updateGroupCountAfterMove(oldGroupKey, newGroupKey) {
+  _decrementGroupCount(oldGroupKey);
+  _incrementGroupCount(newGroupKey);
+}
+
+/**
+ * Decrement a group's count badge
+ * v1.6.3.10-v5 - FIX Bug #3: Refactored with early returns for nesting depth compliance
+ * @private
+ * @param {number|string|null} groupKey - Group key
+ */
+function _decrementGroupCount(groupKey) {
+  if (groupKey === null || groupKey === undefined) return;
+
+  const group = containersList.querySelector(`.tab-group[data-origin-tab-id="${groupKey}"]`);
+  if (!group) return;
+
+  const countBadge = group.querySelector('.tab-group-count');
+  if (!countBadge) return;
+
+  const currentCount = parseInt(countBadge.textContent, 10) || 0;
+  const newCount = Math.max(0, currentCount - 1);
+  countBadge.textContent = String(newCount);
+  countBadge.dataset.count = String(newCount);
+
+  // Add visual feedback
+  countBadge.classList.add('count-decreased');
+  setTimeout(() => countBadge.classList.remove('count-decreased'), 300);
+}
+
+/**
+ * Increment a group's count badge
+ * v1.6.3.10-v5 - FIX Bug #3: Refactored with early returns for nesting depth compliance
+ * @private
+ * @param {number} groupKey - Group key
+ */
+function _incrementGroupCount(groupKey) {
+  const group = containersList.querySelector(`.tab-group[data-origin-tab-id="${groupKey}"]`);
+  if (!group) return;
+
+  const countBadge = group.querySelector('.tab-group-count');
+  if (!countBadge) return;
+
+  const currentCount = parseInt(countBadge.textContent, 10) || 0;
+  const newCount = currentCount + 1;
+  countBadge.textContent = String(newCount);
+  countBadge.dataset.count = String(newCount);
+
+  // Add visual feedback
+  countBadge.classList.add('count-increased');
+  setTimeout(() => countBadge.classList.remove('count-increased'), 300);
+}
+
+/**
+ * Clean up a source group if it's now empty after moving a Quick Tab
+ * v1.6.3.10-v5 - FIX Bug #3: Removes empty groups with animation
+ * Refactored with early returns to reduce nesting depth
+ * @private
+ * @param {HTMLElement|null} contentParent - The content container that was the parent
+ * @param {number|string|null} groupKey - The group key
+ */
+function _cleanupEmptySourceGroup(contentParent, groupKey) {
+  if (!contentParent) return;
+
+  // Check if the content has any remaining Quick Tab items
+  const remainingItems = contentParent.querySelectorAll('.quick-tab-item');
+  if (remainingItems.length > 0) return;
+
+  // Find the parent details element
+  const groupElement = contentParent.closest('.tab-group');
+  if (!groupElement) return;
+
+  // Perform the cleanup
+  _animateGroupRemovalAndCleanup(groupElement, groupKey);
+}
+
+/**
+ * Animate group removal and clean up tracking
+ * v1.6.3.10-v5 - FIX Bug #3: Extracted to reduce nesting depth
+ * @private
+ * @param {HTMLElement} groupElement - The group element to remove
+ * @param {number|string|null} groupKey - The group key
+ */
+function _animateGroupRemovalAndCleanup(groupElement, groupKey) {
+  console.log('[Manager] SURGICAL_CLEANUP: Removing empty group:', { groupKey });
+
+  // Use the existing animation for group removal
+  groupElement.classList.add('removing');
+  setTimeout(() => {
+    if (groupElement.parentNode) {
+      groupElement.remove();
+    }
+  }, ANIMATION_DURATION_MS);
+
+  // Update previousGroupCounts tracking
+  if (previousGroupCounts.has(String(groupKey))) {
+    previousGroupCounts.delete(String(groupKey));
+  }
 }
 
 /**
@@ -4695,27 +5212,46 @@ function _sendRestoreMessage(quickTabId, tabData) {
 
 /**
  * Resolve the target tab ID for restore operation
+ * v1.6.4.13 - FIX BUG #4: Prioritize originTabId from storage over quickTabHostInfo
+ *
+ * After adoption, storage contains the correct originTabId but quickTabHostInfo
+ * may still have the old host tab ID. We should prioritize storage (tabData.originTabId)
+ * as the source of truth.
+ *
  * @private
  */
 function _resolveRestoreTarget(quickTabId, tabData) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
-  return hostInfo?.hostTabId || tabData.originTabId || null;
+
+  // v1.6.4.13 - FIX BUG #4: Prioritize storage originTabId over quickTabHostInfo
+  // After adoption, storage has the correct originTabId but hostInfo may be stale
+  if (tabData.originTabId) {
+    return tabData.originTabId;
+  }
+
+  // Fall back to hostInfo if no originTabId in storage
+  return hostInfo?.hostTabId || null;
 }
 
 /**
  * Log restore target resolution details
+ * v1.6.4.13 - FIX BUG #4: Enhanced logging to show source of truth
+ * v1.6.4.13 - Use shared determineRestoreSource utility to reduce code duplication
  * @private
  */
 function _logRestoreTargetResolution(quickTabId, tabData, targetTabId) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
-  const source = hostInfo ? 'quickTabHostInfo' : tabData.originTabId ? 'originTabId' : 'broadcast';
+  // v1.6.4.13 - Use shared utility for source determination
+  const source = determineRestoreSource(tabData, hostInfo);
 
   console.log('[Manager] 🎯 RESTORE_TARGET_RESOLUTION:', {
     quickTabId,
     targetTabId,
     hostInfoTabId: hostInfo?.hostTabId,
     originTabId: tabData.originTabId,
-    source
+    source,
+    // v1.6.4.13 - Show if hostInfo was overridden by storage originTabId
+    hostInfoOverridden: hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
   });
 }
 

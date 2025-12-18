@@ -1,0 +1,8 @@
+{
+  "id": "19183af3-0743-44bc-b732-870572036c00",
+  "title": "Adoption Animation Bug #3 Fix",
+  "details": "Bug #3: Animation Playing for All Quick Tabs During Single Adoption\n\nRoot Cause: handleAdoptionCompletion() called scheduleRender() which triggers full UI rebuild. _renderUIImmediate() destroys all DOM via containersList.innerHTML = '', causing all Quick Tab items to be re-created, triggering CSS animations on all items.\n\nSolution: Implemented surgical DOM updates for adoption events:\n1. _performSurgicalAdoptionUpdate() for targeted DOM manipulation\n2. _moveQuickTabBetweenGroups() for cross-group moves without re-render\n3. Only the adopted Quick Tab gets .adoption-animation class\n4. CSS animation removed from automatic trigger on all items\n\nKey files:\n- sidebar/quick-tabs-manager.js: Added surgical update functions\n- sidebar/quick-tabs-manager.css: Added .adoption-animation class, removed auto-animation\n\nPattern: When making targeted state changes, prefer surgical DOM updates over full re-renders to prevent unintended animations and improve performance.",
+  "category": "bug_fixes",
+  "dateCreated": "2025-12-17T21:10:24.822Z",
+  "dateUpdated": "2025-12-17T21:10:24.822Z"
+}

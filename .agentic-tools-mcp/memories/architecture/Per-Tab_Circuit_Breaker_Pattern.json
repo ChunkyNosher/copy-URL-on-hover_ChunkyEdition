@@ -1,0 +1,8 @@
+{
+  "id": "ee2e7b26-25e0-4a84-9174-dc6036b6d2e4",
+  "title": "Per-Tab Circuit Breaker Pattern",
+  "details": "v1.6.3.10-v5 changed circuit breaker from global to per-Quick Tab scope. Implementation uses Map<quickTabId, { tripped, resetTime }>. When broadcasts fail for one Quick Tab, only that tab's broadcasts are blocked - other tabs unaffected. Key functions: _tryResetPerTabCircuitBreaker(), _isPerTabCircuitBreakerTripped(), _tripPerTabCircuitBreaker(). Cooldown is CIRCUIT_BREAKER_COOLDOWN_MS (1000ms).",
+  "category": "architecture",
+  "dateCreated": "2025-12-17T20:55:19.377Z",
+  "dateUpdated": "2025-12-17T20:55:19.377Z"
+}
