@@ -25,9 +25,13 @@ import { QuickTabState, getStateMachine } from './state-machine.js';
 
 /**
  * Operation lock timeout (ms)
+ * v1.6.3.10-v6 - FIX Issue A15: Increased from 500ms to 2000ms
+ *   Operations can take >500ms (especially with slow storage or network),
+ *   causing lock expiration and duplicate operations. 2000ms aligns with
+ *   STORAGE_TIMEOUT_MS for consistency.
  * @type {number}
  */
-const OPERATION_LOCK_MS = 500;
+const OPERATION_LOCK_MS = 2000;
 
 /**
  * QuickTabMediator class - Centralized operation coordinator

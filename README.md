@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,15 +9,30 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v5 Status:** Architectural Robustness & Bug Fixes ✅
+**🔧 v1.6.3.10-v6 Status:** Type Safety & Container Isolation ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v6
+
+**🔧 Type Safety & Container Isolation (December 2025) ✅**
+
+- ✅ **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
+- ✅ **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
+- ✅ **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
+- ✅ **Dual Ownership Validation** - Tab ID AND Container ID checks
+- ✅ **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
+- ✅ **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+- ✅ **Position Persistence Fix** - Skip persist if tab minimized (A3)
+- ✅ **Snapshot Timeout** - MinimizedManager 1000ms expiration (A5)
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v5
 
-**🔧 Architectural Robustness & Bug Fixes (December 2025) ✅**
+**🔧 Architectural Robustness & Bug Fixes (Previous) ✅**
 
 - ✅ **Atomic Operations** - Scripting API fallback for timeout recovery
 - ✅ **Exponential Backoff** - Port reconnection with jitter (150ms→8s, 1.5x)
@@ -30,56 +45,12 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ---
 
-## 🎉 What's New in v1.6.3.10-v4
-
-**🔧 Container Isolation & Cross-Tab Validation (Previous) ✅**
-
-- ✅ **Container Isolation** - `originContainerId` field for Firefox Containers
-- ✅ **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
-  `_validateCrossTabOwnership()` in handlers
-- ✅ **Scripting API Fallback** - `executeWithScriptingFallback()` for timeout
-  recovery
-- ✅ **Transaction Cleanup** - 30s timeout for stale transactions
-- ✅ **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
-
----
-
-## 🎉 What's New in v1.6.3.10-v3
-
-**🔧 Adoption Re-render & Tabs API Phase 2 (Previous) ✅**
-
-- ✅ **Adoption Re-render** - ADOPTION_COMPLETED message for immediate Manager
-  re-render
-- ✅ **TabLifecycleHandler** - New handler tracking browser tab lifecycle events
-- ✅ **Orphan Detection** - ORIGIN_TAB_CLOSED broadcast, isOrphaned/orphanedAt
-  fields
-- ✅ **Smart Adoption Validation** - Validates target tab exists before adoption
-
----
-
-## 🎉 What's New in v1.6.3.10-v2
-
-**🔧 Render, Circuit Breaker & Cache Fixes ✅**
-
-- ✅ **Render Debounce** - 300ms→100ms, sliding-window with 300ms max cap
-- ✅ **Circuit Breaker** - Open 10s→3s, backoff max 10s→2s, 5s sliding window
-- ✅ **Cache Handling** - lastCacheSyncFromStorage, 30s staleness alert
-- ✅ **FAILURE_REASON Enum** - TRANSIENT, ZOMBIE_PORT, BACKGROUND_DEAD
-- ✅ **Pending Action Queue** - Circuit breaker queues actions during open state
-
----
-
-## 🎉 What's New in v1.6.3.10-v1
-
-**🔧 Port Lifecycle & Reliability (Previous) ✅**
-
-- ✅ **Port State Machine** - connected/zombie/reconnecting/dead states
-- ✅ **Heartbeat Timing** - 25s→15s interval, 5s→2s timeout, adaptive ≤20s
-- ✅ **Messaging Reliability** - 2 retries + 150ms backoff
-
----
-
 ## 🎉 Previous Releases
+
+**v1.6.3.10-v4:** Container isolation, cross-tab validation, Scripting API fallback  
+**v1.6.3.10-v3:** Adoption re-render, TabLifecycleHandler, orphan detection  
+**v1.6.3.10-v2:** Render debounce, circuit breaker, cache handling  
+**v1.6.3.10-v1:** Port state machine, heartbeat timing, messaging reliability
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -266,6 +237,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v6** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

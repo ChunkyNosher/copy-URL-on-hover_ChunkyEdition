@@ -65,30 +65,27 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v4 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.10-v6 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
+**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
 
-- **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
-  `_validateCrossTabOwnership()` in handlers
-- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
-- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
-- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
+- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
+- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
+- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
+- **Dual Ownership Validation** - Tab ID AND Container ID checks
+- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
+- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
 
-**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
+**v1.6.3.10-v5 Features (Previous) - Architectural Robustness:**
 
-- `ADOPTION_COMPLETED` port message for Manager re-render
-- TabLifecycleHandler for browser tab lifecycle events
-- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
+- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
+- Transaction ID entropy, surgical DOM updates, targeted restore
 
-**v1.6.3.10-v2 & Earlier (Consolidated):**
-
-- Render debounce 100ms, circuit breaker 3s open, cache staleness 30s alert
-- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
-- Unified barrier init, Tab ID fallback, dual architecture
+**v1.6.3.10-v4 & Earlier (Consolidated):** Container isolation, cross-tab
+validation, Scripting API fallback, adoption re-render, TabLifecycleHandler,
+orphan detection, render debounce, circuit breaker, unified barrier init
 
 **Key Features:**
 

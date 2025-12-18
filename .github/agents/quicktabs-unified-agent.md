@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.10-v4), unified barrier init,
+  sync with Single Writer Authority (v1.6.3.10-v6), unified barrier init,
   single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v4 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v6 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -48,7 +48,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
+**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
+
+- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
+- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
+- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
+- **Dual Ownership Validation** - Tab ID AND Container ID checks
+- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
+- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+
+**v1.6.3.10-v5 Features (Previous) - Architectural Robustness:**
+
+- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
+- Transaction ID entropy, surgical DOM updates, targeted restore
+
+**v1.6.3.10-v4 Features (Previous) - Container Isolation & Cross-Tab Validation:**
 
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
@@ -64,7 +78,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - TabLifecycleHandler for browser tab lifecycle events
 - Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 
-**Key Modules (v1.6.3.10-v4):**
+**Key Modules (v1.6.3.10-v6):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
@@ -89,7 +103,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Type-safe tab IDs work (`normalizeOriginTabId()`)
+- [ ] Async tab ID init works (`waitForTabIdInit()`)
 - [ ] Container isolation works (`originContainerId` filtering)
+- [ ] Dual ownership validation works (tab ID AND container ID)
 - [ ] Cross-tab validation works (`_validateCrossTabOwnership()`)
 - [ ] Scripting API fallback works after 2s timeout
 - [ ] Transaction cleanup 30s timeout works
@@ -102,5 +119,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v4 container isolation,
-cross-tab validation, storage.onChanged PRIMARY.**
+**Your strength: Complete Quick Tab system with v1.6.3.10-v6 type safety,
+container isolation, storage.onChanged PRIMARY.**

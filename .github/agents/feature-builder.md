@@ -60,25 +60,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v4 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.10-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
+**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
 
-- **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
-  `_validateCrossTabOwnership()` in handlers
-- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
-- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
-- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
+- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
+- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
+- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
+- **Dual Ownership Validation** - Tab ID AND Container ID checks
+- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
+- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
 
-**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
-
-- `ADOPTION_COMPLETED` port message for Manager re-render
-- TabLifecycleHandler for browser tab lifecycle events
-- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
+**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic operations, exponential backoff,
+circuit breaker, container isolation, cross-tab validation, Scripting API fallback,
+adoption re-render, TabLifecycleHandler, orphan detection
 
 **v1.6.3.10-v2 & Earlier (Consolidated):**
 

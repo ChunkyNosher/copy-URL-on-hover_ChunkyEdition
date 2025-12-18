@@ -30,6 +30,11 @@ const DEFAULT_SIZE_HEIGHT = 300;
 // v1.6.3.5 - FIX Issue #3: Restore lock duration (matches SNAPSHOT_CLEAR_DELAY_MS)
 const RESTORE_LOCK_DURATION_MS = 500;
 
+// v1.6.3.10-v6 - FIX Issue A5: Snapshot expiration timeout
+// Pending snapshots are automatically cleared if UICoordinator doesn't call clearSnapshot()
+// within this timeout. Prevents indefinite memory leaks from failed restore operations.
+const PENDING_SNAPSHOT_EXPIRATION_MS = 1000;
+
 /**
  * Extract tab ID from Quick Tab ID pattern
  * v1.6.3.6-v8 - FIX Issue #3: Fallback extraction from ID pattern
@@ -52,6 +57,7 @@ function extractTabIdFromQuickTabId(quickTabId) {
  * v1.6.3.4-v10 - FIX Issue #1: Snapshot lifecycle - keep until UICoordinator confirms successful render
  * v1.6.3.5 - FIX Issue #3: Add restore-in-progress lock to prevent duplicates
  * v1.6.3.5-v7 - FIX Issue #1: Add storage persistence callback after snapshot operations
+ * v1.6.3.10-v6 - FIX Issue A5: Add automatic snapshot expiration (1000ms timeout)
  */
 export class MinimizedManager {
   /**
@@ -72,6 +78,8 @@ export class MinimizedManager {
     this._restoreInProgress = new Set();
     // v1.6.3.5-v7 - FIX Issue #7: Track last local update time for accurate "Last sync"
     this.lastLocalUpdateTime = Date.now();
+    // v1.6.3.10-v6 - FIX Issue A5: Track expiration timeouts for pending snapshots
+    this._snapshotExpirationTimeouts = new Map();
   }
 
   /**
@@ -300,6 +308,7 @@ export class MinimizedManager {
   /**
    * Move snapshot from minimizedTabs to pendingClear (clear-on-first-use)
    * v1.6.3.5 - Extracted to reduce restore() complexity
+   * v1.6.3.10-v6 - FIX Issue A5: Add automatic expiration timeout for pending snapshots
    * @private
    */
   _moveSnapshotToPending(id, snapshot, snapshotSource) {
@@ -311,6 +320,43 @@ export class MinimizedManager {
       '[MinimizedManager] Atomically moved snapshot to pendingClear (clear-on-first-use):',
       id
     );
+
+    // v1.6.3.10-v6 - FIX Issue A5: Set up automatic expiration timeout
+    // Clear any existing timeout for this ID
+    this._clearSnapshotExpirationTimeout(id);
+
+    // Schedule automatic cleanup if UICoordinator doesn't call clearSnapshot()
+    // Use arrow function to capture 'this' and the 'id' in closure
+    const timeoutId = setTimeout(() => {
+      // Guard: Check if instance is still valid (Maps exist)
+      if (!this._snapshotExpirationTimeouts || !this.pendingClearSnapshots) {
+        return; // Instance was likely destroyed
+      }
+      if (this.pendingClearSnapshots.has(id)) {
+        console.warn('[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):', {
+          id,
+          timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
+        });
+        this.pendingClearSnapshots.delete(id);
+        this._snapshotExpirationTimeouts.delete(id);
+      }
+    }, PENDING_SNAPSHOT_EXPIRATION_MS);
+
+    this._snapshotExpirationTimeouts.set(id, timeoutId);
+  }
+
+  /**
+   * Clear expiration timeout for a snapshot ID
+   * v1.6.3.10-v6 - FIX Issue A5: Helper for timeout cleanup
+   * @private
+   * @param {string} id - Quick Tab ID
+   */
+  _clearSnapshotExpirationTimeout(id) {
+    const existingTimeout = this._snapshotExpirationTimeouts.get(id);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      this._snapshotExpirationTimeouts.delete(id);
+    }
   }
 
   /**
@@ -460,6 +506,9 @@ export class MinimizedManager {
       minimizedTabsSize: this.minimizedTabs.size,
       pendingSize: this.pendingClearSnapshots.size
     });
+
+    // v1.6.3.10-v6 - FIX Issue A5: Clear expiration timeout when explicitly clearing
+    this._clearSnapshotExpirationTimeout(id);
 
     let cleared = false;
 
@@ -718,17 +767,25 @@ export class MinimizedManager {
    * v1.6.3.4-v10 - FIX Issue #1: Also clear pendingClearSnapshots
    * v1.6.3.5 - FIX Issue #3: Also clear restore-in-progress locks
    * v1.6.3.5-v8 - FIX Issue #9: Enhanced logging for debug visibility
+   * v1.6.3.10-v6 - FIX Issue A5: Also clear all expiration timeouts
    */
   clear() {
     const minimizedCount = this.minimizedTabs.size;
     const pendingCount = this.pendingClearSnapshots.size;
     const restoreCount = this._restoreInProgress.size;
+    const expirationTimeoutCount = this._snapshotExpirationTimeouts.size;
 
     // Log IDs being cleared for debugging
     const clearedIds = [
       ...Array.from(this.minimizedTabs.keys()),
       ...Array.from(this.pendingClearSnapshots.keys())
     ];
+
+    // v1.6.3.10-v6 - FIX Issue A5: Clear all expiration timeouts
+    for (const timeoutId of this._snapshotExpirationTimeouts.values()) {
+      clearTimeout(timeoutId);
+    }
+    this._snapshotExpirationTimeouts.clear();
 
     this.minimizedTabs.clear();
     this.pendingClearSnapshots.clear();
@@ -739,6 +796,7 @@ export class MinimizedManager {
       minimizedCleared: minimizedCount,
       pendingCleared: pendingCount,
       restoreLocksCleared: restoreCount,
+      expirationTimeoutsCleared: expirationTimeoutCount,
       clearedIds
     });
   }
@@ -746,6 +804,7 @@ export class MinimizedManager {
   /**
    * Force cleanup a specific snapshot from all Maps
    * v1.6.3.5-v8 - FIX Issue #9: Ensure atomic cleanup across all collections
+   * v1.6.3.10-v6 - FIX Issue A5: Also clear expiration timeout
    * @param {string} id - Quick Tab ID to clean up
    * @returns {boolean} True if anything was cleaned up
    */
@@ -755,6 +814,9 @@ export class MinimizedManager {
       console.warn('[MinimizedManager] forceCleanup called with invalid id:', id);
       return false;
     }
+
+    // v1.6.3.10-v6 - FIX Issue A5: Clear expiration timeout if exists
+    this._clearSnapshotExpirationTimeout(id);
 
     const wasInMinimized = this.minimizedTabs.delete(id);
     const wasInPending = this.pendingClearSnapshots.delete(id);

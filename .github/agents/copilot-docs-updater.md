@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.10-v4.
+  documentation. Current version: v1.6.3.10-v6.
 tools: ['*']
 ---
 
@@ -69,9 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.10-v4)
+## Current Extension State (v1.6.3.10-v6)
 
-### v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation
+### v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation
+
+- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
+- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
+- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
+- **Dual Ownership Validation** - Tab ID AND Container ID checks
+- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
+- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+
+### v1.6.3.10-v5 Features (Previous) - Architectural Robustness & Bug Fixes
+
+- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
+- Transaction ID entropy, surgical DOM updates, targeted restore
+
+### v1.6.3.10-v4 Features (Previous) - Container Isolation & Cross-Tab Validation
 
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
@@ -98,8 +112,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.10-v4
-- [ ] **v1.6.3.10-v4:** Container isolation, cross-tab validation documented
+- [ ] Version numbers match 1.6.3.10-v6
+- [ ] **v1.6.3.10-v6:** Type safety, container isolation documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -109,7 +123,7 @@ nothing.
 
 | Error                  | Fix                         |
 | ---------------------- | --------------------------- |
-| v1.6.3.10-v3 or earlier| Update to 1.6.3.10-v4       |
+| v1.6.3.10-v5 or earlier| Update to 1.6.3.10-v6       |
 | "Pin to Page"          | Use "Solo/Mute"             |
 | Direct storage writes  | Use Single Writer Authority |
 | BroadcastChannel refs  | REMOVE - BC DELETED in v6   |

@@ -1,0 +1,8 @@
+{
+  "id": "170084ff-4922-4e5d-b37b-93ede7f69fed",
+  "title": "Issue #13 originContainerId Fix",
+  "details": "Issue #13 Fix: originContainerId Full Implementation (v1.6.3.10-v6)\n\nThe storage-utils.js file now has complete Firefox Multi-Account Container isolation:\n\nKey Functions Added:\n1. normalizeOriginContainerId(value, context) - Validates container ID strings like \"firefox-default\", \"firefox-container-1\"\n2. _isContainerMatch(normalizedOriginContainerId, currentContainerId) - Helper for container ownership checks with legacy fallback\n3. _getOriginContainerIdSourceField(tab) - Determines source of container ID (originContainerId, cookieStoreId, or none)\n4. _extractOriginContainerId(tab) - Extracts and normalizes container ID with logging\n5. setWritingContainerId(containerId) - Explicitly set container ID from background messaging\n6. getWritingContainerId() - Get current cached container ID\n\nKey Functions Updated:\n1. canCurrentTabModifyQuickTab() - Now checks BOTH originTabId AND originContainerId\n2. _filterOwnedTabs() - Now filters by both tab ID AND container ID\n3. validateOwnershipForWrite() - Now passes container ID through the chain\n4. initWritingTabId() - Now also extracts cookieStoreId from browser.tabs.getCurrent()\n5. serializeTabForStorage() - Uses _extractOriginContainerId() helper\n\nOwnership Rules:\n- Both originTabId AND originContainerId must match for ownership\n- Legacy fallback: If originContainerId is null (pre-v4 Quick Tabs), allow based on originTabId alone\n- Module tracks currentWritingContainerId alongside currentWritingTabId",
+  "category": "project_context",
+  "dateCreated": "2025-12-18T01:39:17.182Z",
+  "dateUpdated": "2025-12-18T01:39:17.182Z"
+}
