@@ -26,6 +26,13 @@
  *   - Issue #1, #6: Add normalizeOriginTabId() with Number() casting and Number.isInteger() validation
  *   - Issue #7: Unified type normalization for all originTabId deserialization paths
  *   - Issue #8: Enhanced type visibility logging in serialization/deserialization operations
+ * v1.6.3.10-v6 - FIX Issue #13: Complete originContainerId implementation for Firefox Multi-Account Containers
+ *   - Add normalizeOriginContainerId() for container ID validation (strings like "firefox-default")
+ *   - Add _extractOriginContainerId() helper with proper validation
+ *   - Update canCurrentTabModifyQuickTab() to compare BOTH originTabId AND originContainerId
+ *   - Update _filterOwnedTabs() to filter by both tab ID AND container ID
+ *   - Track currentWritingContainerId alongside currentWritingTabId
+ *   - Legacy fallback: Allow writes if originContainerId is null (pre-v4 Quick Tabs)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -230,6 +237,10 @@ const DUPLICATE_SAVEID_THRESHOLD = 1;
 // Current tab ID for self-write detection (initialized lazily)
 let currentWritingTabId = null;
 
+// v1.6.3.10-v6 - FIX Issue #13: Current container ID for Firefox Multi-Account Container isolation
+// This tracks the cookieStoreId of the current tab (e.g., "firefox-default", "firefox-container-1")
+let currentWritingContainerId = null;
+
 // v1.6.3.10-v6 - FIX Issue #4/11: Promise for tab ID initialization
 // Resolves when setWritingTabId() is called or initWritingTabId() completes
 let tabIdInitResolver = null;
@@ -331,6 +342,7 @@ function _resolveTabIdInitPromise(tabId, source) {
  * Initialize the writing tab ID asynchronously
  * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Self-write detection
  * v1.6.3.10-v6 - FIX Issue #4/11: Resolve tab ID init promise on success
+ * v1.6.3.10-v6 - FIX Issue #13: Also extract container ID for Firefox Multi-Account Container isolation
  */
 async function initWritingTabId() {
   if (currentWritingTabId !== null) return currentWritingTabId;
@@ -341,8 +353,13 @@ async function initWritingTabId() {
     if (!tab?.id) return currentWritingTabId;
 
     currentWritingTabId = tab.id;
-    console.log('[StorageUtils] Initialized writingTabId:', {
+
+    // v1.6.3.10-v6 - FIX Issue #13: Extract container ID from cookieStoreId
+    currentWritingContainerId = tab.cookieStoreId ?? null;
+
+    console.log('[StorageUtils] Initialized writingTabId and containerId:', {
       tabId: currentWritingTabId,
+      containerId: currentWritingContainerId,
       source: 'browser.tabs.getCurrent()'
     });
 
@@ -421,6 +438,36 @@ export function setWritingTabId(tabId) {
 }
 
 /**
+ * Explicitly set the writing container ID
+ * v1.6.3.10-v6 - FIX Issue #13: Allow content scripts to set container ID for Firefox Multi-Account Containers
+ * Content scripts cannot use browser.tabs.getCurrent(), so they need to
+ * get the container ID from background script and pass it here.
+ *
+ * @param {string|null} containerId - The container ID to use (e.g., "firefox-default", "firefox-container-1")
+ */
+export function setWritingContainerId(containerId) {
+  // Use normalizeOriginContainerId for validation
+  const normalizedContainerId = normalizeOriginContainerId(containerId, 'setWritingContainerId');
+
+  const oldContainerId = currentWritingContainerId;
+  currentWritingContainerId = normalizedContainerId;
+  console.log('[StorageUtils] Writing container ID set explicitly:', {
+    oldContainerId,
+    newContainerId: normalizedContainerId,
+    source: 'setWritingContainerId() (from background messaging)'
+  });
+}
+
+/**
+ * Get the current writing container ID
+ * v1.6.3.10-v6 - FIX Issue #13: Get cached container ID for Firefox Multi-Account Container isolation
+ * @returns {string|null} Current container ID or null if not initialized
+ */
+export function getWritingContainerId() {
+  return currentWritingContainerId;
+}
+
+/**
  * Get the instance ID for self-write detection
  * @returns {string} Unique instance ID for this tab load
  */
@@ -480,6 +527,52 @@ export function normalizeOriginTabId(value, context = 'unknown') {
   }
 
   return numericValue;
+}
+
+/**
+ * Normalize originContainerId to ensure type safety
+ * v1.6.3.10-v6 - FIX Issue #13: Complete originContainerId implementation for Firefox Multi-Account Containers
+ * Validates that the value is a non-empty string (container IDs are strings like "firefox-default").
+ *
+ * Note: Firefox Multi-Account Container IDs are strings:
+ * - "firefox-default" for no container (default)
+ * - "firefox-container-1", "firefox-container-2", etc. for containers
+ * - "firefox-private" for private browsing
+ *
+ * @param {*} value - Value to normalize (may be string, null, undefined)
+ * @param {string} [context='unknown'] - Context for logging (e.g., function name)
+ * @returns {string|null} Normalized container ID string or null if invalid
+ */
+export function normalizeOriginContainerId(value, context = 'unknown') {
+  // Handle null/undefined early
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  // Container IDs must be non-empty strings
+  if (typeof value !== 'string') {
+    console.warn('[StorageUtils] normalizeOriginContainerId: Invalid type (expected string)', {
+      context,
+      originalValue: value,
+      originalType: typeof value,
+      result: null
+    });
+    return null;
+  }
+
+  // Reject empty strings
+  const trimmedValue = value.trim();
+  if (trimmedValue === '') {
+    console.warn('[StorageUtils] normalizeOriginContainerId: Empty string rejected', {
+      context,
+      originalValue: value,
+      result: null
+    });
+    return null;
+  }
+
+  // Valid container ID - return as-is (already a string)
+  return trimmedValue;
 }
 
 /**
@@ -552,21 +645,32 @@ export function isSelfWrite(newValue, currentTabId = null) {
 }
 
 /**
- * Check if this tab is the owner of a Quick Tab (has originTabId matching currentTabId)
+ * Check if this tab is the owner of a Quick Tab (has originTabId AND originContainerId matching current tab)
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Per-tab ownership enforcement
  * v1.6.3.10-v6 - FIX Diagnostic Issue #7, #8: Use normalizeOriginTabId for type safety,
  *   add detailed logging showing comparison values, types, and result
- * @param {Object} tabData - Quick Tab data with originTabId
+ * v1.6.3.10-v6 - FIX Issue #13: Also compare originContainerId for Firefox Multi-Account Container isolation
+ *   - Both originTabId AND originContainerId must match for ownership
+ *   - If originContainerId is null/undefined, that's a legacy Quick Tab - allow it (fallback behavior)
+ * @param {Object} tabData - Quick Tab data with originTabId and originContainerId
  * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
+ * @param {string|null} currentContainerId - Current tab's container ID (optional, uses cached if null)
  * @returns {boolean} True if this tab is the owner (can modify), false otherwise
  */
-export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
-  // Get current tab ID
+export function canCurrentTabModifyQuickTab(tabData, currentTabId = null, currentContainerId = null) {
+  // Get current tab ID and container ID
   const tabId = currentTabId ?? currentWritingTabId;
+  const containerId = currentContainerId ?? currentWritingContainerId;
 
   // v1.6.3.10-v6 - FIX Issue #7: Normalize originTabId for type safety
   const normalizedOriginTabId = normalizeOriginTabId(
     tabData.originTabId,
+    'canCurrentTabModifyQuickTab'
+  );
+
+  // v1.6.3.10-v6 - FIX Issue #13: Normalize originContainerId for type safety
+  const normalizedOriginContainerId = normalizeOriginContainerId(
+    tabData.originContainerId,
     'canCurrentTabModifyQuickTab'
   );
 
@@ -578,6 +682,8 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
       originTabId: tabData.originTabId,
       originTabIdType: typeof tabData.originTabId,
       normalizedOriginTabId,
+      originContainerId: tabData.originContainerId,
+      normalizedOriginContainerId,
       reason: 'originTabId is null or invalid'
     });
     return true;
@@ -589,23 +695,47 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
       quickTabId: tabData.id,
       normalizedOriginTabId,
       currentTabId: tabId,
+      normalizedOriginContainerId,
+      currentContainerId: containerId,
       reason: 'currentTabId is null'
     });
     return true;
   }
 
-  // v1.6.3.10-v6 - FIX Issue #8: Log comparison values, types, and result
-  const isOwner = normalizedOriginTabId === tabId;
+  // v1.6.3.10-v6 - FIX Issue #13: Check tab ID match first
+  const isTabIdMatch = normalizedOriginTabId === tabId;
+
+  // v1.6.3.10-v6 - FIX Issue #13: Check container ID match
+  // If originContainerId is null, this is a legacy Quick Tab created before v1.6.3.10-v4
+  // Allow these to be modified by any tab that matches the originTabId (backwards compatibility)
+  let isContainerMatch = true;
+  if (normalizedOriginContainerId !== null && containerId !== null) {
+    isContainerMatch = normalizedOriginContainerId === containerId;
+  }
+
+  // v1.6.3.10-v6 - FIX Issue #13: Both must match for ownership
+  const isOwner = isTabIdMatch && isContainerMatch;
+
+  // v1.6.3.10-v6 - FIX Issue #8: Log comparison values, types, and result including container info
   console.log('[StorageUtils] canCurrentTabModifyQuickTab: Ownership comparison', {
     quickTabId: tabData.id,
+    // Tab ID comparison
     originTabIdRaw: tabData.originTabId,
     originTabIdRawType: typeof tabData.originTabId,
     normalizedOriginTabId,
     normalizedOriginTabIdType: typeof normalizedOriginTabId,
     currentTabId: tabId,
     currentTabIdType: typeof tabId,
+    isTabIdMatch,
+    // Container ID comparison (v1.6.3.10-v6)
+    originContainerIdRaw: tabData.originContainerId,
+    normalizedOriginContainerId,
+    currentContainerId: containerId,
+    isContainerMatch,
+    isLegacyQuickTab: normalizedOriginContainerId === null,
+    // Final result
     comparisonResult: isOwner,
-    operator: '==='
+    operator: 'tabId === && containerId ==='
   });
 
   return isOwner;
@@ -615,16 +745,29 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
 export const isOwnerOfQuickTab = canCurrentTabModifyQuickTab;
 
 /**
- * Filter tabs to only those owned by the specified tab ID
+ * Filter tabs to only those owned by the specified tab ID and container ID
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
  * v1.6.3.10-v6 - FIX Diagnostic Issue #7, #8: Use normalizeOriginTabId for type safety,
  *   add per-tab logging showing originTabId value, type, currentTabId, and comparison result
+ * v1.6.3.10-v6 - FIX Issue #13: Also filter by originContainerId for Firefox Multi-Account Container isolation
+ *   - Both originTabId AND originContainerId must match for ownership
+ *   - If originContainerId is null, that's a legacy Quick Tab - allow it if originTabId matches
  * @private
+ * @param {Array} tabs - Array of Quick Tab data objects
+ * @param {number} tabId - Current tab ID to filter by
+ * @param {string|null} containerId - Current container ID to filter by (optional)
+ * @returns {Array} Filtered array of owned tabs
  */
-function _filterOwnedTabs(tabs, tabId) {
+function _filterOwnedTabs(tabs, tabId, containerId = null) {
+  // v1.6.3.10-v6 - FIX Issue #13: Get normalized container ID for comparison
+  const normalizedCurrentContainerId = normalizeOriginContainerId(containerId, '_filterOwnedTabs');
+
   return tabs.filter(tab => {
     // v1.6.3.10-v6 - FIX Issue #7: Normalize originTabId for type safety
     const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_filterOwnedTabs');
+
+    // v1.6.3.10-v6 - FIX Issue #13: Normalize originContainerId for type safety
+    const normalizedOriginContainerId = normalizeOriginContainerId(tab.originContainerId, '_filterOwnedTabs');
 
     // No originTabId means we can't determine ownership - include it
     if (normalizedOriginTabId === null) {
@@ -634,23 +777,47 @@ function _filterOwnedTabs(tabs, tabId) {
         originTabIdRaw: tab.originTabId,
         originTabIdRawType: typeof tab.originTabId,
         normalizedOriginTabId,
+        originContainerIdRaw: tab.originContainerId,
+        normalizedOriginContainerId,
         currentTabId: tabId,
+        currentContainerId: normalizedCurrentContainerId,
         included: true,
         reason: 'originTabId is null or invalid'
       });
       return true;
     }
 
-    // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging with type information
-    const isOwned = normalizedOriginTabId === tabId;
+    // v1.6.3.10-v6 - FIX Issue #13: Check tab ID match
+    const isTabIdMatch = normalizedOriginTabId === tabId;
+
+    // v1.6.3.10-v6 - FIX Issue #13: Check container ID match
+    // If originContainerId is null, this is a legacy Quick Tab - allow it if tab ID matches
+    let isContainerMatch = true;
+    if (normalizedOriginContainerId !== null && normalizedCurrentContainerId !== null) {
+      isContainerMatch = normalizedOriginContainerId === normalizedCurrentContainerId;
+    }
+
+    // v1.6.3.10-v6 - FIX Issue #13: Both must match for ownership
+    const isOwned = isTabIdMatch && isContainerMatch;
+
+    // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging with type information including container info
     console.log('[StorageUtils] _filterOwnedTabs: Tab ownership check', {
       quickTabId: tab.id,
+      // Tab ID comparison
       originTabIdRaw: tab.originTabId,
       originTabIdRawType: typeof tab.originTabId,
       normalizedOriginTabId,
       normalizedOriginTabIdType: typeof normalizedOriginTabId,
       currentTabId: tabId,
       currentTabIdType: typeof tabId,
+      isTabIdMatch,
+      // Container ID comparison (v1.6.3.10-v6)
+      originContainerIdRaw: tab.originContainerId,
+      normalizedOriginContainerId,
+      currentContainerId: normalizedCurrentContainerId,
+      isContainerMatch,
+      isLegacyQuickTab: normalizedOriginContainerId === null,
+      // Final result
       comparisonResult: isOwned,
       included: isOwned
     });
@@ -664,26 +831,51 @@ function _filterOwnedTabs(tabs, tabId) {
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced logging with filtered tab details
  * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Enhanced logging with type information for originTabId
+ * v1.6.3.10-v6 - FIX Issue #13: Include container ID information in logging
  * @private
+ * @param {Array} tabs - All tabs being filtered
+ * @param {Array} ownedTabs - Tabs that passed ownership filter
+ * @param {number} tabId - Current tab ID
+ * @param {string|null} containerId - Current container ID
  */
-function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
+function _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId = null) {
   const nonOwnedCount = tabs.length - ownedTabs.length;
-  // v1.6.3.10-v6 - Use normalized comparison for filtering
+  const normalizedCurrentContainerId = normalizeOriginContainerId(containerId, '_logOwnershipFiltering');
+
+  // v1.6.3.10-v6 - FIX Issue #13: Filter tabs considering both tab ID and container ID
   const filteredTabs = tabs.filter(t => {
     const normalizedOriginTabId = normalizeOriginTabId(t.originTabId, '_logOwnershipFiltering');
-    return normalizedOriginTabId !== null && normalizedOriginTabId !== tabId;
+    const normalizedOriginContainerId = normalizeOriginContainerId(t.originContainerId, '_logOwnershipFiltering');
+
+    // If originTabId is null, tab is included (legacy), so not filtered out
+    if (normalizedOriginTabId === null) return false;
+
+    // Check tab ID match
+    const isTabIdMatch = normalizedOriginTabId === tabId;
+
+    // Check container ID match (legacy Quick Tabs with null originContainerId always match)
+    let isContainerMatch = true;
+    if (normalizedOriginContainerId !== null && normalizedCurrentContainerId !== null) {
+      isContainerMatch = normalizedOriginContainerId === normalizedCurrentContainerId;
+    }
+
+    // Tab is filtered out if it doesn't match both
+    return !(isTabIdMatch && isContainerMatch);
   });
 
   // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Always log filtering decision for traceability
   // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Include type information
+  // v1.6.3.10-v6 - FIX Issue #13: Include container ID information
   console.log('[StorageUtils] v1.6.3.10-v6 Ownership filtering:', {
     currentTabId: tabId,
     currentTabIdType: typeof tabId,
+    currentContainerId: normalizedCurrentContainerId,
     totalTabs: tabs.length,
     ownedTabs: ownedTabs.length,
     filteredOut: nonOwnedCount,
     // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Include which tabs filtered out and originTabId values
     // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Include type information for each tab
+    // v1.6.3.10-v6 - FIX Issue #13: Include container ID information
     filteredTabDetails:
       filteredTabs.length > 0
         ? filteredTabs.map(t => ({
@@ -691,6 +883,8 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
             originTabIdRaw: t.originTabId,
             originTabIdType: typeof t.originTabId,
             originTabIdNormalized: normalizeOriginTabId(t.originTabId, '_logOwnershipFiltering'),
+            originContainerId: t.originContainerId,
+            originContainerIdNormalized: normalizeOriginContainerId(t.originContainerId, '_logOwnershipFiltering'),
             url: t.url?.substring(0, 50) + (t.url?.length > 50 ? '...' : '')
           }))
         : [],
@@ -755,12 +949,14 @@ function _handleEmptyWriteValidation(tabId, forceEmpty) {
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Only owner tabs should write state
  * v1.6.3.6-v2 - FIX Issue #3: Remove tabs.length === 0 bypass, require forceEmpty + ownership history
  * v1.6.3.6-v2 - Refactored: Extracted helpers to reduce complexity
+ * v1.6.3.10-v6 - FIX Issue #13: Add currentContainerId parameter for Firefox Multi-Account Container isolation
  * @param {Array} tabs - Array of Quick Tab data objects
  * @param {number|null} currentTabId - Current tab's ID
  * @param {boolean} forceEmpty - Whether this is an intentional empty write (e.g., Close All)
+ * @param {string|null} currentContainerId - Current tab's container ID (optional, uses cached if null)
  * @returns {{ shouldWrite: boolean, ownedTabs: Array, reason: string }}
  */
-export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty = false) {
+export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty = false, currentContainerId = null) {
   if (!ownershipValidationEnabled) {
     return { shouldWrite: true, ownedTabs: tabs, reason: 'ownership validation disabled' };
   }
@@ -770,6 +966,8 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
   }
 
   const tabId = currentTabId ?? currentWritingTabId;
+  // v1.6.3.10-v6 - FIX Issue #13: Get container ID for filtering
+  const containerId = currentContainerId ?? currentWritingContainerId;
 
   // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
   // Previously this allowed writes with unknown tab ID, which caused:
@@ -780,15 +978,16 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
     console.warn('[StorageUtils] Storage write BLOCKED - unknown tab ID (initialization race?):', {
       tabCount: tabs.length,
       forceEmpty,
+      currentContainerId: containerId,
       suggestion:
         'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
     });
     return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety' };
   }
 
-  // Filter to only tabs owned by this tab
-  const ownedTabs = _filterOwnedTabs(tabs, tabId);
-  _logOwnershipFiltering(tabs, ownedTabs, tabId);
+  // v1.6.3.10-v6 - FIX Issue #13: Filter by both tab ID and container ID
+  const ownedTabs = _filterOwnedTabs(tabs, tabId, containerId);
+  _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId);
 
   // v1.6.3.6-v2 - FIX Issue #3: Handle empty state writes properly
   if (tabs.length === 0) {
@@ -1587,6 +1786,51 @@ function _extractOriginTabId(tab) {
 }
 
 /**
+ * Extract originContainerId with proper validation
+ * v1.6.3.10-v6 - FIX Issue #13: Add _extractOriginContainerId helper for Firefox Multi-Account Container isolation
+ *   - Uses normalizeOriginContainerId() for validation (strings like "firefox-default")
+ *   - Fallback to cookieStoreId if originContainerId not present
+ *   - Adds detailed logging showing extraction source and result
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @returns {string|null} Extracted and normalized originContainerId
+ */
+function _extractOriginContainerId(tab) {
+  // Get raw value from tab (prefer originContainerId, fallback to cookieStoreId)
+  const rawOriginContainerId = tab.originContainerId ?? tab.cookieStoreId ?? null;
+  const sourceField = tab.originContainerId !== undefined && tab.originContainerId !== null
+    ? 'originContainerId'
+    : tab.cookieStoreId !== undefined && tab.cookieStoreId !== null
+      ? 'cookieStoreId'
+      : 'none';
+
+  // v1.6.3.10-v6 - FIX Issue #13: Log raw value and type before normalization
+  console.log('[StorageUtils] _extractOriginContainerId: Extraction started', {
+    quickTabId: tab.id,
+    rawOriginContainerId,
+    rawOriginContainerIdType: typeof rawOriginContainerId,
+    sourceField
+  });
+
+  // v1.6.3.10-v6 - FIX Issue #13: Use normalizeOriginContainerId for type safety
+  const normalizedOriginContainerId = normalizeOriginContainerId(rawOriginContainerId, '_extractOriginContainerId');
+
+  // v1.6.3.10-v6 - FIX Issue #13: Log the result with full type visibility
+  console.log('[StorageUtils] _extractOriginContainerId: Extraction completed', {
+    quickTabId: tab.id,
+    rawOriginContainerId,
+    rawOriginContainerIdType: typeof rawOriginContainerId,
+    normalizedOriginContainerId,
+    normalizedOriginContainerIdType: typeof normalizedOriginContainerId,
+    sourceField,
+    action: 'serialize',
+    result: normalizedOriginContainerId === null ? 'null' : 'valid'
+  });
+
+  return normalizedOriginContainerId;
+}
+
+/**
  * Log serialization result
  * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Extract to reduce serializeTabForStorage complexity
  * @private
@@ -1634,8 +1878,8 @@ function _logSerializationResult(tab, extractedOriginTabId, extractedOriginConta
 function serializeTabForStorage(tab, isMinimized) {
   const extractedOriginTabId = _extractOriginTabId(tab);
 
-  // v1.6.3.10-v4 - FIX Issue #13: Extract originContainerId for Firefox Multi-Account Container isolation
-  const extractedOriginContainerId = tab.originContainerId ?? tab.cookieStoreId ?? null;
+  // v1.6.3.10-v6 - FIX Issue #13: Use _extractOriginContainerId helper for proper validation
+  const extractedOriginContainerId = _extractOriginContainerId(tab);
 
   // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Log serialization with originTabId source and type
   _logSerializationResult(tab, extractedOriginTabId, extractedOriginContainerId);
@@ -1676,6 +1920,7 @@ function serializeTabForStorage(tab, isMinimized) {
     // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
     originTabId: extractedOriginTabId,
     // v1.6.3.10-v4 - FIX Issue #13: Track originating container ID for Firefox Multi-Account Container isolation
+    // v1.6.3.10-v6 - FIX Issue #13: Use _extractOriginContainerId for proper validation
     originContainerId: extractedOriginContainerId
   };
 }
