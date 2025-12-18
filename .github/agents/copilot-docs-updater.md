@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.10-v6.
+  documentation. Current version: v1.6.3.10-v7.
 tools: ['*']
 ---
 
@@ -69,37 +69,27 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.10-v6)
+## Current Extension State (v1.6.3.10-v7)
 
-### v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation
+### v1.6.3.10-v7 Features (NEW) - Reliability & Robustness
 
-- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
-- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
-- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
-- **Dual Ownership Validation** - Tab ID AND Container ID checks
-- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
-- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+- **Port Reconnection Circuit Breaker** - State machine, 5 failure limit, 30s max backoff
+- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
+- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
+- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
+- **quickTabHostInfo Cleanup** - 5-min maintenance, max 500 entries
+- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
+- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
 
-### v1.6.3.10-v5 Features (Previous) - Architectural Robustness & Bug Fixes
+### v1.6.3.10-v6 Features (Previous) - Type Safety & Container Isolation
 
-- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
-- Transaction ID entropy, surgical DOM updates, targeted restore
+- Type-safe tab IDs, async tab ID init, container ID normalization
+- Dual ownership validation, operation lock increase
 
-### v1.6.3.10-v4 Features (Previous) - Container Isolation & Cross-Tab Validation
+### v1.6.3.10-v5 & Earlier (Consolidated)
 
-- **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
-  `_validateCrossTabOwnership()`
-- **Scripting API Fallback** - `executeWithScriptingFallback()` for timeout
-  recovery
-- **Transaction Cleanup** - 30s timeout for stale transactions
-- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
-
-### v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API Phase 2
-
-- Adoption Re-render via `ADOPTION_COMPLETED` message
-- TabLifecycleHandler for browser tab lifecycle events
-- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
+- Atomic ops, container isolation, cross-tab validation, Scripting API fallback
+- Adoption re-render, TabLifecycleHandler, orphan detection
 
 ### Architecture
 
@@ -112,8 +102,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.10-v6
-- [ ] **v1.6.3.10-v6:** Type safety, container isolation documented
+- [ ] Version numbers match 1.6.3.10-v7
+- [ ] **v1.6.3.10-v7:** Reliability features documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -121,14 +111,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                  | Fix                         |
-| ---------------------- | --------------------------- |
-| v1.6.3.10-v5 or earlier| Update to 1.6.3.10-v6       |
-| "Pin to Page"          | Use "Solo/Mute"             |
-| Direct storage writes  | Use Single Writer Authority |
-| BroadcastChannel refs  | REMOVE - BC DELETED in v6   |
-| Port-based messaging   | REMOVE - Ports DELETED v12  |
-| CONNECTION_STATE refs  | REMOVE - Deleted in v6      |
+| Error                   | Fix                         |
+| ----------------------- | --------------------------- |
+| v1.6.3.10-v6 or earlier | Update to 1.6.3.10-v7       |
+| "Pin to Page"           | Use "Solo/Mute"             |
+| Direct storage writes   | Use Single Writer Authority |
+| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
+| Port-based messaging    | REMOVE - Ports DELETED v12  |
+| CONNECTION_STATE refs   | REMOVE - Deleted in v6      |
 
 ---
 

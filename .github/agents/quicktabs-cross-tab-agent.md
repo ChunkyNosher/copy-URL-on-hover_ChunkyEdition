@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v6), unified barrier init, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.10-v7), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,43 +38,29 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v6 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v7 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
+**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
 
-- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
-- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
-- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
-- **Dual Ownership Validation** - Tab ID AND Container ID checks
-- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
-- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+- **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit
+- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
+- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
+- **Port Message Ordering** - sequenceId tracking for critical messages
+- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
+- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
+- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
 
-**v1.6.3.10-v5 Features (Previous) - Architectural Robustness:**
+**v1.6.3.10-v6 Features (Previous):** Type-safe tab IDs, async tab ID init,
+container ID normalization, dual ownership validation
 
-- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
-- Transaction ID entropy, surgical DOM updates, targeted restore
+**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic ops, container isolation,
+cross-tab validation, Scripting API fallback, adoption re-render
 
-**v1.6.3.10-v4 Features (Previous) - Container Isolation & Cross-Tab Validation:**
-
-- **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
-  `_validateCrossTabOwnership()` in VisibilityHandler, DestroyHandler
-- **Scripting API Fallback** - `executeWithScriptingFallback()` timeout recovery
-- **Transaction Cleanup** - 30s timeout, 10s cleanup interval
-- **Background Restart Detection** - `BACKGROUND_HANDSHAKE` message
-- **Mutex Tab Context** - `${operation}-${currentTabId}-${id}` lock format
-
-**v1.6.3.10-v3 Features (Previous) - Adoption Re-render & Tabs API:**
-
-- `ADOPTION_COMPLETED` port message for Manager re-render
-- TabLifecycleHandler for browser tab lifecycle events
-- Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
-
-**Key Modules (v1.6.3.10-v6):**
+**Key Modules (v1.6.3.10-v7):**
 
 | Module                                | Purpose                           |
 | ------------------------------------- | --------------------------------- |
-| `src/constants.js`                    | Centralized constants (+v4)       |
+| `src/constants.js`                    | Centralized constants (+v7)       |
 | `src/storage/storage-manager.js`      | Simplified persistence, checksum  |
 | `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
 | `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
@@ -94,21 +80,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Type-safe tab IDs work (`normalizeOriginTabId()`)
-- [ ] Async tab ID init works (`waitForTabIdInit()`)
-- [ ] Container isolation works (`originContainerId` filtering)
-- [ ] Dual ownership validation works (tab ID AND container ID)
-- [ ] Cross-tab validation works (`_validateCrossTabOwnership()`)
-- [ ] Scripting API fallback works after 2s timeout
+- [ ] Port reconnection circuit breaker works (5 failures, 30s backoff)
+- [ ] Storage event de-duplication works (200ms window)
+- [ ] Adaptive dedup window works (2x latency, min 2s, max 10s)
+- [ ] Storage write serialization works (max 3 retries)
 - [ ] storage.onChanged PRIMARY works
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
-- [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.10-v6 type safety,
-container isolation, storage.onChanged PRIMARY.**
+**Your strength: Reliable cross-tab sync with v1.6.3.10-v7 circuit breaker,
+adaptive dedup, storage.onChanged PRIMARY.**

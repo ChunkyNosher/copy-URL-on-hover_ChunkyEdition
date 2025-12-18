@@ -37,27 +37,25 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.10-v7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
+**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
 
-- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
-- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
-- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
-- **Dual Ownership Validation** - Tab ID AND Container ID checks
-- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
-- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+- **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit
+- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
+- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
+- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
+- **quickTabHostInfo Cleanup** - 5-min maintenance, max 500 entries
+- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
+- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
 
-**v1.6.3.10-v5 Features (Previous) - Architectural Robustness:**
+**v1.6.3.10-v6 Features (Previous):** Type-safe tab IDs, async tab ID init,
+container ID normalization, dual ownership validation, operation lock increase
 
-- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
-- Transaction ID entropy, surgical DOM updates, targeted restore
-
-**v1.6.3.10-v4 & Earlier (Consolidated):** Container isolation, cross-tab
-validation, Scripting API fallback, adoption re-render, TabLifecycleHandler,
-orphan detection, render debounce, circuit breaker, unified barrier init
+**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic ops, container isolation,
+cross-tab validation, Scripting API fallback, adoption re-render, orphan detection
 
 **Key Features:**
 
