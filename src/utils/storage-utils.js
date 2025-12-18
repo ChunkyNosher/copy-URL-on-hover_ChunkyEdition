@@ -19,6 +19,10 @@
  *   - Issue #1: Async Tab ID Race - Block writes with unknown tab ID instead of allowing
  *   - Issue #2: Circuit breaker to block all writes when pendingWriteCount > 15
  *   - Issue #4: Empty state corruption fixed by Issue #1's fail-closed approach
+ * v1.6.3.10-v6 - FIX Diagnostic Type Safety Issues #1, #6, #7, #8:
+ *   - Issue #1, #6: Add normalizeOriginTabId() with Number() casting and Number.isInteger() validation
+ *   - Issue #7: Unified type normalization for all originTabId deserialization paths
+ *   - Issue #8: Enhanced type visibility logging in serialization/deserialization operations
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -312,6 +316,60 @@ export function getWritingInstanceId() {
 }
 
 /**
+ * Normalize originTabId to ensure type safety
+ * v1.6.3.10-v6 - FIX Diagnostic Issues #1, #6, #7: Unified type normalization
+ * Converts string representations of numbers back to numeric type and validates
+ * that the result is a valid positive integer (browser tab IDs are always positive >= 1).
+ *
+ * Note: Browser tab IDs in Firefox/Chrome are always positive integers starting from 1.
+ * The value 0 is never a valid tab ID - background pages and extension pages return
+ * undefined/null when querying for tab ID, not 0.
+ *
+ * @param {*} value - Value to normalize (may be number, string, null, undefined)
+ * @param {string} [context='unknown'] - Context for logging (e.g., function name)
+ * @returns {number|null} Normalized numeric tab ID or null if invalid
+ */
+export function normalizeOriginTabId(value, context = 'unknown') {
+  // Handle null/undefined early
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const originalType = typeof value;
+  const originalValue = value;
+
+  // Attempt numeric conversion
+  const numericValue = Number(value);
+
+  // Validate the result is a valid positive integer (tab IDs are always >= 1)
+  if (!Number.isInteger(numericValue) || numericValue <= 0) {
+    console.warn('[StorageUtils] normalizeOriginTabId: Invalid value after conversion', {
+      context,
+      originalValue,
+      originalType,
+      convertedValue: numericValue,
+      isInteger: Number.isInteger(numericValue),
+      isPositive: numericValue > 0,
+      result: null
+    });
+    return null;
+  }
+
+  // Log type conversion if one occurred (string → number) - use console.log for routine conversions
+  if (originalType === 'string') {
+    console.log('[StorageUtils] normalizeOriginTabId: Type conversion occurred (string→number)', {
+      context,
+      originalValue,
+      originalType,
+      normalizedValue: numericValue,
+      normalizedType: typeof numericValue
+    });
+  }
+
+  return numericValue;
+}
+
+/**
  * Check if the transaction ID matches our last written transaction
  * v1.6.3.6-v2 - Extracted from isSelfWrite to reduce complexity
  * @private
@@ -383,6 +441,8 @@ export function isSelfWrite(newValue, currentTabId = null) {
 /**
  * Check if this tab is the owner of a Quick Tab (has originTabId matching currentTabId)
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Per-tab ownership enforcement
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #7, #8: Use normalizeOriginTabId for type safety,
+ *   add detailed logging showing comparison values, types, and result
  * @param {Object} tabData - Quick Tab data with originTabId
  * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
  * @returns {boolean} True if this tab is the owner (can modify), false otherwise
@@ -391,17 +451,51 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null) {
   // Get current tab ID
   const tabId = currentTabId ?? currentWritingTabId;
 
+  // v1.6.3.10-v6 - FIX Issue #7: Normalize originTabId for type safety
+  const normalizedOriginTabId = normalizeOriginTabId(
+    tabData.originTabId,
+    'canCurrentTabModifyQuickTab'
+  );
+
   // If we don't have originTabId, we can't determine ownership - allow write
-  if (tabData.originTabId === null || tabData.originTabId === undefined) {
+  if (normalizedOriginTabId === null) {
+    // v1.6.3.10-v6 - FIX Issue #8: Log when ownership check is bypassed due to null originTabId
+    console.log('[StorageUtils] canCurrentTabModifyQuickTab: Ownership check bypassed', {
+      quickTabId: tabData.id,
+      originTabId: tabData.originTabId,
+      originTabIdType: typeof tabData.originTabId,
+      normalizedOriginTabId,
+      reason: 'originTabId is null or invalid'
+    });
     return true;
   }
 
   // If we don't know our tab ID, allow write (can't validate)
   if (tabId === null) {
+    console.log('[StorageUtils] canCurrentTabModifyQuickTab: Ownership check bypassed', {
+      quickTabId: tabData.id,
+      normalizedOriginTabId,
+      currentTabId: tabId,
+      reason: 'currentTabId is null'
+    });
     return true;
   }
 
-  return tabData.originTabId === tabId;
+  // v1.6.3.10-v6 - FIX Issue #8: Log comparison values, types, and result
+  const isOwner = normalizedOriginTabId === tabId;
+  console.log('[StorageUtils] canCurrentTabModifyQuickTab: Ownership comparison', {
+    quickTabId: tabData.id,
+    originTabIdRaw: tabData.originTabId,
+    originTabIdRawType: typeof tabData.originTabId,
+    normalizedOriginTabId,
+    normalizedOriginTabIdType: typeof normalizedOriginTabId,
+    currentTabId: tabId,
+    currentTabIdType: typeof tabId,
+    comparisonResult: isOwner,
+    operator: '==='
+  });
+
+  return isOwner;
 }
 
 // Legacy alias for backwards compatibility
@@ -410,15 +504,45 @@ export const isOwnerOfQuickTab = canCurrentTabModifyQuickTab;
 /**
  * Filter tabs to only those owned by the specified tab ID
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #7, #8: Use normalizeOriginTabId for type safety,
+ *   add per-tab logging showing originTabId value, type, currentTabId, and comparison result
  * @private
  */
 function _filterOwnedTabs(tabs, tabId) {
   return tabs.filter(tab => {
+    // v1.6.3.10-v6 - FIX Issue #7: Normalize originTabId for type safety
+    const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_filterOwnedTabs');
+
     // No originTabId means we can't determine ownership - include it
-    if (tab.originTabId === null || tab.originTabId === undefined) {
+    if (normalizedOriginTabId === null) {
+      // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging for null originTabId
+      console.log('[StorageUtils] _filterOwnedTabs: Tab included (no ownership)', {
+        quickTabId: tab.id,
+        originTabIdRaw: tab.originTabId,
+        originTabIdRawType: typeof tab.originTabId,
+        normalizedOriginTabId,
+        currentTabId: tabId,
+        included: true,
+        reason: 'originTabId is null or invalid'
+      });
       return true;
     }
-    return tab.originTabId === tabId;
+
+    // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging with type information
+    const isOwned = normalizedOriginTabId === tabId;
+    console.log('[StorageUtils] _filterOwnedTabs: Tab ownership check', {
+      quickTabId: tab.id,
+      originTabIdRaw: tab.originTabId,
+      originTabIdRawType: typeof tab.originTabId,
+      normalizedOriginTabId,
+      normalizedOriginTabIdType: typeof normalizedOriginTabId,
+      currentTabId: tabId,
+      currentTabIdType: typeof tabId,
+      comparisonResult: isOwned,
+      included: isOwned
+    });
+
+    return isOwned;
   });
 }
 
@@ -426,26 +550,34 @@ function _filterOwnedTabs(tabs, tabId) {
  * Log ownership filtering decision
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced logging with filtered tab details
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Enhanced logging with type information for originTabId
  * @private
  */
 function _logOwnershipFiltering(tabs, ownedTabs, tabId) {
   const nonOwnedCount = tabs.length - ownedTabs.length;
-  const filteredTabs = tabs.filter(
-    t => t.originTabId !== tabId && t.originTabId !== null && t.originTabId !== undefined
-  );
+  // v1.6.3.10-v6 - Use normalized comparison for filtering
+  const filteredTabs = tabs.filter(t => {
+    const normalizedOriginTabId = normalizeOriginTabId(t.originTabId, '_logOwnershipFiltering');
+    return normalizedOriginTabId !== null && normalizedOriginTabId !== tabId;
+  });
 
   // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Always log filtering decision for traceability
-  console.log('[StorageUtils] v1.6.3.10-v5 Ownership filtering:', {
+  // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Include type information
+  console.log('[StorageUtils] v1.6.3.10-v6 Ownership filtering:', {
     currentTabId: tabId,
+    currentTabIdType: typeof tabId,
     totalTabs: tabs.length,
     ownedTabs: ownedTabs.length,
     filteredOut: nonOwnedCount,
     // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Include which tabs filtered out and originTabId values
+    // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Include type information for each tab
     filteredTabDetails:
       filteredTabs.length > 0
         ? filteredTabs.map(t => ({
             quickTabId: t.id,
-            originTabId: t.originTabId,
+            originTabIdRaw: t.originTabId,
+            originTabIdType: typeof t.originTabId,
+            originTabIdNormalized: normalizeOriginTabId(t.originTabId, '_logOwnershipFiltering'),
             url: t.url?.substring(0, 50) + (t.url?.length > 50 ? '...' : '')
           }))
         : [],
@@ -1239,28 +1371,133 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  * @returns {Object} Serialized tab data for storage
  */
 /**
- * Extract originTabId with fallback
- * v1.6.3.10-v4 - FIX: Extract to reduce serializeTabForStorage complexity
+ * Determine the source field for originTabId
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Extract to reduce _extractOriginTabId complexity
  * @private
  * @param {Object} tab - Quick Tab instance
- * @returns {number|null} Extracted originTabId
+ * @returns {string} Source field name ('originTabId', 'activeTabId', or 'none')
+ */
+function _getOriginTabIdSourceField(tab) {
+  if (tab.originTabId !== undefined && tab.originTabId !== null) {
+    return 'originTabId';
+  }
+  if (tab.activeTabId !== undefined && tab.activeTabId !== null) {
+    return 'activeTabId';
+  }
+  return 'none';
+}
+
+/**
+ * Log extraction result for originTabId
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Extract to reduce _extractOriginTabId complexity
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @param {*} rawOriginTabId - Raw value before normalization
+ * @param {number|null} normalizedOriginTabId - Normalized value
+ */
+function _logOriginTabIdExtractionResult(tab, rawOriginTabId, normalizedOriginTabId) {
+  const typeConversionOccurred =
+    typeof rawOriginTabId !== typeof normalizedOriginTabId && normalizedOriginTabId !== null;
+
+  console.log('[StorageUtils] _extractOriginTabId: Extraction completed', {
+    quickTabId: tab.id,
+    rawOriginTabId,
+    rawOriginTabIdType: typeof rawOriginTabId,
+    normalizedOriginTabId,
+    normalizedOriginTabIdType: typeof normalizedOriginTabId,
+    typeConversionOccurred,
+    action: 'serialize',
+    result: normalizedOriginTabId === null ? 'null' : 'valid'
+  });
+}
+
+/**
+ * Log warning when originTabId is null
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Extract to reduce _extractOriginTabId complexity
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @param {*} rawOriginTabId - Raw value before normalization
+ */
+function _logNullOriginTabIdWarning(tab, rawOriginTabId) {
+  const hasOriginTabId = tab.originTabId !== undefined && tab.originTabId !== null;
+  const hasActiveTabId = tab.activeTabId !== undefined && tab.activeTabId !== null;
+
+  console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
+    quickTabId: tab.id,
+    rawOriginTabId,
+    rawOriginTabIdType: typeof rawOriginTabId,
+    normalizedOriginTabId: null,
+    hasOriginTabId,
+    hasActiveTabId,
+    action: 'serialize',
+    result: 'null'
+  });
+}
+
+/**
+ * Extract originTabId with fallback and type normalization
+ * v1.6.3.10-v4 - FIX: Extract to reduce serializeTabForStorage complexity
+ * v1.6.3.10-v6 - FIX Diagnostic Issues #1, #6, #8:
+ *   - Use normalizeOriginTabId() for explicit numeric type casting
+ *   - Validate with Number.isInteger() check
+ *   - Add detailed type visibility logging showing value and typeof
+ *   - Extract helpers to reduce cyclomatic complexity
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @returns {number|null} Extracted and normalized originTabId
  */
 function _extractOriginTabId(tab) {
-  const extractedOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
+  // Get raw value from tab (prefer originTabId, fallback to activeTabId)
+  const rawOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
+  const sourceField = _getOriginTabIdSourceField(tab);
 
-  // Log when originTabId is problematic (null)
-  if (extractedOriginTabId === null) {
-    console.warn('[StorageUtils] ADOPTION_FLOW: serializeTabForStorage - originTabId is NULL', {
-      quickTabId: tab.id,
-      originTabId: extractedOriginTabId,
-      hasOriginTabId: tab.originTabId !== undefined && tab.originTabId !== null,
-      hasActiveTabId: tab.activeTabId !== undefined && tab.activeTabId !== null,
-      action: 'serialize',
-      result: 'null'
-    });
+  // v1.6.3.10-v6 - FIX Issue #8: Log raw value and type before normalization
+  console.log('[StorageUtils] _extractOriginTabId: Extraction started', {
+    quickTabId: tab.id,
+    rawOriginTabId,
+    rawOriginTabIdType: typeof rawOriginTabId,
+    sourceField
+  });
+
+  // v1.6.3.10-v6 - FIX Issues #1, #6: Use normalizeOriginTabId for type safety
+  const normalizedOriginTabId = normalizeOriginTabId(rawOriginTabId, '_extractOriginTabId');
+
+  // v1.6.3.10-v6 - FIX Issue #8: Log the result with full type visibility
+  _logOriginTabIdExtractionResult(tab, rawOriginTabId, normalizedOriginTabId);
+
+  // Log when originTabId is problematic (null) - enhanced from v1.6.3.10-v4
+  if (normalizedOriginTabId === null) {
+    _logNullOriginTabIdWarning(tab, rawOriginTabId);
   }
 
-  return extractedOriginTabId;
+  return normalizedOriginTabId;
+}
+
+/**
+ * Log serialization result
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Extract to reduce serializeTabForStorage complexity
+ * @private
+ * @param {Object} tab - Quick Tab instance
+ * @param {number|null} extractedOriginTabId - Extracted and normalized originTabId
+ * @param {string|null} extractedOriginContainerId - Extracted container ID
+ */
+function _logSerializationResult(tab, extractedOriginTabId, extractedOriginContainerId) {
+  const sourceField = _getOriginTabIdSourceField(tab);
+  const rawOriginTabId = tab.originTabId ?? tab.activeTabId ?? null;
+
+  console.log('[StorageUtils] serializeTabForStorage: Serialization completed', {
+    quickTabId: tab.id,
+    originTabIdSource: sourceField === 'originTabId'
+      ? 'tab.originTabId'
+      : sourceField === 'activeTabId'
+        ? 'tab.activeTabId'
+        : 'null',
+    originTabIdRaw: rawOriginTabId,
+    originTabIdRawType: typeof rawOriginTabId,
+    extractedOriginTabId,
+    extractedOriginTabIdType: typeof extractedOriginTabId,
+    originContainerId: extractedOriginContainerId
+  });
 }
 
 /**
@@ -1273,6 +1510,8 @@ function _extractOriginTabId(tab) {
  *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
  *   - Issue #7: Log originTabId extraction for debugging adoption data flow
  * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
+ * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Add logging showing originTabId source and type
+ *   - Extract _logSerializationResult to reduce cyclomatic complexity
  * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
  * @private
  * @param {Object} tab - Quick Tab instance
@@ -1284,6 +1523,9 @@ function serializeTabForStorage(tab, isMinimized) {
 
   // v1.6.3.10-v4 - FIX Issue #13: Extract originContainerId for Firefox Multi-Account Container isolation
   const extractedOriginContainerId = tab.originContainerId ?? tab.cookieStoreId ?? null;
+
+  // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Log serialization with originTabId source and type
+  _logSerializationResult(tab, extractedOriginTabId, extractedOriginContainerId);
 
   return {
     id: String(tab.id),
