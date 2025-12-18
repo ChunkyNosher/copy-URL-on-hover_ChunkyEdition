@@ -1,0 +1,8 @@
+{
+  "id": "ab462e90-f109-46a2-8801-e5907bc48c63",
+  "title": "originTabId type safety pattern",
+  "details": "Browser tab IDs in Firefox/Chrome are always positive integers (>= 1). When comparing originTabId values from storage, always normalize them using normalizeOriginTabId() which uses Number() casting and Number.isInteger() validation. String \"1\" === 1 evaluates to false in strict equality, causing silent ownership validation failures. The normalizeOriginTabId() function in src/utils/storage-utils.js converts string representations back to numbers and logs type conversions for debugging.",
+  "category": "general",
+  "dateCreated": "2025-12-18T01:17:08.693Z",
+  "dateUpdated": "2025-12-18T01:17:08.693Z"
+}
