@@ -127,9 +127,20 @@ const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 // FIX Issue #3: Multi-method deduplication
 const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
 
-// FIX Issue #6: Deletion acknowledgment tracking
-const DELETION_ACK_TIMEOUT_MS = 1000; // 1 second timeout for deletion acknowledgments
+// v1.6.3.10-v7 - FIX Diagnostic Issue #9: Increased deletion acknowledgment timeout
+// Previous value (1000ms) was too aggressive for slow networks or heavy tab loads
+const DELETION_ACK_TIMEOUT_MS = 3000; // 3 second timeout for deletion acknowledgments
 const pendingDeletionAcks = new Map(); // correlationId -> { pendingTabs: Set, completedTabs: Set, startTime, resolve, reject }
+
+// v1.6.3.10-v7 - FIX Diagnostic Issue #6: Storage write retry queue constants
+const STORAGE_WRITE_MAX_RETRIES = 3; // Maximum retry attempts for failed writes
+const _STORAGE_WRITE_RETRY_DELAY_MS = 500; // Base delay between retries (reserved for future use)
+const _storageWriteRetryQueue = []; // Queue of { state, retryCount, lastError } (reserved for future use)
+
+// v1.6.3.10-v7 - FIX Diagnostic Issue #8: Enhanced storage.onChanged deduplication
+const STORAGE_DEDUP_WINDOW_MS = 200; // 200ms window for event deduplication
+let lastStorageEventHash = null; // Hash of last processed storage event
+let lastStorageEventTimestamp = 0; // Timestamp of last processed storage event
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #1: Background alive keepalive using runtime.sendMessage to reset Firefox idle timer
@@ -2356,6 +2367,7 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced self-write detection logging
+ * v1.6.3.10-v7 - FIX Diagnostic Issue #8: Enhanced deduplication with 200ms window and content hash
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
@@ -2373,6 +2385,25 @@ function _multiMethodDeduplication(newValue, oldValue) {
       timestamp: Date.now()
     });
   };
+
+  // v1.6.3.10-v7 - FIX Diagnostic Issue #8: Enhanced dedup with timestamp window
+  // Check if this event was already processed within the dedup window
+  const eventHash = _computeEventDeduplicationHash(newValue);
+  const now = Date.now();
+
+  if (lastStorageEventHash === eventHash && 
+      (now - lastStorageEventTimestamp) < STORAGE_DEDUP_WINDOW_MS) {
+    logDetectionMatch('timestamp-window', 'Duplicate event within 200ms window');
+    return {
+      shouldSkip: true,
+      method: 'timestamp-window',
+      reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window`
+    };
+  }
+
+  // Update last event tracking
+  lastStorageEventHash = eventHash;
+  lastStorageEventTimestamp = now;
 
   // Method 1: transactionId (highest priority - deterministic)
   // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
@@ -2498,6 +2529,19 @@ function _checkAndLogCooldown(now) {
   }
   lastStorageChangeProcessed = now;
   return isWithinCooldown;
+}
+
+/**
+ * Compute hash for event deduplication
+ * v1.6.3.10-v7 - FIX Diagnostic Issue #8: Hash based on saveId + correlationId + timestamp
+ * @private
+ * @param {Object} value - Storage value
+ * @returns {string} Deduplication hash
+ */
+function _computeEventDeduplicationHash(value) {
+  if (!value) return '';
+  // Combine saveId, correlationId, and timestamp for unique identification
+  return `${value.saveId || ''}|${value.correlationId || ''}|${value.timestamp || 0}`;
 }
 
 /**
@@ -3913,14 +3957,9 @@ async function writeStateWithVerification() {
 // FIX Issue F: Storage write verification with retry
 
 /**
- * Maximum retries for storage write verification
- * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
- */
-const STORAGE_WRITE_MAX_RETRIES = 3;
-
-/**
  * Initial backoff for storage write retry
  * v1.6.4.0 - FIX Issue F: Exponential backoff
+ * v1.6.3.10-v7 - Note: STORAGE_WRITE_MAX_RETRIES is defined earlier at line 136
  */
 const STORAGE_WRITE_BACKOFF_INITIAL_MS = 100;
 

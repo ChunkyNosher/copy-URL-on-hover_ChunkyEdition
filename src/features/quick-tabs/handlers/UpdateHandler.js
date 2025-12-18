@@ -350,6 +350,42 @@ export class UpdateHandler {
   }
 
   /**
+   * Count non-minimized tabs
+   * v1.6.3.10-v7 - FIX CodeScene: Extracted to reduce _doPersist complexity
+   * @private
+   * @returns {number} Count of non-minimized tabs
+   */
+  _countNonMinimizedTabs() {
+    let count = 0;
+    for (const [id] of this.quickTabsMap) {
+      if (!this._isTabMinimized(id)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Check if persist should be skipped due to all tabs being minimized
+   * v1.6.3.10-v7 - FIX CodeScene: Extracted to reduce _doPersist complexity
+   * @private
+   * @returns {boolean} True if persist should be skipped
+   */
+  _shouldSkipMinimizedPersist() {
+    if (this.quickTabsMap.size === 0) return false;
+    const nonMinimizedCount = this._countNonMinimizedTabs();
+    if (nonMinimizedCount === 0) {
+      console.log('[UpdateHandler] STORAGE_PERSIST_SKIPPED:', {
+        reason: 'all-tabs-minimized',
+        totalTabs: this.quickTabsMap.size,
+        nonMinimizedCount
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Actually perform the storage write (called after debounce)
    * v1.6.3.4 - FIX Issue #2: Only writes if state actually changed
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
@@ -358,36 +394,31 @@ export class UpdateHandler {
    * v1.6.3.10-v6 - FIX Issue A3: Skip persist if all updated tabs are now minimized
    *   This prevents race condition where position data persists during 300ms debounce
    *   window after tab is minimized
+   * v1.6.3.10-v7 - FIX Diagnostic Issue #7: Enhanced logging showing storage write initiated/blocked
+   * v1.6.3.10-v7 - FIX CodeScene: Extracted helpers to reduce complexity
    * @private
    * @returns {Promise<void>}
    */
   async _doPersist() {
     // v1.6.3.6-v4 - FIX Issue #1: Log entry
-    console.log('[UpdateHandler] _doPersist ENTRY:', {
+    console.log('[UpdateHandler] STORAGE_PERSIST_INITIATED:', {
       mapSize: this.quickTabsMap?.size ?? 0,
       hasMinimizedManager: !!this.minimizedManager,
+      caller: 'UpdateHandler._doPersist',
       timestamp: Date.now()
     });
 
     // v1.6.3.10-v6 - FIX Issue A3: Check if any non-minimized tabs exist
-    // If all tabs are minimized, skip the persist since it would be stale
-    let nonMinimizedCount = 0;
-    for (const [id] of this.quickTabsMap) {
-      if (!this._isTabMinimized(id)) {
-        nonMinimizedCount++;
-      }
-    }
-
-    if (nonMinimizedCount === 0 && this.quickTabsMap.size > 0) {
-      console.log('[UpdateHandler] _doPersist SKIPPED: All tabs are minimized, position/size changes are stale');
-      return;
-    }
+    if (this._shouldSkipMinimizedPersist()) return;
 
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
 
     // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
     if (!state) {
-      console.error('[UpdateHandler] Failed to build state for storage');
+      console.error('[UpdateHandler] STORAGE_PERSIST_BLOCKED:', {
+        reason: 'build-state-failed',
+        mapSize: this.quickTabsMap?.size ?? 0
+      });
       return;
     }
 
@@ -396,15 +427,17 @@ export class UpdateHandler {
     const hashChanged = this._hasHashChanged(this._lastStateHash, newHash);
 
     if (!hashChanged) {
-      console.log('[UpdateHandler] State unchanged (hash match), skipping storage write:', {
+      console.log('[UpdateHandler] STORAGE_PERSIST_SKIPPED:', {
+        reason: 'hash-match',
         hashLo: newHash.lo,
-        hashHi: newHash.hi
+        hashHi: newHash.hi,
+        tabCount: state.tabs?.length
       });
       return;
     }
 
-    // v1.6.3.4-v10 - FIX Issue #8: Log hash change for debugging
-    console.log('[UpdateHandler] State changed (hash mismatch), proceeding with storage write:', {
+    console.log('[UpdateHandler] STORAGE_PERSIST_PROCEEDING:', {
+      reason: 'hash-mismatch',
       oldHashLo: this._lastStateHash?.lo,
       oldHashHi: this._lastStateHash?.hi,
       newHashLo: newHash.lo,
@@ -418,12 +451,15 @@ export class UpdateHandler {
 
     // v1.6.3.6-v4 - FIX Issue #1: Log result
     if (success) {
-      console.log('[UpdateHandler] _doPersist SUCCESS:', {
+      console.log('[UpdateHandler] STORAGE_PERSIST_SUCCESS:', {
         tabCount: state.tabs?.length,
         timestamp: Date.now()
       });
     } else {
-      console.error('[UpdateHandler] Storage persist failed or timed out');
+      console.error('[UpdateHandler] STORAGE_PERSIST_FAILED:', {
+        tabCount: state.tabs?.length,
+        timestamp: Date.now()
+      });
     }
   }
 

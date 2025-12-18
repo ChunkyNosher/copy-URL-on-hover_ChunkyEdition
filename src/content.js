@@ -1834,6 +1834,7 @@ async function handleCopyText(element) {
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
  * v1.6.3 - Refactored to use options object pattern (4 args max)
+ * v1.6.3.10-v7 - FIX Diagnostic Issues #3, #11: Include originTabId in Quick Tab data
  *
  * @param {Object} options - Quick Tab configuration
  * @param {string} options.url - URL to load in Quick Tab
@@ -1848,6 +1849,27 @@ function buildQuickTabData(options) {
     throw new Error('buildQuickTabData: options object is required');
   }
   const { url, id, position = {}, size = {}, title } = options;
+
+  // v1.6.3.10-v7 - FIX Diagnostic Issues #3, #11: Include originTabId
+  // cachedTabId is set during background port connection and contains the current tab ID
+  const originTabId = cachedTabId ?? null;
+
+  // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
+  if (originTabId === null) {
+    console.warn('[Content] QUICK_TAB_CREATE_WARNING: originTabId is null, tab ID not yet initialized', {
+      url,
+      id,
+      cachedTabId,
+      suggestion: 'Ensure connectContentToBackground() completes before creating Quick Tabs'
+    });
+  } else {
+    console.log('[Content] QUICK_TAB_CREATE: Including originTabId in creation payload', {
+      url,
+      id,
+      originTabId
+    });
+  }
+
   return {
     id,
     url,
@@ -1858,7 +1880,9 @@ function buildQuickTabData(options) {
     title,
     cookieStoreId: 'firefox-default',
     minimized: false,
-    pinnedToUrl: null
+    pinnedToUrl: null,
+    // v1.6.3.10-v7 - FIX Issues #3, #11: Pass originTabId to background
+    originTabId
   };
 }
 
