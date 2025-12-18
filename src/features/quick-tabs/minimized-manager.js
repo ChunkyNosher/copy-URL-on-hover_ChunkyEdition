@@ -927,6 +927,19 @@ export class MinimizedManager {
   }
 
   /**
+   * Find snapshot in either minimizedTabs or pendingClearSnapshots
+   * v1.6.4.15 - FIX Code Review: Extracted to reduce duplication
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {Object|null} Snapshot object or null
+   */
+  _findSnapshotInAllMaps(quickTabId) {
+    return this.minimizedTabs.get(quickTabId) || 
+           this.pendingClearSnapshots.get(quickTabId) || 
+           null;
+  }
+
+  /**
    * Update snapshot's originTabId after adoption
    * v1.6.4.15 - FIX Issue #22: Update snapshot keying after adoption
    * 
@@ -940,14 +953,10 @@ export class MinimizedManager {
    * @returns {boolean} True if snapshot was updated, false if not found
    */
   updateSnapshotOriginTabId(quickTabId, newOriginTabId, previousOriginTabId) {
-    // Check both maps for the snapshot
-    let snapshot = this.minimizedTabs.get(quickTabId);
-    let snapshotSource = 'minimizedTabs';
-
-    if (!snapshot) {
-      snapshot = this.pendingClearSnapshots.get(quickTabId);
-      snapshotSource = 'pendingClearSnapshots';
-    }
+    const snapshot = this._findSnapshotInAllMaps(quickTabId);
+    const snapshotSource = this.minimizedTabs.has(quickTabId) 
+      ? 'minimizedTabs' 
+      : 'pendingClearSnapshots';
 
     if (!snapshot) {
       console.log('[MinimizedManager] ADOPTION_SNAPSHOT_UPDATE: No snapshot found for Quick Tab:', {
@@ -990,8 +999,7 @@ export class MinimizedManager {
    * @returns {number|null} Current savedOriginTabId or null if no snapshot
    */
   getSnapshotOriginTabId(quickTabId) {
-    const snapshot = this.minimizedTabs.get(quickTabId) || 
-                     this.pendingClearSnapshots.get(quickTabId);
+    const snapshot = this._findSnapshotInAllMaps(quickTabId);
     
     if (!snapshot) {
       return null;

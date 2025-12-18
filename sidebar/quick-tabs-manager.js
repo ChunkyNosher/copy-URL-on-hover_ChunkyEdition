@@ -363,6 +363,17 @@ function generateCorrelationId() {
 }
 
 /**
+ * Generate correlation ID for Manager operations
+ * v1.6.4.15 - FIX Code Review: Centralized correlation ID generation for operations
+ * @param {string} operation - Operation type (e.g., 'min', 'restore', 'close', 'adopt')
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {string} Correlation ID for the operation
+ */
+function generateOperationCorrelationId(operation, quickTabId) {
+  return `${operation}-${quickTabId}-${Date.now()}`;
+}
+
+/**
  * Log port lifecycle event with comprehensive context
  * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
  * v1.6.3.10-v1 - FIX Issue #6: Enhanced structured logging with state transitions
@@ -5312,7 +5323,7 @@ async function goToTab(tabId) {
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
 async function minimizeQuickTab(quickTabId) {
-  const correlationId = `min-${quickTabId}-${Date.now()}`;
+  const correlationId = generateOperationCorrelationId('min', quickTabId);
   const startTime = Date.now();
 
   // v1.6.4.15 - FIX Issue #20: Log operation start
@@ -6071,7 +6082,7 @@ function _handleRestoreOperationResult(quickTabId, result, correlationId, durati
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
 async function restoreQuickTab(quickTabId) {
-  const correlationId = `restore-${quickTabId}-${Date.now()}`;
+  const correlationId = generateOperationCorrelationId('restore', quickTabId);
   const startTime = Date.now();
 
   // v1.6.4.15 - FIX Issue #20: Log operation start
@@ -6232,7 +6243,7 @@ function _logRestoreVerificationResult(quickTabId, tab) {
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
 async function closeQuickTab(quickTabId) {
-  const correlationId = `close-${quickTabId}-${Date.now()}`;
+  const correlationId = generateOperationCorrelationId('close', quickTabId);
   const startTime = Date.now();
 
   // v1.6.4.15 - FIX Issue #20: Log operation start
@@ -6354,7 +6365,7 @@ async function closeQuickTab(quickTabId) {
  * @param {number} targetTabId - The browser tab ID to adopt to
  */
 async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
-  const correlationId = `adopt-${quickTabId}-${Date.now()}`;
+  const correlationId = generateOperationCorrelationId('adopt', quickTabId);
   const startTime = Date.now();
 
   // v1.6.4.15 - FIX Issue #20: Log operation start
