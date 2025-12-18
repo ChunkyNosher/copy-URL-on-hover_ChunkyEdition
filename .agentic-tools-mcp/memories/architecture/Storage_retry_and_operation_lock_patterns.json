@@ -1,0 +1,8 @@
+{
+  "id": "9ac4584d-b124-48fe-ab42-a6719524b2bb",
+  "title": "Storage retry and operation lock patterns",
+  "details": "v1.6.3.10-v6 introduced key patterns:\n\n1. Storage retry logic: Exponential backoff (100ms, 500ms, 1000ms) for failed writes. Use _attemptStorageWrite() for individual attempts, _handleSuccessfulWrite() for success cleanup.\n\n2. Operation lock timeout: 2000ms (OPERATION_LOCK_MS) - matches STORAGE_TIMEOUT_MS for consistency. Used in mediator.js for minimize/restore/destroy locks.\n\n3. Snapshot expiration: 1000ms (PENDING_SNAPSHOT_EXPIRATION_MS) for pending snapshots in MinimizedManager. Auto-cleanup prevents memory leaks.\n\n4. Race condition prevention: UpdateHandler._isTabMinimized() check before persist prevents stale position data from being written during debounce window after minimize.",
+  "category": "architecture",
+  "dateCreated": "2025-12-18T01:49:46.426Z",
+  "dateUpdated": "2025-12-18T01:49:46.426Z"
+}
