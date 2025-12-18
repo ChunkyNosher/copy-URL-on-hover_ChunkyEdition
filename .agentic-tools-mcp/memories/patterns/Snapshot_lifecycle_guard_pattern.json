@@ -1,0 +1,8 @@
+{
+  "id": "2483bbec-cc68-478b-8776-6d9e57c7d6e7",
+  "title": "Snapshot lifecycle guard pattern",
+  "details": "MinimizedManager uses isRestoring flag on snapshots to prevent expiration race conditions during restore retry. The _handleSnapshotExpiration method checks snapshot.isRestoring and defers expiration if true. Flag is set in _setRestoreLock() and cleared in _applyAndVerifySnapshot(). DEFERRED_EXPIRATION_WAIT_MS=500ms is used for reschedule.",
+  "category": "patterns",
+  "dateCreated": "2025-12-18T04:49:54.838Z",
+  "dateUpdated": "2025-12-18T04:49:54.838Z"
+}

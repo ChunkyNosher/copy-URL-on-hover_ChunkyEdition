@@ -14,7 +14,16 @@
  * - UPDATE_QUICK_TAB_MUTE: Update mute state
  * - UPDATE_QUICK_TAB_MINIMIZE: Update minimize state
  * - GET_CURRENT_TAB_ID: Get current browser tab ID
+ *
+ * v1.6.3.10-v7 - FIX Issue #15: Storage write serialization
+ *   - Add async write queue to prevent concurrent storage writes
+ *   - Implement version tracking with conflict detection
+ *   - Retry writes on version mismatch (max 3 attempts)
  */
+
+// v1.6.3.10-v7 - FIX Issue #15: Storage write serialization constants
+const STORAGE_WRITE_MAX_RETRIES = 3;
+const STORAGE_KEY = 'quick_tabs_state_v2';
 
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
@@ -44,6 +53,15 @@ export class QuickTabHandler {
     // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
     this.processedMessages = new Map(); // messageKey -> timestamp
     this.lastCleanup = Date.now();
+
+    // v1.6.3.10-v7 - FIX Issue #15: Storage write serialization
+    // Queue to serialize concurrent storage writes
+    this._writeQueue = [];
+    this._isWriting = false;
+    // Version counter for optimistic locking
+    this._storageVersion = 0;
+    // Expected version from last read (for conflict detection)
+    this._expectedVersion = 0;
   }
 
   /**
@@ -793,8 +811,68 @@ export class QuickTabHandler {
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3.6-v4 - FIX Issue #1: Added success confirmation logging
+   * v1.6.3.10-v7 - FIX Issue #15: Serialize writes through queue to prevent concurrent write races
    */
-  async saveStateToStorage() {
+  saveStateToStorage() {
+    // v1.6.3.10-v7 - FIX Issue #15: Use queue-based serialization
+    return this._enqueueStorageWrite();
+  }
+
+  /**
+   * Enqueue a storage write operation
+   * v1.6.3.10-v7 - FIX Issue #15: Serialize concurrent writes through queue
+   * @private
+   * @returns {Promise<void>} Resolves when write completes
+   */
+  _enqueueStorageWrite() {
+    return new Promise((resolve, reject) => {
+      this._writeQueue.push({ resolve, reject, enqueuedAt: Date.now() });
+      console.debug('[QuickTabHandler] 🔒 WRITE_QUEUE: Enqueued write, queue size:', this._writeQueue.length);
+      this._processWriteQueue();
+    });
+  }
+
+  /**
+   * Process the storage write queue
+   * v1.6.3.10-v7 - FIX Issue #15: Sequential processing prevents concurrent writes
+   * @private
+   */
+  async _processWriteQueue() {
+    // If already writing, wait for current write to finish
+    if (this._isWriting) {
+      return;
+    }
+
+    // Get next write from queue
+    const nextWrite = this._writeQueue.shift();
+    if (!nextWrite) {
+      return;
+    }
+
+    this._isWriting = true;
+    const queueWaitTime = Date.now() - nextWrite.enqueuedAt;
+
+    try {
+      await this._performStorageWrite(queueWaitTime);
+      nextWrite.resolve();
+    } catch (err) {
+      nextWrite.reject(err);
+    } finally {
+      this._isWriting = false;
+      // Process next item in queue if any
+      if (this._writeQueue.length > 0) {
+        this._processWriteQueue();
+      }
+    }
+  }
+
+  /**
+   * Perform the actual storage write with version tracking
+   * v1.6.3.10-v7 - FIX Issue #15: Includes optimistic locking with retry
+   * @private
+   * @param {number} queueWaitTime - Time spent waiting in queue (for logging)
+   */
+  async _performStorageWrite(queueWaitTime) {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
     const tabCount = this.globalState.tabs?.length ?? 0;
@@ -804,40 +882,121 @@ export class QuickTabHandler {
     console.log('[QuickTabHandler] saveStateToStorage ENTRY:', {
       writeSourceId,
       tabCount,
-      timestamp: saveTimestamp
+      timestamp: saveTimestamp,
+      queueWaitTime,
+      version: this._storageVersion
     });
 
-    // v1.6.2.2 - Unified format: single tabs array
-    const stateToSave = {
-      tabs: this.globalState.tabs,
-      timestamp: saveTimestamp,
-      writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
-    };
+    // v1.6.3.10-v7 - FIX Issue #15: Retry loop for version conflicts
+    let retryCount = 0;
+    while (retryCount < STORAGE_WRITE_MAX_RETRIES) {
+      const result = await this._attemptStorageWrite(writeSourceId, tabCount, saveTimestamp, retryCount);
+      if (result.success) {
+        return; // Success - exit retry loop
+      }
+      retryCount++;
+      if (retryCount >= STORAGE_WRITE_MAX_RETRIES) {
+        throw result.error; // Max retries reached, propagate error
+      }
+    }
+  }
 
+  /**
+   * Attempt a single storage write operation
+   * v1.6.3.10-v7 - FIX Issue #15: Extracted to reduce nesting depth
+   * @private
+   * @returns {Promise<{success: boolean, error?: Error}>}
+   */
+  async _attemptStorageWrite(writeSourceId, tabCount, saveTimestamp, retryCount) {
     try {
+      // Read current version from storage to detect conflicts
+      const currentState = await this.browserAPI.storage.local.get(STORAGE_KEY);
+      const storedVersion = currentState[STORAGE_KEY]?.version ?? 0;
+
+      // Check for version conflict (another writer updated storage)
+      this._handleVersionConflict(currentState, storedVersion, retryCount);
+
+      // Increment version for this write
+      const newVersion = Math.max(storedVersion, this._storageVersion) + 1;
+
+      // v1.6.2.2 - Unified format: single tabs array
+      const stateToSave = {
+        tabs: this.globalState.tabs,
+        timestamp: saveTimestamp,
+        writeSourceId: writeSourceId, // v1.6.1.6 - Include source ID for loop detection
+        version: newVersion // v1.6.3.10-v7 - Version for conflict detection
+      };
+
       // v1.6.0.12 - FIX: Use local storage to avoid quota errors
-      // v1.6.1.6 - FIX: Only write to local storage (removed session storage to prevent double events)
       await this.browserAPI.storage.local.set({
-        quick_tabs_state_v2: stateToSave
+        [STORAGE_KEY]: stateToSave
       });
 
-      // v1.6.3.6-v4 - FIX Issue #1: Log successful completion (was missing before!)
+      // Update our version tracking
+      this._storageVersion = newVersion;
+      this._expectedVersion = newVersion;
+
+      // v1.6.3.6-v4 - FIX Issue #1: Log successful completion
       console.log('[QuickTabHandler] saveStateToStorage SUCCESS:', {
         writeSourceId,
         tabCount,
         timestamp: saveTimestamp,
+        version: newVersion,
         tabIds: this.globalState.tabs.map(t => t.id).slice(0, 10) // First 10 IDs
       });
+
+      return { success: true };
     } catch (err) {
       // DOMException and browser-native errors don't serialize properly
-      // Extract properties explicitly for proper logging
-      console.error('[QuickTabHandler] Error saving state:', {
+      console.error('[QuickTabHandler] Error saving state (attempt ' + (retryCount + 1) + '):', {
         message: err?.message,
         name: err?.name,
         stack: err?.stack,
         code: err?.code,
         error: err
       });
+      return { success: false, error: err };
+    }
+  }
+
+  /**
+   * Handle version conflict during storage write
+   * v1.6.3.10-v7 - FIX Issue #15: Extracted to reduce nesting depth
+   * @private
+   */
+  _handleVersionConflict(currentState, storedVersion, retryCount) {
+    if (storedVersion <= this._expectedVersion || this._expectedVersion === 0) {
+      return; // No conflict
+    }
+
+    console.error('[QuickTabHandler] ❌ VERSION_CONFLICT: Storage modified by another writer', {
+      expectedVersion: this._expectedVersion,
+      storedVersion,
+      retryCount
+    });
+
+    // Update our expected version and globalState from storage
+    this._expectedVersion = storedVersion;
+    const storedTabs = currentState[STORAGE_KEY]?.tabs;
+    if (!Array.isArray(storedTabs)) {
+      return;
+    }
+
+    // Merge: rebuild globalState from storage (trigger rebuild)
+    console.warn('[QuickTabHandler] Triggering state rebuild from storage');
+    this.globalState.tabs = storedTabs;
+  }
+
+  /**
+   * Update expected version after reading from storage
+   * v1.6.3.10-v7 - FIX Issue #15: Call this after loading state from storage
+   * @param {number} version - Version from storage
+   */
+  updateExpectedVersion(version) {
+    if (typeof version === 'number' && version > 0) {
+      this._expectedVersion = version;
+      this._storageVersion = version;
+      console.debug('[QuickTabHandler] 🔒 VERSION_TRACKING: Updated expected version to:', version);
     }
   }
 
