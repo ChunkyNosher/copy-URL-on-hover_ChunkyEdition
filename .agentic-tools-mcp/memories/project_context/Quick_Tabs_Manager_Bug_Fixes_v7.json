@@ -1,0 +1,8 @@
+{
+  "id": "81da6495-825d-4c2b-a3ea-c00ddd191ec7",
+  "title": "Quick Tabs Manager Bug Fixes v7",
+  "details": "Fixed three bugs in sidebar/quick-tabs-manager.js:\n\nBug #1 - quickTabHostInfo memory leak:\n- Added periodic maintenance task _performHostInfoMaintenance() every 5 minutes\n- Added max size guard (500 entries) with _pruneOldestHostInfoEntries()\n- Maintenance validates entries against quickTabsState\n\nBug #2 - Adoption container validation:\n- Added _validateAdoptionContainers() to check if tabs are in same Firefox container\n- Uses browser.tabs.get() to retrieve cookieStoreId\n- Logs WARNING on cross-container adoption but allows it\n\nBug #3 - Adaptive port timeout:\n- Changed from fixed 500ms to adaptive timeout (700ms-3000ms)\n- Uses 95th percentile of observed latencies via _recordLatencySample()\n- Added message deduplication with _isDuplicateMessage() (2s TTL)",
+  "category": "project_context",
+  "dateCreated": "2025-12-18T04:42:03.977Z",
+  "dateUpdated": "2025-12-18T04:42:03.977Z"
+}
