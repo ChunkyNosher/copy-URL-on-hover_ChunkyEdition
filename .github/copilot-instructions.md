@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v4  
+**Version:** 1.6.3.10-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -26,7 +26,18 @@ Tabs Manager
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.10-v4 Features (NEW) - Container Isolation & Cross-Tab Validation:**
+**v1.6.3.10-v5 Features (NEW) - Architectural Robustness & Bug Fixes:**
+
+- **Atomic Operations** - Scripting API fallback for timeout recovery
+- **Exponential Backoff** - Port reconnection with jitter (150ms→8s max, 1.5x)
+- **Per-Quick Tab Circuit Breaker** - Prevents global UI freeze
+- **Transaction ID Entropy** - Higher entropy IDs with tabId + counter
+- **Surgical DOM Updates** - Manager adoption updates single Quick Tab only
+- **Cross-Tab Cache Sync** - Content scripts update cache on adoption
+- **Targeted Restore** - Send restore message to specific tab, not broadcast
+- **Diagnostic Logging** - Phase-based logging with correlation IDs
+
+**v1.6.3.10-v4 Features (Previous) - Container Isolation & Cross-Tab Validation:**
 
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Cross-Tab Validation** - `_isOwnedByCurrentTab()`,
@@ -46,15 +57,9 @@ Tabs Manager
 - Orphan Detection via `ORIGIN_TAB_CLOSED`, `isOrphaned`/`orphanedAt` fields
 - Smart adoption validation via `validateAdoptionTarget()`
 
-**v1.6.3.10-v2 Features (Previous) - Render, Circuit Breaker & Cache Fixes:**
-
-- Render Debounce 100ms base, 300ms max cap (sliding-window)
-- Circuit Breaker 3s open, 2s backoff max, 5s sliding window
-- Cache staleness alert 30s, `cacheHydrationComplete` flag
-- `FAILURE_REASON` enum: `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
-
-**v1.6.3.10-v1 & Earlier (Consolidated):** Port state machine, heartbeat 15s/2s,
-message retry 2x+150ms, O(1) message routing, unified barrier init
+**v1.6.3.10-v2 & Earlier (Consolidated):** Render Debounce 100ms base, 300ms max cap,
+Circuit Breaker 3s open, 2s backoff max, 5s sliding window, Port state machine,
+heartbeat 15s/2s, message retry 2x+150ms, O(1) message routing, unified barrier init
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
@@ -116,7 +121,18 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v4 Patterns (Current)
+### v1.6.3.10-v5 Patterns (Current)
+
+- Atomic operations with Scripting API fallback on timeout
+- Exponential backoff with jitter for port reconnection (150ms→8s, 1.5x, ±20%)
+- Per-Quick Tab circuit breaker (not global) to prevent UI freeze
+- Higher entropy transaction IDs with tabId + wrapped counter
+- Surgical DOM updates for adoption (only adopted Quick Tab animates)
+- Content script cache sync on `ADOPTION_COMPLETED` broadcast
+- Targeted restore messaging to specific originTabId tab
+- Phase-based diagnostic logging with correlation IDs
+
+### v1.6.3.10-v4 Patterns (Previous)
 
 - Container isolation via `originContainerId` field
 - Cross-tab ownership validation via `_isOwnedByCurrentTab()`,
@@ -141,7 +157,7 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 - Port state machine, heartbeat 15s/2s, message retry 2x+150ms
 - O(1) message routing, unified barrier, Tab ID fallback
 
-### Key Timing Constants (v1.6.3.10-v4)
+### Key Timing Constants (v1.6.3.10-v5)
 
 | Constant                            | Value                 | Purpose                              |
 | ----------------------------------- | --------------------- | ------------------------------------ |
@@ -152,12 +168,17 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 | `MESSAGE_TIMEOUT_MS`                | 3000                  | runtime.sendMessage timeout          |
 | `CIRCUIT_BREAKER_OPEN_DURATION_MS`  | 3000                  | Circuit breaker cooldown             |
 | `CIRCUIT_BREAKER_SLIDING_WINDOW_MS` | 5000                  | Failure sliding window               |
-| `RECONNECT_BACKOFF_MAX_MS`          | 2000                  | Max reconnect backoff                |
+| `RECONNECT_BACKOFF_INITIAL_MS`      | 150                   | Initial reconnect delay (NEW)        |
+| `RECONNECT_BACKOFF_MAX_MS`          | 8000                  | Max reconnect backoff (was 2000)     |
+| `RECONNECT_BACKOFF_MULTIPLIER`      | 1.5                   | Backoff multiplier (NEW)             |
 | `KEEPALIVE_INTERVAL_MS`             | 20000                 | Keepalive interval (was 25000 in v3) |
 | `HEARTBEAT_INTERVAL_MS`             | 15000                 | Heartbeat interval                   |
 | `HEARTBEAT_TIMEOUT_MS`              | 2000                  | Heartbeat timeout                    |
-| `TRANSACTION_TIMEOUT_MS`            | 30000                 | Transaction expiration (NEW)         |
-| `TRANSACTION_CLEANUP_INTERVAL_MS`   | 10000                 | Stale transaction cleanup (NEW)      |
+| `TRANSACTION_TIMEOUT_MS`            | 30000                 | Transaction expiration               |
+| `TRANSACTION_CLEANUP_INTERVAL_MS`   | 60000                 | Stale transaction cleanup (was 10s)  |
+| `PORT_CLEANUP_INTERVAL_MS`          | 30000                 | Port cleanup interval (was 5min)     |
+| `PORT_INACTIVITY_THRESHOLD_MS`      | 60000                 | Port inactivity threshold (was 10m)  |
+| `LOGGING_THROTTLE_MS`               | 1000                  | Message logging throttle (NEW)       |
 | `SCRIPTING_FALLBACK_TIMEOUT_MS`     | 2000                  | Messaging timeout for Scripting API  |
 | `MAX_QUICK_TABS`                    | 100                   | Maximum Quick Tabs allowed           |
 
