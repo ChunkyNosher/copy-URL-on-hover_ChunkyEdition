@@ -1,0 +1,8 @@
+{
+  "id": "38dd64f2-0140-4cf2-921b-765f72790fdd",
+  "title": "Content.js v1.6.3.10-v7 Cross-Tab Sync",
+  "details": "v1.6.3.10-v7 introduced several cross-tab sync improvements in src/content.js:\n\n1. **Circuit Breaker** - PORT_CONNECTION_STATE machine with states DISCONNECTED, CONNECTING, CONNECTED, FAILED. After CIRCUIT_BREAKER_MAX_FAILURES (5) consecutive failures, stops reconnection.\n\n2. **Background Ready Signal** - isBackgroundReady flag, pendingCommandsBuffer array (max 50), _bufferCommand() and _flushCommandBuffer() functions.\n\n3. **Adaptive Dedup Window** - lastKnownBackgroundLatencyMs tracks handshake latency. _getAdaptiveDedupWindow() returns 2x latency, clamped to [2s, 10s].\n\n4. **Message Ordering** - outgoingSequenceId counter, _getNextSequenceId(), _validateMessageSequence() for out-of-order detection.\n\n5. **Message Queueing** - messageQueue array (max 50), _queueMessage(), _drainMessageQueue(), _sendPortMessage() for unified message sending.\n\n6. **Storage Event Dedup** - recentStorageEvents Map, _isStorageEventDuplicate() with 200ms window and correlationId/timestamp versioning.\n\n7. **Adoption-Aware Ownership** - recentlyAdoptedQuickTabs Map with 5s TTL, _trackAdoptedQuickTab(), _getAdoptionOwnership(), _cleanupAdoptionTracking() every 30s.\n\nKey constants:\n- MAX_RECONNECT_DELAY_MS: 30000 (increased from 8000)\n- CIRCUIT_BREAKER_MAX_FAILURES: 5\n- RECONNECT_GRACE_PERIOD_MS: 5000\n- BASE_RESTORE_DEDUP_WINDOW_MS: 2000\n- MAX_RESTORE_DEDUP_WINDOW_MS: 10000\n- STORAGE_EVENT_DEDUP_WINDOW_MS: 200\n- ADOPTION_TRACKING_TTL_MS: 5000\n- ADOPTION_CLEANUP_INTERVAL_MS: 30000",
+  "category": "project_context",
+  "dateCreated": "2025-12-18T04:31:38.105Z",
+  "dateUpdated": "2025-12-18T04:31:38.105Z"
+}
