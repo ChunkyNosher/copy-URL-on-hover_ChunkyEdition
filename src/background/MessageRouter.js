@@ -85,6 +85,27 @@ export class MessageRouter {
   }
 
   /**
+   * Check if message should be deferred to other browser.runtime.onMessage listeners
+   * v1.6.4.14 - FIX Issue #18: Allow type-based messages to pass through
+   * 
+   * The MessageRouter handles action-based messages, but some messages use
+   * `type` property instead of `action`. These type-based messages are handled
+   * by separate runtime.onMessage listeners (added in background.js):
+   * - QUICK_TAB_STATE_CHANGE: Handled by handleQuickTabStateChange()
+   * - MANAGER_COMMAND: Handled by handleManagerCommand()
+   * - REQUEST_FULL_STATE_SYNC: Handled by handleFullStateSyncRequest()
+   * 
+   * @private
+   * @param {Object} message - Message to check
+   * @returns {boolean} True if message should be handled by other listeners
+   */
+  _shouldDeferToOtherListeners(message) {
+    // Messages with `type` (not `action`) are handled by other listeners
+    const isTypeBasedMessage = typeof message.type === 'string' && typeof message.action !== 'string';
+    return isTypeBasedMessage;
+  }
+
+  /**
    * Route message to appropriate handler
    * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
    * @param {Object} message - Message object with action or type property
@@ -106,13 +127,8 @@ export class MessageRouter {
     const handler = this.handlers.get(action);
 
     if (!handler) {
-      // v1.6.4.14 - FIX Issue #18: Don't error for type-based messages that are
-      // handled by other listeners (e.g., QUICK_TAB_STATE_CHANGE, MANAGER_COMMAND)
-      // These will be handled by the browser.runtime.onMessage listener added later
-      const isTypeBasedMessage = typeof message.type === 'string' && typeof message.action !== 'string';
-      
-      if (isTypeBasedMessage) {
-        // Let other listeners handle type-based messages
+      // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
+      if (this._shouldDeferToOtherListeners(message)) {
         return false;
       }
       

@@ -3772,6 +3772,13 @@ async function handleAdoptAction(payload) {
     });
     
     // v1.6.4.14 - FIX Issue #21: Verify write succeeded by reading back
+    // Note on concurrency: In a browser extension context, the background script
+    // is the single writer authority for storage (per the architecture design).
+    // Content scripts never write directly to storage - they send messages to
+    // background which serializes writes. Therefore, the immediate read-back
+    // verification is safe. If another legitimate concurrent adoption were to
+    // happen (from another Quick Tab), the Single Writer Authority pattern ensures
+    // the writes are serialized, and both would succeed with different saveIds.
     const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
     
