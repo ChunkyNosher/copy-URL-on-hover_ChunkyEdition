@@ -3713,50 +3713,76 @@ function handleLegacyAction(message, portInfo) {
 }
 
 /**
- * Handle adopt action (atomic single write)
- * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
- * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
- * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
- * @param {Object} payload - Adoption payload
+ * Validate adoption prerequisites
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * @private
  */
-async function handleAdoptAction(payload) {
-  const { quickTabId, targetTabId } = payload;
-
-  console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
-
-  // v1.6.3.10-v3 - Phase 2: Validate target tab exists using TabLifecycleHandler
+function _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId) {
+  // Validate target tab exists using TabLifecycleHandler
   const validation = tabLifecycleHandler.validateAdoptionTarget(targetTabId);
   if (!validation.valid) {
+    console.error('[Background] MANAGER_ACTION_REJECTED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'validation-failed',
+      validationReason: validation.reason
+    });
     console.error('[Background] ADOPT_TAB validation failed:', validation.reason);
-    return { success: false, error: validation.reason };
+    return { valid: false, error: validation.reason };
   }
+  return { valid: true };
+}
 
-  // Read entire state
-  const result = await browser.storage.local.get('quick_tabs_state_v2');
-  const state = result?.quick_tabs_state_v2;
-
+/**
+ * Find Quick Tab in state and update originTabId
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
   if (!state?.tabs) {
-    return { success: false, error: 'No state to adopt from' };
+    console.log('[Background] MANAGER_ACTION_REJECTED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'no-state'
+    });
+    return { found: false, error: 'No state to adopt from' };
   }
 
-  // Find and update the tab locally
   const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
   if (tabIndex === -1) {
-    return { success: false, error: 'Quick Tab not found' };
+    console.log('[Background] MANAGER_ACTION_REJECTED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'quick-tab-not-found'
+    });
+    return { found: false, error: 'Quick Tab not found' };
   }
 
   const oldOriginTabId = state.tabs[tabIndex].originTabId;
   state.tabs[tabIndex].originTabId = targetTabId;
 
-  // v1.6.3.10-v3 - Phase 2: Clear orphan status if Quick Tab was orphaned
+  // Clear orphan status if Quick Tab was orphaned
   if (state.tabs[tabIndex].isOrphaned) {
     delete state.tabs[tabIndex].isOrphaned;
     delete state.tabs[tabIndex].orphanedAt;
     console.log('[Background] ADOPT_TAB: Clearing orphan status for Quick Tab:', quickTabId);
   }
 
-  // v1.6.4.14 - FIX Issue #21: Single atomic write with verification BEFORE broadcast
-  // If storage write fails, we must NOT broadcast ADOPTION_COMPLETED
+  return { found: true, oldOriginTabId, tabIndex };
+}
+
+/**
+ * Write and verify adoption state
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+async function _writeAndVerifyAdoptionState(state, quickTabId, targetTabId, correlationId, startTime) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeStartTime = Date.now();
   
@@ -3771,22 +3797,22 @@ async function handleAdoptAction(payload) {
       }
     });
     
-    // v1.6.4.14 - FIX Issue #21: Verify write succeeded by reading back
-    // Note on concurrency: In a browser extension context, the background script
-    // is the single writer authority for storage (per the architecture design).
-    // Content scripts never write directly to storage - they send messages to
-    // background which serializes writes. Therefore, the immediate read-back
-    // verification is safe. If another legitimate concurrent adoption were to
-    // happen (from another Quick Tab), the Single Writer Authority pattern ensures
-    // the writes are serialized, and both would succeed with different saveIds.
+    // Verify write succeeded by reading back
     const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
     
     if (!verifiedState || verifiedState.saveId !== saveId) {
-      console.error('[Background] ADOPT_TAB: Storage write verification FAILED:', {
+      const durationMs = Date.now() - startTime;
+      console.error('[Background] MANAGER_ACTION_FAILED:', {
+        action: 'ADOPT_TAB',
+        quickTabId,
+        targetTabId,
+        correlationId,
+        status: 'failed',
+        error: 'storage-verification-failed',
         expectedSaveId: saveId,
         actualSaveId: verifiedState?.saveId,
-        durationMs: Date.now() - writeStartTime
+        durationMs
       });
       return { 
         success: false, 
@@ -3797,13 +3823,20 @@ async function handleAdoptAction(payload) {
     
     console.log('[Background] ADOPT_TAB: Storage write verified:', {
       saveId,
+      correlationId,
       durationMs: Date.now() - writeStartTime
     });
+    return { success: true, saveId };
   } catch (writeErr) {
-    console.error('[Background] ADOPT_TAB: Storage write FAILED:', {
-      error: writeErr.message,
+    const durationMs = Date.now() - startTime;
+    console.error('[Background] MANAGER_ACTION_FAILED:', {
+      action: 'ADOPT_TAB',
       quickTabId,
-      targetTabId
+      targetTabId,
+      correlationId,
+      status: 'failed',
+      error: writeErr.message,
+      durationMs
     });
     return { 
       success: false, 
@@ -3811,13 +3844,58 @@ async function handleAdoptAction(payload) {
       reason: 'storage-write-error'
     };
   }
+}
 
-  // v1.6.4.14 - Storage write verified - now safe to update cache and broadcast
+/**
+ * Handle adopt action (atomic single write)
+ * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
+ * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * @param {Object} payload - Adoption payload
+ */
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId, correlationId: payloadCorrelationId } = payload;
+  const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
+  const startTime = Date.now();
+
+  // v1.6.4.15 - FIX Issue #20: Log Manager action requested
+  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    timestamp: startTime
+  });
+
+  // Validate prerequisites
+  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  // Read state and find Quick Tab
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = result?.quick_tabs_state_v2;
+  
+  const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
+  if (!findResult.found) {
+    return { success: false, error: findResult.error };
+  }
+  const { oldOriginTabId } = findResult;
+
+  // Write and verify state
+  const writeResult = await _writeAndVerifyAdoptionState(
+    state, quickTabId, targetTabId, correlationId, startTime
+  );
+  if (!writeResult.success) {
+    return writeResult;
+  }
+
   // Update global cache
   const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (cachedTab) {
     cachedTab.originTabId = targetTabId;
-    // v1.6.3.10-v3 - Phase 2: Clear orphan status in cache
     delete cachedTab.isOrphaned;
     delete cachedTab.orphanedAt;
   }
@@ -3825,27 +3903,30 @@ async function handleAdoptAction(payload) {
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
 
-  // v1.6.3.10-v3 - FIX Issue #47: Broadcast adoption completion to all ports
-  // This enables Manager sidebar to re-render immediately after adoption
+  // Broadcast adoption completion
   broadcastToAllPorts({
     type: 'ADOPTION_COMPLETED',
     adoptedQuickTabId: quickTabId,
     oldOriginTabId,
     newOriginTabId: targetTabId,
-    // v1.6.4.13 - FIX BUG #4: Include previousOriginTabId for content script cache lookup
     previousOriginTabId: oldOriginTabId,
+    correlationId,
     timestamp: Date.now()
   });
 
-  // v1.6.4.13 - FIX BUG #4: Also broadcast to all content scripts via tabs.sendMessage
-  // v1.6.4.14 - FIX Issue #19: Use retry mechanism with classified errors
-  // This updates their local cache so restore operations use the correct originTabId
   await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
 
-  console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
+  // v1.6.4.15 - FIX Issue #20: Log successful completion
+  const durationMs = Date.now() - startTime;
+  console.log('[Background] MANAGER_ACTION_COMPLETED:', {
+    action: 'ADOPT_TAB',
     quickTabId,
+    targetTabId,
+    correlationId,
+    status: 'success',
     oldOriginTabId,
-    newOriginTabId: targetTabId
+    newOriginTabId: targetTabId,
+    durationMs
   });
 
   console.log('[Background] ADOPT_TAB complete:', {
@@ -5314,9 +5395,26 @@ const VALID_MANAGER_COMMANDS = new Set([
  * @returns {Promise<Object>} Result object with success status and optional error
  */
 async function executeManagerCommand(command, quickTabId, hostTabId) {
+  const correlationId = generateCorrelationId('mgr-cmd');
+  const startTime = Date.now();
+
+  // v1.6.4.15 - FIX Issue #20: Log Manager action requested at background level
+  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
+    action: command,
+    quickTabId,
+    hostTabId,
+    correlationId,
+    timestamp: startTime
+  });
+
   // v1.6.3.5-v3 - FIX Code Review: Validate command against allowlist
   if (!VALID_MANAGER_COMMANDS.has(command)) {
-    console.warn('[Background] Invalid command rejected:', { command, quickTabId });
+    console.warn('[Background] MANAGER_ACTION_REJECTED:', {
+      action: command,
+      quickTabId,
+      correlationId,
+      reason: 'invalid-command'
+    });
     return { success: false, error: `Unknown command: ${command}` };
   }
 
@@ -5324,13 +5422,15 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     type: 'EXECUTE_COMMAND',
     command,
     quickTabId,
-    source: 'manager'
+    source: 'manager',
+    correlationId // v1.6.4.15 - Include correlationId for end-to-end tracing
   };
 
   console.log('[Background] Routing command to tab:', {
     command,
     quickTabId,
-    hostTabId
+    hostTabId,
+    correlationId
   });
 
   // v1.6.3.10-v5 - FIX Issue #1 & #2: Use timeout-protected messaging with Scripting API fallback
@@ -5340,6 +5440,19 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
       browser.tabs.sendMessage(hostTabId, executeMessage),
       createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
+
+    // v1.6.4.15 - FIX Issue #20: Log successful completion
+    const durationMs = Date.now() - startTime;
+    console.log('[Background] MANAGER_ACTION_COMPLETED:', {
+      action: command,
+      quickTabId,
+      hostTabId,
+      correlationId,
+      status: 'success',
+      method: 'messaging',
+      durationMs
+    });
+
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
@@ -5348,21 +5461,47 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
       command,
       quickTabId,
       hostTabId,
+      correlationId,
       error: err.message
     });
 
     // Use Scripting API for atomic execution
     try {
-      const correlationId = generateCorrelationId('cmd');
       const fallbackResult = await _executeViaScripting(
         hostTabId,
         command,
         { quickTabId },
         correlationId
       );
+
+      // v1.6.4.15 - FIX Issue #20: Log fallback completion
+      const durationMs = Date.now() - startTime;
+      console.log('[Background] MANAGER_ACTION_COMPLETED:', {
+        action: command,
+        quickTabId,
+        hostTabId,
+        correlationId,
+        status: fallbackResult.success ? 'success' : 'failed',
+        method: 'scripting-fallback',
+        durationMs
+      });
+
       console.log('[Background] v1.6.3.10-v5 Scripting fallback result:', fallbackResult);
       return fallbackResult;
     } catch (fallbackErr) {
+      // v1.6.4.15 - FIX Issue #20: Log failure with detailed reason
+      const durationMs = Date.now() - startTime;
+      console.error('[Background] MANAGER_ACTION_FAILED:', {
+        action: command,
+        quickTabId,
+        hostTabId,
+        correlationId,
+        status: 'failed',
+        error: fallbackErr.message,
+        messagingError: err.message,
+        durationMs
+      });
+
       console.error('[Background] v1.6.3.10-v5 Both messaging and scripting failed:', {
         command,
         quickTabId,

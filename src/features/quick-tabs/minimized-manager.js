@@ -925,4 +925,78 @@ export class MinimizedManager {
       ...Array.from(this.pendingClearSnapshots.keys())
     ];
   }
+
+  /**
+   * Update snapshot's originTabId after adoption
+   * v1.6.4.15 - FIX Issue #22: Update snapshot keying after adoption
+   * 
+   * When a Quick Tab is adopted to a new tab, the originTabId changes.
+   * This method updates the savedOriginTabId in any existing snapshot
+   * so that subsequent restore operations use the correct tab context.
+   * 
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {number} newOriginTabId - New origin tab ID after adoption
+   * @param {number} previousOriginTabId - Previous origin tab ID (for logging)
+   * @returns {boolean} True if snapshot was updated, false if not found
+   */
+  updateSnapshotOriginTabId(quickTabId, newOriginTabId, previousOriginTabId) {
+    // Check both maps for the snapshot
+    let snapshot = this.minimizedTabs.get(quickTabId);
+    let snapshotSource = 'minimizedTabs';
+
+    if (!snapshot) {
+      snapshot = this.pendingClearSnapshots.get(quickTabId);
+      snapshotSource = 'pendingClearSnapshots';
+    }
+
+    if (!snapshot) {
+      console.log('[MinimizedManager] ADOPTION_SNAPSHOT_UPDATE: No snapshot found for Quick Tab:', {
+        quickTabId,
+        newOriginTabId,
+        previousOriginTabId
+      });
+      return false;
+    }
+
+    const oldSavedOriginTabId = snapshot.savedOriginTabId;
+
+    // Update the savedOriginTabId
+    snapshot.savedOriginTabId = newOriginTabId;
+
+    // Also update the window reference if present
+    if (snapshot.window) {
+      snapshot.window.originTabId = newOriginTabId;
+    }
+
+    console.log('[MinimizedManager] ADOPTION_SNAPSHOT_UPDATE: Updated snapshot originTabId:', {
+      quickTabId,
+      snapshotSource,
+      oldSavedOriginTabId,
+      newSavedOriginTabId: newOriginTabId,
+      previousOriginTabId,
+      timestamp: Date.now()
+    });
+
+    // Update local timestamp
+    this._updateLocalTimestamp();
+
+    return true;
+  }
+
+  /**
+   * Check if a snapshot exists and return its current originTabId
+   * v1.6.4.15 - FIX Issue #22: Helper for adoption verification
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {number|null} Current savedOriginTabId or null if no snapshot
+   */
+  getSnapshotOriginTabId(quickTabId) {
+    const snapshot = this.minimizedTabs.get(quickTabId) || 
+                     this.pendingClearSnapshots.get(quickTabId);
+    
+    if (!snapshot) {
+      return null;
+    }
+
+    return snapshot.savedOriginTabId ?? null;
+  }
 }

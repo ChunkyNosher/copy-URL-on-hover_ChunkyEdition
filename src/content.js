@@ -2976,6 +2976,7 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 /**
  * Handle ADOPTION_COMPLETED broadcast from background
  * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
  *
  * This handler updates the local Quick Tab cache when adoption occurs.
  * Without this, content scripts have stale originTabId values which causes
@@ -3000,6 +3001,17 @@ function _handleAdoptionCompleted(message, sendResponse) {
   const tabEntry = quickTabsManager?.tabs?.get(adoptedQuickTabId);
   const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
 
+  // v1.6.4.15 - FIX Issue #20: Enhanced logging for Manager-initiated operations
+  console.log('[Content] ADOPTION_COMPLETED: Manager action received:', {
+    action: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId,
+    previousOriginTabId,
+    newOriginTabId,
+    currentTabId,
+    correlationId: message.correlationId || null,
+    timestamp: Date.now()
+  });
+
   console.log('[Content] ADOPTION_CACHE_UPDATE_START:', {
     adoptedQuickTabId,
     currentTabId,
@@ -3012,6 +3024,7 @@ function _handleAdoptionCompleted(message, sendResponse) {
   });
 
   let cacheUpdated = false;
+  let snapshotUpdated = false;
 
   // Update the Quick Tab's originTabId in local tabs map if present
   if (tabEntry) {
@@ -3049,11 +3062,41 @@ function _handleAdoptionCompleted(message, sendResponse) {
     });
   }
 
+  // v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId
+  // This ensures restore operations after adoption use the correct tab context
+  if (quickTabsManager?.minimizedManager?.updateSnapshotOriginTabId) {
+    snapshotUpdated = quickTabsManager.minimizedManager.updateSnapshotOriginTabId(
+      adoptedQuickTabId,
+      newOriginTabId,
+      previousOriginTabId
+    );
+    
+    console.log('[Content] ADOPTION_SNAPSHOT_UPDATE_RESULT:', {
+      adoptedQuickTabId,
+      snapshotUpdated,
+      newOriginTabId,
+      previousOriginTabId
+    });
+  }
+
+  // v1.6.4.15 - FIX Issue #20: Log final outcome
+  console.log('[Content] ADOPTION_COMPLETED: Manager action completed:', {
+    action: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId,
+    cacheUpdated,
+    snapshotUpdated,
+    previousOriginTabId,
+    newOriginTabId,
+    status: 'success',
+    timeSinceAdoption: Date.now() - timestamp
+  });
+
   // Log result
   console.log('[Content] ADOPTION_CACHE_UPDATE_COMPLETE:', {
     adoptedQuickTabId,
     currentTabId,
     cacheUpdated,
+    snapshotUpdated,
     previousOriginTabId,
     newOriginTabId,
     timeSinceAdoption: Date.now() - timestamp
@@ -3062,6 +3105,7 @@ function _handleAdoptionCompleted(message, sendResponse) {
   sendResponse({
     success: true,
     cacheUpdated,
+    snapshotUpdated,
     currentTabId,
     timestamp: Date.now()
   });
