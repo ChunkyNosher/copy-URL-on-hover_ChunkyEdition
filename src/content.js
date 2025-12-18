@@ -233,7 +233,8 @@ import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
-import { setWritingTabId } from './utils/storage-utils.js';
+// v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
+import { setWritingTabId, isWritingTabIdInitialized } from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -723,28 +724,48 @@ window.addEventListener('unload', () => {
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
+ * v1.6.3.10-v6 - FIX Issue #4/11/12: Enhanced logging showing tab ID acquisition flow
  */
 async function initializeQuickTabsFeature() {
   console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
+
+  // v1.6.3.10-v6 - FIX Issue #4/11: Log before tab ID request
+  console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_START: Beginning tab ID acquisition', {
+    isWritingTabIdInitialized: isWritingTabIdInitialized(),
+    timestamp: Date.now()
+  });
 
   // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
   // This is critical for cross-tab scoping - Quick Tabs should only render
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
-  console.log('[Copy-URL-on-Hover] Current tab ID for Quick Tabs initialization:', currentTabId);
+
+  // v1.6.3.10-v6 - FIX Issue #4/11: Log tab ID acquisition result
+  console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_RESULT: Tab ID acquired', {
+    currentTabId,
+    source: 'background messaging (GET_CURRENT_TAB_ID)',
+    success: currentTabId !== null
+  });
 
   // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
   // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
   // explicitly set the tab ID for storage-utils to validate ownership during writes
   if (currentTabId !== null) {
     setWritingTabId(currentTabId);
-    console.log('[Copy-URL-on-Hover] Set writing tab ID for storage ownership:', currentTabId);
+    // v1.6.3.10-v6 - FIX Issue #12: Verify tab ID was set
+    console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
+      tabId: currentTabId,
+      isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
+    });
 
     // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
     connectContentToBackground(currentTabId);
   } else {
     console.warn(
-      '[Copy-URL-on-Hover] WARNING: Could not set writing tab ID - storage writes may fail ownership validation'
+      '[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_FAILED: Could not acquire tab ID from background'
+    );
+    console.warn(
+      '[Copy-URL-on-Hover] WARNING: Storage writes may fail ownership validation without tab ID'
     );
   }
 

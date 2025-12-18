@@ -5,6 +5,7 @@
 // v1.5.8.13 - EAGER LOADING: All listeners and state are initialized immediately on load
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
+// v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -2743,8 +2744,50 @@ async function _handleSettingsChange(changes) {
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 // v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
+// v1.6.3.10-v6 - FIX Issue #14: Health check logging for storage.onChanged listener
+
+// v1.6.3.10-v6 - FIX Issue #14: Track storage listener health
+let storageOnChangedEventCount = 0;
+let storageOnChangedLastEventTime = 0;
+const STORAGE_LISTENER_LOG_INTERVAL = 100; // Log health every 100 events
+
+/**
+ * Log storage listener health status
+ * v1.6.3.10-v6 - FIX Issue #14: Verify storage.onChanged listener is active
+ * @private
+ * @param {string} areaName - Storage area name
+ * @param {string[]} changedKeys - Keys that changed
+ */
+function _logStorageListenerHealth(areaName, changedKeys) {
+  storageOnChangedEventCount++;
+  const now = Date.now();
+  const timeSinceLastEvent = storageOnChangedLastEventTime > 0 ? now - storageOnChangedLastEventTime : 0;
+  storageOnChangedLastEventTime = now;
+
+  // Log every N events as health check (at 100, 200, 300, etc.)
+  // v1.6.3.10-v6 - FIX Code Review: Use === 0 to log at round intervals
+  if (storageOnChangedEventCount % STORAGE_LISTENER_LOG_INTERVAL === 0) {
+    console.log('[Background][StorageListener] v1.6.3.10-v6 HEALTH_CHECK: Listener active', {
+      totalEventsProcessed: storageOnChangedEventCount,
+      timeSinceLastEventMs: timeSinceLastEvent,
+      lastEventArea: areaName,
+      lastEventKeys: changedKeys
+    });
+  }
+}
+
 browser.storage.onChanged.addListener((changes, areaName) => {
-  console.log('[Background] Storage changed:', areaName, Object.keys(changes));
+  const changedKeys = Object.keys(changes);
+
+  // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
+  _logStorageListenerHealth(areaName, changedKeys);
+
+  console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
+    areaName,
+    keys: changedKeys,
+    eventNumber: storageOnChangedEventCount,
+    timestamp: Date.now()
+  });
 
   // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
   if (areaName !== 'local' && areaName !== 'sync') {
@@ -2753,13 +2796,19 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
   // Handle Quick Tab state changes
   if (changes.quick_tabs_state_v2) {
+    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change');
     _handleQuickTabStateChange(changes);
   }
 
   // Handle settings changes
   if (changes.quick_tab_settings) {
+    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
     _handleSettingsChange(changes);
   }
+});
+
+console.log('[Background][StorageListener] v1.6.3.10-v6 Listener registered successfully', {
+  timestamp: Date.now()
 });
 
 // ==================== END STORAGE SYNC BROADCASTING ====================

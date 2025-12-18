@@ -19,7 +19,10 @@
  *   - Issue #1: Async Tab ID Race - Block writes with unknown tab ID instead of allowing
  *   - Issue #2: Circuit breaker to block all writes when pendingWriteCount > 15
  *   - Issue #4: Empty state corruption fixed by Issue #1's fail-closed approach
- * v1.6.3.10-v6 - FIX Diagnostic Type Safety Issues #1, #6, #7, #8:
+ * v1.6.3.10-v6 - FIX Diagnostic Issues #4, #11, #12, #14:
+ *   - Issue #4/11: Add waitForTabIdInit() for content script tab ID initialization
+ *   - Issue #12: Ensure tab ID is set before storage writes via promise resolution
+ *   - Issue #14: Enhanced logging showing how currentWritingTabId was obtained
  *   - Issue #1, #6: Add normalizeOriginTabId() with Number() casting and Number.isInteger() validation
  *   - Issue #7: Unified type normalization for all originTabId deserialization paths
  *   - Issue #8: Enhanced type visibility logging in serialization/deserialization operations
@@ -28,6 +31,7 @@
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
  * - Self-write detection via writingInstanceId/writingTabId
  * - Transaction IDs tracked until storage.onChanged confirms processing
+ * - Content scripts must call waitForTabIdInit() before storage operations
  *
  * @module storage-utils
  */
@@ -226,9 +230,107 @@ const DUPLICATE_SAVEID_THRESHOLD = 1;
 // Current tab ID for self-write detection (initialized lazily)
 let currentWritingTabId = null;
 
+// v1.6.3.10-v6 - FIX Issue #4/11: Promise for tab ID initialization
+// Resolves when setWritingTabId() is called or initWritingTabId() completes
+let tabIdInitResolver = null;
+let tabIdInitPromise = null;
+
+/**
+ * Initialize the tab ID init promise
+ * v1.6.3.10-v6 - FIX Issue #4/11: Create promise for waitForTabIdInit()
+ * @private
+ */
+function _ensureTabIdInitPromise() {
+  if (tabIdInitPromise === null) {
+    tabIdInitPromise = new Promise(resolve => {
+      tabIdInitResolver = resolve;
+    });
+  }
+  return tabIdInitPromise;
+}
+
+/**
+ * Wait for writing tab ID to be initialized
+ * v1.6.3.10-v6 - FIX Issue #4/11/12: Content scripts must wait for tab ID before storage writes
+ * This is critical because content scripts cannot use browser.tabs.getCurrent() and must
+ * get tab ID from background script via messaging. Storage writes will fail ownership
+ * validation if currentWritingTabId is null.
+ *
+ * @param {number} timeoutMs - Maximum time to wait in milliseconds (default: 5000)
+ * @returns {Promise<number|null>} Current tab ID or null if timeout
+ */
+export async function waitForTabIdInit(timeoutMs = 5000) {
+  // Fast path: already initialized
+  if (currentWritingTabId !== null) {
+    console.log('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Already initialized', {
+      tabId: currentWritingTabId,
+      source: 'cached'
+    });
+    return currentWritingTabId;
+  }
+
+  console.log('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Waiting for tab ID initialization', {
+    timeoutMs
+  });
+
+  const promise = _ensureTabIdInitPromise();
+
+  // v1.6.3.10-v6 - FIX Code Review: Clean up timeout timer to prevent unnecessary execution
+  let timeoutId = null;
+  try {
+    // Wait for tab ID with timeout
+    const result = await Promise.race([
+      promise.then(r => {
+        if (timeoutId) clearTimeout(timeoutId);
+        return r;
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Tab ID initialization timeout')), timeoutMs);
+      })
+    ]);
+
+    console.log('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Resolved', {
+      tabId: result,
+      source: 'promise'
+    });
+    return result;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    console.warn('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Timeout waiting for tab ID', {
+      timeoutMs,
+      error: err.message
+    });
+    return null;
+  }
+}
+
+/**
+ * Check if writing tab ID is initialized
+ * v1.6.3.10-v6 - FIX Issue #12: Synchronous check for tab ID availability
+ * @returns {boolean} True if tab ID is initialized
+ */
+export function isWritingTabIdInitialized() {
+  return currentWritingTabId !== null;
+}
+
+/**
+ * Resolve the tab ID init promise if resolver exists
+ * v1.6.3.10-v6 - FIX Issue #4/11: Extracted to reduce nesting depth
+ * @private
+ * @param {number} tabId - Tab ID to resolve with
+ * @param {string} source - Source of tab ID for logging
+ */
+function _resolveTabIdInitPromise(tabId, source) {
+  if (!tabIdInitResolver) return;
+
+  tabIdInitResolver(tabId);
+  console.log('[StorageUtils] v1.6.3.10-v6 Tab ID init promise resolved via', source);
+}
+
 /**
  * Initialize the writing tab ID asynchronously
  * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Self-write detection
+ * v1.6.3.10-v6 - FIX Issue #4/11: Resolve tab ID init promise on success
  */
 async function initWritingTabId() {
   if (currentWritingTabId !== null) return currentWritingTabId;
@@ -236,10 +338,16 @@ async function initWritingTabId() {
   try {
     const browserAPI = getBrowserStorageAPI();
     const tab = await _fetchCurrentTab(browserAPI);
-    if (tab?.id) {
-      currentWritingTabId = tab.id;
-      console.log('[StorageUtils] Initialized writingTabId:', currentWritingTabId);
-    }
+    if (!tab?.id) return currentWritingTabId;
+
+    currentWritingTabId = tab.id;
+    console.log('[StorageUtils] Initialized writingTabId:', {
+      tabId: currentWritingTabId,
+      source: 'browser.tabs.getCurrent()'
+    });
+
+    // v1.6.3.10-v6 - FIX Issue #4/11: Resolve the waiting promise
+    _resolveTabIdInitPromise(currentWritingTabId, 'getCurrent()');
   } catch (err) {
     console.warn('[StorageUtils] Could not get current tab ID:', err.message);
   }
@@ -282,6 +390,7 @@ function _isValidPositiveInteger(tabId) {
 /**
  * Explicitly set the writing tab ID
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Allow content scripts to set tab ID
+ * v1.6.3.10-v6 - FIX Issue #4/11/12: Resolve tab ID init promise when set
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the tab ID from background script and pass it here.
  *
@@ -303,8 +412,12 @@ export function setWritingTabId(tabId) {
   currentWritingTabId = tabId;
   console.log('[StorageUtils] Writing tab ID set explicitly:', {
     oldTabId,
-    newTabId: tabId
+    newTabId: tabId,
+    source: 'setWritingTabId() (from background messaging)'
   });
+
+  // v1.6.3.10-v6 - FIX Issue #4/11/12: Resolve waiting promise for waitForTabIdInit()
+  _resolveTabIdInitPromise(tabId, 'setWritingTabId()');
 }
 
 /**
