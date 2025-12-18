@@ -5299,6 +5299,121 @@ function _logCloseAllError(err, startTime) {
   });
 }
 
+// ==================== v1.6.4.16 OPERATION HELPERS ====================
+// FIX Code Health: Extracted helpers to reduce minimizeQuickTab/closeQuickTab line count
+
+/**
+ * Check if operation should be queued due to circuit breaker
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} action - Action name
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {boolean} True if operation was queued
+ */
+function _shouldQueueForCircuitBreaker(action, quickTabId, correlationId) {
+  if (circuitBreakerState !== 'open') return false;
+  const queued = _queuePendingAction(action, { quickTabId });
+  if (queued) {
+    console.log('[Manager] OPERATION_QUEUED: Circuit breaker open:', {
+      action,
+      quickTabId,
+      correlationId,
+      reason: 'circuit-breaker-open'
+    });
+    _showErrorNotification('Connection temporarily unavailable. Action queued.');
+  }
+  return queued;
+}
+
+/**
+ * Check port viability and queue if not viable
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} action - Action name
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {Promise<boolean>} True if port is viable, false if operation was deferred
+ */
+async function _checkPortViabilityOrQueue(action, quickTabId, correlationId) {
+  const portViable = await verifyPortViability();
+  if (portViable) return true;
+  console.warn('[Manager] OPERATION_DEFERRED: Port not viable:', {
+    action,
+    quickTabId,
+    correlationId,
+    reason: 'port-not-viable'
+  });
+  _queuePendingAction(action, { quickTabId });
+  _showErrorNotification('Connection lost. Action queued for retry.');
+  return false;
+}
+
+/**
+ * Resolve target tab ID from host info or origin tab ID
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} action - Action name for logging
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {{ targetTabId: number|null, originTabId: number|null }}
+ */
+function _resolveTargetTab(quickTabId, action, correlationId) {
+  const tabData = findTabInState(quickTabId, quickTabsState);
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const originTabId = tabData?.originTabId;
+  const targetTabId = hostInfo?.hostTabId || originTabId;
+  console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
+    action,
+    quickTabId,
+    correlationId,
+    targetTabId,
+    originTabId,
+    hostInfoTabId: hostInfo?.hostTabId,
+    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
+  });
+  return { targetTabId, originTabId };
+}
+
+/**
+ * Log operation completion or failure
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} action - Action name
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} correlationId - Correlation ID
+ * @param {Object} result - Operation result
+ * @param {number} durationMs - Operation duration
+ * @param {number|null} targetTabId - Target tab ID
+ */
+function _logOperationResult(action, quickTabId, correlationId, result, durationMs, targetTabId) {
+  if (result.success) {
+    console.log('[Manager] OPERATION_COMPLETED: Manager action completed:', {
+      action,
+      quickTabId,
+      correlationId,
+      status: 'success',
+      method: result.method,
+      targetTabId: result.targetTabId,
+      attempts: result.attempts,
+      durationMs
+    });
+  } else {
+    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
+      action,
+      quickTabId,
+      correlationId,
+      status: 'failed',
+      error: result.error,
+      attempts: result.attempts,
+      durationMs,
+      targetTabId
+    });
+  }
+}
+
+// ==================== END v1.6.4.16 OPERATION HELPERS ====================
+
 /**
  * Go to the browser tab containing this Quick Tab (NEW FEATURE #3)
  */
@@ -5321,12 +5436,12 @@ async function goToTab(tabId) {
  * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
  * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (107 -> ~55)
  */
 async function minimizeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('min', quickTabId);
   const startTime = Date.now();
 
-  // v1.6.4.15 - FIX Issue #20: Log operation start
   console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
     action: 'MINIMIZE_QUICK_TAB',
     quickTabId,
@@ -5339,118 +5454,45 @@ async function minimizeQuickTab(quickTabId) {
   const operationKey = `minimize-${quickTabId}`;
   if (PENDING_OPERATIONS.has(operationKey)) {
     console.log('[Manager] OPERATION_REJECTED: Duplicate operation pending:', {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      reason: 'duplicate-pending'
+      action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId, reason: 'duplicate-pending'
     });
     return;
   }
-
-  // Mark operation as pending
   PENDING_OPERATIONS.add(operationKey);
+  setTimeout(() => PENDING_OPERATIONS.delete(operationKey), OPERATION_TIMEOUT_MS);
 
-  // Auto-clear pending state after timeout (safety net)
-  setTimeout(() => {
-    PENDING_OPERATIONS.delete(operationKey);
-  }, OPERATION_TIMEOUT_MS);
-
-  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
-  if (circuitBreakerState === 'open') {
-    const queued = _queuePendingAction('MINIMIZE_QUICK_TAB', { quickTabId });
-    if (queued) {
-      console.log('[Manager] OPERATION_QUEUED: Circuit breaker open:', {
-        action: 'MINIMIZE_QUICK_TAB',
-        quickTabId,
-        correlationId,
-        reason: 'circuit-breaker-open'
-      });
-      _showErrorNotification('Connection temporarily unavailable. Action queued.');
-      PENDING_OPERATIONS.delete(operationKey);
-      return;
-    }
-  }
-
-  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
-  const portViable = await verifyPortViability();
-  if (!portViable) {
-    console.warn('[Manager] OPERATION_DEFERRED: Port not viable:', {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      reason: 'port-not-viable'
-    });
-    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
-    _queuePendingAction('MINIMIZE_QUICK_TAB', { quickTabId });
-    _showErrorNotification('Connection lost. Action queued for retry.');
+  // v1.6.3.10-v2 - FIX Issue #4: Queue if circuit breaker open
+  if (_shouldQueueForCircuitBreaker('MINIMIZE_QUICK_TAB', quickTabId, correlationId)) {
     PENDING_OPERATIONS.delete(operationKey);
     return;
   }
 
-  // v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging - using imported findTabInState
-  const tabData = findTabInState(quickTabId, quickTabsState);
-  const hostInfo = quickTabHostInfo.get(quickTabId);
-  const originTabId = tabData?.originTabId;
-  const targetTabId = hostInfo?.hostTabId || originTabId;
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability
+  if (!(await _checkPortViabilityOrQueue('MINIMIZE_QUICK_TAB', quickTabId, correlationId))) {
+    PENDING_OPERATIONS.delete(operationKey);
+    return;
+  }
 
-  // v1.6.4.15 - FIX Issue #20: Log target resolution
-  console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
-    action: 'MINIMIZE_QUICK_TAB',
-    quickTabId,
-    correlationId,
-    targetTabId,
-    originTabId,
-    hostInfoTabId: hostInfo?.hostTabId,
-    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
-  });
+  // Resolve target tab
+  const { targetTabId, originTabId } = _resolveTargetTab(quickTabId, 'MINIMIZE_QUICK_TAB', correlationId);
 
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
-    operation: 'MINIMIZE',
-    quickTabId: quickTabId,
-    quickTabOriginTabId: originTabId,
-    requestingTabId: currentBrowserTabId,
-    targetTabId: targetTabId,
-    decision: 'ALLOW'
+    operation: 'MINIMIZE', quickTabId, quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId, targetTabId, decision: 'ALLOW'
   });
 
-  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
+  // Send message with retry
   const result = await _sendMessageWithRetry(
-    {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId,
-      correlationId // v1.6.4.15 - Include correlationId for end-to-end tracing
-    },
+    { action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId },
     targetTabId,
     'minimize'
   );
 
   const durationMs = Date.now() - startTime;
-
-  if (result.success) {
-    // v1.6.4.15 - FIX Issue #20: Log successful completion
-    console.log('[Manager] OPERATION_COMPLETED: Manager action completed:', {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      status: 'success',
-      method: result.method,
-      targetTabId: result.targetTabId,
-      attempts: result.attempts,
-      durationMs
-    });
-  } else {
-    // v1.6.4.15 - FIX Issue #20: Log failure with detailed reason
-    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      status: 'failed',
-      error: result.error,
-      attempts: result.attempts,
-      durationMs,
-      targetTabId
-    });
+  _logOperationResult('MINIMIZE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId);
+  
+  if (!result.success) {
     _showErrorNotification(`Failed to minimize Quick Tab: ${result.error}`);
   }
 }
@@ -6241,12 +6283,12 @@ function _logRestoreVerificationResult(quickTabId, tab) {
  * Close a Quick Tab
  * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (91 -> ~40)
  */
 async function closeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('close', quickTabId);
   const startTime = Date.now();
 
-  // v1.6.4.15 - FIX Issue #20: Log operation start
   console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
     action: 'CLOSE_QUICK_TAB',
     quickTabId,
@@ -6255,101 +6297,38 @@ async function closeQuickTab(quickTabId) {
     timestamp: startTime
   });
 
-  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
-  if (circuitBreakerState === 'open') {
-    const queued = _queuePendingAction('CLOSE_QUICK_TAB', { quickTabId });
-    if (queued) {
-      console.log('[Manager] OPERATION_QUEUED: Circuit breaker open:', {
-        action: 'CLOSE_QUICK_TAB',
-        quickTabId,
-        correlationId,
-        reason: 'circuit-breaker-open'
-      });
-      _showErrorNotification('Connection temporarily unavailable. Action queued.');
-      return;
-    }
-  }
-
-  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
-  const portViable = await verifyPortViability();
-  if (!portViable) {
-    console.warn('[Manager] OPERATION_DEFERRED: Port not viable:', {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      reason: 'port-not-viable'
-    });
-    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
-    _queuePendingAction('CLOSE_QUICK_TAB', { quickTabId });
-    _showErrorNotification('Connection lost. Action queued for retry.');
+  // v1.6.3.10-v2 - FIX Issue #4: Queue if circuit breaker open
+  if (_shouldQueueForCircuitBreaker('CLOSE_QUICK_TAB', quickTabId, correlationId)) {
     return;
   }
 
-  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
-  const tabData = findTabInState(quickTabId, quickTabsState);
-  const hostInfo = quickTabHostInfo.get(quickTabId);
-  const targetTabId = hostInfo?.hostTabId || tabData?.originTabId;
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability
+  if (!(await _checkPortViabilityOrQueue('CLOSE_QUICK_TAB', quickTabId, correlationId))) {
+    return;
+  }
 
-  // v1.6.4.15 - FIX Issue #20: Log target resolution
-  console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
-    action: 'CLOSE_QUICK_TAB',
-    quickTabId,
-    correlationId,
-    targetTabId,
-    originTabId: tabData?.originTabId,
-    hostInfoTabId: hostInfo?.hostTabId,
-    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
-  });
+  // Resolve target tab
+  const { targetTabId, originTabId } = _resolveTargetTab(quickTabId, 'CLOSE_QUICK_TAB', correlationId);
 
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
-    operation: 'CLOSE',
-    quickTabId: quickTabId,
-    quickTabOriginTabId: tabData?.originTabId,
-    requestingTabId: currentBrowserTabId,
-    targetTabId: targetTabId,
-    decision: 'ALLOW'
+    operation: 'CLOSE', quickTabId, quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId, targetTabId, decision: 'ALLOW'
   });
 
+  // Send message with retry
   const result = await _sendMessageWithRetry(
-    {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      correlationId // v1.6.4.15 - Include correlationId for end-to-end tracing
-    },
+    { action: 'CLOSE_QUICK_TAB', quickTabId, correlationId },
     targetTabId,
     'close'
   );
 
   const durationMs = Date.now() - startTime;
+  _logOperationResult('CLOSE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId);
 
   if (result.success) {
-    // v1.6.4.15 - FIX Issue #20: Log successful completion
-    console.log('[Manager] OPERATION_COMPLETED: Manager action completed:', {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      status: 'success',
-      method: result.method,
-      targetTabId: result.targetTabId,
-      attempts: result.attempts,
-      durationMs
-    });
-
-    // Clean up local tracking
     quickTabHostInfo.delete(quickTabId);
   } else {
-    // v1.6.4.15 - FIX Issue #20: Log failure with detailed reason
-    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId,
-      correlationId,
-      status: 'failed',
-      error: result.error,
-      attempts: result.attempts,
-      durationMs,
-      targetTabId
-    });
     _showErrorNotification(`Failed to close Quick Tab: ${result.error}`);
   }
 }

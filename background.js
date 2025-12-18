@@ -4002,38 +4002,62 @@ const ADOPTION_BROADCAST_RETRY_DELAY_MS = 200;
  * @param {Error} error - The error to classify
  * @returns {{ isPermanent: boolean, reason: string }}
  */
+/**
+ * Permanent error patterns - tab doesn't exist or can't receive messages
+ * v1.6.4.16 - FIX Code Health: Extracted to flatten _classifyBroadcastError
+ * @const {string[]}
+ */
+const PERMANENT_ERROR_PATTERNS = [
+  'No tab with id',
+  'Invalid tab ID',
+  'Tab not found',
+  'Cannot access',
+  'Permission denied',
+  'extension context invalidated'
+];
+
+/**
+ * Transient error patterns - tab exists but content script may not be ready
+ * v1.6.4.16 - FIX Code Health: Extracted to flatten _classifyBroadcastError
+ * @const {string[]}
+ */
+const TRANSIENT_ERROR_PATTERNS = [
+  'Receiving end does not exist',
+  'Could not establish connection',
+  'Message manager disconnected',
+  'Connection was reset'
+];
+
+/**
+ * Check if error message matches any pattern in an array
+ * v1.6.4.16 - FIX Code Health: Helper to reduce duplication
+ * @private
+ * @param {string} errorMessage - Error message to check
+ * @param {string[]} patterns - Array of patterns to match
+ * @returns {string|null} Matched pattern or null
+ */
+function _matchErrorPattern(errorMessage, patterns) {
+  for (const pattern of patterns) {
+    if (errorMessage.includes(pattern)) return pattern;
+  }
+  return null;
+}
+
+/**
+ * Classify broadcast error as permanent or transient
+ * v1.6.4.16 - FIX Code Health: Refactored to use extracted helpers (bumpy road fix)
+ * @private
+ * @param {Error} error - Error to classify
+ * @returns {{ isPermanent: boolean, reason: string }}
+ */
 function _classifyBroadcastError(error) {
   const errorMessage = error?.message || String(error);
   
-  // Permanent errors - tab doesn't exist or can't receive messages
-  const permanentPatterns = [
-    'No tab with id',
-    'Invalid tab ID',
-    'Tab not found',
-    'Cannot access',
-    'Permission denied',
-    'extension context invalidated'
-  ];
+  const permanentMatch = _matchErrorPattern(errorMessage, PERMANENT_ERROR_PATTERNS);
+  if (permanentMatch) return { isPermanent: true, reason: permanentMatch };
   
-  for (const pattern of permanentPatterns) {
-    if (errorMessage.includes(pattern)) {
-      return { isPermanent: true, reason: pattern };
-    }
-  }
-  
-  // Transient errors - tab exists but content script may not be ready
-  const transientPatterns = [
-    'Receiving end does not exist',
-    'Could not establish connection',
-    'Message manager disconnected',
-    'Connection was reset'
-  ];
-  
-  for (const pattern of transientPatterns) {
-    if (errorMessage.includes(pattern)) {
-      return { isPermanent: false, reason: pattern };
-    }
-  }
+  const transientMatch = _matchErrorPattern(errorMessage, TRANSIENT_ERROR_PATTERNS);
+  if (transientMatch) return { isPermanent: false, reason: transientMatch };
   
   // Default: treat unknown errors as transient (will retry)
   return { isPermanent: false, reason: 'unknown-error' };
@@ -4409,7 +4433,15 @@ async function _broadcastCloseManyToAllTabs(quickTabIds) {
  * @param {Array} tabs - Browser tabs
  * @param {Array<string>} quickTabIds - Quick Tab IDs to close
  */
-async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
+/**
+ * Send close messages to all browser tabs for multiple Quick Tabs
+ * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.4.16 - FIX Code Health: Changed from async to sync (no await needed)
+ * @private
+ * @param {Array} tabs - Browser tabs
+ * @param {Array} quickTabIds - Array of Quick Tab IDs
+ */
+function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
   for (const quickTabId of quickTabIds) {
     _sendCloseMessageToTabs(tabs, quickTabId);
   }
@@ -5383,132 +5415,74 @@ const VALID_MANAGER_COMMANDS = new Set([
 ]);
 
 /**
+ * Log Manager action result
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
+ * @private
+ */
+function _logManagerActionResult(action, quickTabId, hostTabId, correlationId, result, startTime, method) {
+  const durationMs = Date.now() - startTime;
+  if (result.success !== false) {
+    console.log('[Background] MANAGER_ACTION_COMPLETED:', {
+      action, quickTabId, hostTabId, correlationId,
+      status: 'success', method, durationMs
+    });
+  } else {
+    console.error('[Background] MANAGER_ACTION_FAILED:', {
+      action, quickTabId, hostTabId, correlationId,
+      status: 'failed', error: result.error, method, durationMs
+    });
+  }
+}
+
+/**
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
  * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
- *   - Adds 2-second timeout to messaging calls
- *   - Falls back to browser.scripting.executeScript on timeout/failure
- *   - Ensures atomic operation completion even when messaging fails
- * @param {string} command - Command to execute (MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, CLOSE_QUICK_TAB, FOCUS_QUICK_TAB)
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (99 -> ~55)
+ * @param {string} command - Command to execute
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
- * @returns {Promise<Object>} Result object with success status and optional error
+ * @returns {Promise<Object>} Result object with success status
  */
 async function executeManagerCommand(command, quickTabId, hostTabId) {
   const correlationId = generateCorrelationId('mgr-cmd');
   const startTime = Date.now();
 
-  // v1.6.4.15 - FIX Issue #20: Log Manager action requested at background level
   console.log('[Background] MANAGER_ACTION_REQUESTED:', {
-    action: command,
-    quickTabId,
-    hostTabId,
-    correlationId,
-    timestamp: startTime
+    action: command, quickTabId, hostTabId, correlationId, timestamp: startTime
   });
 
-  // v1.6.3.5-v3 - FIX Code Review: Validate command against allowlist
+  // Validate command against allowlist
   if (!VALID_MANAGER_COMMANDS.has(command)) {
-    console.warn('[Background] MANAGER_ACTION_REJECTED:', {
-      action: command,
-      quickTabId,
-      correlationId,
-      reason: 'invalid-command'
-    });
+    console.warn('[Background] MANAGER_ACTION_REJECTED:', { action: command, quickTabId, correlationId, reason: 'invalid-command' });
     return { success: false, error: `Unknown command: ${command}` };
   }
 
   const executeMessage = {
-    type: 'EXECUTE_COMMAND',
-    command,
-    quickTabId,
-    source: 'manager',
-    correlationId // v1.6.4.15 - Include correlationId for end-to-end tracing
+    type: 'EXECUTE_COMMAND', command, quickTabId, source: 'manager', correlationId
   };
 
-  console.log('[Background] Routing command to tab:', {
-    command,
-    quickTabId,
-    hostTabId,
-    correlationId
-  });
+  console.log('[Background] Routing command to tab:', { command, quickTabId, hostTabId, correlationId });
 
-  // v1.6.3.10-v5 - FIX Issue #1 & #2: Use timeout-protected messaging with Scripting API fallback
-  // This ensures atomic operation completion even when messaging fails or times out
+  // Try messaging first, fall back to Scripting API
   try {
     const response = await Promise.race([
       browser.tabs.sendMessage(hostTabId, executeMessage),
       createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
-
-    // v1.6.4.15 - FIX Issue #20: Log successful completion
-    const durationMs = Date.now() - startTime;
-    console.log('[Background] MANAGER_ACTION_COMPLETED:', {
-      action: command,
-      quickTabId,
-      hostTabId,
-      correlationId,
-      status: 'success',
-      method: 'messaging',
-      durationMs
-    });
-
+    _logManagerActionResult(command, quickTabId, hostTabId, correlationId, { success: true }, startTime, 'messaging');
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    // v1.6.3.10-v5 - FIX Issue #2: Fall back to Scripting API on messaging failure/timeout
-    console.log('[Background] v1.6.3.10-v5 Messaging failed, falling back to Scripting API:', {
-      command,
-      quickTabId,
-      hostTabId,
-      correlationId,
-      error: err.message
-    });
+    console.log('[Background] Messaging failed, falling back to Scripting API:', { command, quickTabId, correlationId, error: err.message });
 
-    // Use Scripting API for atomic execution
     try {
-      const fallbackResult = await _executeViaScripting(
-        hostTabId,
-        command,
-        { quickTabId },
-        correlationId
-      );
-
-      // v1.6.4.15 - FIX Issue #20: Log fallback completion
-      const durationMs = Date.now() - startTime;
-      console.log('[Background] MANAGER_ACTION_COMPLETED:', {
-        action: command,
-        quickTabId,
-        hostTabId,
-        correlationId,
-        status: fallbackResult.success ? 'success' : 'failed',
-        method: 'scripting-fallback',
-        durationMs
-      });
-
-      console.log('[Background] v1.6.3.10-v5 Scripting fallback result:', fallbackResult);
+      const fallbackResult = await _executeViaScripting(hostTabId, command, { quickTabId }, correlationId);
+      _logManagerActionResult(command, quickTabId, hostTabId, correlationId, fallbackResult, startTime, 'scripting-fallback');
       return fallbackResult;
     } catch (fallbackErr) {
-      // v1.6.4.15 - FIX Issue #20: Log failure with detailed reason
-      const durationMs = Date.now() - startTime;
-      console.error('[Background] MANAGER_ACTION_FAILED:', {
-        action: command,
-        quickTabId,
-        hostTabId,
-        correlationId,
-        status: 'failed',
-        error: fallbackErr.message,
-        messagingError: err.message,
-        durationMs
-      });
-
-      console.error('[Background] v1.6.3.10-v5 Both messaging and scripting failed:', {
-        command,
-        quickTabId,
-        hostTabId,
-        messagingError: err.message,
-        scriptingError: fallbackErr.message
-      });
+      _logManagerActionResult(command, quickTabId, hostTabId, correlationId, { success: false, error: fallbackErr.message }, startTime, 'scripting-fallback');
+      console.error('[Background] Both messaging and scripting failed:', { command, quickTabId, hostTabId, messagingError: err.message, scriptingError: fallbackErr.message });
       return { success: false, error: fallbackErr.message, fallbackFailed: true };
     }
   }
