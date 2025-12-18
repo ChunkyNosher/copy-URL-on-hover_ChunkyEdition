@@ -19,6 +19,11 @@
  *   - Apply originTabId during restore to pass UICoordinator validation
  *   - Enhanced logging for snapshot lifecycle with originTabId tracking
  * v1.6.3.6-v8 - FIX Issue #3: Extract originTabId from ID pattern when null
+ * v1.6.3.10-v7 - FIX Issue #12: Snapshot lifecycle guard prevents expiration race
+ *   - Add isRestoring flag to snapshot objects to track restore-in-progress state
+ *   - Defer expiration timeout if isRestoring=true when timeout fires
+ *   - Cancel and reschedule timeout when restore retries occur
+ *   - Add DEBUG level logging for snapshot lifecycle transitions
  */
 
 // Default values for position/size when not provided
@@ -34,6 +39,11 @@ const RESTORE_LOCK_DURATION_MS = 500;
 // Pending snapshots are automatically cleared if UICoordinator doesn't call clearSnapshot()
 // within this timeout. Prevents indefinite memory leaks from failed restore operations.
 const PENDING_SNAPSHOT_EXPIRATION_MS = 1000;
+
+// v1.6.3.10-v7 - FIX Issue #12: Deferred expiration wait time
+// When expiration fires while restore is in progress, we defer and re-check after this interval.
+// This should be longer than typical retry intervals (~900ms) to avoid racing.
+const DEFERRED_EXPIRATION_WAIT_MS = 500;
 
 /**
  * Extract tab ID from Quick Tab ID pattern
@@ -147,6 +157,7 @@ export class MinimizedManager {
   /**
    * Build immutable snapshot object from tabWindow
    * v1.6.3.10-v4 - FIX: Extract to reduce add() complexity
+   * v1.6.3.10-v7 - FIX Issue #12: Add isRestoring flag for snapshot lifecycle guard
    * @private
    * @param {Object} tabWindow - QuickTabWindow instance
    * @param {number|null} resolvedOriginTabId - Resolved originTabId
@@ -165,7 +176,9 @@ export class MinimizedManager {
         height: tabWindow.height ?? DEFAULT_SIZE_HEIGHT
       },
       savedOriginTabId: resolvedOriginTabId,
-      savedOriginContainerId: resolvedOriginContainerId
+      savedOriginContainerId: resolvedOriginContainerId,
+      // v1.6.3.10-v7 - FIX Issue #12: Track restore-in-progress to prevent expiration race
+      isRestoring: false
     };
   }
 
@@ -298,17 +311,26 @@ export class MinimizedManager {
   /**
    * Set restore-in-progress lock with timeout
    * v1.6.3.5 - Extracted to reduce restore() complexity
+   * v1.6.3.10-v7 - FIX Issue #12: Also set isRestoring flag on snapshot for lifecycle guard
    * @private
    */
   _setRestoreLock(id) {
     this._restoreInProgress.add(id);
     setTimeout(() => this._restoreInProgress.delete(id), RESTORE_LOCK_DURATION_MS);
+
+    // v1.6.3.10-v7 - FIX Issue #12: Set isRestoring flag on snapshot (both locations)
+    const snapshot = this.minimizedTabs.get(id) || this.pendingClearSnapshots.get(id);
+    if (snapshot) {
+      snapshot.isRestoring = true;
+      console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: isRestoring=true set for:', id);
+    }
   }
 
   /**
    * Move snapshot from minimizedTabs to pendingClear (clear-on-first-use)
    * v1.6.3.5 - Extracted to reduce restore() complexity
    * v1.6.3.10-v6 - FIX Issue A5: Add automatic expiration timeout for pending snapshots
+   * v1.6.3.10-v7 - FIX Issue #12: Defer expiration while isRestoring=true (lifecycle guard)
    * @private
    */
   _moveSnapshotToPending(id, snapshot, snapshotSource) {
@@ -325,24 +347,72 @@ export class MinimizedManager {
     // Clear any existing timeout for this ID
     this._clearSnapshotExpirationTimeout(id);
 
+    // v1.6.3.10-v7 - FIX Issue #12: Schedule expiration with lifecycle guard
+    this._scheduleSnapshotExpiration(id);
+  }
+
+  /**
+   * Schedule snapshot expiration with lifecycle guard
+   * v1.6.3.10-v7 - FIX Issue #12: Extracted to support deferred expiration
+   * If isRestoring=true when expiration fires, defer until restore completes.
+   * @private
+   * @param {string} id - Quick Tab ID
+   */
+  _scheduleSnapshotExpiration(id) {
     // Schedule automatic cleanup if UICoordinator doesn't call clearSnapshot()
     // Use arrow function to capture 'this' and the 'id' in closure
     const timeoutId = setTimeout(() => {
-      // Guard: Check if instance is still valid (Maps exist)
-      if (!this._snapshotExpirationTimeouts || !this.pendingClearSnapshots) {
-        return; // Instance was likely destroyed
-      }
-      if (this.pendingClearSnapshots.has(id)) {
-        console.warn('[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):', {
-          id,
-          timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
-        });
-        this.pendingClearSnapshots.delete(id);
-        this._snapshotExpirationTimeouts.delete(id);
-      }
+      this._handleSnapshotExpiration(id);
     }, PENDING_SNAPSHOT_EXPIRATION_MS);
 
     this._snapshotExpirationTimeouts.set(id, timeoutId);
+    console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: Expiration scheduled for:', {
+      id,
+      timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
+    });
+  }
+
+  /**
+   * Handle snapshot expiration with lifecycle guard
+   * v1.6.3.10-v7 - FIX Issue #12: If isRestoring=true, defer; otherwise expire
+   * @private
+   * @param {string} id - Quick Tab ID
+   */
+  _handleSnapshotExpiration(id) {
+    // Guard: Check if instance is still valid (Maps exist)
+    if (!this._snapshotExpirationTimeouts || !this.pendingClearSnapshots) {
+      return; // Instance was likely destroyed
+    }
+
+    const snapshot = this.pendingClearSnapshots.get(id);
+    if (!snapshot) {
+      // Snapshot was already cleared (by clearSnapshot call)
+      this._snapshotExpirationTimeouts.delete(id);
+      return;
+    }
+
+    // v1.6.3.10-v7 - FIX Issue #12: Lifecycle guard - defer if restore in progress
+    if (snapshot.isRestoring) {
+      console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: Expiration deferred (isRestoring=true):', {
+        id,
+        deferMs: DEFERRED_EXPIRATION_WAIT_MS
+      });
+      // Reschedule expiration check after deferred wait
+      this._snapshotExpirationTimeouts.delete(id);
+      const deferredTimeoutId = setTimeout(() => {
+        this._handleSnapshotExpiration(id);
+      }, DEFERRED_EXPIRATION_WAIT_MS);
+      this._snapshotExpirationTimeouts.set(id, deferredTimeoutId);
+      return;
+    }
+
+    // Snapshot is not being restored - safe to expire
+    console.warn('[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):', {
+      id,
+      timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
+    });
+    this.pendingClearSnapshots.delete(id);
+    this._snapshotExpirationTimeouts.delete(id);
   }
 
   /**
@@ -363,6 +433,7 @@ export class MinimizedManager {
    * Apply snapshot to tabWindow and verify application
    * v1.6.3.5 - Extracted to reduce restore() complexity
    * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
+   * v1.6.3.10-v7 - FIX Issue #12: Clear isRestoring flag after successful application
    * @private
    */
   _applyAndVerifySnapshot(id, snapshot, snapshotSource) {
@@ -426,6 +497,11 @@ export class MinimizedManager {
 
     // Verify application
     this._verifySnapshotApplication(id, tabWindow, savedLeft, savedTop, savedWidth, savedHeight);
+
+    // v1.6.3.10-v7 - FIX Issue #12: Clear isRestoring flag after successful application
+    // This allows the expiration timeout to proceed if needed
+    snapshot.isRestoring = false;
+    console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: isRestoring=false set for:', id);
 
     // v1.6.3.10-v4 - FIX Issue #13: Include container ID in logging
     console.log('[MinimizedManager] Snapshot applied:', {

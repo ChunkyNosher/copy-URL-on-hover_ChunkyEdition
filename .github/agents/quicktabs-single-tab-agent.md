@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v2
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v7
   unified barrier init, storage.onChanged PRIMARY
 tools: ['*']
 ---
@@ -37,19 +37,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v2 - Simplified Architecture
+**Version:** 1.6.3.10-v7 - Simplified Architecture
 
-**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
+**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
 
-- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
-- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
-- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
+- **Port Reconnection Circuit Breaker** - State machine, 5 failure limit, 30s max backoff
+- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
+- **Storage Event De-duplication** - 200ms window with versioning
+- **Snapshot TTL Race Fix** - `isRestoring` flag prevents expiration during retry
 
-**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
-
-- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
-- Heartbeat 15s interval, 2s timeout
-- Message retry: 2 retries + 150ms backoff
+**v1.6.3.10-v6 & Earlier (Consolidated):** Render debounce (100ms/300ms),
+circuit breaker, cache handling, type-safe tab IDs
 
 **Key Quick Tab Features:**
 
@@ -67,7 +65,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Render debounce 100ms base, 300ms max cap (v1.6.3.10-v2)
+- [ ] Storage event de-duplication works (200ms window)
+- [ ] Snapshot TTL race fix works (isRestoring flag)
 - [ ] storage.onChanged PRIMARY works
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
@@ -77,5 +76,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.10-v2 render fixes,
-storage.onChanged PRIMARY, and proper per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.10-v7 reliability,
+storage.onChanged PRIMARY, snapshot TTL fix.**

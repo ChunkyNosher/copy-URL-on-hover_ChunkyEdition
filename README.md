@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,44 +9,41 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v6 Status:** Type Safety & Container Isolation ✅
+**🔧 v1.6.3.10-v7 Status:** Reliability & Robustness ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v7
+
+**🔧 Reliability & Robustness (December 2025) ✅**
+
+- ✅ **Port Reconnection Circuit Breaker** - State machine with 5 failure limit, 30s max backoff
+- ✅ **Background Handshake Ready Signal** - Command buffering, latency tracking
+- ✅ **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
+- ✅ **Storage Event De-duplication** - 200ms window with versioning
+- ✅ **quickTabHostInfo Cleanup** - 5-min maintenance cycle, max 500 entries
+- ✅ **Storage Write Serialization** - Write queue with optimistic locking
+- ✅ **Handler Init Guards** - All handlers use `_ensureInitialized()` consistently
+- ✅ **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v6
 
-**🔧 Type Safety & Container Isolation (December 2025) ✅**
+**🔧 Type Safety & Container Isolation (Previous) ✅**
 
 - ✅ **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
 - ✅ **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
 - ✅ **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
 - ✅ **Dual Ownership Validation** - Tab ID AND Container ID checks
-- ✅ **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
-- ✅ **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
-- ✅ **Position Persistence Fix** - Skip persist if tab minimized (A3)
-- ✅ **Snapshot Timeout** - MinimizedManager 1000ms expiration (A5)
-
----
-
-## 🎉 What's New in v1.6.3.10-v5
-
-**🔧 Architectural Robustness & Bug Fixes (Previous) ✅**
-
-- ✅ **Atomic Operations** - Scripting API fallback for timeout recovery
-- ✅ **Exponential Backoff** - Port reconnection with jitter (150ms→8s, 1.5x)
-- ✅ **Per-Quick Tab Circuit Breaker** - Prevents global UI freeze
-- ✅ **Transaction ID Entropy** - Higher entropy IDs with tabId + counter
-- ✅ **Surgical DOM Updates** - Manager adoption updates single Quick Tab only
-- ✅ **Cross-Tab Cache Sync** - Content scripts update cache on adoption
-- ✅ **Targeted Restore** - Send restore message to specific tab, not broadcast
-- ✅ **Diagnostic Logging** - Phase-based logging with correlation IDs
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.10-v5:** Atomic ops, exponential backoff, surgical DOM updates, targeted restore  
 **v1.6.3.10-v4:** Container isolation, cross-tab validation, Scripting API fallback  
 **v1.6.3.10-v3:** Adoption re-render, TabLifecycleHandler, orphan detection  
 **v1.6.3.10-v2:** Render debounce, circuit breaker, cache handling  
@@ -237,6 +234,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v6** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v7** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

@@ -128,6 +128,15 @@ const CACHE_STALENESS_ALERT_MS = 30000; // Alert if cache diverges for >30 secon
 // FIX Issue #1: Sliding-window debounce maximum wait time
 const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
 
+// ==================== v1.6.3.10-v7 CONSTANTS ====================
+// FIX Bug #1: quickTabHostInfo memory leak prevention
+const HOST_INFO_MAX_ENTRIES = 500; // Maximum entries before pruning old ones
+const HOST_INFO_MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// FIX Bug #3: Adaptive port timeout
+const PORT_VIABILITY_MIN_TIMEOUT_MS = 700; // Minimum timeout (increased from 500ms)
+const PORT_VIABILITY_MAX_TIMEOUT_MS = 3000; // Maximum adaptive timeout
+const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th percentile
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -187,8 +196,20 @@ let containersData = {}; // Maps cookieStoreId -> container info
 let quickTabsState = {}; // Maps cookieStoreId -> { tabs: [], timestamp }
 
 // v1.6.3.5-v3 - FIX Architecture Phase 3: Track which tab hosts each Quick Tab
-// Key: quickTabId, Value: { hostTabId, lastUpdate }
+// Key: quickTabId, Value: { hostTabId, lastUpdate, containerId }
+// v1.6.3.10-v7 - FIX Bug #1: Added maintenance interval and max size guard
 const quickTabHostInfo = new Map();
+let hostInfoMaintenanceIntervalId = null;
+
+// v1.6.3.10-v7 - FIX Bug #3: Adaptive port timeout tracking
+// Track recent heartbeat latencies for 95th percentile calculation
+const recentLatencySamples = [];
+let adaptivePortTimeout = PORT_VIABILITY_MIN_TIMEOUT_MS;
+
+// v1.6.3.10-v7 - FIX Bug #3: Message deduplication to prevent re-sends on reconnect
+// Key: messageHash (action + quickTabId), Value: timestamp
+const sentMessageDedup = new Map();
+const MESSAGE_DEDUP_TTL_MS = 2000; // Dedup window: don't resend same message within 2s
 
 // v1.6.3.5-v7 - FIX Issue #7: Track when Manager's internal state was last updated (from any source)
 let lastLocalUpdateTime = 0;
@@ -974,6 +995,7 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
 /**
  * Verify port is viable before critical operation
  * v1.6.3.10-v1 - FIX Issue #2: Verify port viability before minimize/restore/close
+ * v1.6.3.10-v7 - FIX Bug #3: Adaptive timeout based on 95th percentile latency
  * @returns {Promise<boolean>} True if port is viable, false if zombie detected
  */
 async function verifyPortViability() {
@@ -985,6 +1007,10 @@ async function verifyPortViability() {
     return false;
   }
 
+  // v1.6.3.10-v7 - FIX Bug #3: Use adaptive timeout instead of fixed 500ms
+  const timeoutMs = _calculateAdaptiveTimeout();
+  const startTime = Date.now();
+
   // Quick ping to verify background is responsive
   try {
     await sendPortMessageWithTimeout(
@@ -993,19 +1019,39 @@ async function verifyPortViability() {
         timestamp: Date.now(),
         source: 'viability-check'
       },
-      PORT_MESSAGE_TIMEOUT_MS
+      timeoutMs
     );
+
+    // v1.6.3.10-v7 - FIX Bug #3: Track latency for adaptive timeout
+    const latencyMs = Date.now() - startTime;
+    _recordLatencySample(latencyMs);
 
     lastSuccessfulPortMessage = Date.now();
     logPortLifecycle('PORT_VIABILITY_CHECK', {
       result: 'success',
-      portState
+      portState,
+      latencyMs,
+      adaptiveTimeoutMs: timeoutMs
     });
     return true;
   } catch (err) {
+    const elapsedMs = Date.now() - startTime;
+
+    // v1.6.3.10-v7 - FIX Bug #3: Check if port is actually disconnected vs just slow
+    // If we're close to timeout but port is still connected, might just be slow
+    if (elapsedMs < timeoutMs && backgroundPort) {
+      console.log('[Manager] PORT_VIABILITY_CHECK: Possible slow response, not zombie', {
+        elapsedMs,
+        timeoutMs,
+        error: err.message
+      });
+    }
+
     logPortLifecycle('PORT_VIABILITY_CHECK', {
       result: 'failed',
       error: err.message,
+      elapsedMs,
+      adaptiveTimeoutMs: timeoutMs,
       recoveryAction: 'triggering reconnect'
     });
 
@@ -1014,6 +1060,136 @@ async function verifyPortViability() {
     return false;
   }
 }
+
+// ==================== v1.6.3.10-v7 ADAPTIVE TIMEOUT ====================
+// FIX Bug #3: Adaptive port timeout based on observed latency
+
+/**
+ * Record a latency sample for adaptive timeout calculation
+ * v1.6.3.10-v7 - FIX Bug #3: Track heartbeat latencies
+ * @private
+ * @param {number} latencyMs - Observed round-trip latency
+ */
+function _recordLatencySample(latencyMs) {
+  recentLatencySamples.push(latencyMs);
+
+  // Keep only the most recent samples
+  if (recentLatencySamples.length > LATENCY_SAMPLES_MAX) {
+    recentLatencySamples.shift();
+  }
+
+  // Recalculate adaptive timeout
+  _updateAdaptiveTimeout();
+}
+
+/**
+ * Calculate 95th percentile of latency samples
+ * v1.6.3.10-v7 - FIX Bug #3: Statistical latency analysis
+ * @private
+ * @returns {number} 95th percentile latency in ms
+ */
+function _calculate95thPercentileLatency() {
+  if (recentLatencySamples.length < 3) {
+    return PORT_VIABILITY_MIN_TIMEOUT_MS; // Not enough data
+  }
+
+  const sorted = [...recentLatencySamples].sort((a, b) => a - b);
+  const index = Math.floor(sorted.length * 0.95);
+  return sorted[Math.min(index, sorted.length - 1)];
+}
+
+/**
+ * Update adaptive timeout based on recent latencies
+ * v1.6.3.10-v7 - FIX Bug #3: Set timeout to max(700ms, 2x observed latency)
+ * @private
+ */
+function _updateAdaptiveTimeout() {
+  const p95Latency = _calculate95thPercentileLatency();
+
+  // timeout = max(700ms, 2x observed latency), capped at max
+  const calculatedTimeout = Math.max(PORT_VIABILITY_MIN_TIMEOUT_MS, p95Latency * 2);
+  adaptivePortTimeout = Math.min(calculatedTimeout, PORT_VIABILITY_MAX_TIMEOUT_MS);
+
+  console.log('[Manager] ADAPTIVE_TIMEOUT_UPDATED:', {
+    p95LatencyMs: p95Latency,
+    newTimeoutMs: adaptivePortTimeout,
+    sampleCount: recentLatencySamples.length
+  });
+}
+
+/**
+ * Calculate current adaptive timeout for port viability check
+ * v1.6.3.10-v7 - FIX Bug #3: Returns adaptive or default timeout
+ * @private
+ * @returns {number} Timeout in milliseconds
+ */
+function _calculateAdaptiveTimeout() {
+  return adaptivePortTimeout;
+}
+
+// ==================== v1.6.3.10-v7 MESSAGE DEDUPLICATION ====================
+// FIX Bug #3: Prevent re-sending same message on reconnect
+
+/**
+ * Check if a message was recently sent (deduplication)
+ * v1.6.3.10-v7 - FIX Bug #3: Prevent duplicate sends on reconnect
+ * @private
+ * @param {string} action - Message action
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {boolean} True if message was recently sent and should be skipped
+ */
+function _isDuplicateMessage(action, quickTabId) {
+  const hash = `${action}:${quickTabId}`;
+  const lastSent = sentMessageDedup.get(hash);
+
+  if (!lastSent) {
+    return false;
+  }
+
+  const age = Date.now() - lastSent;
+  if (age < MESSAGE_DEDUP_TTL_MS) {
+    console.log('[Manager] MESSAGE_DEDUP_DETECTED:', {
+      action,
+      quickTabId,
+      ageMs: age,
+      ttlMs: MESSAGE_DEDUP_TTL_MS
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Mark a message as sent for deduplication
+ * v1.6.3.10-v7 - FIX Bug #3: Track sent messages
+ * @private
+ * @param {string} action - Message action
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _markMessageSent(action, quickTabId) {
+  const hash = `${action}:${quickTabId}`;
+  sentMessageDedup.set(hash, Date.now());
+
+  // Cleanup old entries periodically
+  _cleanupSentMessageDedup();
+}
+
+/**
+ * Cleanup old dedup entries
+ * v1.6.3.10-v7 - FIX Bug #3: Prevent memory growth
+ * @private
+ */
+function _cleanupSentMessageDedup() {
+  const now = Date.now();
+  for (const [hash, timestamp] of sentMessageDedup.entries()) {
+    if (now - timestamp > MESSAGE_DEDUP_TTL_MS * 2) {
+      sentMessageDedup.delete(hash);
+    }
+  }
+}
+
+// ==================== END ADAPTIVE TIMEOUT & DEDUP ====================
 
 // ==================== END HEARTBEAT FUNCTIONS ====================
 
@@ -1300,6 +1476,7 @@ function handleStateUpdateBroadcast(message) {
  * v1.6.3.10-v3 - FIX Issue #47: Adoption re-render fix
  * v1.6.3.10-v5 - FIX Bug #3: Surgical DOM update to prevent all Quick Tabs animating
  * v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
+ * v1.6.3.10-v7 - FIX Bug #2: Container validation for adoption
  * @param {Object} message - Adoption completion message
  */
 async function handleAdoptionCompletion(message) {
@@ -1313,6 +1490,21 @@ async function handleAdoptionCompletion(message) {
     timeSinceBroadcast: Date.now() - timestamp
   });
 
+  // v1.6.3.10-v7 - FIX Bug #2: Validate containers match before processing adoption
+  const containerValidation = await _validateAdoptionContainers(oldOriginTabId, newOriginTabId);
+  if (!containerValidation.valid) {
+    console.warn('[Manager] ADOPTION_CONTAINER_MISMATCH:', {
+      adoptedQuickTabId,
+      oldOriginTabId,
+      newOriginTabId,
+      oldContainerId: containerValidation.oldContainerId,
+      newContainerId: containerValidation.newContainerId,
+      reason: containerValidation.reason,
+      action: 'proceeding with warning - cross-container adoption'
+    });
+    // Note: We proceed anyway but log warning - containers diverging is allowed but tracked
+  }
+
   // v1.6.3.10-v3 - FIX Issue #47: Update cache staleness tracking (uses Issue #8 infrastructure)
   lastCacheSyncFromStorage = Date.now();
 
@@ -1325,11 +1517,13 @@ async function handleAdoptionCompletion(message) {
   }
 
   // v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to reflect new owner
+  // v1.6.3.10-v7 - FIX Bug #2: Also store container ID
   // This ensures restore operations route to the correct tab after adoption
   if (adoptedQuickTabId && newOriginTabId) {
     const previousHostInfo = quickTabHostInfo.get(adoptedQuickTabId);
     quickTabHostInfo.set(adoptedQuickTabId, {
       hostTabId: newOriginTabId,
+      containerId: containerValidation.newContainerId || null,
       lastUpdate: Date.now(),
       lastOperation: 'adoption',
       confirmed: true
@@ -1337,7 +1531,8 @@ async function handleAdoptionCompletion(message) {
     console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
       adoptedQuickTabId,
       previousHostTabId: previousHostInfo?.hostTabId ?? null,
-      newHostTabId: newOriginTabId
+      newHostTabId: newOriginTabId,
+      containerId: containerValidation.newContainerId
     });
   }
 
@@ -1363,6 +1558,88 @@ async function handleAdoptionCompletion(message) {
       reason: 'surgical update returned false'
     });
     scheduleRender('adoption-completed-fallback');
+  }
+}
+
+/**
+ * Validate containers match for adoption
+ * v1.6.3.10-v7 - FIX Bug #2: Container validation for cross-container adoption detection
+ * @private
+ * @param {number|string|null} oldOriginTabId - Previous origin tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ * @returns {Promise<{valid: boolean, oldContainerId: string|null, newContainerId: string|null, reason?: string}>}
+ */
+async function _validateAdoptionContainers(oldOriginTabId, newOriginTabId) {
+  // Skip validation if old tab ID is not a valid number (orphaned, null, etc.)
+  if (typeof oldOriginTabId !== 'number' || oldOriginTabId <= 0) {
+    console.log('[Manager] ADOPTION_CONTAINER_VALIDATION_SKIPPED:', {
+      reason: 'old tab ID is not valid',
+      oldOriginTabId,
+      newOriginTabId
+    });
+    // Try to get new container ID even if we can't compare
+    const newContainerId = await _getTabContainerId(newOriginTabId);
+    return { valid: true, oldContainerId: null, newContainerId, reason: 'old tab not available' };
+  }
+
+  try {
+    // Get container IDs for both tabs in parallel
+    const [oldContainerId, newContainerId] = await Promise.all([
+      _getTabContainerId(oldOriginTabId),
+      _getTabContainerId(newOriginTabId)
+    ]);
+
+    // If either tab doesn't exist or container can't be determined, allow adoption
+    if (oldContainerId === null || newContainerId === null) {
+      return {
+        valid: true,
+        oldContainerId,
+        newContainerId,
+        reason: 'container ID not available for one or both tabs'
+      };
+    }
+
+    // Compare containers
+    const containersMatch = oldContainerId === newContainerId;
+    return {
+      valid: containersMatch,
+      oldContainerId,
+      newContainerId,
+      reason: containersMatch ? 'containers match' : 'containers differ'
+    };
+  } catch (err) {
+    console.warn('[Manager] ADOPTION_CONTAINER_VALIDATION_ERROR:', {
+      oldOriginTabId,
+      newOriginTabId,
+      error: err.message
+    });
+    // On error, allow adoption but log warning
+    return { valid: true, oldContainerId: null, newContainerId: null, reason: `validation error: ${err.message}` };
+  }
+}
+
+/**
+ * Get container ID (cookieStoreId) for a browser tab
+ * v1.6.3.10-v7 - FIX Bug #2: Helper for container validation
+ * @private
+ * @param {number} tabId - Browser tab ID
+ * @returns {Promise<string|null>} Container ID or null if tab doesn't exist
+ */
+async function _getTabContainerId(tabId) {
+  if (!tabId || tabId <= 0) {
+    return null;
+  }
+
+  try {
+    const tab = await browser.tabs.get(tabId);
+    return tab?.cookieStoreId || 'firefox-default';
+  } catch (err) {
+    // Tab may not exist anymore
+    console.log('[Manager] CONTAINER_ID_LOOKUP_FAILED:', {
+      tabId,
+      error: err.message
+    });
+    return null;
   }
 }
 
@@ -2372,6 +2649,122 @@ function _removeFromHostInfo(quickTabId) {
   }
 }
 
+// ==================== v1.6.3.10-v7 HOST INFO MAINTENANCE ====================
+// FIX Bug #1: Periodic cleanup to prevent memory leaks
+
+/**
+ * Start periodic maintenance task for quickTabHostInfo
+ * v1.6.3.10-v7 - FIX Bug #1: Prevents memory leak from orphaned entries
+ */
+function _startHostInfoMaintenance() {
+  // Clear any existing interval
+  if (hostInfoMaintenanceIntervalId) {
+    clearInterval(hostInfoMaintenanceIntervalId);
+  }
+
+  // Run maintenance every 5 minutes
+  hostInfoMaintenanceIntervalId = setInterval(() => {
+    _performHostInfoMaintenance();
+  }, HOST_INFO_MAINTENANCE_INTERVAL_MS);
+
+  console.log('[Manager] HOST_INFO_MAINTENANCE_STARTED:', {
+    intervalMs: HOST_INFO_MAINTENANCE_INTERVAL_MS,
+    maxEntries: HOST_INFO_MAX_ENTRIES
+  });
+}
+
+/**
+ * Stop periodic maintenance task
+ * v1.6.3.10-v7 - FIX Bug #1: Cleanup on unload
+ */
+function _stopHostInfoMaintenance() {
+  if (hostInfoMaintenanceIntervalId) {
+    clearInterval(hostInfoMaintenanceIntervalId);
+    hostInfoMaintenanceIntervalId = null;
+    console.log('[Manager] HOST_INFO_MAINTENANCE_STOPPED');
+  }
+}
+
+/**
+ * Perform maintenance on quickTabHostInfo - remove orphaned entries
+ * v1.6.3.10-v7 - FIX Bug #1: Validates entries against current quickTabsState
+ */
+function _performHostInfoMaintenance() {
+  const startTime = Date.now();
+  const entriesBefore = quickTabHostInfo.size;
+
+  if (entriesBefore === 0) {
+    return; // Nothing to maintain
+  }
+
+  // Get current valid Quick Tab IDs from state
+  const validQuickTabIds = new Set();
+  if (quickTabsState?.tabs && Array.isArray(quickTabsState.tabs)) {
+    quickTabsState.tabs.forEach(tab => validQuickTabIds.add(tab.id));
+  }
+
+  // Remove entries that don't correspond to existing Quick Tabs
+  const orphanedEntries = [];
+  for (const [quickTabId, _info] of quickTabHostInfo.entries()) {
+    if (!validQuickTabIds.has(quickTabId)) {
+      orphanedEntries.push(quickTabId);
+    }
+  }
+
+  // Delete orphaned entries
+  orphanedEntries.forEach(id => quickTabHostInfo.delete(id));
+
+  // Check if we still exceed max size - prune oldest entries
+  const prunedOldest = _pruneOldestHostInfoEntries();
+
+  const entriesAfter = quickTabHostInfo.size;
+  const durationMs = Date.now() - startTime;
+
+  if (orphanedEntries.length > 0 || prunedOldest > 0) {
+    console.log('[Manager] HOST_INFO_MAINTENANCE_COMPLETE:', {
+      entriesBefore,
+      entriesAfter,
+      orphanedRemoved: orphanedEntries.length,
+      oldestPruned: prunedOldest,
+      validQuickTabCount: validQuickTabIds.size,
+      durationMs
+    });
+  }
+}
+
+/**
+ * Prune oldest entries if map exceeds max size
+ * v1.6.3.10-v7 - FIX Bug #1: Max size guard (500 entries)
+ * @returns {number} Number of entries pruned
+ */
+function _pruneOldestHostInfoEntries() {
+  if (quickTabHostInfo.size <= HOST_INFO_MAX_ENTRIES) {
+    return 0;
+  }
+
+  // Convert to array and sort by lastUpdate (oldest first)
+  const entries = Array.from(quickTabHostInfo.entries()).sort(
+    (a, b) => (a[1].lastUpdate || 0) - (b[1].lastUpdate || 0)
+  );
+
+  // Calculate how many to remove
+  const toRemove = quickTabHostInfo.size - HOST_INFO_MAX_ENTRIES;
+  const removed = entries.slice(0, toRemove);
+
+  // Remove oldest entries
+  removed.forEach(([id]) => quickTabHostInfo.delete(id));
+
+  console.log('[Manager] HOST_INFO_PRUNED_OLDEST:', {
+    removed: toRemove,
+    oldestRemovedIds: removed.slice(0, 5).map(([id]) => id), // Log first 5 for debug
+    newSize: quickTabHostInfo.size
+  });
+
+  return toRemove;
+}
+
+// ==================== END HOST INFO MAINTENANCE ====================
+
 /**
  * Send MANAGER_COMMAND to background for remote Quick Tab control
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
@@ -2443,20 +2836,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
 
+  // v1.6.3.10-v7 - FIX Bug #1: Start periodic maintenance for quickTabHostInfo
+  _startHostInfoMaintenance();
+
   // Auto-refresh every 2 seconds
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
   }, 2000);
 
-  console.log('[Manager] v1.6.3.6-v11 Port connection + Message infrastructure initialized');
+  console.log('[Manager] v1.6.3.10-v7 Port connection + Message infrastructure + Host info maintenance initialized');
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
+// v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
 window.addEventListener('unload', () => {
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
+
+  // v1.6.3.10-v7 - FIX Bug #1: Stop host info maintenance
+  _stopHostInfoMaintenance();
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -5056,6 +5456,7 @@ async function _trySingleTargetedMessage(message, targetTabId, operation, retry)
 /**
  * Send message with retry logic and broadcast fallback
  * v1.6.3.10-v1 - FIX Issue #7: Retry 2x before broadcast fallback
+ * v1.6.3.10-v7 - FIX Bug #3: Message deduplication to prevent re-sends
  * @private
  * @param {Object} message - Message to send (action, quickTabId)
  * @param {number|null} targetTabId - Target tab ID (null for broadcast-only)
@@ -5064,6 +5465,24 @@ async function _trySingleTargetedMessage(message, targetTabId, operation, retry)
  */
 async function _sendMessageWithRetry(message, targetTabId, operation) {
   let attempts = 0;
+
+  // v1.6.3.10-v7 - FIX Bug #3: Check for duplicate message
+  if (_isDuplicateMessage(message.action, message.quickTabId)) {
+    console.log('[Manager] MESSAGE_DEDUP_SKIPPED:', {
+      action: message.action,
+      quickTabId: message.quickTabId,
+      operation
+    });
+    return {
+      success: true, // Treat as success since message was already sent
+      method: 'dedup',
+      attempts: 0,
+      error: 'Duplicate message skipped'
+    };
+  }
+
+  // v1.6.3.10-v7 - FIX Bug #3: Mark message as sent before attempting
+  _markMessageSent(message.action, message.quickTabId);
 
   // v1.6.3.10-v1 - FIX Issue #7: Try targeted message first (if target known)
   if (targetTabId) {

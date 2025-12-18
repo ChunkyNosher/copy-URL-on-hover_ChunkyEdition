@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v2), unified barrier init, scheduleRender() with revision dedup,
+  (v1.6.3.10-v7), unified barrier init, scheduleRender() with revision dedup,
   single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v2 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v7 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -47,24 +47,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.10-v2 Features (NEW) - Render, Circuit Breaker & Cache:**
+**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
 
-- **Render Debounce** - 100ms base, 300ms max cap (sliding-window)
-- **Circuit Breaker** - 3s open, 2s backoff max, 5s sliding window
-- **FAILURE_REASON enum** - `TRANSIENT`, `ZOMBIE_PORT`, `BACKGROUND_DEAD`
-- **Cache Handling** - `lastCacheSyncFromStorage`, 30s staleness alert
+- **quickTabHostInfo Cleanup** - `_startHostInfoMaintenance()`, 5-min cycle, max 500 entries
+- **Container Validation** - `_validateAdoptionContainers()` in adoption flow
+- **Adaptive Port Viability** - `_calculateAdaptiveTimeout()`, 2x p95 latency (700ms-3s)
+- **Message De-duplication** - `_isDuplicateMessage()`, `_markMessageSent()`
 
-**v1.6.3.10-v1 Features (Previous) - Port Lifecycle & Reliability:**
+**v1.6.3.10-v6 & Earlier (Consolidated):** Render debounce (100ms/300ms),
+circuit breaker, cache handling, port state machine
 
-- Port state machine: `CONNECTED`, `ZOMBIE`, `RECONNECTING`, `DEAD`
-- Heartbeat 15s interval, 2s timeout
-- Message retry: 2 retries + 150ms backoff
-
-**Key Modules (v1.6.3.10-v2):**
+**Key Modules (v1.6.3.10-v7):**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |
-| `src/constants.js`                 | Centralized constants (+v10)  |
+| `src/constants.js`                 | Centralized constants (+v7)   |
 | `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
 | `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
 | `src/storage/schema-v2.js`         | Pure state utilities          |
@@ -84,9 +81,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Render debounce 100ms base, 300ms max cap (v1.6.3.10-v2)
-- [ ] Circuit breaker 3s open, 5s sliding window (v1.6.3.10-v2)
-- [ ] Cache staleness alert 30s (v1.6.3.10-v2)
+- [ ] quickTabHostInfo cleanup works (5-min, max 500 entries)
+- [ ] Container validation in adoption works
+- [ ] Adaptive port viability timeout works (700ms-3s)
 - [ ] scheduleRender() works with revision dedup
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
@@ -97,6 +94,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.10-v2 render/circuit
-breaker/cache fixes, scheduleRender() with revision dedup, MANAGER pattern
-actions.**
+**Your strength: Manager coordination with v1.6.3.10-v7 host info cleanup,
+container validation, adaptive timeouts, MANAGER pattern actions.**

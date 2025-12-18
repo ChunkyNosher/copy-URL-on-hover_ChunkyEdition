@@ -1,0 +1,8 @@
+{
+  "id": "e9f35c67-90e4-4ebe-a9a5-81bde0f537fe",
+  "title": "Initialization guard pattern",
+  "details": "All handler methods in QuickTabHandler.js must call `await this._ensureInitialized()` as their first operation to prevent race conditions during browser startup. The _ensureInitialized() method validates both `this.isInitialized` flag AND `this._isGlobalStateReady()` (checks Array.isArray(globalState.tabs)) to ensure storage has been loaded. Use [InitBoundary] log prefix for initialization state changes.",
+  "category": "general",
+  "dateCreated": "2025-12-18T04:15:29.464Z",
+  "dateUpdated": "2025-12-18T04:15:29.464Z"
+}
