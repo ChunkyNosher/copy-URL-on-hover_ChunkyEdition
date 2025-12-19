@@ -3386,13 +3386,14 @@ function handlePortConnect(port) {
 function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
   if (!message.correlationId) return;
   
+  // Spread response first, then set explicit properties to ensure they take precedence
   const ack = {
+    ...response,
     type: 'ACKNOWLEDGMENT',
     correlationId: message.correlationId,
     originalType: message.type,
     success: response?.success ?? true,
-    timestamp: Date.now(),
-    ...response
+    timestamp: Date.now()
   };
 
   try {
@@ -3427,6 +3428,17 @@ async function handlePortMessage(port, portId, message) {
  * @returns {Promise<Object>} Handler response
  */
 /**
+ * Handle GET_BACKGROUND_INFO message
+ * v1.6.3.10-v8 - FIX Code Review: Extracted to named function for consistency
+ * @private
+ */
+function handleGetBackgroundInfo() {
+  return Promise.resolve({
+    success: true, type: 'BACKGROUND_INFO', ...getBackgroundStartupInfo(), isInitialized, timestamp: Date.now()
+  });
+}
+
+/**
  * Port message handlers lookup
  * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup table
  * @private
@@ -3438,9 +3450,7 @@ const PORT_MESSAGE_HANDLERS = {
   BROADCAST: (msg, portInfo) => handleBroadcastRequest(msg, portInfo),
   DELETION_ACK: (msg, portInfo) => handleDeletionAck(msg, portInfo),
   REQUEST_FULL_STATE_SYNC: (msg, portInfo) => handleFullStateSyncRequest(msg, portInfo),
-  GET_BACKGROUND_INFO: () => Promise.resolve({
-    success: true, type: 'BACKGROUND_INFO', ...getBackgroundStartupInfo(), isInitialized, timestamp: Date.now()
-  })
+  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo()
 };
 
 function routePortMessage(message, portInfo) {
