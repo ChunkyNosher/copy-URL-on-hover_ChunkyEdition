@@ -762,30 +762,32 @@ function _bufferCommand(command) {
 }
 
 /**
+ * Check if port is ready to receive commands
+ * v1.6.3.10-v8 - FIX Code Health: Extracted complex conditional
+ * @private
+ */
+function _canFlushCommands() {
+  return pendingCommandsBuffer.length > 0 && backgroundPort && isBackgroundReady;
+}
+
+/**
  * Flush buffered commands after background becomes ready
  * v1.6.3.10-v7 - FIX Issue #2
  */
 function _flushCommandBuffer() {
   if (pendingCommandsBuffer.length === 0) return;
   
-  console.log('[Content] FLUSHING_COMMAND_BUFFER:', {
-    bufferSize: pendingCommandsBuffer.length,
-    timestamp: Date.now()
-  });
+  console.log('[Content] FLUSHING_COMMAND_BUFFER:', { bufferSize: pendingCommandsBuffer.length });
   
-  while (pendingCommandsBuffer.length > 0 && backgroundPort && isBackgroundReady) {
+  while (_canFlushCommands()) {
     const command = pendingCommandsBuffer.shift();
     try {
       backgroundPort.postMessage(command);
       console.log('[Content] BUFFERED_COMMAND_SENT:', {
-        type: command.type,
-        bufferedDuration: Date.now() - command.bufferedAt
+        type: command.type, bufferedDuration: Date.now() - command.bufferedAt
       });
     } catch (err) {
-      console.error('[Content] BUFFERED_COMMAND_FAILED:', {
-        type: command.type,
-        error: err.message
-      });
+      console.error('[Content] BUFFERED_COMMAND_FAILED:', { type: command.type, error: err.message });
       pendingCommandsBuffer.unshift(command);
       break;
     }
@@ -885,108 +887,67 @@ function handleBackgroundRestartDetected(newStartupTime) {
  * v1.6.3.10-v7 - FIX Issue #5: Drain message queue on reconnect
  * @param {number} tabId - Current tab ID
  */
+/**
+ * Handle reconnection after disconnect or error
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce connectContentToBackground complexity
+ * @private
+ */
+function _handleReconnection(tabId, reason) {
+  reconnectionAttempts++;
+
+  // Check circuit breaker
+  if (_shouldOpenCircuitBreaker()) {
+    _transitionPortState(PORT_CONNECTION_STATE.FAILED, 'max-failures-reached');
+    console.error('[Content] CIRCUIT_BREAKER_OPEN:', { attempts: reconnectionAttempts });
+    return;
+  }
+
+  const reconnectDelay = _calculateReconnectDelay();
+  console.log('[Content] Scheduling reconnection:', { attempt: reconnectionAttempts, delayMs: reconnectDelay, reason });
+
+  setTimeout(() => {
+    if (!backgroundPort && document.visibilityState !== 'hidden') {
+      connectContentToBackground(tabId);
+    }
+  }, reconnectDelay);
+}
+
 function connectContentToBackground(tabId) {
   cachedTabId = tabId;
 
   // v1.6.3.10-v7 - FIX Issue #1: Check circuit breaker state
   if (portConnectionState === PORT_CONNECTION_STATE.FAILED) {
-    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect after repeated failures', {
-      attempts: reconnectionAttempts,
-      state: portConnectionState
-    });
+    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect', { attempts: reconnectionAttempts });
     return;
   }
 
-  // Transition to CONNECTING state
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTING, 'connect-attempt');
-
-  // v1.6.3.10-v7 - FIX Issue #2: Record handshake request time
   handshakeRequestTimestamp = Date.now();
   isBackgroundReady = false;
 
   try {
-    backgroundPort = browser.runtime.connect({
-      name: `quicktabs-content-${tabId}`
-    });
-
+    backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
-
-    // v1.6.3.10-v5 - FIX Issue #4: Reset reconnection counter on successful connection
     _resetReconnectionAttempts();
-
-    // v1.6.3.10-v7 - FIX Issue #5: Drain message queue on reconnect
     _drainMessageQueue();
 
-    // Handle messages from background
     backgroundPort.onMessage.addListener(handleContentPortMessage);
 
-    // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
       isBackgroundReady = false;
-
-      // v1.6.3.10-v7 - FIX Issue #1: Update circuit breaker state
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
-
-      // v1.6.3.10-v5 - FIX Issue #4: Exponential backoff with jitter
-      reconnectionAttempts++;
-
-      // v1.6.3.10-v7 - FIX Issue #1: Check if circuit breaker should open
-      if (_shouldOpenCircuitBreaker()) {
-        _transitionPortState(PORT_CONNECTION_STATE.FAILED, 'max-failures-reached');
-        console.error('[Content] CIRCUIT_BREAKER_OPEN: Max failures reached, stopping reconnection', {
-          attempts: reconnectionAttempts,
-          maxFailures: CIRCUIT_BREAKER_MAX_FAILURES
-        });
-        return;
-      }
-
-      const reconnectDelay = _calculateReconnectDelay();
-
-      console.log('[Content] v1.6.3.10-v7 Scheduling reconnection:', {
-        attempt: reconnectionAttempts,
-        delayMs: reconnectDelay,
-        maxFailures: CIRCUIT_BREAKER_MAX_FAILURES
-      });
-
-      // Attempt reconnection after calculated delay (only if tab still active)
-      setTimeout(() => {
-        if (!backgroundPort && document.visibilityState !== 'hidden') {
-          connectContentToBackground(tabId);
-        }
-      }, reconnectDelay);
+      _handleReconnection(tabId, 'disconnect');
     });
 
-    console.log('[Content] v1.6.3.10-v7 Port connection established to background');
+    console.log('[Content] Port connection established');
   } catch (err) {
-    console.error('[Content] Failed to connect to background:', err.message);
+    console.error('[Content] Failed to connect:', err.message);
     logContentPortLifecycle('error', { error: err.message });
-
-    // v1.6.3.10-v7 - FIX Issue #1: Update circuit breaker state
     _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'connection-error');
-
-    // v1.6.3.10-v5 - FIX Issue #4: Backoff on connection error too
-    reconnectionAttempts++;
-
-    // v1.6.3.10-v7 - FIX Issue #1: Check if circuit breaker should open
-    if (_shouldOpenCircuitBreaker()) {
-      _transitionPortState(PORT_CONNECTION_STATE.FAILED, 'max-failures-reached');
-      console.error('[Content] CIRCUIT_BREAKER_OPEN: Max failures reached, stopping reconnection', {
-        attempts: reconnectionAttempts,
-        maxFailures: CIRCUIT_BREAKER_MAX_FAILURES
-      });
-      return;
-    }
-
-    const reconnectDelay = _calculateReconnectDelay();
-
-    setTimeout(() => {
-      if (!backgroundPort && document.visibilityState !== 'hidden') {
-        connectContentToBackground(tabId);
-      }
-    }, reconnectDelay);
+    _handleReconnection(tabId, 'error');
   }
 }
 
@@ -2298,34 +2259,31 @@ const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if duplicate that should be skipped
  */
+/**
+ * Check if event is within dedup window with same version
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _isWithinDedupWindow(lastEvent, newVersion, now) {
+  if (!lastEvent) return false;
+  const timeSinceLastEvent = now - lastEvent.timestamp;
+  const isDuplicate = timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && lastEvent.version === newVersion;
+  if (isDuplicate) {
+    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { timeSinceLastEvent, version: newVersion });
+  }
+  return isDuplicate;
+}
+
 function _isStorageEventDuplicate(key, newValue) {
   const now = Date.now();
-  const lastEvent = recentStorageEvents.get(key);
-  
-  // Extract version/checksum for accurate comparison
   const newVersion = newValue?.correlationId || newValue?.timestamp || null;
   
-  if (lastEvent) {
-    const timeSinceLastEvent = now - lastEvent.timestamp;
-    
-    // Check if within dedup window AND same version
-    if (timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && 
-        lastEvent.version === newVersion) {
-      console.debug('[Content] STORAGE_EVENT_DUPLICATE: Skipping duplicate handler:', {
-        key,
-        timeSinceLastEvent,
-        version: newVersion,
-        dedupWindowMs: STORAGE_EVENT_DEDUP_WINDOW_MS
-      });
-      return true;
-    }
+  if (_isWithinDedupWindow(recentStorageEvents.get(key), newVersion, now)) {
+    return true;
   }
   
   // Track this event
-  recentStorageEvents.set(key, {
-    timestamp: now,
-    version: newVersion
-  });
+  recentStorageEvents.set(key, { timestamp: now, version: newVersion });
   
   // Clean up old entries
   if (recentStorageEvents.size > 20) {
@@ -3047,59 +3005,43 @@ function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOri
  * @param {Object} message - Adoption completion message
  * @param {Function} sendResponse - Response callback
  */
+/**
+ * Update MinimizedManager snapshot via API if available
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce _handleAdoptionCompleted complexity
+ * @private
+ */
+function _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId) {
+  if (!quickTabsManager?.minimizedManager?.updateSnapshotOriginTabId) return false;
+  return quickTabsManager.minimizedManager.updateSnapshotOriginTabId(
+    adoptedQuickTabId, newOriginTabId, previousOriginTabId
+  );
+}
+
 function _handleAdoptionCompleted(message, sendResponse) {
   const { adoptedQuickTabId, previousOriginTabId, newOriginTabId, timestamp } = message;
   const currentTabId = quickTabsManager?.currentTabId ?? null;
 
-  // v1.6.3.10-v7 - FIX Issue #7: Track adoption for ownership validation
+  // Track adoption and get cache state
   _trackAdoptedQuickTab(adoptedQuickTabId, newOriginTabId);
-
-  // Get current cache state
   const tabEntry = quickTabsManager?.tabs?.get(adoptedQuickTabId);
   const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
 
-  console.log('[Content] ADOPTION_COMPLETED: Manager action received:', {
-    action: 'ADOPTION_COMPLETED',
-    adoptedQuickTabId,
-    previousOriginTabId,
-    newOriginTabId,
-    currentTabId,
-    correlationId: message.correlationId || null,
-    hasInMap: !!tabEntry,
-    hasSnapshot: !!minimizedSnapshot
+  console.log('[Content] ADOPTION_COMPLETED received:', {
+    adoptedQuickTabId, previousOriginTabId, newOriginTabId, currentTabId,
+    hasInMap: !!tabEntry, hasSnapshot: !!minimizedSnapshot
   });
 
-  // Update caches using extracted helpers
+  // Update caches
   const tabUpdated = _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId);
   const directSnapshotUpdated = _updateMinimizedSnapshotOriginTabId(minimizedSnapshot, adoptedQuickTabId, newOriginTabId);
   const cacheUpdated = tabUpdated || directSnapshotUpdated;
+  const snapshotUpdated = _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId);
 
-  // v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId
-  let snapshotUpdated = false;
-  if (quickTabsManager?.minimizedManager?.updateSnapshotOriginTabId) {
-    snapshotUpdated = quickTabsManager.minimizedManager.updateSnapshotOriginTabId(
-      adoptedQuickTabId,
-      newOriginTabId,
-      previousOriginTabId
-    );
-  }
-
-  console.log('[Content] ADOPTION_COMPLETED: Manager action completed:', {
-    action: 'ADOPTION_COMPLETED',
-    adoptedQuickTabId,
-    cacheUpdated,
-    snapshotUpdated,
-    status: 'success',
-    timeSinceAdoption: Date.now() - timestamp
+  console.log('[Content] ADOPTION_COMPLETED completed:', {
+    adoptedQuickTabId, cacheUpdated, snapshotUpdated, timeSinceAdoption: Date.now() - timestamp
   });
 
-  sendResponse({
-    success: true,
-    cacheUpdated,
-    snapshotUpdated,
-    currentTabId,
-    timestamp: Date.now()
-  });
+  sendResponse({ success: true, cacheUpdated, snapshotUpdated, currentTabId, timestamp: Date.now() });
 }
 
 // ==================== v1.6.4.14 FIX Issue #17: TAB ACTIVATED HANDLER ====================
