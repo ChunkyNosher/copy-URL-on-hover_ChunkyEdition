@@ -1308,54 +1308,45 @@ class StateCoordinator {
   }
 
   /**
+   * Find tab index in global state, logging if not found
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce duplication
+   * @private
+   */
+  _findTabIndex(quickTabId, operation) {
+    const index = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+    if (index === -1) {
+      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for ${operation}`);
+    }
+    return index;
+  }
+
+  /**
    * Helper: Handle update operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {Object} data - Tab data
    */
   handleUpdateOperation(quickTabId, data) {
-    const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (updateIndex === -1) {
-      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for update`);
-      return;
-    }
-
-    this.globalState.tabs[updateIndex] = {
-      ...this.globalState.tabs[updateIndex],
-      ...data
-    };
+    const index = this._findTabIndex(quickTabId, 'update');
+    if (index === -1) return;
+    this.globalState.tabs[index] = { ...this.globalState.tabs[index], ...data };
     console.log(`[STATE COORDINATOR] Updated Quick Tab ${quickTabId}`);
   }
 
   /**
    * Helper: Handle delete operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
    */
   handleDeleteOperation(quickTabId) {
-    const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (deleteIndex === -1) {
-      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for delete`);
-      return;
-    }
-
-    this.globalState.tabs.splice(deleteIndex, 1);
+    const index = this._findTabIndex(quickTabId, 'delete');
+    if (index === -1) return;
+    this.globalState.tabs.splice(index, 1);
     console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
   }
 
   /**
    * Helper: Handle minimize operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {Object} data - Tab data (optional)
    */
   handleMinimizeOperation(quickTabId, data) {
-    const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (minIndex !== -1) {
-      this.globalState.tabs[minIndex].minimized = true;
+    const index = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+    if (index !== -1) {
+      this.globalState.tabs[index].minimized = true;
       console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
     } else if (data) {
       this.globalState.tabs.push({ ...data, minimized: true });
@@ -1365,18 +1356,11 @@ class StateCoordinator {
 
   /**
    * Helper: Handle restore operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
    */
   handleRestoreOperation(quickTabId) {
-    const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (restoreIndex === -1) {
-      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for restore`);
-      return;
-    }
-
-    this.globalState.tabs[restoreIndex].minimized = false;
+    const index = this._findTabIndex(quickTabId, 'restore');
+    if (index === -1) return;
+    this.globalState.tabs[index].minimized = false;
     console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
   }
 
@@ -2716,56 +2700,37 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
  * @param {Object} newValue - New storage value
  */
+/**
+ * Log broadcast decision for storage updates
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce duplication
+ * @private
+ */
+function _logBroadcastDecision(decision, reason, targetTabCount = 0, filteredCount = 0) {
+  console.log('[Background][Storage] BROADCAST_DECISION:', { decision, reason, targetTabCount, filteredCount });
+}
+
 function _processStorageUpdate(newValue) {
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
-    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
-    console.log('[Background][Storage] BROADCAST_DECISION:', {
-      decision: 'SKIP',
-      reason: 'tabs empty or missing - clearing cache instead',
-      targetTabCount: 0,
-      filteredCount: 0
-    });
+    _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
     _clearCacheForEmptyStorage(newValue);
     return;
   }
 
-  // v1.6.3.4-v11 - FIX Issue #8: Reset consecutive counter and update timestamp when we get valid tabs
+  // Reset counters for valid tabs
   consecutiveZeroTabReads = 0;
   lastNonEmptyStateTimestamp = Date.now();
 
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
-    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
-    console.log('[Background][Storage] BROADCAST_DECISION:', {
-      decision: 'SKIP',
-      reason: 'state unchanged (same hash and saveId)',
-      targetTabCount: newValue?.tabs?.length ?? 0,
-      filteredCount: 0
-    });
+    _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
     return;
   }
 
-  // Filter out tabs with invalid URLs
+  // Filter out tabs with invalid URLs and update cache
   const filteredValue = filterValidTabs(newValue);
   const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
-
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
-  console.log('[Background][Storage] BROADCAST_DECISION:', {
-    decision: 'UPDATE_CACHE',
-    reason: 'proceeding with cache update (tabs sync via storage.onChanged)',
-    targetTabCount: filteredValue.tabs?.length ?? 0,
-    filteredCount: filteredCount
-  });
-
-  // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
-  // Each tab handles its own sync via storage.onChanged listener in StorageManager
-  // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
-  console.log('[Background] Updating cache only (no broadcast):', {
-    tabCount: filteredValue.tabs?.length || 0,
-    saveId: filteredValue.saveId,
-    note: 'Tabs sync independently via storage.onChanged'
-  });
+  _logBroadcastDecision('UPDATE_CACHE', 'proceeding with cache update', filteredValue.tabs?.length ?? 0, filteredCount);
   _updateGlobalStateFromStorage(filteredValue);
 }
 
@@ -3596,40 +3561,31 @@ function handleDeletionAck(message, portInfo) {
  * @param {Object} message - Action request message
  * @param {Object} portInfo - Port info
  */
+/**
+ * Action handlers map for ACTION_REQUEST messages
+ * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup
+ * @private
+ */
+const ACTION_REQUEST_HANDLERS = {
+  TOGGLE_GROUP: () => ({ success: true }),
+  MINIMIZE_TAB: (payload, portInfo) => executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  RESTORE_TAB: (payload, portInfo) => executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  CLOSE_TAB: (payload, portInfo) => executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  ADOPT_TAB: (payload) => handleAdoptAction(payload),
+  CLOSE_MINIMIZED_TABS: () => handleCloseMinimizedTabsCommand(),
+  DELETE_GROUP: () => ({ success: false, error: 'Not implemented' })
+};
+
 function handleActionRequest(message, portInfo) {
   const { action, payload } = message;
-
   console.log('[Background] Handling ACTION_REQUEST:', { action, portInfo: portInfo?.origin });
 
-  switch (action) {
-    case 'TOGGLE_GROUP':
-      // Manager toggle group - no storage write needed
-      return { success: true };
-
-    case 'MINIMIZE_TAB':
-      return executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
-
-    case 'RESTORE_TAB':
-      return executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
-
-    case 'CLOSE_TAB':
-      return executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
-
-    case 'ADOPT_TAB':
-      return handleAdoptAction(payload);
-
-    // v1.6.4.0 - FIX Issue A: Handle close minimized tabs command
-    case 'CLOSE_MINIMIZED_TABS':
-      return handleCloseMinimizedTabsCommand();
-
-    case 'DELETE_GROUP':
-      // TODO: Implement delete group
-      return { success: false, error: 'Not implemented' };
-
-    default:
-      console.warn('[Background] Unknown action:', action);
-      return { success: false, error: `Unknown action: ${action}` };
+  const handler = ACTION_REQUEST_HANDLERS[action];
+  if (!handler) {
+    console.warn('[Background] Unknown action:', action);
+    return { success: false, error: `Unknown action: ${action}` };
   }
+  return handler(payload, portInfo);
 }
 
 /**
@@ -4734,10 +4690,6 @@ function generateMessageId() {
 // v1.6.3.10-v5 - FIX Issue #11: Message logging throttle infrastructure
 // Throttle period (1 second) to reduce console spam under heavy load
 const LOGGING_THROTTLE_MS = 1000;
-// Track last logged time per log type
-let _lastDispatchLogTime = 0;
-let _lastReceiptLogTime = 0;
-let _lastDeletionLogTime = 0;
 // Debug mode flag - set to true to enable verbose logging
 // v1.6.3.10-v5 - Use globalThis for service worker compatibility
 const _debugModeEnabled =
@@ -4755,96 +4707,54 @@ function _shouldThrottleLog(lastLogTime) {
 }
 
 /**
+ * Generic throttled log helper
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate logging
+ * @private
+ */
+function _logThrottled(emoji, category, lastTimeRef, data) {
+  if (_shouldThrottleLog(lastTimeRef.time)) return;
+  lastTimeRef.time = Date.now();
+  console.log(`[Background] ${emoji} ${category}:`, { ...data, timestamp: Date.now() });
+}
+
+// Throttle trackers using objects for reference passing
+const _dispatchThrottle = { time: 0 };
+const _receiptThrottle = { time: 0 };
+
+/**
  * Log message dispatch (outgoing)
- * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
- * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
- * Logs sender tab ID, message type, timestamp (no payloads)
- * @param {string} messageId - Unique message ID for correlation
- * @param {string} messageType - Type of message being sent
- * @param {number} senderTabId - Sender tab ID
- * @param {string} target - Target description ('broadcast', 'sidebar', or specific tab ID)
  */
 function logMessageDispatch(messageId, messageType, senderTabId, target) {
-  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
-  if (_shouldThrottleLog(_lastDispatchLogTime)) {
-    return;
-  }
-  _lastDispatchLogTime = Date.now();
-
-  console.log('[Background] 📤 MESSAGE DISPATCH:', {
-    messageId,
-    messageType,
-    senderTabId,
-    target,
-    timestamp: Date.now()
-  });
+  _logThrottled('📤', 'MESSAGE DISPATCH', _dispatchThrottle, { messageId, messageType, senderTabId, target });
 }
 
 /**
  * Log message receipt (incoming)
- * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message logging
- * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
- * Logs receiver context, message type, timestamp
- * @param {string} messageId - Unique message ID for correlation (if available)
- * @param {string} messageType - Type of message received
- * @param {number} senderTabId - Sender tab ID
  */
 function logMessageReceipt(messageId, messageType, senderTabId) {
-  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
-  if (_shouldThrottleLog(_lastReceiptLogTime)) {
-    return;
-  }
-  _lastReceiptLogTime = Date.now();
-
-  console.log('[Background] 📥 MESSAGE RECEIPT:', {
-    messageId: messageId || 'N/A',
-    messageType,
-    senderTabId,
-    timestamp: Date.now()
-  });
+  _logThrottled('📥', 'MESSAGE RECEIPT', _receiptThrottle, { messageId: messageId || 'N/A', messageType, senderTabId });
 }
+
+// Throttle tracker for deletion logs
+const _deletionThrottle = { time: 0 };
 
 /**
  * Log deletion event propagation
- * v1.6.3.6-v5 - FIX Issue #4e: State deletion propagation logging
- * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
- * Logs when deletion event is submitted and received
- * @param {string} correlationId - Unique ID for end-to-end tracing
- * @param {string} phase - 'submit' or 'received'
- * @param {string} quickTabId - Quick Tab ID being deleted
- * @param {Object} details - Additional context (source, target tabs, etc.)
+ * v1.6.3.10-v8 - FIX Code Health: Use consolidated throttle pattern
  */
 function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) {
-  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
-  if (_shouldThrottleLog(_lastDeletionLogTime)) {
-    return;
-  }
-  _lastDeletionLogTime = Date.now();
+  if (_shouldThrottleLog(_deletionThrottle.time)) return;
+  _deletionThrottle.time = Date.now();
 
+  const phaseEmoji = { submit: '🗑️ DELETION SUBMIT', received: '🗑️ DELETION RECEIVED', 'broadcast-complete': '🗑️ DELETION BROADCAST COMPLETE' };
+  const baseData = { correlationId, quickTabId, timestamp: Date.now() };
+  
   if (phase === 'submit') {
-    console.log('[Background] 🗑️ DELETION SUBMIT:', {
-      correlationId,
-      quickTabId,
-      source: details.source,
-      excludeTabId: details.excludeTabId,
-      timestamp: Date.now()
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, source: details.source, excludeTabId: details.excludeTabId });
   } else if (phase === 'received') {
-    console.log('[Background] 🗑️ DELETION RECEIVED:', {
-      correlationId,
-      quickTabId,
-      receiverTabId: details.receiverTabId,
-      stateApplied: details.stateApplied,
-      timestamp: Date.now()
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, receiverTabId: details.receiverTabId, stateApplied: details.stateApplied });
   } else if (phase === 'broadcast-complete') {
-    console.log('[Background] 🗑️ DELETION BROADCAST COMPLETE:', {
-      correlationId,
-      quickTabId,
-      totalTabs: details.totalTabs,
-      successCount: details.successCount,
-      timestamp: Date.now()
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, totalTabs: details.totalTabs, successCount: details.successCount });
   }
 }
 
