@@ -5386,29 +5386,18 @@ function _resolveTargetTab(quickTabId, action, correlationId) {
  * @param {number} durationMs - Operation duration
  * @param {number|null} targetTabId - Target tab ID
  */
-function _logOperationResult(action, quickTabId, correlationId, result, durationMs, targetTabId) {
+/**
+ * Log operation result (success or failure)
+ * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 6 parameters
+ * @private
+ * @param {Object} opts - Logging options
+ */
+function _logOperationResult({ action, quickTabId, correlationId, result, durationMs, targetTabId }) {
+  const baseData = { action, quickTabId, correlationId, durationMs, attempts: result.attempts };
   if (result.success) {
-    console.log('[Manager] OPERATION_COMPLETED: Manager action completed:', {
-      action,
-      quickTabId,
-      correlationId,
-      status: 'success',
-      method: result.method,
-      targetTabId: result.targetTabId,
-      attempts: result.attempts,
-      durationMs
-    });
+    console.log('[Manager] OPERATION_COMPLETED:', { ...baseData, status: 'success', method: result.method, targetTabId: result.targetTabId });
   } else {
-    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
-      action,
-      quickTabId,
-      correlationId,
-      status: 'failed',
-      error: result.error,
-      attempts: result.attempts,
-      durationMs,
-      targetTabId
-    });
+    console.error('[Manager] OPERATION_FAILED:', { ...baseData, status: 'failed', error: result.error, targetTabId });
   }
 }
 
@@ -5490,7 +5479,7 @@ async function minimizeQuickTab(quickTabId) {
   );
 
   const durationMs = Date.now() - startTime;
-  _logOperationResult('MINIMIZE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId);
+  _logOperationResult({ action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId });
   
   if (!result.success) {
     _showErrorNotification(`Failed to minimize Quick Tab: ${result.error}`);
@@ -6324,7 +6313,7 @@ async function closeQuickTab(quickTabId) {
   );
 
   const durationMs = Date.now() - startTime;
-  _logOperationResult('CLOSE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId);
+  _logOperationResult({ action: 'CLOSE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId });
 
   if (result.success) {
     quickTabHostInfo.delete(quickTabId);
@@ -6408,63 +6397,44 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
  * @param {string} correlationId - Correlation ID for tracing
  * @param {number} startTime - Operation start timestamp
  */
+/**
+ * Handle successful adoption response
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce _handleAdoptResponse complexity
+ * @private
+ */
+function _handleAdoptSuccess(quickTabId, targetTabId, response, correlationId, durationMs) {
+  console.log('[Manager] OPERATION_COMPLETED:', {
+    action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'success',
+    oldOriginTabId: response?.oldOriginTabId, newOriginTabId: targetTabId, timedOut: response?.timedOut || false, durationMs
+  });
+  console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', { quickTabId, targetTabId, timedOut: response?.timedOut || false });
+
+  // Update local tracking
+  quickTabHostInfo.set(quickTabId, { hostTabId: targetTabId, lastUpdate: Date.now(), lastOperation: 'adopt', confirmed: true });
+  
+  // Invalidate cache for old tab
+  if (response?.oldOriginTabId) browserTabInfoCache.delete(response.oldOriginTabId);
+  
+  scheduleRender('adopt-success');
+}
+
+/**
+ * Handle failed adoption response
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce _handleAdoptResponse complexity
+ * @private
+ */
+function _handleAdoptFailure(quickTabId, targetTabId, response, correlationId, durationMs) {
+  const error = response?.error || 'Unknown error';
+  console.error('[Manager] OPERATION_FAILED:', { action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'failed', error, durationMs });
+  console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', { quickTabId, targetTabId, error });
+}
+
 function _handleAdoptResponse(quickTabId, targetTabId, response, correlationId = null, startTime = null) {
   const durationMs = startTime ? Date.now() - startTime : null;
-
   if (response?.success || response?.timedOut) {
-    // v1.6.4.15 - FIX Issue #20: Log successful completion
-    console.log('[Manager] OPERATION_COMPLETED: Manager action completed:', {
-      action: 'ADOPT_TAB',
-      quickTabId,
-      targetTabId,
-      correlationId,
-      status: 'success',
-      oldOriginTabId: response?.oldOriginTabId,
-      newOriginTabId: targetTabId,
-      timedOut: response?.timedOut || false,
-      durationMs
-    });
-
-    // v1.6.4.0 - FIX Issue A: Command succeeded (or timed out with assumed success)
-    console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
-      quickTabId,
-      targetTabId,
-      oldOriginTabId: response?.oldOriginTabId,
-      timedOut: response?.timedOut || false
-    });
-
-    // Update local tracking
-    quickTabHostInfo.set(quickTabId, {
-      hostTabId: targetTabId,
-      lastUpdate: Date.now(),
-      lastOperation: 'adopt',
-      confirmed: true
-    });
-
-    // Invalidate cache for old tab (if response has it)
-    if (response?.oldOriginTabId) {
-      browserTabInfoCache.delete(response.oldOriginTabId);
-    }
-
-    // Re-render UI to reflect the change
-    scheduleRender('adopt-success');
+    _handleAdoptSuccess(quickTabId, targetTabId, response, correlationId, durationMs);
   } else {
-    // v1.6.4.15 - FIX Issue #20: Log failure with detailed reason
-    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
-      action: 'ADOPT_TAB',
-      quickTabId,
-      targetTabId,
-      correlationId,
-      status: 'failed',
-      error: response?.error || 'Unknown error',
-      durationMs
-    });
-
-    console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
-      quickTabId,
-      targetTabId,
-      error: response?.error || 'Unknown error'
-    });
+    _handleAdoptFailure(quickTabId, targetTabId, response, correlationId, durationMs);
   }
 }
 
