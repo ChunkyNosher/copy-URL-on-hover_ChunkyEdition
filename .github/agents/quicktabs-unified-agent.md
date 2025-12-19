@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.10-v7), unified barrier init,
+  sync with Single Writer Authority (v1.6.3.10-v9), unified barrier init,
   single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
@@ -36,39 +36,35 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v9 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
-- **Single Writer Authority** - Manager sends commands, background writes
-  storage
+- **Single Writer Authority** - Manager sends commands, background writes storage
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit
-- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
-- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
-- **quickTabHostInfo Cleanup** - 5-min maintenance, max 500 entries
-- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
-- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
+- **Duplicate Window Alignment** - `DUPLICATE_SAVEID_WINDOW_MS` increased to 5000ms
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
+- **Memory Leak Fix** - Comprehensive `destroy()` method
 
-**v1.6.3.10-v6 Features (Previous):** Type-safe tab IDs, async tab ID init,
-container ID normalization, dual ownership validation, operation lock increase
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
+type-safe tab IDs, container isolation, atomic ops
 
-**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic ops, container isolation,
-cross-tab validation, Scripting API fallback, adoption re-render
-
-**Key Modules (v1.6.3.10-v7):**
+**Key Modules (v1.6.3.10-v9):**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
-| `src/constants.js`                | Centralized constants (+v7 timing)  |
+| `src/constants.js`                | Centralized constants (+v9 timing)  |
 | `src/storage/schema-v2.js`        | Pure state utilities, version field |
 | `src/storage/storage-manager.js`  | Simplified persistence, checksum    |
 | `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
@@ -89,12 +85,10 @@ cross-tab validation, Scripting API fallback, adoption re-render
 
 ## Testing Requirements
 
-- [ ] Port reconnection circuit breaker works (5 failures, 30s backoff)
-- [ ] Storage event de-duplication works (200ms window)
-- [ ] quickTabHostInfo cleanup works (5-min maintenance)
-- [ ] Storage write serialization works (max 3 retries)
-- [ ] Type-safe tab IDs work (`normalizeOriginTabId()`)
-- [ ] Container isolation works (`originContainerId` filtering)
+- [ ] Identity-ready gating works (`waitForIdentityInit()`)
+- [ ] Storage quota monitoring works (`checkStorageQuota()`)
+- [ ] Write rate-limiting works (`WRITE_COALESCE_MIN_INTERVAL_MS`)
+- [ ] Z-index recycling works (threshold 100000)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
@@ -103,5 +97,5 @@ cross-tab validation, Scripting API fallback, adoption re-render
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v7 reliability,
-storage.onChanged PRIMARY, circuit breaker, adaptive dedup.**
+**Your strength: Complete Quick Tab system with v1.6.3.10-v9 storage fixes,
+identity gating, quota monitoring, storage.onChanged PRIMARY.**

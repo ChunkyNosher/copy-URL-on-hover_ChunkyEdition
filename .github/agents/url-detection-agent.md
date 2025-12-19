@@ -60,32 +60,16 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.10-v9 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
 - **Unified Barrier Init** - Single barrier with resolve-only semantics
-- **Response Helper** - `_buildResponse()` for correlationId responses
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
-
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background
-  script
-- **Storage Event Routing** - `_routeInitMessage()` →
-  `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
-
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Single Barrier Init** - Replaces multi-phase initialization
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-
-**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
-messaging, simplified BFCache.
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, response helper,
+dead code removal, unified barrier
 
 **URL Detection Features:**
 

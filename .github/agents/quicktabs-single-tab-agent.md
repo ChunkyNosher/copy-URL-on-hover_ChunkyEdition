@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v7
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v9
   unified barrier init, storage.onChanged PRIMARY
 tools: ['*']
 ---
@@ -37,24 +37,25 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v7 - Simplified Architecture
+**Version:** 1.6.3.10-v9 - Simplified Architecture
 
-**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Port Reconnection Circuit Breaker** - State machine, 5 failure limit, 30s max backoff
-- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- **Storage Event De-duplication** - 200ms window with versioning
-- **Snapshot TTL Race Fix** - `isRestoring` flag prevents expiration during retry
+- **Solo/Mute Toggle Atomicity** - Ownership validation and lock
+- **Destroyed Flag Check** - Drag controller callback validation
+- **Ownership Validation** - window.js minimize() validation
+- **Persist Timeout** - 5s timeout on `persistToStorage()`
+- **isActive() Method** - QuickTabWindow activity check
+- **Memory Leak Fix** - Comprehensive `destroy()` method
 
-**v1.6.3.10-v6 & Earlier (Consolidated):** Render debounce (100ms/300ms),
-circuit breaker, cache handling, type-safe tab IDs
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
+type-safe tab IDs, snapshot TTL race fix
 
 **Key Quick Tab Features:**
 
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
 - **Mute Mode (🔇)** - Hide ONLY on specific browser tabs (mutedOnTabs array)
-- **Global Visibility** - Visible in all tabs by default (no container
-  isolation)
+- **Global Visibility** - Visible in all tabs by default (no container isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
@@ -65,8 +66,10 @@ circuit breaker, cache handling, type-safe tab IDs
 
 ## Testing Requirements
 
-- [ ] Storage event de-duplication works (200ms window)
-- [ ] Snapshot TTL race fix works (isRestoring flag)
+- [ ] Solo/Mute toggle atomicity works
+- [ ] Destroyed flag check in callbacks works
+- [ ] Persist timeout works (5s)
+- [ ] isActive() method works
 - [ ] storage.onChanged PRIMARY works
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
@@ -76,5 +79,5 @@ circuit breaker, cache handling, type-safe tab IDs
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.10-v7 reliability,
-storage.onChanged PRIMARY, snapshot TTL fix.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.10-v9 atomicity,
+memory leak fix, storage.onChanged PRIMARY.**

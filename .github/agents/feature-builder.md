@@ -60,29 +60,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.10-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
-- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
-- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
-- **Dual Ownership Validation** - Tab ID AND Container ID checks
-- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
-- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
 
-**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic operations, exponential backoff,
-circuit breaker, container isolation, cross-tab validation, Scripting API fallback,
-adoption re-render, TabLifecycleHandler, orphan detection
-
-**v1.6.3.10-v2 & Earlier (Consolidated):**
-
-- Render debounce 100ms, circuit breaker 3s open, cache staleness 30s alert
-- Port state machine, heartbeat 15s/2s, message retry 2x+150ms
-- Unified barrier init, dual architecture
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, type-safe tab IDs,
+container isolation, atomic ops, exponential backoff
 
 **Key Architecture Layers:**
 
