@@ -6294,19 +6294,10 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
 
     const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId, correlationId });
 
-    _handleAdoptResponse(quickTabId, targetTabId, response, correlationId, startTime);
+    _handleAdoptResponse({ quickTabId, targetTabId, response, correlationId, startTime });
   } catch (err) {
-    // v1.6.4.15 - FIX Issue #20: Log failure with detailed reason
     const durationMs = Date.now() - startTime;
-    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
-      action: 'ADOPT_TAB',
-      quickTabId,
-      targetTabId,
-      correlationId,
-      status: 'failed',
-      error: err.message,
-      durationMs
-    });
+    console.error('[Manager] OPERATION_FAILED:', { action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'failed', error: err.message, durationMs });
   }
 }
 
@@ -6349,7 +6340,12 @@ function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId,
   console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', { quickTabId, targetTabId, error });
 }
 
-function _handleAdoptResponse(quickTabId, targetTabId, response, correlationId = null, startTime = null) {
+/**
+ * Handle adoption response
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+function _handleAdoptResponse({ quickTabId, targetTabId, response, correlationId = null, startTime = null }) {
   const durationMs = startTime ? Date.now() - startTime : null;
   const opts = { quickTabId, targetTabId, response, correlationId, durationMs };
   if (response?.success || response?.timedOut) {
