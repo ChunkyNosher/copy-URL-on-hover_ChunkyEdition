@@ -707,8 +707,45 @@ const MAX_INITIALIZATION_RETRIES = 3;
  * v1.6.3.6-v12 - FIX Issue #1: Proper error handling - don't set isInitialized on failure
  * v1.6.3.6-v12 - FIX Code Review: Added retry limit to prevent infinite loop
  */
+/**
+ * Log initialization completion
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce initializeGlobalState complexity
+ * @private
+ */
+function _logInitializationComplete(source, initStartTime) {
+  console.log(`[Background] Initialization complete from ${source}:`, {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    durationMs: Date.now() - initStartTime
+  });
+}
+
+/**
+ * Handle initialization failure with retry logic
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce initializeGlobalState complexity
+ * @private
+ */
+function _handleInitializationFailure(err, initStartTime) {
+  console.error('[Background] INITIALIZATION FAILED:', {
+    error: err.message,
+    durationMs: Date.now() - initStartTime,
+    retryCount: initializationRetryCount,
+    maxRetries: MAX_INITIALIZATION_RETRIES
+  });
+
+  if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
+    initializationRetryCount++;
+    const backoffMs = Math.pow(2, initializationRetryCount) * 500;
+    console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+    setTimeout(() => initializeGlobalState(), backoffMs);
+  } else {
+    console.error('[Background] Max retries exceeded - marking as initialized with empty state');
+    globalQuickTabState.tabs = [];
+    globalQuickTabState.lastUpdate = Date.now();
+    isInitialized = true;
+  }
+}
+
 async function initializeGlobalState() {
-  // Guard: Already initialized
   if (isInitialized) {
     console.log('[Background] State already initialized');
     return;
@@ -718,51 +755,18 @@ async function initializeGlobalState() {
   const initStartTime = Date.now();
 
   try {
-    // Try session storage first (faster)
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
-      initializationRetryCount = 0; // Reset on success
-      console.log('[Background] v1.6.3.6-v12 Initialization complete from session storage:', {
-        tabCount: globalQuickTabState.tabs?.length || 0,
-        durationMs: Date.now() - initStartTime
-      });
+      initializationRetryCount = 0;
+      _logInitializationComplete('session storage', initStartTime);
       return;
     }
 
-    // Fall back to sync storage
     await tryLoadFromSyncStorage();
-    initializationRetryCount = 0; // Reset on success
-    console.log('[Background] v1.6.3.6-v12 Initialization complete from local storage:', {
-      tabCount: globalQuickTabState.tabs?.length || 0,
-      durationMs: Date.now() - initStartTime
-    });
+    initializationRetryCount = 0;
+    _logInitializationComplete('local storage', initStartTime);
   } catch (err) {
-    // v1.6.3.6-v12 - FIX Issue #1: Do NOT set isInitialized=true on error
-    // This ensures handlers know state is not ready
-    console.error('[Background] v1.6.3.6-v12 INITIALIZATION FAILED:', {
-      error: err.message,
-      durationMs: Date.now() - initStartTime,
-      retryCount: initializationRetryCount,
-      maxRetries: MAX_INITIALIZATION_RETRIES
-    });
-
-    // v1.6.3.6-v12 - FIX Code Review: Limit retries with exponential backoff
-    if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
-      initializationRetryCount++;
-      const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
-      console.log(
-        `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
-      );
-      setTimeout(() => initializeGlobalState(), backoffMs);
-    } else {
-      console.error(
-        '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
-      );
-      // Fall back to empty state after max retries
-      globalQuickTabState.tabs = [];
-      globalQuickTabState.lastUpdate = Date.now();
-      isInitialized = true;
-    }
+    _handleInitializationFailure(err, initStartTime);
   }
 }
 
@@ -3311,56 +3315,53 @@ async function cleanupStalePorts() {
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 
 /**
- * Handle incoming port connection
- * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
- * @param {browser.runtime.Port} port - The connecting port
+ * Parse port name to extract type and tab ID
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handlePortConnect complexity
+ * @private
  */
-function handlePortConnect(port) {
-  // Parse port name to determine origin
-  // Format: "quicktabs-{type}-{tabId}" (e.g., "quicktabs-sidebar" or "quicktabs-content-123")
+function _parsePortName(port) {
   const nameParts = port.name.split('-');
   const type = nameParts[1] || 'unknown';
   const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : port.sender?.tab?.id || null;
   const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+  return { type, tabId, origin };
+}
 
+/**
+ * Send background handshake to port after initialization
+ * v1.6.3.10-v8 - FIX Code Health: Extracted async handshake logic
+ * @private
+ */
+async function _sendBackgroundHandshake(port, portId, tabId, origin) {
+  try {
+    const initReady = await waitForInitialization(5000);
+    port.postMessage({
+      type: 'BACKGROUND_HANDSHAKE',
+      ...getBackgroundStartupInfo(),
+      isInitialized: initReady,
+      portId, tabId,
+      timestamp: Date.now()
+    });
+    console.log('[Background] Sent BACKGROUND_HANDSHAKE:', { portId, origin, isInitialized: initReady });
+  } catch (err) {
+    console.warn('[Background] Failed to send handshake:', err.message);
+  }
+}
+
+/**
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ */
+function handlePortConnect(port) {
+  const { type, tabId, origin } = _parsePortName(port);
   const portId = registerPort(port, origin, tabId, type);
-
-  // Store portId on the port for later reference
   port._portId = portId;
 
-  // v1.6.3.10-v4 - FIX Issue #3/6: Send background startup info for restart detection
-  // v1.6.3.10-v5 - FIX Issue #6: Wait for initialization before sending handshake
-  // This prevents content scripts from receiving handshake with isInitialized=false
-  // and then sending operations before background is ready
-  (async () => {
-    try {
-      // Wait for initialization (max 5 seconds)
-      const initReady = await waitForInitialization(5000);
+  _sendBackgroundHandshake(port, portId, tabId, origin);
 
-      port.postMessage({
-        type: 'BACKGROUND_HANDSHAKE',
-        ...getBackgroundStartupInfo(),
-        isInitialized: initReady, // v1.6.3.10-v5: Include init status
-        portId,
-        tabId,
-        timestamp: Date.now()
-      });
-      console.log('[Background] v1.6.3.10-v5 Sent BACKGROUND_HANDSHAKE to port:', {
-        portId,
-        origin,
-        isInitialized: initReady
-      });
-    } catch (err) {
-      console.warn('[Background] v1.6.3.10-v5 Failed to send handshake:', err.message);
-    }
-  })();
+  port.onMessage.addListener(message => handlePortMessage(port, portId, message));
 
-  // Handle messages from this port
-  port.onMessage.addListener(message => {
-    handlePortMessage(port, portId, message);
-  });
-
-  // Handle port disconnect
   port.onDisconnect.addListener(() => {
     const error = browser.runtime.lastError;
     if (error) {
@@ -3424,50 +3425,38 @@ async function handlePortMessage(port, portId, message) {
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
  */
+/**
+ * Port message handlers lookup
+ * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup table
+ * @private
+ */
+const PORT_MESSAGE_HANDLERS = {
+  HEARTBEAT: (msg, portInfo) => handleHeartbeat(msg, portInfo),
+  ACTION_REQUEST: (msg, portInfo) => handleActionRequest(msg, portInfo),
+  STATE_UPDATE: (msg, portInfo) => handleStateUpdate(msg, portInfo),
+  BROADCAST: (msg, portInfo) => handleBroadcastRequest(msg, portInfo),
+  DELETION_ACK: (msg, portInfo) => handleDeletionAck(msg, portInfo),
+  REQUEST_FULL_STATE_SYNC: (msg, portInfo) => handleFullStateSyncRequest(msg, portInfo),
+  GET_BACKGROUND_INFO: () => Promise.resolve({
+    success: true, type: 'BACKGROUND_INFO', ...getBackgroundStartupInfo(), isInitialized, timestamp: Date.now()
+  })
+};
+
 function routePortMessage(message, portInfo) {
   const { type, action } = message;
 
-  // Route by message type (v1.6.3.6-v11: FIX Issue #15)
-  switch (type) {
-    // v1.6.3.6-v12 - FIX Issue #2, #4: Handle heartbeat to prevent Firefox termination
-    case 'HEARTBEAT':
-      return handleHeartbeat(message, portInfo);
-
-    case 'ACTION_REQUEST':
-      return handleActionRequest(message, portInfo);
-
-    case 'STATE_UPDATE':
-      return handleStateUpdate(message, portInfo);
-
-    case 'BROADCAST':
-      return handleBroadcastRequest(message, portInfo);
-
-    // v1.6.3.6-v12 - FIX Issue #6: Handle deletion acknowledgments
-    case 'DELETION_ACK':
-      return handleDeletionAck(message, portInfo);
-
-    // v1.6.4.0 - FIX Issue E: Handle state sync request after port reconnection
-    case 'REQUEST_FULL_STATE_SYNC':
-      return handleFullStateSyncRequest(message, portInfo);
-
-    // v1.6.3.10-v4 - FIX Issue #3/6: Handle background info request for restart detection
-    case 'GET_BACKGROUND_INFO':
-      return Promise.resolve({
-        success: true,
-        type: 'BACKGROUND_INFO',
-        ...getBackgroundStartupInfo(),
-        isInitialized,
-        timestamp: Date.now()
-      });
-
-    default:
-      // Fallback to action-based routing for backwards compatibility
-      if (action) {
-        return handleLegacyAction(message, portInfo);
-      }
-      console.warn('[Background] Unknown message type:', type);
-      return Promise.resolve({ success: false, error: 'Unknown message type' });
+  const handler = PORT_MESSAGE_HANDLERS[type];
+  if (handler) {
+    return handler(message, portInfo);
   }
+
+  // Fallback to action-based routing for backwards compatibility
+  if (action) {
+    return handleLegacyAction(message, portInfo);
+  }
+
+  console.warn('[Background] Unknown message type:', type);
+  return Promise.resolve({ success: false, error: 'Unknown message type' });
 }
 
 /**
@@ -3739,7 +3728,12 @@ function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
  * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
  * @private
  */
-async function _writeAndVerifyAdoptionState(state, quickTabId, targetTabId, correlationId, startTime) {
+/**
+ * Write and verify adoption state to storage
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+async function _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeStartTime = Date.now();
   
@@ -3754,52 +3748,27 @@ async function _writeAndVerifyAdoptionState(state, quickTabId, targetTabId, corr
       }
     });
     
-    // Verify write succeeded by reading back
     const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
     
     if (!verifiedState || verifiedState.saveId !== saveId) {
-      const durationMs = Date.now() - startTime;
       console.error('[Background] MANAGER_ACTION_FAILED:', {
-        action: 'ADOPT_TAB',
-        quickTabId,
-        targetTabId,
-        correlationId,
-        status: 'failed',
-        error: 'storage-verification-failed',
-        expectedSaveId: saveId,
-        actualSaveId: verifiedState?.saveId,
-        durationMs
+        action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+        status: 'failed', error: 'storage-verification-failed',
+        expectedSaveId: saveId, actualSaveId: verifiedState?.saveId,
+        durationMs: Date.now() - startTime
       });
-      return { 
-        success: false, 
-        error: 'Storage write verification failed',
-        reason: 'storage-verification-failed'
-      };
+      return { success: false, error: 'Storage write verification failed', reason: 'storage-verification-failed' };
     }
     
-    console.log('[Background] ADOPT_TAB: Storage write verified:', {
-      saveId,
-      correlationId,
-      durationMs: Date.now() - writeStartTime
-    });
+    console.log('[Background] ADOPT_TAB: Storage write verified:', { saveId, correlationId, durationMs: Date.now() - writeStartTime });
     return { success: true, saveId };
   } catch (writeErr) {
-    const durationMs = Date.now() - startTime;
     console.error('[Background] MANAGER_ACTION_FAILED:', {
-      action: 'ADOPT_TAB',
-      quickTabId,
-      targetTabId,
-      correlationId,
-      status: 'failed',
-      error: writeErr.message,
-      durationMs
+      action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+      status: 'failed', error: writeErr.message, durationMs: Date.now() - startTime
     });
-    return { 
-      success: false, 
-      error: `Storage write failed: ${writeErr.message}`,
-      reason: 'storage-write-error'
-    };
+    return { success: false, error: `Storage write failed: ${writeErr.message}`, reason: 'storage-write-error' };
   }
 }
 
@@ -3842,9 +3811,7 @@ async function handleAdoptAction(payload) {
   const { oldOriginTabId } = findResult;
 
   // Write and verify state
-  const writeResult = await _writeAndVerifyAdoptionState(
-    state, quickTabId, targetTabId, correlationId, startTime
-  );
+  const writeResult = await _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime });
   if (!writeResult.success) {
     return writeResult;
   }
@@ -4037,12 +4004,12 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
   const metrics = { successCount: 0, permanentFailures: 0, transientFailures: 0 };
   
   // First pass - try all tabs
-  await _sendAdoptionFirstPass(pendingTabs, completedTabs, metrics, message, quickTabId);
+  await _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId });
   
   // Retry pass for transient failures
   const tabsToRetry = pendingTabs.filter(p => !completedTabs.has(p.tabId));
   if (tabsToRetry.length > 0) {
-    await _sendAdoptionRetryPass(tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId);
+    await _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId });
   }
 
   return metrics;
@@ -4053,7 +4020,13 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
  * v1.6.4.14 - Extracted to reduce complexity
  * @private
  */
-async function _sendAdoptionFirstPass(pendingTabs, completedTabs, metrics, message, quickTabId) {
+/**
+ * First pass of adoption broadcast
+ * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+async function _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId }) {
   for (const pending of pendingTabs) {
     const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
     _processSendResult(result, pending.tabId, completedTabs, metrics);
@@ -4073,34 +4046,23 @@ function _processSendResult(result, tabId, completedTabs, metrics) {
     metrics.permanentFailures++;
     completedTabs.add(tabId);
   }
-  // Transient failures will be retried
 }
 
 /**
  * Retry pass of adoption broadcast - retry transient failures
  * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _sendAdoptionRetryPass(tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId) {
-  console.log('[Background] ADOPTION_BROADCAST_RETRY: Retrying transient failures:', {
-    quickTabId,
-    tabCount: tabsToRetry.length,
-    maxRetries: ADOPTION_BROADCAST_MAX_RETRIES
-  });
+async function _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId }) {
+  console.log('[Background] ADOPTION_BROADCAST_RETRY:', { quickTabId, tabCount: tabsToRetry.length });
   
   for (let retryAttempt = 1; retryAttempt <= ADOPTION_BROADCAST_MAX_RETRIES; retryAttempt++) {
-    // Wait before retry
     await new Promise(resolve => setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt));
-    
-    await _sendAdoptionRetryAttempt(tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt);
-    
-    // Check if all tabs are handled
-    if (completedTabs.size === pendingTabs.length) {
-      break;
-    }
+    await _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt });
+    if (completedTabs.size === pendingTabs.length) break;
   }
   
-  // Count remaining as transient failures
   _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId);
 }
 
@@ -4109,7 +4071,7 @@ async function _sendAdoptionRetryPass(tabsToRetry, pendingTabs, completedTabs, m
  * v1.6.4.14 - Extracted to reduce complexity
  * @private
  */
-async function _sendAdoptionRetryAttempt(tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt) {
+async function _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt }) {
   for (const pending of tabsToRetry) {
     if (completedTabs.has(pending.tabId)) continue;
     
@@ -4119,11 +4081,7 @@ async function _sendAdoptionRetryAttempt(tabsToRetry, completedTabs, metrics, me
     if (result.success) {
       metrics.successCount++;
       completedTabs.add(pending.tabId);
-      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', {
-        tabId: pending.tabId,
-        quickTabId,
-        attempt: retryAttempt
-      });
+      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', { tabId: pending.tabId, quickTabId, attempt: retryAttempt });
     } else if (result.isPermanent) {
       metrics.permanentFailures++;
       completedTabs.add(pending.tabId);
@@ -4304,68 +4262,58 @@ async function handleFullStateSyncRequest(message, portInfo) {
 }
 
 /**
+ * Find minimized tabs in global state
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handleCloseMinimizedTabsCommand complexity
+ * @private
+ */
+function _findMinimizedTabs() {
+  return globalQuickTabState.tabs.filter(
+    tab => tab.minimized === true || tab.visibility?.minimized === true
+  );
+}
+
+/**
+ * Remove minimized tabs from global state
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handleCloseMinimizedTabsCommand complexity
+ * @private
+ */
+function _removeMinimizedTabsFromState() {
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
+    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
+  );
+  globalQuickTabState.lastUpdate = Date.now();
+}
+
+/**
  * Handle CLOSE_MINIMIZED_TABS command
  * v1.6.4.0 - FIX Issue A: Background as sole storage writer
- * @returns {Promise<Object>} Command result
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
  */
 async function handleCloseMinimizedTabsCommand() {
   console.log('[Background] Handling CLOSE_MINIMIZED_TABS command');
 
-  // Check initialization
   const guard = checkInitializationGuard('handleCloseMinimizedTabsCommand');
   if (!guard.initialized) {
     const initialized = await waitForInitialization(2000);
-    if (!initialized) {
-      return guard.errorResponse;
-    }
+    if (!initialized) return guard.errorResponse;
   }
 
-  // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(
-    tab => tab.minimized === true || tab.visibility?.minimized === true
-  );
-
+  const minimizedTabs = _findMinimizedTabs();
   if (minimizedTabs.length === 0) {
     console.log('[Background] No minimized tabs to close');
     return { success: true, closedCount: 0, closedIds: [] };
   }
 
   const closedIds = minimizedTabs.map(tab => tab.id);
+  console.log('[Background] Closing minimized tabs:', { count: closedIds.length, ids: closedIds });
 
-  console.log('[Background] Closing minimized tabs:', {
-    count: closedIds.length,
-    ids: closedIds
-  });
-
-  // Broadcast close messages to content scripts first
   await _broadcastCloseManyToAllTabs(closedIds);
-
-  // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
-    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
-  );
-  globalQuickTabState.lastUpdate = Date.now();
-
-  // Write to storage with verification (FIX Issue F)
+  _removeMinimizedTabsFromState();
   const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
+  closedIds.forEach(id => quickTabHostTabs.delete(id));
 
-  // Remove from host tracking
-  for (const id of closedIds) {
-    quickTabHostTabs.delete(id);
-  }
-
-  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {
-    closedCount: closedIds.length,
-    closedIds,
-    writeVerified: writeResult.verified
-  });
-
-  return {
-    success: true,
-    closedCount: closedIds.length,
-    closedIds,
-    verified: writeResult.verified
-  };
+  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', { closedCount: closedIds.length, verified: writeResult.verified });
+  return { success: true, closedCount: closedIds.length, closedIds, verified: writeResult.verified };
 }
 
 /**
@@ -4481,13 +4429,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite(
-      operation,
-      saveId,
-      stateToWrite.tabs.length,
-      attempt,
-      backoffMs
-    );
+    return await _verifyStorageWrite({ operation, saveId, tabCount: stateToWrite.tabs.length, attempt, backoffMs });
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -4497,32 +4439,22 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 /**
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoffMs) {
+async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backoffMs }) {
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
 
   if (verified) {
-    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
-      operation,
-      saveId,
-      tabCount
-    });
+    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, { operation, saveId, tabCount });
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(
-    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
-    {
-      operation,
-      expectedSaveId: saveId,
-      actualSaveId: readBack?.saveId,
-      backoffMs
-    }
-  );
-
+  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
+    operation, expectedSaveId: saveId, actualSaveId: readBack?.saveId, backoffMs
+  });
   return { success: false, verified: false, needsRetry: true };
 }
 
