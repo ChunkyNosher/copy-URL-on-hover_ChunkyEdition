@@ -33,12 +33,21 @@
  *   - Update _filterOwnedTabs() to filter by both tab ID AND container ID
  *   - Track currentWritingContainerId alongside currentWritingTabId
  *   - Legacy fallback: Allow writes if originContainerId is null (pre-v4 Quick Tabs)
+ * v1.6.3.10-v9 - FIX Critical Storage & Lifecycle Issues:
+ *   - Issue A/O/S: Identity-ready gating blocks hydration until tabId AND containerId are known
+ *   - Issue F: Storage write queue recovery on unload/timeout edge cases
+ *   - Issue G: Container matching fail-closed until identity is known (INITIALIZING mode)
+ *   - Issue M/D: Preflight quota check using navigator.storage.estimate()
+ *   - Issue E: Tighten normalizeOriginTabId() with rejection reason codes
+ *   - Issue L: Label transaction IDs when identity is unknown
+ *   - Issue V: Document rollbackTransaction() dead code (kept for future error recovery)
+ *   - Issue W: Log retry attempts with attempt number for correlation
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
  * - Self-write detection via writingInstanceId/writingTabId
  * - Transaction IDs tracked until storage.onChanged confirms processing
- * - Content scripts must call waitForTabIdInit() before storage operations
+ * - Content scripts must call waitForIdentityInit() before storage operations
  *
  * @module storage-utils
  */
@@ -57,6 +66,31 @@ const STORAGE_TIMEOUT_MS = 2000;
 // Total attempts = 1 (initial) + STORAGE_RETRY_DELAYS_MS.length (retries) = 4 attempts
 const STORAGE_RETRY_DELAYS_MS = [100, 500, 1000];
 const STORAGE_MAX_RETRIES = STORAGE_RETRY_DELAYS_MS.length;
+
+// v1.6.3.10-v9 - FIX Issue M/D: Quota monitoring constants
+// Minimum available bytes required before allowing a storage write
+const STORAGE_QUOTA_MIN_HEADROOM_BYTES = 1024 * 1024; // 1MB minimum headroom
+// Threshold for logging quota warnings
+const STORAGE_QUOTA_WARNING_THRESHOLD = 0.8; // Warn when 80% full
+// Sampling interval for quota logging (log every N writes)
+const STORAGE_QUOTA_LOG_SAMPLING_INTERVAL = 50;
+
+// v1.6.3.10-v9 - FIX Issue F: Storage write queue recovery constants
+const WRITE_QUEUE_STALL_TIMEOUT_MS = 10000; // 10s max stall before recovery
+const WRITE_QUEUE_MAX_PENDING = 20; // Max pending writes before queue reset
+
+// v1.6.3.10-v9 - FIX Issue E: Normalization rejection reason codes
+/**
+ * Reason codes for originTabId normalization rejection
+ * @enum {string}
+ */
+export const NORMALIZATION_REJECTION_REASON = {
+  NULLISH: 'NULLISH',
+  NAN: 'NAN',
+  NON_INTEGER: 'NON_INTEGER',
+  OUT_OF_RANGE: 'OUT_OF_RANGE',
+  MALFORMED_STRING: 'MALFORMED_STRING'
+};
 
 // v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
 const DEFAULT_ZINDEX = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
@@ -252,6 +286,30 @@ let currentWritingContainerId = null;
 let tabIdInitResolver = null;
 let tabIdInitPromise = null;
 
+// v1.6.3.10-v9 - FIX Issue S: Promise for container ID initialization
+// Resolves when setWritingContainerId() is called or initWritingTabId() completes
+let containerIdInitResolver = null;
+let containerIdInitPromise = null;
+
+// v1.6.3.10-v9 - FIX Issue A/O/G: Identity state mode tracking
+// Tracks whether identity (tabId + containerId) is fully initialized
+/**
+ * Identity state modes for container matching behavior
+ * @enum {string}
+ */
+export const IDENTITY_STATE_MODE = {
+  INITIALIZING: 'INITIALIZING', // Identity not yet known - fail-closed
+  READY: 'READY',               // Both tabId and containerId are known
+  LEGACY_FALLBACK: 'LEGACY_FALLBACK' // Legacy Quick Tab without containerId
+};
+
+// Current identity state mode
+let identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
+
+// v1.6.3.10-v9 - FIX Issue F: Track write queue state for recovery
+let writeQueueStallStartTime = null;
+let writeQueueRecoveryCount = 0;
+
 /**
  * Initialize the tab ID init promise
  * v1.6.3.10-v6 - FIX Issue #4/11: Create promise for waitForTabIdInit()
@@ -264,6 +322,155 @@ function _ensureTabIdInitPromise() {
     });
   }
   return tabIdInitPromise;
+}
+
+/**
+ * Initialize the container ID init promise
+ * v1.6.3.10-v9 - FIX Issue S: Create promise for waitForContainerIdInit()
+ * @private
+ */
+function _ensureContainerIdInitPromise() {
+  if (containerIdInitPromise === null) {
+    containerIdInitPromise = new Promise(resolve => {
+      containerIdInitResolver = resolve;
+    });
+  }
+  return containerIdInitPromise;
+}
+
+/**
+ * Update identity state mode based on current initialization state
+ * v1.6.3.10-v9 - FIX Issue G: Track identity mode for fail-closed container matching
+ * @private
+ */
+function _updateIdentityStateMode() {
+  const previousMode = identityStateMode;
+  
+  if (currentWritingTabId !== null && currentWritingContainerId !== null) {
+    identityStateMode = IDENTITY_STATE_MODE.READY;
+  } else if (currentWritingTabId !== null && currentWritingContainerId === null) {
+    // Tab ID known but container not set yet - still initializing
+    // Could also be legacy context without container support
+    identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
+  } else {
+    identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
+  }
+  
+  if (previousMode !== identityStateMode) {
+    console.log('[StorageUtils] v1.6.3.10-v9 Identity mode transition:', {
+      from: previousMode,
+      to: identityStateMode,
+      tabId: currentWritingTabId,
+      containerId: currentWritingContainerId
+    });
+  }
+}
+
+/**
+ * Get current identity state mode
+ * v1.6.3.10-v9 - FIX Issue G: Expose identity mode for container matching decisions
+ * @returns {string} Current identity state mode
+ */
+export function getIdentityStateMode() {
+  return identityStateMode;
+}
+
+/**
+ * Check if identity is ready for storage operations
+ * v1.6.3.10-v9 - FIX Issue A/O: Check if both tabId and containerId are initialized
+ * @returns {boolean} True if identity is ready
+ */
+export function isIdentityReady() {
+  return identityStateMode === IDENTITY_STATE_MODE.READY;
+}
+
+/**
+ * Wait for container ID to be initialized
+ * v1.6.3.10-v9 - FIX Issue S: Parallel to waitForTabIdInit() for container ID
+ * Content scripts must wait for container ID for proper container isolation.
+ *
+ * @param {number} timeoutMs - Maximum time to wait in milliseconds (default: 5000)
+ * @returns {Promise<string|null>} Current container ID or null if timeout
+ */
+export async function waitForContainerIdInit(timeoutMs = 5000) {
+  // Fast path: already initialized
+  if (currentWritingContainerId !== null) {
+    console.log('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Already initialized', {
+      containerId: currentWritingContainerId,
+      source: 'cached'
+    });
+    return currentWritingContainerId;
+  }
+
+  console.log('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Waiting for container ID initialization', {
+    timeoutMs
+  });
+
+  const promise = _ensureContainerIdInitPromise();
+
+  let timeoutId = null;
+  try {
+    const result = await Promise.race([
+      promise.then(r => {
+        if (timeoutId) clearTimeout(timeoutId);
+        return r;
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Container ID initialization timeout')), timeoutMs);
+      })
+    ]);
+
+    console.log('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Resolved', {
+      containerId: result,
+      source: 'promise'
+    });
+    return result;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    console.warn('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Timeout waiting for container ID', {
+      timeoutMs,
+      error: err.message
+    });
+    return null;
+  }
+}
+
+/**
+ * Wait for full identity (both tabId AND containerId) to be initialized
+ * v1.6.3.10-v9 - FIX Issue A/O: Combined wait for complete identity initialization
+ * This should be called before any hydration or storage operations.
+ *
+ * @param {number} timeoutMs - Maximum time to wait in milliseconds (default: 5000)
+ * @returns {Promise<{tabId: number|null, containerId: string|null, isReady: boolean}>}
+ */
+export async function waitForIdentityInit(timeoutMs = 5000) {
+  console.log('[StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Waiting for identity', {
+    timeoutMs,
+    currentTabId: currentWritingTabId,
+    currentContainerId: currentWritingContainerId,
+    identityMode: identityStateMode
+  });
+
+  const startTime = Date.now();
+
+  // Wait for both in parallel
+  const [tabId, containerId] = await Promise.all([
+    waitForTabIdInit(timeoutMs),
+    waitForContainerIdInit(timeoutMs)
+  ]);
+
+  const duration = Date.now() - startTime;
+  const isReady = tabId !== null && containerId !== null;
+
+  console.log('[StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Complete', {
+    tabId,
+    containerId,
+    isReady,
+    identityMode: identityStateMode,
+    durationMs: duration
+  });
+
+  return { tabId, containerId, isReady };
 }
 
 /**
@@ -333,6 +540,7 @@ export function isWritingTabIdInitialized() {
 /**
  * Resolve the tab ID init promise if resolver exists
  * v1.6.3.10-v6 - FIX Issue #4/11: Extracted to reduce nesting depth
+ * v1.6.3.10-v9 - FIX Issue G: Update identity state mode after resolution
  * @private
  * @param {number} tabId - Tab ID to resolve with
  * @param {string} source - Source of tab ID for logging
@@ -342,6 +550,26 @@ function _resolveTabIdInitPromise(tabId, source) {
 
   tabIdInitResolver(tabId);
   console.log('[StorageUtils] v1.6.3.10-v6 Tab ID init promise resolved via', source);
+  
+  // v1.6.3.10-v9 - FIX Issue G: Update identity state mode
+  _updateIdentityStateMode();
+}
+
+/**
+ * Resolve the container ID init promise if resolver exists
+ * v1.6.3.10-v9 - FIX Issue S: Extracted to reduce nesting depth
+ * @private
+ * @param {string} containerId - Container ID to resolve with
+ * @param {string} source - Source of container ID for logging
+ */
+function _resolveContainerIdInitPromise(containerId, source) {
+  if (!containerIdInitResolver) return;
+
+  containerIdInitResolver(containerId);
+  console.log('[StorageUtils] v1.6.3.10-v9 Container ID init promise resolved via', source);
+  
+  // Update identity state mode
+  _updateIdentityStateMode();
 }
 
 /**
@@ -349,6 +577,7 @@ function _resolveTabIdInitPromise(tabId, source) {
  * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Self-write detection
  * v1.6.3.10-v6 - FIX Issue #4/11: Resolve tab ID init promise on success
  * v1.6.3.10-v6 - FIX Issue #13: Also extract container ID for Firefox Multi-Account Container isolation
+ * v1.6.3.10-v9 - FIX Issue S: Resolve container ID promise too
  */
 async function initWritingTabId() {
   if (currentWritingTabId !== null) return currentWritingTabId;
@@ -371,6 +600,11 @@ async function initWritingTabId() {
 
     // v1.6.3.10-v6 - FIX Issue #4/11: Resolve the waiting promise
     _resolveTabIdInitPromise(currentWritingTabId, 'getCurrent()');
+    
+    // v1.6.3.10-v9 - FIX Issue S: Resolve container ID promise too
+    if (currentWritingContainerId !== null) {
+      _resolveContainerIdInitPromise(currentWritingContainerId, 'getCurrent()');
+    }
   } catch (err) {
     console.warn('[StorageUtils] Could not get current tab ID:', err.message);
   }
@@ -446,6 +680,7 @@ export function setWritingTabId(tabId) {
 /**
  * Explicitly set the writing container ID
  * v1.6.3.10-v6 - FIX Issue #13: Allow content scripts to set container ID for Firefox Multi-Account Containers
+ * v1.6.3.10-v9 - FIX Issue S: Resolve container ID init promise
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the container ID from background script and pass it here.
  *
@@ -462,6 +697,11 @@ export function setWritingContainerId(containerId) {
     newContainerId: normalizedContainerId,
     source: 'setWritingContainerId() (from background messaging)'
   });
+  
+  // v1.6.3.10-v9 - FIX Issue S: Resolve waiting promise for waitForContainerIdInit()
+  if (normalizedContainerId !== null) {
+    _resolveContainerIdInitPromise(normalizedContainerId, 'setWritingContainerId()');
+  }
 }
 
 /**
@@ -482,8 +722,66 @@ export function getWritingInstanceId() {
 }
 
 /**
+ * Log rejection with reason code
+ * v1.6.3.10-v9 - FIX Issue E: Helper for normalizeOriginTabId
+ * @private
+ */
+function _logTabIdRejection(context, originalValue, reason, extra = {}) {
+  const logLevel = reason === NORMALIZATION_REJECTION_REASON.NULLISH ? 'log' : 'warn';
+  console[logLevel]('[StorageUtils] normalizeOriginTabId: Rejected', {
+    context,
+    originalValue,
+    rejectionReason: reason,
+    ...extra
+  });
+}
+
+/**
+ * Validate string format for tab ID conversion
+ * v1.6.3.10-v9 - FIX Issue E: Helper for normalizeOriginTabId
+ * @private
+ * @returns {string|null} Rejection reason or null if valid
+ */
+function _validateStringTabId(value, context) {
+  const trimmed = value.trim();
+  if (trimmed !== value) {
+    _logTabIdRejection(context, value, NORMALIZATION_REJECTION_REASON.MALFORMED_STRING, { trimmedValue: trimmed });
+    return NORMALIZATION_REJECTION_REASON.MALFORMED_STRING;
+  }
+  // Only accept positive integers (no leading zeros except for "0", no negative)
+  if (!/^\d+$/.test(trimmed)) {
+    _logTabIdRejection(context, value, NORMALIZATION_REJECTION_REASON.MALFORMED_STRING);
+    return NORMALIZATION_REJECTION_REASON.MALFORMED_STRING;
+  }
+  return null;
+}
+
+/**
+ * Validate numeric value for tab ID
+ * v1.6.3.10-v9 - FIX Issue E: Helper for normalizeOriginTabId
+ * @private
+ * @returns {string|null} Rejection reason or null if valid
+ */
+function _validateNumericTabId(numericValue, context, originalValue, originalType) {
+  if (Number.isNaN(numericValue)) {
+    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.NAN, { originalType });
+    return NORMALIZATION_REJECTION_REASON.NAN;
+  }
+  if (!Number.isInteger(numericValue)) {
+    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.NON_INTEGER, { originalType, numericValue });
+    return NORMALIZATION_REJECTION_REASON.NON_INTEGER;
+  }
+  if (numericValue <= 0) {
+    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.OUT_OF_RANGE, { originalType, numericValue });
+    return NORMALIZATION_REJECTION_REASON.OUT_OF_RANGE;
+  }
+  return null;
+}
+
+/**
  * Normalize originTabId to ensure type safety
  * v1.6.3.10-v6 - FIX Diagnostic Issues #1, #6, #7: Unified type normalization
+ * v1.6.3.10-v9 - FIX Issue E: Tighten parsing rules with rejection reason codes (refactored)
  * Converts string representations of numbers back to numeric type and validates
  * that the result is a valid positive integer (browser tab IDs are always positive >= 1).
  *
@@ -498,37 +796,29 @@ export function getWritingInstanceId() {
 export function normalizeOriginTabId(value, context = 'unknown') {
   // Handle null/undefined early
   if (value === null || value === undefined) {
+    _logTabIdRejection(context, value, NORMALIZATION_REJECTION_REASON.NULLISH);
     return null;
   }
 
   const originalType = typeof value;
-  const originalValue = value;
+
+  // Validate string format before conversion
+  if (originalType === 'string') {
+    const stringError = _validateStringTabId(value, context);
+    if (stringError) return null;
+  }
 
   // Attempt numeric conversion
   const numericValue = Number(value);
 
-  // Validate the result is a valid positive integer (tab IDs are always >= 1)
-  if (!Number.isInteger(numericValue) || numericValue <= 0) {
-    console.warn('[StorageUtils] normalizeOriginTabId: Invalid value after conversion', {
-      context,
-      originalValue,
-      originalType,
-      convertedValue: numericValue,
-      isInteger: Number.isInteger(numericValue),
-      isPositive: numericValue > 0,
-      result: null
-    });
-    return null;
-  }
+  // Validate numeric result
+  const numericError = _validateNumericTabId(numericValue, context, value, originalType);
+  if (numericError) return null;
 
-  // Log type conversion if one occurred (string → number) - use console.log for routine conversions
+  // Log type conversion if one occurred (string → number)
   if (originalType === 'string') {
-    console.log('[StorageUtils] normalizeOriginTabId: Type conversion occurred (string→number)', {
-      context,
-      originalValue,
-      originalType,
-      normalizedValue: numericValue,
-      normalizedType: typeof numericValue
+    console.log('[StorageUtils] normalizeOriginTabId: Type conversion (string→number)', {
+      context, originalValue: value, normalizedValue: numericValue
     });
   }
 
@@ -584,6 +874,7 @@ export function normalizeOriginContainerId(value, context = 'unknown') {
 /**
  * Check if container IDs match for ownership validation
  * v1.6.3.10-v6 - FIX Code Review: Extract duplicated container matching logic
+ * v1.6.3.10-v9 - FIX Issue G: Fail-closed when identity is unknown (INITIALIZING mode)
  * If originContainerId is null, this is a legacy Quick Tab created before v1.6.3.10-v4
  * Allow these to be modified by any tab that matches the originTabId (backwards compatibility)
  * @private
@@ -592,16 +883,49 @@ export function normalizeOriginContainerId(value, context = 'unknown') {
  * @returns {boolean} True if containers match (or legacy fallback applies)
  */
 function _isContainerMatch(normalizedOriginContainerId, currentContainerId) {
-  // Legacy Quick Tab (null originContainerId) - always matches
+  // v1.6.3.10-v9 - FIX Issue G: Log container matching mode for diagnostics
+  let matchMode = 'READY';
+  
+  // Legacy Quick Tab (null originContainerId) - always matches (LEGACY_FALLBACK mode)
   if (normalizedOriginContainerId === null) {
+    matchMode = 'LEGACY_FALLBACK';
+    console.log('[StorageUtils] v1.6.3.10-v9 _isContainerMatch: Legacy fallback', {
+      mode: matchMode,
+      normalizedOriginContainerId,
+      currentContainerId,
+      result: true,
+      identityStateMode
+    });
     return true;
   }
-  // Current container unknown - allow (can't validate)
+  
+  // v1.6.3.10-v9 - FIX Issue G: Current container unknown - FAIL-CLOSED in INITIALIZING mode
+  // This is different from legacy Quick Tabs (which have null originContainerId)
+  // Here the Quick Tab HAS a container, but we don't know our own container yet
   if (currentContainerId === null) {
-    return true;
+    // v1.6.3.10-v9 - FIX Issue G: Fail-closed to prevent cross-container leakage
+    matchMode = 'INITIALIZING';
+    console.warn('[StorageUtils] v1.6.3.10-v9 _isContainerMatch: Identity not ready - FAIL-CLOSED', {
+      mode: matchMode,
+      normalizedOriginContainerId,
+      currentContainerId,
+      result: false,
+      identityStateMode,
+      reason: 'Current container unknown, cannot validate - blocking to prevent cross-container leakage'
+    });
+    return false;
   }
+  
   // Both have values - compare them
-  return normalizedOriginContainerId === currentContainerId;
+  const result = normalizedOriginContainerId === currentContainerId;
+  console.log('[StorageUtils] v1.6.3.10-v9 _isContainerMatch: Comparing', {
+    mode: matchMode,
+    normalizedOriginContainerId,
+    currentContainerId,
+    result,
+    identityStateMode
+  });
+  return result;
 }
 
 /**
@@ -1178,6 +1502,14 @@ export function commitTransaction(logPrefix = '[StorageUtils]') {
 /**
  * Rollback current transaction - restores state snapshot to storage
  * v1.6.3.4-v9 - FIX Issue #16, #17: Rollback on failure instead of writing empty state
+ * 
+ * NOTE (v1.6.3.10-v9 - Issue V): This function is currently not called in any code path.
+ * It was designed for error recovery but the current architecture uses queue reset instead.
+ * KEPT FOR FUTURE USE: Could be integrated into _executeStorageWrite() error handling
+ * to provide atomic rollback capability for failed multi-step transactions.
+ * 
+ * Potential integration point: In _executeStorageWrite() after all retries fail,
+ * could call rollbackTransaction() to restore previous known-good state.
  *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<boolean>} True if rollback succeeded, false on error
@@ -1254,7 +1586,8 @@ export function generateSaveId() {
  * v1.6.3.4-v6 - FIX Issue #1: Transaction IDs for atomic storage writes
  * v1.6.3.6-v2 - FIX Issue #1: Include writeCounter for truly unique IDs
  * v1.6.3.10-v5 - FIX Issue #8: Higher entropy - include tabId, wrap counter, use crypto
- * Format: 'txn-timestamp-tabId-counter-random8chars'
+ * v1.6.3.10-v9 - FIX Issue L: Label transaction ID when identity is unknown
+ * Format: 'txn-timestamp-tabId-counter-random8chars' or 'txn-timestamp-UNKNOWN-counter-random8chars'
  *
  * @returns {string} Unique transaction ID
  */
@@ -1262,8 +1595,18 @@ export function generateTransactionId() {
   // v1.6.3.10-v5 - FIX Issue #8: Wrap counter to prevent overflow
   writeCounter = (writeCounter + 1) % COUNTER_WRAP_LIMIT;
 
-  // v1.6.3.10-v5 - FIX Issue #8: Include tabId for additional uniqueness
-  const tabId = currentWritingTabId ?? 0;
+  // v1.6.3.10-v9 - FIX Issue L: Label when identity is unknown
+  // Using 'UNKNOWN' prefix makes debugging easier when tab ID wasn't initialized
+  const tabId = currentWritingTabId ?? 'UNKNOWN';
+  
+  // v1.6.3.10-v9 - FIX Issue L: Log warning if generating transaction ID before identity is ready
+  if (currentWritingTabId === null) {
+    console.warn('[StorageUtils] v1.6.3.10-v9 generateTransactionId: Identity not initialized', {
+      tabId,
+      identityStateMode,
+      warning: 'Transaction ID generated before tab ID initialized'
+    });
+  }
 
   // v1.6.3.10-v5 - FIX Issue #8: Use crypto.getRandomValues for higher entropy
   let randomPart;
@@ -2448,183 +2791,305 @@ function _checkCircuitBreakerReset() {
 }
 
 /**
+ * Build quota check result object
+ * v1.6.3.10-v9 - FIX Issue M/D: Helper for checkStorageQuota
+ * @private
+ */
+function _buildQuotaResult(canWrite, bytesUsed, bytesAvailable, usagePercent) {
+  return { canWrite, bytesUsed, bytesAvailable, usagePercent };
+}
+
+/**
+ * Log quota status if at sampling interval or above warning threshold
+ * v1.6.3.10-v9 - FIX Issue M/D: Helper for checkStorageQuota
+ * @private
+ */
+function _logQuotaStatusIfNeeded(logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent) {
+  const shouldLog = pendingWriteCount % STORAGE_QUOTA_LOG_SAMPLING_INTERVAL === 0 || usagePercent > STORAGE_QUOTA_WARNING_THRESHOLD * 100;
+  if (shouldLog) {
+    console.log(`${logPrefix} v1.6.3.10-v9 Storage quota status:`, {
+      bytesUsed, bytesQuota, bytesAvailable,
+      usagePercent: `${usagePercent.toFixed(2)}%`,
+      headroomBytes: STORAGE_QUOTA_MIN_HEADROOM_BYTES
+    });
+  }
+}
+
+/**
+ * Check storage quota before write operation
+ * v1.6.3.10-v9 - FIX Issue M/D: Preflight quota check using navigator.storage.estimate() (refactored)
+ * @param {string} logPrefix - Log prefix for messages
+ * @returns {Promise<{canWrite: boolean, bytesUsed: number, bytesAvailable: number, usagePercent: number}>}
+ */
+export async function checkStorageQuota(logPrefix = '[StorageUtils]') {
+  // Check if navigator.storage.estimate is available
+  if (typeof navigator === 'undefined' || !navigator.storage?.estimate) {
+    return _buildQuotaResult(true, 0, Infinity, 0);
+  }
+
+  try {
+    const estimate = await navigator.storage.estimate();
+    const bytesUsed = estimate.usage ?? 0;
+    const bytesQuota = estimate.quota ?? 0;
+    const bytesAvailable = bytesQuota - bytesUsed;
+    const usagePercent = bytesQuota > 0 ? (bytesUsed / bytesQuota) * 100 : 0;
+
+    _logQuotaStatusIfNeeded(logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent);
+
+    // Check if quota exceeded
+    if (bytesAvailable < STORAGE_QUOTA_MIN_HEADROOM_BYTES) {
+      console.error(`${logPrefix} v1.6.3.10-v9 INSUFFICIENT_STORAGE_HEADROOM`);
+      return _buildQuotaResult(false, bytesUsed, bytesAvailable, usagePercent);
+    }
+
+    return _buildQuotaResult(true, bytesUsed, bytesAvailable, usagePercent);
+  } catch (err) {
+    console.warn(`${logPrefix} v1.6.3.10-v9 Quota check failed:`, err.message);
+    return _buildQuotaResult(true, 0, Infinity, 0);
+  }
+}
+
+/**
+ * Initialize storage write tracking and return context
+ * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite to reduce lines
+ * @private
+ */
+function _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPrefix) {
+  const saveId = stateWithTxn.saveId;
+  if (saveId) _trackDuplicateSaveIdWrite(saveId, transactionId, logPrefix);
+  
+  IN_PROGRESS_TRANSACTIONS.add(transactionId);
+  scheduleFallbackCleanup(transactionId);
+  
+  const operationId = generateStorageOperationId();
+  logStorageWrite(operationId, STATE_KEY, 'start', { tabCount, transactionId });
+  
+  return { operationId, startTime: Date.now() };
+}
+
+/**
+ * Handle failed storage write after all retries
+ * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
+ * @private
+ */
+function _handleFailedWrite(operationId, transactionId, tabCount, startTime, totalAttempts, logPrefix) {
+  const durationMs = Date.now() - startTime;
+  pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+  logStorageWrite(operationId, STATE_KEY, 'complete', { success: false, tabCount, durationMs, transactionId, attempts: totalAttempts });
+  console.error(`${logPrefix} v1.6.3.10-v9 WRITE_FAILED_AFTER_RETRIES:`, { transactionId, totalAttempts, durationMs });
+}
+
+/**
+ * Execute retry loop for storage write
+ * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
+ * @private
+ */
+async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount) {
+  const totalAttempts = STORAGE_MAX_RETRIES + 1;
+  
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+    if (attempt > 1) {
+      console.warn(`${logPrefix} v1.6.3.10-v9 RETRY_ATTEMPT: #${attempt}/${totalAttempts} [${transactionId}]`);
+    }
+    
+    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
+    if (success) {
+      _handleSuccessfulWrite(context.operationId, transactionId, tabCount, context.startTime, attempt, logPrefix);
+      return true;
+    }
+    
+    // Wait before retry if more attempts remain
+    if (attempt < totalAttempts && attempt - 1 < STORAGE_RETRY_DELAYS_MS.length) {
+      await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
+    }
+  }
+  
+  _handleFailedWrite(context.operationId, transactionId, tabCount, context.startTime, totalAttempts, logPrefix);
+  return false;
+}
+
+/**
  * Perform the actual storage write operation with retry logic
- * v1.6.3.4-v8 - FIX Issue #7: Extracted for queue implementation
- * v1.6.3.4-v12 - FIX Issue #1, #6: Enhanced logging with transaction sequencing
- * v1.6.3.6-v2 - FIX Issue #1, #2: Update lastWrittenTransactionId, add duplicate saveId tracking
- * v1.6.3.6-v5 - FIX Issue #4b: Added storage write operation logging
- * v1.6.3.10-v6 - FIX Issue A20: Added exponential backoff retry (100ms, 500ms, 1000ms)
+ * v1.6.3.10-v6 - FIX Issue A20: Added exponential backoff retry
+ * v1.6.3.10-v9 - FIX Issue M/D: Added preflight quota check (refactored)
  * @private
  */
 async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
-    console.warn(`${logPrefix} Storage API not available, cannot persist`);
+    console.warn(`${logPrefix} Storage API not available, cannot persist [${transactionId}]`);
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     return false;
   }
 
-  // v1.6.3.6-v2 - FIX Issue #2: Track duplicate saveId writes to detect loops
-  const saveId = stateWithTxn.saveId;
-  if (saveId) {
-    _trackDuplicateSaveIdWrite(saveId, transactionId, logPrefix);
+  // Preflight quota check
+  const quotaCheck = await checkStorageQuota(logPrefix);
+  if (!quotaCheck.canWrite) {
+    console.error(`${logPrefix} STORAGE WRITE BLOCKED - quota exceeded [${transactionId}]`);
+    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+    return false;
   }
 
-  // v1.6.3.4-v6 - FIX Issue #1: Track in-progress transaction
-  IN_PROGRESS_TRANSACTIONS.add(transactionId);
+  const context = _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPrefix);
+  return _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount);
+}
 
-  // v1.6.3.5-v5 - FIX Issue #7: Schedule fallback cleanup (in case storage.onChanged doesn't fire)
-  scheduleFallbackCleanup(transactionId);
-
-  // v1.6.3.6-v5 - FIX Issue #4b: Generate operation ID for storage write logging
-  const operationId = generateStorageOperationId();
-  const startTime = Date.now();
-
-  // v1.6.3.6-v5 - Log storage write start
-  logStorageWrite(operationId, STATE_KEY, 'start', {
-    tabCount,
-    transactionId
+/**
+ * Perform queue stall recovery - reset queue and circuit breaker
+ * v1.6.3.10-v9 - FIX Issue F: Helper to reduce _checkAndRecoverStalledQueue complexity
+ * @private
+ */
+function _performQueueRecovery(logPrefix, transactionId, stallDuration, reason) {
+  writeQueueRecoveryCount++;
+  
+  console.error(`${logPrefix} v1.6.3.10-v9 WRITE_QUEUE_STALL_RECOVERY:`, {
+    transactionId, stallDurationMs: stallDuration, pendingWriteCount,
+    recoveryCount: writeQueueRecoveryCount, reason, action: 'RESETTING_QUEUE'
   });
-
-  // v1.6.3.4-v12 - FIX Issue #6: Log transaction sequencing
-  console.log(`${logPrefix} Storage write executing:`, {
-    transaction: transactionId,
-    prevTransaction: lastCompletedTransactionId,
-    pendingCount: pendingWriteCount,
-    tabCount
-  });
-
-  // v1.6.3.10-v6 - FIX Issue A20: Retry loop with exponential backoff
-  // Total attempts = STORAGE_MAX_RETRIES + 1 (1 initial + N retries)
-  const totalAttempts = STORAGE_MAX_RETRIES + 1;
-  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
-    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
-
-    if (success) {
-      _handleSuccessfulWrite(operationId, transactionId, tabCount, startTime, attempt, logPrefix);
-      return true;
-    }
-
-    // v1.6.3.10-v6 - FIX Issue A20: Wait before next retry (if more attempts remain)
-    // Only sleep if: 1) not the last attempt AND 2) there's a valid delay in the array
-    const hasMoreAttempts = attempt < totalAttempts;
-    const delayIndex = attempt - 1; // 0-indexed delay for attempt 1, 1-indexed for attempt 2, etc.
-    if (hasMoreAttempts && delayIndex < STORAGE_RETRY_DELAYS_MS.length) {
-      const delayMs = STORAGE_RETRY_DELAYS_MS[delayIndex];
-      console.log(`${logPrefix} Retrying storage write in ${delayMs}ms (attempt ${attempt + 1}/${totalAttempts}) [${transactionId}]`);
-      await _sleep(delayMs);
-    }
+  
+  // Reset queue state
+  storageWriteQueuePromise = Promise.resolve();
+  pendingWriteCount = 0;
+  writeQueueStallStartTime = null;
+  
+  // Reset circuit breaker if it was tripped
+  if (circuitBreakerTripped) {
+    circuitBreakerTripped = false;
+    circuitBreakerTripTime = null;
+    console.log(`${logPrefix} v1.6.3.10-v9 Circuit breaker reset during queue recovery`);
   }
+}
 
-  // v1.6.3.10-v6 - FIX Issue A20: All retries exhausted
-  const durationMs = Date.now() - startTime;
-  pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+/**
+ * Check if queue has stalled based on timeout or max pending
+ * v1.6.3.10-v9 - FIX Issue F: Helper to reduce complexity
+ * @private
+ */
+function _isQueueStalled(stallDuration) {
+  return stallDuration > WRITE_QUEUE_STALL_TIMEOUT_MS || pendingWriteCount >= WRITE_QUEUE_MAX_PENDING;
+}
 
-  // v1.6.3.6-v5 - Log storage write complete (failure)
-  logStorageWrite(operationId, STATE_KEY, 'complete', {
-    success: false,
-    tabCount,
-    durationMs,
+/**
+ * Check if write queue has stalled and needs recovery
+ * v1.6.3.10-v9 - FIX Issue F: Detect stalled write queue (refactored)
+ * @private
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ * @returns {boolean} True if queue was recovered
+ */
+function _checkAndRecoverStalledQueue(logPrefix, transactionId) {
+  // Queue is empty - reset stall timer
+  if (pendingWriteCount === 0) {
+    writeQueueStallStartTime = null;
+    return false;
+  }
+  
+  // Start tracking stall time
+  if (writeQueueStallStartTime === null) {
+    writeQueueStallStartTime = Date.now();
+    return false;
+  }
+  
+  const stallDuration = Date.now() - writeQueueStallStartTime;
+  
+  // Check if stalled
+  if (!_isQueueStalled(stallDuration)) {
+    return false;
+  }
+  
+  const reason = stallDuration > WRITE_QUEUE_STALL_TIMEOUT_MS ? 'timeout' : 'max_pending_reached';
+  _performQueueRecovery(logPrefix, transactionId, stallDuration, reason);
+  return true;
+}
+
+/**
+ * Log queue state transition for diagnostics
+ * v1.6.3.10-v9 - FIX Issue F: Enhanced queue state logging
+ * @private
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ * @param {string} event - Queue event type (enqueue, dequeue_start, dequeue_success, dequeue_failure, reset)
+ * @param {Object} details - Additional details
+ */
+function _logQueueStateTransition(logPrefix, transactionId, event, details = {}) {
+  console.log(`${logPrefix} v1.6.3.10-v9 QUEUE_STATE [${event}]:`, {
     transactionId,
-    // v1.6.3.10-v6 - FIX Issue A20: Log total attempts
-    attempts: STORAGE_MAX_RETRIES + 1
+    pendingWriteCount,
+    circuitBreakerTripped,
+    writeQueueRecoveryCount,
+    ...details
   });
+}
 
-  console.error(`${logPrefix} Storage write FAILED after ${STORAGE_MAX_RETRIES + 1} attempts [${transactionId}]`);
-  return false;
+/**
+ * Trip the circuit breaker with full logging
+ * v1.6.3.10-v9 - FIX Issue F: Extracted from queueStorageWrite
+ * @private
+ */
+function _tripCircuitBreaker(_transactionId, threshold) {
+  circuitBreakerTripped = true;
+  circuitBreakerTripTime = Date.now();
+  console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
+  console.error(`[StorageUtils] Blocking writes (threshold: ${threshold}), depth: ${pendingWriteCount}`);
+  console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
+}
+
+/**
+ * Log backlog warnings based on queue depth
+ * v1.6.3.10-v9 - FIX Issue F: Extracted from queueStorageWrite
+ * @private
+ */
+function _logBacklogWarnings(_transactionId) {
+  if (pendingWriteCount > 10) {
+    console.error(`[StorageUtils] ⚠️⚠️⚠️ CRITICAL BACKLOG: ${pendingWriteCount} pending - possible infinite loop`);
+  } else if (pendingWriteCount > 5) {
+    console.warn(`[StorageUtils] ⚠️ BACKLOG: ${pendingWriteCount} pending - check self-write detection`);
+  }
 }
 
 /**
  * Queue a storage write operation (FIFO ordering)
  * v1.6.3.4-v8 - FIX Issue #7: Ensures writes are serialized
  * v1.6.3.4-v10 - FIX Issue #7: Reset queue on failure to break error propagation
- *   The problem was that when writeOperation fails, .catch() returned `false`,
- *   which contaminated the Promise chain for subsequent writes.
- *   Now we reset the queue on failure so each write is independent.
- * v1.6.3.4-v12 - FIX Issue #6: Log queue state for debugging
- *   Note: New parameters are optional with defaults for backward compatibility
  * v1.6.3.5 - FIX Issue #5: Enhanced queue reset logging with dropped writes count
- * v1.6.3.6-v2 - FIX Issue #2: Add backlog warnings when pendingWriteCount > 5 or >10
  * v1.6.3.6-v3 - FIX Issue #2: Circuit breaker blocks ALL writes when queue exceeds threshold
+ * v1.6.3.10-v9 - FIX Issue F: Recovery logic for stalled queue / unload edge cases (refactored)
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
  * @returns {Promise<boolean>} Result of the write operation
  */
-export function queueStorageWrite(
-  writeOperation,
-  logPrefix = '[StorageUtils]',
-  transactionId = ''
-) {
-  // v1.6.3.6-v3 - FIX Issue #2: Circuit breaker check BEFORE incrementing pendingWriteCount
-  // This prevents infinite storage write loops from overwhelming the system
+export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', transactionId = '') {
+  _checkAndRecoverStalledQueue(logPrefix, transactionId);
+
+  // Circuit breaker check
   if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
-    if (!circuitBreakerTripped) {
-      circuitBreakerTripped = true;
-      circuitBreakerTripTime = Date.now();
-      console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
-      console.error(
-        `[StorageUtils] Blocking ALL new storage writes (threshold: ${CIRCUIT_BREAKER_THRESHOLD})`
-      );
-      console.error('[StorageUtils] Current queue depth:', pendingWriteCount);
-      console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
-      console.error(
-        '[StorageUtils] To recover: Close tabs using this extension, then go to about:addons, disable and re-enable the extension'
-      );
-    }
-    console.error(`[StorageUtils] Write BLOCKED by circuit breaker [${transactionId}]`);
+    if (!circuitBreakerTripped) _tripCircuitBreaker(transactionId, CIRCUIT_BREAKER_THRESHOLD);
+    _logQueueStateTransition(logPrefix, transactionId, 'blocked', { reason: 'circuit_breaker' });
     return Promise.resolve(false);
   }
 
-  // v1.6.3.4-v12 - FIX Issue #6: Log queue state with previous transaction
   pendingWriteCount++;
-  console.log(`${logPrefix} Storage write queued:`, {
-    pending: pendingWriteCount,
-    transaction: transactionId,
-    prevTransaction: lastCompletedTransactionId,
-    queueDepth: pendingWriteCount
-  });
+  _logQueueStateTransition(logPrefix, transactionId, 'enqueue', { prevTransaction: lastCompletedTransactionId });
+  _logBacklogWarnings(transactionId);
 
-  // v1.6.3.6-v2 - FIX Issue #2: Backlog detection warnings
-  if (pendingWriteCount > 10) {
-    console.error(
-      `[StorageUtils] ⚠️⚠️⚠️ CRITICAL STORAGE WRITE BACKLOG: ${pendingWriteCount} pending transactions!`
-    );
-    console.error('[StorageUtils] This strongly indicates an infinite storage write loop.');
-    console.error(
-      '[StorageUtils] Check for self-write detection failure in storage.onChanged listener.'
-    );
-    console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
-    console.error(`[StorageUtils] Current transaction: ${transactionId}`);
-  } else if (pendingWriteCount > 5) {
-    console.warn(
-      `[StorageUtils] ⚠️ STORAGE WRITE BACKLOG DETECTED: ${pendingWriteCount} pending transactions`
-    );
-    console.warn(
-      '[StorageUtils] Possible infinite loop - check storage.onChanged listener for self-write.'
-    );
-    console.warn(
-      `[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}, Current: ${transactionId}`
-    );
-  }
-
-  // Chain this operation to the previous one
+  // Chain operation to queue
   storageWriteQueuePromise = storageWriteQueuePromise
-    .then(() => writeOperation())
+    .then(() => {
+      _logQueueStateTransition(logPrefix, transactionId, 'dequeue_start');
+      return writeOperation();
+    })
+    .then(result => {
+      _logQueueStateTransition(logPrefix, transactionId, 'dequeue_success', { result });
+      if (pendingWriteCount <= 1) writeQueueStallStartTime = null;
+      return result;
+    })
     .catch(err => {
-      // v1.6.3.5 - FIX Issue #5: Enhanced logging for queue reset
-      const droppedWrites = pendingWriteCount - 1; // Current write failed, others are dropped
-      console.error(
-        `[StorageUtils] Queue RESET after failure [${transactionId}] - ${droppedWrites} pending writes dropped:`,
-        err
-      );
-
+      const droppedWrites = pendingWriteCount - 1;
+      _logQueueStateTransition(logPrefix, transactionId, 'dequeue_failure', { error: err.message, droppedWrites });
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-      // v1.6.3.4-v10 - FIX Issue #7: Reset queue to break error propagation chain
-      // Without this reset, the `false` return value contaminates subsequent writes
-      // because the Promise chain carries the error state forward.
-      // By resetting to a fresh Promise.resolve(), subsequent writes start fresh.
       storageWriteQueuePromise = Promise.resolve();
+      writeQueueStallStartTime = null;
       return false;
     });
 

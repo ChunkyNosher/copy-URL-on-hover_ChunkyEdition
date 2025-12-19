@@ -1,9 +1,103 @@
 /**
  * Browser API Utilities
  * Wrapper functions for WebExtension APIs
+ * v1.6.3.10-v9 - FIX Issue C: Add error classification for storage operations
  */
 
 import { logNormal, logError } from '../utils/logger.js';
+
+/**
+ * Storage error types for classification
+ * v1.6.3.10-v9 - FIX Issue C: Error type classification
+ * @enum {string}
+ */
+export const STORAGE_ERROR_TYPE = {
+  QUOTA: 'QUOTA',           // Storage quota exceeded
+  PERMISSION: 'PERMISSION', // Permission denied
+  UNAVAILABLE: 'UNAVAILABLE', // Storage API not available
+  TRANSIENT: 'TRANSIENT',   // Temporary failure (retry may help)
+  UNKNOWN: 'UNKNOWN'        // Unknown error type
+};
+
+/**
+ * Check if error message matches quota-related patterns
+ * v1.6.3.10-v9 - FIX Issue C: Helper for error classification
+ * @private
+ */
+function _isQuotaError(message, name) {
+  return message.includes('quota') || message.includes('exceeded') || 
+         message.includes('bytes') || name === 'quotaexceedederror';
+}
+
+/**
+ * Check if error message matches permission-related patterns
+ * v1.6.3.10-v9 - FIX Issue C: Helper for error classification
+ * @private
+ */
+function _isPermissionError(message, name) {
+  return message.includes('permission') || message.includes('denied') ||
+         name === 'securityerror' || name === 'notallowederror';
+}
+
+/**
+ * Check if error message matches unavailable-related patterns
+ * v1.6.3.10-v9 - FIX Issue C: Helper for error classification
+ * @private
+ */
+function _isUnavailableError(message) {
+  return message.includes('unavailable') || message.includes('not found') ||
+         message.includes('not supported') || message.includes('undefined');
+}
+
+/**
+ * Check if error message matches transient-related patterns
+ * v1.6.3.10-v9 - FIX Issue C: Helper for error classification
+ * @private
+ */
+function _isTransientError(message) {
+  return message.includes('timeout') || message.includes('network') ||
+         message.includes('aborted') || message.includes('interrupted');
+}
+
+/**
+ * Classify a storage error into a type
+ * v1.6.3.10-v9 - FIX Issue C: Error classification helper (refactored for complexity)
+ * @param {Error} err - Error to classify
+ * @returns {string} Error type from STORAGE_ERROR_TYPE
+ */
+export function classifyStorageError(err) {
+  if (!err) return STORAGE_ERROR_TYPE.UNKNOWN;
+  
+  const message = (err.message || '').toLowerCase();
+  const name = (err.name || '').toLowerCase();
+  
+  if (_isQuotaError(message, name)) return STORAGE_ERROR_TYPE.QUOTA;
+  if (_isPermissionError(message, name)) return STORAGE_ERROR_TYPE.PERMISSION;
+  if (_isUnavailableError(message)) return STORAGE_ERROR_TYPE.UNAVAILABLE;
+  if (_isTransientError(message)) return STORAGE_ERROR_TYPE.TRANSIENT;
+  
+  return STORAGE_ERROR_TYPE.UNKNOWN;
+}
+
+/**
+ * Log storage error with classification
+ * v1.6.3.10-v9 - FIX Issue C: Enhanced error logging
+ * @param {string} operation - Operation type (get, set, remove, clear)
+ * @param {Error} err - Error object
+ * @param {Object} context - Additional context
+ */
+function logStorageError(operation, err, context = {}) {
+  const errorType = classifyStorageError(err);
+  
+  console.error(`[Browser API] Storage ${operation} failed:`, {
+    errorType,
+    errorName: err?.name,
+    errorMessage: err?.message,
+    errorStack: err?.stack,
+    operation,
+    ...context
+  });
+}
 
 /**
  * Send message to background script
@@ -21,6 +115,7 @@ export async function sendMessageToBackground(message) {
 
 /**
  * Get data from storage
+ * v1.6.3.10-v9 - FIX Issue C: Add error classification and enhanced logging
  * @param {string|string[]} keys - Storage key(s)
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<object>} Storage data
@@ -33,18 +128,37 @@ export async function getStorage(keys, storageType = 'local') {
     }
     return await storage.get(keys);
   } catch (err) {
-    console.error('[Browser API] Failed to get storage:', err);
+    // v1.6.3.10-v9 - FIX Issue C: Classify error type
+    const errorType = classifyStorageError(err);
+    logStorageError('get', err, {
+      storageType,
+      keys: Array.isArray(keys) ? keys : [keys],
+      keyCount: Array.isArray(keys) ? keys.length : 1
+    });
+    
+    // Rethrow with enhanced info
+    err.storageErrorType = errorType;
     throw err;
   }
 }
 
 /**
  * Set data in storage
+ * v1.6.3.10-v9 - FIX Issue C: Add error classification and bytes estimate
  * @param {object} data - Data to store
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<void>}
  */
 export async function setStorage(data, storageType = 'local') {
+  // v1.6.3.10-v9 - FIX Issue C: Estimate bytes for logging
+  let bytesEstimate = 0;
+  try {
+    bytesEstimate = new Blob([JSON.stringify(data)]).size;
+  } catch (estimateErr) {
+    // Log debug info for serialization issues
+    console.debug('[Browser API] Bytes estimation failed:', estimateErr.message);
+  }
+  
   try {
     const storage = browser.storage[storageType];
     if (!storage) {
@@ -52,13 +166,24 @@ export async function setStorage(data, storageType = 'local') {
     }
     await storage.set(data);
   } catch (err) {
-    console.error('[Browser API] Failed to set storage:', err);
+    // v1.6.3.10-v9 - FIX Issue C: Classify error type with bytes estimate
+    const errorType = classifyStorageError(err);
+    logStorageError('set', err, {
+      storageType,
+      keyCount: Object.keys(data).length,
+      bytesEstimate
+    });
+    
+    // Rethrow with enhanced info
+    err.storageErrorType = errorType;
+    err.bytesAttempted = bytesEstimate;
     throw err;
   }
 }
 
 /**
  * Remove data from storage
+ * v1.6.3.10-v9 - FIX Issue C: Add error classification
  * @param {string|string[]} keys - Storage key(s) to remove
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<void>}
@@ -71,13 +196,23 @@ export async function removeStorage(keys, storageType = 'local') {
     }
     await storage.remove(keys);
   } catch (err) {
-    console.error('[Browser API] Failed to remove storage:', err);
+    // v1.6.3.10-v9 - FIX Issue C: Classify error type
+    const errorType = classifyStorageError(err);
+    logStorageError('remove', err, {
+      storageType,
+      keys: Array.isArray(keys) ? keys : [keys],
+      keyCount: Array.isArray(keys) ? keys.length : 1
+    });
+    
+    // Rethrow with enhanced info
+    err.storageErrorType = errorType;
     throw err;
   }
 }
 
 /**
  * Clear all data from storage
+ * v1.6.3.10-v9 - FIX Issue C: Add error classification
  * @param {string} storageType - Storage type (local, sync, or session)
  * @returns {Promise<void>}
  */
@@ -89,7 +224,14 @@ export async function clearStorage(storageType = 'local') {
     }
     await storage.clear();
   } catch (err) {
-    console.error('[Browser API] Failed to clear storage:', err);
+    // v1.6.3.10-v9 - FIX Issue C: Classify error type
+    const errorType = classifyStorageError(err);
+    logStorageError('clear', err, {
+      storageType
+    });
+    
+    // Rethrow with enhanced info
+    err.storageErrorType = errorType;
     throw err;
   }
 }
