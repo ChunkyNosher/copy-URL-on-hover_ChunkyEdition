@@ -2963,12 +2963,14 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 /**
  * Generic helper to update originTabId on an object with logging
  * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate update functions
+ * NOTE: Intentionally mutates target in-place and returns boolean for update tracking.
+ * The boolean return is used to aggregate whether any updates occurred.
  * @private
- * @param {Object} target - Object with originTabId property
+ * @param {Object} target - Object with originTabId property (mutated in-place)
  * @param {string} adoptedQuickTabId - Quick Tab ID being adopted
  * @param {number} newOriginTabId - New origin tab ID
  * @param {string} location - Location name for logging
- * @returns {boolean} True if updated
+ * @returns {boolean} True if target was mutated, false if target was null
  */
 function _updateOriginTabIdWithLog(target, adoptedQuickTabId, newOriginTabId, location) {
   if (!target) return false;

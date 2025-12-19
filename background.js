@@ -2371,16 +2371,46 @@ function _checkTimestampWindowDedup(newValue, now) {
   return null;
 }
 
+/**
+ * Check transaction-based self-write deduplication
+ * v1.6.3.10-v8 - FIX Code Review: Extracted for readability
+ * @private
+ */
+function _checkTransactionDedup(newValue) {
+  if (!_isTransactionSelfWrite(newValue)) return null;
+  return { method: 'transactionId', reason: `Transaction ${newValue.transactionId} in progress` };
+}
+
+/**
+ * Check saveId+timestamp deduplication
+ * v1.6.3.10-v8 - FIX Code Review: Extracted for readability
+ * @private
+ */
+function _checkSaveIdDedup(newValue, oldValue) {
+  if (!_isSaveIdTimestampDuplicate(newValue, oldValue)) return null;
+  return { method: 'saveId+timestamp', reason: 'Same saveId and timestamp within window' };
+}
+
+/**
+ * Check content hash deduplication
+ * v1.6.3.10-v8 - FIX Code Review: Extracted for readability
+ * @private
+ */
+function _checkContentHashDedup(newValue, oldValue) {
+  if (!_isContentHashDuplicate(newValue, oldValue)) return null;
+  return { method: 'contentHash', reason: 'Identical content with same saveId' };
+}
+
 function _multiMethodDeduplication(newValue, oldValue) {
   const now = Date.now();
   const logMatch = (method, reason) => console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
 
-  // Check each dedup method in priority order
+  // Check each dedup method in priority order using extracted helpers
   const checks = [
     () => _checkTimestampWindowDedup(newValue, now),
-    () => _isTransactionSelfWrite(newValue) ? { method: 'transactionId', reason: `Transaction ${newValue.transactionId} in progress` } : null,
-    () => _isSaveIdTimestampDuplicate(newValue, oldValue) ? { method: 'saveId+timestamp', reason: 'Same saveId and timestamp within window' } : null,
-    () => _isContentHashDuplicate(newValue, oldValue) ? { method: 'contentHash', reason: 'Identical content with same saveId' } : null
+    () => _checkTransactionDedup(newValue),
+    () => _checkSaveIdDedup(newValue, oldValue),
+    () => _checkContentHashDedup(newValue, oldValue)
   ];
 
   for (const check of checks) {
@@ -4684,8 +4714,9 @@ function _shouldThrottleLog(lastLogTime) {
  */
 function _logThrottled(emoji, category, lastTimeRef, data) {
   if (_shouldThrottleLog(lastTimeRef.time)) return;
-  lastTimeRef.time = Date.now();
-  console.log(`[Background] ${emoji} ${category}:`, { ...data, timestamp: Date.now() });
+  const now = Date.now();
+  lastTimeRef.time = now;
+  console.log(`[Background] ${emoji} ${category}:`, { ...data, timestamp: now });
 }
 
 // Throttle trackers using objects for reference passing
