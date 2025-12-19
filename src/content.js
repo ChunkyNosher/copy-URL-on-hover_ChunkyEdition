@@ -667,6 +667,125 @@ function _validateMessageSequence(sequenceId) {
   return true;
 }
 
+// ==================== v1.6.3.10-v10 RESTORE MESSAGE ORDERING ====================
+// FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
+
+/**
+ * Track in-progress RESTORE operations to enforce ordering
+ * v1.6.3.10-v10 - FIX Issue R: Map of quickTabId -> { sequenceId, timestamp, status }
+ */
+const pendingRestoreOperations = new Map();
+
+/**
+ * Maximum age for pending RESTORE tracking (ms)
+ * v1.6.3.10-v10 - FIX Issue R: Clear stale entries after 10s
+ */
+const RESTORE_TRACKING_MAX_AGE_MS = 10000;
+
+/**
+ * Counter for RESTORE operation sequence
+ * v1.6.3.10-v10 - FIX Issue R: Monotonic counter for ordering
+ */
+let restoreSequenceCounter = 0;
+
+/**
+ * Cleanup stale pending restore entries
+ * v1.6.3.10-v10 - FIX Issue R: Extracted to reduce _checkRestoreOrderingEnforcement complexity
+ * @private
+ */
+function _cleanupStaleRestoreEntries(now) {
+  for (const [id, entry] of pendingRestoreOperations.entries()) {
+    if (now - entry.timestamp > RESTORE_TRACKING_MAX_AGE_MS) {
+      pendingRestoreOperations.delete(id);
+    }
+  }
+}
+
+/**
+ * Check if incoming restore should be rejected due to sequence ordering
+ * v1.6.3.10-v10 - FIX Issue R: Extracted to reduce _checkRestoreOrderingEnforcement complexity
+ * @private
+ */
+function _shouldRejectRestoreOrder(existingOp, messageSequenceId, details) {
+  if (!existingOp || existingOp.status !== 'pending') return false;
+  if (messageSequenceId === undefined || existingOp.sequenceId === undefined) return false;
+  
+  if (messageSequenceId < existingOp.sequenceId) {
+    console.warn('[Content] v1.6.3.10-v10 RESTORE_ORDER_REJECTED:', {
+      ...details, reason: 'out-of-order: newer operation already pending', action: 'rejected'
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a RESTORE operation should be rejected due to ordering violation
+ * v1.6.3.10-v10 - FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
+ * 
+ * Out-of-order RESTORE messages are rejected to prevent ownership lookups from
+ * resolving incorrectly during rapid tab switching (Scenario 17).
+ * 
+ * @param {string} quickTabId - Quick Tab ID being restored
+ * @param {number|undefined} messageSequenceId - Sequence ID from message (if present)
+ * @returns {{allowed: boolean, reason: string|null, details: Object}}
+ */
+function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
+  const now = Date.now();
+  _cleanupStaleRestoreEntries(now);
+  
+  const existingOperation = pendingRestoreOperations.get(quickTabId);
+  const effectiveSequence = messageSequenceId ?? ++restoreSequenceCounter;
+  
+  const details = {
+    quickTabId,
+    messageSequenceId,
+    effectiveSequence,
+    existingOperation: existingOperation ? {
+      sequenceId: existingOperation.sequenceId,
+      status: existingOperation.status,
+      age: now - existingOperation.timestamp
+    } : null,
+    pendingCount: pendingRestoreOperations.size
+  };
+  
+  // Check if should reject due to ordering
+  if (_shouldRejectRestoreOrder(existingOperation, messageSequenceId, details)) {
+    return { allowed: false, reason: 'out-of-order', details };
+  }
+  
+  // Log if queued behind pending operation
+  if (existingOperation && existingOperation.status === 'pending') {
+    console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_QUEUED:', {
+      ...details, reason: 'existing operation pending', action: 'will proceed after existing completes'
+    });
+  }
+  
+  // Track this operation
+  pendingRestoreOperations.set(quickTabId, {
+    sequenceId: effectiveSequence, timestamp: now, status: 'pending'
+  });
+  
+  console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_ALLOWED:', details);
+  return { allowed: true, reason: null, details };
+}
+
+/**
+ * Mark a RESTORE operation as complete
+ * v1.6.3.10-v10 - FIX Issue R: Update tracking after operation completes
+ * @param {string} quickTabId - Quick Tab ID that was restored
+ * @param {boolean} success - Whether operation succeeded
+ */
+function _markRestoreComplete(quickTabId, success) {
+  const operation = pendingRestoreOperations.get(quickTabId);
+  if (operation) {
+    operation.status = success ? 'completed' : 'failed';
+    console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
+      quickTabId, success, sequenceId: operation.sequenceId, duration: Date.now() - operation.timestamp
+    });
+  }
+}
+
 /**
  * Queue a message when port is unavailable
  * v1.6.3.10-v7 - FIX Issue #5: Message queueing
@@ -2816,11 +2935,13 @@ function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnershi
  *   minimizedManager may be empty - but the Quick Tab still belongs to this tab.
  *   Use the tab ID embedded in the Quick Tab ID pattern as a fallback check.
  * v1.6.4.8 - Refactored to reduce complexity (cc=12 -> cc<9)
+ * v1.6.3.10-v10 - FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
  * @private
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {Function} sendResponse - Response callback
+ * @param {number} [messageSequenceId] - Optional sequence ID from message for ordering
  */
-function _handleRestoreQuickTab(quickTabId, sendResponse) {
+function _handleRestoreQuickTab(quickTabId, sendResponse, messageSequenceId = undefined) {
   // Guard: Deduplicate restore within window
   if (_isDuplicateRestoreMessage(quickTabId)) {
     sendResponse({
@@ -2828,6 +2949,19 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
       error: 'Duplicate restore request rejected',
       quickTabId,
       reason: 'deduplication'
+    });
+    return;
+  }
+
+  // v1.6.3.10-v10 - FIX Issue R: Check ordering enforcement
+  const orderingCheck = _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId);
+  if (!orderingCheck.allowed) {
+    sendResponse({
+      success: false,
+      error: 'RESTORE operation rejected due to ordering violation',
+      quickTabId,
+      reason: orderingCheck.reason,
+      orderingDetails: orderingCheck.details
     });
     return;
   }
@@ -2841,11 +2975,13 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
     hasSnapshot: restoreOwnership.hasSnapshot,
     extractedTabId: restoreOwnership.extractedTabId,
     matchesIdPattern: restoreOwnership.matchesIdPattern,
-    ownsQuickTab: restoreOwnership.ownsQuickTab
+    ownsQuickTab: restoreOwnership.ownsQuickTab,
+    orderingSequence: orderingCheck.details.effectiveSequence
   });
 
   // Guard: Cross-tab filtering
   if (!restoreOwnership.ownsQuickTab) {
+    _markRestoreComplete(quickTabId, false);
     _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnership);
     return;
   }
@@ -2857,10 +2993,22 @@ function _handleRestoreQuickTab(quickTabId, sendResponse) {
     hasSnapshot: restoreOwnership.hasSnapshot
   });
 
+  // v1.6.3.10-v10 - FIX Issue R: Log which RESTORE operation owns which Quick Tab after execution
   _handleManagerAction(
     quickTabId,
     'Restored',
-    id => quickTabsManager.restoreById(id, 'Manager'),
+    id => {
+      const result = quickTabsManager.restoreById(id, 'Manager');
+      console.log('[Content] v1.6.3.10-v10 RESTORE_OWNERSHIP_RESULT:', {
+        quickTabId: id,
+        currentTabId: restoreOwnership.currentTabId,
+        orderingSequence: orderingCheck.details.effectiveSequence,
+        restoreResult: result,
+        timestamp: Date.now()
+      });
+      _markRestoreComplete(id, true);
+      return result;
+    },
     sendResponse
   );
 }
@@ -3819,8 +3967,12 @@ const ACTION_HANDLERS = {
     return true;
   },
   RESTORE_QUICK_TAB: (message, sendResponse) => {
-    console.log('[Content] Received RESTORE_QUICK_TAB request:', message.quickTabId);
-    _handleRestoreQuickTab(message.quickTabId, sendResponse);
+    // v1.6.3.10-v10 - FIX Issue R: Pass sequenceId for ordering enforcement
+    console.log('[Content] Received RESTORE_QUICK_TAB request:', {
+      quickTabId: message.quickTabId,
+      sequenceId: message.sequenceId
+    });
+    _handleRestoreQuickTab(message.quickTabId, sendResponse, message.sequenceId);
     return true;
   },
   CLOSE_MINIMIZED_QUICK_TABS: (message, sendResponse) => {

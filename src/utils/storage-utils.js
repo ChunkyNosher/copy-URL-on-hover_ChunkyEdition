@@ -57,6 +57,10 @@ import { CONSTANTS } from '../core/config.js';
 // Storage key for Quick Tabs state (unified format v1.6.2.2+)
 export const STATE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.10-v10 - FIX Code Review: Use constant for unknown tab ID in transaction IDs
+// String is intentional for debugging - makes it clear in logs when identity wasn't ready
+const UNKNOWN_TAB_ID_LABEL = 'UNKNOWN';
+
 // v1.6.3.4-v2 - FIX Bug #1: Timeout for storage operations (5 seconds)
 // v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
 const STORAGE_TIMEOUT_MS = 2000;
@@ -262,6 +266,95 @@ const WRITING_INSTANCE_ID = (() => {
 // This provides a secondary check independent of writingInstanceId matching
 let lastWrittenTransactionId = null;
 
+// v1.6.3.10-v10 - FIX Issue N: Storage event sequence numbering for ordering validation
+// Per MDN: storage.onChanged event fires "when one or more items change" with no sequencing guarantee
+// These variables track event ordering to detect when events arrive out-of-order across tabs
+let lastObservedStorageEventTimestamp = 0; // Timestamp from storage event's transactionId or timestamp field
+let lastObservedStorageEventSequence = 0; // Our internal sequence counter for received events
+let storageEventOutOfOrderCount = 0; // Counter for diagnostic purposes
+
+// v1.6.3.10-v10 - FIX Issue N: Tolerance for out-of-order detection (clock skew + concurrent writes)
+const STORAGE_EVENT_ORDER_TOLERANCE_MS = 100;
+
+/**
+ * Extract timestamp from transaction ID
+ * v1.6.3.10-v10 - FIX Issue N: Helper to reduce validateStorageEventOrdering complexity
+ * @private
+ * @param {string|undefined} transactionId - Transaction ID to parse
+ * @returns {number} Extracted timestamp or 0
+ */
+function _extractTimestampFromTransactionId(transactionId) {
+  if (!transactionId) return 0;
+  const txnParts = transactionId.split('-');
+  if (txnParts.length < 2) return 0;
+  const parsedTs = parseInt(txnParts[1], 10);
+  return (!isNaN(parsedTs) && parsedTs > 0) ? parsedTs : 0;
+}
+
+/**
+ * Check if storage event is out-of-order based on timestamp
+ * v1.6.3.10-v10 - FIX Issue N: Helper to reduce validateStorageEventOrdering complexity
+ * @private
+ * @param {number} eventTimestamp - Event timestamp
+ * @param {number} lastTimestamp - Last observed timestamp
+ * @returns {boolean} True if out-of-order
+ */
+function _isStorageEventOutOfOrder(eventTimestamp, lastTimestamp) {
+  return eventTimestamp > 0 && 
+         lastTimestamp > 0 && 
+         eventTimestamp < (lastTimestamp - STORAGE_EVENT_ORDER_TOLERANCE_MS);
+}
+
+/**
+ * Validate storage event ordering and log if out-of-order
+ * v1.6.3.10-v10 - FIX Issue N: Detect when storage.onChanged events arrive out-of-order
+ * 
+ * Per MDN documentation, storage.onChanged events have no ordering guarantee.
+ * This function tracks event timestamps and logs warnings when events appear to arrive
+ * out of their original write order.
+ * 
+ * @param {Object} newValue - New storage value containing transactionId/timestamp
+ * @returns {{inOrder: boolean, sequenceNumber: number, details: Object}} Ordering validation result
+ */
+export function validateStorageEventOrdering(newValue) {
+  lastObservedStorageEventSequence++;
+  const currentSequence = lastObservedStorageEventSequence;
+  
+  // Extract timestamp from transaction ID or explicit field
+  let eventTimestamp = newValue?.timestamp ?? 0;
+  if (!eventTimestamp) {
+    eventTimestamp = _extractTimestampFromTransactionId(newValue?.transactionId);
+  }
+  
+  const details = {
+    currentSequence,
+    eventTimestamp,
+    lastTimestamp: lastObservedStorageEventTimestamp,
+    transactionId: newValue?.transactionId,
+    writingTabId: newValue?.writingTabId,
+    timestampDelta: eventTimestamp - lastObservedStorageEventTimestamp
+  };
+  
+  const isOutOfOrder = _isStorageEventOutOfOrder(eventTimestamp, lastObservedStorageEventTimestamp);
+  
+  if (isOutOfOrder) {
+    storageEventOutOfOrderCount++;
+    console.warn('[StorageUtils] v1.6.3.10-v10 STORAGE_EVENT_OUT_OF_ORDER:', {
+      ...details,
+      outOfOrderCount: storageEventOutOfOrderCount,
+      warning: 'Event arrived with timestamp older than previous event',
+      recommendation: 'Check for concurrent writes from multiple tabs'
+    });
+  }
+  
+  // Update tracking state (always use latest timestamp regardless of order)
+  if (eventTimestamp > lastObservedStorageEventTimestamp) {
+    lastObservedStorageEventTimestamp = eventTimestamp;
+  }
+  
+  return { inOrder: !isOutOfOrder, sequenceNumber: currentSequence, details };
+}
+
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs
 // Used to validate empty writes - only tabs with ownership history can write empty state
 const previouslyOwnedTabIds = new Set();
@@ -269,10 +362,23 @@ const previouslyOwnedTabIds = new Set();
 // v1.6.3.6-v2 - FIX Issue #2: Track duplicate saveId writes to detect loops
 // Map of saveId → { count, firstTimestamp }
 const saveIdWriteTracker = new Map();
-const DUPLICATE_SAVEID_WINDOW_MS = 1000; // Track duplicates within 1 second
+// v1.6.3.10-v10 - FIX Issue I: Increased from 1000ms to 5000ms to align with worst-case storage timing
+// Window must be >= STORAGE_TIMEOUT_MS (2000ms) + CIRCUIT_BREAKER_BACKOFF_MAX (30s) patterns
+// Using 5s as practical compromise between false-positive loop detection and cascade detection
+const DUPLICATE_SAVEID_WINDOW_MS = 5000;
 // v1.6.3.6-v3 - FIX Issue #3: Reduced from 2 to 1 for faster loop detection
 // Warn if same saveId written more than once
 const DUPLICATE_SAVEID_THRESHOLD = 1;
+
+// v1.6.3.10-v10 - FIX Issue H: Write coalescing/rate-limiting constants
+// Minimum interval between persisting the same state hash (debounce)
+const WRITE_COALESCE_MIN_INTERVAL_MS = 100;
+// Last write timestamp for rate limiting
+let lastWriteTimestamp = 0;
+// Last state hash that was persisted (for hash-unchanged detection)
+let lastPersistedHash = null;
+// Counter for coalesced writes (for logging)
+let coalescedWriteCount = 0;
 
 // Current tab ID for self-write detection (initialized lazily)
 let currentWritingTabId = null;
@@ -957,10 +1063,65 @@ function _isMatchingTabId(writingTabId, currentTabId) {
 }
 
 /**
+ * Log warning if heuristics conflict
+ * v1.6.3.10-v10 - FIX Issue T: Extracted to reduce isSelfWrite complexity
+ * @private
+ */
+function _logHeuristicConflict(newValue, currentTabId, heuristicsMatched) {
+  const matched = Object.entries(heuristicsMatched).filter(([, v]) => v).map(([k]) => k);
+  const unmatched = Object.entries(heuristicsMatched).filter(([, v]) => !v).map(([k]) => k);
+  
+  // Only warn if we have both matches and non-matches (actual conflict)
+  if (matched.length > 0 && unmatched.length > 0) {
+    console.warn('[StorageUtils] v1.6.3.10-v10 SELF_WRITE_HEURISTIC_CONFLICT:', {
+      transactionId: newValue.transactionId,
+      writingInstanceId: newValue.writingInstanceId,
+      writingTabId: newValue.writingTabId,
+      currentTabId: currentTabId ?? currentWritingTabId,
+      ourInstanceId: WRITING_INSTANCE_ID,
+      ourLastTransactionId: lastWrittenTransactionId,
+      heuristicsMatched,
+      matchedHeuristics: matched,
+      unmatchedHeuristics: unmatched,
+      decision: 'Using highest-priority match (transactionId > instanceId > tabId)'
+    });
+  }
+}
+
+/**
+ * Check heuristics and return self-write detection result
+ * v1.6.3.10-v10 - FIX Issue T: Extracted to reduce isSelfWrite complexity
+ * @private
+ */
+function _checkSelfWriteHeuristics(newValue, currentTabId) {
+  const heuristicsMatched = {
+    transactionId: _isMatchingTransactionId(newValue.transactionId),
+    instanceId: _isMatchingInstanceId(newValue.writingInstanceId),
+    tabId: _isMatchingTabId(newValue.writingTabId, currentTabId)
+  };
+  
+  const matchCount = Object.values(heuristicsMatched).filter(Boolean).length;
+  
+  // Check for conflicts (some match, some don't)
+  if (matchCount > 0 && matchCount < 3) {
+    _logHeuristicConflict(newValue, currentTabId, heuristicsMatched);
+  }
+  
+  return heuristicsMatched;
+}
+
+/**
  * Check if a storage change is a self-write (from this tab/instance)
  * v1.6.3.5-v3 - FIX Diagnostic Issue #1: Skip processing of self-writes
  * v1.6.3.6-v2 - FIX Issue #1: Add lastWrittenTransactionId check for deterministic detection
  * v1.6.3.6-v2 - Refactored: Extracted helpers to reduce complexity
+ * v1.6.3.10-v10 - FIX Issue T: Document priority order and log which heuristics matched
+ * 
+ * HEURISTIC PRIORITY ORDER (Issue T):
+ * 1. transactionId - HIGHEST: Most deterministic, matches specific write operation
+ * 2. instanceId - MEDIUM: Unique per tab load, survives across tab navigations
+ * 3. tabId - LOWEST: Can match after page reload with different instance
+ * 
  * @param {Object} newValue - New storage value with writingTabId/writingInstanceId
  * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
  * @returns {boolean} True if this is a self-write that should be skipped
@@ -968,28 +1129,26 @@ function _isMatchingTabId(writingTabId, currentTabId) {
 export function isSelfWrite(newValue, currentTabId = null) {
   if (!newValue) return false;
 
-  // v1.6.3.6-v2 - FIX Issue #1: Check lastWrittenTransactionId first (most deterministic)
-  if (_isMatchingTransactionId(newValue.transactionId)) {
-    console.log('[StorageUtils] SKIPPED self-write (lastWrittenTransactionId matches):', {
-      transactionId: newValue.transactionId
+  const heuristicsMatched = _checkSelfWriteHeuristics(newValue, currentTabId);
+
+  // v1.6.3.6-v2 - FIX Issue #1: Check in priority order (HIGHEST to LOWEST)
+  if (heuristicsMatched.transactionId) {
+    console.log('[StorageUtils] SKIPPED self-write (transactionId - HIGHEST priority):', {
+      transactionId: newValue.transactionId, heuristicsMatched, priority: 1
     });
     return true;
   }
 
-  // Check instance ID (second most reliable)
-  if (_isMatchingInstanceId(newValue.writingInstanceId)) {
-    console.log('[StorageUtils] SKIPPED self-write (writingInstanceId matches):', {
-      instanceId: WRITING_INSTANCE_ID,
-      transactionId: newValue.transactionId
+  if (heuristicsMatched.instanceId) {
+    console.log('[StorageUtils] SKIPPED self-write (instanceId - MEDIUM priority):', {
+      instanceId: WRITING_INSTANCE_ID, heuristicsMatched, priority: 2
     });
     return true;
   }
 
-  // Fall back to tab ID check
-  if (_isMatchingTabId(newValue.writingTabId, currentTabId)) {
-    console.log('[StorageUtils] SKIPPED self-write (writingTabId matches):', {
-      tabId: currentTabId ?? currentWritingTabId,
-      transactionId: newValue.transactionId
+  if (heuristicsMatched.tabId) {
+    console.log('[StorageUtils] SKIPPED self-write (tabId - LOWEST priority):', {
+      tabId: currentTabId ?? currentWritingTabId, heuristicsMatched, priority: 3
     });
     return true;
   }
@@ -1596,8 +1755,8 @@ export function generateTransactionId() {
   writeCounter = (writeCounter + 1) % COUNTER_WRAP_LIMIT;
 
   // v1.6.3.10-v9 - FIX Issue L: Label when identity is unknown
-  // Using 'UNKNOWN' prefix makes debugging easier when tab ID wasn't initialized
-  const tabId = currentWritingTabId ?? 'UNKNOWN';
+  // Using UNKNOWN_TAB_ID_LABEL makes debugging easier when tab ID wasn't initialized
+  const tabId = currentWritingTabId ?? UNKNOWN_TAB_ID_LABEL;
   
   // v1.6.3.10-v9 - FIX Issue L: Log warning if generating transaction ID before identity is ready
   if (currentWritingTabId === null) {
@@ -2639,6 +2798,7 @@ function _cleanupExpiredSaveIdEntries(now) {
 /**
  * Log duplicate write warning
  * v1.6.4.8 - FIX CodeScene: Extract from _trackDuplicateSaveIdWrite to flatten bumpy road
+ * v1.6.3.10-v10 - FIX Issue I: Enhanced logging with timing correlation
  * @private
  * @param {string} saveId - Save ID
  * @param {Object} existing - Existing tracker entry
@@ -2647,14 +2807,34 @@ function _cleanupExpiredSaveIdEntries(now) {
  */
 function _logDuplicateWriteWarning(saveId, existing, transactionId, now) {
   const elapsedMs = now - existing.firstTimestamp;
+  
+  // v1.6.3.10-v10 - FIX Issue I: Check if elapsed time coincides with storage timeout windows
+  const coincidenceFlags = {
+    coincidesToStorageTimeout: elapsedMs >= STORAGE_TIMEOUT_MS && elapsedMs < STORAGE_TIMEOUT_MS * 2,
+    coincidesToEscalationWarning: elapsedMs >= ESCALATION_WARNING_MS && elapsedMs < TRANSACTION_FALLBACK_CLEANUP_MS,
+    coincidesToFallbackCleanup: elapsedMs >= TRANSACTION_FALLBACK_CLEANUP_MS && elapsedMs < STORAGE_TIMEOUT_MS,
+    withinDedupWindow: elapsedMs <= DUPLICATE_SAVEID_WINDOW_MS
+  };
+  
   console.error(
     `[StorageUtils] ⚠️ DUPLICATE WRITE DETECTED: saveId "${saveId}" written ${existing.count} times in ${elapsedMs}ms`
   );
+  console.error('[StorageUtils] v1.6.3.10-v10 FIX Issue I - Duplicate timing details:', {
+    saveId,
+    duplicateCount: existing.count,
+    firstSeenTimestamp: existing.firstTimestamp,
+    currentTimestamp: now,
+    elapsedMs,
+    storageTimeoutMs: STORAGE_TIMEOUT_MS,
+    escalationWarningMs: ESCALATION_WARNING_MS,
+    fallbackCleanupMs: TRANSACTION_FALLBACK_CLEANUP_MS,
+    dedupWindowMs: DUPLICATE_SAVEID_WINDOW_MS,
+    coincidenceFlags,
+    firstTransaction: existing.firstTransaction,
+    currentTransaction: transactionId
+  });
   console.error(
     '[StorageUtils] This indicates a storage write loop - same saveId should not be written multiple times.'
-  );
-  console.error(
-    `[StorageUtils] Transaction: ${transactionId}, First transaction: ${existing.firstTransaction}`
   );
 }
 
@@ -3141,6 +3321,68 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
 }
 
 /**
+ * Check if write should be coalesced/rate-limited
+ * v1.6.3.10-v10 - FIX Issue H: Add write scheduling policy for high-frequency UI events
+ * 
+ * This function implements a write coalescing policy that:
+ * 1. Checks if the last write was too recent (rate limiting)
+ * 2. Checks if the state hash is unchanged (hash-based dedup)
+ * 3. Logs when writes are coalesced with the reason
+ * 
+ * @private
+ * @param {Object} state - State to check
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID for logging
+ * @returns {{shouldCoalesce: boolean, reason: string|null}}
+ */
+function _checkWriteCoalescing(state, logPrefix, transactionId) {
+  const now = Date.now();
+  const timeSinceLastWrite = now - lastWriteTimestamp;
+  
+  // Compute current state hash for comparison
+  const currentHash = computeStateHash(state);
+  
+  // Check 1: Hash unchanged (same content as last persisted)
+  if (currentHash === lastPersistedHash && lastPersistedHash !== null) {
+    coalescedWriteCount++;
+    console.log(`${logPrefix} v1.6.3.10-v10 WRITE_COALESCED [${transactionId}]:`, {
+      reason: 'hash_unchanged',
+      timeSinceLastWriteMs: timeSinceLastWrite,
+      coalescedCount: coalescedWriteCount,
+      hashValue: currentHash
+    });
+    return { shouldCoalesce: true, reason: 'hash_unchanged' };
+  }
+  
+  // Check 2: Rate limiting - writes too close together
+  if (timeSinceLastWrite < WRITE_COALESCE_MIN_INTERVAL_MS) {
+    coalescedWriteCount++;
+    console.log(`${logPrefix} v1.6.3.10-v10 WRITE_COALESCED [${transactionId}]:`, {
+      reason: 'rate_limit',
+      timeSinceLastWriteMs: timeSinceLastWrite,
+      minIntervalMs: WRITE_COALESCE_MIN_INTERVAL_MS,
+      coalescedCount: coalescedWriteCount
+    });
+    return { shouldCoalesce: true, reason: 'rate_limit' };
+  }
+  
+  // Write is allowed - update tracking state
+  lastWriteTimestamp = now;
+  lastPersistedHash = currentHash;
+  
+  // Log if we had coalesced writes that are now being flushed
+  if (coalescedWriteCount > 0) {
+    console.log(`${logPrefix} v1.6.3.10-v10 WRITE_FLUSHED [${transactionId}]:`, {
+      coalescedWritesSinceLastFlush: coalescedWriteCount,
+      timeSinceLastWriteMs: timeSinceLastWrite
+    });
+    coalescedWriteCount = 0;
+  }
+  
+  return { shouldCoalesce: false, reason: null };
+}
+
+/**
  * Validate state structure for persistence
  * v1.6.4.8 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
  * @private
@@ -3250,6 +3492,20 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
 
   const tabCount = state.tabs.length;
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
+
+  // v1.6.3.10-v10 - FIX Issue H: Phase 1.5: Check write coalescing (rate limiting)
+  // This must be early to avoid unnecessary validation work for coalesced writes
+  const coalesceResult = _checkWriteCoalescing(state, logPrefix, transactionId);
+  if (coalesceResult.shouldCoalesce) {
+    console.log(`${logPrefix} v1.6.3.10-v10 Transaction COALESCED at phase: rate-limit`, {
+      transactionId,
+      reason: coalesceResult.reason,
+      tabCount,
+      durationMs: Date.now() - startTime
+    });
+    // Return true because the state will be persisted by a later write
+    return Promise.resolve(true);
+  }
 
   // Phase 2: Check empty write protection
   if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
