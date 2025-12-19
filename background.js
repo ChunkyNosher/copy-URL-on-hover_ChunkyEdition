@@ -2356,68 +2356,39 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
-function _multiMethodDeduplication(newValue, oldValue) {
-  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Log which detection layer matched
-  const logDetectionMatch = (method, reason) => {
-    console.log('[Background] v1.6.3.10-v5 Self-write detected:', {
-      method,
-      reason,
-      transactionId: newValue?.transactionId,
-      writingInstanceId: newValue?.writingInstanceId,
-      writingTabId: newValue?.writingTabId,
-      saveId: newValue?.saveId,
-      timestamp: Date.now()
-    });
-  };
-
-  // v1.6.3.10-v7 - FIX Diagnostic Issue #8: Enhanced dedup with timestamp window
-  // Check if this event was already processed within the dedup window
+/**
+ * Check timestamp window deduplication
+ * v1.6.3.10-v8 - FIX Code Health: Extracted for dedup checks
+ * @private
+ */
+function _checkTimestampWindowDedup(newValue, now) {
   const eventHash = _computeEventDeduplicationHash(newValue);
-  const now = Date.now();
-
-  if (lastStorageEventHash === eventHash && 
-      (now - lastStorageEventTimestamp) < STORAGE_DEDUP_WINDOW_MS) {
-    logDetectionMatch('timestamp-window', 'Duplicate event within 200ms window');
-    return {
-      shouldSkip: true,
-      method: 'timestamp-window',
-      reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window`
-    };
+  if (lastStorageEventHash === eventHash && (now - lastStorageEventTimestamp) < STORAGE_DEDUP_WINDOW_MS) {
+    return { method: 'timestamp-window', reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window` };
   }
-
-  // Update last event tracking
   lastStorageEventHash = eventHash;
   lastStorageEventTimestamp = now;
+  return null;
+}
 
-  // Method 1: transactionId (highest priority - deterministic)
-  // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
-  if (_isTransactionSelfWrite(newValue)) {
-    logDetectionMatch('transactionId', `Transaction ${newValue.transactionId} in progress`);
-    return {
-      shouldSkip: true,
-      method: 'transactionId',
-      reason: `Transaction ${newValue.transactionId} in progress`
-    };
-  }
+function _multiMethodDeduplication(newValue, oldValue) {
+  const now = Date.now();
+  const logMatch = (method, reason) => console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
 
-  // Method 2: saveId + timestamp comparison (catches duplicates from same source)
-  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
-    logDetectionMatch('saveId+timestamp', 'Same saveId and timestamp within window');
-    return {
-      shouldSkip: true,
-      method: 'saveId+timestamp',
-      reason: 'Same saveId and timestamp within window'
-    };
-  }
+  // Check each dedup method in priority order
+  const checks = [
+    () => _checkTimestampWindowDedup(newValue, now),
+    () => _isTransactionSelfWrite(newValue) ? { method: 'transactionId', reason: `Transaction ${newValue.transactionId} in progress` } : null,
+    () => _isSaveIdTimestampDuplicate(newValue, oldValue) ? { method: 'saveId+timestamp', reason: 'Same saveId and timestamp within window' } : null,
+    () => _isContentHashDuplicate(newValue, oldValue) ? { method: 'contentHash', reason: 'Identical content with same saveId' } : null
+  ];
 
-  // Method 3: Content hash comparison (catches Firefox spurious events)
-  if (_isContentHashDuplicate(newValue, oldValue)) {
-    logDetectionMatch('contentHash', 'Identical content with same saveId');
-    return {
-      shouldSkip: true,
-      method: 'contentHash',
-      reason: 'Identical content with same saveId'
-    };
+  for (const check of checks) {
+    const result = check();
+    if (result) {
+      logMatch(result.method, result.reason);
+      return { shouldSkip: true, ...result };
+    }
   }
 
   return { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
@@ -5329,18 +5300,18 @@ const VALID_MANAGER_COMMANDS = new Set([
  * v1.6.4.16 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
  * @private
  */
-function _logManagerActionResult(action, quickTabId, hostTabId, correlationId, result, startTime, method) {
+/**
+ * Log Manager action result
+ * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 7 parameters
+ * @param {Object} opts - Logging options
+ */
+function _logManagerActionResult({ action, quickTabId, hostTabId, correlationId, result, startTime, method }) {
   const durationMs = Date.now() - startTime;
+  const baseData = { action, quickTabId, hostTabId, correlationId, method, durationMs };
   if (result.success !== false) {
-    console.log('[Background] MANAGER_ACTION_COMPLETED:', {
-      action, quickTabId, hostTabId, correlationId,
-      status: 'success', method, durationMs
-    });
+    console.log('[Background] MANAGER_ACTION_COMPLETED:', { ...baseData, status: 'success' });
   } else {
-    console.error('[Background] MANAGER_ACTION_FAILED:', {
-      action, quickTabId, hostTabId, correlationId,
-      status: 'failed', error: result.error, method, durationMs
-    });
+    console.error('[Background] MANAGER_ACTION_FAILED:', { ...baseData, status: 'failed', error: result.error });
   }
 }
 
@@ -5380,7 +5351,7 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
       browser.tabs.sendMessage(hostTabId, executeMessage),
       createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
-    _logManagerActionResult(command, quickTabId, hostTabId, correlationId, { success: true }, startTime, 'messaging');
+    _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: true }, startTime, method: 'messaging' });
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
@@ -5388,10 +5359,10 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
 
     try {
       const fallbackResult = await _executeViaScripting(hostTabId, command, { quickTabId }, correlationId);
-      _logManagerActionResult(command, quickTabId, hostTabId, correlationId, fallbackResult, startTime, 'scripting-fallback');
+      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: fallbackResult, startTime, method: 'scripting-fallback' });
       return fallbackResult;
     } catch (fallbackErr) {
-      _logManagerActionResult(command, quickTabId, hostTabId, correlationId, { success: false, error: fallbackErr.message }, startTime, 'scripting-fallback');
+      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: false, error: fallbackErr.message }, startTime, method: 'scripting-fallback' });
       console.error('[Background] Both messaging and scripting failed:', { command, quickTabId, hostTabId, messagingError: err.message, scriptingError: fallbackErr.message });
       return { success: false, error: fallbackErr.message, fallbackFailed: true };
     }
