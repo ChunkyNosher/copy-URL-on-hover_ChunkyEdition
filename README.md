@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,15 +9,27 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v7 Status:** Reliability & Robustness ✅
+**🔧 v1.6.3.10-v8 Status:** Code Health & Bug Fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v8
+
+**🔧 Code Health & Bug Fixes (December 2025) ✅**
+
+- ✅ **Code Health Improvements** - Refactored files to 9.0+ scores (content.js 9.09, window.js 9.38)
+- ✅ **Storage Issues Fixed (#1-15)** - Dual-block fix, currentTabId init, storage format unification
+- ✅ **Cross-Tab Issues Fixed (#16-23)** - Adoption cache sync, message format fixes, retry mechanism
+- ✅ **Manager Issues Fixed (#20-22)** - Comprehensive logging, MinimizedManager snapshots
+- ✅ **Consolidated Duplications** - Extracted helper functions, options object pattern
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v7
 
-**🔧 Reliability & Robustness (December 2025) ✅**
+**🔧 Reliability & Robustness (Previous) ✅**
 
 - ✅ **Port Reconnection Circuit Breaker** - State machine with 5 failure limit, 30s max backoff
 - ✅ **Background Handshake Ready Signal** - Command buffering, latency tracking
