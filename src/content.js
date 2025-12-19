@@ -2936,18 +2936,33 @@ function _handleGetContentLogs(sendResponse) {
 }
 
 /**
+ * Generic try/catch wrapper for action handlers with standard response format
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate handler pattern
+ * @private
+ * @param {Function} action - Action to execute
+ * @param {Function} sendResponse - Response callback  
+ * @param {string} timestampField - Field name for timestamp (e.g. 'clearedAt')
+ * @param {string} errorContext - Error log context
+ */
+function _executeWithResponse(action, sendResponse, timestampField, errorContext) {
+  try {
+    action();
+    sendResponse({ success: true, [timestampField]: Date.now() });
+  } catch (error) {
+    console.error(`[Content] Error ${errorContext}:`, error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
  * Handle CLEAR_CONTENT_LOGS action
  * @private
  */
 function _handleClearContentLogs(sendResponse) {
-  try {
-    clearConsoleLogs();
-    clearLogBuffer();
-    sendResponse({ success: true, clearedAt: Date.now() });
-  } catch (error) {
-    console.error('[Content] Error clearing log buffer:', error);
-    sendResponse({ success: false, error: error.message });
-  }
+  _executeWithResponse(
+    () => { clearConsoleLogs(); clearLogBuffer(); },
+    sendResponse, 'clearedAt', 'clearing log buffer'
+  );
 }
 
 /**
@@ -2955,13 +2970,10 @@ function _handleClearContentLogs(sendResponse) {
  * @private
  */
 function _handleRefreshLiveConsoleFilters(sendResponse) {
-  try {
-    refreshLiveConsoleSettings();
-    sendResponse({ success: true, refreshedAt: Date.now() });
-  } catch (error) {
-    console.error('[Content] Error refreshing live console filters:', error);
-    sendResponse({ success: false, error: error.message });
-  }
+  _executeWithResponse(
+    refreshLiveConsoleSettings,
+    sendResponse, 'refreshedAt', 'refreshing live console filters'
+  );
 }
 
 /**
@@ -2991,53 +3003,38 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
  * @param {Function} sendResponse - Response callback
  */
 /**
- * Update tab entry's originTabId for adoption
- * v1.6.4.16 - FIX Code Health: Extracted to reduce _handleAdoptionCompleted complexity
+ * Generic helper to update originTabId on an object with logging
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate update functions
  * @private
- * @param {Object} tabEntry - Tab entry from quickTabsManager.tabs
+ * @param {Object} target - Object with originTabId property
  * @param {string} adoptedQuickTabId - Quick Tab ID being adopted
  * @param {number} newOriginTabId - New origin tab ID
+ * @param {string} location - Location name for logging
  * @returns {boolean} True if updated
  */
-function _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId) {
-  if (!tabEntry) return false;
-  console.log('[Content] ADOPTION_CACHE_BEFORE:', {
-    adoptedQuickTabId,
-    oldOriginTabId: tabEntry.originTabId,
-    location: 'tabs-map'
+function _updateOriginTabIdWithLog(target, adoptedQuickTabId, newOriginTabId, location) {
+  if (!target) return false;
+  console.log('[Content] ADOPTION_CACHE_UPDATE:', {
+    adoptedQuickTabId, oldOriginTabId: target.originTabId, newOriginTabId, location
   });
-  tabEntry.originTabId = newOriginTabId;
-  console.log('[Content] ADOPTION_CACHE_AFTER:', {
-    adoptedQuickTabId,
-    newOriginTabId: tabEntry.originTabId,
-    location: 'tabs-map'
-  });
+  target.originTabId = newOriginTabId;
   return true;
 }
 
 /**
- * Update minimized snapshot's originTabId for adoption
- * v1.6.4.16 - FIX Code Health: Extracted to reduce _handleAdoptionCompleted complexity
+ * Update tab entry's originTabId for adoption
  * @private
- * @param {Object} snapshot - Minimized snapshot
- * @param {string} adoptedQuickTabId - Quick Tab ID being adopted
- * @param {number} newOriginTabId - New origin tab ID
- * @returns {boolean} True if updated
+ */
+function _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId) {
+  return _updateOriginTabIdWithLog(tabEntry, adoptedQuickTabId, newOriginTabId, 'tabs-map');
+}
+
+/**
+ * Update minimized snapshot's originTabId for adoption
+ * @private
  */
 function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOriginTabId) {
-  if (!snapshot) return false;
-  console.log('[Content] ADOPTION_CACHE_BEFORE:', {
-    adoptedQuickTabId,
-    oldOriginTabId: snapshot.originTabId,
-    location: 'minimized-snapshot'
-  });
-  snapshot.originTabId = newOriginTabId;
-  console.log('[Content] ADOPTION_CACHE_AFTER:', {
-    adoptedQuickTabId,
-    newOriginTabId: snapshot.originTabId,
-    location: 'minimized-snapshot'
-  });
-  return true;
+  return _updateOriginTabIdWithLog(snapshot, adoptedQuickTabId, newOriginTabId, 'minimized-snapshot');
 }
 
 /**
@@ -3252,43 +3249,39 @@ function _syncStateTabs(tabs, currentTabId) {
 }
 
 /**
- * Sync single tab entry in tabs map
- * v1.6.4.14 - Extracted to reduce complexity
+ * Generic helper to sync originTabId on target object
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate sync functions
  * @private
+ * @param {Object} target - Object with originTabId property
+ * @param {Object} tabData - Tab data with new originTabId
+ * @param {string} location - Location name for logging
+ * @returns {number} 1 if updated, 0 otherwise
  */
-function _syncSingleTabEntry(tabData) {
-  const tabEntry = quickTabsManager?.tabs?.get(tabData.id);
-  if (!tabEntry || tabEntry.originTabId === tabData.originTabId) {
-    return 0;
-  }
-
-  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Updating originTabId:', {
-    quickTabId: tabData.id,
-    oldOriginTabId: tabEntry.originTabId,
-    newOriginTabId: tabData.originTabId
+function _syncOriginTabId(target, tabData, location) {
+  if (!target || target.originTabId === tabData.originTabId) return 0;
+  console.log(`[Content] STATE_SYNC_FROM_BACKGROUND: Updating ${location}:`, {
+    quickTabId: tabData.id, oldOriginTabId: target.originTabId, newOriginTabId: tabData.originTabId
   });
-  tabEntry.originTabId = tabData.originTabId;
+  target.originTabId = tabData.originTabId;
   return 1;
 }
 
 /**
+ * Sync single tab entry in tabs map
+ * @private
+ */
+function _syncSingleTabEntry(tabData) {
+  const tabEntry = quickTabsManager?.tabs?.get(tabData.id);
+  return _syncOriginTabId(tabEntry, tabData, 'originTabId');
+}
+
+/**
  * Sync single tab snapshot in minimized manager
- * v1.6.4.14 - Extracted to reduce complexity
  * @private
  */
 function _syncSingleTabSnapshot(tabData) {
   const snapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(tabData.id);
-  if (!snapshot || snapshot.originTabId === tabData.originTabId) {
-    return 0;
-  }
-
-  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Updating snapshot originTabId:', {
-    quickTabId: tabData.id,
-    oldOriginTabId: snapshot.originTabId,
-    newOriginTabId: tabData.originTabId
-  });
-  snapshot.originTabId = tabData.originTabId;
-  return 1;
+  return _syncOriginTabId(snapshot, tabData, 'snapshot originTabId');
 }
 
 /**
@@ -3986,38 +3979,34 @@ function _executeRestoreCommand(quickTabId, source) {
   return { success: true, action: 'restored', handlerResult: result };
 }
 
-const QUICK_TAB_COMMAND_HANDLERS = {
-  MINIMIZE_QUICK_TAB: (quickTabId, source) => {
-    const handler = quickTabsManager?.visibilityHandler?.handleMinimize;
-    if (!handler)
-      return {
-        success: false,
-        error: 'Quick Tabs manager not initialized or visibility handler not ready'
-      };
+/**
+ * Generic command handler factory for visibility operations
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate handler pattern
+ * @private
+ */
+function _createVisibilityHandler(methodName, actionName) {
+  return (quickTabId, source) => {
+    const handler = quickTabsManager?.visibilityHandler?.[methodName];
+    if (!handler) {
+      return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+    }
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
-    return { success: true, action: 'minimized' };
-  },
+    return { success: true, action: actionName };
+  };
+}
+
+const QUICK_TAB_COMMAND_HANDLERS = {
+  MINIMIZE_QUICK_TAB: _createVisibilityHandler('handleMinimize', 'minimized'),
   RESTORE_QUICK_TAB: (quickTabId, source) => _executeRestoreCommand(quickTabId, source),
   CLOSE_QUICK_TAB: (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
-    if (!handler)
-      return {
-        success: false,
-        error: 'Quick Tabs manager not initialized - closeById not available'
-      };
+    if (!handler) {
+      return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };
+    }
     handler.call(quickTabsManager, quickTabId);
     return { success: true, action: 'closed' };
   },
-  FOCUS_QUICK_TAB: (quickTabId, source) => {
-    const handler = quickTabsManager?.visibilityHandler?.handleFocus;
-    if (!handler)
-      return {
-        success: false,
-        error: 'Quick Tabs manager not initialized or visibility handler not ready'
-      };
-    handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
-    return { success: true, action: 'focused' };
-  }
+  FOCUS_QUICK_TAB: _createVisibilityHandler('handleFocus', 'focused')
 };
 
 /**
