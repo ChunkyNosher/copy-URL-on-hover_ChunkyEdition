@@ -304,7 +304,6 @@ export class VisibilityHandler {
     }
 
     // v1.6.3.10-v10 - FIX Issue 5.1: Use lock to prevent concurrent modifications
-    const lockKey = `visibility-${quickTabId}`;
     if (!this._tryAcquireLock('visibility', quickTabId)) {
       console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Lock held for:`, {
         quickTabId,
@@ -1844,7 +1843,7 @@ export class VisibilityHandler {
 
     // v1.6.3.10-v10 - FIX Issue 10.1: Skip persist if storage marked unavailable
     if (!this._storageAvailable) {
-      console.warn(`[VisibilityHandler] Timer callback SKIPPED (storage unavailable):`, {
+      console.warn('[VisibilityHandler] Timer callback SKIPPED (storage unavailable):', {
         id,
         operation,
         source,
@@ -1902,23 +1901,32 @@ export class VisibilityHandler {
       this._storageTimeoutCount = 0;
     } catch (err) {
       if (err.message === 'Storage persist timeout') {
-        this._storageTimeoutCount++;
-        console.error(`${this._logPrefix} STORAGE_PERSIST_TIMEOUT:`, {
-          timeoutMs: PERSIST_STORAGE_TIMEOUT_MS,
-          timeoutCount: this._storageTimeoutCount,
-          warning: 'Storage write is taking too long, may be unavailable'
-        });
-
-        // After 3 consecutive timeouts, mark storage as unavailable
-        if (this._storageTimeoutCount >= 3) {
-          this._storageAvailable = false;
-          console.error(`${this._logPrefix} STORAGE_MARKED_UNAVAILABLE:`, {
-            reason: 'Consecutive storage timeouts exceeded threshold',
-            timeoutCount: this._storageTimeoutCount
-          });
-        }
+        this._handleStorageTimeout();
       }
       throw err;
+    }
+  }
+
+  /**
+   * Handle storage timeout by incrementing counter and potentially marking storage unavailable
+   * v1.6.3.10-v10 - FIX Issue 10.1: Extracted to reduce nesting depth
+   * @private
+   */
+  _handleStorageTimeout() {
+    this._storageTimeoutCount++;
+    console.error(`${this._logPrefix} STORAGE_PERSIST_TIMEOUT:`, {
+      timeoutMs: PERSIST_STORAGE_TIMEOUT_MS,
+      timeoutCount: this._storageTimeoutCount,
+      warning: 'Storage write is taking too long, may be unavailable'
+    });
+
+    // After 3 consecutive timeouts, mark storage as unavailable
+    if (this._storageTimeoutCount >= 3) {
+      this._storageAvailable = false;
+      console.error(`${this._logPrefix} STORAGE_MARKED_UNAVAILABLE:`, {
+        reason: 'Consecutive storage timeouts exceeded threshold',
+        timeoutCount: this._storageTimeoutCount
+      });
     }
   }
 
