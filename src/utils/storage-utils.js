@@ -201,6 +201,14 @@ const ESCALATION_WARNING_MS = 250;
 
 // v1.6.3.4-v8 - FIX Issue #1: Empty write protection
 // Cooldown period between empty (0 tabs) writes to prevent cascades
+// v1.6.3.10-v10 - FIX Issue U: Documented rationale for cooldown value
+// RATIONALE: 1000ms cooldown prevents rapid-fire empty writes during:
+// - Page unload/reload scenarios (DOMContentLoaded ~200-500ms, full load ~500-2000ms)
+// - Tab switching storms where multiple tabs emit storage events
+// - Browser crash recovery where storage events may replay
+// LIMITATION: May block legitimate rapid Close All operations if user clicks multiple times
+// within 1 second. This is acceptable because Close All is idempotent - repeated calls
+// have the same effect as a single call. Consider adaptive logic in future if users report issues.
 const EMPTY_WRITE_COOLDOWN_MS = 1000;
 let lastEmptyWriteTime = 0;
 // Note: previousTabCount is safe as module-level state because:
@@ -224,10 +232,26 @@ const CIRCUIT_BREAKER_RESET_THRESHOLD = 10; // Auto-reset when queue drains belo
 let circuitBreakerTripped = false;
 let circuitBreakerTripTime = null;
 
+// v1.6.3.10-v10 - FIX Issue K: Ownership filter reason codes
+/**
+ * Reason codes for ownership filtering decisions
+ * @enum {string}
+ */
+export const OWNERSHIP_FILTER_REASON = {
+  TABID_MISMATCH: 'TABID_MISMATCH',
+  CONTAINER_MISMATCH: 'CONTAINER_MISMATCH',
+  ORPHAN_POLICY: 'ORPHAN_POLICY', // Tab owner may have closed
+  STRICT_MATCH: 'STRICT_MATCH',   // Both tabId and containerId match exactly
+  LEGACY_FALLBACK: 'LEGACY_FALLBACK', // originContainerId is null (pre-v4 Quick Tab)
+  NO_OWNERSHIP_DATA: 'NO_OWNERSHIP_DATA' // originTabId is null - can't determine ownership
+};
+
 // v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
 // Stores state snapshots for rollback on failure
 let stateSnapshot = null;
 let transactionActive = false;
+// v1.6.3.10-v10 - FIX Issue J: Transaction correlation ID for logging
+let currentTransactionCorrelationId = null;
 
 // v1.6.3.5-v4 - FIX Diagnostic Issue #1: Per-tab ownership enforcement
 // Only the tab that owns a Quick Tab (originTabId matches currentTabId) should write state
@@ -750,23 +774,55 @@ function _isValidPositiveInteger(tabId) {
   return typeof tabId === 'number' && Number.isInteger(tabId) && tabId > 0;
 }
 
+// v1.6.3.10-v10 - FIX Issue Q: Caller context types for setWritingTabId validation
+/**
+ * Known caller context types for tab ID initialization
+ * @enum {string}
+ */
+export const TAB_ID_CALLER_CONTEXT = {
+  CONTENT_SCRIPT: 'content-script',      // Valid: content scripts get tabId from background
+  SIDEBAR: 'sidebar',                     // Valid: sidebar gets tabId from background
+  BACKGROUND: 'background',               // WARNING: Background scripts shouldn't write Quick Tabs
+  OPTIONS_PAGE: 'options-page',           // WARNING: Options page shouldn't write Quick Tabs
+  POPUP: 'popup',                         // WARNING: Popup shouldn't write Quick Tabs
+  UNKNOWN: 'unknown'                      // WARNING: Caller didn't identify themselves
+};
+
 /**
  * Explicitly set the writing tab ID
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Allow content scripts to set tab ID
  * v1.6.3.10-v6 - FIX Issue #4/11/12: Resolve tab ID init promise when set
+ * v1.6.3.10-v10 - FIX Issue Q: Add context parameter to track which context is calling
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the tab ID from background script and pass it here.
  *
  * @param {number} tabId - The browser tab ID to use for ownership tracking (must be positive integer)
+ * @param {string} [callerContext='unknown'] - Context identifying the caller (content-script, sidebar, etc.)
  */
-export function setWritingTabId(tabId) {
+export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNKNOWN) {
+  // v1.6.3.10-v10 - FIX Issue Q: Log caller context for diagnostics
+  const validContexts = [TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT, TAB_ID_CALLER_CONTEXT.SIDEBAR];
+  const isValidContext = validContexts.includes(callerContext);
+  
+  // Warn if called from non-tab context (background, options, popup shouldn't write Quick Tabs)
+  if (!isValidContext) {
+    console.warn('[StorageUtils] v1.6.3.10-v10 setWritingTabId: Called from non-tab context', {
+      callerContext,
+      tabId,
+      warning: 'Only content scripts and sidebar should set writing tab ID',
+      validContexts,
+      recommendation: 'Background scripts, options pages, and popups should not write Quick Tab state'
+    });
+  }
+  
   // Validate that tabId is a positive integer (browser tab IDs are always positive)
   if (!_isValidPositiveInteger(tabId)) {
     console.warn('[StorageUtils] setWritingTabId called with invalid tabId:', {
       tabId,
       type: typeof tabId,
       isInteger: Number.isInteger(tabId),
-      isPositive: tabId > 0
+      isPositive: tabId > 0,
+      callerContext
     });
     return;
   }
@@ -776,7 +832,9 @@ export function setWritingTabId(tabId) {
   console.log('[StorageUtils] Writing tab ID set explicitly:', {
     oldTabId,
     newTabId: tabId,
-    source: 'setWritingTabId() (from background messaging)'
+    source: 'setWritingTabId() (from background messaging)',
+    callerContext,
+    isValidContext
   });
 
   // v1.6.3.10-v6 - FIX Issue #4/11/12: Resolve waiting promise for waitForTabIdInit()
@@ -1253,6 +1311,55 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null, curren
 export const isOwnerOfQuickTab = canCurrentTabModifyQuickTab;
 
 /**
+ * Determine the ownership filter reason for a tab
+ * v1.6.3.10-v10 - FIX Issue K: Add filter reason codes for diagnostics
+ * @private
+ * @param {number|null} normalizedOriginTabId - Normalized origin tab ID
+ * @param {string|null} normalizedOriginContainerId - Normalized origin container ID
+ * @param {number} currentTabId - Current tab ID
+ * @param {string|null} currentContainerId - Current container ID
+ * @param {boolean} isTabIdMatch - Whether tab IDs match
+ * @param {boolean} isContainerMatch - Whether containers match
+ * @returns {string} Ownership filter reason code
+ */
+function _determineOwnershipFilterReason(
+  normalizedOriginTabId,
+  normalizedOriginContainerId,
+  currentTabId,
+  currentContainerId,
+  isTabIdMatch,
+  isContainerMatch
+) {
+  // No ownership data - can't determine ownership
+  if (normalizedOriginTabId === null) {
+    return OWNERSHIP_FILTER_REASON.NO_OWNERSHIP_DATA;
+  }
+  
+  // Legacy Quick Tab (no container info) - use legacy fallback
+  if (normalizedOriginContainerId === null && isTabIdMatch) {
+    return OWNERSHIP_FILTER_REASON.LEGACY_FALLBACK;
+  }
+  
+  // Both match - strict match
+  if (isTabIdMatch && isContainerMatch) {
+    return OWNERSHIP_FILTER_REASON.STRICT_MATCH;
+  }
+  
+  // Tab ID doesn't match
+  if (!isTabIdMatch) {
+    return OWNERSHIP_FILTER_REASON.TABID_MISMATCH;
+  }
+  
+  // Container doesn't match
+  if (!isContainerMatch) {
+    return OWNERSHIP_FILTER_REASON.CONTAINER_MISMATCH;
+  }
+  
+  // Default (should not reach here)
+  return OWNERSHIP_FILTER_REASON.ORPHAN_POLICY;
+}
+
+/**
  * Filter tabs to only those owned by the specified tab ID and container ID
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
  * v1.6.3.10-v6 - FIX Diagnostic Issue #7, #8: Use normalizeOriginTabId for type safety,
@@ -1260,6 +1367,7 @@ export const isOwnerOfQuickTab = canCurrentTabModifyQuickTab;
  * v1.6.3.10-v6 - FIX Issue #13: Also filter by originContainerId for Firefox Multi-Account Container isolation
  *   - Both originTabId AND originContainerId must match for ownership
  *   - If originContainerId is null, that's a legacy Quick Tab - allow it if originTabId matches
+ * v1.6.3.10-v10 - FIX Issue K: Add ownership filter reason codes for diagnostics
  * @private
  * @param {Array} tabs - Array of Quick Tab data objects
  * @param {number} tabId - Current tab ID to filter by
@@ -1279,7 +1387,7 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
 
     // No originTabId means we can't determine ownership - include it
     if (normalizedOriginTabId === null) {
-      // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging for null originTabId
+      // v1.6.3.10-v10 - FIX Issue K: Log ownership check with reason code
       console.log('[StorageUtils] _filterOwnedTabs: Tab included (no ownership)', {
         quickTabId: tab.id,
         originTabIdRaw: tab.originTabId,
@@ -1290,6 +1398,7 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
         currentTabId: tabId,
         currentContainerId: normalizedCurrentContainerId,
         included: true,
+        filterReason: OWNERSHIP_FILTER_REASON.NO_OWNERSHIP_DATA,
         reason: 'originTabId is null or invalid'
       });
       return true;
@@ -1304,8 +1413,18 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
 
     // v1.6.3.10-v6 - FIX Issue #13: Both must match for ownership
     const isOwned = isTabIdMatch && isContainerMatchResult;
+    
+    // v1.6.3.10-v10 - FIX Issue K: Determine filter reason for diagnostics
+    const filterReason = _determineOwnershipFilterReason(
+      normalizedOriginTabId,
+      normalizedOriginContainerId,
+      tabId,
+      normalizedCurrentContainerId,
+      isTabIdMatch,
+      isContainerMatchResult
+    );
 
-    // v1.6.3.10-v6 - FIX Issue #8: Per-tab logging with type information including container info
+    // v1.6.3.10-v10 - FIX Issue K: Enhanced logging with ownership match type
     console.log('[StorageUtils] _filterOwnedTabs: Tab ownership check', {
       quickTabId: tab.id,
       // Tab ID comparison
@@ -1322,6 +1441,9 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
       currentContainerId: normalizedCurrentContainerId,
       isContainerMatch: isContainerMatchResult,
       isLegacyQuickTab: normalizedOriginContainerId === null,
+      // v1.6.3.10-v10 - FIX Issue K: Include filter reason
+      filterReason,
+      matchType: isOwned ? filterReason : 'FILTERED_OUT',
       // Final result
       comparisonResult: isOwned,
       included: isOwned
@@ -1616,96 +1738,172 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
 /**
  * Begin a storage transaction - captures state snapshot
  * v1.6.3.4-v9 - FIX Issue #17: Transaction pattern with BEGIN/COMMIT/ROLLBACK
+ * v1.6.3.10-v10 - FIX Issue J: Add correlation ID logging at INFO level
  *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<boolean>} True if transaction started, false if already active
  */
 export async function beginTransaction(logPrefix = '[StorageUtils]') {
+  // v1.6.3.10-v10 - FIX Issue J: Generate correlation ID for transaction tracking
+  const correlationId = `txn-begin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  
   if (transactionActive) {
-    console.warn(`${logPrefix} Transaction already active - nested transactions not supported`);
+    console.warn(`${logPrefix} v1.6.3.10-v10 Transaction BEGIN BLOCKED - nested transaction attempt`, {
+      correlationId,
+      existingCorrelationId: currentTransactionCorrelationId,
+      reason: 'nested transactions not supported'
+    });
     return false;
   }
 
   transactionActive = true;
+  currentTransactionCorrelationId = correlationId;
+  
+  console.info(`${logPrefix} v1.6.3.10-v10 Transaction BEGIN`, {
+    correlationId,
+    phase: 'capturing_snapshot'
+  });
+  
   const snapshot = await captureStateSnapshot(logPrefix);
 
   if (!snapshot) {
+    console.error(`${logPrefix} v1.6.3.10-v10 Transaction BEGIN FAILED - snapshot capture error`, {
+      correlationId,
+      reason: 'could not capture snapshot'
+    });
     transactionActive = false;
-    console.error(`${logPrefix} Failed to begin transaction: could not capture snapshot`);
+    currentTransactionCorrelationId = null;
     return false;
   }
 
-  console.log(`${logPrefix} Transaction BEGIN`);
+  console.info(`${logPrefix} v1.6.3.10-v10 Transaction BEGIN SUCCESS`, {
+    correlationId,
+    snapshotTabCount: snapshot.tabs?.length ?? 0,
+    snapshotTimestamp: snapshot.timestamp
+  });
   return true;
 }
 
 /**
  * Commit current transaction - clears snapshot and marks transaction complete
  * v1.6.3.4-v9 - FIX Issue #17: Transaction pattern with BEGIN/COMMIT/ROLLBACK
+ * v1.6.3.10-v10 - FIX Issue J: Add correlation ID logging at INFO level
  *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {boolean} True if committed, false if no active transaction
  */
 export function commitTransaction(logPrefix = '[StorageUtils]') {
+  const correlationId = currentTransactionCorrelationId;
+  
   if (!transactionActive) {
-    console.warn(`${logPrefix} No active transaction to commit`);
+    console.warn(`${logPrefix} v1.6.3.10-v10 Transaction COMMIT BLOCKED - no active transaction`, {
+      correlationId: correlationId ?? 'none',
+      reason: 'no active transaction to commit'
+    });
     return false;
   }
 
+  const snapshotTabCount = stateSnapshot?.tabs?.length ?? 0;
   stateSnapshot = null;
   transactionActive = false;
-  console.log(`${logPrefix} Transaction COMMIT`);
+  currentTransactionCorrelationId = null;
+  
+  console.info(`${logPrefix} v1.6.3.10-v10 Transaction COMMIT SUCCESS`, {
+    correlationId,
+    clearedSnapshotTabCount: snapshotTabCount
+  });
   return true;
 }
 
 /**
  * Rollback current transaction - restores state snapshot to storage
  * v1.6.3.4-v9 - FIX Issue #16, #17: Rollback on failure instead of writing empty state
+ * v1.6.3.10-v10 - FIX Issue J: Add correlation ID logging at INFO level
  * 
  * NOTE (v1.6.3.10-v9 - Issue V): This function is currently not called in any code path.
  * It was designed for error recovery but the current architecture uses queue reset instead.
  * KEPT FOR FUTURE USE: Could be integrated into _executeStorageWrite() error handling
  * to provide atomic rollback capability for failed multi-step transactions.
  * 
+ * ROLLBACK POLICY (v1.6.3.10-v10 - Issue J):
+ * - TRIGGERS: Could be triggered after all write retries fail in _executeStorageWrite()
+ * - RESTORES: The state snapshot captured at beginTransaction() time
+ * - PREVENTS RE-TRIGGER: Use transactionActive flag - rollback clears it, preventing cascade
+ * - INTEGRATION POINT: In _handleFailedWrite() after STORAGE_MAX_RETRIES exhausted
+ * 
  * Potential integration point: In _executeStorageWrite() after all retries fail,
  * could call rollbackTransaction() to restore previous known-good state.
  *
  * @param {string} logPrefix - Prefix for log messages
+ * @param {string} [reason='unspecified'] - Reason for rollback (for logging)
  * @returns {Promise<boolean>} True if rollback succeeded, false on error
  */
-export async function rollbackTransaction(logPrefix = '[StorageUtils]') {
+export async function rollbackTransaction(logPrefix = '[StorageUtils]', reason = 'unspecified') {
+  const correlationId = currentTransactionCorrelationId;
+  
   if (!transactionActive) {
-    console.warn(`${logPrefix} No active transaction to rollback`);
+    console.warn(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK BLOCKED - no active transaction`, {
+      correlationId: correlationId ?? 'none',
+      reason: 'no active transaction to rollback',
+      triggerReason: reason
+    });
     return false;
   }
 
   if (!stateSnapshot) {
-    console.error(`${logPrefix} Cannot rollback: no snapshot available`);
+    console.error(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK FAILED - no snapshot`, {
+      correlationId,
+      reason: 'no snapshot available',
+      triggerReason: reason
+    });
     transactionActive = false;
+    currentTransactionCorrelationId = null;
     return false;
   }
 
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
-    console.error(`${logPrefix} Cannot rollback: storage API unavailable`);
+    console.error(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK FAILED - no storage API`, {
+      correlationId,
+      reason: 'storage API unavailable',
+      triggerReason: reason
+    });
     transactionActive = false;
+    currentTransactionCorrelationId = null;
     return false;
   }
 
-  try {
-    console.log(`${logPrefix} Transaction ROLLBACK - restoring snapshot:`, {
-      tabCount: stateSnapshot.tabs?.length || 0
-    });
+  const snapshotTabCount = stateSnapshot.tabs?.length ?? 0;
+  
+  console.info(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK INITIATED`, {
+    correlationId,
+    triggerReason: reason,
+    restoringTabCount: snapshotTabCount,
+    snapshotTimestamp: stateSnapshot.timestamp
+  });
 
+  try {
     await browserAPI.storage.local.set({ [STATE_KEY]: stateSnapshot });
 
     stateSnapshot = null;
     transactionActive = false;
-    console.log(`${logPrefix} Rollback completed successfully`);
+    currentTransactionCorrelationId = null;
+    
+    console.info(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK SUCCESS`, {
+      correlationId,
+      triggerReason: reason,
+      restoredTabCount: snapshotTabCount
+    });
     return true;
   } catch (err) {
-    console.error(`${logPrefix} Rollback FAILED:`, err);
+    console.error(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK ERROR`, {
+      correlationId,
+      triggerReason: reason,
+      error: err.message,
+      snapshotTabCount
+    });
     transactionActive = false;
+    currentTransactionCorrelationId = null;
     return false;
   }
 }
@@ -2735,6 +2933,7 @@ function createTimeoutPromise(ms, operation) {
  * v1.6.3.5-v10 - FIX Issue #4: Stricter empty write protection
  *   - Tabs with 0 Quick Tabs should NEVER write unless forceEmpty=true
  *   - This prevents non-owner tabs from overwriting valid state
+ * v1.6.3.10-v10 - FIX Issue U: Enhanced logging showing cooldown rationale and timing
  * @private
  * @param {number} tabCount - Number of tabs in state
  * @param {boolean} forceEmpty - Whether to force the empty write
@@ -2770,9 +2969,21 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
   console.log(`${logPrefix} Empty write allowed (forceEmpty=true) [${transactionId}]`);
 
   const now = Date.now();
-  if (now - lastEmptyWriteTime < EMPTY_WRITE_COOLDOWN_MS) {
+  const timeSinceLastEmptyWrite = now - lastEmptyWriteTime;
+  
+  if (timeSinceLastEmptyWrite < EMPTY_WRITE_COOLDOWN_MS) {
+    // v1.6.3.10-v10 - FIX Issue U: Enhanced cooldown logging with timing correlation
     console.warn(
-      `${logPrefix} REJECTED: Empty write within cooldown (${now - lastEmptyWriteTime}ms < ${EMPTY_WRITE_COOLDOWN_MS}ms) [${transactionId}]`
+      `${logPrefix} v1.6.3.10-v10 EMPTY_WRITE_COOLDOWN_BLOCKED [${transactionId}]`, {
+        timeSinceLastEmptyWriteMs: timeSinceLastEmptyWrite,
+        cooldownMs: EMPTY_WRITE_COOLDOWN_MS,
+        remainingCooldownMs: EMPTY_WRITE_COOLDOWN_MS - timeSinceLastEmptyWrite,
+        lastEmptyWriteTime,
+        currentTime: now,
+        rationale: 'Prevents rapid-fire empty writes during page reload/tab switching storms',
+        typicalPageLoadMs: '200-500 DOMContentLoaded, 500-2000 full load',
+        limitation: 'May block rapid intentional Close All clicks (idempotent operation)'
+      }
     );
     return true;
   }
