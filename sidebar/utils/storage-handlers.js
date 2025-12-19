@@ -285,112 +285,79 @@ export async function restoreStateFromContentScripts(quickTabs) {
 }
 
 /**
+ * Handle debounced storage load and render
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce createStorageChangeHandler size
+ * @private
+ */
+async function _handleDebouncedStorageLoad(deps, getLastHash, setLastHash) {
+  const { loadQuickTabsState, renderUI, computeStateHash, getQuickTabsState } = deps;
+  await loadQuickTabsState();
+  const quickTabsState = getQuickTabsState();
+  const newHash = computeStateHash(quickTabsState);
+  if (newHash !== getLastHash()) {
+    setLastHash(newHash);
+    renderUI();
+  }
+}
+
+/**
  * Create storage change handler context
  * @param {Object} deps - Dependencies
  * @returns {Object} Handler context with methods
  */
 export function createStorageChangeHandler(deps) {
-  const {
-    loadQuickTabsState,
-    renderUI,
-    computeStateHash,
-    showErrorNotification,
-    getQuickTabsState,
-    setQuickTabsState
-  } = deps;
+  const { showErrorNotification, setQuickTabsState, renderUI } = deps;
 
   let storageReadDebounceTimer = null;
   let lastRenderedStateHash = 0;
 
-  /**
-   * Schedule debounced storage update
-   */
-  function scheduleStorageUpdate() {
-    if (storageReadDebounceTimer) {
-      clearTimeout(storageReadDebounceTimer);
-    }
+  const getLastHash = () => lastRenderedStateHash;
+  const setLastHash = (hash) => { lastRenderedStateHash = hash; };
 
-    storageReadDebounceTimer = setTimeout(async () => {
+  /** Schedule debounced storage update */
+  function scheduleStorageUpdate() {
+    if (storageReadDebounceTimer) clearTimeout(storageReadDebounceTimer);
+    storageReadDebounceTimer = setTimeout(() => {
       storageReadDebounceTimer = null;
-      await loadQuickTabsState();
-      const quickTabsState = getQuickTabsState();
-      const newHash = computeStateHash(quickTabsState);
-      if (newHash !== lastRenderedStateHash) {
-        lastRenderedStateHash = newHash;
-        renderUI();
-      }
+      _handleDebouncedStorageLoad(deps, getLastHash, setLastHash);
     }, STORAGE_READ_DEBOUNCE_MS);
   }
 
-  /**
-   * Handle suspicious storage drop
-   * @param {Object} oldValue - Previous storage value
-   */
+  /** Handle suspicious storage drop */
   async function handleSuspiciousStorageDrop(oldValue) {
     console.warn('[Manager] ⚠️ SUSPICIOUS: Tab count dropped to 0!');
-    console.warn('[Manager] This may indicate storage corruption. Querying content scripts...');
-
     try {
       await reconcileWithContentScripts(oldValue);
     } catch (err) {
       console.error('[Manager] Reconciliation error:', err);
-      showErrorNotification('Failed to recover Quick Tab state. Data may be lost.');
+      showErrorNotification('Failed to recover Quick Tab state.');
     }
   }
 
-  /**
-   * Reconcile storage state with content scripts when suspicious changes detected
-   * @param {Object} _previousState - Previous state (unused but kept for potential future use)
-   */
+  /** Reconcile storage state with content scripts */
   async function reconcileWithContentScripts(_previousState) {
     console.log('[Manager] Starting reconciliation with content scripts...');
-
     const foundQuickTabs = await queryAllContentScriptsForQuickTabs();
     const uniqueQuickTabs = deduplicateQuickTabs(foundQuickTabs);
-
-    console.log(
-      '[Manager] Reconciliation found',
-      uniqueQuickTabs.length,
-      'unique Quick Tabs in content scripts'
-    );
+    console.log('[Manager] Reconciliation found', uniqueQuickTabs.length, 'unique Quick Tabs');
 
     if (uniqueQuickTabs.length > 0) {
-      // Content scripts have Quick Tabs but storage is empty - this is corruption!
-      console.warn(
-        '[Manager] CORRUPTION DETECTED: Content scripts have Quick Tabs but storage is empty'
-      );
+      console.warn('[Manager] CORRUPTION: Content scripts have Quick Tabs but storage is empty');
       const restoredState = await restoreStateFromContentScripts(uniqueQuickTabs);
       setQuickTabsState(restoredState);
       renderUI();
     } else {
-      // No Quick Tabs found in content scripts - the empty state may be valid
-      console.log('[Manager] No Quick Tabs found in content scripts - empty state appears valid');
+      console.log('[Manager] No Quick Tabs in content scripts - empty state appears valid');
       scheduleStorageUpdate();
     }
-  }
-
-  /**
-   * Update the last rendered state hash
-   * @param {number} hash - New hash value
-   */
-  function setLastRenderedStateHash(hash) {
-    lastRenderedStateHash = hash;
-  }
-
-  /**
-   * Get the last rendered state hash
-   * @returns {number} Current hash value
-   */
-  function getLastRenderedStateHash() {
-    return lastRenderedStateHash;
   }
 
   return {
     scheduleStorageUpdate,
     handleSuspiciousStorageDrop,
     reconcileWithContentScripts,
-    setLastRenderedStateHash,
-    getLastRenderedStateHash
+    setLastRenderedStateHash: setLastHash,
+    getLastRenderedStateHash: getLastHash
   };
 }
 

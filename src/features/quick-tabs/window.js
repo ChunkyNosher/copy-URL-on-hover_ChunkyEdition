@@ -783,103 +783,97 @@ export class QuickTabWindow {
    * 7. Clears isMinimizing flag
    * 8. Calls onMinimize callback
    */
-  minimize() {
-    // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
-    this.isMinimizing = true;
-    this.minimized = true;
-
-    // Enhanced logging for console log export (Issue #1)
-    console.log('[QuickTabWindow][minimize] ENTRY:', {
-      id: this.id,
-      url: this.url,
-      title: this.title,
-      position: { left: this.left, top: this.top },
-      size: { width: this.width, height: this.height },
-      hasDragController: !!this.dragController,
-      hasResizeController: !!this.resizeController,
-      hasContainer: !!this.container
-    });
-
-    // v1.6.3.2 - Feature: Pause media before removing DOM
-    this._pauseMediaInIframe();
-
-    // v1.6.3.5-v11 - FIX Issue #3: Cleanup controllers BEFORE destroy
-    // This properly removes event listeners while element is still in DOM
-    if (this.dragController) {
-      if (this.dragController.cleanup) {
-        this.dragController.cleanup();
-        console.log('[QuickTabWindow][minimize] Called dragController.cleanup():', this.id);
-      }
-      this.dragController.destroy();
-      this.dragController = null;
-      console.log('[QuickTabWindow][minimize] Destroyed drag controller:', this.id);
+  /**
+   * Cleanup a single controller (drag or resize)
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * @private
+   */
+  _cleanupController(controller, controllerName) {
+    if (!controller) return;
+    if (controller.cleanup) {
+      controller.cleanup();
+      console.log(`[QuickTabWindow][minimize] Called ${controllerName}.cleanup():`, this.id);
     }
-
-    if (this.resizeController) {
-      if (this.resizeController.cleanup) {
-        this.resizeController.cleanup();
-        console.log('[QuickTabWindow][minimize] Called resizeController.cleanup():', this.id);
-      }
-      this.resizeController.detachAll();
-      this.resizeController = null;
-      console.log('[QuickTabWindow][minimize] Destroyed resize controller:', this.id);
+    if (controller.destroy) {
+      controller.destroy();
+    } else if (controller.detachAll) {
+      controller.detachAll();
     }
+    console.log(`[QuickTabWindow][minimize] Destroyed ${controllerName}:`, this.id);
+  }
 
-    // v1.6.3.5-v12 - FIX Issue #3: Log controller destruction for lifecycle tracking
-    console.log('[QuickTabWindow][minimize] Controllers destroyed:', {
-      id: this.id,
-      operation: 'minimize'
-    });
-
-    // v1.6.3.4-v7 - FIX Issue #1: Remove container from DOM instead of display:none
-    // v1.6.3.5-v12 - FIX Issue #1: Add defensive DOM query fallback when container reference is lost
+  /**
+   * Remove container from DOM with fallback
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * @private
+   */
+  _removeContainerFromDOM() {
     if (this.container && this.container.parentNode) {
       this.container.remove();
       console.log('[QuickTabWindow][minimize] Removed DOM element:', this.id);
-    } else {
-      // Container reference lost - try fallback DOM query
-      // v1.6.3.5-v12 - Code Review: Use more specific selector with class to avoid conflicts
-      const element = document.querySelector(
-        `.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`
-      );
-      if (element) {
-        console.warn(
-          '[QuickTabWindow][minimize] Container reference lost, using fallback DOM removal:',
-          this.id
-        );
-        element.remove();
-      } else {
-        console.log(
-          '[QuickTabWindow][minimize] No container or fallback DOM element found:',
-          this.id
-        );
-      }
+      return;
     }
+    // Fallback DOM query when container reference is lost
+    const element = document.querySelector(
+      `.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`
+    );
+    if (element) {
+      console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback:', this.id);
+      element.remove();
+    } else {
+      console.log('[QuickTabWindow][minimize] No container or fallback DOM element found:', this.id);
+    }
+  }
 
-    // v1.6.3.4-v7 - FIX Issue #1: Clear references and mark as not rendered
+  /**
+   * Clear all DOM references after minimize
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * @private
+   */
+  _clearDOMReferences() {
     this.container = null;
-
-    // v1.6.3.5-v12 - FIX Issue #3: Log container reference nullification for lifecycle tracking
-    console.log('[QuickTabWindow][minimize] Container reference nullified:', {
-      id: this.id,
-      operation: 'minimize',
-      hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
-    });
-
     this.iframe = null;
     this.titlebarBuilder = null;
     this.soloButton = null;
     this.muteButton = null;
     this.rendered = false;
+  }
 
-    // v1.6.3.5-v11 - FIX Issue #4: Clear operation flag
+  minimize() {
+    // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
+    this.isMinimizing = true;
+    this.minimized = true;
+
+    console.log('[QuickTabWindow][minimize] ENTRY:', {
+      id: this.id, url: this.url, title: this.title,
+      position: { left: this.left, top: this.top },
+      size: { width: this.width, height: this.height }
+    });
+
+    // Pause media before removing DOM
+    this._pauseMediaInIframe();
+
+    // v1.6.3.10-v8 - FIX Code Health: Use extracted helper for controller cleanup
+    this._cleanupController(this.dragController, 'dragController');
+    this.dragController = null;
+    this._cleanupController(this.resizeController, 'resizeController');
+    this.resizeController = null;
+
+    console.log('[QuickTabWindow][minimize] Controllers destroyed:', { id: this.id });
+
+    // v1.6.3.10-v8 - FIX Code Health: Use extracted helper for DOM removal
+    this._removeContainerFromDOM();
+    this._clearDOMReferences();
+
+    console.log('[QuickTabWindow][minimize] Container cleared:', {
+      id: this.id, hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
+    });
+
+    // Clear operation flag
     this.isMinimizing = false;
 
-    console.log('[QuickTabWindow][minimize] EXIT (DOM removed):', {
-      id: this.id,
-      url: this.url,
-      minimized: this.minimized,
-      rendered: this.rendered
+    console.log('[QuickTabWindow][minimize] EXIT:', {
+      id: this.id, minimized: this.minimized, rendered: this.rendered
     });
 
     this.onMinimize(this.id);
