@@ -363,6 +363,17 @@ function generateCorrelationId() {
 }
 
 /**
+ * Generate correlation ID for Manager operations
+ * v1.6.4.15 - FIX Code Review: Centralized correlation ID generation for operations
+ * @param {string} operation - Operation type (e.g., 'min', 'restore', 'close', 'adopt')
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {string} Correlation ID for the operation
+ */
+function generateOperationCorrelationId(operation, quickTabId) {
+  return `${operation}-${quickTabId}-${Date.now()}`;
+}
+
+/**
  * Log port lifecycle event with comprehensive context
  * v1.6.3.6-v11 - FIX Issue #12: Port lifecycle logging
  * v1.6.3.10-v1 - FIX Issue #6: Enhanced structured logging with state transitions
@@ -837,87 +848,83 @@ function adjustHeartbeatInterval(latencyMs) {
  * v1.6.3.7 - FIX Issue #2: Enhanced logging for port state transitions
  * v1.6.3.10-v1 - FIX Issue #2, #5: Zombie detection, adaptive interval
  */
+/**
+ * Handle heartbeat when port is not connected
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _handleHeartbeatNoPort() {
+  logPortLifecycle('HEARTBEAT_SKIPPED', { reason: 'port not connected', circuitBreakerState, reconnectAttempts });
+  consecutiveHeartbeatFailures++;
+  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+    logPortLifecycle('HEARTBEAT_TIMEOUT', { failures: consecutiveHeartbeatFailures, recoveryAction: 'triggering reconnect' });
+    scheduleReconnect();
+  }
+}
+
+/**
+ * Handle successful heartbeat response
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _handleHeartbeatSuccess(timestamp, response) {
+  const latencyMs = Date.now() - timestamp;
+  consecutiveHeartbeatFailures = 0;
+  lastHeartbeatResponse = Date.now();
+  lastSuccessfulPortMessage = Date.now();
+
+  if (portState === 'zombie') {
+    logPortStateTransition('zombie', 'connected', 'heartbeat success confirmed');
+  }
+
+  logPortLifecycle('HEARTBEAT_SENT', {
+    roundTripMs: latencyMs, backgroundAlive: response?.backgroundAlive,
+    isInitialized: response?.isInitialized, adaptiveInterval: currentHeartbeatInterval
+  });
+  adjustHeartbeatInterval(latencyMs);
+}
+
+/**
+ * Handle heartbeat failure
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce sendHeartbeat complexity
+ * @private
+ */
+function _handleHeartbeatFailure(err) {
+  consecutiveHeartbeatFailures++;
+  logPortLifecycle('HEARTBEAT_TIMEOUT', {
+    error: err.message, failures: consecutiveHeartbeatFailures,
+    maxFailures: MAX_HEARTBEAT_FAILURES, timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+    recoveryAction: consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES ? 'forcing immediate reconnect' : 'will retry'
+  });
+
+  if (err.message === 'Heartbeat timeout' || err.message === 'Port message timeout') {
+    forceImmediateReconnect();
+    return true; // Early return signal
+  }
+
+  if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+    logPortLifecycle('HEARTBEAT_MAX_FAILURES', { failures: consecutiveHeartbeatFailures, recoveryAction: 'forcing immediate reconnect' });
+    forceImmediateReconnect();
+  }
+  return false;
+}
+
 async function sendHeartbeat() {
   if (!backgroundPort) {
-    logPortLifecycle('HEARTBEAT_SKIPPED', {
-      reason: 'port not connected',
-      circuitBreakerState,
-      reconnectAttempts
-    });
-    consecutiveHeartbeatFailures++;
-    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      logPortLifecycle('HEARTBEAT_TIMEOUT', {
-        failures: consecutiveHeartbeatFailures,
-        recoveryAction: 'triggering reconnect'
-      });
-      scheduleReconnect();
-    }
+    _handleHeartbeatNoPort();
     return;
   }
 
   const timestamp = Date.now();
 
   try {
-    // v1.6.3.10-v1 - FIX Issue #2: Send heartbeat with short timeout for zombie detection
     const response = await sendPortMessageWithTimeout(
-      {
-        type: 'HEARTBEAT',
-        timestamp,
-        source: 'sidebar'
-      },
+      { type: 'HEARTBEAT', timestamp, source: 'sidebar' },
       HEARTBEAT_TIMEOUT_MS
     );
-
-    // Success - update tracking
-    const latencyMs = Date.now() - timestamp;
-    consecutiveHeartbeatFailures = 0;
-    lastHeartbeatResponse = Date.now();
-    lastSuccessfulPortMessage = Date.now();
-
-    // v1.6.3.10-v1 - FIX Issue #2: Confirm port is connected (not zombie)
-    if (portState === 'zombie') {
-      logPortStateTransition('zombie', 'connected', 'heartbeat success confirmed');
-    }
-
-    logPortLifecycle('HEARTBEAT_SENT', {
-      roundTripMs: latencyMs,
-      backgroundAlive: response?.backgroundAlive,
-      isInitialized: response?.isInitialized,
-      adaptiveInterval: currentHeartbeatInterval
-    });
-
-    // v1.6.3.10-v1 - FIX Issue #5: Adjust interval based on latency
-    adjustHeartbeatInterval(latencyMs);
+    _handleHeartbeatSuccess(timestamp, response);
   } catch (err) {
-    consecutiveHeartbeatFailures++;
-
-    // v1.6.3.10-v1 - FIX Issue #6: Enhanced failure logging with context
-    logPortLifecycle('HEARTBEAT_TIMEOUT', {
-      error: err.message,
-      failures: consecutiveHeartbeatFailures,
-      maxFailures: MAX_HEARTBEAT_FAILURES,
-      timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-      recoveryAction:
-        consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES
-          ? 'forcing immediate reconnect'
-          : 'will retry next heartbeat'
-    });
-
-    // v1.6.3.10-v1 - FIX Issue #2: Treat timeout as zombie port detection
-    if (err.message === 'Heartbeat timeout' || err.message === 'Port message timeout') {
-      // v1.6.3.10-v1 - FIX Issue #2: Force immediate reconnect (no circuit breaker delay)
-      forceImmediateReconnect();
-      return;
-    }
-
-    // v1.6.3.6-v12 - FIX Issue #4: Reconnect on repeated failures
-    if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-      logPortLifecycle('HEARTBEAT_MAX_FAILURES', {
-        failures: consecutiveHeartbeatFailures,
-        recoveryAction: 'forcing immediate reconnect'
-      });
-      forceImmediateReconnect();
-    }
+    _handleHeartbeatFailure(err);
   }
 }
 
@@ -1666,34 +1673,16 @@ async function _performSurgicalAdoptionUpdate(adoptedQuickTabId, oldOriginTabId,
 
     // Step 2: Try to move existing element between groups
     const existingElement = _findQuickTabDOMElement(adoptedQuickTabId);
-    const moveResult = await _tryMoveExistingElement(
-      existingElement,
-      adoptedTab,
-      oldOriginTabId,
-      newOriginTabId,
-      adoptedQuickTabId,
-      startTime
-    );
+    const moveResult = await _tryMoveExistingElement({ existingElement, adoptedTab, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime });
 
     if (moveResult.handled) {
       return moveResult.success;
     }
 
     // Step 3: Try inserting into correct group as fallback
-    return await _tryInsertAsNewElement(
-      adoptedTab,
-      existingElement,
-      oldOriginTabId,
-      newOriginTabId,
-      adoptedQuickTabId,
-      startTime
-    );
+    return await _tryInsertAsNewElement({ adoptedTab, existingElement, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime });
   } catch (err) {
-    console.error('[Manager] SURGICAL_UPDATE_ERROR:', {
-      adoptedQuickTabId,
-      error: err.message,
-      durationMs: Date.now() - startTime
-    });
+    console.error('[Manager] SURGICAL_UPDATE_ERROR:', { adoptedQuickTabId, error: err.message, durationMs: Date.now() - startTime });
     return false;
   }
 }
@@ -1734,70 +1723,41 @@ async function _loadFreshAdoptionState(adoptedQuickTabId) {
  * @private
  * @returns {Promise<{handled: boolean, success: boolean}>}
  */
-async function _tryMoveExistingElement(
-  existingElement,
-  adoptedTab,
-  oldOriginTabId,
-  newOriginTabId,
-  adoptedQuickTabId,
-  startTime
-) {
-  if (!existingElement) {
-    return { handled: false, success: false };
-  }
+/**
+ * Try to move an existing element between groups
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+async function _tryMoveExistingElement({ existingElement, adoptedTab, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime }) {
+  if (!existingElement) return { handled: false, success: false };
 
-  const moved = await _moveQuickTabBetweenGroups(
-    existingElement,
-    adoptedTab,
-    oldOriginTabId,
-    newOriginTabId
-  );
-
-  if (!moved) {
-    return { handled: false, success: false };
-  }
+  const moved = await _moveQuickTabBetweenGroups(existingElement, adoptedTab, oldOriginTabId, newOriginTabId);
+  if (!moved) return { handled: false, success: false };
 
   console.log('[Manager] SURGICAL_UPDATE_COMPLETE:', {
-    adoptedQuickTabId,
-    oldOriginTabId,
-    newOriginTabId,
-    method: 'move-between-groups',
-    durationMs: Date.now() - startTime
+    adoptedQuickTabId, oldOriginTabId, newOriginTabId, method: 'move-between-groups', durationMs: Date.now() - startTime
   });
   return { handled: true, success: true };
 }
 
 /**
  * Try to insert as a new element in the target group
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
- * @returns {Promise<boolean>}
  */
-async function _tryInsertAsNewElement(
-  adoptedTab,
-  existingElement,
-  oldOriginTabId,
-  newOriginTabId,
-  adoptedQuickTabId,
-  startTime
-) {
+async function _tryInsertAsNewElement({ adoptedTab, existingElement, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime }) {
   const inserted = await _insertQuickTabIntoGroup(adoptedTab, newOriginTabId);
-
   if (!inserted) {
     console.warn('[Manager] SURGICAL_UPDATE: Could not insert into target group');
     return false;
   }
 
-  // Remove from old location if it exists there
   if (existingElement) {
     _removeQuickTabFromDOM(existingElement, oldOriginTabId);
   }
 
   console.log('[Manager] SURGICAL_UPDATE_COMPLETE:', {
-    adoptedQuickTabId,
-    oldOriginTabId,
-    newOriginTabId,
-    method: 'insert-into-group',
-    durationMs: Date.now() - startTime
+    adoptedQuickTabId, oldOriginTabId, newOriginTabId, method: 'insert-into-group', durationMs: Date.now() - startTime
   });
   return true;
 }
@@ -1843,33 +1803,20 @@ function _moveQuickTabBetweenGroups(element, tabData, oldOriginTabId, newOriginT
     return false;
   }
 
-  // Perform the actual move
-  return _executeElementMove(element, tabData, targetContent, oldOriginTabId, newOriginTabId);
+  return _executeElementMove({ element, tabData, targetContent, oldOriginTabId, newOriginTabId });
 }
 
 /**
- * Execute the DOM move operation for a Quick Tab element
- * v1.6.3.10-v5 - FIX Bug #3: Extracted to reduce nesting depth
+ * Execute element move between groups
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
- * @param {HTMLElement} element - Element to move
- * @param {Object} tabData - Tab data
- * @param {HTMLElement} targetContent - Target content container
- * @param {number|string|null} oldOriginTabId - Old group key
- * @param {number} newOriginTabId - New group key
- * @returns {boolean} True if successful
  */
-function _executeElementMove(element, tabData, targetContent, oldOriginTabId, newOriginTabId) {
-  // Remove element from current parent (without animation)
+function _executeElementMove({ element, tabData, targetContent, oldOriginTabId, newOriginTabId }) {
   const oldParent = element.parentElement;
   element.remove();
-
-  // Update element attributes if needed (e.g., remove orphaned styling)
   element.classList.remove('orphaned-item');
-
-  // Add adoption animation class ONLY to this element
   element.classList.add('adoption-animation');
 
-  // Insert into target group's content at correct position
   const isMinimized = isTabMinimizedHelper(tabData);
   const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
 
@@ -1879,24 +1826,12 @@ function _executeElementMove(element, tabData, targetContent, oldOriginTabId, ne
     targetContent.appendChild(element);
   }
 
-  // Update group counts
   _updateGroupCountAfterMove(oldOriginTabId, newOriginTabId);
-
-  // Clean up old group if it's now empty
   _cleanupEmptySourceGroup(oldParent, oldOriginTabId);
 
-  // Remove animation class after animation completes
-  setTimeout(() => {
-    element.classList.remove('adoption-animation');
-  }, ANIMATION_DURATION_MS);
+  setTimeout(() => element.classList.remove('adoption-animation'), ANIMATION_DURATION_MS);
 
-  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
-    quickTabId: tabData.id,
-    fromGroup: oldOriginTabId,
-    toGroup: newOriginTabId,
-    targetGroupFound: true
-  });
-
+  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', { quickTabId: tabData.id, fromGroup: oldOriginTabId, toGroup: newOriginTabId });
   return true;
 }
 
@@ -5288,6 +5223,110 @@ function _logCloseAllError(err, startTime) {
   });
 }
 
+// ==================== v1.6.4.16 OPERATION HELPERS ====================
+// FIX Code Health: Extracted helpers to reduce minimizeQuickTab/closeQuickTab line count
+
+/**
+ * Check if operation should be queued due to circuit breaker
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} action - Action name
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {boolean} True if operation was queued
+ */
+function _shouldQueueForCircuitBreaker(action, quickTabId, correlationId) {
+  if (circuitBreakerState !== 'open') return false;
+  const queued = _queuePendingAction(action, { quickTabId });
+  if (queued) {
+    console.log('[Manager] OPERATION_QUEUED: Circuit breaker open:', {
+      action,
+      quickTabId,
+      correlationId,
+      reason: 'circuit-breaker-open'
+    });
+    _showErrorNotification('Connection temporarily unavailable. Action queued.');
+  }
+  return queued;
+}
+
+/**
+ * Check port viability and queue if not viable
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} action - Action name
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {Promise<boolean>} True if port is viable, false if operation was deferred
+ */
+async function _checkPortViabilityOrQueue(action, quickTabId, correlationId) {
+  const portViable = await verifyPortViability();
+  if (portViable) return true;
+  console.warn('[Manager] OPERATION_DEFERRED: Port not viable:', {
+    action,
+    quickTabId,
+    correlationId,
+    reason: 'port-not-viable'
+  });
+  _queuePendingAction(action, { quickTabId });
+  _showErrorNotification('Connection lost. Action queued for retry.');
+  return false;
+}
+
+/**
+ * Resolve target tab ID from host info or origin tab ID
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} action - Action name for logging
+ * @param {string} correlationId - Correlation ID for logging
+ * @returns {{ targetTabId: number|null, originTabId: number|null }}
+ */
+function _resolveTargetTab(quickTabId, action, correlationId) {
+  const tabData = findTabInState(quickTabId, quickTabsState);
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const originTabId = tabData?.originTabId;
+  const targetTabId = hostInfo?.hostTabId || originTabId;
+  console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
+    action,
+    quickTabId,
+    correlationId,
+    targetTabId,
+    originTabId,
+    hostInfoTabId: hostInfo?.hostTabId,
+    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
+  });
+  return { targetTabId, originTabId };
+}
+
+/**
+ * Log operation completion or failure
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * @private
+ * @param {string} action - Action name
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {string} correlationId - Correlation ID
+ * @param {Object} result - Operation result
+ * @param {number} durationMs - Operation duration
+ * @param {number|null} targetTabId - Target tab ID
+ */
+/**
+ * Log operation result (success or failure)
+ * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 6 parameters
+ * @private
+ * @param {Object} opts - Logging options
+ */
+function _logOperationResult({ action, quickTabId, correlationId, result, durationMs, targetTabId }) {
+  const baseData = { action, quickTabId, correlationId, durationMs, attempts: result.attempts };
+  if (result.success) {
+    console.log('[Manager] OPERATION_COMPLETED:', { ...baseData, status: 'success', method: result.method, targetTabId: result.targetTabId });
+  } else {
+    console.error('[Manager] OPERATION_FAILED:', { ...baseData, status: 'failed', error: result.error, targetTabId });
+  }
+}
+
+// ==================== END v1.6.4.16 OPERATION HELPERS ====================
+
 /**
  * Go to the browser tab containing this Quick Tab (NEW FEATURE #3)
  */
@@ -5309,84 +5348,65 @@ async function goToTab(tabId) {
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
  * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (107 -> ~55)
  */
 async function minimizeQuickTab(quickTabId) {
+  const correlationId = generateOperationCorrelationId('min', quickTabId);
+  const startTime = Date.now();
+
+  console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
+    action: 'MINIMIZE_QUICK_TAB',
+    quickTabId,
+    correlationId,
+    currentBrowserTabId,
+    timestamp: startTime
+  });
+
   // v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking
   const operationKey = `minimize-${quickTabId}`;
   if (PENDING_OPERATIONS.has(operationKey)) {
-    console.log(`[Manager] Ignoring duplicate minimize for ${quickTabId} (operation pending)`);
+    console.log('[Manager] OPERATION_REJECTED: Duplicate operation pending:', {
+      action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId, reason: 'duplicate-pending'
+    });
     return;
   }
-
-  // Mark operation as pending
   PENDING_OPERATIONS.add(operationKey);
+  setTimeout(() => PENDING_OPERATIONS.delete(operationKey), OPERATION_TIMEOUT_MS);
 
-  // Auto-clear pending state after timeout (safety net)
-  setTimeout(() => {
-    PENDING_OPERATIONS.delete(operationKey);
-  }, OPERATION_TIMEOUT_MS);
-
-  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
-  if (circuitBreakerState === 'open') {
-    const queued = _queuePendingAction('MINIMIZE_QUICK_TAB', { quickTabId });
-    if (queued) {
-      _showErrorNotification('Connection temporarily unavailable. Action queued.');
-      PENDING_OPERATIONS.delete(operationKey);
-      return;
-    }
-  }
-
-  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
-  const portViable = await verifyPortViability();
-  if (!portViable) {
-    console.warn('[Manager] Port not viable for minimize operation - waiting for reconnect');
-    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
-    _queuePendingAction('MINIMIZE_QUICK_TAB', { quickTabId });
-    _showErrorNotification('Connection lost. Action queued for retry.');
+  // v1.6.3.10-v2 - FIX Issue #4: Queue if circuit breaker open
+  if (_shouldQueueForCircuitBreaker('MINIMIZE_QUICK_TAB', quickTabId, correlationId)) {
     PENDING_OPERATIONS.delete(operationKey);
     return;
   }
 
-  // v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging - using imported findTabInState
-  const tabData = findTabInState(quickTabId, quickTabsState);
-  const hostInfo = quickTabHostInfo.get(quickTabId);
-  const originTabId = tabData?.originTabId;
-  const targetTabId = hostInfo?.hostTabId || originTabId;
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability
+  if (!(await _checkPortViabilityOrQueue('MINIMIZE_QUICK_TAB', quickTabId, correlationId))) {
+    PENDING_OPERATIONS.delete(operationKey);
+    return;
+  }
 
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  // Resolve target tab
+  const { targetTabId, originTabId } = _resolveTargetTab(quickTabId, 'MINIMIZE_QUICK_TAB', correlationId);
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
-    operation: 'MINIMIZE',
-    quickTabId: quickTabId,
-    quickTabOriginTabId: originTabId,
-    requestingTabId: currentBrowserTabId,
-    targetTabId: targetTabId,
-    decision: 'ALLOW'
+    operation: 'MINIMIZE', quickTabId, quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId, targetTabId, decision: 'ALLOW'
   });
 
-  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
+  // Send message with retry
   const result = await _sendMessageWithRetry(
-    {
-      action: 'MINIMIZE_QUICK_TAB',
-      quickTabId
-    },
+    { action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId },
     targetTabId,
     'minimize'
   );
 
-  if (result.success) {
-    console.log(`[Manager] Minimized Quick Tab ${quickTabId}`, {
-      method: result.method,
-      targetTabId: result.targetTabId,
-      attempts: result.attempts
-    });
-  } else {
-    // v1.6.3.10-v1 - FIX Issue #7: Show user notification on failure
+  const durationMs = Date.now() - startTime;
+  _logOperationResult({ action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId });
+  
+  if (!result.success) {
     _showErrorNotification(`Failed to minimize Quick Tab: ${result.error}`);
-    console.error('[Manager] Minimize operation failed:', {
-      quickTabId,
-      error: result.error,
-      attempts: result.attempts
-    });
   }
 }
 
@@ -5891,6 +5911,120 @@ function _buildBroadcastResult(results, totalTabs) {
 }
 
 /**
+ * Check restore preconditions and return early if not met
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce complexity
+ * @private
+ * @returns {Object|null} { validation, operationKey } if preconditions met, null otherwise
+ */
+function _checkRestorePreconditions(quickTabId, correlationId) {
+  const operationKey = `restore-${quickTabId}`;
+  if (isOperationPending(operationKey)) {
+    console.log('[Manager] OPERATION_REJECTED: Duplicate operation pending:', {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId,
+      correlationId,
+      reason: 'duplicate-pending'
+    });
+    return null;
+  }
+
+  const validation = validateRestoreTabData(quickTabId, quickTabsState);
+  if (!validation.valid) {
+    console.log('[Manager] OPERATION_REJECTED: Validation failed:', {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId,
+      correlationId,
+      reason: 'validation-failed',
+      error: validation.error
+    });
+    _showErrorNotification(validation.error);
+    return null;
+  }
+
+  return { validation, operationKey };
+}
+
+/**
+ * Check connectivity prerequisites for restore
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce complexity
+ * @private
+ * @returns {Promise<boolean>} true if connectivity is available
+ */
+async function _checkRestoreConnectivity(quickTabId, correlationId) {
+  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
+  if (circuitBreakerState === 'open') {
+    const queued = _queuePendingAction('RESTORE_QUICK_TAB', { quickTabId });
+    if (queued) {
+      console.log('[Manager] OPERATION_QUEUED: Circuit breaker open:', {
+        action: 'RESTORE_QUICK_TAB',
+        quickTabId,
+        correlationId,
+        reason: 'circuit-breaker-open'
+      });
+      _showErrorNotification('Connection temporarily unavailable. Action queued.');
+      return false;
+    }
+  }
+
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
+  const portViable = await verifyPortViability();
+  if (!portViable) {
+    console.warn('[Manager] OPERATION_DEFERRED: Port not viable:', {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId,
+      correlationId,
+      reason: 'port-not-viable'
+    });
+    _queuePendingAction('RESTORE_QUICK_TAB', { quickTabId });
+    _showErrorNotification('Connection lost. Action queued for retry.');
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Handle restore operation result
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce complexity
+ * @private
+ */
+function _handleRestoreOperationResult(quickTabId, result, correlationId, durationMs) {
+  if (result.success) {
+    console.log('[Manager] OPERATION_COMPLETED: Manager action completed:', {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId,
+      correlationId,
+      status: 'success',
+      method: result.method,
+      targetTabId: result.targetTabId,
+      attempts: result.attempts,
+      durationMs
+    });
+
+    // v1.6.3.10-v1 - Update host info after successful restore
+    if (result.targetTabId) {
+      quickTabHostInfo.set(quickTabId, {
+        hostTabId: result.targetTabId,
+        lastUpdate: Date.now(),
+        lastOperation: 'restore',
+        confirmed: true
+      });
+    }
+  } else {
+    console.error('[Manager] OPERATION_FAILED: Manager action failed:', {
+      action: 'RESTORE_QUICK_TAB',
+      quickTabId,
+      correlationId,
+      status: 'failed',
+      error: result.error,
+      attempts: result.attempts,
+      durationMs
+    });
+    _showErrorNotification(`Failed to restore Quick Tab: ${result.error}`);
+  }
+}
+
+/**
  * Restore a minimized Quick Tab
  * v1.6.3.4-v11 - FIX Issue #4: Send to ALL tabs, not just active tab
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
@@ -5900,49 +6034,50 @@ function _buildBroadcastResult(results, totalTabs) {
  * v1.6.3.6-v8 - FIX Issue #5: Enhanced diagnostic logging + refactored for complexity
  * v1.6.3.7-v1 - FIX ISSUE #2: Track confirmation responses from content scripts
  * v1.6.4.12 - Refactored to reduce cyclomatic complexity
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
 async function restoreQuickTab(quickTabId) {
+  const correlationId = generateOperationCorrelationId('restore', quickTabId);
   const startTime = Date.now();
 
-  _logRestoreRequest(quickTabId, startTime);
+  // v1.6.4.15 - FIX Issue #20: Log operation start
+  console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
+    action: 'RESTORE_QUICK_TAB',
+    quickTabId,
+    correlationId,
+    currentBrowserTabId,
+    timestamp: startTime
+  });
 
-  const operationKey = `restore-${quickTabId}`;
-  if (isOperationPending(operationKey)) {
-    console.log(`[Manager] Ignoring duplicate restore for ${quickTabId} (operation pending)`);
-    return;
-  }
+  _logRestoreRequest(quickTabId, startTime, correlationId);
 
-  const validation = validateRestoreTabData(quickTabId, quickTabsState);
-  if (!validation.valid) {
-    _showErrorNotification(validation.error);
-    return;
-  }
+  // Check preconditions
+  const preconditions = _checkRestorePreconditions(quickTabId, correlationId);
+  if (!preconditions) return;
 
-  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
-  if (circuitBreakerState === 'open') {
-    const queued = _queuePendingAction('RESTORE_QUICK_TAB', { quickTabId });
-    if (queued) {
-      _showErrorNotification('Connection temporarily unavailable. Action queued.');
-      return;
-    }
-  }
+  const { validation, operationKey } = preconditions;
 
-  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
-  const portViable = await verifyPortViability();
-  if (!portViable) {
-    console.warn('[Manager] Port not viable for restore operation - waiting for reconnect');
-    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
-    _queuePendingAction('RESTORE_QUICK_TAB', { quickTabId });
-    _showErrorNotification('Connection lost. Action queued for retry.');
-    return;
-  }
+  // Check connectivity
+  const connectivityOk = await _checkRestoreConnectivity(quickTabId, correlationId);
+  if (!connectivityOk) return;
 
   console.log('[Manager] Restore validated - tab is minimized:', quickTabId);
   setupPendingOperation(operationKey);
 
-  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
+  // Resolve target
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const targetTabId = hostInfo?.hostTabId || validation.tabData.originTabId;
+
+  // v1.6.4.15 - FIX Issue #20: Log target resolution
+  console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
+    action: 'RESTORE_QUICK_TAB',
+    quickTabId,
+    correlationId,
+    targetTabId,
+    originTabId: validation.tabData.originTabId,
+    hostInfoTabId: hostInfo?.hostTabId,
+    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
+  });
 
   // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
@@ -5957,49 +6092,37 @@ async function restoreQuickTab(quickTabId) {
   const result = await _sendMessageWithRetry(
     {
       action: 'RESTORE_QUICK_TAB',
-      quickTabId
+      quickTabId,
+      correlationId
     },
     targetTabId,
     'restore'
   );
 
+  const durationMs = Date.now() - startTime;
+
   _logRestoreResult(
     quickTabId,
     { success: result.success, confirmedBy: result.targetTabId },
-    startTime
+    startTime,
+    correlationId
   );
 
-  if (result.success) {
-    // v1.6.3.10-v1 - Update host info after successful restore
-    if (result.targetTabId) {
-      quickTabHostInfo.set(quickTabId, {
-        hostTabId: result.targetTabId,
-        lastUpdate: Date.now(),
-        lastOperation: 'restore',
-        confirmed: true
-      });
-    }
-  } else {
-    // v1.6.3.10-v1 - FIX Issue #7: Show user notification on failure
-    _showErrorNotification(`Failed to restore Quick Tab: ${result.error}`);
-    console.error('[Manager] Restore operation failed:', {
-      quickTabId,
-      error: result.error,
-      attempts: result.attempts
-    });
-  }
+  _handleRestoreOperationResult(quickTabId, result, correlationId, durationMs);
 
   _scheduleRestoreVerification(quickTabId);
 }
 
 /**
  * Log restore request with context
+ * v1.6.4.15 - FIX Issue #20: Added correlationId parameter
  * @private
  */
-function _logRestoreRequest(quickTabId, timestamp) {
+function _logRestoreRequest(quickTabId, timestamp, correlationId = null) {
   console.log('[Manager] 🔄 RESTORE_REQUEST:', {
     quickTabId,
     timestamp,
+    correlationId,
     quickTabsStateTabCount: quickTabsState?.tabs?.length ?? 0,
     currentBrowserTabId
   });
@@ -6007,11 +6130,13 @@ function _logRestoreRequest(quickTabId, timestamp) {
 
 /**
  * Log restore result
+ * v1.6.4.15 - FIX Issue #20: Added correlationId parameter
  * @private
  */
-function _logRestoreResult(quickTabId, confirmationResult, startTime) {
+function _logRestoreResult(quickTabId, confirmationResult, startTime, correlationId = null) {
   console.log('[Manager] 🔄 RESTORE_RESULT:', {
     quickTabId,
+    correlationId,
     success: confirmationResult?.success,
     confirmedBy: confirmationResult?.confirmedBy,
     durationMs: Date.now() - startTime
@@ -6070,68 +6195,54 @@ function _logRestoreVerificationResult(quickTabId, tab) {
 /**
  * Close a Quick Tab
  * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (91 -> ~40)
  */
 async function closeQuickTab(quickTabId) {
-  // v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
-  if (circuitBreakerState === 'open') {
-    const queued = _queuePendingAction('CLOSE_QUICK_TAB', { quickTabId });
-    if (queued) {
-      _showErrorNotification('Connection temporarily unavailable. Action queued.');
-      return;
-    }
-  }
+  const correlationId = generateOperationCorrelationId('close', quickTabId);
+  const startTime = Date.now();
 
-  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability before critical operation
-  const portViable = await verifyPortViability();
-  if (!portViable) {
-    console.warn('[Manager] Port not viable for close operation - waiting for reconnect');
-    // v1.6.3.10-v2 - FIX Issue #4: Queue action for later
-    _queuePendingAction('CLOSE_QUICK_TAB', { quickTabId });
-    _showErrorNotification('Connection lost. Action queued for retry.');
+  console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
+    action: 'CLOSE_QUICK_TAB',
+    quickTabId,
+    correlationId,
+    currentBrowserTabId,
+    timestamp: startTime
+  });
+
+  // v1.6.3.10-v2 - FIX Issue #4: Queue if circuit breaker open
+  if (_shouldQueueForCircuitBreaker('CLOSE_QUICK_TAB', quickTabId, correlationId)) {
     return;
   }
 
-  // v1.6.3.10-v1 - FIX Issue #7: Use retry logic with broadcast fallback
-  const tabData = findTabInState(quickTabId, quickTabsState);
-  const hostInfo = quickTabHostInfo.get(quickTabId);
-  const targetTabId = hostInfo?.hostTabId || tabData?.originTabId;
+  // v1.6.3.10-v1 - FIX Issue #2: Verify port viability
+  if (!(await _checkPortViabilityOrQueue('CLOSE_QUICK_TAB', quickTabId, correlationId))) {
+    return;
+  }
 
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for cross-tab operation VALIDATION
+  // Resolve target tab
+  const { targetTabId, originTabId } = _resolveTargetTab(quickTabId, 'CLOSE_QUICK_TAB', correlationId);
+
+  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
-    operation: 'CLOSE',
-    quickTabId: quickTabId,
-    quickTabOriginTabId: tabData?.originTabId,
-    requestingTabId: currentBrowserTabId,
-    targetTabId: targetTabId,
-    decision: 'ALLOW'
+    operation: 'CLOSE', quickTabId, quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId, targetTabId, decision: 'ALLOW'
   });
 
+  // Send message with retry
   const result = await _sendMessageWithRetry(
-    {
-      action: 'CLOSE_QUICK_TAB',
-      quickTabId
-    },
+    { action: 'CLOSE_QUICK_TAB', quickTabId, correlationId },
     targetTabId,
     'close'
   );
 
-  if (result.success) {
-    console.log(`[Manager] Closed Quick Tab ${quickTabId}`, {
-      method: result.method,
-      targetTabId: result.targetTabId,
-      attempts: result.attempts
-    });
+  const durationMs = Date.now() - startTime;
+  _logOperationResult({ action: 'CLOSE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId });
 
-    // Clean up local tracking
+  if (result.success) {
     quickTabHostInfo.delete(quickTabId);
   } else {
-    // v1.6.3.10-v1 - FIX Issue #7: Show user notification on failure
     _showErrorNotification(`Failed to close Quick Tab: ${result.error}`);
-    console.error('[Manager] Close operation failed:', {
-      quickTabId,
-      error: result.error,
-      attempts: result.attempts
-    });
   }
 }
 
@@ -6141,15 +6252,35 @@ async function closeQuickTab(quickTabId) {
  * v1.6.4.0 - FIX Issue A: Send ADOPT_TAB command to background instead of direct storage write
  *   - Manager sends command, background is sole writer
  *   - Background updates state, writes to storage, sends confirmation
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * @param {string} quickTabId - The Quick Tab ID to adopt
  * @param {number} targetTabId - The browser tab ID to adopt to
  */
 async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
-  _logAdoptRequest(quickTabId, targetTabId);
+  const correlationId = generateOperationCorrelationId('adopt', quickTabId);
+  const startTime = Date.now();
+
+  // v1.6.4.15 - FIX Issue #20: Log operation start
+  console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    currentBrowserTabId,
+    timestamp: startTime
+  });
+
+  _logAdoptRequest(quickTabId, targetTabId, correlationId);
 
   // Validate targetTabId
   if (!_isValidTargetTabId(targetTabId)) {
-    console.error('[Manager] ❌ Invalid targetTabId for adopt:', targetTabId);
+    console.error('[Manager] OPERATION_REJECTED: Invalid targetTabId:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'invalid-target-tab-id'
+    });
     return;
   }
 
@@ -6157,56 +6288,70 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
     // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
     console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', {
       quickTabId,
-      targetTabId
+      targetTabId,
+      correlationId
     });
 
-    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId });
+    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId, correlationId });
 
-    _handleAdoptResponse(quickTabId, targetTabId, response);
+    _handleAdoptResponse({ quickTabId, targetTabId, response, correlationId, startTime });
   } catch (err) {
-    console.error('[Manager] ❌ Error sending adopt command:', err);
+    const durationMs = Date.now() - startTime;
+    console.error('[Manager] OPERATION_FAILED:', { action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'failed', error: err.message, durationMs });
   }
 }
 
 /**
  * Handle adoption command response
  * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.4.15 - FIX Issue #20: Added correlationId and timing parameters
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} targetTabId - Target browser tab ID
  * @param {Object} response - Response from background
+ * @param {string} correlationId - Correlation ID for tracing
+ * @param {number} startTime - Operation start timestamp
  */
-function _handleAdoptResponse(quickTabId, targetTabId, response) {
+/**
+ * Handle successful adoption response
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+function _handleAdoptSuccess({ quickTabId, targetTabId, response, correlationId, durationMs }) {
+  console.log('[Manager] OPERATION_COMPLETED:', {
+    action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'success',
+    oldOriginTabId: response?.oldOriginTabId, newOriginTabId: targetTabId, timedOut: response?.timedOut || false, durationMs
+  });
+  console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', { quickTabId, targetTabId, timedOut: response?.timedOut || false });
+
+  quickTabHostInfo.set(quickTabId, { hostTabId: targetTabId, lastUpdate: Date.now(), lastOperation: 'adopt', confirmed: true });
+  if (response?.oldOriginTabId) browserTabInfoCache.delete(response.oldOriginTabId);
+  scheduleRender('adopt-success');
+}
+
+/**
+ * Handle failed adoption response
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId, durationMs }) {
+  const error = response?.error || 'Unknown error';
+  console.error('[Manager] OPERATION_FAILED:', { action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'failed', error, durationMs });
+  console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', { quickTabId, targetTabId, error });
+}
+
+/**
+ * Handle adoption response
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+function _handleAdoptResponse({ quickTabId, targetTabId, response, correlationId = null, startTime = null }) {
+  const durationMs = startTime ? Date.now() - startTime : null;
+  const opts = { quickTabId, targetTabId, response, correlationId, durationMs };
   if (response?.success || response?.timedOut) {
-    // v1.6.4.0 - FIX Issue A: Command succeeded (or timed out with assumed success)
-    console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
-      quickTabId,
-      targetTabId,
-      oldOriginTabId: response?.oldOriginTabId,
-      timedOut: response?.timedOut || false
-    });
-
-    // Update local tracking
-    quickTabHostInfo.set(quickTabId, {
-      hostTabId: targetTabId,
-      lastUpdate: Date.now(),
-      lastOperation: 'adopt',
-      confirmed: true
-    });
-
-    // Invalidate cache for old tab (if response has it)
-    if (response?.oldOriginTabId) {
-      browserTabInfoCache.delete(response.oldOriginTabId);
-    }
-
-    // Re-render UI to reflect the change
-    scheduleRender('adopt-success');
+    _handleAdoptSuccess(opts);
   } else {
-    console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', {
-      quickTabId,
-      targetTabId,
-      error: response?.error || 'Unknown error'
-    });
+    _handleAdoptFailure(opts);
   }
 }
 
@@ -6214,13 +6359,15 @@ function _handleAdoptResponse(quickTabId, targetTabId, response) {
  * Log adopt request
  * v1.6.3.7 - FIX Issue #7: Enhanced adoption data flow logging
  * v1.6.4.0 - FIX Issue C: Added ADOPTION_INITIATED log as specified in acceptance criteria
+ * v1.6.4.15 - FIX Issue #20: Added correlationId parameter
  * @private
  */
-function _logAdoptRequest(quickTabId, targetTabId) {
+function _logAdoptRequest(quickTabId, targetTabId, correlationId = null) {
   // v1.6.4.0 - FIX Issue C: Log ADOPTION_INITIATED as specified in issue requirements
   console.log('[Manager] ADOPTION_INITIATED:', {
     quickTabId,
     targetTabId,
+    correlationId,
     message: `${quickTabId} → tab-${targetTabId}`,
     timestamp: Date.now()
   });
@@ -6229,6 +6376,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
   console.log('[Manager] ADOPTION_FLOW:', {
     quickTabId,
     originTabId: targetTabId,
+    correlationId,
     action: 'adopt_button_clicked',
     result: 'pending',
     currentBrowserTabId,
@@ -6238,6 +6386,7 @@ function _logAdoptRequest(quickTabId, targetTabId) {
   console.log('[Manager] 📥 ADOPT_TO_CURRENT_TAB:', {
     quickTabId,
     targetTabId,
+    correlationId,
     currentBrowserTabId,
     timestamp: Date.now()
   });
@@ -6263,26 +6412,15 @@ function _isValidTargetTabId(targetTabId) {
 async function _performAdoption(quickTabId, targetTabId) {
   const writeStartTime = Date.now();
 
-  // Read current state
   const stateResult = await _readStorageForAdoption(quickTabId, targetTabId);
-  if (!stateResult.success) {
-    return null;
-  }
+  if (!stateResult.success) return null;
 
   const { state, quickTab, tabIndex: _tabIndex, oldOriginTabId } = stateResult;
 
-  // Update and persist
   quickTab.originTabId = targetTabId;
   _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId);
 
-  const persistResult = await _persistAdoption(
-    quickTabId,
-    targetTabId,
-    state,
-    oldOriginTabId,
-    writeStartTime
-  );
-  return persistResult;
+  return _persistAdoption({ quickTabId, targetTabId, state, oldOriginTabId, writeStartTime });
 }
 
 /**
@@ -6350,60 +6488,27 @@ function _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId) {
 /**
  * Persist adoption to storage
  * v1.6.3.7 - FIX Issue #7: Helper for adoption persistence with logging
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _persistAdoption(quickTabId, targetTabId, state, oldOriginTabId, writeStartTime) {
+async function _persistAdoption({ quickTabId, targetTabId, state, oldOriginTabId, writeStartTime }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeTimestamp = Date.now();
   const stateToWrite = {
-    tabs: state.tabs,
-    saveId,
-    timestamp: writeTimestamp,
-    writingTabId: targetTabId,
-    writingInstanceId: `manager-adopt-${writeTimestamp}`
+    tabs: state.tabs, saveId, timestamp: writeTimestamp,
+    writingTabId: targetTabId, writingInstanceId: `manager-adopt-${writeTimestamp}`
   };
 
-  console.log('[Manager] 📝 ADOPT_STORAGE_WRITE:', {
-    quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    saveId,
-    timestamp: writeTimestamp,
-    tabCount: state.tabs.length
-  });
-
-  console.log('[Manager] ADOPTION_FLOW:', {
-    quickTabId,
-    originTabId: targetTabId,
-    action: 'before_persist',
-    result: 'pending',
-    saveId
-  });
+  console.log('[Manager] ADOPT_STORAGE_WRITE:', { quickTabId, oldOriginTabId, newOriginTabId: targetTabId, saveId, tabCount: state.tabs.length });
+  console.log('[Manager] ADOPTION_FLOW:', { quickTabId, originTabId: targetTabId, action: 'before_persist', saveId });
 
   await browser.storage.local.set({ [STATE_KEY]: stateToWrite });
-
   const writeEndTime = Date.now();
 
-  console.log('[Manager] ADOPTION_FLOW:', {
-    quickTabId,
-    originTabId: targetTabId,
-    action: 'after_persist',
-    result: 'success',
-    saveId,
-    durationMs: writeEndTime - writeStartTime
-  });
+  console.log('[Manager] ADOPTION_FLOW:', { quickTabId, originTabId: targetTabId, action: 'after_persist', saveId, durationMs: writeEndTime - writeStartTime });
+  console.log('[Manager] ✅ ADOPT_COMPLETED:', { quickTabId, oldOriginTabId, newOriginTabId: targetTabId, saveId });
 
-  console.log('[Manager] ✅ ADOPT_COMPLETED:', {
-    quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    saveId,
-    writeDurationMs: writeEndTime - writeStartTime
-  });
-
-  // Issue #9: Set up temporary listener for storage.onChanged to verify write confirmation
   _verifyAdoptionInStorage(quickTabId, saveId, writeTimestamp);
-
   return { oldOriginTabId, saveId, writeTimestamp };
 }
 

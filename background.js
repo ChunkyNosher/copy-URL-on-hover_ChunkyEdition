@@ -127,9 +127,20 @@ const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 // FIX Issue #3: Multi-method deduplication
 const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
 
-// FIX Issue #6: Deletion acknowledgment tracking
-const DELETION_ACK_TIMEOUT_MS = 1000; // 1 second timeout for deletion acknowledgments
+// v1.6.3.10-v7 - FIX Diagnostic Issue #9: Increased deletion acknowledgment timeout
+// Previous value (1000ms) was too aggressive for slow networks or heavy tab loads
+const DELETION_ACK_TIMEOUT_MS = 3000; // 3 second timeout for deletion acknowledgments
 const pendingDeletionAcks = new Map(); // correlationId -> { pendingTabs: Set, completedTabs: Set, startTime, resolve, reject }
+
+// v1.6.3.10-v7 - FIX Diagnostic Issue #6: Storage write retry queue constants
+const STORAGE_WRITE_MAX_RETRIES = 3; // Maximum retry attempts for failed writes
+const _STORAGE_WRITE_RETRY_DELAY_MS = 500; // Base delay between retries (reserved for future use)
+const _storageWriteRetryQueue = []; // Queue of { state, retryCount, lastError } (reserved for future use)
+
+// v1.6.3.10-v7 - FIX Diagnostic Issue #8: Enhanced storage.onChanged deduplication
+const STORAGE_DEDUP_WINDOW_MS = 200; // 200ms window for event deduplication
+let lastStorageEventHash = null; // Hash of last processed storage event
+let lastStorageEventTimestamp = 0; // Timestamp of last processed storage event
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #1: Background alive keepalive using runtime.sendMessage to reset Firefox idle timer
@@ -696,8 +707,45 @@ const MAX_INITIALIZATION_RETRIES = 3;
  * v1.6.3.6-v12 - FIX Issue #1: Proper error handling - don't set isInitialized on failure
  * v1.6.3.6-v12 - FIX Code Review: Added retry limit to prevent infinite loop
  */
+/**
+ * Log initialization completion
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce initializeGlobalState complexity
+ * @private
+ */
+function _logInitializationComplete(source, initStartTime) {
+  console.log(`[Background] Initialization complete from ${source}:`, {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    durationMs: Date.now() - initStartTime
+  });
+}
+
+/**
+ * Handle initialization failure with retry logic
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce initializeGlobalState complexity
+ * @private
+ */
+function _handleInitializationFailure(err, initStartTime) {
+  console.error('[Background] INITIALIZATION FAILED:', {
+    error: err.message,
+    durationMs: Date.now() - initStartTime,
+    retryCount: initializationRetryCount,
+    maxRetries: MAX_INITIALIZATION_RETRIES
+  });
+
+  if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
+    initializationRetryCount++;
+    const backoffMs = Math.pow(2, initializationRetryCount) * 500;
+    console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+    setTimeout(() => initializeGlobalState(), backoffMs);
+  } else {
+    console.error('[Background] Max retries exceeded - marking as initialized with empty state');
+    globalQuickTabState.tabs = [];
+    globalQuickTabState.lastUpdate = Date.now();
+    isInitialized = true;
+  }
+}
+
 async function initializeGlobalState() {
-  // Guard: Already initialized
   if (isInitialized) {
     console.log('[Background] State already initialized');
     return;
@@ -707,51 +755,18 @@ async function initializeGlobalState() {
   const initStartTime = Date.now();
 
   try {
-    // Try session storage first (faster)
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
-      initializationRetryCount = 0; // Reset on success
-      console.log('[Background] v1.6.3.6-v12 Initialization complete from session storage:', {
-        tabCount: globalQuickTabState.tabs?.length || 0,
-        durationMs: Date.now() - initStartTime
-      });
+      initializationRetryCount = 0;
+      _logInitializationComplete('session storage', initStartTime);
       return;
     }
 
-    // Fall back to sync storage
     await tryLoadFromSyncStorage();
-    initializationRetryCount = 0; // Reset on success
-    console.log('[Background] v1.6.3.6-v12 Initialization complete from local storage:', {
-      tabCount: globalQuickTabState.tabs?.length || 0,
-      durationMs: Date.now() - initStartTime
-    });
+    initializationRetryCount = 0;
+    _logInitializationComplete('local storage', initStartTime);
   } catch (err) {
-    // v1.6.3.6-v12 - FIX Issue #1: Do NOT set isInitialized=true on error
-    // This ensures handlers know state is not ready
-    console.error('[Background] v1.6.3.6-v12 INITIALIZATION FAILED:', {
-      error: err.message,
-      durationMs: Date.now() - initStartTime,
-      retryCount: initializationRetryCount,
-      maxRetries: MAX_INITIALIZATION_RETRIES
-    });
-
-    // v1.6.3.6-v12 - FIX Code Review: Limit retries with exponential backoff
-    if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
-      initializationRetryCount++;
-      const backoffMs = Math.pow(2, initializationRetryCount) * 500; // 1s, 2s, 4s
-      console.log(
-        `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
-      );
-      setTimeout(() => initializeGlobalState(), backoffMs);
-    } else {
-      console.error(
-        '[Background] v1.6.3.6-v12 Max retries exceeded - marking as initialized with empty state'
-      );
-      // Fall back to empty state after max retries
-      globalQuickTabState.tabs = [];
-      globalQuickTabState.lastUpdate = Date.now();
-      isInitialized = true;
-    }
+    _handleInitializationFailure(err, initStartTime);
   }
 }
 
@@ -1297,54 +1312,45 @@ class StateCoordinator {
   }
 
   /**
+   * Find tab index in global state, logging if not found
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce duplication
+   * @private
+   */
+  _findTabIndex(quickTabId, operation) {
+    const index = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+    if (index === -1) {
+      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for ${operation}`);
+    }
+    return index;
+  }
+
+  /**
    * Helper: Handle update operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {Object} data - Tab data
    */
   handleUpdateOperation(quickTabId, data) {
-    const updateIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (updateIndex === -1) {
-      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for update`);
-      return;
-    }
-
-    this.globalState.tabs[updateIndex] = {
-      ...this.globalState.tabs[updateIndex],
-      ...data
-    };
+    const index = this._findTabIndex(quickTabId, 'update');
+    if (index === -1) return;
+    this.globalState.tabs[index] = { ...this.globalState.tabs[index], ...data };
     console.log(`[STATE COORDINATOR] Updated Quick Tab ${quickTabId}`);
   }
 
   /**
    * Helper: Handle delete operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
    */
   handleDeleteOperation(quickTabId) {
-    const deleteIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (deleteIndex === -1) {
-      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for delete`);
-      return;
-    }
-
-    this.globalState.tabs.splice(deleteIndex, 1);
+    const index = this._findTabIndex(quickTabId, 'delete');
+    if (index === -1) return;
+    this.globalState.tabs.splice(index, 1);
     console.log(`[STATE COORDINATOR] Deleted Quick Tab ${quickTabId}`);
   }
 
   /**
    * Helper: Handle minimize operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {Object} data - Tab data (optional)
    */
   handleMinimizeOperation(quickTabId, data) {
-    const minIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (minIndex !== -1) {
-      this.globalState.tabs[minIndex].minimized = true;
+    const index = this.globalState.tabs.findIndex(t => t.id === quickTabId);
+    if (index !== -1) {
+      this.globalState.tabs[index].minimized = true;
       console.log(`[STATE COORDINATOR] Minimized Quick Tab ${quickTabId}`);
     } else if (data) {
       this.globalState.tabs.push({ ...data, minimized: true });
@@ -1354,18 +1360,11 @@ class StateCoordinator {
 
   /**
    * Helper: Handle restore operation
-   *
-   * @param {string} quickTabId - Quick Tab ID
    */
   handleRestoreOperation(quickTabId) {
-    const restoreIndex = this.globalState.tabs.findIndex(t => t.id === quickTabId);
-
-    if (restoreIndex === -1) {
-      console.warn(`[STATE COORDINATOR] Tab ${quickTabId} not found for restore`);
-      return;
-    }
-
-    this.globalState.tabs[restoreIndex].minimized = false;
+    const index = this._findTabIndex(quickTabId, 'restore');
+    if (index === -1) return;
+    this.globalState.tabs[index].minimized = false;
     console.log(`[STATE COORDINATOR] Restored Quick Tab ${quickTabId}`);
   }
 
@@ -2356,53 +2355,74 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  * Multi-method deduplication for storage changes
  * v1.6.3.6-v12 - FIX Issue #3: Check multiple dedup methods in priority order
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced self-write detection logging
+ * v1.6.3.10-v7 - FIX Diagnostic Issue #8: Enhanced deduplication with 200ms window and content hash
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  * @returns {{ shouldSkip: boolean, method: string, reason: string }}
  */
+/**
+ * Check timestamp window deduplication
+ * v1.6.3.10-v8 - FIX Code Health: Extracted for dedup checks
+ * @private
+ */
+function _checkTimestampWindowDedup(newValue, now) {
+  const eventHash = _computeEventDeduplicationHash(newValue);
+  if (lastStorageEventHash === eventHash && (now - lastStorageEventTimestamp) < STORAGE_DEDUP_WINDOW_MS) {
+    return { method: 'timestamp-window', reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window` };
+  }
+  lastStorageEventHash = eventHash;
+  lastStorageEventTimestamp = now;
+  return null;
+}
+
+/**
+ * Check transaction-based self-write deduplication
+ * v1.6.3.10-v8 - FIX Code Review: Extracted for readability
+ * @private
+ */
+function _checkTransactionDedup(newValue) {
+  if (!_isTransactionSelfWrite(newValue)) return null;
+  return { method: 'transactionId', reason: `Transaction ${newValue.transactionId} in progress` };
+}
+
+/**
+ * Check saveId+timestamp deduplication
+ * v1.6.3.10-v8 - FIX Code Review: Extracted for readability
+ * @private
+ */
+function _checkSaveIdDedup(newValue, oldValue) {
+  if (!_isSaveIdTimestampDuplicate(newValue, oldValue)) return null;
+  return { method: 'saveId+timestamp', reason: 'Same saveId and timestamp within window' };
+}
+
+/**
+ * Check content hash deduplication
+ * v1.6.3.10-v8 - FIX Code Review: Extracted for readability
+ * @private
+ */
+function _checkContentHashDedup(newValue, oldValue) {
+  if (!_isContentHashDuplicate(newValue, oldValue)) return null;
+  return { method: 'contentHash', reason: 'Identical content with same saveId' };
+}
+
 function _multiMethodDeduplication(newValue, oldValue) {
-  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Log which detection layer matched
-  const logDetectionMatch = (method, reason) => {
-    console.log('[Background] v1.6.3.10-v5 Self-write detected:', {
-      method,
-      reason,
-      transactionId: newValue?.transactionId,
-      writingInstanceId: newValue?.writingInstanceId,
-      writingTabId: newValue?.writingTabId,
-      saveId: newValue?.saveId,
-      timestamp: Date.now()
-    });
-  };
+  const now = Date.now();
+  const logMatch = (method, reason) => console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
 
-  // Method 1: transactionId (highest priority - deterministic)
-  // v1.6.3.6-v12 - FIX Code Review: Reuse _isTransactionSelfWrite to avoid duplication
-  if (_isTransactionSelfWrite(newValue)) {
-    logDetectionMatch('transactionId', `Transaction ${newValue.transactionId} in progress`);
-    return {
-      shouldSkip: true,
-      method: 'transactionId',
-      reason: `Transaction ${newValue.transactionId} in progress`
-    };
-  }
+  // Check each dedup method in priority order using extracted helpers
+  const checks = [
+    () => _checkTimestampWindowDedup(newValue, now),
+    () => _checkTransactionDedup(newValue),
+    () => _checkSaveIdDedup(newValue, oldValue),
+    () => _checkContentHashDedup(newValue, oldValue)
+  ];
 
-  // Method 2: saveId + timestamp comparison (catches duplicates from same source)
-  if (_isSaveIdTimestampDuplicate(newValue, oldValue)) {
-    logDetectionMatch('saveId+timestamp', 'Same saveId and timestamp within window');
-    return {
-      shouldSkip: true,
-      method: 'saveId+timestamp',
-      reason: 'Same saveId and timestamp within window'
-    };
-  }
-
-  // Method 3: Content hash comparison (catches Firefox spurious events)
-  if (_isContentHashDuplicate(newValue, oldValue)) {
-    logDetectionMatch('contentHash', 'Identical content with same saveId');
-    return {
-      shouldSkip: true,
-      method: 'contentHash',
-      reason: 'Identical content with same saveId'
-    };
+  for (const check of checks) {
+    const result = check();
+    if (result) {
+      logMatch(result.method, result.reason);
+      return { shouldSkip: true, ...result };
+    }
   }
 
   return { shouldSkip: false, method: 'none', reason: 'Legitimate change' };
@@ -2498,6 +2518,19 @@ function _checkAndLogCooldown(now) {
   }
   lastStorageChangeProcessed = now;
   return isWithinCooldown;
+}
+
+/**
+ * Compute hash for event deduplication
+ * v1.6.3.10-v7 - FIX Diagnostic Issue #8: Hash based on saveId + correlationId + timestamp
+ * @private
+ * @param {Object} value - Storage value
+ * @returns {string} Deduplication hash
+ */
+function _computeEventDeduplicationHash(value) {
+  if (!value) return '';
+  // Combine saveId, correlationId, and timestamp for unique identification
+  return `${value.saveId || ''}|${value.correlationId || ''}|${value.timestamp || 0}`;
 }
 
 /**
@@ -2672,56 +2705,37 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
  * @param {Object} newValue - New storage value
  */
+/**
+ * Log broadcast decision for storage updates
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce duplication
+ * @private
+ */
+function _logBroadcastDecision(decision, reason, targetTabCount = 0, filteredCount = 0) {
+  console.log('[Background][Storage] BROADCAST_DECISION:', { decision, reason, targetTabCount, filteredCount });
+}
+
 function _processStorageUpdate(newValue) {
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
-    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
-    console.log('[Background][Storage] BROADCAST_DECISION:', {
-      decision: 'SKIP',
-      reason: 'tabs empty or missing - clearing cache instead',
-      targetTabCount: 0,
-      filteredCount: 0
-    });
+    _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
     _clearCacheForEmptyStorage(newValue);
     return;
   }
 
-  // v1.6.3.4-v11 - FIX Issue #8: Reset consecutive counter and update timestamp when we get valid tabs
+  // Reset counters for valid tabs
   consecutiveZeroTabReads = 0;
   lastNonEmptyStateTimestamp = Date.now();
 
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
-    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
-    console.log('[Background][Storage] BROADCAST_DECISION:', {
-      decision: 'SKIP',
-      reason: 'state unchanged (same hash and saveId)',
-      targetTabCount: newValue?.tabs?.length ?? 0,
-      filteredCount: 0
-    });
+    _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
     return;
   }
 
-  // Filter out tabs with invalid URLs
+  // Filter out tabs with invalid URLs and update cache
   const filteredValue = filterValidTabs(newValue);
   const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
-
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for broadcast decision
-  console.log('[Background][Storage] BROADCAST_DECISION:', {
-    decision: 'UPDATE_CACHE',
-    reason: 'proceeding with cache update (tabs sync via storage.onChanged)',
-    targetTabCount: filteredValue.tabs?.length ?? 0,
-    filteredCount: filteredCount
-  });
-
-  // v1.6.3.4-v11 - FIX Issue #3: Update background's cache ONLY - no broadcast to tabs
-  // Each tab handles its own sync via storage.onChanged listener in StorageManager
-  // Background script only maintains its cache (globalQuickTabState) for popup/sidebar queries
-  console.log('[Background] Updating cache only (no broadcast):', {
-    tabCount: filteredValue.tabs?.length || 0,
-    saveId: filteredValue.saveId,
-    note: 'Tabs sync independently via storage.onChanged'
-  });
+  _logBroadcastDecision('UPDATE_CACHE', 'proceeding with cache update', filteredValue.tabs?.length ?? 0, filteredCount);
   _updateGlobalStateFromStorage(filteredValue);
 }
 
@@ -3301,56 +3315,53 @@ async function cleanupStalePorts() {
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 
 /**
- * Handle incoming port connection
- * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
- * @param {browser.runtime.Port} port - The connecting port
+ * Parse port name to extract type and tab ID
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handlePortConnect complexity
+ * @private
  */
-function handlePortConnect(port) {
-  // Parse port name to determine origin
-  // Format: "quicktabs-{type}-{tabId}" (e.g., "quicktabs-sidebar" or "quicktabs-content-123")
+function _parsePortName(port) {
   const nameParts = port.name.split('-');
   const type = nameParts[1] || 'unknown';
   const tabId = nameParts[2] ? parseInt(nameParts[2], 10) : port.sender?.tab?.id || null;
   const origin = type === 'sidebar' ? 'sidebar' : `content-tab-${tabId}`;
+  return { type, tabId, origin };
+}
 
+/**
+ * Send background handshake to port after initialization
+ * v1.6.3.10-v8 - FIX Code Health: Extracted async handshake logic
+ * @private
+ */
+async function _sendBackgroundHandshake(port, portId, tabId, origin) {
+  try {
+    const initReady = await waitForInitialization(5000);
+    port.postMessage({
+      type: 'BACKGROUND_HANDSHAKE',
+      ...getBackgroundStartupInfo(),
+      isInitialized: initReady,
+      portId, tabId,
+      timestamp: Date.now()
+    });
+    console.log('[Background] Sent BACKGROUND_HANDSHAKE:', { portId, origin, isInitialized: initReady });
+  } catch (err) {
+    console.warn('[Background] Failed to send handshake:', err.message);
+  }
+}
+
+/**
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ */
+function handlePortConnect(port) {
+  const { type, tabId, origin } = _parsePortName(port);
   const portId = registerPort(port, origin, tabId, type);
-
-  // Store portId on the port for later reference
   port._portId = portId;
 
-  // v1.6.3.10-v4 - FIX Issue #3/6: Send background startup info for restart detection
-  // v1.6.3.10-v5 - FIX Issue #6: Wait for initialization before sending handshake
-  // This prevents content scripts from receiving handshake with isInitialized=false
-  // and then sending operations before background is ready
-  (async () => {
-    try {
-      // Wait for initialization (max 5 seconds)
-      const initReady = await waitForInitialization(5000);
+  _sendBackgroundHandshake(port, portId, tabId, origin);
 
-      port.postMessage({
-        type: 'BACKGROUND_HANDSHAKE',
-        ...getBackgroundStartupInfo(),
-        isInitialized: initReady, // v1.6.3.10-v5: Include init status
-        portId,
-        tabId,
-        timestamp: Date.now()
-      });
-      console.log('[Background] v1.6.3.10-v5 Sent BACKGROUND_HANDSHAKE to port:', {
-        portId,
-        origin,
-        isInitialized: initReady
-      });
-    } catch (err) {
-      console.warn('[Background] v1.6.3.10-v5 Failed to send handshake:', err.message);
-    }
-  })();
+  port.onMessage.addListener(message => handlePortMessage(port, portId, message));
 
-  // Handle messages from this port
-  port.onMessage.addListener(message => {
-    handlePortMessage(port, portId, message);
-  });
-
-  // Handle port disconnect
   port.onDisconnect.addListener(() => {
     const error = browser.runtime.lastError;
     if (error) {
@@ -3367,42 +3378,44 @@ function handlePortConnect(port) {
  * @param {string} portId - Port ID
  * @param {Object} message - The message
  */
+/**
+ * Send acknowledgment response to port
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
+  if (!message.correlationId) return;
+  
+  // Spread response first, then set explicit properties to ensure they take precedence
+  const ack = {
+    ...response,
+    type: 'ACKNOWLEDGMENT',
+    correlationId: message.correlationId,
+    originalType: message.type,
+    success: response?.success ?? true,
+    timestamp: Date.now()
+  };
+
+  try {
+    port.postMessage(ack);
+    logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
+      portId, correlationId: message.correlationId, success: ack.success
+    });
+  } catch (err) {
+    console.error('[Background] Failed to send acknowledgment:', err.message);
+  }
+}
+
 async function handlePortMessage(port, portId, message) {
   const portInfo = portRegistry.get(portId);
   updatePortActivity(portId);
 
   logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
-    portId,
-    tabId: portInfo?.tabId,
-    messageType: message.type,
-    correlationId: message.correlationId
+    portId, tabId: portInfo?.tabId, messageType: message.type, correlationId: message.correlationId
   });
 
-  // Route message based on type
   const response = await routePortMessage(message, portInfo);
-
-  // Send acknowledgment if correlationId present
-  if (message.correlationId) {
-    const ack = {
-      type: 'ACKNOWLEDGMENT',
-      correlationId: message.correlationId,
-      originalType: message.type,
-      success: response?.success ?? true,
-      timestamp: Date.now(),
-      ...response
-    };
-
-    try {
-      port.postMessage(ack);
-      logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
-        portId,
-        correlationId: message.correlationId,
-        success: ack.success
-      });
-    } catch (err) {
-      console.error('[Background] Failed to send acknowledgment:', err.message);
-    }
-  }
+  _sendAcknowledgment({ port, message, response, portInfo, portId });
 }
 
 /**
@@ -3414,50 +3427,47 @@ async function handlePortMessage(port, portId, message) {
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
  */
+/**
+ * Handle GET_BACKGROUND_INFO message
+ * v1.6.3.10-v8 - FIX Code Review: Extracted to named function for consistency
+ * @private
+ */
+function handleGetBackgroundInfo() {
+  return Promise.resolve({
+    success: true, type: 'BACKGROUND_INFO', ...getBackgroundStartupInfo(), isInitialized, timestamp: Date.now()
+  });
+}
+
+/**
+ * Port message handlers lookup
+ * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup table
+ * @private
+ */
+const PORT_MESSAGE_HANDLERS = {
+  HEARTBEAT: (msg, portInfo) => handleHeartbeat(msg, portInfo),
+  ACTION_REQUEST: (msg, portInfo) => handleActionRequest(msg, portInfo),
+  STATE_UPDATE: (msg, portInfo) => handleStateUpdate(msg, portInfo),
+  BROADCAST: (msg, portInfo) => handleBroadcastRequest(msg, portInfo),
+  DELETION_ACK: (msg, portInfo) => handleDeletionAck(msg, portInfo),
+  REQUEST_FULL_STATE_SYNC: (msg, portInfo) => handleFullStateSyncRequest(msg, portInfo),
+  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo()
+};
+
 function routePortMessage(message, portInfo) {
   const { type, action } = message;
 
-  // Route by message type (v1.6.3.6-v11: FIX Issue #15)
-  switch (type) {
-    // v1.6.3.6-v12 - FIX Issue #2, #4: Handle heartbeat to prevent Firefox termination
-    case 'HEARTBEAT':
-      return handleHeartbeat(message, portInfo);
-
-    case 'ACTION_REQUEST':
-      return handleActionRequest(message, portInfo);
-
-    case 'STATE_UPDATE':
-      return handleStateUpdate(message, portInfo);
-
-    case 'BROADCAST':
-      return handleBroadcastRequest(message, portInfo);
-
-    // v1.6.3.6-v12 - FIX Issue #6: Handle deletion acknowledgments
-    case 'DELETION_ACK':
-      return handleDeletionAck(message, portInfo);
-
-    // v1.6.4.0 - FIX Issue E: Handle state sync request after port reconnection
-    case 'REQUEST_FULL_STATE_SYNC':
-      return handleFullStateSyncRequest(message, portInfo);
-
-    // v1.6.3.10-v4 - FIX Issue #3/6: Handle background info request for restart detection
-    case 'GET_BACKGROUND_INFO':
-      return Promise.resolve({
-        success: true,
-        type: 'BACKGROUND_INFO',
-        ...getBackgroundStartupInfo(),
-        isInitialized,
-        timestamp: Date.now()
-      });
-
-    default:
-      // Fallback to action-based routing for backwards compatibility
-      if (action) {
-        return handleLegacyAction(message, portInfo);
-      }
-      console.warn('[Background] Unknown message type:', type);
-      return Promise.resolve({ success: false, error: 'Unknown message type' });
+  const handler = PORT_MESSAGE_HANDLERS[type];
+  if (handler) {
+    return handler(message, portInfo);
   }
+
+  // Fallback to action-based routing for backwards compatibility
+  if (action) {
+    return handleLegacyAction(message, portInfo);
+  }
+
+  console.warn('[Background] Unknown message type:', type);
+  return Promise.resolve({ success: false, error: 'Unknown message type' });
 }
 
 /**
@@ -3552,40 +3562,31 @@ function handleDeletionAck(message, portInfo) {
  * @param {Object} message - Action request message
  * @param {Object} portInfo - Port info
  */
+/**
+ * Action handlers map for ACTION_REQUEST messages
+ * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup
+ * @private
+ */
+const ACTION_REQUEST_HANDLERS = {
+  TOGGLE_GROUP: () => ({ success: true }),
+  MINIMIZE_TAB: (payload, portInfo) => executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  RESTORE_TAB: (payload, portInfo) => executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  CLOSE_TAB: (payload, portInfo) => executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  ADOPT_TAB: (payload) => handleAdoptAction(payload),
+  CLOSE_MINIMIZED_TABS: () => handleCloseMinimizedTabsCommand(),
+  DELETE_GROUP: () => ({ success: false, error: 'Not implemented' })
+};
+
 function handleActionRequest(message, portInfo) {
   const { action, payload } = message;
-
   console.log('[Background] Handling ACTION_REQUEST:', { action, portInfo: portInfo?.origin });
 
-  switch (action) {
-    case 'TOGGLE_GROUP':
-      // Manager toggle group - no storage write needed
-      return { success: true };
-
-    case 'MINIMIZE_TAB':
-      return executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
-
-    case 'RESTORE_TAB':
-      return executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
-
-    case 'CLOSE_TAB':
-      return executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId);
-
-    case 'ADOPT_TAB':
-      return handleAdoptAction(payload);
-
-    // v1.6.4.0 - FIX Issue A: Handle close minimized tabs command
-    case 'CLOSE_MINIMIZED_TABS':
-      return handleCloseMinimizedTabsCommand();
-
-    case 'DELETE_GROUP':
-      // TODO: Implement delete group
-      return { success: false, error: 'Not implemented' };
-
-    default:
-      console.warn('[Background] Unknown action:', action);
-      return { success: false, error: `Unknown action: ${action}` };
+  const handler = ACTION_REQUEST_HANDLERS[action];
+  if (!handler) {
+    console.warn('[Background] Unknown action:', action);
+    return { success: false, error: `Unknown action: ${action}` };
   }
+  return handler(payload, portInfo);
 }
 
 /**
@@ -3669,64 +3670,167 @@ function handleLegacyAction(message, portInfo) {
 }
 
 /**
- * Handle adopt action (atomic single write)
- * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
- * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
- * @param {Object} payload - Adoption payload
+ * Validate adoption prerequisites
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * @private
  */
-async function handleAdoptAction(payload) {
-  const { quickTabId, targetTabId } = payload;
-
-  console.log('[Background] Handling ADOPT_TAB:', { quickTabId, targetTabId });
-
-  // v1.6.3.10-v3 - Phase 2: Validate target tab exists using TabLifecycleHandler
+function _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId) {
+  // Validate target tab exists using TabLifecycleHandler
   const validation = tabLifecycleHandler.validateAdoptionTarget(targetTabId);
   if (!validation.valid) {
+    console.error('[Background] MANAGER_ACTION_REJECTED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'validation-failed',
+      validationReason: validation.reason
+    });
     console.error('[Background] ADOPT_TAB validation failed:', validation.reason);
-    return { success: false, error: validation.reason };
+    return { valid: false, error: validation.reason };
   }
+  return { valid: true };
+}
 
-  // Read entire state
-  const result = await browser.storage.local.get('quick_tabs_state_v2');
-  const state = result?.quick_tabs_state_v2;
-
+/**
+ * Find Quick Tab in state and update originTabId
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
   if (!state?.tabs) {
-    return { success: false, error: 'No state to adopt from' };
+    console.log('[Background] MANAGER_ACTION_REJECTED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'no-state'
+    });
+    return { found: false, error: 'No state to adopt from' };
   }
 
-  // Find and update the tab locally
   const tabIndex = state.tabs.findIndex(t => t.id === quickTabId);
   if (tabIndex === -1) {
-    return { success: false, error: 'Quick Tab not found' };
+    console.log('[Background] MANAGER_ACTION_REJECTED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: 'quick-tab-not-found'
+    });
+    return { found: false, error: 'Quick Tab not found' };
   }
 
   const oldOriginTabId = state.tabs[tabIndex].originTabId;
   state.tabs[tabIndex].originTabId = targetTabId;
 
-  // v1.6.3.10-v3 - Phase 2: Clear orphan status if Quick Tab was orphaned
+  // Clear orphan status if Quick Tab was orphaned
   if (state.tabs[tabIndex].isOrphaned) {
     delete state.tabs[tabIndex].isOrphaned;
     delete state.tabs[tabIndex].orphanedAt;
     console.log('[Background] ADOPT_TAB: Clearing orphan status for Quick Tab:', quickTabId);
   }
 
-  // Single atomic write
+  return { found: true, oldOriginTabId, tabIndex };
+}
+
+/**
+ * Write and verify adoption state
+ * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+/**
+ * Write and verify adoption state to storage
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+async function _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
-  await browser.storage.local.set({
-    quick_tabs_state_v2: {
-      tabs: state.tabs,
-      saveId,
-      timestamp: Date.now(),
-      writingTabId: targetTabId,
-      writingInstanceId: `background-adopt-${Date.now()}`
+  const writeStartTime = Date.now();
+  
+  try {
+    await browser.storage.local.set({
+      quick_tabs_state_v2: {
+        tabs: state.tabs,
+        saveId,
+        timestamp: Date.now(),
+        writingTabId: targetTabId,
+        writingInstanceId: `background-adopt-${Date.now()}`
+      }
+    });
+    
+    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
+    const verifiedState = verifyResult?.quick_tabs_state_v2;
+    
+    if (!verifiedState || verifiedState.saveId !== saveId) {
+      console.error('[Background] MANAGER_ACTION_FAILED:', {
+        action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+        status: 'failed', error: 'storage-verification-failed',
+        expectedSaveId: saveId, actualSaveId: verifiedState?.saveId,
+        durationMs: Date.now() - startTime
+      });
+      return { success: false, error: 'Storage write verification failed', reason: 'storage-verification-failed' };
     }
+    
+    console.log('[Background] ADOPT_TAB: Storage write verified:', { saveId, correlationId, durationMs: Date.now() - writeStartTime });
+    return { success: true, saveId };
+  } catch (writeErr) {
+    console.error('[Background] MANAGER_ACTION_FAILED:', {
+      action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+      status: 'failed', error: writeErr.message, durationMs: Date.now() - startTime
+    });
+    return { success: false, error: `Storage write failed: ${writeErr.message}`, reason: 'storage-write-error' };
+  }
+}
+
+/**
+ * Handle adopt action (atomic single write)
+ * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
+ * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * @param {Object} payload - Adoption payload
+ */
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId, correlationId: payloadCorrelationId } = payload;
+  const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
+  const startTime = Date.now();
+
+  // v1.6.4.15 - FIX Issue #20: Log Manager action requested
+  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    timestamp: startTime
   });
+
+  // Validate prerequisites
+  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  // Read state and find Quick Tab
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = result?.quick_tabs_state_v2;
+  
+  const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
+  if (!findResult.found) {
+    return { success: false, error: findResult.error };
+  }
+  const { oldOriginTabId } = findResult;
+
+  // Write and verify state
+  const writeResult = await _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime });
+  if (!writeResult.success) {
+    return writeResult;
+  }
 
   // Update global cache
   const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (cachedTab) {
     cachedTab.originTabId = targetTabId;
-    // v1.6.3.10-v3 - Phase 2: Clear orphan status in cache
     delete cachedTab.isOrphaned;
     delete cachedTab.orphanedAt;
   }
@@ -3734,26 +3838,30 @@ async function handleAdoptAction(payload) {
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
 
-  // v1.6.3.10-v3 - FIX Issue #47: Broadcast adoption completion to all ports
-  // This enables Manager sidebar to re-render immediately after adoption
+  // Broadcast adoption completion
   broadcastToAllPorts({
     type: 'ADOPTION_COMPLETED',
     adoptedQuickTabId: quickTabId,
     oldOriginTabId,
     newOriginTabId: targetTabId,
-    // v1.6.4.13 - FIX BUG #4: Include previousOriginTabId for content script cache lookup
     previousOriginTabId: oldOriginTabId,
+    correlationId,
     timestamp: Date.now()
   });
 
-  // v1.6.4.13 - FIX BUG #4: Also broadcast to all content scripts via tabs.sendMessage
-  // This updates their local cache so restore operations use the correct originTabId
-  _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
 
-  console.log('[Background] ADOPTION_COMPLETED broadcast sent:', {
+  // v1.6.4.15 - FIX Issue #20: Log successful completion
+  const durationMs = Date.now() - startTime;
+  console.log('[Background] MANAGER_ACTION_COMPLETED:', {
+    action: 'ADOPT_TAB',
     quickTabId,
+    targetTabId,
+    correlationId,
+    status: 'success',
     oldOriginTabId,
-    newOriginTabId: targetTabId
+    newOriginTabId: targetTabId,
+    durationMs
   });
 
   console.log('[Background] ADOPT_TAB complete:', {
@@ -3768,6 +3876,8 @@ async function handleAdoptAction(payload) {
 /**
  * Broadcast ADOPTION_COMPLETED to all content scripts via tabs.sendMessage
  * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.4.14 - FIX Issue #19: Retry mechanism for transient failures
+ * v1.6.4.14 - FIX Issue #23: Classified error metrics (permanent vs transient)
  *
  * This ensures all content scripts update their local Quick Tab cache
  * with the new originTabId after adoption. Without this, restore operations
@@ -3796,13 +3906,16 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
 
   try {
     const tabs = await browser.tabs.query({});
-    const results = await _sendAdoptionToTabs(tabs, message, quickTabId);
+    const results = await _sendAdoptionToTabsWithRetry(tabs, message, quickTabId);
 
+    // v1.6.4.14 - FIX Issue #23: Log classified metrics
     console.log('[Background] ADOPTION_BROADCAST_TO_TABS_COMPLETE:', {
       quickTabId,
       totalTabs: tabs.length,
-      successCount: results.successCount,
-      errorCount: results.errorCount,
+      sent: results.successCount + results.permanentFailures + results.transientFailures,
+      succeeded: results.successCount,
+      permanent_failures: results.permanentFailures,
+      transient_failures: results.transientFailures,
       durationMs: Date.now() - timestamp
     });
   } catch (err) {
@@ -3813,41 +3926,209 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
   }
 }
 
+// v1.6.4.14 - FIX Issue #19: Constants for retry mechanism
+const ADOPTION_BROADCAST_MAX_RETRIES = 3;
+const ADOPTION_BROADCAST_RETRY_DELAY_MS = 200;
+
 /**
- * Send adoption message to a list of tabs
- * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * Classify error as permanent or transient
+ * v1.6.4.14 - FIX Issue #19: Error classification for retry decisions
+ * @private
+ * @param {Error} error - The error to classify
+ * @returns {{ isPermanent: boolean, reason: string }}
+ */
+/**
+ * Permanent error patterns - tab doesn't exist or can't receive messages
+ * v1.6.4.16 - FIX Code Health: Extracted to flatten _classifyBroadcastError
+ * @const {string[]}
+ */
+const PERMANENT_ERROR_PATTERNS = [
+  'No tab with id',
+  'Invalid tab ID',
+  'Tab not found',
+  'Cannot access',
+  'Permission denied',
+  'extension context invalidated'
+];
+
+/**
+ * Transient error patterns - tab exists but content script may not be ready
+ * v1.6.4.16 - FIX Code Health: Extracted to flatten _classifyBroadcastError
+ * @const {string[]}
+ */
+const TRANSIENT_ERROR_PATTERNS = [
+  'Receiving end does not exist',
+  'Could not establish connection',
+  'Message manager disconnected',
+  'Connection was reset'
+];
+
+/**
+ * Check if error message matches any pattern in an array
+ * v1.6.4.16 - FIX Code Health: Helper to reduce duplication
+ * @private
+ * @param {string} errorMessage - Error message to check
+ * @param {string[]} patterns - Array of patterns to match
+ * @returns {string|null} Matched pattern or null
+ */
+function _matchErrorPattern(errorMessage, patterns) {
+  for (const pattern of patterns) {
+    if (errorMessage.includes(pattern)) return pattern;
+  }
+  return null;
+}
+
+/**
+ * Classify broadcast error as permanent or transient
+ * v1.6.4.16 - FIX Code Health: Refactored to use extracted helpers (bumpy road fix)
+ * @private
+ * @param {Error} error - Error to classify
+ * @returns {{ isPermanent: boolean, reason: string }}
+ */
+function _classifyBroadcastError(error) {
+  const errorMessage = error?.message || String(error);
+  
+  const permanentMatch = _matchErrorPattern(errorMessage, PERMANENT_ERROR_PATTERNS);
+  if (permanentMatch) return { isPermanent: true, reason: permanentMatch };
+  
+  const transientMatch = _matchErrorPattern(errorMessage, TRANSIENT_ERROR_PATTERNS);
+  if (transientMatch) return { isPermanent: false, reason: transientMatch };
+  
+  // Default: treat unknown errors as transient (will retry)
+  return { isPermanent: false, reason: 'unknown-error' };
+}
+
+/**
+ * Send adoption message to a list of tabs with retry for transient failures
+ * v1.6.4.14 - FIX Issue #19: Retry mechanism with error classification
+ * v1.6.4.14 - FIX Issue #23: Classified error metrics
  * @private
  * @param {Array} tabs - List of browser tabs
  * @param {Object} message - Adoption message to send
  * @param {string} quickTabId - Quick Tab ID for logging
- * @returns {Promise<{successCount: number, errorCount: number}>}
+ * @returns {Promise<{successCount: number, permanentFailures: number, transientFailures: number}>}
  */
-async function _sendAdoptionToTabs(tabs, message, quickTabId) {
-  let successCount = 0;
-  let errorCount = 0;
-
-  for (const tab of tabs) {
-    const result = await _sendAdoptionToSingleTab(tab.id, message, quickTabId);
-    if (result.success) {
-      successCount++;
-    } else {
-      errorCount++;
-    }
+async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
+  // Track tabs that need retry
+  const pendingTabs = tabs.map(tab => ({ tabId: tab.id, retryCount: 0 }));
+  const completedTabs = new Set();
+  const metrics = { successCount: 0, permanentFailures: 0, transientFailures: 0 };
+  
+  // First pass - try all tabs
+  await _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId });
+  
+  // Retry pass for transient failures
+  const tabsToRetry = pendingTabs.filter(p => !completedTabs.has(p.tabId));
+  if (tabsToRetry.length > 0) {
+    await _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId });
   }
 
-  return { successCount, errorCount };
+  return metrics;
 }
 
 /**
- * Send adoption message to a single tab
- * v1.6.4.13 - Extracted to reduce nesting depth in _broadcastAdoptionToAllTabs
+ * First pass of adoption broadcast - try all tabs once
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+/**
+ * First pass of adoption broadcast
+ * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+async function _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId }) {
+  for (const pending of pendingTabs) {
+    const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
+    _processSendResult(result, pending.tabId, completedTabs, metrics);
+  }
+}
+
+/**
+ * Process send result and update metrics
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _processSendResult(result, tabId, completedTabs, metrics) {
+  if (result.success) {
+    metrics.successCount++;
+    completedTabs.add(tabId);
+  } else if (result.isPermanent) {
+    metrics.permanentFailures++;
+    completedTabs.add(tabId);
+  }
+}
+
+/**
+ * Retry pass of adoption broadcast - retry transient failures
+ * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+async function _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId }) {
+  console.log('[Background] ADOPTION_BROADCAST_RETRY:', { quickTabId, tabCount: tabsToRetry.length });
+  
+  for (let retryAttempt = 1; retryAttempt <= ADOPTION_BROADCAST_MAX_RETRIES; retryAttempt++) {
+    await new Promise(resolve => setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt));
+    await _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt });
+    if (completedTabs.size === pendingTabs.length) break;
+  }
+  
+  _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId);
+}
+
+/**
+ * Single retry attempt for all pending tabs
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+async function _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt }) {
+  for (const pending of tabsToRetry) {
+    if (completedTabs.has(pending.tabId)) continue;
+    
+    pending.retryCount++;
+    const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
+    
+    if (result.success) {
+      metrics.successCount++;
+      completedTabs.add(pending.tabId);
+      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', { tabId: pending.tabId, quickTabId, attempt: retryAttempt });
+    } else if (result.isPermanent) {
+      metrics.permanentFailures++;
+      completedTabs.add(pending.tabId);
+    }
+  }
+}
+
+/**
+ * Count remaining tabs as transient failures
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId) {
+  for (const pending of tabsToRetry) {
+    if (!completedTabs.has(pending.tabId)) {
+      metrics.transientFailures++;
+      console.log('[Background] ADOPTION_BROADCAST_FINAL_FAILURE:', {
+        tabId: pending.tabId,
+        quickTabId,
+        retryCount: pending.retryCount,
+        failureType: 'transient'
+      });
+    }
+  }
+}
+
+/**
+ * Send adoption message to a single tab with error classification
+ * v1.6.4.14 - FIX Issue #19 & #23: Classified error handling
  * @private
  * @param {number} tabId - Browser tab ID
  * @param {Object} message - Adoption message to send
  * @param {string} quickTabId - Quick Tab ID for logging
- * @returns {Promise<{success: boolean}>}
+ * @returns {Promise<{success: boolean, isPermanent?: boolean, reason?: string}>}
  */
-async function _sendAdoptionToSingleTab(tabId, message, quickTabId) {
+async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
   try {
     await browser.tabs.sendMessage(tabId, message);
     console.log('[Background] ADOPTION_BROADCAST_TO_TAB:', {
@@ -3856,9 +4137,24 @@ async function _sendAdoptionToSingleTab(tabId, message, quickTabId) {
       status: 'sent'
     });
     return { success: true };
-  } catch (_err) {
-    // Content script may not be loaded in this tab - this is expected
-    return { success: false };
+  } catch (err) {
+    const classification = _classifyBroadcastError(err);
+    
+    // Only log if permanent or first transient (to reduce noise)
+    if (classification.isPermanent) {
+      console.log('[Background] ADOPTION_BROADCAST_PERMANENT_FAILURE:', {
+        tabId,
+        quickTabId,
+        reason: classification.reason,
+        error: err.message
+      });
+    }
+    
+    return { 
+      success: false, 
+      isPermanent: classification.isPermanent,
+      reason: classification.reason
+    };
   }
 }
 
@@ -3913,14 +4209,9 @@ async function writeStateWithVerification() {
 // FIX Issue F: Storage write verification with retry
 
 /**
- * Maximum retries for storage write verification
- * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
- */
-const STORAGE_WRITE_MAX_RETRIES = 3;
-
-/**
  * Initial backoff for storage write retry
  * v1.6.4.0 - FIX Issue F: Exponential backoff
+ * v1.6.3.10-v7 - Note: STORAGE_WRITE_MAX_RETRIES is defined earlier at line 136
  */
 const STORAGE_WRITE_BACKOFF_INITIAL_MS = 100;
 
@@ -3982,68 +4273,58 @@ async function handleFullStateSyncRequest(message, portInfo) {
 }
 
 /**
+ * Find minimized tabs in global state
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handleCloseMinimizedTabsCommand complexity
+ * @private
+ */
+function _findMinimizedTabs() {
+  return globalQuickTabState.tabs.filter(
+    tab => tab.minimized === true || tab.visibility?.minimized === true
+  );
+}
+
+/**
+ * Remove minimized tabs from global state
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handleCloseMinimizedTabsCommand complexity
+ * @private
+ */
+function _removeMinimizedTabsFromState() {
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
+    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
+  );
+  globalQuickTabState.lastUpdate = Date.now();
+}
+
+/**
  * Handle CLOSE_MINIMIZED_TABS command
  * v1.6.4.0 - FIX Issue A: Background as sole storage writer
- * @returns {Promise<Object>} Command result
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
  */
 async function handleCloseMinimizedTabsCommand() {
   console.log('[Background] Handling CLOSE_MINIMIZED_TABS command');
 
-  // Check initialization
   const guard = checkInitializationGuard('handleCloseMinimizedTabsCommand');
   if (!guard.initialized) {
     const initialized = await waitForInitialization(2000);
-    if (!initialized) {
-      return guard.errorResponse;
-    }
+    if (!initialized) return guard.errorResponse;
   }
 
-  // Find minimized tabs
-  const minimizedTabs = globalQuickTabState.tabs.filter(
-    tab => tab.minimized === true || tab.visibility?.minimized === true
-  );
-
+  const minimizedTabs = _findMinimizedTabs();
   if (minimizedTabs.length === 0) {
     console.log('[Background] No minimized tabs to close');
     return { success: true, closedCount: 0, closedIds: [] };
   }
 
   const closedIds = minimizedTabs.map(tab => tab.id);
+  console.log('[Background] Closing minimized tabs:', { count: closedIds.length, ids: closedIds });
 
-  console.log('[Background] Closing minimized tabs:', {
-    count: closedIds.length,
-    ids: closedIds
-  });
-
-  // Broadcast close messages to content scripts first
   await _broadcastCloseManyToAllTabs(closedIds);
-
-  // Remove minimized tabs from state
-  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(
-    tab => !(tab.minimized === true || tab.visibility?.minimized === true)
-  );
-  globalQuickTabState.lastUpdate = Date.now();
-
-  // Write to storage with verification (FIX Issue F)
+  _removeMinimizedTabsFromState();
   const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
+  closedIds.forEach(id => quickTabHostTabs.delete(id));
 
-  // Remove from host tracking
-  for (const id of closedIds) {
-    quickTabHostTabs.delete(id);
-  }
-
-  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {
-    closedCount: closedIds.length,
-    closedIds,
-    writeVerified: writeResult.verified
-  });
-
-  return {
-    success: true,
-    closedCount: closedIds.length,
-    closedIds,
-    verified: writeResult.verified
-  };
+  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', { closedCount: closedIds.length, verified: writeResult.verified });
+  return { success: true, closedCount: closedIds.length, closedIds, verified: writeResult.verified };
 }
 
 /**
@@ -4068,7 +4349,15 @@ async function _broadcastCloseManyToAllTabs(quickTabIds) {
  * @param {Array} tabs - Browser tabs
  * @param {Array<string>} quickTabIds - Quick Tab IDs to close
  */
-async function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
+/**
+ * Send close messages to all browser tabs for multiple Quick Tabs
+ * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.4.16 - FIX Code Health: Changed from async to sync (no await needed)
+ * @private
+ * @param {Array} tabs - Browser tabs
+ * @param {Array} quickTabIds - Array of Quick Tab IDs
+ */
+function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
   for (const quickTabId of quickTabIds) {
     _sendCloseMessageToTabs(tabs, quickTabId);
   }
@@ -4151,13 +4440,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite(
-      operation,
-      saveId,
-      stateToWrite.tabs.length,
-      attempt,
-      backoffMs
-    );
+    return await _verifyStorageWrite({ operation, saveId, tabCount: stateToWrite.tabs.length, attempt, backoffMs });
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -4167,32 +4450,22 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 /**
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _verifyStorageWrite(operation, saveId, tabCount, attempt, backoffMs) {
+async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backoffMs }) {
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
 
   if (verified) {
-    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
-      operation,
-      saveId,
-      tabCount
-    });
+    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, { operation, saveId, tabCount });
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(
-    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
-    {
-      operation,
-      expectedSaveId: saveId,
-      actualSaveId: readBack?.saveId,
-      backoffMs
-    }
-  );
-
+  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
+    operation, expectedSaveId: saveId, actualSaveId: readBack?.saveId, backoffMs
+  });
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -4361,10 +4634,6 @@ function generateMessageId() {
 // v1.6.3.10-v5 - FIX Issue #11: Message logging throttle infrastructure
 // Throttle period (1 second) to reduce console spam under heavy load
 const LOGGING_THROTTLE_MS = 1000;
-// Track last logged time per log type
-let _lastDispatchLogTime = 0;
-let _lastReceiptLogTime = 0;
-let _lastDeletionLogTime = 0;
 // Debug mode flag - set to true to enable verbose logging
 // v1.6.3.10-v5 - Use globalThis for service worker compatibility
 const _debugModeEnabled =
@@ -4382,96 +4651,55 @@ function _shouldThrottleLog(lastLogTime) {
 }
 
 /**
+ * Generic throttled log helper
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate logging
+ * @private
+ */
+function _logThrottled(emoji, category, lastTimeRef, data) {
+  if (_shouldThrottleLog(lastTimeRef.time)) return;
+  const now = Date.now();
+  lastTimeRef.time = now;
+  console.log(`[Background] ${emoji} ${category}:`, { ...data, timestamp: now });
+}
+
+// Throttle trackers using objects for reference passing
+const _dispatchThrottle = { time: 0 };
+const _receiptThrottle = { time: 0 };
+
+/**
  * Log message dispatch (outgoing)
- * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message broadcast logging
- * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
- * Logs sender tab ID, message type, timestamp (no payloads)
- * @param {string} messageId - Unique message ID for correlation
- * @param {string} messageType - Type of message being sent
- * @param {number} senderTabId - Sender tab ID
- * @param {string} target - Target description ('broadcast', 'sidebar', or specific tab ID)
  */
 function logMessageDispatch(messageId, messageType, senderTabId, target) {
-  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
-  if (_shouldThrottleLog(_lastDispatchLogTime)) {
-    return;
-  }
-  _lastDispatchLogTime = Date.now();
-
-  console.log('[Background] 📤 MESSAGE DISPATCH:', {
-    messageId,
-    messageType,
-    senderTabId,
-    target,
-    timestamp: Date.now()
-  });
+  _logThrottled('📤', 'MESSAGE DISPATCH', _dispatchThrottle, { messageId, messageType, senderTabId, target });
 }
 
 /**
  * Log message receipt (incoming)
- * v1.6.3.6-v5 - FIX Issue #4c: Cross-tab message logging
- * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
- * Logs receiver context, message type, timestamp
- * @param {string} messageId - Unique message ID for correlation (if available)
- * @param {string} messageType - Type of message received
- * @param {number} senderTabId - Sender tab ID
  */
 function logMessageReceipt(messageId, messageType, senderTabId) {
-  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
-  if (_shouldThrottleLog(_lastReceiptLogTime)) {
-    return;
-  }
-  _lastReceiptLogTime = Date.now();
-
-  console.log('[Background] 📥 MESSAGE RECEIPT:', {
-    messageId: messageId || 'N/A',
-    messageType,
-    senderTabId,
-    timestamp: Date.now()
-  });
+  _logThrottled('📥', 'MESSAGE RECEIPT', _receiptThrottle, { messageId: messageId || 'N/A', messageType, senderTabId });
 }
+
+// Throttle tracker for deletion logs
+const _deletionThrottle = { time: 0 };
 
 /**
  * Log deletion event propagation
- * v1.6.3.6-v5 - FIX Issue #4e: State deletion propagation logging
- * v1.6.3.10-v5 - FIX Issue #11: Throttled logging to reduce console spam
- * Logs when deletion event is submitted and received
- * @param {string} correlationId - Unique ID for end-to-end tracing
- * @param {string} phase - 'submit' or 'received'
- * @param {string} quickTabId - Quick Tab ID being deleted
- * @param {Object} details - Additional context (source, target tabs, etc.)
+ * v1.6.3.10-v8 - FIX Code Health: Use consolidated throttle pattern
  */
 function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) {
-  // v1.6.3.10-v5 - FIX Issue #11: Throttle logging unless debug mode
-  if (_shouldThrottleLog(_lastDeletionLogTime)) {
-    return;
-  }
-  _lastDeletionLogTime = Date.now();
+  if (_shouldThrottleLog(_deletionThrottle.time)) return;
+  _deletionThrottle.time = Date.now();
 
+  const phaseEmoji = { submit: '🗑️ DELETION SUBMIT', received: '🗑️ DELETION RECEIVED', 'broadcast-complete': '🗑️ DELETION BROADCAST COMPLETE' };
+  const baseData = { correlationId, quickTabId, timestamp: Date.now() };
+  
   if (phase === 'submit') {
-    console.log('[Background] 🗑️ DELETION SUBMIT:', {
-      correlationId,
-      quickTabId,
-      source: details.source,
-      excludeTabId: details.excludeTabId,
-      timestamp: Date.now()
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, source: details.source, excludeTabId: details.excludeTabId });
   } else if (phase === 'received') {
-    console.log('[Background] 🗑️ DELETION RECEIVED:', {
-      correlationId,
-      quickTabId,
-      receiverTabId: details.receiverTabId,
-      stateApplied: details.stateApplied,
-      timestamp: Date.now()
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, receiverTabId: details.receiverTabId, stateApplied: details.stateApplied });
   } else if (phase === 'broadcast-complete') {
-    console.log('[Background] 🗑️ DELETION BROADCAST COMPLETE:', {
-      correlationId,
-      quickTabId,
-      totalTabs: details.totalTabs,
-      successCount: details.successCount,
-      timestamp: Date.now()
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, totalTabs: details.totalTabs, successCount: details.successCount });
   }
 }
 
@@ -4485,58 +4713,48 @@ function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) 
 const quickTabHostTabs = new Map();
 
 /**
+ * Ensure initialization is complete before processing
+ * v1.6.3.10-v8 - FIX Code Health: Extracted initialization logic
+ * @private
+ */
+async function _ensureInitializedForHandler(handlerName) {
+  const guard = checkInitializationGuard(handlerName);
+  if (guard.initialized) return { ready: true };
+  
+  const initialized = await waitForInitialization(2000);
+  if (!initialized) {
+    console.warn(`[Background] ${handlerName} rejected - not initialized`);
+    return { ready: false, errorResponse: guard.errorResponse };
+  }
+  return { ready: true };
+}
+
+/**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
- * v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes (deleted: true) by removing from cache
- * v1.6.3.6-v5 - FIX Issue #4c: Added message receipt logging
- * v1.6.3.6-v12 - FIX Issue #1: Added initialization guard
- * Background becomes the coordinator, updating cache and broadcasting to other contexts
- * @param {Object} message - Message containing state change
- * @param {Object} sender - Sender info (includes tab.id)
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
  */
 async function handleQuickTabStateChange(message, sender) {
-  // v1.6.3.6-v12 - FIX Issue #1: Check initialization before processing
-  const guard = checkInitializationGuard('handleQuickTabStateChange');
-  if (!guard.initialized) {
-    // Wait briefly for initialization, then retry or fail
-    const initialized = await waitForInitialization(2000);
-    if (!initialized) {
-      console.warn('[Background] v1.6.3.6-v12 State change rejected - not initialized');
-      return guard.errorResponse;
-    }
-  }
+  const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
+  if (!initCheck.ready) return initCheck.errorResponse;
 
   const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
 
-  // v1.6.3.6-v5 - FIX Issue #4c: Log message receipt
   const messageId = message.messageId || generateMessageId();
   logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
+  console.log('[Background] QUICK_TAB_STATE_CHANGE:', { quickTabId, changes, source, sourceTabId });
 
-  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
-    quickTabId,
-    changes,
-    source,
-    sourceTabId
-  });
-
-  // Track which tab hosts this Quick Tab
   _updateQuickTabHostTracking(quickTabId, sourceTabId);
 
-  // v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes
-  // Note: We check both `changes.deleted === true` (explicit deletion flag) and `source === 'destroy'`
-  // (legacy source indication) for backward compatibility. The explicit flag is preferred for new code.
+  // Handle deletion
   if (changes?.deleted === true || source === 'destroy') {
     await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
     return { success: true };
   }
 
-  // Update globalQuickTabState cache
   _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
-
-  // Broadcast to all interested parties
   await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
-
   return { success: true };
 }
 
@@ -5042,74 +5260,74 @@ const VALID_MANAGER_COMMANDS = new Set([
 ]);
 
 /**
+ * Log Manager action result
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
+ * @private
+ */
+/**
+ * Log Manager action result
+ * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 7 parameters
+ * @param {Object} opts - Logging options
+ */
+function _logManagerActionResult({ action, quickTabId, hostTabId, correlationId, result, startTime, method }) {
+  const durationMs = Date.now() - startTime;
+  const baseData = { action, quickTabId, hostTabId, correlationId, method, durationMs };
+  if (result.success !== false) {
+    console.log('[Background] MANAGER_ACTION_COMPLETED:', { ...baseData, status: 'success' });
+  } else {
+    console.error('[Background] MANAGER_ACTION_FAILED:', { ...baseData, status: 'failed', error: result.error });
+  }
+}
+
+/**
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
  * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
- *   - Adds 2-second timeout to messaging calls
- *   - Falls back to browser.scripting.executeScript on timeout/failure
- *   - Ensures atomic operation completion even when messaging fails
- * @param {string} command - Command to execute (MINIMIZE_QUICK_TAB, RESTORE_QUICK_TAB, CLOSE_QUICK_TAB, FOCUS_QUICK_TAB)
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (99 -> ~55)
+ * @param {string} command - Command to execute
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
- * @returns {Promise<Object>} Result object with success status and optional error
+ * @returns {Promise<Object>} Result object with success status
  */
 async function executeManagerCommand(command, quickTabId, hostTabId) {
-  // v1.6.3.5-v3 - FIX Code Review: Validate command against allowlist
+  const correlationId = generateCorrelationId('mgr-cmd');
+  const startTime = Date.now();
+
+  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
+    action: command, quickTabId, hostTabId, correlationId, timestamp: startTime
+  });
+
+  // Validate command against allowlist
   if (!VALID_MANAGER_COMMANDS.has(command)) {
-    console.warn('[Background] Invalid command rejected:', { command, quickTabId });
+    console.warn('[Background] MANAGER_ACTION_REJECTED:', { action: command, quickTabId, correlationId, reason: 'invalid-command' });
     return { success: false, error: `Unknown command: ${command}` };
   }
 
   const executeMessage = {
-    type: 'EXECUTE_COMMAND',
-    command,
-    quickTabId,
-    source: 'manager'
+    type: 'EXECUTE_COMMAND', command, quickTabId, source: 'manager', correlationId
   };
 
-  console.log('[Background] Routing command to tab:', {
-    command,
-    quickTabId,
-    hostTabId
-  });
+  console.log('[Background] Routing command to tab:', { command, quickTabId, hostTabId, correlationId });
 
-  // v1.6.3.10-v5 - FIX Issue #1 & #2: Use timeout-protected messaging with Scripting API fallback
-  // This ensures atomic operation completion even when messaging fails or times out
+  // Try messaging first, fall back to Scripting API
   try {
     const response = await Promise.race([
       browser.tabs.sendMessage(hostTabId, executeMessage),
       createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
+    _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: true }, startTime, method: 'messaging' });
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    // v1.6.3.10-v5 - FIX Issue #2: Fall back to Scripting API on messaging failure/timeout
-    console.log('[Background] v1.6.3.10-v5 Messaging failed, falling back to Scripting API:', {
-      command,
-      quickTabId,
-      hostTabId,
-      error: err.message
-    });
+    console.log('[Background] Messaging failed, falling back to Scripting API:', { command, quickTabId, correlationId, error: err.message });
 
-    // Use Scripting API for atomic execution
     try {
-      const correlationId = generateCorrelationId('cmd');
-      const fallbackResult = await _executeViaScripting(
-        hostTabId,
-        command,
-        { quickTabId },
-        correlationId
-      );
-      console.log('[Background] v1.6.3.10-v5 Scripting fallback result:', fallbackResult);
+      const fallbackResult = await _executeViaScripting(hostTabId, command, { quickTabId }, correlationId);
+      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: fallbackResult, startTime, method: 'scripting-fallback' });
       return fallbackResult;
     } catch (fallbackErr) {
-      console.error('[Background] v1.6.3.10-v5 Both messaging and scripting failed:', {
-        command,
-        quickTabId,
-        hostTabId,
-        messagingError: err.message,
-        scriptingError: fallbackErr.message
-      });
+      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: false, error: fallbackErr.message }, startTime, method: 'scripting-fallback' });
+      console.error('[Background] Both messaging and scripting failed:', { command, quickTabId, hostTabId, messagingError: err.message, scriptingError: fallbackErr.message });
       return { success: false, error: fallbackErr.message, fallbackFailed: true };
     }
   }

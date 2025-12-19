@@ -345,11 +345,13 @@ export class DestroyHandler {
    * Persist current state to browser.storage.local
    * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.10-v7 - FIX Diagnostic Issue #10: Added forceEmpty parameter for closeAll
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
+   * @param {boolean} forceEmpty - Whether to force empty state write (for closeAll)
    * @returns {Promise<void>}
    */
-  async _persistToStorage() {
+  async _persistToStorage(forceEmpty = false) {
     const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
 
     // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
@@ -358,8 +360,11 @@ export class DestroyHandler {
       return;
     }
 
-    console.debug('[DestroyHandler] Persisting state with', state.tabs?.length || 0, 'tabs');
-    const success = await persistStateToStorage(state, '[DestroyHandler]');
+    // v1.6.3.10-v7 - FIX Diagnostic Issue #10: Log forceEmpty state
+    console.debug('[DestroyHandler] Persisting state with', state.tabs?.length || 0, 'tabs', {
+      forceEmpty
+    });
+    const success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
     if (!success) {
       console.error('[DestroyHandler] Storage persist failed or timed out');
     }
@@ -570,9 +575,10 @@ export class DestroyHandler {
 
     // v1.6.3.2 - FIX Issue #6: Single atomic storage write after all cleanup
     // This replaces 6+ individual writes with 1 write
+    // v1.6.3.10-v7 - FIX Diagnostic Issue #10: Set forceEmpty=true to persist empty state
     console.log(
-      `[DestroyHandler] closeAll complete (source: ${source}) - performing single atomic storage write`
+      `[DestroyHandler] closeAll complete (source: ${source}) - performing single atomic storage write with forceEmpty=true`
     );
-    this._persistToStorage();
+    this._persistToStorage(true); // forceEmpty=true ensures empty state is persisted
   }
 }

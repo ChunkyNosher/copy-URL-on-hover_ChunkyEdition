@@ -259,4 +259,53 @@ export class TabLifecycleHandler {
   getOpenTabCount() {
     return this.openTabs.size;
   }
+
+  /**
+   * Trigger state persistence after adoption completes
+   * v1.6.3.10-v7 - FIX Diagnostic Issue #5: Re-attempt blocked writes after adoption fixes originTabId
+   *
+   * This method should be called by background.js after a Quick Tab adoption completes.
+   * After adoption, the originTabId is updated on the Quick Tab, which may unblock
+   * previously blocked storage writes.
+   *
+   * @param {string} quickTabId - ID of adopted Quick Tab
+   * @param {number} newOriginTabId - New origin tab ID after adoption
+   * @param {Function} persistCallback - Callback to trigger state persistence
+   * @returns {Promise<void>}
+   */
+  async triggerPostAdoptionPersistence(quickTabId, newOriginTabId, persistCallback) {
+    console.log('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_TRIGGERED:', {
+      quickTabId,
+      newOriginTabId,
+      timestamp: Date.now()
+    });
+
+    // Validate the new origin tab is valid
+    const validation = this.validateAdoptionTarget(newOriginTabId);
+    if (!validation.valid) {
+      console.warn('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_SKIPPED:', {
+        quickTabId,
+        newOriginTabId,
+        reason: validation.reason
+      });
+      return;
+    }
+
+    // Call the persist callback if provided
+    if (typeof persistCallback === 'function') {
+      try {
+        await persistCallback();
+        console.log('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_SUCCESS:', {
+          quickTabId,
+          newOriginTabId
+        });
+      } catch (err) {
+        console.error('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_FAILED:', {
+          quickTabId,
+          newOriginTabId,
+          error: err.message
+        });
+      }
+    }
+  }
 }

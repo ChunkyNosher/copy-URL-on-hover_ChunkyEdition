@@ -762,30 +762,32 @@ function _bufferCommand(command) {
 }
 
 /**
+ * Check if port is ready to receive commands
+ * v1.6.3.10-v8 - FIX Code Health: Extracted complex conditional
+ * @private
+ */
+function _canFlushCommands() {
+  return pendingCommandsBuffer.length > 0 && backgroundPort && isBackgroundReady;
+}
+
+/**
  * Flush buffered commands after background becomes ready
  * v1.6.3.10-v7 - FIX Issue #2
  */
 function _flushCommandBuffer() {
   if (pendingCommandsBuffer.length === 0) return;
   
-  console.log('[Content] FLUSHING_COMMAND_BUFFER:', {
-    bufferSize: pendingCommandsBuffer.length,
-    timestamp: Date.now()
-  });
+  console.log('[Content] FLUSHING_COMMAND_BUFFER:', { bufferSize: pendingCommandsBuffer.length });
   
-  while (pendingCommandsBuffer.length > 0 && backgroundPort && isBackgroundReady) {
+  while (_canFlushCommands()) {
     const command = pendingCommandsBuffer.shift();
     try {
       backgroundPort.postMessage(command);
       console.log('[Content] BUFFERED_COMMAND_SENT:', {
-        type: command.type,
-        bufferedDuration: Date.now() - command.bufferedAt
+        type: command.type, bufferedDuration: Date.now() - command.bufferedAt
       });
     } catch (err) {
-      console.error('[Content] BUFFERED_COMMAND_FAILED:', {
-        type: command.type,
-        error: err.message
-      });
+      console.error('[Content] BUFFERED_COMMAND_FAILED:', { type: command.type, error: err.message });
       pendingCommandsBuffer.unshift(command);
       break;
     }
@@ -885,108 +887,67 @@ function handleBackgroundRestartDetected(newStartupTime) {
  * v1.6.3.10-v7 - FIX Issue #5: Drain message queue on reconnect
  * @param {number} tabId - Current tab ID
  */
+/**
+ * Handle reconnection after disconnect or error
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce connectContentToBackground complexity
+ * @private
+ */
+function _handleReconnection(tabId, reason) {
+  reconnectionAttempts++;
+
+  // Check circuit breaker
+  if (_shouldOpenCircuitBreaker()) {
+    _transitionPortState(PORT_CONNECTION_STATE.FAILED, 'max-failures-reached');
+    console.error('[Content] CIRCUIT_BREAKER_OPEN:', { attempts: reconnectionAttempts });
+    return;
+  }
+
+  const reconnectDelay = _calculateReconnectDelay();
+  console.log('[Content] Scheduling reconnection:', { attempt: reconnectionAttempts, delayMs: reconnectDelay, reason });
+
+  setTimeout(() => {
+    if (!backgroundPort && document.visibilityState !== 'hidden') {
+      connectContentToBackground(tabId);
+    }
+  }, reconnectDelay);
+}
+
 function connectContentToBackground(tabId) {
   cachedTabId = tabId;
 
   // v1.6.3.10-v7 - FIX Issue #1: Check circuit breaker state
   if (portConnectionState === PORT_CONNECTION_STATE.FAILED) {
-    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect after repeated failures', {
-      attempts: reconnectionAttempts,
-      state: portConnectionState
-    });
+    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect', { attempts: reconnectionAttempts });
     return;
   }
 
-  // Transition to CONNECTING state
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTING, 'connect-attempt');
-
-  // v1.6.3.10-v7 - FIX Issue #2: Record handshake request time
   handshakeRequestTimestamp = Date.now();
   isBackgroundReady = false;
 
   try {
-    backgroundPort = browser.runtime.connect({
-      name: `quicktabs-content-${tabId}`
-    });
-
+    backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
-
-    // v1.6.3.10-v5 - FIX Issue #4: Reset reconnection counter on successful connection
     _resetReconnectionAttempts();
-
-    // v1.6.3.10-v7 - FIX Issue #5: Drain message queue on reconnect
     _drainMessageQueue();
 
-    // Handle messages from background
     backgroundPort.onMessage.addListener(handleContentPortMessage);
 
-    // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
       isBackgroundReady = false;
-
-      // v1.6.3.10-v7 - FIX Issue #1: Update circuit breaker state
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
-
-      // v1.6.3.10-v5 - FIX Issue #4: Exponential backoff with jitter
-      reconnectionAttempts++;
-
-      // v1.6.3.10-v7 - FIX Issue #1: Check if circuit breaker should open
-      if (_shouldOpenCircuitBreaker()) {
-        _transitionPortState(PORT_CONNECTION_STATE.FAILED, 'max-failures-reached');
-        console.error('[Content] CIRCUIT_BREAKER_OPEN: Max failures reached, stopping reconnection', {
-          attempts: reconnectionAttempts,
-          maxFailures: CIRCUIT_BREAKER_MAX_FAILURES
-        });
-        return;
-      }
-
-      const reconnectDelay = _calculateReconnectDelay();
-
-      console.log('[Content] v1.6.3.10-v7 Scheduling reconnection:', {
-        attempt: reconnectionAttempts,
-        delayMs: reconnectDelay,
-        maxFailures: CIRCUIT_BREAKER_MAX_FAILURES
-      });
-
-      // Attempt reconnection after calculated delay (only if tab still active)
-      setTimeout(() => {
-        if (!backgroundPort && document.visibilityState !== 'hidden') {
-          connectContentToBackground(tabId);
-        }
-      }, reconnectDelay);
+      _handleReconnection(tabId, 'disconnect');
     });
 
-    console.log('[Content] v1.6.3.10-v7 Port connection established to background');
+    console.log('[Content] Port connection established');
   } catch (err) {
-    console.error('[Content] Failed to connect to background:', err.message);
+    console.error('[Content] Failed to connect:', err.message);
     logContentPortLifecycle('error', { error: err.message });
-
-    // v1.6.3.10-v7 - FIX Issue #1: Update circuit breaker state
     _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'connection-error');
-
-    // v1.6.3.10-v5 - FIX Issue #4: Backoff on connection error too
-    reconnectionAttempts++;
-
-    // v1.6.3.10-v7 - FIX Issue #1: Check if circuit breaker should open
-    if (_shouldOpenCircuitBreaker()) {
-      _transitionPortState(PORT_CONNECTION_STATE.FAILED, 'max-failures-reached');
-      console.error('[Content] CIRCUIT_BREAKER_OPEN: Max failures reached, stopping reconnection', {
-        attempts: reconnectionAttempts,
-        maxFailures: CIRCUIT_BREAKER_MAX_FAILURES
-      });
-      return;
-    }
-
-    const reconnectDelay = _calculateReconnectDelay();
-
-    setTimeout(() => {
-      if (!backgroundPort && document.visibilityState !== 'hidden') {
-        connectContentToBackground(tabId);
-      }
-    }, reconnectDelay);
+    _handleReconnection(tabId, 'error');
   }
 }
 
@@ -1834,6 +1795,7 @@ async function handleCopyText(element) {
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab data structure
  * v1.6.3 - Refactored to use options object pattern (4 args max)
+ * v1.6.3.10-v7 - FIX Diagnostic Issues #3, #11: Include originTabId in Quick Tab data
  *
  * @param {Object} options - Quick Tab configuration
  * @param {string} options.url - URL to load in Quick Tab
@@ -1848,6 +1810,27 @@ function buildQuickTabData(options) {
     throw new Error('buildQuickTabData: options object is required');
   }
   const { url, id, position = {}, size = {}, title } = options;
+
+  // v1.6.3.10-v7 - FIX Diagnostic Issues #3, #11: Include originTabId
+  // cachedTabId is set during background port connection and contains the current tab ID
+  const originTabId = cachedTabId ?? null;
+
+  // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
+  if (originTabId === null) {
+    console.warn('[Content] QUICK_TAB_CREATE_WARNING: originTabId is null, tab ID not yet initialized', {
+      url,
+      id,
+      cachedTabId,
+      suggestion: 'Ensure connectContentToBackground() completes before creating Quick Tabs'
+    });
+  } else {
+    console.log('[Content] QUICK_TAB_CREATE: Including originTabId in creation payload', {
+      url,
+      id,
+      originTabId
+    });
+  }
+
   return {
     id,
     url,
@@ -1858,7 +1841,9 @@ function buildQuickTabData(options) {
     title,
     cookieStoreId: 'firefox-default',
     minimized: false,
-    pinnedToUrl: null
+    pinnedToUrl: null,
+    // v1.6.3.10-v7 - FIX Issues #3, #11: Pass originTabId to background
+    originTabId
   };
 }
 
@@ -2274,34 +2259,31 @@ const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if duplicate that should be skipped
  */
+/**
+ * Check if event is within dedup window with same version
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _isWithinDedupWindow(lastEvent, newVersion, now) {
+  if (!lastEvent) return false;
+  const timeSinceLastEvent = now - lastEvent.timestamp;
+  const isDuplicate = timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && lastEvent.version === newVersion;
+  if (isDuplicate) {
+    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { timeSinceLastEvent, version: newVersion });
+  }
+  return isDuplicate;
+}
+
 function _isStorageEventDuplicate(key, newValue) {
   const now = Date.now();
-  const lastEvent = recentStorageEvents.get(key);
-  
-  // Extract version/checksum for accurate comparison
   const newVersion = newValue?.correlationId || newValue?.timestamp || null;
   
-  if (lastEvent) {
-    const timeSinceLastEvent = now - lastEvent.timestamp;
-    
-    // Check if within dedup window AND same version
-    if (timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && 
-        lastEvent.version === newVersion) {
-      console.debug('[Content] STORAGE_EVENT_DUPLICATE: Skipping duplicate handler:', {
-        key,
-        timeSinceLastEvent,
-        version: newVersion,
-        dedupWindowMs: STORAGE_EVENT_DEDUP_WINDOW_MS
-      });
-      return true;
-    }
+  if (_isWithinDedupWindow(recentStorageEvents.get(key), newVersion, now)) {
+    return true;
   }
   
   // Track this event
-  recentStorageEvents.set(key, {
-    timestamp: now,
-    version: newVersion
-  });
+  recentStorageEvents.set(key, { timestamp: now, version: newVersion });
   
   // Clean up old entries
   if (recentStorageEvents.size > 20) {
@@ -2912,18 +2894,33 @@ function _handleGetContentLogs(sendResponse) {
 }
 
 /**
+ * Generic try/catch wrapper for action handlers with standard response format
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate handler pattern
+ * @private
+ * @param {Function} action - Action to execute
+ * @param {Function} sendResponse - Response callback  
+ * @param {string} timestampField - Field name for timestamp (e.g. 'clearedAt')
+ * @param {string} errorContext - Error log context
+ */
+function _executeWithResponse(action, sendResponse, timestampField, errorContext) {
+  try {
+    action();
+    sendResponse({ success: true, [timestampField]: Date.now() });
+  } catch (error) {
+    console.error(`[Content] Error ${errorContext}:`, error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
  * Handle CLEAR_CONTENT_LOGS action
  * @private
  */
 function _handleClearContentLogs(sendResponse) {
-  try {
-    clearConsoleLogs();
-    clearLogBuffer();
-    sendResponse({ success: true, clearedAt: Date.now() });
-  } catch (error) {
-    console.error('[Content] Error clearing log buffer:', error);
-    sendResponse({ success: false, error: error.message });
-  }
+  _executeWithResponse(
+    () => { clearConsoleLogs(); clearLogBuffer(); },
+    sendResponse, 'clearedAt', 'clearing log buffer'
+  );
 }
 
 /**
@@ -2931,13 +2928,10 @@ function _handleClearContentLogs(sendResponse) {
  * @private
  */
 function _handleRefreshLiveConsoleFilters(sendResponse) {
-  try {
-    refreshLiveConsoleSettings();
-    sendResponse({ success: true, refreshedAt: Date.now() });
-  } catch (error) {
-    console.error('[Content] Error refreshing live console filters:', error);
-    sendResponse({ success: false, error: error.message });
-  }
+  _executeWithResponse(
+    refreshLiveConsoleSettings,
+    sendResponse, 'refreshedAt', 'refreshing live console filters'
+  );
 }
 
 /**
@@ -2952,6 +2946,7 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 /**
  * Handle ADOPTION_COMPLETED broadcast from background
  * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
  *
  * This handler updates the local Quick Tab cache when adoption occurs.
  * Without this, content scripts have stale originTabId values which causes
@@ -2965,83 +2960,286 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
  * @param {number} message.timestamp - When adoption occurred
  * @param {Function} sendResponse - Response callback
  */
+/**
+ * Generic helper to update originTabId on an object with logging
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate update functions
+ * NOTE: Intentionally mutates target in-place and returns boolean for update tracking.
+ * The boolean return is used to aggregate whether any updates occurred.
+ * @private
+ * @param {Object} target - Object with originTabId property (mutated in-place)
+ * @param {string} adoptedQuickTabId - Quick Tab ID being adopted
+ * @param {number} newOriginTabId - New origin tab ID
+ * @param {string} location - Location name for logging
+ * @returns {boolean} True if target was mutated, false if target was null
+ */
+function _updateOriginTabIdWithLog(target, adoptedQuickTabId, newOriginTabId, location) {
+  if (!target) return false;
+  console.log('[Content] ADOPTION_CACHE_UPDATE:', {
+    adoptedQuickTabId, oldOriginTabId: target.originTabId, newOriginTabId, location
+  });
+  target.originTabId = newOriginTabId;
+  return true;
+}
+
+/**
+ * Update tab entry's originTabId for adoption
+ * @private
+ */
+function _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId) {
+  return _updateOriginTabIdWithLog(tabEntry, adoptedQuickTabId, newOriginTabId, 'tabs-map');
+}
+
+/**
+ * Update minimized snapshot's originTabId for adoption
+ * @private
+ */
+function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOriginTabId) {
+  return _updateOriginTabIdWithLog(snapshot, adoptedQuickTabId, newOriginTabId, 'minimized-snapshot');
+}
+
+/**
+ * Handle ADOPTION_COMPLETED broadcast from background
+ * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
+ * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (95 -> ~55)
+ *
+ * @private
+ * @param {Object} message - Adoption completion message
+ * @param {Function} sendResponse - Response callback
+ */
+/**
+ * Update MinimizedManager snapshot via API if available
+ * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce _handleAdoptionCompleted complexity
+ * @private
+ */
+function _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId) {
+  if (!quickTabsManager?.minimizedManager?.updateSnapshotOriginTabId) return false;
+  return quickTabsManager.minimizedManager.updateSnapshotOriginTabId(
+    adoptedQuickTabId, newOriginTabId, previousOriginTabId
+  );
+}
+
 function _handleAdoptionCompleted(message, sendResponse) {
   const { adoptedQuickTabId, previousOriginTabId, newOriginTabId, timestamp } = message;
   const currentTabId = quickTabsManager?.currentTabId ?? null;
 
-  // v1.6.3.10-v7 - FIX Issue #7: Track adoption for ownership validation
+  // Track adoption and get cache state
   _trackAdoptedQuickTab(adoptedQuickTabId, newOriginTabId);
-
-  // Log cache state BEFORE adoption update
   const tabEntry = quickTabsManager?.tabs?.get(adoptedQuickTabId);
   const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
 
-  console.log('[Content] ADOPTION_CACHE_UPDATE_START:', {
-    adoptedQuickTabId,
+  console.log('[Content] ADOPTION_COMPLETED received:', {
+    adoptedQuickTabId, previousOriginTabId, newOriginTabId, currentTabId,
+    hasInMap: !!tabEntry, hasSnapshot: !!minimizedSnapshot
+  });
+
+  // Update caches
+  const tabUpdated = _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId);
+  const directSnapshotUpdated = _updateMinimizedSnapshotOriginTabId(minimizedSnapshot, adoptedQuickTabId, newOriginTabId);
+  const cacheUpdated = tabUpdated || directSnapshotUpdated;
+  const snapshotUpdated = _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId);
+
+  console.log('[Content] ADOPTION_COMPLETED completed:', {
+    adoptedQuickTabId, cacheUpdated, snapshotUpdated, timeSinceAdoption: Date.now() - timestamp
+  });
+
+  sendResponse({ success: true, cacheUpdated, snapshotUpdated, currentTabId, timestamp: Date.now() });
+}
+
+// ==================== v1.6.4.14 FIX Issue #17: TAB ACTIVATED HANDLER ====================
+// Handle tabActivated action from background when a tab becomes active
+// This enables content script hydration and adoption state refresh
+
+/**
+ * Handle tabActivated message from background
+ * v1.6.4.14 - FIX Issue #17: Missing tabActivated handler in content script
+ *
+ * This handler is called when background broadcasts tabActivated due to
+ * chrome.tabs.onActivated. It triggers:
+ * 1. Hydration if Quick Tabs exist for this tab
+ * 2. Update currentTabId context
+ * 3. Refresh adoption state
+ *
+ * @private
+ * @param {Object} message - Tab activated message
+ * @param {number} message.tabId - The tab ID that was activated
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleTabActivated(message, sendResponse) {
+  const { tabId } = message;
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+
+  console.log('[Content] TAB_ACTIVATED_HANDLER: Processing tab activation:', {
+    receivedTabId: tabId,
     currentTabId,
-    previousOriginTabId,
-    newOriginTabId,
-    hasInMap: !!tabEntry,
-    hasSnapshot: !!minimizedSnapshot,
-    cacheOriginTabId: tabEntry?.originTabId ?? minimizedSnapshot?.originTabId ?? 'not-in-cache',
+    hasQuickTabsManager: !!quickTabsManager,
     timestamp: Date.now()
   });
 
-  let cacheUpdated = false;
+  // v1.6.4.14 - FIX Issue #16: Refresh adoption state on tab activation
+  // After adoption, content scripts need to refresh their cache to pick up
+  // new originTabId values
+  let stateUpdated = false;
 
-  // Update the Quick Tab's originTabId in local tabs map if present
-  if (tabEntry) {
-    console.log('[Content] ADOPTION_CACHE_BEFORE:', {
-      adoptedQuickTabId,
-      oldOriginTabId: tabEntry.originTabId,
-      location: 'tabs-map'
-    });
-
-    tabEntry.originTabId = newOriginTabId;
-    cacheUpdated = true;
-
-    console.log('[Content] ADOPTION_CACHE_AFTER:', {
-      adoptedQuickTabId,
-      newOriginTabId: tabEntry.originTabId,
-      location: 'tabs-map'
+  // Update currentTabId if provided and manager exists
+  if (quickTabsManager && typeof tabId === 'number') {
+    // Note: We don't update currentTabId here as it should remain the tab's own ID
+    // The tabId in the message is which tab was activated (this one)
+    console.log('[Content] TAB_ACTIVATED_HANDLER: Tab is now active:', {
+      tabId,
+      isThisTab: tabId === currentTabId
     });
   }
 
-  // Update the Quick Tab's originTabId in minimized snapshots if present
-  if (minimizedSnapshot) {
-    console.log('[Content] ADOPTION_CACHE_BEFORE:', {
-      adoptedQuickTabId,
-      oldOriginTabId: minimizedSnapshot.originTabId,
-      location: 'minimized-snapshot'
-    });
-
-    minimizedSnapshot.originTabId = newOriginTabId;
-    cacheUpdated = true;
-
-    console.log('[Content] ADOPTION_CACHE_AFTER:', {
-      adoptedQuickTabId,
-      newOriginTabId: minimizedSnapshot.originTabId,
-      location: 'minimized-snapshot'
-    });
+  // Trigger hydration if Quick Tabs manager exists
+  // This helps restore state after tab becomes visible
+  if (quickTabsManager?.hydrateFromStorage) {
+    console.log('[Content] TAB_ACTIVATED_HANDLER: Triggering hydration');
+    try {
+      // Trigger async hydration (don't await in handler)
+      quickTabsManager.hydrateFromStorage().then(result => {
+        console.log('[Content] TAB_ACTIVATED_HANDLER: Hydration complete:', result);
+      }).catch(err => {
+        console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration failed:', err.message);
+      });
+      stateUpdated = true;
+    } catch (err) {
+      console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration error:', err.message);
+    }
   }
-
-  // Log result
-  console.log('[Content] ADOPTION_CACHE_UPDATE_COMPLETE:', {
-    adoptedQuickTabId,
-    currentTabId,
-    cacheUpdated,
-    previousOriginTabId,
-    newOriginTabId,
-    timeSinceAdoption: Date.now() - timestamp
-  });
 
   sendResponse({
     success: true,
-    cacheUpdated,
+    handled: true,
+    stateUpdated,
     currentTabId,
     timestamp: Date.now()
   });
 }
+
+/**
+ * Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND message
+ * v1.6.4.14 - FIX Issue #17: State sync on tab activation
+ *
+ * Background sends full Quick Tab state when a tab becomes active.
+ * This ensures content script has latest state including any adoption changes.
+ *
+ * @private
+ * @param {Object} message - State sync message
+ * @param {Object} message.state - Full Quick Tab state from background
+ * @param {Array} message.state.tabs - Array of Quick Tab objects
+ * @param {number} message.state.lastUpdate - Timestamp of last update
+ * @param {Function} sendResponse - Response callback
+ */
+function _handleStateSyncFromBackground(message, sendResponse) {
+  const { state } = message;
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+
+  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Processing state sync:', {
+    tabCount: state?.tabs?.length ?? 0,
+    lastUpdate: state?.lastUpdate,
+    currentTabId,
+    timestamp: Date.now()
+  });
+
+  if (!state?.tabs || !Array.isArray(state.tabs)) {
+    console.log('[Content] STATE_SYNC_FROM_BACKGROUND: No tabs in state');
+    sendResponse({
+      success: true,
+      synced: false,
+      reason: 'no-tabs-in-state',
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  // v1.6.4.14 - FIX Issue #16: Update local cache with new originTabId values from adoption
+  const updatedCount = _syncStateTabs(state.tabs, currentTabId);
+
+  console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Sync complete:', {
+    totalTabs: state.tabs.length,
+    updatedCount,
+    currentTabId,
+    timestamp: Date.now()
+  });
+
+  sendResponse({
+    success: true,
+    synced: true,
+    updatedCount,
+    totalTabs: state.tabs.length,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Sync tabs from state to local cache
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ * @param {Array} tabs - Array of tab data objects
+ * @param {number|null} currentTabId - Current tab ID
+ * @returns {number} Count of updated entries
+ */
+function _syncStateTabs(tabs, currentTabId) {
+  let updatedCount = 0;
+
+  for (const tabData of tabs) {
+    updatedCount += _syncSingleTabEntry(tabData);
+    updatedCount += _syncSingleTabSnapshot(tabData);
+    _trackAdoptionIfNeeded(tabData, currentTabId);
+  }
+
+  return updatedCount;
+}
+
+/**
+ * Generic helper to sync originTabId on target object
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate sync functions
+ * @private
+ * @param {Object} target - Object with originTabId property
+ * @param {Object} tabData - Tab data with new originTabId
+ * @param {string} location - Location name for logging
+ * @returns {number} 1 if updated, 0 otherwise
+ */
+function _syncOriginTabId(target, tabData, location) {
+  if (!target || target.originTabId === tabData.originTabId) return 0;
+  console.log(`[Content] STATE_SYNC_FROM_BACKGROUND: Updating ${location}:`, {
+    quickTabId: tabData.id, oldOriginTabId: target.originTabId, newOriginTabId: tabData.originTabId
+  });
+  target.originTabId = tabData.originTabId;
+  return 1;
+}
+
+/**
+ * Sync single tab entry in tabs map
+ * @private
+ */
+function _syncSingleTabEntry(tabData) {
+  const tabEntry = quickTabsManager?.tabs?.get(tabData.id);
+  return _syncOriginTabId(tabEntry, tabData, 'originTabId');
+}
+
+/**
+ * Sync single tab snapshot in minimized manager
+ * @private
+ */
+function _syncSingleTabSnapshot(tabData) {
+  const snapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(tabData.id);
+  return _syncOriginTabId(snapshot, tabData, 'snapshot originTabId');
+}
+
+/**
+ * Track adoption if tab belongs to different origin
+ * v1.6.4.14 - Extracted to reduce complexity
+ * @private
+ */
+function _trackAdoptionIfNeeded(tabData, currentTabId) {
+  if (tabData.originTabId !== currentTabId) {
+    _trackAdoptedQuickTab(tabData.id, tabData.originTabId);
+  }
+}
+
+// ==================== END TAB ACTIVATED HANDLER ====================
 
 // ==================== TEST BRIDGE HANDLER FUNCTIONS ====================
 // v1.6.3.6-v11 - FIX Bundle Size Issue #3: Conditional test infrastructure
@@ -3640,6 +3838,28 @@ const ACTION_HANDLERS = {
     });
     _handleAdoptionCompleted(message, sendResponse);
     return true;
+  },
+  // v1.6.4.14 - FIX Issue #17: Handle tabActivated action from background
+  // Background broadcasts this when a tab becomes active via chrome.tabs.onActivated
+  tabActivated: (message, sendResponse) => {
+    console.log('[Content] Received tabActivated broadcast:', {
+      tabId: message.tabId,
+      currentTabId: quickTabsManager?.currentTabId,
+      timestamp: Date.now()
+    });
+    _handleTabActivated(message, sendResponse);
+    return true;
+  },
+  // v1.6.4.14 - FIX Issue #17: Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND action
+  // Background sends this with full state when tab becomes active
+  SYNC_QUICK_TAB_STATE_FROM_BACKGROUND: (message, sendResponse) => {
+    console.log('[Content] Received SYNC_QUICK_TAB_STATE_FROM_BACKGROUND:', {
+      tabCount: message.state?.tabs?.length ?? 0,
+      lastUpdate: message.state?.lastUpdate,
+      timestamp: Date.now()
+    });
+    _handleStateSyncFromBackground(message, sendResponse);
+    return true;
   }
 };
 
@@ -3703,38 +3923,34 @@ function _executeRestoreCommand(quickTabId, source) {
   return { success: true, action: 'restored', handlerResult: result };
 }
 
-const QUICK_TAB_COMMAND_HANDLERS = {
-  MINIMIZE_QUICK_TAB: (quickTabId, source) => {
-    const handler = quickTabsManager?.visibilityHandler?.handleMinimize;
-    if (!handler)
-      return {
-        success: false,
-        error: 'Quick Tabs manager not initialized or visibility handler not ready'
-      };
+/**
+ * Generic command handler factory for visibility operations
+ * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate handler pattern
+ * @private
+ */
+function _createVisibilityHandler(methodName, actionName) {
+  return (quickTabId, source) => {
+    const handler = quickTabsManager?.visibilityHandler?.[methodName];
+    if (!handler) {
+      return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+    }
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
-    return { success: true, action: 'minimized' };
-  },
+    return { success: true, action: actionName };
+  };
+}
+
+const QUICK_TAB_COMMAND_HANDLERS = {
+  MINIMIZE_QUICK_TAB: _createVisibilityHandler('handleMinimize', 'minimized'),
   RESTORE_QUICK_TAB: (quickTabId, source) => _executeRestoreCommand(quickTabId, source),
   CLOSE_QUICK_TAB: (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
-    if (!handler)
-      return {
-        success: false,
-        error: 'Quick Tabs manager not initialized - closeById not available'
-      };
+    if (!handler) {
+      return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };
+    }
     handler.call(quickTabsManager, quickTabId);
     return { success: true, action: 'closed' };
   },
-  FOCUS_QUICK_TAB: (quickTabId, source) => {
-    const handler = quickTabsManager?.visibilityHandler?.handleFocus;
-    if (!handler)
-      return {
-        success: false,
-        error: 'Quick Tabs manager not initialized or visibility handler not ready'
-      };
-    handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
-    return { success: true, action: 'focused' };
-  }
+  FOCUS_QUICK_TAB: _createVisibilityHandler('handleFocus', 'focused')
 };
 
 /**

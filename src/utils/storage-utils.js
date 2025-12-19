@@ -992,19 +992,26 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
   const containerId = currentContainerId ?? currentWritingContainerId;
 
   // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
+  // v1.6.3.10-v7 - FIX Diagnostic Issue #1, #2, #14: Enhanced logging showing which check failed
   // Previously this allowed writes with unknown tab ID, which caused:
   // - Self-write detection to fail (isSelfWrite returns false)
   // - Empty state corruption from non-owner tabs
   // Now we block writes until tab ID is initialized
   if (tabId === null) {
-    console.warn('[StorageUtils] Storage write BLOCKED - unknown tab ID (initialization race?):', {
+    // v1.6.3.10-v7 - FIX Issue #14: Specific diagnostic log showing currentTabId check failed
+    console.warn('[StorageUtils] Storage write BLOCKED - DUAL-BLOCK CHECK FAILED:', {
+      checkFailed: 'currentTabId is null',
+      currentWritingTabId,
+      passedTabId: currentTabId,
+      resolvedTabId: tabId,
       tabCount: tabs.length,
       forceEmpty,
       currentContainerId: containerId,
+      isWritingTabIdInitialized: currentWritingTabId !== null,
       suggestion:
         'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
     });
-    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety' };
+    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety (currentTabId null)' };
   }
 
   // v1.6.3.10-v6 - FIX Issue #13: Filter by both tab ID and container ID
@@ -2628,6 +2635,7 @@ export function queueStorageWrite(
  * Validate ownership for persist operation
  * v1.6.3.5-v4 - Extracted to reduce persistStateToStorage complexity
  * v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to validateOwnershipForWrite for proper empty write validation
+ * v1.6.3.10-v7 - FIX Diagnostic Issue #7, #14: Enhanced logging showing storage write status
  * @private
  * @param {Object} state - State to validate
  * @param {boolean} forceEmpty - Whether empty writes are forced
@@ -2636,15 +2644,31 @@ export function queueStorageWrite(
  * @returns {{ shouldProceed: boolean }}
  */
 function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) {
+  // v1.6.3.10-v7 - FIX Issue #7: Log storage write initiated
+  console.log(`${logPrefix} STORAGE_WRITE_INITIATED [${transactionId}]:`, {
+    tabCount: state.tabs.length,
+    forceEmpty,
+    currentWritingTabId,
+    isTabIdInitialized: currentWritingTabId !== null,
+    phase: 'ownership-validation'
+  });
+
   // v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to ownership validation
   // This allows validateOwnershipForWrite to properly handle empty writes
   const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId, forceEmpty);
   if (!ownershipCheck.shouldWrite) {
-    console.warn(`${logPrefix} Storage write BLOCKED [${transactionId}]:`, {
+    // v1.6.3.10-v7 - FIX Issue #7, #14: Enhanced diagnostic logging when blocked
+    console.warn(`${logPrefix} STORAGE_WRITE_BLOCKED [${transactionId}]:`, {
       reason: ownershipCheck.reason,
       currentTabId: currentWritingTabId,
+      currentTabIdType: typeof currentWritingTabId,
+      isTabIdInitialized: currentWritingTabId !== null,
       tabCount: state.tabs.length,
-      forceEmpty
+      forceEmpty,
+      blockingCheck: currentWritingTabId === null ? 'dual-block (currentTabId null)' : 'ownership-filter',
+      suggestion: currentWritingTabId === null
+        ? 'Ensure setWritingTabId() is called before storage writes'
+        : 'Current tab does not own any Quick Tabs in the state'
     });
     return { shouldProceed: false };
   }

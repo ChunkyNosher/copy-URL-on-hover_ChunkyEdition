@@ -77,7 +77,8 @@ describe('Storage Error Handling', () => {
         url: 'https://example.com'
       });
 
-      await expect(sessionAdapter.save('firefox-default', [quickTab])).rejects.toThrow(
+      // v1.6.3.10-v7 - Updated to unified format (no container parameter)
+      await expect(sessionAdapter.save([quickTab])).rejects.toThrow(
         'QUOTA_BYTES quota exceeded'
       );
     });
@@ -236,8 +237,8 @@ describe('Storage Error Handling', () => {
 
       const result = await sessionAdapter.loadAll();
 
-      // Should return empty object on error
-      expect(result).toEqual({});
+      // v1.6.3.10-v7 - Updated: Now returns null on error (unified format)
+      expect(result).toBeNull();
     });
 
     it('should handle timeout error during save', async () => {
@@ -525,17 +526,15 @@ describe('Storage Error Handling', () => {
     });
   });
 
+  /**
+   * SessionStorageAdapter Specific tests
+   * v1.6.3.10-v7 - Updated to match unified storage format
+   */
   describe('SessionStorageAdapter Specific', () => {
-    it('should preserve other containers when saving to specific container', async () => {
+    it('should save Quick Tabs in unified format (no container parameter)', async () => {
       browser.storage.session.get.mockResolvedValue({
         quick_tabs_state_v2: {
-          containers: {
-            'firefox-default': {
-              tabs: [{ id: 'qt-default', url: 'https://default.com' }],
-              lastUpdate: Date.now()
-            }
-          },
-          saveId: 'old-save-id',
+          tabs: [{ id: 'qt-existing', url: 'https://existing.com' }],
           timestamp: Date.now()
         }
       });
@@ -545,66 +544,63 @@ describe('Storage Error Handling', () => {
         url: 'https://new.com'
       });
 
-      await sessionAdapter.save('firefox-container-1', [newQuickTab]);
+      await sessionAdapter.save([newQuickTab]);
 
       const savedData = browser.storage.session.set.mock.calls[0][0];
 
-      // Should have both containers
-      expect(savedData.quick_tabs_state_v2.containers['firefox-default']).toBeDefined();
-      expect(savedData.quick_tabs_state_v2.containers['firefox-container-1']).toBeDefined();
+      // Should have tabs array in unified format
+      expect(savedData.quick_tabs_state_v2.tabs).toBeDefined();
+      expect(Array.isArray(savedData.quick_tabs_state_v2.tabs)).toBe(true);
     });
 
-    it('should handle deleteContainer when container does not exist', async () => {
+    it('should migrate from legacy container format on load', async () => {
       browser.storage.session.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
-              tabs: [],
+              tabs: [{ id: 'qt-default', url: 'https://default.com' }],
               lastUpdate: Date.now()
             }
           }
         }
       });
 
-      // Should not throw
-      await sessionAdapter.deleteContainer('firefox-container-999');
+      const result = await sessionAdapter.load();
 
-      // Should not call set
-      expect(browser.storage.session.set).not.toHaveBeenCalled();
+      // Should return migrated data
+      expect(result).toBeDefined();
+      expect(result.tabs).toContainEqual(
+        expect.objectContaining({ id: 'qt-default' })
+      );
+
+      // Should have saved migrated format
+      expect(browser.storage.session.set).toHaveBeenCalled();
     });
 
-    it('should handle delete when Quick Tab not found in container', async () => {
+    it('should handle delete when Quick Tab not found', async () => {
       browser.storage.session.get.mockResolvedValue({
         quick_tabs_state_v2: {
-          containers: {
-            'firefox-default': {
-              tabs: [{ id: 'qt-existing', url: 'https://example.com' }],
-              lastUpdate: Date.now()
-            }
-          }
+          tabs: [{ id: 'qt-existing', url: 'https://example.com' }],
+          timestamp: Date.now()
         }
       });
 
       // Delete non-existent Quick Tab
-      await sessionAdapter.delete('firefox-default', 'qt-non-existent');
+      await sessionAdapter.delete('qt-non-existent');
 
       // Should not call set since nothing changed
       expect(browser.storage.session.set).not.toHaveBeenCalled();
     });
 
-    it('should handle load for non-existent container', async () => {
+    it('should handle load when tabs array is empty', async () => {
       browser.storage.session.get.mockResolvedValue({
         quick_tabs_state_v2: {
-          containers: {
-            'firefox-default': {
-              tabs: [],
-              lastUpdate: Date.now()
-            }
-          }
+          tabs: [],
+          timestamp: Date.now()
         }
       });
 
-      const result = await sessionAdapter.load('firefox-container-999');
+      const result = await sessionAdapter.load();
 
       expect(result).toBeNull();
     });

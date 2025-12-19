@@ -4,27 +4,35 @@ import { StorageAdapter } from './StorageAdapter.js';
 
 /**
  * SessionStorageAdapter - Storage adapter for browser.storage.session API
+ * v1.6.3.10-v7 - FIX Diagnostic Issues #4, #15: Standardized to unified format (matching SyncStorageAdapter)
  *
  * Features:
- * - Container-aware storage format
+ * - Unified storage format for global Quick Tab visibility (STANDARDIZED)
  * - Temporary storage (cleared on browser restart)
  * - No quota limits (unlike sync storage)
  * - Faster than sync storage (no cross-device sync overhead)
  * - SaveId tracking to prevent race conditions
+ * - Migration support from legacy container format
  *
  * Use Cases:
  * - Quick Tab state during active browser session
  * - Temporary caching to reduce sync storage writes
  * - Rollback buffer before committing to sync storage
  *
- * Storage Format (same as SyncStorageAdapter):
+ * Storage Format (v1.6.3.10-v7 - Unified, matching SyncStorageAdapter):
+ * {
+ *   quick_tabs_state_v2: {
+ *     tabs: [QuickTab, ...],  // ALL Quick Tabs in one array
+ *     saveId: 'timestamp-random',
+ *     timestamp: timestamp
+ *   }
+ * }
+ *
+ * Previous Format (Legacy - Container-based):
  * {
  *   quick_tabs_state_v2: {
  *     containers: {
- *       'firefox-default': {
- *         tabs: [QuickTab, ...],
- *         lastUpdate: timestamp
- *       }
+ *       'firefox-default': { tabs: [...], lastUpdate: timestamp }
  *     },
  *     saveId: 'timestamp-random',
  *     timestamp: timestamp
@@ -38,40 +46,29 @@ export class SessionStorageAdapter extends StorageAdapter {
   }
 
   /**
-   * Save Quick Tabs for a specific container
+   * Save Quick Tabs to unified storage format
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Standardized to unified format (no container separation)
    *
-   * @param {string} containerId - Firefox container ID
    * @param {QuickTab[]} tabs - Array of QuickTab domain entities
    * @returns {Promise<string>} Save ID for tracking race conditions
    */
-  async save(containerId, tabs) {
-    // Load existing state
-    const existingState = await this._loadRawState();
-
-    // Update container
-    if (!existingState.containers) {
-      existingState.containers = {};
-    }
-
-    existingState.containers[containerId] = {
-      tabs: tabs.map(t => t.serialize()),
-      lastUpdate: Date.now()
-    };
-
+  async save(tabs) {
     // Generate save ID for race condition tracking
     const saveId = this._generateSaveId();
-    existingState.saveId = saveId;
-    existingState.timestamp = Date.now();
 
-    // Wrap in storage key
+    // v1.6.3.10-v7 - FIX Issue #4, #15: Use unified format (tabs array, not containers)
     const stateToSave = {
-      [this.STORAGE_KEY]: existingState
+      [this.STORAGE_KEY]: {
+        tabs: tabs.map(t => (typeof t.serialize === 'function' ? t.serialize() : t)),
+        saveId: saveId,
+        timestamp: Date.now()
+      }
     };
 
     try {
       await browser.storage.session.set(stateToSave);
       console.log(
-        `[SessionStorageAdapter] Saved ${tabs.length} tabs for container ${containerId} (saveId: ${saveId})`
+        `[SessionStorageAdapter] Saved ${tabs.length} tabs (unified format, saveId: ${saveId})`
       );
       return saveId;
     } catch (error) {
@@ -89,100 +86,134 @@ export class SessionStorageAdapter extends StorageAdapter {
   }
 
   /**
-   * Load Quick Tabs for a specific container
+   * Load Quick Tabs from unified storage format
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Returns unified format, migrates from container format if needed
    *
-   * @param {string} containerId - Firefox container ID
-   * @returns {Promise<{tabs: Array, lastUpdate: number}|null>} Container data or null if not found
+   * @returns {Promise<{tabs: Array, timestamp: number}|null>} Unified state or null if not found
    */
-  async load(containerId) {
+  async load() {
     const state = await this._loadRawState();
 
-    if (!state.containers || !state.containers[containerId]) {
-      return null;
+    // v1.6.3.10-v7 - New unified format
+    // Return null if tabs array is empty to maintain backward compatibility
+    if (state.tabs && Array.isArray(state.tabs) && state.tabs.length > 0) {
+      return {
+        tabs: state.tabs,
+        timestamp: state.timestamp || Date.now()
+      };
     }
 
-    return state.containers[containerId];
+    // Backward compatibility: migrate from container format
+    if (state.containers) {
+      const migratedTabs = this._migrateFromContainerFormat(state.containers);
+      if (migratedTabs.length === 0) {
+        return null;
+      }
+      // Save migrated format to avoid repeated migration on future loads
+      await this._saveRawState({
+        tabs: migratedTabs,
+        saveId: this._generateSaveId(),
+        timestamp: Date.now()
+      });
+      console.log('[SessionStorageAdapter] Migrated and saved in unified format');
+      return {
+        tabs: migratedTabs,
+        timestamp: state.timestamp || Date.now()
+      };
+    }
+
+    return null;
   }
 
   /**
-   * Load all Quick Tabs across all containers
+   * Load all Quick Tabs (alias for load in unified format)
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Simplified for unified format
    *
-   * @returns {Promise<Object.<string, {tabs: Array, lastUpdate: number}>>} Map of container ID to container data
+   * @returns {Promise<{tabs: Array, timestamp: number}|null>} Unified state
    */
-  async loadAll() {
-    const state = await this._loadRawState();
-    return state.containers || {};
+  loadAll() {
+    return this.load();
   }
 
   /**
-   * Delete a specific Quick Tab from a container
+   * Delete a specific Quick Tab
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Unified format (no container parameter)
    *
-   * @param {string} containerId - Firefox container ID
    * @param {string} quickTabId - Quick Tab ID to delete
    * @returns {Promise<void>}
    */
-  async delete(containerId, quickTabId) {
-    const containerData = await this.load(containerId);
+  async delete(quickTabId) {
+    const state = await this._loadRawState();
 
-    if (!containerData) {
-      console.warn(`[SessionStorageAdapter] Container ${containerId} not found for deletion`);
+    // Handle unified format
+    if (state.tabs && Array.isArray(state.tabs)) {
+      const filteredTabs = state.tabs.filter(t => t.id !== quickTabId);
+
+      if (filteredTabs.length === state.tabs.length) {
+        console.warn(`[SessionStorageAdapter] Quick Tab ${quickTabId} not found`);
+        return;
+      }
+
+      await this._saveRawState({
+        tabs: filteredTabs,
+        saveId: this._generateSaveId(),
+        timestamp: Date.now()
+      });
+
+      console.log(`[SessionStorageAdapter] Deleted Quick Tab ${quickTabId}`);
       return;
     }
 
-    // Filter out the tab
-    const filteredTabs = containerData.tabs.filter(t => t.id !== quickTabId);
+    // Backward compatibility: container format migration
+    if (state.containers) {
+      const migratedTabs = this._migrateFromContainerFormat(state.containers);
+      const filteredTabs = migratedTabs.filter(t => t.id !== quickTabId);
 
-    if (filteredTabs.length === containerData.tabs.length) {
-      console.warn(
-        `[SessionStorageAdapter] Quick Tab ${quickTabId} not found in container ${containerId}`
+      await this._saveRawState({
+        tabs: filteredTabs,
+        saveId: this._generateSaveId(),
+        timestamp: Date.now()
+      });
+
+      console.log(
+        `[SessionStorageAdapter] Deleted Quick Tab ${quickTabId} (migrated from container format)`
       );
-      return;
     }
-
-    // Save updated tabs
-    // Note: We need to reconstruct QuickTab objects for save()
-    const { QuickTab } = await import('../domain/QuickTab.js');
-    const quickTabs = filteredTabs.map(data => QuickTab.fromStorage(data));
-    await this.save(containerId, quickTabs);
-
-    console.log(
-      `[SessionStorageAdapter] Deleted Quick Tab ${quickTabId} from container ${containerId}`
-    );
   }
 
   /**
-   * Delete all Quick Tabs for a specific container
-   *
-   * @param {string} containerId - Firefox container ID
-   * @returns {Promise<void>}
-   */
-  async deleteContainer(containerId) {
-    const existingState = await this._loadRawState();
-
-    if (!existingState.containers || !existingState.containers[containerId]) {
-      console.warn(`[SessionStorageAdapter] Container ${containerId} not found for deletion`);
-      return;
-    }
-
-    delete existingState.containers[containerId];
-    existingState.timestamp = Date.now();
-    existingState.saveId = this._generateSaveId();
-
-    await browser.storage.session.set({
-      [this.STORAGE_KEY]: existingState
-    });
-
-    console.log(`[SessionStorageAdapter] Deleted all Quick Tabs for container ${containerId}`);
-  }
-
-  /**
-   * Clear all Quick Tabs across all containers
+   * Clear all Quick Tabs
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Unified format
    *
    * @returns {Promise<void>}
    */
   async clear() {
     await browser.storage.session.remove(this.STORAGE_KEY);
     console.log('[SessionStorageAdapter] Cleared all Quick Tabs');
+  }
+
+  /**
+   * Migrate tabs from container format to unified array
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Backward compatibility helper
+   *
+   * @private
+   * @param {Object} containers - Container data object
+   * @returns {Array} Array of serialized Quick Tab data
+   */
+  _migrateFromContainerFormat(containers) {
+    const allTabs = [];
+
+    for (const containerKey of Object.keys(containers)) {
+      const tabs = containers[containerKey]?.tabs || [];
+      if (tabs.length > 0) {
+        console.log(
+          `[SessionStorageAdapter] Migrating ${tabs.length} tabs from container: ${containerKey}`
+        );
+        allTabs.push(...tabs);
+      }
+    }
+
+    return allTabs;
   }
 
   /**
@@ -199,9 +230,9 @@ export class SessionStorageAdapter extends StorageAdapter {
         return result[this.STORAGE_KEY];
       }
 
-      // Return empty state
+      // Return empty state in unified format
       return {
-        containers: {},
+        tabs: [],
         timestamp: Date.now(),
         saveId: this._generateSaveId()
       };
@@ -215,13 +246,26 @@ export class SessionStorageAdapter extends StorageAdapter {
         code: error?.code,
         error: error
       });
-      // Return empty state on error
+      // Return empty state on error in unified format
       return {
-        containers: {},
+        tabs: [],
         timestamp: Date.now(),
         saveId: this._generateSaveId()
       };
     }
+  }
+
+  /**
+   * Save raw state to storage
+   * v1.6.3.10-v7 - FIX Issue #4, #15: Added for unified format save support
+   * @private
+   * @param {Object} state - State to save
+   * @returns {Promise<void>}
+   */
+  async _saveRawState(state) {
+    await browser.storage.session.set({
+      [this.STORAGE_KEY]: state
+    });
   }
 
   /**

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v7  
+**Version:** 1.6.3.10-v8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -26,7 +26,16 @@ Tabs Manager
 - **Tab Grouping** - tabs.group() API support (Firefox 138+)
 - **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
+**v1.6.3.10-v8 Features (NEW) - Code Health & Bug Fixes:**
+
+- **Code Health Improvements** - Refactored files to 9.0+ scores (content.js 9.09, window.js 9.38)
+- **Consolidated Duplications** - Extracted helper functions to reduce duplication
+- **Options Object Pattern** - Functions with 5+ args now use options objects
+- **Storage Issues Fixed (#1-15)** - Dual-block fix, currentTabId init, storage format unification
+- **Cross-Tab Issues Fixed (#16-23)** - Adoption cache sync, message format fixes, retry mechanism
+- **Manager Issues Fixed (#20-22)** - Comprehensive logging, MinimizedManager snapshots
+
+**v1.6.3.10-v7 Features (Previous) - Reliability & Robustness:**
 
 - **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit, 30s max backoff
 - **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering, latency tracking
@@ -63,6 +72,9 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 `quicktabs-cross-tab-agent`, Manager → `quicktabs-manager-agent`, Settings →
 `ui-ux-settings-agent`, Docs → `copilot-docs-updater`
 
+**Important:** When using context7, look up JavaScript/ES6/Web API documentation,
+NOT "Quick Tabs" directly. context7 is for standard API references.
+
 ---
 
 ## 🔄 Cross-Tab Sync Architecture
@@ -97,7 +109,16 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v7 Patterns (Current)
+### v1.6.3.10-v8 Patterns (Current)
+
+- Code health refactoring with extracted helper functions
+- Options object pattern for functions with 5+ arguments
+- Consolidated duplicate logging and handler functions
+- Fixed storage persistence issues (#1-15)
+- Fixed cross-tab sync issues (#16-23)
+- Fixed Manager issues (#20-22)
+
+### v1.6.3.10-v7 Patterns (Previous)
 
 - Port reconnection circuit breaker with state machine (5 failures, 30s backoff)
 - Background handshake ready signal with command buffering
@@ -234,19 +255,13 @@ Authority. See Version Patterns Summary above for version-specific patterns.
 
 ## 🔧 MCP & Testing
 
-**MCPs:** CodeScene (code health), Context7 (API docs), Perplexity (research)
+**MCPs:** CodeScene (code health), Context7 (JavaScript API docs), Perplexity (research)
+
+**Context7 Usage:** Use for JavaScript, ES6, Web API, and browser extension API
+documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
+"Map", "Promise", "storage.local", "tabs.sendMessage", etc.
 
 **Testing:** `npm test` (Jest), `npm run lint` (ESLint), `npm run build`
-
----
-
-## 🧠 Memory (Agentic-Tools MCP)
-
-**End of task:** `git add .agentic-tools-mcp/`, commit. **Start of task:**
-Search memories.
-
-**search_memories:** Use 1-2 word queries, `threshold: 0.1`, `limit: 5`. Bash
-fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 ---
 
@@ -254,7 +269,6 @@ fallback: `grep -r -l "keyword" .agentic-tools-mcp/memories/`
 
 - [ ] Delegated to specialist agent
 - [ ] ESLint + tests pass
-- [ ] Memory files committed
 
 ---
 
