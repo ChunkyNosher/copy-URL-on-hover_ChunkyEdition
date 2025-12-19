@@ -3378,42 +3378,43 @@ function handlePortConnect(port) {
  * @param {string} portId - Port ID
  * @param {Object} message - The message
  */
+/**
+ * Send acknowledgment response to port
+ * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * @private
+ */
+function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
+  if (!message.correlationId) return;
+  
+  const ack = {
+    type: 'ACKNOWLEDGMENT',
+    correlationId: message.correlationId,
+    originalType: message.type,
+    success: response?.success ?? true,
+    timestamp: Date.now(),
+    ...response
+  };
+
+  try {
+    port.postMessage(ack);
+    logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
+      portId, correlationId: message.correlationId, success: ack.success
+    });
+  } catch (err) {
+    console.error('[Background] Failed to send acknowledgment:', err.message);
+  }
+}
+
 async function handlePortMessage(port, portId, message) {
   const portInfo = portRegistry.get(portId);
   updatePortActivity(portId);
 
   logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
-    portId,
-    tabId: portInfo?.tabId,
-    messageType: message.type,
-    correlationId: message.correlationId
+    portId, tabId: portInfo?.tabId, messageType: message.type, correlationId: message.correlationId
   });
 
-  // Route message based on type
   const response = await routePortMessage(message, portInfo);
-
-  // Send acknowledgment if correlationId present
-  if (message.correlationId) {
-    const ack = {
-      type: 'ACKNOWLEDGMENT',
-      correlationId: message.correlationId,
-      originalType: message.type,
-      success: response?.success ?? true,
-      timestamp: Date.now(),
-      ...response
-    };
-
-    try {
-      port.postMessage(ack);
-      logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
-        portId,
-        correlationId: message.correlationId,
-        success: ack.success
-      });
-    } catch (err) {
-      console.error('[Background] Failed to send acknowledgment:', err.message);
-    }
-  }
+  _sendAcknowledgment({ port, message, response, portInfo, portId });
 }
 
 /**
@@ -4702,58 +4703,48 @@ function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) 
 const quickTabHostTabs = new Map();
 
 /**
+ * Ensure initialization is complete before processing
+ * v1.6.3.10-v8 - FIX Code Health: Extracted initialization logic
+ * @private
+ */
+async function _ensureInitializedForHandler(handlerName) {
+  const guard = checkInitializationGuard(handlerName);
+  if (guard.initialized) return { ready: true };
+  
+  const initialized = await waitForInitialization(2000);
+  if (!initialized) {
+    console.warn(`[Background] ${handlerName} rejected - not initialized`);
+    return { ready: false, errorResponse: guard.errorResponse };
+  }
+  return { ready: true };
+}
+
+/**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
- * v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes (deleted: true) by removing from cache
- * v1.6.3.6-v5 - FIX Issue #4c: Added message receipt logging
- * v1.6.3.6-v12 - FIX Issue #1: Added initialization guard
- * Background becomes the coordinator, updating cache and broadcasting to other contexts
- * @param {Object} message - Message containing state change
- * @param {Object} sender - Sender info (includes tab.id)
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
  */
 async function handleQuickTabStateChange(message, sender) {
-  // v1.6.3.6-v12 - FIX Issue #1: Check initialization before processing
-  const guard = checkInitializationGuard('handleQuickTabStateChange');
-  if (!guard.initialized) {
-    // Wait briefly for initialization, then retry or fail
-    const initialized = await waitForInitialization(2000);
-    if (!initialized) {
-      console.warn('[Background] v1.6.3.6-v12 State change rejected - not initialized');
-      return guard.errorResponse;
-    }
-  }
+  const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
+  if (!initCheck.ready) return initCheck.errorResponse;
 
   const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
 
-  // v1.6.3.6-v5 - FIX Issue #4c: Log message receipt
   const messageId = message.messageId || generateMessageId();
   logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
+  console.log('[Background] QUICK_TAB_STATE_CHANGE:', { quickTabId, changes, source, sourceTabId });
 
-  console.log('[Background] QUICK_TAB_STATE_CHANGE received:', {
-    quickTabId,
-    changes,
-    source,
-    sourceTabId
-  });
-
-  // Track which tab hosts this Quick Tab
   _updateQuickTabHostTracking(quickTabId, sourceTabId);
 
-  // v1.6.3.5-v11 - FIX Issue #6: Handle deletion changes
-  // Note: We check both `changes.deleted === true` (explicit deletion flag) and `source === 'destroy'`
-  // (legacy source indication) for backward compatibility. The explicit flag is preferred for new code.
+  // Handle deletion
   if (changes?.deleted === true || source === 'destroy') {
     await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
     return { success: true };
   }
 
-  // Update globalQuickTabState cache
   _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
-
-  // Broadcast to all interested parties
   await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
-
   return { success: true };
 }
 
