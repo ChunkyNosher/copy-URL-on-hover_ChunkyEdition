@@ -471,6 +471,7 @@ function _ensureContainerIdInitPromise() {
 /**
  * Update identity state mode based on current initialization state
  * v1.6.3.10-v9 - FIX Issue G: Track identity mode for fail-closed container matching
+ * v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
  * @private
  */
 function _updateIdentityStateMode() {
@@ -486,12 +487,15 @@ function _updateIdentityStateMode() {
     identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
   }
   
+  // v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
   if (previousMode !== identityStateMode) {
-    console.log('[StorageUtils] v1.6.3.10-v9 Identity mode transition:', {
+    console.log('[Storage-Identity] STATE_TRANSITION:', {
       from: previousMode,
       to: identityStateMode,
-      tabId: currentWritingTabId,
-      containerId: currentWritingContainerId
+      tabId: currentWritingTabId !== null ? `KNOWN(${currentWritingTabId})` : 'UNKNOWN',
+      containerId: currentWritingContainerId !== null ? `KNOWN(${currentWritingContainerId})` : 'UNKNOWN',
+      isFullyReady: identityStateMode === IDENTITY_STATE_MODE.READY,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -800,13 +804,23 @@ export const TAB_ID_CALLER_CONTEXT = {
  * @param {string} [callerContext='unknown'] - Context identifying the caller (content-script, sidebar, etc.)
  */
 export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNKNOWN) {
+  // v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization milestone
+  const setStartTime = Date.now();
+  console.log('[Storage-Init] setWritingTabId CALLED:', {
+    tabId,
+    callerContext,
+    previousTabId: currentWritingTabId,
+    previousIdentityMode: identityStateMode,
+    timestamp: new Date().toISOString()
+  });
+  
   // v1.6.3.10-v10 - FIX Issue Q: Log caller context for diagnostics
   const validContexts = [TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT, TAB_ID_CALLER_CONTEXT.SIDEBAR];
   const isValidContext = validContexts.includes(callerContext);
   
   // Warn if called from non-tab context (background, options, popup shouldn't write Quick Tabs)
   if (!isValidContext) {
-    console.warn('[StorageUtils] v1.6.3.10-v10 setWritingTabId: Called from non-tab context', {
+    console.warn('[Storage-Init] setWritingTabId: Called from non-tab context', {
       callerContext,
       tabId,
       warning: 'Only content scripts and sidebar should set writing tab ID',
@@ -817,24 +831,29 @@ export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNK
   
   // Validate that tabId is a positive integer (browser tab IDs are always positive)
   if (!_isValidPositiveInteger(tabId)) {
-    console.warn('[StorageUtils] setWritingTabId called with invalid tabId:', {
+    console.warn('[Storage-Init] setWritingTabId REJECTED: Invalid tabId', {
       tabId,
       type: typeof tabId,
       isInteger: Number.isInteger(tabId),
       isPositive: tabId > 0,
-      callerContext
+      callerContext,
+      rejectionReason: 'INVALID_TAB_ID'
     });
     return;
   }
 
   const oldTabId = currentWritingTabId;
   currentWritingTabId = tabId;
-  console.log('[StorageUtils] Writing tab ID set explicitly:', {
-    oldTabId,
+  
+  // v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization completion
+  console.log('[Storage-Init] setWritingTabId COMPLETE:', {
+    oldTabId: oldTabId !== null ? oldTabId : 'NONE',
     newTabId: tabId,
-    source: 'setWritingTabId() (from background messaging)',
+    source: 'setWritingTabId()',
     callerContext,
-    isValidContext
+    isValidContext,
+    durationMs: Date.now() - setStartTime,
+    timestamp: new Date().toISOString()
   });
 
   // v1.6.3.10-v6 - FIX Issue #4/11/12: Resolve waiting promise for waitForTabIdInit()
@@ -845,21 +864,35 @@ export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNK
  * Explicitly set the writing container ID
  * v1.6.3.10-v6 - FIX Issue #13: Allow content scripts to set container ID for Firefox Multi-Account Containers
  * v1.6.3.10-v9 - FIX Issue S: Resolve container ID init promise
+ * v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization milestone
  * Content scripts cannot use browser.tabs.getCurrent(), so they need to
  * get the container ID from background script and pass it here.
  *
  * @param {string|null} containerId - The container ID to use (e.g., "firefox-default", "firefox-container-1")
  */
 export function setWritingContainerId(containerId) {
+  // v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization milestone
+  const setStartTime = Date.now();
+  console.log('[Storage-Init] setWritingContainerId CALLED:', {
+    containerId,
+    previousContainerId: currentWritingContainerId,
+    previousIdentityMode: identityStateMode,
+    timestamp: new Date().toISOString()
+  });
+
   // Use normalizeOriginContainerId for validation
   const normalizedContainerId = normalizeOriginContainerId(containerId, 'setWritingContainerId');
 
   const oldContainerId = currentWritingContainerId;
   currentWritingContainerId = normalizedContainerId;
-  console.log('[StorageUtils] Writing container ID set explicitly:', {
-    oldContainerId,
+  
+  // v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization completion
+  console.log('[Storage-Init] setWritingContainerId COMPLETE:', {
+    oldContainerId: oldContainerId !== null ? oldContainerId : 'NONE',
     newContainerId: normalizedContainerId,
-    source: 'setWritingContainerId() (from background messaging)'
+    source: 'setWritingContainerId()',
+    durationMs: Date.now() - setStartTime,
+    timestamp: new Date().toISOString()
   });
   
   // v1.6.3.10-v9 - FIX Issue S: Resolve waiting promise for waitForContainerIdInit()
@@ -1039,6 +1072,7 @@ export function normalizeOriginContainerId(value, context = 'unknown') {
  * Check if container IDs match for ownership validation
  * v1.6.3.10-v6 - FIX Code Review: Extract duplicated container matching logic
  * v1.6.3.10-v9 - FIX Issue G: Fail-closed when identity is unknown (INITIALIZING mode)
+ * v1.6.3.10-v10 - FIX Gap 5.2: Container match logging with fallback detection
  * If originContainerId is null, this is a legacy Quick Tab created before v1.6.3.10-v4
  * Allow these to be modified by any tab that matches the originTabId (backwards compatibility)
  * @private
@@ -1047,46 +1081,43 @@ export function normalizeOriginContainerId(value, context = 'unknown') {
  * @returns {boolean} True if containers match (or legacy fallback applies)
  */
 function _isContainerMatch(normalizedOriginContainerId, currentContainerId) {
-  // v1.6.3.10-v9 - FIX Issue G: Log container matching mode for diagnostics
-  let matchMode = 'READY';
-  
   // Legacy Quick Tab (null originContainerId) - always matches (LEGACY_FALLBACK mode)
   if (normalizedOriginContainerId === null) {
-    matchMode = 'LEGACY_FALLBACK';
-    console.log('[StorageUtils] v1.6.3.10-v9 _isContainerMatch: Legacy fallback', {
-      mode: matchMode,
-      normalizedOriginContainerId,
-      currentContainerId,
+    // v1.6.3.10-v10 - FIX Gap 5.2: Log legacy fallback with clear indication
+    console.log('[ContainerFilter] MATCH_RESULT:', {
+      originContainerId: 'NULL (legacy)',
+      currentContainerId: currentContainerId ?? 'UNKNOWN',
       result: true,
-      identityStateMode
+      matchRule: 'LEGACY_FALLBACK',
+      identityStateMode,
+      explanation: 'Legacy Quick Tab (pre-v4) without originContainerId - allowing match'
     });
     return true;
   }
   
   // v1.6.3.10-v9 - FIX Issue G: Current container unknown - FAIL-CLOSED in INITIALIZING mode
-  // This is different from legacy Quick Tabs (which have null originContainerId)
-  // Here the Quick Tab HAS a container, but we don't know our own container yet
   if (currentContainerId === null) {
-    // v1.6.3.10-v9 - FIX Issue G: Fail-closed to prevent cross-container leakage
-    matchMode = 'INITIALIZING';
-    console.warn('[StorageUtils] v1.6.3.10-v9 _isContainerMatch: Identity not ready - FAIL-CLOSED', {
-      mode: matchMode,
-      normalizedOriginContainerId,
-      currentContainerId,
+    // v1.6.3.10-v10 - FIX Gap 5.2: Log fail-closed with warning
+    console.warn('[ContainerFilter] MATCH_RESULT:', {
+      originContainerId: normalizedOriginContainerId,
+      currentContainerId: 'UNKNOWN',
       result: false,
+      matchRule: 'FAIL_CLOSED',
       identityStateMode,
-      reason: 'Current container unknown, cannot validate - blocking to prevent cross-container leakage'
+      warning: 'Using fallback during identity-not-ready window',
+      explanation: 'Current container unknown - blocking to prevent cross-container leakage'
     });
     return false;
   }
   
   // Both have values - compare them
   const result = normalizedOriginContainerId === currentContainerId;
-  console.log('[StorageUtils] v1.6.3.10-v9 _isContainerMatch: Comparing', {
-    mode: matchMode,
-    normalizedOriginContainerId,
+  // v1.6.3.10-v10 - FIX Gap 5.2: Log strict comparison result
+  console.log('[ContainerFilter] MATCH_RESULT:', {
+    originContainerId: normalizedOriginContainerId,
     currentContainerId,
     result,
+    matchRule: result ? 'STRICT_MATCH' : 'MISMATCH',
     identityStateMode
   });
   return result;
@@ -1123,6 +1154,7 @@ function _isMatchingTabId(writingTabId, currentTabId) {
 /**
  * Log warning if heuristics conflict
  * v1.6.3.10-v10 - FIX Issue T: Extracted to reduce isSelfWrite complexity
+ * v1.6.3.10-v10 - FIX Gap 8.1: Heuristic match attribution
  * @private
  */
 function _logHeuristicConflict(newValue, currentTabId, heuristicsMatched) {
@@ -1131,7 +1163,8 @@ function _logHeuristicConflict(newValue, currentTabId, heuristicsMatched) {
   
   // Only warn if we have both matches and non-matches (actual conflict)
   if (matched.length > 0 && unmatched.length > 0) {
-    console.warn('[StorageUtils] v1.6.3.10-v10 SELF_WRITE_HEURISTIC_CONFLICT:', {
+    // v1.6.3.10-v10 - FIX Gap 8.1: Detailed heuristic conflict logging
+    console.warn('[SelfWrite] HEURISTIC_CONFLICT:', {
       transactionId: newValue.transactionId,
       writingInstanceId: newValue.writingInstanceId,
       writingTabId: newValue.writingTabId,
@@ -1141,7 +1174,8 @@ function _logHeuristicConflict(newValue, currentTabId, heuristicsMatched) {
       heuristicsMatched,
       matchedHeuristics: matched,
       unmatchedHeuristics: unmatched,
-      decision: 'Using highest-priority match (transactionId > instanceId > tabId)'
+      priorityOrder: 'transactionId(1) > instanceId(2) > tabId(3)',
+      decision: 'Using highest-priority match'
     });
   }
 }
@@ -1149,6 +1183,7 @@ function _logHeuristicConflict(newValue, currentTabId, heuristicsMatched) {
 /**
  * Check heuristics and return self-write detection result
  * v1.6.3.10-v10 - FIX Issue T: Extracted to reduce isSelfWrite complexity
+ * v1.6.3.10-v10 - FIX Gap 8.1: Log all heuristic evaluations for diagnostics
  * @private
  */
 function _checkSelfWriteHeuristics(newValue, currentTabId) {
@@ -1159,6 +1194,23 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
   };
   
   const matchCount = Object.values(heuristicsMatched).filter(Boolean).length;
+  
+  // v1.6.3.10-v10 - FIX Gap 8.1: Log all heuristic evaluations
+  console.log('[SelfWrite] HEURISTICS_EVALUATED:', {
+    incoming: {
+      transactionId: newValue.transactionId,
+      instanceId: newValue.writingInstanceId,
+      tabId: newValue.writingTabId
+    },
+    local: {
+      transactionId: lastWrittenTransactionId,
+      instanceId: WRITING_INSTANCE_ID,
+      tabId: currentTabId ?? currentWritingTabId
+    },
+    matches: heuristicsMatched,
+    matchCount,
+    isSelfWrite: matchCount > 0
+  });
   
   // Check for conflicts (some match, some don't)
   if (matchCount > 0 && matchCount < 3) {
@@ -1174,6 +1226,7 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
  * v1.6.3.6-v2 - FIX Issue #1: Add lastWrittenTransactionId check for deterministic detection
  * v1.6.3.6-v2 - Refactored: Extracted helpers to reduce complexity
  * v1.6.3.10-v10 - FIX Issue T: Document priority order and log which heuristics matched
+ * v1.6.3.10-v10 - FIX Gap 8.1: Heuristic match attribution logging
  * 
  * HEURISTIC PRIORITY ORDER (Issue T):
  * 1. transactionId - HIGHEST: Most deterministic, matches specific write operation
@@ -1189,24 +1242,33 @@ export function isSelfWrite(newValue, currentTabId = null) {
 
   const heuristicsMatched = _checkSelfWriteHeuristics(newValue, currentTabId);
 
-  // v1.6.3.6-v2 - FIX Issue #1: Check in priority order (HIGHEST to LOWEST)
+  // v1.6.3.10-v10 - FIX Gap 8.1: Log which heuristic determined the result
   if (heuristicsMatched.transactionId) {
-    console.log('[StorageUtils] SKIPPED self-write (transactionId - HIGHEST priority):', {
-      transactionId: newValue.transactionId, heuristicsMatched, priority: 1
+    console.log('[SelfWrite] DETECTED (matched: transactionId):', {
+      matchedBy: 'transactionId',
+      priority: 1,
+      transactionId: newValue.transactionId,
+      allMatches: heuristicsMatched
     });
     return true;
   }
 
   if (heuristicsMatched.instanceId) {
-    console.log('[StorageUtils] SKIPPED self-write (instanceId - MEDIUM priority):', {
-      instanceId: WRITING_INSTANCE_ID, heuristicsMatched, priority: 2
+    console.log('[SelfWrite] DETECTED (matched: instanceId):', {
+      matchedBy: 'instanceId',
+      priority: 2,
+      instanceId: WRITING_INSTANCE_ID,
+      allMatches: heuristicsMatched
     });
     return true;
   }
 
   if (heuristicsMatched.tabId) {
-    console.log('[StorageUtils] SKIPPED self-write (tabId - LOWEST priority):', {
-      tabId: currentTabId ?? currentWritingTabId, heuristicsMatched, priority: 3
+    console.log('[SelfWrite] DETECTED (matched: tabId):', {
+      matchedBy: 'tabId',
+      priority: 3,
+      tabId: currentTabId ?? currentWritingTabId,
+      allMatches: heuristicsMatched
     });
     return true;
   }
@@ -3273,6 +3335,7 @@ function _handleFailedWrite(operationId, transactionId, tabCount, startTime, tot
 /**
  * Execute retry loop for storage write
  * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
+ * v1.6.3.10-v10 - FIX Gap 3.1: Add write lifecycle SUCCESS logging
  * @private
  */
 async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount) {
@@ -3280,11 +3343,31 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
   
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
     if (attempt > 1) {
-      console.warn(`${logPrefix} v1.6.3.10-v9 RETRY_ATTEMPT: #${attempt}/${totalAttempts} [${transactionId}]`);
+      // v1.6.3.10-v10 - FIX Gap 3.1: Retry attempt logging
+      console.warn('[StorageWrite] LIFECYCLE_RETRY:', {
+        correlationId: context.writeCorrelationId,
+        transactionId,
+        attemptNumber: attempt,
+        totalAttempts,
+        previousDelayMs: STORAGE_RETRY_DELAYS_MS[attempt - 2] || 0,
+        timestamp: new Date().toISOString()
+      });
     }
     
     const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
     if (success) {
+      // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle SUCCESS
+      const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
+      console.log('[StorageWrite] LIFECYCLE_SUCCESS:', {
+        correlationId: context.writeCorrelationId,
+        transactionId,
+        tabCount,
+        attempt,
+        totalAttempts,
+        durationMs: totalDurationMs,
+        timestamp: new Date().toISOString()
+      });
+      
       _handleSuccessfulWrite(context.operationId, transactionId, tabCount, context.startTime, attempt, logPrefix);
       return true;
     }
@@ -3295,6 +3378,18 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
     }
   }
   
+  // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE after all retries
+  const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
+  console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
+    correlationId: context.writeCorrelationId,
+    transactionId,
+    phase: 'ALL_RETRIES_EXHAUSTED',
+    tabCount,
+    totalAttempts,
+    durationMs: totalDurationMs,
+    timestamp: new Date().toISOString()
+  });
+  
   _handleFailedWrite(context.operationId, transactionId, tabCount, context.startTime, totalAttempts, logPrefix);
   return false;
 }
@@ -3303,12 +3398,21 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
  * Perform the actual storage write operation with retry logic
  * v1.6.3.10-v6 - FIX Issue A20: Added exponential backoff retry
  * v1.6.3.10-v9 - FIX Issue M/D: Added preflight quota check (refactored)
+ * v1.6.3.10-v10 - FIX Gap 3.1: Added write correlation ID and success logging
  * @private
  */
-async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId) {
+async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId = null, startTime = null) {
+  const actualStartTime = startTime || Date.now();
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
-    console.warn(`${logPrefix} Storage API not available, cannot persist [${transactionId}]`);
+    // v1.6.3.10-v10 - FIX Gap 3.1: Log failure
+    console.warn('[StorageWrite] LIFECYCLE_FAILURE:', {
+      correlationId: writeCorrelationId,
+      transactionId,
+      phase: 'API_CHECK',
+      reason: 'Storage API not available',
+      timestamp: new Date().toISOString()
+    });
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     return false;
   }
@@ -3316,12 +3420,24 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
   // Preflight quota check
   const quotaCheck = await checkStorageQuota(logPrefix);
   if (!quotaCheck.canWrite) {
-    console.error(`${logPrefix} STORAGE WRITE BLOCKED - quota exceeded [${transactionId}]`);
+    // v1.6.3.10-v10 - FIX Gap 3.1: Log quota failure
+    console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
+      correlationId: writeCorrelationId,
+      transactionId,
+      phase: 'QUOTA_CHECK',
+      reason: 'Quota exceeded',
+      quotaInfo: quotaCheck,
+      timestamp: new Date().toISOString()
+    });
     pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     return false;
   }
 
   const context = _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPrefix);
+  // v1.6.3.10-v10 - FIX Gap 3.1: Pass correlation ID to retry loop
+  context.writeCorrelationId = writeCorrelationId;
+  context.writeStartTime = actualStartTime;
+  
   return _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount);
 }
 
@@ -3396,6 +3512,7 @@ function _checkAndRecoverStalledQueue(logPrefix, transactionId) {
 /**
  * Log queue state transition for diagnostics
  * v1.6.3.10-v9 - FIX Issue F: Enhanced queue state logging
+ * v1.6.3.10-v10 - FIX Gap 3.3: Queue state transition logging (ENQUEUE, DEQUEUE_START, DEQUEUE_SUCCESS/FAILURE, QUEUE_RESET)
  * @private
  * @param {string} logPrefix - Log prefix
  * @param {string} transactionId - Transaction ID
@@ -3403,11 +3520,16 @@ function _checkAndRecoverStalledQueue(logPrefix, transactionId) {
  * @param {Object} details - Additional details
  */
 function _logQueueStateTransition(logPrefix, transactionId, event, details = {}) {
-  console.log(`${logPrefix} v1.6.3.10-v9 QUEUE_STATE [${event}]:`, {
+  // v1.6.3.10-v10 - FIX Gap 3.3: Structured queue state logging
+  const eventUpper = event.toUpperCase();
+  console.log(`[StorageQueue] ${eventUpper}:`, {
     transactionId,
-    pendingWriteCount,
+    queueDepth: pendingWriteCount,
     circuitBreakerTripped,
+    circuitBreakerTripTime: circuitBreakerTripTime ? new Date(circuitBreakerTripTime).toISOString() : null,
     writeQueueRecoveryCount,
+    stallDurationMs: writeQueueStallStartTime ? Date.now() - writeQueueStallStartTime : 0,
+    timestamp: new Date().toISOString(),
     ...details
   });
 }
@@ -3415,26 +3537,50 @@ function _logQueueStateTransition(logPrefix, transactionId, event, details = {})
 /**
  * Trip the circuit breaker with full logging
  * v1.6.3.10-v9 - FIX Issue F: Extracted from queueStorageWrite
+ * v1.6.3.10-v10 - FIX Gap 3.3: Circuit breaker logging
  * @private
  */
-function _tripCircuitBreaker(_transactionId, threshold) {
+function _tripCircuitBreaker(transactionId, threshold) {
   circuitBreakerTripped = true;
   circuitBreakerTripTime = Date.now();
-  console.error('[StorageUtils] ⚠️⚠️⚠️ CIRCUIT BREAKER TRIPPED - INFINITE LOOP DETECTED');
-  console.error(`[StorageUtils] Blocking writes (threshold: ${threshold}), depth: ${pendingWriteCount}`);
-  console.error(`[StorageUtils] Last completed: ${lastCompletedTransactionId || 'none'}`);
+  
+  // v1.6.3.10-v10 - FIX Gap 3.3: Structured circuit breaker logging
+  console.error('[StorageQueue] CIRCUIT_BREAKER_TRIPPED:', {
+    transactionId,
+    threshold,
+    queueDepth: pendingWriteCount,
+    lastCompletedTransactionId: lastCompletedTransactionId || 'NONE',
+    stallDurationMs: writeQueueStallStartTime ? Date.now() - writeQueueStallStartTime : 0,
+    timestamp: new Date().toISOString(),
+    warning: 'INFINITE LOOP DETECTED - All writes blocked'
+  });
 }
 
 /**
  * Log backlog warnings based on queue depth
  * v1.6.3.10-v9 - FIX Issue F: Extracted from queueStorageWrite
+ * v1.6.3.10-v10 - FIX Gap 3.3: Backlog warning logging
  * @private
  */
-function _logBacklogWarnings(_transactionId) {
+function _logBacklogWarnings(transactionId) {
   if (pendingWriteCount > 10) {
-    console.error(`[StorageUtils] ⚠️⚠️⚠️ CRITICAL BACKLOG: ${pendingWriteCount} pending - possible infinite loop`);
+    // v1.6.3.10-v10 - FIX Gap 3.3: Critical backlog logging
+    console.error('[StorageQueue] CRITICAL_BACKLOG:', {
+      transactionId,
+      queueDepth: pendingWriteCount,
+      threshold: 10,
+      warning: 'Possible infinite loop',
+      lastCompletedTransactionId: lastCompletedTransactionId || 'NONE',
+      timestamp: new Date().toISOString()
+    });
   } else if (pendingWriteCount > 5) {
-    console.warn(`[StorageUtils] ⚠️ BACKLOG: ${pendingWriteCount} pending - check self-write detection`);
+    console.warn('[StorageQueue] BACKLOG_WARNING:', {
+      transactionId,
+      queueDepth: pendingWriteCount,
+      threshold: 5,
+      suggestion: 'Check self-write detection',
+      timestamp: new Date().toISOString()
+    });
   }
 }
 
@@ -3683,20 +3829,30 @@ function _logPersistInitiation(options) {
 export function persistStateToStorage(state, logPrefix = '[StorageUtils]', forceEmpty = false) {
   const transactionId = generateTransactionId();
   const startTime = Date.now();
+  
+  // v1.6.3.10-v10 - FIX Gap 3.1: Generate write correlation ID
+  const writeCorrelationId = `write-${new Date().toISOString()}-${Math.random().toString(36).substring(2, 8)}`;
 
-  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced phase logging
-  console.log(`${logPrefix} v1.6.3.10-v5 Storage transaction STARTED:`, {
+  // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle QUEUED
+  console.log('[StorageWrite] LIFECYCLE_QUEUED:', {
+    correlationId: writeCorrelationId,
     transactionId,
-    phase: 'init',
     tabCount: state?.tabs?.length ?? 0,
-    timestamp: startTime
+    forceEmpty,
+    caller: logPrefix.replace(/\[|\]/g, ''),
+    timestamp: new Date().toISOString()
   });
 
   // Phase 1: Validate state structure
   if (!_validateStateStructure(state, logPrefix).valid) {
-    console.log(`${logPrefix} v1.6.3.10-v5 Transaction FAILED at phase: validate-structure`, {
+    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
+    console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
+      correlationId: writeCorrelationId,
       transactionId,
-      durationMs: Date.now() - startTime
+      phase: 'VALIDATE_STRUCTURE',
+      reason: 'Invalid state structure',
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
     });
     return Promise.resolve(false);
   }
@@ -3708,11 +3864,15 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   // This must be early to avoid unnecessary validation work for coalesced writes
   const coalesceResult = _checkWriteCoalescing(state, logPrefix, transactionId);
   if (coalesceResult.shouldCoalesce) {
-    console.log(`${logPrefix} v1.6.3.10-v10 Transaction COALESCED at phase: rate-limit`, {
+    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle COALESCED
+    console.log('[StorageWrite] LIFECYCLE_COALESCED:', {
+      correlationId: writeCorrelationId,
       transactionId,
+      phase: 'RATE_LIMIT',
       reason: coalesceResult.reason,
       tabCount,
-      durationMs: Date.now() - startTime
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
     });
     // Return true because the state will be persisted by a later write
     return Promise.resolve(true);
@@ -3720,11 +3880,16 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
 
   // Phase 2: Check empty write protection
   if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
-    console.log(`${logPrefix} v1.6.3.10-v5 Transaction BLOCKED at phase: empty-check`, {
+    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
+    console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
+      correlationId: writeCorrelationId,
       transactionId,
+      phase: 'EMPTY_CHECK',
+      reason: 'Empty write rejected',
       tabCount,
       forceEmpty,
-      durationMs: Date.now() - startTime
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
     });
     return Promise.resolve(false);
   }
@@ -3732,19 +3897,28 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   // Phase 3: Validate ownership
   const ownershipResult = _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId);
   if (!ownershipResult.shouldProceed) {
-    console.log(`${logPrefix} v1.6.3.10-v5 Transaction BLOCKED at phase: ownership-filter`, {
+    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
+    console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
+      correlationId: writeCorrelationId,
       transactionId,
-      durationMs: Date.now() - startTime
+      phase: 'OWNERSHIP_FILTER',
+      reason: 'Ownership validation failed',
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
     });
     return Promise.resolve(false);
   }
 
   // Phase 4: Check for state changes
   if (!hasStateChanged(state)) {
-    console.log(`${logPrefix} v1.6.3.10-v5 Transaction SKIPPED at phase: hash-check`, {
+    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle SKIPPED
+    console.log('[StorageWrite] LIFECYCLE_SKIPPED:', {
+      correlationId: writeCorrelationId,
       transactionId,
-      reason: 'no changes',
-      durationMs: Date.now() - startTime
+      phase: 'HASH_CHECK',
+      reason: 'No changes detected',
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
     });
     return Promise.resolve(true);
   }
@@ -3752,27 +3926,39 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   // Phase 5: Validate state content
   const validation = validateStateForPersist(state);
   if (!validation.valid) {
-    console.error(`${logPrefix} v1.6.3.10-v5 State validation failed at phase: validate-content`, {
+    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
+    console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
+      correlationId: writeCorrelationId,
       transactionId,
+      phase: 'VALIDATE_CONTENT',
+      reason: 'State validation failed',
       errors: validation.errors,
-      durationMs: Date.now() - startTime
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
     });
+    return Promise.resolve(false);
   }
 
   // Phase 6: Log and execute write
-  console.log(`${logPrefix} v1.6.3.10-v5 Transaction EXECUTING phase: write`, {
+  // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle EXECUTE_START
+  console.log('[StorageWrite] LIFECYCLE_EXECUTE_START:', {
+    correlationId: writeCorrelationId,
     transactionId,
     tabCount,
     minimizedCount,
-    durationMs: Date.now() - startTime
+    durationMs: Date.now() - startTime,
+    timestamp: new Date().toISOString()
   });
 
   _logPersistInitiation({ logPrefix, transactionId, tabCount, minimizedCount, forceEmpty });
 
   const stateWithTxn = _prepareStateForWrite(state, transactionId);
+  
+  // v1.6.3.10-v10 - FIX Gap 3.1: Add write correlation ID to state for tracking
+  stateWithTxn._writeCorrelationId = writeCorrelationId;
 
   return queueStorageWrite(
-    () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId),
+    () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId, startTime),
     logPrefix,
     transactionId
   );

@@ -76,6 +76,7 @@ export class StateManager {
   /**
    * Subscribe to state changes
    * v1.6.3.10-v9 - FIX Issue B: Track subscriptions and warn on potential leak
+   * v1.6.3.10-v10 - FIX Gap 7.1: Subscription lifecycle logging (CREATED/FIRED/DISPOSED)
    * @param {string|function} keyOrCallback - State key or callback for all changes
    * @param {function} callback - Optional callback if key is provided
    * @returns {function} Unsubscribe function
@@ -83,12 +84,24 @@ export class StateManager {
   subscribe(keyOrCallback, callback) {
     // v1.6.3.10-v9 - FIX Issue B: Check if already disposed
     if (this._disposed) {
-      console.warn('[State] v1.6.3.10-v9 SUBSCRIPTION_AFTER_DISPOSE: Attempted to subscribe after StateManager was disposed');
+      console.warn('[Subscription] CREATED_AFTER_DISPOSE:', {
+        warning: 'Attempted to subscribe after StateManager was disposed',
+        timestamp: new Date().toISOString()
+      });
       return () => {}; // Return no-op unsubscribe
     }
     
     this._subscriptionCount++;
     const id = Symbol('listener');
+    const subscriptionKey = typeof keyOrCallback === 'function' ? '*' : keyOrCallback;
+    
+    // v1.6.3.10-v10 - FIX Gap 7.1: Log subscription creation
+    console.log('[Subscription] CREATED:', {
+      subscriptionId: id.toString(),
+      key: subscriptionKey,
+      totalActive: this._subscriptionCount,
+      timestamp: new Date().toISOString()
+    });
     
     // v1.6.3.10-v9 - FIX Issue B: Warn on potential memory leak (throttled)
     this._checkSubscriptionLeakThrottled();
@@ -107,6 +120,7 @@ export class StateManager {
   /**
    * Check for subscription leak and warn (throttled)
    * v1.6.3.10-v9 - FIX Issue B: Throttle warning to reduce performance impact
+   * v1.6.3.10-v10 - FIX Gap 7.2: Memory leak detection telemetry
    * @private
    */
   _checkSubscriptionLeakThrottled() {
@@ -116,46 +130,70 @@ export class StateManager {
     if (now - this._lastWarningTime < SUBSCRIPTION_WARNING_THROTTLE_MS) return;
     
     this._lastWarningTime = now;
-    console.warn('[State] v1.6.3.10-v9 SUBSCRIPTION_LEAK_WARNING:', {
+    // v1.6.3.10-v10 - FIX Gap 7.2: Memory leak detection
+    console.warn('[Subscription] LEAK_WARNING:', {
       subscriptionCount: this._subscriptionCount,
       threshold: this._maxSubscriptions,
-      warning: 'Possible memory leak - too many active subscriptions'
+      subscriptionsByKey: this._countSubscriptionsByKey(),
+      warning: 'Possible memory leak - too many active subscriptions',
+      timestamp: new Date().toISOString()
     });
   }
   
   /**
    * Internal unsubscribe helper
    * v1.6.3.10-v9 - FIX Issue B: Track unsubscriptions
+   * v1.6.3.10-v10 - FIX Gap 7.1: Subscription DISPOSED logging
    * @private
    */
   _unsubscribe(id, key) {
     const wasDeleted = this.listeners.delete(id);
     if (wasDeleted) {
       this._subscriptionCount = Math.max(0, this._subscriptionCount - 1);
-      console.log('[State] v1.6.3.10-v9 SUBSCRIPTION_DISPOSED:', {
-        id: id.toString(),
+      // v1.6.3.10-v10 - FIX Gap 7.1: Log subscription disposal
+      console.log('[Subscription] DISPOSED:', {
+        subscriptionId: id.toString(),
         key,
-        remainingSubscriptions: this.listeners.size
+        remainingActive: this.listeners.size,
+        timestamp: new Date().toISOString()
       });
     }
   }
 
   /**
    * Notify listeners of state changes
+   * v1.6.3.10-v10 - FIX Gap 7.1: Log subscription FIRED events
    * @param {string} key - Changed key
    * @param {any} newValue - New value
    * @param {any} oldValue - Old value
    */
   notifyListeners(key, newValue, oldValue) {
+    let firedCount = 0;
     this.listeners.forEach(({ key: listenerKey, callback }) => {
       if (listenerKey === '*' || listenerKey === key) {
         try {
           callback(key, newValue, oldValue, this.state);
+          firedCount++;
         } catch (err) {
-          console.error('[State] Listener error:', err);
+          console.error('[Subscription] FIRED_ERROR:', {
+            key,
+            listenerKey,
+            error: err.message,
+            timestamp: new Date().toISOString()
+          });
         }
       }
     });
+    
+    // v1.6.3.10-v10 - FIX Gap 7.1: Log subscription firing summary (only if listeners fired)
+    if (firedCount > 0) {
+      console.log('[Subscription] FIRED:', {
+        key,
+        listenersFired: firedCount,
+        totalListeners: this.listeners.size,
+        timestamp: new Date().toISOString()
+      });
+    }
   }
 
   /**
