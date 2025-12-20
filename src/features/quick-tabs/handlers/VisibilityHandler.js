@@ -937,6 +937,44 @@ export class VisibilityHandler {
   }
 
   /**
+   * Perform pre-validation for handleMinimize operation
+   * v1.6.3.10-v14 - FIX Complexity: Extracted to reduce handleMinimize complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @param {string} operationId - Operation ID for tracing
+   * @param {number} operationStartTime - Operation start timestamp
+   * @returns {{ valid: boolean, result?: Object, tabWindow?: Object }} Validation result
+   */
+  _performMinimizePreValidation(id, source, operationId, operationStartTime) {
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
+    if (!ownershipValidation.valid) {
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id, operationId, outcome: 'error',
+        errorReason: 'ownership_validation_failed',
+        durationMs: Date.now() - operationStartTime
+      });
+      return { valid: false, result: ownershipValidation.result };
+    }
+
+    const tabWindow = this.quickTabsMap.get(id);
+
+    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
+    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
+    if (!preconditions.canProceed) {
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id, operationId, outcome: 'blocked',
+        errorReason: preconditions.result?.error || 'precondition_failed',
+        durationMs: Date.now() - operationStartTime
+      });
+      return { valid: false, result: preconditions.result };
+    }
+
+    return { valid: true, tabWindow };
+  }
+
+  /**
    * Handle Quick Tab minimize
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
@@ -951,6 +989,7 @@ export class VisibilityHandler {
    * v1.6.3.5-v11 - FIX Issue #4: Check tabWindow.isMinimizing flag for operation-specific suppression
    * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
    * v1.6.3.10-v11 - FIX Issue #16: Operation completion logging with operation ID
+   * v1.6.3.10-v14 - FIX Complexity: Extracted pre-validation to helper method
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
@@ -979,33 +1018,13 @@ export class VisibilityHandler {
       operationId
     });
 
-    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
-    if (!ownershipValidation.valid) {
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'error',
-        errorReason: 'ownership_validation_failed',
-        durationMs: Date.now() - operationStartTime
-      });
-      return ownershipValidation.result;
+    // v1.6.3.10-v14 - FIX Complexity: Use helper for pre-validation
+    const preValidation = this._performMinimizePreValidation(id, source, operationId, operationStartTime);
+    if (!preValidation.valid) {
+      return preValidation.result;
     }
 
-    const tabWindow = this.quickTabsMap.get(id);
-
-    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
-    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
-    if (!preconditions.canProceed) {
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'blocked',
-        errorReason: preconditions.result?.error || 'precondition_failed',
-        durationMs: Date.now() - operationStartTime
-      });
-      return preconditions.result;
-    }
+    const tabWindow = preValidation.tabWindow;
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
