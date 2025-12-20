@@ -107,6 +107,14 @@ const PERSIST_STORAGE_TIMEOUT_MS = 5000;
 // When z-index counter exceeds this value, recycle all z-indices to prevent unbounded growth
 const Z_INDEX_RECYCLE_THRESHOLD = 100000;
 
+// v1.6.3.10-v11 - FIX Issue #10: Lock timeout for stale lock recovery
+// If a lock is held longer than this, log warning and auto-release
+const LOCK_TIMEOUT_MS = 1000;
+
+// v1.6.3.10-v11 - FIX Issue #10: Lock warning threshold (5x normal lock duration)
+// Log warning if lock held longer than this but not yet timed out
+const LOCK_WARNING_THRESHOLD_MS = OPERATION_LOCK_MS * 5;
+
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
@@ -239,13 +247,14 @@ export class VisibilityHandler {
       return validation.result;
     }
 
+    // v1.6.3.10-v11 - FIX Issue #10: Pass source to _handleVisibilityToggle
     this._handleVisibilityToggle(quickTabId, {
       mode: 'SOLO',
       newTabs: newSoloedTabs,
       tabsProperty: 'soloedOnTabs',
       clearProperty: 'mutedOnTabs',
       updateButton: this._updateSoloButton.bind(this)
-    });
+    }, source);
     return { success: true };
   }
 
@@ -266,13 +275,14 @@ export class VisibilityHandler {
       return validation.result;
     }
 
+    // v1.6.3.10-v11 - FIX Issue #10: Pass source to _handleVisibilityToggle
     this._handleVisibilityToggle(quickTabId, {
       mode: 'MUTE',
       newTabs: newMutedTabs,
       tabsProperty: 'mutedOnTabs',
       clearProperty: 'soloedOnTabs',
       updateButton: this._updateMuteButton.bind(this)
-    });
+    }, source);
     return { success: true };
   }
 
@@ -280,11 +290,13 @@ export class VisibilityHandler {
    * Common handler for solo/mute visibility toggles
    * v1.6.3 - Local only (no storage writes)
    * v1.6.3.10-v10 - FIX Issue 5.1: Add ownership validation and lock for atomicity
+   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock methods
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} config - Configuration for toggle operation
+   * @param {string} [source='UI'] - Source of the operation
    */
-  _handleVisibilityToggle(quickTabId, config) {
+  _handleVisibilityToggle(quickTabId, config, source = 'UI') {
     const { mode, newTabs, tabsProperty, clearProperty, updateButton } = config;
 
     console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
@@ -304,10 +316,12 @@ export class VisibilityHandler {
     }
 
     // v1.6.3.10-v10 - FIX Issue 5.1: Use lock to prevent concurrent modifications
-    if (!this._tryAcquireLock('visibility', quickTabId)) {
+    // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock
+    if (!this._tryAcquireLock('visibility', quickTabId, source)) {
       console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Lock held for:`, {
         quickTabId,
-        mode
+        mode,
+        source
       });
       return;
     }
@@ -320,7 +334,7 @@ export class VisibilityHandler {
       // Update button states if tab has them
       updateButton(tab, newTabs);
     } finally {
-      this._releaseLock('visibility', quickTabId);
+      this._releaseLock('visibility', quickTabId, source);
     }
   }
 
@@ -453,25 +467,75 @@ export class VisibilityHandler {
   /**
    * Try to acquire a lock for an operation
    * v1.6.3.2 - FIX Issue #2: Mutex pattern to prevent duplicate operations
+   * v1.6.3.10-v11 - FIX Issue #10: Add source to lock key, add timeout recovery
    * @private
-   * @param {string} operation - Operation type ('minimize' or 'restore')
+   * @param {string} operation - Operation type ('minimize', 'restore', 'visibility', etc.)
    * @param {string} id - Quick Tab ID
+   * @param {string} [source='unknown'] - Source of the operation ('UI', 'Manager', 'background', etc.)
    * @returns {boolean} True if lock acquired, false if operation already in progress
    */
-  _tryAcquireLock(operation, id) {
+  _tryAcquireLock(operation, id, source = 'unknown') {
     // v1.6.3.10-v4 - FIX Issue #14: Include tab context to prevent cross-tab lock conflicts
-    const lockKey = `${operation}-${this.currentTabId}-${id}`;
+    // v1.6.3.10-v11 - FIX Issue #10: Include source in lock key to distinguish operation origins
+    const lockKey = `${operation}-${this.currentTabId}-${id}-${source}`;
     const now = Date.now();
     const existingLock = this._operationLocks.get(lockKey);
 
-    // If lock exists and hasn't expired, operation is in progress
-    if (existingLock && now - existingLock < OPERATION_LOCK_MS) {
-      console.log(`[VisibilityHandler] Lock blocked duplicate ${operation} for:`, id);
-      return false;
+    // If lock exists, check if it's still valid
+    if (existingLock) {
+      const lockAge = now - existingLock.timestamp;
+      
+      // v1.6.3.10-v11 - FIX Issue #10: Log warning if lock held too long
+      if (lockAge >= LOCK_WARNING_THRESHOLD_MS && lockAge < LOCK_TIMEOUT_MS) {
+        console.warn(`${this._logPrefix} LOCK_HELD_WARNING: Lock held for ${lockAge}ms`, {
+          lockKey,
+          operation,
+          id,
+          source,
+          holder: existingLock.source,
+          warningThresholdMs: LOCK_WARNING_THRESHOLD_MS
+        });
+      }
+      
+      // v1.6.3.10-v11 - FIX Issue #10: Auto-release if lock held too long (timeout recovery)
+      if (lockAge >= LOCK_TIMEOUT_MS) {
+        console.error(`${this._logPrefix} LOCK_TIMEOUT_RECOVERY: Auto-releasing stale lock`, {
+          lockKey,
+          operation,
+          id,
+          source,
+          previousHolder: existingLock.source,
+          lockAgeMs: lockAge,
+          timeoutMs: LOCK_TIMEOUT_MS
+        });
+        // Fall through to acquire the lock
+      } else if (lockAge < OPERATION_LOCK_MS) {
+        // Lock is still valid and not timed out
+        console.log(`${this._logPrefix} Lock blocked duplicate ${operation} for:`, {
+          id,
+          requestingSource: source,
+          holdingSource: existingLock.source,
+          lockAgeMs: lockAge
+        });
+        return false;
+      }
     }
 
-    // Acquire lock
-    this._operationLocks.set(lockKey, now);
+    // Acquire lock with source tracking
+    this._operationLocks.set(lockKey, { 
+      timestamp: now, 
+      source,
+      operation,
+      id 
+    });
+    
+    console.log(`${this._logPrefix} Lock acquired:`, {
+      lockKey,
+      operation,
+      id,
+      source
+    });
+    
     return true;
   }
 
@@ -479,19 +543,36 @@ export class VisibilityHandler {
    * Release a lock for an operation
    * v1.6.3.2 - FIX Issue #2: Mutex pattern cleanup
    * v1.6.3.10-v4 - FIX Issue #14: Include tab context in lock key
+   * v1.6.3.10-v11 - FIX Issue #10: Include source in lock key
    * @private
-   * @param {string} operation - Operation type ('minimize' or 'restore')
+   * @param {string} operation - Operation type ('minimize', 'restore', 'visibility', etc.)
    * @param {string} id - Quick Tab ID
+   * @param {string} [source='unknown'] - Source of the operation
    */
-  _releaseLock(operation, id) {
+  _releaseLock(operation, id, source = 'unknown') {
     // v1.6.3.10-v4 - FIX Issue #14: Include tab context in lock key
-    const lockKey = `${operation}-${this.currentTabId}-${id}`;
+    // v1.6.3.10-v11 - FIX Issue #10: Include source in lock key
+    const lockKey = `${operation}-${this.currentTabId}-${id}-${source}`;
+    const lock = this._operationLocks.get(lockKey);
+    
+    if (lock) {
+      const lockDuration = Date.now() - lock.timestamp;
+      console.log(`${this._logPrefix} Lock released:`, {
+        lockKey,
+        operation,
+        id,
+        source,
+        lockDurationMs: lockDuration
+      });
+    }
+    
     this._operationLocks.delete(lockKey);
   }
 
   /**
    * Check minimize preconditions
    * v1.6.3.5-v11 - Extracted to reduce handleMinimize complexity
+   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock methods
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object|null} tabWindow - TabWindow instance
@@ -521,8 +602,8 @@ export class VisibilityHandler {
       return { canProceed: false, result: { success: true, error: 'Suppressed callback' } };
     }
 
-    // Check mutex lock
-    if (!this._tryAcquireLock('minimize', id)) {
+    // Check mutex lock - v1.6.3.10-v11: Pass source
+    if (!this._tryAcquireLock('minimize', id, source)) {
       console.log(
         `${this._logPrefix} Ignoring duplicate minimize request (lock held, source: ${source}) for:`,
         id
@@ -536,7 +617,7 @@ export class VisibilityHandler {
         `${this._logPrefix} Ignoring duplicate minimize request (pending, source: ${source}) for:`,
         id
       );
-      this._releaseLock('minimize', id);
+      this._releaseLock('minimize', id, source);
       return { canProceed: false, result: { success: false, error: 'Operation pending' } };
     }
 
@@ -590,15 +671,33 @@ export class VisibilityHandler {
    * v1.6.3.4-v8 - FIX Issue #3: Suppress callbacks during handler-initiated operations
    * v1.6.3.5-v11 - FIX Issue #4: Check tabWindow.isMinimizing flag for operation-specific suppression
    * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+   * v1.6.3.10-v11 - FIX Issue #16: Operation completion logging with operation ID
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
+    // v1.6.3.10-v11 - FIX Issue #16: Generate operation ID for tracing
+    const operationStartTime = Date.now();
+    const operationId = `minimize-${id}-${operationStartTime}`;
+    
+    console.log(`${this._logPrefix} handleMinimize ENTRY:`, {
+      id,
+      source,
+      operationId
+    });
+
     // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
     const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
     if (!ownershipValidation.valid) {
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'error',
+        errorReason: 'ownership_validation_failed',
+        durationMs: Date.now() - operationStartTime
+      });
       return ownershipValidation.result;
     }
 
@@ -607,6 +706,13 @@ export class VisibilityHandler {
     // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
     const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
     if (!preconditions.canProceed) {
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'blocked',
+        errorReason: preconditions.result?.error || 'precondition_failed',
+        durationMs: Date.now() - operationStartTime
+      });
       return preconditions.result;
     }
 
@@ -620,6 +726,13 @@ export class VisibilityHandler {
       // Validate instance
       const validation = this._validateMinimizeInstance(id, tabWindow, source);
       if (!validation.valid) {
+        console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+          id,
+          operationId,
+          outcome: 'error',
+          errorReason: 'instance_validation_failed',
+          durationMs: Date.now() - operationStartTime
+        });
         return validation.result;
       }
       const tabWindowInstance = validation.instance;
@@ -693,10 +806,31 @@ export class VisibilityHandler {
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
       this._debouncedPersist(id, 'minimize', source);
 
+      // v1.6.3.10-v11 - FIX Issue #16: Log completion with success
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'success',
+        durationMs: Date.now() - operationStartTime,
+        storageWriteScheduled: true
+      });
+
       return { success: true };
+    } catch (err) {
+      // v1.6.3.10-v11 - FIX Issue #16: Log completion with exception
+      console.error(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'error',
+        errorReason: err.message,
+        durationMs: Date.now() - operationStartTime,
+        stack: err.stack
+      });
+      throw err;
     } finally {
       // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
-      this._releaseLock('minimize', id);
+      // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock
+      this._releaseLock('minimize', id, source);
     }
   }
 
@@ -704,14 +838,15 @@ export class VisibilityHandler {
    * Check if restore operation can proceed
    * v1.6.3.2 - Helper to reduce handleRestore complexity
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock methods
    * @private
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action
    * @returns {boolean} True if operation can proceed
    */
   _canProceedWithRestore(id, source = 'unknown') {
-    // Check mutex lock
-    if (!this._tryAcquireLock('restore', id)) {
+    // Check mutex lock - v1.6.3.10-v11: Pass source
+    if (!this._tryAcquireLock('restore', id, source)) {
       console.log(
         `[VisibilityHandler] Ignoring duplicate restore request (lock held, source: ${source}) for:`,
         id
@@ -725,7 +860,7 @@ export class VisibilityHandler {
         `[VisibilityHandler] Ignoring duplicate restore request (pending, source: ${source}) for:`,
         id
       );
-      this._releaseLock('restore', id);
+      this._releaseLock('restore', id, source);
       return false;
     }
 
@@ -735,12 +870,14 @@ export class VisibilityHandler {
   /**
    * Cleanup after failed restore attempt
    * v1.6.3.2 - Helper to reduce handleRestore complexity
+   * v1.6.3.10-v11 - FIX Issue #10: Add source parameter for lock release
    * @private
    * @param {string} id - Quick Tab ID
+   * @param {string} [source='unknown'] - Source of action
    */
-  _cleanupFailedRestore(id) {
+  _cleanupFailedRestore(id, source = 'unknown') {
     this._pendingRestore.delete(id);
-    this._releaseLock('restore', id);
+    this._releaseLock('restore', id, source);
   }
 
   /**
@@ -811,14 +948,32 @@ export class VisibilityHandler {
    *   - Issue #7: Entity state is single source of truth - update FIRST
    * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
    * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock, Issue #16: Operation completion logging
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   async handleRestore(id, source = 'unknown') {
+    // v1.6.3.10-v11 - FIX Issue #16: Generate operation ID for tracing
+    const operationStartTime = Date.now();
+    const operationId = `restore-${id}-${operationStartTime}`;
+    
+    console.log(`${this._logPrefix} handleRestore ENTRY:`, {
+      id,
+      source,
+      operationId
+    });
+
     // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
     const ownershipValidation = this._validateCrossTabOwnership(id, 'restore', source);
     if (!ownershipValidation.valid) {
+      console.log(`${this._logPrefix} handleRestore COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'error',
+        errorReason: 'ownership_validation_failed',
+        durationMs: Date.now() - operationStartTime
+      });
       return ownershipValidation.result;
     }
 
@@ -831,15 +986,35 @@ export class VisibilityHandler {
 
     // v1.6.3.2 - Check preconditions for restore
     if (!this._canProceedWithRestore(id, source)) {
+      console.log(`${this._logPrefix} handleRestore COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'blocked',
+        errorReason: 'precondition_failed',
+        durationMs: Date.now() - operationStartTime
+      });
       return { success: false, error: 'Operation blocked (lock held or pending)' };
     }
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
-      return this._executeRestore(id, source);
+      const result = this._executeRestore(id, source, operationId, operationStartTime);
+      return result;
+    } catch (err) {
+      // v1.6.3.10-v11 - FIX Issue #16: Log completion with exception
+      console.error(`${this._logPrefix} handleRestore COMPLETED:`, {
+        id,
+        operationId,
+        outcome: 'error',
+        errorReason: err.message,
+        durationMs: Date.now() - operationStartTime,
+        stack: err.stack
+      });
+      throw err;
     } finally {
       // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
-      this._releaseLock('restore', id);
+      // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock
+      this._releaseLock('restore', id, source);
     }
   }
 
@@ -926,6 +1101,7 @@ export class VisibilityHandler {
   /**
    * Re-wire callbacks on tabWindow after restore
    * v1.6.3.5-v11 - FIX Issue #2: Missing callback re-wiring after restore
+   * v1.6.3.10-v11 - FIX Issue #9: Enhanced callback re-wiring with timeout recovery
    * Creates fresh callback functions that capture CURRENT handler context
    * @private
    * @param {Object} tabWindow - QuickTabWindow instance
@@ -956,19 +1132,60 @@ export class VisibilityHandler {
     // Note: Position/size callbacks (onPositionChange, onPositionChangeEnd, onSizeChange, onSizeChangeEnd)
     // are wired by UICoordinator via UpdateHandler as they require UpdateHandler context.
     // Emit an event so UICoordinator can re-wire those callbacks.
+    // v1.6.3.10-v11 - FIX Issue #9: Add timeout recovery for UICoordinator event
+    const CALLBACK_REWIRE_TIMEOUT_MS = 500;
+    let callbackRewireAcknowledged = false;
+    
     if (this.eventBus) {
+      // Set up one-time listener for acknowledgment
+      const ackHandler = (ackData) => {
+        if (ackData?.id === id) {
+          callbackRewireAcknowledged = true;
+          console.log(`${this._logPrefix} Callback re-wire acknowledged by UICoordinator:`, {
+            id,
+            source,
+            ackData
+          });
+        }
+      };
+      
+      // Listen for acknowledgment (UICoordinator should emit this after re-wiring)
+      this.eventBus.once('tab:callback-rewire-ack', ackHandler);
+      
       this.eventBus.emit('tab:needs-callback-rewire', {
         id,
         source,
         callbacksNeeded: ['onPositionChange', 'onPositionChangeEnd', 'onSizeChange', 'onSizeChangeEnd']
       });
+      
+      // v1.6.3.10-v11 - FIX Issue #9: Timeout recovery if UICoordinator doesn't acknowledge
+      setTimeout(() => {
+        if (!callbackRewireAcknowledged) {
+          console.warn(`${this._logPrefix} CALLBACK_REWIRE_TIMEOUT: UICoordinator did not acknowledge within ${CALLBACK_REWIRE_TIMEOUT_MS}ms`, {
+            id,
+            source,
+            note: 'Position/size callbacks may not be re-wired. User may need to reload page.'
+          });
+          
+          // Remove the listener to prevent memory leak
+          this.eventBus.off('tab:callback-rewire-ack', ackHandler);
+          
+          // v1.6.3.10-v11 - FIX Issue #9: Emit warning event for monitoring
+          this.eventBus.emit('tab:callback-rewire-timeout', {
+            id,
+            source,
+            timeoutMs: CALLBACK_REWIRE_TIMEOUT_MS
+          });
+        }
+      }, CALLBACK_REWIRE_TIMEOUT_MS);
     }
 
     const rewired = tabWindow.rewireCallbacks(freshCallbacks);
     console.log(`${this._logPrefix} Re-wired callbacks after restore (source: ${source}):`, {
       id,
       rewired,
-      callbacksProvided: Object.keys(freshCallbacks)
+      callbacksProvided: Object.keys(freshCallbacks),
+      pendingUICoordinatorCallbacks: ['onPositionChange', 'onPositionChangeEnd', 'onSizeChange', 'onSizeChangeEnd']
     });
   }
 
@@ -1026,22 +1243,57 @@ export class VisibilityHandler {
   }
 
   /**
+   * Log operation completion with tracing info
+   * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce _executeRestore complexity
+   * @private
+   */
+  _logOperationCompletion(options) {
+    const { id, operationId, operationStartTime, outcome, error, note, tabWindow } = options;
+    
+    if (!operationId || !operationStartTime) return;
+    
+    const completionLog = {
+      id,
+      operationId,
+      outcome,
+      durationMs: Date.now() - operationStartTime
+    };
+    
+    if (error) completionLog.errorReason = error;
+    if (note) completionLog.note = note;
+    if (outcome === 'success') {
+      completionLog.storageWriteScheduled = true;
+      if (tabWindow?.zIndex !== undefined) {
+        completionLog.newZIndex = tabWindow.zIndex;
+      }
+    }
+    
+    console.log(`${this._logPrefix} handleRestore COMPLETED:`, completionLog);
+  }
+
+  /**
    * Execute restore operation (extracted to reduce handleRestore complexity)
    * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
    * v1.6.3.4-v9 - FIX Issue #20: Add validation before proceeding
    * v1.6.3.5-v5 - FIX Issues #1, #6: DOM verification and transaction pattern with rollback
    * v1.6.3.5-v11 - FIX Issue #7, #9: Z-index sync and logging during restore
+   * v1.6.3.10-v11 - FIX Issue #16: Operation ID for completion logging
    * Refactored: Extracted helpers to reduce complexity
    * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @param {string} [operationId] - Operation ID for tracing
+   * @param {number} [operationStartTime] - Operation start timestamp
    */
-  _executeRestore(id, source) {
-    console.log(`${this._logPrefix}[_executeRestore] ENTRY (source: ${source}):`, { id });
+  _executeRestore(id, source, operationId = null, operationStartTime = null) {
+    console.log(`${this._logPrefix}[_executeRestore] ENTRY (source: ${source}):`, { id, operationId });
 
     const tabWindow = this.quickTabsMap.get(id);
 
     // Validate preconditions
     const validation = this._validateRestorePreconditions(tabWindow, id, source);
     if (!validation.valid) {
+      this._logOperationCompletion({ id, operationId, operationStartTime, outcome: 'error', error: validation.error });
       return { success: false, error: validation.error };
     }
 
@@ -1061,6 +1313,7 @@ export class VisibilityHandler {
     // Restore from minimized manager
     if (!this.minimizedManager.restore(id)) {
       this._handleNotInMinimizedManager(id, tabWindow, source);
+      this._logOperationCompletion({ id, operationId, operationStartTime, outcome: 'success', note: 'not_in_minimized_manager' });
       return { success: true };
     }
 
@@ -1072,6 +1325,9 @@ export class VisibilityHandler {
 
     // Emit restore event for legacy handlers
     this._emitLegacyRestoredEvent(id, source);
+
+    // Log completion with success
+    this._logOperationCompletion({ id, operationId, operationStartTime, outcome: 'success', tabWindow });
 
     console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
       id,
@@ -1838,8 +2094,9 @@ export class VisibilityHandler {
     this._pendingRestore.delete(id);
 
     // v1.6.3.2 - FIX Issue #2: Release operation locks
-    this._releaseLock('minimize', id);
-    this._releaseLock('restore', id);
+    // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock release
+    this._releaseLock('minimize', id, source);
+    this._releaseLock('restore', id, source);
 
     // v1.6.3.10-v10 - FIX Issue 10.1: Skip persist if storage marked unavailable
     if (!this._storageAvailable) {

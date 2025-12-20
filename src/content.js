@@ -384,6 +384,25 @@ const RETRYABLE_MESSAGE_PATTERNS = new Set(['disconnected', 'receiving end', 'Ex
 let contentScriptInitialized = false;
 
 /**
+ * Track whether hydration from storage is complete
+ * v1.6.3.10-v11 - FIX Issue #15: Hydration race condition prevention
+ * Operations like CREATE_QUICK_TAB should wait until hydration is complete
+ */
+let isHydrationComplete = false;
+
+/**
+ * Timeout for hydration (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within this time, allow operations anyway
+ */
+const HYDRATION_TIMEOUT_MS = 3000;
+
+/**
+ * Queue for operations that arrived during hydration
+ * v1.6.3.10-v11 - FIX Issue #15: Buffer operations until hydration completes
+ */
+const preHydrationOperationQueue = [];
+
+/**
  * Message queue for messages sent during initialization window
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
  */
@@ -724,6 +743,134 @@ async function _markContentScriptInitialized() {
   // Flush any queued messages
   await _flushInitializationMessageQueue();
 }
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #15: HYDRATION GATING ====================
+// Prevent operations from running before state is hydrated from storage
+
+/**
+ * Mark hydration as complete and drain the operation queue
+ * v1.6.3.10-v11 - FIX Issue #15: Signal hydration complete
+ * @param {number} [loadedTabCount=0] - Number of tabs loaded from storage
+ */
+async function _markHydrationComplete(loadedTabCount = 0) {
+  if (isHydrationComplete) return;
+  
+  isHydrationComplete = true;
+  console.log('[Content] HYDRATION_COMPLETE:', {
+    loadedTabCount,
+    queuedOperations: preHydrationOperationQueue.length,
+    timestamp: Date.now()
+  });
+  
+  // Drain queued operations
+  await _drainPreHydrationQueue();
+}
+
+/**
+ * Queue an operation that arrived before hydration completed
+ * v1.6.3.10-v11 - FIX Issue #15: Buffer operations during hydration
+ * @param {Object} operation - Operation to queue
+ * @param {string} operation.type - Operation type
+ * @param {Object} operation.data - Operation data
+ * @param {Function} [operation.callback] - Callback to execute when operation is processed
+ */
+function _queuePreHydrationOperation(operation) {
+  preHydrationOperationQueue.push({
+    ...operation,
+    queuedAt: Date.now()
+  });
+  
+  console.log('[Content] OPERATION_QUEUED_DURING_HYDRATION:', {
+    operationType: operation.type,
+    queueSize: preHydrationOperationQueue.length,
+    quickTabId: operation.data?.id || operation.data?.quickTabId
+  });
+}
+
+/**
+ * Execute a single queued operation callback
+ * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} operation - Operation from queue
+ * @param {number} queueDuration - Time spent in queue
+ */
+async function _executeQueuedOperation(operation, queueDuration) {
+  console.log('[Content] PROCESSING_QUEUED_OPERATION:', {
+    operationType: operation.type,
+    queueDurationMs: queueDuration
+  });
+  
+  try {
+    if (typeof operation.callback === 'function') {
+      await operation.callback(operation.data);
+    }
+  } catch (err) {
+    console.error('[Content] QUEUED_OPERATION_FAILED:', {
+      operationType: operation.type,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Drain the pre-hydration operation queue
+ * v1.6.3.10-v11 - FIX Issue #15: Process queued operations after hydration
+ * @private
+ */
+async function _drainPreHydrationQueue() {
+  if (preHydrationOperationQueue.length === 0) return;
+  
+  console.log('[Content] DRAINING_PRE_HYDRATION_QUEUE:', {
+    queueSize: preHydrationOperationQueue.length
+  });
+  
+  while (preHydrationOperationQueue.length > 0) {
+    const operation = preHydrationOperationQueue.shift();
+    const queueDuration = Date.now() - operation.queuedAt;
+    await _executeQueuedOperation(operation, queueDuration);
+  }
+}
+
+/**
+ * Check if operation should wait for hydration
+ * v1.6.3.10-v11 - FIX Issue #15: Gate operations until hydration complete
+ * @param {string} operationType - Type of operation
+ * @returns {boolean} True if operation should be queued, false if it can proceed
+ */
+function _shouldWaitForHydration(operationType) {
+  // If hydration is already complete, no need to wait
+  if (isHydrationComplete) {
+    return false;
+  }
+  
+  // Operations that should wait for hydration
+  const hydrationBlockedOperations = new Set([
+    'CREATE_QUICK_TAB',
+    'RESTORE_QUICK_TAB',
+    'UPDATE_QUICK_TAB_POSITION',
+    'UPDATE_QUICK_TAB_SIZE'
+  ]);
+  
+  return hydrationBlockedOperations.has(operationType);
+}
+
+/**
+ * Initialize hydration timeout safety
+ * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within timeout, proceed anyway
+ */
+function _initHydrationTimeout() {
+  setTimeout(() => {
+    if (!isHydrationComplete) {
+      console.warn('[Content] HYDRATION_TIMEOUT: Forcing hydration complete after timeout', {
+        timeoutMs: HYDRATION_TIMEOUT_MS,
+        queuedOperations: preHydrationOperationQueue.length
+      });
+      _markHydrationComplete(0);
+    }
+  }, HYDRATION_TIMEOUT_MS);
+}
+
+// ==================== END HYDRATION GATING ====================
 
 /**
  * Check if an error response is retryable
@@ -3031,10 +3178,40 @@ setInterval(_cleanupAdoptionTracking, ADOPTION_CLEANUP_INTERVAL_MS);
 const recentStorageEvents = new Map();
 
 /**
- * De-duplication window for storage events (milliseconds)
+ * Base de-duplication window for storage events (milliseconds)
  * v1.6.3.10-v7 - FIX Issue #6: 200ms window
+ * v1.6.3.10-v11 - FIX Issue #12: Now a minimum, actual window is adaptive
  */
-const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
+const STORAGE_EVENT_BASE_DEDUP_WINDOW_MS = 200;
+
+/**
+ * Maximum storage event dedup window (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #12: Cap to prevent excessive delays
+ */
+const STORAGE_EVENT_MAX_DEDUP_WINDOW_MS = 1000;
+
+/**
+ * Get adaptive storage event dedup window based on observed storage latency
+ * v1.6.3.10-v11 - FIX Issue #12: Account for Firefox's async storage.onChanged timing (300-500ms)
+ * Uses 2x observed latency, clamped to [200ms, 1000ms]
+ * @returns {number} Dedup window in milliseconds
+ */
+function _getAdaptiveStorageEventDedupWindow() {
+  // Use the same latency tracking as message dedup
+  if (lastKnownBackgroundLatencyMs === null) {
+    return STORAGE_EVENT_BASE_DEDUP_WINDOW_MS;
+  }
+  
+  // v1.6.3.10-v11 - FIX Issue #12: Storage events can take 300-500ms to fire
+  // Use 2x observed latency, with minimum of 500ms for storage events specifically
+  const minStorageWindow = Math.max(STORAGE_EVENT_BASE_DEDUP_WINDOW_MS, 500);
+  const adaptiveWindow = Math.min(
+    Math.max(lastKnownBackgroundLatencyMs * 2, minStorageWindow),
+    STORAGE_EVENT_MAX_DEDUP_WINDOW_MS
+  );
+  
+  return adaptiveWindow;
+}
 
 /**
  * Check if storage event is a duplicate and should be skipped
@@ -3046,14 +3223,22 @@ const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
 /**
  * Check if event is within dedup window with same version
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.3.10-v11 - FIX Issue #12: Use adaptive dedup window
  * @private
  */
 function _isWithinDedupWindow(lastEvent, newVersion, now) {
   if (!lastEvent) return false;
   const timeSinceLastEvent = now - lastEvent.timestamp;
-  const isDuplicate = timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && lastEvent.version === newVersion;
+  // v1.6.3.10-v11 - FIX Issue #12: Use adaptive window instead of fixed constant
+  const dedupWindowMs = _getAdaptiveStorageEventDedupWindow();
+  const isDuplicate = timeSinceLastEvent < dedupWindowMs && lastEvent.version === newVersion;
   if (isDuplicate) {
-    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { timeSinceLastEvent, version: newVersion });
+    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { 
+      timeSinceLastEvent, 
+      version: newVersion,
+      dedupWindowMs,
+      observedLatencyMs: lastKnownBackgroundLatencyMs 
+    });
   }
   return isDuplicate;
 }
@@ -3080,11 +3265,14 @@ function _isStorageEventDuplicate(key, newValue) {
 /**
  * Clean up old storage event tracking entries
  * v1.6.3.10-v7 - FIX Issue #6
+ * v1.6.3.10-v11 - FIX Issue #12: Use adaptive dedup window for cleanup
  * @private
  * @param {number} now - Current timestamp
  */
 function _cleanupOldStorageEvents(now) {
-  const cutoff = now - STORAGE_EVENT_DEDUP_WINDOW_MS * 10;
+  // v1.6.3.10-v11 - FIX Issue #12: Use adaptive window for cleanup calculation
+  const dedupWindowMs = _getAdaptiveStorageEventDedupWindow();
+  const cutoff = now - dedupWindowMs * 10;
   for (const [key, eventInfo] of recentStorageEvents) {
     if (eventInfo.timestamp < cutoff) {
       recentStorageEvents.delete(key);
