@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,48 +9,45 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v10 Status:** Issues 1-28 & Problem Areas A-F Fixed ✅
+**🔧 v1.6.3.10-v11 Status:** 25 Issues Fixed (3 Diagnostic Reports) ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.10-v10
+## 🎉 What's New in v1.6.3.10-v11
 
-**🔧 Issues 1-28 & Problem Areas A-F Fixed (December 2025) ✅**
+**🔧 25 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
 
-- ✅ **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- ✅ **Storage Write Validation** - Timeout-based fallback with validation
-- ✅ **Handler Registration** - Deferred until async initialization completes
-- ✅ **Adoption Lock Timeout** - 10 seconds with escalation logging
-- ✅ **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
-- ✅ **Container Context** - `updateContainerContextForAdoption()` tracking
-- ✅ **Tab Cleanup** - `setOnTabRemovedCallback()` registration
-- ✅ **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
-- ✅ **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
-- ✅ **Message Timeout** - `withTimeout()` utility (MESSAGE_TIMEOUT_MS = 5000)
+- ✅ **Extended Tab ID Acquisition** - 60s total timeout with 5s intervals
+- ✅ **Operation Type Tracking** - CREATE/RESTORE/UPDATE/CLOSE/MINIMIZE enum
+- ✅ **Adaptive Dedup Window** - 2x observed storage latency, 500ms minimum
+- ✅ **Ownership Validation** - MessageRouter validates originTabId vs sender
+- ✅ **Queue Backpressure** - 100 items max, 75% warning threshold
+- ✅ **Callback Re-wiring** - 500ms timeout recovery for UICoordinator
+- ✅ **Hydration Barrier** - Operations queued until storage loaded (3s)
+- ✅ **Background Lifecycle** - In-flight recovery markers, beforeunload
+- ✅ **Three-Phase Handshake** - INIT_REQUEST → INIT_RESPONSE → INIT_COMPLETE
+- ✅ **LRU Map Guard** - 500 entry max, 10% eviction, 30s cleanup cycle
 
 ---
 
-## 🎉 What's New in v1.6.3.10-v9
+## 🎉 What's New in v1.6.3.10-v10
 
-**🔧 Storage & Cross-Tab Fixes (Previous) ✅**
+**🔧 Issues 1-28 & Problem Areas A-F Fixed ✅**
 
-- ✅ **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- ✅ **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
-- ✅ **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- ✅ **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
-- ✅ **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
-- ✅ **Memory Leak Fix** - Comprehensive `destroy()` method
+- ✅ **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- ✅ **Storage Write Validation** - Timeout-based fallback with validation
+- ✅ **Adoption Lock Timeout** - 10 seconds with escalation logging
+- ✅ **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.10-v10:** Issues 1-28 & areas A-F, checkpoint system, message timeout  
 **v1.6.3.10-v9:** Storage & cross-tab fixes, identity gating, quota monitoring  
 **v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed  
-**v1.6.3.10-v7:** Port circuit breaker, adaptive dedup, storage write serialization  
-**v1.6.3.10-v6:** Type-safe tab IDs, async tab ID init, container ID normalization  
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -237,6 +234,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v10** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v11** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
