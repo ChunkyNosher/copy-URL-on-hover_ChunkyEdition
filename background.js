@@ -710,24 +710,58 @@ const MAX_INITIALIZATION_RETRIES = 3;
 /**
  * Log initialization completion
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce initializeGlobalState complexity
+ * v1.6.3.10-v10 - FIX Issue #6: Add [INIT] boundary logging
  * @private
  */
 function _logInitializationComplete(source, initStartTime) {
+  const durationMs = Date.now() - initStartTime;
+  const tabCount = globalQuickTabState.tabs?.length || 0;
+  
+  // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
+  console.log('[INIT][Background] STORAGE_LOAD_COMPLETE:', {
+    source,
+    tabCount,
+    durationMs,
+    timestamp: new Date().toISOString()
+  });
+  
+  console.log('[INIT][Background] PHASE_COMPLETE:', {
+    success: true,
+    source,
+    tabCount,
+    durationMs,
+    isInitialized: true,
+    timestamp: new Date().toISOString()
+  });
+  
   console.log(`[Background] Initialization complete from ${source}:`, {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    durationMs: Date.now() - initStartTime
+    tabCount,
+    durationMs
   });
 }
 
 /**
  * Handle initialization failure with retry logic
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce initializeGlobalState complexity
+ * v1.6.3.10-v10 - FIX Issue #6: Add [INIT] boundary logging
  * @private
  */
 function _handleInitializationFailure(err, initStartTime) {
+  const durationMs = Date.now() - initStartTime;
+  
+  // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for failure
+  console.error('[INIT][Background] PHASE_FAILED:', {
+    error: err.message,
+    durationMs,
+    retryCount: initializationRetryCount,
+    maxRetries: MAX_INITIALIZATION_RETRIES,
+    willRetry: initializationRetryCount < MAX_INITIALIZATION_RETRIES,
+    timestamp: new Date().toISOString()
+  });
+  
   console.error('[Background] INITIALIZATION FAILED:', {
     error: err.message,
-    durationMs: Date.now() - initStartTime,
+    durationMs,
     retryCount: initializationRetryCount,
     maxRetries: MAX_INITIALIZATION_RETRIES
   });
@@ -735,9 +769,20 @@ function _handleInitializationFailure(err, initStartTime) {
   if (initializationRetryCount < MAX_INITIALIZATION_RETRIES) {
     initializationRetryCount++;
     const backoffMs = Math.pow(2, initializationRetryCount) * 500;
+    console.log('[INIT][Background] RETRY_SCHEDULED:', {
+      attempt: initializationRetryCount,
+      maxRetries: MAX_INITIALIZATION_RETRIES,
+      backoffMs,
+      timestamp: new Date().toISOString()
+    });
     console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
     setTimeout(() => initializeGlobalState(), backoffMs);
   } else {
+    console.error('[INIT][Background] MAX_RETRIES_EXCEEDED:', {
+      totalAttempts: initializationRetryCount + 1,
+      fallback: 'empty state',
+      timestamp: new Date().toISOString()
+    });
     console.error('[Background] Max retries exceeded - marking as initialized with empty state');
     globalQuickTabState.tabs = [];
     globalQuickTabState.lastUpdate = Date.now();
@@ -751,10 +796,18 @@ async function initializeGlobalState() {
     return;
   }
 
-  console.log('[Background] Starting state initialization...');
+  // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for initialization phases
+  console.log('[INIT][Background] PHASE_START: Beginning state initialization', {
+    timestamp: new Date().toISOString(),
+    isInitialized: false
+  });
   const initStartTime = Date.now();
 
   try {
+    console.log('[INIT][Background] STORAGE_LOAD_START:', {
+      timestamp: new Date().toISOString()
+    });
+    
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
       initializationRetryCount = 0;
@@ -5335,6 +5388,13 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
 
 // Register message handlers for Quick Tab coordination
 // This extends the existing runtime.onMessage listener
+// v1.6.3.10-v10 - FIX Issue #6: Add [INIT] boundary logging for handler registration timestamp
+console.log('[INIT][Background] MESSAGE_HANDLER_REGISTRATION:', {
+  timestamp: new Date().toISOString(),
+  handler: 'QUICK_TAB_STATE_CHANGE + MANAGER_COMMAND',
+  isInitialized
+});
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
   if (message.type === 'QUICK_TAB_STATE_CHANGE') {

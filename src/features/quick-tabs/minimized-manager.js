@@ -70,7 +70,13 @@ function extractTabIdFromQuickTabId(quickTabId) {
  * v1.6.3.5 - FIX Issue #3: Add restore-in-progress lock to prevent duplicates
  * v1.6.3.5-v7 - FIX Issue #1: Add storage persistence callback after snapshot operations
  * v1.6.3.10-v6 - FIX Issue A5: Add automatic snapshot expiration (1000ms timeout)
+ * v1.6.3.10-v10 - FIX Issues #9, #11: Enhanced adoption lock with timeout and escalation
  */
+
+// v1.6.3.10-v10 - FIX Issue #11: Adoption lock timeout constants
+const ADOPTION_LOCK_TIMEOUT_MS = 10000; // 10 seconds max lock duration
+const ADOPTION_LOCK_WARNING_MS = 5000;  // Warn after 5 seconds
+
 export class MinimizedManager {
   /**
    * Storage persistence callback - set by QuickTabsManager to trigger saves
@@ -92,9 +98,290 @@ export class MinimizedManager {
     this.lastLocalUpdateTime = Date.now();
     // v1.6.3.10-v6 - FIX Issue A5: Track expiration timeouts for pending snapshots
     this._snapshotExpirationTimeouts = new Map();
-    // v1.6.3.10-v10 - FIX Issue 1.1: Adoption lock to synchronize adoption and restore operations
-    // Key: quickTabId, Value: { timestamp, promise }
+    // v1.6.3.10-v10 - FIX Issue #9/#11: Adoption lock to synchronize adoption and restore operations
+    // Key: quickTabId, Value: { timestamp, promise, resolver, timeoutId, warningTimeoutId }
     this._adoptionLocks = new Map();
+    // v1.6.3.10-v10 - FIX Issue #11: Track forced lock releases for debugging
+    this._forcedLockReleaseCount = 0;
+  }
+
+  /**
+   * Acquire adoption lock for a Quick Tab
+   * v1.6.3.10-v10 - FIX Issue #9/#11: Coordinate adoption with restore operations
+   * 
+   * The lock prevents restore operations from proceeding while adoption is in flight.
+   * Includes timeout and escalation mechanism to prevent indefinite waits.
+   * 
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {string} reason - Reason for acquiring lock (for logging)
+   * @returns {Promise<{acquired: boolean, wasForced: boolean}>}
+   */
+  /**
+   * Wait for existing lock with timeout
+   * v1.6.3.10-v10 - FIX Code Health: Extracted to reduce nesting
+   * v1.6.3.10-v10 - FIX Code Review: Clear timeout to prevent memory leaks
+   * @private
+   */
+  async _waitForExistingLockWithTimeout(existingLock, quickTabId, remainingTimeout) {
+    console.log('[ADOPTION][MinimizedManager] LOCK_WAIT:', {
+      quickTabId,
+      lockAge: Date.now() - existingLock.timestamp,
+      timeout: ADOPTION_LOCK_TIMEOUT_MS,
+      timestamp: new Date().toISOString()
+    });
+    
+    let timeoutId = null;
+    try {
+      await Promise.race([
+        existingLock.promise,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Lock wait timeout')), remainingTimeout);
+        })
+      ]);
+    } catch (err) {
+      console.warn('[ADOPTION][MinimizedManager] LOCK_WAIT_TIMEOUT:', {
+        quickTabId,
+        error: err.message,
+        timestamp: new Date().toISOString()
+      });
+      this._forceReleaseAdoptionLock(quickTabId);
+      this._forcedLockReleaseCount++;
+    } finally {
+      // Clear timeout to prevent memory leaks
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  /**
+   * Handle existing lock when trying to acquire
+   * v1.6.3.10-v10 - FIX Code Health: Extracted to reduce nesting
+   * @private
+   */
+  async _handleExistingLock(existingLock, quickTabId) {
+    const lockAge = Date.now() - existingLock.timestamp;
+    
+    // Force-release stale locks
+    if (lockAge >= ADOPTION_LOCK_TIMEOUT_MS) {
+      console.warn('[ADOPTION][MinimizedManager] LOCK_FORCE_RELEASE:', {
+        quickTabId,
+        lockAge,
+        reason: 'timeout exceeded',
+        timestamp: new Date().toISOString()
+      });
+      this._forceReleaseAdoptionLock(quickTabId);
+      this._forcedLockReleaseCount++;
+      return;
+    }
+    
+    // Wait for existing lock
+    await this._waitForExistingLockWithTimeout(existingLock, quickTabId, ADOPTION_LOCK_TIMEOUT_MS - lockAge);
+  }
+
+  /**
+   * Create and store new adoption lock
+   * v1.6.3.10-v10 - FIX Code Health: Extracted to reduce nesting
+   * @private
+   */
+  _createNewAdoptionLock(quickTabId, reason) {
+    let resolver;
+    const promise = new Promise(resolve => { resolver = resolve; });
+    
+    const warningTimeoutId = setTimeout(() => {
+      console.warn('[ADOPTION][MinimizedManager] LOCK_WARNING:', {
+        quickTabId,
+        heldMs: ADOPTION_LOCK_WARNING_MS,
+        reason,
+        timestamp: new Date().toISOString()
+      });
+    }, ADOPTION_LOCK_WARNING_MS);
+    
+    const timeoutId = setTimeout(() => {
+      console.error('[ADOPTION][MinimizedManager] LOCK_TIMEOUT_ESCALATION:', {
+        quickTabId,
+        heldMs: ADOPTION_LOCK_TIMEOUT_MS,
+        reason,
+        action: 'force-releasing',
+        timestamp: new Date().toISOString()
+      });
+      this._forceReleaseAdoptionLock(quickTabId);
+      this._forcedLockReleaseCount++;
+    }, ADOPTION_LOCK_TIMEOUT_MS);
+    
+    this._adoptionLocks.set(quickTabId, {
+      timestamp: Date.now(),
+      promise,
+      resolver,
+      timeoutId,
+      warningTimeoutId,
+      reason
+    });
+  }
+
+  /**
+   * Acquire adoption lock for a Quick Tab
+   * v1.6.3.10-v10 - FIX Issue #9/#11: Coordinate adoption with restore operations
+   * 
+   * The lock prevents restore operations from proceeding while adoption is in flight.
+   * Includes timeout and escalation mechanism to prevent indefinite waits.
+   * 
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {string} reason - Reason for acquiring lock (for logging)
+   * @returns {Promise<{acquired: boolean, wasForced: boolean}>}
+   */
+  async acquireAdoptionLock(quickTabId, reason = 'adoption') {
+    console.log('[ADOPTION][MinimizedManager] LOCK_ACQUIRE_REQUEST:', {
+      quickTabId,
+      reason,
+      existingLock: this._adoptionLocks.has(quickTabId),
+      timestamp: new Date().toISOString()
+    });
+    
+    // Check for existing lock
+    const existingLock = this._adoptionLocks.get(quickTabId);
+    if (existingLock) {
+      await this._handleExistingLock(existingLock, quickTabId);
+    }
+    
+    // Create new lock
+    this._createNewAdoptionLock(quickTabId, reason);
+    
+    console.log('[ADOPTION][MinimizedManager] LOCK_ACQUIRED:', {
+      quickTabId,
+      reason,
+      timestamp: new Date().toISOString()
+    });
+    
+    return { acquired: true, wasForced: false };
+  }
+  
+  /**
+   * Release adoption lock for a Quick Tab
+   * v1.6.3.10-v10 - FIX Issue #9/#11: Release lock after adoption completes
+   * @param {string} quickTabId - Quick Tab ID
+   */
+  releaseAdoptionLock(quickTabId) {
+    const lock = this._adoptionLocks.get(quickTabId);
+    if (!lock) {
+      console.log('[ADOPTION][MinimizedManager] LOCK_RELEASE_NOOP:', {
+        quickTabId,
+        reason: 'no lock held',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    // Clear timeouts
+    if (lock.timeoutId) clearTimeout(lock.timeoutId);
+    if (lock.warningTimeoutId) clearTimeout(lock.warningTimeoutId);
+    
+    // Resolve the promise
+    if (lock.resolver) lock.resolver();
+    
+    // Remove the lock
+    this._adoptionLocks.delete(quickTabId);
+    
+    const holdDuration = Date.now() - lock.timestamp;
+    console.log('[ADOPTION][MinimizedManager] LOCK_RELEASED:', {
+      quickTabId,
+      holdDurationMs: holdDuration,
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  /**
+   * Force-release adoption lock (for timeout escalation)
+   * v1.6.3.10-v10 - FIX Issue #11: Force-release stale locks
+   * @private
+   */
+  _forceReleaseAdoptionLock(quickTabId) {
+    const lock = this._adoptionLocks.get(quickTabId);
+    if (!lock) return;
+    
+    // Clear timeouts
+    if (lock.timeoutId) clearTimeout(lock.timeoutId);
+    if (lock.warningTimeoutId) clearTimeout(lock.warningTimeoutId);
+    
+    // Resolve the promise
+    if (lock.resolver) lock.resolver();
+    
+    // Remove the lock
+    this._adoptionLocks.delete(quickTabId);
+  }
+  
+  /**
+   * Check if adoption lock is held for a Quick Tab
+   * v1.6.3.10-v10 - FIX Issue #12: Check adoption state before ownership check
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {{isLocked: boolean, lockAge: number|null, reason: string|null}}
+   */
+  isAdoptionLocked(quickTabId) {
+    const lock = this._adoptionLocks.get(quickTabId);
+    if (!lock) {
+      return { isLocked: false, lockAge: null, reason: null };
+    }
+    return {
+      isLocked: true,
+      lockAge: Date.now() - lock.timestamp,
+      reason: lock.reason
+    };
+  }
+  
+  /**
+   * Update snapshot's originTabId during adoption
+   * v1.6.3.10-v10 - FIX Issue #10: Update snapshot when adoption occurs
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {number} newOriginTabId - New owner tab ID
+   * @returns {boolean} True if updated, false if snapshot not found
+   */
+  updateSnapshotOriginTabId(quickTabId, newOriginTabId) {
+    const snapshot = this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId);
+    if (!snapshot) {
+      console.warn('[ADOPTION][MinimizedManager] UPDATE_ORIGIN_TAB_ID_FAILED:', {
+        quickTabId,
+        newOriginTabId,
+        reason: 'snapshot not found',
+        timestamp: new Date().toISOString()
+      });
+      return false;
+    }
+    
+    const oldOriginTabId = snapshot.savedOriginTabId;
+    snapshot.savedOriginTabId = newOriginTabId;
+    
+    console.log('[ADOPTION][MinimizedManager] UPDATE_ORIGIN_TAB_ID:', {
+      quickTabId,
+      oldOriginTabId,
+      newOriginTabId,
+      timestamp: new Date().toISOString()
+    });
+    
+    return true;
+  }
+  
+  /**
+   * Cleanup stale adoption locks on startup
+   * v1.6.3.10-v10 - FIX Issue #11: Clear any leftover locks from crashes/restarts
+   */
+  cleanupStaleAdoptionLocks() {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    for (const [quickTabId, lock] of this._adoptionLocks.entries()) {
+      const lockAge = now - lock.timestamp;
+      if (lockAge >= ADOPTION_LOCK_TIMEOUT_MS) {
+        this._forceReleaseAdoptionLock(quickTabId);
+        cleanedCount++;
+      }
+    }
+    
+    if (cleanedCount > 0) {
+      console.log('[ADOPTION][MinimizedManager] STARTUP_CLEANUP:', {
+        cleanedLocks: cleanedCount,
+        timestamp: new Date().toISOString()
+      });
+    }
   }
 
   /**
@@ -324,7 +611,8 @@ export class MinimizedManager {
     setTimeout(() => this._restoreInProgress.delete(id), RESTORE_LOCK_DURATION_MS);
 
     // v1.6.3.10-v7 - FIX Issue #12: Set isRestoring flag on snapshot (both locations)
-    const snapshot = this.minimizedTabs.get(id) || this.pendingClearSnapshots.get(id);
+    // v1.6.3.10-v10 - FIX Code Review: Use _findSnapshotById helper for consistency
+    const snapshot = this._findSnapshotById(id);
     if (snapshot) {
       snapshot.isRestoring = true;
       console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: isRestoring=true set for:', id);
@@ -945,59 +1233,6 @@ export class MinimizedManager {
   }
 
   /**
-   * Update snapshot's originTabId after adoption
-   * v1.6.4.15 - FIX Issue #22: Update snapshot keying after adoption
-   * 
-   * When a Quick Tab is adopted to a new tab, the originTabId changes.
-   * This method updates the savedOriginTabId in any existing snapshot
-   * so that subsequent restore operations use the correct tab context.
-   * 
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {number} newOriginTabId - New origin tab ID after adoption
-   * @param {number} previousOriginTabId - Previous origin tab ID (for logging)
-   * @returns {boolean} True if snapshot was updated, false if not found
-   */
-  updateSnapshotOriginTabId(quickTabId, newOriginTabId, previousOriginTabId) {
-    const snapshot = this._findSnapshotInAllMaps(quickTabId);
-    const snapshotSource = this.minimizedTabs.has(quickTabId) 
-      ? 'minimizedTabs' 
-      : 'pendingClearSnapshots';
-
-    if (!snapshot) {
-      console.log('[MinimizedManager] ADOPTION_SNAPSHOT_UPDATE: No snapshot found for Quick Tab:', {
-        quickTabId,
-        newOriginTabId,
-        previousOriginTabId
-      });
-      return false;
-    }
-
-    const oldSavedOriginTabId = snapshot.savedOriginTabId;
-
-    // Update the savedOriginTabId
-    snapshot.savedOriginTabId = newOriginTabId;
-
-    // Also update the window reference if present
-    if (snapshot.window) {
-      snapshot.window.originTabId = newOriginTabId;
-    }
-
-    console.log('[MinimizedManager] ADOPTION_SNAPSHOT_UPDATE: Updated snapshot originTabId:', {
-      quickTabId,
-      snapshotSource,
-      oldSavedOriginTabId,
-      newSavedOriginTabId: newOriginTabId,
-      previousOriginTabId,
-      timestamp: Date.now()
-    });
-
-    // Update local timestamp
-    this._updateLocalTimestamp();
-
-    return true;
-  }
-
-  /**
    * Check if a snapshot exists and return its current originTabId
    * v1.6.4.15 - FIX Issue #22: Helper for adoption verification
    * @param {string} quickTabId - Quick Tab ID
@@ -1011,67 +1246,6 @@ export class MinimizedManager {
     }
 
     return snapshot.savedOriginTabId ?? null;
-  }
-
-  /**
-   * Acquire adoption lock for a Quick Tab
-   * v1.6.3.10-v10 - FIX Issue 1.1: Synchronize adoption and restore operations
-   * All operations must wait for adoption lock to release before proceeding
-   * @param {string} quickTabId - Quick Tab ID
-   * @returns {Promise<void>} Resolves when lock is acquired
-   */
-  async acquireAdoptionLock(quickTabId) {
-    // Check if lock already exists for this ID
-    const existingLock = this._adoptionLocks.get(quickTabId);
-    if (existingLock) {
-      console.log('[MinimizedManager] Waiting for existing adoption lock:', {
-        quickTabId,
-        lockAge: Date.now() - existingLock.timestamp
-      });
-      // Wait for existing lock to release
-      await existingLock.promise;
-    }
-
-    // Create new lock
-    let resolver;
-    const promise = new Promise(resolve => {
-      resolver = resolve;
-    });
-
-    this._adoptionLocks.set(quickTabId, {
-      timestamp: Date.now(),
-      promise,
-      resolver
-    });
-
-    console.log('[MinimizedManager] Adoption lock ACQUIRED:', { quickTabId });
-  }
-
-  /**
-   * Release adoption lock for a Quick Tab
-   * v1.6.3.10-v10 - FIX Issue 1.1: Release lock after adoption completes
-   * @param {string} quickTabId - Quick Tab ID
-   */
-  releaseAdoptionLock(quickTabId) {
-    const lock = this._adoptionLocks.get(quickTabId);
-    if (lock) {
-      lock.resolver?.();
-      this._adoptionLocks.delete(quickTabId);
-      console.log('[MinimizedManager] Adoption lock RELEASED:', {
-        quickTabId,
-        heldDuration: Date.now() - lock.timestamp
-      });
-    }
-  }
-
-  /**
-   * Check if adoption lock is held for a Quick Tab
-   * v1.6.3.10-v10 - FIX Issue 1.1: Check if adoption is in progress
-   * @param {string} quickTabId - Quick Tab ID
-   * @returns {boolean} True if lock is held
-   */
-  hasAdoptionLock(quickTabId) {
-    return this._adoptionLocks.has(quickTabId);
   }
 
   /**
@@ -1089,5 +1263,16 @@ export class MinimizedManager {
       });
       await existingLock.promise;
     }
+  }
+
+  /**
+   * Check if adoption lock is held (lightweight check)
+   * v1.6.3.10-v10 - FIX Issue 1.1: Check if adoption is in progress
+   * v1.6.3.10-v10 - FIX Code Review: Use lightweight Map.has() check for performance
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {boolean} True if lock is held
+   */
+  hasAdoptionLock(quickTabId) {
+    return this._adoptionLocks.has(quickTabId);
   }
 }

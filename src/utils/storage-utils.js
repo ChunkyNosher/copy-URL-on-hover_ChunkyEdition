@@ -1633,6 +1633,152 @@ function _handleEmptyWriteValidation(tabId, forceEmpty) {
   };
 }
 
+// v1.6.3.10-v10 - FIX Issue #2: Emergency tab ID re-acquisition timeout constants
+// If currentWritingTabId is null for more than this duration, attempt emergency re-acquisition
+const EMERGENCY_TABID_TIMEOUT_MS = 5000;
+// Track when tab ID was first checked as null (for timeout-based recovery)
+let tabIdNullSinceTimestamp = null;
+// v1.6.3.10-v10 - FIX Code Review: Guard against concurrent re-acquisition attempts
+let emergencyReacquisitionInProgress = false;
+
+/**
+ * Attempt emergency re-acquisition of tab ID from background
+ * v1.6.3.10-v10 - FIX Issue #2: Fallback when tab ID remains null after timeout
+ * v1.6.3.10-v10 - FIX Code Review: Added synchronization guard against concurrent attempts
+ * @private
+ * @returns {Promise<number|null>} Re-acquired tab ID or null
+ */
+async function _attemptEmergencyTabIdReacquisition() {
+  // Guard against concurrent re-acquisition attempts
+  if (emergencyReacquisitionInProgress) {
+    console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Skipped (already in progress)');
+    return null;
+  }
+  
+  emergencyReacquisitionInProgress = true;
+  
+  console.warn('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Attempting re-acquisition', {
+    tabIdNullSinceTimestamp,
+    nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
+    currentWritingTabId
+  });
+  
+  try {
+    // Use the browser API directly to avoid circular dependencies
+    const browserAPI = getBrowserStorageAPI();
+    if (!browserAPI?.tabs?.getCurrent) {
+      console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
+        reason: 'browser.tabs.getCurrent not available'
+      });
+      return null;
+    }
+    
+    const tab = await browserAPI.tabs.getCurrent();
+    if (!tab?.id || typeof tab.id !== 'number') {
+      console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
+        reason: 'Could not get tab via browser.tabs.getCurrent()',
+        tabResult: tab
+      });
+      return null;
+    }
+    
+    console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: SUCCESS', {
+      reacquiredTabId: tab.id,
+      containerId: tab.cookieStoreId
+    });
+    
+    // Update the cached values
+    currentWritingTabId = tab.id;
+    currentWritingContainerId = tab.cookieStoreId ?? null;
+    
+    // Reset the null timestamp
+    tabIdNullSinceTimestamp = null;
+    
+    // Resolve any waiting promises
+    _resolveTabIdInitPromise(tab.id, 'emergency-reacquisition');
+    if (tab.cookieStoreId) {
+      _resolveContainerIdInitPromise(tab.cookieStoreId, 'emergency-reacquisition');
+    }
+    
+    return tab.id;
+  } catch (err) {
+    console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: ERROR', {
+      error: err.message
+    });
+    return null;
+  } finally {
+    // Always release the guard
+    emergencyReacquisitionInProgress = false;
+  }
+}
+
+/**
+ * Check if emergency tab ID re-acquisition should be attempted
+ * v1.6.3.10-v10 - FIX Issue #2: Helper for timeout-based fallback
+ * @private
+ * @returns {boolean} True if should attempt re-acquisition
+ */
+function _shouldAttemptEmergencyReacquisition() {
+  if (currentWritingTabId !== null) {
+    // Tab ID is known, no emergency needed
+    tabIdNullSinceTimestamp = null;
+    return false;
+  }
+  
+  const now = Date.now();
+  
+  // First time seeing null - start tracking
+  if (tabIdNullSinceTimestamp === null) {
+    tabIdNullSinceTimestamp = now;
+    return false; // Don't attempt on first check
+  }
+  
+  // Check if timeout has elapsed
+  const nullDuration = now - tabIdNullSinceTimestamp;
+  return nullDuration >= EMERGENCY_TABID_TIMEOUT_MS;
+}
+
+/**
+ * Validate ownership for write with async fallback for tab ID acquisition
+ * v1.6.3.10-v10 - FIX Issue #2: Async version that can attempt emergency re-acquisition
+ * 
+ * This function wraps validateOwnershipForWrite with timeout-based fallback:
+ * If currentWritingTabId is null for 5+ seconds, attempt emergency re-acquisition
+ * before rejecting the write.
+ * 
+ * @param {Array} tabs - Array of tabs to validate
+ * @param {number|null} currentTabId - Current tab ID (optional)
+ * @param {boolean} forceEmpty - Allow empty writes
+ * @param {string|null} currentContainerId - Current container ID (optional)
+ * @returns {Promise<{ shouldWrite: boolean, ownedTabs: Array, reason: string }>}
+ */
+export async function validateOwnershipForWriteAsync(tabs, currentTabId = null, forceEmpty = false, currentContainerId = null) {
+  const resolvedTabId = currentTabId ?? currentWritingTabId;
+  
+  // Fast path: tab ID is known
+  if (resolvedTabId !== null) {
+    return validateOwnershipForWrite(tabs, currentTabId, forceEmpty, currentContainerId);
+  }
+  
+  // Tab ID is null - check if we should attempt emergency re-acquisition
+  if (_shouldAttemptEmergencyReacquisition()) {
+    console.warn('[StorageUtils] v1.6.3.10-v10 OWNERSHIP_VALIDATION: Attempting emergency tab ID re-acquisition', {
+      nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
+      tabCount: tabs?.length ?? 0
+    });
+    
+    const reacquiredTabId = await _attemptEmergencyTabIdReacquisition();
+    
+    if (reacquiredTabId !== null) {
+      // Re-try validation with re-acquired tab ID
+      return validateOwnershipForWrite(tabs, reacquiredTabId, forceEmpty, currentContainerId);
+    }
+  }
+  
+  // Fall back to sync version (which will block the write)
+  return validateOwnershipForWrite(tabs, currentTabId, forceEmpty, currentContainerId);
+}
+
 /**
  * Check if current tab should write to storage based on Quick Tab ownership
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Only owner tabs should write state

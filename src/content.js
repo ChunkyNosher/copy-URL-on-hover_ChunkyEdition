@@ -349,53 +349,180 @@ function logQuickTabsInitError(qtErr) {
   _logErrorProperties(qtErr);
 }
 
-/**
- * Get current tab ID from background script
- * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
- * Must send message to background script which has access to sender.tab.id
- * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
- *
- * @returns {Promise<number|null>} Current tab ID or null if unavailable
- */
-async function getCurrentTabIdFromBackground() {
-  // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for tab ID retrieval
-  console.log('[Content][TabID] REQUEST: Sending tab ID request to background');
-  const startTime = Date.now();
+// ==================== v1.6.3.10-v10 TAB ID RETRY CONSTANTS ====================
+// FIX Issue #5: Exponential backoff retry configuration for tab ID acquisition
+// Retry delays: 200ms, 500ms, 1500ms, 5000ms (total 7200ms before final failure)
+const TAB_ID_RETRY_DELAYS_MS = [200, 500, 1500, 5000];
+const TAB_ID_MAX_RETRIES = TAB_ID_RETRY_DELAYS_MS.length;
 
+// v1.6.3.10-v10 - FIX Code Review: Extract error strings as constants
+// v1.6.3.10-v10 - FIX Code Review: Use Set for O(1) lookup performance
+const RETRYABLE_ERROR_CODES = new Set(['NOT_INITIALIZED', 'GLOBAL_STATE_NOT_READY']);
+const RETRYABLE_MESSAGE_PATTERNS = ['disconnected', 'receiving end', 'Extension context'];
+
+/**
+ * Check if an error response is retryable
+ * v1.6.3.10-v10 - FIX Code Review: Extracted to helper function
+ * @private
+ */
+function _isRetryableResponse(response) {
+  if (response?.retryable === true) return true;
+  if (RETRYABLE_ERROR_CODES.has(response?.error)) return true;
+  return false;
+}
+
+/**
+ * Check if an error message indicates a retryable condition
+ * v1.6.3.10-v10 - FIX Code Review: Extracted to helper function
+ * @private
+ */
+function _isRetryableError(message) {
+  if (!message) return false;
+  return RETRYABLE_MESSAGE_PATTERNS.some(pattern => message.includes(pattern));
+}
+
+/**
+ * Single attempt to get tab ID from background
+ * v1.6.3.10-v10 - FIX Issue #5: Extracted to support retry logic
+ * @private
+ * @param {number} attemptNumber - Current attempt number (1-based)
+ * @returns {Promise<{tabId: number|null, error: string|null, retryable: boolean}>}
+ */
+async function _attemptGetTabIdFromBackground(attemptNumber) {
+  const startTime = Date.now();
+  
   try {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
 
-    // v1.6.3.6-v4 - FIX Issue #1: Enhanced validation logging
+    // Success case
     if (response?.success && typeof response.tabId === 'number') {
-      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for successful response
-      console.log('[Content][TabID] RESPONSE: Received tab ID from background', {
+      console.log('[Content][TabID][INIT] ATTEMPT_SUCCESS:', {
+        attempt: attemptNumber,
         tabId: response.tabId,
-        duration: `${duration}ms`,
-        success: true
+        durationMs: duration
       });
-      return response.tabId;
+      return { tabId: response.tabId, error: null, retryable: false };
     }
 
-    // v1.6.3.6-v4 - Log detailed error information
-    // v1.6.3.10-v4 - FIX Issue #1: Enhanced failure logging
-    console.warn('[Content][TabID] FAILURE: Background returned invalid tab ID response', {
+    // Check if error is retryable (background not initialized yet)
+    const isRetryable = _isRetryableResponse(response);
+
+    console.warn('[Content][TabID][INIT] ATTEMPT_FAILED:', {
+      attempt: attemptNumber,
       response,
-      success: response?.success,
-      tabId: response?.tabId,
       error: response?.error,
-      duration: `${duration}ms`
+      retryable: isRetryable,
+      durationMs: duration
     });
-    return null;
+
+    return { 
+      tabId: null, 
+      error: response?.error || 'Invalid response from background',
+      retryable: isRetryable
+    };
   } catch (err) {
     const duration = Date.now() - startTime;
-    // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for request failure
-    console.error('[Content][TabID] FAILURE: Failed to get tab ID from background', {
+    
+    // Network/messaging errors are usually retryable
+    const isRetryable = _isRetryableError(err.message);
+
+    console.error('[Content][TabID][INIT] ATTEMPT_ERROR:', {
+      attempt: attemptNumber,
       error: err.message,
-      duration: `${duration}ms`
+      retryable: isRetryable,
+      durationMs: duration
     });
-    return null;
+
+    return { 
+      tabId: null, 
+      error: err.message,
+      retryable: isRetryable
+    };
   }
+}
+
+/**
+ * Get current tab ID from background script with exponential backoff retry
+ * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
+ * Must send message to background script which has access to sender.tab.id
+ * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
+ * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
+ *
+ * Retry delays: 200ms, 500ms, 1500ms, 5000ms
+ * Maximum 5 attempts (initial + 4 retries)
+ *
+ * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
+ */
+async function getCurrentTabIdFromBackground() {
+  console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
+    maxRetries: TAB_ID_MAX_RETRIES,
+    retryDelays: TAB_ID_RETRY_DELAYS_MS,
+    timestamp: new Date().toISOString()
+  });
+  
+  const overallStartTime = Date.now();
+  
+  // Initial attempt (attempt #1)
+  let result = await _attemptGetTabIdFromBackground(1);
+  
+  if (result.tabId !== null) {
+    console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on first attempt', {
+      tabId: result.tabId,
+      totalDurationMs: Date.now() - overallStartTime
+    });
+    return result.tabId;
+  }
+  
+  // Retry loop with exponential backoff
+  for (let retryIndex = 0; retryIndex < TAB_ID_MAX_RETRIES; retryIndex++) {
+    const attemptNumber = retryIndex + 2; // First retry is attempt #2
+    const delayMs = TAB_ID_RETRY_DELAYS_MS[retryIndex];
+    
+    // Only retry if the error was retryable
+    if (!result.retryable) {
+      console.warn('[Content][TabID][INIT] ABORT: Error is not retryable', {
+        lastError: result.error,
+        attemptsTried: attemptNumber - 1,
+        totalDurationMs: Date.now() - overallStartTime
+      });
+      break;
+    }
+    
+    console.log('[Content][TabID][INIT] RETRY_SCHEDULED:', {
+      retryNumber: retryIndex + 1,
+      attemptNumber,
+      delayMs,
+      previousError: result.error,
+      elapsedMs: Date.now() - overallStartTime
+    });
+    
+    // Wait before retry
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    
+    // Retry attempt
+    result = await _attemptGetTabIdFromBackground(attemptNumber);
+    
+    if (result.tabId !== null) {
+      console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on retry', {
+        tabId: result.tabId,
+        attemptNumber,
+        totalDurationMs: Date.now() - overallStartTime
+      });
+      return result.tabId;
+    }
+  }
+  
+  // All retries exhausted
+  const totalDuration = Date.now() - overallStartTime;
+  console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
+    totalAttempts: TAB_ID_MAX_RETRIES + 1,
+    lastError: result.error,
+    totalDurationMs: totalDuration,
+    timestamp: new Date().toISOString()
+  });
+  
+  return null;
 }
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
@@ -1235,20 +1362,35 @@ window.addEventListener('unload', () => {
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
  * v1.6.3.10-v6 - FIX Issue #4/11/12: Enhanced logging showing tab ID acquisition flow
+ * v1.6.3.10-v10 - FIX Issue #6: Add [INIT] prefix boundary logging for initialization phases
  */
 async function initializeQuickTabsFeature() {
-  console.log('[Copy-URL-on-Hover] About to initialize Quick Tabs...');
+  // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
+  const initStartTime = Date.now();
+  console.log('[INIT][Content] PHASE_START: Quick Tabs initialization beginning', {
+    timestamp: new Date().toISOString(),
+    isWritingTabIdInitialized: isWritingTabIdInitialized()
+  });
 
   // v1.6.3.10-v6 - FIX Issue #4/11: Log before tab ID request
-  console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_START: Beginning tab ID acquisition', {
+  console.log('[INIT][Content] TAB_ID_ACQUISITION_START:', {
     isWritingTabIdInitialized: isWritingTabIdInitialized(),
-    timestamp: Date.now()
+    timestamp: new Date().toISOString()
   });
 
   // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
   // This is critical for cross-tab scoping - Quick Tabs should only render
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
+  const tabIdAcquisitionDuration = Date.now() - initStartTime;
+
+  // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for tab ID result
+  console.log('[INIT][Content] TAB_ID_ACQUISITION_COMPLETE:', {
+    currentTabId: currentTabId !== null ? currentTabId : 'FAILED',
+    durationMs: tabIdAcquisitionDuration,
+    success: currentTabId !== null,
+    timestamp: new Date().toISOString()
+  });
 
   // v1.6.3.10-v6 - FIX Issue #4/11: Log tab ID acquisition result
   console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_RESULT: Tab ID acquired', {
@@ -1269,8 +1411,15 @@ async function initializeQuickTabsFeature() {
     });
 
     // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
+    console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId: currentTabId });
     connectContentToBackground(currentTabId);
+    console.log('[INIT][Content] PORT_CONNECTION_INITIATED:', { tabId: currentTabId });
   } else {
+    // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for failure
+    console.error('[INIT][Content] TAB_ID_ACQUISITION_FAILED:', {
+      timestamp: new Date().toISOString(),
+      warning: 'Storage writes may fail ownership validation without tab ID'
+    });
     console.warn(
       '[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_FAILED: Could not acquire tab ID from background'
     );
@@ -1279,10 +1428,27 @@ async function initializeQuickTabsFeature() {
     );
   }
 
+  // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for manager init
+  console.log('[INIT][Content] QUICKTABS_MANAGER_INIT_START:', {
+    currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+    timestamp: new Date().toISOString()
+  });
+
   // Pass currentTabId as option so UICoordinator can filter by originTabId
   quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
 
+  const initEndTime = Date.now();
+  const totalInitDuration = initEndTime - initStartTime;
+
   if (quickTabsManager) {
+    // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for completion
+    console.log('[INIT][Content] PHASE_COMPLETE:', {
+      success: true,
+      currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+      totalDurationMs: totalInitDuration,
+      hasManager: true,
+      timestamp: new Date().toISOString()
+    });
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
     console.log(
       '[Copy-URL-on-Hover] Manager has createQuickTab:',
@@ -1290,6 +1456,14 @@ async function initializeQuickTabsFeature() {
     );
     console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
   } else {
+    console.error('[INIT][Content] PHASE_COMPLETE:', {
+      success: false,
+      currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+      totalDurationMs: totalInitDuration,
+      hasManager: false,
+      error: 'Manager is null after initialization',
+      timestamp: new Date().toISOString()
+    });
     console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
   }
 }
