@@ -92,9 +92,7 @@ export class MessageRouter {
    */
   setBackgroundGenerationId(generationId) {
     this._backgroundGenerationId = generationId;
-    console.log('[MessageRouter] v1.6.3.10-v12 Background generation ID set:', {
-      generationId
-    });
+    console.log('[MessageRouter] v1.6.3.10-v12 Background generation ID configured');
   }
   
   /**
