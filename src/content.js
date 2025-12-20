@@ -185,6 +185,11 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #5: Add sequenceId to CREATE_QUICK_TAB messages for ordering enforcement
  * - FIX Issue #22: VisibilityHandler consistency checks started automatically
  * - FIX Issue #3: Extended state machine with CREATING, CLOSING, ERROR states
+ * - FIX Issue #1: Port onDisconnect race condition during initialization (port-disconnect-racing.md)
+ * - FIX Issue #2: BFCache silent port disconnection handling (pagehide/pageshow listeners)
+ * - FIX Issue #4: Periodic adoption TTL recalculation via heartbeat latency updates
+ * - FIX Issue #11: PORT_CONNECTION_STATE.RECONNECTING state for backoff distinction
+ * - FIX Issue #12: Adoption cache cleared on cross-domain navigation (beforeunload)
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -1516,8 +1521,27 @@ const PORT_CONNECTION_STATE = {
   CONNECTING: 'CONNECTING',
   CONNECTED: 'CONNECTED',
   READY: 'READY',           // v1.6.3.10-v11 - FIX Issue #24: Handshake complete
+  RECONNECTING: 'RECONNECTING', // v1.6.3.10-v12 - FIX Issue #11: Backoff retry state
   FAILED: 'FAILED'
 };
+
+// v1.6.3.10-v12 - FIX Issue #1: Track if port disconnected during setup
+let portDisconnectedDuringSetup = false;
+
+// v1.6.3.10-v12 - FIX Issue #1: Track if port listener registration is complete
+let portListenersRegistered = false;
+
+// v1.6.3.10-v12 - FIX Issue #2: Track if port is potentially invalid due to BFCache
+let portPotentiallyInvalidDueToBFCache = false;
+
+/**
+ * Check if port is in recovery state (reconnecting or backoff)
+ * v1.6.3.10-v12 - FIX Issue #11: Distinguish retry from permanent failure
+ * @returns {boolean} True if port is in recovery state
+ */
+function isPortInRecovery() {
+  return portConnectionState === PORT_CONNECTION_STATE.RECONNECTING;
+}
 
 // v1.6.3.10-v11 - FIX Issue #24: Three-phase handshake states
 const HANDSHAKE_PHASE = {
@@ -2276,8 +2300,16 @@ function _handleReconnection(tabId, reason) {
     return;
   }
 
+  // v1.6.3.10-v12 - FIX Issue #11: Transition to RECONNECTING state during backoff
   const reconnectDelay = _calculateReconnectDelay();
-  console.log('[Content] Scheduling reconnection:', { attempt: reconnectionAttempts, delayMs: reconnectDelay, reason });
+  _transitionPortState(PORT_CONNECTION_STATE.RECONNECTING, 'backoff-scheduled');
+  
+  console.log('[Content] PORT_RECONNECTING (backoff): Scheduling reconnection', { 
+    attempt: reconnectionAttempts, 
+    delayMs: reconnectDelay, 
+    reason,
+    isInRecovery: isPortInRecovery()
+  });
 
   setTimeout(() => {
     if (!backgroundPort && document.visibilityState !== 'hidden') {
@@ -2295,6 +2327,10 @@ function connectContentToBackground(tabId) {
     return;
   }
 
+  // v1.6.3.10-v12 - FIX Issue #1: Reset port setup state flags
+  portDisconnectedDuringSetup = false;
+  portListenersRegistered = false;
+
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTING, 'connect-attempt');
   handshakeRequestTimestamp = Date.now();
   isBackgroundReady = false;
@@ -2302,19 +2338,58 @@ function connectContentToBackground(tabId) {
   try {
     backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
-    _resetReconnectionAttempts();
-    _drainMessageQueue();
-
+    
+    // v1.6.3.10-v12 - FIX Issue #1: Register BOTH listeners BEFORE any other setup
+    // This prevents the race window where onDisconnect fires before onMessage is ready
+    
+    // Register onMessage listener first
     backgroundPort.onMessage.addListener(handleContentPortMessage);
-
+    
+    // Register onDisconnect listener second
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
+      
+      // v1.6.3.10-v12 - FIX Issue #1: Check if disconnect happened during setup
+      if (!portListenersRegistered) {
+        portDisconnectedDuringSetup = true;
+        console.log('[Content] PORT_DISCONNECT_DURING_INIT: Disconnect occurred during listener registration', {
+          error: error?.message,
+          timestamp: Date.now()
+        });
+        // Don't execute state changes until init gate passed
+        return;
+      }
+      
+      // Normal operation - proceed with disconnect handling
+      console.log('[Content] PORT_DISCONNECT_NORMAL: Disconnect in normal operation', {
+        error: error?.message,
+        timestamp: Date.now()
+      });
+      
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
       isBackgroundReady = false;
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
       _handleReconnection(tabId, 'disconnect');
     });
+    
+    // v1.6.3.10-v12 - FIX Issue #1: Mark listeners as registered (init gate)
+    portListenersRegistered = true;
+    
+    // Now check if disconnect happened during the registration window
+    if (portDisconnectedDuringSetup) {
+      console.log('[Content] PORT_DISCONNECT_DURING_SETUP_DETECTED: Handling deferred disconnect', {
+        timestamp: Date.now()
+      });
+      backgroundPort = null;
+      isBackgroundReady = false;
+      _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected-during-setup');
+      _handleReconnection(tabId, 'disconnect-during-setup');
+      return;
+    }
+    
+    _resetReconnectionAttempts();
+    _drainMessageQueue();
 
     console.log('[Content] Port connection established');
   } catch (err) {
@@ -2487,6 +2562,192 @@ window.addEventListener('unload', () => {
     backgroundPort = null;
   }
 });
+
+// ==================== v1.6.3.10-v12 FIX ISSUE #2: BFCACHE HANDLING ====================
+// Firefox does not fire port.onDisconnect when tab enters BFCache
+// Add pagehide/pageshow event listeners to detect BFCache transitions
+
+/**
+ * Handle pagehide event for BFCache entry detection
+ * v1.6.3.10-v12 - FIX Issue #2: Mark port as potentially invalid on BFCache entry
+ * @param {PageTransitionEvent} event - Page transition event
+ */
+function _handlePageHide(event) {
+  if (event.persisted) {
+    // Page is going into BFCache
+    console.log('[Content][BFCACHE] ENTRY_DETECTED: Page entering BFCache', {
+      timestamp: Date.now(),
+      hasPort: !!backgroundPort,
+      portState: portConnectionState
+    });
+    
+    portPotentiallyInvalidDueToBFCache = true;
+    
+    // Mark port as potentially invalid but don't disconnect
+    // It may still work when restored
+  }
+}
+
+/**
+ * Handle pageshow event for BFCache exit detection
+ * v1.6.3.10-v12 - FIX Issue #2: Verify port functionality after BFCache restore
+ * @param {PageTransitionEvent} event - Page transition event
+ */
+function _handlePageShow(event) {
+  if (event.persisted) {
+    // Page was restored from BFCache
+    console.log('[Content][BFCACHE] EXIT_DETECTED: Page restored from BFCache', {
+      timestamp: Date.now(),
+      hasPort: !!backgroundPort,
+      portState: portConnectionState,
+      wasMarkedInvalid: portPotentiallyInvalidDueToBFCache
+    });
+    
+    if (portPotentiallyInvalidDueToBFCache) {
+      // Verify port functionality by attempting a ping
+      _verifyPortAfterBFCache();
+    }
+  }
+}
+
+/**
+ * Trigger port reconnection after BFCache restore when no port exists
+ * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleNoPortAfterBFCache() {
+  console.log('[Content][BFCACHE] VERIFY_PORT: No port exists, triggering reconnect');
+  portPotentiallyInvalidDueToBFCache = false;
+  if (cachedTabId) {
+    _handleReconnection(cachedTabId, 'bfcache-restore');
+  }
+}
+
+/**
+ * Handle port verification failure after BFCache restore
+ * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Error} err - Error from port verification
+ */
+function _handlePortVerifyFailure(err) {
+  console.warn('[Content][BFCACHE] VERIFY_PORT_FAILED: Port not functional after BFCache', {
+    error: err.message,
+    timestamp: Date.now()
+  });
+  
+  // Port is dead, trigger reconnection
+  backgroundPort = null;
+  portPotentiallyInvalidDueToBFCache = false;
+  _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'bfcache-port-dead');
+  
+  if (cachedTabId) {
+    _handleReconnection(cachedTabId, 'bfcache-port-dead');
+  }
+}
+
+/**
+ * Verify port functionality after BFCache restore
+ * v1.6.3.10-v12 - FIX Issue #2: Attempt handshake to verify port is still functional
+ * v1.6.3.10-v12 - FIX Code Health: Extracted helpers, removed unnecessary async
+ * @private
+ */
+function _verifyPortAfterBFCache() {
+  console.log('[Content][BFCACHE] VERIFY_PORT: Checking port functionality after BFCache restore');
+  
+  // No port exists - trigger reconnect immediately
+  if (!backgroundPort) {
+    _handleNoPortAfterBFCache();
+    return;
+  }
+  
+  // Try to send a test message via the port
+  try {
+    const testMessage = {
+      type: 'PORT_VERIFY',
+      timestamp: Date.now(),
+      reason: 'bfcache-restore'
+    };
+    
+    backgroundPort.postMessage(testMessage);
+    console.log('[Content][BFCACHE] VERIFY_PORT: Test message sent successfully');
+    
+    // If we get here without error, port seems functional
+    portPotentiallyInvalidDueToBFCache = false;
+    
+  } catch (err) {
+    _handlePortVerifyFailure(err);
+  }
+}
+
+// Register BFCache event listeners
+window.addEventListener('pagehide', _handlePageHide);
+window.addEventListener('pageshow', _handlePageShow);
+console.log('[Content] v1.6.3.10-v12 BFCache event listeners registered');
+
+// ==================== END BFCACHE HANDLING ====================
+
+// ==================== v1.6.3.10-v12 FIX ISSUE #12: ADOPTION CACHE NAVIGATION CLEAR ====================
+// Clear adoption cache on page navigation to prevent cross-domain leakage
+
+/**
+ * Current page hostname for adoption cache keying
+ * v1.6.3.10-v12 - FIX Issue #12: Track hostname for compound key
+ */
+let currentPageHostname = null;
+
+try {
+  currentPageHostname = window.location.hostname;
+} catch (_e) {
+  // Cross-origin access may throw
+  currentPageHostname = 'unknown';
+}
+
+/**
+ * Clear adoption cache on navigation
+ * v1.6.3.10-v12 - FIX Issue #12: Prevent cross-domain Quick Tab leakage
+ */
+function _clearAdoptionCacheOnNavigation() {
+  if (recentlyAdoptedQuickTabs.size > 0) {
+    console.log('[Content] ADOPTION_CACHE_CLEARED_ON_NAVIGATION:', {
+      previousCount: recentlyAdoptedQuickTabs.size,
+      previousHostname: currentPageHostname,
+      timestamp: Date.now()
+    });
+    
+    recentlyAdoptedQuickTabs.clear();
+    adoptionCacheMetrics.clearedOnNavigation = (adoptionCacheMetrics.clearedOnNavigation || 0) + 1;
+  }
+}
+
+/**
+ * Check if hostname changed and clear adoption cache if needed
+ * v1.6.3.10-v12 - FIX Issue #12: Detect cross-domain navigation
+ */
+function _checkHostnameChange() {
+  let newHostname = null;
+  try {
+    newHostname = window.location.hostname;
+  } catch (_e) {
+    newHostname = 'unknown';
+  }
+  
+  if (currentPageHostname !== null && newHostname !== currentPageHostname) {
+    console.log('[Content] HOSTNAME_CHANGE_DETECTED:', {
+      previousHostname: currentPageHostname,
+      newHostname,
+      timestamp: Date.now()
+    });
+    
+    _clearAdoptionCacheOnNavigation();
+  }
+  
+  currentPageHostname = newHostname;
+}
+
+// Clear adoption cache on beforeunload (navigation away)
+window.addEventListener('beforeunload', _clearAdoptionCacheOnNavigation);
+
+// ==================== END ADOPTION CACHE NAVIGATION CLEAR ====================
 
 // ==================== END PORT CONNECTION ====================
 
@@ -3817,14 +4078,24 @@ const adoptionLatencySamples = [];
 const MAX_ADOPTION_LATENCY_SAMPLES = 10;
 
 /**
+ * Counter for heartbeats to trigger periodic latency re-measurement
+ * v1.6.3.10-v12 - FIX Issue #4: Re-measure latency every 10 heartbeats
+ */
+let heartbeatCountSinceLatencyUpdate = 0;
+const HEARTBEATS_PER_LATENCY_UPDATE = 10;
+
+/**
  * Adoption cache metrics for logging
  * v1.6.3.10-v11 - FIX Issue #5
+ * v1.6.3.10-v12 - FIX Issue #12: Added clearedOnNavigation counter
  */
 const adoptionCacheMetrics = {
   hitCount: 0,
   missCount: 0,
   ttlExpiredCount: 0,
-  totalTracked: 0
+  totalTracked: 0,
+  clearedOnNavigation: 0,     // v1.6.3.10-v12 - FIX Issue #12
+  latencyUpdates: 0           // v1.6.3.10-v12 - FIX Issue #4
 };
 
 /**
@@ -3843,20 +4114,48 @@ function _getObservedHandshakeLatency() {
 /**
  * Record a handshake latency sample
  * v1.6.3.10-v11 - FIX Issue #5
+ * v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count for periodic recalculation
  * @param {number} latencyMs - Observed latency in milliseconds
  */
 function _recordHandshakeLatency(latencyMs) {
   if (typeof latencyMs !== 'number' || latencyMs < 0) return;
+  
+  // v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count
+  heartbeatCountSinceLatencyUpdate++;
+  
+  const oldLatency = lastKnownBackgroundLatencyMs;
   
   adoptionLatencySamples.push(latencyMs);
   if (adoptionLatencySamples.length > MAX_ADOPTION_LATENCY_SAMPLES) {
     adoptionLatencySamples.shift();
   }
   
+  const newAverageLatency = _getObservedHandshakeLatency();
+  
+  // v1.6.3.10-v12 - FIX Issue #4: Update lastKnownBackgroundLatencyMs periodically
+  // Recalculate every 10 heartbeats to adapt to network condition changes
+  if (heartbeatCountSinceLatencyUpdate >= HEARTBEATS_PER_LATENCY_UPDATE) {
+    heartbeatCountSinceLatencyUpdate = 0;
+    adoptionCacheMetrics.latencyUpdates++;
+    
+    if (oldLatency !== null && newAverageLatency !== null) {
+      console.log('[Content] LATENCY_UPDATED: Periodic latency recalculation', {
+        oldLatencyMs: oldLatency,
+        newLatencyMs: newAverageLatency,
+        change: newAverageLatency - oldLatency,
+        newAdoptionTTL: _calculateDynamicAdoptionTTL(),
+        updateCount: adoptionCacheMetrics.latencyUpdates
+      });
+    }
+    
+    lastKnownBackgroundLatencyMs = newAverageLatency;
+  }
+  
   console.log('[Content] ADOPTION_LATENCY_RECORDED:', {
     latencyMs,
     sampleCount: adoptionLatencySamples.length,
-    averageLatency: _getObservedHandshakeLatency()
+    averageLatency: newAverageLatency,
+    heartbeatsSinceUpdate: heartbeatCountSinceLatencyUpdate
   });
 }
 
