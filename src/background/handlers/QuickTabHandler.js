@@ -136,6 +136,79 @@ export class QuickTabHandler {
     return writeSourceId;
   }
 
+  /**
+   * Validate originTabId from message payload against sender.tab.id
+   * v1.6.3.10-v11 - FIX Issue #4: Mandatory validation for originTabId ownership
+   * 
+   * @param {Object} message - Message containing originTabId
+   * @param {Object} sender - Message sender object from browser.runtime
+   * @returns {{valid: boolean, resolvedTabId: number|null, error?: string}}
+   */
+  _validateOriginTabId(message, sender) {
+    const senderTabId = sender?.tab?.id;
+    const payloadTabId = message?.originTabId;
+    
+    // Check if sender has a valid tab ID
+    if (typeof senderTabId !== 'number') {
+      console.error('[QuickTabHandler] ORIGIN_VALIDATION_FAILED: sender.tab.id unavailable', {
+        senderType: typeof sender,
+        hasTab: !!sender?.tab,
+        messageAction: message?.action
+      });
+      return { valid: false, resolvedTabId: null, error: 'sender.tab.id unavailable' };
+    }
+    
+    // If payload doesn't have originTabId, use sender.tab.id as default
+    if (payloadTabId === null || payloadTabId === undefined) {
+      console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as default', {
+        senderTabId,
+        messageAction: message?.action,
+        quickTabId: message?.id
+      });
+      return { valid: true, resolvedTabId: senderTabId };
+    }
+    
+    // Validate that payload originTabId matches sender.tab.id
+    if (payloadTabId !== senderTabId) {
+      console.error('[QuickTabHandler] ORIGIN_VALIDATION_MISMATCH: Security concern - payload originTabId does not match sender.tab.id', {
+        payloadOriginTabId: payloadTabId,
+        senderTabId: senderTabId,
+        messageAction: message?.action,
+        quickTabId: message?.id,
+        warning: 'Potential cross-tab ownership attack or stale message'
+      });
+      return { 
+        valid: false, 
+        resolvedTabId: null, 
+        error: `originTabId mismatch: payload=${payloadTabId}, sender=${senderTabId}` 
+      };
+    }
+    
+    console.log('[QuickTabHandler] ORIGIN_VALIDATION_SUCCESS:', {
+      originTabId: senderTabId,
+      messageAction: message?.action,
+      quickTabId: message?.id
+    });
+    return { valid: true, resolvedTabId: senderTabId };
+  }
+
+  /**
+   * Require valid originTabId for operations that modify ownership
+   * v1.6.3.10-v11 - FIX Issue #4: Throw error when originTabId is invalid
+   * 
+   * @param {Object} message - Message containing originTabId
+   * @param {Object} sender - Message sender object
+   * @throws {Error} When originTabId validation fails
+   * @returns {number} Validated originTabId
+   */
+  _requireValidOriginTabId(message, sender) {
+    const validation = this._validateOriginTabId(message, sender);
+    if (!validation.valid) {
+      throw new Error(`Invalid originTabId: ${validation.error}`);
+    }
+    return validation.resolvedTabId;
+  }
+
   setInitialized(value) {
     this.isInitialized = value;
     // v1.6.3.10-v7 - FIX Issue #7: Log initialization state changes with [InitBoundary]
@@ -237,12 +310,25 @@ export class QuickTabHandler {
    * Handle Quick Tab creation
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
+   * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId against sender.tab.id
    */
-  async handleCreate(message, _sender) {
+  async handleCreate(message, sender) {
     // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
     if (this._isDuplicateMessage(message)) {
       console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
       return { success: true, duplicate: true };
+    }
+
+    // v1.6.3.10-v11 - FIX Issue #4: Validate originTabId ownership
+    let validatedOriginTabId;
+    try {
+      validatedOriginTabId = this._requireValidOriginTabId(message, sender);
+    } catch (err) {
+      console.error('[QuickTabHandler] CREATE_REJECTED: originTabId validation failed', {
+        error: err.message,
+        quickTabId: message.id
+      });
+      return { success: false, error: err.message, rejected: true };
     }
 
     console.log(
@@ -251,7 +337,9 @@ export class QuickTabHandler {
       'ID:',
       message.id,
       'Container:',
-      message.cookieStoreId
+      message.cookieStoreId,
+      'OriginTabId:',
+      validatedOriginTabId
     );
 
     // Wait for initialization if needed
@@ -274,7 +362,8 @@ export class QuickTabHandler {
       pinnedToUrl: message.pinnedToUrl || null,
       title: message.title || 'Quick Tab',
       minimized: message.minimized || false,
-      cookieStoreId: cookieStoreId // v1.6.2.2 - Store container info on tab itself
+      cookieStoreId: cookieStoreId, // v1.6.2.2 - Store container info on tab itself
+      originTabId: validatedOriginTabId // v1.6.3.10-v11 - FIX Issue #4: Store validated originTabId
     };
 
     if (existingIndex !== -1) {
@@ -294,15 +383,30 @@ export class QuickTabHandler {
   /**
    * Handle Quick Tab close
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId for close operations
    */
-  async handleClose(message, _sender) {
+  async handleClose(message, sender) {
+    // v1.6.3.10-v11 - FIX Issue #4: Validate originTabId if provided
+    const validation = this._validateOriginTabId(message, sender);
+    if (!validation.valid) {
+      console.warn('[QuickTabHandler] CLOSE_VALIDATION_WARNING: originTabId validation failed', {
+        error: validation.error,
+        quickTabId: message.id,
+        // Allow close operations even with invalid originTabId for backward compatibility
+        // This prevents orphaned Quick Tabs when manager closes tabs
+        allowingOperation: true
+      });
+    }
+
     console.log(
       '[QuickTabHandler] Close:',
       message.url,
       'ID:',
       message.id,
       'Container:',
-      message.cookieStoreId
+      message.cookieStoreId,
+      'ValidatedOriginTabId:',
+      validation.resolvedTabId
     );
 
     if (!this.isInitialized) {

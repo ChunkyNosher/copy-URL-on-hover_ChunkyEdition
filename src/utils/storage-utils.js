@@ -86,6 +86,13 @@ const STORAGE_QUOTA_LOG_SAMPLING_INTERVAL = 50;
 const WRITE_QUEUE_STALL_TIMEOUT_MS = 10000; // 10s max stall before recovery
 const WRITE_QUEUE_MAX_PENDING = 20; // Max pending writes before queue reset
 
+// v1.6.3.10-v11 - FIX Issue #3: Storage event latency tracking
+// Track time between storage.local.set() call and storage.onChanged listener firing
+const STORAGE_LATENCY_SAMPLES = [];
+const MAX_LATENCY_SAMPLES = 20;
+let observedStorageLatencyMs = 100; // Default 100ms, updated dynamically
+const DEDUP_WINDOW_LATENCY_MULTIPLIER = 1.5; // Use 1.5x observed latency for dedup window
+
 // v1.6.3.10-v9 - FIX Issue E: Normalization rejection reason codes
 /**
  * Reason codes for originTabId normalization rejection
@@ -380,6 +387,112 @@ export function validateStorageEventOrdering(newValue) {
   }
   
   return { inOrder: !isOutOfOrder, sequenceNumber: currentSequence, details };
+}
+
+// v1.6.3.10-v11 - FIX Issue #3: Map of pending storage operations awaiting onChanged event
+// Keyed by transactionId, value is { startTime, resolve, timeout }
+const pendingStorageAcks = new Map();
+
+/**
+ * Record storage latency sample for adaptive dedup window
+ * v1.6.3.10-v11 - FIX Issue #3: Track latency for dynamic dedup window
+ * @param {number} latencyMs - Observed latency in milliseconds
+ */
+export function recordStorageLatency(latencyMs) {
+  STORAGE_LATENCY_SAMPLES.push(latencyMs);
+  if (STORAGE_LATENCY_SAMPLES.length > MAX_LATENCY_SAMPLES) {
+    STORAGE_LATENCY_SAMPLES.shift();
+  }
+  
+  // Update observed latency as average of recent samples
+  const sum = STORAGE_LATENCY_SAMPLES.reduce((a, b) => a + b, 0);
+  observedStorageLatencyMs = Math.round(sum / STORAGE_LATENCY_SAMPLES.length);
+  
+  console.log('[StorageUtils] LATENCY_SAMPLE_RECORDED:', {
+    latencyMs,
+    sampleCount: STORAGE_LATENCY_SAMPLES.length,
+    averageLatencyMs: observedStorageLatencyMs,
+    adaptiveDedupWindowMs: getAdaptiveDedupWindow()
+  });
+}
+
+/**
+ * Get adaptive dedup window based on observed latency
+ * v1.6.3.10-v11 - FIX Issue #3: Dynamic dedup window
+ * @returns {number} Dedup window in milliseconds (1.5x observed latency)
+ */
+export function getAdaptiveDedupWindow() {
+  return Math.max(100, Math.round(observedStorageLatencyMs * DEDUP_WINDOW_LATENCY_MULTIPLIER));
+}
+
+/**
+ * Get current observed storage latency
+ * v1.6.3.10-v11 - FIX Issue #3: Expose latency for diagnostics
+ * @returns {number} Average observed latency in milliseconds
+ */
+export function getObservedStorageLatency() {
+  return observedStorageLatencyMs;
+}
+
+/**
+ * Start tracking a storage operation for latency measurement
+ * v1.6.3.10-v11 - FIX Issue #3: Track storage.local.set() to storage.onChanged latency
+ * @param {string} transactionId - Transaction ID to track
+ * @returns {Promise<void>} Resolves when storage.onChanged confirms the write
+ */
+export function startStorageLatencyTracking(transactionId) {
+  const startTime = Date.now();
+  
+  return new Promise((resolve, _reject) => {
+    const timeout = setTimeout(() => {
+      // Timeout - storage.onChanged never fired
+      pendingStorageAcks.delete(transactionId);
+      console.warn('[StorageUtils] STORAGE_ACK_TIMEOUT:', {
+        transactionId,
+        elapsedMs: Date.now() - startTime,
+        warning: 'storage.onChanged event not received'
+      });
+      resolve(); // Resolve anyway to not block caller
+    }, STORAGE_TIMEOUT_MS * 2); // 2x normal timeout for ack
+    
+    pendingStorageAcks.set(transactionId, { startTime, resolve, timeout });
+    
+    console.log('[StorageUtils] LATENCY_TRACKING_STARTED:', {
+      transactionId,
+      startTime
+    });
+  });
+}
+
+/**
+ * Acknowledge storage operation completion from storage.onChanged
+ * v1.6.3.10-v11 - FIX Issue #3: Confirm storage event received
+ * @param {string} transactionId - Transaction ID from storage event
+ */
+export function acknowledgeStorageWrite(transactionId) {
+  const pending = pendingStorageAcks.get(transactionId);
+  if (!pending) {
+    console.log('[StorageUtils] STORAGE_ACK_UNKNOWN:', {
+      transactionId,
+      warning: 'No pending operation for this transactionId'
+    });
+    return;
+  }
+  
+  const latencyMs = Date.now() - pending.startTime;
+  clearTimeout(pending.timeout);
+  pendingStorageAcks.delete(transactionId);
+  
+  // Record latency sample
+  recordStorageLatency(latencyMs);
+  
+  console.log('[StorageUtils] STORAGE_ACK_CONFIRMED:', {
+    transactionId,
+    latencyMs,
+    averageLatencyMs: observedStorageLatencyMs
+  });
+  
+  pending.resolve();
 }
 
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs

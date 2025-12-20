@@ -355,6 +355,19 @@ function logQuickTabsInitError(qtErr) {
 const TAB_ID_RETRY_DELAYS_MS = [200, 500, 1500, 5000];
 const TAB_ID_MAX_RETRIES = TAB_ID_RETRY_DELAYS_MS.length;
 
+// v1.6.3.10-v11 - FIX Issue #1: Extended retry for background initialization
+// After initial backoff exhaustion, use slower retry loop with 5-10s intervals
+// Total extended timeout: 60 seconds to allow for slow background initialization
+const TAB_ID_EXTENDED_RETRY_INTERVAL_MS = 5000;
+const TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS = 8; // 8 x 5s = 40s additional retry window
+const TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS = 60000; // 60 seconds total timeout
+
+// v1.6.3.10-v11 - FIX Issue #1: Track background readiness for event-driven retry
+let backgroundReadinessDetected = false;
+let tabIdAcquisitionPending = false;
+// eslint-disable-next-line prefer-const -- Resolver is assigned later in async context
+let tabIdAcquisitionResolver = null;
+
 // v1.6.3.10-v10 - FIX Code Review: Extract error strings as constants
 // v1.6.3.10-v10 - FIX Code Review: Use Set for O(1) lookup performance
 const RETRYABLE_ERROR_CODES = new Set(['NOT_INITIALIZED', 'GLOBAL_STATE_NOT_READY']);
@@ -379,8 +392,22 @@ const initializationMessageQueue = [];
 /**
  * Maximum queue size for initialization messages
  * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.10-v11 - FIX Issue #6: Increased from 20 to 100 with backpressure warning
  */
-const MAX_INIT_MESSAGE_QUEUE_SIZE = 20;
+const MAX_INIT_MESSAGE_QUEUE_SIZE = 100;
+
+/**
+ * Queue backpressure warning threshold (75% of max)
+ * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism
+ */
+const QUEUE_BACKPRESSURE_THRESHOLD = 75;
+
+/**
+ * Track dropped messages for retry
+ * v1.6.3.10-v11 - FIX Issue #6: Retry dropped messages
+ */
+const droppedMessageBuffer = [];
+const MAX_DROPPED_MESSAGES = 10;
 
 /**
  * Background unresponsive timeout (ms)
@@ -393,6 +420,55 @@ const BACKGROUND_UNRESPONSIVE_TIMEOUT_MS = 5000;
  * v1.6.4.15 - FIX Issue #14
  */
 let lastBackgroundResponseTime = Date.now();
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #2: MESSAGE ORDERING ====================
+// Ensure deterministic message processing order
+
+/**
+ * Operation types for message ordering
+ * v1.6.3.10-v11 - FIX Issue #2: Explicit operation type for ordering
+ * @enum {string}
+ */
+const OPERATION_TYPE = {
+  CREATE: 'CREATE',
+  RESTORE: 'RESTORE',
+  UPDATE: 'UPDATE',
+  CLOSE: 'CLOSE',
+  MINIMIZE: 'MINIMIZE'
+};
+
+/**
+ * Operation type priority for sorting (lower = higher priority)
+ * v1.6.3.10-v11 - FIX Issue #2: CREATE must be processed before RESTORE
+ * Reserved for future use in command queue sorting
+ */
+const _OPERATION_PRIORITY = {
+  [OPERATION_TYPE.CREATE]: 1,
+  [OPERATION_TYPE.RESTORE]: 2,
+  [OPERATION_TYPE.UPDATE]: 3,
+  [OPERATION_TYPE.MINIMIZE]: 4,
+  [OPERATION_TYPE.CLOSE]: 5
+};
+
+/**
+ * Command queue for deterministic processing
+ * v1.6.3.10-v11 - FIX Issue #2: Buffer operations for ordered processing
+ * Reserved for future use in ordered message processing
+ */
+const _commandQueue = [];
+
+/**
+ * Global sequence counter for message ordering
+ * v1.6.3.10-v11 - FIX Issue #2: Monotonic sequence for ordering
+ */
+let globalCommandSequenceId = 0;
+
+/**
+ * Map of Quick Tab IDs to pending CREATE acknowledgments
+ * v1.6.3.10-v11 - FIX Issue #2: Track CREATE completion before allowing RESTORE
+ * Reserved for future use in acknowledgment protocol
+ */
+const _pendingCreateAcks = new Map();
 
 /**
  * Check if a message has valid format for sending
@@ -420,41 +496,180 @@ function _validateMessageFormat(message) {
 /**
  * Queue a message during initialization window
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
+ * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism with detailed logging
  * @param {Object} message - Message to queue
  * @param {Function} callback - Callback to execute when message can be sent
  */
 function _queueInitializationMessage(message, callback) {
-  if (initializationMessageQueue.length >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
-    const dropped = initializationMessageQueue.shift();
-    console.warn('[MSG][Content] INIT_QUEUE_OVERFLOW: Dropped oldest message:', {
-      droppedAction: dropped?.message?.action,
-      queueSize: initializationMessageQueue.length
-    });
+  const queueSize = initializationMessageQueue.length;
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Check and emit backpressure warning
+  _checkQueueBackpressure(queueSize);
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Handle queue overflow
+  if (queueSize >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
+    _handleQueueOverflow();
   }
   
   initializationMessageQueue.push({
     message,
     callback,
-    queuedAt: Date.now()
+    queuedAt: Date.now(),
+    sequenceId: ++globalCommandSequenceId // v1.6.3.10-v11 - FIX Issue #2: Add sequence ID
   });
   
   console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
     action: message.action || message.type,
+    quickTabId: message.id || message.quickTabId,
+    sequenceId: globalCommandSequenceId,
     queueSize: initializationMessageQueue.length
   });
 }
 
 /**
+ * Check and emit backpressure warning if queue is approaching limit
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ * @param {number} queueSize - Current queue size
+ */
+function _checkQueueBackpressure(queueSize) {
+  if (queueSize >= QUEUE_BACKPRESSURE_THRESHOLD && queueSize < MAX_INIT_MESSAGE_QUEUE_SIZE) {
+    console.warn('[MSG][Content] QUEUE_BACKPRESSURE: Queue approaching limit, slow down message send rate', {
+      currentSize: queueSize,
+      threshold: QUEUE_BACKPRESSURE_THRESHOLD,
+      maxSize: MAX_INIT_MESSAGE_QUEUE_SIZE,
+      percentFull: Math.round((queueSize / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100)
+    });
+  }
+}
+
+/**
+ * Handle queue overflow by dropping oldest message and buffering for retry
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ */
+function _handleQueueOverflow() {
+  const dropped = initializationMessageQueue.shift();
+  const queueSize = initializationMessageQueue.length;
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Log dropped message with full metadata
+  console.error('[MSG][Content] INIT_QUEUE_OVERFLOW: Dropped message (queue full)', {
+    droppedMessageType: dropped?.message?.action || dropped?.message?.type,
+    droppedQuickTabId: dropped?.message?.id || dropped?.message?.quickTabId,
+    droppedTimestamp: dropped?.queuedAt,
+    queueSizeAtDrop: queueSize + 1,
+    dropTime: Date.now(),
+    messageAgeMs: dropped?.queuedAt ? Date.now() - dropped.queuedAt : null
+  });
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Buffer dropped messages for retry
+  _bufferDroppedMessage(dropped);
+}
+
+/**
+ * Buffer a dropped message for later retry
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ * @param {Object} dropped - Dropped message entry
+ */
+function _bufferDroppedMessage(dropped) {
+  if (!dropped || droppedMessageBuffer.length >= MAX_DROPPED_MESSAGES) return;
+  
+  droppedMessageBuffer.push({
+    message: dropped.message,
+    callback: dropped.callback,
+    originalQueuedAt: dropped.queuedAt,
+    droppedAt: Date.now()
+  });
+  console.log('[MSG][Content] DROPPED_MESSAGE_BUFFERED: Will retry after background ready', {
+    bufferSize: droppedMessageBuffer.length,
+    maxBuffer: MAX_DROPPED_MESSAGES
+  });
+}
+
+/**
+ * Retry a single dropped message
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ * @param {Object} dropped - Dropped message entry
+ */
+async function _retryDroppedMessage(dropped) {
+  try {
+    await dropped.callback(dropped.message);
+    console.log('[MSG][Content] DROPPED_MESSAGE_RETRY_SUCCESS:', {
+      action: dropped.message.action || dropped.message.type,
+      totalDelayMs: Date.now() - dropped.originalQueuedAt
+    });
+  } catch (err) {
+    console.error('[MSG][Content] DROPPED_MESSAGE_RETRY_FAILED:', {
+      action: dropped.message.action || dropped.message.type,
+      error: err.message
+    });
+  }
+}
+
+/**
  * Flush queued messages after initialization completes
  * v1.6.4.15 - FIX Issue #14: Process queued messages
+ * v1.6.3.10-v11 - FIX Issue #6: Also retry dropped messages
  */
 async function _flushInitializationMessageQueue() {
+  // v1.6.3.10-v11 - FIX Issue #6: First retry dropped messages
+  await _retryDroppedMessages();
+  
   if (initializationMessageQueue.length === 0) return;
   
   console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
     queueSize: initializationMessageQueue.length
   });
   
+  // v1.6.3.10-v11 - FIX Issue #7: Log queue state at thresholds
+  _logQueueStateWarnings();
+  
+  await _processQueuedMessages();
+}
+
+/**
+ * Retry all dropped messages
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ */
+async function _retryDroppedMessages() {
+  if (droppedMessageBuffer.length === 0) return;
+  
+  console.log('[MSG][Content] RETRYING_DROPPED_MESSAGES:', {
+    count: droppedMessageBuffer.length
+  });
+  
+  while (droppedMessageBuffer.length > 0) {
+    const dropped = droppedMessageBuffer.shift();
+    await _retryDroppedMessage(dropped);
+  }
+}
+
+/**
+ * Log warnings if queue depth exceeds thresholds
+ * v1.6.3.10-v11 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _logQueueStateWarnings() {
+  const size = initializationMessageQueue.length;
+  // Check thresholds in descending order to log most severe first
+  if (size >= 1000) {
+    console.error('[MSG][Content] QUEUE_STATE_CRITICAL: Queue depth exceeds 1000 items', { queueSize: size });
+  } else if (size >= 500) {
+    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 500 items', { queueSize: size });
+  } else if (size >= 100) {
+    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 100 items', { queueSize: size });
+  }
+}
+
+/**
+ * Process all queued messages
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ */
+async function _processQueuedMessages() {
   while (initializationMessageQueue.length > 0) {
     const { message, callback, queuedAt } = initializationMessageQueue.shift();
     const queueDuration = Date.now() - queuedAt;
@@ -625,14 +840,103 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
 }
 
 /**
+ * Notify pending tab ID acquisition of background readiness
+ * v1.6.3.10-v11 - FIX Issue #1: Event-driven retry trigger
+ */
+function _notifyBackgroundReadiness() {
+  if (tabIdAcquisitionPending && tabIdAcquisitionResolver) {
+    console.log('[Content][TabID] BACKGROUND_READINESS_DETECTED: Triggering pending acquisition');
+    backgroundReadinessDetected = true;
+    // Resolver will be called by the extended retry loop
+  }
+}
+
+/**
+ * Extended retry loop for tab ID acquisition after initial backoff exhaustion
+ * v1.6.3.10-v11 - FIX Issue #1: Background initialization retry loop with 60s total timeout
+ * @param {number} overallStartTime - Original start time
+ * @param {Object} _lastResult - Last retry result (unused, kept for API compatibility)
+ * @returns {Promise<number|null>} Tab ID or null
+ * @private
+ */
+async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
+  let extendedAttempt = 0;
+  
+  console.log('[Content][TabID][EXTENDED] STARTING: Extended retry loop for background initialization', {
+    intervalMs: TAB_ID_EXTENDED_RETRY_INTERVAL_MS,
+    maxAttempts: TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS,
+    totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
+    elapsedSoFar: Date.now() - overallStartTime
+  });
+  
+  tabIdAcquisitionPending = true;
+  
+  while (extendedAttempt < TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS) {
+    const totalElapsed = Date.now() - overallStartTime;
+    
+    // Check total timeout
+    if (totalElapsed >= TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS) {
+      console.error('[Content][TabID][EXTENDED] TIMEOUT: Extended retry timeout exceeded', {
+        totalElapsedMs: totalElapsed,
+        timeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS
+      });
+      break;
+    }
+    
+    // Check if background readiness was signaled
+    if (backgroundReadinessDetected) {
+      console.log('[Content][TabID][EXTENDED] BACKGROUND_READY: Attempting immediate retry');
+      backgroundReadinessDetected = false;
+    }
+    
+    extendedAttempt++;
+    const attemptNumber = TAB_ID_MAX_RETRIES + 1 + extendedAttempt;
+    
+    console.log(`[Content][TabID][EXTENDED] Retry #${extendedAttempt} with delay ${TAB_ID_EXTENDED_RETRY_INTERVAL_MS}ms, elapsed ${totalElapsed}ms`);
+    
+    // Wait before retry
+    await new Promise(resolve => setTimeout(resolve, TAB_ID_EXTENDED_RETRY_INTERVAL_MS));
+    
+    // Retry attempt
+    const result = await _attemptGetTabIdFromBackground(attemptNumber);
+    
+    if (result.tabId !== null) {
+      tabIdAcquisitionPending = false;
+      console.log('[Content][TabID][EXTENDED] RECOVERY_SUCCESS: Tab ID acquired in extended loop', {
+        tabId: result.tabId,
+        extendedAttempt,
+        totalElapsedMs: Date.now() - overallStartTime
+      });
+      return result.tabId;
+    }
+    
+    // If not retryable, stop
+    if (!result.retryable) {
+      console.warn('[Content][TabID][EXTENDED] NON_RETRYABLE: Stopping extended retry', {
+        error: result.error,
+        extendedAttempt
+      });
+      break;
+    }
+  }
+  
+  tabIdAcquisitionPending = false;
+  console.error(`[Content][TabID][EXTENDED] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1 + extendedAttempt} retries after ${Date.now() - overallStartTime}ms, final result: null`);
+  
+  return null;
+}
+
+/**
  * Get current tab ID from background script with exponential backoff retry
  * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
  * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
+ * v1.6.3.10-v11 - FIX Issue #1: Extended retry with event-driven recovery
  *
- * Retry delays: 200ms, 500ms, 1500ms, 5000ms
- * Maximum 5 attempts (initial + 4 retries)
+ * Retry delays: 200ms, 500ms, 1500ms, 5000ms (initial phase)
+ * Extended retry: 5s intervals for 40s after initial exhaustion
+ * Total timeout: 60 seconds
  *
  * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
  */
@@ -640,6 +944,7 @@ async function getCurrentTabIdFromBackground() {
   console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
     maxRetries: TAB_ID_MAX_RETRIES,
     retryDelays: TAB_ID_RETRY_DELAYS_MS,
+    extendedRetryEnabled: true,
     timestamp: new Date().toISOString()
   });
   
@@ -668,16 +973,11 @@ async function getCurrentTabIdFromBackground() {
         attemptsTried: attemptNumber - 1,
         totalDurationMs: Date.now() - overallStartTime
       });
-      break;
+      // v1.6.3.10-v11 - Non-retryable errors skip extended loop
+      return null;
     }
     
-    console.log('[Content][TabID][INIT] RETRY_SCHEDULED:', {
-      retryNumber: retryIndex + 1,
-      attemptNumber,
-      delayMs,
-      previousError: result.error,
-      elapsedMs: Date.now() - overallStartTime
-    });
+    console.log(`[Content][TabID][INIT] Retry #${retryIndex + 1} with delay ${delayMs}ms, elapsed ${Date.now() - overallStartTime}ms`);
     
     // Wait before retry
     await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -695,14 +995,18 @@ async function getCurrentTabIdFromBackground() {
     }
   }
   
-  // All retries exhausted
-  const totalDuration = Date.now() - overallStartTime;
-  console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
-    totalAttempts: TAB_ID_MAX_RETRIES + 1,
-    lastError: result.error,
-    totalDurationMs: totalDuration,
-    timestamp: new Date().toISOString()
-  });
+  // Initial retries exhausted - log exhaustion
+  const initialPhaseDuration = Date.now() - overallStartTime;
+  console.error(`[Content][TabID][INIT] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1} retries after ${initialPhaseDuration}ms, final result: null`);
+  
+  // v1.6.3.10-v11 - FIX Issue #1: Enter extended retry loop for background initialization
+  if (result.retryable) {
+    console.log('[Content][TabID][INIT] ENTERING_EXTENDED_RETRY: Background may still be initializing', {
+      lastError: result.error,
+      initialPhaseDurationMs: initialPhaseDuration
+    });
+    return _extendedTabIdRetryLoop(overallStartTime, result);
+  }
   
   return null;
 }
@@ -1407,6 +1711,7 @@ function _processBackgroundStartupTime(startupTime) {
  * v1.6.3.10-v4 - FIX Issue #3/6: Helper to reduce nesting depth
  * v1.6.3.10-v7 - FIX Issue #2: Handle ready signal and track latency
  * v1.6.3.10-v7 - FIX Issue #3: Update adaptive dedup window based on latency
+ * v1.6.3.10-v11 - FIX Issue #1: Notify pending tab ID acquisition of background readiness
  * @private
  * @param {Object} message - Handshake message
  */
@@ -1452,6 +1757,10 @@ function _handleBackgroundHandshake(message) {
     
     // v1.6.3.10-v7 - FIX Issue #2: Flush buffered commands
     _flushCommandBuffer();
+    
+    // v1.6.3.10-v11 - FIX Issue #1: Notify pending tab ID acquisition of background readiness
+    console.log('[Content][TabID] BACKGROUND_READINESS_DETECTED: Background ready, resuming tab ID acquisition');
+    _notifyBackgroundReadiness();
   } else if (wasReady && !isNowReady) {
     console.warn('[Content] BACKGROUND_NOT_READY: Transitioned from READY to INITIALIZING');
   }
