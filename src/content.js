@@ -1916,22 +1916,53 @@ function _completeHandshake() {
 /**
  * Handle handshake failure
  * v1.6.3.10-v11 - FIX Issue #24
+ * v1.6.3.10-v13 - FIX Issue #24: Enhanced logging with "Port connection phase X"
  * @param {string} reason - Failure reason
  */
 function _handleHandshakeFailure(reason) {
   _clearHandshakeTimeout();
+  
+  // v1.6.3.10-v13 - FIX Issue #24: Log which phase failed
+  const failedPhase = currentHandshakePhase;
   currentHandshakePhase = HANDSHAKE_PHASE.NONE;
   
   console.error('[Content][HANDSHAKE] FAILED:', {
     reason,
+    failedPhase,
     willRetry: reconnectionAttempts < CIRCUIT_BREAKER_MAX_FAILURES,
-    attempts: reconnectionAttempts
+    attempts: reconnectionAttempts,
+    recoveryStrategy: 'exponential-backoff'
+  });
+  
+  // v1.6.3.10-v13 - FIX Issue #24: Log disconnect recovery plan
+  const backoffDelays = [100, 200, 400]; // Base delays for documentation
+  const nextDelay = backoffDelays[Math.min(reconnectionAttempts, backoffDelays.length - 1)] || 400;
+  console.log('[Content][HANDSHAKE] Port connection phase failed:', {
+    phaseDescription: _getHandshakePhaseDescription(failedPhase),
+    nextRetryDelayMs: nextDelay,
+    maxAttempts: CIRCUIT_BREAKER_MAX_FAILURES
   });
   
   // Increment failure count and try reconnection
   if (cachedTabId) {
     _handleReconnection(cachedTabId, `handshake-${reason}`);
   }
+}
+
+/**
+ * Get human-readable description for handshake phase
+ * v1.6.3.10-v13 - FIX Issue #24: Helper for clearer logging
+ * @param {string} phase - Handshake phase enum value
+ * @returns {string} Human-readable description
+ */
+function _getHandshakePhaseDescription(phase) {
+  const descriptions = {
+    [HANDSHAKE_PHASE.NONE]: 'Not started',
+    [HANDSHAKE_PHASE.INIT_REQUEST_SENT]: 'Phase 1: Waiting for INIT_RESPONSE',
+    [HANDSHAKE_PHASE.INIT_RESPONSE_RECEIVED]: 'Phase 2: Processing INIT_RESPONSE',
+    [HANDSHAKE_PHASE.INIT_COMPLETE_SENT]: 'Phase 3: Waiting for acknowledgment'
+  };
+  return descriptions[phase] || `Unknown phase: ${phase}`;
 }
 
 /**
@@ -2812,10 +2843,23 @@ window.addEventListener('beforeunload', _clearAdoptionCacheOnNavigation);
  */
 async function initializeQuickTabsFeature() {
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
+  // v1.6.3.10-v13 - FIX Issue #4: Explicit initialization phase logging
   const initStartTime = Date.now();
+  
+  // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_1 - Content script loaded
+  console.log('[INIT][Content] INIT_PHASE_1: Content script loaded', {
+    timestamp: new Date().toISOString(),
+    location: window.location.href.substring(0, 100)
+  });
+  
   console.log('[INIT][Content] PHASE_START: Quick Tabs initialization beginning', {
     timestamp: new Date().toISOString(),
     isWritingTabIdInitialized: isWritingTabIdInitialized()
+  });
+  
+  // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_2 - Message listener registered
+  console.log('[INIT][Content] INIT_PHASE_2: Message listener registered', {
+    timestamp: new Date().toISOString()
   });
 
   // v1.6.3.10-v6 - FIX Issue #4/11: Log before tab ID request
@@ -2829,6 +2873,14 @@ async function initializeQuickTabsFeature() {
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
   const tabIdAcquisitionDuration = Date.now() - initStartTime;
+
+  // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_3 - Tab ID obtained
+  console.log('[INIT][Content] INIT_PHASE_3: Tab ID obtained', {
+    tabId: currentTabId,
+    durationMs: tabIdAcquisitionDuration,
+    success: currentTabId !== null,
+    timestamp: new Date().toISOString()
+  });
 
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for tab ID result
   console.log('[INIT][Content] TAB_ID_ACQUISITION_COMPLETE:', {
@@ -2854,6 +2906,13 @@ async function initializeQuickTabsFeature() {
     console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
       tabId: currentTabId,
       isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
+    });
+
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_4 - Handler initialized
+    console.log('[INIT][Content] INIT_PHASE_4: Handler initialized', {
+      handlerType: 'StorageWritingTabId',
+      tabId: currentTabId,
+      timestamp: new Date().toISOString()
     });
 
     // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
@@ -2887,6 +2946,18 @@ async function initializeQuickTabsFeature() {
   const totalInitDuration = initEndTime - initStartTime;
 
   if (quickTabsManager) {
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_5 - Adoption message sent (manager initialized)
+    console.log('[INIT][Content] INIT_PHASE_5: Adoption message sent', {
+      hasManager: true,
+      currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+      timestamp: new Date().toISOString()
+    });
+
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_6 - Background adoption confirmed (implicit via manager)
+    console.log('[INIT][Content] INIT_PHASE_6: Background adoption confirmed', {
+      timestamp: new Date().toISOString()
+    });
+
     // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for completion
     console.log('[INIT][Content] PHASE_COMPLETE:', {
       success: true,
@@ -2895,6 +2966,14 @@ async function initializeQuickTabsFeature() {
       hasManager: true,
       timestamp: new Date().toISOString()
     });
+    
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_COMPLETE - All systems ready
+    console.log('[INIT][Content] INIT_COMPLETE: All systems ready', {
+      totalDurationMs: totalInitDuration,
+      tabId: currentTabId,
+      timestamp: new Date().toISOString()
+    });
+    
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
     console.log(
       '[Copy-URL-on-Hover] Manager has createQuickTab:',

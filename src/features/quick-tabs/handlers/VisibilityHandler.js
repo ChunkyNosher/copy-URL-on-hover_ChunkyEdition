@@ -135,6 +135,21 @@ const LOCK_WARNING_THRESHOLD_MS = OPERATION_LOCK_MS * 5;
  */
 export class VisibilityHandler {
   /**
+   * Initialization states for handler lifecycle tracking
+   * v1.6.3.10-v13 - FIX Issue #2: Handler initialization sequence validation
+   * @enum {string}
+   */
+  static get INITIALIZATION_STATE() {
+    return {
+      UNINITIALIZED: 'UNINITIALIZED',
+      INITIALIZING: 'INITIALIZING',
+      INITIALIZED: 'INITIALIZED',
+      DESTROYING: 'DESTROYING',
+      DESTROYED: 'DESTROYED'
+    };
+  }
+
+  /**
    * @param {Object} options - Configuration options
    * @param {Map} options.quickTabsMap - Map of Quick Tab instances
    * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
@@ -144,6 +159,10 @@ export class VisibilityHandler {
    * @param {Object} options.Events - Events constants object
    */
   constructor(options) {
+    // v1.6.3.10-v13 - FIX Issue #2: Track initialization state
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.UNINITIALIZED;
+    console.log('[VisibilityHandler] Handler initialization START');
+
     this.quickTabsMap = options.quickTabsMap;
     this.minimizedManager = options.minimizedManager;
     this.eventBus = options.eventBus;
@@ -153,6 +172,9 @@ export class VisibilityHandler {
 
     // v1.6.3.5-v2 - FIX Report 1 Issue #7: Create log prefix with Tab ID
     this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
+
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to INITIALIZING
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.INITIALIZING;
 
     // v1.6.3.4-v6 - FIX Issues #1, #2: Track pending operations to prevent duplicates
     this._pendingMinimize = new Set();
@@ -197,11 +219,42 @@ export class VisibilityHandler {
     // v1.6.3.10-v11 - FIX Issue #22: Track state consistency check interval
     this._consistencyCheckIntervalId = null;
     
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to INITIALIZED
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.INITIALIZED;
+    
     // Log handler creation
     console.log(`${this._logPrefix} HANDLER_CREATED:`, {
       tabId: this.currentTabId,
+      initializationState: this._initializationState,
       timestamp: Date.now()
     });
+    console.log('[VisibilityHandler] Handler initialization COMPLETE');
+  }
+  
+  /**
+   * Check if handler is ready to perform operations
+   * v1.6.3.10-v13 - FIX Issue #2: Pre-operation validation
+   * @returns {boolean} True if handler is initialized and ready
+   */
+  isInitialized() {
+    return this._initializationState === VisibilityHandler.INITIALIZATION_STATE.INITIALIZED;
+  }
+  
+  /**
+   * Validate handler state before operation
+   * v1.6.3.10-v13 - FIX Issue #2: Pre-operation validation helper
+   * @param {string} methodName - Name of method being called
+   * @returns {boolean} True if operation can proceed
+   */
+  _validateInitializationState(methodName) {
+    if (this._initializationState !== VisibilityHandler.INITIALIZATION_STATE.INITIALIZED) {
+      console.warn(`${this._logPrefix} Handler method called: ${methodName} (state: ${this._initializationState})`, {
+        warning: 'Handler not fully initialized - operation may fail',
+        allowedState: VisibilityHandler.INITIALIZATION_STATE.INITIALIZED
+      });
+      return false;
+    }
+    return true;
   }
   
   // ==================== v1.6.3.10-v11 FIX ISSUE #22: STATE CONSISTENCY ====================
@@ -904,9 +957,21 @@ export class VisibilityHandler {
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
+    // v1.6.3.10-v13 - FIX Issue #2: Validate handler is initialized
+    if (!this._validateInitializationState('handleMinimize')) {
+      return { success: false, error: 'Handler not initialized' };
+    }
+    
     // v1.6.3.10-v11 - FIX Issue #16: Generate operation ID for tracing
     const operationStartTime = Date.now();
     const operationId = `minimize-${id}-${operationStartTime}`;
+    
+    // v1.6.3.10-v13 - FIX Issue #3: Operation context logging
+    console.log(`${this._logPrefix} OPERATION_START: minimize`, {
+      context: { quickTabIds: [id], timestamp: operationStartTime },
+      operationId,
+      source
+    });
     
     console.log(`${this._logPrefix} handleMinimize ENTRY:`, {
       id,
@@ -2705,9 +2770,14 @@ export class VisibilityHandler {
    * v1.6.3.10-v10 - FIX Issue 3.3: Clear all Set/Map references to prevent memory leaks
    * v1.6.3.10-v11 - FIX Issue #19: Remove all event listeners (refactored)
    * v1.6.3.10-v11 - FIX Issue #20: Clear all tracked timers with logging (refactored)
+   * v1.6.3.10-v13 - FIX Issue #2: Track initialization state transitions
    */
   destroy() {
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to DESTROYING state
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.DESTROYING;
+    
     console.log(`${this._logPrefix} HANDLER_DESTROY_START:`, {
+      initializationState: this._initializationState,
       registeredListeners: this._registeredListeners?.length ?? 0,
       activeTimers: this._activeTimers?.size ?? 0,
       pendingMinimize: this._pendingMinimize?.size ?? 0,
@@ -2749,7 +2819,11 @@ export class VisibilityHandler {
     // Clear focus time tracking
     this._lastFocusTime.clear();
 
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to DESTROYED state
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.DESTROYED;
+
     console.log(`${this._logPrefix} HANDLER_DESTROY_COMPLETE:`, {
+      initializationState: this._initializationState,
       timestamp: Date.now()
     });
   }
