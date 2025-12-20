@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v9  
+**Version:** 1.6.3.10-v10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,21 +21,23 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F Fixes:**
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
-- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
-- **StateManager Cleanup** - Subscription tracking, `dispose()`, leak warnings
-- **Normalization Hardening** - `NORMALIZATION_REJECTION_REASON` enum, strict validation
-- **Container Match Fail-Closed** - INITIALIZING mode in `_isContainerMatch()`
-- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
-- **Duplicate Window Alignment** - `DUPLICATE_SAVEID_WINDOW_MS` increased to 5000ms
-- **Storage Event Ordering** - `validateStorageEventOrdering()`, sequence numbering
-- **Adoption Lock Mechanism** - MinimizedManager adoption locks
-- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
-- **Memory Leak Fix** - Comprehensive `destroy()` method in QuickTabWindow
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Storage Write Validation** - Timeout-based fallback (5+ seconds)
+- **Handler Registration Deferral** - Message handlers wait for async init
+- **Adoption Lock Timeout** - 10 seconds with escalation logging
+- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
+- **Container Context Tracking** - `updateContainerContextForAdoption()`
+- **Tab Cleanup Handler** - `setOnTabRemovedCallback()` registration
+- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
+- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
+
+**v1.6.3.10-v9 Features (Previous) - Storage & Cross-Tab Fixes:**
+
+- Identity-ready gating, storage error classification, storage quota monitoring
+- Write queue recovery, write rate-limiting, z-index recycling, memory leak fix
 
 **v1.6.3.10-v8 Features (Previous) - Code Health & Bug Fixes:**
 
@@ -44,11 +46,10 @@ Tabs Manager
 - Storage/Cross-Tab/Manager issues fixed (#1-23)
 
 **v1.6.3.10-v7 & Earlier (Consolidated):** Port circuit breaker, adaptive dedup,
-storage write serialization, type-safe tab IDs, container isolation, atomic ops
+type-safe tab IDs, container isolation, atomic ops
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
-TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
-MessageBuilder, StructuredLogger, TabEventsManager, MessageRouter
+TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
 
 **Deprecated/Removed:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
 runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
@@ -99,7 +100,23 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v9 Patterns (Current)
+### v1.6.3.10-v10 Patterns (Current)
+
+- Tab ID acquisition with exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- Storage write validation with timeout-based fallback (5+ seconds)
+- Handler registration deferred until async init completes
+- Adoption lock timeout mechanism (10s) with escalation logging
+- `VALID_MESSAGE_ACTIONS` allowlist for command validation
+- `RESPONSE_ENVELOPE` helpers for consistent response format
+- Message queue during initialization window
+- Container context tracking via `updateContainerContextForAdoption()`
+- Post-adoption persistence hook via `setPostAdoptionPersistCallback()`
+- Tab cleanup handler via `setOnTabRemovedCallback()`
+- Snapshot integrity via `validateSnapshotIntegrity()`
+- Checkpoint system: `createCheckpoint()`, `rollbackToCheckpoint()`
+- Message timeout: `withTimeout()`, `sendMessageWithTimeout()`
+
+### v1.6.3.10-v9 Patterns (Previous)
 
 - Identity-ready gating with `IDENTITY_STATE_MODE` enum (INITIALIZING, READY)
 - Storage error classification with `STORAGE_ERROR_TYPE` enum
@@ -111,26 +128,24 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 - Z-index recycling at threshold 100000
 - Comprehensive `destroy()` for memory leak prevention
 
-### v1.6.3.10-v8 Patterns (Previous)
+### v1.6.3.10-v8 & Earlier Patterns (Consolidated)
 
 - Code health refactoring with extracted helper functions
 - Options object pattern for functions with 5+ arguments
-- Consolidated duplicate logging and handler functions
-
-### v1.6.3.10-v7 & Earlier Patterns (Consolidated)
-
 - Port reconnection circuit breaker, adaptive dedup window
 - Type-safe tab ID handling with `normalizeOriginTabId(value)`
 - Atomic operations, container isolation, adoption re-render
 
-### Key Timing Constants (v1.6.3.10-v9)
+### Key Timing Constants (v1.6.3.10-v10)
 
 | Constant                         | Value                 | Purpose                            |
 | -------------------------------- | --------------------- | ---------------------------------- |
 | `STORAGE_KEY`                    | 'quick_tabs_state_v2' | Storage key name                   |
 | `INIT_BARRIER_TIMEOUT_MS`        | 10000                 | Unified barrier init timeout       |
 | `RENDER_DEBOUNCE_MS`             | 100                   | Render queue debounce              |
-| `MESSAGE_TIMEOUT_MS`             | 3000                  | runtime.sendMessage timeout        |
+| `MESSAGE_TIMEOUT_MS`             | 5000                  | Message timeout with withTimeout() |
+| `ADOPTION_LOCK_TIMEOUT_MS`       | 10000                 | Adoption lock timeout              |
+| `ADOPTION_LOCK_WARNING_MS`       | 5000                  | Lock warning threshold             |
 | `WRITE_COALESCE_MIN_INTERVAL_MS` | 100                   | Write rate-limiting interval       |
 | `DUPLICATE_SAVEID_WINDOW_MS`     | 5000                  | Duplicate detection window         |
 | `PERSIST_STORAGE_TIMEOUT_MS`     | 5000                  | Storage persist timeout            |
@@ -138,6 +153,7 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 | `PENDING_SNAPSHOT_EXPIRATION_MS` | 5000                  | Snapshot watchdog timeout          |
 | `OPERATION_LOCK_MS`              | 2000                  | Mediator operation lock            |
 | `MAX_QUICK_TABS`                 | 100                   | Maximum Quick Tabs allowed         |
+| Tab ID Retry Delays              | 200, 500, 1500, 5000  | Exponential backoff (ms)           |
 
 ---
 
@@ -168,13 +184,30 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 `logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
 `validateOwnershipForWrite()`, `_computeStateChecksum()`
 
-**v1.6.3.10-v9 New Exports:** `waitForIdentityInit()`, `waitForContainerIdInit()`,
-`checkStorageQuota()`, `classifyStorageError()`, `validateStorageEventOrdering()`,
-`IDENTITY_STATE_MODE`, `STORAGE_ERROR_TYPE`, `NORMALIZATION_REJECTION_REASON`,
-`OWNERSHIP_FILTER_REASON`, `TAB_ID_CALLER_CONTEXT`
+**v1.6.3.10-v10 New Exports:** `validateOwnershipForWriteAsync()`,
+`validateSnapshotIntegrity()`, `withTimeout()`, `sendMessageWithTimeout()`,
+`validateStorageIntegrity()`, `createCheckpoint()`, `rollbackToCheckpoint()`,
+`updateContainerContextForAdoption()`, `setPostAdoptionPersistCallback()`,
+`setOnTabRemovedCallback()`, `acknowledgeStateSync()`, `VALID_MESSAGE_ACTIONS`
+
+**v1.6.3.10-v9 New Exports:** `waitForIdentityInit()`, `checkStorageQuota()`,
+`IDENTITY_STATE_MODE`, `STORAGE_ERROR_TYPE`, `NORMALIZATION_REJECTION_REASON`
 
 **v1.6.3.10-v8 & Earlier Exports:** `normalizeOriginTabId()`, `waitForTabIdInit()`,
 `normalizeOriginContainerId()`, `_enqueueStorageWrite()`, `_performStorageWrite()`
+
+---
+
+## 📝 Logging Prefixes (v1.6.3.10-v10)
+
+`[INIT]` Init boundaries | `[ADOPTION]` Adoption workflow | `[ADOPTION_CONTAINER]`
+Container changes | `[ADOPTION_COMPLETE]` Post-adoption | `[RESTORE]` Restoration |
+`[MSG]` Message routing | `[MSG_TIMEOUT]` Timeouts | `[PORT_LIFECYCLE]` Port lifecycle |
+`[NAVIGATION]` Domain changes | `[HYDRATION_DOMAIN_CHECK]` Hydration | `[TAB_CLEANUP]`
+Tab cleanup | `[STATE_SYNC]` State sync | `[SNAPSHOT_VALIDATE]` Validation |
+`[MIGRATION]` Schema migration | `[SIDEBAR_LIFECYCLE]` Sidebar | `[STORAGE_ERROR]`
+Storage errors | `[STORAGE_INTEGRITY]` Integrity | `[LISTENER_CLEANUP]` Cleanup |
+`[RENDER_PERF]` Render perf | `[CHECKPOINT]` Checkpoints
 
 ---
 

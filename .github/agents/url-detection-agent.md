@@ -60,16 +60,16 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v9 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.10-v10 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Navigation Detection** - `[NAVIGATION]` logging prefix for domain changes
+- **Hydration Domain Check** - `[HYDRATION_DOMAIN_CHECK]` logging prefix
 
-**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, response helper,
-dead code removal, unified barrier
+**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage quota
+monitoring, code health 9.0+, response helper, dead code removal
 
 **URL Detection Features:**
 

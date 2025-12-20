@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.10-v9), unified barrier init,
+  sync with Single Writer Authority (v1.6.3.10-v10), unified barrier init,
   single storage key, storage.onChanged PRIMARY, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v9 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v10 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -47,18 +47,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
-- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
-- **Duplicate Window Alignment** - `DUPLICATE_SAVEID_WINDOW_MS` increased to 5000ms
-- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
-- **Memory Leak Fix** - Comprehensive `destroy()` method
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Handler Registration** - Deferred until async initialization completes
+- **Adoption Lock Timeout** - 10 seconds with escalation (`ADOPTION_LOCK_TIMEOUT_MS`)
+- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
+- **Container Context** - `updateContainerContextForAdoption()` tracking
+- **Tab Cleanup** - `setOnTabRemovedCallback()` registration
+- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
+- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- **Message Timeout** - `withTimeout()` utility (MESSAGE_TIMEOUT_MS = 5000)
 
-**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
-type-safe tab IDs, container isolation, atomic ops
+**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage error
+classification, storage quota monitoring, code health 9.0+, container isolation
 
 **Key Modules (v1.6.3.10-v9):**
 
@@ -85,10 +87,13 @@ type-safe tab IDs, container isolation, atomic ops
 
 ## Testing Requirements
 
-- [ ] Identity-ready gating works (`waitForIdentityInit()`)
-- [ ] Storage quota monitoring works (`checkStorageQuota()`)
-- [ ] Write rate-limiting works (`WRITE_COALESCE_MIN_INTERVAL_MS`)
-- [ ] Z-index recycling works (threshold 100000)
+- [ ] Tab ID acquisition with backoff works (200ms, 500ms, 1500ms, 5000ms)
+- [ ] Handler registration deferral works
+- [ ] Adoption lock timeout works (10 seconds with escalation)
+- [ ] Message validation works (`VALID_MESSAGE_ACTIONS` allowlist)
+- [ ] Container context tracking works (`updateContainerContextForAdoption()`)
+- [ ] Tab cleanup callback works (`setOnTabRemovedCallback()`)
+- [ ] Snapshot integrity works (`validateSnapshotIntegrity()`)
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
@@ -97,5 +102,5 @@ type-safe tab IDs, container isolation, atomic ops
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v9 storage fixes,
-identity gating, quota monitoring, storage.onChanged PRIMARY.**
+**Your strength: Complete Quick Tab system with v1.6.3.10-v10 tab ID acquisition,
+message validation, checkpoint system, storage.onChanged PRIMARY.**

@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v9), unified barrier init, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.10-v10), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,19 +38,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v9 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v10 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
-- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
-- **Duplicate Window Alignment** - `DUPLICATE_SAVEID_WINDOW_MS` increased to 5000ms
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Handler Registration** - Deferred until async initialization completes
+- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
+- **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
 - **Storage Event Ordering** - `validateStorageEventOrdering()`, sequence numbering
-- **Port Message Ordering** - RESTORE ordering enforcement
 
-**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
-type-safe tab IDs, container isolation, atomic ops
+**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage error
+classification, code health 9.0+, port circuit breaker, container isolation
 
 **Key Modules (v1.6.3.10-v9):**
 
@@ -76,9 +75,9 @@ type-safe tab IDs, container isolation, atomic ops
 
 ## Testing Requirements
 
-- [ ] Identity-ready gating works (`waitForIdentityInit()`)
-- [ ] Write rate-limiting works (`WRITE_COALESCE_MIN_INTERVAL_MS`)
-- [ ] Duplicate window works (5000ms)
+- [ ] Tab ID acquisition with backoff works (200ms, 500ms, 1500ms, 5000ms)
+- [ ] Message validation works (`VALID_MESSAGE_ACTIONS` allowlist)
+- [ ] Message timeout works (`withTimeout()`, MESSAGE_TIMEOUT_MS = 5000)
 - [ ] Storage event ordering works (`validateStorageEventOrdering()`)
 - [ ] storage.onChanged PRIMARY works
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
@@ -89,5 +88,5 @@ type-safe tab IDs, container isolation, atomic ops
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.10-v9 identity gating,
-write rate-limiting, storage.onChanged PRIMARY.**
+**Your strength: Reliable cross-tab sync with v1.6.3.10-v10 message validation,
+timeout handling, storage.onChanged PRIMARY.**

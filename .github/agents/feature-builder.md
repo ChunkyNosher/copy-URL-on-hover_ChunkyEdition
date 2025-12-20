@@ -60,20 +60,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.10-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
-- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Handler Registration** - Deferred until async initialization completes
+- **Adoption Lock Timeout** - 10 seconds with escalation (`ADOPTION_LOCK_TIMEOUT_MS`)
+- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
 
-**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, type-safe tab IDs,
-container isolation, atomic ops, exponential backoff
+**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage quota
+monitoring, code health 9.0+, container isolation, atomic ops
 
 **Key Architecture Layers:**
 

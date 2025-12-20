@@ -3,7 +3,7 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   Solo/Mute buttons, drag/resize, navigation, UICoordinator invariant checks,
-  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v9
+  window:created event coordination, per-tab scoping enforcement, v1.6.3.10-v10
   unified barrier init, storage.onChanged PRIMARY
 tools: ['*']
 ---
@@ -37,19 +37,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v9 - Simplified Architecture
+**Version:** 1.6.3.10-v10 - Simplified Architecture
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
 
-- **Solo/Mute Toggle Atomicity** - Ownership validation and lock
-- **Destroyed Flag Check** - Drag controller callback validation
-- **Ownership Validation** - window.js minimize() validation
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Storage Write Validation** - `validateOwnershipForWriteAsync()` with timeout
 - **Persist Timeout** - 5s timeout on `persistToStorage()`
-- **isActive() Method** - QuickTabWindow activity check
+- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
 - **Memory Leak Fix** - Comprehensive `destroy()` method
 
-**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
-type-safe tab IDs, snapshot TTL race fix
+**v1.6.3.10-v9 & Earlier (Consolidated):** Solo/Mute toggle atomicity, destroyed
+flag check, ownership validation, code health 9.0+, snapshot TTL race fix
 
 **Key Quick Tab Features:**
 
@@ -66,10 +65,10 @@ type-safe tab IDs, snapshot TTL race fix
 
 ## Testing Requirements
 
-- [ ] Solo/Mute toggle atomicity works
-- [ ] Destroyed flag check in callbacks works
+- [ ] Tab ID acquisition with backoff works (200ms, 500ms, 1500ms, 5000ms)
+- [ ] Storage write validation works (`validateOwnershipForWriteAsync()`)
+- [ ] Snapshot integrity validation works (`validateSnapshotIntegrity()`)
 - [ ] Persist timeout works (5s)
-- [ ] isActive() method works
 - [ ] storage.onChanged PRIMARY works
 - [ ] Per-tab scoping works (`_shouldRenderOnThisTab`)
 - [ ] Solo/Mute mutual exclusivity works (arrays)
@@ -79,5 +78,5 @@ type-safe tab IDs, snapshot TTL race fix
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.10-v9 atomicity,
-memory leak fix, storage.onChanged PRIMARY.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.10-v10 tab ID
+acquisition, snapshot integrity, storage.onChanged PRIMARY.**
