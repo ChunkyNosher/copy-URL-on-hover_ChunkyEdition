@@ -521,18 +521,42 @@ export class MinimizedManager {
    * v1.6.3.5 - FIX Issue #3: Add restore-in-progress lock to prevent duplicate 400x300 windows
    *   Clear snapshot atomically BEFORE applying it to prevent race conditions
    *   Refactored to extract helpers to reduce complexity
+   * v1.6.4.15 - FIX Issue #17: Log restore attempts with timing for diagnostics
    * @param {string} id - Quick Tab ID
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
   restore(id) {
+    const restoreStartTime = Date.now();
+    const restoreAttemptId = `restore-${id}-${restoreStartTime}`;
+    
+    // v1.6.4.15 - FIX Issue #17: Log restore attempt timing
+    console.log('[RESTORE] Attempt started:', {
+      quickTabId: id,
+      attemptId: restoreAttemptId,
+      timestamp: new Date().toISOString()
+    });
+
     // v1.6.3.5 - FIX Issue #3: Check restore-in-progress lock
     const duplicateResult = this._handleDuplicateRestore(id);
-    if (duplicateResult !== null) return duplicateResult;
+    if (duplicateResult !== null) {
+      console.log('[RESTORE] Attempt completed (duplicate):', {
+        quickTabId: id,
+        attemptId: restoreAttemptId,
+        durationMs: Date.now() - restoreStartTime,
+        result: 'duplicate'
+      });
+      return duplicateResult;
+    }
 
     // Find snapshot from available sources
     const { snapshot, snapshotSource } = this._findSnapshot(id);
     if (!snapshot) {
-      console.log('[MinimizedManager] No snapshot found for restore:', id);
+      console.log('[RESTORE] Attempt completed (not found):', {
+        quickTabId: id,
+        attemptId: restoreAttemptId,
+        durationMs: Date.now() - restoreStartTime,
+        result: 'not-found'
+      });
       return false;
     }
 
@@ -544,6 +568,15 @@ export class MinimizedManager {
 
     // Apply snapshot and verify
     const result = this._applyAndVerifySnapshot(id, snapshot, snapshotSource);
+
+    // v1.6.4.15 - FIX Issue #17: Log restore completion with timing
+    console.log('[RESTORE] Attempt completed (success):', {
+      quickTabId: id,
+      attemptId: restoreAttemptId,
+      durationMs: Date.now() - restoreStartTime,
+      result: 'success',
+      snapshotSource
+    });
 
     return result;
   }

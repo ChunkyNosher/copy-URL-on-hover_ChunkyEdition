@@ -6,12 +6,15 @@
  * - Broadcasts tab events to Manager via port
  * - Validates adoption targets
  * - Updates tab metadata (favicon, title)
+ *
+ * v1.6.4.15 - FIX Issue #19: Container context updated during tab adoption
+ * v1.6.4.15 - FIX Issue #20: triggerPostAdoptionPersistence() hook called after adoption
  */
 
 export class TabLifecycleHandler {
   constructor() {
     // Track which tabs are currently open
-    this.openTabs = new Map(); // tabId -> { id, title, url, favIconUrl, active, status }
+    this.openTabs = new Map(); // tabId -> { id, title, url, favIconUrl, active, status, cookieStoreId }
     // Track the currently active tab ID for efficient updates
     this.activeTabId = null;
     // Store bound handlers for cleanup
@@ -21,6 +24,8 @@ export class TabLifecycleHandler {
       onActivated: null,
       onRemoved: null
     };
+    // v1.6.4.15 - FIX Issue #20: Post-adoption persistence callback
+    this._postAdoptionPersistCallback = null;
   }
 
   /**
@@ -97,6 +102,7 @@ export class TabLifecycleHandler {
 
   /**
    * Populate openTabs map from tabs array
+   * v1.6.4.15 - FIX Issue #19: Include cookieStoreId for container tracking
    * @param {Array} tabs - Array of browser tabs
    * @private
    */
@@ -108,7 +114,9 @@ export class TabLifecycleHandler {
         url: tab.url,
         favIconUrl: tab.favIconUrl,
         active: tab.active,
-        status: tab.status
+        status: tab.status,
+        // v1.6.4.15 - FIX Issue #19: Track container ID for adoption
+        cookieStoreId: tab.cookieStoreId || 'firefox-default'
       });
       // Track the active tab
       if (tab.active) {
@@ -119,6 +127,7 @@ export class TabLifecycleHandler {
 
   /**
    * Handle new tab created
+   * v1.6.4.15 - FIX Issue #19: Include cookieStoreId for container tracking
    * @param {Object} tab - Browser tab object
    */
   handleTabCreated(tab) {
@@ -130,12 +139,15 @@ export class TabLifecycleHandler {
       url: tab.url,
       favIconUrl: tab.favIconUrl,
       active: tab.active || false,
-      status: tab.status
+      status: tab.status,
+      // v1.6.4.15 - FIX Issue #19: Track container ID
+      cookieStoreId: tab.cookieStoreId || 'firefox-default'
     });
   }
 
   /**
    * Handle tab updated (title, favicon, URL changes)
+   * v1.6.4.15 - FIX Issue #19: Track container ID changes
    * @param {number} tabId - Tab ID
    * @param {Object} changeInfo - Changed properties
    * @param {Object} tab - Full tab object
@@ -148,7 +160,9 @@ export class TabLifecycleHandler {
         title: tab.title,
         url: tab.url,
         favIconUrl: tab.favIconUrl,
-        status: tab.status
+        status: tab.status,
+        // v1.6.4.15 - FIX Issue #19: Update container ID if changed
+        cookieStoreId: tab.cookieStoreId || existing.cookieStoreId
       });
     }
 
@@ -230,8 +244,9 @@ export class TabLifecycleHandler {
 
   /**
    * Validate if a tab is valid for adoption
+   * v1.6.4.15 - FIX Issue #19: Include container context in validation
    * @param {number} targetTabId - Target tab ID
-   * @returns {Object} { valid: boolean, reason?: string }
+   * @returns {Object} { valid: boolean, reason?: string, containerContext?: Object }
    */
   validateAdoptionTarget(targetTabId) {
     if (!this.openTabs.has(targetTabId)) {
@@ -241,7 +256,15 @@ export class TabLifecycleHandler {
       };
     }
 
-    return { valid: true };
+    // v1.6.4.15 - FIX Issue #19: Include container context for adoption
+    const targetTab = this.openTabs.get(targetTabId);
+    return { 
+      valid: true,
+      containerContext: {
+        cookieStoreId: targetTab.cookieStoreId || 'firefox-default',
+        tabId: targetTabId
+      }
+    };
   }
 
   /**
@@ -261,8 +284,66 @@ export class TabLifecycleHandler {
   }
 
   /**
+   * Get container ID for a specific tab
+   * v1.6.4.15 - FIX Issue #19: Helper for container adoption
+   * @param {number} tabId - Tab ID
+   * @returns {string|null} Cookie store ID or null if tab not found
+   */
+  getTabContainerId(tabId) {
+    const tab = this.openTabs.get(tabId);
+    return tab?.cookieStoreId || null;
+  }
+
+  /**
+   * Update container context during adoption
+   * v1.6.4.15 - FIX Issue #19: Detect container change during adoption
+   * @param {string} quickTabId - Quick Tab ID being adopted
+   * @param {number} oldOriginTabId - Previous origin tab ID
+   * @param {number} newOriginTabId - New origin tab ID
+   * @param {Object} snapshotMetadata - Current snapshot metadata to update
+   * @returns {{containerChanged: boolean, oldContainer: string, newContainer: string}}
+   */
+  updateContainerContextForAdoption(quickTabId, oldOriginTabId, newOriginTabId, snapshotMetadata) {
+    const oldContainer = this.getTabContainerId(oldOriginTabId) || snapshotMetadata?.originContainerId || 'unknown';
+    const newContainer = this.getTabContainerId(newOriginTabId) || 'firefox-default';
+    
+    const containerChanged = oldContainer !== newContainer;
+    
+    console.log('[ADOPTION_CONTAINER] Metadata update:', {
+      quickTabId,
+      oldOriginTabId,
+      newOriginTabId,
+      oldContainer,
+      newContainer,
+      containerChanged,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Update snapshot metadata if provided
+    if (snapshotMetadata) {
+      snapshotMetadata.originContainerId = newContainer;
+    }
+    
+    return { containerChanged, oldContainer, newContainer };
+  }
+
+  /**
+   * Set callback for post-adoption persistence
+   * v1.6.4.15 - FIX Issue #20: Allow setting callback from outside
+   * @param {Function} callback - Callback to invoke after adoption completes
+   */
+  setPostAdoptionPersistCallback(callback) {
+    this._postAdoptionPersistCallback = callback;
+    console.log('[TAB_LIFECYCLE] POST_ADOPTION_CALLBACK_SET:', {
+      hasCallback: typeof callback === 'function'
+    });
+  }
+
+  /**
    * Trigger state persistence after adoption completes
    * v1.6.3.10-v7 - FIX Diagnostic Issue #5: Re-attempt blocked writes after adoption fixes originTabId
+   * v1.6.4.15 - FIX Issue #19: Include container context update
+   * v1.6.4.15 - FIX Issue #20: Invoke registered callback
    *
    * This method should be called by background.js after a Quick Tab adoption completes.
    * After adoption, the originTabId is updated on the Quick Tab, which may unblock
@@ -270,20 +351,22 @@ export class TabLifecycleHandler {
    *
    * @param {string} quickTabId - ID of adopted Quick Tab
    * @param {number} newOriginTabId - New origin tab ID after adoption
-   * @param {Function} persistCallback - Callback to trigger state persistence
+   * @param {Function} persistCallback - Callback to trigger state persistence (optional)
    * @returns {Promise<void>}
    */
   async triggerPostAdoptionPersistence(quickTabId, newOriginTabId, persistCallback) {
-    console.log('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_TRIGGERED:', {
+    console.log('[ADOPTION_COMPLETE] Post-persistence hook triggered:', {
       quickTabId,
       newOriginTabId,
-      timestamp: Date.now()
+      hasExternalCallback: typeof persistCallback === 'function',
+      hasRegisteredCallback: typeof this._postAdoptionPersistCallback === 'function',
+      timestamp: new Date().toISOString()
     });
 
     // Validate the new origin tab is valid
     const validation = this.validateAdoptionTarget(newOriginTabId);
     if (!validation.valid) {
-      console.warn('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_SKIPPED:', {
+      console.warn('[ADOPTION_COMPLETE] Post-persistence skipped:', {
         quickTabId,
         newOriginTabId,
         reason: validation.reason
@@ -291,16 +374,33 @@ export class TabLifecycleHandler {
       return;
     }
 
-    // Call the persist callback if provided
-    if (typeof persistCallback === 'function') {
+    // v1.6.4.15 - FIX Issue #20: Call registered callback first (if any)
+    if (typeof this._postAdoptionPersistCallback === 'function') {
       try {
-        await persistCallback();
-        console.log('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_SUCCESS:', {
+        await this._postAdoptionPersistCallback(quickTabId, newOriginTabId);
+        console.log('[ADOPTION_COMPLETE] Registered callback executed:', {
           quickTabId,
           newOriginTabId
         });
       } catch (err) {
-        console.error('[TAB_LIFECYCLE] POST_ADOPTION_PERSISTENCE_FAILED:', {
+        console.error('[ADOPTION_COMPLETE] Registered callback failed:', {
+          quickTabId,
+          newOriginTabId,
+          error: err.message
+        });
+      }
+    }
+
+    // Call the external persist callback if provided
+    if (typeof persistCallback === 'function') {
+      try {
+        await persistCallback();
+        console.log('[ADOPTION_COMPLETE] External callback executed, write queue unblocked:', {
+          quickTabId,
+          newOriginTabId
+        });
+      } catch (err) {
+        console.error('[ADOPTION_COMPLETE] External callback failed:', {
           quickTabId,
           newOriginTabId,
           error: err.message

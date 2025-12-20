@@ -499,84 +499,85 @@ export class QuickTabHandler {
   }
 
   /**
+   * Build error response for GET_CURRENT_TAB_ID
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _buildTabIdErrorResponse(error, code, message = null, retryable = false) {
+    return {
+      success: false,
+      data: { currentTabId: null },
+      tabId: null,
+      error,
+      code,
+      ...(message && { message }),
+      ...(retryable && { retryable })
+    };
+  }
+
+  /**
+   * Build success response for GET_CURRENT_TAB_ID
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _buildTabIdSuccessResponse(tabId) {
+    return { 
+      success: true, 
+      data: { currentTabId: tabId },
+      tabId // Keep for backward compatibility
+    };
+  }
+
+  /**
+   * Check if sender has a valid tab ID
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce handleGetCurrentTabId complexity
+   * @private
+   */
+  _hasValidSenderTabId(sender) {
+    return sender?.tab && typeof sender.tab.id === 'number';
+  }
+
+  /**
    * Get current tab ID
    * v1.6.2.4 - FIX Issue #4: Add fallback when sender.tab is unavailable
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: ALWAYS prioritize sender.tab.id
-   *   The fallback to tabs.query({ active: true }) was causing cross-tab isolation failures
-   *   because when user switches tabs before content script initializes, the "active" tab
-   *   is different from the requesting tab. This returns the WRONG tab ID.
-   *
-   *   Now: We ONLY use sender.tab.id (which is the actual requesting tab).
-   *   If sender.tab is unavailable, we return null with a clear error instead of
-   *   returning a potentially wrong tab ID from the active tab query.
-   *
    * v1.6.3.10-v7 - FIX Bug #1: Add initialization guard to prevent race conditions
-   *   Made method async and added _ensureInitialized() call as first operation.
+   * v1.6.4.15 - FIX Issue #15: Consistent response envelope with code field
+   * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce complexity
    *
    * @param {Object} _message - Message object (unused, required by message router signature)
    * @param {Object} sender - Message sender object containing tab information
-   * @returns {Promise<{ success: boolean, tabId: number|null, error?: string }>}
+   * @returns {Promise<{ success: boolean, data?: { currentTabId: number }, error?: string, code?: string }>}
    */
   async handleGetCurrentTabId(_message, sender) {
     try {
-      // v1.6.3.10-v7 - FIX Bug #1: Check initialization FIRST to prevent race conditions
+      // v1.6.3.10-v7 - FIX Bug #1: Check initialization FIRST
       const initResult = await this._ensureInitialized();
       if (!initResult.success) {
-        console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Init check failed', {
-          error: initResult.error,
-          retryable: initResult.retryable
-        });
-        return {
-          success: false,
-          tabId: null,
-          error: initResult.error || 'NOT_INITIALIZED',
-          message: initResult.message || 'Background script still initializing. Please retry.',
-          retryable: initResult.retryable ?? true
-        };
-      }
-
-      // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id - this is the ACTUAL requesting tab
-      // sender.tab is populated by Firefox for all messages from content scripts
-      if (sender.tab && typeof sender.tab.id === 'number') {
-        console.log(
-          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (actual requesting tab)`
+        console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Init check failed');
+        return this._buildTabIdErrorResponse(
+          initResult.error || 'NOT_INITIALIZED',
+          initResult.error || 'NOT_INITIALIZED',
+          initResult.message,
+          initResult.retryable ?? true
         );
-        return { success: true, tabId: sender.tab.id };
       }
 
-      // v1.6.3.6-v4 - REMOVED: Fallback to tabs.query({ active: true })
-      // This fallback was causing cross-tab isolation failures because:
-      // 1. User opens Wikipedia Tab 1 (tabId=13)
-      // 2. User opens Wikipedia Tab 2 (tabId=14) and switches to it
-      // 3. Tab 2's content script sends GET_CURRENT_TAB_ID
-      // 4. If sender.tab.id is unavailable, fallback returned tabId=14 (active tab)
-      //    but Tab 1's content script might still be initializing and get wrong ID
-      //
-      // Instead: Return null if sender.tab is unavailable - this is a clear error
-      // that the caller can handle, rather than silently returning wrong data.
+      // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
+      if (this._hasValidSenderTabId(sender)) {
+        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`);
+        return this._buildTabIdSuccessResponse(sender.tab.id);
+      }
 
-      console.error(
-        '[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available - cannot determine requesting tab ID'
+      // sender.tab not available - return error
+      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available');
+      return this._buildTabIdErrorResponse(
+        'sender.tab not available - cannot identify requesting tab',
+        'SENDER_TAB_UNAVAILABLE'
       );
-      console.error(
-        '[QuickTabHandler] This should not happen for content scripts. Check if message came from non-tab context.'
-      );
-      return {
-        success: false,
-        tabId: null,
-        error: 'sender.tab not available - cannot identify requesting tab'
-      };
     } catch (err) {
-      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID error:', {
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack
-      });
-      return {
-        success: false,
-        tabId: null,
-        error: err?.message || 'Unknown error in handleGetCurrentTabId'
-      };
+      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID error:', err?.message);
+      return this._buildTabIdErrorResponse(err?.message || 'Unknown error', 'HANDLER_ERROR');
     }
   }
 

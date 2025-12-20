@@ -3380,18 +3380,38 @@ function _parsePortName(port) {
   return { type, tabId, origin };
 }
 
+// v1.6.4.15 - FIX Issue #16: Pending port connection queue during initialization
+const _pendingPortConnections = [];
+
 /**
  * Send background handshake to port after initialization
  * v1.6.3.10-v8 - FIX Code Health: Extracted async handshake logic
+ * v1.6.4.15 - FIX Issue #16: Enhanced logging for port lifecycle
  * @private
  */
 async function _sendBackgroundHandshake(port, portId, tabId, origin) {
   try {
+    const handshakeStartTime = Date.now();
     const initReady = await waitForInitialization(5000);
+    const handshakeDuration = Date.now() - handshakeStartTime;
+    
+    // v1.6.4.15 - FIX Issue #16: Log port lifecycle - initialized
+    console.log('[PORT_LIFECYCLE] Port initialized:', {
+      event: 'initialized',
+      portId,
+      tabId,
+      origin,
+      isInitialized: initReady,
+      handshakeDurationMs: handshakeDuration,
+      timestamp: new Date().toISOString()
+    });
+    
     port.postMessage({
       type: 'BACKGROUND_HANDSHAKE',
       ...getBackgroundStartupInfo(),
       isInitialized: initReady,
+      // v1.6.4.15 - FIX Issue #16: Add isReadyForCommands field
+      isReadyForCommands: initReady,
       portId, tabId,
       timestamp: Date.now()
     });
@@ -3405,18 +3425,55 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
  * Handle incoming port connection
  * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
  */
 function handlePortConnect(port) {
+  const connectTime = Date.now();
   const { type, tabId, origin } = _parsePortName(port);
+  
+  // v1.6.4.15 - FIX Issue #16: Log port lifecycle - created
+  console.log('[PORT_LIFECYCLE] Port created:', {
+    event: 'created',
+    portName: port.name,
+    tabId,
+    type,
+    origin,
+    isBackgroundInitialized: isInitialized,
+    timestamp: new Date().toISOString()
+  });
+  
   const portId = registerPort(port, origin, tabId, type);
   port._portId = portId;
 
   _sendBackgroundHandshake(port, portId, tabId, origin);
 
-  port.onMessage.addListener(message => handlePortMessage(port, portId, message));
+  // v1.6.4.15 - FIX Issue #16: Enhanced port message handler with lifecycle logging
+  port.onMessage.addListener(message => {
+    console.log('[PORT_LIFECYCLE] Message sent:', {
+      event: 'message-sent',
+      portId,
+      messageType: message.type || message.action,
+      timestamp: new Date().toISOString()
+    });
+    handlePortMessage(port, portId, message);
+  });
 
   port.onDisconnect.addListener(() => {
     const error = browser.runtime.lastError;
+    const connectionDuration = Date.now() - connectTime;
+    
+    // v1.6.4.15 - FIX Issue #16: Log port lifecycle - closed
+    console.log('[PORT_LIFECYCLE] Port closed:', {
+      event: 'closed',
+      portId,
+      tabId,
+      origin,
+      connectionDurationMs: connectionDuration,
+      hadError: !!error,
+      errorMessage: error?.message,
+      timestamp: new Date().toISOString()
+    });
+    
     if (error) {
       logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
     }

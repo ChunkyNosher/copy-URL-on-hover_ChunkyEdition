@@ -358,7 +358,157 @@ const TAB_ID_MAX_RETRIES = TAB_ID_RETRY_DELAYS_MS.length;
 // v1.6.3.10-v10 - FIX Code Review: Extract error strings as constants
 // v1.6.3.10-v10 - FIX Code Review: Use Set for O(1) lookup performance
 const RETRYABLE_ERROR_CODES = new Set(['NOT_INITIALIZED', 'GLOBAL_STATE_NOT_READY']);
-const RETRYABLE_MESSAGE_PATTERNS = ['disconnected', 'receiving end', 'Extension context'];
+// v1.6.4.15 - FIX Code Review: Convert to Set for O(1) lookup and consistency
+const RETRYABLE_MESSAGE_PATTERNS = new Set(['disconnected', 'receiving end', 'Extension context']);
+
+// ==================== v1.6.4.15 FIX ISSUE #14: MESSAGE QUEUE DURING INIT ====================
+// Queue messages while content script initializes to prevent lost messages
+
+/**
+ * Track whether content script initialization is complete
+ * v1.6.4.15 - FIX Issue #14: Initialization tracking
+ */
+let contentScriptInitialized = false;
+
+/**
+ * Message queue for messages sent during initialization window
+ * v1.6.4.15 - FIX Issue #14: Queue messages during init
+ */
+const initializationMessageQueue = [];
+
+/**
+ * Maximum queue size for initialization messages
+ * v1.6.4.15 - FIX Issue #14
+ */
+const MAX_INIT_MESSAGE_QUEUE_SIZE = 20;
+
+/**
+ * Background unresponsive timeout (ms)
+ * v1.6.4.15 - FIX Issue #14: Timeout-based fallback if background unresponsive
+ */
+const BACKGROUND_UNRESPONSIVE_TIMEOUT_MS = 5000;
+
+/**
+ * Track last successful background response time
+ * v1.6.4.15 - FIX Issue #14
+ */
+let lastBackgroundResponseTime = Date.now();
+
+/**
+ * Check if a message has valid format for sending
+ * v1.6.4.15 - FIX Issue #14: Pre-flight validation
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function _validateMessageFormat(message) {
+  if (!message) {
+    return { valid: false, error: 'Message is null or undefined' };
+  }
+  
+  if (typeof message !== 'object') {
+    return { valid: false, error: 'Message must be an object' };
+  }
+  
+  // Must have action or type
+  if (!message.action && !message.type) {
+    return { valid: false, error: 'Message must have action or type property' };
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Queue a message during initialization window
+ * v1.6.4.15 - FIX Issue #14: Queue messages during init
+ * @param {Object} message - Message to queue
+ * @param {Function} callback - Callback to execute when message can be sent
+ */
+function _queueInitializationMessage(message, callback) {
+  if (initializationMessageQueue.length >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
+    const dropped = initializationMessageQueue.shift();
+    console.warn('[MSG][Content] INIT_QUEUE_OVERFLOW: Dropped oldest message:', {
+      droppedAction: dropped?.message?.action,
+      queueSize: initializationMessageQueue.length
+    });
+  }
+  
+  initializationMessageQueue.push({
+    message,
+    callback,
+    queuedAt: Date.now()
+  });
+  
+  console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
+    action: message.action || message.type,
+    queueSize: initializationMessageQueue.length
+  });
+}
+
+/**
+ * Flush queued messages after initialization completes
+ * v1.6.4.15 - FIX Issue #14: Process queued messages
+ */
+async function _flushInitializationMessageQueue() {
+  if (initializationMessageQueue.length === 0) return;
+  
+  console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
+    queueSize: initializationMessageQueue.length
+  });
+  
+  while (initializationMessageQueue.length > 0) {
+    const { message, callback, queuedAt } = initializationMessageQueue.shift();
+    const queueDuration = Date.now() - queuedAt;
+    
+    try {
+      const result = await callback(message);
+      console.log('[MSG][Content] QUEUED_MESSAGE_SENT:', {
+        action: message.action || message.type,
+        queueDurationMs: queueDuration,
+        success: result?.success ?? true
+      });
+    } catch (err) {
+      console.error('[MSG][Content] QUEUED_MESSAGE_FAILED:', {
+        action: message.action || message.type,
+        error: err.message,
+        queueDurationMs: queueDuration
+      });
+    }
+  }
+}
+
+/**
+ * Check if background is responsive based on last response time
+ * v1.6.4.15 - FIX Issue #14: Timeout-based fallback
+ * @returns {boolean} True if background is responsive
+ */
+function _isBackgroundResponsive() {
+  const timeSinceLastResponse = Date.now() - lastBackgroundResponseTime;
+  return timeSinceLastResponse < BACKGROUND_UNRESPONSIVE_TIMEOUT_MS;
+}
+
+/**
+ * Update last background response time
+ * v1.6.4.15 - FIX Issue #14
+ */
+function _updateBackgroundResponseTime() {
+  lastBackgroundResponseTime = Date.now();
+}
+
+/**
+ * Mark content script as initialized and flush queued messages
+ * v1.6.4.15 - FIX Issue #14
+ */
+async function _markContentScriptInitialized() {
+  if (contentScriptInitialized) return;
+  
+  contentScriptInitialized = true;
+  console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
+    timestamp: new Date().toISOString()
+  });
+  
+  // Flush any queued messages
+  await _flushInitializationMessageQueue();
+}
 
 /**
  * Check if an error response is retryable
@@ -374,16 +524,44 @@ function _isRetryableResponse(response) {
 /**
  * Check if an error message indicates a retryable condition
  * v1.6.3.10-v10 - FIX Code Review: Extracted to helper function
+ * v1.6.4.15 - FIX Code Review: Use Set.forEach with short-circuit for O(1) average lookup
  * @private
  */
 function _isRetryableError(message) {
   if (!message) return false;
-  return RETRYABLE_MESSAGE_PATTERNS.some(pattern => message.includes(pattern));
+  // RETRYABLE_MESSAGE_PATTERNS is now a Set
+  for (const pattern of RETRYABLE_MESSAGE_PATTERNS) {
+    if (message.includes(pattern)) return true;
+  }
+  return false;
+}
+
+/**
+ * Extract tab ID from response, supporting both v1 and v2 formats
+ * v1.6.4.15 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} response - Response from GET_CURRENT_TAB_ID
+ * @returns {{found: boolean, tabId?: number, format?: string}}
+ */
+function _extractTabIdFromResponse(response) {
+  if (!response?.success) {
+    return { found: false };
+  }
+  
+  // v1.6.4.15 - Support both new format (data.currentTabId) and old format (tabId)
+  const tabId = response.data?.currentTabId ?? response.tabId;
+  if (typeof tabId !== 'number') {
+    return { found: false };
+  }
+  
+  const format = response.data ? 'v2 (data.currentTabId)' : 'v1 (tabId)';
+  return { found: true, tabId, format };
 }
 
 /**
  * Single attempt to get tab ID from background
  * v1.6.3.10-v10 - FIX Issue #5: Extracted to support retry logic
+ * v1.6.4.15 - FIX Issue #15: Check response.success and response.data
  * @private
  * @param {number} attemptNumber - Current attempt number (1-based)
  * @returns {Promise<{tabId: number|null, error: string|null, retryable: boolean}>}
@@ -395,14 +573,17 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
 
-    // Success case
-    if (response?.success && typeof response.tabId === 'number') {
+    // v1.6.4.15 - FIX Issue #15: Check response.success first
+    // v1.6.4.15 - FIX Code Health: Extract tabId handling to avoid nested depth
+    const tabIdResult = _extractTabIdFromResponse(response);
+    if (tabIdResult.found) {
       console.log('[Content][TabID][INIT] ATTEMPT_SUCCESS:', {
         attempt: attemptNumber,
-        tabId: response.tabId,
+        tabId: tabIdResult.tabId,
+        responseFormat: tabIdResult.format,
         durationMs: duration
       });
-      return { tabId: response.tabId, error: null, retryable: false };
+      return { tabId: tabIdResult.tabId, error: null, retryable: false };
     }
 
     // Check if error is retryable (background not initialized yet)
@@ -412,6 +593,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       attempt: attemptNumber,
       response,
       error: response?.error,
+      code: response?.code, // v1.6.4.15 - Log error code
       retryable: isRetryable,
       durationMs: duration
     });
