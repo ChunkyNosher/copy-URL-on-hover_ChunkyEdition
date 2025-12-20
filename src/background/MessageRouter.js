@@ -59,6 +59,21 @@ export const RESPONSE_ENVELOPE = {
 // v1.6.4.15 - FIX Issue #22: Protocol version for future compatibility
 export const MESSAGE_PROTOCOL_VERSION = '1.0.0';
 
+// v1.6.3.10-v11 - FIX Issue #11: Operations requiring ownership validation
+// These operations modify Quick Tab state and must validate sender.tab.id === message.originTabId
+const OWNERSHIP_REQUIRED_ACTIONS = new Set([
+  'CREATE_QUICK_TAB',
+  'UPDATE_QUICK_TAB_POSITION',
+  'UPDATE_QUICK_TAB_POSITION_FINAL',
+  'UPDATE_QUICK_TAB_SIZE',
+  'UPDATE_QUICK_TAB_SIZE_FINAL',
+  'UPDATE_QUICK_TAB_PIN',
+  'UPDATE_QUICK_TAB_SOLO',
+  'UPDATE_QUICK_TAB_MUTE',
+  'UPDATE_QUICK_TAB_MINIMIZE',
+  'UPDATE_QUICK_TAB_ZINDEX'
+]);
+
 export class MessageRouter {
   constructor() {
     this.handlers = new Map();
@@ -224,10 +239,108 @@ export class MessageRouter {
   }
 
   /**
+   * Validate originTabId ownership for operations that require it
+   * v1.6.3.10-v11 - FIX Issue #11: Middleware-style ownership validation
+   * 
+   * For operations in OWNERSHIP_REQUIRED_ACTIONS, validates that:
+   * - sender.tab.id exists (message came from a content script in a tab)
+   * - If message.originTabId is provided, it must match sender.tab.id
+   * 
+   * This prevents spoofing attacks where a malicious content script could
+   * claim to be acting on behalf of a different tab.
+   * 
+   * @private
+   * @param {Object} message - Message with potential originTabId
+   * @param {Object} sender - Message sender
+   * @param {string} action - Action being performed
+   * @returns {{valid: boolean, error?: string, code?: string}}
+   */
+  _validateOwnership(message, sender, action) {
+    // Skip validation for actions that don't require ownership
+    if (!OWNERSHIP_REQUIRED_ACTIONS.has(action)) {
+      return { valid: true };
+    }
+    
+    const senderTabId = sender?.tab?.id;
+    const payloadOriginTabId = message?.originTabId;
+    
+    // Sender must have a tab ID for ownership-required operations
+    if (typeof senderTabId !== 'number') {
+      console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: No sender.tab.id', {
+        action,
+        senderType: sender ? typeof sender : 'undefined',
+        hasTab: !!sender?.tab,
+        warning: 'Operations requiring ownership must come from tabs'
+      });
+      return { 
+        valid: false, 
+        error: 'OWNERSHIP_VALIDATION_FAILED',
+        code: 'SENDER_TAB_REQUIRED'
+      };
+    }
+    
+    // If payload has originTabId, it MUST match sender.tab.id
+    if (payloadOriginTabId !== null && payloadOriginTabId !== undefined) {
+      if (payloadOriginTabId !== senderTabId) {
+        console.error('[MSG][MessageRouter] OWNERSHIP_MISMATCH:', {
+          action,
+          payloadOriginTabId,
+          senderTabId,
+          warning: 'Security concern - payload claims different origin than sender'
+        });
+        return { 
+          valid: false, 
+          error: 'OWNERSHIP_VALIDATION_FAILED',
+          code: 'ORIGIN_MISMATCH'
+        };
+      }
+    }
+    
+    // Validation passed
+    console.log('[MSG][MessageRouter] OWNERSHIP_VALIDATED:', {
+      action,
+      senderTabId,
+      payloadOriginTabId: payloadOriginTabId ?? 'not-provided'
+    });
+    
+    return { valid: true };
+  }
+
+  /**
+   * Handle case when no handler exists for action
+   * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleNoHandler(message, sender, sendResponse, action) {
+    // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
+    if (this._shouldDeferToOtherListeners(message)) {
+      return { handled: false, returnValue: false };
+    }
+    
+    // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
+    const validation = this._validateAction(action, sender);
+    if (!validation.valid) {
+      sendResponse({ 
+        success: false, 
+        error: 'UNKNOWN_COMMAND', 
+        command: action,
+        code: 'UNKNOWN_COMMAND',
+        version: MESSAGE_PROTOCOL_VERSION
+      });
+      return { handled: true, returnValue: false };
+    }
+    
+    console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
+    sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
+    return { handled: true, returnValue: false };
+  }
+
+  /**
    * Route message to appropriate handler
    * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
    * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
    * v1.6.4.15 - FIX Issue #22: Normalize response format
+   * v1.6.3.10-v11 - FIX Issue #11: Add ownership validation middleware
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
@@ -247,26 +360,21 @@ export class MessageRouter {
     const handler = this.handlers.get(action);
 
     if (!handler) {
-      // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
-      if (this._shouldDeferToOtherListeners(message)) {
-        return false;
-      }
-      
-      // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
-      const validation = this._validateAction(action, sender);
-      if (!validation.valid) {
-        sendResponse({ 
-          success: false, 
-          error: 'UNKNOWN_COMMAND', 
-          command: action,
-          code: 'UNKNOWN_COMMAND',
-          version: MESSAGE_PROTOCOL_VERSION
-        });
-        return false;
-      }
-      
-      console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
-      sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
+      // v1.6.3.10-v11 - FIX Code Health: Use helper to reduce complexity
+      const result = this._handleNoHandler(message, sender, sendResponse, action);
+      if (result.handled) return result.returnValue;
+      return false;
+    }
+
+    // v1.6.3.10-v11 - FIX Issue #11: Validate ownership for operations that require it
+    const ownershipValidation = this._validateOwnership(message, sender, action);
+    if (!ownershipValidation.valid) {
+      sendResponse({
+        success: false,
+        error: ownershipValidation.error,
+        code: ownershipValidation.code,
+        version: MESSAGE_PROTOCOL_VERSION
+      });
       return false;
     }
 

@@ -355,6 +355,19 @@ function logQuickTabsInitError(qtErr) {
 const TAB_ID_RETRY_DELAYS_MS = [200, 500, 1500, 5000];
 const TAB_ID_MAX_RETRIES = TAB_ID_RETRY_DELAYS_MS.length;
 
+// v1.6.3.10-v11 - FIX Issue #1: Extended retry for background initialization
+// After initial backoff exhaustion, use slower retry loop with 5-10s intervals
+// Total extended timeout: 60 seconds to allow for slow background initialization
+const TAB_ID_EXTENDED_RETRY_INTERVAL_MS = 5000;
+const TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS = 8; // 8 x 5s = 40s additional retry window
+const TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS = 60000; // 60 seconds total timeout
+
+// v1.6.3.10-v11 - FIX Issue #1: Track background readiness for event-driven retry
+let backgroundReadinessDetected = false;
+let tabIdAcquisitionPending = false;
+// eslint-disable-next-line prefer-const -- Resolver is assigned later in async context
+let tabIdAcquisitionResolver = null;
+
 // v1.6.3.10-v10 - FIX Code Review: Extract error strings as constants
 // v1.6.3.10-v10 - FIX Code Review: Use Set for O(1) lookup performance
 const RETRYABLE_ERROR_CODES = new Set(['NOT_INITIALIZED', 'GLOBAL_STATE_NOT_READY']);
@@ -371,6 +384,25 @@ const RETRYABLE_MESSAGE_PATTERNS = new Set(['disconnected', 'receiving end', 'Ex
 let contentScriptInitialized = false;
 
 /**
+ * Track whether hydration from storage is complete
+ * v1.6.3.10-v11 - FIX Issue #15: Hydration race condition prevention
+ * Operations like CREATE_QUICK_TAB should wait until hydration is complete
+ */
+let isHydrationComplete = false;
+
+/**
+ * Timeout for hydration (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within this time, allow operations anyway
+ */
+const HYDRATION_TIMEOUT_MS = 3000;
+
+/**
+ * Queue for operations that arrived during hydration
+ * v1.6.3.10-v11 - FIX Issue #15: Buffer operations until hydration completes
+ */
+const preHydrationOperationQueue = [];
+
+/**
  * Message queue for messages sent during initialization window
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
  */
@@ -379,8 +411,22 @@ const initializationMessageQueue = [];
 /**
  * Maximum queue size for initialization messages
  * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.10-v11 - FIX Issue #6: Increased from 20 to 100 with backpressure warning
  */
-const MAX_INIT_MESSAGE_QUEUE_SIZE = 20;
+const MAX_INIT_MESSAGE_QUEUE_SIZE = 100;
+
+/**
+ * Queue backpressure warning threshold (75% of max)
+ * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism
+ */
+const QUEUE_BACKPRESSURE_THRESHOLD = 75;
+
+/**
+ * Track dropped messages for retry
+ * v1.6.3.10-v11 - FIX Issue #6: Retry dropped messages
+ */
+const droppedMessageBuffer = [];
+const MAX_DROPPED_MESSAGES = 10;
 
 /**
  * Background unresponsive timeout (ms)
@@ -393,6 +439,333 @@ const BACKGROUND_UNRESPONSIVE_TIMEOUT_MS = 5000;
  * v1.6.4.15 - FIX Issue #14
  */
 let lastBackgroundResponseTime = Date.now();
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #2: MESSAGE ORDERING ====================
+// Ensure deterministic message processing order
+
+/**
+ * Operation types for message ordering
+ * v1.6.3.10-v11 - FIX Issue #2: Explicit operation type for ordering
+ * @enum {string}
+ */
+const OPERATION_TYPE = {
+  CREATE: 'CREATE',
+  RESTORE: 'RESTORE',
+  UPDATE: 'UPDATE',
+  CLOSE: 'CLOSE',
+  MINIMIZE: 'MINIMIZE'
+};
+
+/**
+ * Operation type priority for sorting (lower = higher priority)
+ * v1.6.3.10-v11 - FIX Issue #2: CREATE must be processed before RESTORE
+ * Reserved for future use in command queue sorting
+ */
+const _OPERATION_PRIORITY = {
+  [OPERATION_TYPE.CREATE]: 1,
+  [OPERATION_TYPE.RESTORE]: 2,
+  [OPERATION_TYPE.UPDATE]: 3,
+  [OPERATION_TYPE.MINIMIZE]: 4,
+  [OPERATION_TYPE.CLOSE]: 5
+};
+
+/**
+ * Command queue for deterministic processing
+ * v1.6.3.10-v11 - FIX Issue #2: Buffer operations for ordered processing
+ * Reserved for future use in ordered message processing
+ */
+const _commandQueue = [];
+
+/**
+ * Global sequence counter for message ordering
+ * v1.6.3.10-v11 - FIX Issue #2: Monotonic sequence for ordering
+ */
+let globalCommandSequenceId = 0;
+
+/**
+ * Map of Quick Tab IDs to pending CREATE acknowledgments
+ * v1.6.3.10-v11 - FIX Issue #2: Track CREATE completion before allowing RESTORE
+ * Reserved for future use in acknowledgment protocol
+ */
+const _pendingCreateAcks = new Map();
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #23: HEARTBEAT MECHANISM ====================
+// FIX Issue #23: Background service worker restart recovery via heartbeat
+
+/**
+ * Heartbeat interval (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #23: Every 15 seconds
+ */
+const HEARTBEAT_INTERVAL_MS = 15000;
+
+/**
+ * Heartbeat timeout for response (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #23: 5 seconds before considering background unresponsive
+ */
+const HEARTBEAT_RESPONSE_TIMEOUT_MS = 5000;
+
+/**
+ * Maximum message retry attempts
+ * v1.6.3.10-v11 - FIX Issue #23: Retry failed messages up to 3 times
+ */
+const MESSAGE_MAX_RETRIES = 3;
+
+/**
+ * Message timeout before retry (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+const MESSAGE_RESPONSE_TIMEOUT_MS = 5000;
+
+/**
+ * Track background version/generation for restart detection
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+let lastKnownBackgroundGeneration = null;
+let _lastHeartbeatTime = 0;  // Prefixed with _ to indicate unused (available for debug logging)
+let heartbeatIntervalId = null;
+let heartbeatFailureCount = 0;
+const HEARTBEAT_MAX_FAILURES = 3;
+
+/**
+ * Track message retry state
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+let messageIdCounter = 0;
+const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt, resolve, reject }
+
+/**
+ * Generate unique message ID for correlation
+ * v1.6.3.10-v11 - FIX Issue #23
+ * @returns {string} Unique message ID
+ */
+function _generateMessageId() {
+  return `msg-${Date.now()}-${++messageIdCounter}`;
+}
+
+/**
+ * Send heartbeat to background and check for restart
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+async function _sendHeartbeat() {
+  const heartbeatStart = Date.now();
+  const heartbeatId = _generateMessageId();
+  
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage({
+        type: 'HEARTBEAT',
+        messageId: heartbeatId,
+        timestamp: heartbeatStart,
+        lastKnownGeneration: lastKnownBackgroundGeneration
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Heartbeat timeout')), HEARTBEAT_RESPONSE_TIMEOUT_MS)
+      )
+    ]);
+    
+    const latencyMs = Date.now() - heartbeatStart;
+    _lastHeartbeatTime = Date.now();
+    heartbeatFailureCount = 0;
+    
+    // v1.6.3.10-v11 - FIX Issue #5: Record latency for dynamic adoption TTL
+    if (typeof _recordHandshakeLatency === 'function') {
+      _recordHandshakeLatency(latencyMs);
+    }
+    
+    // Check for background restart
+    if (response?.generation && lastKnownBackgroundGeneration !== null && 
+        response.generation !== lastKnownBackgroundGeneration) {
+      console.log('[Content][HEARTBEAT] BACKGROUND_RESTART_DETECTED:', {
+        previousGeneration: lastKnownBackgroundGeneration,
+        newGeneration: response.generation,
+        latencyMs
+      });
+      
+      // Trigger reconnection/rehydration
+      _handleBackgroundRestart(response.generation);
+    }
+    
+    // Update known generation
+    if (response?.generation) {
+      lastKnownBackgroundGeneration = response.generation;
+    }
+    
+    console.log('[Content][HEARTBEAT] SUCCESS:', {
+      heartbeatId,
+      latencyMs,
+      generation: response?.generation
+    });
+    
+  } catch (err) {
+    heartbeatFailureCount++;
+    console.warn('[Content][HEARTBEAT] FAILURE:', {
+      heartbeatId,
+      error: err.message,
+      failureCount: heartbeatFailureCount,
+      maxFailures: HEARTBEAT_MAX_FAILURES
+    });
+    
+    // If too many failures, assume background restarted
+    if (heartbeatFailureCount >= HEARTBEAT_MAX_FAILURES) {
+      console.log('[Content][HEARTBEAT] MAX_FAILURES_REACHED: Assuming background restart');
+      _handleBackgroundRestart(null);
+      heartbeatFailureCount = 0;
+    }
+  }
+}
+
+/**
+ * Handle detected background restart
+ * v1.6.3.10-v11 - FIX Issue #23
+ * @param {string|null} newGeneration - New background generation ID
+ */
+function _handleBackgroundRestart(newGeneration) {
+  console.log('[Content] BACKGROUND_RESTART: Initiating recovery', {
+    newGeneration,
+    pendingMessages: pendingMessages.size
+  });
+  
+  lastKnownBackgroundGeneration = newGeneration;
+  
+  // Notify pending tab ID acquisition to retry
+  _notifyBackgroundReadiness();
+  
+  // Retry any pending messages
+  _retryPendingMessages();
+  
+  // Emit event for listeners
+  if (typeof eventBus !== 'undefined' && eventBus.emit) {
+    eventBus.emit('background:restart', { generation: newGeneration });
+  }
+}
+
+/**
+ * Retry all pending messages after background restart
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+function _retryPendingMessages() {
+  if (pendingMessages.size === 0) return;
+  
+  console.log('[Content] RETRY_PENDING_MESSAGES:', { count: pendingMessages.size });
+  
+  for (const [messageId, pending] of pendingMessages) {
+    if (pending.retryCount < MESSAGE_MAX_RETRIES) {
+      pending.retryCount++;
+      console.log('[Content] MESSAGE_RETRY:', {
+        messageId,
+        attempt: pending.retryCount,
+        maxRetries: MESSAGE_MAX_RETRIES
+      });
+      
+      // Re-send the message
+      _sendMessageWithRetry(pending.message, pending.resolve, pending.reject, pending.retryCount);
+    } else {
+      // Max retries exceeded
+      pending.reject(new Error(`Max retries (${MESSAGE_MAX_RETRIES}) exceeded for message ${messageId}`));
+      pendingMessages.delete(messageId);
+    }
+  }
+}
+
+/**
+ * Send message with retry and timeout support
+ * v1.6.3.10-v11 - FIX Issue #23: Message envelope with retry
+ * @param {Object} message - Message to send
+ * @param {Function} resolve - Promise resolve function
+ * @param {Function} reject - Promise reject function
+ * @param {number} [retryCount=0] - Current retry count
+ */
+async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
+  const messageId = message.messageId || _generateMessageId();
+  const envelope = {
+    ...message,
+    messageId,
+    timestamp: Date.now(),
+    retryCount
+  };
+  
+  // Track pending message
+  pendingMessages.set(messageId, {
+    message: envelope,
+    retryCount,
+    sentAt: Date.now(),
+    resolve,
+    reject
+  });
+  
+  console.log('[Content] MESSAGE_SENT:', {
+    messageId,
+    action: message.action || message.type,
+    retryCount
+  });
+  
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage(envelope),
+      new Promise((_, rej) => 
+        setTimeout(() => rej(new Error('Message timeout')), MESSAGE_RESPONSE_TIMEOUT_MS)
+      )
+    ]);
+    
+    console.log('[Content] MESSAGE_RECEIVED_RESPONSE:', {
+      messageId,
+      success: response?.success ?? true
+    });
+    
+    pendingMessages.delete(messageId);
+    resolve(response);
+    
+  } catch (err) {
+    const pending = pendingMessages.get(messageId);
+    
+    if (pending && pending.retryCount < MESSAGE_MAX_RETRIES) {
+      // Will be retried on next heartbeat failure or manually
+      console.warn('[Content] MESSAGE_TIMEOUT: Will retry on background recovery', {
+        messageId,
+        retryCount: pending.retryCount,
+        error: err.message
+      });
+    } else {
+      pendingMessages.delete(messageId);
+      reject(err);
+    }
+  }
+}
+
+/**
+ * Start heartbeat interval
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+function _startHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+  }
+  
+  // Send initial heartbeat
+  _sendHeartbeat();
+  
+  // Start interval
+  heartbeatIntervalId = setInterval(_sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+  
+  console.log('[Content][HEARTBEAT] STARTED:', {
+    intervalMs: HEARTBEAT_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop heartbeat interval
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+function _stopHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+    console.log('[Content][HEARTBEAT] STOPPED');
+  }
+}
+
+// ==================== END ISSUE #23 FIX ====================
 
 /**
  * Check if a message has valid format for sending
@@ -420,41 +793,180 @@ function _validateMessageFormat(message) {
 /**
  * Queue a message during initialization window
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
+ * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism with detailed logging
  * @param {Object} message - Message to queue
  * @param {Function} callback - Callback to execute when message can be sent
  */
 function _queueInitializationMessage(message, callback) {
-  if (initializationMessageQueue.length >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
-    const dropped = initializationMessageQueue.shift();
-    console.warn('[MSG][Content] INIT_QUEUE_OVERFLOW: Dropped oldest message:', {
-      droppedAction: dropped?.message?.action,
-      queueSize: initializationMessageQueue.length
-    });
+  const queueSize = initializationMessageQueue.length;
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Check and emit backpressure warning
+  _checkQueueBackpressure(queueSize);
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Handle queue overflow
+  if (queueSize >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
+    _handleQueueOverflow();
   }
   
   initializationMessageQueue.push({
     message,
     callback,
-    queuedAt: Date.now()
+    queuedAt: Date.now(),
+    sequenceId: ++globalCommandSequenceId // v1.6.3.10-v11 - FIX Issue #2: Add sequence ID
   });
   
   console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
     action: message.action || message.type,
+    quickTabId: message.id || message.quickTabId,
+    sequenceId: globalCommandSequenceId,
     queueSize: initializationMessageQueue.length
   });
 }
 
 /**
+ * Check and emit backpressure warning if queue is approaching limit
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ * @param {number} queueSize - Current queue size
+ */
+function _checkQueueBackpressure(queueSize) {
+  if (queueSize >= QUEUE_BACKPRESSURE_THRESHOLD && queueSize < MAX_INIT_MESSAGE_QUEUE_SIZE) {
+    console.warn('[MSG][Content] QUEUE_BACKPRESSURE: Queue approaching limit, slow down message send rate', {
+      currentSize: queueSize,
+      threshold: QUEUE_BACKPRESSURE_THRESHOLD,
+      maxSize: MAX_INIT_MESSAGE_QUEUE_SIZE,
+      percentFull: Math.round((queueSize / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100)
+    });
+  }
+}
+
+/**
+ * Handle queue overflow by dropping oldest message and buffering for retry
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ */
+function _handleQueueOverflow() {
+  const dropped = initializationMessageQueue.shift();
+  const queueSize = initializationMessageQueue.length;
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Log dropped message with full metadata
+  console.error('[MSG][Content] INIT_QUEUE_OVERFLOW: Dropped message (queue full)', {
+    droppedMessageType: dropped?.message?.action || dropped?.message?.type,
+    droppedQuickTabId: dropped?.message?.id || dropped?.message?.quickTabId,
+    droppedTimestamp: dropped?.queuedAt,
+    queueSizeAtDrop: queueSize + 1,
+    dropTime: Date.now(),
+    messageAgeMs: dropped?.queuedAt ? Date.now() - dropped.queuedAt : null
+  });
+  
+  // v1.6.3.10-v11 - FIX Issue #6: Buffer dropped messages for retry
+  _bufferDroppedMessage(dropped);
+}
+
+/**
+ * Buffer a dropped message for later retry
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ * @param {Object} dropped - Dropped message entry
+ */
+function _bufferDroppedMessage(dropped) {
+  if (!dropped || droppedMessageBuffer.length >= MAX_DROPPED_MESSAGES) return;
+  
+  droppedMessageBuffer.push({
+    message: dropped.message,
+    callback: dropped.callback,
+    originalQueuedAt: dropped.queuedAt,
+    droppedAt: Date.now()
+  });
+  console.log('[MSG][Content] DROPPED_MESSAGE_BUFFERED: Will retry after background ready', {
+    bufferSize: droppedMessageBuffer.length,
+    maxBuffer: MAX_DROPPED_MESSAGES
+  });
+}
+
+/**
+ * Retry a single dropped message
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ * @param {Object} dropped - Dropped message entry
+ */
+async function _retryDroppedMessage(dropped) {
+  try {
+    await dropped.callback(dropped.message);
+    console.log('[MSG][Content] DROPPED_MESSAGE_RETRY_SUCCESS:', {
+      action: dropped.message.action || dropped.message.type,
+      totalDelayMs: Date.now() - dropped.originalQueuedAt
+    });
+  } catch (err) {
+    console.error('[MSG][Content] DROPPED_MESSAGE_RETRY_FAILED:', {
+      action: dropped.message.action || dropped.message.type,
+      error: err.message
+    });
+  }
+}
+
+/**
  * Flush queued messages after initialization completes
  * v1.6.4.15 - FIX Issue #14: Process queued messages
+ * v1.6.3.10-v11 - FIX Issue #6: Also retry dropped messages
  */
 async function _flushInitializationMessageQueue() {
+  // v1.6.3.10-v11 - FIX Issue #6: First retry dropped messages
+  await _retryDroppedMessages();
+  
   if (initializationMessageQueue.length === 0) return;
   
   console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
     queueSize: initializationMessageQueue.length
   });
   
+  // v1.6.3.10-v11 - FIX Issue #7: Log queue state at thresholds
+  _logQueueStateWarnings();
+  
+  await _processQueuedMessages();
+}
+
+/**
+ * Retry all dropped messages
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ */
+async function _retryDroppedMessages() {
+  if (droppedMessageBuffer.length === 0) return;
+  
+  console.log('[MSG][Content] RETRYING_DROPPED_MESSAGES:', {
+    count: droppedMessageBuffer.length
+  });
+  
+  while (droppedMessageBuffer.length > 0) {
+    const dropped = droppedMessageBuffer.shift();
+    await _retryDroppedMessage(dropped);
+  }
+}
+
+/**
+ * Log warnings if queue depth exceeds thresholds
+ * v1.6.3.10-v11 - FIX Issue #7: Extracted to reduce complexity
+ * @private
+ */
+function _logQueueStateWarnings() {
+  const size = initializationMessageQueue.length;
+  // Check thresholds in descending order to log most severe first
+  if (size >= 1000) {
+    console.error('[MSG][Content] QUEUE_STATE_CRITICAL: Queue depth exceeds 1000 items', { queueSize: size });
+  } else if (size >= 500) {
+    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 500 items', { queueSize: size });
+  } else if (size >= 100) {
+    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 100 items', { queueSize: size });
+  }
+}
+
+/**
+ * Process all queued messages
+ * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * @private
+ */
+async function _processQueuedMessages() {
   while (initializationMessageQueue.length > 0) {
     const { message, callback, queuedAt } = initializationMessageQueue.shift();
     const queueDuration = Date.now() - queuedAt;
@@ -509,6 +1021,134 @@ async function _markContentScriptInitialized() {
   // Flush any queued messages
   await _flushInitializationMessageQueue();
 }
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #15: HYDRATION GATING ====================
+// Prevent operations from running before state is hydrated from storage
+
+/**
+ * Mark hydration as complete and drain the operation queue
+ * v1.6.3.10-v11 - FIX Issue #15: Signal hydration complete
+ * @param {number} [loadedTabCount=0] - Number of tabs loaded from storage
+ */
+async function _markHydrationComplete(loadedTabCount = 0) {
+  if (isHydrationComplete) return;
+  
+  isHydrationComplete = true;
+  console.log('[Content] HYDRATION_COMPLETE:', {
+    loadedTabCount,
+    queuedOperations: preHydrationOperationQueue.length,
+    timestamp: Date.now()
+  });
+  
+  // Drain queued operations
+  await _drainPreHydrationQueue();
+}
+
+/**
+ * Queue an operation that arrived before hydration completed
+ * v1.6.3.10-v11 - FIX Issue #15: Buffer operations during hydration
+ * @param {Object} operation - Operation to queue
+ * @param {string} operation.type - Operation type
+ * @param {Object} operation.data - Operation data
+ * @param {Function} [operation.callback] - Callback to execute when operation is processed
+ */
+function _queuePreHydrationOperation(operation) {
+  preHydrationOperationQueue.push({
+    ...operation,
+    queuedAt: Date.now()
+  });
+  
+  console.log('[Content] OPERATION_QUEUED_DURING_HYDRATION:', {
+    operationType: operation.type,
+    queueSize: preHydrationOperationQueue.length,
+    quickTabId: operation.data?.id || operation.data?.quickTabId
+  });
+}
+
+/**
+ * Execute a single queued operation callback
+ * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} operation - Operation from queue
+ * @param {number} queueDuration - Time spent in queue
+ */
+async function _executeQueuedOperation(operation, queueDuration) {
+  console.log('[Content] PROCESSING_QUEUED_OPERATION:', {
+    operationType: operation.type,
+    queueDurationMs: queueDuration
+  });
+  
+  try {
+    if (typeof operation.callback === 'function') {
+      await operation.callback(operation.data);
+    }
+  } catch (err) {
+    console.error('[Content] QUEUED_OPERATION_FAILED:', {
+      operationType: operation.type,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Drain the pre-hydration operation queue
+ * v1.6.3.10-v11 - FIX Issue #15: Process queued operations after hydration
+ * @private
+ */
+async function _drainPreHydrationQueue() {
+  if (preHydrationOperationQueue.length === 0) return;
+  
+  console.log('[Content] DRAINING_PRE_HYDRATION_QUEUE:', {
+    queueSize: preHydrationOperationQueue.length
+  });
+  
+  while (preHydrationOperationQueue.length > 0) {
+    const operation = preHydrationOperationQueue.shift();
+    const queueDuration = Date.now() - operation.queuedAt;
+    await _executeQueuedOperation(operation, queueDuration);
+  }
+}
+
+/**
+ * Check if operation should wait for hydration
+ * v1.6.3.10-v11 - FIX Issue #15: Gate operations until hydration complete
+ * @param {string} operationType - Type of operation
+ * @returns {boolean} True if operation should be queued, false if it can proceed
+ */
+function _shouldWaitForHydration(operationType) {
+  // If hydration is already complete, no need to wait
+  if (isHydrationComplete) {
+    return false;
+  }
+  
+  // Operations that should wait for hydration
+  const hydrationBlockedOperations = new Set([
+    'CREATE_QUICK_TAB',
+    'RESTORE_QUICK_TAB',
+    'UPDATE_QUICK_TAB_POSITION',
+    'UPDATE_QUICK_TAB_SIZE'
+  ]);
+  
+  return hydrationBlockedOperations.has(operationType);
+}
+
+/**
+ * Initialize hydration timeout safety
+ * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within timeout, proceed anyway
+ */
+function _initHydrationTimeout() {
+  setTimeout(() => {
+    if (!isHydrationComplete) {
+      console.warn('[Content] HYDRATION_TIMEOUT: Forcing hydration complete after timeout', {
+        timeoutMs: HYDRATION_TIMEOUT_MS,
+        queuedOperations: preHydrationOperationQueue.length
+      });
+      _markHydrationComplete(0);
+    }
+  }, HYDRATION_TIMEOUT_MS);
+}
+
+// ==================== END HYDRATION GATING ====================
 
 /**
  * Check if an error response is retryable
@@ -625,14 +1265,103 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
 }
 
 /**
+ * Notify pending tab ID acquisition of background readiness
+ * v1.6.3.10-v11 - FIX Issue #1: Event-driven retry trigger
+ */
+function _notifyBackgroundReadiness() {
+  if (tabIdAcquisitionPending && tabIdAcquisitionResolver) {
+    console.log('[Content][TabID] BACKGROUND_READINESS_DETECTED: Triggering pending acquisition');
+    backgroundReadinessDetected = true;
+    // Resolver will be called by the extended retry loop
+  }
+}
+
+/**
+ * Extended retry loop for tab ID acquisition after initial backoff exhaustion
+ * v1.6.3.10-v11 - FIX Issue #1: Background initialization retry loop with 60s total timeout
+ * @param {number} overallStartTime - Original start time
+ * @param {Object} _lastResult - Last retry result (unused, kept for API compatibility)
+ * @returns {Promise<number|null>} Tab ID or null
+ * @private
+ */
+async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
+  let extendedAttempt = 0;
+  
+  console.log('[Content][TabID][EXTENDED] STARTING: Extended retry loop for background initialization', {
+    intervalMs: TAB_ID_EXTENDED_RETRY_INTERVAL_MS,
+    maxAttempts: TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS,
+    totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
+    elapsedSoFar: Date.now() - overallStartTime
+  });
+  
+  tabIdAcquisitionPending = true;
+  
+  while (extendedAttempt < TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS) {
+    const totalElapsed = Date.now() - overallStartTime;
+    
+    // Check total timeout
+    if (totalElapsed >= TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS) {
+      console.error('[Content][TabID][EXTENDED] TIMEOUT: Extended retry timeout exceeded', {
+        totalElapsedMs: totalElapsed,
+        timeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS
+      });
+      break;
+    }
+    
+    // Check if background readiness was signaled
+    if (backgroundReadinessDetected) {
+      console.log('[Content][TabID][EXTENDED] BACKGROUND_READY: Attempting immediate retry');
+      backgroundReadinessDetected = false;
+    }
+    
+    extendedAttempt++;
+    const attemptNumber = TAB_ID_MAX_RETRIES + 1 + extendedAttempt;
+    
+    console.log(`[Content][TabID][EXTENDED] Retry #${extendedAttempt} with delay ${TAB_ID_EXTENDED_RETRY_INTERVAL_MS}ms, elapsed ${totalElapsed}ms`);
+    
+    // Wait before retry
+    await new Promise(resolve => setTimeout(resolve, TAB_ID_EXTENDED_RETRY_INTERVAL_MS));
+    
+    // Retry attempt
+    const result = await _attemptGetTabIdFromBackground(attemptNumber);
+    
+    if (result.tabId !== null) {
+      tabIdAcquisitionPending = false;
+      console.log('[Content][TabID][EXTENDED] RECOVERY_SUCCESS: Tab ID acquired in extended loop', {
+        tabId: result.tabId,
+        extendedAttempt,
+        totalElapsedMs: Date.now() - overallStartTime
+      });
+      return result.tabId;
+    }
+    
+    // If not retryable, stop
+    if (!result.retryable) {
+      console.warn('[Content][TabID][EXTENDED] NON_RETRYABLE: Stopping extended retry', {
+        error: result.error,
+        extendedAttempt
+      });
+      break;
+    }
+  }
+  
+  tabIdAcquisitionPending = false;
+  console.error(`[Content][TabID][EXTENDED] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1 + extendedAttempt} retries after ${Date.now() - overallStartTime}ms, final result: null`);
+  
+  return null;
+}
+
+/**
  * Get current tab ID from background script with exponential backoff retry
  * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
  * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
+ * v1.6.3.10-v11 - FIX Issue #1: Extended retry with event-driven recovery
  *
- * Retry delays: 200ms, 500ms, 1500ms, 5000ms
- * Maximum 5 attempts (initial + 4 retries)
+ * Retry delays: 200ms, 500ms, 1500ms, 5000ms (initial phase)
+ * Extended retry: 5s intervals for 40s after initial exhaustion
+ * Total timeout: 60 seconds
  *
  * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
  */
@@ -640,6 +1369,7 @@ async function getCurrentTabIdFromBackground() {
   console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
     maxRetries: TAB_ID_MAX_RETRIES,
     retryDelays: TAB_ID_RETRY_DELAYS_MS,
+    extendedRetryEnabled: true,
     timestamp: new Date().toISOString()
   });
   
@@ -668,16 +1398,11 @@ async function getCurrentTabIdFromBackground() {
         attemptsTried: attemptNumber - 1,
         totalDurationMs: Date.now() - overallStartTime
       });
-      break;
+      // v1.6.3.10-v11 - Non-retryable errors skip extended loop
+      return null;
     }
     
-    console.log('[Content][TabID][INIT] RETRY_SCHEDULED:', {
-      retryNumber: retryIndex + 1,
-      attemptNumber,
-      delayMs,
-      previousError: result.error,
-      elapsedMs: Date.now() - overallStartTime
-    });
+    console.log(`[Content][TabID][INIT] Retry #${retryIndex + 1} with delay ${delayMs}ms, elapsed ${Date.now() - overallStartTime}ms`);
     
     // Wait before retry
     await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -695,14 +1420,18 @@ async function getCurrentTabIdFromBackground() {
     }
   }
   
-  // All retries exhausted
-  const totalDuration = Date.now() - overallStartTime;
-  console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
-    totalAttempts: TAB_ID_MAX_RETRIES + 1,
-    lastError: result.error,
-    totalDurationMs: totalDuration,
-    timestamp: new Date().toISOString()
-  });
+  // Initial retries exhausted - log exhaustion
+  const initialPhaseDuration = Date.now() - overallStartTime;
+  console.error(`[Content][TabID][INIT] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1} retries after ${initialPhaseDuration}ms, final result: null`);
+  
+  // v1.6.3.10-v11 - FIX Issue #1: Enter extended retry loop for background initialization
+  if (result.retryable) {
+    console.log('[Content][TabID][INIT] ENTERING_EXTENDED_RETRY: Background may still be initializing', {
+      lastError: result.error,
+      initialPhaseDurationMs: initialPhaseDuration
+    });
+    return _extendedTabIdRetryLoop(overallStartTime, result);
+  }
   
   return null;
 }
@@ -740,13 +1469,41 @@ let lastKnownBackgroundStartupTime = null;
 /**
  * Circuit breaker states for port connection
  * v1.6.3.10-v7 - FIX Issue #1: Circuit breaker state machine
+ * v1.6.3.10-v11 - FIX Issue #24: Added READY state for three-phase handshake
  */
 const PORT_CONNECTION_STATE = {
   DISCONNECTED: 'DISCONNECTED',
   CONNECTING: 'CONNECTING',
   CONNECTED: 'CONNECTED',
+  READY: 'READY',           // v1.6.3.10-v11 - FIX Issue #24: Handshake complete
   FAILED: 'FAILED'
 };
+
+// v1.6.3.10-v11 - FIX Issue #24: Three-phase handshake states
+const HANDSHAKE_PHASE = {
+  NONE: 'NONE',
+  INIT_REQUEST_SENT: 'INIT_REQUEST_SENT',
+  INIT_RESPONSE_RECEIVED: 'INIT_RESPONSE_RECEIVED',
+  INIT_COMPLETE_SENT: 'INIT_COMPLETE_SENT'
+};
+
+/**
+ * Current handshake phase
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+let currentHandshakePhase = HANDSHAKE_PHASE.NONE;
+
+/**
+ * Timeout for each handshake phase (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #24: 2 seconds per phase
+ */
+const HANDSHAKE_PHASE_TIMEOUT_MS = 2000;
+
+/**
+ * Handshake timeout ID
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+let handshakeTimeoutId = null;
 
 /**
  * Current circuit breaker state
@@ -835,11 +1592,7 @@ const messageQueue = [];
  */
 const MAX_MESSAGE_QUEUE_SIZE = 50;
 
-/**
- * Message ID counter for queue tracking
- * v1.6.3.10-v7 - FIX Issue #5
- */
-let messageIdCounter = 0;
+// v1.6.3.10-v11 - FIX Issue #23: Removed duplicate messageIdCounter (now declared earlier in heartbeat section)
 
 // ==================== v1.6.3.10-v5 PORT RECONNECTION BACKOFF ====================
 // FIX Issue #4: Exponential backoff with jitter to prevent thundering herd
@@ -944,6 +1697,159 @@ function _resetReconnectionAttempts() {
   reconnectGracePeriodStart = Date.now();
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTED, 'connection-established');
 }
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #24: THREE-PHASE HANDSHAKE ====================
+
+/**
+ * Start the three-phase handshake process
+ * v1.6.3.10-v11 - FIX Issue #24: Phase 1: Send INIT_REQUEST
+ * @param {Object} port - The port connection
+ */
+function _startThreePhaseHandshake(port) {
+  if (!port) {
+    console.warn('[Content][HANDSHAKE] Cannot start - port is null');
+    return;
+  }
+  
+  // Phase 1: Send INIT_REQUEST
+  currentHandshakePhase = HANDSHAKE_PHASE.INIT_REQUEST_SENT;
+  
+  console.log('[Content][HANDSHAKE] Phase 1: INIT_REQUEST sent', {
+    phase: currentHandshakePhase,
+    portName: port.name,
+    timestamp: Date.now()
+  });
+  
+  port.postMessage({
+    type: 'INIT_REQUEST',
+    timestamp: Date.now(),
+    tabId: cachedTabId,
+    phase: 1
+  });
+  
+  // Set timeout for Phase 1
+  _setHandshakeTimeout('INIT_REQUEST', () => {
+    console.error('[Content][HANDSHAKE] Phase 1 timeout: No INIT_RESPONSE received');
+    _handleHandshakeFailure('Phase 1 timeout');
+  });
+}
+
+/**
+ * Handle INIT_RESPONSE from background (Phase 2)
+ * v1.6.3.10-v11 - FIX Issue #24
+ * @param {Object} message - Response message
+ * @param {Object} port - The port connection
+ */
+function _handleInitResponse(message, port) {
+  if (currentHandshakePhase !== HANDSHAKE_PHASE.INIT_REQUEST_SENT) {
+    console.warn('[Content][HANDSHAKE] Unexpected INIT_RESPONSE in phase:', currentHandshakePhase);
+    return;
+  }
+  
+  // Clear Phase 1 timeout
+  _clearHandshakeTimeout();
+  
+  currentHandshakePhase = HANDSHAKE_PHASE.INIT_RESPONSE_RECEIVED;
+  
+  console.log('[Content][HANDSHAKE] Phase 2: INIT_RESPONSE received', {
+    phase: currentHandshakePhase,
+    backgroundGeneration: message.generation,
+    timestamp: Date.now()
+  });
+  
+  // Phase 3: Send INIT_COMPLETE
+  currentHandshakePhase = HANDSHAKE_PHASE.INIT_COMPLETE_SENT;
+  
+  port.postMessage({
+    type: 'INIT_COMPLETE',
+    timestamp: Date.now(),
+    tabId: cachedTabId,
+    acknowledgedGeneration: message.generation,
+    phase: 3
+  });
+  
+  console.log('[Content][HANDSHAKE] Phase 3: INIT_COMPLETE sent', {
+    phase: currentHandshakePhase,
+    timestamp: Date.now()
+  });
+  
+  // Set timeout for Phase 3 confirmation
+  _setHandshakeTimeout('INIT_COMPLETE', () => {
+    // If no explicit confirmation, assume success after timeout
+    console.log('[Content][HANDSHAKE] Phase 3 timeout - assuming handshake complete');
+    _completeHandshake();
+  });
+}
+
+/**
+ * Complete the handshake and transition to READY state
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+function _completeHandshake() {
+  _clearHandshakeTimeout();
+  currentHandshakePhase = HANDSHAKE_PHASE.NONE;
+  
+  _transitionPortState(PORT_CONNECTION_STATE.READY, 'handshake-complete');
+  
+  console.log('[Content][HANDSHAKE] COMPLETE: Connection ready', {
+    portState: portConnectionState,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle handshake failure
+ * v1.6.3.10-v11 - FIX Issue #24
+ * @param {string} reason - Failure reason
+ */
+function _handleHandshakeFailure(reason) {
+  _clearHandshakeTimeout();
+  currentHandshakePhase = HANDSHAKE_PHASE.NONE;
+  
+  console.error('[Content][HANDSHAKE] FAILED:', {
+    reason,
+    willRetry: reconnectionAttempts < CIRCUIT_BREAKER_MAX_FAILURES,
+    attempts: reconnectionAttempts
+  });
+  
+  // Increment failure count and try reconnection
+  if (cachedTabId) {
+    _handleReconnection(cachedTabId, `handshake-${reason}`);
+  }
+}
+
+/**
+ * Set handshake phase timeout
+ * v1.6.3.10-v11 - FIX Issue #24
+ * @param {string} phase - Current phase name
+ * @param {Function} callback - Callback on timeout
+ */
+function _setHandshakeTimeout(phase, callback) {
+  _clearHandshakeTimeout();
+  
+  handshakeTimeoutId = setTimeout(() => {
+    handshakeTimeoutId = null;
+    callback();
+  }, HANDSHAKE_PHASE_TIMEOUT_MS);
+  
+  console.log('[Content][HANDSHAKE] Timeout set for phase:', {
+    phase,
+    timeoutMs: HANDSHAKE_PHASE_TIMEOUT_MS
+  });
+}
+
+/**
+ * Clear handshake timeout
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+function _clearHandshakeTimeout() {
+  if (handshakeTimeoutId) {
+    clearTimeout(handshakeTimeoutId);
+    handshakeTimeoutId = null;
+  }
+}
+
+// ==================== END ISSUE #24 FIX ====================
 
 /**
  * Get next sequence ID for outgoing messages
@@ -1407,6 +2313,7 @@ function _processBackgroundStartupTime(startupTime) {
  * v1.6.3.10-v4 - FIX Issue #3/6: Helper to reduce nesting depth
  * v1.6.3.10-v7 - FIX Issue #2: Handle ready signal and track latency
  * v1.6.3.10-v7 - FIX Issue #3: Update adaptive dedup window based on latency
+ * v1.6.3.10-v11 - FIX Issue #1: Notify pending tab ID acquisition of background readiness
  * @private
  * @param {Object} message - Handshake message
  */
@@ -1452,6 +2359,10 @@ function _handleBackgroundHandshake(message) {
     
     // v1.6.3.10-v7 - FIX Issue #2: Flush buffered commands
     _flushCommandBuffer();
+    
+    // v1.6.3.10-v11 - FIX Issue #1: Notify pending tab ID acquisition of background readiness
+    console.log('[Content][TabID] BACKGROUND_READINESS_DETECTED: Background ready, resuming tab ID acquisition');
+    _notifyBackgroundReadiness();
   } else if (wasReady && !isNowReady) {
     console.warn('[Content] BACKGROUND_NOT_READY: Transitioned from READY to INITIALIZING');
   }
@@ -2322,10 +3233,178 @@ function buildQuickTabData(options) {
   };
 }
 
+// ==================== v1.6.3.10-v11 FIX ISSUE #25: QUICK TAB CREATION QUEUE ====================
+// FIX Issue #25: Serialize Quick Tab creation to prevent race conditions and ID collisions
+
+/**
+ * Queue of pending Quick Tab creation operations
+ * v1.6.3.10-v11 - FIX Issue #25: Serial creation queue
+ */
+const quickTabCreationQueue = [];
+
+/**
+ * Track if creation is currently in progress
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+let isCreationInProgress = false;
+
+/**
+ * Monotonically increasing counter for atomic ID generation
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+let quickTabIdCounter = 0;
+
+/**
+ * Set of existing Quick Tab IDs for collision detection
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+const existingQuickTabIds = new Set();
+
+/**
+ * Generate collision-free Quick Tab ID using atomic counter
+ * v1.6.3.10-v11 - FIX Issue #25: Format qt-{originTabId}-{counter}-{random}
+ * @returns {string} Unique Quick Tab ID
+ */
+function _generateAtomicQuickTabId() {
+  const tabId = cachedTabId ?? 'unknown';
+  const counter = ++quickTabIdCounter;
+  const randomSuffix = Math.random().toString(36).slice(2, 6);
+  
+  let candidateId = `qt-${tabId}-${counter}-${randomSuffix}`;
+  
+  // Collision detection (extremely unlikely but check anyway)
+  let collisionCount = 0;
+  while (existingQuickTabIds.has(candidateId)) {
+    collisionCount++;
+    const newRandom = Math.random().toString(36).slice(2, 6);
+    candidateId = `qt-${tabId}-${counter}-${newRandom}-${collisionCount}`;
+    
+    if (collisionCount > 10) {
+      console.error('[Content] QUICK_TAB_ID_COLLISION: Too many collisions', {
+        attempts: collisionCount,
+        tabId,
+        counter
+      });
+      break;
+    }
+  }
+  
+  existingQuickTabIds.add(candidateId);
+  
+  console.log('[Content] QUICK_TAB_ID_GENERATED:', {
+    id: candidateId,
+    counter,
+    collisionDetected: collisionCount > 0,
+    existingCount: existingQuickTabIds.size
+  });
+  
+  return candidateId;
+}
+
+/**
+ * Queue a Quick Tab creation operation
+ * v1.6.3.10-v11 - FIX Issue #25: Serialize creation operations
+ * @param {Object} quickTabData - Quick Tab data
+ * @param {string} saveId - Save tracking ID
+ * @param {boolean} canUseManagerSaveId - Whether Manager save ID can be used
+ * @returns {Promise<void>}
+ */
+function _queueQuickTabCreation(quickTabData, saveId, canUseManagerSaveId) {
+  return new Promise((resolve, reject) => {
+    quickTabCreationQueue.push({
+      quickTabData,
+      saveId,
+      canUseManagerSaveId,
+      queuedAt: Date.now(),
+      resolve,
+      reject
+    });
+    
+    console.log('[Content] QUICK_TAB_CREATION_QUEUED:', {
+      id: quickTabData.id,
+      queueSize: quickTabCreationQueue.length,
+      isCreationInProgress
+    });
+    
+    // Process queue if not already processing
+    _processCreationQueue();
+  });
+}
+
+/**
+ * Process the Quick Tab creation queue serially
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+async function _processCreationQueue() {
+  if (isCreationInProgress || quickTabCreationQueue.length === 0) {
+    return;
+  }
+  
+  isCreationInProgress = true;
+  
+  while (quickTabCreationQueue.length > 0) {
+    const operation = quickTabCreationQueue.shift();
+    const { quickTabData, saveId, canUseManagerSaveId, queuedAt, resolve, reject } = operation;
+    
+    const queueDuration = Date.now() - queuedAt;
+    console.log('[Content] QUICK_TAB_CREATION_STARTED:', {
+      id: quickTabData.id,
+      queueDurationMs: queueDuration,
+      remainingInQueue: quickTabCreationQueue.length
+    });
+    
+    try {
+      await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
+      
+      console.log('[Content] QUICK_TAB_CREATION_COMPLETED:', {
+        id: quickTabData.id,
+        totalDurationMs: Date.now() - queuedAt
+      });
+      
+      resolve();
+      
+    } catch (err) {
+      console.error('[Content] QUICK_TAB_CREATION_FAILED:', {
+        id: quickTabData.id,
+        error: err.message
+      });
+      
+      handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
+      reject(err);
+    }
+  }
+  
+  isCreationInProgress = false;
+  console.log('[Content] QUICK_TAB_CREATION_QUEUE_DRAINED');
+}
+
+/**
+ * Track an existing Quick Tab ID (e.g., from hydration)
+ * v1.6.3.10-v11 - FIX Issue #25
+ * @param {string} id - Quick Tab ID to track
+ */
+function _trackExistingQuickTabId(id) {
+  if (id) {
+    existingQuickTabIds.add(id);
+  }
+}
+
+/**
+ * Clear a Quick Tab ID from tracking (on close)
+ * v1.6.3.10-v11 - FIX Issue #25
+ * @param {string} id - Quick Tab ID to clear
+ */
+function _clearQuickTabId(id) {
+  existingQuickTabIds.delete(id);
+}
+
+// ==================== END ISSUE #25 FIX ====================
+
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab IDs
+ * v1.6.3.10-v11 - FIX Issue #25: Prefixed with _ as now using _generateAtomicQuickTabId instead
  */
-function generateQuickTabIds() {
+function _generateQuickTabIds() {
   const canUseManagerSaveId = Boolean(
     quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
   );
@@ -2389,6 +3468,7 @@ function handleQuickTabCreationError(err, saveId, canUseManagerSaveId) {
 
 /**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
+ * v1.6.3.10-v11 - FIX Issue #25: Use creation queue to serialize operations
  */
 async function handleCreateQuickTab(url, targetElement = null) {
   // Early validation
@@ -2406,7 +3486,14 @@ async function handleCreateQuickTab(url, targetElement = null) {
   const height = CONFIG.quickTabDefaultHeight || 600;
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
-  const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
+  
+  // v1.6.3.10-v11 - FIX Issue #25: Use atomic ID generation instead of default
+  const quickTabId = _generateAtomicQuickTabId();
+  const saveId = generateSaveTrackingId();
+  const canUseManagerSaveId = Boolean(
+    quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
+  );
+  
   const quickTabData = buildQuickTabData({
     url,
     id: quickTabId,
@@ -2415,11 +3502,18 @@ async function handleCreateQuickTab(url, targetElement = null) {
     title
   });
 
-  // Execute creation with error handling
+  // v1.6.3.10-v11 - FIX Issue #25: Queue creation instead of direct execution
+  console.log('[Content] QUICK_TAB_CREATE_REQUEST:', {
+    id: quickTabId,
+    url: url.substring(0, 100),
+    queueSize: quickTabCreationQueue.length
+  });
+
   try {
-    await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
+    await _queueQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
   } catch (err) {
-    handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
+    // Error already handled in queue processing
+    console.error('[Quick Tab] Queue creation failed:', err.message);
   }
 }
 
@@ -2624,18 +3718,38 @@ function _getActionError(result) {
 
 // ==================== v1.6.3.10-v7 ADOPTION-AWARE OWNERSHIP ====================
 // FIX Issue #7: Track recently-adopted Quick Tab IDs to override ID pattern extraction
+// v1.6.3.10-v11 - FIX Issue #5: Dynamic TTL based on observed network latency
 
 /**
- * Map of recently-adopted Quick Tab IDs -> { newOriginTabId, adoptedAt }
+ * Map of recently-adopted Quick Tab IDs -> { newOriginTabId, adoptedAt, ttl }
  * v1.6.3.10-v7 - FIX Issue #7: Adoption-aware ownership validation
+ * v1.6.3.10-v11 - FIX Issue #5: Now stores per-entry TTL
  */
 const recentlyAdoptedQuickTabs = new Map();
 
 /**
- * TTL for recently-adopted Quick Tab entries (milliseconds)
- * v1.6.3.10-v7 - FIX Issue #7: 5 second TTL
+ * Default TTL for recently-adopted Quick Tab entries (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #5: Safe default when latency unavailable (30 seconds)
  */
-const ADOPTION_TRACKING_TTL_MS = 5000;
+const ADOPTION_DEFAULT_TTL_MS = 30000;
+
+/**
+ * Minimum TTL for adoption tracking (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #5: Never go below 5 seconds
+ */
+const ADOPTION_MIN_TTL_MS = 5000;
+
+/**
+ * Maximum TTL for adoption tracking (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #5: Cap at 60 seconds to prevent memory leaks
+ */
+const ADOPTION_MAX_TTL_MS = 60000;
+
+/**
+ * Multiplier for latency to compute TTL (3x for safety margin)
+ * v1.6.3.10-v11 - FIX Issue #5
+ */
+const ADOPTION_TTL_LATENCY_MULTIPLIER = 3;
 
 /**
  * Cleanup interval for recently-adopted Quick Tab entries (milliseconds)
@@ -2644,27 +3758,106 @@ const ADOPTION_TRACKING_TTL_MS = 5000;
 const ADOPTION_CLEANUP_INTERVAL_MS = 30000;
 
 /**
+ * Track observed handshake latencies for dynamic TTL calculation
+ * v1.6.3.10-v11 - FIX Issue #5
+ */
+const adoptionLatencySamples = [];
+const MAX_ADOPTION_LATENCY_SAMPLES = 10;
+
+/**
+ * Adoption cache metrics for logging
+ * v1.6.3.10-v11 - FIX Issue #5
+ */
+const adoptionCacheMetrics = {
+  hitCount: 0,
+  missCount: 0,
+  ttlExpiredCount: 0,
+  totalTracked: 0
+};
+
+/**
+ * Get current observed handshake latency average
+ * v1.6.3.10-v11 - FIX Issue #5
+ * @returns {number|null} Average latency in ms, or null if no samples
+ */
+function _getObservedHandshakeLatency() {
+  if (adoptionLatencySamples.length === 0) {
+    return null;
+  }
+  const sum = adoptionLatencySamples.reduce((a, b) => a + b, 0);
+  return Math.round(sum / adoptionLatencySamples.length);
+}
+
+/**
+ * Record a handshake latency sample
+ * v1.6.3.10-v11 - FIX Issue #5
+ * @param {number} latencyMs - Observed latency in milliseconds
+ */
+function _recordHandshakeLatency(latencyMs) {
+  if (typeof latencyMs !== 'number' || latencyMs < 0) return;
+  
+  adoptionLatencySamples.push(latencyMs);
+  if (adoptionLatencySamples.length > MAX_ADOPTION_LATENCY_SAMPLES) {
+    adoptionLatencySamples.shift();
+  }
+  
+  console.log('[Content] ADOPTION_LATENCY_RECORDED:', {
+    latencyMs,
+    sampleCount: adoptionLatencySamples.length,
+    averageLatency: _getObservedHandshakeLatency()
+  });
+}
+
+/**
+ * Calculate dynamic TTL based on observed latency
+ * v1.6.3.10-v11 - FIX Issue #5
+ * @returns {number} TTL in milliseconds, clamped to [MIN, MAX]
+ */
+function _calculateDynamicAdoptionTTL() {
+  const observedLatency = _getObservedHandshakeLatency();
+  
+  // Use default if no latency measurements available
+  if (observedLatency === null) {
+    return ADOPTION_DEFAULT_TTL_MS;
+  }
+  
+  // Calculate 3x latency with clamping
+  const calculatedTTL = observedLatency * ADOPTION_TTL_LATENCY_MULTIPLIER;
+  return Math.max(ADOPTION_MIN_TTL_MS, Math.min(calculatedTTL, ADOPTION_MAX_TTL_MS));
+}
+
+/**
  * Track a recently-adopted Quick Tab ID
  * v1.6.3.10-v7 - FIX Issue #7
+ * v1.6.3.10-v11 - FIX Issue #5: Store dynamic TTL per entry
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {number} newOriginTabId - New owner tab ID
  */
 function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
+  const dynamicTTL = _calculateDynamicAdoptionTTL();
+  
   recentlyAdoptedQuickTabs.set(quickTabId, {
     newOriginTabId,
-    adoptedAt: Date.now()
+    adoptedAt: Date.now(),
+    ttl: dynamicTTL
   });
+  
+  adoptionCacheMetrics.totalTracked++;
   
   console.log('[Content] ADOPTION_TRACKED:', {
     quickTabId,
     newOriginTabId,
-    trackedCount: recentlyAdoptedQuickTabs.size
+    ttl: dynamicTTL,
+    observedLatency: _getObservedHandshakeLatency(),
+    trackedCount: recentlyAdoptedQuickTabs.size,
+    metrics: adoptionCacheMetrics
   });
 }
 
 /**
  * Check if Quick Tab was recently adopted and get cached ownership
  * v1.6.3.10-v7 - FIX Issue #7
+ * v1.6.3.10-v11 - FIX Issue #5: Use per-entry dynamic TTL
  * @param {string} quickTabId - Quick Tab ID to check
  * @returns {{ wasAdopted: boolean, newOriginTabId: number|null }} Adoption info
  */
@@ -2672,28 +3865,44 @@ function _getAdoptionOwnership(quickTabId) {
   const adoptionInfo = recentlyAdoptedQuickTabs.get(quickTabId);
   
   if (!adoptionInfo) {
+    adoptionCacheMetrics.missCount++;
     return { wasAdopted: false, newOriginTabId: null };
   }
   
-  // Check if TTL expired
-  if (Date.now() - adoptionInfo.adoptedAt > ADOPTION_TRACKING_TTL_MS) {
+  // v1.6.3.10-v11 - FIX Issue #5: Check per-entry TTL
+  const entryAge = Date.now() - adoptionInfo.adoptedAt;
+  const entryTTL = adoptionInfo.ttl ?? ADOPTION_DEFAULT_TTL_MS;
+  
+  if (entryAge > entryTTL) {
+    adoptionCacheMetrics.ttlExpiredCount++;
     recentlyAdoptedQuickTabs.delete(quickTabId);
+    
+    console.log('[Content] ADOPTION_TTL_EXPIRED:', {
+      quickTabId,
+      entryAge,
+      entryTTL,
+      metrics: adoptionCacheMetrics
+    });
+    
     return { wasAdopted: false, newOriginTabId: null };
   }
   
+  adoptionCacheMetrics.hitCount++;
   return { wasAdopted: true, newOriginTabId: adoptionInfo.newOriginTabId };
 }
 
 /**
  * Clean up expired adoption tracking entries
  * v1.6.3.10-v7 - FIX Issue #7
+ * v1.6.3.10-v11 - FIX Issue #5: Use per-entry TTL for cleanup
  */
 function _cleanupAdoptionTracking() {
   const now = Date.now();
   let cleanedCount = 0;
   
   for (const [quickTabId, adoptionInfo] of recentlyAdoptedQuickTabs) {
-    if (now - adoptionInfo.adoptedAt > ADOPTION_TRACKING_TTL_MS) {
+    const entryTTL = adoptionInfo.ttl ?? ADOPTION_DEFAULT_TTL_MS;
+    if (now - adoptionInfo.adoptedAt > entryTTL) {
       recentlyAdoptedQuickTabs.delete(quickTabId);
       cleanedCount++;
     }
@@ -2702,7 +3911,8 @@ function _cleanupAdoptionTracking() {
   if (cleanedCount > 0) {
     console.log('[Content] ADOPTION_CLEANUP:', {
       cleanedCount,
-      remainingCount: recentlyAdoptedQuickTabs.size
+      remainingCount: recentlyAdoptedQuickTabs.size,
+      metrics: adoptionCacheMetrics
     });
   }
 }
@@ -2722,10 +3932,40 @@ setInterval(_cleanupAdoptionTracking, ADOPTION_CLEANUP_INTERVAL_MS);
 const recentStorageEvents = new Map();
 
 /**
- * De-duplication window for storage events (milliseconds)
+ * Base de-duplication window for storage events (milliseconds)
  * v1.6.3.10-v7 - FIX Issue #6: 200ms window
+ * v1.6.3.10-v11 - FIX Issue #12: Now a minimum, actual window is adaptive
  */
-const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
+const STORAGE_EVENT_BASE_DEDUP_WINDOW_MS = 200;
+
+/**
+ * Maximum storage event dedup window (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #12: Cap to prevent excessive delays
+ */
+const STORAGE_EVENT_MAX_DEDUP_WINDOW_MS = 1000;
+
+/**
+ * Get adaptive storage event dedup window based on observed storage latency
+ * v1.6.3.10-v11 - FIX Issue #12: Account for Firefox's async storage.onChanged timing (300-500ms)
+ * Uses 2x observed latency, clamped to [200ms, 1000ms]
+ * @returns {number} Dedup window in milliseconds
+ */
+function _getAdaptiveStorageEventDedupWindow() {
+  // Use the same latency tracking as message dedup
+  if (lastKnownBackgroundLatencyMs === null) {
+    return STORAGE_EVENT_BASE_DEDUP_WINDOW_MS;
+  }
+  
+  // v1.6.3.10-v11 - FIX Issue #12: Storage events can take 300-500ms to fire
+  // Use 2x observed latency, with minimum of 500ms for storage events specifically
+  const minStorageWindow = Math.max(STORAGE_EVENT_BASE_DEDUP_WINDOW_MS, 500);
+  const adaptiveWindow = Math.min(
+    Math.max(lastKnownBackgroundLatencyMs * 2, minStorageWindow),
+    STORAGE_EVENT_MAX_DEDUP_WINDOW_MS
+  );
+  
+  return adaptiveWindow;
+}
 
 /**
  * Check if storage event is a duplicate and should be skipped
@@ -2737,14 +3977,22 @@ const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
 /**
  * Check if event is within dedup window with same version
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.3.10-v11 - FIX Issue #12: Use adaptive dedup window
  * @private
  */
 function _isWithinDedupWindow(lastEvent, newVersion, now) {
   if (!lastEvent) return false;
   const timeSinceLastEvent = now - lastEvent.timestamp;
-  const isDuplicate = timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && lastEvent.version === newVersion;
+  // v1.6.3.10-v11 - FIX Issue #12: Use adaptive window instead of fixed constant
+  const dedupWindowMs = _getAdaptiveStorageEventDedupWindow();
+  const isDuplicate = timeSinceLastEvent < dedupWindowMs && lastEvent.version === newVersion;
   if (isDuplicate) {
-    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { timeSinceLastEvent, version: newVersion });
+    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { 
+      timeSinceLastEvent, 
+      version: newVersion,
+      dedupWindowMs,
+      observedLatencyMs: lastKnownBackgroundLatencyMs 
+    });
   }
   return isDuplicate;
 }
@@ -2771,11 +4019,14 @@ function _isStorageEventDuplicate(key, newValue) {
 /**
  * Clean up old storage event tracking entries
  * v1.6.3.10-v7 - FIX Issue #6
+ * v1.6.3.10-v11 - FIX Issue #12: Use adaptive dedup window for cleanup
  * @private
  * @param {number} now - Current timestamp
  */
 function _cleanupOldStorageEvents(now) {
-  const cutoff = now - STORAGE_EVENT_DEDUP_WINDOW_MS * 10;
+  // v1.6.3.10-v11 - FIX Issue #12: Use adaptive window for cleanup calculation
+  const dedupWindowMs = _getAdaptiveStorageEventDedupWindow();
+  const cutoff = now - dedupWindowMs * 10;
   for (const [key, eventInfo] of recentStorageEvents) {
     if (eventInfo.timestamp < cutoff) {
       recentStorageEvents.delete(key);

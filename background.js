@@ -119,6 +119,204 @@ let consecutiveZeroTabReads = 0;
 const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
+// ==================== v1.6.3.10-v11 FIX ISSUE #17: BACKGROUND TERMINATION HANDLING ====================
+// FIX Issue #17: Background service worker cleanup and state persistence on termination
+// MV2 uses beforeunload to persist pending state before Firefox terminates background script
+
+/**
+ * Storage key for in-flight recovery markers
+ * v1.6.3.10-v11 - FIX Issue #17
+ */
+const IN_FLIGHT_RECOVERY_KEY = 'quick_tabs_in_flight_recovery';
+
+/**
+ * Track pending operations that need recovery if background restarts
+ * v1.6.3.10-v11 - FIX Issue #17
+ */
+const pendingOperations = {
+  adoptions: new Map(), // quickTabId -> { originTabId, startedAt }
+  queuedWrites: [],     // Array of pending storage writes
+  locksHeld: new Map()  // lockId -> { heldBy, acquiredAt }
+};
+
+/**
+ * Persist pending state before background termination
+ * v1.6.3.10-v11 - FIX Issue #17: MV2 beforeunload handler
+ */
+async function _persistPendingStateBeforeTermination() {
+  const now = Date.now();
+  
+  // Check if there's anything pending
+  const hasPending = pendingOperations.adoptions.size > 0 ||
+                     pendingOperations.queuedWrites.length > 0 ||
+                     pendingOperations.locksHeld.size > 0 ||
+                     IN_PROGRESS_TRANSACTIONS.size > 0;
+                     
+  if (!hasPending) {
+    console.log('[Background] TERMINATION_CLEANUP: No pending operations to persist');
+    return;
+  }
+  
+  console.log('[Background] TERMINATION_CLEANUP: Persisting pending state before termination', {
+    pendingAdoptions: pendingOperations.adoptions.size,
+    queuedWrites: pendingOperations.queuedWrites.length,
+    locksHeld: pendingOperations.locksHeld.size,
+    inProgressTransactions: IN_PROGRESS_TRANSACTIONS.size,
+    timestamp: now
+  });
+  
+  const recoveryData = {
+    marker: 'in-flight-recovery-needed',
+    timestamp: now,
+    backgroundStartupTime: backgroundStartupTime,
+    adoptions: Array.from(pendingOperations.adoptions.entries()),
+    queuedWrites: pendingOperations.queuedWrites,
+    locksHeld: Array.from(pendingOperations.locksHeld.entries()),
+    transactions: Array.from(IN_PROGRESS_TRANSACTIONS),
+    globalState: {
+      tabs: globalQuickTabState.tabs,
+      lastUpdate: globalQuickTabState.lastUpdate,
+      saveId: globalQuickTabState.saveId
+    }
+  };
+  
+  try {
+    await browser.storage.local.set({ [IN_FLIGHT_RECOVERY_KEY]: recoveryData });
+    console.log('[Background] TERMINATION_CLEANUP: Recovery data persisted successfully');
+  } catch (err) {
+    console.error('[Background] TERMINATION_CLEANUP: Failed to persist recovery data:', err.message);
+  }
+}
+
+/**
+ * Validate and get recovery data from storage
+ * v1.6.3.10-v11 - FIX Issue #17: Helper to reduce complexity
+ * @private
+ * @returns {Promise<{valid: boolean, data?: Object, age?: number}>}
+ */
+async function _getValidRecoveryData() {
+  const result = await browser.storage.local.get(IN_FLIGHT_RECOVERY_KEY);
+  const recoveryData = result[IN_FLIGHT_RECOVERY_KEY];
+  
+  if (!recoveryData || recoveryData.marker !== 'in-flight-recovery-needed') {
+    return { valid: false };
+  }
+  
+  const recoveryAge = Date.now() - recoveryData.timestamp;
+  return { valid: true, data: recoveryData, age: recoveryAge };
+}
+
+/**
+ * Log and apply recovery actions
+ * v1.6.3.10-v11 - FIX Issue #17: Helper to reduce complexity
+ * @private
+ * @param {Object} recoveryData - Recovery data from storage
+ */
+function _applyRecoveryData(recoveryData) {
+  // Log recovery actions
+  if (recoveryData.adoptions?.length > 0) {
+    console.log('[Background] RECOVERY_ACTION: Restoring pending adoptions:', 
+      recoveryData.adoptions.length);
+  }
+  
+  if (recoveryData.transactions?.length > 0) {
+    console.log('[Background] RECOVERY_ACTION: Marking transactions as stale:', 
+      recoveryData.transactions.length);
+  }
+  
+  // Use stored global state if current is empty
+  if (globalQuickTabState.tabs.length === 0 && recoveryData.globalState?.tabs?.length > 0) {
+    console.log('[Background] RECOVERY_ACTION: Restoring global state from recovery data:', {
+      tabCount: recoveryData.globalState.tabs.length
+    });
+    globalQuickTabState.tabs = recoveryData.globalState.tabs;
+    globalQuickTabState.lastUpdate = recoveryData.globalState.lastUpdate;
+    globalQuickTabState.saveId = recoveryData.globalState.saveId;
+  }
+}
+
+/**
+ * Check for and process in-flight recovery markers on startup
+ * v1.6.3.10-v11 - FIX Issue #17: Recovery on background restart (refactored)
+ */
+async function _checkAndRecoverInFlightState() {
+  try {
+    const { valid, data: recoveryData, age: recoveryAge } = await _getValidRecoveryData();
+    
+    if (!valid) {
+      console.log('[Background] RECOVERY_CHECK: No in-flight recovery needed');
+      return;
+    }
+    
+    console.log('[Background] RECOVERY_CHECK: Found in-flight recovery data', {
+      age: recoveryAge,
+      pendingAdoptions: recoveryData.adoptions?.length ?? 0,
+      queuedWrites: recoveryData.queuedWrites?.length ?? 0,
+      transactions: recoveryData.transactions?.length ?? 0,
+      previousStartupTime: recoveryData.backgroundStartupTime
+    });
+    
+    // Only process recovery if it's recent (within 5 minutes)
+    const MAX_RECOVERY_AGE_MS = 5 * 60 * 1000;
+    if (recoveryAge > MAX_RECOVERY_AGE_MS) {
+      console.log('[Background] RECOVERY_CHECK: Recovery data too old, clearing');
+      await browser.storage.local.remove(IN_FLIGHT_RECOVERY_KEY);
+      return;
+    }
+    
+    _applyRecoveryData(recoveryData);
+    
+    // Clear recovery marker after processing
+    await browser.storage.local.remove(IN_FLIGHT_RECOVERY_KEY);
+    console.log('[Background] RECOVERY_CHECK: Recovery processing complete');
+    
+  } catch (err) {
+    console.error('[Background] RECOVERY_CHECK: Error during recovery:', err.message);
+  }
+}
+
+/**
+ * Track a pending adoption for recovery
+ * v1.6.3.10-v11 - FIX Issue #17
+ * @param {string} quickTabId - Quick Tab being adopted
+ * @param {number} originTabId - Original owner tab ID
+ */
+function _trackPendingAdoption(quickTabId, originTabId) {
+  pendingOperations.adoptions.set(quickTabId, {
+    originTabId,
+    startedAt: Date.now()
+  });
+}
+
+/**
+ * Clear a completed adoption from pending tracking
+ * v1.6.3.10-v11 - FIX Issue #17
+ * @param {string} quickTabId - Quick Tab that was adopted
+ */
+function _clearPendingAdoption(quickTabId) {
+  pendingOperations.adoptions.delete(quickTabId);
+}
+
+// Register beforeunload handler for MV2
+// Note: In MV2, background pages can use beforeunload unlike MV3 service workers
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    // Use synchronous storage write where possible
+    // Firefox MV2 supports navigator.sendBeacon or synchronous storage
+    _persistPendingStateBeforeTermination().catch(err => {
+      console.error('[Background] beforeunload persistence failed:', err.message);
+    });
+  });
+  console.log('[Background] v1.6.3.10-v11 beforeunload handler registered');
+}
+
+// Check for recovery on script load
+_checkAndRecoverInFlightState().catch(err => {
+  console.error('[Background] Recovery check failed:', err.message);
+});
+
+// ==================== END ISSUE #17 FIX ====================
+
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
@@ -5448,11 +5646,42 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
 // v1.6.3.10-v10 - FIX Issue #6: Add [INIT] boundary logging for handler registration timestamp
 console.log('[INIT][Background] MESSAGE_HANDLER_REGISTRATION:', {
   timestamp: new Date().toISOString(),
-  handler: 'QUICK_TAB_STATE_CHANGE + MANAGER_COMMAND',
+  handler: 'QUICK_TAB_STATE_CHANGE + MANAGER_COMMAND + HEARTBEAT',
   isInitialized
 });
 
+// v1.6.3.10-v11 - FIX Issue #23: Background generation counter for restart detection
+// Increment on each background script load
+const backgroundGenerationId = `gen-${backgroundStartupTime}-${Math.random().toString(36).slice(2, 9)}`;
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // v1.6.3.10-v11 - FIX Issue #23: Handle HEARTBEAT messages for restart detection
+  if (message.type === 'HEARTBEAT') {
+    const response = {
+      success: true,
+      generation: backgroundGenerationId,
+      startupTime: backgroundStartupTime,
+      uptime: Date.now() - backgroundStartupTime,
+      isInitialized,
+      timestamp: Date.now()
+    };
+    
+    // Log heartbeat receipt (throttled to avoid spam)
+    if (Date.now() - (message.lastKnownGeneration ? 0 : message.timestamp) < 1000) {
+      console.log('[Background] HEARTBEAT received:', {
+        messageId: message.messageId,
+        tabId: sender.tab?.id,
+        clientGeneration: message.lastKnownGeneration,
+        serverGeneration: backgroundGenerationId,
+        isRestart: message.lastKnownGeneration !== null && 
+                   message.lastKnownGeneration !== backgroundGenerationId
+      });
+    }
+    
+    sendResponse(response);
+    return true;
+  }
+  
   // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
   if (message.type === 'QUICK_TAB_STATE_CHANGE') {
     handleQuickTabStateChange(message, sender)
@@ -5472,5 +5701,5 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-console.log('[Background] v1.6.3.5-v3 Message infrastructure registered');
+console.log('[Background] v1.6.3.10-v11 Message infrastructure registered (with HEARTBEAT support)');
 // ==================== END MESSAGE INFRASTRUCTURE ====================
