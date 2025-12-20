@@ -411,13 +411,23 @@ class QuickTabsManager {
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
+   * v1.6.4.15 - FIX Issue #21: Detect and log domain changes during hydration
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
   async _hydrateStateFromStorage() {
+    // v1.6.4.15 - FIX Issue #21: Detect domain change at hydration time
+    const currentDomain = this._getCurrentDomain();
+    console.log('[HYDRATION_DOMAIN_CHECK] Current page domain:', {
+      domain: currentDomain,
+      url: typeof window !== 'undefined' ? window.location?.href : 'N/A',
+      currentTabId: this.currentTabId
+    });
+
     // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration START
     console.log('[Content][Hydration] START: Beginning Quick Tab hydration process', {
       currentTabId: this.currentTabId,
+      currentDomain,
       timestamp: Date.now()
     });
 
@@ -594,6 +604,64 @@ class QuickTabsManager {
   }
 
   /**
+   * Get current page domain for navigation detection
+   * v1.6.4.15 - FIX Issue #21: Helper for domain change detection during hydration
+   * @private
+   * @returns {string} Current domain or 'unknown' if not available
+   */
+  _getCurrentDomain() {
+    try {
+      if (typeof window !== 'undefined' && window.location?.hostname) {
+        return window.location.hostname;
+      }
+      return 'unknown';
+    } catch (err) {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Extract domain from URL string
+   * v1.6.4.15 - FIX Issue #21: Helper for URL domain extraction
+   * @private
+   * @param {string} url - URL string
+   * @returns {string} Domain or 'unknown'
+   */
+  _extractDomainFromUrl(url) {
+    try {
+      if (!url || typeof url !== 'string') return 'unknown';
+      const urlObj = new URL(url);
+      return urlObj.hostname;
+    } catch (err) {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Detect and log domain change between stored Quick Tab and current page
+   * v1.6.4.15 - FIX Issue #21: Cross-domain navigation detection
+   * @private
+   * @param {Object} tabData - Stored tab data
+   * @returns {{domainChanged: boolean, oldDomain: string, newDomain: string}}
+   */
+  _detectDomainChange(tabData) {
+    const storedDomain = this._extractDomainFromUrl(tabData?.url);
+    const currentDomain = this._getCurrentDomain();
+    const domainChanged = storedDomain !== currentDomain && storedDomain !== 'unknown' && currentDomain !== 'unknown';
+    
+    if (domainChanged) {
+      console.log('[NAVIGATION] Domain changed:', {
+        oldDomain: storedDomain,
+        newDomain: currentDomain,
+        quickTabId: tabData?.id,
+        storedUrl: tabData?.url
+      });
+    }
+    
+    return { domainChanged, oldDomain: storedDomain, newDomain: currentDomain };
+  }
+
+  /**
    * Extract browser tab ID from Quick Tab ID pattern
    * v1.6.3.6-v7 - FIX Issue #1: Fallback for orphaned Quick Tabs with null originTabId
    * Quick Tab ID format: qt-{tabId}-{timestamp}-{random}
@@ -603,6 +671,18 @@ class QuickTabsManager {
    */
   _extractTabIdFromQuickTabId(quickTabId) {
     if (!quickTabId || typeof quickTabId !== 'string') return null;
+    
+    // v1.6.3.10-v10 - FIX Issue #4: Handle "qt-unknown-*" pattern
+    // Check if the pattern contains "unknown" (no tab ID was available at creation time)
+    if (quickTabId.startsWith('qt-unknown-')) {
+      console.warn('[QuickTabsManager] v1.6.3.10-v10 PATTERN_EXTRACTION: "unknown" pattern detected', {
+        quickTabId,
+        warning: 'Quick Tab was created without valid tab ID',
+        recommendation: 'Check explicit originTabId field in storage'
+      });
+      return null;
+    }
+    
     const match = quickTabId.match(/^qt-(\d+)-/);
     return match ? parseInt(match[1], 10) : null;
   }
@@ -1461,6 +1541,17 @@ class QuickTabsManager {
     const tabId = this.currentTabId || 'unknown';
     const timestamp = Date.now();
     const random = this._generateSecureRandom();
+    
+    // v1.6.3.10-v10 - FIX Issue #3: Log warning when generating ID with unknown tab ID
+    if (tabId === 'unknown') {
+      console.warn('[QuickTabsManager] v1.6.3.10-v10 QUICKTAB_ID_UNKNOWN:', {
+        warning: 'Generating Quick Tab ID with unknown tabId',
+        currentTabId: this.currentTabId,
+        timestamp,
+        recommendation: 'Tab ID should be acquired before Quick Tab creation'
+      });
+    }
+    
     return `qt-${tabId}-${timestamp}-${random}`;
   }
 

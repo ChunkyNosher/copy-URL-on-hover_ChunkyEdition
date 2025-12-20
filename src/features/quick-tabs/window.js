@@ -177,6 +177,7 @@ export class QuickTabWindow {
    * Initialize internal state properties
    * v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate fields (dead code)
    * v1.6.3.5-v11 - FIX Issue #4: Add isMinimizing, isRestoring operation-specific flags
+   * v1.6.4.16 - FIX Issue #24/#28: Add state sync and sidebar lifecycle tracking
    */
   _initializeState() {
     this.container = null;
@@ -203,6 +204,67 @@ export class QuickTabWindow {
     // instead of using a broad time-based window that suppresses ALL callbacks
     this.isMinimizing = false;
     this.isRestoring = false;
+    
+    // v1.6.4.16 - FIX Issue #24: State synchronization tracking
+    // Track last confirmed state for bidirectional sync
+    this._lastSyncedState = null;
+    this._pendingStateSync = false;
+    
+    // v1.6.4.16 - FIX Issue #28: Sidebar lifecycle tracking
+    // Track origin tab ID for lifecycle monitoring
+    this.originTabId = null;
+    this._lifecycleHandlerBound = false;
+  }
+
+  /**
+   * Set the origin tab ID for lifecycle tracking
+   * v1.6.4.16 - FIX Issue #28: Window.js sidebar lifecycle tracking
+   * @param {number} tabId - Origin tab ID
+   */
+  setOriginTabId(tabId) {
+    this.originTabId = tabId;
+    console.log('[SIDEBAR_LIFECYCLE] Origin tab ID set:', {
+      quickTabId: this.id,
+      originTabId: tabId
+    });
+  }
+  
+  /**
+   * Acknowledge state sync from content script
+   * v1.6.4.16 - FIX Issue #24: State synchronization acknowledgment
+   * @param {Object} state - Confirmed state from content script
+   */
+  acknowledgeStateSync(state) {
+    this._lastSyncedState = state;
+    this._pendingStateSync = false;
+    
+    console.log('[STATE_SYNC] State acknowledged:', {
+      quickTabId: this.id,
+      minimized: state?.minimized,
+      position: state?.position || { left: state?.left, top: state?.top },
+      timestamp: Date.now()
+    });
+  }
+  
+  /**
+   * Mark state sync as pending
+   * v1.6.4.16 - FIX Issue #24: Track pending state sync
+   */
+  markStateSyncPending() {
+    this._pendingStateSync = true;
+    console.log('[STATE_SYNC] State sync pending:', {
+      quickTabId: this.id,
+      timestamp: Date.now()
+    });
+  }
+  
+  /**
+   * Check if state sync is pending
+   * v1.6.4.16 - FIX Issue #24: Check pending state
+   * @returns {boolean} True if state sync is pending
+   */
+  isStateSyncPending() {
+    return this._pendingStateSync;
   }
 
   /**
@@ -1482,17 +1544,22 @@ export class QuickTabWindow {
    * v1.6.3.2 - FIX Issue #5: Ensure all event listeners are removed BEFORE DOM removal
    *   Order is critical: cleanup controllers → remove handlers → remove DOM → clear references
    * v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists before calling, with logging
+   * v1.6.4.16 - FIX Area C: Enhanced listener cleanup logging
    */
   destroy() {
     console.log('[QuickTabWindow] Destroying:', this.id);
 
     // v1.6.3.2 - FIX Issue #5: Set destroyed flag early to prevent new events
     this.destroyed = true;
+    
+    // v1.6.4.16 - FIX Area C: Track cleaned up listeners
+    let cleanedListenerCount = 0;
 
     // v1.6.0 Phase 2.9 - Cleanup drag controller FIRST (removes drag event listeners)
     if (this.dragController) {
       this.dragController.destroy();
       this.dragController = null;
+      cleanedListenerCount += 3; // Approx listeners: mousedown, mousemove, mouseup
       console.log('[QuickTabWindow] Cleaned up drag controller');
     }
 
@@ -1500,6 +1567,7 @@ export class QuickTabWindow {
     if (this.resizeController) {
       this.resizeController.detachAll();
       this.resizeController = null;
+      cleanedListenerCount += 4; // Approx listeners per handle
       console.log('[QuickTabWindow] Cleaned up resize controller');
     }
 
@@ -1515,6 +1583,11 @@ export class QuickTabWindow {
     // v1.6.3.2 - FIX Issue #5: Clear button references
     this.soloButton = null;
     this.muteButton = null;
+    
+    // v1.6.4.16 - FIX Issue #24/#28: Clear state sync tracking
+    this._lastSyncedState = null;
+    this._pendingStateSync = false;
+    this._lifecycleHandlerBound = false;
 
     // v1.6.3.2 - FIX Issue #5: Now remove DOM AFTER all event handlers are cleaned up
     if (this.container) {
@@ -1524,6 +1597,13 @@ export class QuickTabWindow {
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');
     }
+    
+    // v1.6.4.16 - FIX Area C: Log listener cleanup summary
+    console.log('[LISTENER_CLEANUP] QuickTabWindow destroy complete:', {
+      quickTabId: this.id,
+      estimatedListenersRemoved: cleanedListenerCount,
+      controllersDestroyed: 2
+    });
 
     // v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists and is a function
     console.log('[QuickTabWindow] Checking onDestroy callback:', {

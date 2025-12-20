@@ -6,6 +6,19 @@ import { StorageAdapter } from './StorageAdapter.js';
  * SyncStorageAdapter - Storage adapter for browser.storage.local API
  * v1.6.2.2 - ISSUE #35/#51 FIX: Unified storage format (no container separation)
  * v1.6.3.10-v10 - FIX Issue P: Atomic migration with version field and locking
+ * 
+ * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
+ * 
+ * CANONICAL ADAPTER SELECTION:
+ * - **SyncStorageAdapter** is the CANONICAL adapter for Quick Tab persistence ✓
+ *   - Uses browser.storage.local for permanent state
+ *   - Data survives browser restart
+ *   - Used for hydration on extension load
+ *   - All Quick Tab state is stored and loaded through this adapter
+ * 
+ * - **SessionStorageAdapter** is for TEMPORARY session state only
+ *   - Uses browser.storage.session (cleared on browser close)
+ *   - NOT used for Quick Tab persistence
  *
  * Features:
  * - Unified storage format for global Quick Tab visibility
@@ -49,6 +62,7 @@ export class SyncStorageAdapter extends StorageAdapter {
     // v1.6.3.10-v10 - FIX Issue P: Migration lock to prevent concurrent migrations
     this._migrationInProgress = false;
     this._migrationPromise = null;
+    console.log('[SyncStorageAdapter] Initialized (CANONICAL adapter - browser.storage.local)');
   }
 
   /**

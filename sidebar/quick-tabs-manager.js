@@ -3424,6 +3424,7 @@ function _renderUIImmediate_force() {
  * Internal render function - performs actual DOM manipulation
  * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
  * v1.6.3.7 - FIX Issue #8: Enhanced render logging for debugging
+ * v1.6.4.16 - FIX Area E: Enhanced render performance logging with [RENDER_PERF] prefix
  */
 async function _renderUIImmediate() {
   const renderStartTime = Date.now();
@@ -3445,19 +3446,24 @@ async function _renderUIImmediate() {
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
 
-    // v1.6.3.7 - FIX Issue #8: Log render exit
-    console.log('[Manager] RENDER_UI: exit (empty state)', {
-      triggerReason,
+    // v1.6.4.16 - FIX Area E: Log render performance even for empty state
+    const emptyDuration = Date.now() - renderStartTime;
+    console.log('[RENDER_PERF] Empty state render completed:', {
+      durationMs: emptyDuration,
       tabsRendered: 0,
-      groupsCreated: 0,
-      durationMs: Date.now() - renderStartTime
+      groupsCreated: 0
     });
     return;
   }
 
   _showContentState();
+  const groupStartTime = Date.now();
   const groups = groupQuickTabsByOriginTab(allTabs);
+  const groupDuration = Date.now() - groupStartTime;
+  
+  const collapseStateStartTime = Date.now();
   const collapseState = await loadCollapseState();
+  const collapseStateDuration = Date.now() - collapseStateStartTime;
 
   _logGroupRendering(groups);
 
@@ -3465,22 +3471,38 @@ async function _renderUIImmediate() {
   const currentGroupKeys = new Set([...groups.keys()].map(String));
   cleanupPreviousGroupCounts(currentGroupKeys);
 
+  const domStartTime = Date.now();
   const groupsContainer = await _buildGroupsContainer(groups, collapseState);
   checkAndRemoveEmptyGroups(groupsContainer, groups);
 
   containersList.appendChild(groupsContainer);
   attachCollapseEventListeners(groupsContainer, collapseState);
+  const domDuration = Date.now() - domStartTime;
 
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
+
+  // v1.6.4.16 - FIX Area E: Enhanced render performance logging
+  const totalDuration = Date.now() - renderStartTime;
+  console.log('[RENDER_PERF] Render completed:', {
+    totalDurationMs: totalDuration,
+    phases: {
+      groupingMs: groupDuration,
+      collapseStateMs: collapseStateDuration,
+      domManipulationMs: domDuration
+    },
+    tabsRendered: allTabs.length,
+    groupsCreated: groups.size,
+    isSlowRender: totalDuration > 100
+  });
 
   // v1.6.3.7 - FIX Issue #8: Log render exit with summary
   console.log('[Manager] RENDER_UI: exit', {
     triggerReason,
     tabsRendered: allTabs.length,
     groupsCreated: groups.size,
-    durationMs: Date.now() - renderStartTime
+    durationMs: totalDuration
   });
 
   _logRenderComplete(allTabs, groups, renderStartTime);

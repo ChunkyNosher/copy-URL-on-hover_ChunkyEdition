@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.10-v9.
+  documentation. Current version: v1.6.3.10-v10.
 tools: ['*']
 ---
 
@@ -69,27 +69,30 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.10-v9)
+## Current Extension State (v1.6.3.10-v10)
 
-### v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes
+### v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
-- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
-- **Write Rate-Limiting** - `WRITE_COALESCE_MIN_INTERVAL_MS` (100ms)
-- **Duplicate Window Alignment** - 5000ms
-- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Storage Write Validation** - `validateOwnershipForWriteAsync()` with timeout
+- **Handler Registration** - Deferred until async initialization completes
+- **Adoption Lock Timeout** - 10 seconds with escalation logging
+- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
+- **Container Context** - `updateContainerContextForAdoption()` tracking
+- **Tab Cleanup** - `setOnTabRemovedCallback()` registration
+- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
+- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- **Message Timeout** - `withTimeout()` utility (MESSAGE_TIMEOUT_MS = 5000)
 
-### v1.6.3.10-v8 Features (Previous) - Code Health & Bug Fixes
+### v1.6.3.10-v9 Features (Previous) - Storage & Cross-Tab Fixes
+
+- Identity-ready gating, storage error classification, storage quota monitoring
+- Write queue recovery, write rate-limiting, z-index recycling
+
+### v1.6.3.10-v8 & Earlier (Consolidated)
 
 - Code health 9.0+ scores, options object pattern
-- Storage/Cross-Tab/Manager issues fixed (#1-23)
-
-### v1.6.3.10-v7 & Earlier (Consolidated)
-
-- Port circuit breaker, adaptive dedup, storage write serialization
-- Type-safe tab IDs, container isolation, atomic ops
+- Port circuit breaker, type-safe tab IDs, container isolation
 
 ### Architecture
 
@@ -102,8 +105,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.10-v9
-- [ ] **v1.6.3.10-v9:** Storage & cross-tab features documented
+- [ ] Version numbers match 1.6.3.10-v10
+- [ ] **v1.6.3.10-v10:** Issues 1-28 & Areas A-F features documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -111,14 +114,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                   | Fix                         |
-| ----------------------- | --------------------------- |
-| v1.6.3.10-v8 or earlier | Update to 1.6.3.10-v9       |
-| "Pin to Page"           | Use "Solo/Mute"             |
-| Direct storage writes   | Use Single Writer Authority |
-| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
-| Port-based messaging    | REMOVE - Ports DELETED v12  |
-| CONNECTION_STATE refs   | REMOVE - Deleted in v6      |
+| Error                   | Fix                          |
+| ----------------------- | ---------------------------- |
+| v1.6.3.10-v9 or earlier | Update to 1.6.3.10-v10       |
+| "Pin to Page"           | Use "Solo/Mute"              |
+| Direct storage writes   | Use Single Writer Authority  |
+| BroadcastChannel refs   | REMOVE - BC DELETED in v6    |
+| Port-based messaging    | REMOVE - Ports DELETED v12   |
+| CONNECTION_STATE refs   | REMOVE - Deleted in v6       |
 
 ---
 

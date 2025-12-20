@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,44 +9,48 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v9 Status:** Storage & Cross-Tab Fixes ✅
+**🔧 v1.6.3.10-v10 Status:** Issues 1-28 & Problem Areas A-F Fixed ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v10
+
+**🔧 Issues 1-28 & Problem Areas A-F Fixed (December 2025) ✅**
+
+- ✅ **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- ✅ **Storage Write Validation** - Timeout-based fallback with validation
+- ✅ **Handler Registration** - Deferred until async initialization completes
+- ✅ **Adoption Lock Timeout** - 10 seconds with escalation logging
+- ✅ **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
+- ✅ **Container Context** - `updateContainerContextForAdoption()` tracking
+- ✅ **Tab Cleanup** - `setOnTabRemovedCallback()` registration
+- ✅ **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
+- ✅ **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- ✅ **Message Timeout** - `withTimeout()` utility (MESSAGE_TIMEOUT_MS = 5000)
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v9
 
-**🔧 Storage & Cross-Tab Fixes (December 2025) ✅**
+**🔧 Storage & Cross-Tab Fixes (Previous) ✅**
 
 - ✅ **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
 - ✅ **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
 - ✅ **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
 - ✅ **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
-- ✅ **Normalization Hardening** - Strict validation with rejection reasons
-- ✅ **Write Rate-Limiting** - Coalescing with `WRITE_COALESCE_MIN_INTERVAL_MS`
 - ✅ **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
 - ✅ **Memory Leak Fix** - Comprehensive `destroy()` method
 
 ---
 
-## 🎉 What's New in v1.6.3.10-v8
-
-**🔧 Code Health & Bug Fixes (Previous) ✅**
-
-- ✅ **Code Health Improvements** - Refactored files to 9.0+ scores
-- ✅ **Storage Issues Fixed (#1-15)** - Dual-block fix, currentTabId init
-- ✅ **Cross-Tab Issues Fixed (#16-23)** - Adoption cache sync, retry mechanism
-- ✅ **Consolidated Duplications** - Extracted helper functions, options object pattern
-
----
-
 ## 🎉 Previous Releases
 
+**v1.6.3.10-v9:** Storage & cross-tab fixes, identity gating, quota monitoring  
 **v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed  
 **v1.6.3.10-v7:** Port circuit breaker, adaptive dedup, storage write serialization  
 **v1.6.3.10-v6:** Type-safe tab IDs, async tab ID init, container ID normalization  
-**v1.6.3.10-v5:** Atomic ops, exponential backoff, surgical DOM updates
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -233,6 +237,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v9** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v10** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

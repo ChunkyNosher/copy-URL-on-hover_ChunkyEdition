@@ -65,6 +65,9 @@ const UNKNOWN_TAB_ID_LABEL = 'UNKNOWN';
 // v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
 const STORAGE_TIMEOUT_MS = 2000;
 
+// v1.6.4.16 - FIX Area B: Default message timeout (5 seconds)
+const MESSAGE_TIMEOUT_MS = 5000;
+
 // v1.6.3.10-v6 - FIX Issue A20: Retry configuration for storage write failures
 // Exponential backoff delays between retries (not including initial attempt)
 // Total attempts = 1 (initial) + STORAGE_RETRY_DELAYS_MS.length (retries) = 4 attempts
@@ -1633,6 +1636,152 @@ function _handleEmptyWriteValidation(tabId, forceEmpty) {
   };
 }
 
+// v1.6.3.10-v10 - FIX Issue #2: Emergency tab ID re-acquisition timeout constants
+// If currentWritingTabId is null for more than this duration, attempt emergency re-acquisition
+const EMERGENCY_TABID_TIMEOUT_MS = 5000;
+// Track when tab ID was first checked as null (for timeout-based recovery)
+let tabIdNullSinceTimestamp = null;
+// v1.6.3.10-v10 - FIX Code Review: Guard against concurrent re-acquisition attempts
+let emergencyReacquisitionInProgress = false;
+
+/**
+ * Attempt emergency re-acquisition of tab ID from background
+ * v1.6.3.10-v10 - FIX Issue #2: Fallback when tab ID remains null after timeout
+ * v1.6.3.10-v10 - FIX Code Review: Added synchronization guard against concurrent attempts
+ * @private
+ * @returns {Promise<number|null>} Re-acquired tab ID or null
+ */
+async function _attemptEmergencyTabIdReacquisition() {
+  // Guard against concurrent re-acquisition attempts
+  if (emergencyReacquisitionInProgress) {
+    console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Skipped (already in progress)');
+    return null;
+  }
+  
+  emergencyReacquisitionInProgress = true;
+  
+  console.warn('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Attempting re-acquisition', {
+    tabIdNullSinceTimestamp,
+    nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
+    currentWritingTabId
+  });
+  
+  try {
+    // Use the browser API directly to avoid circular dependencies
+    const browserAPI = getBrowserStorageAPI();
+    if (!browserAPI?.tabs?.getCurrent) {
+      console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
+        reason: 'browser.tabs.getCurrent not available'
+      });
+      return null;
+    }
+    
+    const tab = await browserAPI.tabs.getCurrent();
+    if (!tab?.id || typeof tab.id !== 'number') {
+      console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
+        reason: 'Could not get tab via browser.tabs.getCurrent()',
+        tabResult: tab
+      });
+      return null;
+    }
+    
+    console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: SUCCESS', {
+      reacquiredTabId: tab.id,
+      containerId: tab.cookieStoreId
+    });
+    
+    // Update the cached values
+    currentWritingTabId = tab.id;
+    currentWritingContainerId = tab.cookieStoreId ?? null;
+    
+    // Reset the null timestamp
+    tabIdNullSinceTimestamp = null;
+    
+    // Resolve any waiting promises
+    _resolveTabIdInitPromise(tab.id, 'emergency-reacquisition');
+    if (tab.cookieStoreId) {
+      _resolveContainerIdInitPromise(tab.cookieStoreId, 'emergency-reacquisition');
+    }
+    
+    return tab.id;
+  } catch (err) {
+    console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: ERROR', {
+      error: err.message
+    });
+    return null;
+  } finally {
+    // Always release the guard
+    emergencyReacquisitionInProgress = false;
+  }
+}
+
+/**
+ * Check if emergency tab ID re-acquisition should be attempted
+ * v1.6.3.10-v10 - FIX Issue #2: Helper for timeout-based fallback
+ * @private
+ * @returns {boolean} True if should attempt re-acquisition
+ */
+function _shouldAttemptEmergencyReacquisition() {
+  if (currentWritingTabId !== null) {
+    // Tab ID is known, no emergency needed
+    tabIdNullSinceTimestamp = null;
+    return false;
+  }
+  
+  const now = Date.now();
+  
+  // First time seeing null - start tracking
+  if (tabIdNullSinceTimestamp === null) {
+    tabIdNullSinceTimestamp = now;
+    return false; // Don't attempt on first check
+  }
+  
+  // Check if timeout has elapsed
+  const nullDuration = now - tabIdNullSinceTimestamp;
+  return nullDuration >= EMERGENCY_TABID_TIMEOUT_MS;
+}
+
+/**
+ * Validate ownership for write with async fallback for tab ID acquisition
+ * v1.6.3.10-v10 - FIX Issue #2: Async version that can attempt emergency re-acquisition
+ * 
+ * This function wraps validateOwnershipForWrite with timeout-based fallback:
+ * If currentWritingTabId is null for 5+ seconds, attempt emergency re-acquisition
+ * before rejecting the write.
+ * 
+ * @param {Array} tabs - Array of tabs to validate
+ * @param {number|null} currentTabId - Current tab ID (optional)
+ * @param {boolean} forceEmpty - Allow empty writes
+ * @param {string|null} currentContainerId - Current container ID (optional)
+ * @returns {Promise<{ shouldWrite: boolean, ownedTabs: Array, reason: string }>}
+ */
+export async function validateOwnershipForWriteAsync(tabs, currentTabId = null, forceEmpty = false, currentContainerId = null) {
+  const resolvedTabId = currentTabId ?? currentWritingTabId;
+  
+  // Fast path: tab ID is known
+  if (resolvedTabId !== null) {
+    return validateOwnershipForWrite(tabs, currentTabId, forceEmpty, currentContainerId);
+  }
+  
+  // Tab ID is null - check if we should attempt emergency re-acquisition
+  if (_shouldAttemptEmergencyReacquisition()) {
+    console.warn('[StorageUtils] v1.6.3.10-v10 OWNERSHIP_VALIDATION: Attempting emergency tab ID re-acquisition', {
+      nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
+      tabCount: tabs?.length ?? 0
+    });
+    
+    const reacquiredTabId = await _attemptEmergencyTabIdReacquisition();
+    
+    if (reacquiredTabId !== null) {
+      // Re-try validation with re-acquired tab ID
+      return validateOwnershipForWrite(tabs, reacquiredTabId, forceEmpty, currentContainerId);
+    }
+  }
+  
+  // Fall back to sync version (which will block the write)
+  return validateOwnershipForWrite(tabs, currentTabId, forceEmpty, currentContainerId);
+}
+
 /**
  * Check if current tab should write to storage based on Quick Tab ownership
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Only owner tabs should write state
@@ -2041,6 +2190,75 @@ export function generateTransactionId() {
 }
 
 /**
+ * Wrap a promise with timeout protection
+ * v1.6.4.16 - FIX Area B: No timeout protection on messages
+ * @param {Promise} promise - Promise to wrap
+ * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
+ * @param {string} operation - Operation name for error message
+ * @returns {Promise} Promise that rejects after timeout if not resolved
+ */
+export function withTimeout(promise, timeoutMs = MESSAGE_TIMEOUT_MS, operation = 'operation') {
+  let timeoutId = null;
+  
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      console.warn('[MSG_TIMEOUT] Operation timed out:', {
+        operation,
+        timeoutMs,
+        timestamp: Date.now()
+      });
+      reject(new Error(`[MSG_TIMEOUT] ${operation} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
+
+/**
+ * Send a message with timeout protection
+ * v1.6.4.16 - FIX Area B: Wrapper for browser.runtime.sendMessage with timeout
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
+ * @returns {Promise} Response from message handler or timeout error
+ */
+export async function sendMessageWithTimeout(message, timeoutMs = MESSAGE_TIMEOUT_MS) {
+  const operationName = `sendMessage(${message.action || message.type || 'unknown'})`;
+  const startTime = Date.now();
+  
+  try {
+    const browserAPI = getBrowserStorageAPI();
+    if (!browserAPI || !browserAPI.runtime?.sendMessage) {
+      throw new Error('Browser runtime API not available');
+    }
+    
+    const result = await withTimeout(
+      browserAPI.runtime.sendMessage(message),
+      timeoutMs,
+      operationName
+    );
+    
+    console.log('[MSG_TIMEOUT] Message completed successfully:', {
+      operation: operationName,
+      durationMs: Date.now() - startTime
+    });
+    
+    return result;
+  } catch (err) {
+    console.error('[MSG_TIMEOUT] Message failed:', {
+      operation: operationName,
+      error: err.message,
+      durationMs: Date.now() - startTime,
+      isTimeout: err.message.includes('timed out')
+    });
+    throw err;
+  }
+}
+
+/**
  * Check if URL is null, undefined, or empty
  * v1.6.3.4-v6 - Extracted to reduce isValidQuickTabUrl complexity
  * @private
@@ -2111,6 +2329,310 @@ export function isValidQuickTabUrl(url) {
   } catch (_e) {
     return false;
   }
+}
+
+/**
+ * Check if stored state has required structure
+ * v1.6.4.16 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
+ * @private
+ */
+function _checkStoredStateStructure(storedState, transactionId, errors) {
+  if (!storedState) {
+    errors.push('No data found in storage after write');
+    console.error('[STORAGE_INTEGRITY] No data found:', { transactionId });
+    return false;
+  }
+  
+  if (!storedState.tabs || !Array.isArray(storedState.tabs)) {
+    errors.push('Storage missing tabs array');
+    console.error('[STORAGE_INTEGRITY] Missing tabs array:', { transactionId });
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Check tab count consistency between expected and stored
+ * v1.6.4.16 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
+ * @private
+ */
+function _checkTabCountConsistency(expectedState, storedState, transactionId, errors) {
+  const expectedCount = expectedState?.tabs?.length ?? 0;
+  const storedCount = storedState.tabs.length;
+  
+  if (expectedCount === storedCount) {
+    return { needsRecovery: false };
+  }
+  
+  errors.push(`Tab count mismatch: expected ${expectedCount}, stored ${storedCount}`);
+  console.warn('[STORAGE_INTEGRITY] Tab count mismatch:', {
+    transactionId,
+    expected: expectedCount,
+    stored: storedCount
+  });
+  
+  // Significant difference requires recovery
+  return { needsRecovery: Math.abs(expectedCount - storedCount) > 5 };
+}
+
+/**
+ * Check tabs have required fields
+ * v1.6.4.16 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
+ * @private
+ */
+function _checkTabsRequiredFields(storedState, transactionId, errors) {
+  const invalidTabs = storedState.tabs.filter(t => !t.id || !t.url);
+  if (invalidTabs.length > 0) {
+    errors.push(`${invalidTabs.length} tabs missing required fields (id, url)`);
+    console.warn('[STORAGE_INTEGRITY] Invalid tabs detected:', {
+      transactionId,
+      invalidCount: invalidTabs.length
+    });
+  }
+}
+
+/**
+ * Validate storage integrity after write operation
+ * v1.6.4.16 - FIX Area F: No recovery from partially written storage
+ * Verifies that storage contains expected data structure after write
+ * Refactored to reduce complexity
+ * 
+ * @param {Object} expectedState - State that was written
+ * @param {string} transactionId - Transaction ID for logging
+ * @returns {Promise<{valid: boolean, errors: string[], recoveryNeeded: boolean}>}
+ */
+export async function validateStorageIntegrity(expectedState, transactionId = 'unknown') {
+  const errors = [];
+  const startTime = Date.now();
+  
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI) {
+    errors.push('Browser API not available');
+    console.error('[STORAGE_INTEGRITY] Browser API not available');
+    return { valid: false, errors, recoveryNeeded: true };
+  }
+  
+  try {
+    const result = await browserAPI.storage.local.get(STATE_KEY);
+    const storedState = result?.[STATE_KEY];
+    
+    // Check structure
+    if (!_checkStoredStateStructure(storedState, transactionId, errors)) {
+      return { valid: false, errors, recoveryNeeded: true };
+    }
+    
+    // Check count consistency
+    const countCheck = _checkTabCountConsistency(expectedState, storedState, transactionId, errors);
+    if (countCheck.needsRecovery) {
+      return { valid: false, errors, recoveryNeeded: true };
+    }
+    
+    // Check required fields
+    _checkTabsRequiredFields(storedState, transactionId, errors);
+    
+    const durationMs = Date.now() - startTime;
+    const isValid = errors.length === 0;
+    
+    console.log('[STORAGE_INTEGRITY] Validation complete:', {
+      transactionId,
+      valid: isValid,
+      errorCount: errors.length,
+      tabCount: storedState.tabs.length,
+      durationMs
+    });
+    
+    return {
+      valid: isValid,
+      errors,
+      recoveryNeeded: errors.some(e => e.includes('missing') || e.includes('No data'))
+    };
+    
+  } catch (err) {
+    errors.push(`Validation error: ${err.message}`);
+    console.error('[STORAGE_INTEGRITY] Validation failed:', {
+      transactionId,
+      error: err.message
+    });
+    return { valid: false, errors, recoveryNeeded: true };
+  }
+}
+
+// v1.6.4.16 - FIX Area A: Error classification patterns
+// Using a lookup map reduces complexity below the threshold
+const STORAGE_ERROR_PATTERNS = [
+  { patterns: ['quota', 'QUOTA'], type: 'QUOTA_EXCEEDED', recoverable: false, action: 'Clear old data or upgrade storage' },
+  { patterns: ['serialize', 'JSON', 'circular'], type: 'SERIALIZATION_ERROR', recoverable: true, action: 'Filter invalid data and retry' },
+  { patterns: ['permission', 'Permission'], type: 'PERMISSION_ERROR', recoverable: false, action: 'Request storage permission' },
+  { patterns: ['context invalidated', 'Extension context'], type: 'CONTEXT_INVALIDATED', recoverable: false, action: 'Extension reloading, wait for restart' },
+  { patterns: ['network', 'Network'], type: 'NETWORK_ERROR', recoverable: true, action: 'Retry with exponential backoff' }
+];
+
+/**
+ * Check if message matches any patterns
+ * v1.6.4.16 - FIX Area A: Helper to reduce classifyStorageError complexity
+ * @private
+ */
+function _matchesPatterns(message, patterns) {
+  return patterns.some(p => message.includes(p));
+}
+
+/**
+ * Classify storage error type for appropriate recovery action
+ * v1.6.4.16 - FIX Area A: Minimal error handling in storage operations
+ * Refactored to use pattern lookup for reduced complexity
+ * @param {Error} error - Error to classify
+ * @returns {{ type: string, recoverable: boolean, action: string }}
+ */
+export function classifyStorageError(error) {
+  const message = error?.message || String(error);
+  
+  // Find matching error pattern
+  for (const pattern of STORAGE_ERROR_PATTERNS) {
+    if (_matchesPatterns(message, pattern.patterns)) {
+      return {
+        type: pattern.type,
+        recoverable: pattern.recoverable,
+        action: pattern.action
+      };
+    }
+  }
+  
+  // Default: unknown error
+  return {
+    type: 'UNKNOWN_ERROR',
+    recoverable: true,
+    action: 'Log and retry'
+  };
+}
+
+// v1.6.4.16 - FIX Area D: Checkpoint system for long operations
+// Map of operation ID -> checkpoint data
+const operationCheckpoints = new Map();
+
+/**
+ * Create a checkpoint for a long-running operation
+ * v1.6.4.16 - FIX Area D: No checkpoint/savepoint system for long operations
+ * 
+ * @param {string} operationId - Unique operation identifier
+ * @param {string} stepName - Name of the current step
+ * @param {Object} stateSnapshot - State at this checkpoint
+ * @returns {Object} Checkpoint object with metadata
+ */
+export function createCheckpoint(operationId, stepName, stateSnapshot = null) {
+  const checkpoint = {
+    operationId,
+    stepName,
+    timestamp: Date.now(),
+    stateSnapshot: stateSnapshot ? JSON.parse(JSON.stringify(stateSnapshot)) : null,
+    stepIndex: operationCheckpoints.has(operationId) 
+      ? (operationCheckpoints.get(operationId).steps?.length || 0) + 1 
+      : 1
+  };
+  
+  // Initialize or update operation checkpoints
+  if (!operationCheckpoints.has(operationId)) {
+    operationCheckpoints.set(operationId, {
+      startTime: checkpoint.timestamp,
+      steps: [checkpoint],
+      status: 'in_progress'
+    });
+  } else {
+    operationCheckpoints.get(operationId).steps.push(checkpoint);
+  }
+  
+  console.log('[CHECKPOINT] Created:', {
+    operationId,
+    stepName,
+    stepIndex: checkpoint.stepIndex,
+    hasSnapshot: !!stateSnapshot
+  });
+  
+  return checkpoint;
+}
+
+/**
+ * Get the last checkpoint for an operation
+ * v1.6.4.16 - FIX Area D: Retrieve checkpoint for recovery
+ * 
+ * @param {string} operationId - Operation identifier
+ * @returns {Object|null} Last checkpoint or null
+ */
+export function getLastCheckpoint(operationId) {
+  const operation = operationCheckpoints.get(operationId);
+  if (!operation || !operation.steps || operation.steps.length === 0) {
+    return null;
+  }
+  return operation.steps[operation.steps.length - 1];
+}
+
+/**
+ * Mark operation as completed
+ * v1.6.4.16 - FIX Area D: Complete checkpoint tracking
+ * 
+ * @param {string} operationId - Operation identifier
+ * @param {boolean} success - Whether operation succeeded
+ */
+export function completeCheckpoint(operationId, success = true) {
+  const operation = operationCheckpoints.get(operationId);
+  if (!operation) {
+    console.warn('[CHECKPOINT] No checkpoints found for operation:', operationId);
+    return;
+  }
+  
+  operation.status = success ? 'completed' : 'failed';
+  operation.endTime = Date.now();
+  operation.duration = operation.endTime - operation.startTime;
+  
+  console.log('[CHECKPOINT] Operation completed:', {
+    operationId,
+    success,
+    durationMs: operation.duration,
+    totalSteps: operation.steps.length
+  });
+  
+  // Clean up old checkpoints (keep last 10 operations)
+  if (operationCheckpoints.size > 10) {
+    const oldestKey = operationCheckpoints.keys().next().value;
+    operationCheckpoints.delete(oldestKey);
+  }
+}
+
+/**
+ * Rollback to a checkpoint
+ * v1.6.4.16 - FIX Area D: Basic recovery mechanism
+ * 
+ * @param {string} operationId - Operation identifier
+ * @param {number} stepIndex - Step index to rollback to (0 for latest)
+ * @returns {Object|null} State snapshot at checkpoint or null
+ */
+export function rollbackToCheckpoint(operationId, stepIndex = 0) {
+  const operation = operationCheckpoints.get(operationId);
+  if (!operation || !operation.steps) {
+    console.warn('[CHECKPOINT] No checkpoints found for rollback:', operationId);
+    return null;
+  }
+  
+  const targetIndex = stepIndex > 0 ? stepIndex - 1 : operation.steps.length - 1;
+  const checkpoint = operation.steps[targetIndex];
+  
+  if (!checkpoint || !checkpoint.stateSnapshot) {
+    console.warn('[CHECKPOINT] No snapshot at checkpoint:', {
+      operationId,
+      stepIndex,
+      targetIndex
+    });
+    return null;
+  }
+  
+  console.log('[CHECKPOINT] Rolling back to:', {
+    operationId,
+    stepName: checkpoint.stepName,
+    stepIndex: checkpoint.stepIndex,
+    snapshotAge: Date.now() - checkpoint.timestamp
+  });
+  
+  return checkpoint.stateSnapshot;
 }
 
 /**

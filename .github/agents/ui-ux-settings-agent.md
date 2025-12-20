@@ -59,16 +59,16 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v9 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.10-v10 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
+**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
 
-- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
-- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
-- **Unified Barrier Init** - Single barrier with resolve-only semantics
+- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **Sidebar Lifecycle** - `[SIDEBAR_LIFECYCLE]` logging prefix
+- **Render Performance** - `[RENDER_PERF]` logging prefix
 
-**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, render queue priority,
-simplified init, dead code removal
+**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage quota
+monitoring, code health 9.0+, render queue priority, simplified init
 
 **Settings Sidebar Structure (Two-Layer System):**
 
