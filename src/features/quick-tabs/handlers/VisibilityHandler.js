@@ -47,6 +47,10 @@
  * v1.6.3.10-v5 - Note: Remote invocations from Manager sidebar now use Scripting API fallback
  *   - See background.js executeManagerCommand() for timeout-protected messaging
  *   - Falls back to browser.scripting.executeScript on messaging failure
+ * v1.6.3.10-v12 - FIX Issue #22: State consistency checks between VisibilityHandler and MinimizedManager
+ *   - startConsistencyChecks() validates DOM state matches snapshot state every 5 seconds
+ *   - Automatic recovery for MISSING_SNAPSHOT (create from DOM) and STALE_SNAPSHOT (remove)
+ *   - Consistency checks started automatically by QuickTabsManager._setupComponents()
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -54,6 +58,7 @@
  * - Mutex/lock pattern prevents duplicate operations from multiple sources
  * - Cross-tab validation ensures operations only affect owned Quick Tabs
  * - v1.6.3.10-v5: Remote commands from Manager use Scripting API fallback for reliability
+ * - v1.6.3.10-v12: Periodic consistency checks detect and recover from state desync
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -65,8 +70,9 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  * - Cross-tab ownership validation for all operations
+ * - Periodic state consistency checks with automatic recovery
  *
- * @version 1.6.3.10-v5
+ * @version 1.6.3.10-v12
  */
 
 import {

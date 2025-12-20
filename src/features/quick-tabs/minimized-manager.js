@@ -24,6 +24,11 @@
  *   - Defer expiration timeout if isRestoring=true when timeout fires
  *   - Cancel and reschedule timeout when restore retries occur
  *   - Add DEBUG level logging for snapshot lifecycle transitions
+ * v1.6.3.10-v12 - FIX Issue #22: State consistency with VisibilityHandler
+ *   - VisibilityHandler.startConsistencyChecks() validates DOM state matches snapshot state
+ *   - MISSING_SNAPSHOT: Minimized in DOM but no snapshot - create one from current state
+ *   - STALE_SNAPSHOT: Non-minimized in DOM but has snapshot - remove stale snapshot
+ *   - Checks run every 5 seconds when enabled by QuickTabsManager
  */
 
 // Default values for position/size when not provided

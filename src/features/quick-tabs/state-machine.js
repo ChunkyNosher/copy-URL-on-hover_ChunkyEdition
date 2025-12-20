@@ -2,24 +2,32 @@
  * QuickTabStateMachine - Explicit lifecycle state tracking and transition validation
  *
  * v1.6.3.5 - New module for Phase 1 of Architecture Refactor
+ * v1.6.3.10-v12 - FIX Issue #3: Added CREATING, CLOSING, ERROR states
+ *   - Extended state machine with full lifecycle tracking
+ *   - Added guardOperation() for operation-level state validation
+ *   - Added canMinimize/canRestore/canClose convenience methods
  *
  * Responsibilities:
- * - Track each Quick Tab's current state (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
+ * - Track each Quick Tab's current state (CREATING, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, CLOSING, DESTROYED, ERROR)
  * - Validate state transitions before allowing operations
  * - Log every state change with timestamp and initiator
  * - Reject invalid operations (e.g., minimize already-minimized tab)
  * - Provide state history for debugging
+ * - Guard operations based on current state (e.g., block minimize while creating)
  *
  * @module state-machine
  */
 
 /**
  * Valid Quick Tab states
+ * v1.6.3.10-v12 - FIX Issue #3: Added CREATING, CLOSING, ERROR states for complete lifecycle tracking
  * @enum {string}
  */
 export const QuickTabState = {
   /** Initial state - Tab not yet tracked */
   UNKNOWN: 'UNKNOWN',
+  /** Tab is being created (ID generated, not yet rendered) */
+  CREATING: 'CREATING',
   /** Tab is visible and rendered in DOM */
   VISIBLE: 'VISIBLE',
   /** Tab is in process of minimizing */
@@ -28,21 +36,29 @@ export const QuickTabState = {
   MINIMIZED: 'MINIMIZED',
   /** Tab is in process of restoring */
   RESTORING: 'RESTORING',
+  /** Tab is in process of closing/being destroyed */
+  CLOSING: 'CLOSING',
   /** Tab has been destroyed */
-  DESTROYED: 'DESTROYED'
+  DESTROYED: 'DESTROYED',
+  /** Tab is in error state (operation failed) */
+  ERROR: 'ERROR'
 };
 
 /**
  * Valid state transitions - Map of fromState -> Set of valid toStates
+ * v1.6.3.10-v12 - FIX Issue #3: Extended with CREATING, CLOSING, ERROR transitions
  * @type {Map<string, Set<string>>}
  */
 const VALID_TRANSITIONS = new Map([
-  [QuickTabState.UNKNOWN, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED])],
-  [QuickTabState.VISIBLE, new Set([QuickTabState.MINIMIZING, QuickTabState.DESTROYED])],
-  [QuickTabState.MINIMIZING, new Set([QuickTabState.MINIMIZED, QuickTabState.VISIBLE])],
-  [QuickTabState.MINIMIZED, new Set([QuickTabState.RESTORING, QuickTabState.DESTROYED])],
-  [QuickTabState.RESTORING, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED])],
-  [QuickTabState.DESTROYED, new Set()] // Terminal state - no transitions allowed
+  [QuickTabState.UNKNOWN, new Set([QuickTabState.CREATING, QuickTabState.VISIBLE, QuickTabState.MINIMIZED])],
+  [QuickTabState.CREATING, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.ERROR, QuickTabState.DESTROYED])],
+  [QuickTabState.VISIBLE, new Set([QuickTabState.MINIMIZING, QuickTabState.CLOSING, QuickTabState.DESTROYED, QuickTabState.ERROR])],
+  [QuickTabState.MINIMIZING, new Set([QuickTabState.MINIMIZED, QuickTabState.VISIBLE, QuickTabState.ERROR])],
+  [QuickTabState.MINIMIZED, new Set([QuickTabState.RESTORING, QuickTabState.CLOSING, QuickTabState.DESTROYED, QuickTabState.ERROR])],
+  [QuickTabState.RESTORING, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.ERROR])],
+  [QuickTabState.CLOSING, new Set([QuickTabState.DESTROYED, QuickTabState.ERROR])],
+  [QuickTabState.DESTROYED, new Set()], // Terminal state - no transitions allowed
+  [QuickTabState.ERROR, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.DESTROYED])] // Can recover or be destroyed
 ]);
 
 /**
@@ -274,6 +290,118 @@ export class QuickTabStateMachine {
   getAllIds() {
     return Array.from(this._states.keys());
   }
+
+  // ==================== v1.6.3.10-v12 FIX ISSUE #3: OPERATION GUARDS ====================
+  
+  /**
+   * Check if minimize operation is allowed for a Quick Tab
+   * v1.6.3.10-v12 - FIX Issue #3: Operation-level state validation
+   * @param {string} id - Quick Tab ID
+   * @returns {{ allowed: boolean, reason?: string }}
+   */
+  canMinimize(id) {
+    const state = this.getState(id);
+    
+    // Can only minimize from VISIBLE state
+    if (state !== QuickTabState.VISIBLE) {
+      return { 
+        allowed: false, 
+        reason: `Cannot minimize from state ${state} (must be VISIBLE)` 
+      };
+    }
+    
+    return { allowed: true };
+  }
+
+  /**
+   * Check if restore operation is allowed for a Quick Tab
+   * v1.6.3.10-v12 - FIX Issue #3: Operation-level state validation
+   * @param {string} id - Quick Tab ID
+   * @returns {{ allowed: boolean, reason?: string }}
+   */
+  canRestore(id) {
+    const state = this.getState(id);
+    
+    // Can only restore from MINIMIZED state
+    if (state !== QuickTabState.MINIMIZED) {
+      return { 
+        allowed: false, 
+        reason: `Cannot restore from state ${state} (must be MINIMIZED)` 
+      };
+    }
+    
+    return { allowed: true };
+  }
+
+  /**
+   * Check if close operation is allowed for a Quick Tab
+   * v1.6.3.10-v12 - FIX Issue #3: Operation-level state validation
+   * @param {string} id - Quick Tab ID
+   * @returns {{ allowed: boolean, reason?: string }}
+   */
+  canClose(id) {
+    const state = this.getState(id);
+    
+    // Cannot close from CREATING, CLOSING, or DESTROYED states
+    const blockedStates = [QuickTabState.CREATING, QuickTabState.CLOSING, QuickTabState.DESTROYED];
+    if (blockedStates.includes(state)) {
+      return { 
+        allowed: false, 
+        reason: `Cannot close from state ${state}` 
+      };
+    }
+    
+    return { allowed: true };
+  }
+
+  /**
+   * Guard an operation based on current state
+   * v1.6.3.10-v12 - FIX Issue #3: Unified operation guard with logging
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Operation name ('minimize', 'restore', 'close')
+   * @param {string} source - Who initiated the operation
+   * @returns {{ allowed: boolean, reason?: string, currentState: string }}
+   */
+  guardOperation(id, operation, source = 'unknown') {
+    const currentState = this.getState(id);
+    let result;
+    
+    switch (operation) {
+      case 'minimize':
+        result = this.canMinimize(id);
+        break;
+      case 'restore':
+        result = this.canRestore(id);
+        break;
+      case 'close':
+        result = this.canClose(id);
+        break;
+      default:
+        result = { allowed: true }; // Unknown operations are allowed by default
+    }
+    
+    // Log guard result
+    if (!result.allowed) {
+      console.warn('[QuickTabStateMachine] OPERATION_BLOCKED:', {
+        id,
+        operation,
+        source,
+        currentState,
+        reason: result.reason
+      });
+    } else {
+      console.log('[QuickTabStateMachine] OPERATION_ALLOWED:', {
+        id,
+        operation,
+        source,
+        currentState
+      });
+    }
+    
+    return { ...result, currentState };
+  }
+
+  // ==================== END ISSUE #3 FIX ====================
 
   /**
    * Get statistics about the state machine

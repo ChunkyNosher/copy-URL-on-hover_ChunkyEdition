@@ -180,6 +180,11 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #3: Unified deletion behavior between UI button and Manager close button
  * - CLOSE_QUICK_TAB handler now accepts 'source' parameter for cross-tab broadcast handling
  * - Background broadcasts deletion to all tabs, content scripts filter by ownership
+ *
+ * v1.6.3.10-v12 Changes:
+ * - FIX Issue #5: Add sequenceId to CREATE_QUICK_TAB messages for ordering enforcement
+ * - FIX Issue #22: VisibilityHandler consistency checks started automatically
+ * - FIX Issue #3: Extended state machine with CREATING, CLOSING, ERROR states
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -3464,12 +3469,24 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for background persistence
+ * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
  */
 async function persistQuickTabToBackground(quickTabData, saveId) {
+  // v1.6.3.10-v12 - FIX Issue #5: Assign sequenceId for ordering
+  const sequenceId = ++globalCommandSequenceId;
+  
+  console.log('[Content] CREATE_MESSAGE_SEQUENCED:', {
+    quickTabId: quickTabData.id,
+    sequenceId,
+    timestamp: Date.now()
+  });
+  
   await sendMessageToBackground({
     action: 'CREATE_QUICK_TAB',
     ...quickTabData,
-    saveId
+    saveId,
+    sequenceId,           // v1.6.3.10-v12 - FIX Issue #5: Include for ordering
+    operationType: OPERATION_TYPE.CREATE  // v1.6.3.10-v12 - FIX Issue #5: Explicit type
   });
 }
 
