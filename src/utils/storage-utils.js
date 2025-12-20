@@ -79,8 +79,15 @@ const STORAGE_MAX_RETRIES = STORAGE_RETRY_DELAYS_MS.length;
 const STORAGE_QUOTA_MIN_HEADROOM_BYTES = 1024 * 1024; // 1MB minimum headroom
 // Threshold for logging quota warnings
 const STORAGE_QUOTA_WARNING_THRESHOLD = 0.8; // Warn when 80% full
+// v1.6.3.10-v11 - FIX Issue #18: Critical threshold for UI notification
+const STORAGE_QUOTA_CRITICAL_THRESHOLD = 0.9; // Critical when 90% full
 // Sampling interval for quota logging (log every N writes)
 const STORAGE_QUOTA_LOG_SAMPLING_INTERVAL = 50;
+
+// v1.6.3.10-v11 - FIX Issue #18: Track storage unavailability state
+let storageUnavailable = false;
+let lastQuotaNotificationTime = 0;
+const QUOTA_NOTIFICATION_COOLDOWN_MS = 60000; // Only notify once per minute
 
 // v1.6.3.10-v9 - FIX Issue F: Storage write queue recovery constants
 const WRITE_QUEUE_STALL_TIMEOUT_MS = 10000; // 10s max stall before recovery
@@ -3906,8 +3913,9 @@ function _logQuotaStatusIfNeeded(logPrefix, bytesUsed, bytesQuota, bytesAvailabl
 /**
  * Check storage quota before write operation
  * v1.6.3.10-v9 - FIX Issue M/D: Preflight quota check using navigator.storage.estimate() (refactored)
+ * v1.6.3.10-v11 - FIX Issue #18: Add 90% critical threshold and UI event emission
  * @param {string} logPrefix - Log prefix for messages
- * @returns {Promise<{canWrite: boolean, bytesUsed: number, bytesAvailable: number, usagePercent: number}>}
+ * @returns {Promise<{canWrite: boolean, bytesUsed: number, bytesAvailable: number, usagePercent: number, critical?: boolean}>}
  */
 export async function checkStorageQuota(logPrefix = '[StorageUtils]') {
   // Check if navigator.storage.estimate is available
@@ -3924,17 +3932,78 @@ export async function checkStorageQuota(logPrefix = '[StorageUtils]') {
 
     _logQuotaStatusIfNeeded(logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent);
 
-    // Check if quota exceeded
-    if (bytesAvailable < STORAGE_QUOTA_MIN_HEADROOM_BYTES) {
-      console.error(`${logPrefix} v1.6.3.10-v9 INSUFFICIENT_STORAGE_HEADROOM`);
-      return _buildQuotaResult(false, bytesUsed, bytesAvailable, usagePercent);
+    // v1.6.3.10-v11 - FIX Issue #18: Check for critical (90%) threshold
+    if (usagePercent > STORAGE_QUOTA_CRITICAL_THRESHOLD * 100) {
+      console.error(`${logPrefix} STORAGE_QUOTA_CRITICAL: Usage at ${usagePercent.toFixed(1)}%`, {
+        bytesUsed,
+        bytesQuota,
+        bytesAvailable,
+        threshold: STORAGE_QUOTA_CRITICAL_THRESHOLD
+      });
+      
+      // v1.6.3.10-v11 - FIX Issue #18: Emit UI notification (throttled)
+      _emitQuotaWarningEvent(usagePercent, bytesAvailable);
     }
 
+    // Check if quota exceeded (can't write)
+    if (bytesAvailable < STORAGE_QUOTA_MIN_HEADROOM_BYTES) {
+      console.error(`${logPrefix} v1.6.3.10-v9 INSUFFICIENT_STORAGE_HEADROOM`);
+      storageUnavailable = true;
+      return { ..._buildQuotaResult(false, bytesUsed, bytesAvailable, usagePercent), critical: true };
+    }
+
+    storageUnavailable = false;
     return _buildQuotaResult(true, bytesUsed, bytesAvailable, usagePercent);
   } catch (err) {
     console.warn(`${logPrefix} v1.6.3.10-v9 Quota check failed:`, err.message);
     return _buildQuotaResult(true, 0, Infinity, 0);
   }
+}
+
+/**
+ * Emit quota warning event for UI notification
+ * v1.6.3.10-v11 - FIX Issue #18: Notify user when storage is nearly full
+ * @private
+ * @param {number} usagePercent - Current usage percentage
+ * @param {number} bytesAvailable - Bytes available before quota
+ */
+function _emitQuotaWarningEvent(usagePercent, bytesAvailable) {
+  const now = Date.now();
+  
+  // Throttle notifications
+  if (now - lastQuotaNotificationTime < QUOTA_NOTIFICATION_COOLDOWN_MS) {
+    return;
+  }
+  
+  lastQuotaNotificationTime = now;
+  
+  // Log for debugging
+  console.warn('[StorageUtils] QUOTA_WARNING_EVENT:', {
+    usagePercent: usagePercent.toFixed(1),
+    bytesAvailable,
+    message: 'Storage nearly full - some Quick Tabs may not persist'
+  });
+  
+  // Dispatch custom event for UI to listen
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('quicktabs:storage-warning', {
+      detail: {
+        type: 'QUOTA_CRITICAL',
+        usagePercent,
+        bytesAvailable,
+        message: 'Storage full - some Quick Tabs may not persist'
+      }
+    }));
+  }
+}
+
+/**
+ * Check if storage is currently unavailable due to quota
+ * v1.6.3.10-v11 - FIX Issue #18: Expose storage availability state
+ * @returns {boolean} True if storage is unavailable
+ */
+export function isStorageQuotaExhausted() {
+  return storageUnavailable;
 }
 
 /**

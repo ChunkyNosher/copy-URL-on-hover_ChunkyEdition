@@ -176,7 +176,227 @@ export class VisibilityHandler {
     // Set to false if storage write times out to prevent further hangs
     this._storageAvailable = true;
     this._storageTimeoutCount = 0;
+    
+    // v1.6.3.10-v11 - FIX Issue #19: Track registered event listeners for cleanup
+    // Map of { target, type, listener, options } for later removal
+    this._registeredListeners = [];
+    
+    // v1.6.3.10-v11 - FIX Issue #20: Track active timers with metadata
+    // Map of timerId -> { type, description, createdAt, callback }
+    this._activeTimers = new Map();
+    
+    // v1.6.3.10-v11 - FIX Issue #19: Track if handler is destroyed
+    this._isDestroyed = false;
+    
+    // v1.6.3.10-v11 - FIX Issue #22: Track state consistency check interval
+    this._consistencyCheckIntervalId = null;
+    
+    // Log handler creation
+    console.log(`${this._logPrefix} HANDLER_CREATED:`, {
+      tabId: this.currentTabId,
+      timestamp: Date.now()
+    });
   }
+  
+  // ==================== v1.6.3.10-v11 FIX ISSUE #22: STATE CONSISTENCY ====================
+  
+  /**
+   * Interval for periodic state consistency checks (milliseconds)
+   * v1.6.3.10-v11 - FIX Issue #22
+   */
+  static get STATE_CONSISTENCY_CHECK_INTERVAL_MS() {
+    return 5000; // 5 seconds
+  }
+  
+  /**
+   * Start periodic state consistency checks
+   * v1.6.3.10-v11 - FIX Issue #22: Detect and recover from state desync between VisibilityHandler and MinimizedManager
+   */
+  startConsistencyChecks() {
+    if (this._consistencyCheckIntervalId) {
+      return; // Already running
+    }
+    
+    this._consistencyCheckIntervalId = setInterval(() => {
+      this._performConsistencyCheck();
+    }, VisibilityHandler.STATE_CONSISTENCY_CHECK_INTERVAL_MS);
+    
+    console.log(`${this._logPrefix} STATE_CONSISTENCY_CHECKS_STARTED:`, {
+      intervalMs: VisibilityHandler.STATE_CONSISTENCY_CHECK_INTERVAL_MS
+    });
+  }
+  
+  /**
+   * Stop periodic state consistency checks
+   * v1.6.3.10-v11 - FIX Issue #22
+   */
+  stopConsistencyChecks() {
+    if (this._consistencyCheckIntervalId) {
+      clearInterval(this._consistencyCheckIntervalId);
+      this._consistencyCheckIntervalId = null;
+      console.log(`${this._logPrefix} STATE_CONSISTENCY_CHECKS_STOPPED`);
+    }
+  }
+  
+  /**
+   * Check if a minimized tab has a snapshot
+   * v1.6.3.10-v11 - FIX Issue #22: Helper to reduce nesting depth
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if snapshot exists
+   */
+  _hasSnapshotForTab(id) {
+    if (this.minimizedManager?.has?.(id)) return true;
+    return this.minimizedManager?.minimizedTabs?.has(id) ?? false;
+  }
+  
+  /**
+   * Check minimized tabs for missing snapshots
+   * v1.6.3.10-v11 - FIX Issue #22: Helper to reduce complexity
+   * @private
+   * @returns {Array} Array of MISSING_SNAPSHOT issues
+   */
+  _checkForMissingSnapshots() {
+    const issues = [];
+    
+    for (const [id, tabWindow] of this.quickTabsMap) {
+      if (!this._isOwnedByCurrentTab(tabWindow)) continue;
+      if (!tabWindow.minimized) continue;
+      
+      if (!this._hasSnapshotForTab(id)) {
+        issues.push({
+          type: 'MISSING_SNAPSHOT',
+          id,
+          message: 'Minimized Quick Tab has no snapshot in MinimizedManager'
+        });
+      }
+    }
+    
+    return issues;
+  }
+  
+  /**
+   * Check snapshots for stale entries
+   * v1.6.3.10-v11 - FIX Issue #22: Helper to reduce complexity
+   * @private
+   * @returns {Array} Array of STALE_SNAPSHOT issues
+   */
+  _checkForStaleSnapshots() {
+    const issues = [];
+    
+    if (!this.minimizedManager?.minimizedTabs) return issues;
+    
+    for (const [id] of this.minimizedManager.minimizedTabs) {
+      const tabWindow = this.quickTabsMap.get(id);
+      if (!tabWindow || !this._isOwnedByCurrentTab(tabWindow)) continue;
+      
+      if (!tabWindow.minimized) {
+        issues.push({
+          type: 'STALE_SNAPSHOT',
+          id,
+          message: 'MinimizedManager has snapshot for non-minimized Quick Tab'
+        });
+      }
+    }
+    
+    return issues;
+  }
+  
+  /**
+   * Perform a state consistency check between VisibilityHandler's quickTabsMap and MinimizedManager
+   * v1.6.3.10-v11 - FIX Issue #22 (refactored to reduce complexity)
+   * @private
+   */
+  _performConsistencyCheck() {
+    if (this._isDestroyed) return;
+    
+    // Check both directions of state consistency
+    const issues = [
+      ...this._checkForMissingSnapshots(),
+      ...this._checkForStaleSnapshots()
+    ];
+    
+    // Log and recover from issues
+    if (issues.length > 0) {
+      console.warn(`${this._logPrefix} STATE_CONSISTENCY_ISSUES:`, {
+        issueCount: issues.length,
+        issues
+      });
+      
+      // Attempt recovery
+      for (const issue of issues) {
+        this._recoverFromConsistencyIssue(issue);
+      }
+    }
+  }
+  
+  /**
+   * Attempt to recover from a state consistency issue
+   * v1.6.3.10-v11 - FIX Issue #22
+   * @private
+   * @param {Object} issue - Issue to recover from
+   */
+  _recoverFromConsistencyIssue(issue) {
+    console.log(`${this._logPrefix} STATE_RECOVERY_ATTEMPT:`, {
+      type: issue.type,
+      id: issue.id
+    });
+    
+    switch (issue.type) {
+      case 'MISSING_SNAPSHOT': {
+        // Minimized tab has no snapshot - create one
+        const tabWindow = this.quickTabsMap.get(issue.id);
+        if (tabWindow && this.minimizedManager?.add) {
+          console.log(`${this._logPrefix} STATE_RECOVERY: Creating missing snapshot for ${issue.id}`);
+          this.minimizedManager.add(issue.id, tabWindow);
+        }
+        break;
+      }
+      
+      case 'STALE_SNAPSHOT': {
+        // Non-minimized tab has stale snapshot - remove it
+        if (this.minimizedManager?.remove) {
+          console.log(`${this._logPrefix} STATE_RECOVERY: Removing stale snapshot for ${issue.id}`);
+          this.minimizedManager.remove(issue.id);
+        }
+        break;
+      }
+      
+      default:
+        console.warn(`${this._logPrefix} STATE_RECOVERY: Unknown issue type ${issue.type}`);
+    }
+  }
+  
+  /**
+   * Verify minimize operation completed successfully
+   * v1.6.3.10-v11 - FIX Issue #22: Transactional verification
+   * @param {string} id - Quick Tab ID
+   * @returns {{ success: boolean, error?: string }}
+   */
+  _verifyMinimizeComplete(id) {
+    const tabWindow = this.quickTabsMap.get(id);
+    
+    // Check DOM state
+    if (tabWindow && !tabWindow.minimized) {
+      return { success: false, error: 'DOM state not updated (minimized flag is false)' };
+    }
+    
+    // Check snapshot exists
+    const hasSnapshot = this.minimizedManager?.minimizedTabs?.has(id);
+    if (!hasSnapshot) {
+      return { success: false, error: 'Snapshot not created in MinimizedManager' };
+    }
+    
+    // Get snapshot to verify it's valid
+    const snapshot = this.minimizedManager.minimizedTabs.get(id);
+    if (!snapshot || !snapshot.savedPosition || !snapshot.savedSize) {
+      return { success: false, error: 'Snapshot is incomplete or invalid' };
+    }
+    
+    return { success: true };
+  }
+  
+  // ==================== END ISSUE #22 FIX ====================
 
   /**
    * Check if a tabWindow is owned by the current tab
@@ -2290,25 +2510,226 @@ export class VisibilityHandler {
   }
 
   /**
+   * Register an event listener with tracking for cleanup
+   * v1.6.3.10-v11 - FIX Issue #19: Track listeners for later removal
+   * @param {EventTarget} target - Target to add listener to
+   * @param {string} type - Event type
+   * @param {Function} listener - Event listener function
+   * @param {Object} [options] - addEventListener options
+   */
+  _registerListener(target, type, listener, options = {}) {
+    if (this._isDestroyed) {
+      console.warn(`${this._logPrefix} LISTENER_BLOCKED: Handler is destroyed`);
+      return;
+    }
+    
+    target.addEventListener(type, listener, options);
+    this._registeredListeners.push({ target, type, listener, options });
+    
+    console.log(`${this._logPrefix} LISTENER_REGISTERED:`, {
+      type,
+      targetType: target.constructor?.name ?? 'unknown',
+      listenerCount: this._registeredListeners.length
+    });
+  }
+  
+  /**
+   * Create a tracked timer with metadata
+   * v1.6.3.10-v11 - FIX Issue #20: Track timers for cleanup and validation
+   * @param {Function} callback - Timer callback
+   * @param {number} delay - Delay in milliseconds
+   * @param {string} type - Timer type ('timeout' or 'interval')
+   * @param {string} description - Human-readable description
+   * @returns {number} Timer ID
+   */
+  _createTrackedTimer(callback, delay, type, description) {
+    if (this._isDestroyed) {
+      console.warn(`${this._logPrefix} TIMER_BLOCKED: Handler is destroyed, skipping ${description}`);
+      return null;
+    }
+    
+    const createdAt = Date.now();
+    const wrappedCallback = () => {
+      // v1.6.3.10-v11 - FIX Issue #20: Validate handler is still active before executing
+      if (this._isDestroyed) {
+        console.log(`${this._logPrefix} TIMER_SKIPPED: Handler destroyed before execution`, {
+          description,
+          createdAt,
+          waitedMs: Date.now() - createdAt
+        });
+        return;
+      }
+      
+      // Remove from tracking
+      this._activeTimers.delete(timerId);
+      
+      // Log timer execution
+      console.log(`${this._logPrefix} TIMER_FIRED: ${description}`, {
+        type,
+        activeForMs: Date.now() - createdAt
+      });
+      
+      callback();
+    };
+    
+    let timerId;
+    if (type === 'interval') {
+      timerId = setInterval(wrappedCallback, delay);
+    } else {
+      timerId = setTimeout(wrappedCallback, delay);
+    }
+    
+    this._activeTimers.set(timerId, {
+      type,
+      description,
+      createdAt,
+      delay
+    });
+    
+    console.log(`${this._logPrefix} TIMER_CREATED: ${description}`, {
+      timerId,
+      type,
+      delay,
+      activeTimers: this._activeTimers.size
+    });
+    
+    return timerId;
+  }
+  
+  /**
+   * Cancel a tracked timer
+   * v1.6.3.10-v11 - FIX Issue #20: Log timer cancellation
+   * @param {number} timerId - Timer ID to cancel
+   */
+  _cancelTrackedTimer(timerId) {
+    const timerInfo = this._activeTimers.get(timerId);
+    
+    if (timerInfo) {
+      if (timerInfo.type === 'interval') {
+        clearInterval(timerId);
+      } else {
+        clearTimeout(timerId);
+      }
+      
+      const activeForMs = Date.now() - timerInfo.createdAt;
+      console.log(`${this._logPrefix} TIMER_CANCELLED: ${timerInfo.description}`, {
+        timerId,
+        activeForMs
+      });
+      
+      this._activeTimers.delete(timerId);
+    }
+  }
+  
+  /**
+   * Remove all registered event listeners
+   * v1.6.3.10-v11 - FIX Issue #19: Helper to reduce destroy() complexity
+   * @private
+   */
+  _cleanupEventListeners() {
+    if (!this._registeredListeners) return;
+    
+    const count = this._registeredListeners.length;
+    for (const { target, type, listener, options } of this._registeredListeners) {
+      try {
+        target.removeEventListener(type, listener, options);
+      } catch (err) {
+        console.warn(`${this._logPrefix} Failed to remove listener:`, { type, error: err.message });
+      }
+    }
+    console.log(`${this._logPrefix} LISTENERS_REMOVED: ${count}`);
+    this._registeredListeners = [];
+  }
+  
+  /**
+   * Clear a single timer by ID and type
+   * v1.6.3.10-v11 - FIX Issue #20: Helper to reduce nesting depth
+   * @private
+   * @param {number} timerId - Timer ID
+   * @param {Object} timerInfo - Timer info object
+   */
+  _clearSingleTimer(timerId, timerInfo) {
+    const activeForMs = Date.now() - timerInfo.createdAt;
+    console.log(`${this._logPrefix} TIMER_CLEARED: ${timerInfo.description}`, {
+      timerId,
+      activeForMs
+    });
+    
+    if (timerInfo.type === 'interval') {
+      clearInterval(timerId);
+    } else {
+      clearTimeout(timerId);
+    }
+  }
+  
+  /**
+   * Clear all tracked timers
+   * v1.6.3.10-v11 - FIX Issue #20: Helper to reduce destroy() complexity
+   * @private
+   */
+  _cleanupTrackedTimers() {
+    if (!this._activeTimers) return;
+    
+    let clearedCount = 0;
+    for (const [timerId, timerInfo] of this._activeTimers) {
+      this._clearSingleTimer(timerId, timerInfo);
+      clearedCount++;
+    }
+    console.log(`${this._logPrefix} TIMERS_CLEARED: ${clearedCount}`);
+    this._activeTimers.clear();
+  }
+  
+  /**
+   * Clear debounce timers
+   * v1.6.3.10-v11 - FIX Issue #20: Helper to reduce destroy() complexity
+   * @private
+   */
+  _cleanupDebounceTimers() {
+    for (const timer of this._debounceTimers.values()) {
+      const timerId = timer?.timeoutId ?? (typeof timer === 'number' ? timer : null);
+      if (timerId !== null) {
+        clearTimeout(timerId);
+      }
+    }
+    this._debounceTimers.clear();
+  }
+
+  /**
    * Destroy handler and cleanup resources
    * v1.6.3.10-v10 - FIX Issue 3.3: Clear all Set/Map references to prevent memory leaks
+   * v1.6.3.10-v11 - FIX Issue #19: Remove all event listeners (refactored)
+   * v1.6.3.10-v11 - FIX Issue #20: Clear all tracked timers with logging (refactored)
    */
   destroy() {
-    console.log(`${this._logPrefix} Destroying VisibilityHandler`);
+    console.log(`${this._logPrefix} HANDLER_DESTROY_START:`, {
+      registeredListeners: this._registeredListeners?.length ?? 0,
+      activeTimers: this._activeTimers?.size ?? 0,
+      pendingMinimize: this._pendingMinimize?.size ?? 0,
+      pendingRestore: this._pendingRestore?.size ?? 0
+    });
+    
+    // v1.6.3.10-v11 - FIX Issue #19: Mark as destroyed first to prevent new registrations
+    this._isDestroyed = true;
+
+    // v1.6.3.10-v11 - FIX Issue #19: Remove all registered event listeners
+    this._cleanupEventListeners();
+    
+    // v1.6.3.10-v11 - FIX Issue #20: Clear all tracked timers
+    this._cleanupTrackedTimers();
+    
+    // v1.6.3.10-v11 - FIX Issue #22: Clear consistency check interval
+    if (this._consistencyCheckIntervalId) {
+      clearInterval(this._consistencyCheckIntervalId);
+      this._consistencyCheckIntervalId = null;
+      console.log(`${this._logPrefix} CONSISTENCY_CHECK_STOPPED`);
+    }
 
     // Clear all pending operations
     this._pendingMinimize.clear();
     this._pendingRestore.clear();
 
     // Clear all debounce timers
-    for (const timer of this._debounceTimers.values()) {
-      if (timer?.timeoutId) {
-        clearTimeout(timer.timeoutId);
-      } else if (typeof timer === 'number') {
-        clearTimeout(timer);
-      }
-    }
-    this._debounceTimers.clear();
+    this._cleanupDebounceTimers();
 
     // v1.6.3.10-v10 - FIX Issue 3.3: Clear active timer IDs
     this._activeTimerIds.clear();
@@ -2322,6 +2743,8 @@ export class VisibilityHandler {
     // Clear focus time tracking
     this._lastFocusTime.clear();
 
-    console.log(`${this._logPrefix} VisibilityHandler destroyed`);
+    console.log(`${this._logPrefix} HANDLER_DESTROY_COMPLETE:`, {
+      timestamp: Date.now()
+    });
   }
 }

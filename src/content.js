@@ -489,6 +489,284 @@ let globalCommandSequenceId = 0;
  */
 const _pendingCreateAcks = new Map();
 
+// ==================== v1.6.3.10-v11 FIX ISSUE #23: HEARTBEAT MECHANISM ====================
+// FIX Issue #23: Background service worker restart recovery via heartbeat
+
+/**
+ * Heartbeat interval (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #23: Every 15 seconds
+ */
+const HEARTBEAT_INTERVAL_MS = 15000;
+
+/**
+ * Heartbeat timeout for response (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #23: 5 seconds before considering background unresponsive
+ */
+const HEARTBEAT_RESPONSE_TIMEOUT_MS = 5000;
+
+/**
+ * Maximum message retry attempts
+ * v1.6.3.10-v11 - FIX Issue #23: Retry failed messages up to 3 times
+ */
+const MESSAGE_MAX_RETRIES = 3;
+
+/**
+ * Message timeout before retry (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+const MESSAGE_RESPONSE_TIMEOUT_MS = 5000;
+
+/**
+ * Track background version/generation for restart detection
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+let lastKnownBackgroundGeneration = null;
+let _lastHeartbeatTime = 0;  // Prefixed with _ to indicate unused (available for debug logging)
+let heartbeatIntervalId = null;
+let heartbeatFailureCount = 0;
+const HEARTBEAT_MAX_FAILURES = 3;
+
+/**
+ * Track message retry state
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+let messageIdCounter = 0;
+const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt, resolve, reject }
+
+/**
+ * Generate unique message ID for correlation
+ * v1.6.3.10-v11 - FIX Issue #23
+ * @returns {string} Unique message ID
+ */
+function _generateMessageId() {
+  return `msg-${Date.now()}-${++messageIdCounter}`;
+}
+
+/**
+ * Send heartbeat to background and check for restart
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+async function _sendHeartbeat() {
+  const heartbeatStart = Date.now();
+  const heartbeatId = _generateMessageId();
+  
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage({
+        type: 'HEARTBEAT',
+        messageId: heartbeatId,
+        timestamp: heartbeatStart,
+        lastKnownGeneration: lastKnownBackgroundGeneration
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Heartbeat timeout')), HEARTBEAT_RESPONSE_TIMEOUT_MS)
+      )
+    ]);
+    
+    const latencyMs = Date.now() - heartbeatStart;
+    _lastHeartbeatTime = Date.now();
+    heartbeatFailureCount = 0;
+    
+    // v1.6.3.10-v11 - FIX Issue #5: Record latency for dynamic adoption TTL
+    if (typeof _recordHandshakeLatency === 'function') {
+      _recordHandshakeLatency(latencyMs);
+    }
+    
+    // Check for background restart
+    if (response?.generation && lastKnownBackgroundGeneration !== null && 
+        response.generation !== lastKnownBackgroundGeneration) {
+      console.log('[Content][HEARTBEAT] BACKGROUND_RESTART_DETECTED:', {
+        previousGeneration: lastKnownBackgroundGeneration,
+        newGeneration: response.generation,
+        latencyMs
+      });
+      
+      // Trigger reconnection/rehydration
+      _handleBackgroundRestart(response.generation);
+    }
+    
+    // Update known generation
+    if (response?.generation) {
+      lastKnownBackgroundGeneration = response.generation;
+    }
+    
+    console.log('[Content][HEARTBEAT] SUCCESS:', {
+      heartbeatId,
+      latencyMs,
+      generation: response?.generation
+    });
+    
+  } catch (err) {
+    heartbeatFailureCount++;
+    console.warn('[Content][HEARTBEAT] FAILURE:', {
+      heartbeatId,
+      error: err.message,
+      failureCount: heartbeatFailureCount,
+      maxFailures: HEARTBEAT_MAX_FAILURES
+    });
+    
+    // If too many failures, assume background restarted
+    if (heartbeatFailureCount >= HEARTBEAT_MAX_FAILURES) {
+      console.log('[Content][HEARTBEAT] MAX_FAILURES_REACHED: Assuming background restart');
+      _handleBackgroundRestart(null);
+      heartbeatFailureCount = 0;
+    }
+  }
+}
+
+/**
+ * Handle detected background restart
+ * v1.6.3.10-v11 - FIX Issue #23
+ * @param {string|null} newGeneration - New background generation ID
+ */
+function _handleBackgroundRestart(newGeneration) {
+  console.log('[Content] BACKGROUND_RESTART: Initiating recovery', {
+    newGeneration,
+    pendingMessages: pendingMessages.size
+  });
+  
+  lastKnownBackgroundGeneration = newGeneration;
+  
+  // Notify pending tab ID acquisition to retry
+  _notifyBackgroundReadiness();
+  
+  // Retry any pending messages
+  _retryPendingMessages();
+  
+  // Emit event for listeners
+  if (typeof eventBus !== 'undefined' && eventBus.emit) {
+    eventBus.emit('background:restart', { generation: newGeneration });
+  }
+}
+
+/**
+ * Retry all pending messages after background restart
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+function _retryPendingMessages() {
+  if (pendingMessages.size === 0) return;
+  
+  console.log('[Content] RETRY_PENDING_MESSAGES:', { count: pendingMessages.size });
+  
+  for (const [messageId, pending] of pendingMessages) {
+    if (pending.retryCount < MESSAGE_MAX_RETRIES) {
+      pending.retryCount++;
+      console.log('[Content] MESSAGE_RETRY:', {
+        messageId,
+        attempt: pending.retryCount,
+        maxRetries: MESSAGE_MAX_RETRIES
+      });
+      
+      // Re-send the message
+      _sendMessageWithRetry(pending.message, pending.resolve, pending.reject, pending.retryCount);
+    } else {
+      // Max retries exceeded
+      pending.reject(new Error(`Max retries (${MESSAGE_MAX_RETRIES}) exceeded for message ${messageId}`));
+      pendingMessages.delete(messageId);
+    }
+  }
+}
+
+/**
+ * Send message with retry and timeout support
+ * v1.6.3.10-v11 - FIX Issue #23: Message envelope with retry
+ * @param {Object} message - Message to send
+ * @param {Function} resolve - Promise resolve function
+ * @param {Function} reject - Promise reject function
+ * @param {number} [retryCount=0] - Current retry count
+ */
+async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
+  const messageId = message.messageId || _generateMessageId();
+  const envelope = {
+    ...message,
+    messageId,
+    timestamp: Date.now(),
+    retryCount
+  };
+  
+  // Track pending message
+  pendingMessages.set(messageId, {
+    message: envelope,
+    retryCount,
+    sentAt: Date.now(),
+    resolve,
+    reject
+  });
+  
+  console.log('[Content] MESSAGE_SENT:', {
+    messageId,
+    action: message.action || message.type,
+    retryCount
+  });
+  
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage(envelope),
+      new Promise((_, rej) => 
+        setTimeout(() => rej(new Error('Message timeout')), MESSAGE_RESPONSE_TIMEOUT_MS)
+      )
+    ]);
+    
+    console.log('[Content] MESSAGE_RECEIVED_RESPONSE:', {
+      messageId,
+      success: response?.success ?? true
+    });
+    
+    pendingMessages.delete(messageId);
+    resolve(response);
+    
+  } catch (err) {
+    const pending = pendingMessages.get(messageId);
+    
+    if (pending && pending.retryCount < MESSAGE_MAX_RETRIES) {
+      // Will be retried on next heartbeat failure or manually
+      console.warn('[Content] MESSAGE_TIMEOUT: Will retry on background recovery', {
+        messageId,
+        retryCount: pending.retryCount,
+        error: err.message
+      });
+    } else {
+      pendingMessages.delete(messageId);
+      reject(err);
+    }
+  }
+}
+
+/**
+ * Start heartbeat interval
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+function _startHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+  }
+  
+  // Send initial heartbeat
+  _sendHeartbeat();
+  
+  // Start interval
+  heartbeatIntervalId = setInterval(_sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+  
+  console.log('[Content][HEARTBEAT] STARTED:', {
+    intervalMs: HEARTBEAT_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop heartbeat interval
+ * v1.6.3.10-v11 - FIX Issue #23
+ */
+function _stopHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+    console.log('[Content][HEARTBEAT] STOPPED');
+  }
+}
+
+// ==================== END ISSUE #23 FIX ====================
+
 /**
  * Check if a message has valid format for sending
  * v1.6.4.15 - FIX Issue #14: Pre-flight validation
@@ -1191,13 +1469,41 @@ let lastKnownBackgroundStartupTime = null;
 /**
  * Circuit breaker states for port connection
  * v1.6.3.10-v7 - FIX Issue #1: Circuit breaker state machine
+ * v1.6.3.10-v11 - FIX Issue #24: Added READY state for three-phase handshake
  */
 const PORT_CONNECTION_STATE = {
   DISCONNECTED: 'DISCONNECTED',
   CONNECTING: 'CONNECTING',
   CONNECTED: 'CONNECTED',
+  READY: 'READY',           // v1.6.3.10-v11 - FIX Issue #24: Handshake complete
   FAILED: 'FAILED'
 };
+
+// v1.6.3.10-v11 - FIX Issue #24: Three-phase handshake states
+const HANDSHAKE_PHASE = {
+  NONE: 'NONE',
+  INIT_REQUEST_SENT: 'INIT_REQUEST_SENT',
+  INIT_RESPONSE_RECEIVED: 'INIT_RESPONSE_RECEIVED',
+  INIT_COMPLETE_SENT: 'INIT_COMPLETE_SENT'
+};
+
+/**
+ * Current handshake phase
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+let currentHandshakePhase = HANDSHAKE_PHASE.NONE;
+
+/**
+ * Timeout for each handshake phase (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #24: 2 seconds per phase
+ */
+const HANDSHAKE_PHASE_TIMEOUT_MS = 2000;
+
+/**
+ * Handshake timeout ID
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+let handshakeTimeoutId = null;
 
 /**
  * Current circuit breaker state
@@ -1286,11 +1592,7 @@ const messageQueue = [];
  */
 const MAX_MESSAGE_QUEUE_SIZE = 50;
 
-/**
- * Message ID counter for queue tracking
- * v1.6.3.10-v7 - FIX Issue #5
- */
-let messageIdCounter = 0;
+// v1.6.3.10-v11 - FIX Issue #23: Removed duplicate messageIdCounter (now declared earlier in heartbeat section)
 
 // ==================== v1.6.3.10-v5 PORT RECONNECTION BACKOFF ====================
 // FIX Issue #4: Exponential backoff with jitter to prevent thundering herd
@@ -1395,6 +1697,159 @@ function _resetReconnectionAttempts() {
   reconnectGracePeriodStart = Date.now();
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTED, 'connection-established');
 }
+
+// ==================== v1.6.3.10-v11 FIX ISSUE #24: THREE-PHASE HANDSHAKE ====================
+
+/**
+ * Start the three-phase handshake process
+ * v1.6.3.10-v11 - FIX Issue #24: Phase 1: Send INIT_REQUEST
+ * @param {Object} port - The port connection
+ */
+function _startThreePhaseHandshake(port) {
+  if (!port) {
+    console.warn('[Content][HANDSHAKE] Cannot start - port is null');
+    return;
+  }
+  
+  // Phase 1: Send INIT_REQUEST
+  currentHandshakePhase = HANDSHAKE_PHASE.INIT_REQUEST_SENT;
+  
+  console.log('[Content][HANDSHAKE] Phase 1: INIT_REQUEST sent', {
+    phase: currentHandshakePhase,
+    portName: port.name,
+    timestamp: Date.now()
+  });
+  
+  port.postMessage({
+    type: 'INIT_REQUEST',
+    timestamp: Date.now(),
+    tabId: cachedTabId,
+    phase: 1
+  });
+  
+  // Set timeout for Phase 1
+  _setHandshakeTimeout('INIT_REQUEST', () => {
+    console.error('[Content][HANDSHAKE] Phase 1 timeout: No INIT_RESPONSE received');
+    _handleHandshakeFailure('Phase 1 timeout');
+  });
+}
+
+/**
+ * Handle INIT_RESPONSE from background (Phase 2)
+ * v1.6.3.10-v11 - FIX Issue #24
+ * @param {Object} message - Response message
+ * @param {Object} port - The port connection
+ */
+function _handleInitResponse(message, port) {
+  if (currentHandshakePhase !== HANDSHAKE_PHASE.INIT_REQUEST_SENT) {
+    console.warn('[Content][HANDSHAKE] Unexpected INIT_RESPONSE in phase:', currentHandshakePhase);
+    return;
+  }
+  
+  // Clear Phase 1 timeout
+  _clearHandshakeTimeout();
+  
+  currentHandshakePhase = HANDSHAKE_PHASE.INIT_RESPONSE_RECEIVED;
+  
+  console.log('[Content][HANDSHAKE] Phase 2: INIT_RESPONSE received', {
+    phase: currentHandshakePhase,
+    backgroundGeneration: message.generation,
+    timestamp: Date.now()
+  });
+  
+  // Phase 3: Send INIT_COMPLETE
+  currentHandshakePhase = HANDSHAKE_PHASE.INIT_COMPLETE_SENT;
+  
+  port.postMessage({
+    type: 'INIT_COMPLETE',
+    timestamp: Date.now(),
+    tabId: cachedTabId,
+    acknowledgedGeneration: message.generation,
+    phase: 3
+  });
+  
+  console.log('[Content][HANDSHAKE] Phase 3: INIT_COMPLETE sent', {
+    phase: currentHandshakePhase,
+    timestamp: Date.now()
+  });
+  
+  // Set timeout for Phase 3 confirmation
+  _setHandshakeTimeout('INIT_COMPLETE', () => {
+    // If no explicit confirmation, assume success after timeout
+    console.log('[Content][HANDSHAKE] Phase 3 timeout - assuming handshake complete');
+    _completeHandshake();
+  });
+}
+
+/**
+ * Complete the handshake and transition to READY state
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+function _completeHandshake() {
+  _clearHandshakeTimeout();
+  currentHandshakePhase = HANDSHAKE_PHASE.NONE;
+  
+  _transitionPortState(PORT_CONNECTION_STATE.READY, 'handshake-complete');
+  
+  console.log('[Content][HANDSHAKE] COMPLETE: Connection ready', {
+    portState: portConnectionState,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle handshake failure
+ * v1.6.3.10-v11 - FIX Issue #24
+ * @param {string} reason - Failure reason
+ */
+function _handleHandshakeFailure(reason) {
+  _clearHandshakeTimeout();
+  currentHandshakePhase = HANDSHAKE_PHASE.NONE;
+  
+  console.error('[Content][HANDSHAKE] FAILED:', {
+    reason,
+    willRetry: reconnectionAttempts < CIRCUIT_BREAKER_MAX_FAILURES,
+    attempts: reconnectionAttempts
+  });
+  
+  // Increment failure count and try reconnection
+  if (cachedTabId) {
+    _handleReconnection(cachedTabId, `handshake-${reason}`);
+  }
+}
+
+/**
+ * Set handshake phase timeout
+ * v1.6.3.10-v11 - FIX Issue #24
+ * @param {string} phase - Current phase name
+ * @param {Function} callback - Callback on timeout
+ */
+function _setHandshakeTimeout(phase, callback) {
+  _clearHandshakeTimeout();
+  
+  handshakeTimeoutId = setTimeout(() => {
+    handshakeTimeoutId = null;
+    callback();
+  }, HANDSHAKE_PHASE_TIMEOUT_MS);
+  
+  console.log('[Content][HANDSHAKE] Timeout set for phase:', {
+    phase,
+    timeoutMs: HANDSHAKE_PHASE_TIMEOUT_MS
+  });
+}
+
+/**
+ * Clear handshake timeout
+ * v1.6.3.10-v11 - FIX Issue #24
+ */
+function _clearHandshakeTimeout() {
+  if (handshakeTimeoutId) {
+    clearTimeout(handshakeTimeoutId);
+    handshakeTimeoutId = null;
+  }
+}
+
+// ==================== END ISSUE #24 FIX ====================
 
 /**
  * Get next sequence ID for outgoing messages
@@ -2778,10 +3233,178 @@ function buildQuickTabData(options) {
   };
 }
 
+// ==================== v1.6.3.10-v11 FIX ISSUE #25: QUICK TAB CREATION QUEUE ====================
+// FIX Issue #25: Serialize Quick Tab creation to prevent race conditions and ID collisions
+
+/**
+ * Queue of pending Quick Tab creation operations
+ * v1.6.3.10-v11 - FIX Issue #25: Serial creation queue
+ */
+const quickTabCreationQueue = [];
+
+/**
+ * Track if creation is currently in progress
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+let isCreationInProgress = false;
+
+/**
+ * Monotonically increasing counter for atomic ID generation
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+let quickTabIdCounter = 0;
+
+/**
+ * Set of existing Quick Tab IDs for collision detection
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+const existingQuickTabIds = new Set();
+
+/**
+ * Generate collision-free Quick Tab ID using atomic counter
+ * v1.6.3.10-v11 - FIX Issue #25: Format qt-{originTabId}-{counter}-{random}
+ * @returns {string} Unique Quick Tab ID
+ */
+function _generateAtomicQuickTabId() {
+  const tabId = cachedTabId ?? 'unknown';
+  const counter = ++quickTabIdCounter;
+  const randomSuffix = Math.random().toString(36).slice(2, 6);
+  
+  let candidateId = `qt-${tabId}-${counter}-${randomSuffix}`;
+  
+  // Collision detection (extremely unlikely but check anyway)
+  let collisionCount = 0;
+  while (existingQuickTabIds.has(candidateId)) {
+    collisionCount++;
+    const newRandom = Math.random().toString(36).slice(2, 6);
+    candidateId = `qt-${tabId}-${counter}-${newRandom}-${collisionCount}`;
+    
+    if (collisionCount > 10) {
+      console.error('[Content] QUICK_TAB_ID_COLLISION: Too many collisions', {
+        attempts: collisionCount,
+        tabId,
+        counter
+      });
+      break;
+    }
+  }
+  
+  existingQuickTabIds.add(candidateId);
+  
+  console.log('[Content] QUICK_TAB_ID_GENERATED:', {
+    id: candidateId,
+    counter,
+    collisionDetected: collisionCount > 0,
+    existingCount: existingQuickTabIds.size
+  });
+  
+  return candidateId;
+}
+
+/**
+ * Queue a Quick Tab creation operation
+ * v1.6.3.10-v11 - FIX Issue #25: Serialize creation operations
+ * @param {Object} quickTabData - Quick Tab data
+ * @param {string} saveId - Save tracking ID
+ * @param {boolean} canUseManagerSaveId - Whether Manager save ID can be used
+ * @returns {Promise<void>}
+ */
+function _queueQuickTabCreation(quickTabData, saveId, canUseManagerSaveId) {
+  return new Promise((resolve, reject) => {
+    quickTabCreationQueue.push({
+      quickTabData,
+      saveId,
+      canUseManagerSaveId,
+      queuedAt: Date.now(),
+      resolve,
+      reject
+    });
+    
+    console.log('[Content] QUICK_TAB_CREATION_QUEUED:', {
+      id: quickTabData.id,
+      queueSize: quickTabCreationQueue.length,
+      isCreationInProgress
+    });
+    
+    // Process queue if not already processing
+    _processCreationQueue();
+  });
+}
+
+/**
+ * Process the Quick Tab creation queue serially
+ * v1.6.3.10-v11 - FIX Issue #25
+ */
+async function _processCreationQueue() {
+  if (isCreationInProgress || quickTabCreationQueue.length === 0) {
+    return;
+  }
+  
+  isCreationInProgress = true;
+  
+  while (quickTabCreationQueue.length > 0) {
+    const operation = quickTabCreationQueue.shift();
+    const { quickTabData, saveId, canUseManagerSaveId, queuedAt, resolve, reject } = operation;
+    
+    const queueDuration = Date.now() - queuedAt;
+    console.log('[Content] QUICK_TAB_CREATION_STARTED:', {
+      id: quickTabData.id,
+      queueDurationMs: queueDuration,
+      remainingInQueue: quickTabCreationQueue.length
+    });
+    
+    try {
+      await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
+      
+      console.log('[Content] QUICK_TAB_CREATION_COMPLETED:', {
+        id: quickTabData.id,
+        totalDurationMs: Date.now() - queuedAt
+      });
+      
+      resolve();
+      
+    } catch (err) {
+      console.error('[Content] QUICK_TAB_CREATION_FAILED:', {
+        id: quickTabData.id,
+        error: err.message
+      });
+      
+      handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
+      reject(err);
+    }
+  }
+  
+  isCreationInProgress = false;
+  console.log('[Content] QUICK_TAB_CREATION_QUEUE_DRAINED');
+}
+
+/**
+ * Track an existing Quick Tab ID (e.g., from hydration)
+ * v1.6.3.10-v11 - FIX Issue #25
+ * @param {string} id - Quick Tab ID to track
+ */
+function _trackExistingQuickTabId(id) {
+  if (id) {
+    existingQuickTabIds.add(id);
+  }
+}
+
+/**
+ * Clear a Quick Tab ID from tracking (on close)
+ * v1.6.3.10-v11 - FIX Issue #25
+ * @param {string} id - Quick Tab ID to clear
+ */
+function _clearQuickTabId(id) {
+  existingQuickTabIds.delete(id);
+}
+
+// ==================== END ISSUE #25 FIX ====================
+
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for Quick Tab IDs
+ * v1.6.3.10-v11 - FIX Issue #25: Prefixed with _ as now using _generateAtomicQuickTabId instead
  */
-function generateQuickTabIds() {
+function _generateQuickTabIds() {
   const canUseManagerSaveId = Boolean(
     quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
   );
@@ -2845,6 +3468,7 @@ function handleQuickTabCreationError(err, saveId, canUseManagerSaveId) {
 
 /**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
+ * v1.6.3.10-v11 - FIX Issue #25: Use creation queue to serialize operations
  */
 async function handleCreateQuickTab(url, targetElement = null) {
   // Early validation
@@ -2862,7 +3486,14 @@ async function handleCreateQuickTab(url, targetElement = null) {
   const height = CONFIG.quickTabDefaultHeight || 600;
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
-  const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
+  
+  // v1.6.3.10-v11 - FIX Issue #25: Use atomic ID generation instead of default
+  const quickTabId = _generateAtomicQuickTabId();
+  const saveId = generateSaveTrackingId();
+  const canUseManagerSaveId = Boolean(
+    quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
+  );
+  
   const quickTabData = buildQuickTabData({
     url,
     id: quickTabId,
@@ -2871,11 +3502,18 @@ async function handleCreateQuickTab(url, targetElement = null) {
     title
   });
 
-  // Execute creation with error handling
+  // v1.6.3.10-v11 - FIX Issue #25: Queue creation instead of direct execution
+  console.log('[Content] QUICK_TAB_CREATE_REQUEST:', {
+    id: quickTabId,
+    url: url.substring(0, 100),
+    queueSize: quickTabCreationQueue.length
+  });
+
   try {
-    await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
+    await _queueQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
   } catch (err) {
-    handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
+    // Error already handled in queue processing
+    console.error('[Quick Tab] Queue creation failed:', err.message);
   }
 }
 
@@ -3080,18 +3718,38 @@ function _getActionError(result) {
 
 // ==================== v1.6.3.10-v7 ADOPTION-AWARE OWNERSHIP ====================
 // FIX Issue #7: Track recently-adopted Quick Tab IDs to override ID pattern extraction
+// v1.6.3.10-v11 - FIX Issue #5: Dynamic TTL based on observed network latency
 
 /**
- * Map of recently-adopted Quick Tab IDs -> { newOriginTabId, adoptedAt }
+ * Map of recently-adopted Quick Tab IDs -> { newOriginTabId, adoptedAt, ttl }
  * v1.6.3.10-v7 - FIX Issue #7: Adoption-aware ownership validation
+ * v1.6.3.10-v11 - FIX Issue #5: Now stores per-entry TTL
  */
 const recentlyAdoptedQuickTabs = new Map();
 
 /**
- * TTL for recently-adopted Quick Tab entries (milliseconds)
- * v1.6.3.10-v7 - FIX Issue #7: 5 second TTL
+ * Default TTL for recently-adopted Quick Tab entries (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #5: Safe default when latency unavailable (30 seconds)
  */
-const ADOPTION_TRACKING_TTL_MS = 5000;
+const ADOPTION_DEFAULT_TTL_MS = 30000;
+
+/**
+ * Minimum TTL for adoption tracking (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #5: Never go below 5 seconds
+ */
+const ADOPTION_MIN_TTL_MS = 5000;
+
+/**
+ * Maximum TTL for adoption tracking (milliseconds)
+ * v1.6.3.10-v11 - FIX Issue #5: Cap at 60 seconds to prevent memory leaks
+ */
+const ADOPTION_MAX_TTL_MS = 60000;
+
+/**
+ * Multiplier for latency to compute TTL (3x for safety margin)
+ * v1.6.3.10-v11 - FIX Issue #5
+ */
+const ADOPTION_TTL_LATENCY_MULTIPLIER = 3;
 
 /**
  * Cleanup interval for recently-adopted Quick Tab entries (milliseconds)
@@ -3100,27 +3758,106 @@ const ADOPTION_TRACKING_TTL_MS = 5000;
 const ADOPTION_CLEANUP_INTERVAL_MS = 30000;
 
 /**
+ * Track observed handshake latencies for dynamic TTL calculation
+ * v1.6.3.10-v11 - FIX Issue #5
+ */
+const adoptionLatencySamples = [];
+const MAX_ADOPTION_LATENCY_SAMPLES = 10;
+
+/**
+ * Adoption cache metrics for logging
+ * v1.6.3.10-v11 - FIX Issue #5
+ */
+const adoptionCacheMetrics = {
+  hitCount: 0,
+  missCount: 0,
+  ttlExpiredCount: 0,
+  totalTracked: 0
+};
+
+/**
+ * Get current observed handshake latency average
+ * v1.6.3.10-v11 - FIX Issue #5
+ * @returns {number|null} Average latency in ms, or null if no samples
+ */
+function _getObservedHandshakeLatency() {
+  if (adoptionLatencySamples.length === 0) {
+    return null;
+  }
+  const sum = adoptionLatencySamples.reduce((a, b) => a + b, 0);
+  return Math.round(sum / adoptionLatencySamples.length);
+}
+
+/**
+ * Record a handshake latency sample
+ * v1.6.3.10-v11 - FIX Issue #5
+ * @param {number} latencyMs - Observed latency in milliseconds
+ */
+function _recordHandshakeLatency(latencyMs) {
+  if (typeof latencyMs !== 'number' || latencyMs < 0) return;
+  
+  adoptionLatencySamples.push(latencyMs);
+  if (adoptionLatencySamples.length > MAX_ADOPTION_LATENCY_SAMPLES) {
+    adoptionLatencySamples.shift();
+  }
+  
+  console.log('[Content] ADOPTION_LATENCY_RECORDED:', {
+    latencyMs,
+    sampleCount: adoptionLatencySamples.length,
+    averageLatency: _getObservedHandshakeLatency()
+  });
+}
+
+/**
+ * Calculate dynamic TTL based on observed latency
+ * v1.6.3.10-v11 - FIX Issue #5
+ * @returns {number} TTL in milliseconds, clamped to [MIN, MAX]
+ */
+function _calculateDynamicAdoptionTTL() {
+  const observedLatency = _getObservedHandshakeLatency();
+  
+  // Use default if no latency measurements available
+  if (observedLatency === null) {
+    return ADOPTION_DEFAULT_TTL_MS;
+  }
+  
+  // Calculate 3x latency with clamping
+  const calculatedTTL = observedLatency * ADOPTION_TTL_LATENCY_MULTIPLIER;
+  return Math.max(ADOPTION_MIN_TTL_MS, Math.min(calculatedTTL, ADOPTION_MAX_TTL_MS));
+}
+
+/**
  * Track a recently-adopted Quick Tab ID
  * v1.6.3.10-v7 - FIX Issue #7
+ * v1.6.3.10-v11 - FIX Issue #5: Store dynamic TTL per entry
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {number} newOriginTabId - New owner tab ID
  */
 function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
+  const dynamicTTL = _calculateDynamicAdoptionTTL();
+  
   recentlyAdoptedQuickTabs.set(quickTabId, {
     newOriginTabId,
-    adoptedAt: Date.now()
+    adoptedAt: Date.now(),
+    ttl: dynamicTTL
   });
+  
+  adoptionCacheMetrics.totalTracked++;
   
   console.log('[Content] ADOPTION_TRACKED:', {
     quickTabId,
     newOriginTabId,
-    trackedCount: recentlyAdoptedQuickTabs.size
+    ttl: dynamicTTL,
+    observedLatency: _getObservedHandshakeLatency(),
+    trackedCount: recentlyAdoptedQuickTabs.size,
+    metrics: adoptionCacheMetrics
   });
 }
 
 /**
  * Check if Quick Tab was recently adopted and get cached ownership
  * v1.6.3.10-v7 - FIX Issue #7
+ * v1.6.3.10-v11 - FIX Issue #5: Use per-entry dynamic TTL
  * @param {string} quickTabId - Quick Tab ID to check
  * @returns {{ wasAdopted: boolean, newOriginTabId: number|null }} Adoption info
  */
@@ -3128,28 +3865,44 @@ function _getAdoptionOwnership(quickTabId) {
   const adoptionInfo = recentlyAdoptedQuickTabs.get(quickTabId);
   
   if (!adoptionInfo) {
+    adoptionCacheMetrics.missCount++;
     return { wasAdopted: false, newOriginTabId: null };
   }
   
-  // Check if TTL expired
-  if (Date.now() - adoptionInfo.adoptedAt > ADOPTION_TRACKING_TTL_MS) {
+  // v1.6.3.10-v11 - FIX Issue #5: Check per-entry TTL
+  const entryAge = Date.now() - adoptionInfo.adoptedAt;
+  const entryTTL = adoptionInfo.ttl ?? ADOPTION_DEFAULT_TTL_MS;
+  
+  if (entryAge > entryTTL) {
+    adoptionCacheMetrics.ttlExpiredCount++;
     recentlyAdoptedQuickTabs.delete(quickTabId);
+    
+    console.log('[Content] ADOPTION_TTL_EXPIRED:', {
+      quickTabId,
+      entryAge,
+      entryTTL,
+      metrics: adoptionCacheMetrics
+    });
+    
     return { wasAdopted: false, newOriginTabId: null };
   }
   
+  adoptionCacheMetrics.hitCount++;
   return { wasAdopted: true, newOriginTabId: adoptionInfo.newOriginTabId };
 }
 
 /**
  * Clean up expired adoption tracking entries
  * v1.6.3.10-v7 - FIX Issue #7
+ * v1.6.3.10-v11 - FIX Issue #5: Use per-entry TTL for cleanup
  */
 function _cleanupAdoptionTracking() {
   const now = Date.now();
   let cleanedCount = 0;
   
   for (const [quickTabId, adoptionInfo] of recentlyAdoptedQuickTabs) {
-    if (now - adoptionInfo.adoptedAt > ADOPTION_TRACKING_TTL_MS) {
+    const entryTTL = adoptionInfo.ttl ?? ADOPTION_DEFAULT_TTL_MS;
+    if (now - adoptionInfo.adoptedAt > entryTTL) {
       recentlyAdoptedQuickTabs.delete(quickTabId);
       cleanedCount++;
     }
@@ -3158,7 +3911,8 @@ function _cleanupAdoptionTracking() {
   if (cleanedCount > 0) {
     console.log('[Content] ADOPTION_CLEANUP:', {
       cleanedCount,
-      remainingCount: recentlyAdoptedQuickTabs.size
+      remainingCount: recentlyAdoptedQuickTabs.size,
+      metrics: adoptionCacheMetrics
     });
   }
 }
