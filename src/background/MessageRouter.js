@@ -81,6 +81,29 @@ export class MessageRouter {
     // v1.6.4.15 - FIX Issue #18: Track rejected commands for diagnostics
     this._rejectedCommandCount = 0;
     this._lastRejectedCommand = null;
+    // v1.6.3.10-v12 - FIX Issue #8: Store background generation ID for responses
+    this._backgroundGenerationId = null;
+  }
+  
+  /**
+   * Set the background generation ID for restart detection
+   * v1.6.3.10-v12 - FIX Issue #8: Include generation ID in all responses
+   * @param {string} generationId - Background generation ID
+   */
+  setBackgroundGenerationId(generationId) {
+    this._backgroundGenerationId = generationId;
+    console.log('[MessageRouter] v1.6.3.10-v12 Background generation ID set:', {
+      generationId
+    });
+  }
+  
+  /**
+   * Get the current background generation ID
+   * v1.6.3.10-v12 - FIX Issue #8
+   * @returns {string|null} Background generation ID
+   */
+  getBackgroundGenerationId() {
+    return this._backgroundGenerationId;
   }
 
   /**
@@ -201,41 +224,75 @@ export class MessageRouter {
   }
 
   /**
+   * Build base fields with generation ID
+   * v1.6.3.10-v12 - FIX Issue #8: Helper to reduce _normalizeResponse complexity
+   * @private
+   * @returns {Object} Base fields to include in all responses
+   */
+  _buildBaseResponseFields() {
+    if (!this._backgroundGenerationId) {
+      return {};
+    }
+    return { generation: this._backgroundGenerationId };
+  }
+  
+  /**
+   * Handle null/undefined response
+   * v1.6.3.10-v12 - FIX Code Health: Extract to reduce complexity
+   * @private
+   */
+  _handleNullResponse(action, baseFields) {
+    console.warn('[MSG_VALIDATE][MessageRouter] Handler returned null/undefined:', {
+      action,
+      responseType: 'null or undefined'
+    });
+    return { success: true, data: null, ...baseFields };
+  }
+  
+  /**
+   * Handle error response missing error field
+   * v1.6.3.10-v12 - FIX Code Health: Extract to reduce complexity
+   * @private
+   */
+  _handleMissingErrorField(response, action, baseFields) {
+    console.warn('[MSG_VALIDATE][MessageRouter] Error response missing error field:', {
+      action,
+      response
+    });
+    return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR', ...baseFields };
+  }
+
+  /**
    * Validate and normalize response format
    * v1.6.4.15 - FIX Issue #22: Ensure consistent response envelope
+   * v1.6.3.10-v12 - FIX Issue #8: Include generation ID for restart detection
+   * v1.6.3.10-v12 - FIX Code Health: Refactored to reduce complexity (cc=10→6)
    * @private
    * @param {*} response - Raw handler response
    * @param {string} action - Action that generated the response
    * @returns {Object} Normalized response object
    */
   _normalizeResponse(response, action) {
+    const baseFields = this._buildBaseResponseFields();
+    
     // Handle null/undefined responses
     if (response === null || response === undefined) {
-      console.warn('[MSG_VALIDATE][MessageRouter] Handler returned null/undefined:', {
-        action,
-        responseType: response === null ? 'null' : 'undefined'
-      });
-      return { success: true, data: null };
+      return this._handleNullResponse(action, baseFields);
     }
     
     // Response already has success property - validate format
     if (typeof response === 'object' && 'success' in response) {
       // Validate required fields based on success/failure
       if (response.success === false && !response.error) {
-        console.warn('[MSG_VALIDATE][MessageRouter] Error response missing error field:', {
-          action,
-          response
-        });
-        // Add default error if missing
-        return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR' };
+        return this._handleMissingErrorField(response, action, baseFields);
       }
       
-      // Response is valid format
-      return response;
+      // Response is valid format - add generation ID
+      return { ...response, ...baseFields };
     }
     
     // Response is raw data - wrap in success envelope
-    return { success: true, data: response };
+    return { success: true, data: response, ...baseFields };
   }
 
   /**

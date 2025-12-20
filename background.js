@@ -5654,6 +5654,12 @@ console.log('[INIT][Background] MESSAGE_HANDLER_REGISTRATION:', {
 // Increment on each background script load
 const backgroundGenerationId = `gen-${backgroundStartupTime}-${Math.random().toString(36).slice(2, 9)}`;
 
+// v1.6.3.10-v12 - FIX Issue #8: Set generation ID on MessageRouter for all responses
+messageRouter.setBackgroundGenerationId(backgroundGenerationId);
+console.log('[Background] v1.6.3.10-v12 Background generation ID configured:', { 
+  generationId: backgroundGenerationId 
+});
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // v1.6.3.10-v11 - FIX Issue #23: Handle HEARTBEAT messages for restart detection
   if (message.type === 'HEARTBEAT') {

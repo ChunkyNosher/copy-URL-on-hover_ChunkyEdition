@@ -527,6 +527,34 @@ let heartbeatFailureCount = 0;
 const HEARTBEAT_MAX_FAILURES = 3;
 
 /**
+ * Update background generation from any message response
+ * v1.6.3.10-v12 - FIX Issue #8: Track generation from all responses for restart detection
+ * @param {string} generation - Background generation ID from response
+ * @private
+ */
+function _updateBackgroundGenerationFromResponse(generation) {
+  if (!generation) return;
+  
+  // Check for restart (generation changed)
+  if (lastKnownBackgroundGeneration !== null && generation !== lastKnownBackgroundGeneration) {
+    console.log('[Content] v1.6.3.10-v12 GENERATION_MISMATCH_DETECTED:', {
+      previousGeneration: lastKnownBackgroundGeneration,
+      newGeneration: generation,
+      triggeredBy: 'message_response'
+    });
+    
+    // Trigger restart handling
+    _handleBackgroundRestart(generation);
+  } else if (lastKnownBackgroundGeneration === null) {
+    console.log('[Content] v1.6.3.10-v12 INITIAL_GENERATION_SET:', {
+      generation
+    });
+  }
+  
+  lastKnownBackgroundGeneration = generation;
+}
+
+/**
  * Track message retry state
  * v1.6.3.10-v11 - FIX Issue #23
  */
@@ -1213,6 +1241,11 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
 
+    // v1.6.3.10-v12 - FIX Issue #8: Update generation ID from response for restart detection
+    if (response?.generation) {
+      _updateBackgroundGenerationFromResponse(response.generation);
+    }
+
     // v1.6.4.15 - FIX Issue #15: Check response.success first
     // v1.6.4.15 - FIX Code Health: Extract tabId handling to avoid nested depth
     const tabIdResult = _extractTabIdFromResponse(response);
@@ -1221,6 +1254,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
         attempt: attemptNumber,
         tabId: tabIdResult.tabId,
         responseFormat: tabIdResult.format,
+        generation: response?.generation,
         durationMs: duration
       });
       return { tabId: tabIdResult.tabId, error: null, retryable: false };
@@ -1234,6 +1268,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       response,
       error: response?.error,
       code: response?.code, // v1.6.4.15 - Log error code
+      generation: response?.generation,
       retryable: isRetryable,
       durationMs: duration
     });
