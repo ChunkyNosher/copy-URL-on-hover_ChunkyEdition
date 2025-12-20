@@ -244,7 +244,13 @@ import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
-import { setWritingTabId, isWritingTabIdInitialized } from './utils/storage-utils.js';
+// v1.6.3.10-v13 - FIX Issue #9: Import periodic latency measurement functions
+import { 
+  setWritingTabId, 
+  isWritingTabIdInitialized, 
+  startPeriodicLatencyMeasurement, 
+  stopPeriodicLatencyMeasurement 
+} from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -434,9 +440,42 @@ const QUEUE_BACKPRESSURE_THRESHOLD = 75;
 /**
  * Track dropped messages for retry
  * v1.6.3.10-v11 - FIX Issue #6: Retry dropped messages
+ * v1.6.3.10-v13 - FIX Issue #6: Dynamic buffer sizing based on backpressure
  */
 const droppedMessageBuffer = [];
-const MAX_DROPPED_MESSAGES = 10;
+
+/**
+ * Base dropped messages buffer size
+ * v1.6.3.10-v13 - FIX Issue #6: Scales up during backpressure
+ */
+const BASE_DROPPED_MESSAGES = 10;
+
+/**
+ * Maximum dropped messages buffer size during high backpressure
+ * v1.6.3.10-v13 - FIX Issue #6: Increased from fixed 10 to dynamic max 50
+ */
+const MAX_DROPPED_MESSAGES_BACKPRESSURE = 50;
+
+/**
+ * Get current dropped message buffer limit based on queue backpressure
+ * v1.6.3.10-v13 - FIX Issue #6: Dynamic buffer sizing
+ * @returns {number} Current buffer limit
+ */
+function _getDroppedMessageBufferLimit() {
+  const queueDepth = initializationMessageQueue.length;
+  const queuePercent = (queueDepth / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100;
+  
+  // If queue is above 80%, increase buffer to max
+  if (queuePercent > 80) {
+    return MAX_DROPPED_MESSAGES_BACKPRESSURE;
+  }
+  // If queue is above 50%, use intermediate size
+  if (queuePercent > 50) {
+    return Math.floor(BASE_DROPPED_MESSAGES + (MAX_DROPPED_MESSAGES_BACKPRESSURE - BASE_DROPPED_MESSAGES) * 0.5);
+  }
+  
+  return BASE_DROPPED_MESSAGES;
+}
 
 /**
  * Background unresponsive timeout (ms)
@@ -904,11 +943,23 @@ function _handleQueueOverflow() {
 /**
  * Buffer a dropped message for later retry
  * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * v1.6.3.10-v13 - FIX Issue #6: Dynamic buffer limit based on backpressure
  * @private
  * @param {Object} dropped - Dropped message entry
  */
 function _bufferDroppedMessage(dropped) {
-  if (!dropped || droppedMessageBuffer.length >= MAX_DROPPED_MESSAGES) return;
+  const currentLimit = _getDroppedMessageBufferLimit();
+  
+  if (!dropped || droppedMessageBuffer.length >= currentLimit) {
+    if (dropped) {
+      console.warn('[MSG][Content] DROPPED_MESSAGE_REJECTED: Buffer at capacity', {
+        bufferSize: droppedMessageBuffer.length,
+        currentLimit,
+        action: dropped.message?.action || dropped.message?.type || 'unknown'
+      });
+    }
+    return;
+  }
   
   droppedMessageBuffer.push({
     message: dropped.message,
@@ -918,7 +969,8 @@ function _bufferDroppedMessage(dropped) {
   });
   console.log('[MSG][Content] DROPPED_MESSAGE_BUFFERED: Will retry after background ready', {
     bufferSize: droppedMessageBuffer.length,
-    maxBuffer: MAX_DROPPED_MESSAGES
+    currentLimit,
+    isBackpressureMode: currentLimit > BASE_DROPPED_MESSAGES
   });
 }
 
@@ -2849,6 +2901,10 @@ async function initializeQuickTabsFeature() {
       typeof quickTabsManager.createQuickTab
     );
     console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
+    
+    // v1.6.3.10-v13 - FIX Issue #9: Start periodic storage latency re-measurement
+    // This adapts the dedup window to network condition changes
+    startPeriodicLatencyMeasurement();
   } else {
     console.error('[INIT][Content] PHASE_COMPLETE:', {
       success: false,
@@ -6249,10 +6305,14 @@ function _dispatchMessage(message, _sender, sendResponse) {
 
 /**
  * Handler for beforeunload event to cleanup resources
+ * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
  * @private
  */
 function _handleBeforeUnload() {
   console.log('[Content] beforeunload event - starting cleanup');
+
+  // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
+  stopPeriodicLatencyMeasurement();
 
   if (quickTabsManager?.destroy) {
     console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');

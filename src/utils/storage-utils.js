@@ -100,6 +100,12 @@ const MAX_LATENCY_SAMPLES = 20;
 let observedStorageLatencyMs = 100; // Default 100ms, updated dynamically
 const DEDUP_WINDOW_LATENCY_MULTIPLIER = 1.5; // Use 1.5x observed latency for dedup window
 
+// v1.6.3.10-v13 - FIX Issue #9: Periodic latency re-measurement
+// Re-measure latency every 30 seconds to adapt to network changes
+const LATENCY_REMEASUREMENT_INTERVAL_MS = 30000;
+let latencyRemeasurementTimerId = null;
+let _lastLatencyMeasurementTime = 0;
+
 // v1.6.3.10-v9 - FIX Issue E: Normalization rejection reason codes
 /**
  * Reason codes for originTabId normalization rejection
@@ -658,6 +664,117 @@ export function acknowledgeStorageWrite(transactionId) {
   });
   
   pending.resolve();
+}
+
+// v1.6.3.10-v13 - FIX Issue #9: Periodic latency re-measurement functions
+
+/**
+ * Force a storage latency measurement by writing a probe value
+ * v1.6.3.10-v13 - FIX Issue #9: Measure current latency to adapt to network conditions
+ * @returns {Promise<number>} Measured latency in milliseconds
+ */
+export function measureStorageLatency() {
+  const probeTransactionId = `latency-probe-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const measureStartTime = Date.now();
+  
+  return new Promise((resolve) => {
+    // Set timeout for measurement
+    const timeout = setTimeout(() => {
+      console.warn('[StorageUtils] LATENCY_MEASUREMENT_TIMEOUT:', {
+        probeTransactionId,
+        elapsedMs: Date.now() - measureStartTime,
+        usingDefault: observedStorageLatencyMs
+      });
+      resolve(observedStorageLatencyMs); // Use current value on timeout
+    }, STORAGE_TIMEOUT_MS);
+    
+    // Track the probe
+    pendingStorageAcks.set(probeTransactionId, {
+      startTime: measureStartTime,
+      resolve: () => {
+        clearTimeout(timeout);
+        const latencyMs = Date.now() - measureStartTime;
+        _lastLatencyMeasurementTime = Date.now();
+        
+        console.log('[StorageUtils] LATENCY_MEASUREMENT_COMPLETE:', {
+          probeTransactionId,
+          measuredLatencyMs: latencyMs,
+          previousAverageMs: observedStorageLatencyMs,
+          newDedupWindowMs: getAdaptiveDedupWindow()
+        });
+        
+        resolve(latencyMs);
+      },
+      timeout
+    });
+    
+    // Write probe to storage (will trigger onChanged which calls acknowledgeStorageWrite)
+    const browserAPI = getBrowserStorageAPI();
+    if (browserAPI?.storage?.local) {
+      browserAPI.storage.local.set({
+        _latency_probe: { transactionId: probeTransactionId, timestamp: measureStartTime }
+      }).catch(err => {
+        console.warn('[StorageUtils] LATENCY_PROBE_WRITE_FAILED:', { error: err.message });
+        clearTimeout(timeout);
+        pendingStorageAcks.delete(probeTransactionId);
+        resolve(observedStorageLatencyMs);
+      });
+    } else {
+      clearTimeout(timeout);
+      resolve(observedStorageLatencyMs);
+    }
+  });
+}
+
+/**
+ * Start periodic latency re-measurement
+ * v1.6.3.10-v13 - FIX Issue #9: Adapt to network condition changes
+ * @param {number} [intervalMs=30000] - Re-measurement interval in milliseconds
+ */
+export function startPeriodicLatencyMeasurement(intervalMs = LATENCY_REMEASUREMENT_INTERVAL_MS) {
+  if (latencyRemeasurementTimerId !== null) {
+    console.log('[StorageUtils] LATENCY_REMEASUREMENT_ALREADY_RUNNING');
+    return;
+  }
+  
+  latencyRemeasurementTimerId = setInterval(async () => {
+    const previousLatency = observedStorageLatencyMs;
+    const previousDedupWindow = getAdaptiveDedupWindow();
+    
+    await measureStorageLatency();
+    
+    const newDedupWindow = getAdaptiveDedupWindow();
+    
+    // Log if dedup window changed significantly (>20%)
+    const windowChange = Math.abs(newDedupWindow - previousDedupWindow) / previousDedupWindow;
+    if (windowChange > 0.2) {
+      console.log('[StorageUtils] DEDUP_WINDOW_RECALCULATED:', {
+        previousLatencyMs: previousLatency,
+        newLatencyMs: observedStorageLatencyMs,
+        previousDedupWindowMs: previousDedupWindow,
+        newDedupWindowMs: newDedupWindow,
+        changePercent: (windowChange * 100).toFixed(1)
+      });
+    }
+  }, intervalMs);
+  
+  console.log('[StorageUtils] PERIODIC_LATENCY_MEASUREMENT_STARTED:', {
+    intervalMs,
+    currentLatencyMs: observedStorageLatencyMs,
+    currentDedupWindowMs: getAdaptiveDedupWindow()
+  });
+}
+
+/**
+ * Stop periodic latency re-measurement
+ * v1.6.3.10-v13 - FIX Issue #9: Cleanup on unload
+ */
+export function stopPeriodicLatencyMeasurement() {
+  if (latencyRemeasurementTimerId !== null) {
+    clearInterval(latencyRemeasurementTimerId);
+    latencyRemeasurementTimerId = null;
+    console.log('[StorageUtils] PERIODIC_LATENCY_MEASUREMENT_STOPPED');
+  }
 }
 
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs
