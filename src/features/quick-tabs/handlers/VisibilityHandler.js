@@ -99,6 +99,14 @@ const CALLBACK_SUPPRESSION_DELAY_MS = 50;
 // Keep a short delay for event emission sequencing only
 const DOM_VERIFICATION_DELAY_MS = 50;
 
+// v1.6.3.10-v10 - FIX Issue 10.1: Timeout for _persistToStorage to prevent indefinite hangs
+// If storage write hangs, we log error and mark storage as potentially unavailable
+const PERSIST_STORAGE_TIMEOUT_MS = 5000;
+
+// v1.6.3.10-v10 - FIX Issue 3.2: Z-index recycling threshold
+// When z-index counter exceeds this value, recycle all z-indices to prevent unbounded growth
+const Z_INDEX_RECYCLE_THRESHOLD = 100000;
+
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
@@ -155,6 +163,11 @@ export class VisibilityHandler {
 
     // v1.6.3.4-v8 - FIX Issue #6: Track recent focus events for debouncing
     this._lastFocusTime = new Map(); // id -> timestamp
+
+    // v1.6.3.10-v10 - FIX Issue 10.1: Track storage availability
+    // Set to false if storage write times out to prevent further hangs
+    this._storageAvailable = true;
+    this._storageTimeoutCount = 0;
   }
 
   /**
@@ -266,6 +279,7 @@ export class VisibilityHandler {
   /**
    * Common handler for solo/mute visibility toggles
    * v1.6.3 - Local only (no storage writes)
+   * v1.6.3.10-v10 - FIX Issue 5.1: Add ownership validation and lock for atomicity
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} config - Configuration for toggle operation
@@ -278,12 +292,36 @@ export class VisibilityHandler {
     const tab = this.quickTabsMap.get(quickTabId);
     if (!tab) return;
 
-    // Update visibility state (mutually exclusive)
-    tab[tabsProperty] = newTabs;
-    tab[clearProperty] = [];
+    // v1.6.3.10-v10 - FIX Issue 5.1: Validate ownership before mutation
+    if (!this._isOwnedByCurrentTab(tab)) {
+      console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Not owned by current tab:`, {
+        quickTabId,
+        mode,
+        originTabId: tab.originTabId,
+        currentTabId: this.currentTabId
+      });
+      return;
+    }
 
-    // Update button states if tab has them
-    updateButton(tab, newTabs);
+    // v1.6.3.10-v10 - FIX Issue 5.1: Use lock to prevent concurrent modifications
+    if (!this._tryAcquireLock('visibility', quickTabId)) {
+      console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Lock held for:`, {
+        quickTabId,
+        mode
+      });
+      return;
+    }
+
+    try {
+      // Update visibility state (mutually exclusive)
+      tab[tabsProperty] = newTabs;
+      tab[clearProperty] = [];
+
+      // Update button states if tab has them
+      updateButton(tab, newTabs);
+    } finally {
+      this._releaseLock('visibility', quickTabId);
+    }
   }
 
   /**
@@ -777,11 +815,18 @@ export class VisibilityHandler {
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
-  handleRestore(id, source = 'unknown') {
+  async handleRestore(id, source = 'unknown') {
     // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
     const ownershipValidation = this._validateCrossTabOwnership(id, 'restore', source);
     if (!ownershipValidation.valid) {
       return ownershipValidation.result;
+    }
+
+    // v1.6.3.10-v10 - FIX Issue 1.1: Wait for any adoption lock to be released
+    // This prevents restore from using stale originTabId if adoption is in progress
+    if (this.minimizedManager?.hasAdoptionLock?.(id)) {
+      console.log(`${this._logPrefix} Restore waiting for adoption lock:`, { id, source });
+      await this.minimizedManager.waitForAdoptionLock(id);
     }
 
     // v1.6.3.2 - Check preconditions for restore
@@ -896,15 +941,28 @@ export class VisibilityHandler {
       return;
     }
 
-    // Build fresh callbacks that capture current handler context
+    // v1.6.3.10-v10 - FIX Issue 2.1: Build fresh callbacks that capture current handler context
     // These replace any stale closures from initial construction
+    // Previously only onMinimize and onFocus were re-wired, but position/size/solo/mute
+    // callbacks also need to be re-wired to ensure proper state persistence
     const freshCallbacks = {
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
-      onFocus: tabId => this.handleFocus(tabId)
+      onFocus: tabId => this.handleFocus(tabId),
+      // v1.6.3.10-v10 - FIX Issue 2.1: Add missing position/size/solo/mute callbacks
+      onSolo: (tabId, soloedTabs) => this.handleSoloToggle(tabId, soloedTabs, 'UI'),
+      onMute: (tabId, mutedTabs) => this.handleMuteToggle(tabId, mutedTabs, 'UI')
     };
 
-    // Note: Position/size callbacks are wired by UICoordinator via UpdateHandler
-    // We only re-wire minimize and focus callbacks here
+    // Note: Position/size callbacks (onPositionChange, onPositionChangeEnd, onSizeChange, onSizeChangeEnd)
+    // are wired by UICoordinator via UpdateHandler as they require UpdateHandler context.
+    // Emit an event so UICoordinator can re-wire those callbacks.
+    if (this.eventBus) {
+      this.eventBus.emit('tab:needs-callback-rewire', {
+        id,
+        source,
+        callbacksNeeded: ['onPositionChange', 'onPositionChangeEnd', 'onSizeChange', 'onSizeChangeEnd']
+      });
+    }
 
     const rewired = tabWindow.rewireCallbacks(freshCallbacks);
     console.log(`${this._logPrefix} Re-wired callbacks after restore (source: ${source}):`, {
@@ -1539,6 +1597,11 @@ export class VisibilityHandler {
       }
     }
 
+    // v1.6.3.10-v10 - FIX Issue 3.2: Recycle z-indices if threshold exceeded
+    if (this.currentZIndex.value >= Z_INDEX_RECYCLE_THRESHOLD) {
+      this._recycleZIndices();
+    }
+
     // Store old z-index for logging
     const oldZIndex = tabWindow.zIndex;
 
@@ -1569,6 +1632,47 @@ export class VisibilityHandler {
     console.log(`${this._logPrefix}[handleFocus] EXIT:`, {
       id,
       finalZIndex: tabWindow.zIndex
+    });
+  }
+
+  /**
+   * Recycle z-indices to prevent unbounded growth
+   * v1.6.3.10-v10 - FIX Issue 3.2: Reset z-index counter and reassign to all Quick Tabs
+   * @private
+   */
+  _recycleZIndices() {
+    console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Counter exceeded threshold`, {
+      currentValue: this.currentZIndex.value,
+      threshold: Z_INDEX_RECYCLE_THRESHOLD
+    });
+
+    // Sort tabs by current z-index to maintain stacking order
+    const sortedTabs = Array.from(this.quickTabsMap.entries())
+      .sort(([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0));
+
+    // Reset counter to base value
+    this.currentZIndex.value = 1000;
+
+    // Reassign z-indices maintaining relative order
+    for (const [id, tabWindow] of sortedTabs) {
+      this.currentZIndex.value++;
+      const newZIndex = this.currentZIndex.value;
+      tabWindow.zIndex = newZIndex;
+
+      // Update DOM if container exists
+      if (tabWindow.container) {
+        tabWindow.container.style.zIndex = newZIndex.toString();
+      }
+
+      console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Reassigned`, {
+        id,
+        newZIndex
+      });
+    }
+
+    console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Complete`, {
+      newCounterValue: this.currentZIndex.value,
+      tabsRecycled: sortedTabs.length
     });
   }
 
@@ -1737,9 +1841,21 @@ export class VisibilityHandler {
     this._releaseLock('minimize', id);
     this._releaseLock('restore', id);
 
-    // Perform atomic storage write
+    // v1.6.3.10-v10 - FIX Issue 10.1: Skip persist if storage marked unavailable
+    if (!this._storageAvailable) {
+      console.warn('[VisibilityHandler] Timer callback SKIPPED (storage unavailable):', {
+        id,
+        operation,
+        source,
+        storageTimeoutCount: this._storageTimeoutCount
+      });
+      return;
+    }
+
+    // Perform atomic storage write with timeout protection
     try {
-      await this._persistToStorage();
+      // v1.6.3.10-v10 - FIX Issue 10.1: Wrap persist in Promise.race with timeout
+      await this._persistToStorageWithTimeout();
 
       // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback COMPLETED with duration
       const callbackDuration = Date.now() - callbackStartTime;
@@ -1760,6 +1876,56 @@ export class VisibilityHandler {
         durationMs: callbackDuration,
         outcome: 'error',
         error: err.message
+      });
+    }
+  }
+
+  /**
+   * Persist to storage with timeout protection
+   * v1.6.3.10-v10 - FIX Issue 10.1: Wrap _persistToStorage in Promise.race with timeout
+   * If timeout occurs, log error and mark storage as potentially unavailable
+   * @private
+   * @returns {Promise<void>}
+   */
+  async _persistToStorageWithTimeout() {
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Storage persist timeout')), PERSIST_STORAGE_TIMEOUT_MS);
+    });
+
+    try {
+      await Promise.race([
+        this._persistToStorage(),
+        timeoutPromise
+      ]);
+      // Reset timeout count on success
+      this._storageTimeoutCount = 0;
+    } catch (err) {
+      if (err.message === 'Storage persist timeout') {
+        this._handleStorageTimeout();
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Handle storage timeout by incrementing counter and potentially marking storage unavailable
+   * v1.6.3.10-v10 - FIX Issue 10.1: Extracted to reduce nesting depth
+   * @private
+   */
+  _handleStorageTimeout() {
+    this._storageTimeoutCount++;
+    console.error(`${this._logPrefix} STORAGE_PERSIST_TIMEOUT:`, {
+      timeoutMs: PERSIST_STORAGE_TIMEOUT_MS,
+      timeoutCount: this._storageTimeoutCount,
+      warning: 'Storage write is taking too long, may be unavailable'
+    });
+
+    // After 3 consecutive timeouts, mark storage as unavailable
+    if (this._storageTimeoutCount >= 3) {
+      this._storageAvailable = false;
+      console.error(`${this._logPrefix} STORAGE_MARKED_UNAVAILABLE:`, {
+        reason: 'Consecutive storage timeouts exceeded threshold',
+        timeoutCount: this._storageTimeoutCount
       });
     }
   }
@@ -1864,5 +2030,41 @@ export class VisibilityHandler {
         '[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded'
       );
     }
+  }
+
+  /**
+   * Destroy handler and cleanup resources
+   * v1.6.3.10-v10 - FIX Issue 3.3: Clear all Set/Map references to prevent memory leaks
+   */
+  destroy() {
+    console.log(`${this._logPrefix} Destroying VisibilityHandler`);
+
+    // Clear all pending operations
+    this._pendingMinimize.clear();
+    this._pendingRestore.clear();
+
+    // Clear all debounce timers
+    for (const timer of this._debounceTimers.values()) {
+      if (timer?.timeoutId) {
+        clearTimeout(timer.timeoutId);
+      } else if (typeof timer === 'number') {
+        clearTimeout(timer);
+      }
+    }
+    this._debounceTimers.clear();
+
+    // v1.6.3.10-v10 - FIX Issue 3.3: Clear active timer IDs
+    this._activeTimerIds.clear();
+
+    // Clear operation locks
+    this._operationLocks.clear();
+
+    // Clear initiated operations
+    this._initiatedOperations.clear();
+
+    // Clear focus time tracking
+    this._lastFocusTime.clear();
+
+    console.log(`${this._logPrefix} VisibilityHandler destroyed`);
   }
 }

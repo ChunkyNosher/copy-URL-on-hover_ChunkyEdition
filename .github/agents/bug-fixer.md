@@ -37,25 +37,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.10-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit
-- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
-- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
-- **quickTabHostInfo Cleanup** - 5-min maintenance, max 500 entries
-- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
-- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
+- **Memory Leak Fix** - Comprehensive `destroy()` method
 
-**v1.6.3.10-v6 Features (Previous):** Type-safe tab IDs, async tab ID init,
-container ID normalization, dual ownership validation, operation lock increase
-
-**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic ops, container isolation,
-cross-tab validation, Scripting API fallback, adoption re-render, orphan detection
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
+type-safe tab IDs, container isolation, atomic ops
 
 **Key Features:**
 

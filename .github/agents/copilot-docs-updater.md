@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.10-v7.
+  documentation. Current version: v1.6.3.10-v9.
 tools: ['*']
 ---
 
@@ -69,27 +69,27 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.10-v7)
+## Current Extension State (v1.6.3.10-v9)
 
-### v1.6.3.10-v7 Features (NEW) - Reliability & Robustness
+### v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes
 
-- **Port Reconnection Circuit Breaker** - State machine, 5 failure limit, 30s max backoff
-- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
-- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
-- **quickTabHostInfo Cleanup** - 5-min maintenance, max 500 entries
-- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
-- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
+- **Write Rate-Limiting** - `WRITE_COALESCE_MIN_INTERVAL_MS` (100ms)
+- **Duplicate Window Alignment** - 5000ms
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
 
-### v1.6.3.10-v6 Features (Previous) - Type Safety & Container Isolation
+### v1.6.3.10-v8 Features (Previous) - Code Health & Bug Fixes
 
-- Type-safe tab IDs, async tab ID init, container ID normalization
-- Dual ownership validation, operation lock increase
+- Code health 9.0+ scores, options object pattern
+- Storage/Cross-Tab/Manager issues fixed (#1-23)
 
-### v1.6.3.10-v5 & Earlier (Consolidated)
+### v1.6.3.10-v7 & Earlier (Consolidated)
 
-- Atomic ops, container isolation, cross-tab validation, Scripting API fallback
-- Adoption re-render, TabLifecycleHandler, orphan detection
+- Port circuit breaker, adaptive dedup, storage write serialization
+- Type-safe tab IDs, container isolation, atomic ops
 
 ### Architecture
 
@@ -102,8 +102,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.10-v7
-- [ ] **v1.6.3.10-v7:** Reliability features documented
+- [ ] Version numbers match 1.6.3.10-v9
+- [ ] **v1.6.3.10-v9:** Storage & cross-tab features documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -113,7 +113,7 @@ nothing.
 
 | Error                   | Fix                         |
 | ----------------------- | --------------------------- |
-| v1.6.3.10-v6 or earlier | Update to 1.6.3.10-v7       |
+| v1.6.3.10-v8 or earlier | Update to 1.6.3.10-v9       |
 | "Pin to Page"           | Use "Solo/Mute"             |
 | Direct storage writes   | Use Single Writer Authority |
 | BroadcastChannel refs   | REMOVE - BC DELETED in v6   |

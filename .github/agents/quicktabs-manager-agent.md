@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v7), unified barrier init, scheduleRender() with revision dedup,
+  (v1.6.3.10-v9), unified barrier init, scheduleRender() with revision dedup,
   single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v9 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -47,21 +47,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **quickTabHostInfo Cleanup** - `_startHostInfoMaintenance()`, 5-min cycle, max 500 entries
-- **Container Validation** - `_validateAdoptionContainers()` in adoption flow
-- **Adaptive Port Viability** - `_calculateAdaptiveTimeout()`, 2x p95 latency (700ms-3s)
-- **Message De-duplication** - `_isDuplicateMessage()`, `_markMessageSent()`
+- **Adoption Lock Mechanism** - MinimizedManager adoption locks
+- **Snapshot Expiration Watchdog** - 5000ms timeout for pending snapshots
+- **Callback Re-wiring** - Complete callback restoration after restore
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
 
-**v1.6.3.10-v6 & Earlier (Consolidated):** Render debounce (100ms/300ms),
-circuit breaker, cache handling, port state machine
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, host info cleanup,
+container validation, adaptive port viability
 
-**Key Modules (v1.6.3.10-v7):**
+**Key Modules (v1.6.3.10-v9):**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |
-| `src/constants.js`                 | Centralized constants (+v7)   |
+| `src/constants.js`                 | Centralized constants (+v9)   |
 | `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
 | `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
 | `src/storage/schema-v2.js`         | Pure state utilities          |
@@ -81,9 +81,9 @@ circuit breaker, cache handling, port state machine
 
 ## Testing Requirements
 
-- [ ] quickTabHostInfo cleanup works (5-min, max 500 entries)
-- [ ] Container validation in adoption works
-- [ ] Adaptive port viability timeout works (700ms-3s)
+- [ ] Adoption lock mechanism works
+- [ ] Snapshot expiration watchdog works (5000ms)
+- [ ] Z-index recycling works (threshold 100000)
 - [ ] scheduleRender() works with revision dedup
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
@@ -94,5 +94,5 @@ circuit breaker, cache handling, port state machine
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.10-v7 host info cleanup,
-container validation, adaptive timeouts, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.10-v9 adoption locks,
+snapshot watchdog, z-index recycling, MANAGER pattern actions.**

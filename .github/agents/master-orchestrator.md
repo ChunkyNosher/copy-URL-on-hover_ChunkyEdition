@@ -60,54 +60,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.9-v6 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.10-v9 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.9-v6 Features (NEW) - Sidebar & Background Cleanup:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Simplified Init** - Manager reduced from ~8 state variables to 4
-- **Unified Barrier** - Single barrier with resolve-only semantics
-- **Render Queue Priority** - Revision as PRIMARY over saveId for dedup
-- **Dead Code Removal** - ~218 lines removed (CONNECTION_STATE, port stubs)
-- **Response Helper** - `_buildResponse()` for correlationId responses
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
 
-**v1.6.3.9-v5 Features (Previous) - Bug Fixes & Reliability:**
-
-- **Tab ID Initialization** - `currentBrowserTabId` fallback to background
-  script
-- **Storage Event Routing** - `_routeInitMessage()` →
-  `_handleStorageChangedEvent()`
-- **Response Format** - Background responses include `type` and `correlationId`
-- **Message Cross-Routing** - Dispatcher handles both `type` and `action` fields
-
-**v1.6.3.9-v4 Features (Previous) - Architecture Simplification:**
-
-- **~761 Lines Removed** - Port stubs, BroadcastChannel stubs, complex init
-- **Single Barrier Init** - Replaces multi-phase initialization
-
-**v1.6.3.9-v3 Features (Retained):**
-
-- **Dual Architecture** - MessageRouter (ACTION) vs message-handler (TYPE)
-
-**v1.6.3.9 Features (Retained):**
-
-- **Feature Flag Bootstrap** - `bootstrapQuickTabs()` checks `isV2Enabled()`
-- **Centralized Constants** - `src/constants.js` with timing values
-- **Structured Logger** - `src/utils/structured-logger.js`
-
-**v1.6.3.8-v12 Features (Retained):** Port removal (~2,364 lines), stateless
-messaging, simplified BFCache.
-
-**v1.6.3.6-v10 Build & Analysis (Retained):**
-
-- **Build Optimizations:** `.buildconfig.json`, Terser (dev vs prod),
-  tree-shaking, Rollup cache, npm-run-all
-- **CodeScene Analysis:** `quick-tabs-manager.js` 5.34 (refactor priority),
-  `storage-utils.js` 7.23, `background.js` 7.66
-- **Manager UI/UX Issues #1-12:** Enhanced headers, orphan detection, smooth
-  animations, responsive design
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, unified barrier,
+render queue priority, dead code removal
 
 **Storage Format:**
 

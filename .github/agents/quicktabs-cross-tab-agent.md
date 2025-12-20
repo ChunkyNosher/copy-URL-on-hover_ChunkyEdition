@@ -3,7 +3,7 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles tabs.sendMessage messaging,
   storage.onChanged events, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v7), unified barrier init, storage.onChanged PRIMARY, single storage key,
+  (v1.6.3.10-v9), unified barrier init, storage.onChanged PRIMARY, single storage key,
   storage health check fallback, FIFO EventBus
 tools: ['*']
 ---
@@ -38,29 +38,25 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.10-v9 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.10-v7 Features (NEW) - Reliability & Robustness:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit
-- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering
-- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- **Port Message Ordering** - sequenceId tracking for critical messages
-- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
-- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
-- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
+- **Duplicate Window Alignment** - `DUPLICATE_SAVEID_WINDOW_MS` increased to 5000ms
+- **Storage Event Ordering** - `validateStorageEventOrdering()`, sequence numbering
+- **Port Message Ordering** - RESTORE ordering enforcement
 
-**v1.6.3.10-v6 Features (Previous):** Type-safe tab IDs, async tab ID init,
-container ID normalization, dual ownership validation
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, port circuit breaker,
+type-safe tab IDs, container isolation, atomic ops
 
-**v1.6.3.10-v5 & Earlier (Consolidated):** Atomic ops, container isolation,
-cross-tab validation, Scripting API fallback, adoption re-render
-
-**Key Modules (v1.6.3.10-v7):**
+**Key Modules (v1.6.3.10-v9):**
 
 | Module                                | Purpose                           |
 | ------------------------------------- | --------------------------------- |
-| `src/constants.js`                    | Centralized constants (+v7)       |
+| `src/constants.js`                    | Centralized constants (+v9)       |
 | `src/storage/storage-manager.js`      | Simplified persistence, checksum  |
 | `src/messaging/message-router.js`     | MESSAGE_TYPES, MessageBuilder     |
 | `src/background/broadcast-manager.js` | broadcastToAllTabs(), sendToTab() |
@@ -80,10 +76,10 @@ cross-tab validation, Scripting API fallback, adoption re-render
 
 ## Testing Requirements
 
-- [ ] Port reconnection circuit breaker works (5 failures, 30s backoff)
-- [ ] Storage event de-duplication works (200ms window)
-- [ ] Adaptive dedup window works (2x latency, min 2s, max 10s)
-- [ ] Storage write serialization works (max 3 retries)
+- [ ] Identity-ready gating works (`waitForIdentityInit()`)
+- [ ] Write rate-limiting works (`WRITE_COALESCE_MIN_INTERVAL_MS`)
+- [ ] Duplicate window works (5000ms)
+- [ ] Storage event ordering works (`validateStorageEventOrdering()`)
 - [ ] storage.onChanged PRIMARY works
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
@@ -93,5 +89,5 @@ cross-tab validation, Scripting API fallback, adoption re-render
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.10-v7 circuit breaker,
-adaptive dedup, storage.onChanged PRIMARY.**
+**Your strength: Reliable cross-tab sync with v1.6.3.10-v9 identity gating,
+write rate-limiting, storage.onChanged PRIMARY.**

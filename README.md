@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.10-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,57 +9,44 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v8 Status:** Code Health & Bug Fixes ✅
+**🔧 v1.6.3.10-v9 Status:** Storage & Cross-Tab Fixes ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.10-v9
+
+**🔧 Storage & Cross-Tab Fixes (December 2025) ✅**
+
+- ✅ **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- ✅ **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
+- ✅ **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- ✅ **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
+- ✅ **Normalization Hardening** - Strict validation with rejection reasons
+- ✅ **Write Rate-Limiting** - Coalescing with `WRITE_COALESCE_MIN_INTERVAL_MS`
+- ✅ **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
+- ✅ **Memory Leak Fix** - Comprehensive `destroy()` method
+
+---
+
 ## 🎉 What's New in v1.6.3.10-v8
 
-**🔧 Code Health & Bug Fixes (December 2025) ✅**
+**🔧 Code Health & Bug Fixes (Previous) ✅**
 
-- ✅ **Code Health Improvements** - Refactored files to 9.0+ scores (content.js 9.09, window.js 9.38)
-- ✅ **Storage Issues Fixed (#1-15)** - Dual-block fix, currentTabId init, storage format unification
-- ✅ **Cross-Tab Issues Fixed (#16-23)** - Adoption cache sync, message format fixes, retry mechanism
-- ✅ **Manager Issues Fixed (#20-22)** - Comprehensive logging, MinimizedManager snapshots
+- ✅ **Code Health Improvements** - Refactored files to 9.0+ scores
+- ✅ **Storage Issues Fixed (#1-15)** - Dual-block fix, currentTabId init
+- ✅ **Cross-Tab Issues Fixed (#16-23)** - Adoption cache sync, retry mechanism
 - ✅ **Consolidated Duplications** - Extracted helper functions, options object pattern
-
----
-
-## 🎉 What's New in v1.6.3.10-v7
-
-**🔧 Reliability & Robustness (Previous) ✅**
-
-- ✅ **Port Reconnection Circuit Breaker** - State machine with 5 failure limit, 30s max backoff
-- ✅ **Background Handshake Ready Signal** - Command buffering, latency tracking
-- ✅ **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- ✅ **Storage Event De-duplication** - 200ms window with versioning
-- ✅ **quickTabHostInfo Cleanup** - 5-min maintenance cycle, max 500 entries
-- ✅ **Storage Write Serialization** - Write queue with optimistic locking
-- ✅ **Handler Init Guards** - All handlers use `_ensureInitialized()` consistently
-- ✅ **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
-
----
-
-## 🎉 What's New in v1.6.3.10-v6
-
-**🔧 Type Safety & Container Isolation (Previous) ✅**
-
-- ✅ **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
-- ✅ **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
-- ✅ **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
-- ✅ **Dual Ownership Validation** - Tab ID AND Container ID checks
 
 ---
 
 ## 🎉 Previous Releases
 
-**v1.6.3.10-v5:** Atomic ops, exponential backoff, surgical DOM updates, targeted restore  
-**v1.6.3.10-v4:** Container isolation, cross-tab validation, Scripting API fallback  
-**v1.6.3.10-v3:** Adoption re-render, TabLifecycleHandler, orphan detection  
-**v1.6.3.10-v2:** Render debounce, circuit breaker, cache handling  
-**v1.6.3.10-v1:** Port state machine, heartbeat timing, messaging reliability
+**v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed  
+**v1.6.3.10-v7:** Port circuit breaker, adaptive dedup, storage write serialization  
+**v1.6.3.10-v6:** Type-safe tab IDs, async tab ID init, container ID normalization  
+**v1.6.3.10-v5:** Atomic ops, exponential backoff, surgical DOM updates
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -246,6 +233,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v7** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.10-v9** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

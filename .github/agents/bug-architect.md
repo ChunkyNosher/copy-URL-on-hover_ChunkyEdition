@@ -65,27 +65,19 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v6 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.10-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v6 Features (NEW) - Type Safety & Container Isolation:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Type-Safe Tab IDs** - `normalizeOriginTabId()` ensures numeric/null IDs
-- **Async Tab ID Init** - `waitForTabIdInit()` prevents race conditions
-- **Container ID Normalization** - `normalizeOriginContainerId()` for Firefox
-- **Dual Ownership Validation** - Tab ID AND Container ID checks
-- **Operation Lock Increase** - `OPERATION_LOCK_MS` 500ms→2000ms
-- **Storage Write Retry** - Exponential backoff (100ms, 500ms, 1000ms)
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
 
-**v1.6.3.10-v5 Features (Previous) - Architectural Robustness:**
-
-- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
-- Transaction ID entropy, surgical DOM updates, targeted restore
-
-**v1.6.3.10-v4 & Earlier (Consolidated):** Container isolation, cross-tab
-validation, Scripting API fallback, adoption re-render, TabLifecycleHandler,
-orphan detection, render debounce, circuit breaker, unified barrier init
+**v1.6.3.10-v8 & Earlier (Consolidated):** Code health 9.0+, type-safe tab IDs,
+container isolation, atomic ops, exponential backoff
 
 **Key Features:**
 

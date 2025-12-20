@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v8  
+**Version:** 1.6.3.10-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -12,49 +12,39 @@ Tabs Manager
 **Key Features:**
 
 - Solo/Mute tab-specific visibility control
-- **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage
-  key
+- **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage key
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Single Barrier Initialization** - Unified barrier with resolve-only
-  semantics
+- **Single Barrier Initialization** - Unified barrier with resolve-only semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Runtime.onMessage Secondary** - Direct state push from background
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
-- **Tab Grouping** - tabs.group() API support (Firefox 138+)
-- **Tabs API Events** - onActivated, onRemoved, onUpdated listeners
 
-**v1.6.3.10-v8 Features (NEW) - Code Health & Bug Fixes:**
+**v1.6.3.10-v9 Features (NEW) - Storage & Cross-Tab Fixes:**
 
-- **Code Health Improvements** - Refactored files to 9.0+ scores (content.js 9.09, window.js 9.38)
-- **Consolidated Duplications** - Extracted helper functions to reduce duplication
-- **Options Object Pattern** - Functions with 5+ args now use options objects
-- **Storage Issues Fixed (#1-15)** - Dual-block fix, currentTabId init, storage format unification
-- **Cross-Tab Issues Fixed (#16-23)** - Adoption cache sync, message format fixes, retry mechanism
-- **Manager Issues Fixed (#20-22)** - Comprehensive logging, MinimizedManager snapshots
+- **Identity-Ready Gating** - `waitForIdentityInit()`, `IDENTITY_STATE_MODE` enum
+- **Storage Error Classification** - `STORAGE_ERROR_TYPE` enum, `classifyStorageError()`
+- **Storage Quota Monitoring** - `checkStorageQuota()` with preflight checks
+- **Write Queue Recovery** - `_checkAndRecoverStalledQueue()`, queue state logging
+- **StateManager Cleanup** - Subscription tracking, `dispose()`, leak warnings
+- **Normalization Hardening** - `NORMALIZATION_REJECTION_REASON` enum, strict validation
+- **Container Match Fail-Closed** - INITIALIZING mode in `_isContainerMatch()`
+- **Write Rate-Limiting** - `_checkWriteCoalescing()`, `WRITE_COALESCE_MIN_INTERVAL_MS`
+- **Duplicate Window Alignment** - `DUPLICATE_SAVEID_WINDOW_MS` increased to 5000ms
+- **Storage Event Ordering** - `validateStorageEventOrdering()`, sequence numbering
+- **Adoption Lock Mechanism** - MinimizedManager adoption locks
+- **Z-Index Recycling** - `_recycleZIndices()` at threshold 100000
+- **Memory Leak Fix** - Comprehensive `destroy()` method in QuickTabWindow
 
-**v1.6.3.10-v7 Features (Previous) - Reliability & Robustness:**
+**v1.6.3.10-v8 Features (Previous) - Code Health & Bug Fixes:**
 
-- **Port Reconnection Circuit Breaker** - State machine (DISCONNECTED/CONNECTING/CONNECTED/FAILED), 5 failure limit, 30s max backoff
-- **Background Handshake Ready Signal** - `isReadyForCommands`, command buffering, latency tracking
-- **Adaptive Dedup Window** - 2x observed latency (min 2s, max 10s)
-- **Port Message Ordering** - sequenceId tracking for critical messages
-- **Handler Init Guards** - All handlers use `_ensureInitialized()` consistently
-- **Storage Event De-duplication** - 200ms window, correlationId/timestamp versioning
-- **quickTabHostInfo Cleanup** - 5-min maintenance, max 500 entries
-- **Storage Write Serialization** - Write queue with optimistic locking (max 3 retries)
-- **Adoption-Aware Ownership** - Track recently-adopted Quick Tab IDs (5s TTL)
+- Code Health 9.0+ scores (content.js 9.09, window.js 9.38)
+- Options object pattern, consolidated duplications
+- Storage/Cross-Tab/Manager issues fixed (#1-23)
 
-**v1.6.3.10-v6 Features (Previous):** Type-safe tab IDs, async tab ID init,
-container ID normalization, dual ownership validation, operation lock increase
-
-**v1.6.3.10-v5 Features (Previous):** Atomic ops, exponential backoff, circuit
-breaker, transaction ID entropy, surgical DOM, cache sync, targeted restore
-
-**v1.6.3.10-v4 & Earlier (Consolidated):** Container isolation, cross-tab validation,
-Scripting API fallback, adoption re-render, TabLifecycleHandler, orphan detection
+**v1.6.3.10-v7 & Earlier (Consolidated):** Port circuit breaker, adaptive dedup,
+storage write serialization, type-safe tab IDs, container isolation, atomic ops
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, QuickTabGroupManager, NotificationManager, StorageManager,
@@ -109,63 +99,45 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v8 Patterns (Current)
+### v1.6.3.10-v9 Patterns (Current)
+
+- Identity-ready gating with `IDENTITY_STATE_MODE` enum (INITIALIZING, READY)
+- Storage error classification with `STORAGE_ERROR_TYPE` enum
+- Storage quota monitoring with `checkStorageQuota()` preflight checks
+- Write queue stall recovery with `_checkAndRecoverStalledQueue()`
+- Normalization hardening with `NORMALIZATION_REJECTION_REASON` enum
+- Write rate-limiting with `WRITE_COALESCE_MIN_INTERVAL_MS` (100ms)
+- Duplicate detection window aligned to 5000ms
+- Z-index recycling at threshold 100000
+- Comprehensive `destroy()` for memory leak prevention
+
+### v1.6.3.10-v8 Patterns (Previous)
 
 - Code health refactoring with extracted helper functions
 - Options object pattern for functions with 5+ arguments
 - Consolidated duplicate logging and handler functions
-- Fixed storage persistence issues (#1-15)
-- Fixed cross-tab sync issues (#16-23)
-- Fixed Manager issues (#20-22)
 
-### v1.6.3.10-v7 Patterns (Previous)
+### v1.6.3.10-v7 & Earlier Patterns (Consolidated)
 
-- Port reconnection circuit breaker with state machine (5 failures, 30s backoff)
-- Background handshake ready signal with command buffering
-- Adaptive dedup window (2x latency, min 2s, max 10s)
-- Port message ordering with sequenceId validation
-- Storage event de-duplication (200ms window)
-- quickTabHostInfo periodic cleanup (5-min, max 500 entries)
-- Storage write serialization with optimistic locking (max 3 retries)
-- Adoption-aware ownership tracking (5s TTL)
-
-### v1.6.3.10-v6 Patterns (Previous)
-
+- Port reconnection circuit breaker, adaptive dedup window
 - Type-safe tab ID handling with `normalizeOriginTabId(value)`
-- Async tab ID initialization with `waitForTabIdInit(timeoutMs)`
-- Container ID normalization, dual ownership validation
+- Atomic operations, container isolation, adoption re-render
 
-### v1.6.3.10-v5 & Earlier Patterns (Consolidated)
+### Key Timing Constants (v1.6.3.10-v9)
 
-- Atomic operations, exponential backoff, per-Quick Tab circuit breaker
-- Container isolation, cross-tab validation, Scripting API fallback
-- Adoption re-render, TabLifecycleHandler, orphan detection
-
-### Key Timing Constants (v1.6.3.10-v7)
-
-| Constant                            | Value                 | Purpose                              |
-| ----------------------------------- | --------------------- | ------------------------------------ |
-| `STORAGE_KEY`                       | 'quick_tabs_state_v2' | Storage key name                     |
-| `INIT_BARRIER_TIMEOUT_MS`           | 10000                 | Unified barrier init timeout         |
-| `RENDER_DEBOUNCE_MS`                | 100                   | Render queue debounce (was 300)      |
-| `MESSAGE_TIMEOUT_MS`                | 3000                  | runtime.sendMessage timeout          |
-| `MAX_CONSECUTIVE_FAILURES`          | 5                     | Port circuit breaker failure limit   |
-| `CIRCUIT_BREAKER_BACKOFF_MAX_MS`    | 30000                 | Port circuit breaker max backoff     |
-| `GRACE_PERIOD_MS`                   | 5000                  | Port reconnect grace period          |
-| `ADAPTIVE_DEDUP_MIN_MS`             | 2000                  | Min adaptive dedup window            |
-| `ADAPTIVE_DEDUP_MAX_MS`             | 10000                 | Max adaptive dedup window            |
-| `STORAGE_DEDUP_WINDOW_MS`           | 200                   | Storage event dedup window           |
-| `MESSAGE_QUEUE_MAX_SIZE`            | 50                    | Port message queue limit             |
-| `HOST_INFO_MAX_ENTRIES`             | 500                   | quickTabHostInfo max entries         |
-| `HOST_INFO_MAINTENANCE_INTERVAL_MS` | 300000                | Host info cleanup (5 minutes)        |
-| `ADOPTED_QUICKTAB_TTL_MS`           | 5000                  | Adoption ownership TTL               |
-| `STORAGE_WRITE_MAX_RETRIES`         | 3                     | Storage write retry limit            |
-| `PORT_VIABILITY_MIN_TIMEOUT_MS`     | 700                   | Min port viability timeout           |
-| `PORT_VIABILITY_MAX_TIMEOUT_MS`     | 3000                  | Max port viability timeout           |
-| `DEFERRED_EXPIRATION_WAIT_MS`       | 500                   | Snapshot TTL deferred wait           |
-| `OPERATION_LOCK_MS`                 | 2000                  | Mediator operation lock (was 500)    |
-| `SNAPSHOT_TIMEOUT_MS`               | 1000                  | MinimizedManager snapshot expiration |
-| `MAX_QUICK_TABS`                    | 100                   | Maximum Quick Tabs allowed           |
+| Constant                         | Value                 | Purpose                            |
+| -------------------------------- | --------------------- | ---------------------------------- |
+| `STORAGE_KEY`                    | 'quick_tabs_state_v2' | Storage key name                   |
+| `INIT_BARRIER_TIMEOUT_MS`        | 10000                 | Unified barrier init timeout       |
+| `RENDER_DEBOUNCE_MS`             | 100                   | Render queue debounce              |
+| `MESSAGE_TIMEOUT_MS`             | 3000                  | runtime.sendMessage timeout        |
+| `WRITE_COALESCE_MIN_INTERVAL_MS` | 100                   | Write rate-limiting interval       |
+| `DUPLICATE_SAVEID_WINDOW_MS`     | 5000                  | Duplicate detection window         |
+| `PERSIST_STORAGE_TIMEOUT_MS`     | 5000                  | Storage persist timeout            |
+| `Z_INDEX_RECYCLE_THRESHOLD`      | 100000                | Z-index recycling threshold        |
+| `PENDING_SNAPSHOT_EXPIRATION_MS` | 5000                  | Snapshot watchdog timeout          |
+| `OPERATION_LOCK_MS`              | 2000                  | Mediator operation lock            |
+| `MAX_QUICK_TABS`                 | 100                   | Maximum Quick Tabs allowed         |
 
 ---
 
@@ -196,18 +168,13 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 `logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
 `validateOwnershipForWrite()`, `_computeStateChecksum()`
 
-**v1.6.3.10-v7 New Exports:** `_enqueueStorageWrite()`, `_processWriteQueue()`,
-`_performStorageWrite()`, `_isStorageEventDuplicate()`, `_trackAdoptedQuickTab()`,
-`_getAdoptionOwnership()`, `_validateMessageSequence()`
+**v1.6.3.10-v9 New Exports:** `waitForIdentityInit()`, `waitForContainerIdInit()`,
+`checkStorageQuota()`, `classifyStorageError()`, `validateStorageEventOrdering()`,
+`IDENTITY_STATE_MODE`, `STORAGE_ERROR_TYPE`, `NORMALIZATION_REJECTION_REASON`,
+`OWNERSHIP_FILTER_REASON`, `TAB_ID_CALLER_CONTEXT`
 
-**v1.6.3.10-v6 Exports:** `normalizeOriginTabId()`, `waitForTabIdInit()`,
-`normalizeOriginContainerId()`, `serializeTabForStorage()`
-
-**Schema v2 Exports:** `validateStateWithDiagnostics()`, `version: 2` field,
-`getQuickTabsByOriginTabIdAndContainer()`, `getQuickTabsByContainerId()`
-
-**Browser API Exports:** `getTabsByContainer()`, `validateTabExists()`,
-`getTabContainerId()`, `areTabsInSameContainer()`, `getAllContainers()`
+**v1.6.3.10-v8 & Earlier Exports:** `normalizeOriginTabId()`, `waitForTabIdInit()`,
+`normalizeOriginContainerId()`, `_enqueueStorageWrite()`, `_performStorageWrite()`
 
 ---
 

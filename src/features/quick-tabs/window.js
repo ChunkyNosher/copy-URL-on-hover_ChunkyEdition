@@ -544,6 +544,11 @@ export class QuickTabWindow {
    * @private
    */
   _handleDragStart(x, y) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      console.warn('[QuickTabWindow] Drag start ignored - window destroyed:', this.id);
+      return;
+    }
     console.log('[QuickTabWindow] Drag started:', this.id, x, y);
     this.isDragging = true;
     if (this.onFocus) {
@@ -557,13 +562,20 @@ export class QuickTabWindow {
   /**
    * Handle drag event (position update)
    * v1.6.3.4-v11 - Extracted from render() callback
+   * v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag
    * @private
    */
   _handleDrag(newX, newY) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      return;
+    }
     this.left = newX;
     this.top = newY;
-    this.container.style.left = `${newX}px`;
-    this.container.style.top = `${newY}px`;
+    if (this.container) {
+      this.container.style.left = `${newX}px`;
+      this.container.style.top = `${newY}px`;
+    }
 
     if (this.onPositionChange) {
       this.onPositionChange(this.id, newX, newY);
@@ -573,9 +585,15 @@ export class QuickTabWindow {
   /**
    * Handle drag end event
    * v1.6.3.4-v11 - Extracted from render() callback
+   * v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag
    * @private
    */
   _handleDragEnd(finalX, finalY) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      console.warn('[QuickTabWindow] Drag end ignored - window destroyed:', this.id);
+      return;
+    }
     console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
     this.isDragging = false;
 
@@ -590,9 +608,15 @@ export class QuickTabWindow {
   /**
    * Handle drag cancel event (emergency save)
    * v1.6.3.4-v11 - Extracted from render() callback
+   * v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag
    * @private
    */
   _handleDragCancel(lastX, lastY) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      console.warn('[QuickTabWindow] Drag cancel ignored - window destroyed:', this.id);
+      return;
+    }
     console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
     this.isDragging = false;
 
@@ -840,6 +864,19 @@ export class QuickTabWindow {
   }
 
   minimize() {
+    // v1.6.3.10-v10 - FIX Issue 7.1: Validate ownership before minimize
+    // This ensures titlebar minimize button respects ownership rules
+    if (this.originTabId !== null && this.originTabId !== undefined) {
+      if (this.currentTabId !== null && this.originTabId !== this.currentTabId) {
+        console.warn('[QuickTabWindow][minimize] BLOCKED - not owned by current tab:', {
+          id: this.id,
+          originTabId: this.originTabId,
+          currentTabId: this.currentTabId
+        });
+        return;
+      }
+    }
+
     // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
     this.isMinimizing = true;
     this.minimized = true;
@@ -1372,6 +1409,28 @@ export class QuickTabWindow {
    */
   isRendered() {
     return Boolean(this.rendered && this.container && this.container.parentNode);
+  }
+
+  /**
+   * Check if Quick Tab is active (in Map and rendered/can be rendered)
+   * v1.6.3.10-v10 - FIX Issue 4.2: Check both Map presence AND rendered state
+   * This distinguishes between:
+   * - Active: In Map AND either rendered or can be rendered (not minimized or about to be restored)
+   * - Minimized: In Map but container is null (waiting for restore)
+   * - Destroyed: Not in Map
+   * @returns {boolean} True if Quick Tab is active and can accept operations
+   */
+  isActive() {
+    // If destroyed, definitely not active
+    if (this.destroyed) {
+      return false;
+    }
+    // If minimized, not currently active (but exists)
+    if (this.minimized) {
+      return false;
+    }
+    // If rendered with valid container, active
+    return this.isRendered();
   }
 
   /**
