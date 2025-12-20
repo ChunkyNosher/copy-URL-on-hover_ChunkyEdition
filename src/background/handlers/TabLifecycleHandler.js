@@ -9,6 +9,11 @@
  *
  * v1.6.4.15 - FIX Issue #19: Container context updated during tab adoption
  * v1.6.4.15 - FIX Issue #20: triggerPostAdoptionPersistence() hook called after adoption
+ * 
+ * v1.6.4.16 - FIX Issue #23: Tab cleanup handler with storage cleanup callback
+ * - Added onTabRemovedCallback for external cleanup notifications
+ * - Enhanced cleanup with [TAB_CLEANUP] logging prefix
+ * - Track registered listeners for proper cleanup
  */
 
 export class TabLifecycleHandler {
@@ -26,10 +31,15 @@ export class TabLifecycleHandler {
     };
     // v1.6.4.15 - FIX Issue #20: Post-adoption persistence callback
     this._postAdoptionPersistCallback = null;
+    // v1.6.4.16 - FIX Issue #23: Tab removal cleanup callback
+    this._onTabRemovedCallback = null;
+    // v1.6.4.16 - FIX Issue C: Track registered listener count for cleanup verification
+    this._registeredListenerCount = 0;
   }
 
   /**
    * Initialize and start listening to tab events
+   * v1.6.4.16 - FIX Issue C: Track listener count for cleanup verification
    */
   async start() {
     console.log('[TAB_LIFECYCLE] Handler starting...');
@@ -48,29 +58,43 @@ export class TabLifecycleHandler {
     browser.tabs.onUpdated.addListener(this._boundHandlers.onUpdated);
     browser.tabs.onActivated.addListener(this._boundHandlers.onActivated);
     browser.tabs.onRemoved.addListener(this._boundHandlers.onRemoved);
+    
+    // v1.6.4.16 - FIX Issue C: Track registered listeners
+    this._registeredListenerCount = 4;
+    console.log('[LISTENER_CLEANUP] Registered 4 tab event listeners');
 
     console.log('[TAB_LIFECYCLE] Listeners registered, tracking', this.openTabs.size, 'tabs');
   }
 
   /**
    * Stop listening to tab events and cleanup
+   * v1.6.4.16 - FIX Issue C: Enhanced listener cleanup logging
    */
   stop() {
     console.log('[TAB_LIFECYCLE] Handler stopping...');
+    
+    let removedCount = 0;
 
     // Remove listeners if they were registered
     if (this._boundHandlers.onCreated) {
       browser.tabs.onCreated.removeListener(this._boundHandlers.onCreated);
+      removedCount++;
     }
     if (this._boundHandlers.onUpdated) {
       browser.tabs.onUpdated.removeListener(this._boundHandlers.onUpdated);
+      removedCount++;
     }
     if (this._boundHandlers.onActivated) {
       browser.tabs.onActivated.removeListener(this._boundHandlers.onActivated);
+      removedCount++;
     }
     if (this._boundHandlers.onRemoved) {
       browser.tabs.onRemoved.removeListener(this._boundHandlers.onRemoved);
+      removedCount++;
     }
+    
+    // v1.6.4.16 - FIX Issue C: Log listener cleanup
+    console.log('[LISTENER_CLEANUP] Removed', removedCount, 'of', this._registeredListenerCount, 'tab event listeners');
 
     // Clear bound handlers
     this._boundHandlers = {
@@ -83,6 +107,7 @@ export class TabLifecycleHandler {
     // Clear state
     this.openTabs.clear();
     this.activeTabId = null;
+    this._registeredListenerCount = 0;
 
     console.log('[TAB_LIFECYCLE] Handler stopped');
   }
@@ -206,7 +231,8 @@ export class TabLifecycleHandler {
   }
 
   /**
-   * Handle tab removed - updates internal state tracking
+   * Handle tab removed - updates internal state tracking and triggers cleanup
+   * v1.6.4.16 - FIX Issue #23: Enhanced with cleanup callback and logging
    * Note: Orphan detection is handled by background.js handleTabRemoved
    * This method keeps the TabLifecycleHandler's internal state in sync
    * @param {number} tabId - ID of closed tab
@@ -215,6 +241,9 @@ export class TabLifecycleHandler {
   handleTabRemoved(tabId, removeInfo) {
     console.log('[TAB_LIFECYCLE] Tab removed:', { tabId, removeInfo });
 
+    // Get tab info before removing (for cleanup callback)
+    const closedTabInfo = this.openTabs.get(tabId);
+
     // Remove from our snapshot
     this.openTabs.delete(tabId);
 
@@ -222,6 +251,38 @@ export class TabLifecycleHandler {
     if (this.activeTabId === tabId) {
       this.activeTabId = null;
     }
+    
+    // v1.6.4.16 - FIX Issue #23: Invoke cleanup callback if registered
+    if (typeof this._onTabRemovedCallback === 'function') {
+      console.log('[TAB_CLEANUP] Invoking tab removal cleanup callback:', {
+        tabId,
+        isWindowClosing: removeInfo?.isWindowClosing,
+        hasTabInfo: !!closedTabInfo
+      });
+      
+      try {
+        this._onTabRemovedCallback(tabId, removeInfo, closedTabInfo);
+        console.log('[TAB_CLEANUP] Cleanup callback completed for tab:', tabId);
+      } catch (err) {
+        console.error('[TAB_CLEANUP] Cleanup callback failed:', {
+          tabId,
+          error: err.message
+        });
+      }
+    }
+  }
+  
+  /**
+   * Set callback for tab removal cleanup
+   * v1.6.4.16 - FIX Issue #23: Allow external cleanup logic registration
+   * @param {Function} callback - Callback to invoke when tab is removed
+   *   Signature: (tabId, removeInfo, closedTabInfo) => void
+   */
+  setOnTabRemovedCallback(callback) {
+    this._onTabRemovedCallback = callback;
+    console.log('[TAB_CLEANUP] Tab removal callback registered:', {
+      hasCallback: typeof callback === 'function'
+    });
   }
 
   /**

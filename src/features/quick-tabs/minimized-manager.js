@@ -64,6 +64,103 @@ function extractTabIdFromQuickTabId(quickTabId) {
 }
 
 /**
+ * Validate position fields in snapshot
+ * v1.6.4.16 - FIX Issue #25: Helper to reduce complexity
+ * @private
+ * @param {Object} savedPosition - Position object
+ * @param {string[]} errors - Errors array to append to
+ */
+function _validateSnapshotPosition(savedPosition, errors) {
+  if (!savedPosition || typeof savedPosition !== 'object') {
+    errors.push('Missing or invalid savedPosition object');
+    return;
+  }
+  if (typeof savedPosition.left !== 'number' || !Number.isFinite(savedPosition.left)) {
+    errors.push('Invalid savedPosition.left: must be a finite number');
+  }
+  if (typeof savedPosition.top !== 'number' || !Number.isFinite(savedPosition.top)) {
+    errors.push('Invalid savedPosition.top: must be a finite number');
+  }
+}
+
+/**
+ * Validate size fields in snapshot
+ * v1.6.4.16 - FIX Issue #25: Helper to reduce complexity
+ * @private
+ * @param {Object} savedSize - Size object
+ * @param {string[]} errors - Errors array to append to
+ */
+function _validateSnapshotSize(savedSize, errors) {
+  if (!savedSize || typeof savedSize !== 'object') {
+    errors.push('Missing or invalid savedSize object');
+    return;
+  }
+  if (typeof savedSize.width !== 'number' || savedSize.width <= 0) {
+    errors.push('Invalid savedSize.width: must be a positive number');
+  }
+  if (typeof savedSize.height !== 'number' || savedSize.height <= 0) {
+    errors.push('Invalid savedSize.height: must be a positive number');
+  }
+}
+
+/**
+ * Log snapshot validation result
+ * v1.6.4.16 - FIX Issue #25: Helper to reduce complexity
+ * @private
+ */
+function _logSnapshotValidationResult(valid, errors, snapshot, context) {
+  if (!valid) {
+    console.warn('[SNAPSHOT_VALIDATE] Validation failed:', {
+      context,
+      errorCount: errors.length,
+      errors,
+      snapshotKeys: Object.keys(snapshot || {})
+    });
+  } else {
+    console.log('[SNAPSHOT_VALIDATE] Validation passed:', {
+      context,
+      position: snapshot.savedPosition,
+      size: snapshot.savedSize,
+      hasWindow: !!snapshot.window,
+      hasOriginTabId: snapshot.savedOriginTabId !== undefined
+    });
+  }
+}
+
+/**
+ * Validate snapshot structural integrity before deserialization
+ * v1.6.4.16 - FIX Issue #25: No validation of snapshot structural integrity
+ * Checks that all required fields exist and have valid values
+ * @param {Object} snapshot - Snapshot object to validate
+ * @param {string} context - Context for logging (e.g., 'restore', 'hydration')
+ * @returns {{ valid: boolean, errors: string[] }} Validation result
+ */
+export function validateSnapshotIntegrity(snapshot, context = 'unknown') {
+  const errors = [];
+  
+  // Check if snapshot exists
+  if (!snapshot) {
+    errors.push('Snapshot is null or undefined');
+    console.warn('[SNAPSHOT_VALIDATE] Validation failed:', { context, errors });
+    return { valid: false, errors };
+  }
+  
+  // Validate position and size using helpers
+  _validateSnapshotPosition(snapshot.savedPosition, errors);
+  _validateSnapshotSize(snapshot.savedSize, errors);
+  
+  // Check window reference (optional but logged)
+  if (!snapshot.window) {
+    console.log('[SNAPSHOT_VALIDATE] Warning: Snapshot has no window reference:', { context });
+  }
+  
+  const valid = errors.length === 0;
+  _logSnapshotValidationResult(valid, errors, snapshot, context);
+  
+  return { valid, errors };
+}
+
+/**
  * MinimizedManager class - Tracks and manages minimized Quick Tabs
  * v1.6.3.4-v4 - Stores immutable snapshots of position/size to prevent corruption by duplicate windows
  * v1.6.3.4-v10 - FIX Issue #1: Snapshot lifecycle - keep until UICoordinator confirms successful render
