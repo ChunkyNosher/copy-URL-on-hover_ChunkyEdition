@@ -100,6 +100,12 @@ const MAX_LATENCY_SAMPLES = 20;
 let observedStorageLatencyMs = 100; // Default 100ms, updated dynamically
 const DEDUP_WINDOW_LATENCY_MULTIPLIER = 1.5; // Use 1.5x observed latency for dedup window
 
+// v1.6.3.10-v13 - FIX Issue #9: Periodic latency re-measurement
+// Re-measure latency every 30 seconds to adapt to network changes
+const LATENCY_REMEASUREMENT_INTERVAL_MS = 30000;
+let latencyRemeasurementTimerId = null;
+let _lastLatencyMeasurementTime = 0;
+
 // v1.6.3.10-v9 - FIX Issue E: Normalization rejection reason codes
 /**
  * Reason codes for originTabId normalization rejection
@@ -262,6 +268,164 @@ export const OWNERSHIP_FILTER_REASON = {
   LEGACY_FALLBACK: 'LEGACY_FALLBACK', // originContainerId is null (pre-v4 Quick Tab)
   NO_OWNERSHIP_DATA: 'NO_OWNERSHIP_DATA' // originTabId is null - can't determine ownership
 };
+
+// ==================== v1.6.3.10-v12 FIX ISSUE #5: TAB ID PENDING OPERATION QUEUE ====================
+// Queue storage operations while Tab ID is being initialized
+// This prevents "DUAL-BLOCK CHECK FAILED" errors during startup
+
+/**
+ * Pending storage operations waiting for Tab ID initialization
+ * v1.6.3.10-v12 - FIX Issue #5: Queue operations while Tab ID is null
+ * Each entry: { operation: Function, enqueuedAt: number, operationId: string, resolve: Function, reject: Function }
+ */
+const tabIdPendingOperationQueue = [];
+
+/**
+ * Maximum pending operations before queue overflow protection
+ * v1.6.3.10-v12 - FIX Issue #5
+ */
+const TAB_ID_QUEUE_MAX_SIZE = 50;
+
+/**
+ * Maximum time an operation can wait in queue (ms)
+ * v1.6.3.10-v12 - FIX Issue #5
+ */
+const TAB_ID_QUEUE_TIMEOUT_MS = 10000;
+
+/**
+ * Retry delays for Tab ID pending operations (exponential backoff)
+ * v1.6.3.10-v12 - FIX Issue #5: Retry delays: 100ms, 200ms, 400ms, 800ms, 1600ms
+ */
+const _TAB_ID_PENDING_RETRY_DELAYS_MS = [100, 200, 400, 800, 1600];
+
+/**
+ * Counter for generating unique operation IDs
+ * v1.6.3.10-v12 - FIX Issue #5
+ */
+let tabIdQueueOperationCounter = 0;
+
+/**
+ * Generate unique operation ID for Tab ID queue
+ * v1.6.3.10-v12 - FIX Issue #5
+ * @private
+ * @returns {string} Unique operation ID
+ */
+function _generateTabIdQueueOperationId() {
+  tabIdQueueOperationCounter = (tabIdQueueOperationCounter + 1) % COUNTER_WRAP_LIMIT;
+  return `tabid-op-${Date.now()}-${tabIdQueueOperationCounter}`;
+}
+
+/**
+ * Queue a storage operation to wait for Tab ID initialization
+ * v1.6.3.10-v12 - FIX Issue #5: Instead of failing, queue the operation
+ * @param {Function} operation - Async function to execute once Tab ID is ready
+ * @param {string} callerContext - Context string for logging
+ * @returns {Promise<*>} Result of the operation when Tab ID becomes available
+ */
+export function queueOperationForTabId(operation, callerContext = 'unknown') {
+  return new Promise((resolve, reject) => {
+    const operationId = _generateTabIdQueueOperationId();
+    
+    // Check queue size for backpressure
+    if (tabIdPendingOperationQueue.length >= TAB_ID_QUEUE_MAX_SIZE) {
+      console.error('[StorageUtils] v1.6.3.10-v12 TAB_ID_QUEUE_OVERFLOW:', {
+        queueSize: tabIdPendingOperationQueue.length,
+        maxSize: TAB_ID_QUEUE_MAX_SIZE,
+        operationId,
+        callerContext,
+        droppingOperation: true
+      });
+      reject(new Error('Tab ID queue overflow - operation dropped'));
+      return;
+    }
+    
+    const queueEntry = {
+      operation,
+      enqueuedAt: Date.now(),
+      operationId,
+      callerContext,
+      resolve,
+      reject
+    };
+    
+    tabIdPendingOperationQueue.push(queueEntry);
+    
+    console.log('[StorageUtils] v1.6.3.10-v12 OPERATION_QUEUED_FOR_TAB_ID:', {
+      operationId,
+      callerContext,
+      queueSize: tabIdPendingOperationQueue.length,
+      currentWritingTabId,
+      isTabIdInitialized: currentWritingTabId !== null
+    });
+    
+    // Set timeout for operation expiry
+    setTimeout(() => {
+      const index = tabIdPendingOperationQueue.findIndex(e => e.operationId === operationId);
+      if (index !== -1) {
+        tabIdPendingOperationQueue.splice(index, 1);
+        console.warn('[StorageUtils] v1.6.3.10-v12 TAB_ID_QUEUE_TIMEOUT:', {
+          operationId,
+          callerContext,
+          waitedMs: Date.now() - queueEntry.enqueuedAt,
+          timeoutMs: TAB_ID_QUEUE_TIMEOUT_MS
+        });
+        reject(new Error(`Tab ID queue timeout after ${TAB_ID_QUEUE_TIMEOUT_MS}ms`));
+      }
+    }, TAB_ID_QUEUE_TIMEOUT_MS);
+  });
+}
+
+/**
+ * Drain the Tab ID pending operation queue
+ * v1.6.3.10-v12 - FIX Issue #5: Execute queued operations once Tab ID is available
+ * @private
+ */
+async function _drainTabIdPendingQueue() {
+  if (tabIdPendingOperationQueue.length === 0) return;
+  
+  console.log('[StorageUtils] v1.6.3.10-v12 DRAINING_TAB_ID_QUEUE:', {
+    queueSize: tabIdPendingOperationQueue.length,
+    currentWritingTabId
+  });
+  
+  while (tabIdPendingOperationQueue.length > 0) {
+    const entry = tabIdPendingOperationQueue.shift();
+    const queueDuration = Date.now() - entry.enqueuedAt;
+    
+    console.log('[StorageUtils] v1.6.3.10-v12 EXECUTING_QUEUED_OPERATION:', {
+      operationId: entry.operationId,
+      callerContext: entry.callerContext,
+      queueDurationMs: queueDuration
+    });
+    
+    try {
+      const result = await entry.operation();
+      entry.resolve(result);
+    } catch (err) {
+      console.error('[StorageUtils] v1.6.3.10-v12 QUEUED_OPERATION_FAILED:', {
+        operationId: entry.operationId,
+        error: err.message
+      });
+      entry.reject(err);
+    }
+  }
+}
+
+/**
+ * Get Tab ID queue status for diagnostics
+ * v1.6.3.10-v12 - FIX Issue #5: Expose queue status
+ * @returns {{queueSize: number, oldestEntryAge: number|null, isTabIdReady: boolean}}
+ */
+export function getTabIdQueueStatus() {
+  const oldestEntry = tabIdPendingOperationQueue[0];
+  return {
+    queueSize: tabIdPendingOperationQueue.length,
+    oldestEntryAge: oldestEntry ? Date.now() - oldestEntry.enqueuedAt : null,
+    isTabIdReady: currentWritingTabId !== null
+  };
+}
+
+// ==================== END ISSUE #5 FIX ====================
 
 // v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern with rollback capability
 // Stores state snapshots for rollback on failure
@@ -500,6 +664,117 @@ export function acknowledgeStorageWrite(transactionId) {
   });
   
   pending.resolve();
+}
+
+// v1.6.3.10-v13 - FIX Issue #9: Periodic latency re-measurement functions
+
+/**
+ * Force a storage latency measurement by writing a probe value
+ * v1.6.3.10-v13 - FIX Issue #9: Measure current latency to adapt to network conditions
+ * @returns {Promise<number>} Measured latency in milliseconds
+ */
+export function measureStorageLatency() {
+  const probeTransactionId = `latency-probe-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const measureStartTime = Date.now();
+  
+  return new Promise((resolve) => {
+    // Set timeout for measurement
+    const timeout = setTimeout(() => {
+      console.warn('[StorageUtils] LATENCY_MEASUREMENT_TIMEOUT:', {
+        probeTransactionId,
+        elapsedMs: Date.now() - measureStartTime,
+        usingDefault: observedStorageLatencyMs
+      });
+      resolve(observedStorageLatencyMs); // Use current value on timeout
+    }, STORAGE_TIMEOUT_MS);
+    
+    // Track the probe
+    pendingStorageAcks.set(probeTransactionId, {
+      startTime: measureStartTime,
+      resolve: () => {
+        clearTimeout(timeout);
+        const latencyMs = Date.now() - measureStartTime;
+        _lastLatencyMeasurementTime = Date.now();
+        
+        console.log('[StorageUtils] LATENCY_MEASUREMENT_COMPLETE:', {
+          probeTransactionId,
+          measuredLatencyMs: latencyMs,
+          previousAverageMs: observedStorageLatencyMs,
+          newDedupWindowMs: getAdaptiveDedupWindow()
+        });
+        
+        resolve(latencyMs);
+      },
+      timeout
+    });
+    
+    // Write probe to storage (will trigger onChanged which calls acknowledgeStorageWrite)
+    const browserAPI = getBrowserStorageAPI();
+    if (browserAPI?.storage?.local) {
+      browserAPI.storage.local.set({
+        _latency_probe: { transactionId: probeTransactionId, timestamp: measureStartTime }
+      }).catch(err => {
+        console.warn('[StorageUtils] LATENCY_PROBE_WRITE_FAILED:', { error: err.message });
+        clearTimeout(timeout);
+        pendingStorageAcks.delete(probeTransactionId);
+        resolve(observedStorageLatencyMs);
+      });
+    } else {
+      clearTimeout(timeout);
+      resolve(observedStorageLatencyMs);
+    }
+  });
+}
+
+/**
+ * Start periodic latency re-measurement
+ * v1.6.3.10-v13 - FIX Issue #9: Adapt to network condition changes
+ * @param {number} [intervalMs=30000] - Re-measurement interval in milliseconds
+ */
+export function startPeriodicLatencyMeasurement(intervalMs = LATENCY_REMEASUREMENT_INTERVAL_MS) {
+  if (latencyRemeasurementTimerId !== null) {
+    console.log('[StorageUtils] LATENCY_REMEASUREMENT_ALREADY_RUNNING');
+    return;
+  }
+  
+  latencyRemeasurementTimerId = setInterval(async () => {
+    const previousLatency = observedStorageLatencyMs;
+    const previousDedupWindow = getAdaptiveDedupWindow();
+    
+    await measureStorageLatency();
+    
+    const newDedupWindow = getAdaptiveDedupWindow();
+    
+    // Log if dedup window changed significantly (>20%)
+    const windowChange = Math.abs(newDedupWindow - previousDedupWindow) / previousDedupWindow;
+    if (windowChange > 0.2) {
+      console.log('[StorageUtils] DEDUP_WINDOW_RECALCULATED:', {
+        previousLatencyMs: previousLatency,
+        newLatencyMs: observedStorageLatencyMs,
+        previousDedupWindowMs: previousDedupWindow,
+        newDedupWindowMs: newDedupWindow,
+        changePercent: (windowChange * 100).toFixed(1)
+      });
+    }
+  }, intervalMs);
+  
+  console.log('[StorageUtils] PERIODIC_LATENCY_MEASUREMENT_STARTED:', {
+    intervalMs,
+    currentLatencyMs: observedStorageLatencyMs,
+    currentDedupWindowMs: getAdaptiveDedupWindow()
+  });
+}
+
+/**
+ * Stop periodic latency re-measurement
+ * v1.6.3.10-v13 - FIX Issue #9: Cleanup on unload
+ */
+export function stopPeriodicLatencyMeasurement() {
+  if (latencyRemeasurementTimerId !== null) {
+    clearInterval(latencyRemeasurementTimerId);
+    latencyRemeasurementTimerId = null;
+    console.log('[StorageUtils] PERIODIC_LATENCY_MEASUREMENT_STOPPED');
+  }
 }
 
 // v1.6.3.6-v2 - FIX Issue #3: Track tabs that have ever created/owned Quick Tabs
@@ -976,11 +1251,22 @@ export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNK
     callerContext,
     isValidContext,
     durationMs: Date.now() - setStartTime,
+    pendingOperationsInQueue: tabIdPendingOperationQueue.length,
     timestamp: new Date().toISOString()
   });
 
   // v1.6.3.10-v6 - FIX Issue #4/11/12: Resolve waiting promise for waitForTabIdInit()
   _resolveTabIdInitPromise(tabId, 'setWritingTabId()');
+  
+  // v1.6.3.10-v12 - FIX Issue #5: Drain pending operations now that Tab ID is available
+  if (tabIdPendingOperationQueue.length > 0) {
+    console.log('[Storage-Init] v1.6.3.10-v12 TRIGGERING_PENDING_QUEUE_DRAIN:', {
+      queueSize: tabIdPendingOperationQueue.length,
+      newTabId: tabId
+    });
+    // Use setTimeout to avoid blocking the setWritingTabId call
+    setTimeout(() => _drainTabIdPendingQueue(), 0);
+  }
 }
 
 /**
@@ -1929,13 +2215,15 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
 
   // v1.6.3.6-v3 - FIX Issue #1: Block writes with unknown tab ID (fail-closed approach)
   // v1.6.3.10-v7 - FIX Diagnostic Issue #1, #2, #14: Enhanced logging showing which check failed
+  // v1.6.3.10-v12 - FIX Issue #5: Instead of failing, indicate operation should be queued
   // Previously this allowed writes with unknown tab ID, which caused:
   // - Self-write detection to fail (isSelfWrite returns false)
   // - Empty state corruption from non-owner tabs
-  // Now we block writes until tab ID is initialized
+  // Now we indicate the operation should be queued until tab ID is initialized
   if (tabId === null) {
     // v1.6.3.10-v7 - FIX Issue #14: Specific diagnostic log showing currentTabId check failed
-    console.warn('[StorageUtils] Storage write BLOCKED - DUAL-BLOCK CHECK FAILED:', {
+    // v1.6.3.10-v12 - FIX Issue #5: Changed from BLOCKED to PENDING_TAB_ID
+    console.warn('[StorageUtils] Storage write PENDING_TAB_ID - waiting for Tab ID initialization:', {
       checkFailed: 'currentTabId is null',
       currentWritingTabId,
       passedTabId: currentTabId,
@@ -1944,10 +2232,16 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
       forceEmpty,
       currentContainerId: containerId,
       isWritingTabIdInitialized: currentWritingTabId !== null,
-      suggestion:
-        'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
+      pendingQueueSize: tabIdPendingOperationQueue.length,
+      suggestion: 'Operation will be queued and executed when Tab ID becomes available'
     });
-    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety (currentTabId null)' };
+    return { 
+      shouldWrite: false, 
+      ownedTabs: [], 
+      reason: 'unknown tab ID - pending Tab ID initialization',
+      shouldQueue: true,  // v1.6.3.10-v12 - New flag to indicate queuing
+      queueReason: 'TAB_ID_PENDING'
+    };
   }
 
   // v1.6.3.10-v6 - FIX Issue #13: Filter by both tab ID and container ID
@@ -4342,12 +4636,13 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
  * v1.6.3.5-v4 - Extracted to reduce persistStateToStorage complexity
  * v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to validateOwnershipForWrite for proper empty write validation
  * v1.6.3.10-v7 - FIX Diagnostic Issue #7, #14: Enhanced logging showing storage write status
+ * v1.6.3.10-v12 - FIX Issue #5: Return shouldQueue flag for Tab ID pending operations
  * @private
  * @param {Object} state - State to validate
  * @param {boolean} forceEmpty - Whether empty writes are forced
  * @param {string} logPrefix - Logging prefix
  * @param {string} transactionId - Transaction ID for logging
- * @returns {{ shouldProceed: boolean }}
+ * @returns {{ shouldProceed: boolean, shouldQueue?: boolean, queueReason?: string }}
  */
 function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) {
   // v1.6.3.10-v7 - FIX Issue #7: Log storage write initiated
@@ -4363,6 +4658,21 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
   // This allows validateOwnershipForWrite to properly handle empty writes
   const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId, forceEmpty);
   if (!ownershipCheck.shouldWrite) {
+    // v1.6.3.10-v12 - FIX Issue #5: Check if operation should be queued instead of rejected
+    if (ownershipCheck.shouldQueue) {
+      console.log(`${logPrefix} STORAGE_WRITE_QUEUED [${transactionId}]:`, {
+        reason: ownershipCheck.reason,
+        queueReason: ownershipCheck.queueReason,
+        tabCount: state.tabs.length,
+        pendingQueueSize: tabIdPendingOperationQueue.length
+      });
+      return { 
+        shouldProceed: false, 
+        shouldQueue: true,
+        queueReason: ownershipCheck.queueReason
+      };
+    }
+    
     // v1.6.3.10-v7 - FIX Issue #7, #14: Enhanced diagnostic logging when blocked
     console.warn(`${logPrefix} STORAGE_WRITE_BLOCKED [${transactionId}]:`, {
       reason: ownershipCheck.reason,
@@ -4601,6 +4911,25 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   // Phase 3: Validate ownership
   const ownershipResult = _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId);
   if (!ownershipResult.shouldProceed) {
+    // v1.6.3.10-v12 - FIX Issue #5: Check if we should queue the operation
+    if (ownershipResult.shouldQueue) {
+      console.log('[StorageWrite] LIFECYCLE_QUEUED_FOR_TAB_ID:', {
+        correlationId: writeCorrelationId,
+        transactionId,
+        phase: 'TAB_ID_PENDING',
+        queueReason: ownershipResult.queueReason,
+        tabCount,
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Queue the entire persist operation to be retried once Tab ID is available
+      return queueOperationForTabId(
+        () => persistStateToStorage(state, logPrefix, forceEmpty),
+        `persistStateToStorage[${transactionId}]`
+      );
+    }
+    
     // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
     console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
       correlationId: writeCorrelationId,

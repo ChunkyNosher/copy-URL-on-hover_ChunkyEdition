@@ -180,6 +180,16 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #3: Unified deletion behavior between UI button and Manager close button
  * - CLOSE_QUICK_TAB handler now accepts 'source' parameter for cross-tab broadcast handling
  * - Background broadcasts deletion to all tabs, content scripts filter by ownership
+ *
+ * v1.6.3.10-v12 Changes:
+ * - FIX Issue #5: Add sequenceId to CREATE_QUICK_TAB messages for ordering enforcement
+ * - FIX Issue #22: VisibilityHandler consistency checks started automatically
+ * - FIX Issue #3: Extended state machine with CREATING, CLOSING, ERROR states
+ * - FIX Issue #1: Port onDisconnect race condition during initialization (port-disconnect-racing.md)
+ * - FIX Issue #2: BFCache silent port disconnection handling (pagehide/pageshow listeners)
+ * - FIX Issue #4: Periodic adoption TTL recalculation via heartbeat latency updates
+ * - FIX Issue #11: PORT_CONNECTION_STATE.RECONNECTING state for backoff distinction
+ * - FIX Issue #12: Adoption cache cleared on cross-domain navigation (beforeunload)
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -234,7 +244,13 @@ import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
-import { setWritingTabId, isWritingTabIdInitialized } from './utils/storage-utils.js';
+// v1.6.3.10-v13 - FIX Issue #9: Import periodic latency measurement functions
+import { 
+  setWritingTabId, 
+  isWritingTabIdInitialized, 
+  startPeriodicLatencyMeasurement, 
+  stopPeriodicLatencyMeasurement 
+} from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -424,9 +440,42 @@ const QUEUE_BACKPRESSURE_THRESHOLD = 75;
 /**
  * Track dropped messages for retry
  * v1.6.3.10-v11 - FIX Issue #6: Retry dropped messages
+ * v1.6.3.10-v13 - FIX Issue #6: Dynamic buffer sizing based on backpressure
  */
 const droppedMessageBuffer = [];
-const MAX_DROPPED_MESSAGES = 10;
+
+/**
+ * Base dropped messages buffer size
+ * v1.6.3.10-v13 - FIX Issue #6: Scales up during backpressure
+ */
+const BASE_DROPPED_MESSAGES = 10;
+
+/**
+ * Maximum dropped messages buffer size during high backpressure
+ * v1.6.3.10-v13 - FIX Issue #6: Increased from fixed 10 to dynamic max 50
+ */
+const MAX_DROPPED_MESSAGES_BACKPRESSURE = 50;
+
+/**
+ * Get current dropped message buffer limit based on queue backpressure
+ * v1.6.3.10-v13 - FIX Issue #6: Dynamic buffer sizing
+ * @returns {number} Current buffer limit
+ */
+function _getDroppedMessageBufferLimit() {
+  const queueDepth = initializationMessageQueue.length;
+  const queuePercent = (queueDepth / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100;
+  
+  // If queue is above 80%, increase buffer to max
+  if (queuePercent > 80) {
+    return MAX_DROPPED_MESSAGES_BACKPRESSURE;
+  }
+  // If queue is above 50%, use intermediate size
+  if (queuePercent > 50) {
+    return Math.floor(BASE_DROPPED_MESSAGES + (MAX_DROPPED_MESSAGES_BACKPRESSURE - BASE_DROPPED_MESSAGES) * 0.5);
+  }
+  
+  return BASE_DROPPED_MESSAGES;
+}
 
 /**
  * Background unresponsive timeout (ms)
@@ -525,6 +574,34 @@ let _lastHeartbeatTime = 0;  // Prefixed with _ to indicate unused (available fo
 let heartbeatIntervalId = null;
 let heartbeatFailureCount = 0;
 const HEARTBEAT_MAX_FAILURES = 3;
+
+/**
+ * Update background generation from any message response
+ * v1.6.3.10-v12 - FIX Issue #8: Track generation from all responses for restart detection
+ * @param {string} generation - Background generation ID from response
+ * @private
+ */
+function _updateBackgroundGenerationFromResponse(generation) {
+  if (!generation) return;
+  
+  // Check for restart (generation changed)
+  if (lastKnownBackgroundGeneration !== null && generation !== lastKnownBackgroundGeneration) {
+    console.log('[Content] v1.6.3.10-v12 GENERATION_MISMATCH_DETECTED:', {
+      previousGeneration: lastKnownBackgroundGeneration,
+      newGeneration: generation,
+      triggeredBy: 'message_response'
+    });
+    
+    // Trigger restart handling
+    _handleBackgroundRestart(generation);
+  } else if (lastKnownBackgroundGeneration === null) {
+    console.log('[Content] v1.6.3.10-v12 INITIAL_GENERATION_SET:', {
+      generation
+    });
+  }
+  
+  lastKnownBackgroundGeneration = generation;
+}
 
 /**
  * Track message retry state
@@ -866,11 +943,23 @@ function _handleQueueOverflow() {
 /**
  * Buffer a dropped message for later retry
  * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
+ * v1.6.3.10-v13 - FIX Issue #6: Dynamic buffer limit based on backpressure
  * @private
  * @param {Object} dropped - Dropped message entry
  */
 function _bufferDroppedMessage(dropped) {
-  if (!dropped || droppedMessageBuffer.length >= MAX_DROPPED_MESSAGES) return;
+  const currentLimit = _getDroppedMessageBufferLimit();
+  
+  if (!dropped || droppedMessageBuffer.length >= currentLimit) {
+    if (dropped) {
+      console.warn('[MSG][Content] DROPPED_MESSAGE_REJECTED: Buffer at capacity', {
+        bufferSize: droppedMessageBuffer.length,
+        currentLimit,
+        action: dropped.message?.action || dropped.message?.type || 'unknown'
+      });
+    }
+    return;
+  }
   
   droppedMessageBuffer.push({
     message: dropped.message,
@@ -880,7 +969,8 @@ function _bufferDroppedMessage(dropped) {
   });
   console.log('[MSG][Content] DROPPED_MESSAGE_BUFFERED: Will retry after background ready', {
     bufferSize: droppedMessageBuffer.length,
-    maxBuffer: MAX_DROPPED_MESSAGES
+    currentLimit,
+    isBackpressureMode: currentLimit > BASE_DROPPED_MESSAGES
   });
 }
 
@@ -1213,6 +1303,11 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
 
+    // v1.6.3.10-v12 - FIX Issue #8: Update generation ID from response for restart detection
+    if (response?.generation) {
+      _updateBackgroundGenerationFromResponse(response.generation);
+    }
+
     // v1.6.4.15 - FIX Issue #15: Check response.success first
     // v1.6.4.15 - FIX Code Health: Extract tabId handling to avoid nested depth
     const tabIdResult = _extractTabIdFromResponse(response);
@@ -1221,6 +1316,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
         attempt: attemptNumber,
         tabId: tabIdResult.tabId,
         responseFormat: tabIdResult.format,
+        generation: response?.generation,
         durationMs: duration
       });
       return { tabId: tabIdResult.tabId, error: null, retryable: false };
@@ -1234,6 +1330,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       response,
       error: response?.error,
       code: response?.code, // v1.6.4.15 - Log error code
+      generation: response?.generation,
       retryable: isRetryable,
       durationMs: duration
     });
@@ -1476,8 +1573,27 @@ const PORT_CONNECTION_STATE = {
   CONNECTING: 'CONNECTING',
   CONNECTED: 'CONNECTED',
   READY: 'READY',           // v1.6.3.10-v11 - FIX Issue #24: Handshake complete
+  RECONNECTING: 'RECONNECTING', // v1.6.3.10-v12 - FIX Issue #11: Backoff retry state
   FAILED: 'FAILED'
 };
+
+// v1.6.3.10-v12 - FIX Issue #1: Track if port disconnected during setup
+let portDisconnectedDuringSetup = false;
+
+// v1.6.3.10-v12 - FIX Issue #1: Track if port listener registration is complete
+let portListenersRegistered = false;
+
+// v1.6.3.10-v12 - FIX Issue #2: Track if port is potentially invalid due to BFCache
+let portPotentiallyInvalidDueToBFCache = false;
+
+/**
+ * Check if port is in recovery state (reconnecting or backoff)
+ * v1.6.3.10-v12 - FIX Issue #11: Distinguish retry from permanent failure
+ * @returns {boolean} True if port is in recovery state
+ */
+function isPortInRecovery() {
+  return portConnectionState === PORT_CONNECTION_STATE.RECONNECTING;
+}
 
 // v1.6.3.10-v11 - FIX Issue #24: Three-phase handshake states
 const HANDSHAKE_PHASE = {
@@ -1800,22 +1916,53 @@ function _completeHandshake() {
 /**
  * Handle handshake failure
  * v1.6.3.10-v11 - FIX Issue #24
+ * v1.6.3.10-v13 - FIX Issue #24: Enhanced logging with "Port connection phase X"
  * @param {string} reason - Failure reason
  */
 function _handleHandshakeFailure(reason) {
   _clearHandshakeTimeout();
+  
+  // v1.6.3.10-v13 - FIX Issue #24: Log which phase failed
+  const failedPhase = currentHandshakePhase;
   currentHandshakePhase = HANDSHAKE_PHASE.NONE;
   
   console.error('[Content][HANDSHAKE] FAILED:', {
     reason,
+    failedPhase,
     willRetry: reconnectionAttempts < CIRCUIT_BREAKER_MAX_FAILURES,
-    attempts: reconnectionAttempts
+    attempts: reconnectionAttempts,
+    recoveryStrategy: 'exponential-backoff'
+  });
+  
+  // v1.6.3.10-v13 - FIX Issue #24: Log disconnect recovery plan
+  const backoffDelays = [100, 200, 400]; // Base delays for documentation
+  const nextDelay = backoffDelays[Math.min(reconnectionAttempts, backoffDelays.length - 1)] || 400;
+  console.log('[Content][HANDSHAKE] Port connection phase failed:', {
+    phaseDescription: _getHandshakePhaseDescription(failedPhase),
+    nextRetryDelayMs: nextDelay,
+    maxAttempts: CIRCUIT_BREAKER_MAX_FAILURES
   });
   
   // Increment failure count and try reconnection
   if (cachedTabId) {
     _handleReconnection(cachedTabId, `handshake-${reason}`);
   }
+}
+
+/**
+ * Get human-readable description for handshake phase
+ * v1.6.3.10-v13 - FIX Issue #24: Helper for clearer logging
+ * @param {string} phase - Handshake phase enum value
+ * @returns {string} Human-readable description
+ */
+function _getHandshakePhaseDescription(phase) {
+  const descriptions = {
+    [HANDSHAKE_PHASE.NONE]: 'Not started',
+    [HANDSHAKE_PHASE.INIT_REQUEST_SENT]: 'Phase 1: Waiting for INIT_RESPONSE',
+    [HANDSHAKE_PHASE.INIT_RESPONSE_RECEIVED]: 'Phase 2: Processing INIT_RESPONSE',
+    [HANDSHAKE_PHASE.INIT_COMPLETE_SENT]: 'Phase 3: Waiting for acknowledgment'
+  };
+  return descriptions[phase] || `Unknown phase: ${phase}`;
 }
 
 /**
@@ -2236,8 +2383,16 @@ function _handleReconnection(tabId, reason) {
     return;
   }
 
+  // v1.6.3.10-v12 - FIX Issue #11: Transition to RECONNECTING state during backoff
   const reconnectDelay = _calculateReconnectDelay();
-  console.log('[Content] Scheduling reconnection:', { attempt: reconnectionAttempts, delayMs: reconnectDelay, reason });
+  _transitionPortState(PORT_CONNECTION_STATE.RECONNECTING, 'backoff-scheduled');
+  
+  console.log('[Content] PORT_RECONNECTING (backoff): Scheduling reconnection', { 
+    attempt: reconnectionAttempts, 
+    delayMs: reconnectDelay, 
+    reason,
+    isInRecovery: isPortInRecovery()
+  });
 
   setTimeout(() => {
     if (!backgroundPort && document.visibilityState !== 'hidden') {
@@ -2255,6 +2410,10 @@ function connectContentToBackground(tabId) {
     return;
   }
 
+  // v1.6.3.10-v12 - FIX Issue #1: Reset port setup state flags
+  portDisconnectedDuringSetup = false;
+  portListenersRegistered = false;
+
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTING, 'connect-attempt');
   handshakeRequestTimestamp = Date.now();
   isBackgroundReady = false;
@@ -2262,19 +2421,58 @@ function connectContentToBackground(tabId) {
   try {
     backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
-    _resetReconnectionAttempts();
-    _drainMessageQueue();
-
+    
+    // v1.6.3.10-v12 - FIX Issue #1: Register BOTH listeners BEFORE any other setup
+    // This prevents the race window where onDisconnect fires before onMessage is ready
+    
+    // Register onMessage listener first
     backgroundPort.onMessage.addListener(handleContentPortMessage);
-
+    
+    // Register onDisconnect listener second
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
+      
+      // v1.6.3.10-v12 - FIX Issue #1: Check if disconnect happened during setup
+      if (!portListenersRegistered) {
+        portDisconnectedDuringSetup = true;
+        console.log('[Content] PORT_DISCONNECT_DURING_INIT: Disconnect occurred during listener registration', {
+          error: error?.message,
+          timestamp: Date.now()
+        });
+        // Don't execute state changes until init gate passed
+        return;
+      }
+      
+      // Normal operation - proceed with disconnect handling
+      console.log('[Content] PORT_DISCONNECT_NORMAL: Disconnect in normal operation', {
+        error: error?.message,
+        timestamp: Date.now()
+      });
+      
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
       isBackgroundReady = false;
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
       _handleReconnection(tabId, 'disconnect');
     });
+    
+    // v1.6.3.10-v12 - FIX Issue #1: Mark listeners as registered (init gate)
+    portListenersRegistered = true;
+    
+    // Now check if disconnect happened during the registration window
+    if (portDisconnectedDuringSetup) {
+      console.log('[Content] PORT_DISCONNECT_DURING_SETUP_DETECTED: Handling deferred disconnect', {
+        timestamp: Date.now()
+      });
+      backgroundPort = null;
+      isBackgroundReady = false;
+      _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected-during-setup');
+      _handleReconnection(tabId, 'disconnect-during-setup');
+      return;
+    }
+    
+    _resetReconnectionAttempts();
+    _drainMessageQueue();
 
     console.log('[Content] Port connection established');
   } catch (err) {
@@ -2448,6 +2646,192 @@ window.addEventListener('unload', () => {
   }
 });
 
+// ==================== v1.6.3.10-v12 FIX ISSUE #2: BFCACHE HANDLING ====================
+// Firefox does not fire port.onDisconnect when tab enters BFCache
+// Add pagehide/pageshow event listeners to detect BFCache transitions
+
+/**
+ * Handle pagehide event for BFCache entry detection
+ * v1.6.3.10-v12 - FIX Issue #2: Mark port as potentially invalid on BFCache entry
+ * @param {PageTransitionEvent} event - Page transition event
+ */
+function _handlePageHide(event) {
+  if (event.persisted) {
+    // Page is going into BFCache
+    console.log('[Content][BFCACHE] ENTRY_DETECTED: Page entering BFCache', {
+      timestamp: Date.now(),
+      hasPort: !!backgroundPort,
+      portState: portConnectionState
+    });
+    
+    portPotentiallyInvalidDueToBFCache = true;
+    
+    // Mark port as potentially invalid but don't disconnect
+    // It may still work when restored
+  }
+}
+
+/**
+ * Handle pageshow event for BFCache exit detection
+ * v1.6.3.10-v12 - FIX Issue #2: Verify port functionality after BFCache restore
+ * @param {PageTransitionEvent} event - Page transition event
+ */
+function _handlePageShow(event) {
+  if (event.persisted) {
+    // Page was restored from BFCache
+    console.log('[Content][BFCACHE] EXIT_DETECTED: Page restored from BFCache', {
+      timestamp: Date.now(),
+      hasPort: !!backgroundPort,
+      portState: portConnectionState,
+      wasMarkedInvalid: portPotentiallyInvalidDueToBFCache
+    });
+    
+    if (portPotentiallyInvalidDueToBFCache) {
+      // Verify port functionality by attempting a ping
+      _verifyPortAfterBFCache();
+    }
+  }
+}
+
+/**
+ * Trigger port reconnection after BFCache restore when no port exists
+ * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleNoPortAfterBFCache() {
+  console.log('[Content][BFCACHE] VERIFY_PORT: No port exists, triggering reconnect');
+  portPotentiallyInvalidDueToBFCache = false;
+  if (cachedTabId) {
+    _handleReconnection(cachedTabId, 'bfcache-restore');
+  }
+}
+
+/**
+ * Handle port verification failure after BFCache restore
+ * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Error} err - Error from port verification
+ */
+function _handlePortVerifyFailure(err) {
+  console.warn('[Content][BFCACHE] VERIFY_PORT_FAILED: Port not functional after BFCache', {
+    error: err.message,
+    timestamp: Date.now()
+  });
+  
+  // Port is dead, trigger reconnection
+  backgroundPort = null;
+  portPotentiallyInvalidDueToBFCache = false;
+  _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'bfcache-port-dead');
+  
+  if (cachedTabId) {
+    _handleReconnection(cachedTabId, 'bfcache-port-dead');
+  }
+}
+
+/**
+ * Verify port functionality after BFCache restore
+ * v1.6.3.10-v12 - FIX Issue #2: Attempt handshake to verify port is still functional
+ * v1.6.3.10-v12 - FIX Code Health: Extracted helpers, removed unnecessary async
+ * @private
+ */
+function _verifyPortAfterBFCache() {
+  console.log('[Content][BFCACHE] VERIFY_PORT: Checking port functionality after BFCache restore');
+  
+  // No port exists - trigger reconnect immediately
+  if (!backgroundPort) {
+    _handleNoPortAfterBFCache();
+    return;
+  }
+  
+  // Try to send a test message via the port
+  try {
+    const testMessage = {
+      type: 'PORT_VERIFY',
+      timestamp: Date.now(),
+      reason: 'bfcache-restore'
+    };
+    
+    backgroundPort.postMessage(testMessage);
+    console.log('[Content][BFCACHE] VERIFY_PORT: Test message sent successfully');
+    
+    // If we get here without error, port seems functional
+    portPotentiallyInvalidDueToBFCache = false;
+    
+  } catch (err) {
+    _handlePortVerifyFailure(err);
+  }
+}
+
+// Register BFCache event listeners
+window.addEventListener('pagehide', _handlePageHide);
+window.addEventListener('pageshow', _handlePageShow);
+console.log('[Content] v1.6.3.10-v12 BFCache event listeners registered');
+
+// ==================== END BFCACHE HANDLING ====================
+
+// ==================== v1.6.3.10-v12 FIX ISSUE #12: ADOPTION CACHE NAVIGATION CLEAR ====================
+// Clear adoption cache on page navigation to prevent cross-domain leakage
+
+/**
+ * Current page hostname for adoption cache keying
+ * v1.6.3.10-v12 - FIX Issue #12: Track hostname for compound key
+ */
+let currentPageHostname = null;
+
+try {
+  currentPageHostname = window.location.hostname;
+} catch (_e) {
+  // Cross-origin access may throw
+  currentPageHostname = 'unknown';
+}
+
+/**
+ * Clear adoption cache on navigation
+ * v1.6.3.10-v12 - FIX Issue #12: Prevent cross-domain Quick Tab leakage
+ */
+function _clearAdoptionCacheOnNavigation() {
+  if (recentlyAdoptedQuickTabs.size > 0) {
+    console.log('[Content] ADOPTION_CACHE_CLEARED_ON_NAVIGATION:', {
+      previousCount: recentlyAdoptedQuickTabs.size,
+      previousHostname: currentPageHostname,
+      timestamp: Date.now()
+    });
+    
+    recentlyAdoptedQuickTabs.clear();
+    adoptionCacheMetrics.clearedOnNavigation = (adoptionCacheMetrics.clearedOnNavigation || 0) + 1;
+  }
+}
+
+/**
+ * Check if hostname changed and clear adoption cache if needed
+ * v1.6.3.10-v12 - FIX Issue #12: Detect cross-domain navigation
+ */
+function _checkHostnameChange() {
+  let newHostname = null;
+  try {
+    newHostname = window.location.hostname;
+  } catch (_e) {
+    newHostname = 'unknown';
+  }
+  
+  if (currentPageHostname !== null && newHostname !== currentPageHostname) {
+    console.log('[Content] HOSTNAME_CHANGE_DETECTED:', {
+      previousHostname: currentPageHostname,
+      newHostname,
+      timestamp: Date.now()
+    });
+    
+    _clearAdoptionCacheOnNavigation();
+  }
+  
+  currentPageHostname = newHostname;
+}
+
+// Clear adoption cache on beforeunload (navigation away)
+window.addEventListener('beforeunload', _clearAdoptionCacheOnNavigation);
+
+// ==================== END ADOPTION CACHE NAVIGATION CLEAR ====================
+
 // ==================== END PORT CONNECTION ====================
 
 /**
@@ -2459,10 +2843,23 @@ window.addEventListener('unload', () => {
  */
 async function initializeQuickTabsFeature() {
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
+  // v1.6.3.10-v13 - FIX Issue #4: Explicit initialization phase logging
   const initStartTime = Date.now();
+  
+  // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_1 - Content script loaded
+  console.log('[INIT][Content] INIT_PHASE_1: Content script loaded', {
+    timestamp: new Date().toISOString(),
+    location: window.location.href.substring(0, 100)
+  });
+  
   console.log('[INIT][Content] PHASE_START: Quick Tabs initialization beginning', {
     timestamp: new Date().toISOString(),
     isWritingTabIdInitialized: isWritingTabIdInitialized()
+  });
+  
+  // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_2 - Message listener registered
+  console.log('[INIT][Content] INIT_PHASE_2: Message listener registered', {
+    timestamp: new Date().toISOString()
   });
 
   // v1.6.3.10-v6 - FIX Issue #4/11: Log before tab ID request
@@ -2476,6 +2873,14 @@ async function initializeQuickTabsFeature() {
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
   const tabIdAcquisitionDuration = Date.now() - initStartTime;
+
+  // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_3 - Tab ID obtained
+  console.log('[INIT][Content] INIT_PHASE_3: Tab ID obtained', {
+    tabId: currentTabId,
+    durationMs: tabIdAcquisitionDuration,
+    success: currentTabId !== null,
+    timestamp: new Date().toISOString()
+  });
 
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for tab ID result
   console.log('[INIT][Content] TAB_ID_ACQUISITION_COMPLETE:', {
@@ -2501,6 +2906,13 @@ async function initializeQuickTabsFeature() {
     console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
       tabId: currentTabId,
       isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
+    });
+
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_4 - Handler initialized
+    console.log('[INIT][Content] INIT_PHASE_4: Handler initialized', {
+      handlerType: 'StorageWritingTabId',
+      tabId: currentTabId,
+      timestamp: new Date().toISOString()
     });
 
     // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
@@ -2534,6 +2946,18 @@ async function initializeQuickTabsFeature() {
   const totalInitDuration = initEndTime - initStartTime;
 
   if (quickTabsManager) {
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_5 - Adoption message sent (manager initialized)
+    console.log('[INIT][Content] INIT_PHASE_5: Adoption message sent', {
+      hasManager: true,
+      currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+      timestamp: new Date().toISOString()
+    });
+
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_6 - Background adoption confirmed (implicit via manager)
+    console.log('[INIT][Content] INIT_PHASE_6: Background adoption confirmed', {
+      timestamp: new Date().toISOString()
+    });
+
     // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for completion
     console.log('[INIT][Content] PHASE_COMPLETE:', {
       success: true,
@@ -2542,12 +2966,24 @@ async function initializeQuickTabsFeature() {
       hasManager: true,
       timestamp: new Date().toISOString()
     });
+    
+    // v1.6.3.10-v13 - FIX Issue #4: INIT_COMPLETE - All systems ready
+    console.log('[INIT][Content] INIT_COMPLETE: All systems ready', {
+      totalDurationMs: totalInitDuration,
+      tabId: currentTabId,
+      timestamp: new Date().toISOString()
+    });
+    
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
     console.log(
       '[Copy-URL-on-Hover] Manager has createQuickTab:',
       typeof quickTabsManager.createQuickTab
     );
     console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
+    
+    // v1.6.3.10-v13 - FIX Issue #9: Start periodic storage latency re-measurement
+    // This adapts the dedup window to network condition changes
+    startPeriodicLatencyMeasurement();
   } else {
     console.error('[INIT][Content] PHASE_COMPLETE:', {
       success: false,
@@ -3429,12 +3865,24 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for background persistence
+ * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
  */
 async function persistQuickTabToBackground(quickTabData, saveId) {
+  // v1.6.3.10-v12 - FIX Issue #5: Assign sequenceId for ordering
+  const sequenceId = ++globalCommandSequenceId;
+  
+  console.log('[Content] CREATE_MESSAGE_SEQUENCED:', {
+    quickTabId: quickTabData.id,
+    sequenceId,
+    timestamp: Date.now()
+  });
+  
   await sendMessageToBackground({
     action: 'CREATE_QUICK_TAB',
     ...quickTabData,
-    saveId
+    saveId,
+    sequenceId,           // v1.6.3.10-v12 - FIX Issue #5: Include for ordering
+    operationType: OPERATION_TYPE.CREATE  // v1.6.3.10-v12 - FIX Issue #5: Explicit type
   });
 }
 
@@ -3765,14 +4213,24 @@ const adoptionLatencySamples = [];
 const MAX_ADOPTION_LATENCY_SAMPLES = 10;
 
 /**
+ * Counter for heartbeats to trigger periodic latency re-measurement
+ * v1.6.3.10-v12 - FIX Issue #4: Re-measure latency every 10 heartbeats
+ */
+let heartbeatCountSinceLatencyUpdate = 0;
+const HEARTBEATS_PER_LATENCY_UPDATE = 10;
+
+/**
  * Adoption cache metrics for logging
  * v1.6.3.10-v11 - FIX Issue #5
+ * v1.6.3.10-v12 - FIX Issue #12: Added clearedOnNavigation counter
  */
 const adoptionCacheMetrics = {
   hitCount: 0,
   missCount: 0,
   ttlExpiredCount: 0,
-  totalTracked: 0
+  totalTracked: 0,
+  clearedOnNavigation: 0,     // v1.6.3.10-v12 - FIX Issue #12
+  latencyUpdates: 0           // v1.6.3.10-v12 - FIX Issue #4
 };
 
 /**
@@ -3791,20 +4249,48 @@ function _getObservedHandshakeLatency() {
 /**
  * Record a handshake latency sample
  * v1.6.3.10-v11 - FIX Issue #5
+ * v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count for periodic recalculation
  * @param {number} latencyMs - Observed latency in milliseconds
  */
 function _recordHandshakeLatency(latencyMs) {
   if (typeof latencyMs !== 'number' || latencyMs < 0) return;
+  
+  // v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count
+  heartbeatCountSinceLatencyUpdate++;
+  
+  const oldLatency = lastKnownBackgroundLatencyMs;
   
   adoptionLatencySamples.push(latencyMs);
   if (adoptionLatencySamples.length > MAX_ADOPTION_LATENCY_SAMPLES) {
     adoptionLatencySamples.shift();
   }
   
+  const newAverageLatency = _getObservedHandshakeLatency();
+  
+  // v1.6.3.10-v12 - FIX Issue #4: Update lastKnownBackgroundLatencyMs periodically
+  // Recalculate every 10 heartbeats to adapt to network condition changes
+  if (heartbeatCountSinceLatencyUpdate >= HEARTBEATS_PER_LATENCY_UPDATE) {
+    heartbeatCountSinceLatencyUpdate = 0;
+    adoptionCacheMetrics.latencyUpdates++;
+    
+    if (oldLatency !== null && newAverageLatency !== null) {
+      console.log('[Content] LATENCY_UPDATED: Periodic latency recalculation', {
+        oldLatencyMs: oldLatency,
+        newLatencyMs: newAverageLatency,
+        change: newAverageLatency - oldLatency,
+        newAdoptionTTL: _calculateDynamicAdoptionTTL(),
+        updateCount: adoptionCacheMetrics.latencyUpdates
+      });
+    }
+    
+    lastKnownBackgroundLatencyMs = newAverageLatency;
+  }
+  
   console.log('[Content] ADOPTION_LATENCY_RECORDED:', {
     latencyMs,
     sampleCount: adoptionLatencySamples.length,
-    averageLatency: _getObservedHandshakeLatency()
+    averageLatency: newAverageLatency,
+    heartbeatsSinceUpdate: heartbeatCountSinceLatencyUpdate
   });
 }
 
@@ -5898,10 +6384,14 @@ function _dispatchMessage(message, _sender, sendResponse) {
 
 /**
  * Handler for beforeunload event to cleanup resources
+ * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
  * @private
  */
 function _handleBeforeUnload() {
   console.log('[Content] beforeunload event - starting cleanup');
+
+  // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
+  stopPeriodicLatencyMeasurement();
 
   if (quickTabsManager?.destroy) {
     console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');

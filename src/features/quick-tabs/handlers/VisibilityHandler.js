@@ -47,6 +47,10 @@
  * v1.6.3.10-v5 - Note: Remote invocations from Manager sidebar now use Scripting API fallback
  *   - See background.js executeManagerCommand() for timeout-protected messaging
  *   - Falls back to browser.scripting.executeScript on messaging failure
+ * v1.6.3.10-v12 - FIX Issue #22: State consistency checks between VisibilityHandler and MinimizedManager
+ *   - startConsistencyChecks() validates DOM state matches snapshot state every 5 seconds
+ *   - Automatic recovery for MISSING_SNAPSHOT (create from DOM) and STALE_SNAPSHOT (remove)
+ *   - Consistency checks started automatically by QuickTabsManager._setupComponents()
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -54,6 +58,7 @@
  * - Mutex/lock pattern prevents duplicate operations from multiple sources
  * - Cross-tab validation ensures operations only affect owned Quick Tabs
  * - v1.6.3.10-v5: Remote commands from Manager use Scripting API fallback for reliability
+ * - v1.6.3.10-v12: Periodic consistency checks detect and recover from state desync
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -65,8 +70,9 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  * - Cross-tab ownership validation for all operations
+ * - Periodic state consistency checks with automatic recovery
  *
- * @version 1.6.3.10-v5
+ * @version 1.6.3.10-v12
  */
 
 import {
@@ -129,6 +135,21 @@ const LOCK_WARNING_THRESHOLD_MS = OPERATION_LOCK_MS * 5;
  */
 export class VisibilityHandler {
   /**
+   * Initialization states for handler lifecycle tracking
+   * v1.6.3.10-v13 - FIX Issue #2: Handler initialization sequence validation
+   * @enum {string}
+   */
+  static get INITIALIZATION_STATE() {
+    return {
+      UNINITIALIZED: 'UNINITIALIZED',
+      INITIALIZING: 'INITIALIZING',
+      INITIALIZED: 'INITIALIZED',
+      DESTROYING: 'DESTROYING',
+      DESTROYED: 'DESTROYED'
+    };
+  }
+
+  /**
    * @param {Object} options - Configuration options
    * @param {Map} options.quickTabsMap - Map of Quick Tab instances
    * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
@@ -138,6 +159,10 @@ export class VisibilityHandler {
    * @param {Object} options.Events - Events constants object
    */
   constructor(options) {
+    // v1.6.3.10-v13 - FIX Issue #2: Track initialization state
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.UNINITIALIZED;
+    console.log('[VisibilityHandler] Handler initialization START');
+
     this.quickTabsMap = options.quickTabsMap;
     this.minimizedManager = options.minimizedManager;
     this.eventBus = options.eventBus;
@@ -147,6 +172,9 @@ export class VisibilityHandler {
 
     // v1.6.3.5-v2 - FIX Report 1 Issue #7: Create log prefix with Tab ID
     this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
+
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to INITIALIZING
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.INITIALIZING;
 
     // v1.6.3.4-v6 - FIX Issues #1, #2: Track pending operations to prevent duplicates
     this._pendingMinimize = new Set();
@@ -191,11 +219,42 @@ export class VisibilityHandler {
     // v1.6.3.10-v11 - FIX Issue #22: Track state consistency check interval
     this._consistencyCheckIntervalId = null;
     
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to INITIALIZED
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.INITIALIZED;
+    
     // Log handler creation
     console.log(`${this._logPrefix} HANDLER_CREATED:`, {
       tabId: this.currentTabId,
+      initializationState: this._initializationState,
       timestamp: Date.now()
     });
+    console.log('[VisibilityHandler] Handler initialization COMPLETE');
+  }
+  
+  /**
+   * Check if handler is ready to perform operations
+   * v1.6.3.10-v13 - FIX Issue #2: Pre-operation validation
+   * @returns {boolean} True if handler is initialized and ready
+   */
+  isInitialized() {
+    return this._initializationState === VisibilityHandler.INITIALIZATION_STATE.INITIALIZED;
+  }
+  
+  /**
+   * Validate handler state before operation
+   * v1.6.3.10-v13 - FIX Issue #2: Pre-operation validation helper
+   * @param {string} methodName - Name of method being called
+   * @returns {boolean} True if operation can proceed
+   */
+  _validateInitializationState(methodName) {
+    if (this._initializationState !== VisibilityHandler.INITIALIZATION_STATE.INITIALIZED) {
+      console.warn(`${this._logPrefix} Handler method called: ${methodName} (state: ${this._initializationState})`, {
+        warning: 'Handler not fully initialized - operation may fail',
+        allowedState: VisibilityHandler.INITIALIZATION_STATE.INITIALIZED
+      });
+      return false;
+    }
+    return true;
   }
   
   // ==================== v1.6.3.10-v11 FIX ISSUE #22: STATE CONSISTENCY ====================
@@ -878,6 +937,44 @@ export class VisibilityHandler {
   }
 
   /**
+   * Perform pre-validation for handleMinimize operation
+   * v1.6.3.10-v14 - FIX Complexity: Extracted to reduce handleMinimize complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @param {string} operationId - Operation ID for tracing
+   * @param {number} operationStartTime - Operation start timestamp
+   * @returns {{ valid: boolean, result?: Object, tabWindow?: Object }} Validation result
+   */
+  _performMinimizePreValidation(id, source, operationId, operationStartTime) {
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
+    if (!ownershipValidation.valid) {
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id, operationId, outcome: 'error',
+        errorReason: 'ownership_validation_failed',
+        durationMs: Date.now() - operationStartTime
+      });
+      return { valid: false, result: ownershipValidation.result };
+    }
+
+    const tabWindow = this.quickTabsMap.get(id);
+
+    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
+    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
+    if (!preconditions.canProceed) {
+      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
+        id, operationId, outcome: 'blocked',
+        errorReason: preconditions.result?.error || 'precondition_failed',
+        durationMs: Date.now() - operationStartTime
+      });
+      return { valid: false, result: preconditions.result };
+    }
+
+    return { valid: true, tabWindow };
+  }
+
+  /**
    * Handle Quick Tab minimize
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
@@ -892,15 +989,28 @@ export class VisibilityHandler {
    * v1.6.3.5-v11 - FIX Issue #4: Check tabWindow.isMinimizing flag for operation-specific suppression
    * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
    * v1.6.3.10-v11 - FIX Issue #16: Operation completion logging with operation ID
+   * v1.6.3.10-v14 - FIX Complexity: Extracted pre-validation to helper method
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
+    // v1.6.3.10-v13 - FIX Issue #2: Validate handler is initialized
+    if (!this._validateInitializationState('handleMinimize')) {
+      return { success: false, error: 'Handler not initialized' };
+    }
+    
     // v1.6.3.10-v11 - FIX Issue #16: Generate operation ID for tracing
     const operationStartTime = Date.now();
     const operationId = `minimize-${id}-${operationStartTime}`;
+    
+    // v1.6.3.10-v13 - FIX Issue #3: Operation context logging
+    console.log(`${this._logPrefix} OPERATION_START: minimize`, {
+      context: { quickTabIds: [id], timestamp: operationStartTime },
+      operationId,
+      source
+    });
     
     console.log(`${this._logPrefix} handleMinimize ENTRY:`, {
       id,
@@ -908,33 +1018,13 @@ export class VisibilityHandler {
       operationId
     });
 
-    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
-    if (!ownershipValidation.valid) {
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'error',
-        errorReason: 'ownership_validation_failed',
-        durationMs: Date.now() - operationStartTime
-      });
-      return ownershipValidation.result;
+    // v1.6.3.10-v14 - FIX Complexity: Use helper for pre-validation
+    const preValidation = this._performMinimizePreValidation(id, source, operationId, operationStartTime);
+    if (!preValidation.valid) {
+      return preValidation.result;
     }
 
-    const tabWindow = this.quickTabsMap.get(id);
-
-    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
-    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
-    if (!preconditions.canProceed) {
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'blocked',
-        errorReason: preconditions.result?.error || 'precondition_failed',
-        durationMs: Date.now() - operationStartTime
-      });
-      return preconditions.result;
-    }
+    const tabWindow = preValidation.tabWindow;
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
@@ -2699,9 +2789,14 @@ export class VisibilityHandler {
    * v1.6.3.10-v10 - FIX Issue 3.3: Clear all Set/Map references to prevent memory leaks
    * v1.6.3.10-v11 - FIX Issue #19: Remove all event listeners (refactored)
    * v1.6.3.10-v11 - FIX Issue #20: Clear all tracked timers with logging (refactored)
+   * v1.6.3.10-v13 - FIX Issue #2: Track initialization state transitions
    */
   destroy() {
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to DESTROYING state
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.DESTROYING;
+    
     console.log(`${this._logPrefix} HANDLER_DESTROY_START:`, {
+      initializationState: this._initializationState,
       registeredListeners: this._registeredListeners?.length ?? 0,
       activeTimers: this._activeTimers?.size ?? 0,
       pendingMinimize: this._pendingMinimize?.size ?? 0,
@@ -2743,7 +2838,11 @@ export class VisibilityHandler {
     // Clear focus time tracking
     this._lastFocusTime.clear();
 
+    // v1.6.3.10-v13 - FIX Issue #2: Transition to DESTROYED state
+    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.DESTROYED;
+
     console.log(`${this._logPrefix} HANDLER_DESTROY_COMPLETE:`, {
+      initializationState: this._initializationState,
       timestamp: Date.now()
     });
   }

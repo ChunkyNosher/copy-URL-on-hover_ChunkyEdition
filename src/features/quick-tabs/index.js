@@ -1222,6 +1222,12 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] LRUMapGuard periodic cleanup started');
     }
 
+    // v1.6.3.10-v12 - FIX Issue #22: Start state consistency checks for VisibilityHandler/MinimizedManager sync
+    if (this.visibilityHandler?.startConsistencyChecks) {
+      this.visibilityHandler.startConsistencyChecks();
+      console.log('[QuickTabsManager] VisibilityHandler consistency checks started');
+    }
+
     console.log('[QuickTabsManager] ✓ _setupComponents complete');
   }
 
@@ -1759,10 +1765,23 @@ class QuickTabsManager {
   }
 
   /**
+   * Cleanup VisibilityHandler consistency checks during teardown
+   * v1.6.3.10-v12 - FIX Issue #22: Stop consistency check interval
+   * @private
+   */
+  _destroyStep6_StopConsistencyChecks() {
+    if (this.visibilityHandler?.stopConsistencyChecks) {
+      console.log('[QuickTabsManager] Stopping VisibilityHandler consistency checks');
+      this.visibilityHandler.stopConsistencyChecks();
+    }
+  }
+
+  /**
    * Cleanup and teardown the QuickTabsManager
    * v1.6.3.4-v11 - FIX Issue #1, #2, #3: Proper resource cleanup to prevent memory leaks
    * v1.6.3.6-v10 - Refactored: Extracted steps to helper methods to reduce cc from 9 to 2
    * v1.6.3.10-v11 - FIX Issue #21: Add LRUMapGuard cleanup
+   * v1.6.3.10-v12 - FIX Issue #22: Add VisibilityHandler consistency check cleanup
    *
    * This method:
    * - Stops MemoryGuard monitoring
@@ -1770,6 +1789,7 @@ class QuickTabsManager {
    * - Closes all Quick Tabs (DOM cleanup)
    * - Removes all event listeners from internalEventBus
    * - Destroys LRUMapGuard (stops periodic cleanup)
+   * - Stops VisibilityHandler consistency checks
    * - Marks manager as uninitialized
    *
    * This method is idempotent - safe to call multiple times.
@@ -1790,8 +1810,9 @@ class QuickTabsManager {
     this._destroyStep3_CloseAllTabs();
     this._destroyStep4_RemoveEventListeners();
     this._destroyStep5_CleanupLRUMapGuard(); // v1.6.3.10-v11 - FIX Issue #21
+    this._destroyStep6_StopConsistencyChecks(); // v1.6.3.10-v12 - FIX Issue #22
 
-    // Step 6: Mark as uninitialized
+    // Step 7: Mark as uninitialized
     this.initialized = false;
 
     console.log('[QuickTabsManager] ✓ Cleanup/teardown complete');

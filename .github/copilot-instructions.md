@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v11  
+**Version:** 1.6.3.10-v14  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,26 +21,33 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v11 Features (NEW) - 25 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.10-v14 Features (NEW) - 37 Issues Fixed (3 Diagnostic Reports):**
 
-- **Extended Tab ID Acquisition** - 60s total timeout with 5s intervals
-- **Operation Type Tracking** - CREATE/RESTORE/UPDATE/CLOSE/MINIMIZE enum
-- **Adaptive Dedup Window** - 2x observed latency, 500ms minimum
-- **Ownership Validation Middleware** - MessageRouter validates originTabId
-- **Queue Backpressure** - 100 items, 75% warning threshold, retry dropped
-- **Callback Re-wiring Timeout** - 500ms UICoordinator acknowledgment recovery
-- **Hydration Barrier** - Operations queued until storage loaded (3s timeout)
-- **Background Lifecycle** - In-flight recovery markers, beforeunload handler
-- **Three-Phase Port Handshake** - INIT_REQUEST → INIT_RESPONSE → INIT_COMPLETE
-- **LRU Map Guard** - 500 entry max, 10% eviction, 30s cleanup
+- **Tab ID Pending Queue** - Queue operations when Tab ID null, process on init
+- **Generation ID Tracking** - Background restart detection via generation mismatch
+- **Handler Initialization State** - UNINITIALIZED→INITIALIZING→INITIALIZED→DESTROYING→DESTROYED
+- **Operation Context Logging** - OPERATION_START with context, timestamp, operationId
+- **Initialization Phase Logging** - INIT_PHASE_1 through INIT_PHASE_6 logging
+- **Container Validation Logging** - Container MATCH/MISMATCH during hydration
+- **Three-Phase Port Handshake** - INIT_REQUEST → INIT_RESPONSE → INIT_COMPLETE with timeout
+- **BFCache Detection** - pagehide/pageshow listeners for port recovery
+- **Message Correlation** - messageId in responses for request matching
+- **Protocol Versioning** - _validateProtocolVersion() for compatibility checks
+- **RECONNECTING State** - New port state for reconnection attempts
+- **Adoption Cache Cleanup** - Clear on beforeunload/navigation
+- **Dynamic Message Buffer** - Scales from 10→50 based on queue backpressure
+- **Periodic Latency Measurement** - Re-measure storage latency every 30s
 
-**v1.6.3.10-v10 Features (Previous) - Issues 1-28 & Areas A-F:**
+**v1.6.3.10-v11 Features (Previous):**
 
-- Tab ID exponential backoff, storage write validation, handler deferral
-- Adoption lock timeout, message validation, checkpoint system
+- Extended Tab ID Acquisition - 60s total timeout with 5s intervals
+- Operation Type Tracking - CREATE/RESTORE/UPDATE/CLOSE/MINIMIZE enum
+- Adaptive Dedup Window - 2x observed latency, 500ms minimum
+- LRU Map Guard - 500 entry max, 10% eviction, 30s cleanup
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage errors,
-quota monitoring, write queue recovery, code health 9.0+, type-safe tab IDs
+**v1.6.3.10-v10 & Earlier (Consolidated):** Tab ID exponential backoff, storage
+write validation, handler deferral, adoption lock timeout, checkpoint system,
+identity gating, quota monitoring, code health 9.0+, type-safe tab IDs
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter

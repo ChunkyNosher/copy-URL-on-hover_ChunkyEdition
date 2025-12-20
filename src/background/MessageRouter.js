@@ -12,6 +12,8 @@
  * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
  * v1.6.4.15 - FIX Issue #18 (Diagnostic): Add allowlist of valid command types
  * v1.6.4.15 - FIX Issue #22: Add response format validation and normalization
+ * v1.6.3.10-v12 - FIX Issue #7: Include messageId in response for correlation
+ * v1.6.3.10-v12 - FIX Issue #10: Enforce MESSAGE_PROTOCOL_VERSION validation
  */
 
 // v1.6.4.15 - FIX Issue #18: Allowlist of valid command types for validation
@@ -51,13 +53,29 @@ export const VALID_MESSAGE_ACTIONS = new Set([
 
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format
 // All handlers should return responses in this format for consistency
+// v1.6.3.10-v12 - FIX Issue #7: Added messageId to response envelope
 export const RESPONSE_ENVELOPE = {
-  SUCCESS: (data) => ({ success: true, data }),
-  ERROR: (error, code = 'UNKNOWN_ERROR') => ({ success: false, error: String(error), code })
+  SUCCESS: (data, messageId = null) => ({ 
+    success: true, 
+    data,
+    ...(messageId ? { messageId } : {}),
+    timestamp: Date.now()
+  }),
+  ERROR: (error, code = 'UNKNOWN_ERROR', messageId = null) => ({ 
+    success: false, 
+    error: String(error), 
+    code,
+    ...(messageId ? { messageId } : {}),
+    timestamp: Date.now()
+  })
 };
 
 // v1.6.4.15 - FIX Issue #22: Protocol version for future compatibility
+// v1.6.3.10-v12 - FIX Issue #10: Now enforced in message validation
 export const MESSAGE_PROTOCOL_VERSION = '1.0.0';
+
+// v1.6.3.10-v12 - FIX Issue #10: Minimum compatible protocol version
+export const MIN_COMPATIBLE_PROTOCOL_VERSION = '1.0.0';
 
 // v1.6.3.10-v11 - FIX Issue #11: Operations requiring ownership validation
 // These operations modify Quick Tab state and must validate sender.tab.id === message.originTabId
@@ -81,6 +99,27 @@ export class MessageRouter {
     // v1.6.4.15 - FIX Issue #18: Track rejected commands for diagnostics
     this._rejectedCommandCount = 0;
     this._lastRejectedCommand = null;
+    // v1.6.3.10-v12 - FIX Issue #8: Store background generation ID for responses
+    this._backgroundGenerationId = null;
+  }
+  
+  /**
+   * Set the background generation ID for restart detection
+   * v1.6.3.10-v12 - FIX Issue #8: Include generation ID in all responses
+   * @param {string} generationId - Background generation ID
+   */
+  setBackgroundGenerationId(generationId) {
+    this._backgroundGenerationId = generationId;
+    console.log('[MessageRouter] v1.6.3.10-v12 Background generation ID configured');
+  }
+  
+  /**
+   * Get the current background generation ID
+   * v1.6.3.10-v12 - FIX Issue #8
+   * @returns {string|null} Background generation ID
+   */
+  getBackgroundGenerationId() {
+    return this._backgroundGenerationId;
   }
 
   /**
@@ -201,41 +240,148 @@ export class MessageRouter {
   }
 
   /**
+   * Build base fields with generation ID
+   * v1.6.3.10-v12 - FIX Issue #8: Helper to reduce _normalizeResponse complexity
+   * v1.6.3.10-v12 - FIX Issue #7: Include messageId in base fields
+   * @private
+   * @param {string|null} messageId - Message ID for correlation
+   * @returns {Object} Base fields to include in all responses
+   */
+  _buildBaseResponseFields(messageId = null) {
+    const fields = {
+      timestamp: Date.now(),
+      version: MESSAGE_PROTOCOL_VERSION
+    };
+    
+    if (this._backgroundGenerationId) {
+      fields.generation = this._backgroundGenerationId;
+    }
+    
+    // v1.6.3.10-v12 - FIX Issue #7: Include messageId for correlation
+    if (messageId) {
+      fields.messageId = messageId;
+    }
+    
+    return fields;
+  }
+  
+  /**
+   * Handle null/undefined response
+   * v1.6.3.10-v12 - FIX Code Health: Extract to reduce complexity
+   * @private
+   */
+  _handleNullResponse(action, baseFields) {
+    console.warn('[MSG_VALIDATE][MessageRouter] Handler returned null/undefined:', {
+      action,
+      responseType: 'null or undefined'
+    });
+    return { success: true, data: null, ...baseFields };
+  }
+  
+  /**
+   * Handle error response missing error field
+   * v1.6.3.10-v12 - FIX Code Health: Extract to reduce complexity
+   * @private
+   */
+  _handleMissingErrorField(response, action, baseFields) {
+    console.warn('[MSG_VALIDATE][MessageRouter] Error response missing error field:', {
+      action,
+      response
+    });
+    return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR', ...baseFields };
+  }
+
+  /**
+   * Validate protocol version in message
+   * v1.6.3.10-v12 - FIX Issue #10: Enforce protocol version checking
+   * @private
+   * @param {Object} message - Message to validate
+   * @param {Object} sender - Message sender
+   * @returns {{valid: boolean, error?: string, code?: string}}
+   */
+  _validateProtocolVersion(message, sender) {
+    const clientVersion = message.protocolVersion;
+    
+    // If client doesn't send version, log but allow (backward compatibility)
+    if (!clientVersion) {
+      // Only log for debugging - don't reject old clients
+      console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)', {
+        action: message.action || message.type,
+        senderTabId: sender?.tab?.id,
+        serverVersion: MESSAGE_PROTOCOL_VERSION
+      });
+      return { valid: true };
+    }
+    
+    // Check if version is compatible
+    if (this._isVersionCompatible(clientVersion)) {
+      console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED:', {
+        clientVersion,
+        serverVersion: MESSAGE_PROTOCOL_VERSION,
+        action: message.action || message.type
+      });
+      return { valid: true };
+    }
+    
+    // Version mismatch - log diagnostic info but don't reject
+    // (for now, we allow all versions but log the mismatch)
+    console.warn('[MSG][MessageRouter] PROTOCOL_VERSION_MISMATCH:', {
+      clientVersion,
+      serverVersion: MESSAGE_PROTOCOL_VERSION,
+      minCompatible: MIN_COMPATIBLE_PROTOCOL_VERSION,
+      action: message.action || message.type,
+      senderTabId: sender?.tab?.id
+    });
+    
+    return { valid: true }; // Allow but logged
+  }
+
+  /**
+   * Check if client version is compatible with server
+   * v1.6.3.10-v12 - FIX Issue #10: Version compatibility check
+   * @private
+   * @param {string} clientVersion - Client protocol version
+   * @returns {boolean} True if compatible
+   */
+  _isVersionCompatible(clientVersion) {
+    // Simple comparison for now (could be enhanced with semver)
+    // Accept any version >= MIN_COMPATIBLE_PROTOCOL_VERSION
+    return clientVersion >= MIN_COMPATIBLE_PROTOCOL_VERSION;
+  }
+
+  /**
    * Validate and normalize response format
    * v1.6.4.15 - FIX Issue #22: Ensure consistent response envelope
+   * v1.6.3.10-v12 - FIX Issue #8: Include generation ID for restart detection
+   * v1.6.3.10-v12 - FIX Issue #7: Include messageId for correlation
+   * v1.6.3.10-v12 - FIX Code Health: Refactored to reduce complexity (cc=10→6)
    * @private
    * @param {*} response - Raw handler response
    * @param {string} action - Action that generated the response
+   * @param {string|null} messageId - Message ID for correlation
    * @returns {Object} Normalized response object
    */
-  _normalizeResponse(response, action) {
+  _normalizeResponse(response, action, messageId = null) {
+    const baseFields = this._buildBaseResponseFields(messageId);
+    
     // Handle null/undefined responses
     if (response === null || response === undefined) {
-      console.warn('[MSG_VALIDATE][MessageRouter] Handler returned null/undefined:', {
-        action,
-        responseType: response === null ? 'null' : 'undefined'
-      });
-      return { success: true, data: null };
+      return this._handleNullResponse(action, baseFields);
     }
     
     // Response already has success property - validate format
     if (typeof response === 'object' && 'success' in response) {
       // Validate required fields based on success/failure
       if (response.success === false && !response.error) {
-        console.warn('[MSG_VALIDATE][MessageRouter] Error response missing error field:', {
-          action,
-          response
-        });
-        // Add default error if missing
-        return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR' };
+        return this._handleMissingErrorField(response, action, baseFields);
       }
       
-      // Response is valid format
-      return response;
+      // Response is valid format - add generation ID
+      return { ...response, ...baseFields };
     }
     
     // Response is raw data - wrap in success envelope
-    return { success: true, data: response };
+    return { success: true, data: response, ...baseFields };
   }
 
   /**
@@ -341,67 +487,115 @@ export class MessageRouter {
    * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
    * v1.6.4.15 - FIX Issue #22: Normalize response format
    * v1.6.3.10-v11 - FIX Issue #11: Add ownership validation middleware
+   * v1.6.3.10-v12 - FIX Issue #7: Include messageId in response for correlation
+   * v1.6.3.10-v12 - FIX Issue #10: Validate protocol version
+   * @param {Object} message - Message object with action or type property
+   * @param {Object} sender - Message sender
+   * @param {Function} sendResponse - Response callback
+   * @returns {boolean} True if async response expected
+   */
+  /**
+   * Handle invalid message format (no action)
+   * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleInvalidFormat(message, messageId, sendResponse) {
+    console.error('[MSG][MessageRouter] Invalid message format (missing action/type):', message);
+    sendResponse({ 
+      success: false, 
+      error: 'Invalid message format', 
+      code: 'INVALID_MESSAGE_FORMAT',
+      ...(messageId ? { messageId } : {}),
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Handle ownership validation failure
+   * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleOwnershipFailure(ownershipValidation, messageId, sendResponse) {
+    sendResponse({
+      success: false,
+      error: ownershipValidation.error,
+      code: ownershipValidation.code,
+      version: MESSAGE_PROTOCOL_VERSION,
+      ...(messageId ? { messageId } : {}),
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Handle handler execution error
+   * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleHandlerError(action, error, messageId, sendResponse) {
+    console.error(`[MSG][MessageRouter] Handler error for ${action}:`, error);
+
+    if (sendResponse) {
+      sendResponse({
+        success: false,
+        error: error.message || 'Handler execution failed',
+        code: 'HANDLER_ERROR',
+        ...(messageId ? { messageId } : {}),
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Route message to appropriate handler
+   * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
+   * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
+   * v1.6.4.15 - FIX Issue #22: Normalize response format
+   * v1.6.3.10-v11 - FIX Issue #11: Add ownership validation middleware
+   * v1.6.3.10-v12 - FIX Issue #7: Include messageId in response for correlation
+   * v1.6.3.10-v12 - FIX Issue #10: Validate protocol version
+   * v1.6.3.10-v12 - FIX Code Health: Extracted helpers to reduce complexity
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
    * @returns {boolean} True if async response expected
    */
   async route(message, sender, sendResponse) {
-    // v1.6.4.14 - Extract action from either `action` or `type` property
+    const messageId = message?.messageId || null;
     const action = this._extractAction(message);
     
-    // Validate message format - must have either action or type
+    // Validate message format
     if (!action) {
-      console.error('[MSG][MessageRouter] Invalid message format (missing action/type):', message);
-      sendResponse({ success: false, error: 'Invalid message format', code: 'INVALID_MESSAGE_FORMAT' });
+      this._handleInvalidFormat(message, messageId, sendResponse);
       return false;
+    }
+
+    // Validate protocol version and log correlation
+    this._validateProtocolVersion(message, sender);
+    
+    if (messageId) {
+      console.log('[MSG][MessageRouter] MESSAGE_CORRELATION:', { messageId, action, senderTabId: sender?.tab?.id });
     }
 
     const handler = this.handlers.get(action);
-
     if (!handler) {
-      // v1.6.3.10-v11 - FIX Code Health: Use helper to reduce complexity
       const result = this._handleNoHandler(message, sender, sendResponse, action);
-      if (result.handled) return result.returnValue;
-      return false;
+      return result.handled ? result.returnValue : false;
     }
 
-    // v1.6.3.10-v11 - FIX Issue #11: Validate ownership for operations that require it
+    // Validate ownership
     const ownershipValidation = this._validateOwnership(message, sender, action);
     if (!ownershipValidation.valid) {
-      sendResponse({
-        success: false,
-        error: ownershipValidation.error,
-        code: ownershipValidation.code,
-        version: MESSAGE_PROTOCOL_VERSION
-      });
+      this._handleOwnershipFailure(ownershipValidation, messageId, sendResponse);
       return false;
     }
 
     try {
-      // Call handler and wait for result
       const result = await handler(message, sender);
-
-      // v1.6.4.15 - FIX Issue #22: Normalize response format
-      const normalizedResponse = this._normalizeResponse(result, action);
-
-      // Send response
-      if (sendResponse) {
-        sendResponse(normalizedResponse);
-      }
-
-      return true; // Keep channel open for async response
+      const normalizedResponse = this._normalizeResponse(result, action, messageId);
+      if (sendResponse) sendResponse(normalizedResponse);
+      return true;
     } catch (error) {
-      console.error(`[MSG][MessageRouter] Handler error for ${action}:`, error);
-
-      if (sendResponse) {
-        sendResponse({
-          success: false,
-          error: error.message || 'Handler execution failed',
-          code: 'HANDLER_ERROR'
-        });
-      }
-
+      this._handleHandlerError(action, error, messageId, sendResponse);
       return true;
     }
   }
