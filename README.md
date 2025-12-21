@@ -20,6 +20,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 **🔧 40 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
 
 **Port/BFCache/Init Improvements (#1-8):**
+
 - ✅ **BFCache PORT_VERIFY Timeout** - Increased to 2000ms for reliability
 - ✅ **Port Race Condition Fix** - onDisconnect registered before onMessage
 - ✅ **Tab ID Timeout Extended** - 120s total timeout (from 60s)
@@ -27,6 +28,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **RESTORE Messages Queued** - Queue instead of reject during init
 
 **Tab Lifecycle/Message Routing (#9-20):**
+
 - ✅ **Tab onRemoved Debounce** - 200ms debounce for cleanup
 - ✅ **browser.tabs.query Timeout** - 2s timeout with fallback
 - ✅ **Periodic openTabs Cleanup** - Every 5 minutes
@@ -34,6 +36,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **MessageRouter Pre-Init Queue** - Messages queued before init
 
 **Sidebar/State/Security/Config (#21-40):**
+
 - ✅ **Sidebar Write Protection** - Storage write guards added
 - ✅ **Storage Format Detection** - Flat/nested format auto-detection
 - ✅ **Adoption Cache Size Limit** - 100 entries maximum
@@ -73,7 +76,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **v1.6.3.10-v10:** Issues 1-28 & areas A-F, checkpoint system, message timeout  
 **v1.6.3.10-v9:** Storage & cross-tab fixes, identity gating, quota monitoring  
-**v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed  
+**v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 

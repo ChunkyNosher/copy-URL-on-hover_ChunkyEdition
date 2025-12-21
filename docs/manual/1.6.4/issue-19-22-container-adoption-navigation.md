@@ -2,17 +2,25 @@
 
 **Extension Version:** v1.6.3.10+  
 **Date:** December 20, 2025  
-**Report Type:** Quaternary Analysis - Container Context, Adoption Completion, Navigation Scope  
+**Report Type:** Quaternary Analysis - Container Context, Adoption Completion,
+Navigation Scope
 
 ---
 
 ## Executive Summary
 
-This report documents four critical architectural issues discovered during comprehensive codebase scanning and Firefox API limitation analysis. These issues directly cause data loss in production scenarios: container switching, tab adoption completion, and cross-domain navigation within Quick Tabs.
+This report documents four critical architectural issues discovered during
+comprehensive codebase scanning and Firefox API limitation analysis. These
+issues directly cause data loss in production scenarios: container switching,
+tab adoption completion, and cross-domain navigation within Quick Tabs.
 
-The issues represent foundational problems in how the extension tracks tab ownership, manages storage context boundaries, and handles snapshot lifecycle events during page transitions.
+The issues represent foundational problems in how the extension tracks tab
+ownership, manages storage context boundaries, and handles snapshot lifecycle
+events during page transitions.
 
-**Impact:** Users experience mysteriously disappearing Quick Tabs when switching containers, adopting tabs between windows, or navigating to different domains within the same tab.
+**Impact:** Users experience mysteriously disappearing Quick Tabs when switching
+containers, adopting tabs between windows, or navigating to different domains
+within the same tab.
 
 ---
 
@@ -20,17 +28,21 @@ The issues represent foundational problems in how the extension tracks tab owner
 
 **Severity:** HIGH  
 **Component:** Tab adoption handler, storage filtering layer  
-**Impact Scope:** Cross-container adoption workflows, storage isolation enforcement  
+**Impact Scope:** Cross-container adoption workflows, storage isolation
+enforcement
 
 ### Problem Description
 
-Firefox's Multi-Account Containers API uses `cookieStoreId` as the storage context boundary. Each container has an isolated storage namespace:
+Firefox's Multi-Account Containers API uses `cookieStoreId` as the storage
+context boundary. Each container has an isolated storage namespace:
 
 - `firefox-default` (default container)
 - `firefox-private` (private browsing)
 - `firefox-container-1`, `firefox-container-2`, etc. (named containers)
 
-When a tab is adopted from one container to another, its `cookieStoreId` changes. However, the current adoption implementation does not update the container context metadata for Quick Tabs associated with that tab.
+When a tab is adopted from one container to another, its `cookieStoreId`
+changes. However, the current adoption implementation does not update the
+container context metadata for Quick Tabs associated with that tab.
 
 ### Manifestation
 
@@ -39,21 +51,28 @@ Consider adoption scenario:
 1. User creates Quick Tab QT-1 in **Wikipedia (Container A, default)**
    - Stored with: `originTabId=10`, `containerContext=firefox-default`
 2. User drags Wikipedia tab to **Personal Container (Container B)**
-   - Tab object `cookieStoreId` changes from `firefox-default` to `firefox-container-personal`
+   - Tab object `cookieStoreId` changes from `firefox-default` to
+     `firefox-container-personal`
    - Adoption handler runs: updates tab ownership metadata
 3. New adoptee tab (Container B context) sends: "I own QT-1 now"
 4. Background updates: `ownerTabId=11` (new owner in Container B)
    - But does NOT update: `containerContext` (still references Container A)
 5. Content script in Container B queries: "Get Quick Tabs for my tab"
-6. Storage filter runs: `originTabId === currentTabId` AND `containerContext === currentContainerContext`
-7. Filter fails because: `containerContext=firefox-default` but `currentContainerContext=firefox-container-personal`
+6. Storage filter runs: `originTabId === currentTabId` AND
+   `containerContext === currentContainerContext`
+7. Filter fails because: `containerContext=firefox-default` but
+   `currentContainerContext=firefox-container-personal`
 8. Quick Tab appears invisible in Container B
 
 ### Root Cause
 
-The adoption workflow in `TabLifecycleHandler` updates ownership metadata but not container context. Storage retrieval queries filter on container context to enforce isolation, but adoption doesn't sync the context to the new container.
+The adoption workflow in `TabLifecycleHandler` updates ownership metadata but
+not container context. Storage retrieval queries filter on container context to
+enforce isolation, but adoption doesn't sync the context to the new container.
 
-From MDN documentation on Firefox Containers: "Each container has its own cookie store and data isolation. When tabs move between containers, their storage context changes."
+From MDN documentation on Firefox Containers: "Each container has its own cookie
+store and data isolation. When tabs move between containers, their storage
+context changes."
 
 ### Why This Breaks Silently
 
@@ -65,21 +84,26 @@ From MDN documentation on Firefox Containers: "Each container has its own cookie
 
 ### Related Behavior: Scenario 14 (Containers for Add-on Developers)
 
-From `issue-47-revised.md` Scenario 14: "Verify QTs respect Firefox container boundaries and are isolated by container"
+From `issue-47-revised.md` Scenario 14: "Verify QTs respect Firefox container
+boundaries and are isolated by container"
 
-The test explicitly verifies that Quick Tabs created in Container A do NOT appear in Container B for the same domain. This isolation is working correctly through the filter. The problem occurs AFTER adoption: when a tab is moved between containers, the metadata doesn't follow.
+The test explicitly verifies that Quick Tabs created in Container A do NOT
+appear in Container B for the same domain. This isolation is working correctly
+through the filter. The problem occurs AFTER adoption: when a tab is moved
+between containers, the metadata doesn't follow.
 
 ### Storage Query Pattern
 
 Content scripts execute queries similar to:
 
 ```sql
-WHERE originTabId = currentTabId 
+WHERE originTabId = currentTabId
   AND containerContext = currentContainerContext
   AND domain = currentDomain
 ```
 
-Adoption updates `originTabId` but not `containerContext`, causing the query to exclude the snapshots.
+Adoption updates `originTabId` but not `containerContext`, causing the query to
+exclude the snapshots.
 
 ---
 
@@ -87,13 +111,16 @@ Adoption updates `originTabId` but not `containerContext`, causing the query to 
 
 **Severity:** HIGH  
 **Component:** `TabLifecycleHandler.triggerPostAdoptionPersistence()` method  
-**Impact Scope:** Adoption workflow completion, write queue blocking  
+**Impact Scope:** Adoption workflow completion, write queue blocking
 
 ### Problem Description
 
-The codebase contains a method `triggerPostAdoptionPersistence()` in TabLifecycleHandler (lines ~180-215 from scanning). This method is designed to execute after tab adoption completes and unblock the write queue.
+The codebase contains a method `triggerPostAdoptionPersistence()` in
+TabLifecycleHandler (lines ~180-215 from scanning). This method is designed to
+execute after tab adoption completes and unblock the write queue.
 
-However, comprehensive code search across the repository found **zero calls** to this method. It exists but is never invoked.
+However, comprehensive code search across the repository found **zero calls** to
+this method. It exists but is never invoked.
 
 ### Method Purpose
 
@@ -106,12 +133,15 @@ The hook is intended to:
 
 ### Why This Matters
 
-The adoption workflow likely implements pessimistic locking: during adoption, the write queue is blocked to prevent concurrent updates to the Quick Tab metadata. Once adoption completes, the queue should be unblocked.
+The adoption workflow likely implements pessimistic locking: during adoption,
+the write queue is blocked to prevent concurrent updates to the Quick Tab
+metadata. Once adoption completes, the queue should be unblocked.
 
 If the hook is never called:
 
 1. Write queue remains in "locked during adoption" state indefinitely
-2. Subsequent Quick Tab operations (position changes, size changes, minimize/restore) are queued but never execute
+2. Subsequent Quick Tab operations (position changes, size changes,
+   minimize/restore) are queued but never execute
 3. Storage never updates with new operations
 4. User performs actions (resizes tab, moves it) but changes don't persist
 5. Page reload loses all changes made after adoption
@@ -125,7 +155,8 @@ From `QuickTabHandler.js` scanning:
 - `_processWriteQueue()` processes items sequentially
 - But no code found that explicitly signals adoption completion
 
-This suggests adoption runs, updates metadata, but never signals "adoption finished, unblock writes."
+This suggests adoption runs, updates metadata, but never signals "adoption
+finished, unblock writes."
 
 ### Cascading Failure
 
@@ -143,18 +174,23 @@ This suggests adoption runs, updates metadata, but never signals "adoption finis
 ## Issue 21: Cross-Domain Navigation Invalidates originTabId References
 
 **Severity:** HIGH  
-**Component:** Content script hydration, originTabId filtering, snapshot metadata  
-**Impact Scope:** Page navigation scenarios, snapshot restoration on domain switches  
+**Component:** Content script hydration, originTabId filtering, snapshot
+metadata  
+**Impact Scope:** Page navigation scenarios, snapshot restoration on domain
+switches
 
 ### Problem Description
 
-Firefox allows users to navigate within the same browser tab to different domains. A tab ID remains constant even when:
+Firefox allows users to navigate within the same browser tab to different
+domains. A tab ID remains constant even when:
 
 - User navigates from `wikipedia.org` to `youtube.com`
 - User navigates from `github.com` to `example.com`
 - Tab ID stays the same (e.g., tab 5 remains tab 5)
 
-However, Quick Tab snapshots store `originTabId` to enforce tab scoping. The problem: snapshots created on Domain A become inaccessible after navigation to Domain B because the snapshot metadata context is stale.
+However, Quick Tab snapshots store `originTabId` to enforce tab scoping. The
+problem: snapshots created on Domain A become inaccessible after navigation to
+Domain B because the snapshot metadata context is stale.
 
 ### Manifestation
 
@@ -166,7 +202,8 @@ Navigation scenario:
 4. User navigates to `youtube.com` in Tab 5
 5. Page reloads (or new content script initializes)
 6. New content script runs `minimized-manager.restore()`
-7. Restore queries: "Get snapshots where `originTabId=5` AND `currentDomain=wikipedia.org`"
+7. Restore queries: "Get snapshots where `originTabId=5` AND
+   `currentDomain=wikipedia.org`"
 8. But `currentDomain` is now `youtube.com`, not `wikipedia.org`
 9. Query returns zero results
 10. Restore completes with no snapshots loaded
@@ -174,23 +211,32 @@ Navigation scenario:
 
 ### Root Cause
 
-The snapshot metadata includes domain scoping to prevent cross-domain access. However, when a tab navigates to a different domain, the same tab ID now corresponds to a different domain context. The filter becomes stale.
+The snapshot metadata includes domain scoping to prevent cross-domain access.
+However, when a tab navigates to a different domain, the same tab ID now
+corresponds to a different domain context. The filter becomes stale.
 
-The domain context is implicitly enforced through the `originTabId` in combination with the storage key structure. If snapshots are keyed by `qt-${originTabId}-${timestamp}`, they become inaccessible when the current page domain differs from the original creation domain.
+The domain context is implicitly enforced through the `originTabId` in
+combination with the storage key structure. If snapshots are keyed by
+`qt-${originTabId}-${timestamp}`, they become inaccessible when the current page
+domain differs from the original creation domain.
 
 ### Evidence from Behavior Specification
 
 From `issue-47-revised.md` Scenario 20: "Cross-Domain Navigation in Same Tab"
 
 > "2. Navigate to different domain in same tab
->    - Action: Navigate to YouTube in WP 1 (type URL directly in address bar)
->    - Expected: Page changes to YouTube, QT 1 remains visible
+>
+> - Action: Navigate to YouTube in WP 1 (type URL directly in address bar)
+> - Expected: Page changes to YouTube, QT 1 remains visible
 >
 > 3. Note QT 1 visibility during navigation
 >    - Action: Observe if QT 1 persists or momentarily disappears
->    - Expected: QT 1 may disappear briefly during page reload (cross-domain navigation)"
+>    - Expected: QT 1 may disappear briefly during page reload (cross-domain
+>      navigation)"
 
-The test scenario acknowledges that QT may "disappear briefly" but expects it to reappear after the page fully loads. If hydration doesn't account for domain change, the QT disappears and never reappears.
+The test scenario acknowledges that QT may "disappear briefly" but expects it to
+reappear after the page fully loads. If hydration doesn't account for domain
+change, the QT disappears and never reappears.
 
 ### TTL Interaction
 
@@ -218,23 +264,27 @@ Quick Tabs have a 5-second TTL (time-to-live). If:
 ## Issue 22: Message Response Format Not Validated in All Handlers
 
 **Severity:** HIGH  
-**Component:** MessageRouter response handling, QuickTabHandler message handlers  
-**Impact Scope:** Cross-component communication, silent failures  
+**Component:** MessageRouter response handling, QuickTabHandler message
+handlers  
+**Impact Scope:** Cross-component communication, silent failures
 
 ### Problem Description
 
-The QuickTabHandler implements multiple message handlers for different commands. Each handler returns a response, but response formats are inconsistent across handlers. MessageRouter dispatches messages and returns responses without validating that responses match expected schema.
+The QuickTabHandler implements multiple message handlers for different commands.
+Each handler returns a response, but response formats are inconsistent across
+handlers. MessageRouter dispatches messages and returns responses without
+validating that responses match expected schema.
 
 ### Manifestation
 
 Response format inconsistency examples:
 
-| Handler | Response Format | Content Script Expectation |
-|---------|-----------------|---------------------------|
-| handleGetCurrentTabId | `{ currentTabId: 123 }` | Expects `{ success: true, data: { tabId: 123 } }` |
-| handleGetQuickTabsState | `{ tabs: [...], success: true }` | Expects `{ data: { tabs: [...] } }` |
-| handleError (on failure) | `{ error: "message" }` | Expects `{ success: false, error: {...} }` |
-| Timeout case | `undefined` or `null` | Expects some response object |
+| Handler                  | Response Format                  | Content Script Expectation                        |
+| ------------------------ | -------------------------------- | ------------------------------------------------- |
+| handleGetCurrentTabId    | `{ currentTabId: 123 }`          | Expects `{ success: true, data: { tabId: 123 } }` |
+| handleGetQuickTabsState  | `{ tabs: [...], success: true }` | Expects `{ data: { tabs: [...] } }`               |
+| handleError (on failure) | `{ error: "message" }`           | Expects `{ success: false, error: {...} }`        |
+| Timeout case             | `undefined` or `null`            | Expects some response object                      |
 
 Content script code likely follows pattern:
 
@@ -246,7 +296,9 @@ const tabs = response.data.tabs;    // Fails with handler A, works with handler 
 
 ### Root Cause
 
-When multiple handlers evolved, each was implemented independently with its own response style. No schema validation layer enforces consistency. MessageRouter simply passes responses through without transformation or validation.
+When multiple handlers evolved, each was implemented independently with its own
+response style. No schema validation layer enforces consistency. MessageRouter
+simply passes responses through without transformation or validation.
 
 ### Failure Modes
 
@@ -256,7 +308,8 @@ Handler returns: `{ currentTabId: 123 }`
 
 Content script expects: `response.data.tabId`
 
-Result: `response.data` is `undefined`, accessing `.tabId` throws error or produces `undefined`, subsequent code fails silently.
+Result: `response.data` is `undefined`, accessing `.tabId` throws error or
+produces `undefined`, subsequent code fails silently.
 
 **Mode 2: Success Flag Missing**
 
@@ -264,7 +317,8 @@ Handler returns: `{ tabs: [...] }`
 
 Content script checks: `if (!response.success) { throwError(); }`
 
-Result: `response.success` is `undefined`, which is falsy, throws error incorrectly.
+Result: `response.success` is `undefined`, which is falsy, throws error
+incorrectly.
 
 **Mode 3: Error Object Mismatch**
 
@@ -272,7 +326,8 @@ Handler returns: `{ error: "Not initialized" }`
 
 Content script expects: `response.error.code`
 
-Result: `response.error` is string, not object, accessing `.code` produces `undefined`.
+Result: `response.error` is string, not object, accessing `.code` produces
+`undefined`.
 
 ### Why This Causes Silent Failures
 
@@ -295,7 +350,9 @@ There is no layer that enforces:
 
 ### Related to Issue 15
 
-Issue 15 documented that `GET_CURRENT_TAB_ID` returns inconsistent formats depending on initialization state. Issue 22 generalizes this problem: all handlers lack response validation.
+Issue 15 documented that `GET_CURRENT_TAB_ID` returns inconsistent formats
+depending on initialization state. Issue 22 generalizes this problem: all
+handlers lack response validation.
 
 ---
 
@@ -344,29 +401,38 @@ Issue 15 documented that `GET_CURRENT_TAB_ID` returns inconsistent formats depen
 Current state: No logs when adoption occurs or when container context checked.
 
 Operators cannot see:
+
 - What container tab was in before adoption
 - What container tab moved to
 - Whether container metadata was updated
 - Why storage queries are failing
 
 Required logs would show:
-- Adoption initiated: `[ADOPTION] Adopting tab from container ${oldContainer} to ${newContainer}`
-- Container update: `[ADOPTION_CONTAINER] Metadata updated: ${oldContainer} → ${newContainer}`
-- Query failure visibility: `[CONTAINER_FILTER] Query excluded ${count} snapshots due to container mismatch`
+
+- Adoption initiated:
+  `[ADOPTION] Adopting tab from container ${oldContainer} to ${newContainer}`
+- Container update:
+  `[ADOPTION_CONTAINER] Metadata updated: ${oldContainer} → ${newContainer}`
+- Query failure visibility:
+  `[CONTAINER_FILTER] Query excluded ${count} snapshots due to container mismatch`
 
 **Adoption Completion Logging (Issue 20)**
 
 Current state: No logs showing whether post-persistence hook executed.
 
 Operators cannot see:
+
 - If adoption actually completed
 - Whether write queue was unblocked
 - How many writes are pending
 - If adoption is stuck in locked state
 
 Required logs would show:
-- Adoption start: `[ADOPTION_START] Adoption initiated: ${oldTabId} → ${newTabId}`
-- Hook execution: `[ADOPTION_COMPLETE] Post-persistence hook triggered, write queue unblocked`
+
+- Adoption start:
+  `[ADOPTION_START] Adoption initiated: ${oldTabId} → ${newTabId}`
+- Hook execution:
+  `[ADOPTION_COMPLETE] Post-persistence hook triggered, write queue unblocked`
 - Queue status: `[WRITE_QUEUE] ${pendingCount} operations now executable`
 
 **Navigation Context Logging (Issue 21)**
@@ -374,30 +440,40 @@ Required logs would show:
 Current state: No logs showing domain context or hydration scope checks.
 
 Operators cannot see:
+
 - What domain page navigated to
 - Whether hydration attempted
 - Why hydration failed
 - What snapshots became inaccessible
 
 Required logs would show:
-- Navigation detected: `[NAVIGATION] Domain changed: ${oldDomain} → ${newDomain}`
-- Hydration attempted: `[HYDRATION_DOMAIN_CHECK] Current domain ${currentDomain} vs snapshot context ${snapshotDomain}`
-- Filter results: `[HYDRATION_FILTER] ${totalSnapshots} snapshots, ${visibleCount} visible, ${filteredCount} filtered by domain`
+
+- Navigation detected:
+  `[NAVIGATION] Domain changed: ${oldDomain} → ${newDomain}`
+- Hydration attempted:
+  `[HYDRATION_DOMAIN_CHECK] Current domain ${currentDomain} vs snapshot context ${snapshotDomain}`
+- Filter results:
+  `[HYDRATION_FILTER] ${totalSnapshots} snapshots, ${visibleCount} visible, ${filteredCount} filtered by domain`
 
 **Response Format Logging (Issue 22)**
 
 Current state: No logs showing response format validation or mismatches.
 
 Operators cannot see:
+
 - What response format received
 - Whether format matched expectation
 - If validation failed
 - What error resulted
 
 Required logs would show:
-- Response received: `[MSG_RESPONSE] Command ${command} received response format: ${responseType}`
-- Validation: `[MSG_VALIDATE] Expected schema has fields ${expectedFields}, got ${actualFields}`
-- Mismatch: `[MSG_SCHEMA_MISMATCH] Field ${field} expected type ${expectedType}, got ${actualType}`
+
+- Response received:
+  `[MSG_RESPONSE] Command ${command} received response format: ${responseType}`
+- Validation:
+  `[MSG_VALIDATE] Expected schema has fields ${expectedFields}, got ${actualFields}`
+- Mismatch:
+  `[MSG_SCHEMA_MISMATCH] Field ${field} expected type ${expectedType}, got ${actualType}`
 
 ---
 
@@ -407,25 +483,32 @@ Required logs would show:
 
 From Mozilla Hacks "Containers for Add-on Developers":
 
-> "`cookieStoreId` is the storage boundary. Each container has isolated storage. When tabs move between containers, their storage context changes."
+> "`cookieStoreId` is the storage boundary. Each container has isolated storage.
+> When tabs move between containers, their storage context changes."
 
-**Problem:** The API changes `cookieStoreId` automatically when tab moves to new container. Extension must explicitly track and update metadata that depends on container context.
+**Problem:** The API changes `cookieStoreId` automatically when tab moves to new
+container. Extension must explicitly track and update metadata that depends on
+container context.
 
 ### Firefox Navigation Model
 
 From MDN WebExtensions Content Scripts:
 
-> "Content scripts are injected on page load. Same tab ID persists across multiple domains."
+> "Content scripts are injected on page load. Same tab ID persists across
+> multiple domains."
 
-**Problem:** Tab ID constant but domain context changes. Extension must track both `tabId` AND `domain` for snapshot scoping.
+**Problem:** Tab ID constant but domain context changes. Extension must track
+both `tabId` AND `domain` for snapshot scoping.
 
 ### Message Delivery No Schema Enforcement
 
 From MDN Runtime Messages:
 
-> "No schema validation occurs. Handlers must ensure response format. One-off messages get single response."
+> "No schema validation occurs. Handlers must ensure response format. One-off
+> messages get single response."
 
-**Problem:** No automatic validation of response shape. Each handler must implement its own schema, but currently they don't.
+**Problem:** No automatic validation of response shape. Each handler must
+implement its own schema, but currently they don't.
 
 ---
 
@@ -434,6 +517,7 @@ From MDN Runtime Messages:
 ### Issue 19: Container Context Update During Adoption
 
 The adoption workflow must:
+
 - Detect container change during adoption
 - Update snapshot metadata with new `cookieStoreId` context
 - Reindex snapshots to new container storage location
@@ -442,6 +526,7 @@ The adoption workflow must:
 ### Issue 20: Post-Adoption Persistence Hook Wiring
 
 The adoption handler must:
+
 - Call `triggerPostAdoptionPersistence()` after metadata updated
 - Block writes only during metadata update, not after
 - Log hook execution for visibility
@@ -450,6 +535,7 @@ The adoption handler must:
 ### Issue 21: Cross-Domain Navigation Scope Handling
 
 The hydration layer must:
+
 - Detect domain change on page load
 - Update snapshot context metadata for new domain
 - Clear or revalidate snapshot TTL on domain change
@@ -458,6 +544,7 @@ The hydration layer must:
 ### Issue 22: Response Format Validation Layer
 
 The MessageRouter must:
+
 - Define response schema for each command
 - Validate responses before returning to content scripts
 - Log schema violations for debugging
@@ -469,11 +556,14 @@ The MessageRouter must:
 
 These four issues build upon and extend earlier documented issues:
 
-- **Issue 8** (Handler registration timing): Issues 19-22 worsen if handlers not ready
-- **Issue 14** (Message handlers undefined): Issue 22 occurs even when handlers exist
+- **Issue 8** (Handler registration timing): Issues 19-22 worsen if handlers not
+  ready
+- **Issue 14** (Message handlers undefined): Issue 22 occurs even when handlers
+  exist
 - **Issue 15** (Inconsistent response format): Issue 22 is generalized version
 - **Issue 16** (Port lifecycle): Issues 19-22 affect port message responses
-- **Issue 17** (Snapshot restoration assumption): Issues 19 & 21 cause restoration to fail
+- **Issue 17** (Snapshot restoration assumption): Issues 19 & 21 cause
+  restoration to fail
 - **Issue 18** (No validation): Issue 22 is validation gap
 
 ---
@@ -482,8 +572,10 @@ These four issues build upon and extend earlier documented issues:
 
 Fix in this order:
 
-1. **Issue 20 (Post-adoption hook)**: Unblocks writes immediately, fixes adoption workflows
-2. **Issue 22 (Response validation)**: Enables visibility into all message failures
+1. **Issue 20 (Post-adoption hook)**: Unblocks writes immediately, fixes
+   adoption workflows
+2. **Issue 22 (Response validation)**: Enables visibility into all message
+   failures
 3. **Issue 19 (Container context)**: Fixes multi-container workflows
 4. **Issue 21 (Navigation scope)**: Fixes cross-domain navigation workflows
 
@@ -495,15 +587,21 @@ Issues 20 and 22 are prerequisite for debugging issues 19 and 21.
 
 **Why These Issues Were Missed:**
 
-1. **Issue 19**: Container context not visibly referenced in adoption code; assumption that `originTabId` alone suffices
-2. **Issue 20**: Hook exists but never invoked; requires call site search across entire codebase
-3. **Issue 21**: Assumes domain scoping not needed; doesn't account for single-tab multi-domain navigation
-4. **Issue 22**: Schema validation considered optional; each handler evolved independently
+1. **Issue 19**: Container context not visibly referenced in adoption code;
+   assumption that `originTabId` alone suffices
+2. **Issue 20**: Hook exists but never invoked; requires call site search across
+   entire codebase
+3. **Issue 21**: Assumes domain scoping not needed; doesn't account for
+   single-tab multi-domain navigation
+4. **Issue 22**: Schema validation considered optional; each handler evolved
+   independently
 
 **Testing Strategy:**
 
-- Issue 19: Test adoption across containers, verify snapshots accessible in new container
-- Issue 20: Monitor write queue state before/after adoption, verify hook execution
+- Issue 19: Test adoption across containers, verify snapshots accessible in new
+  container
+- Issue 20: Monitor write queue state before/after adoption, verify hook
+  execution
 - Issue 21: Navigate same tab to different domain, verify snapshots restored
 - Issue 22: Mock malformed responses, verify handling doesn't crash
 

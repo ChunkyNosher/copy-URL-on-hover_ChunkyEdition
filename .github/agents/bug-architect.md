@@ -196,13 +196,13 @@ AFTER → Store decisions → Commit memory
 
 ### Key Bug Patterns & Solutions
 
-| Area               | Root Cause                              | Solution                                           |
-| ------------------ | --------------------------------------- | -------------------------------------------------- |
-| Global Visibility  | Wrong storage format/key                | Unified storage format, `storage.local`            |
-| Solo/Mute State    | Arrays not used, no mutual exclusivity  | `soloedOnTabs/mutedOnTabs` arrays, domain layer    |
-| Quick Tab Lifecycle| Init order, async access, no cleanup    | Strict phases, flags, `cleanupOrphanedQuickTabElements()` |
-| Minimize/Restore   | No validation, no locks, Map corruption | State machine, mediator, MapTransactionManager     |
-| Sidebar Gestures   | Async losing Firefox context            | Synchronous handlers only                          |
+| Area                | Root Cause                              | Solution                                                  |
+| ------------------- | --------------------------------------- | --------------------------------------------------------- |
+| Global Visibility   | Wrong storage format/key                | Unified storage format, `storage.local`                   |
+| Solo/Mute State     | Arrays not used, no mutual exclusivity  | `soloedOnTabs/mutedOnTabs` arrays, domain layer           |
+| Quick Tab Lifecycle | Init order, async access, no cleanup    | Strict phases, flags, `cleanupOrphanedQuickTabElements()` |
+| Minimize/Restore    | No validation, no locks, Map corruption | State machine, mediator, MapTransactionManager            |
+| Sidebar Gestures    | Async losing Firefox context            | Synchronous handlers only                                 |
 
 ---
 

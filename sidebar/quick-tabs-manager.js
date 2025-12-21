@@ -854,10 +854,17 @@ function adjustHeartbeatInterval(latencyMs) {
  * @private
  */
 function _handleHeartbeatNoPort() {
-  logPortLifecycle('HEARTBEAT_SKIPPED', { reason: 'port not connected', circuitBreakerState, reconnectAttempts });
+  logPortLifecycle('HEARTBEAT_SKIPPED', {
+    reason: 'port not connected',
+    circuitBreakerState,
+    reconnectAttempts
+  });
   consecutiveHeartbeatFailures++;
   if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-    logPortLifecycle('HEARTBEAT_TIMEOUT', { failures: consecutiveHeartbeatFailures, recoveryAction: 'triggering reconnect' });
+    logPortLifecycle('HEARTBEAT_TIMEOUT', {
+      failures: consecutiveHeartbeatFailures,
+      recoveryAction: 'triggering reconnect'
+    });
     scheduleReconnect();
   }
 }
@@ -878,8 +885,10 @@ function _handleHeartbeatSuccess(timestamp, response) {
   }
 
   logPortLifecycle('HEARTBEAT_SENT', {
-    roundTripMs: latencyMs, backgroundAlive: response?.backgroundAlive,
-    isInitialized: response?.isInitialized, adaptiveInterval: currentHeartbeatInterval
+    roundTripMs: latencyMs,
+    backgroundAlive: response?.backgroundAlive,
+    isInitialized: response?.isInitialized,
+    adaptiveInterval: currentHeartbeatInterval
   });
   adjustHeartbeatInterval(latencyMs);
 }
@@ -892,9 +901,14 @@ function _handleHeartbeatSuccess(timestamp, response) {
 function _handleHeartbeatFailure(err) {
   consecutiveHeartbeatFailures++;
   logPortLifecycle('HEARTBEAT_TIMEOUT', {
-    error: err.message, failures: consecutiveHeartbeatFailures,
-    maxFailures: MAX_HEARTBEAT_FAILURES, timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
-    recoveryAction: consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES ? 'forcing immediate reconnect' : 'will retry'
+    error: err.message,
+    failures: consecutiveHeartbeatFailures,
+    maxFailures: MAX_HEARTBEAT_FAILURES,
+    timeSinceLastSuccess: Date.now() - lastHeartbeatResponse,
+    recoveryAction:
+      consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES
+        ? 'forcing immediate reconnect'
+        : 'will retry'
   });
 
   if (err.message === 'Heartbeat timeout' || err.message === 'Port message timeout') {
@@ -903,7 +917,10 @@ function _handleHeartbeatFailure(err) {
   }
 
   if (consecutiveHeartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-    logPortLifecycle('HEARTBEAT_MAX_FAILURES', { failures: consecutiveHeartbeatFailures, recoveryAction: 'forcing immediate reconnect' });
+    logPortLifecycle('HEARTBEAT_MAX_FAILURES', {
+      failures: consecutiveHeartbeatFailures,
+      recoveryAction: 'forcing immediate reconnect'
+    });
     forceImmediateReconnect();
   }
   return false;
@@ -1621,7 +1638,12 @@ async function _validateAdoptionContainers(oldOriginTabId, newOriginTabId) {
       error: err.message
     });
     // On error, allow adoption but log warning
-    return { valid: true, oldContainerId: null, newContainerId: null, reason: `validation error: ${err.message}` };
+    return {
+      valid: true,
+      oldContainerId: null,
+      newContainerId: null,
+      reason: `validation error: ${err.message}`
+    };
   }
 }
 
@@ -1673,16 +1695,34 @@ async function _performSurgicalAdoptionUpdate(adoptedQuickTabId, oldOriginTabId,
 
     // Step 2: Try to move existing element between groups
     const existingElement = _findQuickTabDOMElement(adoptedQuickTabId);
-    const moveResult = await _tryMoveExistingElement({ existingElement, adoptedTab, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime });
+    const moveResult = await _tryMoveExistingElement({
+      existingElement,
+      adoptedTab,
+      oldOriginTabId,
+      newOriginTabId,
+      adoptedQuickTabId,
+      startTime
+    });
 
     if (moveResult.handled) {
       return moveResult.success;
     }
 
     // Step 3: Try inserting into correct group as fallback
-    return await _tryInsertAsNewElement({ adoptedTab, existingElement, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime });
+    return await _tryInsertAsNewElement({
+      adoptedTab,
+      existingElement,
+      oldOriginTabId,
+      newOriginTabId,
+      adoptedQuickTabId,
+      startTime
+    });
   } catch (err) {
-    console.error('[Manager] SURGICAL_UPDATE_ERROR:', { adoptedQuickTabId, error: err.message, durationMs: Date.now() - startTime });
+    console.error('[Manager] SURGICAL_UPDATE_ERROR:', {
+      adoptedQuickTabId,
+      error: err.message,
+      durationMs: Date.now() - startTime
+    });
     return false;
   }
 }
@@ -1728,14 +1768,30 @@ async function _loadFreshAdoptionState(adoptedQuickTabId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _tryMoveExistingElement({ existingElement, adoptedTab, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime }) {
+async function _tryMoveExistingElement({
+  existingElement,
+  adoptedTab,
+  oldOriginTabId,
+  newOriginTabId,
+  adoptedQuickTabId,
+  startTime
+}) {
   if (!existingElement) return { handled: false, success: false };
 
-  const moved = await _moveQuickTabBetweenGroups(existingElement, adoptedTab, oldOriginTabId, newOriginTabId);
+  const moved = await _moveQuickTabBetweenGroups(
+    existingElement,
+    adoptedTab,
+    oldOriginTabId,
+    newOriginTabId
+  );
   if (!moved) return { handled: false, success: false };
 
   console.log('[Manager] SURGICAL_UPDATE_COMPLETE:', {
-    adoptedQuickTabId, oldOriginTabId, newOriginTabId, method: 'move-between-groups', durationMs: Date.now() - startTime
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    method: 'move-between-groups',
+    durationMs: Date.now() - startTime
   });
   return { handled: true, success: true };
 }
@@ -1745,7 +1801,14 @@ async function _tryMoveExistingElement({ existingElement, adoptedTab, oldOriginT
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _tryInsertAsNewElement({ adoptedTab, existingElement, oldOriginTabId, newOriginTabId, adoptedQuickTabId, startTime }) {
+async function _tryInsertAsNewElement({
+  adoptedTab,
+  existingElement,
+  oldOriginTabId,
+  newOriginTabId,
+  adoptedQuickTabId,
+  startTime
+}) {
   const inserted = await _insertQuickTabIntoGroup(adoptedTab, newOriginTabId);
   if (!inserted) {
     console.warn('[Manager] SURGICAL_UPDATE: Could not insert into target group');
@@ -1757,7 +1820,11 @@ async function _tryInsertAsNewElement({ adoptedTab, existingElement, oldOriginTa
   }
 
   console.log('[Manager] SURGICAL_UPDATE_COMPLETE:', {
-    adoptedQuickTabId, oldOriginTabId, newOriginTabId, method: 'insert-into-group', durationMs: Date.now() - startTime
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    method: 'insert-into-group',
+    durationMs: Date.now() - startTime
   });
   return true;
 }
@@ -1831,7 +1898,11 @@ function _executeElementMove({ element, tabData, targetContent, oldOriginTabId, 
 
   setTimeout(() => element.classList.remove('adoption-animation'), ANIMATION_DURATION_MS);
 
-  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', { quickTabId: tabData.id, fromGroup: oldOriginTabId, toGroup: newOriginTabId });
+  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
+    quickTabId: tabData.id,
+    fromGroup: oldOriginTabId,
+    toGroup: newOriginTabId
+  });
   return true;
 }
 
@@ -2780,7 +2851,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUI();
   }, 2000);
 
-  console.log('[Manager] v1.6.3.10-v7 Port connection + Message infrastructure + Host info maintenance initialized');
+  console.log(
+    '[Manager] v1.6.3.10-v7 Port connection + Message infrastructure + Host info maintenance initialized'
+  );
 });
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
@@ -3460,7 +3533,7 @@ async function _renderUIImmediate() {
   const groupStartTime = Date.now();
   const groups = groupQuickTabsByOriginTab(allTabs);
   const groupDuration = Date.now() - groupStartTime;
-  
+
   const collapseStateStartTime = Date.now();
   const collapseState = await loadCollapseState();
   const collapseStateDuration = Date.now() - collapseStateStartTime;
@@ -5338,12 +5411,29 @@ function _resolveTargetTab(quickTabId, action, correlationId) {
  * @private
  * @param {Object} opts - Logging options
  */
-function _logOperationResult({ action, quickTabId, correlationId, result, durationMs, targetTabId }) {
+function _logOperationResult({
+  action,
+  quickTabId,
+  correlationId,
+  result,
+  durationMs,
+  targetTabId
+}) {
   const baseData = { action, quickTabId, correlationId, durationMs, attempts: result.attempts };
   if (result.success) {
-    console.log('[Manager] OPERATION_COMPLETED:', { ...baseData, status: 'success', method: result.method, targetTabId: result.targetTabId });
+    console.log('[Manager] OPERATION_COMPLETED:', {
+      ...baseData,
+      status: 'success',
+      method: result.method,
+      targetTabId: result.targetTabId
+    });
   } else {
-    console.error('[Manager] OPERATION_FAILED:', { ...baseData, status: 'failed', error: result.error, targetTabId });
+    console.error('[Manager] OPERATION_FAILED:', {
+      ...baseData,
+      status: 'failed',
+      error: result.error,
+      targetTabId
+    });
   }
 }
 
@@ -5389,7 +5479,10 @@ async function minimizeQuickTab(quickTabId) {
   const operationKey = `minimize-${quickTabId}`;
   if (PENDING_OPERATIONS.has(operationKey)) {
     console.log('[Manager] OPERATION_REJECTED: Duplicate operation pending:', {
-      action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId, reason: 'duplicate-pending'
+      action: 'MINIMIZE_QUICK_TAB',
+      quickTabId,
+      correlationId,
+      reason: 'duplicate-pending'
     });
     return;
   }
@@ -5409,12 +5502,20 @@ async function minimizeQuickTab(quickTabId) {
   }
 
   // Resolve target tab
-  const { targetTabId, originTabId } = _resolveTargetTab(quickTabId, 'MINIMIZE_QUICK_TAB', correlationId);
+  const { targetTabId, originTabId } = _resolveTargetTab(
+    quickTabId,
+    'MINIMIZE_QUICK_TAB',
+    correlationId
+  );
 
   // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
-    operation: 'MINIMIZE', quickTabId, quickTabOriginTabId: originTabId,
-    requestingTabId: currentBrowserTabId, targetTabId, decision: 'ALLOW'
+    operation: 'MINIMIZE',
+    quickTabId,
+    quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId,
+    decision: 'ALLOW'
   });
 
   // Send message with retry
@@ -5425,8 +5526,15 @@ async function minimizeQuickTab(quickTabId) {
   );
 
   const durationMs = Date.now() - startTime;
-  _logOperationResult({ action: 'MINIMIZE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId });
-  
+  _logOperationResult({
+    action: 'MINIMIZE_QUICK_TAB',
+    quickTabId,
+    correlationId,
+    result,
+    durationMs,
+    targetTabId
+  });
+
   if (!result.success) {
     _showErrorNotification(`Failed to minimize Quick Tab: ${result.error}`);
   }
@@ -5712,7 +5820,8 @@ function _logRestoreTargetResolution(quickTabId, tabData, targetTabId) {
     originTabId: tabData.originTabId,
     source,
     // v1.6.4.13 - Show if hostInfo was overridden by storage originTabId
-    hostInfoOverridden: hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
+    hostInfoOverridden:
+      hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
   });
 }
 
@@ -6243,12 +6352,20 @@ async function closeQuickTab(quickTabId) {
   }
 
   // Resolve target tab
-  const { targetTabId, originTabId } = _resolveTargetTab(quickTabId, 'CLOSE_QUICK_TAB', correlationId);
+  const { targetTabId, originTabId } = _resolveTargetTab(
+    quickTabId,
+    'CLOSE_QUICK_TAB',
+    correlationId
+  );
 
   // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging
   console.log('[Manager][Operation] VALIDATION: Checking cross-tab operation', {
-    operation: 'CLOSE', quickTabId, quickTabOriginTabId: originTabId,
-    requestingTabId: currentBrowserTabId, targetTabId, decision: 'ALLOW'
+    operation: 'CLOSE',
+    quickTabId,
+    quickTabOriginTabId: originTabId,
+    requestingTabId: currentBrowserTabId,
+    targetTabId,
+    decision: 'ALLOW'
   });
 
   // Send message with retry
@@ -6259,7 +6376,14 @@ async function closeQuickTab(quickTabId) {
   );
 
   const durationMs = Date.now() - startTime;
-  _logOperationResult({ action: 'CLOSE_QUICK_TAB', quickTabId, correlationId, result, durationMs, targetTabId });
+  _logOperationResult({
+    action: 'CLOSE_QUICK_TAB',
+    quickTabId,
+    correlationId,
+    result,
+    durationMs,
+    targetTabId
+  });
 
   if (result.success) {
     quickTabHostInfo.delete(quickTabId);
@@ -6314,12 +6438,24 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
       correlationId
     });
 
-    const response = await _sendActionRequest('ADOPT_TAB', { quickTabId, targetTabId, correlationId });
+    const response = await _sendActionRequest('ADOPT_TAB', {
+      quickTabId,
+      targetTabId,
+      correlationId
+    });
 
     _handleAdoptResponse({ quickTabId, targetTabId, response, correlationId, startTime });
   } catch (err) {
     const durationMs = Date.now() - startTime;
-    console.error('[Manager] OPERATION_FAILED:', { action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'failed', error: err.message, durationMs });
+    console.error('[Manager] OPERATION_FAILED:', {
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      status: 'failed',
+      error: err.message,
+      durationMs
+    });
   }
 }
 
@@ -6341,12 +6477,28 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
  */
 function _handleAdoptSuccess({ quickTabId, targetTabId, response, correlationId, durationMs }) {
   console.log('[Manager] OPERATION_COMPLETED:', {
-    action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'success',
-    oldOriginTabId: response?.oldOriginTabId, newOriginTabId: targetTabId, timedOut: response?.timedOut || false, durationMs
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    status: 'success',
+    oldOriginTabId: response?.oldOriginTabId,
+    newOriginTabId: targetTabId,
+    timedOut: response?.timedOut || false,
+    durationMs
   });
-  console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', { quickTabId, targetTabId, timedOut: response?.timedOut || false });
+  console.log('[Manager] ✅ ADOPT_COMMAND_SUCCESS:', {
+    quickTabId,
+    targetTabId,
+    timedOut: response?.timedOut || false
+  });
 
-  quickTabHostInfo.set(quickTabId, { hostTabId: targetTabId, lastUpdate: Date.now(), lastOperation: 'adopt', confirmed: true });
+  quickTabHostInfo.set(quickTabId, {
+    hostTabId: targetTabId,
+    lastUpdate: Date.now(),
+    lastOperation: 'adopt',
+    confirmed: true
+  });
   if (response?.oldOriginTabId) browserTabInfoCache.delete(response.oldOriginTabId);
   scheduleRender('adopt-success');
 }
@@ -6358,7 +6510,15 @@ function _handleAdoptSuccess({ quickTabId, targetTabId, response, correlationId,
  */
 function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId, durationMs }) {
   const error = response?.error || 'Unknown error';
-  console.error('[Manager] OPERATION_FAILED:', { action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, status: 'failed', error, durationMs });
+  console.error('[Manager] OPERATION_FAILED:', {
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    status: 'failed',
+    error,
+    durationMs
+  });
   console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', { quickTabId, targetTabId, error });
 }
 
@@ -6367,7 +6527,13 @@ function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId,
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-function _handleAdoptResponse({ quickTabId, targetTabId, response, correlationId = null, startTime = null }) {
+function _handleAdoptResponse({
+  quickTabId,
+  targetTabId,
+  response,
+  correlationId = null,
+  startTime = null
+}) {
   const durationMs = startTime ? Date.now() - startTime : null;
   const opts = { quickTabId, targetTabId, response, correlationId, durationMs };
   if (response?.success || response?.timedOut) {
@@ -6513,22 +6679,53 @@ function _logAdoptionUpdate(quickTabId, oldOriginTabId, targetTabId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _persistAdoption({ quickTabId, targetTabId, state, oldOriginTabId, writeStartTime }) {
+async function _persistAdoption({
+  quickTabId,
+  targetTabId,
+  state,
+  oldOriginTabId,
+  writeStartTime
+}) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeTimestamp = Date.now();
   const stateToWrite = {
-    tabs: state.tabs, saveId, timestamp: writeTimestamp,
-    writingTabId: targetTabId, writingInstanceId: `manager-adopt-${writeTimestamp}`
+    tabs: state.tabs,
+    saveId,
+    timestamp: writeTimestamp,
+    writingTabId: targetTabId,
+    writingInstanceId: `manager-adopt-${writeTimestamp}`
   };
 
-  console.log('[Manager] ADOPT_STORAGE_WRITE:', { quickTabId, oldOriginTabId, newOriginTabId: targetTabId, saveId, tabCount: state.tabs.length });
-  console.log('[Manager] ADOPTION_FLOW:', { quickTabId, originTabId: targetTabId, action: 'before_persist', saveId });
+  console.log('[Manager] ADOPT_STORAGE_WRITE:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    saveId,
+    tabCount: state.tabs.length
+  });
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: targetTabId,
+    action: 'before_persist',
+    saveId
+  });
 
   await browser.storage.local.set({ [STATE_KEY]: stateToWrite });
   const writeEndTime = Date.now();
 
-  console.log('[Manager] ADOPTION_FLOW:', { quickTabId, originTabId: targetTabId, action: 'after_persist', saveId, durationMs: writeEndTime - writeStartTime });
-  console.log('[Manager] ✅ ADOPT_COMPLETED:', { quickTabId, oldOriginTabId, newOriginTabId: targetTabId, saveId });
+  console.log('[Manager] ADOPTION_FLOW:', {
+    quickTabId,
+    originTabId: targetTabId,
+    action: 'after_persist',
+    saveId,
+    durationMs: writeEndTime - writeStartTime
+  });
+  console.log('[Manager] ✅ ADOPT_COMPLETED:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    saveId
+  });
 
   _verifyAdoptionInStorage(quickTabId, saveId, writeTimestamp);
   return { oldOriginTabId, saveId, writeTimestamp };

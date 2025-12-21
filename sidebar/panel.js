@@ -86,16 +86,16 @@ function _selectMoreRecentState(sessionState, syncState) {
   if (!sessionState && !syncState) return null;
   if (!sessionState) return syncState;
   if (!syncState) return sessionState;
-  
+
   const sessionTimestamp = sessionState.timestamp || 0;
   const syncTimestamp = syncState.timestamp || 0;
-  
+
   console.log('[Panel] STORAGE_TIMESTAMP_COMPARISON:', {
     sessionTimestamp,
     syncTimestamp,
     sessionIsNewer: sessionTimestamp > syncTimestamp
   });
-  
+
   // Return whichever has the more recent timestamp
   if (sessionTimestamp > syncTimestamp) {
     return sessionState;
@@ -124,25 +124,25 @@ function _showEmptyState() {
  */
 function _normalizeStorageFormat(state) {
   if (!state) return null;
-  
+
   // Format 1: Flat array format (state.tabs)
   if (Array.isArray(state.tabs)) {
     console.log('[Panel] Using flat tabs array format');
     return state.tabs;
   }
-  
+
   // Format 2: Nested object format (state.allQuickTabs)
   if (Array.isArray(state.allQuickTabs)) {
     console.log('[Panel] Using allQuickTabs nested format (v2)');
     return state.allQuickTabs;
   }
-  
+
   // Format 3: Direct array (legacy)
   if (Array.isArray(state)) {
     console.log('[Panel] Using direct array format (legacy)');
     return state;
   }
-  
+
   console.warn('[Panel] Unknown storage format detected:', Object.keys(state || {}));
   return null;
 }
@@ -159,7 +159,7 @@ function _renderQuickTabsList(state) {
 
   // v1.6.3.11 - FIX Issue #22: Normalize storage format before rendering
   const tabs = _normalizeStorageFormat(state);
-  
+
   if (!tabs) {
     console.warn('[Panel] Failed to normalize storage format, showing empty state');
     _showEmptyState();
@@ -189,13 +189,13 @@ async function displayAllQuickTabs() {
     console.log('[Panel] Skipping render - storage write in progress');
     return;
   }
-  
+
   try {
     // v1.6.3.11 - FIX Issue #40: Load from both storages and compare timestamps
     // This prevents stale sync data from being used when session quota exceeded
     const sessionState = await _loadFromSessionStorage();
     const syncState = await _loadFromSyncStorage();
-    
+
     // Select the more recent state based on timestamp
     const state = _selectMoreRecentState(sessionState, syncState);
 
@@ -333,7 +333,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       console.log('[Panel] Storage write in progress, deferring render');
       return;
     }
-    
+
     storageWriteInProgress = false;
     displayAllQuickTabs();
   }

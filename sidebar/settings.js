@@ -864,7 +864,7 @@ async function saveSettings() {
 
     // Notify all tabs to refresh live console filter cache
     await refreshLiveConsoleFiltersInAllTabs();
-    
+
     // v1.6.3.11 - FIX Issue #23: Notify background script of settings change
     await notifyBackgroundOfSettingsChange(settings);
 

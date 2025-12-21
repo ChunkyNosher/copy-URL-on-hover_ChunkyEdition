@@ -43,7 +43,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
-- **Single Writer Authority** - Manager sends commands, background writes storage
+- **Single Writer Authority** - Manager sends commands, background writes
+  storage
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
@@ -104,5 +105,5 @@ monitoring, code health 9.0+, container isolation
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v10 tab ID acquisition,
-message validation, checkpoint system, storage.onChanged PRIMARY.**
+**Your strength: Complete Quick Tab system with v1.6.3.10-v10 tab ID
+acquisition, message validation, checkpoint system, storage.onChanged PRIMARY.**

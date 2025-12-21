@@ -286,11 +286,11 @@ import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.j
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.10-v13 - FIX Issue #9: Import periodic latency measurement functions
-import { 
-  setWritingTabId, 
-  isWritingTabIdInitialized, 
-  startPeriodicLatencyMeasurement, 
-  stopPeriodicLatencyMeasurement 
+import {
+  setWritingTabId,
+  isWritingTabIdInitialized,
+  startPeriodicLatencyMeasurement,
+  stopPeriodicLatencyMeasurement
 } from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
@@ -530,8 +530,9 @@ function _getTotalQueueDepth() {
   const initQueueSize = initializationMessageQueue.length;
   const hydrationQueueSize = preHydrationOperationQueue.length;
   const portQueueSize = typeof messageQueue !== 'undefined' ? messageQueue.length : 0;
-  const commandsQueueSize = typeof pendingCommandsBuffer !== 'undefined' ? pendingCommandsBuffer.length : 0;
-  
+  const commandsQueueSize =
+    typeof pendingCommandsBuffer !== 'undefined' ? pendingCommandsBuffer.length : 0;
+
   return {
     initializationMessageQueue: initQueueSize,
     preHydrationOperationQueue: hydrationQueueSize,
@@ -548,7 +549,7 @@ function _getTotalQueueDepth() {
  */
 function _checkGlobalBackpressure() {
   const depths = _getTotalQueueDepth();
-  
+
   if (depths.total >= GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD) {
     console.warn('[Content][BACKPRESSURE] GLOBAL_THRESHOLD_EXCEEDED:', {
       threshold: GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD,
@@ -557,7 +558,7 @@ function _checkGlobalBackpressure() {
     });
     return true;
   }
-  
+
   return false;
 }
 
@@ -590,16 +591,18 @@ const MAX_DROPPED_MESSAGES_BACKPRESSURE = 50;
 function _getDroppedMessageBufferLimit() {
   const queueDepth = initializationMessageQueue.length;
   const queuePercent = (queueDepth / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100;
-  
+
   // If queue is above 80%, increase buffer to max
   if (queuePercent > 80) {
     return MAX_DROPPED_MESSAGES_BACKPRESSURE;
   }
   // If queue is above 50%, use intermediate size
   if (queuePercent > 50) {
-    return Math.floor(BASE_DROPPED_MESSAGES + (MAX_DROPPED_MESSAGES_BACKPRESSURE - BASE_DROPPED_MESSAGES) * 0.5);
+    return Math.floor(
+      BASE_DROPPED_MESSAGES + (MAX_DROPPED_MESSAGES_BACKPRESSURE - BASE_DROPPED_MESSAGES) * 0.5
+    );
   }
-  
+
   return BASE_DROPPED_MESSAGES;
 }
 
@@ -696,7 +699,7 @@ const MESSAGE_RESPONSE_TIMEOUT_MS = 5000;
  * v1.6.3.10-v11 - FIX Issue #23
  */
 let lastKnownBackgroundGeneration = null;
-let _lastHeartbeatTime = 0;  // Prefixed with _ to indicate unused (available for debug logging)
+let _lastHeartbeatTime = 0; // Prefixed with _ to indicate unused (available for debug logging)
 let heartbeatIntervalId = null;
 let heartbeatFailureCount = 0;
 const HEARTBEAT_MAX_FAILURES = 3;
@@ -709,7 +712,7 @@ const HEARTBEAT_MAX_FAILURES = 3;
  */
 function _updateBackgroundGenerationFromResponse(generation) {
   if (!generation) return;
-  
+
   // Check for restart (generation changed)
   if (lastKnownBackgroundGeneration !== null && generation !== lastKnownBackgroundGeneration) {
     console.log('[Content] v1.6.3.10-v12 GENERATION_MISMATCH_DETECTED:', {
@@ -717,7 +720,7 @@ function _updateBackgroundGenerationFromResponse(generation) {
       newGeneration: generation,
       triggeredBy: 'message_response'
     });
-    
+
     // Trigger restart handling
     _handleBackgroundRestart(generation);
   } else if (lastKnownBackgroundGeneration === null) {
@@ -725,7 +728,7 @@ function _updateBackgroundGenerationFromResponse(generation) {
       generation
     });
   }
-  
+
   lastKnownBackgroundGeneration = generation;
 }
 
@@ -744,13 +747,13 @@ const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt
  */
 function _generateMessageId() {
   const newId = `msg-content-${Date.now()}-${++messageIdCounter}`;
-  
+
   // v1.6.3.11 - FIX Issue #28: Collision detection
   if (pendingMessages.has(newId)) {
     console.warn('[Content] MESSAGE_ID_COLLISION: Regenerating ID', { collided: newId });
     return _generateMessageId(); // Recursive regeneration
   }
-  
+
   return newId;
 }
 
@@ -761,7 +764,7 @@ function _generateMessageId() {
 async function _sendHeartbeat() {
   const heartbeatStart = Date.now();
   const heartbeatId = _generateMessageId();
-  
+
   try {
     const response = await Promise.race([
       browser.runtime.sendMessage({
@@ -770,44 +773,46 @@ async function _sendHeartbeat() {
         timestamp: heartbeatStart,
         lastKnownGeneration: lastKnownBackgroundGeneration
       }),
-      new Promise((_, reject) => 
+      new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Heartbeat timeout')), HEARTBEAT_RESPONSE_TIMEOUT_MS)
       )
     ]);
-    
+
     const latencyMs = Date.now() - heartbeatStart;
     _lastHeartbeatTime = Date.now();
     heartbeatFailureCount = 0;
-    
+
     // v1.6.3.10-v11 - FIX Issue #5: Record latency for dynamic adoption TTL
     if (typeof _recordHandshakeLatency === 'function') {
       _recordHandshakeLatency(latencyMs);
     }
-    
+
     // Check for background restart
-    if (response?.generation && lastKnownBackgroundGeneration !== null && 
-        response.generation !== lastKnownBackgroundGeneration) {
+    if (
+      response?.generation &&
+      lastKnownBackgroundGeneration !== null &&
+      response.generation !== lastKnownBackgroundGeneration
+    ) {
       console.log('[Content][HEARTBEAT] BACKGROUND_RESTART_DETECTED:', {
         previousGeneration: lastKnownBackgroundGeneration,
         newGeneration: response.generation,
         latencyMs
       });
-      
+
       // Trigger reconnection/rehydration
       _handleBackgroundRestart(response.generation);
     }
-    
+
     // Update known generation
     if (response?.generation) {
       lastKnownBackgroundGeneration = response.generation;
     }
-    
+
     console.log('[Content][HEARTBEAT] SUCCESS:', {
       heartbeatId,
       latencyMs,
       generation: response?.generation
     });
-    
   } catch (err) {
     heartbeatFailureCount++;
     console.warn('[Content][HEARTBEAT] FAILURE:', {
@@ -816,7 +821,7 @@ async function _sendHeartbeat() {
       failureCount: heartbeatFailureCount,
       maxFailures: HEARTBEAT_MAX_FAILURES
     });
-    
+
     // If too many failures, assume background restarted
     if (heartbeatFailureCount >= HEARTBEAT_MAX_FAILURES) {
       console.log('[Content][HEARTBEAT] MAX_FAILURES_REACHED: Assuming background restart');
@@ -836,15 +841,15 @@ function _handleBackgroundRestart(newGeneration) {
     newGeneration,
     pendingMessages: pendingMessages.size
   });
-  
+
   lastKnownBackgroundGeneration = newGeneration;
-  
+
   // Notify pending tab ID acquisition to retry
   _notifyBackgroundReadiness();
-  
+
   // Retry any pending messages
   _retryPendingMessages();
-  
+
   // Emit event for listeners
   if (typeof eventBus !== 'undefined' && eventBus.emit) {
     eventBus.emit('background:restart', { generation: newGeneration });
@@ -857,9 +862,9 @@ function _handleBackgroundRestart(newGeneration) {
  */
 function _retryPendingMessages() {
   if (pendingMessages.size === 0) return;
-  
+
   console.log('[Content] RETRY_PENDING_MESSAGES:', { count: pendingMessages.size });
-  
+
   for (const [messageId, pending] of pendingMessages) {
     if (pending.retryCount < MESSAGE_MAX_RETRIES) {
       pending.retryCount++;
@@ -868,12 +873,14 @@ function _retryPendingMessages() {
         attempt: pending.retryCount,
         maxRetries: MESSAGE_MAX_RETRIES
       });
-      
+
       // Re-send the message
       _sendMessageWithRetry(pending.message, pending.resolve, pending.reject, pending.retryCount);
     } else {
       // Max retries exceeded
-      pending.reject(new Error(`Max retries (${MESSAGE_MAX_RETRIES}) exceeded for message ${messageId}`));
+      pending.reject(
+        new Error(`Max retries (${MESSAGE_MAX_RETRIES}) exceeded for message ${messageId}`)
+      );
       pendingMessages.delete(messageId);
     }
   }
@@ -895,7 +902,7 @@ async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
     timestamp: Date.now(),
     retryCount
   };
-  
+
   // Track pending message
   pendingMessages.set(messageId, {
     message: envelope,
@@ -904,42 +911,41 @@ async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
     resolve,
     reject
   });
-  
+
   console.log('[Content] MESSAGE_SENT:', {
     messageId,
     action: message.action || message.type,
     retryCount
   });
-  
+
   try {
     const response = await Promise.race([
       browser.runtime.sendMessage(envelope),
-      new Promise((_, rej) => 
+      new Promise((_, rej) =>
         setTimeout(() => rej(new Error('Message timeout')), MESSAGE_RESPONSE_TIMEOUT_MS)
       )
     ]);
-    
+
     console.log('[Content] MESSAGE_RECEIVED_RESPONSE:', {
       messageId,
       success: response?.success ?? true
     });
-    
+
     pendingMessages.delete(messageId);
     resolve(response);
-    
   } catch (err) {
     const pending = pendingMessages.get(messageId);
-    
+
     if (pending && pending.retryCount < MESSAGE_MAX_RETRIES) {
       // v1.6.3.11 - FIX Issue #33: Delete entry from Map on timeout even for retry case
       // Entry will be re-added when retry happens via _retryPendingMessages
       // This prevents unbounded growth since we track retry count externally
       pendingMessages.delete(messageId);
-      
+
       // Re-add with updated retry count for retry later
       pending.retryCount++;
       pendingMessages.set(messageId, pending);
-      
+
       console.warn('[Content] MESSAGE_TIMEOUT: Will retry on background recovery', {
         messageId,
         retryCount: pending.retryCount,
@@ -962,13 +968,13 @@ function _startHeartbeat() {
   if (heartbeatIntervalId) {
     clearInterval(heartbeatIntervalId);
   }
-  
+
   // Send initial heartbeat
   _sendHeartbeat();
-  
+
   // Start interval
   heartbeatIntervalId = setInterval(_sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-  
+
   console.log('[Content][HEARTBEAT] STARTED:', {
     intervalMs: HEARTBEAT_INTERVAL_MS,
     timestamp: Date.now()
@@ -999,16 +1005,16 @@ function _validateMessageFormat(message) {
   if (!message) {
     return { valid: false, error: 'Message is null or undefined' };
   }
-  
+
   if (typeof message !== 'object') {
     return { valid: false, error: 'Message must be an object' };
   }
-  
+
   // Must have action or type
   if (!message.action && !message.type) {
     return { valid: false, error: 'Message must have action or type property' };
   }
-  
+
   return { valid: true };
 }
 
@@ -1022,25 +1028,25 @@ function _validateMessageFormat(message) {
  */
 function _queueInitializationMessage(message, callback) {
   const queueSize = initializationMessageQueue.length;
-  
+
   // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
   _checkGlobalBackpressure();
-  
+
   // v1.6.3.10-v11 - FIX Issue #6: Check and emit backpressure warning
   _checkQueueBackpressure(queueSize);
-  
+
   // v1.6.3.10-v11 - FIX Issue #6: Handle queue overflow
   if (queueSize >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
     _handleQueueOverflow();
   }
-  
+
   initializationMessageQueue.push({
     message,
     callback,
     queuedAt: Date.now(),
     sequenceId: ++globalCommandSequenceId // v1.6.3.10-v11 - FIX Issue #2: Add sequence ID
   });
-  
+
   console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
     action: message.action || message.type,
     quickTabId: message.id || message.quickTabId,
@@ -1057,12 +1063,15 @@ function _queueInitializationMessage(message, callback) {
  */
 function _checkQueueBackpressure(queueSize) {
   if (queueSize >= QUEUE_BACKPRESSURE_THRESHOLD && queueSize < MAX_INIT_MESSAGE_QUEUE_SIZE) {
-    console.warn('[MSG][Content] QUEUE_BACKPRESSURE: Queue approaching limit, slow down message send rate', {
-      currentSize: queueSize,
-      threshold: QUEUE_BACKPRESSURE_THRESHOLD,
-      maxSize: MAX_INIT_MESSAGE_QUEUE_SIZE,
-      percentFull: Math.round((queueSize / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100)
-    });
+    console.warn(
+      '[MSG][Content] QUEUE_BACKPRESSURE: Queue approaching limit, slow down message send rate',
+      {
+        currentSize: queueSize,
+        threshold: QUEUE_BACKPRESSURE_THRESHOLD,
+        maxSize: MAX_INIT_MESSAGE_QUEUE_SIZE,
+        percentFull: Math.round((queueSize / MAX_INIT_MESSAGE_QUEUE_SIZE) * 100)
+      }
+    );
   }
 }
 
@@ -1074,7 +1083,7 @@ function _checkQueueBackpressure(queueSize) {
 function _handleQueueOverflow() {
   const dropped = initializationMessageQueue.shift();
   const queueSize = initializationMessageQueue.length;
-  
+
   // v1.6.3.10-v11 - FIX Issue #6: Log dropped message with full metadata
   console.error('[MSG][Content] INIT_QUEUE_OVERFLOW: Dropped message (queue full)', {
     droppedMessageType: dropped?.message?.action || dropped?.message?.type,
@@ -1084,7 +1093,7 @@ function _handleQueueOverflow() {
     dropTime: Date.now(),
     messageAgeMs: dropped?.queuedAt ? Date.now() - dropped.queuedAt : null
   });
-  
+
   // v1.6.3.10-v11 - FIX Issue #6: Buffer dropped messages for retry
   _bufferDroppedMessage(dropped);
 }
@@ -1098,7 +1107,7 @@ function _handleQueueOverflow() {
  */
 function _bufferDroppedMessage(dropped) {
   const currentLimit = _getDroppedMessageBufferLimit();
-  
+
   if (!dropped || droppedMessageBuffer.length >= currentLimit) {
     if (dropped) {
       console.warn('[MSG][Content] DROPPED_MESSAGE_REJECTED: Buffer at capacity', {
@@ -1109,7 +1118,7 @@ function _bufferDroppedMessage(dropped) {
     }
     return;
   }
-  
+
   droppedMessageBuffer.push({
     message: dropped.message,
     callback: dropped.callback,
@@ -1152,16 +1161,16 @@ async function _retryDroppedMessage(dropped) {
 async function _flushInitializationMessageQueue() {
   // v1.6.3.10-v11 - FIX Issue #6: First retry dropped messages
   await _retryDroppedMessages();
-  
+
   if (initializationMessageQueue.length === 0) return;
-  
+
   console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
     queueSize: initializationMessageQueue.length
   });
-  
+
   // v1.6.3.10-v11 - FIX Issue #7: Log queue state at thresholds
   _logQueueStateWarnings();
-  
+
   await _processQueuedMessages();
 }
 
@@ -1172,11 +1181,11 @@ async function _flushInitializationMessageQueue() {
  */
 async function _retryDroppedMessages() {
   if (droppedMessageBuffer.length === 0) return;
-  
+
   console.log('[MSG][Content] RETRYING_DROPPED_MESSAGES:', {
     count: droppedMessageBuffer.length
   });
-  
+
   while (droppedMessageBuffer.length > 0) {
     const dropped = droppedMessageBuffer.shift();
     await _retryDroppedMessage(dropped);
@@ -1192,11 +1201,17 @@ function _logQueueStateWarnings() {
   const size = initializationMessageQueue.length;
   // Check thresholds in descending order to log most severe first
   if (size >= 1000) {
-    console.error('[MSG][Content] QUEUE_STATE_CRITICAL: Queue depth exceeds 1000 items', { queueSize: size });
+    console.error('[MSG][Content] QUEUE_STATE_CRITICAL: Queue depth exceeds 1000 items', {
+      queueSize: size
+    });
   } else if (size >= 500) {
-    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 500 items', { queueSize: size });
+    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 500 items', {
+      queueSize: size
+    });
   } else if (size >= 100) {
-    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 100 items', { queueSize: size });
+    console.warn('[MSG][Content] QUEUE_STATE_WARNING: Queue depth exceeds 100 items', {
+      queueSize: size
+    });
   }
 }
 
@@ -1209,7 +1224,7 @@ async function _processQueuedMessages() {
   while (initializationMessageQueue.length > 0) {
     const { message, callback, queuedAt } = initializationMessageQueue.shift();
     const queueDuration = Date.now() - queuedAt;
-    
+
     try {
       const result = await callback(message);
       console.log('[MSG][Content] QUEUED_MESSAGE_SENT:', {
@@ -1251,12 +1266,12 @@ function _updateBackgroundResponseTime() {
  */
 async function _markContentScriptInitialized() {
   if (contentScriptInitialized) return;
-  
+
   contentScriptInitialized = true;
   console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
     timestamp: new Date().toISOString()
   });
-  
+
   // Flush any queued messages
   await _flushInitializationMessageQueue();
 }
@@ -1290,14 +1305,14 @@ async function _markHydrationComplete(loadedTabCount = 0) {
     });
     return;
   }
-  
+
   isHydrationComplete = true;
   console.log('[Content] HYDRATION_COMPLETE:', {
     loadedTabCount,
     queuedOperations: preHydrationOperationQueue.length,
     timestamp: Date.now()
   });
-  
+
   // Drain queued operations
   await _drainPreHydrationQueue();
 }
@@ -1314,12 +1329,12 @@ async function _markHydrationComplete(loadedTabCount = 0) {
 function _queuePreHydrationOperation(operation) {
   // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
   _checkGlobalBackpressure();
-  
+
   preHydrationOperationQueue.push({
     ...operation,
     queuedAt: Date.now()
   });
-  
+
   console.log('[Content] OPERATION_QUEUED_DURING_HYDRATION:', {
     operationType: operation.type,
     queueSize: preHydrationOperationQueue.length,
@@ -1339,7 +1354,7 @@ async function _executeQueuedOperation(operation, queueDuration) {
     operationType: operation.type,
     queueDurationMs: queueDuration
   });
-  
+
   try {
     if (typeof operation.callback === 'function') {
       await operation.callback(operation.data);
@@ -1360,25 +1375,25 @@ async function _executeQueuedOperation(operation, queueDuration) {
  */
 async function _drainPreHydrationQueue() {
   if (preHydrationOperationQueue.length === 0) return;
-  
+
   // v1.6.3.11 - FIX Issue #27: Acquire drain lock
   if (isHydrationDrainInProgress) {
     console.log('[Content] DRAIN_SKIPPED: Already in progress');
     return;
   }
-  
+
   isHydrationDrainInProgress = true;
   console.log('[Content] DRAIN_IN_PROGRESS:', {
     queueSize: preHydrationOperationQueue.length
   });
-  
+
   try {
     while (preHydrationOperationQueue.length > 0) {
       const operation = preHydrationOperationQueue.shift();
       const queueDuration = Date.now() - operation.queuedAt;
       await _executeQueuedOperation(operation, queueDuration);
     }
-    
+
     console.log('[Content] DRAIN_COMPLETE:', {
       timestamp: Date.now()
     });
@@ -1399,7 +1414,7 @@ function _shouldWaitForHydration(operationType) {
   if (isHydrationComplete) {
     return false;
   }
-  
+
   // Operations that should wait for hydration
   const hydrationBlockedOperations = new Set([
     'CREATE_QUICK_TAB',
@@ -1407,7 +1422,7 @@ function _shouldWaitForHydration(operationType) {
     'UPDATE_QUICK_TAB_POSITION',
     'UPDATE_QUICK_TAB_SIZE'
   ]);
-  
+
   return hydrationBlockedOperations.has(operationType);
 }
 
@@ -1420,48 +1435,53 @@ function _shouldWaitForHydration(operationType) {
 function _initHydrationTimeout() {
   const hydrationStartTime = Date.now();
   const loggedWarnings = new Set();
-  
+
   // v1.6.3.11-v2 - FIX Issue #7: Set up warning interval for progress logging
   const warningIntervalId = setInterval(() => {
     if (isHydrationComplete) {
       clearInterval(warningIntervalId);
       return;
     }
-    
+
     const elapsed = Date.now() - hydrationStartTime;
-    
+
     // Log warnings at each threshold
     for (const threshold of HYDRATION_WARNING_THRESHOLDS_MS) {
       if (elapsed >= threshold && !loggedWarnings.has(threshold)) {
         loggedWarnings.add(threshold);
         const remaining = HYDRATION_TIMEOUT_MS - elapsed;
-        console.warn('[Content] HYDRATION_PROGRESS_WARNING: Hydration taking longer than expected', {
-          elapsedMs: elapsed,
-          remainingMs: remaining,
-          thresholdMs: threshold,
-          totalTimeoutMs: HYDRATION_TIMEOUT_MS,
-          queuedOperations: preHydrationOperationQueue.length,
-          timestamp: Date.now()
-        });
+        console.warn(
+          '[Content] HYDRATION_PROGRESS_WARNING: Hydration taking longer than expected',
+          {
+            elapsedMs: elapsed,
+            remainingMs: remaining,
+            thresholdMs: threshold,
+            totalTimeoutMs: HYDRATION_TIMEOUT_MS,
+            queuedOperations: preHydrationOperationQueue.length,
+            timestamp: Date.now()
+          }
+        );
       }
     }
-    
+
     // Stop interval if we've passed all thresholds
     if (loggedWarnings.size >= HYDRATION_WARNING_THRESHOLDS_MS.length) {
       clearInterval(warningIntervalId);
     }
   }, 500); // Check every 500ms
-  
+
   // v1.6.3.11-v2 - FIX Issue #7: Final timeout with forced completion
   setTimeout(() => {
     clearInterval(warningIntervalId); // Cleanup interval
-    
+
     // v1.6.3.11 - FIX Issue #27: Don't force completion if drain is in progress
     if (isHydrationDrainInProgress) {
-      console.log('[Content] HYDRATION_TIMEOUT_DEFERRED: Drain in progress, skipping timeout action');
+      console.log(
+        '[Content] HYDRATION_TIMEOUT_DEFERRED: Drain in progress, skipping timeout action'
+      );
       return;
     }
-    
+
     if (!isHydrationComplete) {
       console.warn('[Content] HYDRATION_TIMEOUT: Forcing hydration complete after timeout', {
         timeoutMs: HYDRATION_TIMEOUT_MS,
@@ -1512,13 +1532,13 @@ function _extractTabIdFromResponse(response) {
   if (!response?.success) {
     return { found: false };
   }
-  
+
   // v1.6.4.15 - Support both new format (data.currentTabId) and old format (tabId)
   const tabId = response.data?.currentTabId ?? response.tabId;
   if (typeof tabId !== 'number') {
     return { found: false };
   }
-  
+
   const format = response.data ? 'v2 (data.currentTabId)' : 'v1 (tabId)';
   return { found: true, tabId, format };
 }
@@ -1533,7 +1553,7 @@ function _extractTabIdFromResponse(response) {
  */
 async function _attemptGetTabIdFromBackground(attemptNumber) {
   const startTime = Date.now();
-  
+
   try {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
@@ -1570,14 +1590,14 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       durationMs: duration
     });
 
-    return { 
-      tabId: null, 
+    return {
+      tabId: null,
       error: response?.error || 'Invalid response from background',
       retryable: isRetryable
     };
   } catch (err) {
     const duration = Date.now() - startTime;
-    
+
     // Network/messaging errors are usually retryable
     const isRetryable = _isRetryableError(err.message);
 
@@ -1588,8 +1608,8 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       durationMs: duration
     });
 
-    return { 
-      tabId: null, 
+    return {
+      tabId: null,
       error: err.message,
       retryable: isRetryable
     };
@@ -1621,14 +1641,17 @@ function _logTabIdTimeoutWarnings(totalElapsed, loggedWarnings, extendedAttempt)
     if (totalElapsed >= threshold && !loggedWarnings.has(threshold)) {
       loggedWarnings.add(threshold);
       const remaining = TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS - totalElapsed;
-      console.warn('[Content][TabID][EXTENDED] TIMEOUT_APPROACHING: Tab ID acquisition taking longer than expected', {
-        elapsedMs: totalElapsed,
-        remainingMs: remaining,
-        thresholdMs: threshold,
-        totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
-        attempt: extendedAttempt,
-        timestamp: Date.now()
-      });
+      console.warn(
+        '[Content][TabID][EXTENDED] TIMEOUT_APPROACHING: Tab ID acquisition taking longer than expected',
+        {
+          elapsedMs: totalElapsed,
+          remainingMs: remaining,
+          thresholdMs: threshold,
+          totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
+          attempt: extendedAttempt,
+          timestamp: Date.now()
+        }
+      );
     }
   }
 }
@@ -1644,25 +1667,28 @@ function _logTabIdTimeoutWarnings(totalElapsed, loggedWarnings, extendedAttempt)
  */
 async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
   let extendedAttempt = 0;
-  
-  console.log('[Content][TabID][EXTENDED] STARTING: Extended retry loop for background initialization', {
-    intervalMs: TAB_ID_EXTENDED_RETRY_INTERVAL_MS,
-    maxAttempts: TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS,
-    totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
-    elapsedSoFar: Date.now() - overallStartTime
-  });
-  
+
+  console.log(
+    '[Content][TabID][EXTENDED] STARTING: Extended retry loop for background initialization',
+    {
+      intervalMs: TAB_ID_EXTENDED_RETRY_INTERVAL_MS,
+      maxAttempts: TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS,
+      totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
+      elapsedSoFar: Date.now() - overallStartTime
+    }
+  );
+
   tabIdAcquisitionPending = true;
-  
+
   // v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Track which warnings have been logged
   const loggedWarnings = new Set();
-  
+
   while (extendedAttempt < TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS) {
     const totalElapsed = Date.now() - overallStartTime;
-    
+
     // v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Log warnings as timeout approaches (extracted helper)
     _logTabIdTimeoutWarnings(totalElapsed, loggedWarnings, extendedAttempt);
-    
+
     // Check total timeout
     if (totalElapsed >= TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS) {
       console.error('[Content][TabID][EXTENDED] TIMEOUT: Extended retry timeout exceeded', {
@@ -1671,24 +1697,26 @@ async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
       });
       break;
     }
-    
+
     // Check if background readiness was signaled
     if (backgroundReadinessDetected) {
       console.log('[Content][TabID][EXTENDED] BACKGROUND_READY: Attempting immediate retry');
       backgroundReadinessDetected = false;
     }
-    
+
     extendedAttempt++;
     const attemptNumber = TAB_ID_MAX_RETRIES + 1 + extendedAttempt;
-    
-    console.log(`[Content][TabID][EXTENDED] Retry #${extendedAttempt} with delay ${TAB_ID_EXTENDED_RETRY_INTERVAL_MS}ms, elapsed ${totalElapsed}ms`);
-    
+
+    console.log(
+      `[Content][TabID][EXTENDED] Retry #${extendedAttempt} with delay ${TAB_ID_EXTENDED_RETRY_INTERVAL_MS}ms, elapsed ${totalElapsed}ms`
+    );
+
     // Wait before retry
     await new Promise(resolve => setTimeout(resolve, TAB_ID_EXTENDED_RETRY_INTERVAL_MS));
-    
+
     // Retry attempt
     const result = await _attemptGetTabIdFromBackground(attemptNumber);
-    
+
     if (result.tabId !== null) {
       tabIdAcquisitionPending = false;
       console.log('[Content][TabID][EXTENDED] RECOVERY_SUCCESS: Tab ID acquired in extended loop', {
@@ -1698,7 +1726,7 @@ async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
       });
       return result.tabId;
     }
-    
+
     // If not retryable, stop
     if (!result.retryable) {
       console.warn('[Content][TabID][EXTENDED] NON_RETRYABLE: Stopping extended retry', {
@@ -1708,10 +1736,12 @@ async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
       break;
     }
   }
-  
+
   tabIdAcquisitionPending = false;
-  console.error(`[Content][TabID][EXTENDED] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1 + extendedAttempt} retries after ${Date.now() - overallStartTime}ms, final result: null`);
-  
+  console.error(
+    `[Content][TabID][EXTENDED] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1 + extendedAttempt} retries after ${Date.now() - overallStartTime}ms, final result: null`
+  );
+
   return null;
 }
 
@@ -1736,12 +1766,12 @@ async function getCurrentTabIdFromBackground() {
     extendedRetryEnabled: true,
     timestamp: new Date().toISOString()
   });
-  
+
   const overallStartTime = Date.now();
-  
+
   // Initial attempt (attempt #1)
   let result = await _attemptGetTabIdFromBackground(1);
-  
+
   if (result.tabId !== null) {
     console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on first attempt', {
       tabId: result.tabId,
@@ -1749,7 +1779,7 @@ async function getCurrentTabIdFromBackground() {
     });
     return result.tabId;
   }
-  
+
   // v1.6.3.11 - FIX Issue #11: Special handling for NOT_INITIALIZED error
   // v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Increased wait from 500ms to 1000ms
   // Wait once briefly and retry exactly once before exponential backoff
@@ -1758,14 +1788,14 @@ async function getCurrentTabIdFromBackground() {
       delayMs: TAB_ID_NOT_INITIALIZED_DELAY_MS,
       timestamp: Date.now()
     });
-    
+
     // v1.6.3.11-v2 - FIX Issue #4: Wait 1000ms (up from 500ms) for background to complete initialization
     await new Promise(resolve => setTimeout(resolve, TAB_ID_NOT_INITIALIZED_DELAY_MS));
-    
+
     // Retry exactly once (this is the special NOT_INITIALIZED retry, attempt #2)
     const notInitRetryAttemptNum = 2; // First attempt was #1, this special retry is #2
     const notInitRetry = await _attemptGetTabIdFromBackground(notInitRetryAttemptNum);
-    
+
     if (notInitRetry.tabId !== null) {
       console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired after NOT_INITIALIZED wait', {
         tabId: notInitRetry.tabId,
@@ -1773,24 +1803,26 @@ async function getCurrentTabIdFromBackground() {
       });
       return notInitRetry.tabId;
     }
-    
+
     // If still NOT_INITIALIZED after one retry, fall through to extended retry loop
     if (notInitRetry.error === 'NOT_INITIALIZED') {
-      console.log('[Content][TabID][INIT] Still NOT_INITIALIZED after single retry, entering extended retry loop');
+      console.log(
+        '[Content][TabID][INIT] Still NOT_INITIALIZED after single retry, entering extended retry loop'
+      );
       result = notInitRetry;
       // Skip exponential backoff, go directly to extended retry
       return _extendedTabIdRetryLoop(overallStartTime, result);
     }
-    
+
     // Different error - update result and continue with normal flow
     result = notInitRetry;
   }
-  
+
   // Retry loop with exponential backoff
   for (let retryIndex = 0; retryIndex < TAB_ID_MAX_RETRIES; retryIndex++) {
     const attemptNumber = retryIndex + 2; // First retry is attempt #2
     const delayMs = TAB_ID_RETRY_DELAYS_MS[retryIndex];
-    
+
     // Only retry if the error was retryable
     if (!result.retryable) {
       console.warn('[Content][TabID][INIT] ABORT: Error is not retryable', {
@@ -1801,15 +1833,17 @@ async function getCurrentTabIdFromBackground() {
       // v1.6.3.10-v11 - Non-retryable errors skip extended loop
       return null;
     }
-    
-    console.log(`[Content][TabID][INIT] Retry #${retryIndex + 1} with delay ${delayMs}ms, elapsed ${Date.now() - overallStartTime}ms`);
-    
+
+    console.log(
+      `[Content][TabID][INIT] Retry #${retryIndex + 1} with delay ${delayMs}ms, elapsed ${Date.now() - overallStartTime}ms`
+    );
+
     // Wait before retry
     await new Promise(resolve => setTimeout(resolve, delayMs));
-    
+
     // Retry attempt
     result = await _attemptGetTabIdFromBackground(attemptNumber);
-    
+
     if (result.tabId !== null) {
       console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on retry', {
         tabId: result.tabId,
@@ -1819,20 +1853,25 @@ async function getCurrentTabIdFromBackground() {
       return result.tabId;
     }
   }
-  
+
   // Initial retries exhausted - log exhaustion
   const initialPhaseDuration = Date.now() - overallStartTime;
-  console.error(`[Content][TabID][INIT] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1} retries after ${initialPhaseDuration}ms, final result: null`);
-  
+  console.error(
+    `[Content][TabID][INIT] Tab ID acquisition exhausted all ${TAB_ID_MAX_RETRIES + 1} retries after ${initialPhaseDuration}ms, final result: null`
+  );
+
   // v1.6.3.10-v11 - FIX Issue #1: Enter extended retry loop for background initialization
   if (result.retryable) {
-    console.log('[Content][TabID][INIT] ENTERING_EXTENDED_RETRY: Background may still be initializing', {
-      lastError: result.error,
-      initialPhaseDurationMs: initialPhaseDuration
-    });
+    console.log(
+      '[Content][TabID][INIT] ENTERING_EXTENDED_RETRY: Background may still be initializing',
+      {
+        lastError: result.error,
+        initialPhaseDurationMs: initialPhaseDuration
+      }
+    );
     return _extendedTabIdRetryLoop(overallStartTime, result);
   }
-  
+
   return null;
 }
 
@@ -1875,7 +1914,7 @@ const PORT_CONNECTION_STATE = {
   DISCONNECTED: 'DISCONNECTED',
   CONNECTING: 'CONNECTING',
   CONNECTED: 'CONNECTED',
-  READY: 'READY',           // v1.6.3.10-v11 - FIX Issue #24: Handshake complete
+  READY: 'READY', // v1.6.3.10-v11 - FIX Issue #24: Handshake complete
   RECONNECTING: 'RECONNECTING', // v1.6.3.10-v12 - FIX Issue #11: Backoff retry state
   FAILED: 'FAILED'
 };
@@ -2113,7 +2152,10 @@ function _isInGracePeriod() {
  */
 function _resetReconnectionAttempts() {
   if (reconnectionAttempts > 0) {
-    console.log('[Content] v1.6.3.10-v7 Reconnection successful, resetting attempt count from:', reconnectionAttempts);
+    console.log(
+      '[Content] v1.6.3.10-v7 Reconnection successful, resetting attempt count from:',
+      reconnectionAttempts
+    );
     reconnectionAttempts = 0;
   }
   // Start grace period
@@ -2133,23 +2175,23 @@ function _startThreePhaseHandshake(port) {
     console.warn('[Content][HANDSHAKE] Cannot start - port is null');
     return;
   }
-  
+
   // Phase 1: Send INIT_REQUEST
   currentHandshakePhase = HANDSHAKE_PHASE.INIT_REQUEST_SENT;
-  
+
   console.log('[Content][HANDSHAKE] Phase 1: INIT_REQUEST sent', {
     phase: currentHandshakePhase,
     portName: port.name,
     timestamp: Date.now()
   });
-  
+
   port.postMessage({
     type: 'INIT_REQUEST',
     timestamp: Date.now(),
     tabId: cachedTabId,
     phase: 1
   });
-  
+
   // Set timeout for Phase 1 (v1.6.3.11 - FIX Issue #9: 2-3s timeout on INIT_RESPONSE wait)
   _setHandshakeTimeout('INIT_REQUEST', () => {
     // v1.6.3.11 - FIX Issue #9: Combined timeout warning with fallback info
@@ -2173,21 +2215,21 @@ function _handleInitResponse(message, port) {
     console.warn('[Content][HANDSHAKE] Unexpected INIT_RESPONSE in phase:', currentHandshakePhase);
     return;
   }
-  
+
   // Clear Phase 1 timeout
   _clearHandshakeTimeout();
-  
+
   currentHandshakePhase = HANDSHAKE_PHASE.INIT_RESPONSE_RECEIVED;
-  
+
   console.log('[Content][HANDSHAKE] Phase 2: INIT_RESPONSE received', {
     phase: currentHandshakePhase,
     backgroundGeneration: message.generation,
     timestamp: Date.now()
   });
-  
+
   // Phase 3: Send INIT_COMPLETE
   currentHandshakePhase = HANDSHAKE_PHASE.INIT_COMPLETE_SENT;
-  
+
   port.postMessage({
     type: 'INIT_COMPLETE',
     timestamp: Date.now(),
@@ -2195,12 +2237,12 @@ function _handleInitResponse(message, port) {
     acknowledgedGeneration: message.generation,
     phase: 3
   });
-  
+
   console.log('[Content][HANDSHAKE] Phase 3: INIT_COMPLETE sent', {
     phase: currentHandshakePhase,
     timestamp: Date.now()
   });
-  
+
   // Set timeout for Phase 3 confirmation
   _setHandshakeTimeout('INIT_COMPLETE', () => {
     // If no explicit confirmation, assume success after timeout
@@ -2216,9 +2258,9 @@ function _handleInitResponse(message, port) {
 function _completeHandshake() {
   _clearHandshakeTimeout();
   currentHandshakePhase = HANDSHAKE_PHASE.NONE;
-  
+
   _transitionPortState(PORT_CONNECTION_STATE.READY, 'handshake-complete');
-  
+
   console.log('[Content][HANDSHAKE] COMPLETE: Connection ready', {
     portState: portConnectionState,
     timestamp: Date.now()
@@ -2233,11 +2275,11 @@ function _completeHandshake() {
  */
 function _handleHandshakeFailure(reason) {
   _clearHandshakeTimeout();
-  
+
   // v1.6.3.10-v13 - FIX Issue #24: Log which phase failed
   const failedPhase = currentHandshakePhase;
   currentHandshakePhase = HANDSHAKE_PHASE.NONE;
-  
+
   console.error('[Content][HANDSHAKE] FAILED:', {
     reason,
     failedPhase,
@@ -2245,7 +2287,7 @@ function _handleHandshakeFailure(reason) {
     attempts: reconnectionAttempts,
     recoveryStrategy: 'exponential-backoff'
   });
-  
+
   // v1.6.3.10-v13 - FIX Issue #24: Log disconnect recovery plan
   const backoffDelays = [100, 200, 400]; // Base delays for documentation
   const nextDelay = backoffDelays[Math.min(reconnectionAttempts, backoffDelays.length - 1)] || 400;
@@ -2254,7 +2296,7 @@ function _handleHandshakeFailure(reason) {
     nextRetryDelayMs: nextDelay,
     maxAttempts: CIRCUIT_BREAKER_MAX_FAILURES
   });
-  
+
   // Increment failure count and try reconnection
   if (cachedTabId) {
     _handleReconnection(cachedTabId, `handshake-${reason}`);
@@ -2285,12 +2327,12 @@ function _getHandshakePhaseDescription(phase) {
  */
 function _setHandshakeTimeout(phase, callback) {
   _clearHandshakeTimeout();
-  
+
   handshakeTimeoutId = setTimeout(() => {
     handshakeTimeoutId = null;
     callback();
   }, HANDSHAKE_PHASE_TIMEOUT_MS);
-  
+
   console.log('[Content][HANDSHAKE] Timeout set for phase:', {
     phase,
     timeoutMs: HANDSHAKE_PHASE_TIMEOUT_MS
@@ -2327,7 +2369,7 @@ function _getNextSequenceId() {
  */
 function _validateMessageSequence(sequenceId) {
   if (typeof sequenceId !== 'number') return true; // Skip validation if no sequence
-  
+
   if (sequenceId <= lastReceivedSequenceId) {
     console.warn('[Content] MESSAGE_ORDER_VIOLATION: Received out-of-order message:', {
       received: sequenceId,
@@ -2336,7 +2378,7 @@ function _validateMessageSequence(sequenceId) {
     });
     return false;
   }
-  
+
   lastReceivedSequenceId = sequenceId;
   return true;
 }
@@ -2398,10 +2440,12 @@ function _cleanupStaleRestoreEntries(now) {
 function _shouldQueueRestoreOrder(existingOp, messageSequenceId, details) {
   if (!existingOp || existingOp.status !== 'pending') return false;
   if (messageSequenceId === undefined || existingOp.sequenceId === undefined) return false;
-  
+
   if (messageSequenceId < existingOp.sequenceId) {
     console.log('[Content] v1.6.3.11-v2 RESTORE_ORDER_QUEUED:', {
-      ...details, reason: 'out-of-order: newer operation already pending', action: 'queued-for-later'
+      ...details,
+      reason: 'out-of-order: newer operation already pending',
+      action: 'queued-for-later'
     });
     return true;
   }
@@ -2424,14 +2468,14 @@ function _queueRestoreOperation(quickTabId, sequenceId, callback) {
       queueSizeAfterDrop: restoreOperationQueue.length // Will be MAX_RESTORE_QUEUE_SIZE - 1
     });
   }
-  
+
   restoreOperationQueue.push({
     quickTabId,
     sequenceId,
     callback,
     queuedAt: Date.now()
   });
-  
+
   console.log('[Content] RESTORE_QUEUED: Operation queued for sequence order', {
     quickTabId,
     sequenceId,
@@ -2446,17 +2490,17 @@ function _queueRestoreOperation(quickTabId, sequenceId, callback) {
  */
 async function _processRestoreQueue() {
   if (restoreOperationQueue.length === 0) return;
-  
+
   // Sort by sequence ID to process in order
   restoreOperationQueue.sort((a, b) => a.sequenceId - b.sequenceId);
-  
+
   // Process operations that can now proceed
   const toProcess = [];
   const remaining = [];
-  
+
   for (const op of restoreOperationQueue) {
     const existingOp = pendingRestoreOperations.get(op.quickTabId);
-    
+
     // Can process if no pending operation or pending operation is complete
     if (!existingOp || existingOp.status !== 'pending') {
       toProcess.push(op);
@@ -2467,11 +2511,11 @@ async function _processRestoreQueue() {
       remaining.push(op);
     }
   }
-  
+
   // Clear queue and add back remaining
   restoreOperationQueue.length = 0;
   restoreOperationQueue.push(...remaining);
-  
+
   // Execute processable operations
   // Note: Failed operations are logged but not retried - this is intentional behavior.
   // RESTORE operations are idempotent and the next storage.onChanged will trigger
@@ -2483,7 +2527,7 @@ async function _processRestoreQueue() {
       sequenceId: op.sequenceId,
       waitedMs: Date.now() - op.queuedAt
     });
-    
+
     try {
       if (typeof op.callback === 'function') {
         await op.callback();
@@ -2503,10 +2547,10 @@ async function _processRestoreQueue() {
  * Check if a RESTORE operation should proceed, be queued, or be processed
  * v1.6.3.10-v10 - FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
  * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Queue instead of reject out-of-order messages
- * 
+ *
  * Out-of-order RESTORE messages are now queued and processed in sequence order
  * to prevent ownership lookups from resolving incorrectly during rapid tab switching.
- * 
+ *
  * @param {string} quickTabId - Quick Tab ID being restored
  * @param {number|undefined} messageSequenceId - Sequence ID from message (if present)
  * @param {Function} [callback] - Optional callback to execute if queued
@@ -2515,22 +2559,24 @@ async function _processRestoreQueue() {
 function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId, callback) {
   const now = Date.now();
   _cleanupStaleRestoreEntries(now);
-  
+
   const existingOperation = pendingRestoreOperations.get(quickTabId);
   const effectiveSequence = messageSequenceId ?? ++restoreSequenceCounter;
-  
+
   const details = {
     quickTabId,
     messageSequenceId,
     effectiveSequence,
-    existingOperation: existingOperation ? {
-      sequenceId: existingOperation.sequenceId,
-      status: existingOperation.status,
-      age: now - existingOperation.timestamp
-    } : null,
+    existingOperation: existingOperation
+      ? {
+          sequenceId: existingOperation.sequenceId,
+          status: existingOperation.status,
+          age: now - existingOperation.timestamp
+        }
+      : null,
     pendingCount: pendingRestoreOperations.size
   };
-  
+
   // v1.6.3.11-v2 - FIX Issue #5: Check if should queue due to ordering
   if (_shouldQueueRestoreOrder(existingOperation, messageSequenceId, details)) {
     // Queue the operation instead of rejecting
@@ -2539,19 +2585,23 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId, callbac
     }
     return { allowed: false, reason: 'queued', details, queued: true };
   }
-  
+
   // Log if queued behind pending operation
   if (existingOperation && existingOperation.status === 'pending') {
     console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_PENDING:', {
-      ...details, reason: 'existing operation pending', action: 'will proceed after existing completes'
+      ...details,
+      reason: 'existing operation pending',
+      action: 'will proceed after existing completes'
     });
   }
-  
+
   // Track this operation
   pendingRestoreOperations.set(quickTabId, {
-    sequenceId: effectiveSequence, timestamp: now, status: 'pending'
+    sequenceId: effectiveSequence,
+    timestamp: now,
+    status: 'pending'
   });
-  
+
   console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_ALLOWED:', details);
   return { allowed: true, reason: null, details };
 }
@@ -2568,9 +2618,12 @@ function _markRestoreComplete(quickTabId, success) {
   if (operation) {
     operation.status = success ? 'completed' : 'failed';
     console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
-      quickTabId, success, sequenceId: operation.sequenceId, duration: Date.now() - operation.timestamp
+      quickTabId,
+      success,
+      sequenceId: operation.sequenceId,
+      duration: Date.now() - operation.timestamp
     });
-    
+
     // v1.6.3.11-v2 - FIX Issue #5: Process any queued operations waiting for this to complete
     _processRestoreQueue();
   }
@@ -2586,7 +2639,7 @@ function _markRestoreComplete(quickTabId, success) {
 function _queueMessage(message) {
   // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
   _checkGlobalBackpressure();
-  
+
   const messageId = ++messageIdCounter;
   const queuedMessage = {
     messageId,
@@ -2594,7 +2647,7 @@ function _queueMessage(message) {
     queuedAt: Date.now(),
     retryCount: 0
   };
-  
+
   if (messageQueue.length >= MAX_MESSAGE_QUEUE_SIZE) {
     const dropped = messageQueue.shift();
     console.warn('[Content] MESSAGE_QUEUE_OVERFLOW: Dropped oldest message:', {
@@ -2603,14 +2656,14 @@ function _queueMessage(message) {
       queueSize: messageQueue.length
     });
   }
-  
+
   messageQueue.push(queuedMessage);
   console.log('[Content] MESSAGE_QUEUED:', {
     messageId,
     type: message.type,
     queueSize: messageQueue.length
   });
-  
+
   return messageId;
 }
 
@@ -2620,16 +2673,16 @@ function _queueMessage(message) {
  */
 function _drainMessageQueue() {
   if (messageQueue.length === 0) return;
-  
+
   console.log('[Content] DRAINING_MESSAGE_QUEUE:', {
     queueSize: messageQueue.length,
     timestamp: Date.now()
   });
-  
+
   while (messageQueue.length > 0 && backgroundPort) {
     const queuedMessage = messageQueue.shift();
     queuedMessage.retryCount++;
-    
+
     try {
       backgroundPort.postMessage(queuedMessage.message);
       console.log('[Content] QUEUE_MESSAGE_SENT:', {
@@ -2658,7 +2711,7 @@ function _drainMessageQueue() {
 function _bufferCommand(command) {
   // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
   _checkGlobalBackpressure();
-  
+
   if (pendingCommandsBuffer.length >= MAX_PENDING_COMMANDS) {
     const dropped = pendingCommandsBuffer.shift();
     console.warn('[Content] COMMAND_BUFFER_OVERFLOW: Dropped oldest command:', {
@@ -2666,12 +2719,12 @@ function _bufferCommand(command) {
       bufferSize: pendingCommandsBuffer.length
     });
   }
-  
+
   pendingCommandsBuffer.push({
     ...command,
     bufferedAt: Date.now()
   });
-  
+
   console.log('[Content] COMMAND_BUFFERED:', {
     type: command.type,
     bufferSize: pendingCommandsBuffer.length
@@ -2693,18 +2746,22 @@ function _canFlushCommands() {
  */
 function _flushCommandBuffer() {
   if (pendingCommandsBuffer.length === 0) return;
-  
+
   console.log('[Content] FLUSHING_COMMAND_BUFFER:', { bufferSize: pendingCommandsBuffer.length });
-  
+
   while (_canFlushCommands()) {
     const command = pendingCommandsBuffer.shift();
     try {
       backgroundPort.postMessage(command);
       console.log('[Content] BUFFERED_COMMAND_SENT:', {
-        type: command.type, bufferedDuration: Date.now() - command.bufferedAt
+        type: command.type,
+        bufferedDuration: Date.now() - command.bufferedAt
       });
     } catch (err) {
-      console.error('[Content] BUFFERED_COMMAND_FAILED:', { type: command.type, error: err.message });
+      console.error('[Content] BUFFERED_COMMAND_FAILED:', {
+        type: command.type,
+        error: err.message
+      });
       pendingCommandsBuffer.unshift(command);
       break;
     }
@@ -2723,13 +2780,13 @@ function _sendPortMessage(message, isCritical = false) {
   if (isCritical) {
     message.sequenceId = _getNextSequenceId();
   }
-  
+
   // Check if port is available and connected
   if (!backgroundPort || portConnectionState !== PORT_CONNECTION_STATE.CONNECTED) {
     _queueMessage(message);
     return false;
   }
-  
+
   try {
     backgroundPort.postMessage(message);
     return true;
@@ -2785,7 +2842,7 @@ function handleBackgroundRestartDetected(newStartupTime) {
     tabId: cachedTabId,
     timestamp: Date.now()
   };
-  
+
   const sent = _sendPortMessage(syncMessage, true);
   console.log('[Content] v1.6.3.10-v7 State sync request:', {
     sent,
@@ -2822,10 +2879,10 @@ function _handleReconnection(tabId, reason) {
   // v1.6.3.10-v12 - FIX Issue #11: Transition to RECONNECTING state during backoff
   const reconnectDelay = _calculateReconnectDelay();
   _transitionPortState(PORT_CONNECTION_STATE.RECONNECTING, 'backoff-scheduled');
-  
-  console.log('[Content] PORT_RECONNECTING (backoff): Scheduling reconnection', { 
-    attempt: reconnectionAttempts, 
-    delayMs: reconnectDelay, 
+
+  console.log('[Content] PORT_RECONNECTING (backoff): Scheduling reconnection', {
+    attempt: reconnectionAttempts,
+    delayMs: reconnectDelay,
     reason,
     isInRecovery: isPortInRecovery()
   });
@@ -2845,11 +2902,14 @@ function _handleReconnection(tabId, reason) {
 function _clearPendingMessagesOnDisconnect() {
   const pendingCount = pendingMessages.size;
   if (pendingCount === 0) return;
-  
-  console.log('[Content][PORT_LIFECYCLE] CLEARING_PENDING_MESSAGES: Port disconnected, clearing in-flight messages', {
-    pendingCount,
-    timestamp: Date.now()
-  });
+
+  console.log(
+    '[Content][PORT_LIFECYCLE] CLEARING_PENDING_MESSAGES: Port disconnected, clearing in-flight messages',
+    {
+      pendingCount,
+      timestamp: Date.now()
+    }
+  );
   // Reject all pending messages before clearing
   for (const [_messageId, pending] of pendingMessages) {
     if (pending.reject) pending.reject(new Error('Port disconnected'));
@@ -2862,7 +2922,9 @@ function connectContentToBackground(tabId) {
 
   // v1.6.3.10-v7 - FIX Issue #1: Check circuit breaker state
   if (portConnectionState === PORT_CONNECTION_STATE.FAILED) {
-    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect', { attempts: reconnectionAttempts });
+    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect', {
+      attempts: reconnectionAttempts
+    });
     return;
   }
 
@@ -2879,7 +2941,7 @@ function connectContentToBackground(tabId) {
   try {
     backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
-    
+
     // v1.6.3.11 - FIX Issue #8: Register onDisconnect FIRST to prevent race condition
     // v1.6.3.11-v2 - FIX Issue #2 (Diagnostic Report): Document Firefox limitation
     //
@@ -2893,72 +2955,87 @@ function connectContentToBackground(tabId) {
     // This ensures we catch disconnections that occur during setup.
     // Note: This is a Firefox limitation - the port can become invalid between
     // connect() returning and listeners being attached.
-    
+
     // v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log listener registration
-    console.log('[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_START: Registering port listeners', {
-      portName: backgroundPort.name,
-      timestamp: Date.now()
-    });
-    
+    console.log(
+      '[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_START: Registering port listeners',
+      {
+        portName: backgroundPort.name,
+        timestamp: Date.now()
+      }
+    );
+
     // Register onDisconnect listener FIRST (within 5ms of connect())
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
-      
+
       // v1.6.3.11 - FIX Issue #27: Clear pendingMessages on port disconnect to prevent corruption
       _clearPendingMessagesOnDisconnect();
-      
+
       // v1.6.3.10-v12 - FIX Issue #1: Check if disconnect happened during setup
       if (!portListenersRegistered) {
         portDisconnectedDuringSetup = true;
-        console.log('[Content][PORT_LIFECYCLE] DISCONNECT_DURING_INIT: Disconnect occurred during listener registration', {
-          error: error?.message,
-          timestamp: Date.now()
-        });
+        console.log(
+          '[Content][PORT_LIFECYCLE] DISCONNECT_DURING_INIT: Disconnect occurred during listener registration',
+          {
+            error: error?.message,
+            timestamp: Date.now()
+          }
+        );
         // Don't execute state changes until init gate passed
         return;
       }
-      
+
       // Normal operation - proceed with disconnect handling
       // v1.6.3.11-v2 - FIX Issue #8: Enhanced disconnect logging with state transition
-      console.log('[Content][PORT_LIFECYCLE] DISCONNECT_NORMAL: Port disconnected in normal operation', {
-        error: error?.message,
-        previousState: portConnectionState,
-        timestamp: Date.now()
-      });
-      
+      console.log(
+        '[Content][PORT_LIFECYCLE] DISCONNECT_NORMAL: Port disconnected in normal operation',
+        {
+          error: error?.message,
+          previousState: portConnectionState,
+          timestamp: Date.now()
+        }
+      );
+
       logContentPortLifecycle('disconnect', { error: error?.message });
       backgroundPort = null;
       isBackgroundReady = false;
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
       _handleReconnection(tabId, 'disconnect');
     });
-    
+
     // v1.6.3.11 - FIX Issue #8: Register onMessage listener SECOND (after onDisconnect)
     backgroundPort.onMessage.addListener(handleContentPortMessage);
-    
+
     // v1.6.3.10-v12 - FIX Issue #1: Mark listeners as registered (init gate)
     portListenersRegistered = true;
-    
+
     // v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log listener registration completion
-    console.log('[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: Both listeners attached', {
-      portName: backgroundPort.name,
-      hasOnDisconnect: true,
-      hasOnMessage: true,
-      timestamp: Date.now()
-    });
-    
+    console.log(
+      '[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: Both listeners attached',
+      {
+        portName: backgroundPort.name,
+        hasOnDisconnect: true,
+        hasOnMessage: true,
+        timestamp: Date.now()
+      }
+    );
+
     // Now check if disconnect happened during the registration window
     if (portDisconnectedDuringSetup) {
-      console.log('[Content][PORT_LIFECYCLE] DISCONNECT_DURING_SETUP_DETECTED: Handling deferred disconnect', {
-        timestamp: Date.now()
-      });
+      console.log(
+        '[Content][PORT_LIFECYCLE] DISCONNECT_DURING_SETUP_DETECTED: Handling deferred disconnect',
+        {
+          timestamp: Date.now()
+        }
+      );
       backgroundPort = null;
       isBackgroundReady = false;
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected-during-setup');
       _handleReconnection(tabId, 'disconnect-during-setup');
       return;
     }
-    
+
     _resetReconnectionAttempts();
     _drainMessageQueue();
 
@@ -3014,7 +3091,7 @@ function _processBackgroundStartupTime(startupTime) {
 function _handleBackgroundHandshake(message) {
   // v1.6.3.10-v7 - FIX Issue #2: Calculate handshake roundtrip latency
   const latencyMs = handshakeRequestTimestamp ? Date.now() - handshakeRequestTimestamp : null;
-  
+
   console.log('[Content] v1.6.3.10-v7 Background handshake received:', {
     startupTime: message.startupTime,
     uptime: message.uptime,
@@ -3027,7 +3104,7 @@ function _handleBackgroundHandshake(message) {
   // v1.6.3.10-v7 - FIX Issue #3: Track latency for adaptive dedup window
   if (latencyMs !== null) {
     lastKnownBackgroundLatencyMs = latencyMs;
-    
+
     // Log warning if latency exceeds 5s
     if (latencyMs > 5000) {
       console.warn('[Content] HIGH_HANDSHAKE_LATENCY: Background response took too long:', {
@@ -3050,12 +3127,14 @@ function _handleBackgroundHandshake(message) {
       latencyMs,
       timestamp: Date.now()
     });
-    
+
     // v1.6.3.10-v7 - FIX Issue #2: Flush buffered commands
     _flushCommandBuffer();
-    
+
     // v1.6.3.10-v11 - FIX Issue #1: Notify pending tab ID acquisition of background readiness
-    console.log('[Content][TabID] BACKGROUND_READINESS_DETECTED: Background ready, resuming tab ID acquisition');
+    console.log(
+      '[Content][TabID] BACKGROUND_READINESS_DETECTED: Background ready, resuming tab ID acquisition'
+    );
     _notifyBackgroundReadiness();
   } else if (wasReady && !isNowReady) {
     console.warn('[Content] BACKGROUND_NOT_READY: Transitioned from READY to INITIALIZING');
@@ -3132,15 +3211,15 @@ const MAX_PROCESSED_BROADCAST_IDS = 1000;
  */
 function _wasBroadcastAlreadyProcessed(messageId) {
   if (!messageId) return false;
-  
+
   if (processedBroadcastMessageIds.has(messageId)) {
     console.log('[Content] BROADCAST_DEDUPED: Already processed', messageId);
     return true;
   }
-  
+
   // Track this messageId
   processedBroadcastMessageIds.add(messageId);
-  
+
   // Cleanup if set is too large
   if (processedBroadcastMessageIds.size > MAX_PROCESSED_BROADCAST_IDS) {
     // Convert to array, remove oldest half
@@ -3148,7 +3227,7 @@ function _wasBroadcastAlreadyProcessed(messageId) {
     const toRemove = arr.slice(0, Math.floor(arr.length / 2));
     toRemove.forEach(id => processedBroadcastMessageIds.delete(id));
   }
-  
+
   return false;
 }
 
@@ -3218,9 +3297,9 @@ function _handlePageHide(event) {
       hasPort: !!backgroundPort,
       portState: portConnectionState
     });
-    
+
     portPotentiallyInvalidDueToBFCache = true;
-    
+
     // Mark port as potentially invalid but don't disconnect
     // It may still work when restored
   }
@@ -3240,7 +3319,7 @@ function _handlePageShow(event) {
       portState: portConnectionState,
       wasMarkedInvalid: portPotentiallyInvalidDueToBFCache
     });
-    
+
     if (portPotentiallyInvalidDueToBFCache) {
       // Verify port functionality by attempting a ping
       _verifyPortAfterBFCache();
@@ -3273,7 +3352,7 @@ function _handlePortVerifyFailure(err) {
     error: err.message,
     timestamp: Date.now()
   });
-  
+
   // v1.6.3.11 - FIX Issue #7: Close broken port before reconnection
   if (backgroundPort) {
     try {
@@ -3283,18 +3362,18 @@ function _handlePortVerifyFailure(err) {
       console.log('[Content][BFCACHE] Port already disconnected:', disconnectErr.message);
     }
   }
-  
+
   // Port is dead, trigger reconnection
   backgroundPort = null;
   portPotentiallyInvalidDueToBFCache = false;
   _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'bfcache-port-dead');
-  
+
   // v1.6.3.11 - FIX Issue #7: Explicit BFCache recovery logging before reconnection
   console.log('[Content] BFCache recovery: reconnecting port', {
     cachedTabId,
     timestamp: Date.now()
   });
-  
+
   if (cachedTabId) {
     // v1.6.3.11 - FIX Issue #7: Brief delay before reconnection (50ms)
     setTimeout(() => {
@@ -3345,13 +3424,16 @@ function _clearBFCacheVerifyTimeout() {
 function _handlePortVerifyResponse() {
   _clearBFCacheVerifyTimeout();
   portPotentiallyInvalidDueToBFCache = false;
-  
+
   // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY success with latency measurement
   const latencyMs = bfcacheVerifyStartTime > 0 ? Date.now() - bfcacheVerifyStartTime : null;
-  console.log('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_SUCCESS: Port verified functional after BFCache', {
-    latencyMs,
-    timestamp: Date.now()
-  });
+  console.log(
+    '[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_SUCCESS: Port verified functional after BFCache',
+    {
+      latencyMs,
+      timestamp: Date.now()
+    }
+  );
   bfcacheVerifyStartTime = 0; // Reset
 }
 
@@ -3364,17 +3446,19 @@ function _handlePortVerifyResponse() {
  * @private
  */
 function _verifyPortAfterBFCache() {
-  console.log('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_PORT_START: Checking port functionality after BFCache restore');
-  
+  console.log(
+    '[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_PORT_START: Checking port functionality after BFCache restore'
+  );
+
   // No port exists - trigger reconnect immediately
   if (!backgroundPort) {
     _handleNoPortAfterBFCache();
     return;
   }
-  
+
   // v1.6.3.11-v2 - FIX Issue #8: Track verify start time for latency measurement
   bfcacheVerifyStartTime = Date.now();
-  
+
   // Try to send a test message via the port
   try {
     const testMessage = {
@@ -3382,34 +3466,36 @@ function _verifyPortAfterBFCache() {
       timestamp: bfcacheVerifyStartTime,
       reason: 'bfcache-restore'
     };
-    
+
     backgroundPort.postMessage(testMessage);
     console.log('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_PORT_SENT: Test message sent', {
       timestamp: bfcacheVerifyStartTime,
       portName: backgroundPort.name
     });
-    
+
     // v1.6.3.11 - FIX Issue #32: Set timeout for response
     // v1.6.3.11-v2 - FIX Issue #1 (Diagnostic Report): Enhanced logging with timing details
     _clearBFCacheVerifyTimeout(); // Clear any existing timeout
     const verifyStartTime = Date.now();
     bfcacheVerifyTimeoutId = setTimeout(() => {
       const elapsedMs = Date.now() - verifyStartTime;
-      console.warn('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_TIMEOUT: No response after BFCache restore', {
-        timeoutMs: BFCACHE_VERIFY_TIMEOUT_MS,
-        elapsedMs,
-        timestamp: Date.now(),
-        portName: backgroundPort?.name || 'unknown',
-        action: 'triggering-reconnection'
-      });
-      
+      console.warn(
+        '[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_TIMEOUT: No response after BFCache restore',
+        {
+          timeoutMs: BFCACHE_VERIFY_TIMEOUT_MS,
+          elapsedMs,
+          timestamp: Date.now(),
+          portName: backgroundPort?.name || 'unknown',
+          action: 'triggering-reconnection'
+        }
+      );
+
       // Timeout expired - trigger reconnection
       // v1.6.3.11-v2 - FIX Issue #1: ALWAYS reconnect when PORT_VERIFY times out
       // Firefox BFCache silently breaks port connections without firing onDisconnect
       portPotentiallyInvalidDueToBFCache = false;
       _handlePortVerifyFailure(new Error('PORT_VERIFY timeout'));
     }, BFCACHE_VERIFY_TIMEOUT_MS);
-    
   } catch (err) {
     _handlePortVerifyFailure(err);
   }
@@ -3449,7 +3535,7 @@ function _clearAdoptionCacheOnNavigation() {
       previousHostname: currentPageHostname,
       timestamp: Date.now()
     });
-    
+
     recentlyAdoptedQuickTabs.clear();
     adoptionCacheMetrics.clearedOnNavigation = (adoptionCacheMetrics.clearedOnNavigation || 0) + 1;
   }
@@ -3467,16 +3553,16 @@ function _checkHostnameChange() {
   } catch (_e) {
     newHostname = 'unknown';
   }
-  
+
   if (currentPageHostname !== null && newHostname !== currentPageHostname) {
     console.log('[Content] HOSTNAME_CHANGE_DETECTED:', {
       previousHostname: currentPageHostname,
       newHostname,
       timestamp: Date.now()
     });
-    
+
     _clearAdoptionCacheOnNavigation();
-    
+
     // v1.6.3.11 - FIX Issue #26: Clear cached tab ID on hostname change (cross-domain nav)
     // Tab ID may be stale after navigation, clear to force re-acquisition
     if (cachedTabId !== null) {
@@ -3486,14 +3572,14 @@ function _checkHostnameChange() {
         newHostname
       });
       cachedTabId = null;
-      
+
       // Re-acquire tab ID asynchronously
       getCurrentTabIdFromBackground('hostname-change').catch(err => {
         console.warn('[Content] Failed to re-acquire tab ID after hostname change:', err.message);
       });
     }
   }
-  
+
   currentPageHostname = newHostname;
 }
 
@@ -3515,18 +3601,18 @@ async function initializeQuickTabsFeature() {
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
   // v1.6.3.10-v13 - FIX Issue #4: Explicit initialization phase logging
   const initStartTime = Date.now();
-  
+
   // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_1 - Content script loaded
   console.log('[INIT][Content] INIT_PHASE_1: Content script loaded', {
     timestamp: new Date().toISOString(),
     location: window.location.href.substring(0, 100)
   });
-  
+
   console.log('[INIT][Content] PHASE_START: Quick Tabs initialization beginning', {
     timestamp: new Date().toISOString(),
     isWritingTabIdInitialized: isWritingTabIdInitialized()
   });
-  
+
   // v1.6.3.10-v13 - FIX Issue #4: INIT_PHASE_2 - Message listener registered
   console.log('[INIT][Content] INIT_PHASE_2: Message listener registered', {
     timestamp: new Date().toISOString()
@@ -3636,21 +3722,21 @@ async function initializeQuickTabsFeature() {
       hasManager: true,
       timestamp: new Date().toISOString()
     });
-    
+
     // v1.6.3.10-v13 - FIX Issue #4: INIT_COMPLETE - All systems ready
     console.log('[INIT][Content] INIT_COMPLETE: All systems ready', {
       totalDurationMs: totalInitDuration,
       tabId: currentTabId,
       timestamp: new Date().toISOString()
     });
-    
+
     console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
     console.log(
       '[Copy-URL-on-Hover] Manager has createQuickTab:',
       typeof quickTabsManager.createQuickTab
     );
     console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
-    
+
     // v1.6.3.10-v13 - FIX Issue #9: Start periodic storage latency re-measurement
     // This adapts the dedup window to network condition changes
     startPeriodicLatencyMeasurement();
@@ -4070,7 +4156,7 @@ async function handleKeyboardShortcut(event) {
     }
     return;
   }
-  
+
   // Check if in input field first - silently ignore
   const isInInputField = isInputField(event.target);
   if (isInInputField) {
@@ -4329,12 +4415,15 @@ function buildQuickTabData(options) {
 
   // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
   if (originTabId === null) {
-    console.warn('[Content] QUICK_TAB_CREATE_WARNING: originTabId is null, tab ID not yet initialized', {
-      url,
-      id,
-      cachedTabId,
-      suggestion: 'Ensure connectContentToBackground() completes before creating Quick Tabs'
-    });
+    console.warn(
+      '[Content] QUICK_TAB_CREATE_WARNING: originTabId is null, tab ID not yet initialized',
+      {
+        url,
+        id,
+        cachedTabId,
+        suggestion: 'Ensure connectContentToBackground() completes before creating Quick Tabs'
+      }
+    );
   } else {
     console.log('[Content] QUICK_TAB_CREATE: Including originTabId in creation payload', {
       url,
@@ -4395,16 +4484,16 @@ function _generateAtomicQuickTabId() {
   const tabId = cachedTabId ?? 'unknown';
   const counter = ++quickTabIdCounter;
   const randomSuffix = Math.random().toString(36).slice(2, 6);
-  
+
   let candidateId = `qt-${tabId}-${counter}-${randomSuffix}`;
-  
+
   // Collision detection (extremely unlikely but check anyway)
   let collisionCount = 0;
   while (existingQuickTabIds.has(candidateId)) {
     collisionCount++;
     const newRandom = Math.random().toString(36).slice(2, 6);
     candidateId = `qt-${tabId}-${counter}-${newRandom}-${collisionCount}`;
-    
+
     if (collisionCount > 10) {
       console.error('[Content] QUICK_TAB_ID_COLLISION: Too many collisions', {
         attempts: collisionCount,
@@ -4414,16 +4503,16 @@ function _generateAtomicQuickTabId() {
       break;
     }
   }
-  
+
   existingQuickTabIds.add(candidateId);
-  
+
   console.log('[Content] QUICK_TAB_ID_GENERATED:', {
     id: candidateId,
     counter,
     collisionDetected: collisionCount > 0,
     existingCount: existingQuickTabIds.size
   });
-  
+
   return candidateId;
 }
 
@@ -4445,13 +4534,13 @@ function _queueQuickTabCreation(quickTabData, saveId, canUseManagerSaveId) {
       resolve,
       reject
     });
-    
+
     console.log('[Content] QUICK_TAB_CREATION_QUEUED:', {
       id: quickTabData.id,
       queueSize: quickTabCreationQueue.length,
       isCreationInProgress
     });
-    
+
     // Process queue if not already processing
     _processCreationQueue();
   });
@@ -4465,41 +4554,40 @@ async function _processCreationQueue() {
   if (isCreationInProgress || quickTabCreationQueue.length === 0) {
     return;
   }
-  
+
   isCreationInProgress = true;
-  
+
   while (quickTabCreationQueue.length > 0) {
     const operation = quickTabCreationQueue.shift();
     const { quickTabData, saveId, canUseManagerSaveId, queuedAt, resolve, reject } = operation;
-    
+
     const queueDuration = Date.now() - queuedAt;
     console.log('[Content] QUICK_TAB_CREATION_STARTED:', {
       id: quickTabData.id,
       queueDurationMs: queueDuration,
       remainingInQueue: quickTabCreationQueue.length
     });
-    
+
     try {
       await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
-      
+
       console.log('[Content] QUICK_TAB_CREATION_COMPLETED:', {
         id: quickTabData.id,
         totalDurationMs: Date.now() - queuedAt
       });
-      
+
       resolve();
-      
     } catch (err) {
       console.error('[Content] QUICK_TAB_CREATION_FAILED:', {
         id: quickTabData.id,
         error: err.message
       });
-      
+
       handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
       reject(err);
     }
   }
-  
+
   isCreationInProgress = false;
   console.log('[Content] QUICK_TAB_CREATION_QUEUE_DRAINED');
 }
@@ -4564,10 +4652,10 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 async function persistQuickTabToBackground(quickTabData, saveId) {
   // v1.6.3.11 - FIX Issue #31: Let background assign sequence ID for global ordering
   // Note: Background will generate globally-ordered sequence ID on receipt
-  
+
   // v1.6.3.11-v3 - FIX Issue #15: Log originTabId being sent for ownership validation tracking
   const originTabId = quickTabData.originTabId || quickTabsManager?.currentTabId || null;
-  
+
   console.log('[Content] Sending CREATE_QUICK_TAB with originTabId:', {
     quickTabId: quickTabData.id,
     originTabId,
@@ -4576,7 +4664,7 @@ async function persistQuickTabToBackground(quickTabData, saveId) {
     timestamp: Date.now(),
     note: 'Background will validate ownership and assign global sequenceId'
   });
-  
+
   // v1.6.3.11-v3 - FIX Issue #15: Ensure originTabId is included in message
   const messageData = {
     action: 'CREATE_QUICK_TAB',
@@ -4586,9 +4674,9 @@ async function persistQuickTabToBackground(quickTabData, saveId) {
     // v1.6.3.11 - FIX Issue #31: No client sequenceId - background assigns it
     operationType: OPERATION_TYPE.CREATE
   };
-  
+
   const response = await sendMessageToBackground(messageData);
-  
+
   // v1.6.3.11-v3 - FIX Issue #15: Log validation result from background
   if (response) {
     console.log('[Content] CREATE_QUICK_TAB response received:', {
@@ -4597,7 +4685,7 @@ async function persistQuickTabToBackground(quickTabData, saveId) {
       sequenceId: response.sequenceId,
       validationMatch: response.originTabId === originTabId
     });
-    
+
     // Log warning if originTabId was changed by background validation
     if (response.originTabId !== undefined && response.originTabId !== originTabId) {
       console.warn('[Content] OWNERSHIP_VALIDATION: Background assigned different originTabId', {
@@ -4607,7 +4695,7 @@ async function persistQuickTabToBackground(quickTabData, saveId) {
       });
     }
   }
-  
+
   return response;
 }
 
@@ -4659,14 +4747,14 @@ async function handleCreateQuickTab(url, targetElement = null) {
   const height = CONFIG.quickTabDefaultHeight || 600;
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
-  
+
   // v1.6.3.10-v11 - FIX Issue #25: Use atomic ID generation instead of default
   const quickTabId = _generateAtomicQuickTabId();
   const saveId = generateSaveTrackingId();
   const canUseManagerSaveId = Boolean(
     quickTabsManager && typeof quickTabsManager.generateSaveId === 'function'
   );
-  
+
   const quickTabData = buildQuickTabData({
     url,
     id: quickTabId,
@@ -4957,8 +5045,8 @@ const adoptionCacheMetrics = {
   missCount: 0,
   ttlExpiredCount: 0,
   totalTracked: 0,
-  clearedOnNavigation: 0,     // v1.6.3.10-v12 - FIX Issue #12
-  latencyUpdates: 0           // v1.6.3.10-v12 - FIX Issue #4
+  clearedOnNavigation: 0, // v1.6.3.10-v12 - FIX Issue #12
+  latencyUpdates: 0 // v1.6.3.10-v12 - FIX Issue #4
 };
 
 /**
@@ -4982,25 +5070,25 @@ function _getObservedHandshakeLatency() {
  */
 function _recordHandshakeLatency(latencyMs) {
   if (typeof latencyMs !== 'number' || latencyMs < 0) return;
-  
+
   // v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count
   heartbeatCountSinceLatencyUpdate++;
-  
+
   const oldLatency = lastKnownBackgroundLatencyMs;
-  
+
   adoptionLatencySamples.push(latencyMs);
   if (adoptionLatencySamples.length > MAX_ADOPTION_LATENCY_SAMPLES) {
     adoptionLatencySamples.shift();
   }
-  
+
   const newAverageLatency = _getObservedHandshakeLatency();
-  
+
   // v1.6.3.10-v12 - FIX Issue #4: Update lastKnownBackgroundLatencyMs periodically
   // Recalculate every 10 heartbeats to adapt to network condition changes
   if (heartbeatCountSinceLatencyUpdate >= HEARTBEATS_PER_LATENCY_UPDATE) {
     heartbeatCountSinceLatencyUpdate = 0;
     adoptionCacheMetrics.latencyUpdates++;
-    
+
     if (oldLatency !== null && newAverageLatency !== null) {
       console.log('[Content] LATENCY_UPDATED: Periodic latency recalculation', {
         oldLatencyMs: oldLatency,
@@ -5010,10 +5098,10 @@ function _recordHandshakeLatency(latencyMs) {
         updateCount: adoptionCacheMetrics.latencyUpdates
       });
     }
-    
+
     lastKnownBackgroundLatencyMs = newAverageLatency;
   }
-  
+
   console.log('[Content] ADOPTION_LATENCY_RECORDED:', {
     latencyMs,
     sampleCount: adoptionLatencySamples.length,
@@ -5029,12 +5117,12 @@ function _recordHandshakeLatency(latencyMs) {
  */
 function _calculateDynamicAdoptionTTL() {
   const observedLatency = _getObservedHandshakeLatency();
-  
+
   // Use default if no latency measurements available
   if (observedLatency === null) {
     return ADOPTION_DEFAULT_TTL_MS;
   }
-  
+
   // Calculate 3x latency with clamping
   const calculatedTTL = observedLatency * ADOPTION_TTL_LATENCY_MULTIPLIER;
   return Math.max(ADOPTION_MIN_TTL_MS, Math.min(calculatedTTL, ADOPTION_MAX_TTL_MS));
@@ -5050,18 +5138,18 @@ function _calculateDynamicAdoptionTTL() {
  */
 function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
   const dynamicTTL = _calculateDynamicAdoptionTTL();
-  
+
   // v1.6.3.11 - FIX Issue #34: Evict oldest entries if cache is too large (max 100 entries)
   _evictOldestAdoptionEntriesIfNeeded();
-  
+
   recentlyAdoptedQuickTabs.set(quickTabId, {
     newOriginTabId,
     adoptedAt: Date.now(),
     ttl: dynamicTTL
   });
-  
+
   adoptionCacheMetrics.totalTracked++;
-  
+
   console.log('[Content] ADOPTION_TRACKED:', {
     quickTabId,
     newOriginTabId,
@@ -5080,18 +5168,18 @@ function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
 function _evictOldestAdoptionEntriesIfNeeded() {
   const ADOPTION_CACHE_MAX_SIZE = 100;
   if (recentlyAdoptedQuickTabs.size < ADOPTION_CACHE_MAX_SIZE) return;
-  
+
   // Evict oldest 10% of entries
   const evictCount = Math.ceil(ADOPTION_CACHE_MAX_SIZE * 0.1);
   let evicted = 0;
-  
+
   // Map iterates in insertion order, so first entries are oldest
   for (const [oldId] of recentlyAdoptedQuickTabs) {
     recentlyAdoptedQuickTabs.delete(oldId);
     evicted++;
     if (evicted >= evictCount) break;
   }
-  
+
   console.log('[Content] ADOPTION_CACHE_EVICTION:', {
     evictedCount: evicted,
     sizeAfter: recentlyAdoptedQuickTabs.size,
@@ -5108,30 +5196,30 @@ function _evictOldestAdoptionEntriesIfNeeded() {
  */
 function _getAdoptionOwnership(quickTabId) {
   const adoptionInfo = recentlyAdoptedQuickTabs.get(quickTabId);
-  
+
   if (!adoptionInfo) {
     adoptionCacheMetrics.missCount++;
     return { wasAdopted: false, newOriginTabId: null };
   }
-  
+
   // v1.6.3.10-v11 - FIX Issue #5: Check per-entry TTL
   const entryAge = Date.now() - adoptionInfo.adoptedAt;
   const entryTTL = adoptionInfo.ttl ?? ADOPTION_DEFAULT_TTL_MS;
-  
+
   if (entryAge > entryTTL) {
     adoptionCacheMetrics.ttlExpiredCount++;
     recentlyAdoptedQuickTabs.delete(quickTabId);
-    
+
     console.log('[Content] ADOPTION_TTL_EXPIRED:', {
       quickTabId,
       entryAge,
       entryTTL,
       metrics: adoptionCacheMetrics
     });
-    
+
     return { wasAdopted: false, newOriginTabId: null };
   }
-  
+
   adoptionCacheMetrics.hitCount++;
   return { wasAdopted: true, newOriginTabId: adoptionInfo.newOriginTabId };
 }
@@ -5145,7 +5233,7 @@ function _getAdoptionOwnership(quickTabId) {
 function _cleanupAdoptionTracking() {
   const now = Date.now();
   let cleanedCount = 0;
-  
+
   for (const [quickTabId, adoptionInfo] of recentlyAdoptedQuickTabs) {
     const entryTTL = adoptionInfo.ttl ?? ADOPTION_DEFAULT_TTL_MS;
     if (now - adoptionInfo.adoptedAt > entryTTL) {
@@ -5153,11 +5241,16 @@ function _cleanupAdoptionTracking() {
       cleanedCount++;
     }
   }
-  
+
   // v1.6.3.11 - FIX Issue #33: Log cleanup with specific format
   if (cleanedCount > 0) {
-    console.log('[Content] ADOPTION_CACHE_CLEANUP:', cleanedCount, 'entries expired,', 
-      recentlyAdoptedQuickTabs.size, 'remaining');
+    console.log(
+      '[Content] ADOPTION_CACHE_CLEANUP:',
+      cleanedCount,
+      'entries expired,',
+      recentlyAdoptedQuickTabs.size,
+      'remaining'
+    );
   }
 }
 
@@ -5199,7 +5292,7 @@ function _getAdaptiveStorageEventDedupWindow() {
   if (lastKnownBackgroundLatencyMs === null) {
     return STORAGE_EVENT_BASE_DEDUP_WINDOW_MS;
   }
-  
+
   // v1.6.3.10-v11 - FIX Issue #12: Storage events can take 300-500ms to fire
   // Use 2x observed latency, with minimum of 500ms for storage events specifically
   const minStorageWindow = Math.max(STORAGE_EVENT_BASE_DEDUP_WINDOW_MS, 500);
@@ -5207,7 +5300,7 @@ function _getAdaptiveStorageEventDedupWindow() {
     Math.max(lastKnownBackgroundLatencyMs * 2, minStorageWindow),
     STORAGE_EVENT_MAX_DEDUP_WINDOW_MS
   );
-  
+
   return adaptiveWindow;
 }
 
@@ -5231,11 +5324,11 @@ function _isWithinDedupWindow(lastEvent, newVersion, now) {
   const dedupWindowMs = _getAdaptiveStorageEventDedupWindow();
   const isDuplicate = timeSinceLastEvent < dedupWindowMs && lastEvent.version === newVersion;
   if (isDuplicate) {
-    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { 
-      timeSinceLastEvent, 
+    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', {
+      timeSinceLastEvent,
       version: newVersion,
       dedupWindowMs,
-      observedLatencyMs: lastKnownBackgroundLatencyMs 
+      observedLatencyMs: lastKnownBackgroundLatencyMs
     });
   }
   return isDuplicate;
@@ -5244,19 +5337,19 @@ function _isWithinDedupWindow(lastEvent, newVersion, now) {
 function _isStorageEventDuplicate(key, newValue) {
   const now = Date.now();
   const newVersion = newValue?.correlationId || newValue?.timestamp || null;
-  
+
   if (_isWithinDedupWindow(recentStorageEvents.get(key), newVersion, now)) {
     return true;
   }
-  
+
   // Track this event
   recentStorageEvents.set(key, { timestamp: now, version: newVersion });
-  
+
   // Clean up old entries
   if (recentStorageEvents.size > 20) {
     _cleanupOldStorageEvents(now);
   }
-  
+
   return false;
 }
 
@@ -5306,13 +5399,13 @@ function _getAdaptiveDedupWindow() {
   if (lastKnownBackgroundLatencyMs === null) {
     return BASE_RESTORE_DEDUP_WINDOW_MS;
   }
-  
+
   // 2x observed latency, clamped to range
   const adaptiveWindow = Math.min(
     Math.max(lastKnownBackgroundLatencyMs * 2, BASE_RESTORE_DEDUP_WINDOW_MS),
     MAX_RESTORE_DEDUP_WINDOW_MS
   );
-  
+
   return adaptiveWindow;
 }
 
@@ -5693,7 +5786,7 @@ function _extractTabIdFromQuickTabId(quickTabId) {
 function _logOwnershipDivergence(quickTabId, extractedTabId, adoptionInfo, currentTabId) {
   if (!adoptionInfo.wasAdopted || extractedTabId === null) return;
   if (extractedTabId === adoptionInfo.newOriginTabId) return;
-  
+
   console.warn('[Content] OWNERSHIP_DIVERGENCE: Pattern and adoption ownership mismatch:', {
     quickTabId,
     patternTabId: extractedTabId,
@@ -5728,12 +5821,12 @@ function _getRestoreOwnership(quickTabId) {
   const ownership = _getQuickTabOwnership(quickTabId);
   const extractedTabId = _extractTabIdFromQuickTabId(quickTabId);
   const matchesIdPattern = extractedTabId !== null && extractedTabId === ownership.currentTabId;
-  
+
   // v1.6.3.10-v7 - FIX Issue #7: Check adoption cache
   const adoptionInfo = _getAdoptionOwnership(quickTabId);
-  const matchesAdoptedOwnership = adoptionInfo.wasAdopted && 
-    adoptionInfo.newOriginTabId === ownership.currentTabId;
-  
+  const matchesAdoptedOwnership =
+    adoptionInfo.wasAdopted && adoptionInfo.newOriginTabId === ownership.currentTabId;
+
   // Log warning if pattern and adoption ownership diverge
   _logOwnershipDivergence(quickTabId, extractedTabId, adoptionInfo, ownership.currentTabId);
 
@@ -5744,7 +5837,12 @@ function _getRestoreOwnership(quickTabId) {
     wasAdopted: adoptionInfo.wasAdopted,
     adoptedOwnerTabId: adoptionInfo.newOriginTabId,
     matchesAdoptedOwnership,
-    ownsQuickTab: _determineOwnership(ownership, matchesAdoptedOwnership, adoptionInfo.wasAdopted, matchesIdPattern)
+    ownsQuickTab: _determineOwnership(
+      ownership,
+      matchesAdoptedOwnership,
+      adoptionInfo.wasAdopted,
+      matchesIdPattern
+    )
   };
 }
 
@@ -5897,7 +5995,7 @@ function _handleGetContentLogs(sendResponse) {
  * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate handler pattern
  * @private
  * @param {Function} action - Action to execute
- * @param {Function} sendResponse - Response callback  
+ * @param {Function} sendResponse - Response callback
  * @param {string} timestampField - Field name for timestamp (e.g. 'clearedAt')
  * @param {string} errorContext - Error log context
  */
@@ -5917,8 +6015,13 @@ function _executeWithResponse(action, sendResponse, timestampField, errorContext
  */
 function _handleClearContentLogs(sendResponse) {
   _executeWithResponse(
-    () => { clearConsoleLogs(); clearLogBuffer(); },
-    sendResponse, 'clearedAt', 'clearing log buffer'
+    () => {
+      clearConsoleLogs();
+      clearLogBuffer();
+    },
+    sendResponse,
+    'clearedAt',
+    'clearing log buffer'
   );
 }
 
@@ -5929,7 +6032,9 @@ function _handleClearContentLogs(sendResponse) {
 function _handleRefreshLiveConsoleFilters(sendResponse) {
   _executeWithResponse(
     refreshLiveConsoleSettings,
-    sendResponse, 'refreshedAt', 'refreshing live console filters'
+    sendResponse,
+    'refreshedAt',
+    'refreshing live console filters'
   );
 }
 
@@ -5974,7 +6079,10 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 function _updateOriginTabIdWithLog(target, adoptedQuickTabId, newOriginTabId, location) {
   if (!target) return false;
   console.log('[Content] ADOPTION_CACHE_UPDATE:', {
-    adoptedQuickTabId, oldOriginTabId: target.originTabId, newOriginTabId, location
+    adoptedQuickTabId,
+    oldOriginTabId: target.originTabId,
+    newOriginTabId,
+    location
   });
   target.originTabId = newOriginTabId;
   return true;
@@ -5993,7 +6101,12 @@ function _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId)
  * @private
  */
 function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOriginTabId) {
-  return _updateOriginTabIdWithLog(snapshot, adoptedQuickTabId, newOriginTabId, 'minimized-snapshot');
+  return _updateOriginTabIdWithLog(
+    snapshot,
+    adoptedQuickTabId,
+    newOriginTabId,
+    'minimized-snapshot'
+  );
 }
 
 /**
@@ -6011,10 +6124,16 @@ function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOri
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce _handleAdoptionCompleted complexity
  * @private
  */
-function _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId) {
+function _tryUpdateMinimizedManagerSnapshot(
+  adoptedQuickTabId,
+  newOriginTabId,
+  previousOriginTabId
+) {
   if (!quickTabsManager?.minimizedManager?.updateSnapshotOriginTabId) return false;
   return quickTabsManager.minimizedManager.updateSnapshotOriginTabId(
-    adoptedQuickTabId, newOriginTabId, previousOriginTabId
+    adoptedQuickTabId,
+    newOriginTabId,
+    previousOriginTabId
   );
 }
 
@@ -6028,21 +6147,42 @@ function _handleAdoptionCompleted(message, sendResponse) {
   const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
 
   console.log('[Content] ADOPTION_COMPLETED received:', {
-    adoptedQuickTabId, previousOriginTabId, newOriginTabId, currentTabId,
-    hasInMap: !!tabEntry, hasSnapshot: !!minimizedSnapshot
+    adoptedQuickTabId,
+    previousOriginTabId,
+    newOriginTabId,
+    currentTabId,
+    hasInMap: !!tabEntry,
+    hasSnapshot: !!minimizedSnapshot
   });
 
   // Update caches
   const tabUpdated = _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId);
-  const directSnapshotUpdated = _updateMinimizedSnapshotOriginTabId(minimizedSnapshot, adoptedQuickTabId, newOriginTabId);
+  const directSnapshotUpdated = _updateMinimizedSnapshotOriginTabId(
+    minimizedSnapshot,
+    adoptedQuickTabId,
+    newOriginTabId
+  );
   const cacheUpdated = tabUpdated || directSnapshotUpdated;
-  const snapshotUpdated = _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId);
+  const snapshotUpdated = _tryUpdateMinimizedManagerSnapshot(
+    adoptedQuickTabId,
+    newOriginTabId,
+    previousOriginTabId
+  );
 
   console.log('[Content] ADOPTION_COMPLETED completed:', {
-    adoptedQuickTabId, cacheUpdated, snapshotUpdated, timeSinceAdoption: Date.now() - timestamp
+    adoptedQuickTabId,
+    cacheUpdated,
+    snapshotUpdated,
+    timeSinceAdoption: Date.now() - timestamp
   });
 
-  sendResponse({ success: true, cacheUpdated, snapshotUpdated, currentTabId, timestamp: Date.now() });
+  sendResponse({
+    success: true,
+    cacheUpdated,
+    snapshotUpdated,
+    currentTabId,
+    timestamp: Date.now()
+  });
 }
 
 // ==================== v1.6.4.14 FIX Issue #17: TAB ACTIVATED HANDLER ====================
@@ -6096,11 +6236,14 @@ function _handleTabActivated(message, sendResponse) {
     console.log('[Content] TAB_ACTIVATED_HANDLER: Triggering hydration');
     try {
       // Trigger async hydration (don't await in handler)
-      quickTabsManager.hydrateFromStorage().then(result => {
-        console.log('[Content] TAB_ACTIVATED_HANDLER: Hydration complete:', result);
-      }).catch(err => {
-        console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration failed:', err.message);
-      });
+      quickTabsManager
+        .hydrateFromStorage()
+        .then(result => {
+          console.log('[Content] TAB_ACTIVATED_HANDLER: Hydration complete:', result);
+        })
+        .catch(err => {
+          console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration failed:', err.message);
+        });
       stateUpdated = true;
     } catch (err) {
       console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration error:', err.message);
@@ -6203,7 +6346,9 @@ function _syncStateTabs(tabs, currentTabId) {
 function _syncOriginTabId(target, tabData, location) {
   if (!target || target.originTabId === tabData.originTabId) return 0;
   console.log(`[Content] STATE_SYNC_FROM_BACKGROUND: Updating ${location}:`, {
-    quickTabId: tabData.id, oldOriginTabId: target.originTabId, newOriginTabId: tabData.originTabId
+    quickTabId: tabData.id,
+    oldOriginTabId: target.originTabId,
+    newOriginTabId: tabData.originTabId
   });
   target.originTabId = tabData.originTabId;
   return 1;
@@ -6823,7 +6968,7 @@ const ACTION_HANDLERS = {
       quickTabId: message.quickTabId,
       sequenceId: message.sequenceId
     });
-    
+
     // v1.6.3.11 - FIX Issue #36: Validate message has quickTabId field
     if (!message.quickTabId || typeof message.quickTabId !== 'string') {
       console.warn('[Content] RESTORE_QUICK_TAB: Invalid message - missing quickTabId', {
@@ -6837,7 +6982,7 @@ const ACTION_HANDLERS = {
       });
       return true;
     }
-    
+
     _handleRestoreQuickTab(message.quickTabId, sendResponse, message.sequenceId);
     return true;
   },
@@ -6950,7 +7095,10 @@ function _createVisibilityHandler(methodName, actionName) {
   return (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.[methodName];
     if (!handler) {
-      return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized or visibility handler not ready'
+      };
     }
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: actionName };
@@ -6963,7 +7111,10 @@ const QUICK_TAB_COMMAND_HANDLERS = {
   CLOSE_QUICK_TAB: (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
     if (!handler) {
-      return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized - closeById not available'
+      };
     }
     handler.call(quickTabsManager, quickTabId);
     return { success: true, action: 'closed' };
@@ -7124,21 +7275,26 @@ function _shouldProcessMessageForThisTab(message) {
   if (message.targetTabId === undefined || message.targetTabId === null) {
     return { shouldProcess: true, reason: 'no-target-specified' };
   }
-  
+
   // Get current tab ID
   const currentTabId = quickTabsManager?.currentTabId ?? null;
-  
+
   // If we don't know our tab ID yet, process to be safe
   if (currentTabId === null) {
     return { shouldProcess: true, reason: 'current-tab-id-unknown' };
   }
-  
+
   // Check if message is for this tab
   if (message.targetTabId !== currentTabId) {
-    console.log('[Content] BROADCAST_IGNORED: targetTabId', message.targetTabId, '!= currentTabId', currentTabId);
+    console.log(
+      '[Content] BROADCAST_IGNORED: targetTabId',
+      message.targetTabId,
+      '!= currentTabId',
+      currentTabId
+    );
     return { shouldProcess: false, reason: 'target-mismatch' };
   }
-  
+
   return { shouldProcess: true, reason: 'target-matches' };
 }
 
@@ -7202,31 +7358,31 @@ function _dispatchMessage(message, _sender, sendResponse) {
  */
 function _resetInitializationFlags() {
   let flagsReset = 0;
-  
+
   // Reset contentScriptInitialized
   if (contentScriptInitialized) {
     contentScriptInitialized = false;
     flagsReset++;
   }
-  
+
   // Reset isHydrationComplete
   if (isHydrationComplete) {
     isHydrationComplete = false;
     flagsReset++;
   }
-  
+
   // Reset isBackgroundReady
   if (isBackgroundReady) {
     isBackgroundReady = false;
     flagsReset++;
   }
-  
+
   // Reset portListenersRegistered
   if (portListenersRegistered) {
     portListenersRegistered = false;
     flagsReset++;
   }
-  
+
   return flagsReset;
 }
 
@@ -7245,7 +7401,7 @@ function _handleBeforeUnload() {
   if (flagsReset > 0) {
     console.log('[Content] STATE_RESET_ON_NAVIGATION:', flagsReset, 'flags reset');
   }
-  
+
   // v1.6.3.11-v3 - FIX Issue #19: Clear pendingRestoreOperations to prevent memory leaks
   // This Map can grow unbounded across rapid tab switches if not cleaned up
   if (pendingRestoreOperations && pendingRestoreOperations.size > 0) {
@@ -7255,7 +7411,7 @@ function _handleBeforeUnload() {
     });
     pendingRestoreOperations.clear();
   }
-  
+
   // v1.6.3.11-v3 - FIX Issue #19: Also clear the restore operation queue
   if (typeof restoreOperationQueue !== 'undefined' && restoreOperationQueue.length > 0) {
     console.log('[Content] CLEANUP_RESTORE_QUEUE:', {

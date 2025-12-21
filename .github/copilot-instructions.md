@@ -12,18 +12,21 @@ Tabs Manager
 **Key Features:**
 
 - Solo/Mute tab-specific visibility control
-- **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage key
+- **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage
+  key
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Single Barrier Initialization** - Unified barrier with resolve-only semantics
+- **Single Barrier Initialization** - Unified barrier with resolve-only
+  semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
 **v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed Across 3 Diagnostic Reports:**
 
 **Port/BFCache/Init (Issues #1-8):**
+
 - **BFCache PORT_VERIFY Timeout** - Increased to 2000ms (from 1000ms)
 - **Port Race Fix** - onDisconnect registered before onMessage
 - **Keyboard Shortcut Guard** - Ignores shortcuts during initialization
@@ -34,17 +37,28 @@ Tabs Manager
 - **Port Lifecycle Logging** - Comprehensive port state tracking
 
 **Tab Lifecycle/Message Routing (Issues #9-20):**
-- **Tab onRemoved Debounce** - 200ms debounce, **browser.tabs.query Timeout** - 2s wrapper
-- **Periodic openTabs Cleanup** - Every 5 min, **Dedup Window** - 250ms (from 100ms)
-- **MessageRouter Pre-Init Queue** - Messages queued, originTabId in CREATE response
-- **Ownership Validation Logging** - Query timeout fallback, cross-origin iframe docs
+
+- **Tab onRemoved Debounce** - 200ms debounce, **browser.tabs.query Timeout** -
+  2s wrapper
+- **Periodic openTabs Cleanup** - Every 5 min, **Dedup Window** - 250ms (from
+  100ms)
+- **MessageRouter Pre-Init Queue** - Messages queued, originTabId in CREATE
+  response
+- **Ownership Validation Logging** - Query timeout fallback, cross-origin iframe
+  docs
 
 **Sidebar/State/Security/Config (Issues #21-40):**
-- **Sidebar Write Protection** - Storage write guards, format detection (flat/nested)
-- **MessageRouter Re-entrance Guard** - Prevents recursive, message structure validation
-- **Adoption Cache Size Limit** - 100 entries max, state machine staleness detection
-- **Config Migration** - Handles missing settings, session/sync timestamp comparison
-- **RESTORE Message Validation** - Mediator listener cleanup, cross-origin limitation docs
+
+- **Sidebar Write Protection** - Storage write guards, format detection
+  (flat/nested)
+- **MessageRouter Re-entrance Guard** - Prevents recursive, message structure
+  validation
+- **Adoption Cache Size Limit** - 100 entries max, state machine staleness
+  detection
+- **Config Migration** - Handles missing settings, session/sync timestamp
+  comparison
+- **RESTORE Message Validation** - Mediator listener cleanup, cross-origin
+  limitation docs
 
 **v1.6.3.11 Features (Previous):** GET_CURRENT_TAB_ID no init dependency,
 synchronous listener registration, BFCache port recovery, port listener race
@@ -71,8 +85,9 @@ runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
 `quicktabs-cross-tab-agent`, Manager → `quicktabs-manager-agent`, Settings →
 `ui-ux-settings-agent`, Docs → `copilot-docs-updater`
 
-**Important:** When using context7, look up JavaScript/ES6/Web API documentation,
-NOT "Quick Tabs" directly. context7 is for standard API references.
+**Important:** When using context7, look up JavaScript/ES6/Web API
+documentation, NOT "Quick Tabs" directly. context7 is for standard API
+references.
 
 ---
 
@@ -119,7 +134,8 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 ### v1.6.3.10-v11 Patterns (Previous)
 
 - Extended Tab ID (60s total, 5s intervals), OPERATION_TYPE enum
-- Adaptive dedup window (2x latency, 500ms min), queue backpressure 75%/100 items
+- Adaptive dedup window (2x latency, 500ms min), queue backpressure 75%/100
+  items
 - Hydration barrier (3s timeout), operation ID tracking
 - Background lifecycle markers, storage quota monitoring (90% threshold)
 - Three-phase port handshake, LRU Map Guard (500 max, 30s cleanup, 24h stale)
@@ -134,29 +150,29 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 
 ### Key Timing Constants (v1.6.3.11-v2)
 
-| Constant                        | Value   | Purpose                         |
-| ------------------------------- | ------- | ------------------------------- |
-| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000    | PORT_VERIFY timeout (was 1000)  |
-| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000  | Extended tab ID timeout (was 60000) |
-| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000    | Extended retry interval         |
-| `HYDRATION_TIMEOUT_MS`          | 10000   | Storage hydration (was 3000)    |
-| `DEDUP_WINDOW_MS`               | 250     | Message dedup (was 100)         |
-| `TAB_REMOVAL_DEBOUNCE_MS`       | 200     | Tab onRemoved debounce (NEW)    |
-| `QUERY_TIMEOUT_MS`              | 2000    | browser.tabs.query timeout (NEW)|
-| `ADOPTION_CACHE_MAX_SIZE`       | 100     | Max adoption cache entries (NEW)|
-| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000  | 5-minute cleanup interval (NEW) |
-| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75    | Warning threshold (75%)         |
-| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100     | Max queue items                 |
-| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500     | UICoordinator acknowledgment    |
-| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000   | Dynamic TTL default             |
-| `HEARTBEAT_INTERVAL_MS`         | 15000   | Background health check         |
-| `MESSAGE_RETRY_TIMEOUT_MS`      | 5000    | Message retry timeout           |
-| `MESSAGE_MAX_RETRIES`           | 3       | Max retry attempts              |
-| `STATE_CONSISTENCY_CHECK_MS`    | 5000    | Periodic validation interval    |
-| `PORT_HANDSHAKE_PHASE_MS`       | 2000    | Per-phase handshake timeout     |
-| `LRU_MAP_MAX_SIZE`              | 500     | Maximum map entries             |
-| `LRU_CLEANUP_INTERVAL_MS`       | 30000   | Periodic cleanup (30s)          |
-| `LRU_STALE_THRESHOLD_MS`        | 86400000| Stale threshold (24h)           |
+| Constant                        | Value    | Purpose                             |
+| ------------------------------- | -------- | ----------------------------------- |
+| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000     | PORT_VERIFY timeout (was 1000)      |
+| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000   | Extended tab ID timeout (was 60000) |
+| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000     | Extended retry interval             |
+| `HYDRATION_TIMEOUT_MS`          | 10000    | Storage hydration (was 3000)        |
+| `DEDUP_WINDOW_MS`               | 250      | Message dedup (was 100)             |
+| `TAB_REMOVAL_DEBOUNCE_MS`       | 200      | Tab onRemoved debounce (NEW)        |
+| `QUERY_TIMEOUT_MS`              | 2000     | browser.tabs.query timeout (NEW)    |
+| `ADOPTION_CACHE_MAX_SIZE`       | 100      | Max adoption cache entries (NEW)    |
+| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000   | 5-minute cleanup interval (NEW)     |
+| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75     | Warning threshold (75%)             |
+| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100      | Max queue items                     |
+| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500      | UICoordinator acknowledgment        |
+| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000    | Dynamic TTL default                 |
+| `HEARTBEAT_INTERVAL_MS`         | 15000    | Background health check             |
+| `MESSAGE_RETRY_TIMEOUT_MS`      | 5000     | Message retry timeout               |
+| `MESSAGE_MAX_RETRIES`           | 3        | Max retry attempts                  |
+| `STATE_CONSISTENCY_CHECK_MS`    | 5000     | Periodic validation interval        |
+| `PORT_HANDSHAKE_PHASE_MS`       | 2000     | Per-phase handshake timeout         |
+| `LRU_MAP_MAX_SIZE`              | 500      | Maximum map entries                 |
+| `LRU_CLEANUP_INTERVAL_MS`       | 30000    | Periodic cleanup (30s)              |
+| `LRU_STALE_THRESHOLD_MS`        | 86400000 | Stale threshold (24h)               |
 
 ---
 
@@ -200,10 +216,11 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 
 ## 📝 Logging Prefixes
 
-`[INIT]` `[ADOPTION]` `[RESTORE]` `[MSG]` `[PORT_HANDSHAKE]` `[QUEUE_BACKPRESSURE]`
-`[OWNERSHIP_VALIDATION]` `[STATE_CONSISTENCY]` `[HEARTBEAT]` `[LRU_GUARD]`
-`[OPERATION_ID]` `[STORAGE_LATENCY]` `[HYDRATION_BARRIER]` `[TIMER_LIFECYCLE]`
-`[LISTENER_CLEANUP]` `[CREATION_QUEUE]`
+`[INIT]` `[ADOPTION]` `[RESTORE]` `[MSG]` `[PORT_HANDSHAKE]`
+`[QUEUE_BACKPRESSURE]` `[OWNERSHIP_VALIDATION]` `[STATE_CONSISTENCY]`
+`[HEARTBEAT]` `[LRU_GUARD]` `[OPERATION_ID]` `[STORAGE_LATENCY]`
+`[HYDRATION_BARRIER]` `[TIMER_LIFECYCLE]` `[LISTENER_CLEANUP]`
+`[CREATION_QUEUE]`
 
 ---
 
@@ -251,7 +268,8 @@ Authority. See Version Patterns Summary above for version-specific patterns.
 
 ## 🔧 MCP & Testing
 
-**MCPs:** CodeScene (code health), Context7 (JavaScript API docs), Perplexity (research)
+**MCPs:** CodeScene (code health), Context7 (JavaScript API docs), Perplexity
+(research)
 
 **Context7 Usage:** Use for JavaScript, ES6, Web API, and browser extension API
 documentation. Do NOT search for "Quick Tabs" - search for standard APIs like

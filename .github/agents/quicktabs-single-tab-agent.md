@@ -56,7 +56,8 @@ snapshot TTL race fix
 
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
 - **Mute Mode (🔇)** - Hide ONLY on specific browser tabs (mutedOnTabs array)
-- **Global Visibility** - Visible in all tabs by default (no container isolation)
+- **Global Visibility** - Visible in all tabs by default (no container
+  isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM

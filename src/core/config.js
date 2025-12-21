@@ -104,7 +104,7 @@ export class ConfigManager {
 
       // Merge with defaults (user settings override defaults)
       this.config = { ...DEFAULT_CONFIG, ...result };
-      
+
       // v1.6.3.11 - FIX Issue #39: Detect and migrate missing settings
       await this._detectAndMigrateMissingSettings(result);
 
@@ -125,7 +125,7 @@ export class ConfigManager {
 
     return this.config;
   }
-  
+
   /**
    * Detect and migrate missing settings
    * v1.6.3.11 - FIX Code Health: Extracted to reduce load() complexity
@@ -139,7 +139,7 @@ export class ConfigManager {
         missingKeys.push(key);
       }
     }
-    
+
     if (missingKeys.length > 0) {
       console.log('[ConfigManager] CONFIG_MIGRATION: Populated missing settings with defaults:', {
         missingKeys,
@@ -149,7 +149,7 @@ export class ConfigManager {
       await this._persistMigratedConfig(missingKeys);
     }
   }
-  
+
   /**
    * Persist migrated configuration with new default keys
    * v1.6.3.11 - FIX Issue #39: Save new defaults to storage after migration
@@ -168,7 +168,10 @@ export class ConfigManager {
         savedKeys: newKeys
       });
     } catch (err) {
-      console.warn('[ConfigManager] CONFIG_MIGRATION: Failed to persist new defaults:', err.message);
+      console.warn(
+        '[ConfigManager] CONFIG_MIGRATION: Failed to persist new defaults:',
+        err.message
+      );
       // Non-fatal - settings will work with in-memory defaults
     }
   }
