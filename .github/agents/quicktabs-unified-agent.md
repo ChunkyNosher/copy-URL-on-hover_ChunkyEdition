@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v2 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -47,20 +47,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- **Handler Registration** - Deferred until async initialization completes
-- **Adoption Lock Timeout** - 10 seconds with escalation (`ADOPTION_LOCK_TIMEOUT_MS`)
-- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
-- **Container Context** - `updateContainerContextForAdoption()` tracking
-- **Tab Cleanup** - `setOnTabRemovedCallback()` registration
-- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
+- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total (from 60s)
+- **Hydration Timeout** - 10s (from 3s)
+- **Dedup Window** - 250ms (from 100ms)
+- **Tab onRemoved Debounce** - 200ms debounce
+- **browser.tabs.query Timeout** - 2s timeout wrapper
+- **Periodic openTabs Cleanup** - Every 5 minutes
+- **Adoption Cache Size Limit** - 100 entries max
+- **MessageRouter Re-entrance Guard** - Prevents recursive handling
 - **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
-- **Message Timeout** - `withTimeout()` utility (MESSAGE_TIMEOUT_MS = 5000)
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage error
-classification, storage quota monitoring, code health 9.0+, container isolation
+**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, handler deferral,
+adoption lock timeout, message validation, identity gating, storage quota
+monitoring, code health 9.0+, container isolation
 
 **Key Modules (v1.6.3.10-v9):**
 

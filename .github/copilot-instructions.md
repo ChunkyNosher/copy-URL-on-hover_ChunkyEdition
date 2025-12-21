@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11  
+**Version:** 1.6.3.11-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,64 +21,40 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11 Features (NEW) - 40 Issues Fixed Across 3 Diagnostic Reports:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed Across 3 Diagnostic Reports:**
 
-**Background Initialization (Issues #1-3, #10):**
-- **GET_CURRENT_TAB_ID No Init Dependency** - Returns sender.tab.id immediately
-- **Synchronous Listener Registration** - onMessage/onConnect registered at top-level
-- **Comprehensive Init Logging** - SCRIPT_LOAD_START, LISTENER_REGISTRATION phases
-
-**Port Lifecycle & BFCache (Issues #7-9, #11):**
-- **BFCache Port Recovery** - Auto-reconnect after pageshow with 50ms delay
-- **Port Listener Race Fix** - onDisconnect registered before onMessage
-- **INIT_RESPONSE Timeout** - 2s timeout with fallback to retry loop
-- **NOT_INITIALIZED Detection** - Special 500ms wait then single retry
-
-**Message Queue Architecture (Issues #26-32):**
-- **Cross-Queue Overflow Protection** - Global backpressure at 300 total messages
-- **Hydration Drain Lock** - Prevents concurrent timeout/drain race condition
-- **Namespaced Message IDs** - `msg-content-` and `msg-bg-` prefixes
-- **Aligned Handshake Timeout** - 500ms phases instead of 2000ms
-- **Background Sequence IDs** - Atomic global counter replaces per-tab counter
-- **BFCache Verify Timeout** - 1000ms max wait with auto-reconnect
-
-**State Initialization (Issues #33-40):**
-- **Adoption Cache TTL** - 5-minute expiration with 60s cleanup interval
-- **Navigation State Reset** - beforeunload resets 4 initialization flags
-- **MessageRouter Logging** - Constructor logs handler registration count
-- **Symmetric Readiness** - Background validates content readiness state
-- **DOM-Ready Iframe Guard** - Checks document.readyState before parent access
+**Port/BFCache/Init (Issues #1-8):**
+- **BFCache PORT_VERIFY Timeout** - Increased to 2000ms (from 1000ms)
+- **Port Race Fix** - onDisconnect registered before onMessage
 - **Keyboard Shortcut Guard** - Ignores shortcuts during initialization
-- **Broadcast Idempotency** - messageId tracking prevents duplicate handling
-- **Target Tab Validation** - Early return if message.targetTabId mismatch
+- **Tab ID Timeout Extended** - 120s total timeout (from 60s)
+- **RESTORE Messages Queued** - Queue instead of reject during init
+- **Storage Sync Docs** - storage.onChanged mechanism documented
+- **Hydration Timeout** - Increased to 10s (from 3s)
+- **Port Lifecycle Logging** - Comprehensive port state tracking
 
-**v1.6.3.10-v14 Features (Previous) - 37 Issues Fixed (3 Diagnostic Reports):**
+**Tab Lifecycle/Message Routing (Issues #9-20):**
+- **Tab onRemoved Debounce** - 200ms debounce, **browser.tabs.query Timeout** - 2s wrapper
+- **Periodic openTabs Cleanup** - Every 5 min, **Dedup Window** - 250ms (from 100ms)
+- **MessageRouter Pre-Init Queue** - Messages queued, originTabId in CREATE response
+- **Ownership Validation Logging** - Query timeout fallback, cross-origin iframe docs
 
-- **Tab ID Pending Queue** - Queue operations when Tab ID null, process on init
-- **Generation ID Tracking** - Background restart detection via generation mismatch
-- **Handler Initialization State** - UNINITIALIZED→INITIALIZING→INITIALIZED→DESTROYING→DESTROYED
-- **Operation Context Logging** - OPERATION_START with context, timestamp, operationId
-- **Initialization Phase Logging** - INIT_PHASE_1 through INIT_PHASE_6 logging
-- **Container Validation Logging** - Container MATCH/MISMATCH during hydration
-- **Three-Phase Port Handshake** - INIT_REQUEST → INIT_RESPONSE → INIT_COMPLETE with timeout
-- **BFCache Detection** - pagehide/pageshow listeners for port recovery
-- **Message Correlation** - messageId in responses for request matching
-- **Protocol Versioning** - _validateProtocolVersion() for compatibility checks
-- **RECONNECTING State** - New port state for reconnection attempts
-- **Adoption Cache Cleanup** - Clear on beforeunload/navigation
-- **Dynamic Message Buffer** - Scales from 10→50 based on queue backpressure
-- **Periodic Latency Measurement** - Re-measure storage latency every 30s
+**Sidebar/State/Security/Config (Issues #21-40):**
+- **Sidebar Write Protection** - Storage write guards, format detection (flat/nested)
+- **MessageRouter Re-entrance Guard** - Prevents recursive, message structure validation
+- **Adoption Cache Size Limit** - 100 entries max, state machine staleness detection
+- **Config Migration** - Handles missing settings, session/sync timestamp comparison
+- **RESTORE Message Validation** - Mediator listener cleanup, cross-origin limitation docs
 
-**v1.6.3.10-v11 Features (Previous):**
+**v1.6.3.11 Features (Previous):** GET_CURRENT_TAB_ID no init dependency,
+synchronous listener registration, BFCache port recovery, port listener race
+fix, INIT_RESPONSE timeout, cross-queue overflow protection, hydration drain
+lock, namespaced message IDs, adoption cache TTL, navigation state reset
 
-- Extended Tab ID Acquisition - 60s total timeout with 5s intervals
-- Operation Type Tracking - CREATE/RESTORE/UPDATE/CLOSE/MINIMIZE enum
-- Adaptive Dedup Window - 2x observed latency, 500ms minimum
-- LRU Map Guard - 500 entry max, 10% eviction, 30s cleanup
-
-**v1.6.3.10-v10 & Earlier (Consolidated):** Tab ID exponential backoff, storage
-write validation, handler deferral, adoption lock timeout, checkpoint system,
-identity gating, quota monitoring, code health 9.0+, type-safe tab IDs
+**v1.6.3.10-v14 & Earlier (Consolidated):** Tab ID pending queue, generation ID
+tracking, handler init state, three-phase port handshake, BFCache detection,
+message correlation, protocol versioning, adoption cache cleanup, dynamic
+message buffer, LRU map guard, checkpoint system, code health 9.0+
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
@@ -132,27 +108,21 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.10-v11 Patterns (Current)
+### v1.6.3.11-v2 Patterns (Current)
 
-- Extended Tab ID acquisition (60s total with 5s intervals vs 7.2s)
-- OPERATION_TYPE enum (CREATE/RESTORE/UPDATE/CLOSE/MINIMIZE) for sequencing
-- Adaptive dedup window (2x observed storage latency, 500ms minimum)
-- Ownership validation middleware in MessageRouter (originTabId vs sender)
-- Queue backpressure at 75%, 100 items max, retry dropped messages
-- Callback re-wiring with 500ms timeout for UICoordinator acknowledgment
-- Lock key includes source (UI/Manager/background/automation)
-- Hydration barrier: operations queued until storage loaded (3s timeout)
-- Operation ID tracking with COMPLETED/FAILED completion logging
-- Dynamic adoption cache TTL (3x handshake latency, 30s default)
-- Background lifecycle with in-flight recovery markers
-- Storage quota monitoring at 90% threshold with UI notification
-- Event listener tracking (_registeredListeners) with cleanup
-- Timer lifecycle tracking (_activeTimers Map, _cleanupTrackedTimers)
-- State consistency checks every 5s with auto-recovery
-- Background restart detection (15s heartbeat, 3 retry attempts)
-- Three-phase port handshake (INIT_REQUEST/RESPONSE/COMPLETE)
-- Serial Quick Tab creation queue with atomic ID generation
-- LRU Map Guard (500 max, 10% eviction at 110%, 30s cleanup, 24h stale)
+- BFCache PORT_VERIFY timeout (2000ms), Tab ID acquisition (120s total)
+- Hydration timeout (10s), dedup window (250ms), tab onRemoved 200ms debounce
+- browser.tabs.query 2s timeout, adoption cache 100 entries, 5-min cleanup
+- Sidebar write protection, storage format detection, re-entrance guard
+- State machine staleness, RESTORE validation, config migration
+
+### v1.6.3.10-v11 Patterns (Previous)
+
+- Extended Tab ID (60s total, 5s intervals), OPERATION_TYPE enum
+- Adaptive dedup window (2x latency, 500ms min), queue backpressure 75%/100 items
+- Hydration barrier (3s timeout), operation ID tracking
+- Background lifecycle markers, storage quota monitoring (90% threshold)
+- Three-phase port handshake, LRU Map Guard (500 max, 30s cleanup, 24h stale)
 
 ### v1.6.3.10-v10 & Earlier Patterns (Consolidated)
 
@@ -162,25 +132,31 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 - Identity-ready gating, storage error classification, write queue recovery
 - Z-index recycling at threshold 100000, code health 9.0+ refactoring
 
-### Key Timing Constants (v1.6.3.10-v11)
+### Key Timing Constants (v1.6.3.11-v2)
 
-| Constant                        | Value  | Purpose                         |
-| ------------------------------- | ------ | ------------------------------- |
-| `TAB_ID_EXTENDED_TOTAL_MS`      | 60000  | Extended tab ID timeout         |
-| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000   | Extended retry interval         |
-| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75   | Warning threshold (75%)         |
-| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100    | Max queue items (up from 20)    |
-| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500    | UICoordinator acknowledgment    |
-| `HYDRATION_TIMEOUT_MS`          | 3000   | Operation gating timeout        |
-| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000  | Dynamic TTL default             |
-| `HEARTBEAT_INTERVAL_MS`         | 15000  | Background health check         |
-| `MESSAGE_RETRY_TIMEOUT_MS`      | 5000   | Message retry timeout           |
-| `MESSAGE_MAX_RETRIES`           | 3      | Max retry attempts              |
-| `STATE_CONSISTENCY_CHECK_MS`    | 5000   | Periodic validation interval    |
-| `PORT_HANDSHAKE_PHASE_MS`       | 2000   | Per-phase handshake timeout     |
-| `LRU_MAP_MAX_SIZE`              | 500    | Maximum map entries             |
-| `LRU_CLEANUP_INTERVAL_MS`       | 30000  | Periodic cleanup (30s)          |
-| `LRU_STALE_THRESHOLD_MS`        | 86400000 | Stale threshold (24h)           |
+| Constant                        | Value   | Purpose                         |
+| ------------------------------- | ------- | ------------------------------- |
+| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000    | PORT_VERIFY timeout (was 1000)  |
+| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000  | Extended tab ID timeout (was 60000) |
+| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000    | Extended retry interval         |
+| `HYDRATION_TIMEOUT_MS`          | 10000   | Storage hydration (was 3000)    |
+| `DEDUP_WINDOW_MS`               | 250     | Message dedup (was 100)         |
+| `TAB_REMOVAL_DEBOUNCE_MS`       | 200     | Tab onRemoved debounce (NEW)    |
+| `QUERY_TIMEOUT_MS`              | 2000    | browser.tabs.query timeout (NEW)|
+| `ADOPTION_CACHE_MAX_SIZE`       | 100     | Max adoption cache entries (NEW)|
+| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000  | 5-minute cleanup interval (NEW) |
+| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75    | Warning threshold (75%)         |
+| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100     | Max queue items                 |
+| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500     | UICoordinator acknowledgment    |
+| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000   | Dynamic TTL default             |
+| `HEARTBEAT_INTERVAL_MS`         | 15000   | Background health check         |
+| `MESSAGE_RETRY_TIMEOUT_MS`      | 5000    | Message retry timeout           |
+| `MESSAGE_MAX_RETRIES`           | 3       | Max retry attempts              |
+| `STATE_CONSISTENCY_CHECK_MS`    | 5000    | Periodic validation interval    |
+| `PORT_HANDSHAKE_PHASE_MS`       | 2000    | Per-phase handshake timeout     |
+| `LRU_MAP_MAX_SIZE`              | 500     | Maximum map entries             |
+| `LRU_CLEANUP_INTERVAL_MS`       | 30000   | Periodic cleanup (30s)          |
+| `LRU_STALE_THRESHOLD_MS`        | 86400000| Stale threshold (24h)           |
 
 ---
 
@@ -212,27 +188,22 @@ NOT "Quick Tabs" directly. context7 is for standard API references.
 `validateOwnershipForWrite()`, `_computeStateChecksum()`
 
 **v1.6.3.10-v11 New Exports:** `OPERATION_TYPE` enum, `trackStorageLatency()`,
-`getAdaptiveDedupWindow()`, `validateOwnershipMiddleware()`, `LRUMapGuard`,
-`createSerialQueue()`, `threePhaseHandshake()`, `checkBackgroundHealth()`
+`getAdaptiveDedupWindow()`, `LRUMapGuard`, `createSerialQueue()`
 
 **v1.6.3.10-v10 Exports:** `validateOwnershipForWriteAsync()`,
 `validateSnapshotIntegrity()`, `withTimeout()`, `createCheckpoint()`,
 `rollbackToCheckpoint()`, `VALID_MESSAGE_ACTIONS`, `RESPONSE_ENVELOPE`
 
-**Earlier Exports:** `normalizeOriginTabId()`, `waitForTabIdInit()`,
-`checkStorageQuota()`, `IDENTITY_STATE_MODE`, `STORAGE_ERROR_TYPE`
+**Earlier Exports:** `normalizeOriginTabId()`, `checkStorageQuota()`
 
 ---
 
-## 📝 Logging Prefixes (v1.6.3.10-v11)
+## 📝 Logging Prefixes
 
-`[INIT]` Init | `[ADOPTION]` Adoption | `[RESTORE]` Restore | `[MSG]` Messages |
-`[PORT_HANDSHAKE]` Three-phase handshake | `[QUEUE_BACKPRESSURE]` Queue warnings |
-`[OWNERSHIP_VALIDATION]` Middleware | `[STATE_CONSISTENCY]` Periodic checks |
-`[HEARTBEAT]` Background health | `[LRU_GUARD]` Map eviction | `[OPERATION_ID]`
-Completion tracking | `[STORAGE_LATENCY]` Adaptive dedup | `[HYDRATION_BARRIER]`
-Operation gating | `[TIMER_LIFECYCLE]` Timer tracking | `[LISTENER_CLEANUP]`
-Event cleanup | `[CREATION_QUEUE]` Serial creation
+`[INIT]` `[ADOPTION]` `[RESTORE]` `[MSG]` `[PORT_HANDSHAKE]` `[QUEUE_BACKPRESSURE]`
+`[OWNERSHIP_VALIDATION]` `[STATE_CONSISTENCY]` `[HEARTBEAT]` `[LRU_GUARD]`
+`[OPERATION_ID]` `[STORAGE_LATENCY]` `[HYDRATION_BARRIER]` `[TIMER_LIFECYCLE]`
+`[LISTENER_CLEANUP]` `[CREATION_QUEUE]`
 
 ---
 

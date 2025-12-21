@@ -65,20 +65,22 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.11-v2 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- **Handler Registration** - Deferred until async initialization completes
-- **Adoption Lock Timeout** - 10 seconds with escalation (`ADOPTION_LOCK_TIMEOUT_MS`)
-- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- **BFCache PORT_VERIFY Timeout** - Increased to 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total timeout (from 60s)
+- **Hydration Timeout** - Increased to 10s (from 3s)
+- **Dedup Window** - Increased to 250ms (from 100ms)
+- **Tab onRemoved Debounce** - 200ms debounce
+- **Adoption Cache Size Limit** - 100 entries max
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage error
-classification, code health 9.0+, container isolation, atomic ops
+**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, handler deferral,
+adoption lock timeout, checkpoint system, message validation, identity gating,
+storage quota monitoring, code health 9.0+, container isolation
 
 **Key Features:**
 

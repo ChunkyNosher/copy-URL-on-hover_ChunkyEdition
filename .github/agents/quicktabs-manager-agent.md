@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v2 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
@@ -47,14 +47,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Adoption Lock Timeout** - 10 seconds with escalation (`ADOPTION_LOCK_TIMEOUT_MS`)
-- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
+- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
+- **Hydration Timeout** - 10s (from 3s)
+- **Adoption Cache Size Limit** - 100 entries max
 - **Sidebar Lifecycle** - `[SIDEBAR_LIFECYCLE]` logging prefix
 - **Render Performance** - `[RENDER_PERF]` logging prefix
+- **Sidebar Write Protection** - Storage write guards
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Adoption locks, snapshot watchdog,
+**v1.6.3.11 & Earlier (Consolidated):** Adoption locks, snapshot watchdog,
 z-index recycling, host info cleanup, container validation
 
 **Key Modules (v1.6.3.10-v9):**

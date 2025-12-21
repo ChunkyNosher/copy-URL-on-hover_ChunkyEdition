@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.10-v10.
+  documentation. Current version: v1.6.3.11-v2.
 tools: ['*']
 ---
 
@@ -69,30 +69,32 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.10-v10)
+## Current Extension State (v1.6.3.11-v2)
 
-### v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F
+### v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports)
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- **Storage Write Validation** - `validateOwnershipForWriteAsync()` with timeout
-- **Handler Registration** - Deferred until async initialization completes
-- **Adoption Lock Timeout** - 10 seconds with escalation logging
-- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
-- **Container Context** - `updateContainerContextForAdoption()` tracking
-- **Tab Cleanup** - `setOnTabRemovedCallback()` registration
-- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
-- **Message Timeout** - `withTimeout()` utility (MESSAGE_TIMEOUT_MS = 5000)
+- **BFCache PORT_VERIFY Timeout** - Increased to 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total timeout (from 60s)
+- **Hydration Timeout** - Increased to 10s (from 3s)
+- **Dedup Window** - Increased to 250ms (from 100ms)
+- **Tab onRemoved Debounce** - 200ms debounce for cleanup
+- **browser.tabs.query Timeout** - 2s timeout wrapper with fallback
+- **Periodic openTabs Cleanup** - Every 5 minutes
+- **Adoption Cache Size Limit** - 100 entries max
+- **MessageRouter Re-entrance Guard** - Prevents recursive handling
+- **Sidebar Write Protection** - Storage write guards
 
-### v1.6.3.10-v9 Features (Previous) - Storage & Cross-Tab Fixes
+### v1.6.3.11 Features (Previous) - 40 Issues Fixed
 
-- Identity-ready gating, storage error classification, storage quota monitoring
-- Write queue recovery, write rate-limiting, z-index recycling
+- GET_CURRENT_TAB_ID no init dependency, synchronous listener registration
+- BFCache port recovery, port listener race fix, INIT_RESPONSE timeout
+- Cross-queue overflow protection, hydration drain lock, namespaced message IDs
 
-### v1.6.3.10-v8 & Earlier (Consolidated)
+### v1.6.3.10 & Earlier (Consolidated)
 
-- Code health 9.0+ scores, options object pattern
-- Port circuit breaker, type-safe tab IDs, container isolation
+- Tab ID exponential backoff, handler deferral, adoption lock timeout
+- Checkpoint system, message validation, identity gating, quota monitoring
+- Code health 9.0+ scores, options object pattern, container isolation
 
 ### Architecture
 
@@ -105,8 +107,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.10-v10
-- [ ] **v1.6.3.10-v10:** Issues 1-28 & Areas A-F features documented
+- [ ] Version numbers match 1.6.3.11-v2
+- [ ] **v1.6.3.11-v2:** 40 Issues Fixed features documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -116,7 +118,7 @@ nothing.
 
 | Error                   | Fix                          |
 | ----------------------- | ---------------------------- |
-| v1.6.3.10-v9 or earlier | Update to 1.6.3.10-v10       |
+| v1.6.3.11 or earlier    | Update to 1.6.3.11-v2        |
 | "Pin to Page"           | Use "Solo/Mute"              |
 | Direct storage writes   | Use Single Writer Authority  |
 | BroadcastChannel refs   | REMOVE - BC DELETED in v6    |
