@@ -1483,6 +1483,38 @@ async function getCurrentTabIdFromBackground() {
     return result.tabId;
   }
   
+  // v1.6.3.11 - FIX Issue #11: Special handling for NOT_INITIALIZED error
+  // Wait once briefly (500ms) and retry exactly once before exponential backoff
+  if (result.error === 'NOT_INITIALIZED') {
+    console.log('[Content] Background initializing, waiting 500ms');
+    
+    // Wait 500ms for background to complete initialization
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Retry exactly once (this is the special NOT_INITIALIZED retry, attempt #2)
+    const notInitRetryAttemptNum = 2; // First attempt was #1, this special retry is #2
+    const notInitRetry = await _attemptGetTabIdFromBackground(notInitRetryAttemptNum);
+    
+    if (notInitRetry.tabId !== null) {
+      console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired after NOT_INITIALIZED wait', {
+        tabId: notInitRetry.tabId,
+        totalDurationMs: Date.now() - overallStartTime
+      });
+      return notInitRetry.tabId;
+    }
+    
+    // If still NOT_INITIALIZED after one retry, fall through to extended retry loop
+    if (notInitRetry.error === 'NOT_INITIALIZED') {
+      console.log('[Content][TabID][INIT] Still NOT_INITIALIZED after single retry, entering extended retry loop');
+      result = notInitRetry;
+      // Skip exponential backoff, go directly to extended retry
+      return _extendedTabIdRetryLoop(overallStartTime, result);
+    }
+    
+    // Different error - update result and continue with normal flow
+    result = notInitRetry;
+  }
+  
   // Retry loop with exponential backoff
   for (let retryIndex = 0; retryIndex < TAB_ID_MAX_RETRIES; retryIndex++) {
     const attemptNumber = retryIndex + 2; // First retry is attempt #2
@@ -1843,9 +1875,14 @@ function _startThreePhaseHandshake(port) {
     phase: 1
   });
   
-  // Set timeout for Phase 1
+  // Set timeout for Phase 1 (v1.6.3.11 - FIX Issue #9: 2-3s timeout on INIT_RESPONSE wait)
   _setHandshakeTimeout('INIT_REQUEST', () => {
-    console.error('[Content][HANDSHAKE] Phase 1 timeout: No INIT_RESPONSE received');
+    // v1.6.3.11 - FIX Issue #9: Combined timeout warning with fallback info
+    console.warn('[Content] ⚠️ INIT_RESPONSE timeout, falling back to retry loop', {
+      phase: 'Phase 1 timeout',
+      timeoutMs: HANDSHAKE_PHASE_TIMEOUT_MS,
+      recoveryAction: 'exponential-backoff-reconnection'
+    });
     _handleHandshakeFailure('Phase 1 timeout');
   });
 }
@@ -2422,13 +2459,12 @@ function connectContentToBackground(tabId) {
     backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
     
-    // v1.6.3.10-v12 - FIX Issue #1: Register BOTH listeners BEFORE any other setup
-    // This prevents the race window where onDisconnect fires before onMessage is ready
+    // v1.6.3.11 - FIX Issue #8: Register onDisconnect FIRST to prevent race condition
+    // Critical: onDisconnect must be registered IMMEDIATELY after connect() returns
+    // This ensures we catch any disconnection that occurs during setup
+    // Order: 1. connect() → 2. onDisconnect → 3. onMessage → 4. send init message
     
-    // Register onMessage listener first
-    backgroundPort.onMessage.addListener(handleContentPortMessage);
-    
-    // Register onDisconnect listener second
+    // Register onDisconnect listener FIRST (within 5ms of connect())
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       
@@ -2455,6 +2491,9 @@ function connectContentToBackground(tabId) {
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
       _handleReconnection(tabId, 'disconnect');
     });
+    
+    // v1.6.3.11 - FIX Issue #8: Register onMessage listener SECOND (after onDisconnect)
+    backgroundPort.onMessage.addListener(handleContentPortMessage);
     
     // v1.6.3.10-v12 - FIX Issue #1: Mark listeners as registered (init gate)
     portListenersRegistered = true;
@@ -2709,6 +2748,7 @@ function _handleNoPortAfterBFCache() {
 /**
  * Handle port verification failure after BFCache restore
  * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce nesting depth
+ * v1.6.3.11 - FIX Issue #7: Add explicit BFCache recovery reconnection with logging
  * @private
  * @param {Error} err - Error from port verification
  */
@@ -2718,13 +2758,33 @@ function _handlePortVerifyFailure(err) {
     timestamp: Date.now()
   });
   
+  // v1.6.3.11 - FIX Issue #7: Close broken port before reconnection
+  if (backgroundPort) {
+    try {
+      backgroundPort.disconnect();
+    } catch (disconnectErr) {
+      // Port may already be disconnected, ignore
+      console.log('[Content][BFCACHE] Port already disconnected:', disconnectErr.message);
+    }
+  }
+  
   // Port is dead, trigger reconnection
   backgroundPort = null;
   portPotentiallyInvalidDueToBFCache = false;
   _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'bfcache-port-dead');
   
+  // v1.6.3.11 - FIX Issue #7: Explicit BFCache recovery logging before reconnection
+  console.log('[Content] BFCache recovery: reconnecting port', {
+    cachedTabId,
+    timestamp: Date.now()
+  });
+  
   if (cachedTabId) {
-    _handleReconnection(cachedTabId, 'bfcache-port-dead');
+    // v1.6.3.11 - FIX Issue #7: Brief delay before reconnection (50ms)
+    setTimeout(() => {
+      console.log('[Content] BFCache recovery: initiating reconnection after delay');
+      _handleReconnection(cachedTabId, 'bfcache-port-dead');
+    }, 50);
   }
 }
 
