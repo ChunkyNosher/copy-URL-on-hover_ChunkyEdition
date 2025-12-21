@@ -30,6 +30,10 @@
 const STORAGE_WRITE_MAX_RETRIES = 3;
 const STORAGE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.11 - FIX Issue #31: Global sequence counter for CREATE operations
+// Background assigns sequence IDs to ensure global ordering across all tabs
+let _globalCreateSequenceId = 0;
+
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
   // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
@@ -354,6 +358,14 @@ export class QuickTabHandler {
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
+    // v1.6.3.11 - FIX Issue #31: Assign global sequence ID for CREATE ordering
+    const assignedSequenceId = ++_globalCreateSequenceId;
+    console.log('[QuickTabHandler] SEQUENCE_ASSIGNED:', {
+      quickTabId: message.id,
+      assignedSequenceId,
+      timestamp: Date.now()
+    });
+
     // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
     const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
 
@@ -368,7 +380,8 @@ export class QuickTabHandler {
       title: message.title || 'Quick Tab',
       minimized: message.minimized || false,
       cookieStoreId: cookieStoreId, // v1.6.2.2 - Store container info on tab itself
-      originTabId: validatedOriginTabId // v1.6.3.10-v11 - FIX Issue #4: Store validated originTabId
+      originTabId: validatedOriginTabId, // v1.6.3.10-v11 - FIX Issue #4: Store validated originTabId
+      sequenceId: assignedSequenceId // v1.6.3.11 - FIX Issue #31: Background-assigned sequence ID
     };
 
     if (existingIndex !== -1) {
@@ -382,7 +395,7 @@ export class QuickTabHandler {
     // Save state
     await this.saveState(message.saveId, cookieStoreId, message);
 
-    return { success: true };
+    return { success: true, sequenceId: assignedSequenceId };
   }
 
   /**

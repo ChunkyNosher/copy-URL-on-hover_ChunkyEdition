@@ -437,6 +437,72 @@ const MAX_INIT_MESSAGE_QUEUE_SIZE = 100;
  */
 const QUEUE_BACKPRESSURE_THRESHOLD = 75;
 
+// ==================== v1.6.3.11 FIX ISSUE #26: CROSS-QUEUE OVERFLOW PROTECTION ====================
+// Unified tracking across all message queues to prevent memory/timeout issues
+
+/**
+ * Global backpressure threshold for combined queue depth
+ * v1.6.3.11 - FIX Issue #26: Total messages across all queues before warning
+ */
+const GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD = 300;
+
+/**
+ * Queue priority order for flush operations
+ * v1.6.3.11 - FIX Issue #26: INIT_MESSAGES first, then HYDRATION, COMMANDS, PORT_MESSAGES
+ * Prefixed with _ to indicate reserved for future ordered flush implementation
+ * @enum {number}
+ */
+const _QUEUE_PRIORITY = {
+  INIT_MESSAGES: 1,
+  HYDRATION: 2,
+  COMMANDS: 3,
+  PORT_MESSAGES: 4
+};
+
+/**
+ * Get total message count across all queues
+ * v1.6.3.11 - FIX Issue #26: Unified queue depth tracking
+ * @returns {Object} Queue depths and total
+ */
+function _getTotalQueueDepth() {
+  // Note: messageQueue and pendingCommandsBuffer are declared later in the file
+  // We use optional chaining and fallback to handle the declaration order
+  const initQueueSize = initializationMessageQueue.length;
+  const hydrationQueueSize = preHydrationOperationQueue.length;
+  const portQueueSize = typeof messageQueue !== 'undefined' ? messageQueue.length : 0;
+  const commandsQueueSize = typeof pendingCommandsBuffer !== 'undefined' ? pendingCommandsBuffer.length : 0;
+  
+  return {
+    initializationMessageQueue: initQueueSize,
+    preHydrationOperationQueue: hydrationQueueSize,
+    messageQueue: portQueueSize,
+    pendingCommandsBuffer: commandsQueueSize,
+    total: initQueueSize + hydrationQueueSize + portQueueSize + commandsQueueSize
+  };
+}
+
+/**
+ * Check and log global backpressure warning
+ * v1.6.3.11 - FIX Issue #26: Warn when combined depth exceeds threshold
+ * @returns {boolean} True if backpressure threshold exceeded
+ */
+function _checkGlobalBackpressure() {
+  const depths = _getTotalQueueDepth();
+  
+  if (depths.total >= GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD) {
+    console.warn('[Content][BACKPRESSURE] GLOBAL_THRESHOLD_EXCEEDED:', {
+      threshold: GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD,
+      ...depths,
+      timestamp: Date.now()
+    });
+    return true;
+  }
+  
+  return false;
+}
+
+// ==================== END ISSUE #26 FIX ====================
+
 /**
  * Track dropped messages for retry
  * v1.6.3.10-v11 - FIX Issue #6: Retry dropped messages
@@ -613,10 +679,19 @@ const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt
 /**
  * Generate unique message ID for correlation
  * v1.6.3.10-v11 - FIX Issue #23
- * @returns {string} Unique message ID
+ * v1.6.3.11 - FIX Issue #28: Add namespace prefix to prevent collision with background
+ * @returns {string} Unique message ID with content script namespace
  */
 function _generateMessageId() {
-  return `msg-${Date.now()}-${++messageIdCounter}`;
+  const newId = `msg-content-${Date.now()}-${++messageIdCounter}`;
+  
+  // v1.6.3.11 - FIX Issue #28: Collision detection
+  if (pendingMessages.has(newId)) {
+    console.warn('[Content] MESSAGE_ID_COLLISION: Regenerating ID', { collided: newId });
+    return _generateMessageId(); // Recursive regeneration
+  }
+  
+  return newId;
 }
 
 /**
@@ -871,11 +946,15 @@ function _validateMessageFormat(message) {
  * Queue a message during initialization window
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
  * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism with detailed logging
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} message - Message to queue
  * @param {Function} callback - Callback to execute when message can be sent
  */
 function _queueInitializationMessage(message, callback) {
   const queueSize = initializationMessageQueue.length;
+  
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
   
   // v1.6.3.10-v11 - FIX Issue #6: Check and emit backpressure warning
   _checkQueueBackpressure(queueSize);
@@ -1115,13 +1194,32 @@ async function _markContentScriptInitialized() {
 // ==================== v1.6.3.10-v11 FIX ISSUE #15: HYDRATION GATING ====================
 // Prevent operations from running before state is hydrated from storage
 
+// ==================== v1.6.3.11 FIX ISSUE #27: DRAIN LOCK ====================
+// Prevent concurrent hydration timeout and drain execution
+
+/**
+ * Lock state for hydration queue drain
+ * v1.6.3.11 - FIX Issue #27: Prevent concurrent drain/timeout execution
+ */
+let isHydrationDrainInProgress = false;
+
+// ==================== END ISSUE #27 DECLARATIONS ====================
+
 /**
  * Mark hydration as complete and drain the operation queue
  * v1.6.3.10-v11 - FIX Issue #15: Signal hydration complete
+ * v1.6.3.11 - FIX Issue #27: Use drain lock to prevent race conditions
  * @param {number} [loadedTabCount=0] - Number of tabs loaded from storage
  */
 async function _markHydrationComplete(loadedTabCount = 0) {
-  if (isHydrationComplete) return;
+  // v1.6.3.11 - FIX Issue #27: Check drain lock to prevent concurrent execution
+  if (isHydrationComplete || isHydrationDrainInProgress) {
+    console.log('[Content] HYDRATION_SKIPPED:', {
+      alreadyComplete: isHydrationComplete,
+      drainInProgress: isHydrationDrainInProgress
+    });
+    return;
+  }
   
   isHydrationComplete = true;
   console.log('[Content] HYDRATION_COMPLETE:', {
@@ -1137,12 +1235,16 @@ async function _markHydrationComplete(loadedTabCount = 0) {
 /**
  * Queue an operation that arrived before hydration completed
  * v1.6.3.10-v11 - FIX Issue #15: Buffer operations during hydration
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} operation - Operation to queue
  * @param {string} operation.type - Operation type
  * @param {Object} operation.data - Operation data
  * @param {Function} [operation.callback] - Callback to execute when operation is processed
  */
 function _queuePreHydrationOperation(operation) {
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
+  
   preHydrationOperationQueue.push({
     ...operation,
     queuedAt: Date.now()
@@ -1183,19 +1285,36 @@ async function _executeQueuedOperation(operation, queueDuration) {
 /**
  * Drain the pre-hydration operation queue
  * v1.6.3.10-v11 - FIX Issue #15: Process queued operations after hydration
+ * v1.6.3.11 - FIX Issue #27: Use drain lock to prevent duplicate execution
  * @private
  */
 async function _drainPreHydrationQueue() {
   if (preHydrationOperationQueue.length === 0) return;
   
-  console.log('[Content] DRAINING_PRE_HYDRATION_QUEUE:', {
+  // v1.6.3.11 - FIX Issue #27: Acquire drain lock
+  if (isHydrationDrainInProgress) {
+    console.log('[Content] DRAIN_SKIPPED: Already in progress');
+    return;
+  }
+  
+  isHydrationDrainInProgress = true;
+  console.log('[Content] DRAIN_IN_PROGRESS:', {
     queueSize: preHydrationOperationQueue.length
   });
   
-  while (preHydrationOperationQueue.length > 0) {
-    const operation = preHydrationOperationQueue.shift();
-    const queueDuration = Date.now() - operation.queuedAt;
-    await _executeQueuedOperation(operation, queueDuration);
+  try {
+    while (preHydrationOperationQueue.length > 0) {
+      const operation = preHydrationOperationQueue.shift();
+      const queueDuration = Date.now() - operation.queuedAt;
+      await _executeQueuedOperation(operation, queueDuration);
+    }
+    
+    console.log('[Content] DRAIN_COMPLETE:', {
+      timestamp: Date.now()
+    });
+  } finally {
+    // v1.6.3.11 - FIX Issue #27: Always release lock
+    isHydrationDrainInProgress = false;
   }
 }
 
@@ -1225,9 +1344,16 @@ function _shouldWaitForHydration(operationType) {
 /**
  * Initialize hydration timeout safety
  * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within timeout, proceed anyway
+ * v1.6.3.11 - FIX Issue #27: Check drain lock before forcing completion
  */
 function _initHydrationTimeout() {
   setTimeout(() => {
+    // v1.6.3.11 - FIX Issue #27: Don't force completion if drain is in progress
+    if (isHydrationDrainInProgress) {
+      console.log('[Content] HYDRATION_TIMEOUT_DEFERRED: Drain in progress, skipping timeout action');
+      return;
+    }
+    
     if (!isHydrationComplete) {
       console.warn('[Content] HYDRATION_TIMEOUT: Forcing hydration complete after timeout', {
         timeoutMs: HYDRATION_TIMEOUT_MS,
@@ -1644,8 +1770,12 @@ let currentHandshakePhase = HANDSHAKE_PHASE.NONE;
 /**
  * Timeout for each handshake phase (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #24: 2 seconds per phase
+ * v1.6.3.11 - FIX Issue #30: Reduced to 500ms per phase to align with reconnection backoff
+ *   - Reconnection backoff starts at 150ms, multiplies by 1.5x
+ *   - 3 phases × 500ms = 1500ms total (vs 6000ms before)
+ *   - Ensures predictable recovery timing
  */
-const HANDSHAKE_PHASE_TIMEOUT_MS = 2000;
+const HANDSHAKE_PHASE_TIMEOUT_MS = 500;
 
 /**
  * Handshake timeout ID
@@ -2188,10 +2318,14 @@ function _markRestoreComplete(quickTabId, success) {
 /**
  * Queue a message when port is unavailable
  * v1.6.3.10-v7 - FIX Issue #5: Message queueing
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} message - Message to queue
  * @returns {number} Message ID for tracking
  */
 function _queueMessage(message) {
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
+  
   const messageId = ++messageIdCounter;
   const queuedMessage = {
     messageId,
@@ -2257,9 +2391,13 @@ function _drainMessageQueue() {
 /**
  * Buffer a command when background is not ready
  * v1.6.3.10-v7 - FIX Issue #2: Buffer commands until ready
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} command - Command to buffer
  */
 function _bufferCommand(command) {
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
+  
   if (pendingCommandsBuffer.length >= MAX_PENDING_COMMANDS) {
     const dropped = pendingCommandsBuffer.shift();
     console.warn('[Content] COMMAND_BUFFER_OVERFLOW: Dropped oldest command:', {
@@ -2623,6 +2761,12 @@ function handleContentPortMessage(message) {
     _validateMessageSequence(message.sequenceId);
   }
 
+  // v1.6.3.11 - FIX Issue #32: Handle PORT_VERIFY_RESPONSE for BFCache verification
+  if (message.type === 'PORT_VERIFY_RESPONSE') {
+    _handlePortVerifyResponse();
+    return;
+  }
+
   // v1.6.3.10-v4 - FIX Issue #3/6: Handle background handshake for restart detection
   if (message.type === 'BACKGROUND_HANDSHAKE' || message.type === 'HEARTBEAT_ACK') {
     _processBackgroundStartupTime(message.startupTime);
@@ -2789,9 +2933,43 @@ function _handlePortVerifyFailure(err) {
 }
 
 /**
+ * Timeout for BFCache PORT_VERIFY response (milliseconds)
+ * v1.6.3.11 - FIX Issue #32: Add timeout to prevent indefinite hangs
+ */
+const BFCACHE_VERIFY_TIMEOUT_MS = 1000;
+
+/**
+ * Timeout ID for BFCache verification
+ * v1.6.3.11 - FIX Issue #32
+ */
+let bfcacheVerifyTimeoutId = null;
+
+/**
+ * Clear BFCache verify timeout
+ * v1.6.3.11 - FIX Issue #32
+ */
+function _clearBFCacheVerifyTimeout() {
+  if (bfcacheVerifyTimeoutId) {
+    clearTimeout(bfcacheVerifyTimeoutId);
+    bfcacheVerifyTimeoutId = null;
+  }
+}
+
+/**
+ * Handle PORT_VERIFY response from background
+ * v1.6.3.11 - FIX Issue #32: Clear timeout on successful response
+ */
+function _handlePortVerifyResponse() {
+  _clearBFCacheVerifyTimeout();
+  portPotentiallyInvalidDueToBFCache = false;
+  console.log('[Content][BFCACHE] VERIFY_RESPONSE: Port verified functional');
+}
+
+/**
  * Verify port functionality after BFCache restore
  * v1.6.3.10-v12 - FIX Issue #2: Attempt handshake to verify port is still functional
  * v1.6.3.10-v12 - FIX Code Health: Extracted helpers, removed unnecessary async
+ * v1.6.3.11 - FIX Issue #32: Add 1000ms timeout to prevent indefinite hangs
  * @private
  */
 function _verifyPortAfterBFCache() {
@@ -2814,8 +2992,18 @@ function _verifyPortAfterBFCache() {
     backgroundPort.postMessage(testMessage);
     console.log('[Content][BFCACHE] VERIFY_PORT: Test message sent successfully');
     
-    // If we get here without error, port seems functional
-    portPotentiallyInvalidDueToBFCache = false;
+    // v1.6.3.11 - FIX Issue #32: Set timeout for response
+    _clearBFCacheVerifyTimeout(); // Clear any existing timeout
+    bfcacheVerifyTimeoutId = setTimeout(() => {
+      console.warn('[Content][BFCACHE] VERIFY_TIMEOUT: No response, reconnecting', {
+        timeoutMs: BFCACHE_VERIFY_TIMEOUT_MS,
+        timestamp: Date.now()
+      });
+      
+      // Timeout expired - trigger reconnection
+      portPotentiallyInvalidDueToBFCache = false;
+      _handlePortVerifyFailure(new Error('PORT_VERIFY timeout'));
+    }, BFCACHE_VERIFY_TIMEOUT_MS);
     
   } catch (err) {
     _handlePortVerifyFailure(err);
@@ -3926,23 +4114,26 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for background persistence
  * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
+ * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
+ *   - Background generates globally-ordered sequence IDs
+ *   - Prevents out-of-order IDs from multiple tabs creating simultaneously
  */
 async function persistQuickTabToBackground(quickTabData, saveId) {
-  // v1.6.3.10-v12 - FIX Issue #5: Assign sequenceId for ordering
-  const sequenceId = ++globalCommandSequenceId;
+  // v1.6.3.11 - FIX Issue #31: Let background assign sequence ID for global ordering
+  // Note: Background will generate globally-ordered sequence ID on receipt
   
-  console.log('[Content] CREATE_MESSAGE_SEQUENCED:', {
+  console.log('[Content] CREATE_MESSAGE_SENT:', {
     quickTabId: quickTabData.id,
-    sequenceId,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    note: 'Background will assign global sequenceId'
   });
   
   await sendMessageToBackground({
     action: 'CREATE_QUICK_TAB',
     ...quickTabData,
     saveId,
-    sequenceId,           // v1.6.3.10-v12 - FIX Issue #5: Include for ordering
-    operationType: OPERATION_TYPE.CREATE  // v1.6.3.10-v12 - FIX Issue #5: Explicit type
+    // v1.6.3.11 - FIX Issue #31: No client sequenceId - background assigns it
+    operationType: OPERATION_TYPE.CREATE
   });
 }
 

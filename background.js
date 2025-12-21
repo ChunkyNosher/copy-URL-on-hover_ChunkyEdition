@@ -3739,7 +3739,8 @@ async function handlePortMessage(port, portId, message) {
     portId, tabId: portInfo?.tabId, messageType: message.type, correlationId: message.correlationId
   });
 
-  const response = await routePortMessage(message, portInfo);
+  // v1.6.3.11 - FIX Issue #32: Pass port to routePortMessage for PORT_VERIFY response
+  const response = await routePortMessage(message, portInfo, port);
   _sendAcknowledgment({ port, message, response, portInfo, portId });
 }
 
@@ -3766,6 +3767,7 @@ function handleGetBackgroundInfo() {
 /**
  * Port message handlers lookup
  * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup table
+ * v1.6.3.11 - FIX Issue #32: Added PORT_VERIFY handler for BFCache verification
  * @private
  */
 const PORT_MESSAGE_HANDLERS = {
@@ -3775,15 +3777,26 @@ const PORT_MESSAGE_HANDLERS = {
   BROADCAST: (msg, portInfo) => handleBroadcastRequest(msg, portInfo),
   DELETION_ACK: (msg, portInfo) => handleDeletionAck(msg, portInfo),
   REQUEST_FULL_STATE_SYNC: (msg, portInfo) => handleFullStateSyncRequest(msg, portInfo),
-  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo()
+  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo(),
+  // v1.6.3.11 - FIX Issue #32: BFCache port verification response
+  PORT_VERIFY: (msg, portInfo, port) => handlePortVerify(msg, portInfo, port)
 };
 
-function routePortMessage(message, portInfo) {
+/**
+ * Route port message to appropriate handler
+ * v1.6.3.11 - FIX Issue #32: Added port parameter for PORT_VERIFY response
+ * @param {Object} message - Message to route
+ * @param {Object} portInfo - Port info
+ * @param {Object} port - Port object for direct response
+ * @returns {Promise<Object>} Handler response
+ */
+function routePortMessage(message, portInfo, port) {
   const { type, action } = message;
 
   const handler = PORT_MESSAGE_HANDLERS[type];
   if (handler) {
-    return handler(message, portInfo);
+    // v1.6.3.11 - FIX Issue #32: Pass port to handler for PORT_VERIFY
+    return handler(message, portInfo, port);
   }
 
   // Fallback to action-based routing for backwards compatibility
@@ -3831,6 +3844,44 @@ function handleHeartbeat(message, portInfo) {
     backgroundAlive: true,
     isInitialized,
     ...getBackgroundStartupInfo()
+  });
+}
+
+/**
+ * Handle PORT_VERIFY message for BFCache port verification
+ * v1.6.3.11 - FIX Issue #32: Send immediate response to content script
+ * @param {Object} message - PORT_VERIFY message
+ * @param {Object} portInfo - Port info
+ * @param {Object} port - Port to send response
+ * @returns {Promise<Object>} Verification acknowledgment
+ */
+function handlePortVerify(message, portInfo, port) {
+  const { timestamp, reason } = message;
+  const now = Date.now();
+  
+  console.log('[Background] PORT_VERIFY received:', {
+    reason,
+    tabId: portInfo?.tabId,
+    latencyMs: now - (timestamp || now)
+  });
+  
+  // v1.6.3.11 - FIX Issue #32: Send immediate response via port
+  try {
+    port.postMessage({
+      type: 'PORT_VERIFY_RESPONSE',
+      timestamp: now,
+      originalTimestamp: timestamp,
+      success: true
+    });
+    console.log('[Background] PORT_VERIFY_RESPONSE sent');
+  } catch (err) {
+    console.error('[Background] Failed to send PORT_VERIFY_RESPONSE:', err.message);
+  }
+  
+  return Promise.resolve({
+    success: true,
+    type: 'PORT_VERIFY_ACK',
+    timestamp: now
   });
 }
 
