@@ -72,10 +72,28 @@ export const RESPONSE_ENVELOPE = {
 
 // v1.6.4.15 - FIX Issue #22: Protocol version for future compatibility
 // v1.6.3.10-v12 - FIX Issue #10: Now enforced in message validation
+// v1.6.3.11-v3 - FIX Issue #14: PROTOCOL VERSION ENFORCEMENT POLICY
+// ============================================================================
+// POLICY: Backward-compatible with logging, NOT strict rejection
+// ============================================================================
+// - Clients without version header: Allowed (logged as 'legacy')
+// - Clients with version >= MIN_COMPATIBLE_PROTOCOL_VERSION: Allowed
+// - Clients with version < MIN_COMPATIBLE_PROTOCOL_VERSION: Allowed but WARNED
+// 
+// RATIONALE: Extension updates may create version mismatches temporarily when
+// background script updates before content scripts reload. Strict rejection
+// would break functionality during updates.
+// 
+// FUTURE: If strict enforcement needed, add 'strictVersionCheck: true' option
+// to handler registration and only enforce on handlers that opt-in.
+// ============================================================================
 export const MESSAGE_PROTOCOL_VERSION = '1.0.0';
 
 // v1.6.3.10-v12 - FIX Issue #10: Minimum compatible protocol version
 export const MIN_COMPATIBLE_PROTOCOL_VERSION = '1.0.0';
+
+// v1.6.3.11-v3 - FIX Issue #20: Maximum messages to queue during initialization
+const MAX_PRE_INIT_MESSAGE_QUEUE = 50;
 
 // v1.6.3.10-v11 - FIX Issue #11: Operations requiring ownership validation
 // These operations modify Quick Tab state and must validate sender.tab.id === message.originTabId
@@ -104,6 +122,9 @@ export class MessageRouter {
     // v1.6.3.11 - FIX Issue #35: Track initialization state
     this._isInitialized = false;
     this._initStartTime = Date.now();
+    
+    // v1.6.3.11-v3 - FIX Issue #20: Queue for messages received before initialization
+    this._preInitMessageQueue = [];
     
     // v1.6.3.11 - FIX Issue #35: Log when MessageRouter is initialized
     console.log('[MessageRouter] INITIALIZED:', {
@@ -168,18 +189,119 @@ export class MessageRouter {
   }
 
   /**
-   * Mark router as fully initialized
+   * Mark router as fully initialized and drain queued messages
    * v1.6.3.11 - FIX Issue #35: Track initialization completion
+   * v1.6.3.11-v3 - FIX Issue #20: Drain pre-init message queue
    */
   markInitialized() {
     this._isInitialized = true;
     const initDuration = Date.now() - this._initStartTime;
+    const queuedMessages = this._preInitMessageQueue.length;
+    
     console.log('[MessageRouter] FULLY_INITIALIZED:', {
       timestamp: new Date().toISOString(),
       totalHandlers: this.handlers.size,
       initDurationMs: initDuration,
       hasExtensionId: !!this.extensionId,
-      hasGenerationId: !!this._backgroundGenerationId
+      hasGenerationId: !!this._backgroundGenerationId,
+      queuedMessages // v1.6.3.11-v3 - FIX Issue #20
+    });
+    
+    // v1.6.3.11-v3 - FIX Issue #20: Drain queued messages
+    if (queuedMessages > 0) {
+      this._drainPreInitQueue();
+    }
+  }
+  
+  /**
+   * Drain the pre-initialization message queue
+   * v1.6.3.11-v3 - FIX Issue #20: Process messages that arrived before init
+   * @private
+   */
+  async _drainPreInitQueue() {
+    console.log('[MessageRouter] DRAIN_PRE_INIT_QUEUE_START:', {
+      queueSize: this._preInitMessageQueue.length,
+      timestamp: Date.now()
+    });
+    
+    let processedCount = 0;
+    let errorCount = 0;
+    
+    while (this._preInitMessageQueue.length > 0) {
+      const entry = this._preInitMessageQueue.shift();
+      const result = await this._processQueuedMessage(entry);
+      if (result.success) {
+        processedCount++;
+      } else {
+        errorCount++;
+      }
+    }
+    
+    console.log('[MessageRouter] DRAIN_PRE_INIT_QUEUE_COMPLETE:', {
+      processedCount,
+      errorCount
+    });
+  }
+  
+  /**
+   * Process a single queued message
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
+   * @private
+   */
+  async _processQueuedMessage(entry) {
+    const { message, sender, sendResponse, queuedAt } = entry;
+    const queueDuration = Date.now() - queuedAt;
+    
+    try {
+      await this.route(message, sender, sendResponse);
+      console.log('[MessageRouter] PRE_INIT_MESSAGE_PROCESSED:', {
+        action: message.action || message.type,
+        queueDurationMs: queueDuration
+      });
+      return { success: true };
+    } catch (err) {
+      console.error('[MessageRouter] PRE_INIT_MESSAGE_FAILED:', {
+        action: message.action || message.type,
+        error: err.message
+      });
+      if (sendResponse) {
+        sendResponse({ success: false, error: 'Failed during queue drain' });
+      }
+      return { success: false };
+    }
+  }
+  
+  /**
+   * Queue a message for processing after initialization
+   * v1.6.3.11-v3 - FIX Issue #20: Buffer pre-init messages
+   * @private
+   */
+  _queuePreInitMessage(message, sender, sendResponse) {
+    if (this._preInitMessageQueue.length >= MAX_PRE_INIT_MESSAGE_QUEUE) {
+      console.warn('[MessageRouter] PRE_INIT_QUEUE_OVERFLOW: Message dropped', {
+        action: message.action || message.type,
+        queueSize: this._preInitMessageQueue.length,
+        maxSize: MAX_PRE_INIT_MESSAGE_QUEUE
+      });
+      sendResponse({ 
+        success: false, 
+        error: 'MessageRouter initialization queue full',
+        code: 'QUEUE_OVERFLOW',
+        retryable: true
+      });
+      return;
+    }
+    
+    this._preInitMessageQueue.push({
+      message,
+      sender,
+      sendResponse,
+      queuedAt: Date.now()
+    });
+    
+    console.log('[MessageRouter] MESSAGE_QUEUED_PRE_INIT:', {
+      action: message.action || message.type,
+      queueSize: this._preInitMessageQueue.length
     });
   }
 

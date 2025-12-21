@@ -4507,24 +4507,56 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
  * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
  *   - Background generates globally-ordered sequence IDs
  *   - Prevents out-of-order IDs from multiple tabs creating simultaneously
+ * v1.6.3.11-v3 - FIX Issue #15: Enhanced logging for originTabId sent with message
  */
 async function persistQuickTabToBackground(quickTabData, saveId) {
   // v1.6.3.11 - FIX Issue #31: Let background assign sequence ID for global ordering
   // Note: Background will generate globally-ordered sequence ID on receipt
   
-  console.log('[Content] CREATE_MESSAGE_SENT:', {
+  // v1.6.3.11-v3 - FIX Issue #15: Log originTabId being sent for ownership validation tracking
+  const originTabId = quickTabData.originTabId || quickTabsManager?.currentTabId || null;
+  
+  console.log('[Content] Sending CREATE_QUICK_TAB with originTabId:', {
     quickTabId: quickTabData.id,
+    originTabId,
+    hasExplicitOriginTabId: quickTabData.originTabId !== undefined,
+    fallbackToCurrentTabId: quickTabData.originTabId === undefined && originTabId !== null,
     timestamp: Date.now(),
-    note: 'Background will assign global sequenceId'
+    note: 'Background will validate ownership and assign global sequenceId'
   });
   
-  await sendMessageToBackground({
+  // v1.6.3.11-v3 - FIX Issue #15: Ensure originTabId is included in message
+  const messageData = {
     action: 'CREATE_QUICK_TAB',
     ...quickTabData,
+    originTabId, // Explicitly include for ownership validation
     saveId,
     // v1.6.3.11 - FIX Issue #31: No client sequenceId - background assigns it
     operationType: OPERATION_TYPE.CREATE
-  });
+  };
+  
+  const response = await sendMessageToBackground(messageData);
+  
+  // v1.6.3.11-v3 - FIX Issue #15: Log validation result from background
+  if (response) {
+    console.log('[Content] CREATE_QUICK_TAB response received:', {
+      success: response.success,
+      returnedOriginTabId: response.originTabId,
+      sequenceId: response.sequenceId,
+      validationMatch: response.originTabId === originTabId
+    });
+    
+    // Log warning if originTabId was changed by background validation
+    if (response.originTabId !== undefined && response.originTabId !== originTabId) {
+      console.warn('[Content] OWNERSHIP_VALIDATION: Background assigned different originTabId', {
+        sentOriginTabId: originTabId,
+        assignedOriginTabId: response.originTabId,
+        quickTabId: quickTabData.id
+      });
+    }
+  }
+  
+  return response;
 }
 
 /**
@@ -7104,6 +7136,7 @@ function _resetInitializationFlags() {
  * Handler for beforeunload event to cleanup resources
  * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
  * v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
+ * v1.6.3.11-v3 - FIX Issue #19: Clear pendingRestoreOperations to prevent memory leaks
  * @private
  */
 function _handleBeforeUnload() {
@@ -7113,6 +7146,24 @@ function _handleBeforeUnload() {
   const flagsReset = _resetInitializationFlags();
   if (flagsReset > 0) {
     console.log('[Content] STATE_RESET_ON_NAVIGATION:', flagsReset, 'flags reset');
+  }
+  
+  // v1.6.3.11-v3 - FIX Issue #19: Clear pendingRestoreOperations to prevent memory leaks
+  // This Map can grow unbounded across rapid tab switches if not cleaned up
+  if (pendingRestoreOperations && pendingRestoreOperations.size > 0) {
+    console.log('[Content] CLEANUP_PENDING_OPERATIONS:', {
+      pendingRestoreOperations: pendingRestoreOperations.size,
+      timestamp: Date.now()
+    });
+    pendingRestoreOperations.clear();
+  }
+  
+  // v1.6.3.11-v3 - FIX Issue #19: Also clear the restore operation queue
+  if (typeof restoreOperationQueue !== 'undefined' && restoreOperationQueue.length > 0) {
+    console.log('[Content] CLEANUP_RESTORE_QUEUE:', {
+      queueSize: restoreOperationQueue.length
+    });
+    restoreOperationQueue.length = 0;
   }
 
   // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
