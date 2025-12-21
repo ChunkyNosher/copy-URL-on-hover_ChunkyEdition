@@ -37,24 +37,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Simplified Architecture
+**Version:** 1.6.3.11-v2 - Simplified Architecture
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- **Storage Write Validation** - `validateOwnershipForWriteAsync()` with timeout
+- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total (from 60s)
+- **Hydration Timeout** - 10s (from 3s)
 - **Persist Timeout** - 5s timeout on `persistToStorage()`
 - **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
 - **Memory Leak Fix** - Comprehensive `destroy()` method
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Solo/Mute toggle atomicity, destroyed
-flag check, ownership validation, code health 9.0+, snapshot TTL race fix
+**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, Solo/Mute toggle
+atomicity, destroyed flag check, ownership validation, code health 9.0+,
+snapshot TTL race fix
 
 **Key Quick Tab Features:**
 
 - **Solo Mode (🎯)** - Show ONLY on specific browser tabs (soloedOnTabs array)
 - **Mute Mode (🔇)** - Hide ONLY on specific browser tabs (mutedOnTabs array)
-- **Global Visibility** - Visible in all tabs by default (no container isolation)
+- **Global Visibility** - Visible in all tabs by default (no container
+  isolation)
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
 - **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM

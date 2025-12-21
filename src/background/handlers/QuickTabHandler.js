@@ -19,11 +19,16 @@
  *   - Add async write queue to prevent concurrent storage writes
  *   - Implement version tracking with conflict detection
  *   - Retry writes on version mismatch (max 3 attempts)
- * 
+ *
  * v1.6.3.11 - FIX Issue #2: GET_CURRENT_TAB_ID handler no longer depends on initialization
  *   - Uses sender.tab.id directly from message sender context
  *   - No async initialization wait required
  *   - Handler responds within 100ms (no retries needed)
+ *
+ * v1.6.3.11-v3 - FIX Diagnostic Part 2 Issues:
+ *   - Issue #12: Include originTabId in CREATE_QUICK_TAB response
+ *   - Issue #17: Add cross-origin iframe handling documentation/fallback for GET_CURRENT_TAB_ID
+ *   - Issue #18: Increase DEDUP_WINDOW_MS from 100ms to 250ms
  */
 
 // v1.6.3.10-v7 - FIX Issue #15: Storage write serialization constants
@@ -36,9 +41,10 @@ let _globalCreateSequenceId = 0;
 
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
-  // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
-  // Using 100ms provides safety margin while not blocking legitimate rapid operations
-  static DEDUP_WINDOW_MS = 100;
+  // v1.6.3.11-v3 - FIX Issue #18: Increased from 100ms to 250ms
+  // 250ms: Provides better margin for slow systems while preventing legitimate rapid operations
+  // from being rejected. Typical double-fire interval for keyboard/context menu events is <10ms.
+  static DEDUP_WINDOW_MS = 250;
   // 5000ms: Cleanup interval balances memory usage vs CPU overhead
   static DEDUP_CLEANUP_INTERVAL_MS = 5000;
   // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat
@@ -148,7 +154,7 @@ export class QuickTabHandler {
   /**
    * Validate originTabId from message payload against sender.tab.id
    * v1.6.3.10-v11 - FIX Issue #4: Mandatory validation for originTabId ownership
-   * 
+   *
    * @param {Object} message - Message containing originTabId
    * @param {Object} sender - Message sender object from browser.runtime
    * @returns {{valid: boolean, resolvedTabId: number|null, error?: string}}
@@ -156,7 +162,7 @@ export class QuickTabHandler {
   _validateOriginTabId(message, sender) {
     const senderTabId = sender?.tab?.id;
     const payloadTabId = message?.originTabId;
-    
+
     // Check if sender has a valid tab ID
     if (typeof senderTabId !== 'number') {
       console.error('[QuickTabHandler] ORIGIN_VALIDATION_FAILED: sender.tab.id unavailable', {
@@ -166,7 +172,7 @@ export class QuickTabHandler {
       });
       return { valid: false, resolvedTabId: null, error: 'sender.tab.id unavailable' };
     }
-    
+
     // If payload doesn't have originTabId, use sender.tab.id as default
     if (payloadTabId === null || payloadTabId === undefined) {
       console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as default', {
@@ -176,23 +182,26 @@ export class QuickTabHandler {
       });
       return { valid: true, resolvedTabId: senderTabId };
     }
-    
+
     // Validate that payload originTabId matches sender.tab.id
     if (payloadTabId !== senderTabId) {
-      console.error('[QuickTabHandler] ORIGIN_VALIDATION_MISMATCH: Security concern - payload originTabId does not match sender.tab.id', {
-        payloadOriginTabId: payloadTabId,
-        senderTabId: senderTabId,
-        messageAction: message?.action,
-        quickTabId: message?.id,
-        warning: 'Potential cross-tab ownership attack or stale message'
-      });
-      return { 
-        valid: false, 
-        resolvedTabId: null, 
-        error: `originTabId mismatch: payload=${payloadTabId}, sender=${senderTabId}` 
+      console.error(
+        '[QuickTabHandler] ORIGIN_VALIDATION_MISMATCH: Security concern - payload originTabId does not match sender.tab.id',
+        {
+          payloadOriginTabId: payloadTabId,
+          senderTabId: senderTabId,
+          messageAction: message?.action,
+          quickTabId: message?.id,
+          warning: 'Potential cross-tab ownership attack or stale message'
+        }
+      );
+      return {
+        valid: false,
+        resolvedTabId: null,
+        error: `originTabId mismatch: payload=${payloadTabId}, sender=${senderTabId}`
       };
     }
-    
+
     console.log('[QuickTabHandler] ORIGIN_VALIDATION_SUCCESS:', {
       originTabId: senderTabId,
       messageAction: message?.action,
@@ -204,7 +213,7 @@ export class QuickTabHandler {
   /**
    * Require valid originTabId for operations that modify ownership
    * v1.6.3.10-v11 - FIX Issue #4: Throw error when originTabId is invalid
-   * 
+   *
    * @param {Object} message - Message containing originTabId
    * @param {Object} sender - Message sender object
    * @throws {Error} When originTabId validation fails
@@ -395,7 +404,14 @@ export class QuickTabHandler {
     // Save state
     await this.saveState(message.saveId, cookieStoreId, message);
 
-    return { success: true, sequenceId: assignedSequenceId };
+    // v1.6.3.11-v3 - FIX Issue #12: Include originTabId in CREATE response
+    // This allows content script to verify the validated originTabId assigned by background
+    return {
+      success: true,
+      sequenceId: assignedSequenceId,
+      originTabId: validatedOriginTabId,
+      quickTabId: message.id
+    };
   }
 
   /**
@@ -643,8 +659,8 @@ export class QuickTabHandler {
    * @private
    */
   _buildTabIdSuccessResponse(tabId) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: { currentTabId: tabId },
       tabId // Keep for backward compatibility
     };
@@ -672,20 +688,46 @@ export class QuickTabHandler {
    *   - Content scripts need Tab ID before any other operation can proceed
    *   - Method is now synchronous (no async operations needed)
    *
-   * @param {Object} _message - Message object (unused, required by message router signature)
+   * v1.6.3.11-v3 - FIX Issue #17: Cross-Origin Iframe Handling
+   *   - LIMITATION: For cross-origin iframes, sender.tab may be undefined
+   *   - Firefox does not provide tab ID for messages from cross-origin frames
+   *   - Content script in main frame should handle GET_CURRENT_TAB_ID, not nested iframes
+   *   - If iframe needs tab ID, it should request from parent via postMessage
+   *   - FALLBACK: Return CROSS_ORIGIN_IFRAME code to help content script identify the issue
+   *
+   * @param {Object} message - Message object (may contain frameId for cross-origin detection)
    * @param {Object} sender - Message sender object containing tab information
    * @returns {{ success: boolean, data?: { currentTabId: number }, tabId?: number, error?: string, code?: string }}
    */
-  handleGetCurrentTabId(_message, sender) {
+  handleGetCurrentTabId(message, sender) {
     try {
       // v1.6.3.11 - FIX Issue #2: NO initialization check required
       // sender.tab.id comes from the browser's WebExtensions API, not from our storage
       // This allows immediate response without waiting for storage initialization
-      
+
       // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
       if (this._hasValidSenderTabId(sender)) {
-        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (immediate, no init wait)`);
+        console.log(
+          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (immediate, no init wait)`
+        );
         return this._buildTabIdSuccessResponse(sender.tab.id);
+      }
+
+      // v1.6.3.11-v3 - FIX Issue #17: Check if this might be a cross-origin iframe
+      // In cross-origin iframes, sender.tab may be undefined but frameId may be present
+      const frameId = sender?.frameId;
+      const isNestedFrame = typeof frameId === 'number' && frameId > 0;
+
+      if (isNestedFrame) {
+        console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Cross-origin iframe detected', {
+          frameId,
+          senderUrl: sender?.url?.substring(0, 50) || 'unknown'
+        });
+        return this._buildTabIdErrorResponse(
+          'Cross-origin iframe cannot get tab ID directly. Use parent frame communication.',
+          'CROSS_ORIGIN_IFRAME',
+          'Nested frames should request tab ID from parent frame via postMessage'
+        );
       }
 
       // sender.tab not available - return error
@@ -947,7 +989,10 @@ export class QuickTabHandler {
   _enqueueStorageWrite() {
     return new Promise((resolve, reject) => {
       this._writeQueue.push({ resolve, reject, enqueuedAt: Date.now() });
-      console.debug('[QuickTabHandler] 🔒 WRITE_QUEUE: Enqueued write, queue size:', this._writeQueue.length);
+      console.debug(
+        '[QuickTabHandler] 🔒 WRITE_QUEUE: Enqueued write, queue size:',
+        this._writeQueue.length
+      );
       this._processWriteQueue();
     });
   }
@@ -1010,7 +1055,12 @@ export class QuickTabHandler {
     // v1.6.3.10-v7 - FIX Issue #15: Retry loop for version conflicts
     let retryCount = 0;
     while (retryCount < STORAGE_WRITE_MAX_RETRIES) {
-      const result = await this._attemptStorageWrite(writeSourceId, tabCount, saveTimestamp, retryCount);
+      const result = await this._attemptStorageWrite(
+        writeSourceId,
+        tabCount,
+        saveTimestamp,
+        retryCount
+      );
       if (result.success) {
         return; // Success - exit retry loop
       }

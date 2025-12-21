@@ -38,18 +38,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v2 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- **Handler Registration** - Deferred until async initialization completes
-- **Message Validation** - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE`
+- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total (from 60s)
+- **Hydration Timeout** - 10s (from 3s)
+- **Dedup Window** - 250ms (from 100ms)
+- **Tab onRemoved Debounce** - 200ms debounce
+- **browser.tabs.query Timeout** - 2s timeout wrapper with fallback
 - **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
-- **Storage Event Ordering** - `validateStorageEventOrdering()`, sequence numbering
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage error
-classification, code health 9.0+, port circuit breaker, container isolation
+**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, handler deferral,
+message validation, identity gating, storage quota monitoring, code health 9.0+,
+port circuit breaker, container isolation
 
 **Key Modules (v1.6.3.10-v9):**
 

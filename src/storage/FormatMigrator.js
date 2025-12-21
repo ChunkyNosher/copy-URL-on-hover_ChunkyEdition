@@ -9,7 +9,7 @@
  * - V1_5_8_14_Format: Unwrapped container format
  * - LegacyFormat: Flat tabs array
  * - EmptyFormat: Fallback for unrecognized/empty data
- * 
+ *
  * v1.6.4.16 - FIX Issue #26: FormatMigrator Schema Evolution Bugs
  * - Added migration logging with [MIGRATION] prefix
  * - Validate migrated data structure
@@ -190,7 +190,7 @@ export class EmptyFormat extends FormatStrategy {
  * const migrator = new FormatMigrator();
  * const format = migrator.detect(rawData);
  * const containers = format.parse(rawData);
- * 
+ *
  * v1.6.4.16 - FIX Issue #26: Enhanced migration logging and validation
  */
 export class FormatMigrator {
@@ -217,7 +217,7 @@ export class FormatMigrator {
       dataType: typeof data,
       keys: data ? Object.keys(data).slice(0, 5) : []
     });
-    
+
     for (const format of this.formats) {
       if (format.matches(data)) {
         console.log(`[MIGRATION] Detected format: ${format.getVersion()}`);
@@ -241,12 +241,12 @@ export class FormatMigrator {
     const migrationStartTime = Date.now();
     const format = this.detect(data);
     const sourceVersion = format.getVersion();
-    
+
     console.log('[MIGRATION] Starting migration:', {
       sourceVersion,
       timestamp: new Date().toISOString()
     });
-    
+
     let containers;
     try {
       containers = format.parse(data);
@@ -259,10 +259,10 @@ export class FormatMigrator {
       // Return empty containers on failure to prevent data loss
       return {};
     }
-    
+
     // Validate migrated data structure
     const validationResult = this._validateMigratedData(containers);
-    
+
     const migrationDurationMs = Date.now() - migrationStartTime;
     console.log('[MIGRATION] Migration completed:', {
       sourceVersion,
@@ -272,61 +272,91 @@ export class FormatMigrator {
       isValid: validationResult.isValid,
       durationMs: migrationDurationMs
     });
-    
+
     if (!validationResult.isValid) {
       console.warn('[MIGRATION] Validation warnings:', validationResult.warnings);
     }
 
     return containers;
   }
-  
+
+  /**
+   * Check container structure and add warnings
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce _validateMigratedData complexity
+   * @private
+   */
+  _validateContainerStructure(key, value, warnings, context) {
+    if (!value || typeof value !== 'object') {
+      warnings.push(`Container "${key}" is not an object`);
+      return { valid: false, tabCount: 0 };
+    }
+
+    if (!Array.isArray(value.tabs)) {
+      warnings.push(`Container "${key}" missing tabs array`);
+      // v1.6.3.11 - FIX Issue #32: Check if this might be a flat-style entry
+      if (value.url || value.id) {
+        context.hasFlatStyle = true;
+      }
+      return { valid: false, tabCount: 0 };
+    }
+
+    context.hasContainerStyle = true;
+    return { valid: true, tabCount: value.tabs.length };
+  }
+
   /**
    * Validate migrated data structure
    * v1.6.4.16 - FIX Issue #26: Validate migrated data
+   * v1.6.3.11 - FIX Issue #32: Detect hybrid format
    * @private
    * @param {Object} containers - Migrated container data
-   * @returns {{ isValid: boolean, warnings: string[], totalTabs: number }}
+   * @returns {{ isValid: boolean, warnings: string[], totalTabs: number, isHybridFormat: boolean }}
    */
   _validateMigratedData(containers) {
     const warnings = [];
     let totalTabs = 0;
-    
+    const context = { hasContainerStyle: false, hasFlatStyle: false };
+
     if (!containers || typeof containers !== 'object') {
       warnings.push('Containers is not an object');
-      return { isValid: false, warnings, totalTabs: 0 };
+      return { isValid: false, warnings, totalTabs: 0, isHybridFormat: false };
     }
-    
+
     for (const [key, value] of Object.entries(containers)) {
-      // Check container structure
-      if (!value || typeof value !== 'object') {
-        warnings.push(`Container "${key}" is not an object`);
-        continue;
-      }
-      
-      // Check tabs array
-      if (!Array.isArray(value.tabs)) {
-        warnings.push(`Container "${key}" missing tabs array`);
-        continue;
-      }
-      
-      totalTabs += value.tabs.length;
-      
+      const result = this._validateContainerStructure(key, value, warnings, context);
+      if (!result.valid) continue;
+
+      totalTabs += result.tabCount;
+
       // Check each tab has required fields
-      value.tabs.forEach((tab, index) => {
-        if (!tab.id) {
-          warnings.push(`Container "${key}" tab[${index}] missing id`);
-        }
-        if (!tab.url) {
-          warnings.push(`Container "${key}" tab[${index}] missing url`);
-        }
-      });
+      this._validateTabFields(key, value.tabs, warnings);
     }
-    
-    return {
-      isValid: warnings.length === 0,
-      warnings,
-      totalTabs
-    };
+
+    // v1.6.3.11 - FIX Issue #32: Log hybrid format detection
+    const isHybridFormat = context.hasContainerStyle && context.hasFlatStyle;
+    if (isHybridFormat) {
+      console.warn(
+        '[MIGRATION] HYBRID_FORMAT_DETECTED: Data contains mixed container and flat structures',
+        {
+          containerKeys: Object.keys(containers).slice(0, 10),
+          recommendation: 'Migration may be partial - review data structure'
+        }
+      );
+    }
+
+    return { isValid: warnings.length === 0, warnings, totalTabs, isHybridFormat };
+  }
+
+  /**
+   * Validate tab fields in a container
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce _validateMigratedData complexity
+   * @private
+   */
+  _validateTabFields(containerKey, tabs, warnings) {
+    tabs.forEach((tab, index) => {
+      if (!tab.id) warnings.push(`Container "${containerKey}" tab[${index}] missing id`);
+      if (!tab.url) warnings.push(`Container "${containerKey}" tab[${index}] missing url`);
+    });
   }
 
   /**
@@ -339,12 +369,12 @@ export class FormatMigrator {
   needsMigration(data) {
     const format = this.detect(data);
     const needsMigration = !(format instanceof V1_5_8_15_Format);
-    
+
     console.log('[MIGRATION] Migration check:', {
       currentFormat: format.getVersion(),
       needsMigration
     });
-    
+
     return needsMigration;
   }
 

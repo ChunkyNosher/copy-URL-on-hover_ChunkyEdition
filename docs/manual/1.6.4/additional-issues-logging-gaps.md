@@ -2,15 +2,22 @@
 
 **Extension Version:** v1.6.3.10+  
 **Date:** December 19, 2025  
-**Report Type:** Tertiary Analysis - Content Script Restoration, Messaging, and Logging Defects  
+**Report Type:** Tertiary Analysis - Content Script Restoration, Messaging, and
+Logging Defects
 
 ---
 
 ## Executive Summary
 
-This report documents architectural issues and critical logging gaps discovered through scanning of background.js, MessageRouter.js, QuickTabHandler.js, and minimized-manager.js. These issues primarily affect content script message handling, cross-tab message routing, snapshot hydration, and the adoption workflow's visibility into operational state.
+This report documents architectural issues and critical logging gaps discovered
+through scanning of background.js, MessageRouter.js, QuickTabHandler.js, and
+minimized-manager.js. These issues primarily affect content script message
+handling, cross-tab message routing, snapshot hydration, and the adoption
+workflow's visibility into operational state.
 
-The scan revealed **5 new issues (14-18)** and **significant missing instrumentation** that prevents operators from diagnosing failures in production.
+The scan revealed **5 new issues (14-18)** and **significant missing
+instrumentation** that prevents operators from diagnosing failures in
+production.
 
 ---
 
@@ -24,7 +31,9 @@ The scan revealed **5 new issues (14-18)** and **significant missing instrumenta
 
 **Problem Description:**
 
-While background.js registers message handlers, the corresponding content script message receivers are either:
+While background.js registers message handlers, the corresponding content script
+message receivers are either:
+
 - Not properly initialized at script load time
 - Missing error handlers for malformed messages
 - Returning invalid responses when initialization incomplete
@@ -32,12 +41,14 @@ While background.js registers message handlers, the corresponding content script
 **Evidence from Background Scan:**
 
 MessageRouter.register() assumes handlers exist and are ready:
+
 - No pre-flight validation that content script is listening
 - No health check before sending messages
 - No retry logic if message delivery fails silently
 - No timeout on message responses
 
 When content script loads asynchronously relative to background:
+
 1. Background script starts, initializes storage
 2. Content script loads on page
 3. Content script sends initial handshake/sync message
@@ -47,10 +58,15 @@ When content script loads asynchronously relative to background:
 
 **Firefox API Limitation:**
 
-According to [MDN Content Scripts](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts):
-> "Content scripts are injected into the page dynamically, and the background script may not be ready to handle messages at that exact moment. There is no guaranteed delivery order."
+According to
+[MDN Content Scripts](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts):
 
-This means timing is not deterministic, and the current synchronous response pattern is insufficient.
+> "Content scripts are injected into the page dynamically, and the background
+> script may not be ready to handle messages at that exact moment. There is no
+> guaranteed delivery order."
+
+This means timing is not deterministic, and the current synchronous response
+pattern is insufficient.
 
 **Why This Causes Silent Failures:**
 
@@ -72,29 +88,36 @@ Content script message handlers need explicit initialization sequencing:
 5. Add exponential backoff retry for messages during initialization
 6. Timeout-based fallback if background unresponsive for >5 seconds
 
-The current approach of sending messages immediately is incompatible with Firefox's async initialization model.
+The current approach of sending messages immediately is incompatible with
+Firefox's async initialization model.
 
 ---
 
 ### Issue 15: GET_CURRENT_TAB_ID Handler Returns Incomplete Response Format
 
 **Severity:** HIGH  
-**Component:** QuickTabHandler.handleGetCurrentTabId(), content script receiver  
-**Impact Scope:** Tab ownership validation, restore ordering, cross-tab pattern matching
+**Component:** QuickTabHandler.handleGetCurrentTabId(), content script
+receiver  
+**Impact Scope:** Tab ownership validation, restore ordering, cross-tab pattern
+matching
 
 **Problem Description:**
 
-The GET_CURRENT_TAB_ID message handler may return responses in inconsistent formats:
+The GET_CURRENT_TAB_ID message handler may return responses in inconsistent
+formats:
+
 - Sometimes: `{ currentTabId: 123 }`
 - Sometimes: `{ error: "Not initialized" }`
 - Sometimes: `null`
 - Sometimes: `undefined`
 
-Content scripts expecting structured response format will crash or behave unexpectedly if response doesn't match expected shape.
+Content scripts expecting structured response format will crash or behave
+unexpectedly if response doesn't match expected shape.
 
 **Evidence from Code:**
 
 QuickTabHandler lines ~390-410 (from earlier scan):
+
 - Handler checks `this.isInitialized`
 - If false, calls `_ensureInitialized()`
 - Returns error, but format depends on which guard caught the issue
@@ -103,16 +126,19 @@ QuickTabHandler lines ~390-410 (from earlier scan):
 **Failure Mode:**
 
 Content script code likely does:
+
 ```
 const response = await sendMessage({ command: 'GET_CURRENT_TAB_ID' });
 const tabId = response.currentTabId; // Could be undefined if response format wrong
 ```
 
-If response is `{ error: "..." }`, then `tabId` becomes `undefined`, and subsequent code fails silently.
+If response is `{ error: "..." }`, then `tabId` becomes `undefined`, and
+subsequent code fails silently.
 
 **Why Schema Validation Matters:**
 
 Without validated response schemas:
+
 - Each handler defines its own response format
 - Content script assumes format it expects
 - Mismatch goes undetected until behavior is clearly wrong
@@ -122,7 +148,8 @@ Without validated response schemas:
 
 Establish response envelope contract for all message handlers:
 
-1. Define consistent error response format (e.g., `{ success: false, error: string, code: string }`)
+1. Define consistent error response format (e.g.,
+   `{ success: false, error: string, code: string }`)
 2. Define success response format (e.g., `{ success: true, data: {...} }`)
 3. Add response validation in MessageRouter before sending to content script
 4. Content script checks `response.success` before accessing `response.data`
@@ -141,11 +168,15 @@ This prevents silent failures where response format mismatches.
 
 **Problem Description:**
 
-Port connections (used for persistent channels between background and content scripts) may be established before message handlers are registered, or handlers may fail to properly bind to ports.
+Port connections (used for persistent channels between background and content
+scripts) may be established before message handlers are registered, or handlers
+may fail to properly bind to ports.
 
 **Port Connection Problem:**
 
-When content script calls `browser.runtime.connect()` to establish persistent port:
+When content script calls `browser.runtime.connect()` to establish persistent
+port:
+
 1. Port is created on background side
 2. onConnect listener receives port
 3. onConnect handler sets up port.onMessage listener
@@ -156,6 +187,7 @@ When content script calls `browser.runtime.connect()` to establish persistent po
 **Lifetime Mismatch:**
 
 Port connections persist across multiple message exchanges, but:
+
 - Handler registration happens once at startup
 - Port can live longer than handler (if port reconnects after restart)
 - On extension restart, port persists in browser but handler resets
@@ -165,10 +197,14 @@ Port connections persist across multiple message exchanges, but:
 
 **Firefox-Specific Issue:**
 
-According to [MDN Persistent Connections](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#Connection-based_messaging):
-> "Ports remain open until either side explicitly closes them. The port will be closed if the content script is unloaded."
+According to
+[MDN Persistent Connections](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts#Connection-based_messaging):
 
-But doesn't mention what happens when background script reloads. In Firefox's event-page model, ports can orphan.
+> "Ports remain open until either side explicitly closes them. The port will be
+> closed if the content script is unloaded."
+
+But doesn't mention what happens when background script reloads. In Firefox's
+event-page model, ports can orphan.
 
 **Required Solution Approach:**
 
@@ -187,12 +223,16 @@ Coordinate port lifecycle with initialization:
 ### Issue 17: Snapshot Restoration Assumes QuickTabHandler Fully Initialized
 
 **Severity:** HIGH  
-**Component:** minimized-manager.js restore() method, content script initialization  
+**Component:** minimized-manager.js restore() method, content script
+initialization  
 **Impact Scope:** Page reload hydration, snapshot recovery
 
 **Problem Description:**
 
-When page loads and content script initializes, it immediately calls minimized-manager.restore() to hydrate snapshots. However, minimized-manager.restore() may communicate with background via messages, which can fail if QuickTabHandler not ready.
+When page loads and content script initializes, it immediately calls
+minimized-manager.restore() to hydrate snapshots. However,
+minimized-manager.restore() may communicate with background via messages, which
+can fail if QuickTabHandler not ready.
 
 **Hydration Race:**
 
@@ -200,8 +240,10 @@ When page loads and content script initializes, it immediately calls minimized-m
 2. New page loads
 3. New content script loads (synchronous module load)
 4. Content script immediately calls: `minimizedManager.restore()`
-5. restore() calls: `sendMessage({ command: 'GET_SNAPSHOTS_FOR_TAB', tabId: currentTabId })`
-6. Background receives message, but QuickTabHandler.handleGetSnapshotsForTab() checks `this.isInitialized`
+5. restore() calls:
+   `sendMessage({ command: 'GET_SNAPSHOTS_FOR_TAB', tabId: currentTabId })`
+6. Background receives message, but QuickTabHandler.handleGetSnapshotsForTab()
+   checks `this.isInitialized`
 7. Still false (storage.local.get() still pending)
 8. Handler returns error or empty array
 9. restore() interprets empty array as: "no snapshots stored"
@@ -209,28 +251,34 @@ When page loads and content script initializes, it immediately calls minimized-m
 
 **Timing Window Too Tight:**
 
-Content script loads in ~50-200ms (typical)
-Background script initialization takes ~100-500ms (depends on storage size)
+Content script loads in ~50-200ms (typical) Background script initialization
+takes ~100-500ms (depends on storage size)
 
-The overlap window where restore() is called but handlers not ready is significant.
+The overlap window where restore() is called but handlers not ready is
+significant.
 
 **Why Retries Insufficient:**
 
 Current approach likely has:
+
 - Single attempt to get snapshots
 - Timeout of 1-2 seconds
 - If timeout, silently proceed with empty snapshots
 
-On slow devices or heavy pages, even 2 second timeout may be too short, and single attempt may fail.
+On slow devices or heavy pages, even 2 second timeout may be too short, and
+single attempt may fail.
 
 **Required Solution Approach:**
 
 Decouple snapshot restoration from message-based retrieval:
 
-1. Store snapshots locally in content script memory (already done via minimized-manager)
-2. On page load, read snapshots from minimized-manager's internal cache (don't message background)
+1. Store snapshots locally in content script memory (already done via
+   minimized-manager)
+2. On page load, read snapshots from minimized-manager's internal cache (don't
+   message background)
 3. Only message background if snapshots cache needs refresh (periodic sync)
-4. Add initialization guard: content script waits for background ready before attempting restore
+4. Add initialization guard: content script waits for background ready before
+   attempting restore
 5. Implement exponential backoff for restore attempts if background not ready
 6. Log restore attempts with timing: attempt N of M at time T, response time R
 
@@ -247,6 +295,7 @@ This prevents restore from racing with initialization.
 **Problem Description:**
 
 When a message arrives with unknown command type, MessageRouter may:
+
 - Crash silently (if handler lookup returns undefined)
 - Return generic error without logging what command was invalid
 - Process message with wrong handler (if handler name collision)
@@ -254,6 +303,7 @@ When a message arrives with unknown command type, MessageRouter may:
 **Evidence:**
 
 MessageRouter likely has pattern like:
+
 ```
 onMessage(message) {
   const handler = this.handlers[message.command];
@@ -263,6 +313,7 @@ onMessage(message) {
 ```
 
 Without explicit validation:
+
 - Content script typo in command name: `{ command: 'GET_CRRENT_TAB_ID' }` (typo)
 - No matching handler
 - Silent response or error
@@ -271,7 +322,8 @@ Without explicit validation:
 
 **No Allowlist of Valid Commands:**
 
-If new handlers added, old content scripts still running with old command names. No way to detect version mismatch or deprecated commands.
+If new handlers added, old content scripts still running with old command names.
+No way to detect version mismatch or deprecated commands.
 
 **Required Solution Approach:**
 
@@ -293,6 +345,7 @@ Add command validation layer:
 **Current State:**
 
 Content script restore operations are silent:
+
 - No log when restore() called
 - No log for each snapshot processed
 - No log when snapshot applied to window
@@ -303,6 +356,7 @@ Content script restore operations are silent:
 When user reports: "Quick Tabs disappeared after page reload"
 
 Operator needs logs showing:
+
 - Page load timestamp
 - restore() invoked (which snapshots available?)
 - Each snapshot: restore attempted → applied → rendered
@@ -312,11 +366,13 @@ Currently operators see: silence. Nothing logged.
 
 **Why This Matters:**
 
-Reproduction becomes impossible without logs. User describes issue, but logs don't show it happening.
+Reproduction becomes impossible without logs. User describes issue, but logs
+don't show it happening.
 
 **Required Logging Pattern:**
 
 Add `[RESTORE]` prefix logs:
+
 - `[RESTORE] Initiated for tab ${tabId}, ${count} snapshots available`
 - `[RESTORE] Processing snapshot qt-${originTabId}-${timestamp}...`
 - `[RESTORE] Snapshot dimensions: ${width}x${height}, originTabId: ${originTabId}`
@@ -330,6 +386,7 @@ Add `[RESTORE]` prefix logs:
 **Current State:**
 
 No logs for adoption messages received by content script:
+
 - No log when adoption message received
 - No log showing: old tab ID → new tab ID
 - No log when ownership changed
@@ -338,6 +395,7 @@ No logs for adoption messages received by content script:
 **Why This Matters:**
 
 When adopt workflow fails:
+
 - User tries to adopt Quick Tab
 - Nothing visible happens
 - No error message
@@ -346,6 +404,7 @@ When adopt workflow fails:
 **Required Logging Pattern:**
 
 Add `[ADOPTION]` prefix logs (content script side):
+
 - `[ADOPTION] Message received: Quick Tab ${quickTabId} adopted by new owner`
 - `[ADOPTION] Old owner: tabId ${oldTabId}, New owner: tabId ${newTabId}`
 - `[ADOPTION] Caching adoption for next ${adoptionCacheTTL}ms`
@@ -358,6 +417,7 @@ Add `[ADOPTION]` prefix logs (content script side):
 **Current State:**
 
 Restore ordering queue is silent:
+
 - No log when restore added to queue
 - No log for queue position
 - No log when restore executed from queue
@@ -365,13 +425,15 @@ Restore ordering queue is silent:
 
 **Why This Matters:**
 
-When user reports: "Quick Tab X appeared before Quick Tab Y, but I restored in opposite order"
+When user reports: "Quick Tab X appeared before Quick Tab Y, but I restored in
+opposite order"
 
 Operator needs to see restore queue state to understand ordering issue.
 
 **Required Logging Pattern:**
 
 Add `[RESTORE_ORDER]` prefix logs:
+
 - `[RESTORE_ORDER] Restore queued for qt-${tabId}-${timestamp}, position ${queueLength} in queue`
 - `[RESTORE_ORDER] Processing queue: executing restore #${position} of ${queueLength}`
 - `[RESTORE_ORDER] Queue complete: all ${totalRestored} snapshots applied in order`
@@ -385,6 +447,7 @@ Add `[RESTORE_ORDER]` prefix logs:
 **Current State:**
 
 QuickTabHandler version conflicts are logged minimally:
+
 - No log showing expected version vs actual version
 - No log for write type that caused version bump
 - No log showing which Quick Tab state was rebuilt
@@ -393,6 +456,7 @@ QuickTabHandler version conflicts are logged minimally:
 **Why This Matters:**
 
 When version conflicts occur frequently:
+
 - Operator needs to understand pattern
 - Is it adoption-induced? Normal concurrent updates? Race condition?
 - Currently all conflicts look identical in logs
@@ -400,6 +464,7 @@ When version conflicts occur frequently:
 **Required Logging Pattern:**
 
 Add `[VERSION_CONFLICT]` prefix logs:
+
 - `[VERSION_CONFLICT] Detected: expected ${expectedVersion}, found ${actualVersion} in storage`
 - `[VERSION_CONFLICT] Last write type: ${writeType} (NORMAL_UPDATE or ADOPTION)`
 - `[VERSION_CONFLICT] State rebuilt for Quick Tab ${quickTabId}: ${affectedFieldCount} fields`
@@ -412,6 +477,7 @@ Add `[VERSION_CONFLICT]` prefix logs:
 **Current State:**
 
 Background initialization is silent:
+
 - No log when initialization starts
 - No log when storage.local.get() called
 - No log when globalState.tabs populated
@@ -421,6 +487,7 @@ Background initialization is silent:
 **Why This Matters:**
 
 When extension behavior is inconsistent on startup:
+
 - Operator suspects initialization timing issue
 - But no logs show initialization progress
 - Can't distinguish: initialization not started vs started but slow vs completed
@@ -428,6 +495,7 @@ When extension behavior is inconsistent on startup:
 **Required Logging Pattern:**
 
 Add `[INIT]` prefix logs:
+
 - `[INIT] Starting background script initialization...`
 - `[INIT] Loading globalState from storage...`
 - `[INIT] Storage retrieved: ${tabCount} Quick Tabs, ${snapshotCount} snapshots`
@@ -444,6 +512,7 @@ Add `[INIT]` prefix logs:
 **Current State:**
 
 Messages sent but no correlation to responses:
+
 - No message ID for tracking request → response
 - No response time tracking
 - No visibility into request queueing
@@ -451,6 +520,7 @@ Messages sent but no correlation to responses:
 **Why This Matters:**
 
 When debugging message failures:
+
 - Content script sends GET_CURRENT_TAB_ID
 - Background handler runs
 - Content script receives response
@@ -459,6 +529,7 @@ When debugging message failures:
 **Required Logging Pattern:**
 
 Add correlation IDs to all messages:
+
 - `[MSG] Sending: command=${command}, correlationId=${msgId}, to=background`
 - `[MSG] Response: correlationId=${msgId}, elapsed=${responseTimeMs}ms, status=${status}`
 - `[MSG] Timeout: correlationId=${msgId}, command=${command}, waited ${timeoutMs}ms`
@@ -472,20 +543,25 @@ Add correlation IDs to all messages:
 **Current State:**
 
 When adoption sends messages to new tab:
+
 - No log showing: message sent to tab X
 - No log showing: tab X received the message
 - No way to track: did message delivery succeed?
 
 **Why This Matters:**
 
-When adoption workflow partially works (tab gets ownership but doesn't know about it):
+When adoption workflow partially works (tab gets ownership but doesn't know
+about it):
+
 - Tab didn't receive adoption message
 - No logs show this
-- Operator can't diagnose why adoption "worked" but content script doesn't see it
+- Operator can't diagnose why adoption "worked" but content script doesn't see
+  it
 
 **Required Logging Pattern:**
 
 Add `[TAB_MSG]` prefix logs:
+
 - `[TAB_MSG] Sending adoption message to tabId ${targetTabId}: originTabId change ${oldId}→${newId}`
 - `[TAB_MSG] Message routed through browser.tabs.sendMessage()`
 - `[TAB_MSG] tabId ${targetTabId}: acknowledged adoption message`
@@ -499,6 +575,7 @@ Add `[TAB_MSG]` prefix logs:
 **Current State:**
 
 Snapshots expire (5 second TTL) silently:
+
 - No log when snapshot expiration starts
 - No log when snapshot actually expires
 - No cleanup confirmation
@@ -507,11 +584,13 @@ Snapshots expire (5 second TTL) silently:
 
 When operator suspects: "Snapshot expired too early, causing restore to fail"
 
-They need logs showing snapshot timestamps and expiration times to verify hypothesis.
+They need logs showing snapshot timestamps and expiration times to verify
+hypothesis.
 
 **Required Logging Pattern:**
 
 Add `[SNAPSHOT_EXPIRE]` prefix logs:
+
 - `[SNAPSHOT_EXPIRE] Snapshot qt-${tabId}-${timestamp} will expire at T+5000ms`
 - `[SNAPSHOT_EXPIRE] Snapshot qt-${tabId}-${timestamp} EXPIRED (now at +5050ms)`
 - `[SNAPSHOT_EXPIRE] Cleanup: removed ${expiredCount} expired snapshots`
@@ -524,23 +603,24 @@ Add `[SNAPSHOT_EXPIRE]` prefix logs:
 
 Implement logging with consistent prefixes for filtering:
 
-| Prefix | Purpose | Triggers |
-|--------|---------|----------|
-| `[INIT]` | Initialization progress | Startup, storage load, handler registration |
-| `[ADOPTION]` | Adoption workflow | Adopt message sent/received, ownership change |
-| `[RESTORE]` | Snapshot restoration | restore() calls, snapshot application |
-| `[RESTORE_ORDER]` | Restore ordering queue | Queue operations, ordering enforcement |
-| `[HYDRATION]` | Page reload hydration | Hydration start/progress/complete |
-| `[VERSION_CONFLICT]` | Storage version issues | Version mismatch detected, rebuild |
-| `[MSG]` | Message routing | Request sent, response received, timeout |
-| `[TAB_MSG]` | Cross-tab messages | Inter-tab routing, delivery confirmation |
-| `[SNAPSHOT_EXPIRE]` | Snapshot lifecycle | Expiration countdown, cleanup |
-| `[LOCK]` | Lock operations | Acquire, release, timeout, conflict |
-| `[ERROR]` | Critical errors | Failures, exceptions, warnings |
+| Prefix               | Purpose                 | Triggers                                      |
+| -------------------- | ----------------------- | --------------------------------------------- |
+| `[INIT]`             | Initialization progress | Startup, storage load, handler registration   |
+| `[ADOPTION]`         | Adoption workflow       | Adopt message sent/received, ownership change |
+| `[RESTORE]`          | Snapshot restoration    | restore() calls, snapshot application         |
+| `[RESTORE_ORDER]`    | Restore ordering queue  | Queue operations, ordering enforcement        |
+| `[HYDRATION]`        | Page reload hydration   | Hydration start/progress/complete             |
+| `[VERSION_CONFLICT]` | Storage version issues  | Version mismatch detected, rebuild            |
+| `[MSG]`              | Message routing         | Request sent, response received, timeout      |
+| `[TAB_MSG]`          | Cross-tab messages      | Inter-tab routing, delivery confirmation      |
+| `[SNAPSHOT_EXPIRE]`  | Snapshot lifecycle      | Expiration countdown, cleanup                 |
+| `[LOCK]`             | Lock operations         | Acquire, release, timeout, conflict           |
+| `[ERROR]`            | Critical errors         | Failures, exceptions, warnings                |
 
 ### Correlation IDs
 
 Every major operation needs correlation ID:
+
 - Adoption: adoption-${quickTabId}-${timestamp}
 - Restore: restore-${quickTabId}-${timestamp}
 - Hydration: hydration-${pageLoadId}
@@ -551,6 +631,7 @@ This allows operators to trace entire operation flow through logs.
 ### Response Times and Thresholds
 
 Log response times with performance warnings:
+
 - Message response > 1s: `SLOW_RESPONSE warning`
 - Initialization > 2s: `SLOW_INIT warning`
 - Restore operation > 3s: `SLOW_RESTORE warning`
@@ -564,6 +645,7 @@ Log response times with performance warnings:
 **Problem:**
 
 When error occurs, stack trace shows file/line but not context:
+
 - Which tab?
 - Which Quick Tab?
 - Which adoption?
@@ -572,6 +654,7 @@ When error occurs, stack trace shows file/line but not context:
 **Required Solution:**
 
 Wrap operations in error handlers that capture context:
+
 ```
 try {
   operationName(args);
@@ -591,18 +674,18 @@ try {
 
 ## Summary of Logging Requirements
 
-| Gap | Impact | Severity | Logging Prefix |
-|-----|--------|----------|-----------------|
-| Initialization progress | Can't diagnose startup timing | HIGH | `[INIT]` |
-| Adoption message flow | Can't verify adoption occurred | HIGH | `[ADOPTION]` |
-| Restore operation progress | Can't debug restore failures | HIGH | `[RESTORE]` |
-| Message request/response | Can't track message delivery | HIGH | `[MSG]` |
-| Restore ordering | Can't diagnose ordering issues | MEDIUM | `[RESTORE_ORDER]` |
-| Hydration lifecycle | Can't diagnose page reload issues | MEDIUM | `[HYDRATION]` |
-| Snapshot expiration | Can't verify expiration timing | MEDIUM | `[SNAPSHOT_EXPIRE]` |
-| Version conflicts | Can't understand storage conflicts | MEDIUM | `[VERSION_CONFLICT]` |
-| Cross-tab routing | Can't verify inter-tab messaging | MEDIUM | `[TAB_MSG]` |
-| Lock operations | Can't diagnose deadlocks | MEDIUM | `[LOCK]` |
+| Gap                        | Impact                             | Severity | Logging Prefix       |
+| -------------------------- | ---------------------------------- | -------- | -------------------- |
+| Initialization progress    | Can't diagnose startup timing      | HIGH     | `[INIT]`             |
+| Adoption message flow      | Can't verify adoption occurred     | HIGH     | `[ADOPTION]`         |
+| Restore operation progress | Can't debug restore failures       | HIGH     | `[RESTORE]`          |
+| Message request/response   | Can't track message delivery       | HIGH     | `[MSG]`              |
+| Restore ordering           | Can't diagnose ordering issues     | MEDIUM   | `[RESTORE_ORDER]`    |
+| Hydration lifecycle        | Can't diagnose page reload issues  | MEDIUM   | `[HYDRATION]`        |
+| Snapshot expiration        | Can't verify expiration timing     | MEDIUM   | `[SNAPSHOT_EXPIRE]`  |
+| Version conflicts          | Can't understand storage conflicts | MEDIUM   | `[VERSION_CONFLICT]` |
+| Cross-tab routing          | Can't verify inter-tab messaging   | MEDIUM   | `[TAB_MSG]`          |
+| Lock operations            | Can't diagnose deadlocks           | MEDIUM   | `[LOCK]`             |
 
 ---
 
@@ -610,41 +693,57 @@ try {
 
 These logging gaps directly impact diagnosis of earlier issues:
 
-- **Issue 8** (Handler registration timing): Logging would show if handlers registered before init complete
-- **Issue 10** (Snapshot originTabId): `[ADOPTION]` logs would show if snapshot updated
-- **Issue 11** (Adoption lock timeout): `[LOCK]` logs would show lock held too long
-- **Issue 12** (In-flight adoption): `[ADOPTION]` + `[RESTORE_ORDER]` logs show message arrival timing
-- **Issue 13** (Version conflicts): `[VERSION_CONFLICT]` logs show which writes cause bumps
+- **Issue 8** (Handler registration timing): Logging would show if handlers
+  registered before init complete
+- **Issue 10** (Snapshot originTabId): `[ADOPTION]` logs would show if snapshot
+  updated
+- **Issue 11** (Adoption lock timeout): `[LOCK]` logs would show lock held too
+  long
+- **Issue 12** (In-flight adoption): `[ADOPTION]` + `[RESTORE_ORDER]` logs show
+  message arrival timing
+- **Issue 13** (Version conflicts): `[VERSION_CONFLICT]` logs show which writes
+  cause bumps
 
 ---
 
 ## Recommended Implementation Approach
 
 ### Phase 1: Framework Setup
-Create centralized logging utility with prefix support and correlation ID tracking. This enables all subsequent logging.
+
+Create centralized logging utility with prefix support and correlation ID
+tracking. This enables all subsequent logging.
 
 ### Phase 2: Critical Path Logging
-Add `[INIT]`, `[ADOPTION]`, `[RESTORE]`, `[MSG]` logging first. These four prefixes cover 80% of diagnostic need.
+
+Add `[INIT]`, `[ADOPTION]`, `[RESTORE]`, `[MSG]` logging first. These four
+prefixes cover 80% of diagnostic need.
 
 ### Phase 3: Secondary Path Logging
+
 Add `[HYDRATION]`, `[RESTORE_ORDER]`, `[VERSION_CONFLICT]` to debug edge cases.
 
 ### Phase 4: Performance Instrumentation
+
 Add response time tracking and slow operation warnings.
 
 ### Phase 5: Error Context Enrichment
-Wrap all error handlers with context capture to provide diagnostic value when errors occur.
+
+Wrap all error handlers with context capture to provide diagnostic value when
+errors occur.
 
 ---
 
 ## Notes for Copilot Agent
 
-**Key Architectural Problem:**
-The extension lacks end-to-end request tracing. Currently, when something fails, there's no breadcrumb trail connecting request → handler execution → response. Adding correlation IDs and structured logging creates visibility.
+**Key Architectural Problem:** The extension lacks end-to-end request tracing.
+Currently, when something fails, there's no breadcrumb trail connecting request
+→ handler execution → response. Adding correlation IDs and structured logging
+creates visibility.
 
-**Implementation Priority:**
-Logging implementation should happen in parallel with Issue fixes (8-13), not after. The logging reveals whether fixes are working correctly.
+**Implementation Priority:** Logging implementation should happen in parallel
+with Issue fixes (8-13), not after. The logging reveals whether fixes are
+working correctly.
 
-**Testing Validation:**
-Each logged operation should have corresponding test case that verifies log entries appear at expected times. This catches logging bugs early.
-
+**Testing Validation:** Each logged operation should have corresponding test
+case that verifies log entries appear at expected times. This catches logging
+bugs early.

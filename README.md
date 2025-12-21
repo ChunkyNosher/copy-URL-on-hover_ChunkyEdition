@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v2** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,59 +9,66 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11 Status:** 40 Issues Fixed (3 Diagnostic Reports) ✅
+**🔧 v1.6.3.11-v2 Status:** 40 Issues Fixed (3 Diagnostic Reports) ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.11
+## 🎉 What's New in v1.6.3.11-v2
 
 **🔧 40 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
 
-- ✅ **GET_CURRENT_TAB_ID No Init Dependency** - Returns sender.tab.id immediately
-- ✅ **Synchronous Listener Registration** - onMessage/onConnect at top-level
-- ✅ **BFCache Port Recovery** - Auto-reconnect with 50ms delay on pageshow
-- ✅ **Port Listener Race Fix** - onDisconnect registered before onMessage
-- ✅ **INIT_RESPONSE Timeout** - 2s timeout with fallback to retry loop
-- ✅ **NOT_INITIALIZED Detection** - Special 500ms wait then single retry
-- ✅ **Cross-Queue Overflow Protection** - Global backpressure at 300 messages
-- ✅ **Hydration Drain Lock** - Prevents concurrent timeout/drain race
-- ✅ **Namespaced Message IDs** - Content/background namespace prefixes
-- ✅ **Background Sequence IDs** - Atomic global counter replaces per-tab
-- ✅ **BFCache Verify Timeout** - 1000ms max wait with auto-reconnect
-- ✅ **Adoption Cache TTL** - 5-minute expiration with 60s cleanup
-- ✅ **Navigation State Reset** - beforeunload resets 4 init flags
-- ✅ **Broadcast Idempotency** - messageId tracking prevents duplicates
-- ✅ **Target Tab Validation** - Early return if targetTabId mismatch
+**Port/BFCache/Init Improvements (#1-8):**
+
+- ✅ **BFCache PORT_VERIFY Timeout** - Increased to 2000ms for reliability
+- ✅ **Port Race Condition Fix** - onDisconnect registered before onMessage
+- ✅ **Tab ID Timeout Extended** - 120s total timeout (from 60s)
+- ✅ **Hydration Timeout Increased** - 10s timeout (from 3s)
+- ✅ **RESTORE Messages Queued** - Queue instead of reject during init
+
+**Tab Lifecycle/Message Routing (#9-20):**
+
+- ✅ **Tab onRemoved Debounce** - 200ms debounce for cleanup
+- ✅ **browser.tabs.query Timeout** - 2s timeout with fallback
+- ✅ **Periodic openTabs Cleanup** - Every 5 minutes
+- ✅ **Dedup Window Increased** - 250ms (from 100ms)
+- ✅ **MessageRouter Pre-Init Queue** - Messages queued before init
+
+**Sidebar/State/Security/Config (#21-40):**
+
+- ✅ **Sidebar Write Protection** - Storage write guards added
+- ✅ **Storage Format Detection** - Flat/nested format auto-detection
+- ✅ **Adoption Cache Size Limit** - 100 entries maximum
+- ✅ **MessageRouter Re-entrance Guard** - Prevents recursive handling
+- ✅ **Config Migration** - Handles missing settings gracefully
+
+---
+
+## 🎉 What's New in v1.6.3.11
+
+**🔧 40 Issues Fixed (December 2025) ✅**
+
+- ✅ GET_CURRENT_TAB_ID no init dependency, synchronous listener registration
+- ✅ BFCache port recovery with 50ms delay, port listener race fix
+- ✅ Cross-queue overflow protection at 300 messages, hydration drain lock
+- ✅ Namespaced message IDs, background sequence IDs, BFCache verify timeout
+- ✅ Adoption cache TTL (5-min expiration), navigation state reset
 
 ---
 
 ## 🎉 What's New in v1.6.3.10-v11
 
-**🔧 25 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
-
-- ✅ **Extended Tab ID Acquisition** - 60s total timeout with 5s intervals
-- ✅ **Operation Type Tracking** - CREATE/RESTORE/UPDATE/CLOSE/MINIMIZE enum
-- ✅ **Adaptive Dedup Window** - 2x observed storage latency, 500ms minimum
-- ✅ **Ownership Validation** - MessageRouter validates originTabId vs sender
-- ✅ **Queue Backpressure** - 100 items max, 75% warning threshold
-- ✅ **Callback Re-wiring** - 500ms timeout recovery for UICoordinator
-- ✅ **Hydration Barrier** - Operations queued until storage loaded (3s)
-- ✅ **Background Lifecycle** - In-flight recovery markers, beforeunload
-- ✅ **Three-Phase Handshake** - INIT_REQUEST → INIT_RESPONSE → INIT_COMPLETE
-- ✅ **LRU Map Guard** - 500 entry max, 10% eviction, 30s cleanup cycle
+- ✅ Extended Tab ID (60s timeout), OPERATION_TYPE enum, adaptive dedup
+- ✅ Queue backpressure (100 max), hydration barrier, three-phase handshake
+- ✅ LRU Map Guard (500 max, 30s cleanup)
 
 ---
 
 ## 🎉 What's New in v1.6.3.10-v10
 
-**🔧 Issues 1-28 & Problem Areas A-F Fixed ✅**
-
-- ✅ **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
-- ✅ **Storage Write Validation** - Timeout-based fallback with validation
-- ✅ **Adoption Lock Timeout** - 10 seconds with escalation logging
-- ✅ **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- ✅ Tab ID exponential backoff, storage write validation
+- ✅ Adoption lock timeout (10s), checkpoint system
 
 ---
 
@@ -69,7 +76,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **v1.6.3.10-v10:** Issues 1-28 & areas A-F, checkpoint system, message timeout  
 **v1.6.3.10-v9:** Storage & cross-tab fixes, identity gating, quota monitoring  
-**v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed  
+**v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -256,6 +263,6 @@ for details.
 
 ---
 
-**Version 1.6.3.11** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

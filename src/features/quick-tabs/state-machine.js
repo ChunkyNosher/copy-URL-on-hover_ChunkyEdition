@@ -6,6 +6,10 @@
  *   - Extended state machine with full lifecycle tracking
  *   - Added guardOperation() for operation-level state validation
  *   - Added canMinimize/canRestore/canClose convenience methods
+ * v1.6.3.11 - FIX Issue #29: Document limitation - state is memory-only
+ *   - State is not persisted to storage and is lost on background restart
+ *   - Content scripts should re-initialize state from storage on reconnection
+ *   - Added logging when state may be stale after port reconnection
  *
  * Responsibilities:
  * - Track each Quick Tab's current state (CREATING, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, CLOSING, DESTROYED, ERROR)
@@ -14,6 +18,13 @@
  * - Reject invalid operations (e.g., minimize already-minimized tab)
  * - Provide state history for debugging
  * - Guard operations based on current state (e.g., block minimize while creating)
+ *
+ * KNOWN LIMITATION (v1.6.3.11 - Issue #29):
+ * State is stored in memory only and is NOT persisted across:
+ * - Browser restarts
+ * - Background script restarts
+ * - Tab refreshes
+ * When state is lost, Quick Tabs should be rehydrated from storage.
  *
  * @module state-machine
  */
@@ -50,19 +61,59 @@ export const QuickTabState = {
  * @type {Map<string, Set<string>>}
  */
 const VALID_TRANSITIONS = new Map([
-  [QuickTabState.UNKNOWN, new Set([QuickTabState.CREATING, QuickTabState.VISIBLE, QuickTabState.MINIMIZED])],
-  [QuickTabState.CREATING, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.ERROR, QuickTabState.DESTROYED])],
-  [QuickTabState.VISIBLE, new Set([QuickTabState.MINIMIZING, QuickTabState.CLOSING, QuickTabState.DESTROYED, QuickTabState.ERROR])],
-  [QuickTabState.MINIMIZING, new Set([QuickTabState.MINIMIZED, QuickTabState.VISIBLE, QuickTabState.ERROR])],
-  [QuickTabState.MINIMIZED, new Set([QuickTabState.RESTORING, QuickTabState.CLOSING, QuickTabState.DESTROYED, QuickTabState.ERROR])],
-  [QuickTabState.RESTORING, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.ERROR])],
+  [
+    QuickTabState.UNKNOWN,
+    new Set([QuickTabState.CREATING, QuickTabState.VISIBLE, QuickTabState.MINIMIZED])
+  ],
+  [
+    QuickTabState.CREATING,
+    new Set([
+      QuickTabState.VISIBLE,
+      QuickTabState.MINIMIZED,
+      QuickTabState.ERROR,
+      QuickTabState.DESTROYED
+    ])
+  ],
+  [
+    QuickTabState.VISIBLE,
+    new Set([
+      QuickTabState.MINIMIZING,
+      QuickTabState.CLOSING,
+      QuickTabState.DESTROYED,
+      QuickTabState.ERROR
+    ])
+  ],
+  [
+    QuickTabState.MINIMIZING,
+    new Set([QuickTabState.MINIMIZED, QuickTabState.VISIBLE, QuickTabState.ERROR])
+  ],
+  [
+    QuickTabState.MINIMIZED,
+    new Set([
+      QuickTabState.RESTORING,
+      QuickTabState.CLOSING,
+      QuickTabState.DESTROYED,
+      QuickTabState.ERROR
+    ])
+  ],
+  [
+    QuickTabState.RESTORING,
+    new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.ERROR])
+  ],
   [QuickTabState.CLOSING, new Set([QuickTabState.DESTROYED, QuickTabState.ERROR])],
   [QuickTabState.DESTROYED, new Set()], // Terminal state - no transitions allowed
-  [QuickTabState.ERROR, new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.DESTROYED])] // Can recover or be destroyed
+  [
+    QuickTabState.ERROR,
+    new Set([QuickTabState.VISIBLE, QuickTabState.MINIMIZED, QuickTabState.DESTROYED])
+  ] // Can recover or be destroyed
 ]);
 
 /**
  * Maximum history entries per Quick Tab
+ * v1.6.3.11 - FIX Issue #35: Document that Array.shift() is O(n)
+ * KNOWN LIMITATION: Current implementation uses Array.shift() which is O(n).
+ * For small history size (20 entries), this is acceptable.
+ * FUTURE: Consider circular buffer implementation if history size increases significantly.
  * @type {number}
  */
 const MAX_HISTORY_SIZE = 20;
@@ -102,7 +153,45 @@ export class QuickTabStateMachine {
      */
     this.enforceTransitions = true;
 
+    /**
+     * v1.6.3.11 - FIX Issue #29: Track last initialization time for staleness detection
+     * @type {number}
+     * @private
+     */
+    this._lastInitTime = Date.now();
+
     console.log('[QuickTabStateMachine] Initialized');
+  }
+
+  /**
+   * Check if state may be stale (after reconnection)
+   * v1.6.3.11 - FIX Issue #29: Detect potentially stale state after background restart
+   * @param {number} lastKnownGoodTime - Timestamp of last known good state
+   * @returns {boolean} True if state may be stale
+   */
+  isStatePotentiallyStale(lastKnownGoodTime) {
+    const isStale = this._lastInitTime > lastKnownGoodTime;
+    if (isStale) {
+      console.warn('[QuickTabStateMachine] STATE_POTENTIALLY_STALE:', {
+        initTime: this._lastInitTime,
+        lastKnownGoodTime,
+        trackedCount: this._states.size,
+        recommendation: 'Re-hydrate state from storage'
+      });
+    }
+    return isStale;
+  }
+
+  /**
+   * Mark state as refreshed (after rehydration)
+   * v1.6.3.11 - FIX Issue #29: Update init time after state refresh
+   */
+  markStateRefreshed() {
+    this._lastInitTime = Date.now();
+    console.log('[QuickTabStateMachine] STATE_REFRESHED:', {
+      newInitTime: this._lastInitTime,
+      trackedCount: this._states.size
+    });
   }
 
   /**
@@ -292,7 +381,7 @@ export class QuickTabStateMachine {
   }
 
   // ==================== v1.6.3.10-v12 FIX ISSUE #3: OPERATION GUARDS ====================
-  
+
   /**
    * Check if minimize operation is allowed for a Quick Tab
    * v1.6.3.10-v12 - FIX Issue #3: Operation-level state validation
@@ -301,15 +390,15 @@ export class QuickTabStateMachine {
    */
   canMinimize(id) {
     const state = this.getState(id);
-    
+
     // Can only minimize from VISIBLE state
     if (state !== QuickTabState.VISIBLE) {
-      return { 
-        allowed: false, 
-        reason: `Cannot minimize from state ${state} (must be VISIBLE)` 
+      return {
+        allowed: false,
+        reason: `Cannot minimize from state ${state} (must be VISIBLE)`
       };
     }
-    
+
     return { allowed: true };
   }
 
@@ -321,15 +410,15 @@ export class QuickTabStateMachine {
    */
   canRestore(id) {
     const state = this.getState(id);
-    
+
     // Can only restore from MINIMIZED state
     if (state !== QuickTabState.MINIMIZED) {
-      return { 
-        allowed: false, 
-        reason: `Cannot restore from state ${state} (must be MINIMIZED)` 
+      return {
+        allowed: false,
+        reason: `Cannot restore from state ${state} (must be MINIMIZED)`
       };
     }
-    
+
     return { allowed: true };
   }
 
@@ -341,16 +430,16 @@ export class QuickTabStateMachine {
    */
   canClose(id) {
     const state = this.getState(id);
-    
+
     // Cannot close from CREATING, CLOSING, or DESTROYED states
     const blockedStates = [QuickTabState.CREATING, QuickTabState.CLOSING, QuickTabState.DESTROYED];
     if (blockedStates.includes(state)) {
-      return { 
-        allowed: false, 
-        reason: `Cannot close from state ${state}` 
+      return {
+        allowed: false,
+        reason: `Cannot close from state ${state}`
       };
     }
-    
+
     return { allowed: true };
   }
 
@@ -365,7 +454,7 @@ export class QuickTabStateMachine {
   guardOperation(id, operation, source = 'unknown') {
     const currentState = this.getState(id);
     let result;
-    
+
     switch (operation) {
       case 'minimize':
         result = this.canMinimize(id);
@@ -379,7 +468,7 @@ export class QuickTabStateMachine {
       default:
         result = { allowed: true }; // Unknown operations are allowed by default
     }
-    
+
     // Log guard result
     if (!result.allowed) {
       console.warn('[QuickTabStateMachine] OPERATION_BLOCKED:', {
@@ -397,7 +486,7 @@ export class QuickTabStateMachine {
         currentState
       });
     }
-    
+
     return { ...result, currentState };
   }
 

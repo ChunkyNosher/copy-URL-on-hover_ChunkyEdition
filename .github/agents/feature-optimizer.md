@@ -61,18 +61,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.11-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total (from 60s)
+- **Hydration Timeout** - 10s (from 3s)
 - **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
 - **Render Performance** - `[RENDER_PERF]` logging prefix
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage quota
-monitoring, code health 9.0+, render queue priority, dead code removal
+**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, identity gating,
+storage quota monitoring, code health 9.0+, render queue priority, dead code
+removal
 
 **v1.6.3.6 Fixes:**
 

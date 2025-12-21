@@ -1,15 +1,30 @@
 # Copy-URL-on-Hover Extension - Additional Diagnostic Report
+
 ## Behavioral Failures, Architectural Gaps, and System-Level Issues
 
 **Extension Version:** v1.6.3.10-v11  
 **Date:** 2025-12-20  
-**Scope:** Storage write blocking mechanism, adoption flow interaction patterns, handler initialization sequence, and missing behavioral boundaries
+**Scope:** Storage write blocking mechanism, adoption flow interaction patterns,
+handler initialization sequence, and missing behavioral boundaries
 
 ---
 
 ## Executive Summary
 
-Beyond the nine primary issues (17-25) and foundational Issue #5, analysis reveals **secondary systemic failures** in storage write blocking logic, adoption flow interaction patterns with Tab ID initialization, handler lifecycle sequencing, and missing behavioral guardrails. The extension exhibits compounding failures where storage writes are systematically blocked not just from Tab ID being null, but from a **dual-block ownership validation system** that has no bypass mechanism, recovery path, or user-facing feedback. Quick Tab adoption occurs asynchronously with no completion barrier before subsequent operations, creating orphaned state. Handler initialization sequences lack explicit prerequisites, causing handlers to be used before fully initialized. Missing behavioral boundaries allow operations to proceed into invalid states (e.g., attempting to minimize while creation in progress). These issues manifest as silent failures, hanging operations, and state corruption that is difficult to diagnose without deep log analysis.
+Beyond the nine primary issues (17-25) and foundational Issue #5, analysis
+reveals **secondary systemic failures** in storage write blocking logic,
+adoption flow interaction patterns with Tab ID initialization, handler lifecycle
+sequencing, and missing behavioral guardrails. The extension exhibits
+compounding failures where storage writes are systematically blocked not just
+from Tab ID being null, but from a **dual-block ownership validation system**
+that has no bypass mechanism, recovery path, or user-facing feedback. Quick Tab
+adoption occurs asynchronously with no completion barrier before subsequent
+operations, creating orphaned state. Handler initialization sequences lack
+explicit prerequisites, causing handlers to be used before fully initialized.
+Missing behavioral boundaries allow operations to proceed into invalid states
+(e.g., attempting to minimize while creation in progress). These issues manifest
+as silent failures, hanging operations, and state corruption that is difficult
+to diagnose without deep log analysis.
 
 ---
 
@@ -17,16 +32,27 @@ Beyond the nine primary issues (17-25) and foundational Issue #5, analysis revea
 
 ### Problem Summary
 
-Storage writes are blocked by **dual-block ownership validation check** that fails when `currentTabId is null`. This is NOT just a missing Tab ID issue - it's a deliberate safety check with no recovery path, no logging context explaining the check, and no operation to recover from failure. Logs show repeated pattern: "currentTabId is null, currentWritingTabId null, passedTabId null, resolvedTabId null" - indicating MULTIPLE potential sources of Tab ID were checked and all failed.
+Storage writes are blocked by **dual-block ownership validation check** that
+fails when `currentTabId is null`. This is NOT just a missing Tab ID issue -
+it's a deliberate safety check with no recovery path, no logging context
+explaining the check, and no operation to recover from failure. Logs show
+repeated pattern: "currentTabId is null, currentWritingTabId null, passedTabId
+null, resolvedTabId null" - indicating MULTIPLE potential sources of Tab ID were
+checked and all failed.
 
 ### Root Cause
 
 File: `src/storage/storage-utils.js`  
 Location: Ownership validation filter/dual-block check logic  
-Issue: Storage write lifecycle includes OWNERSHIP_FILTER phase that validates current writing Tab ID. If all ID sources (currentTabId, currentWritingTabId, passedTabId, resolvedTabId) are null, write is BLOCKED with no fallback or escalation path.
+Issue: Storage write lifecycle includes OWNERSHIP_FILTER phase that validates
+current writing Tab ID. If all ID sources (currentTabId, currentWritingTabId,
+passedTabId, resolvedTabId) are null, write is BLOCKED with no fallback or
+escalation path.
 
 Related patterns:
-- Transaction created with `generateTransactionId()` which logs "Transaction ID generated before tab ID initialized"
+
+- Transaction created with `generateTransactionId()` which logs "Transaction ID
+  generated before tab ID initialized"
 - Write queued in LIFECYCLE_QUEUED phase
 - Write moves to OWNERSHIP_FILTER phase and immediately fails
 - No mechanism to override safety check or queue for later retry
@@ -53,7 +79,8 @@ phase OWNERSHIPFILTER
 reason: Ownership validation failed
 ```
 
-Pattern shows: All 4 potential Tab ID sources exhausted, all returned null, write fails silently.
+Pattern shows: All 4 potential Tab ID sources exhausted, all returned null,
+write fails silently.
 
 ### Behavioral Failure Cascade
 
@@ -73,8 +100,10 @@ Pattern shows: All 4 potential Tab ID sources exhausted, all returned null, writ
 
 ### Missing Behavioral Guardrails
 
-- ❌ No check preventing `persistStateToStorage()` calls before Tab ID initialized
-- ❌ No UI barrier preventing Quick Tab operations before initialization complete
+- ❌ No check preventing `persistStateToStorage()` calls before Tab ID
+  initialized
+- ❌ No UI barrier preventing Quick Tab operations before initialization
+  complete
 - ❌ No operation queue holding requests until Tab ID available
 - ❌ No escalation from BLOCKED to RETRYABLE or FAILED_WAIT_FOR_RECOVERY
 - ❌ No user notification "System not ready for this operation, please wait"
@@ -90,10 +119,12 @@ Implement storage write robustness with recovery path:
    - Instead, queue operation for retry after Tab ID becomes available
    - Log: "Storage write deferred: Tab ID not initialized, queuing for retry"
 
-2. **Ownership validation bypass:** When Tab ID not available but operation critical:
+2. **Ownership validation bypass:** When Tab ID not available but operation
+   critical:
    - Use forceEmpty flag to bypass ownership filter for recovery operations
    - Only allow bypass for explicit recovery scenarios (not regular operations)
-   - Log: "Storage write forced without ownership validation (recovery scenario: {reason})"
+   - Log: "Storage write forced without ownership validation (recovery scenario:
+     {reason})"
 
 3. **Operation queuing:** If storage write fails due to Tab ID:
    - Add to retry queue with exponential backoff (100ms, 200ms, 400ms, 800ms)
@@ -111,20 +142,29 @@ Implement storage write robustness with recovery path:
 
 ### Problem Summary
 
-Adoption flow (marking Quick Tabs as owned by specific origin tab) happens asynchronously WHILE Tab ID initialization is still in progress. Quick Tabs created before adoption completes don't have valid originTabId. Later adoption messages don't find Quick Tabs because they were already serialized to storage without adoption info.
+Adoption flow (marking Quick Tabs as owned by specific origin tab) happens
+asynchronously WHILE Tab ID initialization is still in progress. Quick Tabs
+created before adoption completes don't have valid originTabId. Later adoption
+messages don't find Quick Tabs because they were already serialized to storage
+without adoption info.
 
 ### Root Cause
 
 File: `src/background/handlers/QuickTabHandler.js` and `src/content.js`  
 Location: CREATE_QUICK_TAB handling and adoption messaging  
-Issue: Content script creates Quick Tab and sends adoption message to background immediately, but adoption doesn't establish originTabId on Quick Tab. Background adoption tracking waits for currentTabId, but content script hasn't finished initializing Tab ID yet.
+Issue: Content script creates Quick Tab and sends adoption message to background
+immediately, but adoption doesn't establish originTabId on Quick Tab. Background
+adoption tracking waits for currentTabId, but content script hasn't finished
+initializing Tab ID yet.
 
 Related patterns:
+
 - CREATE_QUICK_TAB processed before Tab ID initialized
 - Quick Tab serialized to storage WITHOUT originTabId
 - Adoption message sent asynchronously
 - Background adoption handler checks currentTabId (which is uninitialized)
-- Adoption fails with "UPDATEORIGINTABIDFAILED ... reason snapshot not found" or "originTabId is NULL"
+- Adoption fails with "UPDATEORIGINTABIDFAILED ... reason snapshot not found" or
+  "originTabId is NULL"
 - Quick Tab persisted to storage in orphaned state (no ownership)
 
 ### Evidence from Logs
@@ -142,7 +182,8 @@ extractedOriginTabId null (object type)
 originContainerId firefox-default
 ```
 
-Pattern shows: Serialization proceeded with null originTabId, which violates adoption contract.
+Pattern shows: Serialization proceeded with null originTabId, which violates
+adoption contract.
 
 ### Failure Cascade
 
@@ -156,7 +197,8 @@ Pattern shows: Serialization proceeded with null originTabId, which violates ado
 8. Background attempts adoption: currentTabId still initializing
 9. Adoption fails: "currentTabId is null"
 10. Quick Tab now permanently in storage without ownership
-11. Hydration on page reload filters out Quick Tab (originTabId doesn't match currentTabId)
+11. Hydration on page reload filters out Quick Tab (originTabId doesn't match
+    currentTabId)
 12. User sees Quick Tab disappear after reload
 
 ### Missing Adoption Boundaries
@@ -170,7 +212,11 @@ Pattern shows: Serialization proceeded with null originTabId, which violates ado
 
 ### Interaction with Issue #5
 
-This is a **manifestation of Issue #5** through the adoption subsystem. Tab ID initialization not only blocks storage writes directly, but also blocks the adoption flow that's supposed to establish Quick Tab ownership. The two failures compound: storage writes fail AND adoption fails, leaving Quick Tabs in orphaned state.
+This is a **manifestation of Issue #5** through the adoption subsystem. Tab ID
+initialization not only blocks storage writes directly, but also blocks the
+adoption flow that's supposed to establish Quick Tab ownership. The two failures
+compound: storage writes fail AND adoption fails, leaving Quick Tabs in orphaned
+state.
 
 ### Fix Required
 
@@ -185,14 +231,16 @@ Implement adoption completion barrier:
 2. **Adoption completion tracking:** After adoption succeeds:
    - Mark adoption as complete in background state
    - Send confirmation message to content script
-   - Content script waits for confirmation before considering Quick Tab finalized
+   - Content script waits for confirmation before considering Quick Tab
+     finalized
    - Log: "Adoption complete: {quickTabId} → {originTabId}"
 
 3. **Orphaned Quick Tab detection:** Periodically scan storage:
    - Identify Quick Tabs with null originTabId
    - Attempt re-adoption if Tab ID now available
    - Or mark as orphaned and exclude from hydration
-   - Log: "Orphaned Quick Tab detected: {quickTabId} (originTabId: null), attempting rescue"
+   - Log: "Orphaned Quick Tab detected: {quickTabId} (originTabId: null),
+     attempting rescue"
 
 4. **Adoption state logging:**
    - "Adoption START: quickTabId={id}, currentTabId={tabId}"
@@ -206,15 +254,22 @@ Implement adoption completion barrier:
 
 ### Problem Summary
 
-Handlers are used (operations performed on them) before initialization completes. No explicit initialization sequence or prerequisites. Multiple handlers may be instantiated before previous handler fully initialized, causing state to be partially set up during concurrent operations.
+Handlers are used (operations performed on them) before initialization
+completes. No explicit initialization sequence or prerequisites. Multiple
+handlers may be instantiated before previous handler fully initialized, causing
+state to be partially set up during concurrent operations.
 
 ### Root Cause
 
-File: `src/features/quick-tabs/handlers/VisibilityHandler.js`, `UpdateHandler.js`, and related handlers  
+File: `src/features/quick-tabs/handlers/VisibilityHandler.js`,
+`UpdateHandler.js`, and related handlers  
 Location: Handler constructor and initialization logic  
-Issue: Constructor begins initialization but doesn't complete before handlers are used. Content script calls handler methods (e.g., `handleMinimize()`, `handleFocus()`) without verifying initialization complete.
+Issue: Constructor begins initialization but doesn't complete before handlers
+are used. Content script calls handler methods (e.g., `handleMinimize()`,
+`handleFocus()`) without verifying initialization complete.
 
 Related patterns:
+
 - Handler constructor registers listeners and sets up state
 - But doesn't validate all initialization steps completed
 - Content script DOM events trigger handler calls before setup complete
@@ -253,7 +308,8 @@ Related patterns:
 
 Implement explicit handler initialization lifecycle:
 
-1. **Initialization status tracking:** Add `_initializationState` to each handler:
+1. **Initialization status tracking:** Add `_initializationState` to each
+   handler:
    - UNINITIALIZED: just created, setup starting
    - INITIALIZING: setup in progress
    - INITIALIZED: ready for use
@@ -285,16 +341,23 @@ Implement explicit handler initialization lifecycle:
 
 ### Problem Summary
 
-Operations are allowed to proceed when system is in invalid states. For example, user can attempt to minimize a Quick Tab while it's still being created, or restore while minimize is in progress. No state machine prevents operations on Quick Tabs that aren't in appropriate state.
+Operations are allowed to proceed when system is in invalid states. For example,
+user can attempt to minimize a Quick Tab while it's still being created, or
+restore while minimize is in progress. No state machine prevents operations on
+Quick Tabs that aren't in appropriate state.
 
 ### Root Cause
 
-File: `src/features/quick-tabs/handlers/VisibilityHandler.js`, `src/content.js`  
+File: `src/features/quick-tabs/handlers/VisibilityHandler.js`,
+`src/content.js`  
 Location: Operation handlers for minimize, restore, drag, resize  
-Issue: No state machine tracking Quick Tab lifecycle state. Operations don't check if Quick Tab is in valid state before proceeding.
+Issue: No state machine tracking Quick Tab lifecycle state. Operations don't
+check if Quick Tab is in valid state before proceeding.
 
 Related patterns:
-- Quick Tab has no `state` property (CREATING, CREATED, MINIMIZING, MINIMIZED, RESTORING, RESTORED, CLOSING, CLOSED)
+
+- Quick Tab has no `state` property (CREATING, CREATED, MINIMIZING, MINIMIZED,
+  RESTORING, RESTORED, CLOSING, CLOSED)
 - Minimize can be called while create still in progress
 - Restore can be called on Quick Tab that's being minimized
 - Drag can be called on Quick Tab that's being destroyed
@@ -303,6 +366,7 @@ Related patterns:
 ### Behavioral Failure Examples
 
 **Example 1: Minimize during creation**
+
 1. User presses Q to create Quick Tab
 2. DOM element being created, event listeners registering
 3. User presses minimize button (appears to work)
@@ -310,6 +374,7 @@ Related patterns:
 5. State corruption: DOM element in intermediate state
 
 **Example 2: Restore while minimizing**
+
 1. User minimizes Quick Tab (operation queued)
 2. Before minimize completes, user clicks restore
 3. Snapshot creation in progress
@@ -317,6 +382,7 @@ Related patterns:
 5. Restore fails, Quick Tab stuck
 
 **Example 3: Close while dragging**
+
 1. User dragging Quick Tab (position updating)
 2. Before drag completes, user clicks close
 3. DOM element removed mid-drag
@@ -364,13 +430,15 @@ Implement operation state machine with guards:
 4. **Operation timeout:** If operation exceeds maximum time:
    - Force release lock
    - Mark Quick Tab as ERROR
-   - Log: "Operation timeout: {quickTabId} (operation: minimize, duration: 5000ms)"
+   - Log: "Operation timeout: {quickTabId} (operation: minimize, duration:
+     5000ms)"
    - Attempt recovery
 
 5. **Logging operation state transitions:**
    - "Quick Tab STATE_CHANGE: {quickTabId} CREATED → MINIMIZING"
    - "Quick Tab STATE_CHANGE: {quickTabId} MINIMIZING → MINIMIZED"
-   - "Quick Tab INVALID_STATE_TRANSITION: {quickTabId} MINIMIZED → MINIMIZING (rejected)"
+   - "Quick Tab INVALID_STATE_TRANSITION: {quickTabId} MINIMIZED → MINIMIZING
+     (rejected)"
    - "Quick Tab ERROR_STATE: {quickTabId} (reason: {reason})"
 
 ---
@@ -379,17 +447,25 @@ Implement operation state machine with guards:
 
 ### Problem Summary
 
-Messages sent from content script to background have no correlation IDs. If background restarts or message is lost, there's no way to correlate which response (if any) corresponds to which request. Background processes batches of messages but there's no way to trace individual message through the system.
+Messages sent from content script to background have no correlation IDs. If
+background restarts or message is lost, there's no way to correlate which
+response (if any) corresponds to which request. Background processes batches of
+messages but there's no way to trace individual message through the system.
 
 ### Root Cause
 
 File: `src/background/MessageRouter.js` and `src/content.js`  
 Location: Message sending and handler registration  
-Issue: Each message sent via `browser.runtime.sendMessage()` has no unique ID. Responses are matched by handler type only, not by message ID. If background receives 10 similar messages in quick succession, responses may be assigned to wrong requesters.
+Issue: Each message sent via `browser.runtime.sendMessage()` has no unique ID.
+Responses are matched by handler type only, not by message ID. If background
+receives 10 similar messages in quick succession, responses may be assigned to
+wrong requesters.
 
 Related patterns:
+
 - `sendMessage({type: 'UPDATE_QUICK_TAB_POSITION', ...})` - no messageId
-- Handler registered by type only: `messageRouter.register('UPDATE_QUICK_TAB_POSITION', handler)`
+- Handler registered by type only:
+  `messageRouter.register('UPDATE_QUICK_TAB_POSITION', handler)`
 - Multiple tabs can send same message type simultaneously
 - No way to correlate which response is for which request
 - No message sequence tracking
@@ -397,13 +473,15 @@ Related patterns:
 ### Evidence of Missing Correlation
 
 Logs show repeated operations without message IDs:
+
 ```
 LOG UpdateHandler handlePositionChangeEnd called id qt-unknown-4-tbxk
 LOG UpdateHandler Updated tab position in Map id qt-unknown-4-tbxk
 LOG UpdateHandler Scheduling storage persist after position change
 ```
 
-Pattern repeats many times - impossible to trace which message triggered which update.
+Pattern repeats many times - impossible to trace which message triggered which
+update.
 
 ### Behavioral Failure from Missing Correlation
 
@@ -431,7 +509,8 @@ Implement message correlation and request tracking:
 
 1. **Message envelope with correlation ID:**
    - Add fields to every message: messageId (UUID), timestamp, retryCount
-   - Example: {type: 'UPDATE_POSITION', messageId: 'msg-1234-abcd', timestamp, ...}
+   - Example: {type: 'UPDATE_POSITION', messageId: 'msg-1234-abcd', timestamp,
+     ...}
 
 2. **Request tracking map:** In content script:
    - Map messageId → {request, timestamp, timeout, resolve, reject}
@@ -460,15 +539,21 @@ Implement message correlation and request tracking:
 
 ### Problem Summary
 
-No validation that Quick Tabs remain isolated by container/domain. If Quick Tab is accessed from different container, no check prevents cross-container contamination. No validation that originTabId matches current tab's container context.
+No validation that Quick Tabs remain isolated by container/domain. If Quick Tab
+is accessed from different container, no check prevents cross-container
+contamination. No validation that originTabId matches current tab's container
+context.
 
 ### Root Cause
 
 File: `src/content.js` and hydration logic  
 Location: Quick Tab hydration and filtering  
-Issue: Hydration filters by originTabId but doesn't validate container/domain context. If same domain accessed in different container, Quick Tabs from other container could appear.
+Issue: Hydration filters by originTabId but doesn't validate container/domain
+context. If same domain accessed in different container, Quick Tabs from other
+container could appear.
 
 Related patterns:
+
 - originTabId comparison: `if (quickTab.originTabId === currentTabId)`
 - But currentTabId might be same numeric value for different containers
 - No comparison of originContainerId vs currentContainerId
@@ -481,7 +566,8 @@ LOG StorageUtils serializeTabForStorage Serialization completed
 originContainerId firefox-default
 ```
 
-Shows container ID being tracked, but no validation code preventing cross-container leaks.
+Shows container ID being tracked, but no validation code preventing
+cross-container leaks.
 
 ### Behavioral Failure Example
 
@@ -514,14 +600,16 @@ Implement container/domain isolation validation:
 2. **Validate container on hydration:** When loading stored Quick Tabs:
    - Check: currentContainerId === storedOriginContainerId
    - Only hydrate if containers match
-   - Log rejection: "Quick Tab filtered: container mismatch (stored={stored}, current={current})"
+   - Log rejection: "Quick Tab filtered: container mismatch (stored={stored},
+     current={current})"
 
 3. **Validate container on adoption:** When adopting Quick Tab:
    - Background verifies currentContainerId matches stored originContainerId
    - Reject if mismatch
 
 4. **Logging container isolation checks:**
-   - "Container VALIDATION: {quickTabId} stored={storedContainer}, current={currentContainer}"
+   - "Container VALIDATION: {quickTabId} stored={storedContainer},
+     current={currentContainer}"
    - "Container MATCH: {quickTabId} (allowing hydration)"
    - "Container MISMATCH: {quickTabId} (filtering out, different container)"
 
@@ -531,15 +619,20 @@ Implement container/domain isolation validation:
 
 ### Problem Summary
 
-Error messages logged by handlers don't provide context about what operation was attempted, what state it was in, or what recovery options exist. Logs show only "Storage persist failed" without explaining why, what was lost, or whether data can be recovered.
+Error messages logged by handlers don't provide context about what operation was
+attempted, what state it was in, or what recovery options exist. Logs show only
+"Storage persist failed" without explaining why, what was lost, or whether data
+can be recovered.
 
 ### Root Cause
 
 File: Various handlers and storage utils  
 Location: Error logging statements  
-Issue: Catch blocks log generic error messages without context. No stack trace, no operation context, no recovery information.
+Issue: Catch blocks log generic error messages without context. No stack trace,
+no operation context, no recovery information.
 
 Related patterns:
+
 - `catch (err) { console.error('Storage persist failed:', err.message); }`
 - Error message truncated, no context about what was being persisted
 - No logging of error.stack for debugging
@@ -554,6 +647,7 @@ ERROR VisibilityHandler Storage persist failed operation timed out, storage API 
 ```
 
 Messages show failure but no context about:
+
 - Which Quick Tabs were affected
 - Whether data was partially written
 - When operation will be retried
@@ -574,7 +668,8 @@ Messages show failure but no context about:
 Implement contextual error logging:
 
 1. **Error context wrapper:** Before operations:
-   - Log: "OPERATION_START: {operation} (context: {quickTabIds}, timestamp: {ts})"
+   - Log: "OPERATION_START: {operation} (context: {quickTabIds}, timestamp:
+     {ts})"
    - Store context in try-catch scope
 
 2. **Detailed error logging on failure:**
@@ -589,9 +684,11 @@ Implement contextual error logging:
    - Unknown errors: log as UNKNOWN_RECOVERY_UNKNOWN
 
 4. **Contextual error messages:**
-   - "Storage persist failed: {reason} (operation: persist {n} tabs, affectedIds: {list}, recovery: will retry in 500ms)"
+   - "Storage persist failed: {reason} (operation: persist {n} tabs,
+     affectedIds: {list}, recovery: will retry in 500ms)"
    - "Error details: {error.message} (stack: {error.stack})"
-   - "System state at failure: Tab ID initialized={initialized}, quota usage={usage}%, handlers={count}"
+   - "System state at failure: Tab ID initialized={initialized}, quota
+     usage={usage}%, handlers={count}"
 
 ---
 
@@ -599,13 +696,17 @@ Implement contextual error logging:
 
 ### Problem Summary
 
-No document or code comment specifying the required order of initialization steps. Content scripts don't know when Tab ID will be available relative to message listening. Background doesn't know when to expect adoption messages. No way to diagnose initialization ordering problems.
+No document or code comment specifying the required order of initialization
+steps. Content scripts don't know when Tab ID will be available relative to
+message listening. Background doesn't know when to expect adoption messages. No
+way to diagnose initialization ordering problems.
 
 ### Root Cause
 
 File: All initialization-related code  
 Location: Scattered across content.js, background.js, handlers  
-Issue: No centralized initialization specification. Each component initializes independently without coordination or ordering documentation.
+Issue: No centralized initialization specification. Each component initializes
+independently without coordination or ordering documentation.
 
 ### Initialization Ordering Unknown
 
@@ -653,7 +754,8 @@ Document initialization ordering and add validation:
 
 3. **Add initialization prerequisite checks:** Before each operation:
    - Verify all preceding initialization phases completed
-   - Log if missing: "Operation attempted before initialization complete (current phase: {phase})"
+   - Log if missing: "Operation attempted before initialization complete
+     (current phase: {phase})"
 
 ---
 
@@ -661,15 +763,20 @@ Document initialization ordering and add validation:
 
 ### Problem Summary
 
-Hydration (loading stored Quick Tabs on page reload) happens asynchronously without coordination with other initialization steps. Quick Tabs loaded from storage may appear before handlers initialized, causing operations to fail.
+Hydration (loading stored Quick Tabs on page reload) happens asynchronously
+without coordination with other initialization steps. Quick Tabs loaded from
+storage may appear before handlers initialized, causing operations to fail.
 
 ### Root Cause
 
 File: `src/content.js`  
 Location: Hydration logic and handler initialization  
-Issue: Hydration starts as soon as message listener ready, but doesn't wait for handler initialization. Quick Tabs appear in DOM before VisibilityHandler fully initialized.
+Issue: Hydration starts as soon as message listener ready, but doesn't wait for
+handler initialization. Quick Tabs appear in DOM before VisibilityHandler fully
+initialized.
 
 Related patterns:
+
 - Hydration triggered by page load or background message
 - Handler initialization happens in parallel
 - No barrier ensuring handler ready before hydration proceeds
@@ -728,15 +835,19 @@ Implement hydration sequencing with barriers:
 
 ### Problem Summary
 
-Resource cleanup (listener removal, timer clearing, handler destruction) happens only in explicit destroy() methods that may never be called. No automatic cleanup triggers if explicit cleanup missed.
+Resource cleanup (listener removal, timer clearing, handler destruction) happens
+only in explicit destroy() methods that may never be called. No automatic
+cleanup triggers if explicit cleanup missed.
 
 ### Root Cause
 
 File: `src/features/quick-tabs/handlers/`  
 Location: Handler lifecycle methods  
-Issue: Cleanup depends on explicit destroy() call. If handler instance dereferenced without calling destroy(), cleanup never happens.
+Issue: Cleanup depends on explicit destroy() call. If handler instance
+dereferenced without calling destroy(), cleanup never happens.
 
 Related patterns:
+
 - No automatic cleanup on handler garbage collection
 - No cleanup on page unload/beforeunload
 - No cleanup on port disconnect
@@ -795,40 +906,51 @@ Implement automatic cleanup triggers:
 
 ## Summary of Additional Issues
 
-| Issue Category | Count | Severity | Impact |
-|---|---|---|---|
-| Storage write blocking system | 1 | **CRITICAL** | Silent persistence failures |
-| Adoption flow interaction | 1 | **CRITICAL** | Orphaned Quick Tabs without ownership |
-| Handler initialization sequence | 1 | **HIGH** | Partially initialized state used |
-| Operation state machine violations | 1 | **HIGH** | State corruption from concurrent ops |
-| Message correlation missing | 1 | **HIGH** | Cross-tab message mixups |
-| Container isolation missing | 1 | **HIGH** | Container boundary violations |
-| Error context missing | 1 | **MEDIUM** | Undiagnosable failures |
-| Initialization ordering undocumented | 1 | **MEDIUM** | Hard to fix sequencing bugs |
-| Hydration barrier missing | 1 | **HIGH** | Operations fail on partially loaded state |
-| Resource cleanup triggers missing | 1 | **HIGH** | Memory leak from missed cleanup |
+| Issue Category                       | Count | Severity     | Impact                                    |
+| ------------------------------------ | ----- | ------------ | ----------------------------------------- |
+| Storage write blocking system        | 1     | **CRITICAL** | Silent persistence failures               |
+| Adoption flow interaction            | 1     | **CRITICAL** | Orphaned Quick Tabs without ownership     |
+| Handler initialization sequence      | 1     | **HIGH**     | Partially initialized state used          |
+| Operation state machine violations   | 1     | **HIGH**     | State corruption from concurrent ops      |
+| Message correlation missing          | 1     | **HIGH**     | Cross-tab message mixups                  |
+| Container isolation missing          | 1     | **HIGH**     | Container boundary violations             |
+| Error context missing                | 1     | **MEDIUM**   | Undiagnosable failures                    |
+| Initialization ordering undocumented | 1     | **MEDIUM**   | Hard to fix sequencing bugs               |
+| Hydration barrier missing            | 1     | **HIGH**     | Operations fail on partially loaded state |
+| Resource cleanup triggers missing    | 1     | **HIGH**     | Memory leak from missed cleanup           |
 
 ---
 
 ## Cross-Issue Interaction Patterns
 
 ### Double Failure Mode: Storage Blocking + Adoption Failure
-Storage writes blocked → adoption never completes → Quick Tabs orphaned → hydration filters them out → user sees Quick Tabs disappear after reload.
+
+Storage writes blocked → adoption never completes → Quick Tabs orphaned →
+hydration filters them out → user sees Quick Tabs disappear after reload.
 
 ### Triple Failure Mode: Handler Init + Op State + Message Correlation
-Handler not initialized → operation allowed anyway → operation partially completes → state change sent to background → wrong handler processes response → state corruption.
+
+Handler not initialized → operation allowed anyway → operation partially
+completes → state change sent to background → wrong handler processes response →
+state corruption.
 
 ### Memory Leak Cascade: No Cleanup + No Periodic Pass + Resource Accumulation
-Listeners not cleaned → timers not cleared → handlers not destroyed → resources accumulate → periodic pass doesn't run → memory exhausted.
+
+Listeners not cleaned → timers not cleared → handlers not destroyed → resources
+accumulate → periodic pass doesn't run → memory exhausted.
 
 ### Initialization Order Sensitivity: Container + Tab ID + Port + Adoption
-If initialization steps occur in wrong order, cascading failures occur. For example, if adoption message sent before Tab ID available, adoption fails silently, leaving Quick Tab orphaned permanently.
+
+If initialization steps occur in wrong order, cascading failures occur. For
+example, if adoption message sent before Tab ID available, adoption fails
+silently, leaving Quick Tab orphaned permanently.
 
 ---
 
 ## References
 
 **This report documents:**
+
 - Secondary systemic issues beyond primary Issues 17-25
 - Behavioral failures from missing guardrails and state machines
 - Interaction patterns where multiple issues compound
@@ -836,6 +958,7 @@ If initialization steps occur in wrong order, cascading failures occur. For exam
 - Documentation gaps making issues hard to diagnose
 
 **Related to:**
+
 - Primary diagnostic report (Issues 17-25)
 - Issue #5 (Tab ID initialization) - foundational prerequisite
 - Firefox WebExtension API limitations

@@ -204,12 +204,12 @@ export class QuickTabWindow {
     // instead of using a broad time-based window that suppresses ALL callbacks
     this.isMinimizing = false;
     this.isRestoring = false;
-    
+
     // v1.6.4.16 - FIX Issue #24: State synchronization tracking
     // Track last confirmed state for bidirectional sync
     this._lastSyncedState = null;
     this._pendingStateSync = false;
-    
+
     // v1.6.4.16 - FIX Issue #28: Sidebar lifecycle tracking
     // Track origin tab ID for lifecycle monitoring
     this.originTabId = null;
@@ -228,7 +228,7 @@ export class QuickTabWindow {
       originTabId: tabId
     });
   }
-  
+
   /**
    * Acknowledge state sync from content script
    * v1.6.4.16 - FIX Issue #24: State synchronization acknowledgment
@@ -237,7 +237,7 @@ export class QuickTabWindow {
   acknowledgeStateSync(state) {
     this._lastSyncedState = state;
     this._pendingStateSync = false;
-    
+
     console.log('[STATE_SYNC] State acknowledged:', {
       quickTabId: this.id,
       minimized: state?.minimized,
@@ -245,7 +245,7 @@ export class QuickTabWindow {
       timestamp: Date.now()
     });
   }
-  
+
   /**
    * Mark state sync as pending
    * v1.6.4.16 - FIX Issue #24: Track pending state sync
@@ -257,7 +257,7 @@ export class QuickTabWindow {
       timestamp: Date.now()
     });
   }
-  
+
   /**
    * Check if state sync is pending
    * v1.6.4.16 - FIX Issue #24: Check pending state
@@ -907,7 +907,10 @@ export class QuickTabWindow {
       console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback:', this.id);
       element.remove();
     } else {
-      console.log('[QuickTabWindow][minimize] No container or fallback DOM element found:', this.id);
+      console.log(
+        '[QuickTabWindow][minimize] No container or fallback DOM element found:',
+        this.id
+      );
     }
   }
 
@@ -944,7 +947,9 @@ export class QuickTabWindow {
     this.minimized = true;
 
     console.log('[QuickTabWindow][minimize] ENTRY:', {
-      id: this.id, url: this.url, title: this.title,
+      id: this.id,
+      url: this.url,
+      title: this.title,
       position: { left: this.left, top: this.top },
       size: { width: this.width, height: this.height }
     });
@@ -965,14 +970,17 @@ export class QuickTabWindow {
     this._clearDOMReferences();
 
     console.log('[QuickTabWindow][minimize] Container cleared:', {
-      id: this.id, hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
+      id: this.id,
+      hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
     });
 
     // Clear operation flag
     this.isMinimizing = false;
 
     console.log('[QuickTabWindow][minimize] EXIT:', {
-      id: this.id, minimized: this.minimized, rendered: this.rendered
+      id: this.id,
+      minimized: this.minimized,
+      rendered: this.rendered
     });
 
     this.onMinimize(this.id);
@@ -1551,7 +1559,7 @@ export class QuickTabWindow {
 
     // v1.6.3.2 - FIX Issue #5: Set destroyed flag early to prevent new events
     this.destroyed = true;
-    
+
     // v1.6.4.16 - FIX Area C: Track cleaned up listeners
     let cleanedListenerCount = 0;
 
@@ -1583,7 +1591,7 @@ export class QuickTabWindow {
     // v1.6.3.2 - FIX Issue #5: Clear button references
     this.soloButton = null;
     this.muteButton = null;
-    
+
     // v1.6.4.16 - FIX Issue #24/#28: Clear state sync tracking
     this._lastSyncedState = null;
     this._pendingStateSync = false;
@@ -1597,7 +1605,7 @@ export class QuickTabWindow {
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');
     }
-    
+
     // v1.6.4.16 - FIX Area C: Log listener cleanup summary
     console.log('[LISTENER_CLEANUP] QuickTabWindow destroy complete:', {
       quickTabId: this.id,

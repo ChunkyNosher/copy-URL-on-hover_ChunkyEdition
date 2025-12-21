@@ -212,9 +212,7 @@ describe('SessionStorageAdapter', () => {
       // Should save with only qt-2
       expect(browser.storage.session.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
-          tabs: expect.arrayContaining([
-            expect.objectContaining({ id: 'qt-2' })
-          ])
+          tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-2' })])
         })
       });
 
@@ -257,9 +255,7 @@ describe('SessionStorageAdapter', () => {
       // Should save in unified format
       expect(browser.storage.session.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
-          tabs: expect.arrayContaining([
-            expect.objectContaining({ id: 'qt-2' })
-          ])
+          tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-2' })])
         })
       });
     });

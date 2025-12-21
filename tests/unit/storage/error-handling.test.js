@@ -78,9 +78,7 @@ describe('Storage Error Handling', () => {
       });
 
       // v1.6.3.10-v7 - Updated to unified format (no container parameter)
-      await expect(sessionAdapter.save([quickTab])).rejects.toThrow(
-        'QUOTA_BYTES quota exceeded'
-      );
+      await expect(sessionAdapter.save([quickTab])).rejects.toThrow('QUOTA_BYTES quota exceeded');
     });
 
     it('should handle DOM exception for quota in SyncStorageAdapter', async () => {
@@ -569,9 +567,7 @@ describe('Storage Error Handling', () => {
 
       // Should return migrated data
       expect(result).toBeDefined();
-      expect(result.tabs).toContainEqual(
-        expect.objectContaining({ id: 'qt-default' })
-      );
+      expect(result.tabs).toContainEqual(expect.objectContaining({ id: 'qt-default' }));
 
       // Should have saved migrated format
       expect(browser.storage.session.set).toHaveBeenCalled();

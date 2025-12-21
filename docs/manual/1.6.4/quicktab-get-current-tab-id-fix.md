@@ -2,19 +2,25 @@
 
 ## Executive Summary
 
-**Issue:** `GET_CURRENT_TAB_ID` message handler returns `null`/error during early content script initialization.
+**Issue:** `GET_CURRENT_TAB_ID` message handler returns `null`/error during
+early content script initialization.
 
-**Root Cause:** `handleGetCurrentTabId()` in `QuickTabHandler.js` is missing the initialization guard that every other message handler uses.
+**Root Cause:** `handleGetCurrentTabId()` in `QuickTabHandler.js` is missing the
+initialization guard that every other message handler uses.
 
-**Fix Required:** Add `await this._ensureInitialized()` check before returning response.
+**Fix Required:** Add `await this._ensureInitialized()` check before returning
+response.
 
-**Severity:** Critical - Blocks tab ID detection for Manager, sidebar, and cross-tab coordination
+**Severity:** Critical - Blocks tab ID detection for Manager, sidebar, and
+cross-tab coordination
 
 ---
 
 ## Problem Statement
 
-Content scripts fail to get current tab ID when they initialize early in the browser startup sequence. This prevents:
+Content scripts fail to get current tab ID when they initialize early in the
+browser startup sequence. This prevents:
+
 - Manager from detecting which tab to apply Quick Tab operations to
 - Sidebar from identifying current tab for state restoration
 - Cross-tab synchronization from knowing which tab owns a Quick Tab
@@ -92,6 +98,7 @@ async handleClose(message, _sender) {
 ```
 
 **But handleGetCurrentTabId() does NOT:**
+
 - ❌ No `await this._ensureInitialized()`
 - ❌ No `await this.initializeFn()`
 - ❌ No `if (!this.isInitialized)` check
@@ -103,11 +110,13 @@ async handleClose(message, _sender) {
 
 ### Why sender.tab May Be Unavailable
 
-Firefox populates `sender.tab` after the content script is fully loaded. During early startup:
+Firefox populates `sender.tab` after the content script is fully loaded. During
+early startup:
 
 1. Browser tab created → `tabId=12`
 2. Content script starts injecting → `sender.tab` may not be populated yet
-3. Content script sends message immediately → Firefox still setting up tab context
+3. Content script sends message immediately → Firefox still setting up tab
+   context
 4. Message routed to handler before sender context ready
 
 ### Why Initialization Guard Is Critical
@@ -132,10 +141,13 @@ The handler must wait for background script initialization because:
 ### What Needs to Change
 
 The handler needs to:
-1. **Add initialization check FIRST** - Use existing `_ensureInitialized()` method
+
+1. **Add initialization check FIRST** - Use existing `_ensureInitialized()`
+   method
 2. **Make it async** - Required for await
 3. **Keep existing validation** - Maintain sender.tab check
-4. **Return consistent format** - Match error response format from other handlers
+4. **Return consistent format** - Match error response format from other
+   handlers
 
 ### Implementation Pattern to Follow
 
@@ -217,6 +229,7 @@ async handleGetCurrentTabId(_message, sender) {
 ## Testing the Fix
 
 After implementation, content scripts initializing early should:
+
 1. Send `GET_CURRENT_TAB_ID` message
 2. Handler waits for background initialization
 3. Once ready, handler returns correct tabId
@@ -227,13 +240,16 @@ After implementation, content scripts initializing early should:
 ## Files Modified
 
 **Single File:**
-- `src/background/handlers/QuickTabHandler.js` - Method `handleGetCurrentTabId()` only
+
+- `src/background/handlers/QuickTabHandler.js` - Method
+  `handleGetCurrentTabId()` only
 
 ---
 
 ## Priority
 
-**Critical:** This blocks core functionality - tab ID detection for all Quick Tab operations
+**Critical:** This blocks core functionality - tab ID detection for all Quick
+Tab operations
 
 ## Complexity
 
@@ -241,7 +257,8 @@ After implementation, content scripts initializing early should:
 
 ## Risk Level
 
-**Low:** 
+**Low:**
+
 - Isolated to one method
 - Follows proven patterns from other handlers
 - No changes to message routing or API contracts

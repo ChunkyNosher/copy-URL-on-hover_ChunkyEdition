@@ -312,7 +312,9 @@ export function createStorageChangeHandler(deps) {
   let lastRenderedStateHash = 0;
 
   const getLastHash = () => lastRenderedStateHash;
-  const setLastHash = (hash) => { lastRenderedStateHash = hash; };
+  const setLastHash = hash => {
+    lastRenderedStateHash = hash;
+  };
 
   /** Schedule debounced storage update */
   function scheduleStorageUpdate() {

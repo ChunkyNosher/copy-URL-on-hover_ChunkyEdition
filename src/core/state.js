@@ -21,7 +21,7 @@ export class StateManager {
       isPanelOpen: false
     };
     this.listeners = new Map();
-    
+
     // v1.6.3.10-v9 - FIX Issue B: Track subscription count for diagnostics
     this._subscriptionCount = 0;
     this._maxSubscriptions = 100; // Warn if exceeded
@@ -90,11 +90,11 @@ export class StateManager {
       });
       return () => {}; // Return no-op unsubscribe
     }
-    
+
     this._subscriptionCount++;
     const id = Symbol('listener');
     const subscriptionKey = typeof keyOrCallback === 'function' ? '*' : keyOrCallback;
-    
+
     // v1.6.3.10-v10 - FIX Gap 7.1: Log subscription creation
     console.log('[Subscription] CREATED:', {
       subscriptionId: id.toString(),
@@ -102,10 +102,10 @@ export class StateManager {
       totalActive: this._subscriptionCount,
       timestamp: new Date().toISOString()
     });
-    
+
     // v1.6.3.10-v9 - FIX Issue B: Warn on potential memory leak (throttled)
     this._checkSubscriptionLeakThrottled();
-    
+
     if (typeof keyOrCallback === 'function') {
       // Subscribe to all state changes
       this.listeners.set(id, { key: '*', callback: keyOrCallback });
@@ -116,7 +116,7 @@ export class StateManager {
       return () => this._unsubscribe(id, keyOrCallback);
     }
   }
-  
+
   /**
    * Check for subscription leak and warn (throttled)
    * v1.6.3.10-v9 - FIX Issue B: Throttle warning to reduce performance impact
@@ -125,10 +125,10 @@ export class StateManager {
    */
   _checkSubscriptionLeakThrottled() {
     if (this._subscriptionCount <= this._maxSubscriptions) return;
-    
+
     const now = Date.now();
     if (now - this._lastWarningTime < SUBSCRIPTION_WARNING_THROTTLE_MS) return;
-    
+
     this._lastWarningTime = now;
     // v1.6.3.10-v10 - FIX Gap 7.2: Memory leak detection
     console.warn('[Subscription] LEAK_WARNING:', {
@@ -139,7 +139,7 @@ export class StateManager {
       timestamp: new Date().toISOString()
     });
   }
-  
+
   /**
    * Internal unsubscribe helper
    * v1.6.3.10-v9 - FIX Issue B: Track unsubscriptions
@@ -184,7 +184,7 @@ export class StateManager {
         }
       }
     });
-    
+
     // v1.6.3.10-v10 - FIX Gap 7.1: Log subscription firing summary (only if listeners fired)
     if (firedCount > 0) {
       console.log('[Subscription] FIRED:', {
@@ -213,30 +213,33 @@ export class StateManager {
     };
     this.notifyListeners('*', this.state, {});
   }
-  
+
   /**
    * Dispose of all subscriptions and cleanup
    * v1.6.3.10-v9 - FIX Issue B: Enforce subscription cleanup on teardown
    */
   dispose() {
     const subscriptionCount = this.listeners.size;
-    
+
     // v1.6.3.10-v9 - FIX Issue B: Log teardown warning if subscriptions weren't cleaned up
     if (subscriptionCount > 0) {
-      console.warn('[State] v1.6.3.10-v9 TEARDOWN_WARNING: Disposing StateManager with active subscriptions:', {
-        activeSubscriptions: subscriptionCount,
-        warning: 'Subscriptions should be cleaned up before disposal'
-      });
+      console.warn(
+        '[State] v1.6.3.10-v9 TEARDOWN_WARNING: Disposing StateManager with active subscriptions:',
+        {
+          activeSubscriptions: subscriptionCount,
+          warning: 'Subscriptions should be cleaned up before disposal'
+        }
+      );
     }
-    
+
     // Clear all listeners
     this.listeners.clear();
     this._subscriptionCount = 0;
     this._disposed = true;
-    
+
     console.log('[State] v1.6.3.10-v9 DISPOSED: StateManager cleaned up');
   }
-  
+
   /**
    * Get subscription statistics for diagnostics
    * v1.6.3.10-v9 - FIX Issue B: Diagnostic helper
@@ -250,7 +253,7 @@ export class StateManager {
       subscriptionsByKey: this._countSubscriptionsByKey()
     };
   }
-  
+
   /**
    * Count subscriptions by key
    * v1.6.3.10-v9 - FIX Issue B: Diagnostic helper

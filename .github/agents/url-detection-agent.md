@@ -60,16 +60,18 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.10-v10 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.11-v2 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.10-v10 Features (NEW) - Issues 1-28 & Areas A-F:**
+**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
 
-- **Tab ID Acquisition** - Exponential backoff retry (200ms, 500ms, 1500ms, 5000ms)
+- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
+- **Tab ID Timeout Extended** - 120s total (from 60s)
+- **Hydration Timeout** - 10s (from 3s)
 - **Navigation Detection** - `[NAVIGATION]` logging prefix for domain changes
 - **Hydration Domain Check** - `[HYDRATION_DOMAIN_CHECK]` logging prefix
 
-**v1.6.3.10-v9 & Earlier (Consolidated):** Identity gating, storage quota
-monitoring, code health 9.0+, response helper, dead code removal
+**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, identity gating,
+storage quota monitoring, code health 9.0+, response helper, dead code removal
 
 **URL Detection Features:**
 

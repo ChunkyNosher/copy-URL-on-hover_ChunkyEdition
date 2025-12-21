@@ -2,17 +2,26 @@
 
 **Extension Version:** v1.6.3.10+  
 **Date:** December 20, 2025  
-**Report Type:** Extended Analysis - Tab Cleanup, Storage Architecture, State Coherency  
+**Report Type:** Extended Analysis - Tab Cleanup, Storage Architecture, State
+Coherency
 
 ---
 
 ## Executive Summary
 
-This report documents six critical issues and six problematic areas discovered during extended codebase analysis that were not covered in the primary Issues 19-22 report. These issues address foundational gaps in tab lifecycle management, storage adapter consistency, error handling, and sidebar state synchronization.
+This report documents six critical issues and six problematic areas discovered
+during extended codebase analysis that were not covered in the primary Issues
+19-22 report. These issues address foundational gaps in tab lifecycle
+management, storage adapter consistency, error handling, and sidebar state
+synchronization.
 
-The issues represent missing cleanup handlers, architectural ambiguities in storage layer design, pervasive lack of error recovery, and asynchronous state drift between sidebar and content scripts.
+The issues represent missing cleanup handlers, architectural ambiguities in
+storage layer design, pervasive lack of error recovery, and asynchronous state
+drift between sidebar and content scripts.
 
-**Impact:** Users experience permanent data accumulation (orphaned Quick Tabs), random behavioral failures depending on storage backend, UI freezes during message delays, and corrupted snapshot rendering.
+**Impact:** Users experience permanent data accumulation (orphaned Quick Tabs),
+random behavioral failures depending on storage backend, UI freezes during
+message delays, and corrupted snapshot rendering.
 
 ---
 
@@ -20,21 +29,30 @@ The issues represent missing cleanup handlers, architectural ambiguities in stor
 
 **Severity:** HIGH  
 **Component:** TabLifecycleHandler, browser.tabs.onRemoved event listener  
-**Impact Scope:** Storage cleanup lifecycle, orphaned data accumulation, stale originTabId references  
+**Impact Scope:** Storage cleanup lifecycle, orphaned data accumulation, stale
+originTabId references
 
 ### Problem Description
 
-Firefox fires `browser.tabs.onRemoved` event when user closes a tab. This is the canonical mechanism for detecting tab closure and triggering cleanup of associated data.
+Firefox fires `browser.tabs.onRemoved` event when user closes a tab. This is the
+canonical mechanism for detecting tab closure and triggering cleanup of
+associated data.
 
-Comprehensive code search across the repository reveals that **TabLifecycleHandler exists but does not register an onRemoved event listener**. This means tab closure events are never detected, and Quick Tab data associated with closed tabs is never cleaned up.
+Comprehensive code search across the repository reveals that
+**TabLifecycleHandler exists but does not register an onRemoved event
+listener**. This means tab closure events are never detected, and Quick Tab data
+associated with closed tabs is never cleaned up.
 
 ### Why This Causes Data Loss
 
 When tab closes without cleanup:
 
-1. Quick Tab snapshots remain in storage with `originTabId` pointing to now-invalid tab
-2. On future page loads in different tab, hydration attempts to restore from closed tab
-3. Restore query filters by `originTabId === currentTabId AND containerContext === currentContainerContext`
+1. Quick Tab snapshots remain in storage with `originTabId` pointing to
+   now-invalid tab
+2. On future page loads in different tab, hydration attempts to restore from
+   closed tab
+3. Restore query filters by
+   `originTabId === currentTabId AND containerContext === currentContainerContext`
 4. Dead tab IDs never match current tab, creating orphaned entries
 5. Storage gradually fills with unreachable data
 6. Storage quota approached, affecting new Quick Tabs
@@ -51,28 +69,36 @@ When tab closes without cleanup:
 
 ### Firefox Documentation Context
 
-From MDN Tabs API documentation: "The onRemoved event fires when a tab is closed. This is the recommended way to detect tab closure and perform cleanup operations."
+From MDN Tabs API documentation: "The onRemoved event fires when a tab is
+closed. This is the recommended way to detect tab closure and perform cleanup
+operations."
 
-The absence of this listener means the extension violates the documented pattern for resource cleanup.
+The absence of this listener means the extension violates the documented pattern
+for resource cleanup.
 
 ---
 
 ## Issue 24: State Synchronization Race Between Sidebar & Content Scripts
 
 **Severity:** MEDIUM-HIGH  
-**Component:** src/features/quick-tabs/window.js (sidebar), minimized-manager.js (content), StateManager  
-**Impact Scope:** Sidebar UI correctness, user-visible state mismatches, race condition failures  
+**Component:** src/features/quick-tabs/window.js (sidebar), minimized-manager.js
+(content), StateManager  
+**Impact Scope:** Sidebar UI correctness, user-visible state mismatches, race
+condition failures
 
 ### Problem Description
 
-Sidebar and content scripts maintain separate copies of Quick Tab state. Each component independently tracks:
+Sidebar and content scripts maintain separate copies of Quick Tab state. Each
+component independently tracks:
 
 - Snapshot visibility (minimized vs expanded)
 - Position and size metadata
 - Deletion state
 - Active/inactive status
 
-When user interacts with sidebar (clicks minimize button), a message is sent to content script. However, no protocol exists to ensure bidirectional state synchronization.
+When user interacts with sidebar (clicks minimize button), a message is sent to
+content script. However, no protocol exists to ensure bidirectional state
+synchronization.
 
 ### Race Condition Scenario
 
@@ -97,23 +123,30 @@ Internal timing:
 
 ### Root Cause
 
-State synchronization is unidirectional (sidebar sends command) with no reverse sync to update sidebar state. Sidebar operates on stale local copy until next page reload or next message response.
+State synchronization is unidirectional (sidebar sends command) with no reverse
+sync to update sidebar state. Sidebar operates on stale local copy until next
+page reload or next message response.
 
 ### Why This Matters
 
-Multiple rapid interactions create state divergence. Sidebar shows one state, actual DOM shows different state. User actions based on sidebar state become invalid. Extension appears to ignore user input or behave erratically.
+Multiple rapid interactions create state divergence. Sidebar shows one state,
+actual DOM shows different state. User actions based on sidebar state become
+invalid. Extension appears to ignore user input or behave erratically.
 
 ---
 
 ## Issue 25: No Validation of Snapshot Structural Integrity
 
 **Severity:** MEDIUM  
-**Component:** minimized-manager.js snapshot deserialization, window.js rendering  
-**Impact Scope:** Corrupted snapshot propagation, rendering failures, silent UI breakage  
+**Component:** minimized-manager.js snapshot deserialization, window.js
+rendering  
+**Impact Scope:** Corrupted snapshot propagation, rendering failures, silent UI
+breakage
 
 ### Problem Description
 
-Quick Tab snapshots are serialized objects stored in extension storage. Structure includes:
+Quick Tab snapshots are serialized objects stored in extension storage.
+Structure includes:
 
 - HTML string (DOM structure)
 - CSS string (styles)
@@ -127,7 +160,8 @@ When snapshot is restored:
 3. CSS parsed and applied
 4. Snapshot rendered to user
 
-Problem: **No validation that snapshot structure is intact before deserialization**.
+Problem: **No validation that snapshot structure is intact before
+deserialization**.
 
 ### What Happens With Corruption
 
@@ -139,13 +173,15 @@ If snapshot data partially corrupted:
 - Dimensions negative or NaN → layout breaks
 - References to deleted elements → selectors fail
 
-None of these failures throw exceptions in content script. They just silently fail to render.
+None of these failures throw exceptions in content script. They just silently
+fail to render.
 
 ### Specific Failure Modes
 
 **Mode 1: Truncated HTML**
 
-Stored HTML: `<div class="qt"><button>Close</button></div>` gets truncated to `<div class="qt"><button>`
+Stored HTML: `<div class="qt"><button>Close</button></div>` gets truncated to
+`<div class="qt"><button>`
 
 Injection: Invalid HTML silently fails, snapshot doesn't render
 
@@ -159,7 +195,7 @@ Layout logic: Sets CSS `width: NaN%` (invalid), height renders as 0
 
 Stored: `{ html: "...", css: "...", tabId: undefined }`
 
-Filter logic: Checks `if (snapshot.tabId === currentTabId)` 
+Filter logic: Checks `if (snapshot.tabId === currentTabId)`
 
 Result: `undefined === 5` is false, snapshot filtered out
 
@@ -169,11 +205,14 @@ Result: `undefined === 5` is false, snapshot filtered out
 
 **Severity:** MEDIUM  
 **Component:** src/storage/FormatMigrator.js  
-**Impact Scope:** Extension version upgrades, storage schema mismatches, data loss during updates  
+**Impact Scope:** Extension version upgrades, storage schema mismatches, data
+loss during updates
 
 ### Problem Description
 
-When extension updates to new version with changed storage schema, stored Quick Tabs may use old format. FormatMigrator is responsible for transforming old format → new format.
+When extension updates to new version with changed storage schema, stored Quick
+Tabs may use old format. FormatMigrator is responsible for transforming old
+format → new format.
 
 However, migration implementation is opaque to scanning. Potential problems:
 
@@ -185,7 +224,8 @@ However, migration implementation is opaque to scanning. Potential problems:
 
 ### Cascading Effect
 
-If container context field added in migration (Issue 19 fix), but FormatMigrator doesn't populate it properly:
+If container context field added in migration (Issue 19 fix), but FormatMigrator
+doesn't populate it properly:
 
 1. Snapshot upgraded to new format
 2. Container context field missing or set to null
@@ -216,19 +256,25 @@ Or migration runs and creates new field with wrong value:
 ## Issue 27: SessionStorageAdapter vs SyncStorageAdapter Inconsistency
 
 **Severity:** MEDIUM-HIGH  
-**Component:** src/storage/SessionStorageAdapter.js, SyncStorageAdapter.js, storage layer abstraction  
-**Impact Scope:** Storage persistence, data retention across browser restarts, adapter selection  
+**Component:** src/storage/SessionStorageAdapter.js, SyncStorageAdapter.js,
+storage layer abstraction  
+**Impact Scope:** Storage persistence, data retention across browser restarts,
+adapter selection
 
 ### Problem Description
 
 Extension implements two storage adapters:
 
-- **SyncStorageAdapter**: Synchronizes across browser contexts, persists across restarts
-- **SessionStorageAdapter**: Session-local, cleared on browser close or tab close
+- **SyncStorageAdapter**: Synchronizes across browser contexts, persists across
+  restarts
+- **SessionStorageAdapter**: Session-local, cleared on browser close or tab
+  close
 
-Ambiguity: **Which adapter does the extension actually use for Quick Tab storage?**
+Ambiguity: **Which adapter does the extension actually use for Quick Tab
+storage?**
 
-Evidence gaps suggest this architectural decision is unclear or inconsistently applied.
+Evidence gaps suggest this architectural decision is unclear or inconsistently
+applied.
 
 ### Failure Scenario A: Session Storage Used (Data Lost)
 
@@ -259,7 +305,9 @@ If adapter selection is dynamic:
 
 ### Architectural Ambiguity
 
-Without clear documentation of which adapter is canonical for Quick Tabs, fixes to Issues 19-22 may inadvertently target wrong storage layer, resulting in ineffective or contradictory changes.
+Without clear documentation of which adapter is canonical for Quick Tabs, fixes
+to Issues 19-22 may inadvertently target wrong storage layer, resulting in
+ineffective or contradictory changes.
 
 ---
 
@@ -267,13 +315,16 @@ Without clear documentation of which adapter is canonical for Quick Tabs, fixes 
 
 **Severity:** MEDIUM  
 **Component:** src/features/quick-tabs/window.js sidebar, TabLifecycleHandler  
-**Impact Scope:** Sidebar orphaning, UI state corruption, parent-child lifecycle misalignment  
+**Impact Scope:** Sidebar orphaning, UI state corruption, parent-child lifecycle
+misalignment
 
 ### Problem Description
 
-Sidebar is typically shown as a sidebar panel in Firefox. It represents Quick Tabs for a specific parent tab.
+Sidebar is typically shown as a sidebar panel in Firefox. It represents Quick
+Tabs for a specific parent tab.
 
-Problem: Sidebar doesn't monitor parent tab state. Parent tab lifecycle events not observed:
+Problem: Sidebar doesn't monitor parent tab state. Parent tab lifecycle events
+not observed:
 
 - Parent tab closes → sidebar becomes orphaned
 - Parent tab navigates → sidebar still shows old Quick Tabs
@@ -310,8 +361,10 @@ Problem: Sidebar doesn't monitor parent tab state. Parent tab lifecycle events n
 ## Problem Area A: Minimal Error Handling in Storage Operations
 
 **Severity:** CRITICAL  
-**Component:** QuickTabHandler.js, minimized-manager.js, all storage access patterns  
-**Impact Scope:** Silent failures, data corruption propagation, operator blindness  
+**Component:** QuickTabHandler.js, minimized-manager.js, all storage access
+patterns  
+**Impact Scope:** Silent failures, data corruption propagation, operator
+blindness
 
 ### Storage Operation Patterns
 
@@ -345,15 +398,18 @@ When storage operation fails without error handling:
 
 ### Why This Is Critical
 
-This affects EVERY other issue. Issue 19 container context update goes to storage → if storage fails, context not updated. Issue 20 adoption hook unblocks writes → if write fails, queue stays locked. Issues propagate silently.
+This affects EVERY other issue. Issue 19 container context update goes to
+storage → if storage fails, context not updated. Issue 20 adoption hook unblocks
+writes → if write fails, queue stays locked. Issues propagate silently.
 
 ---
 
 ## Problem Area B: No Timeout Protection on Messages
 
 **Severity:** CRITICAL  
-**Component:** Content script message sending, background message handler dispatch  
-**Impact Scope:** UI freeze, user-visible hang, extension hang scenarios  
+**Component:** Content script message sending, background message handler
+dispatch  
+**Impact Scope:** UI freeze, user-visible hang, extension hang scenarios
 
 ### Message Sending Pattern
 
@@ -378,7 +434,8 @@ const response = await sendMessage({ command: 'SOME_COMMAND' });
 
 ### Compounding With Other Issues
 
-If background script hung handling adoption (Issue 20), content script waiting for completion message:
+If background script hung handling adoption (Issue 20), content script waiting
+for completion message:
 
 1. User adopts Quick Tab
 2. Adoption handler starts but gets stuck
@@ -391,16 +448,19 @@ If background script hung handling adoption (Issue 20), content script waiting f
 ## Problem Area C: Memory Leaks in Event Listeners
 
 **Severity:** MEDIUM  
-**Component:** Port lifecycle management, message listener registration, TabLifecycleHandler  
-**Impact Scope:** Memory growth, extension slowdown over time, eventual crash  
+**Component:** Port lifecycle management, message listener registration,
+TabLifecycleHandler  
+**Impact Scope:** Memory growth, extension slowdown over time, eventual crash
 
 ### Event Listener Cleanup Gaps
 
-Firefox background scripts use event-page model. Background unloads after ~5 minutes inactivity. Upon unload, event listeners must be cleaned up.
+Firefox background scripts use event-page model. Background unloads after ~5
+minutes inactivity. Upon unload, event listeners must be cleaned up.
 
 If listeners not cleaned:
 
-1. Listener registered in background: `browser.tabs.onActivated.addListener(handler)`
+1. Listener registered in background:
+   `browser.tabs.onActivated.addListener(handler)`
 2. Handler stored in memory
 3. Background unloads after 5 minutes
 4. Listener still registered (Firefox maintains ghost listener)
@@ -432,7 +492,7 @@ If content script ports not properly closed:
 
 **Severity:** MEDIUM  
 **Component:** Adoption workflow, migration process, state update transactions  
-**Impact Scope:** Partial failure recovery, data consistency after crashes  
+**Impact Scope:** Partial failure recovery, data consistency after crashes
 
 ### Multi-Step Operation Fragility
 
@@ -458,9 +518,11 @@ If step 3 fails (network issue, handler crashes):
 
 ### No Rollback Capability
 
-If any step fails, no checkpoint to rollback to. Extension state now corrupted with no recovery path.
+If any step fails, no checkpoint to rollback to. Extension state now corrupted
+with no recovery path.
 
-Similar issue affects migration (Issue 26): if partial migration, no rollback mechanism.
+Similar issue affects migration (Issue 26): if partial migration, no rollback
+mechanism.
 
 ---
 
@@ -468,7 +530,8 @@ Similar issue affects migration (Issue 26): if partial migration, no rollback me
 
 **Severity:** MEDIUM  
 **Component:** src/features/quick-tabs/window.js sidebar rendering logic  
-**Impact Scope:** UI responsiveness, performance degradation with many Quick Tabs  
+**Impact Scope:** UI responsiveness, performance degradation with many Quick
+Tabs
 
 ### Rendering Pattern
 
@@ -477,8 +540,8 @@ Current implementation likely:
 ```javascript
 onStateUpdate(() => {
   renderAllSnapshots(allSnapshots); // Re-renders ALL 100 snapshots
-  attachEventListeners();             // Re-attaches listeners to all
-  updateDOM();                        // DOM churn
+  attachEventListeners(); // Re-attaches listeners to all
+  updateDOM(); // DOM churn
 });
 ```
 
@@ -498,7 +561,8 @@ If user has 100 Quick Tabs and moves one:
 
 ### Why This Exacerbates Issue 24
 
-Sidebar re-renders frequently. If state sync race condition exists (Issue 24), re-renders show stale state for 500-2000ms even after action performed.
+Sidebar re-renders frequently. If state sync race condition exists (Issue 24),
+re-renders show stale state for 500-2000ms even after action performed.
 
 ---
 
@@ -506,7 +570,8 @@ Sidebar re-renders frequently. If state sync race condition exists (Issue 24), r
 
 **Severity:** LOW-MEDIUM  
 **Component:** Storage write operations, QuickTabHandler persistence  
-**Impact Scope:** Storage consistency after quota/failure, orphaned partial records  
+**Impact Scope:** Storage consistency after quota/failure, orphaned partial
+records
 
 ### Multi-Field Storage Writes
 
@@ -668,27 +733,33 @@ Missing logs show:
 
 ### Event-Page Unloading After Inactivity
 
-From MDN Background Scripts documentation: "Event pages unload after ~5 minutes with no activity. Event listeners survive unload but enter undefined state."
+From MDN Background Scripts documentation: "Event pages unload after ~5 minutes
+with no activity. Event listeners survive unload but enter undefined state."
 
-Implication for Issue 23: If onRemoved listener registered as handler closure, may not survive unload/reload cycle.
+Implication for Issue 23: If onRemoved listener registered as handler closure,
+may not survive unload/reload cycle.
 
 Implication for Area C: Handlers may leak when background reloads.
 
 ### Storage API Quota & Failure
 
-From MDN Storage API: "Storage quota is 5-10MB depending on browser. storage.local.set() returns silently if quota exceeded, no error thrown."
+From MDN Storage API: "Storage quota is 5-10MB depending on browser.
+storage.local.set() returns silently if quota exceeded, no error thrown."
 
 Implication for Area F: Quota exceeded failures silent, partial writes possible.
 
 ### Port Connection Lifecycle
 
-From MDN Messaging: "Port closes immediately when extension reloads. No warning sent to receiver."
+From MDN Messaging: "Port closes immediately when extension reloads. No warning
+sent to receiver."
 
-Implication for Area B: Pending messages may hang indefinitely if port closes mid-message.
+Implication for Area B: Pending messages may hang indefinitely if port closes
+mid-message.
 
 ### Tab Closure Not Always Detected
 
-From MDN Tabs API: "onRemoved may not fire if extension crashes or browser crashes. Not guaranteed for all closure scenarios."
+From MDN Tabs API: "onRemoved may not fire if extension crashes or browser
+crashes. Not guaranteed for all closure scenarios."
 
 Implication for Issue 23: Some tab closures missed, cleanup incomplete.
 
@@ -698,71 +769,94 @@ Implication for Issue 23: Some tab closures missed, cleanup incomplete.
 
 **Critical Dependency Chain:**
 
-Issue 23 (no cleanup) → Orphaned data → Storage quota exceeded (Area F) → Write failures (Area A) → Silent failures → Data corruption (Issue 25) → UI breakage
+Issue 23 (no cleanup) → Orphaned data → Storage quota exceeded (Area F) → Write
+failures (Area A) → Silent failures → Data corruption (Issue 25) → UI breakage
 
 **State Sync Chain:**
 
-Issue 24 (race condition) → State divergence → Storage writes inconsistent → Partial writes (Area F) → Recovery failure → Corrupted state
+Issue 24 (race condition) → State divergence → Storage writes inconsistent →
+Partial writes (Area F) → Recovery failure → Corrupted state
 
 **Storage Architecture Chain:**
 
-Issue 27 (adapter ambiguity) → Unclear which storage used → Area A (no error handling) → Write fails → Area B (no timeout) → UI frozen → User stuck
+Issue 27 (adapter ambiguity) → Unclear which storage used → Area A (no error
+handling) → Write fails → Area B (no timeout) → UI frozen → User stuck
 
 **Sidebar Lifecycle Chain:**
 
-Issue 28 (no parent monitoring) + Issue 23 (no cleanup) → Orphaned sidebar + orphaned data → Area C (memory leak) → Memory grows over months
+Issue 28 (no parent monitoring) + Issue 23 (no cleanup) → Orphaned sidebar +
+orphaned data → Area C (memory leak) → Memory grows over months
 
 **Performance Chain:**
 
-Area E (full re-render) + Issue 24 (state sync race) → UI frozen → User perceives unresponsiveness → Messages time out (Area B) → Extension appears broken
+Area E (full re-render) + Issue 24 (state sync race) → UI frozen → User
+perceives unresponsiveness → Messages time out (Area B) → Extension appears
+broken
 
 ---
 
 ## Recommended Investigation Priority
 
-1. **Area A (Error Handling)**: CRITICAL - Blocks all other fixes. No robust fix possible without this.
-2. **Issue 23 (Tab Cleanup)**: CRITICAL - Orphaned data accumulation is permanent without this.
-3. **Area B (Message Timeout)**: CRITICAL - Prevents UI freezes that mask all other issues.
-4. **Issue 27 (Storage Adapter)**: CRITICAL - Unclear which adapter is canonical storage.
-5. **Area F (Partial Write Recovery)**: HIGH - Prevents corruption from quota exceeded.
+1. **Area A (Error Handling)**: CRITICAL - Blocks all other fixes. No robust fix
+   possible without this.
+2. **Issue 23 (Tab Cleanup)**: CRITICAL - Orphaned data accumulation is
+   permanent without this.
+3. **Area B (Message Timeout)**: CRITICAL - Prevents UI freezes that mask all
+   other issues.
+4. **Issue 27 (Storage Adapter)**: CRITICAL - Unclear which adapter is canonical
+   storage.
+5. **Area F (Partial Write Recovery)**: HIGH - Prevents corruption from quota
+   exceeded.
 6. **Issue 25 (Snapshot Validation)**: HIGH - Prevents corruption propagation.
 7. **Issue 26 (FormatMigrator)**: MEDIUM - Affects version upgrade paths.
 8. **Issue 24 (State Sync)**: MEDIUM - UI correctness issue.
 9. **Area C (Memory Leak)**: MEDIUM - Long-term stability issue.
 10. **Issue 28 (Sidebar Lifecycle)**: MEDIUM - Orphaning scenario.
 11. **Area E (Performance)**: LOW - UX quality, not data correctness.
-12. **Area D (Checkpoint)**: LOW - Complex solution, infrequent failure scenario.
+12. **Area D (Checkpoint)**: LOW - Complex solution, infrequent failure
+    scenario.
 
 ---
 
 ## Implementation Dependency Graph
 
 **Cannot fix Issue 19 or Issue 20 until:**
+
 - Area A implemented (error handling)
 - Area B implemented (timeouts)
 - Issue 23 resolved (cleanup)
 - Issue 27 clarified (storage adapter)
 
 **Cannot fix Issue 21 or Issue 22 until:**
+
 - Area A implemented
 - Area B implemented
 
 **Cannot fix Issue 24 or Issue 28 until:**
+
 - Area B implemented (message reliability first)
 
 **Cannot fix Issue 25 until:**
+
 - Area A implemented (error handling for validation failures)
 
 **Cannot fix Issue 26 until:**
+
 - Area A implemented
 
 ---
 
 ## Conclusion
 
-Issues 23-28 and Problem Areas A-F represent foundational architectural gaps spanning tab lifecycle, storage consistency, error resilience, state synchronization, and performance. Fixing Issues 19-22 without addressing these foundational issues will result in incomplete solutions that fail under edge cases or high load.
+Issues 23-28 and Problem Areas A-F represent foundational architectural gaps
+spanning tab lifecycle, storage consistency, error resilience, state
+synchronization, and performance. Fixing Issues 19-22 without addressing these
+foundational issues will result in incomplete solutions that fail under edge
+cases or high load.
 
-Recommended approach: Address critical issues (Area A+B, Issue 23, Issue 27) first. These enable all other fixes. Then address Issue 26 (migration), Issue 25 (validation), followed by Issues 24 & 28 (state management) in parallel.
+Recommended approach: Address critical issues (Area A+B, Issue 23, Issue 27)
+first. These enable all other fixes. Then address Issue 26 (migration), Issue 25
+(validation), followed by Issues 24 & 28 (state management) in parallel.
 
 ---
 

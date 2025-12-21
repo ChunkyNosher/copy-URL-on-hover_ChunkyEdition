@@ -1,73 +1,111 @@
 # Extended Codebase Diagnostics: Issues M-T
-**Quick Tabs v1.6.3.10-v8** | **Date:** 2025-12-19 | **Scope:** Additional critical issues beyond A-L, plus API integration gaps
+
+**Quick Tabs v1.6.3.10-v8** | **Date:** 2025-12-19 | **Scope:** Additional
+critical issues beyond A-L, plus API integration gaps
 
 ---
 
 ## Overview
 
-This report documents eight additional failure modes discovered during comprehensive codebase analysis that directly threaten the behavioral contracts defined in `issue-47-revised.md`. These issues span quota management, event ordering guarantees, initialization sequencing, retry policies, and concurrent operation handling.
+This report documents eight additional failure modes discovered during
+comprehensive codebase analysis that directly threaten the behavioral contracts
+defined in `issue-47-revised.md`. These issues span quota management, event
+ordering guarantees, initialization sequencing, retry policies, and concurrent
+operation handling.
 
-Unlike Issues A-L which focus on identity-ready gating and cleanup, Issues M-T reveal systemic gaps in:
+Unlike Issues A-L which focus on identity-ready gating and cleanup, Issues M-T
+reveal systemic gaps in:
+
 - **Storage capacity planning** (no quota awareness)
 - **Event semantics** (ordering is not guaranteed)
-- **Concurrent initialization** (multiple async prerequisites have no serialization point)
+- **Concurrent initialization** (multiple async prerequisites have no
+  serialization point)
 - **Error recovery** (transaction rollback is dead code)
-- **Heuristic consistency** (three independent self-write detection methods can conflict)
+- **Heuristic consistency** (three independent self-write detection methods can
+  conflict)
 
 ---
 
 ## Issue M: Storage Quota is Never Monitored Before Writes
 
 ### Problem Statement
-The extension writes Quick Tabs state to `browser.storage.local` without ever checking available quota. When quota is exceeded, writes fail silently with no user notification, resulting in lost state and degraded functionality.
+
+The extension writes Quick Tabs state to `browser.storage.local` without ever
+checking available quota. When quota is exceeded, writes fail silently with no
+user notification, resulting in lost state and degraded functionality.
 
 ### Root Cause Analysis
-**Primary Location:** `src/utils/storage-utils.js` (lines ~1950–2100, `_executeStorageWrite()`)
 
-The storage write pipeline assumes quota is "effectively unlimited" relative to typical Quick Tabs usage. The code:
+**Primary Location:** `src/utils/storage-utils.js` (lines ~1950–2100,
+`_executeStorageWrite()`)
+
+The storage write pipeline assumes quota is "effectively unlimited" relative to
+typical Quick Tabs usage. The code:
+
 - Calls `browserAPI.storage.local.set()` directly
 - Never invokes `navigator.storage.estimate()` to check available space
 - Catches generic errors without classifying them as quota-related
 - Provides no fallback or truncation strategy when quota is approached
 
 **Browser API Behavior:**
-- **Firefox:** Extension storage quota is 10 MB (per IndexedDB limits; no separate quota API available for sync storage)
-- **Chrome:** Extension storage quota is 10 MB (5 MB in versions < 113; no `unlimitedStorage` permission in manifest implies standard quota)
-- **Both browsers:** `storage.local.set()` rejects Promise with `QuotaExceededError` when space is insufficient
+
+- **Firefox:** Extension storage quota is 10 MB (per IndexedDB limits; no
+  separate quota API available for sync storage)
+- **Chrome:** Extension storage quota is 10 MB (5 MB in versions < 113; no
+  `unlimitedStorage` permission in manifest implies standard quota)
+- **Both browsers:** `storage.local.set()` rejects Promise with
+  `QuotaExceededError` when space is insufficient
 
 ### Why This Matters
-Heavy users accumulating 1000+ Quick Tabs can generate state payloads of 5–10 MB. The scenarios that trigger failure:
+
+Heavy users accumulating 1000+ Quick Tabs can generate state payloads of 5–10
+MB. The scenarios that trigger failure:
+
 - User creates many Quick Tabs over long sessions and leaves browser running
 - State grows to approach 10 MB limit
 - Next persist attempt fails silently
 - No error is logged; user sees Quick Tabs simply stop appearing after reload
 
 ### Missing Diagnostics
+
 - No pre-flight quota check before any write attempt
 - No telemetry logging bytes-in-use at persistence time
-- No classification of write failures as quota-related vs. permission vs. transient
+- No classification of write failures as quota-related vs. permission vs.
+  transient
 - No user-facing notification when quota headroom is low
 - No "compaction" or "pruning" mechanism when quota is approached
 
 ### Affected Scenarios
-**Scenario 21** (if exists - state growth over time) and Scenario 10 (restart persistence fails silently).
+
+**Scenario 21** (if exists - state growth over time) and Scenario 10 (restart
+persistence fails silently).
 
 ---
 
 ## Issue N: storage.onChanged Event Order is Not Guaranteed
 
 ### Problem Statement
-When multiple content scripts fire storage writes concurrently, their `storage.onChanged` listener callbacks may execute in any order, not necessarily FIFO. This violates the implicit assumption in the hydration logic that events reflect actual chronological state transitions.
+
+When multiple content scripts fire storage writes concurrently, their
+`storage.onChanged` listener callbacks may execute in any order, not necessarily
+FIFO. This violates the implicit assumption in the hydration logic that events
+reflect actual chronological state transitions.
 
 ### Root Cause Analysis
-**Primary Location:** Content script hydration handlers that consume `storage.onChanged` events (location varies; main handler likely in `src/features/quick-tabs/` or `src/handlers/`)
 
-The Firefox and Chrome `storage.onChanged` API specification does not guarantee ordering when multiple contexts modify storage. Per MDN documentation:
+**Primary Location:** Content script hydration handlers that consume
+`storage.onChanged` events (location varies; main handler likely in
+`src/features/quick-tabs/` or `src/handlers/`)
+
+The Firefox and Chrome `storage.onChanged` API specification does not guarantee
+ordering when multiple contexts modify storage. Per MDN documentation:
+
 - Event fires "when one or more items change"
 - Multiple listeners on same storage key may fire in browser-determined order
 - No sequencing guarantee across tab boundaries
 
 **Concrete Failure Scenario:**
+
 1. Tab A writes Quick Tabs state (saveId: "123")
 2. Tab B simultaneously writes Quick Tabs state (saveId: "124")
 3. Tab A's `onChanged` listener expects to fire first
@@ -75,70 +113,101 @@ The Firefox and Chrome `storage.onChanged` API specification does not guarantee 
 5. Tab A hydrates with Tab B's ownership, violating isolation
 
 ### Why This Matters
-The system relies on `isSelfWrite()` to skip processing events generated by the same tab. When events arrive out-of-order:
+
+The system relies on `isSelfWrite()` to skip processing events generated by the
+same tab. When events arrive out-of-order:
+
 - Deduplication heuristics based on recency become unreliable
 - Ownership filters may apply wrong context
 - Rapid storage updates can cause state oscillation rather than convergence
 
 ### Missing Diagnostics
+
 - No event sequence numbering to detect ordering violations
 - No timestamp correlation to confirm whether received order matches write order
 - No alerting when out-of-order events are detected
 - No fallback behavior when ordering assumption is violated
 
 ### Affected Scenarios
-**Scenario 17** (rapid tab switching with concurrent writes) where multiple content scripts write state simultaneously.
+
+**Scenario 17** (rapid tab switching with concurrent writes) where multiple
+content scripts write state simultaneously.
 
 ---
 
 ## Issue O: Hydration can Trigger Before Tab ID + Container ID are Initialized
 
 ### Problem Statement
-The storage.onChanged listener registers synchronously during content script load, but the tab ID and container ID initialization is asynchronous. A storage change event can arrive and trigger hydration before identity is fully known, causing ownership and container filtering to apply NULL/unknown defaults.
+
+The storage.onChanged listener registers synchronously during content script
+load, but the tab ID and container ID initialization is asynchronous. A storage
+change event can arrive and trigger hydration before identity is fully known,
+causing ownership and container filtering to apply NULL/unknown defaults.
 
 ### Root Cause Analysis
+
 **Primary Locations:**
+
 - Content script initialization flow (lines ~1100–1200 in `src/content.js`)
-- `waitForTabIdInit()` implementation (lines ~300–350 in `src/utils/storage-utils.js`)
+- `waitForTabIdInit()` implementation (lines ~300–350 in
+  `src/utils/storage-utils.js`)
 - Storage change listener registration (likely in `initQuickTabs()`)
 
 **Execution Timeline:**
+
 1. Content script loads → synchronously imports storage-utils
 2. `storage.onChanged` listener is registered immediately (synchronous)
 3. `initializeQuickTabsFeature()` is called with `await`
 4. `getCurrentTabIdFromBackground()` awaits message round-trip (50–200ms)
-5. **RACE:** If storage.onChanged fires during step 4, `currentWritingTabId === null`
+5. **RACE:** If storage.onChanged fires during step 4,
+   `currentWritingTabId === null`
 6. Hydration logic uses NULL fallback, allowing cross-tab state
 7. Only after step 5 completes does `setWritingTabId()` update the value
 
 **Container ID Path (Firefox Multi-Account Containers):**
+
 - `setWritingContainerId()` is called after background port connects
 - But connection success and tab ID receipt are separate async operations
 - No guarantee both prerequisites are satisfied before storage event arrives
 
 ### Why This Matters
-The "fail-open" NULL defaults in container matching and ownership validation (Issues G and other permissive fallbacks) are unsafe during this initialization window. A Quick Tab created in "Work" container could hydrate in "Default" container if the container ID is not yet known.
+
+The "fail-open" NULL defaults in container matching and ownership validation
+(Issues G and other permissive fallbacks) are unsafe during this initialization
+window. A Quick Tab created in "Work" container could hydrate in "Default"
+container if the container ID is not yet known.
 
 ### Missing Diagnostics
-- No explicit synchronization point that gates hydration until both tabId and containerId are known
+
+- No explicit synchronization point that gates hydration until both tabId and
+  containerId are known
 - No logging showing when hydration is executed with unknown tabId/containerId
-- No telemetry distinguishing "blocked hydration due to not-ready" vs. "allowed hydration despite not-ready"
+- No telemetry distinguishing "blocked hydration due to not-ready" vs. "allowed
+  hydration despite not-ready"
 - No correlation between storage.onChanged firing and identity readiness state
 
 ### Affected Scenarios
-**Scenario 11** (page reload with cross-tab state) and **Scenario 14** (container isolation during early load).
+
+**Scenario 11** (page reload with cross-tab state) and **Scenario 14**
+(container isolation during early load).
 
 ---
 
 ## Issue P: Storage Adapter Migration Creates Data Loss Race Condition
 
 ### Problem Statement
-The migration from container-based storage format to unified format in `SyncStorageAdapter.load()` has a window where a concurrent write can occur during the transition, potentially losing data or hydrating incomplete state.
+
+The migration from container-based storage format to unified format in
+`SyncStorageAdapter.load()` has a window where a concurrent write can occur
+during the transition, potentially losing data or hydrating incomplete state.
 
 ### Root Cause Analysis
-**Primary Location:** `src/storage/SyncStorageAdapter.js` (lines ~40–80, `load()` method)
+
+**Primary Location:** `src/storage/SyncStorageAdapter.js` (lines ~40–80,
+`load()` method)
 
 **Current Logic:**
+
 1. Check if unified format exists (new v1.6.2.2+ format)
 2. If found, return it
 3. If NOT found, check for container format (legacy v1.5.8.15–v1.6.2.1)
@@ -146,23 +215,29 @@ The migration from container-based storage format to unified format in `SyncStor
 5. Return migrated data
 
 **Race Condition Scenario:**
+
 1. Upgrade to v1.6.3.10 with existing container-format data
 2. Tab A calls `load()`, reaches step 3 (container format found)
-3. Background thread (or other tab) calls `_saveRawState()` with unified format write
+3. Background thread (or other tab) calls `_saveRawState()` with unified format
+   write
 4. Tab A is still in step 4 (migration save in progress)
 5. Unified format write overwrites container format before migration completes
 6. Tab A sees incomplete migrated data
 7. State loss occurs
 
 ### Why This Matters
+
 During upgrade, users with existing state could lose Quick Tabs if:
+
 - Multiple tabs call `load()` concurrently
 - Background persistence happens during migration
 - Migration logic assumes exclusive access to storage
 
-This is particularly dangerous on browser restart when many tabs open simultaneously, all calling `initQuickTabs()` which triggers `load()`.
+This is particularly dangerous on browser restart when many tabs open
+simultaneously, all calling `initQuickTabs()` which triggers `load()`.
 
 ### Missing Diagnostics
+
 - No version field in state to distinguish format versions
 - No atomic migration (no write-once semantics)
 - No rollback if migration detects concurrent write
@@ -170,64 +245,93 @@ This is particularly dangerous on browser restart when many tabs open simultaneo
 - No warning to user if migration is incomplete
 
 ### Affected Scenarios
-**Scenario 10** (browser restart with upgrade) where state should persist but migration fails.
+
+**Scenario 10** (browser restart with upgrade) where state should persist but
+migration fails.
 
 ---
 
 ## Issue Q: originTabId Context Validation is Missing
 
 ### Problem Statement
-The `normalizeOriginTabId()` function accepts any positive integer without validating whether that integer could plausibly be a tab ID in the current context. This allows background scripts, service workers, or extension pages to write Quick Tabs with invalid owner contexts.
+
+The `normalizeOriginTabId()` function accepts any positive integer without
+validating whether that integer could plausibly be a tab ID in the current
+context. This allows background scripts, service workers, or extension pages to
+write Quick Tabs with invalid owner contexts.
 
 ### Root Cause Analysis
-**Primary Location:** `src/utils/storage-utils.js` (lines ~280–320, `normalizeOriginTabId()`)
+
+**Primary Location:** `src/utils/storage-utils.js` (lines ~280–320,
+`normalizeOriginTabId()`)
 
 **Current Validation:**
+
 - Checks if value is a number after `Number()` conversion
 - Validates `Number.isInteger(value) && value > 0`
 - Returns normalized value or null
 
 **Missing Context Checks:**
+
 - Does not verify that `currentWritingTabId` is from a valid tab context
-- Extension background pages, service workers, and sidebar pages can all call `setWritingTabId()`
+- Extension background pages, service workers, and sidebar pages can all call
+  `setWritingTabId()`
 - No check to prevent non-tab contexts from writing ownership metadata
 
 **Why Tab Context Matters:**
+
 - Only tabs have legitimate `browser.tabs.getCurrent()` results
 - Background scripts return `undefined` or `null` from `getCurrent()`
-- If background script incorrectly calls `setWritingTabId(someId)`, all subsequent writes are attributed to that tab
-- This corrupts the ownership chain and breaks Scenario 12 (cleanup after tab closure)
+- If background script incorrectly calls `setWritingTabId(someId)`, all
+  subsequent writes are attributed to that tab
+- This corrupts the ownership chain and breaks Scenario 12 (cleanup after tab
+  closure)
 
 ### Missing Diagnostics
-- No logging of which context (tab vs. background vs. sidebar) calls `setWritingTabId()`
+
+- No logging of which context (tab vs. background vs. sidebar) calls
+  `setWritingTabId()`
 - No warning if tabId is set from a non-tab context
-- No validation that `currentWritingTabId` is plausible given the execution context
+- No validation that `currentWritingTabId` is plausible given the execution
+  context
 
 ### Affected Scenarios
-**Scenario 12** (tab closure cleanup) fails if background script accidentally assigns wrong ownership due to invalid context.
+
+**Scenario 12** (tab closure cleanup) fails if background script accidentally
+assigns wrong ownership due to invalid context.
 
 ---
 
 ## Issue R: Port Message Ordering is Not Enforced for Concurrent Operations
 
 ### Problem Statement
-While the content script implements sequence ID tracking for port messages (v1.6.3.10-v7), the ordering is not enforced for concurrent storage-dependent operations like multiple RESTORE requests. These can execute out-of-order, causing ownership lookups to resolve incorrectly during rapid tab switching.
+
+While the content script implements sequence ID tracking for port messages
+(v1.6.3.10-v7), the ordering is not enforced for concurrent storage-dependent
+operations like multiple RESTORE requests. These can execute out-of-order,
+causing ownership lookups to resolve incorrectly during rapid tab switching.
 
 ### Root Cause Analysis
+
 **Primary Locations:**
-- Port message queueing (lines ~700–850 in `src/content.js`, `_sendPortMessage()`)
+
+- Port message queueing (lines ~700–850 in `src/content.js`,
+  `_sendPortMessage()`)
 - RESTORE_QUICK_TAB handler (lines ~2800–2900, `_handleRestoreQuickTab()`)
 - Adoption tracking (lines ~2400–2450, `_trackAdoptedQuickTab()`)
 
 **Current Sequence Tracking:**
+
 - Outgoing messages get `sequenceId = ++outgoingSequenceId`
 - Incoming messages are validated with `_validateMessageSequence()`
 - But validation is informational only; out-of-order messages are NOT rejected
 
 **Failure Scenario (Scenario 17 - Rapid Switching):**
+
 1. User activates Tab A (contains Quick Tab with id="qt-1")
 2. RESTORE message for "qt-1" is queued to background
-3. User immediately activates Tab B (also contains "qt-1" but different ownership)
+3. User immediately activates Tab B (also contains "qt-1" but different
+   ownership)
 4. RESTORE message for "qt-1" is queued to background
 5. Background processes out-of-order: Tab B's RESTORE executes first
 6. Content script Tab A receives adoption update, updates cache
@@ -235,157 +339,239 @@ While the content script implements sequence ID tracking for port messages (v1.6
 8. Wrong ownership applied, Quick Tab appears in wrong tab
 
 ### Why This Matters
-The adoption tracking uses a time-based TTL (5 seconds, Issue S). If RESTORE messages arrive out-of-order and execution times cross TTL boundaries, the adoption cache may expire while RESTORE handlers still expect fresh data.
+
+The adoption tracking uses a time-based TTL (5 seconds, Issue S). If RESTORE
+messages arrive out-of-order and execution times cross TTL boundaries, the
+adoption cache may expire while RESTORE handlers still expect fresh data.
 
 ### Missing Diagnostics
-- No enforcement that RESTORE operations execute in request order (only warning on out-of-order detection)
+
+- No enforcement that RESTORE operations execute in request order (only warning
+  on out-of-order detection)
 - No correlation between port sequence IDs and Quick Tab state updates
-- No logging showing which RESTORE operation owns which Quick Tab after execution
+- No logging showing which RESTORE operation owns which Quick Tab after
+  execution
 
 ### Affected Scenarios
-**Scenario 17** (rapid tab switching) where multiple RESTORE messages are buffered and processed concurrently.
+
+**Scenario 17** (rapid tab switching) where multiple RESTORE messages are
+buffered and processed concurrently.
 
 ---
 
 ## Issue S: Container ID Initialization is Not Serialized with Tab ID
 
 ### Problem Statement
-The identity-ready gating (Issue A) waits for tab ID via `waitForTabIdInit()`, but there is no corresponding mechanism to wait for container ID (cookieStoreId). In Firefox Multi-Account Containers environments, content script can have known tabId but unknown containerId, allowing the permissive "current container unknown → allow" fallback to apply unsafely.
+
+The identity-ready gating (Issue A) waits for tab ID via `waitForTabIdInit()`,
+but there is no corresponding mechanism to wait for container ID
+(cookieStoreId). In Firefox Multi-Account Containers environments, content
+script can have known tabId but unknown containerId, allowing the permissive
+"current container unknown → allow" fallback to apply unsafely.
 
 ### Root Cause Analysis
+
 **Primary Locations:**
-- `waitForTabIdInit()` (lines ~300–350 in `src/utils/storage-utils.js`) - waits for tabId only
-- `setWritingContainerId()` (lines ~420–440) - set asynchronously, no wait mechanism
-- `_isContainerMatch()` (lines ~450–460) - has permissive fallback for null currentContainerId
+
+- `waitForTabIdInit()` (lines ~300–350 in `src/utils/storage-utils.js`) - waits
+  for tabId only
+- `setWritingContainerId()` (lines ~420–440) - set asynchronously, no wait
+  mechanism
+- `_isContainerMatch()` (lines ~450–460) - has permissive fallback for null
+  currentContainerId
 
 **Initialization Asymmetry:**
-- Tab ID flow: `content.js` → `getCurrentTabIdFromBackground()` → `setWritingTabId()` → resolves promise
-- Container ID flow: `initWritingTabId()` → reads `tab.cookieStoreId` → `setWritingContainerId()` (no promise)
-- **Gap:** If `initWritingTabId()` fails (e.g., no tab.cookieStoreId property), container ID remains null
+
+- Tab ID flow: `content.js` → `getCurrentTabIdFromBackground()` →
+  `setWritingTabId()` → resolves promise
+- Container ID flow: `initWritingTabId()` → reads `tab.cookieStoreId` →
+  `setWritingContainerId()` (no promise)
+- **Gap:** If `initWritingTabId()` fails (e.g., no tab.cookieStoreId property),
+  container ID remains null
 
 **Fallback Behavior in `_isContainerMatch()`:**
+
 ```
 if (currentContainerId === null) {
     return true;  // ← PERMISSIVE: allows any container
 }
 ```
 
-This fallback is safe for backwards compatibility with pre-v1.6.3.10 Quick Tabs (which have no originContainerId). But during initialization, it's unsafe—it permits cross-container ownership matching.
+This fallback is safe for backwards compatibility with pre-v1.6.3.10 Quick Tabs
+(which have no originContainerId). But during initialization, it's unsafe—it
+permits cross-container ownership matching.
 
 ### Why This Matters
+
 In Firefox Multi-Account Containers, user can:
-1. Create Quick Tab in "Work" container (originContainerId: "firefox-container-1")
+
+1. Create Quick Tab in "Work" container (originContainerId:
+   "firefox-container-1")
 2. Page reloads before containerId is set
-3. Hydration runs, sees originContainerId="firefox-container-1" and currentContainerId=null
+3. Hydration runs, sees originContainerId="firefox-container-1" and
+   currentContainerId=null
 4. `_isContainerMatch()` returns true (fallback)
-5. Quick Tab appears in "Default" container (currentContainerId eventually becomes "firefox-default")
+5. Quick Tab appears in "Default" container (currentContainerId eventually
+   becomes "firefox-default")
 6. User sees wrong tab in wrong container
 
 ### Missing Diagnostics
-- No explicit wait for container ID (no `waitForContainerIdInit()` parallel to `waitForTabIdInit()`)
-- No logging showing whether container match used "strict match" vs. "legacy fallback"
-- No indication in logs whether containerIds are initialized or null at decision time
+
+- No explicit wait for container ID (no `waitForContainerIdInit()` parallel to
+  `waitForTabIdInit()`)
+- No logging showing whether container match used "strict match" vs. "legacy
+  fallback"
+- No indication in logs whether containerIds are initialized or null at decision
+  time
 
 ### Affected Scenarios
-**Scenario 14** (container isolation) and **Scenario 18** (if exists—multi-container scenarios) in Firefox Multi-Account Containers.
+
+**Scenario 14** (container isolation) and **Scenario 18** (if
+exists—multi-container scenarios) in Firefox Multi-Account Containers.
 
 ---
 
 ## Issue T: Self-Write Detection Uses Three Conflicting Heuristics with No Priority
 
 ### Problem Statement
-The `isSelfWrite()` function checks three independent heuristics—`transactionId`, `instanceId`, and `tabId`—but lacks a priority order. When they conflict (e.g., one matches while others don't), the function returns inconsistent results depending on evaluation order, risking both false-positives and false-negatives in loop detection.
+
+The `isSelfWrite()` function checks three independent
+heuristics—`transactionId`, `instanceId`, and `tabId`—but lacks a priority
+order. When they conflict (e.g., one matches while others don't), the function
+returns inconsistent results depending on evaluation order, risking both
+false-positives and false-negatives in loop detection.
 
 ### Root Cause Analysis
-**Primary Location:** `src/utils/storage-utils.js` (lines ~550–620, `isSelfWrite()`)
+
+**Primary Location:** `src/utils/storage-utils.js` (lines ~550–620,
+`isSelfWrite()`)
 
 **Three Heuristics:**
-1. **lastWrittenTransactionId:** Matches if `newValue.transactionId === lastWrittenTransactionId`
-2. **writingInstanceId:** Matches if `newValue.writingInstanceId === WRITING_INSTANCE_ID`
+
+1. **lastWrittenTransactionId:** Matches if
+   `newValue.transactionId === lastWrittenTransactionId`
+2. **writingInstanceId:** Matches if
+   `newValue.writingInstanceId === WRITING_INSTANCE_ID`
 3. **writingTabId:** Matches if `newValue.writingTabId === currentTabId`
 
 **Conflict Scenario (Tab Reload During Write):**
-1. Content script A writes Quick Tabs state with transactionId="txn-123", instanceId="inst-A", tabId=5
+
+1. Content script A writes Quick Tabs state with transactionId="txn-123",
+   instanceId="inst-A", tabId=5
 2. Before `storage.onChanged` fires, page reloads
 3. Content script B loads in same tab 5, generates new instanceId="inst-B"
-4. `storage.onChanged` fires with old write's metadata (transactionId="txn-123", instanceId="inst-A", tabId=5)
+4. `storage.onChanged` fires with old write's metadata (transactionId="txn-123",
+   instanceId="inst-A", tabId=5)
 5. Content script B's `isSelfWrite()` checks:
    - transactionId matches: true
    - instanceId matches: false (old instance ID)
    - tabId matches: true
-6. Current code checks in sequence; if tabId check runs last, returns true (self-write)
-7. But if instanceId is intentionally designed as "primary" heuristic, result is inconsistent
+6. Current code checks in sequence; if tabId check runs last, returns true
+   (self-write)
+7. But if instanceId is intentionally designed as "primary" heuristic, result is
+   inconsistent
 
 **Why This Matters:**
-- If heuristics conflict, one type of write (e.g., same tab, different instance) gets classified differently depending on which heuristic evaluated to true first
+
+- If heuristics conflict, one type of write (e.g., same tab, different instance)
+  gets classified differently depending on which heuristic evaluated to true
+  first
 - This creates non-deterministic loop detection behavior
 - Rapid tab reloads + concurrent writes could trigger inconsistent skips/allows
 
 ### Missing Diagnostics
+
 - No logging showing which heuristic matched (or if multiple matched)
 - No rationale in code comments explaining why this heuristic takes priority
 - No warning if conflicting heuristics match
 - No telemetry distinguishing which detection method prevented loops
 
 ### Affected Scenarios
-**Scenario 17** (rapid tab switching + reloads) and general loop detection reliability.
+
+**Scenario 17** (rapid tab switching + reloads) and general loop detection
+reliability.
 
 ---
 
 ## Issue U: Empty Write Cooldown Window is Arbitrary and Lacks Rationale
 
 ### Problem Statement
-The `EMPTY_WRITE_COOLDOWN_MS` constant is hardcoded to 1000ms with no documented rationale. If actual browser reload or state stabilization time is significantly different, the cooldown provides insufficient protection against write bursts or excessive protection blocking legitimate operations.
+
+The `EMPTY_WRITE_COOLDOWN_MS` constant is hardcoded to 1000ms with no documented
+rationale. If actual browser reload or state stabilization time is significantly
+different, the cooldown provides insufficient protection against write bursts or
+excessive protection blocking legitimate operations.
 
 ### Root Cause Analysis
-**Primary Location:** `src/utils/storage-utils.js` (line ~550, `EMPTY_WRITE_COOLDOWN_MS = 1000`)
+
+**Primary Location:** `src/utils/storage-utils.js` (line ~550,
+`EMPTY_WRITE_COOLDOWN_MS = 1000`)
 
 **Hardcoded Value:**
+
 - Empty writes (0 Quick Tabs) are blocked within a 1-second window
 - Justification is not documented in comments
 - Used in `_shouldRejectEmptyWrite()` (lines ~1850–1900)
 
 **Potential Misalignment:**
+
 - Typical browser page reload duration: 200–500ms
-- User "Close All" action followed by immediate undo (browser history back): <100ms
+- User "Close All" action followed by immediate undo (browser history back):
+  <100ms
 - Storage propagation time: 50–100ms per write
 - Heavy tab load scenario: reload could take >2 seconds
 
 If reload takes 800ms:
+
 - First close-all write at T=0: permitted, starts cooldown
 - T=800 (reload): page loads, calls `persistStateToStorage()` with empty state
 - Cooldown still active: BLOCKED
 - User sees Quick Tabs briefly appear, then disappear
 
 If reload takes 2 seconds:
+
 - First close-all write at T=0: permitted
 - T=1000: cooldown expires
 - T=1100 (reload completes): empty write is permitted (second write)
 - Could persist 0 Quick Tabs, user sees data loss
 
 ### Missing Diagnostics
+
 - No comment explaining why 1000ms was chosen
 - No adaptive logic based on actual page/state timing
 - No telemetry showing how often cooldown blocks legitimate empty writes
 - No correlation with measured storage latency
 
 ### Affected Scenarios
-General stability under heavy load, particularly when user rapidly performs Close All → Undo → Close All operations.
+
+General stability under heavy load, particularly when user rapidly performs
+Close All → Undo → Close All operations.
 
 ---
 
 ## Issue V: Transaction Snapshot Rollback is Never Triggered (Dead Code)
 
 ### Problem Statement
-The storage-utils module implements transaction begin/commit/rollback mechanisms (`beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`), but `rollbackTransaction()` is never called in real code paths. The transaction snapshot feature appears to be vestigial from experimental error recovery code that was never integrated into the main persistence pipeline.
+
+The storage-utils module implements transaction begin/commit/rollback mechanisms
+(`beginTransaction()`, `commitTransaction()`, `rollbackTransaction()`), but
+`rollbackTransaction()` is never called in real code paths. The transaction
+snapshot feature appears to be vestigial from experimental error recovery code
+that was never integrated into the main persistence pipeline.
 
 ### Root Cause Analysis
+
 **Primary Locations:**
-- Transaction implementation (lines ~700–850 in `src/utils/storage-utils.js`, `beginTransaction()`, `rollbackTransaction()`)
-- `_executeStorageWrite()` error handling (lines ~2000–2100) - catch blocks do NOT invoke rollback
-- Snapshot capture (lines ~650–700, `captureStateSnapshot()`) - called but snapshot never restored
+
+- Transaction implementation (lines ~700–850 in `src/utils/storage-utils.js`,
+  `beginTransaction()`, `rollbackTransaction()`)
+- `_executeStorageWrite()` error handling (lines ~2000–2100) - catch blocks do
+  NOT invoke rollback
+- Snapshot capture (lines ~650–700, `captureStateSnapshot()`) - called but
+  snapshot never restored
 
 **Dead Code Path:**
+
 1. `beginTransaction()` exists and captures state snapshot
 2. `commitTransaction()` and `rollbackTransaction()` are defined
 3. But no call sites invoke rollback when errors occur
@@ -393,73 +579,108 @@ The storage-utils module implements transaction begin/commit/rollback mechanisms
 5. They do NOT call `rollbackTransaction()` to restore snapshot
 
 **Why Rollback Was Likely Added:**
-- v1.6.3.4-v9 changelog mentions "FIX Issue #16, #17: Transaction pattern with rollback capability"
+
+- v1.6.3.4-v9 changelog mentions "FIX Issue #16, #17: Transaction pattern with
+  rollback capability"
 - Intended to recover from partial write failures
 - Never integrated into actual error handling
 
 ### Why This Matters
-If a storage write fails mid-operation (e.g., tab closes, connection drops), the snapshot is never restored. This risks:
+
+If a storage write fails mid-operation (e.g., tab closes, connection drops), the
+snapshot is never restored. This risks:
+
 - Stale state persisted (write succeeded but partially)
 - Future reads returning corrupt data
 - Orphaned transactions (if error occurs during commit)
 
 ### Missing Diagnostics
+
 - No logging showing if transactions are active when errors occur
 - No telemetry on how often snapshot capture succeeds vs. fails
 - No indication of whether snapshot restore would have helped
 - Dead code is silently ignored with no warnings
 
 ### Affected Scenarios
-**Scenario 10** (browser restart persistence) and **Scenario 17** (rapid switching) where write errors could be recovered with rollback.
+
+**Scenario 10** (browser restart persistence) and **Scenario 17** (rapid
+switching) where write errors could be recovered with rollback.
 
 ---
 
 ## Issue W: Write Retry Backoff State is Lost Across Extension Restart
 
 ### Problem Statement
-The storage write retry mechanism uses exponential backoff with hardcoded delays stored in module scope. If the extension is restarted during a retry backoff sequence, the retry counter resets and the next write attempt starts from attempt #1 instead of resuming from where it left off. This breaks the exponential backoff guarantee and can cause write storms if errors are transient but require longer delays to resolve.
+
+The storage write retry mechanism uses exponential backoff with hardcoded delays
+stored in module scope. If the extension is restarted during a retry backoff
+sequence, the retry counter resets and the next write attempt starts from
+attempt #1 instead of resuming from where it left off. This breaks the
+exponential backoff guarantee and can cause write storms if errors are transient
+but require longer delays to resolve.
 
 ### Root Cause Analysis
-**Primary Location:** `src/utils/storage-utils.js` (lines ~1500–1550, retry implementation)
+
+**Primary Location:** `src/utils/storage-utils.js` (lines ~1500–1550, retry
+implementation)
 
 **Retry State Storage:**
-- `reconnectionAttempts` counter (used for port reconnection, but not for storage retries)
-- Storage write retries use `STORAGE_RETRY_DELAYS_MS` array iteration but no persistent state
+
+- `reconnectionAttempts` counter (used for port reconnection, but not for
+  storage retries)
+- Storage write retries use `STORAGE_RETRY_DELAYS_MS` array iteration but no
+  persistent state
 - No way to resume retry sequence after module reload
 
 **Failure Scenario:**
-1. Storage write attempt #1 fails (e.g., browser.storage temporarily unavailable)
+
+1. Storage write attempt #1 fails (e.g., browser.storage temporarily
+   unavailable)
 2. Backoff delay 100ms, queues attempt #2
-3. Before attempt #2 completes, extension is restarted (user disables/re-enables, browser crashes and restarts)
+3. Before attempt #2 completes, extension is restarted (user
+   disables/re-enables, browser crashes and restarts)
 4. Module reloads, all state variables reset
 5. Next write attempt starts as attempt #1 again
-6. If error is still present, exponential backoff is ineffective—always tries same delay sequence
+6. If error is still present, exponential backoff is ineffective—always tries
+   same delay sequence
 
 ### Why This Matters
-If the storage backend is temporarily unavailable (e.g., due to sync service issues or heavy load), the system should back off exponentially. But if restart happens before recovery, the backoff advantage is lost. Under persistent transient errors, this could cause write storms.
+
+If the storage backend is temporarily unavailable (e.g., due to sync service
+issues or heavy load), the system should back off exponentially. But if restart
+happens before recovery, the backoff advantage is lost. Under persistent
+transient errors, this could cause write storms.
 
 ### Missing Diagnostics
+
 - No logging showing which attempt number a write is (for correlation)
 - No telemetry tracking if restarts happen during retry sequences
 - No recovery mechanism for in-progress retries across module reloads
 
 ### Affected Scenarios
-**Scenario 10** (browser restart persistence) where errors during write could benefit from exponential backoff.
+
+**Scenario 10** (browser restart persistence) where errors during write could
+benefit from exponential backoff.
 
 ---
 
 ## Cross-Cutting Theme: Identity Prerequisites Have No Single Serialization Point
 
-All of Issues O, R, and S highlight a common architectural problem: **identity initialization (tabId and containerId) is accomplished through multiple separate async flows with no unified synchronization point.**
+All of Issues O, R, and S highlight a common architectural problem: **identity
+initialization (tabId and containerId) is accomplished through multiple separate
+async flows with no unified synchronization point.**
 
 The system currently has:
+
 - `waitForTabIdInit()` - waits for tabId only
 - `initWritingTabId()` - async function that sets tabId and containerId
 - `setWritingTabId()` - synchronous setter for tabId
 - `setWritingContainerId()` - synchronous setter for containerId (no wait)
 - Port connection state machine (separate from identity)
 
-Storage operations assume BOTH tabId and containerId are known, but there is no single point where code can verify this. This creates windows where one is known and the other is not, allowing permissive fallbacks to apply unsafely.
+Storage operations assume BOTH tabId and containerId are known, but there is no
+single point where code can verify this. This creates windows where one is known
+and the other is not, allowing permissive fallbacks to apply unsafely.
 
 ---
 
@@ -467,47 +688,64 @@ Storage operations assume BOTH tabId and containerId are known, but there is no 
 
 The following criteria should be verified when addressing Issues M-T:
 
-- [ ] Storage quota check happens before any write; write fails gracefully with diagnostic if quota insufficient
-- [ ] storage.onChanged events are logged with sequence numbers and timestamps to detect ordering violations
-- [ ] Hydration explicitly blocks until BOTH tabId and containerId are initialized; no silent NULL fallbacks
-- [ ] Storage adapter migration is atomic or versioned to prevent data loss during concurrent writes
-- [ ] originTabId normalization rejects values from non-tab contexts (background, sidebar, extension pages)
-- [ ] Port message ordering is enforced for storage-dependent operations; out-of-order messages are rejected or queued
-- [ ] Container ID initialization has explicit wait mechanism parallel to tab ID initialization
-- [ ] Self-write detection heuristics have documented priority order; conflicting matches are logged as warnings
-- [ ] Empty write cooldown has documented rationale tied to measured page load / state timing
-- [ ] Transaction snapshot rollback is integrated into real error paths or dead code is removed
-- [ ] Retry backoff state is preserved or re-initialized deterministically across extension restarts
-- [ ] Single identity-ready synchronization point exists; all storage operations explicitly gate on it
+- [ ] Storage quota check happens before any write; write fails gracefully with
+      diagnostic if quota insufficient
+- [ ] storage.onChanged events are logged with sequence numbers and timestamps
+      to detect ordering violations
+- [ ] Hydration explicitly blocks until BOTH tabId and containerId are
+      initialized; no silent NULL fallbacks
+- [ ] Storage adapter migration is atomic or versioned to prevent data loss
+      during concurrent writes
+- [ ] originTabId normalization rejects values from non-tab contexts
+      (background, sidebar, extension pages)
+- [ ] Port message ordering is enforced for storage-dependent operations;
+      out-of-order messages are rejected or queued
+- [ ] Container ID initialization has explicit wait mechanism parallel to tab ID
+      initialization
+- [ ] Self-write detection heuristics have documented priority order;
+      conflicting matches are logged as warnings
+- [ ] Empty write cooldown has documented rationale tied to measured page load /
+      state timing
+- [ ] Transaction snapshot rollback is integrated into real error paths or dead
+      code is removed
+- [ ] Retry backoff state is preserved or re-initialized deterministically
+      across extension restarts
+- [ ] Single identity-ready synchronization point exists; all storage operations
+      explicitly gate on it
 
 ---
 
 ## Summary Table: Issues M-T
 
-| ID | Issue (Short) | Primary File | Severity | Affected Scenarios |
-|----|----|----|----|---|
-| M | No storage quota monitoring | storage-utils.js | High | 10, 21 |
-| N | storage.onChanged order not guaranteed | content.js | High | 17, general concurrency |
-| O | Hydration before identity ready | content.js, storage-utils.js | Critical | 11, 14, 17 |
-| P | Migration data loss window | SyncStorageAdapter.js | High | 10 (upgrade) |
-| Q | originTabId context validation missing | storage-utils.js | Medium | 12 (cleanup) |
-| R | Port ordering not enforced | content.js | High | 17 (rapid switch) |
-| S | Container ID not serialized | storage-utils.js | High | 14, 18 (Firefox) |
-| T | Self-write heuristic conflicts | storage-utils.js | Medium | 17, loop detection |
-| U | Empty cooldown arbitrary | storage-utils.js | Low/Medium | General stability |
-| V | Transaction rollback dead code | storage-utils.js | Medium | 10, 17 (recovery) |
-| W | Retry backoff reset on restart | storage-utils.js | Medium | 10 (persistence) |
+| ID  | Issue (Short)                          | Primary File                 | Severity   | Affected Scenarios      |
+| --- | -------------------------------------- | ---------------------------- | ---------- | ----------------------- |
+| M   | No storage quota monitoring            | storage-utils.js             | High       | 10, 21                  |
+| N   | storage.onChanged order not guaranteed | content.js                   | High       | 17, general concurrency |
+| O   | Hydration before identity ready        | content.js, storage-utils.js | Critical   | 11, 14, 17              |
+| P   | Migration data loss window             | SyncStorageAdapter.js        | High       | 10 (upgrade)            |
+| Q   | originTabId context validation missing | storage-utils.js             | Medium     | 12 (cleanup)            |
+| R   | Port ordering not enforced             | content.js                   | High       | 17 (rapid switch)       |
+| S   | Container ID not serialized            | storage-utils.js             | High       | 14, 18 (Firefox)        |
+| T   | Self-write heuristic conflicts         | storage-utils.js             | Medium     | 17, loop detection      |
+| U   | Empty cooldown arbitrary               | storage-utils.js             | Low/Medium | General stability       |
+| V   | Transaction rollback dead code         | storage-utils.js             | Medium     | 10, 17 (recovery)       |
+| W   | Retry backoff reset on restart         | storage-utils.js             | Medium     | 10 (persistence)        |
 
 ---
 
 ## Relationship to Original Issues A-L
 
-**Original Issues A-L** focused on identity-ready gating and lifecycle management. **Extended Issues M-T** reveal that even with identity gating in place, systemic gaps remain in:
+**Original Issues A-L** focused on identity-ready gating and lifecycle
+management. **Extended Issues M-T** reveal that even with identity gating in
+place, systemic gaps remain in:
 
 - **Storage infrastructure:** Quota, error classification, event ordering
-- **Initialization coordination:** Multiple async prerequisites without unified gate
-- **Concurrency safety:** Operations can execute out-of-order or with stale caches
+- **Initialization coordination:** Multiple async prerequisites without unified
+  gate
+- **Concurrency safety:** Operations can execute out-of-order or with stale
+  caches
 - **Error recovery:** Rollback mechanism exists but is unused
 - **Consistency checks:** Self-write detection heuristics can conflict
 
-Together, Issues A–T represent a complete audit trail of the storage persistence and hydration system's vulnerabilities.
+Together, Issues A–T represent a complete audit trail of the storage persistence
+and hydration system's vulnerabilities.

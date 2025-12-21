@@ -8,7 +8,7 @@
  * - Handlers register for specific action types
  * - Router validates sender and routes to handler
  * - Handlers return promises for async operations
- * 
+ *
  * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
  * v1.6.4.15 - FIX Issue #18 (Diagnostic): Add allowlist of valid command types
  * v1.6.4.15 - FIX Issue #22: Add response format validation and normalization
@@ -55,15 +55,15 @@ export const VALID_MESSAGE_ACTIONS = new Set([
 // All handlers should return responses in this format for consistency
 // v1.6.3.10-v12 - FIX Issue #7: Added messageId to response envelope
 export const RESPONSE_ENVELOPE = {
-  SUCCESS: (data, messageId = null) => ({ 
-    success: true, 
+  SUCCESS: (data, messageId = null) => ({
+    success: true,
     data,
     ...(messageId ? { messageId } : {}),
     timestamp: Date.now()
   }),
-  ERROR: (error, code = 'UNKNOWN_ERROR', messageId = null) => ({ 
-    success: false, 
-    error: String(error), 
+  ERROR: (error, code = 'UNKNOWN_ERROR', messageId = null) => ({
+    success: false,
+    error: String(error),
     code,
     ...(messageId ? { messageId } : {}),
     timestamp: Date.now()
@@ -72,10 +72,28 @@ export const RESPONSE_ENVELOPE = {
 
 // v1.6.4.15 - FIX Issue #22: Protocol version for future compatibility
 // v1.6.3.10-v12 - FIX Issue #10: Now enforced in message validation
+// v1.6.3.11-v3 - FIX Issue #14: PROTOCOL VERSION ENFORCEMENT POLICY
+// ============================================================================
+// POLICY: Backward-compatible with logging, NOT strict rejection
+// ============================================================================
+// - Clients without version header: Allowed (logged as 'legacy')
+// - Clients with version >= MIN_COMPATIBLE_PROTOCOL_VERSION: Allowed
+// - Clients with version < MIN_COMPATIBLE_PROTOCOL_VERSION: Allowed but WARNED
+//
+// RATIONALE: Extension updates may create version mismatches temporarily when
+// background script updates before content scripts reload. Strict rejection
+// would break functionality during updates.
+//
+// FUTURE: If strict enforcement needed, add 'strictVersionCheck: true' option
+// to handler registration and only enforce on handlers that opt-in.
+// ============================================================================
 export const MESSAGE_PROTOCOL_VERSION = '1.0.0';
 
 // v1.6.3.10-v12 - FIX Issue #10: Minimum compatible protocol version
 export const MIN_COMPATIBLE_PROTOCOL_VERSION = '1.0.0';
+
+// v1.6.3.11-v3 - FIX Issue #20: Maximum messages to queue during initialization
+const MAX_PRE_INIT_MESSAGE_QUEUE = 50;
 
 // v1.6.3.10-v11 - FIX Issue #11: Operations requiring ownership validation
 // These operations modify Quick Tab state and must validate sender.tab.id === message.originTabId
@@ -104,14 +122,21 @@ export class MessageRouter {
     // v1.6.3.11 - FIX Issue #35: Track initialization state
     this._isInitialized = false;
     this._initStartTime = Date.now();
-    
+
+    // v1.6.3.11-v3 - FIX Issue #20: Queue for messages received before initialization
+    this._preInitMessageQueue = [];
+
+    // v1.6.3.11 - FIX Issue #24: Re-entrance guard for recursive handler calls
+    this._processingActions = new Set();
+
     // v1.6.3.11 - FIX Issue #35: Log when MessageRouter is initialized
     console.log('[MessageRouter] INITIALIZED:', {
       timestamp: new Date().toISOString(),
-      protocolVersion: MESSAGE_PROTOCOL_VERSION
+      protocolVersion: MESSAGE_PROTOCOL_VERSION,
+      handlerCount: this.handlers.size
     });
   }
-  
+
   /**
    * Set the background generation ID for restart detection
    * v1.6.3.10-v12 - FIX Issue #8: Include generation ID in all responses
@@ -121,7 +146,7 @@ export class MessageRouter {
     this._backgroundGenerationId = generationId;
     console.log('[MessageRouter] v1.6.3.10-v12 Background generation ID configured');
   }
-  
+
   /**
    * Get the current background generation ID
    * v1.6.3.10-v12 - FIX Issue #8
@@ -146,7 +171,7 @@ export class MessageRouter {
       }
       this.handlers.set(action, handler);
     }
-    
+
     // v1.6.3.11 - FIX Issue #35: Log handler registration count
     console.log('[MessageRouter] HANDLERS_REGISTERED:', {
       newActions: actionList.length,
@@ -168,18 +193,119 @@ export class MessageRouter {
   }
 
   /**
-   * Mark router as fully initialized
+   * Mark router as fully initialized and drain queued messages
    * v1.6.3.11 - FIX Issue #35: Track initialization completion
+   * v1.6.3.11-v3 - FIX Issue #20: Drain pre-init message queue
    */
   markInitialized() {
     this._isInitialized = true;
     const initDuration = Date.now() - this._initStartTime;
+    const queuedMessages = this._preInitMessageQueue.length;
+
     console.log('[MessageRouter] FULLY_INITIALIZED:', {
       timestamp: new Date().toISOString(),
       totalHandlers: this.handlers.size,
       initDurationMs: initDuration,
       hasExtensionId: !!this.extensionId,
-      hasGenerationId: !!this._backgroundGenerationId
+      hasGenerationId: !!this._backgroundGenerationId,
+      queuedMessages // v1.6.3.11-v3 - FIX Issue #20
+    });
+
+    // v1.6.3.11-v3 - FIX Issue #20: Drain queued messages
+    if (queuedMessages > 0) {
+      this._drainPreInitQueue();
+    }
+  }
+
+  /**
+   * Drain the pre-initialization message queue
+   * v1.6.3.11-v3 - FIX Issue #20: Process messages that arrived before init
+   * @private
+   */
+  async _drainPreInitQueue() {
+    console.log('[MessageRouter] DRAIN_PRE_INIT_QUEUE_START:', {
+      queueSize: this._preInitMessageQueue.length,
+      timestamp: Date.now()
+    });
+
+    let processedCount = 0;
+    let errorCount = 0;
+
+    while (this._preInitMessageQueue.length > 0) {
+      const entry = this._preInitMessageQueue.shift();
+      const result = await this._processQueuedMessage(entry);
+      if (result.success) {
+        processedCount++;
+      } else {
+        errorCount++;
+      }
+    }
+
+    console.log('[MessageRouter] DRAIN_PRE_INIT_QUEUE_COMPLETE:', {
+      processedCount,
+      errorCount
+    });
+  }
+
+  /**
+   * Process a single queued message
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
+   * @private
+   */
+  async _processQueuedMessage(entry) {
+    const { message, sender, sendResponse, queuedAt } = entry;
+    const queueDuration = Date.now() - queuedAt;
+
+    try {
+      await this.route(message, sender, sendResponse);
+      console.log('[MessageRouter] PRE_INIT_MESSAGE_PROCESSED:', {
+        action: message.action || message.type,
+        queueDurationMs: queueDuration
+      });
+      return { success: true };
+    } catch (err) {
+      console.error('[MessageRouter] PRE_INIT_MESSAGE_FAILED:', {
+        action: message.action || message.type,
+        error: err.message
+      });
+      if (sendResponse) {
+        sendResponse({ success: false, error: 'Failed during queue drain' });
+      }
+      return { success: false };
+    }
+  }
+
+  /**
+   * Queue a message for processing after initialization
+   * v1.6.3.11-v3 - FIX Issue #20: Buffer pre-init messages
+   * @private
+   */
+  _queuePreInitMessage(message, sender, sendResponse) {
+    if (this._preInitMessageQueue.length >= MAX_PRE_INIT_MESSAGE_QUEUE) {
+      console.warn('[MessageRouter] PRE_INIT_QUEUE_OVERFLOW: Message dropped', {
+        action: message.action || message.type,
+        queueSize: this._preInitMessageQueue.length,
+        maxSize: MAX_PRE_INIT_MESSAGE_QUEUE
+      });
+      sendResponse({
+        success: false,
+        error: 'MessageRouter initialization queue full',
+        code: 'QUEUE_OVERFLOW',
+        retryable: true
+      });
+      return;
+    }
+
+    this._preInitMessageQueue.push({
+      message,
+      sender,
+      sendResponse,
+      queuedAt: Date.now()
+    });
+
+    console.log('[MessageRouter] MESSAGE_QUEUED_PRE_INIT:', {
+      action: message.action || message.type,
+      queueSize: this._preInitMessageQueue.length
     });
   }
 
@@ -219,39 +345,40 @@ export class MessageRouter {
    */
   _extractAction(message) {
     if (!message) return null;
-    
+
     // Prefer `action` property (standard)
     if (typeof message.action === 'string') {
       return message.action;
     }
-    
+
     // Fall back to `type` property for type-based messages
     // v1.6.4.14 - FIX Issue #18: Some handlers use `type` instead of `action`
     if (typeof message.type === 'string') {
       return message.type;
     }
-    
+
     return null;
   }
 
   /**
    * Check if message should be deferred to other browser.runtime.onMessage listeners
    * v1.6.4.14 - FIX Issue #18: Allow type-based messages to pass through
-   * 
+   *
    * The MessageRouter handles action-based messages, but some messages use
    * `type` property instead of `action`. These type-based messages are handled
    * by separate runtime.onMessage listeners (added in background.js):
    * - QUICK_TAB_STATE_CHANGE: Handled by handleQuickTabStateChange()
    * - MANAGER_COMMAND: Handled by handleManagerCommand()
    * - REQUEST_FULL_STATE_SYNC: Handled by handleFullStateSyncRequest()
-   * 
+   *
    * @private
    * @param {Object} message - Message to check
    * @returns {boolean} True if message should be handled by other listeners
    */
   _shouldDeferToOtherListeners(message) {
     // Messages with `type` (not `action`) are handled by other listeners
-    const isTypeBasedMessage = typeof message.type === 'string' && typeof message.action !== 'string';
+    const isTypeBasedMessage =
+      typeof message.type === 'string' && typeof message.action !== 'string';
     return isTypeBasedMessage;
   }
 
@@ -269,7 +396,7 @@ export class MessageRouter {
       // Log rejected command with context
       this._rejectedCommandCount++;
       this._lastRejectedCommand = { action, timestamp: Date.now() };
-      
+
       console.warn('[MSG][MessageRouter] UNKNOWN_COMMAND rejected:', {
         command: action,
         senderTabId: sender?.tab?.id ?? 'unknown',
@@ -278,10 +405,10 @@ export class MessageRouter {
         reason: 'Action not in VALID_MESSAGE_ACTIONS allowlist',
         totalRejected: this._rejectedCommandCount
       });
-      
+
       return { valid: false, reason: `Unknown command: ${action}` };
     }
-    
+
     return { valid: true };
   }
 
@@ -298,19 +425,19 @@ export class MessageRouter {
       timestamp: Date.now(),
       version: MESSAGE_PROTOCOL_VERSION
     };
-    
+
     if (this._backgroundGenerationId) {
       fields.generation = this._backgroundGenerationId;
     }
-    
+
     // v1.6.3.10-v12 - FIX Issue #7: Include messageId for correlation
     if (messageId) {
       fields.messageId = messageId;
     }
-    
+
     return fields;
   }
-  
+
   /**
    * Handle null/undefined response
    * v1.6.3.10-v12 - FIX Code Health: Extract to reduce complexity
@@ -323,7 +450,7 @@ export class MessageRouter {
     });
     return { success: true, data: null, ...baseFields };
   }
-  
+
   /**
    * Handle error response missing error field
    * v1.6.3.10-v12 - FIX Code Health: Extract to reduce complexity
@@ -334,7 +461,12 @@ export class MessageRouter {
       action,
       response
     });
-    return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR', ...baseFields };
+    return {
+      ...response,
+      error: 'Unknown error',
+      code: response.code || 'UNKNOWN_ERROR',
+      ...baseFields
+    };
   }
 
   /**
@@ -347,18 +479,21 @@ export class MessageRouter {
    */
   _validateProtocolVersion(message, sender) {
     const clientVersion = message.protocolVersion;
-    
+
     // If client doesn't send version, log but allow (backward compatibility)
     if (!clientVersion) {
       // Only log for debugging - don't reject old clients
-      console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)', {
-        action: message.action || message.type,
-        senderTabId: sender?.tab?.id,
-        serverVersion: MESSAGE_PROTOCOL_VERSION
-      });
+      console.log(
+        '[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)',
+        {
+          action: message.action || message.type,
+          senderTabId: sender?.tab?.id,
+          serverVersion: MESSAGE_PROTOCOL_VERSION
+        }
+      );
       return { valid: true };
     }
-    
+
     // Check if version is compatible
     if (this._isVersionCompatible(clientVersion)) {
       console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED:', {
@@ -368,7 +503,7 @@ export class MessageRouter {
       });
       return { valid: true };
     }
-    
+
     // Version mismatch - log diagnostic info but don't reject
     // (for now, we allow all versions but log the mismatch)
     console.warn('[MSG][MessageRouter] PROTOCOL_VERSION_MISMATCH:', {
@@ -378,7 +513,7 @@ export class MessageRouter {
       action: message.action || message.type,
       senderTabId: sender?.tab?.id
     });
-    
+
     return { valid: true }; // Allow but logged
   }
 
@@ -409,23 +544,23 @@ export class MessageRouter {
    */
   _normalizeResponse(response, action, messageId = null) {
     const baseFields = this._buildBaseResponseFields(messageId);
-    
+
     // Handle null/undefined responses
     if (response === null || response === undefined) {
       return this._handleNullResponse(action, baseFields);
     }
-    
+
     // Response already has success property - validate format
     if (typeof response === 'object' && 'success' in response) {
       // Validate required fields based on success/failure
       if (response.success === false && !response.error) {
         return this._handleMissingErrorField(response, action, baseFields);
       }
-      
+
       // Response is valid format - add generation ID
       return { ...response, ...baseFields };
     }
-    
+
     // Response is raw data - wrap in success envelope
     return { success: true, data: response, ...baseFields };
   }
@@ -433,14 +568,14 @@ export class MessageRouter {
   /**
    * Validate originTabId ownership for operations that require it
    * v1.6.3.10-v11 - FIX Issue #11: Middleware-style ownership validation
-   * 
+   *
    * For operations in OWNERSHIP_REQUIRED_ACTIONS, validates that:
    * - sender.tab.id exists (message came from a content script in a tab)
    * - If message.originTabId is provided, it must match sender.tab.id
-   * 
+   *
    * This prevents spoofing attacks where a malicious content script could
    * claim to be acting on behalf of a different tab.
-   * 
+   *
    * @private
    * @param {Object} message - Message with potential originTabId
    * @param {Object} sender - Message sender
@@ -452,10 +587,10 @@ export class MessageRouter {
     if (!OWNERSHIP_REQUIRED_ACTIONS.has(action)) {
       return { valid: true };
     }
-    
+
     const senderTabId = sender?.tab?.id;
     const payloadOriginTabId = message?.originTabId;
-    
+
     // Sender must have a tab ID for ownership-required operations
     if (typeof senderTabId !== 'number') {
       console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: No sender.tab.id', {
@@ -464,13 +599,13 @@ export class MessageRouter {
         hasTab: !!sender?.tab,
         warning: 'Operations requiring ownership must come from tabs'
       });
-      return { 
-        valid: false, 
+      return {
+        valid: false,
         error: 'OWNERSHIP_VALIDATION_FAILED',
         code: 'SENDER_TAB_REQUIRED'
       };
     }
-    
+
     // If payload has originTabId, it MUST match sender.tab.id
     if (payloadOriginTabId !== null && payloadOriginTabId !== undefined) {
       if (payloadOriginTabId !== senderTabId) {
@@ -480,21 +615,21 @@ export class MessageRouter {
           senderTabId,
           warning: 'Security concern - payload claims different origin than sender'
         });
-        return { 
-          valid: false, 
+        return {
+          valid: false,
           error: 'OWNERSHIP_VALIDATION_FAILED',
           code: 'ORIGIN_MISMATCH'
         };
       }
     }
-    
+
     // Validation passed
     console.log('[MSG][MessageRouter] OWNERSHIP_VALIDATED:', {
       action,
       senderTabId,
       payloadOriginTabId: payloadOriginTabId ?? 'not-provided'
     });
-    
+
     return { valid: true };
   }
 
@@ -508,20 +643,20 @@ export class MessageRouter {
     if (this._shouldDeferToOtherListeners(message)) {
       return { handled: false, returnValue: false };
     }
-    
+
     // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
     const validation = this._validateAction(action, sender);
     if (!validation.valid) {
-      sendResponse({ 
-        success: false, 
-        error: 'UNKNOWN_COMMAND', 
+      sendResponse({
+        success: false,
+        error: 'UNKNOWN_COMMAND',
         command: action,
         code: 'UNKNOWN_COMMAND',
         version: MESSAGE_PROTOCOL_VERSION
       });
       return { handled: true, returnValue: false };
     }
-    
+
     console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
     sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
     return { handled: true, returnValue: false };
@@ -547,9 +682,9 @@ export class MessageRouter {
    */
   _handleInvalidFormat(message, messageId, sendResponse) {
     console.error('[MSG][MessageRouter] Invalid message format (missing action/type):', message);
-    sendResponse({ 
-      success: false, 
-      error: 'Invalid message format', 
+    sendResponse({
+      success: false,
+      error: 'Invalid message format',
       code: 'INVALID_MESSAGE_FORMAT',
       ...(messageId ? { messageId } : {}),
       timestamp: Date.now()
@@ -592,6 +727,88 @@ export class MessageRouter {
   }
 
   /**
+   * Validate basic message structure before routing
+   * v1.6.3.11 - FIX Issue #25: No structure validation
+   * Checks that message is an object with valid action/type field
+   * @private
+   * @param {*} message - Message to validate
+   * @returns {{valid: boolean, error?: string, code?: string}}
+   */
+  _validateMessageStructure(message) {
+    // Check message is an object
+    if (!message || typeof message !== 'object') {
+      console.warn('[MSG][MessageRouter] INVALID_STRUCTURE: Message is not an object', {
+        received: typeof message
+      });
+      return {
+        valid: false,
+        error: 'Message must be an object',
+        code: 'INVALID_MESSAGE_STRUCTURE'
+      };
+    }
+
+    // Check for action or type field
+    const hasAction = typeof message.action === 'string' && message.action.length > 0;
+    const hasType = typeof message.type === 'string' && message.type.length > 0;
+
+    if (!hasAction && !hasType) {
+      console.warn('[MSG][MessageRouter] INVALID_STRUCTURE: Missing action/type field', {
+        keys: Object.keys(message).slice(0, 10)
+      });
+      return {
+        valid: false,
+        error: 'Message must have action or type field',
+        code: 'MISSING_ACTION_TYPE'
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Check for re-entrance (recursive handler call)
+   * v1.6.3.11 - FIX Issue #24: Circular handler dependencies
+   * @private
+   * @param {string} action - Action being processed
+   * @returns {boolean} True if re-entrance detected
+   */
+  _checkReentrance(action) {
+    if (this._processingActions.has(action)) {
+      console.warn('[MSG][MessageRouter] RE_ENTRANCE_DETECTED: Blocking recursive call', {
+        action,
+        currentlyProcessing: Array.from(this._processingActions)
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check early exit conditions for route()
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   * @param {Object} message - Message to route
+   * @param {string} action - Extracted action
+   * @param {string} messageId - Message ID for correlation
+   * @param {Function} sendResponse - Response callback
+   * @returns {{shouldExit: boolean, returnValue?: boolean}}
+   */
+  _checkRouteEarlyExit(message, action, messageId, sendResponse) {
+    // Check re-entrance
+    if (this._checkReentrance(action)) {
+      sendResponse({
+        success: false,
+        error: 'Re-entrance blocked',
+        code: 'RE_ENTRANCE_BLOCKED',
+        ...(messageId ? { messageId } : {}),
+        timestamp: Date.now()
+      });
+      return { shouldExit: true, returnValue: false };
+    }
+    return { shouldExit: false };
+  }
+
+  /**
    * Route message to appropriate handler
    * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
    * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
@@ -600,28 +817,60 @@ export class MessageRouter {
    * v1.6.3.10-v12 - FIX Issue #7: Include messageId in response for correlation
    * v1.6.3.10-v12 - FIX Issue #10: Validate protocol version
    * v1.6.3.10-v12 - FIX Code Health: Extracted helpers to reduce complexity
+   * v1.6.3.11 - FIX Issue #24: Re-entrance guard for circular dependencies
+   * v1.6.3.11 - FIX Issue #25: Basic structure validation before routing
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
    * @returns {boolean} True if async response expected
    */
   async route(message, sender, sendResponse) {
+    // v1.6.3.11 - FIX Issue #25: Validate structure before processing
+    const structureValidation = this._validateMessageStructure(message);
+    if (!structureValidation.valid) {
+      sendResponse({
+        success: false,
+        error: structureValidation.error,
+        code: structureValidation.code,
+        timestamp: Date.now()
+      });
+      return false;
+    }
+
     const messageId = message?.messageId || null;
     const action = this._extractAction(message);
-    
+
     // Validate message format
     if (!action) {
       this._handleInvalidFormat(message, messageId, sendResponse);
       return false;
     }
 
+    // v1.6.3.11 - FIX Issue #24: Check for re-entrance
+    const earlyExit = this._checkRouteEarlyExit(message, action, messageId, sendResponse);
+    if (earlyExit.shouldExit) return earlyExit.returnValue;
+
     // Validate protocol version and log correlation
     this._validateProtocolVersion(message, sender);
-    
+
     if (messageId) {
-      console.log('[MSG][MessageRouter] MESSAGE_CORRELATION:', { messageId, action, senderTabId: sender?.tab?.id });
+      console.log('[MSG][MessageRouter] MESSAGE_CORRELATION:', {
+        messageId,
+        action,
+        senderTabId: sender?.tab?.id
+      });
     }
 
+    // Route to handler
+    return this._routeToHandler(message, sender, sendResponse, action, messageId);
+  }
+
+  /**
+   * Route message to handler after validation passes
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  async _routeToHandler(message, sender, sendResponse, action, messageId) {
     const handler = this.handlers.get(action);
     if (!handler) {
       const result = this._handleNoHandler(message, sender, sendResponse, action);
@@ -635,6 +884,9 @@ export class MessageRouter {
       return false;
     }
 
+    // v1.6.3.11 - FIX Issue #24: Track action being processed
+    this._processingActions.add(action);
+
     try {
       const result = await handler(message, sender);
       const normalizedResponse = this._normalizeResponse(result, action, messageId);
@@ -643,6 +895,9 @@ export class MessageRouter {
     } catch (error) {
       this._handleHandlerError(action, error, messageId, sendResponse);
       return true;
+    } finally {
+      // v1.6.3.11 - FIX Issue #24: Clear processing flag after handler completes
+      this._processingActions.delete(action);
     }
   }
 

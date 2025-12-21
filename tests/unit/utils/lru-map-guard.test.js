@@ -33,7 +33,7 @@ describe('LRUMapGuard', () => {
   describe('Constants', () => {
     it('should export default constants', () => {
       expect(MAX_MAP_SIZE).toBe(500);
-      expect(EVICTION_PERCENT).toBe(0.10);
+      expect(EVICTION_PERCENT).toBe(0.1);
       expect(STALE_ENTRY_AGE_MS).toBe(24 * 60 * 60 * 1000);
       expect(CLEANUP_INTERVAL_MS).toBe(30 * 1000);
     });

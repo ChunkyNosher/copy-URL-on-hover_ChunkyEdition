@@ -830,6 +830,24 @@ function gatherFilterSettings() {
  * Save settings from form to storage
  * v1.6.0.11 - Now also saves filter settings and notifies content scripts
  */
+/**
+ * v1.6.3.11 - FIX Issue #23: Notify background script of settings changes
+ * Background uses stale settings until restart without this notification
+ */
+async function notifyBackgroundOfSettingsChange(settings) {
+  try {
+    await browserAPI.runtime.sendMessage({
+      action: 'SETTINGS_CHANGED',
+      settings: settings,
+      timestamp: Date.now()
+    });
+    console.log('[Settings] Background script notified of settings change');
+  } catch (error) {
+    // Background might not be listening for this message - that's OK
+    console.warn('[Settings] Could not notify background of settings change:', error.message);
+  }
+}
+
 async function saveSettings() {
   try {
     const settings = gatherSettingsFromForm();
@@ -846,6 +864,9 @@ async function saveSettings() {
 
     // Notify all tabs to refresh live console filter cache
     await refreshLiveConsoleFiltersInAllTabs();
+
+    // v1.6.3.11 - FIX Issue #23: Notify background script of settings change
+    await notifyBackgroundOfSettingsChange(settings);
 
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);

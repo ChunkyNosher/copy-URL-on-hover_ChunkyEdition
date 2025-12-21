@@ -26,14 +26,14 @@ const MAX_MAP_SIZE = 500;
  * E.g., 0.10 = 10% of entries evicted when map is 110% full
  * v1.6.3.10-v11 - FIX Issue #21
  */
-const EVICTION_PERCENT = 0.10;
+const EVICTION_PERCENT = 0.1;
 
 /**
  * Threshold multiplier for triggering eviction
  * E.g., 1.10 = evict when map is 110% of MAX_MAP_SIZE
  * v1.6.3.10-v11 - FIX Issue #21
  */
-const EVICTION_TRIGGER_MULTIPLIER = 1.10;
+const EVICTION_TRIGGER_MULTIPLIER = 1.1;
 
 /**
  * Maximum age for stale entries in milliseconds (24 hours)
@@ -188,7 +188,7 @@ export class LRUMapGuard {
     // Evict the oldest entries
     for (let i = 0; i < count && i < sortedEntries.length; i++) {
       const key = sortedEntries[i].key;
-      
+
       // Get entry data for logging before removal
       const entry = this._targetMap.get(key);
       const entryInfo = this._getEntryInfo(key, entry);
@@ -467,9 +467,4 @@ export class LRUMapGuard {
 
 // ==================== EXPORTS ====================
 
-export {
-  MAX_MAP_SIZE,
-  EVICTION_PERCENT,
-  STALE_ENTRY_AGE_MS,
-  CLEANUP_INTERVAL_MS
-};
+export { MAX_MAP_SIZE, EVICTION_PERCENT, STALE_ENTRY_AGE_MS, CLEANUP_INTERVAL_MS };

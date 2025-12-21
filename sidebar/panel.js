@@ -7,6 +7,13 @@ const SESSION_KEY = 'quick_tabs_session';
 // Auto-refresh interval
 let refreshInterval;
 
+// v1.6.3.11 - FIX Issue #21: Track storage write in progress to prevent reading partial data
+let storageWriteInProgress = false;
+
+// v1.6.3.11 - FIX Issue #22: Storage format version for migration detection
+// Unused but kept for potential future use
+const _EXPECTED_FORMAT_VERSION = 2;
+
 // Initialize panel
 document.addEventListener('DOMContentLoaded', () => {
   checkSessionStorageAvailability();
@@ -69,6 +76,34 @@ async function _loadFromSyncStorage() {
 }
 
 /**
+ * Compare timestamps to determine which storage has more recent data
+ * v1.6.3.11 - FIX Issue #40: Session vs Sync Storage Race During Init
+ * @param {Object|null} sessionState - State from session storage
+ * @param {Object|null} syncState - State from sync storage
+ * @returns {Object|null} More recent state or null if both are null
+ */
+function _selectMoreRecentState(sessionState, syncState) {
+  if (!sessionState && !syncState) return null;
+  if (!sessionState) return syncState;
+  if (!syncState) return sessionState;
+
+  const sessionTimestamp = sessionState.timestamp || 0;
+  const syncTimestamp = syncState.timestamp || 0;
+
+  console.log('[Panel] STORAGE_TIMESTAMP_COMPARISON:', {
+    sessionTimestamp,
+    syncTimestamp,
+    sessionIsNewer: sessionTimestamp > syncTimestamp
+  });
+
+  // Return whichever has the more recent timestamp
+  if (sessionTimestamp > syncTimestamp) {
+    return sessionState;
+  }
+  return syncState;
+}
+
+/**
  * Show empty state message
  */
 function _showEmptyState() {
@@ -82,7 +117,39 @@ function _showEmptyState() {
 }
 
 /**
+ * v1.6.3.11 - FIX Issue #22: Detect and normalize storage format
+ * Handles both flat array format (state.tabs) and nested object format (state.allQuickTabs)
+ * @param {Object} state - Raw state from storage
+ * @returns {Array|null} Normalized tabs array or null if invalid
+ */
+function _normalizeStorageFormat(state) {
+  if (!state) return null;
+
+  // Format 1: Flat array format (state.tabs)
+  if (Array.isArray(state.tabs)) {
+    console.log('[Panel] Using flat tabs array format');
+    return state.tabs;
+  }
+
+  // Format 2: Nested object format (state.allQuickTabs)
+  if (Array.isArray(state.allQuickTabs)) {
+    console.log('[Panel] Using allQuickTabs nested format (v2)');
+    return state.allQuickTabs;
+  }
+
+  // Format 3: Direct array (legacy)
+  if (Array.isArray(state)) {
+    console.log('[Panel] Using direct array format (legacy)');
+    return state;
+  }
+
+  console.warn('[Panel] Unknown storage format detected:', Object.keys(state || {}));
+  return null;
+}
+
+/**
  * Render Quick Tabs list
+ * v1.6.3.11 - FIX Issue #22: Handle both flat and nested storage formats
  * @param {Object} state - State containing tabs
  */
 function _renderQuickTabsList(state) {
@@ -90,8 +157,17 @@ function _renderQuickTabsList(state) {
   const tabCountElement = document.getElementById('tabCount');
   const lastSyncElement = document.getElementById('lastSync');
 
+  // v1.6.3.11 - FIX Issue #22: Normalize storage format before rendering
+  const tabs = _normalizeStorageFormat(state);
+
+  if (!tabs) {
+    console.warn('[Panel] Failed to normalize storage format, showing empty state');
+    _showEmptyState();
+    return;
+  }
+
   // Update tab count
-  tabCountElement.textContent = state.tabs.length;
+  tabCountElement.textContent = tabs.length;
 
   // Update last sync time
   if (state.timestamp) {
@@ -101,22 +177,31 @@ function _renderQuickTabsList(state) {
 
   // Display all tabs
   container.innerHTML = '';
-  state.tabs.forEach((tab, index) => {
+  tabs.forEach((tab, index) => {
     const tabElement = createTabElement(tab, index);
     container.appendChild(tabElement);
   });
 }
 
 async function displayAllQuickTabs() {
+  // v1.6.3.11 - FIX Issue #21: Skip render if storage write is in progress
+  if (storageWriteInProgress) {
+    console.log('[Panel] Skipping render - storage write in progress');
+    return;
+  }
+
   try {
-    // Try session storage first, fall back to sync
-    let state = await _loadFromSessionStorage();
+    // v1.6.3.11 - FIX Issue #40: Load from both storages and compare timestamps
+    // This prevents stale sync data from being used when session quota exceeded
+    const sessionState = await _loadFromSessionStorage();
+    const syncState = await _loadFromSyncStorage();
 
-    if (!state) {
-      state = await _loadFromSyncStorage();
-    }
+    // Select the more recent state based on timestamp
+    const state = _selectMoreRecentState(sessionState, syncState);
 
-    if (!state || !state.tabs || state.tabs.length === 0) {
+    // v1.6.3.11 - FIX Issue #22: Handle normalized format
+    const tabs = _normalizeStorageFormat(state);
+    if (!state || !tabs || tabs.length === 0) {
       _showEmptyState();
       return;
     }
@@ -235,11 +320,21 @@ function setupEventListeners() {
 }
 
 // Listen for storage changes to auto-update
+// v1.6.3.11 - FIX Issue #21: Track storage write state to prevent race conditions
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (
     (areaName === 'sync' && changes[STATE_KEY]) ||
     (areaName === 'session' && changes[SESSION_KEY])
   ) {
+    // v1.6.3.11 - FIX Issue #21: Check for dirty flag indicating partial write
+    const change = changes[STATE_KEY] || changes[SESSION_KEY];
+    if (change?.newValue?._writeInProgress) {
+      storageWriteInProgress = true;
+      console.log('[Panel] Storage write in progress, deferring render');
+      return;
+    }
+
+    storageWriteInProgress = false;
     displayAllQuickTabs();
   }
 });
