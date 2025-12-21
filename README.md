@@ -17,7 +17,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.3.11-v2
 
-**🔧 40 Issues Fixed - 3 Diagnostic Reports (December 2024) ✅**
+**🔧 40 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
 
 **Port/BFCache/Init Improvements (#1-8):**
 - ✅ **BFCache PORT_VERIFY Timeout** - Increased to 2000ms for reliability
@@ -44,7 +44,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.3.11
 
-**🔧 40 Issues Fixed (December 2024) ✅**
+**🔧 40 Issues Fixed (December 2025) ✅**
 
 - ✅ GET_CURRENT_TAB_ID no init dependency, synchronous listener registration
 - ✅ BFCache port recovery with 50ms delay, port listener race fix
