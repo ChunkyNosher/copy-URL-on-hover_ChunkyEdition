@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.10-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,11 +9,33 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.10-v11 Status:** 25 Issues Fixed (3 Diagnostic Reports) ✅
+**🔧 v1.6.3.11 Status:** 40 Issues Fixed (3 Diagnostic Reports) ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.11
+
+**🔧 40 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
+
+- ✅ **GET_CURRENT_TAB_ID No Init Dependency** - Returns sender.tab.id immediately
+- ✅ **Synchronous Listener Registration** - onMessage/onConnect at top-level
+- ✅ **BFCache Port Recovery** - Auto-reconnect with 50ms delay on pageshow
+- ✅ **Port Listener Race Fix** - onDisconnect registered before onMessage
+- ✅ **INIT_RESPONSE Timeout** - 2s timeout with fallback to retry loop
+- ✅ **NOT_INITIALIZED Detection** - Special 500ms wait then single retry
+- ✅ **Cross-Queue Overflow Protection** - Global backpressure at 300 messages
+- ✅ **Hydration Drain Lock** - Prevents concurrent timeout/drain race
+- ✅ **Namespaced Message IDs** - Content/background namespace prefixes
+- ✅ **Background Sequence IDs** - Atomic global counter replaces per-tab
+- ✅ **BFCache Verify Timeout** - 1000ms max wait with auto-reconnect
+- ✅ **Adoption Cache TTL** - 5-minute expiration with 60s cleanup
+- ✅ **Navigation State Reset** - beforeunload resets 4 init flags
+- ✅ **Broadcast Idempotency** - messageId tracking prevents duplicates
+- ✅ **Target Tab Validation** - Early return if targetTabId mismatch
+
+---
 
 ## 🎉 What's New in v1.6.3.10-v11
 
@@ -234,6 +256,6 @@ for details.
 
 ---
 
-**Version 1.6.3.10-v11** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
