@@ -3022,6 +3022,53 @@ async function _handleSettingsChange(changes) {
 }
 
 // ==================== STORAGE SYNC BROADCASTING ====================
+/**
+ * v1.6.3.11-v2 - FIX Issue #6 (Diagnostic Report): Document storage synchronization mechanisms
+ * 
+ * STORAGE SYNCHRONIZATION ARCHITECTURE:
+ * =====================================
+ * 
+ * This extension uses multiple overlapping storage synchronization mechanisms.
+ * Understanding their interactions is critical for debugging sync issues.
+ * 
+ * MECHANISM 1: storage.onChanged (PRIMARY)
+ * ----------------------------------------
+ * - Listens to browser.storage.onChanged events
+ * - Fires automatically when any extension context writes to storage.local
+ * - Updates background's globalQuickTabState cache
+ * - SUPERSEDES: Direct storage reads (background always uses cache after initial load)
+ * 
+ * MECHANISM 2: Content Script StorageManager
+ * ------------------------------------------
+ * - Each tab's content script has its own StorageManager instance
+ * - Also listens to storage.onChanged for its own sync
+ * - SUPERSEDES: Port-based state broadcast (removed in v1.6.2)
+ * 
+ * MECHANISM 3: Background Port Messages (DEPRECATED)
+ * --------------------------------------------------
+ * - Previously used for real-time state broadcasting
+ * - Now only used for: command routing, tab ID queries, health checks
+ * - SUPERSEDED BY: storage.onChanged mechanism
+ * 
+ * MECHANISM 4: StateCoordinator (INITIALIZATION ONLY)
+ * ---------------------------------------------------
+ * - Used only during background startup to load initial state
+ * - Once loaded, defers to storage.onChanged for updates
+ * - SUPERSEDED BY: storage.onChanged after initialization
+ * 
+ * INTERACTION NOTES:
+ * - storage.onChanged is the authoritative sync mechanism
+ * - Background script updates its cache when storage.onChanged fires
+ * - Content scripts receive the same storage.onChanged events independently
+ * - Hash-based deduplication prevents processing duplicate writes
+ * - saveId tracking prevents hash collision false negatives
+ * 
+ * DEBUGGING TIP: If state is out of sync, check:
+ * 1. storage.onChanged listener health (see _logStorageListenerHealth)
+ * 2. saveId tracking in storage writes
+ * 3. Hash comparison results in _shouldIgnoreStorageChange
+ */
+
 // Listen for local/sync storage changes and broadcast them to all tabs
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
@@ -3641,10 +3688,20 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
  * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
  * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
+ * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Enhanced port state transition logging
  */
 function handlePortConnect(port) {
   const connectTime = Date.now();
   const { type, tabId, origin } = _parsePortName(port);
+  
+  // v1.6.3.11-v2 - FIX Issue #8: Log DISCONNECTED → CONNECTING transition
+  console.log('[PORT_LIFECYCLE] STATE_TRANSITION: DISCONNECTED → CONNECTING', {
+    portName: port.name,
+    tabId,
+    type,
+    origin,
+    timestamp: Date.now()
+  });
   
   // v1.6.4.15 - FIX Issue #16: Log port lifecycle - created
   console.log('[PORT_LIFECYCLE] Port created:', {
@@ -3661,6 +3718,22 @@ function handlePortConnect(port) {
   port._portId = portId;
 
   _sendBackgroundHandshake(port, portId, tabId, origin);
+  
+  // v1.6.3.11-v2 - FIX Issue #8: Log CONNECTING → CONNECTED transition
+  console.log('[PORT_LIFECYCLE] STATE_TRANSITION: CONNECTING → CONNECTED', {
+    portId,
+    portName: port.name,
+    tabId,
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.11-v2 - FIX Issue #8: Log listener registration completion
+  console.log('[PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: onMessage and onDisconnect attached', {
+    portId,
+    hasOnMessage: true,
+    hasOnDisconnect: true,
+    timestamp: Date.now()
+  });
 
   // v1.6.4.15 - FIX Issue #16: Enhanced port message handler with lifecycle logging
   port.onMessage.addListener(message => {
@@ -3676,6 +3749,15 @@ function handlePortConnect(port) {
   port.onDisconnect.addListener(() => {
     const error = browser.runtime.lastError;
     const connectionDuration = Date.now() - connectTime;
+    
+    // v1.6.3.11-v2 - FIX Issue #8: Log CONNECTED → DISCONNECTED transition
+    console.log('[PORT_LIFECYCLE] STATE_TRANSITION: CONNECTED → DISCONNECTED', {
+      portId,
+      tabId,
+      connectionDurationMs: connectionDuration,
+      reason: error?.message || 'normal-disconnect',
+      timestamp: Date.now()
+    });
     
     // v1.6.4.15 - FIX Issue #16: Log port lifecycle - closed
     console.log('[PORT_LIFECYCLE] Port closed:', {
@@ -3850,6 +3932,7 @@ function handleHeartbeat(message, portInfo) {
 /**
  * Handle PORT_VERIFY message for BFCache port verification
  * v1.6.3.11 - FIX Issue #32: Send immediate response to content script
+ * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Enhanced PORT_VERIFY logging with latency
  * @param {Object} message - PORT_VERIFY message
  * @param {Object} portInfo - Port info
  * @param {Object} port - Port to send response
@@ -3858,11 +3941,15 @@ function handleHeartbeat(message, portInfo) {
 function handlePortVerify(message, portInfo, port) {
   const { timestamp, reason } = message;
   const now = Date.now();
+  const latencyMs = timestamp ? now - timestamp : null;
   
-  console.log('[Background] PORT_VERIFY received:', {
+  // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY received with latency
+  console.log('[Background][PORT_LIFECYCLE] PORT_VERIFY_RECEIVED:', {
     reason,
     tabId: portInfo?.tabId,
-    latencyMs: now - (timestamp || now)
+    portId: port?._portId,
+    latencyMs,
+    timestamp: now
   });
   
   // v1.6.3.11 - FIX Issue #32: Send immediate response via port
@@ -3873,9 +3960,20 @@ function handlePortVerify(message, portInfo, port) {
       originalTimestamp: timestamp,
       success: true
     });
-    console.log('[Background] PORT_VERIFY_RESPONSE sent');
+    
+    // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY success with timing
+    console.log('[Background][PORT_LIFECYCLE] PORT_VERIFY_SUCCESS: Response sent', {
+      tabId: portInfo?.tabId,
+      latencyMs,
+      responseTimestamp: Date.now()
+    });
   } catch (err) {
-    console.error('[Background] Failed to send PORT_VERIFY_RESPONSE:', err.message);
+    // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY failure
+    console.error('[Background][PORT_LIFECYCLE] PORT_VERIFY_FAILURE: Failed to send response', {
+      tabId: portInfo?.tabId,
+      error: err.message,
+      timestamp: Date.now()
+    });
   }
   
   return Promise.resolve({

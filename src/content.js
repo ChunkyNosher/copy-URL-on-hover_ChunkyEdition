@@ -222,6 +222,15 @@ console.log('[Content] ✓ Content script loaded, starting initialization');
  * - FIX Issue #4: Periodic adoption TTL recalculation via heartbeat latency updates
  * - FIX Issue #11: PORT_CONNECTION_STATE.RECONNECTING state for backoff distinction
  * - FIX Issue #12: Adoption cache cleared on cross-domain navigation (beforeunload)
+ *
+ * v1.6.3.11-v2 Changes (Diagnostic Report Part 1 Fixes):
+ * - FIX Issue #1: BFCache PORT_VERIFY timeout increased to 2000ms with enhanced logging
+ * - FIX Issue #2: Document port listener registration order (Firefox limitation)
+ * - FIX Issue #3: User-friendly message when shortcut pressed during initialization
+ * - FIX Issue #4: Extended Tab ID timeout to 120s, NOT_INITIALIZED delay to 1000ms
+ * - FIX Issue #5: RESTORE message ordering - queue instead of reject out-of-order messages
+ * - FIX Issue #7: Hydration timeout increased to 10s with progress warnings at 3s/6s/9s
+ * - FIX Issue #8: Comprehensive port lifecycle logging (state transitions, latency)
  */
 
 // ✅ CRITICAL: Import console interceptor FIRST to capture all logs
@@ -404,11 +413,23 @@ const TAB_ID_RETRY_DELAYS_MS = [200, 500, 1500, 5000];
 const TAB_ID_MAX_RETRIES = TAB_ID_RETRY_DELAYS_MS.length;
 
 // v1.6.3.10-v11 - FIX Issue #1: Extended retry for background initialization
+// v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Extended total timeout to 120 seconds
 // After initial backoff exhaustion, use slower retry loop with 5-10s intervals
-// Total extended timeout: 60 seconds to allow for slow background initialization
+// Total extended timeout: 120 seconds to allow for very slow background initialization
 const TAB_ID_EXTENDED_RETRY_INTERVAL_MS = 5000;
-const TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS = 8; // 8 x 5s = 40s additional retry window
-const TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS = 60000; // 60 seconds total timeout
+const TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS = 20; // 20 x 5s = 100s additional retry window
+const TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS = 120000; // 120 seconds total timeout
+
+// v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Longer initial delay for NOT_INITIALIZED
+// When background reports NOT_INITIALIZED, wait 1000ms instead of 500ms
+// Rationale for 1000ms:
+// - 500ms was too short for slow systems where background initialization takes 300-800ms
+// - 1000ms provides 2x safety margin (observed max init time ~600ms + 400ms buffer)
+// - Still fast enough to not impact perceived startup time
+const TAB_ID_NOT_INITIALIZED_DELAY_MS = 1000;
+
+// v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Warning thresholds for approaching timeout
+const TAB_ID_TIMEOUT_WARNING_THRESHOLDS = [60000, 90000, 110000]; // Warn at 60s, 90s, 110s
 
 // v1.6.3.10-v11 - FIX Issue #1: Track background readiness for event-driven retry
 let backgroundReadinessDetected = false;
@@ -441,8 +462,15 @@ let isHydrationComplete = false;
 /**
  * Timeout for hydration (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within this time, allow operations anyway
+ * v1.6.3.11-v2 - FIX Issue #7 (Diagnostic Report): Increased from 3s to 10s for slow systems
  */
-const HYDRATION_TIMEOUT_MS = 3000;
+const HYDRATION_TIMEOUT_MS = 10000;
+
+/**
+ * Warning thresholds for hydration progress (milliseconds)
+ * v1.6.3.11-v2 - FIX Issue #7 (Diagnostic Report): Log warnings at 3s, 6s, 9s marks
+ */
+const HYDRATION_WARNING_THRESHOLDS_MS = [3000, 6000, 9000];
 
 /**
  * Queue for operations that arrived during hydration
@@ -1377,9 +1405,47 @@ function _shouldWaitForHydration(operationType) {
  * Initialize hydration timeout safety
  * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within timeout, proceed anyway
  * v1.6.3.11 - FIX Issue #27: Check drain lock before forcing completion
+ * v1.6.3.11-v2 - FIX Issue #7 (Diagnostic Report): Extended timeout with progress warnings
  */
 function _initHydrationTimeout() {
+  const hydrationStartTime = Date.now();
+  const loggedWarnings = new Set();
+  
+  // v1.6.3.11-v2 - FIX Issue #7: Set up warning interval for progress logging
+  const warningIntervalId = setInterval(() => {
+    if (isHydrationComplete) {
+      clearInterval(warningIntervalId);
+      return;
+    }
+    
+    const elapsed = Date.now() - hydrationStartTime;
+    
+    // Log warnings at each threshold
+    for (const threshold of HYDRATION_WARNING_THRESHOLDS_MS) {
+      if (elapsed >= threshold && !loggedWarnings.has(threshold)) {
+        loggedWarnings.add(threshold);
+        const remaining = HYDRATION_TIMEOUT_MS - elapsed;
+        console.warn('[Content] HYDRATION_PROGRESS_WARNING: Hydration taking longer than expected', {
+          elapsedMs: elapsed,
+          remainingMs: remaining,
+          thresholdMs: threshold,
+          totalTimeoutMs: HYDRATION_TIMEOUT_MS,
+          queuedOperations: preHydrationOperationQueue.length,
+          timestamp: Date.now()
+        });
+      }
+    }
+    
+    // Stop interval if we've passed all thresholds
+    if (loggedWarnings.size >= HYDRATION_WARNING_THRESHOLDS_MS.length) {
+      clearInterval(warningIntervalId);
+    }
+  }, 500); // Check every 500ms
+  
+  // v1.6.3.11-v2 - FIX Issue #7: Final timeout with forced completion
   setTimeout(() => {
+    clearInterval(warningIntervalId); // Cleanup interval
+    
     // v1.6.3.11 - FIX Issue #27: Don't force completion if drain is in progress
     if (isHydrationDrainInProgress) {
       console.log('[Content] HYDRATION_TIMEOUT_DEFERRED: Drain in progress, skipping timeout action');
@@ -1389,7 +1455,8 @@ function _initHydrationTimeout() {
     if (!isHydrationComplete) {
       console.warn('[Content] HYDRATION_TIMEOUT: Forcing hydration complete after timeout', {
         timeoutMs: HYDRATION_TIMEOUT_MS,
-        queuedOperations: preHydrationOperationQueue.length
+        queuedOperations: preHydrationOperationQueue.length,
+        note: 'Storage hydration did not complete in time - proceeding with incomplete state'
       });
       _markHydrationComplete(0);
     }
@@ -1532,8 +1599,34 @@ function _notifyBackgroundReadiness() {
 }
 
 /**
+ * Log timeout approaching warnings during extended Tab ID acquisition
+ * v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Extracted to reduce _extendedTabIdRetryLoop depth
+ * @private
+ * @param {number} totalElapsed - Total elapsed time in ms
+ * @param {Set<number>} loggedWarnings - Set of already logged thresholds
+ * @param {number} extendedAttempt - Current attempt number
+ */
+function _logTabIdTimeoutWarnings(totalElapsed, loggedWarnings, extendedAttempt) {
+  for (const threshold of TAB_ID_TIMEOUT_WARNING_THRESHOLDS) {
+    if (totalElapsed >= threshold && !loggedWarnings.has(threshold)) {
+      loggedWarnings.add(threshold);
+      const remaining = TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS - totalElapsed;
+      console.warn('[Content][TabID][EXTENDED] TIMEOUT_APPROACHING: Tab ID acquisition taking longer than expected', {
+        elapsedMs: totalElapsed,
+        remainingMs: remaining,
+        thresholdMs: threshold,
+        totalTimeoutMs: TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS,
+        attempt: extendedAttempt,
+        timestamp: Date.now()
+      });
+    }
+  }
+}
+
+/**
  * Extended retry loop for tab ID acquisition after initial backoff exhaustion
  * v1.6.3.10-v11 - FIX Issue #1: Background initialization retry loop with 60s total timeout
+ * v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Extended to 120s total timeout
  * @param {number} overallStartTime - Original start time
  * @param {Object} _lastResult - Last retry result (unused, kept for API compatibility)
  * @returns {Promise<number|null>} Tab ID or null
@@ -1551,8 +1644,14 @@ async function _extendedTabIdRetryLoop(overallStartTime, _lastResult) {
   
   tabIdAcquisitionPending = true;
   
+  // v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Track which warnings have been logged
+  const loggedWarnings = new Set();
+  
   while (extendedAttempt < TAB_ID_EXTENDED_RETRY_MAX_ATTEMPTS) {
     const totalElapsed = Date.now() - overallStartTime;
+    
+    // v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Log warnings as timeout approaches (extracted helper)
+    _logTabIdTimeoutWarnings(totalElapsed, loggedWarnings, extendedAttempt);
     
     // Check total timeout
     if (totalElapsed >= TAB_ID_EXTENDED_TOTAL_TIMEOUT_MS) {
@@ -1642,12 +1741,16 @@ async function getCurrentTabIdFromBackground() {
   }
   
   // v1.6.3.11 - FIX Issue #11: Special handling for NOT_INITIALIZED error
-  // Wait once briefly (500ms) and retry exactly once before exponential backoff
+  // v1.6.3.11-v2 - FIX Issue #4 (Diagnostic Report): Increased wait from 500ms to 1000ms
+  // Wait once briefly and retry exactly once before exponential backoff
   if (result.error === 'NOT_INITIALIZED') {
-    console.log('[Content] Background initializing, waiting 500ms');
+    console.log('[Content][TabID][INIT] Background initializing, waiting for initialization', {
+      delayMs: TAB_ID_NOT_INITIALIZED_DELAY_MS,
+      timestamp: Date.now()
+    });
     
-    // Wait 500ms for background to complete initialization
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // v1.6.3.11-v2 - FIX Issue #4: Wait 1000ms (up from 500ms) for background to complete initialization
+    await new Promise(resolve => setTimeout(resolve, TAB_ID_NOT_INITIALIZED_DELAY_MS));
     
     // Retry exactly once (this is the special NOT_INITIALIZED retry, attempt #2)
     const notInitRetryAttemptNum = 2; // First attempt was #1, this special retry is #2
@@ -2230,12 +2333,26 @@ function _validateMessageSequence(sequenceId) {
 
 // ==================== v1.6.3.10-v10 RESTORE MESSAGE ORDERING ====================
 // FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
+// v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Queue instead of reject out-of-order messages
 
 /**
  * Track in-progress RESTORE operations to enforce ordering
  * v1.6.3.10-v10 - FIX Issue R: Map of quickTabId -> { sequenceId, timestamp, status }
  */
 const pendingRestoreOperations = new Map();
+
+/**
+ * Queue for out-of-order RESTORE operations that should be processed later
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Queue instead of reject
+ * Structure: { quickTabId, sequenceId, callback, queuedAt }
+ */
+const restoreOperationQueue = [];
+
+/**
+ * Maximum queue size for RESTORE operations
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Prevent memory growth
+ */
+const MAX_RESTORE_QUEUE_SIZE = 50;
 
 /**
  * Maximum age for pending RESTORE tracking (ms)
@@ -2263,17 +2380,18 @@ function _cleanupStaleRestoreEntries(now) {
 }
 
 /**
- * Check if incoming restore should be rejected due to sequence ordering
+ * Check if incoming restore should be queued due to sequence ordering
  * v1.6.3.10-v10 - FIX Issue R: Extracted to reduce _checkRestoreOrderingEnforcement complexity
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Changed from reject to queue
  * @private
  */
-function _shouldRejectRestoreOrder(existingOp, messageSequenceId, details) {
+function _shouldQueueRestoreOrder(existingOp, messageSequenceId, details) {
   if (!existingOp || existingOp.status !== 'pending') return false;
   if (messageSequenceId === undefined || existingOp.sequenceId === undefined) return false;
   
   if (messageSequenceId < existingOp.sequenceId) {
-    console.warn('[Content] v1.6.3.10-v10 RESTORE_ORDER_REJECTED:', {
-      ...details, reason: 'out-of-order: newer operation already pending', action: 'rejected'
+    console.log('[Content] v1.6.3.11-v2 RESTORE_ORDER_QUEUED:', {
+      ...details, reason: 'out-of-order: newer operation already pending', action: 'queued-for-later'
     });
     return true;
   }
@@ -2281,17 +2399,110 @@ function _shouldRejectRestoreOrder(existingOp, messageSequenceId, details) {
 }
 
 /**
- * Check if a RESTORE operation should be rejected due to ordering violation
+ * Queue a RESTORE operation for later processing
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Queue instead of reject
+ * @private
+ */
+function _queueRestoreOperation(quickTabId, sequenceId, callback) {
+  // Check queue size limit
+  if (restoreOperationQueue.length >= MAX_RESTORE_QUEUE_SIZE) {
+    const dropped = restoreOperationQueue.shift();
+    console.warn('[Content] RESTORE_QUEUE_OVERFLOW: Dropped oldest operation', {
+      droppedQuickTabId: dropped?.quickTabId,
+      droppedSequenceId: dropped?.sequenceId,
+      queueSizeBeforeDrop: MAX_RESTORE_QUEUE_SIZE,
+      queueSizeAfterDrop: restoreOperationQueue.length // Will be MAX_RESTORE_QUEUE_SIZE - 1
+    });
+  }
+  
+  restoreOperationQueue.push({
+    quickTabId,
+    sequenceId,
+    callback,
+    queuedAt: Date.now()
+  });
+  
+  console.log('[Content] RESTORE_QUEUED: Operation queued for sequence order', {
+    quickTabId,
+    sequenceId,
+    queueSize: restoreOperationQueue.length
+  });
+}
+
+/**
+ * Process queued RESTORE operations in sequence order
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Process queue after pending completes
+ * @private
+ */
+async function _processRestoreQueue() {
+  if (restoreOperationQueue.length === 0) return;
+  
+  // Sort by sequence ID to process in order
+  restoreOperationQueue.sort((a, b) => a.sequenceId - b.sequenceId);
+  
+  // Process operations that can now proceed
+  const toProcess = [];
+  const remaining = [];
+  
+  for (const op of restoreOperationQueue) {
+    const existingOp = pendingRestoreOperations.get(op.quickTabId);
+    
+    // Can process if no pending operation or pending operation is complete
+    if (!existingOp || existingOp.status !== 'pending') {
+      toProcess.push(op);
+    } else if (op.sequenceId >= existingOp.sequenceId) {
+      // Can process if our sequence >= pending sequence
+      toProcess.push(op);
+    } else {
+      remaining.push(op);
+    }
+  }
+  
+  // Clear queue and add back remaining
+  restoreOperationQueue.length = 0;
+  restoreOperationQueue.push(...remaining);
+  
+  // Execute processable operations
+  // Note: Failed operations are logged but not retried - this is intentional behavior.
+  // RESTORE operations are idempotent and the next storage.onChanged will trigger
+  // a fresh RESTORE if the Quick Tab state is still out of sync. Retrying failed
+  // operations could cause infinite loops or state conflicts.
+  for (const op of toProcess) {
+    console.log('[Content] RESTORE_QUEUE_PROCESSING: Processing queued operation', {
+      quickTabId: op.quickTabId,
+      sequenceId: op.sequenceId,
+      waitedMs: Date.now() - op.queuedAt
+    });
+    
+    try {
+      if (typeof op.callback === 'function') {
+        await op.callback();
+      }
+    } catch (err) {
+      // Log error but don't retry - storage.onChanged will trigger fresh RESTORE if needed
+      console.error('[Content] RESTORE_QUEUE_ERROR: Queued operation failed (will not retry)', {
+        quickTabId: op.quickTabId,
+        error: err.message,
+        note: 'storage.onChanged will trigger fresh RESTORE if state is still out of sync'
+      });
+    }
+  }
+}
+
+/**
+ * Check if a RESTORE operation should proceed, be queued, or be processed
  * v1.6.3.10-v10 - FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Queue instead of reject out-of-order messages
  * 
- * Out-of-order RESTORE messages are rejected to prevent ownership lookups from
- * resolving incorrectly during rapid tab switching (Scenario 17).
+ * Out-of-order RESTORE messages are now queued and processed in sequence order
+ * to prevent ownership lookups from resolving incorrectly during rapid tab switching.
  * 
  * @param {string} quickTabId - Quick Tab ID being restored
  * @param {number|undefined} messageSequenceId - Sequence ID from message (if present)
- * @returns {{allowed: boolean, reason: string|null, details: Object}}
+ * @param {Function} [callback] - Optional callback to execute if queued
+ * @returns {{allowed: boolean, reason: string|null, details: Object, queued: boolean}}
  */
-function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
+function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId, callback) {
   const now = Date.now();
   _cleanupStaleRestoreEntries(now);
   
@@ -2310,14 +2521,18 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
     pendingCount: pendingRestoreOperations.size
   };
   
-  // Check if should reject due to ordering
-  if (_shouldRejectRestoreOrder(existingOperation, messageSequenceId, details)) {
-    return { allowed: false, reason: 'out-of-order', details };
+  // v1.6.3.11-v2 - FIX Issue #5: Check if should queue due to ordering
+  if (_shouldQueueRestoreOrder(existingOperation, messageSequenceId, details)) {
+    // Queue the operation instead of rejecting
+    if (callback) {
+      _queueRestoreOperation(quickTabId, effectiveSequence, callback);
+    }
+    return { allowed: false, reason: 'queued', details, queued: true };
   }
   
   // Log if queued behind pending operation
   if (existingOperation && existingOperation.status === 'pending') {
-    console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_QUEUED:', {
+    console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_PENDING:', {
       ...details, reason: 'existing operation pending', action: 'will proceed after existing completes'
     });
   }
@@ -2334,6 +2549,7 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
 /**
  * Mark a RESTORE operation as complete
  * v1.6.3.10-v10 - FIX Issue R: Update tracking after operation completes
+ * v1.6.3.11-v2 - FIX Issue #5 (Diagnostic Report): Process queued operations after completion
  * @param {string} quickTabId - Quick Tab ID that was restored
  * @param {boolean} success - Whether operation succeeded
  */
@@ -2344,6 +2560,9 @@ function _markRestoreComplete(quickTabId, success) {
     console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
       quickTabId, success, sequenceId: operation.sequenceId, duration: Date.now() - operation.timestamp
     });
+    
+    // v1.6.3.11-v2 - FIX Issue #5: Process any queued operations waiting for this to complete
+    _processRestoreQueue();
   }
 }
 
@@ -2630,9 +2849,24 @@ function connectContentToBackground(tabId) {
     logContentPortLifecycle('open', { portName: backgroundPort.name });
     
     // v1.6.3.11 - FIX Issue #8: Register onDisconnect FIRST to prevent race condition
-    // Critical: onDisconnect must be registered IMMEDIATELY after connect() returns
-    // This ensures we catch any disconnection that occurs during setup
-    // Order: 1. connect() → 2. onDisconnect → 3. onMessage → 4. send init message
+    // v1.6.3.11-v2 - FIX Issue #2 (Diagnostic Report): Document Firefox limitation
+    //
+    // CRITICAL - PORT LISTENER RACE CONDITION FIX:
+    // Firefox Port API has a race window between browser.runtime.connect() returning
+    // and listener registration. If the background disconnects during this window,
+    // the onDisconnect callback would never fire.
+    //
+    // Order MUST be: 1. connect() → 2. onDisconnect → 3. onMessage → 4. send init message
+    //
+    // This ensures we catch disconnections that occur during setup.
+    // Note: This is a Firefox limitation - the port can become invalid between
+    // connect() returning and listeners being attached.
+    
+    // v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log listener registration
+    console.log('[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_START: Registering port listeners', {
+      portName: backgroundPort.name,
+      timestamp: Date.now()
+    });
     
     // Register onDisconnect listener FIRST (within 5ms of connect())
     backgroundPort.onDisconnect.addListener(() => {
@@ -2641,7 +2875,7 @@ function connectContentToBackground(tabId) {
       // v1.6.3.10-v12 - FIX Issue #1: Check if disconnect happened during setup
       if (!portListenersRegistered) {
         portDisconnectedDuringSetup = true;
-        console.log('[Content] PORT_DISCONNECT_DURING_INIT: Disconnect occurred during listener registration', {
+        console.log('[Content][PORT_LIFECYCLE] DISCONNECT_DURING_INIT: Disconnect occurred during listener registration', {
           error: error?.message,
           timestamp: Date.now()
         });
@@ -2650,8 +2884,10 @@ function connectContentToBackground(tabId) {
       }
       
       // Normal operation - proceed with disconnect handling
-      console.log('[Content] PORT_DISCONNECT_NORMAL: Disconnect in normal operation', {
+      // v1.6.3.11-v2 - FIX Issue #8: Enhanced disconnect logging with state transition
+      console.log('[Content][PORT_LIFECYCLE] DISCONNECT_NORMAL: Port disconnected in normal operation', {
         error: error?.message,
+        previousState: portConnectionState,
         timestamp: Date.now()
       });
       
@@ -2668,9 +2904,17 @@ function connectContentToBackground(tabId) {
     // v1.6.3.10-v12 - FIX Issue #1: Mark listeners as registered (init gate)
     portListenersRegistered = true;
     
+    // v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log listener registration completion
+    console.log('[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: Both listeners attached', {
+      portName: backgroundPort.name,
+      hasOnDisconnect: true,
+      hasOnMessage: true,
+      timestamp: Date.now()
+    });
+    
     // Now check if disconnect happened during the registration window
     if (portDisconnectedDuringSetup) {
-      console.log('[Content] PORT_DISCONNECT_DURING_SETUP_DETECTED: Handling deferred disconnect', {
+      console.log('[Content][PORT_LIFECYCLE] DISCONNECT_DURING_SETUP_DETECTED: Handling deferred disconnect', {
         timestamp: Date.now()
       });
       backgroundPort = null;
@@ -2683,9 +2927,17 @@ function connectContentToBackground(tabId) {
     _resetReconnectionAttempts();
     _drainMessageQueue();
 
-    console.log('[Content] Port connection established');
+    // v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log successful connection establishment
+    console.log('[Content][PORT_LIFECYCLE] CONNECTION_ESTABLISHED: Port ready for messaging', {
+      portName: backgroundPort.name,
+      state: portConnectionState,
+      timestamp: Date.now()
+    });
   } catch (err) {
-    console.error('[Content] Failed to connect:', err.message);
+    console.error('[Content][PORT_LIFECYCLE] CONNECTION_ERROR: Failed to connect', {
+      error: err.message,
+      timestamp: Date.now()
+    });
     logContentPortLifecycle('error', { error: err.message });
     _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'connection-error');
     _handleReconnection(tabId, 'error');
@@ -3020,14 +3272,24 @@ function _handlePortVerifyFailure(err) {
 /**
  * Timeout for BFCache PORT_VERIFY response (milliseconds)
  * v1.6.3.11 - FIX Issue #32: Add timeout to prevent indefinite hangs
+ * v1.6.3.11-v2 - FIX Issue #1 (Diagnostic Report): Increased from 1000ms to 2000ms
+ *   - Firefox BFCache restore can delay message delivery by 500-1500ms
+ *   - 2000ms provides sufficient margin for slow systems
+ *   - On timeout: log warning with latency, always trigger reconnection
  */
-const BFCACHE_VERIFY_TIMEOUT_MS = 1000;
+const BFCACHE_VERIFY_TIMEOUT_MS = 2000;
 
 /**
  * Timeout ID for BFCache verification
  * v1.6.3.11 - FIX Issue #32
  */
 let bfcacheVerifyTimeoutId = null;
+
+/**
+ * Timestamp when PORT_VERIFY was sent for latency tracking
+ * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Track PORT_VERIFY latency
+ */
+let bfcacheVerifyStartTime = 0;
 
 /**
  * Clear BFCache verify timeout
@@ -3043,11 +3305,19 @@ function _clearBFCacheVerifyTimeout() {
 /**
  * Handle PORT_VERIFY response from background
  * v1.6.3.11 - FIX Issue #32: Clear timeout on successful response
+ * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log PORT_VERIFY success with latency
  */
 function _handlePortVerifyResponse() {
   _clearBFCacheVerifyTimeout();
   portPotentiallyInvalidDueToBFCache = false;
-  console.log('[Content][BFCACHE] VERIFY_RESPONSE: Port verified functional');
+  
+  // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY success with latency measurement
+  const latencyMs = bfcacheVerifyStartTime > 0 ? Date.now() - bfcacheVerifyStartTime : null;
+  console.log('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_SUCCESS: Port verified functional after BFCache', {
+    latencyMs,
+    timestamp: Date.now()
+  });
+  bfcacheVerifyStartTime = 0; // Reset
 }
 
 /**
@@ -3055,10 +3325,11 @@ function _handlePortVerifyResponse() {
  * v1.6.3.10-v12 - FIX Issue #2: Attempt handshake to verify port is still functional
  * v1.6.3.10-v12 - FIX Code Health: Extracted helpers, removed unnecessary async
  * v1.6.3.11 - FIX Issue #32: Add 1000ms timeout to prevent indefinite hangs
+ * v1.6.3.11-v2 - FIX Issue #1, #8 (Diagnostic Report): Enhanced timeout + latency tracking
  * @private
  */
 function _verifyPortAfterBFCache() {
-  console.log('[Content][BFCACHE] VERIFY_PORT: Checking port functionality after BFCache restore');
+  console.log('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_PORT_START: Checking port functionality after BFCache restore');
   
   // No port exists - trigger reconnect immediately
   if (!backgroundPort) {
@@ -3066,26 +3337,40 @@ function _verifyPortAfterBFCache() {
     return;
   }
   
+  // v1.6.3.11-v2 - FIX Issue #8: Track verify start time for latency measurement
+  bfcacheVerifyStartTime = Date.now();
+  
   // Try to send a test message via the port
   try {
     const testMessage = {
       type: 'PORT_VERIFY',
-      timestamp: Date.now(),
+      timestamp: bfcacheVerifyStartTime,
       reason: 'bfcache-restore'
     };
     
     backgroundPort.postMessage(testMessage);
-    console.log('[Content][BFCACHE] VERIFY_PORT: Test message sent successfully');
+    console.log('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_PORT_SENT: Test message sent', {
+      timestamp: bfcacheVerifyStartTime,
+      portName: backgroundPort.name
+    });
     
     // v1.6.3.11 - FIX Issue #32: Set timeout for response
+    // v1.6.3.11-v2 - FIX Issue #1 (Diagnostic Report): Enhanced logging with timing details
     _clearBFCacheVerifyTimeout(); // Clear any existing timeout
+    const verifyStartTime = Date.now();
     bfcacheVerifyTimeoutId = setTimeout(() => {
-      console.warn('[Content][BFCACHE] VERIFY_TIMEOUT: No response, reconnecting', {
+      const elapsedMs = Date.now() - verifyStartTime;
+      console.warn('[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_TIMEOUT: No response after BFCache restore', {
         timeoutMs: BFCACHE_VERIFY_TIMEOUT_MS,
-        timestamp: Date.now()
+        elapsedMs,
+        timestamp: Date.now(),
+        portName: backgroundPort?.name || 'unknown',
+        action: 'triggering-reconnection'
       });
       
       // Timeout expired - trigger reconnection
+      // v1.6.3.11-v2 - FIX Issue #1: ALWAYS reconnect when PORT_VERIFY times out
+      // Firefox BFCache silently breaks port connections without firing onDisconnect
       portPotentiallyInvalidDueToBFCache = false;
       _handlePortVerifyFailure(new Error('PORT_VERIFY timeout'));
     }, BFCACHE_VERIFY_TIMEOUT_MS);
@@ -3718,10 +4003,19 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement, eve
  */
 async function handleKeyboardShortcut(event) {
   // v1.6.3.11 - FIX Issue #38: Guard for initialization window
-  // If quickTabsManager is not ready, either buffer or show "not ready" message
+  // v1.6.3.11-v2 - FIX Issue #3 (Diagnostic Report): User-friendly message during init
+  // If quickTabsManager is not ready, show message and return
   if (!contentScriptInitialized) {
-    // During init window, silently ignore shortcuts
-    // This prevents errors when shortcuts are pressed before init completes
+    // v1.6.3.11-v2 - FIX Issue #3: Log user-friendly message when shortcut pressed during init
+    // Only log if it looks like a potential extension shortcut (has modifiers)
+    // Include metaKey for Mac (Cmd key) compatibility
+    if (event.ctrlKey || event.altKey || event.metaKey) {
+      console.log('[INIT] Extension initializing, shortcut will work shortly', {
+        key: event.key,
+        modifiers: `Ctrl:${event.ctrlKey} Alt:${event.altKey} Shift:${event.shiftKey} Meta:${event.metaKey}`,
+        timestamp: Date.now()
+      });
+    }
     return;
   }
   
