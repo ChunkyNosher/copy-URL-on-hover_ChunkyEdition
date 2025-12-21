@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v14  
+**Version:** 1.6.3.11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,7 +21,13 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v14 Features (NEW) - 37 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11 Features (NEW) - Issues #1-3, #10 Fix:**
+
+- **GET_CURRENT_TAB_ID No Init Dependency** - Returns sender.tab.id immediately
+- **Synchronous Listener Registration** - onMessage/onConnect registered at top-level
+- **Comprehensive Init Logging** - SCRIPT_LOAD_START, LISTENER_REGISTRATION phases
+
+**v1.6.3.10-v14 Features (Previous) - 37 Issues Fixed (3 Diagnostic Reports):**
 
 - **Tab ID Pending Queue** - Queue operations when Tab ID null, process on init
 - **Generation ID Tracking** - Background restart detection via generation mismatch

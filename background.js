@@ -6,6 +6,15 @@
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 // v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
+// v1.6.3.11 - FIX Issues #1-3, #10: Background initialization and tab ID acquisition fixes
+//   - Issue #1: Message handlers registered synchronously at module top-level
+//   - Issue #2: GET_CURRENT_TAB_ID handler returns sender.tab.id without init dependency
+//   - Issue #3: Comprehensive initialization logging added
+//   - Issue #10: Async initialization does not block message handlers
+
+// v1.6.3.11 - CRITICAL: Log background script load immediately at top of file
+// Simple log format to minimize startup overhead
+console.log('[Background] ✓ Background script loading started');
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -2183,8 +2192,16 @@ console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
 
+// v1.6.3.11 - FIX Issue #1 & #3: Register message listener synchronously at module load time
+// This ensures handlers are ready BEFORE any content script sends messages
+// Mozilla/Chrome documentation: "Listeners must be at the top-level to activate the background script"
+console.log(`[Background] ✓ Registering onMessage listener (${messageRouter.handlers.size} handlers)`);
+
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
+
+// v1.6.3.11 - FIX Issue #3: Log successful listener registration
+console.log('[Background] ✓ onMessage listener registered - GET_CURRENT_TAB_ID ready');
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
 // v1.6.0 - Removed obsolete toggle-minimized-manager listener
@@ -4809,8 +4826,13 @@ function broadcastToAllPorts(message, excludePortId = null) {
   });
 }
 
+// v1.6.3.11 - FIX Issue #1 & #3: Register port connection listener synchronously
+console.log('[Background] ✓ Registering onConnect listener');
+
 // Register port connection listener
 browser.runtime.onConnect.addListener(handlePortConnect);
+
+console.log('[Background] ✓ onConnect listener registered');
 
 console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
 

@@ -13,12 +13,17 @@
  * - UPDATE_QUICK_TAB_SOLO: Update solo state
  * - UPDATE_QUICK_TAB_MUTE: Update mute state
  * - UPDATE_QUICK_TAB_MINIMIZE: Update minimize state
- * - GET_CURRENT_TAB_ID: Get current browser tab ID
+ * - GET_CURRENT_TAB_ID: Get current browser tab ID (NO INIT DEPENDENCY)
  *
  * v1.6.3.10-v7 - FIX Issue #15: Storage write serialization
  *   - Add async write queue to prevent concurrent storage writes
  *   - Implement version tracking with conflict detection
  *   - Retry writes on version mismatch (max 3 attempts)
+ * 
+ * v1.6.3.11 - FIX Issue #2: GET_CURRENT_TAB_ID handler no longer depends on initialization
+ *   - Uses sender.tab.id directly from message sender context
+ *   - No async initialization wait required
+ *   - Handler responds within 100ms (no retries needed)
  */
 
 // v1.6.3.10-v7 - FIX Issue #15: Storage write serialization constants
@@ -648,28 +653,25 @@ export class QuickTabHandler {
    * v1.6.3.10-v7 - FIX Bug #1: Add initialization guard to prevent race conditions
    * v1.6.4.15 - FIX Issue #15: Consistent response envelope with code field
    * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce complexity
+   * v1.6.3.11 - FIX Issue #2: REMOVED initialization dependency - uses sender.tab.id directly
+   *   - This handler MUST respond immediately without waiting for storage init
+   *   - sender.tab.id is available from WebExtensions API, not from our state
+   *   - Content scripts need Tab ID before any other operation can proceed
+   *   - Method is now synchronous (no async operations needed)
    *
    * @param {Object} _message - Message object (unused, required by message router signature)
    * @param {Object} sender - Message sender object containing tab information
-   * @returns {Promise<{ success: boolean, data?: { currentTabId: number }, error?: string, code?: string }>}
+   * @returns {{ success: boolean, data?: { currentTabId: number }, tabId?: number, error?: string, code?: string }}
    */
-  async handleGetCurrentTabId(_message, sender) {
+  handleGetCurrentTabId(_message, sender) {
     try {
-      // v1.6.3.10-v7 - FIX Bug #1: Check initialization FIRST
-      const initResult = await this._ensureInitialized();
-      if (!initResult.success) {
-        console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Init check failed');
-        return this._buildTabIdErrorResponse(
-          initResult.error || 'NOT_INITIALIZED',
-          initResult.error || 'NOT_INITIALIZED',
-          initResult.message,
-          initResult.retryable ?? true
-        );
-      }
-
+      // v1.6.3.11 - FIX Issue #2: NO initialization check required
+      // sender.tab.id comes from the browser's WebExtensions API, not from our storage
+      // This allows immediate response without waiting for storage initialization
+      
       // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
       if (this._hasValidSenderTabId(sender)) {
-        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`);
+        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (immediate, no init wait)`);
         return this._buildTabIdSuccessResponse(sender.tab.id);
       }
 
