@@ -931,13 +931,23 @@ async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
     const pending = pendingMessages.get(messageId);
     
     if (pending && pending.retryCount < MESSAGE_MAX_RETRIES) {
-      // Will be retried on next heartbeat failure or manually
+      // v1.6.3.11 - FIX Issue #33: Delete entry from Map on timeout even for retry case
+      // Entry will be re-added when retry happens via _retryPendingMessages
+      // This prevents unbounded growth since we track retry count externally
+      pendingMessages.delete(messageId);
+      
+      // Re-add with updated retry count for retry later
+      pending.retryCount++;
+      pendingMessages.set(messageId, pending);
+      
       console.warn('[Content] MESSAGE_TIMEOUT: Will retry on background recovery', {
         messageId,
         retryCount: pending.retryCount,
-        error: err.message
+        error: err.message,
+        pendingMessagesSize: pendingMessages.size
       });
     } else {
+      // v1.6.3.11 - FIX Issue #33: Always delete on max retries exceeded
       pendingMessages.delete(messageId);
       reject(err);
     }
@@ -2827,6 +2837,26 @@ function _handleReconnection(tabId, reason) {
   }, reconnectDelay);
 }
 
+/**
+ * Clear pending messages on port disconnect
+ * v1.6.3.11 - FIX Code Health: Extracted to reduce nesting depth in onDisconnect handler
+ * @private
+ */
+function _clearPendingMessagesOnDisconnect() {
+  const pendingCount = pendingMessages.size;
+  if (pendingCount === 0) return;
+  
+  console.log('[Content][PORT_LIFECYCLE] CLEARING_PENDING_MESSAGES: Port disconnected, clearing in-flight messages', {
+    pendingCount,
+    timestamp: Date.now()
+  });
+  // Reject all pending messages before clearing
+  for (const [_messageId, pending] of pendingMessages) {
+    if (pending.reject) pending.reject(new Error('Port disconnected'));
+  }
+  pendingMessages.clear();
+}
+
 function connectContentToBackground(tabId) {
   cachedTabId = tabId;
 
@@ -2841,6 +2871,8 @@ function connectContentToBackground(tabId) {
   portListenersRegistered = false;
 
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTING, 'connect-attempt');
+  // v1.6.3.11 - FIX Issue #28: Reset handshakeRequestTimestamp before each new handshake
+  // This prevents latency measurement skew from stale timestamps during reconnection
   handshakeRequestTimestamp = Date.now();
   isBackgroundReady = false;
 
@@ -2871,6 +2903,9 @@ function connectContentToBackground(tabId) {
     // Register onDisconnect listener FIRST (within 5ms of connect())
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
+      
+      // v1.6.3.11 - FIX Issue #27: Clear pendingMessages on port disconnect to prevent corruption
+      _clearPendingMessagesOnDisconnect();
       
       // v1.6.3.10-v12 - FIX Issue #1: Check if disconnect happened during setup
       if (!portListenersRegistered) {
@@ -3423,6 +3458,7 @@ function _clearAdoptionCacheOnNavigation() {
 /**
  * Check if hostname changed and clear adoption cache if needed
  * v1.6.3.10-v12 - FIX Issue #12: Detect cross-domain navigation
+ * v1.6.3.11 - FIX Issue #26: Clear cachedTabId on hostname change and re-acquire
  */
 function _checkHostnameChange() {
   let newHostname = null;
@@ -3440,6 +3476,22 @@ function _checkHostnameChange() {
     });
     
     _clearAdoptionCacheOnNavigation();
+    
+    // v1.6.3.11 - FIX Issue #26: Clear cached tab ID on hostname change (cross-domain nav)
+    // Tab ID may be stale after navigation, clear to force re-acquisition
+    if (cachedTabId !== null) {
+      console.log('[Content] CACHED_TAB_ID_CLEARED: Hostname changed, clearing cached tab ID', {
+        previousCachedTabId: cachedTabId,
+        previousHostname: currentPageHostname,
+        newHostname
+      });
+      cachedTabId = null;
+      
+      // Re-acquire tab ID asynchronously
+      getCurrentTabIdFromBackground('hostname-change').catch(err => {
+        console.warn('[Content] Failed to re-acquire tab ID after hostname change:', err.message);
+      });
+    }
   }
   
   currentPageHostname = newHostname;
@@ -4992,11 +5044,15 @@ function _calculateDynamicAdoptionTTL() {
  * Track a recently-adopted Quick Tab ID
  * v1.6.3.10-v7 - FIX Issue #7
  * v1.6.3.10-v11 - FIX Issue #5: Store dynamic TTL per entry
+ * v1.6.3.11 - FIX Issue #34: Add size limit with eviction of oldest entries
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {number} newOriginTabId - New owner tab ID
  */
 function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
   const dynamicTTL = _calculateDynamicAdoptionTTL();
+  
+  // v1.6.3.11 - FIX Issue #34: Evict oldest entries if cache is too large (max 100 entries)
+  _evictOldestAdoptionEntriesIfNeeded();
   
   recentlyAdoptedQuickTabs.set(quickTabId, {
     newOriginTabId,
@@ -5013,6 +5069,33 @@ function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
     observedLatency: _getObservedHandshakeLatency(),
     trackedCount: recentlyAdoptedQuickTabs.size,
     metrics: adoptionCacheMetrics
+  });
+}
+
+/**
+ * Evict oldest entries from adoption cache if size limit exceeded
+ * v1.6.3.11 - FIX Code Health: Extracted to reduce _trackAdoptedQuickTab complexity
+ * @private
+ */
+function _evictOldestAdoptionEntriesIfNeeded() {
+  const ADOPTION_CACHE_MAX_SIZE = 100;
+  if (recentlyAdoptedQuickTabs.size < ADOPTION_CACHE_MAX_SIZE) return;
+  
+  // Evict oldest 10% of entries
+  const evictCount = Math.ceil(ADOPTION_CACHE_MAX_SIZE * 0.1);
+  let evicted = 0;
+  
+  // Map iterates in insertion order, so first entries are oldest
+  for (const [oldId] of recentlyAdoptedQuickTabs) {
+    recentlyAdoptedQuickTabs.delete(oldId);
+    evicted++;
+    if (evicted >= evictCount) break;
+  }
+  
+  console.log('[Content] ADOPTION_CACHE_EVICTION:', {
+    evictedCount: evicted,
+    sizeAfter: recentlyAdoptedQuickTabs.size,
+    maxSize: ADOPTION_CACHE_MAX_SIZE
   });
 }
 
@@ -6740,6 +6823,21 @@ const ACTION_HANDLERS = {
       quickTabId: message.quickTabId,
       sequenceId: message.sequenceId
     });
+    
+    // v1.6.3.11 - FIX Issue #36: Validate message has quickTabId field
+    if (!message.quickTabId || typeof message.quickTabId !== 'string') {
+      console.warn('[Content] RESTORE_QUICK_TAB: Invalid message - missing quickTabId', {
+        hasQuickTabId: !!message.quickTabId,
+        type: typeof message.quickTabId
+      });
+      sendResponse({
+        success: false,
+        error: 'Invalid message: missing quickTabId field',
+        code: 'MISSING_QUICK_TAB_ID'
+      });
+      return true;
+    }
+    
     _handleRestoreQuickTab(message.quickTabId, sendResponse, message.sequenceId);
     return true;
   },

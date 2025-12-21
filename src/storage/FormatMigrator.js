@@ -281,52 +281,79 @@ export class FormatMigrator {
   }
   
   /**
+   * Check container structure and add warnings
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce _validateMigratedData complexity
+   * @private
+   */
+  _validateContainerStructure(key, value, warnings, context) {
+    if (!value || typeof value !== 'object') {
+      warnings.push(`Container "${key}" is not an object`);
+      return { valid: false, tabCount: 0 };
+    }
+    
+    if (!Array.isArray(value.tabs)) {
+      warnings.push(`Container "${key}" missing tabs array`);
+      // v1.6.3.11 - FIX Issue #32: Check if this might be a flat-style entry
+      if (value.url || value.id) {
+        context.hasFlatStyle = true;
+      }
+      return { valid: false, tabCount: 0 };
+    }
+    
+    context.hasContainerStyle = true;
+    return { valid: true, tabCount: value.tabs.length };
+  }
+
+  /**
    * Validate migrated data structure
    * v1.6.4.16 - FIX Issue #26: Validate migrated data
+   * v1.6.3.11 - FIX Issue #32: Detect hybrid format
    * @private
    * @param {Object} containers - Migrated container data
-   * @returns {{ isValid: boolean, warnings: string[], totalTabs: number }}
+   * @returns {{ isValid: boolean, warnings: string[], totalTabs: number, isHybridFormat: boolean }}
    */
   _validateMigratedData(containers) {
     const warnings = [];
     let totalTabs = 0;
+    const context = { hasContainerStyle: false, hasFlatStyle: false };
     
     if (!containers || typeof containers !== 'object') {
       warnings.push('Containers is not an object');
-      return { isValid: false, warnings, totalTabs: 0 };
+      return { isValid: false, warnings, totalTabs: 0, isHybridFormat: false };
     }
     
     for (const [key, value] of Object.entries(containers)) {
-      // Check container structure
-      if (!value || typeof value !== 'object') {
-        warnings.push(`Container "${key}" is not an object`);
-        continue;
-      }
+      const result = this._validateContainerStructure(key, value, warnings, context);
+      if (!result.valid) continue;
       
-      // Check tabs array
-      if (!Array.isArray(value.tabs)) {
-        warnings.push(`Container "${key}" missing tabs array`);
-        continue;
-      }
-      
-      totalTabs += value.tabs.length;
+      totalTabs += result.tabCount;
       
       // Check each tab has required fields
-      value.tabs.forEach((tab, index) => {
-        if (!tab.id) {
-          warnings.push(`Container "${key}" tab[${index}] missing id`);
-        }
-        if (!tab.url) {
-          warnings.push(`Container "${key}" tab[${index}] missing url`);
-        }
+      this._validateTabFields(key, value.tabs, warnings);
+    }
+    
+    // v1.6.3.11 - FIX Issue #32: Log hybrid format detection
+    const isHybridFormat = context.hasContainerStyle && context.hasFlatStyle;
+    if (isHybridFormat) {
+      console.warn('[MIGRATION] HYBRID_FORMAT_DETECTED: Data contains mixed container and flat structures', {
+        containerKeys: Object.keys(containers).slice(0, 10),
+        recommendation: 'Migration may be partial - review data structure'
       });
     }
     
-    return {
-      isValid: warnings.length === 0,
-      warnings,
-      totalTabs
-    };
+    return { isValid: warnings.length === 0, warnings, totalTabs, isHybridFormat };
+  }
+  
+  /**
+   * Validate tab fields in a container
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce _validateMigratedData complexity
+   * @private
+   */
+  _validateTabFields(containerKey, tabs, warnings) {
+    tabs.forEach((tab, index) => {
+      if (!tab.id) warnings.push(`Container "${containerKey}" tab[${index}] missing id`);
+      if (!tab.url) warnings.push(`Container "${containerKey}" tab[${index}] missing url`);
+    });
   }
 
   /**

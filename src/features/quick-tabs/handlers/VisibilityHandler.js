@@ -51,6 +51,12 @@
  *   - startConsistencyChecks() validates DOM state matches snapshot state every 5 seconds
  *   - Automatic recovery for MISSING_SNAPSHOT (create from DOM) and STALE_SNAPSHOT (remove)
  *   - Consistency checks started automatically by QuickTabsManager._setupComponents()
+ * 
+ * KNOWN LIMITATION (v1.6.3.11 - Issue #38):
+ * Cross-origin subdomain Quick Tabs are NOT isolated by domain.
+ * originTabId check only validates tab ID, not domain scope.
+ * Quick Tabs created on sub.example.com may be visible on www.example.com
+ * if they share the same tab ID. Consider adding domain validation in future.
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)

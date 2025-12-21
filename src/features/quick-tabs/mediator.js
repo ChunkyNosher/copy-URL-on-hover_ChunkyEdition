@@ -72,8 +72,47 @@ export class QuickTabMediator {
      * @private
      */
     this._rollbackStack = new Map();
+    
+    /**
+     * v1.6.3.11 - FIX Issue #37: Track registered event listeners for cleanup
+     * @type {Array<{eventName: string, handler: Function}>}
+     * @private
+     */
+    this._registeredListeners = [];
 
     console.log('[QuickTabMediator] Initialized');
+  }
+  
+  /**
+   * Register an event listener and track it for cleanup
+   * v1.6.3.11 - FIX Issue #37: Prevent listener accumulation on reinit
+   * @param {string} eventName - Event name
+   * @param {Function} handler - Event handler
+   */
+  _registerListener(eventName, handler) {
+    if (!this.eventBus) return;
+    
+    this.eventBus.on(eventName, handler);
+    this._registeredListeners.push({ eventName, handler });
+    console.log('[QuickTabMediator] Registered listener:', eventName);
+  }
+  
+  /**
+   * Unregister all tracked event listeners
+   * v1.6.3.11 - FIX Issue #37: Clean up before reinit
+   */
+  cleanup() {
+    // Remove all registered listeners
+    if (this.eventBus) {
+      for (const { eventName, handler } of this._registeredListeners) {
+        this.eventBus.off(eventName, handler);
+      }
+      console.log('[QuickTabMediator] CLEANUP: Removed', this._registeredListeners.length, 'listeners');
+    }
+    this._registeredListeners = [];
+    
+    // Clear locks and rollbacks
+    this.clearLocks();
   }
 
   /**
@@ -422,10 +461,12 @@ export function getMediator(options) {
 
 /**
  * Reset the singleton instance (for testing)
+ * v1.6.3.11 - FIX Issue #37: Clean up listeners before resetting
  */
 export function resetMediator() {
   if (mediatorInstance) {
-    mediatorInstance.clearLocks();
+    // v1.6.3.11 - FIX Issue #37: Clean up event listeners before destroying instance
+    mediatorInstance.cleanup();
   }
   mediatorInstance = null;
 }

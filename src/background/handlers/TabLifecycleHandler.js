@@ -538,42 +538,17 @@ export class TabLifecycleHandler {
         newOriginTabId,
         reason: validation.reason
       });
+      
+      // v1.6.3.11 - FIX Issue #31: Call persistence callback even on validation failure
+      await this._callPersistCallback(persistCallback, quickTabId, newOriginTabId, 'FAILURE');
       return;
     }
 
     // v1.6.4.15 - FIX Issue #20: Call registered callback first (if any)
-    if (typeof this._postAdoptionPersistCallback === 'function') {
-      try {
-        await this._postAdoptionPersistCallback(quickTabId, newOriginTabId);
-        console.log('[ADOPTION_COMPLETE] Registered callback executed:', {
-          quickTabId,
-          newOriginTabId
-        });
-      } catch (err) {
-        console.error('[ADOPTION_COMPLETE] Registered callback failed:', {
-          quickTabId,
-          newOriginTabId,
-          error: err.message
-        });
-      }
-    }
+    await this._callRegisteredCallback(quickTabId, newOriginTabId);
 
     // Call the external persist callback if provided
-    if (typeof persistCallback === 'function') {
-      try {
-        await persistCallback();
-        console.log('[ADOPTION_COMPLETE] External callback executed, write queue unblocked:', {
-          quickTabId,
-          newOriginTabId
-        });
-      } catch (err) {
-        console.error('[ADOPTION_COMPLETE] External callback failed:', {
-          quickTabId,
-          newOriginTabId,
-          error: err.message
-        });
-      }
-    }
+    await this._callPersistCallback(persistCallback, quickTabId, newOriginTabId, 'COMPLETE');
     
     // v1.6.3.11-v3 - FIX Issue #11: Verification logging after persistence
     console.log('[ADOPTION_PERSISTENCE] VERIFICATION:', {
@@ -585,6 +560,38 @@ export class TabLifecycleHandler {
       },
       timestamp: Date.now()
     });
+  }
+  
+  /**
+   * Call the registered post-adoption callback
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce triggerPostAdoptionPersistence complexity
+   * @private
+   */
+  async _callRegisteredCallback(quickTabId, newOriginTabId) {
+    if (typeof this._postAdoptionPersistCallback !== 'function') return;
+    
+    try {
+      await this._postAdoptionPersistCallback(quickTabId, newOriginTabId);
+      console.log('[ADOPTION_COMPLETE] Registered callback executed:', { quickTabId, newOriginTabId });
+    } catch (err) {
+      console.error('[ADOPTION_COMPLETE] Registered callback failed:', { quickTabId, newOriginTabId, error: err.message });
+    }
+  }
+  
+  /**
+   * Call the external persist callback
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce triggerPostAdoptionPersistence complexity
+   * @private
+   */
+  async _callPersistCallback(persistCallback, quickTabId, newOriginTabId, context) {
+    if (typeof persistCallback !== 'function') return;
+    
+    try {
+      await persistCallback();
+      console.log(`[ADOPTION_${context}] External callback executed:`, { quickTabId, newOriginTabId });
+    } catch (err) {
+      console.error(`[ADOPTION_${context}] External callback failed:`, { quickTabId, newOriginTabId, error: err.message });
+    }
   }
   
   // ==================== v1.6.3.11-v3 FIX Issue #13: PERIODIC CLEANUP ====================

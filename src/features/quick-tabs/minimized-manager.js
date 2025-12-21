@@ -29,6 +29,15 @@
  *   - MISSING_SNAPSHOT: Minimized in DOM but no snapshot - create one from current state
  *   - STALE_SNAPSHOT: Non-minimized in DOM but has snapshot - remove stale snapshot
  *   - Checks run every 5 seconds when enabled by QuickTabsManager
+ * v1.6.3.11 - FIX Issue #30: Document limitation - minimized state is memory-only
+ * 
+ * KNOWN LIMITATION (v1.6.3.11 - Issue #30):
+ * Minimized state (minimizedTabs Map) is stored in memory only and is NOT persisted across:
+ * - Browser restarts
+ * - Background script restarts  
+ * - Tab refreshes
+ * When state is lost, minimized Quick Tabs will need to be re-minimized by the user.
+ * FUTURE: Consider persisting minimized state to storage.session for session persistence.
  */
 
 // Default values for position/size when not provided

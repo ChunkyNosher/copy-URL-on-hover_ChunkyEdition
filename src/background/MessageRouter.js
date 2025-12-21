@@ -126,10 +126,14 @@ export class MessageRouter {
     // v1.6.3.11-v3 - FIX Issue #20: Queue for messages received before initialization
     this._preInitMessageQueue = [];
     
+    // v1.6.3.11 - FIX Issue #24: Re-entrance guard for recursive handler calls
+    this._processingActions = new Set();
+    
     // v1.6.3.11 - FIX Issue #35: Log when MessageRouter is initialized
     console.log('[MessageRouter] INITIALIZED:', {
       timestamp: new Date().toISOString(),
-      protocolVersion: MESSAGE_PROTOCOL_VERSION
+      protocolVersion: MESSAGE_PROTOCOL_VERSION,
+      handlerCount: this.handlers.size
     });
   }
   
@@ -714,6 +718,80 @@ export class MessageRouter {
   }
 
   /**
+   * Validate basic message structure before routing
+   * v1.6.3.11 - FIX Issue #25: No structure validation
+   * Checks that message is an object with valid action/type field
+   * @private
+   * @param {*} message - Message to validate
+   * @returns {{valid: boolean, error?: string, code?: string}}
+   */
+  _validateMessageStructure(message) {
+    // Check message is an object
+    if (!message || typeof message !== 'object') {
+      console.warn('[MSG][MessageRouter] INVALID_STRUCTURE: Message is not an object', {
+        received: typeof message
+      });
+      return { valid: false, error: 'Message must be an object', code: 'INVALID_MESSAGE_STRUCTURE' };
+    }
+    
+    // Check for action or type field
+    const hasAction = typeof message.action === 'string' && message.action.length > 0;
+    const hasType = typeof message.type === 'string' && message.type.length > 0;
+    
+    if (!hasAction && !hasType) {
+      console.warn('[MSG][MessageRouter] INVALID_STRUCTURE: Missing action/type field', {
+        keys: Object.keys(message).slice(0, 10)
+      });
+      return { valid: false, error: 'Message must have action or type field', code: 'MISSING_ACTION_TYPE' };
+    }
+    
+    return { valid: true };
+  }
+
+  /**
+   * Check for re-entrance (recursive handler call)
+   * v1.6.3.11 - FIX Issue #24: Circular handler dependencies
+   * @private
+   * @param {string} action - Action being processed
+   * @returns {boolean} True if re-entrance detected
+   */
+  _checkReentrance(action) {
+    if (this._processingActions.has(action)) {
+      console.warn('[MSG][MessageRouter] RE_ENTRANCE_DETECTED: Blocking recursive call', {
+        action,
+        currentlyProcessing: Array.from(this._processingActions)
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check early exit conditions for route()
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   * @param {Object} message - Message to route
+   * @param {string} action - Extracted action
+   * @param {string} messageId - Message ID for correlation
+   * @param {Function} sendResponse - Response callback
+   * @returns {{shouldExit: boolean, returnValue?: boolean}}
+   */
+  _checkRouteEarlyExit(message, action, messageId, sendResponse) {
+    // Check re-entrance
+    if (this._checkReentrance(action)) {
+      sendResponse({
+        success: false,
+        error: 'Re-entrance blocked',
+        code: 'RE_ENTRANCE_BLOCKED',
+        ...(messageId ? { messageId } : {}),
+        timestamp: Date.now()
+      });
+      return { shouldExit: true, returnValue: false };
+    }
+    return { shouldExit: false };
+  }
+
+  /**
    * Route message to appropriate handler
    * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
    * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
@@ -722,12 +800,26 @@ export class MessageRouter {
    * v1.6.3.10-v12 - FIX Issue #7: Include messageId in response for correlation
    * v1.6.3.10-v12 - FIX Issue #10: Validate protocol version
    * v1.6.3.10-v12 - FIX Code Health: Extracted helpers to reduce complexity
+   * v1.6.3.11 - FIX Issue #24: Re-entrance guard for circular dependencies
+   * v1.6.3.11 - FIX Issue #25: Basic structure validation before routing
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
    * @returns {boolean} True if async response expected
    */
   async route(message, sender, sendResponse) {
+    // v1.6.3.11 - FIX Issue #25: Validate structure before processing
+    const structureValidation = this._validateMessageStructure(message);
+    if (!structureValidation.valid) {
+      sendResponse({
+        success: false,
+        error: structureValidation.error,
+        code: structureValidation.code,
+        timestamp: Date.now()
+      });
+      return false;
+    }
+    
     const messageId = message?.messageId || null;
     const action = this._extractAction(message);
     
@@ -736,6 +828,10 @@ export class MessageRouter {
       this._handleInvalidFormat(message, messageId, sendResponse);
       return false;
     }
+    
+    // v1.6.3.11 - FIX Issue #24: Check for re-entrance
+    const earlyExit = this._checkRouteEarlyExit(message, action, messageId, sendResponse);
+    if (earlyExit.shouldExit) return earlyExit.returnValue;
 
     // Validate protocol version and log correlation
     this._validateProtocolVersion(message, sender);
@@ -744,6 +840,16 @@ export class MessageRouter {
       console.log('[MSG][MessageRouter] MESSAGE_CORRELATION:', { messageId, action, senderTabId: sender?.tab?.id });
     }
 
+    // Route to handler
+    return this._routeToHandler(message, sender, sendResponse, action, messageId);
+  }
+  
+  /**
+   * Route message to handler after validation passes
+   * v1.6.3.11 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  async _routeToHandler(message, sender, sendResponse, action, messageId) {
     const handler = this.handlers.get(action);
     if (!handler) {
       const result = this._handleNoHandler(message, sender, sendResponse, action);
@@ -757,6 +863,9 @@ export class MessageRouter {
       return false;
     }
 
+    // v1.6.3.11 - FIX Issue #24: Track action being processed
+    this._processingActions.add(action);
+    
     try {
       const result = await handler(message, sender);
       const normalizedResponse = this._normalizeResponse(result, action, messageId);
@@ -765,6 +874,9 @@ export class MessageRouter {
     } catch (error) {
       this._handleHandlerError(action, error, messageId, sendResponse);
       return true;
+    } finally {
+      // v1.6.3.11 - FIX Issue #24: Clear processing flag after handler completes
+      this._processingActions.delete(action);
     }
   }
 

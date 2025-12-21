@@ -6,6 +6,10 @@
  *   - Extended state machine with full lifecycle tracking
  *   - Added guardOperation() for operation-level state validation
  *   - Added canMinimize/canRestore/canClose convenience methods
+ * v1.6.3.11 - FIX Issue #29: Document limitation - state is memory-only
+ *   - State is not persisted to storage and is lost on background restart
+ *   - Content scripts should re-initialize state from storage on reconnection
+ *   - Added logging when state may be stale after port reconnection
  *
  * Responsibilities:
  * - Track each Quick Tab's current state (CREATING, VISIBLE, MINIMIZING, MINIMIZED, RESTORING, CLOSING, DESTROYED, ERROR)
@@ -14,6 +18,13 @@
  * - Reject invalid operations (e.g., minimize already-minimized tab)
  * - Provide state history for debugging
  * - Guard operations based on current state (e.g., block minimize while creating)
+ * 
+ * KNOWN LIMITATION (v1.6.3.11 - Issue #29):
+ * State is stored in memory only and is NOT persisted across:
+ * - Browser restarts
+ * - Background script restarts
+ * - Tab refreshes
+ * When state is lost, Quick Tabs should be rehydrated from storage.
  *
  * @module state-machine
  */
@@ -63,6 +74,10 @@ const VALID_TRANSITIONS = new Map([
 
 /**
  * Maximum history entries per Quick Tab
+ * v1.6.3.11 - FIX Issue #35: Document that Array.shift() is O(n)
+ * KNOWN LIMITATION: Current implementation uses Array.shift() which is O(n).
+ * For small history size (20 entries), this is acceptable.
+ * FUTURE: Consider circular buffer implementation if history size increases significantly.
  * @type {number}
  */
 const MAX_HISTORY_SIZE = 20;
@@ -101,8 +116,46 @@ export class QuickTabStateMachine {
      * @type {boolean}
      */
     this.enforceTransitions = true;
+    
+    /**
+     * v1.6.3.11 - FIX Issue #29: Track last initialization time for staleness detection
+     * @type {number}
+     * @private
+     */
+    this._lastInitTime = Date.now();
 
     console.log('[QuickTabStateMachine] Initialized');
+  }
+  
+  /**
+   * Check if state may be stale (after reconnection)
+   * v1.6.3.11 - FIX Issue #29: Detect potentially stale state after background restart
+   * @param {number} lastKnownGoodTime - Timestamp of last known good state
+   * @returns {boolean} True if state may be stale
+   */
+  isStatePotentiallyStale(lastKnownGoodTime) {
+    const isStale = this._lastInitTime > lastKnownGoodTime;
+    if (isStale) {
+      console.warn('[QuickTabStateMachine] STATE_POTENTIALLY_STALE:', {
+        initTime: this._lastInitTime,
+        lastKnownGoodTime,
+        trackedCount: this._states.size,
+        recommendation: 'Re-hydrate state from storage'
+      });
+    }
+    return isStale;
+  }
+  
+  /**
+   * Mark state as refreshed (after rehydration)
+   * v1.6.3.11 - FIX Issue #29: Update init time after state refresh
+   */
+  markStateRefreshed() {
+    this._lastInitTime = Date.now();
+    console.log('[QuickTabStateMachine] STATE_REFRESHED:', {
+      newInitTime: this._lastInitTime,
+      trackedCount: this._states.size
+    });
   }
 
   /**

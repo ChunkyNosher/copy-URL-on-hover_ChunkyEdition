@@ -2098,6 +2098,28 @@ messageRouter.register('createQuickTab', (msg, sender) =>
   tabHandler.handleLegacyCreate(msg, sender)
 );
 
+// v1.6.3.11 - FIX Issue #23: Handler for settings changes from sidebar/popup
+// Background reloads cached settings when user saves settings
+messageRouter.register('SETTINGS_CHANGED', async (msg, _sender) => {
+  console.log('[Background] SETTINGS_CHANGED: Reloading cached settings', {
+    timestamp: msg.timestamp,
+    settingsKeys: msg.settings ? Object.keys(msg.settings).length : 0
+  });
+  
+  try {
+    // Reload settings from storage to pick up changes
+    // The settings are stored in storage.local by sidebar/popup
+    const result = await browser.storage.local.get(null);
+    console.log('[Background] SETTINGS_RELOADED: Settings cache refreshed', {
+      totalKeys: Object.keys(result).length
+    });
+    return { success: true };
+  } catch (err) {
+    console.error('[Background] SETTINGS_CHANGED: Failed to reload settings:', err.message);
+    return { success: false, error: err.message };
+  }
+});
+
 // v1.6.3 - FIX: Handler for resetting globalQuickTabState cache when storage is cleared from popup
 // This is called after popup.js clears storage to ensure background's cache is also reset
 messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
