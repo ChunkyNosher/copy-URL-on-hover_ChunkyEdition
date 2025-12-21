@@ -99,7 +99,22 @@ function _isQuickTabParentFrame(parentFrame) {
 }
 
 /**
+ * Check if DOM is ready for safe element access
+ * v1.6.3.11 - FIX Issue #37: Explicit DOM readiness check before parentElement access
+ * @returns {boolean} - True if DOM is ready for safe access
+ */
+function _isDomReadyForElementAccess() {
+  // Check if document is in a state where we can safely access elements
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    return true;
+  }
+  // If document is still loading, we may not have safe access
+  return false;
+}
+
+/**
  * Check if we should skip initialization (inside Quick Tab iframe)
+ * v1.6.3.11 - FIX Issue #37: Add DOM readiness check before parentElement access
  * @returns {boolean} - True if initialization should be skipped
  */
 function _checkShouldSkipInitialization() {
@@ -108,9 +123,26 @@ function _checkShouldSkipInitialization() {
     return false;
   }
 
+  // v1.6.3.11 - FIX Issue #37: Check DOM readiness before accessing frame elements
+  // If DOM isn't ready, err on side of caution and skip (fail-safe)
+  if (!_isDomReadyForElementAccess()) {
+    console.log('[Content] Skipping initialization - DOM not ready for frame check (fail-safe)');
+    window.CUO_skipped = true;
+    window.CUO_skip_reason = 'dom-not-ready';
+    return true;
+  }
+
   // In iframe - check if parent is Quick Tab
   try {
     const parentFrame = window.frameElement;
+    // v1.6.3.11 - FIX Issue #37: Handle null parentFrame gracefully
+    if (parentFrame === null) {
+      // Cross-origin iframe or restricted access - err on side of caution
+      console.log('[Content] Skipping initialization - frameElement is null (restricted access)');
+      window.CUO_skipped = true;
+      window.CUO_skip_reason = 'null-frame-element';
+      return true;
+    }
     if (_isQuickTabParentFrame(parentFrame)) {
       console.log('[Content] Skipping initialization - inside Quick Tab iframe');
       window.CUO_skipped = true;
@@ -437,6 +469,72 @@ const MAX_INIT_MESSAGE_QUEUE_SIZE = 100;
  */
 const QUEUE_BACKPRESSURE_THRESHOLD = 75;
 
+// ==================== v1.6.3.11 FIX ISSUE #26: CROSS-QUEUE OVERFLOW PROTECTION ====================
+// Unified tracking across all message queues to prevent memory/timeout issues
+
+/**
+ * Global backpressure threshold for combined queue depth
+ * v1.6.3.11 - FIX Issue #26: Total messages across all queues before warning
+ */
+const GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD = 300;
+
+/**
+ * Queue priority order for flush operations
+ * v1.6.3.11 - FIX Issue #26: INIT_MESSAGES first, then HYDRATION, COMMANDS, PORT_MESSAGES
+ * Prefixed with _ to indicate reserved for future ordered flush implementation
+ * @enum {number}
+ */
+const _QUEUE_PRIORITY = {
+  INIT_MESSAGES: 1,
+  HYDRATION: 2,
+  COMMANDS: 3,
+  PORT_MESSAGES: 4
+};
+
+/**
+ * Get total message count across all queues
+ * v1.6.3.11 - FIX Issue #26: Unified queue depth tracking
+ * @returns {Object} Queue depths and total
+ */
+function _getTotalQueueDepth() {
+  // Note: messageQueue and pendingCommandsBuffer are declared later in the file
+  // We use optional chaining and fallback to handle the declaration order
+  const initQueueSize = initializationMessageQueue.length;
+  const hydrationQueueSize = preHydrationOperationQueue.length;
+  const portQueueSize = typeof messageQueue !== 'undefined' ? messageQueue.length : 0;
+  const commandsQueueSize = typeof pendingCommandsBuffer !== 'undefined' ? pendingCommandsBuffer.length : 0;
+  
+  return {
+    initializationMessageQueue: initQueueSize,
+    preHydrationOperationQueue: hydrationQueueSize,
+    messageQueue: portQueueSize,
+    pendingCommandsBuffer: commandsQueueSize,
+    total: initQueueSize + hydrationQueueSize + portQueueSize + commandsQueueSize
+  };
+}
+
+/**
+ * Check and log global backpressure warning
+ * v1.6.3.11 - FIX Issue #26: Warn when combined depth exceeds threshold
+ * @returns {boolean} True if backpressure threshold exceeded
+ */
+function _checkGlobalBackpressure() {
+  const depths = _getTotalQueueDepth();
+  
+  if (depths.total >= GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD) {
+    console.warn('[Content][BACKPRESSURE] GLOBAL_THRESHOLD_EXCEEDED:', {
+      threshold: GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD,
+      ...depths,
+      timestamp: Date.now()
+    });
+    return true;
+  }
+  
+  return false;
+}
+
+// ==================== END ISSUE #26 FIX ====================
+
 /**
  * Track dropped messages for retry
  * v1.6.3.10-v11 - FIX Issue #6: Retry dropped messages
@@ -613,10 +711,19 @@ const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt
 /**
  * Generate unique message ID for correlation
  * v1.6.3.10-v11 - FIX Issue #23
- * @returns {string} Unique message ID
+ * v1.6.3.11 - FIX Issue #28: Add namespace prefix to prevent collision with background
+ * @returns {string} Unique message ID with content script namespace
  */
 function _generateMessageId() {
-  return `msg-${Date.now()}-${++messageIdCounter}`;
+  const newId = `msg-content-${Date.now()}-${++messageIdCounter}`;
+  
+  // v1.6.3.11 - FIX Issue #28: Collision detection
+  if (pendingMessages.has(newId)) {
+    console.warn('[Content] MESSAGE_ID_COLLISION: Regenerating ID', { collided: newId });
+    return _generateMessageId(); // Recursive regeneration
+  }
+  
+  return newId;
 }
 
 /**
@@ -871,11 +978,15 @@ function _validateMessageFormat(message) {
  * Queue a message during initialization window
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
  * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism with detailed logging
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} message - Message to queue
  * @param {Function} callback - Callback to execute when message can be sent
  */
 function _queueInitializationMessage(message, callback) {
   const queueSize = initializationMessageQueue.length;
+  
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
   
   // v1.6.3.10-v11 - FIX Issue #6: Check and emit backpressure warning
   _checkQueueBackpressure(queueSize);
@@ -1115,13 +1226,32 @@ async function _markContentScriptInitialized() {
 // ==================== v1.6.3.10-v11 FIX ISSUE #15: HYDRATION GATING ====================
 // Prevent operations from running before state is hydrated from storage
 
+// ==================== v1.6.3.11 FIX ISSUE #27: DRAIN LOCK ====================
+// Prevent concurrent hydration timeout and drain execution
+
+/**
+ * Lock state for hydration queue drain
+ * v1.6.3.11 - FIX Issue #27: Prevent concurrent drain/timeout execution
+ */
+let isHydrationDrainInProgress = false;
+
+// ==================== END ISSUE #27 DECLARATIONS ====================
+
 /**
  * Mark hydration as complete and drain the operation queue
  * v1.6.3.10-v11 - FIX Issue #15: Signal hydration complete
+ * v1.6.3.11 - FIX Issue #27: Use drain lock to prevent race conditions
  * @param {number} [loadedTabCount=0] - Number of tabs loaded from storage
  */
 async function _markHydrationComplete(loadedTabCount = 0) {
-  if (isHydrationComplete) return;
+  // v1.6.3.11 - FIX Issue #27: Check drain lock to prevent concurrent execution
+  if (isHydrationComplete || isHydrationDrainInProgress) {
+    console.log('[Content] HYDRATION_SKIPPED:', {
+      alreadyComplete: isHydrationComplete,
+      drainInProgress: isHydrationDrainInProgress
+    });
+    return;
+  }
   
   isHydrationComplete = true;
   console.log('[Content] HYDRATION_COMPLETE:', {
@@ -1137,12 +1267,16 @@ async function _markHydrationComplete(loadedTabCount = 0) {
 /**
  * Queue an operation that arrived before hydration completed
  * v1.6.3.10-v11 - FIX Issue #15: Buffer operations during hydration
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} operation - Operation to queue
  * @param {string} operation.type - Operation type
  * @param {Object} operation.data - Operation data
  * @param {Function} [operation.callback] - Callback to execute when operation is processed
  */
 function _queuePreHydrationOperation(operation) {
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
+  
   preHydrationOperationQueue.push({
     ...operation,
     queuedAt: Date.now()
@@ -1183,19 +1317,36 @@ async function _executeQueuedOperation(operation, queueDuration) {
 /**
  * Drain the pre-hydration operation queue
  * v1.6.3.10-v11 - FIX Issue #15: Process queued operations after hydration
+ * v1.6.3.11 - FIX Issue #27: Use drain lock to prevent duplicate execution
  * @private
  */
 async function _drainPreHydrationQueue() {
   if (preHydrationOperationQueue.length === 0) return;
   
-  console.log('[Content] DRAINING_PRE_HYDRATION_QUEUE:', {
+  // v1.6.3.11 - FIX Issue #27: Acquire drain lock
+  if (isHydrationDrainInProgress) {
+    console.log('[Content] DRAIN_SKIPPED: Already in progress');
+    return;
+  }
+  
+  isHydrationDrainInProgress = true;
+  console.log('[Content] DRAIN_IN_PROGRESS:', {
     queueSize: preHydrationOperationQueue.length
   });
   
-  while (preHydrationOperationQueue.length > 0) {
-    const operation = preHydrationOperationQueue.shift();
-    const queueDuration = Date.now() - operation.queuedAt;
-    await _executeQueuedOperation(operation, queueDuration);
+  try {
+    while (preHydrationOperationQueue.length > 0) {
+      const operation = preHydrationOperationQueue.shift();
+      const queueDuration = Date.now() - operation.queuedAt;
+      await _executeQueuedOperation(operation, queueDuration);
+    }
+    
+    console.log('[Content] DRAIN_COMPLETE:', {
+      timestamp: Date.now()
+    });
+  } finally {
+    // v1.6.3.11 - FIX Issue #27: Always release lock
+    isHydrationDrainInProgress = false;
   }
 }
 
@@ -1225,9 +1376,16 @@ function _shouldWaitForHydration(operationType) {
 /**
  * Initialize hydration timeout safety
  * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within timeout, proceed anyway
+ * v1.6.3.11 - FIX Issue #27: Check drain lock before forcing completion
  */
 function _initHydrationTimeout() {
   setTimeout(() => {
+    // v1.6.3.11 - FIX Issue #27: Don't force completion if drain is in progress
+    if (isHydrationDrainInProgress) {
+      console.log('[Content] HYDRATION_TIMEOUT_DEFERRED: Drain in progress, skipping timeout action');
+      return;
+    }
+    
     if (!isHydrationComplete) {
       console.warn('[Content] HYDRATION_TIMEOUT: Forcing hydration complete after timeout', {
         timeoutMs: HYDRATION_TIMEOUT_MS,
@@ -1483,6 +1641,38 @@ async function getCurrentTabIdFromBackground() {
     return result.tabId;
   }
   
+  // v1.6.3.11 - FIX Issue #11: Special handling for NOT_INITIALIZED error
+  // Wait once briefly (500ms) and retry exactly once before exponential backoff
+  if (result.error === 'NOT_INITIALIZED') {
+    console.log('[Content] Background initializing, waiting 500ms');
+    
+    // Wait 500ms for background to complete initialization
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Retry exactly once (this is the special NOT_INITIALIZED retry, attempt #2)
+    const notInitRetryAttemptNum = 2; // First attempt was #1, this special retry is #2
+    const notInitRetry = await _attemptGetTabIdFromBackground(notInitRetryAttemptNum);
+    
+    if (notInitRetry.tabId !== null) {
+      console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired after NOT_INITIALIZED wait', {
+        tabId: notInitRetry.tabId,
+        totalDurationMs: Date.now() - overallStartTime
+      });
+      return notInitRetry.tabId;
+    }
+    
+    // If still NOT_INITIALIZED after one retry, fall through to extended retry loop
+    if (notInitRetry.error === 'NOT_INITIALIZED') {
+      console.log('[Content][TabID][INIT] Still NOT_INITIALIZED after single retry, entering extended retry loop');
+      result = notInitRetry;
+      // Skip exponential backoff, go directly to extended retry
+      return _extendedTabIdRetryLoop(overallStartTime, result);
+    }
+    
+    // Different error - update result and continue with normal flow
+    result = notInitRetry;
+  }
+  
   // Retry loop with exponential backoff
   for (let retryIndex = 0; retryIndex < TAB_ID_MAX_RETRIES; retryIndex++) {
     const attemptNumber = retryIndex + 2; // First retry is attempt #2
@@ -1612,8 +1802,12 @@ let currentHandshakePhase = HANDSHAKE_PHASE.NONE;
 /**
  * Timeout for each handshake phase (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #24: 2 seconds per phase
+ * v1.6.3.11 - FIX Issue #30: Reduced to 500ms per phase to align with reconnection backoff
+ *   - Reconnection backoff starts at 150ms, multiplies by 1.5x
+ *   - 3 phases × 500ms = 1500ms total (vs 6000ms before)
+ *   - Ensures predictable recovery timing
  */
-const HANDSHAKE_PHASE_TIMEOUT_MS = 2000;
+const HANDSHAKE_PHASE_TIMEOUT_MS = 500;
 
 /**
  * Handshake timeout ID
@@ -1843,9 +2037,14 @@ function _startThreePhaseHandshake(port) {
     phase: 1
   });
   
-  // Set timeout for Phase 1
+  // Set timeout for Phase 1 (v1.6.3.11 - FIX Issue #9: 2-3s timeout on INIT_RESPONSE wait)
   _setHandshakeTimeout('INIT_REQUEST', () => {
-    console.error('[Content][HANDSHAKE] Phase 1 timeout: No INIT_RESPONSE received');
+    // v1.6.3.11 - FIX Issue #9: Combined timeout warning with fallback info
+    console.warn('[Content] ⚠️ INIT_RESPONSE timeout, falling back to retry loop', {
+      phase: 'Phase 1 timeout',
+      timeoutMs: HANDSHAKE_PHASE_TIMEOUT_MS,
+      recoveryAction: 'exponential-backoff-reconnection'
+    });
     _handleHandshakeFailure('Phase 1 timeout');
   });
 }
@@ -2151,10 +2350,14 @@ function _markRestoreComplete(quickTabId, success) {
 /**
  * Queue a message when port is unavailable
  * v1.6.3.10-v7 - FIX Issue #5: Message queueing
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} message - Message to queue
  * @returns {number} Message ID for tracking
  */
 function _queueMessage(message) {
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
+  
   const messageId = ++messageIdCounter;
   const queuedMessage = {
     messageId,
@@ -2220,9 +2423,13 @@ function _drainMessageQueue() {
 /**
  * Buffer a command when background is not ready
  * v1.6.3.10-v7 - FIX Issue #2: Buffer commands until ready
+ * v1.6.3.11 - FIX Issue #26: Add global backpressure check
  * @param {Object} command - Command to buffer
  */
 function _bufferCommand(command) {
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  _checkGlobalBackpressure();
+  
   if (pendingCommandsBuffer.length >= MAX_PENDING_COMMANDS) {
     const dropped = pendingCommandsBuffer.shift();
     console.warn('[Content] COMMAND_BUFFER_OVERFLOW: Dropped oldest command:', {
@@ -2422,13 +2629,12 @@ function connectContentToBackground(tabId) {
     backgroundPort = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
     logContentPortLifecycle('open', { portName: backgroundPort.name });
     
-    // v1.6.3.10-v12 - FIX Issue #1: Register BOTH listeners BEFORE any other setup
-    // This prevents the race window where onDisconnect fires before onMessage is ready
+    // v1.6.3.11 - FIX Issue #8: Register onDisconnect FIRST to prevent race condition
+    // Critical: onDisconnect must be registered IMMEDIATELY after connect() returns
+    // This ensures we catch any disconnection that occurs during setup
+    // Order: 1. connect() → 2. onDisconnect → 3. onMessage → 4. send init message
     
-    // Register onMessage listener first
-    backgroundPort.onMessage.addListener(handleContentPortMessage);
-    
-    // Register onDisconnect listener second
+    // Register onDisconnect listener FIRST (within 5ms of connect())
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
       
@@ -2455,6 +2661,9 @@ function connectContentToBackground(tabId) {
       _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'port-disconnected');
       _handleReconnection(tabId, 'disconnect');
     });
+    
+    // v1.6.3.11 - FIX Issue #8: Register onMessage listener SECOND (after onDisconnect)
+    backgroundPort.onMessage.addListener(handleContentPortMessage);
     
     // v1.6.3.10-v12 - FIX Issue #1: Mark listeners as registered (init gate)
     portListenersRegistered = true;
@@ -2584,6 +2793,12 @@ function handleContentPortMessage(message) {
     _validateMessageSequence(message.sequenceId);
   }
 
+  // v1.6.3.11 - FIX Issue #32: Handle PORT_VERIFY_RESPONSE for BFCache verification
+  if (message.type === 'PORT_VERIFY_RESPONSE') {
+    _handlePortVerifyResponse();
+    return;
+  }
+
   // v1.6.3.10-v4 - FIX Issue #3/6: Handle background handshake for restart detection
   if (message.type === 'BACKGROUND_HANDSHAKE' || message.type === 'HEARTBEAT_ACK') {
     _processBackgroundStartupTime(message.startupTime);
@@ -2607,19 +2822,71 @@ function handleContentPortMessage(message) {
   }
 }
 
+// ==================== v1.6.3.11 FIX ISSUE #39: BROADCAST DEDUPLICATION ====================
+// Track received broadcast messageIds to prevent duplicate processing
+
+/**
+ * Set of already-processed broadcast messageIds
+ * v1.6.3.11 - FIX Issue #39: Idempotency tracking for broadcast handlers
+ */
+const processedBroadcastMessageIds = new Set();
+
+/**
+ * Maximum size of dedup set before cleanup
+ * v1.6.3.11 - FIX Issue #39
+ */
+const MAX_PROCESSED_BROADCAST_IDS = 1000;
+
+/**
+ * Check if broadcast was already processed (idempotency check)
+ * v1.6.3.11 - FIX Issue #39
+ * @param {string} messageId - Broadcast message ID
+ * @returns {boolean} True if already processed (should skip)
+ */
+function _wasBroadcastAlreadyProcessed(messageId) {
+  if (!messageId) return false;
+  
+  if (processedBroadcastMessageIds.has(messageId)) {
+    console.log('[Content] BROADCAST_DEDUPED: Already processed', messageId);
+    return true;
+  }
+  
+  // Track this messageId
+  processedBroadcastMessageIds.add(messageId);
+  
+  // Cleanup if set is too large
+  if (processedBroadcastMessageIds.size > MAX_PROCESSED_BROADCAST_IDS) {
+    // Convert to array, remove oldest half
+    const arr = Array.from(processedBroadcastMessageIds);
+    const toRemove = arr.slice(0, Math.floor(arr.length / 2));
+    toRemove.forEach(id => processedBroadcastMessageIds.delete(id));
+  }
+  
+  return false;
+}
+
+// ==================== END ISSUE #39 FIX ====================
+
 /**
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
+ * v1.6.3.11 - FIX Issue #39: Add idempotency tracking for broadcast handlers
  * @param {Object} message - Broadcast message
  */
 function handleContentBroadcast(message) {
-  const { action } = message;
+  const { action, messageId } = message;
+
+  // v1.6.3.11 - FIX Issue #39: Check for duplicate broadcast
+  if (_wasBroadcastAlreadyProcessed(messageId)) {
+    return;
+  }
 
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Content] Received visibility change broadcast:', {
         quickTabId: message.quickTabId,
-        changes: message.changes
+        changes: message.changes,
+        messageId
       });
       // Quick Tabs manager will handle this via its own listeners
       break;
@@ -2628,7 +2895,8 @@ function handleContentBroadcast(message) {
       console.log('[Content] Received tab lifecycle broadcast:', {
         event: message.event,
         tabId: message.tabId,
-        affectedQuickTabs: message.affectedQuickTabs
+        affectedQuickTabs: message.affectedQuickTabs,
+        messageId
       });
       break;
 
@@ -2709,6 +2977,7 @@ function _handleNoPortAfterBFCache() {
 /**
  * Handle port verification failure after BFCache restore
  * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce nesting depth
+ * v1.6.3.11 - FIX Issue #7: Add explicit BFCache recovery reconnection with logging
  * @private
  * @param {Error} err - Error from port verification
  */
@@ -2718,20 +2987,74 @@ function _handlePortVerifyFailure(err) {
     timestamp: Date.now()
   });
   
+  // v1.6.3.11 - FIX Issue #7: Close broken port before reconnection
+  if (backgroundPort) {
+    try {
+      backgroundPort.disconnect();
+    } catch (disconnectErr) {
+      // Port may already be disconnected, ignore
+      console.log('[Content][BFCACHE] Port already disconnected:', disconnectErr.message);
+    }
+  }
+  
   // Port is dead, trigger reconnection
   backgroundPort = null;
   portPotentiallyInvalidDueToBFCache = false;
   _transitionPortState(PORT_CONNECTION_STATE.DISCONNECTED, 'bfcache-port-dead');
   
+  // v1.6.3.11 - FIX Issue #7: Explicit BFCache recovery logging before reconnection
+  console.log('[Content] BFCache recovery: reconnecting port', {
+    cachedTabId,
+    timestamp: Date.now()
+  });
+  
   if (cachedTabId) {
-    _handleReconnection(cachedTabId, 'bfcache-port-dead');
+    // v1.6.3.11 - FIX Issue #7: Brief delay before reconnection (50ms)
+    setTimeout(() => {
+      console.log('[Content] BFCache recovery: initiating reconnection after delay');
+      _handleReconnection(cachedTabId, 'bfcache-port-dead');
+    }, 50);
   }
+}
+
+/**
+ * Timeout for BFCache PORT_VERIFY response (milliseconds)
+ * v1.6.3.11 - FIX Issue #32: Add timeout to prevent indefinite hangs
+ */
+const BFCACHE_VERIFY_TIMEOUT_MS = 1000;
+
+/**
+ * Timeout ID for BFCache verification
+ * v1.6.3.11 - FIX Issue #32
+ */
+let bfcacheVerifyTimeoutId = null;
+
+/**
+ * Clear BFCache verify timeout
+ * v1.6.3.11 - FIX Issue #32
+ */
+function _clearBFCacheVerifyTimeout() {
+  if (bfcacheVerifyTimeoutId) {
+    clearTimeout(bfcacheVerifyTimeoutId);
+    bfcacheVerifyTimeoutId = null;
+  }
+}
+
+/**
+ * Handle PORT_VERIFY response from background
+ * v1.6.3.11 - FIX Issue #32: Clear timeout on successful response
+ */
+function _handlePortVerifyResponse() {
+  _clearBFCacheVerifyTimeout();
+  portPotentiallyInvalidDueToBFCache = false;
+  console.log('[Content][BFCACHE] VERIFY_RESPONSE: Port verified functional');
 }
 
 /**
  * Verify port functionality after BFCache restore
  * v1.6.3.10-v12 - FIX Issue #2: Attempt handshake to verify port is still functional
  * v1.6.3.10-v12 - FIX Code Health: Extracted helpers, removed unnecessary async
+ * v1.6.3.11 - FIX Issue #32: Add 1000ms timeout to prevent indefinite hangs
  * @private
  */
 function _verifyPortAfterBFCache() {
@@ -2754,8 +3077,18 @@ function _verifyPortAfterBFCache() {
     backgroundPort.postMessage(testMessage);
     console.log('[Content][BFCACHE] VERIFY_PORT: Test message sent successfully');
     
-    // If we get here without error, port seems functional
-    portPotentiallyInvalidDueToBFCache = false;
+    // v1.6.3.11 - FIX Issue #32: Set timeout for response
+    _clearBFCacheVerifyTimeout(); // Clear any existing timeout
+    bfcacheVerifyTimeoutId = setTimeout(() => {
+      console.warn('[Content][BFCACHE] VERIFY_TIMEOUT: No response, reconnecting', {
+        timeoutMs: BFCACHE_VERIFY_TIMEOUT_MS,
+        timestamp: Date.now()
+      });
+      
+      // Timeout expired - trigger reconnection
+      portPotentiallyInvalidDueToBFCache = false;
+      _handlePortVerifyFailure(new Error('PORT_VERIFY timeout'));
+    }, BFCACHE_VERIFY_TIMEOUT_MS);
     
   } catch (err) {
     _handlePortVerifyFailure(err);
@@ -3381,8 +3714,17 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement, eve
  * v1.6.0.7 - Enhanced logging for keyboard event detection and shortcut matching
  * v1.6.0.10 - ARCHITECTURAL FIX: Only log matched shortcuts, not every keystroke
  *             Removes noise from console by logging only when shortcuts are executed
+ * v1.6.3.11 - FIX Issue #38: Add guard for initialization window
  */
 async function handleKeyboardShortcut(event) {
+  // v1.6.3.11 - FIX Issue #38: Guard for initialization window
+  // If quickTabsManager is not ready, either buffer or show "not ready" message
+  if (!contentScriptInitialized) {
+    // During init window, silently ignore shortcuts
+    // This prevents errors when shortcuts are pressed before init completes
+    return;
+  }
+  
   // Check if in input field first - silently ignore
   const isInInputField = isInputField(event.target);
   if (isInInputField) {
@@ -3413,9 +3755,11 @@ async function handleKeyboardShortcut(event) {
 /**
  * Set up keyboard shortcuts
  * v1.6.0 Phase 2.4 - Extracted handler to reduce complexity
+ * v1.6.3.11 - FIX Issue #38: Now safe to register early due to guard in handleKeyboardShortcut
  */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', handleKeyboardShortcut);
+  console.log('[Content] Keyboard shortcuts registered (guarded until initialization complete)');
 }
 
 /**
@@ -3866,23 +4210,26 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for background persistence
  * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
+ * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
+ *   - Background generates globally-ordered sequence IDs
+ *   - Prevents out-of-order IDs from multiple tabs creating simultaneously
  */
 async function persistQuickTabToBackground(quickTabData, saveId) {
-  // v1.6.3.10-v12 - FIX Issue #5: Assign sequenceId for ordering
-  const sequenceId = ++globalCommandSequenceId;
+  // v1.6.3.11 - FIX Issue #31: Let background assign sequence ID for global ordering
+  // Note: Background will generate globally-ordered sequence ID on receipt
   
-  console.log('[Content] CREATE_MESSAGE_SEQUENCED:', {
+  console.log('[Content] CREATE_MESSAGE_SENT:', {
     quickTabId: quickTabData.id,
-    sequenceId,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    note: 'Background will assign global sequenceId'
   });
   
   await sendMessageToBackground({
     action: 'CREATE_QUICK_TAB',
     ...quickTabData,
     saveId,
-    sequenceId,           // v1.6.3.10-v12 - FIX Issue #5: Include for ordering
-    operationType: OPERATION_TYPE.CREATE  // v1.6.3.10-v12 - FIX Issue #5: Explicit type
+    // v1.6.3.11 - FIX Issue #31: No client sequenceId - background assigns it
+    operationType: OPERATION_TYPE.CREATE
   });
 }
 
@@ -4178,8 +4525,9 @@ const recentlyAdoptedQuickTabs = new Map();
 /**
  * Default TTL for recently-adopted Quick Tab entries (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #5: Safe default when latency unavailable (30 seconds)
+ * v1.6.3.11 - FIX Issue #33: Increased to 5 minutes for adoption cache
  */
-const ADOPTION_DEFAULT_TTL_MS = 30000;
+const ADOPTION_DEFAULT_TTL_MS = 300000;
 
 /**
  * Minimum TTL for adoption tracking (milliseconds)
@@ -4190,8 +4538,9 @@ const ADOPTION_MIN_TTL_MS = 5000;
 /**
  * Maximum TTL for adoption tracking (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #5: Cap at 60 seconds to prevent memory leaks
+ * v1.6.3.11 - FIX Issue #33: Increased max to 5 minutes for adoption cache
  */
-const ADOPTION_MAX_TTL_MS = 60000;
+const ADOPTION_MAX_TTL_MS = 300000;
 
 /**
  * Multiplier for latency to compute TTL (3x for safety margin)
@@ -4202,8 +4551,9 @@ const ADOPTION_TTL_LATENCY_MULTIPLIER = 3;
 /**
  * Cleanup interval for recently-adopted Quick Tab entries (milliseconds)
  * v1.6.3.10-v7 - FIX Issue #7: Clean up every 30 seconds
+ * v1.6.3.11 - FIX Issue #33: Changed to 60 seconds for adoption cache
  */
-const ADOPTION_CLEANUP_INTERVAL_MS = 30000;
+const ADOPTION_CLEANUP_INTERVAL_MS = 60000;
 
 /**
  * Track observed handshake latencies for dynamic TTL calculation
@@ -4381,6 +4731,7 @@ function _getAdoptionOwnership(quickTabId) {
  * Clean up expired adoption tracking entries
  * v1.6.3.10-v7 - FIX Issue #7
  * v1.6.3.10-v11 - FIX Issue #5: Use per-entry TTL for cleanup
+ * v1.6.3.11 - FIX Issue #33: Add specific logging format for adoption cache cleanup
  */
 function _cleanupAdoptionTracking() {
   const now = Date.now();
@@ -4394,12 +4745,10 @@ function _cleanupAdoptionTracking() {
     }
   }
   
+  // v1.6.3.11 - FIX Issue #33: Log cleanup with specific format
   if (cleanedCount > 0) {
-    console.log('[Content] ADOPTION_CLEANUP:', {
-      cleanedCount,
-      remainingCount: recentlyAdoptedQuickTabs.size,
-      metrics: adoptionCacheMetrics
-    });
+    console.log('[Content] ADOPTION_CACHE_CLEANUP:', cleanedCount, 'entries expired,', 
+      recentlyAdoptedQuickTabs.size, 'remaining');
   }
 }
 
@@ -6340,9 +6689,40 @@ if (IS_TEST_MODE) {
 }
 
 /**
+ * Check if message is intended for current tab
+ * v1.6.3.11 - FIX Issue #40: Validate targetTabId before processing broadcast
+ * @private
+ * @param {Object} message - Message to validate
+ * @returns {{ shouldProcess: boolean, reason: string }}
+ */
+function _shouldProcessMessageForThisTab(message) {
+  // If message has no targetTabId, process it (legacy compatibility)
+  if (message.targetTabId === undefined || message.targetTabId === null) {
+    return { shouldProcess: true, reason: 'no-target-specified' };
+  }
+  
+  // Get current tab ID
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+  
+  // If we don't know our tab ID yet, process to be safe
+  if (currentTabId === null) {
+    return { shouldProcess: true, reason: 'current-tab-id-unknown' };
+  }
+  
+  // Check if message is for this tab
+  if (message.targetTabId !== currentTabId) {
+    console.log('[Content] BROADCAST_IGNORED: targetTabId', message.targetTabId, '!= currentTabId', currentTabId);
+    return { shouldProcess: false, reason: 'target-mismatch' };
+  }
+  
+  return { shouldProcess: true, reason: 'target-matches' };
+}
+
+/**
  * Main message dispatcher
  * Routes messages to appropriate handler based on action or type
  * v1.6.3.5-v10 - FIX Issue #3: Added entry/exit logging for message tracing
+ * v1.6.3.11 - FIX Issue #40: Add targetTabId validation for broadcasts
  * @private
  */
 function _dispatchMessage(message, _sender, sendResponse) {
@@ -6352,6 +6732,14 @@ function _dispatchMessage(message, _sender, sendResponse) {
     type: message.type || 'none',
     hasData: !!message.data
   });
+
+  // v1.6.3.11 - FIX Issue #40: Check if message is intended for this tab
+  const targetCheck = _shouldProcessMessageForThisTab(message);
+  if (!targetCheck.shouldProcess) {
+    // Message not for this tab - silently acknowledge
+    sendResponse({ success: true, ignored: true, reason: targetCheck.reason });
+    return true;
+  }
 
   // Check action-based handlers first
   if (message.action && ACTION_HANDLERS[message.action]) {
@@ -6383,12 +6771,55 @@ function _dispatchMessage(message, _sender, sendResponse) {
 // Note: Content scripts are injected once per page load, but we add a guard for safety
 
 /**
+ * Reset all initialization flags on navigation
+ * v1.6.3.11 - FIX Issue #34: Reset initialization flags on beforeunload
+ * @private
+ * @returns {number} Count of flags that were reset
+ */
+function _resetInitializationFlags() {
+  let flagsReset = 0;
+  
+  // Reset contentScriptInitialized
+  if (contentScriptInitialized) {
+    contentScriptInitialized = false;
+    flagsReset++;
+  }
+  
+  // Reset isHydrationComplete
+  if (isHydrationComplete) {
+    isHydrationComplete = false;
+    flagsReset++;
+  }
+  
+  // Reset isBackgroundReady
+  if (isBackgroundReady) {
+    isBackgroundReady = false;
+    flagsReset++;
+  }
+  
+  // Reset portListenersRegistered
+  if (portListenersRegistered) {
+    portListenersRegistered = false;
+    flagsReset++;
+  }
+  
+  return flagsReset;
+}
+
+/**
  * Handler for beforeunload event to cleanup resources
  * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
+ * v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
  * @private
  */
 function _handleBeforeUnload() {
   console.log('[Content] beforeunload event - starting cleanup');
+
+  // v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
+  const flagsReset = _resetInitializationFlags();
+  if (flagsReset > 0) {
+    console.log('[Content] STATE_RESET_ON_NAVIGATION:', flagsReset, 'flags reset');
+  }
 
   // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
   stopPeriodicLatencyMeasurement();

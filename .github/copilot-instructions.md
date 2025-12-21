@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.10-v14  
+**Version:** 1.6.3.11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -21,7 +21,38 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.10-v14 Features (NEW) - 37 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11 Features (NEW) - 40 Issues Fixed Across 3 Diagnostic Reports:**
+
+**Background Initialization (Issues #1-3, #10):**
+- **GET_CURRENT_TAB_ID No Init Dependency** - Returns sender.tab.id immediately
+- **Synchronous Listener Registration** - onMessage/onConnect registered at top-level
+- **Comprehensive Init Logging** - SCRIPT_LOAD_START, LISTENER_REGISTRATION phases
+
+**Port Lifecycle & BFCache (Issues #7-9, #11):**
+- **BFCache Port Recovery** - Auto-reconnect after pageshow with 50ms delay
+- **Port Listener Race Fix** - onDisconnect registered before onMessage
+- **INIT_RESPONSE Timeout** - 2s timeout with fallback to retry loop
+- **NOT_INITIALIZED Detection** - Special 500ms wait then single retry
+
+**Message Queue Architecture (Issues #26-32):**
+- **Cross-Queue Overflow Protection** - Global backpressure at 300 total messages
+- **Hydration Drain Lock** - Prevents concurrent timeout/drain race condition
+- **Namespaced Message IDs** - `msg-content-` and `msg-bg-` prefixes
+- **Aligned Handshake Timeout** - 500ms phases instead of 2000ms
+- **Background Sequence IDs** - Atomic global counter replaces per-tab counter
+- **BFCache Verify Timeout** - 1000ms max wait with auto-reconnect
+
+**State Initialization (Issues #33-40):**
+- **Adoption Cache TTL** - 5-minute expiration with 60s cleanup interval
+- **Navigation State Reset** - beforeunload resets 4 initialization flags
+- **MessageRouter Logging** - Constructor logs handler registration count
+- **Symmetric Readiness** - Background validates content readiness state
+- **DOM-Ready Iframe Guard** - Checks document.readyState before parent access
+- **Keyboard Shortcut Guard** - Ignores shortcuts during initialization
+- **Broadcast Idempotency** - messageId tracking prevents duplicate handling
+- **Target Tab Validation** - Early return if message.targetTabId mismatch
+
+**v1.6.3.10-v14 Features (Previous) - 37 Issues Fixed (3 Diagnostic Reports):**
 
 - **Tab ID Pending Queue** - Queue operations when Tab ID null, process on init
 - **Generation ID Tracking** - Background restart detection via generation mismatch

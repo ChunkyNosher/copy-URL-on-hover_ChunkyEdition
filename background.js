@@ -6,6 +6,15 @@
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 // v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
+// v1.6.3.11 - FIX Issues #1-3, #10: Background initialization and tab ID acquisition fixes
+//   - Issue #1: Message handlers registered synchronously at module top-level
+//   - Issue #2: GET_CURRENT_TAB_ID handler returns sender.tab.id without init dependency
+//   - Issue #3: Comprehensive initialization logging added
+//   - Issue #10: Async initialization does not block message handlers
+
+// v1.6.3.11 - CRITICAL: Log background script load immediately at top of file
+// Simple log format to minimize startup overhead
+console.log('[Background] ✓ Background script loading started');
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -2183,8 +2192,16 @@ console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
 
+// v1.6.3.11 - FIX Issue #1 & #3: Register message listener synchronously at module load time
+// This ensures handlers are ready BEFORE any content script sends messages
+// Mozilla/Chrome documentation: "Listeners must be at the top-level to activate the background script"
+console.log(`[Background] ✓ Registering onMessage listener (${messageRouter.handlers.size} handlers)`);
+
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
+
+// v1.6.3.11 - FIX Issue #3: Log successful listener registration
+console.log('[Background] ✓ onMessage listener registered - GET_CURRENT_TAB_ID ready');
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
 // v1.6.0 - Removed obsolete toggle-minimized-manager listener
@@ -3722,7 +3739,8 @@ async function handlePortMessage(port, portId, message) {
     portId, tabId: portInfo?.tabId, messageType: message.type, correlationId: message.correlationId
   });
 
-  const response = await routePortMessage(message, portInfo);
+  // v1.6.3.11 - FIX Issue #32: Pass port to routePortMessage for PORT_VERIFY response
+  const response = await routePortMessage(message, portInfo, port);
   _sendAcknowledgment({ port, message, response, portInfo, portId });
 }
 
@@ -3749,6 +3767,7 @@ function handleGetBackgroundInfo() {
 /**
  * Port message handlers lookup
  * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup table
+ * v1.6.3.11 - FIX Issue #32: Added PORT_VERIFY handler for BFCache verification
  * @private
  */
 const PORT_MESSAGE_HANDLERS = {
@@ -3758,15 +3777,26 @@ const PORT_MESSAGE_HANDLERS = {
   BROADCAST: (msg, portInfo) => handleBroadcastRequest(msg, portInfo),
   DELETION_ACK: (msg, portInfo) => handleDeletionAck(msg, portInfo),
   REQUEST_FULL_STATE_SYNC: (msg, portInfo) => handleFullStateSyncRequest(msg, portInfo),
-  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo()
+  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo(),
+  // v1.6.3.11 - FIX Issue #32: BFCache port verification response
+  PORT_VERIFY: (msg, portInfo, port) => handlePortVerify(msg, portInfo, port)
 };
 
-function routePortMessage(message, portInfo) {
+/**
+ * Route port message to appropriate handler
+ * v1.6.3.11 - FIX Issue #32: Added port parameter for PORT_VERIFY response
+ * @param {Object} message - Message to route
+ * @param {Object} portInfo - Port info
+ * @param {Object} port - Port object for direct response
+ * @returns {Promise<Object>} Handler response
+ */
+function routePortMessage(message, portInfo, port) {
   const { type, action } = message;
 
   const handler = PORT_MESSAGE_HANDLERS[type];
   if (handler) {
-    return handler(message, portInfo);
+    // v1.6.3.11 - FIX Issue #32: Pass port to handler for PORT_VERIFY
+    return handler(message, portInfo, port);
   }
 
   // Fallback to action-based routing for backwards compatibility
@@ -3814,6 +3844,44 @@ function handleHeartbeat(message, portInfo) {
     backgroundAlive: true,
     isInitialized,
     ...getBackgroundStartupInfo()
+  });
+}
+
+/**
+ * Handle PORT_VERIFY message for BFCache port verification
+ * v1.6.3.11 - FIX Issue #32: Send immediate response to content script
+ * @param {Object} message - PORT_VERIFY message
+ * @param {Object} portInfo - Port info
+ * @param {Object} port - Port to send response
+ * @returns {Promise<Object>} Verification acknowledgment
+ */
+function handlePortVerify(message, portInfo, port) {
+  const { timestamp, reason } = message;
+  const now = Date.now();
+  
+  console.log('[Background] PORT_VERIFY received:', {
+    reason,
+    tabId: portInfo?.tabId,
+    latencyMs: now - (timestamp || now)
+  });
+  
+  // v1.6.3.11 - FIX Issue #32: Send immediate response via port
+  try {
+    port.postMessage({
+      type: 'PORT_VERIFY_RESPONSE',
+      timestamp: now,
+      originalTimestamp: timestamp,
+      success: true
+    });
+    console.log('[Background] PORT_VERIFY_RESPONSE sent');
+  } catch (err) {
+    console.error('[Background] Failed to send PORT_VERIFY_RESPONSE:', err.message);
+  }
+  
+  return Promise.resolve({
+    success: true,
+    type: 'PORT_VERIFY_ACK',
+    timestamp: now
   });
 }
 
@@ -4809,8 +4877,13 @@ function broadcastToAllPorts(message, excludePortId = null) {
   });
 }
 
+// v1.6.3.11 - FIX Issue #1 & #3: Register port connection listener synchronously
+console.log('[Background] ✓ Registering onConnect listener');
+
 // Register port connection listener
 browser.runtime.onConnect.addListener(handlePortConnect);
+
+console.log('[Background] ✓ onConnect listener registered');
 
 console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
 
@@ -5023,26 +5096,62 @@ const quickTabHostTabs = new Map();
 /**
  * Ensure initialization is complete before processing
  * v1.6.3.10-v8 - FIX Code Health: Extracted initialization logic
+ * v1.6.3.11 - FIX Issue #36: Add logging for content script readiness validation
  * @private
  */
 async function _ensureInitializedForHandler(handlerName) {
   const guard = checkInitializationGuard(handlerName);
   if (guard.initialized) return { ready: true };
   
+  // v1.6.3.11 - FIX Issue #36: Log when background receives messages while not ready
+  console.log('[Background] READINESS_CHECK:', {
+    handler: handlerName,
+    isInitialized: false,
+    waitingForInit: true,
+    timestamp: Date.now()
+  });
+  
   const initialized = await waitForInitialization(2000);
   if (!initialized) {
     console.warn(`[Background] ${handlerName} rejected - not initialized`);
+    // v1.6.3.11 - FIX Issue #36: Log readiness mismatch
+    console.log('[Background] READINESS_MISMATCH:', {
+      handler: handlerName,
+      backgroundReady: false,
+      message: 'Content script sent message before background was ready'
+    });
     return { ready: false, errorResponse: guard.errorResponse };
   }
   return { ready: true };
 }
 
 /**
+ * Log content script readiness state on critical operations
+ * v1.6.3.11 - FIX Issue #36: Symmetric readiness logging
+ * @private
+ */
+function _logContentReadinessState(handler, sender, message) {
+  console.log('[Background] CONTENT_READINESS_LOG:', {
+    handler,
+    senderTabId: sender?.tab?.id ?? 'unknown',
+    senderFrameId: sender?.frameId ?? 'unknown',
+    messageHasTabId: !!message?.originTabId,
+    messageTimestamp: message?.timestamp,
+    backgroundUptime: Date.now() - backgroundStartupTime,
+    isBackgroundInitialized: isInitialized
+  });
+}
+
+/**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ * v1.6.3.11 - FIX Issue #36: Add readiness logging
  */
 async function handleQuickTabStateChange(message, sender) {
+  // v1.6.3.11 - FIX Issue #36: Log content readiness state
+  _logContentReadinessState('handleQuickTabStateChange', sender, message);
+  
   const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
   if (!initCheck.ready) return initCheck.errorResponse;
 
