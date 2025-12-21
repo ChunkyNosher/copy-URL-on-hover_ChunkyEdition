@@ -99,7 +99,22 @@ function _isQuickTabParentFrame(parentFrame) {
 }
 
 /**
+ * Check if DOM is ready for safe element access
+ * v1.6.3.11 - FIX Issue #37: Explicit DOM readiness check before parentElement access
+ * @returns {boolean} - True if DOM is ready for safe access
+ */
+function _isDomReadyForElementAccess() {
+  // Check if document is in a state where we can safely access elements
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    return true;
+  }
+  // If document is still loading, we may not have safe access
+  return false;
+}
+
+/**
  * Check if we should skip initialization (inside Quick Tab iframe)
+ * v1.6.3.11 - FIX Issue #37: Add DOM readiness check before parentElement access
  * @returns {boolean} - True if initialization should be skipped
  */
 function _checkShouldSkipInitialization() {
@@ -108,9 +123,26 @@ function _checkShouldSkipInitialization() {
     return false;
   }
 
+  // v1.6.3.11 - FIX Issue #37: Check DOM readiness before accessing frame elements
+  // If DOM isn't ready, err on side of caution and skip (fail-safe)
+  if (!_isDomReadyForElementAccess()) {
+    console.log('[Content] Skipping initialization - DOM not ready for frame check (fail-safe)');
+    window.CUO_skipped = true;
+    window.CUO_skip_reason = 'dom-not-ready';
+    return true;
+  }
+
   // In iframe - check if parent is Quick Tab
   try {
     const parentFrame = window.frameElement;
+    // v1.6.3.11 - FIX Issue #37: Handle null parentFrame gracefully
+    if (parentFrame === null) {
+      // Cross-origin iframe or restricted access - err on side of caution
+      console.log('[Content] Skipping initialization - frameElement is null (restricted access)');
+      window.CUO_skipped = true;
+      window.CUO_skip_reason = 'null-frame-element';
+      return true;
+    }
     if (_isQuickTabParentFrame(parentFrame)) {
       console.log('[Content] Skipping initialization - inside Quick Tab iframe');
       window.CUO_skipped = true;
@@ -2790,19 +2822,71 @@ function handleContentPortMessage(message) {
   }
 }
 
+// ==================== v1.6.3.11 FIX ISSUE #39: BROADCAST DEDUPLICATION ====================
+// Track received broadcast messageIds to prevent duplicate processing
+
+/**
+ * Set of already-processed broadcast messageIds
+ * v1.6.3.11 - FIX Issue #39: Idempotency tracking for broadcast handlers
+ */
+const processedBroadcastMessageIds = new Set();
+
+/**
+ * Maximum size of dedup set before cleanup
+ * v1.6.3.11 - FIX Issue #39
+ */
+const MAX_PROCESSED_BROADCAST_IDS = 1000;
+
+/**
+ * Check if broadcast was already processed (idempotency check)
+ * v1.6.3.11 - FIX Issue #39
+ * @param {string} messageId - Broadcast message ID
+ * @returns {boolean} True if already processed (should skip)
+ */
+function _wasBroadcastAlreadyProcessed(messageId) {
+  if (!messageId) return false;
+  
+  if (processedBroadcastMessageIds.has(messageId)) {
+    console.log('[Content] BROADCAST_DEDUPED: Already processed', messageId);
+    return true;
+  }
+  
+  // Track this messageId
+  processedBroadcastMessageIds.add(messageId);
+  
+  // Cleanup if set is too large
+  if (processedBroadcastMessageIds.size > MAX_PROCESSED_BROADCAST_IDS) {
+    // Convert to array, remove oldest half
+    const arr = Array.from(processedBroadcastMessageIds);
+    const toRemove = arr.slice(0, Math.floor(arr.length / 2));
+    toRemove.forEach(id => processedBroadcastMessageIds.delete(id));
+  }
+  
+  return false;
+}
+
+// ==================== END ISSUE #39 FIX ====================
+
 /**
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
+ * v1.6.3.11 - FIX Issue #39: Add idempotency tracking for broadcast handlers
  * @param {Object} message - Broadcast message
  */
 function handleContentBroadcast(message) {
-  const { action } = message;
+  const { action, messageId } = message;
+
+  // v1.6.3.11 - FIX Issue #39: Check for duplicate broadcast
+  if (_wasBroadcastAlreadyProcessed(messageId)) {
+    return;
+  }
 
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Content] Received visibility change broadcast:', {
         quickTabId: message.quickTabId,
-        changes: message.changes
+        changes: message.changes,
+        messageId
       });
       // Quick Tabs manager will handle this via its own listeners
       break;
@@ -2811,7 +2895,8 @@ function handleContentBroadcast(message) {
       console.log('[Content] Received tab lifecycle broadcast:', {
         event: message.event,
         tabId: message.tabId,
-        affectedQuickTabs: message.affectedQuickTabs
+        affectedQuickTabs: message.affectedQuickTabs,
+        messageId
       });
       break;
 
@@ -3629,8 +3714,17 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement, eve
  * v1.6.0.7 - Enhanced logging for keyboard event detection and shortcut matching
  * v1.6.0.10 - ARCHITECTURAL FIX: Only log matched shortcuts, not every keystroke
  *             Removes noise from console by logging only when shortcuts are executed
+ * v1.6.3.11 - FIX Issue #38: Add guard for initialization window
  */
 async function handleKeyboardShortcut(event) {
+  // v1.6.3.11 - FIX Issue #38: Guard for initialization window
+  // If quickTabsManager is not ready, either buffer or show "not ready" message
+  if (!contentScriptInitialized) {
+    // During init window, silently ignore shortcuts
+    // This prevents errors when shortcuts are pressed before init completes
+    return;
+  }
+  
   // Check if in input field first - silently ignore
   const isInInputField = isInputField(event.target);
   if (isInInputField) {
@@ -3661,9 +3755,11 @@ async function handleKeyboardShortcut(event) {
 /**
  * Set up keyboard shortcuts
  * v1.6.0 Phase 2.4 - Extracted handler to reduce complexity
+ * v1.6.3.11 - FIX Issue #38: Now safe to register early due to guard in handleKeyboardShortcut
  */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', handleKeyboardShortcut);
+  console.log('[Content] Keyboard shortcuts registered (guarded until initialization complete)');
 }
 
 /**
@@ -4429,8 +4525,9 @@ const recentlyAdoptedQuickTabs = new Map();
 /**
  * Default TTL for recently-adopted Quick Tab entries (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #5: Safe default when latency unavailable (30 seconds)
+ * v1.6.3.11 - FIX Issue #33: Increased to 5 minutes for adoption cache
  */
-const ADOPTION_DEFAULT_TTL_MS = 30000;
+const ADOPTION_DEFAULT_TTL_MS = 300000;
 
 /**
  * Minimum TTL for adoption tracking (milliseconds)
@@ -4441,8 +4538,9 @@ const ADOPTION_MIN_TTL_MS = 5000;
 /**
  * Maximum TTL for adoption tracking (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #5: Cap at 60 seconds to prevent memory leaks
+ * v1.6.3.11 - FIX Issue #33: Increased max to 5 minutes for adoption cache
  */
-const ADOPTION_MAX_TTL_MS = 60000;
+const ADOPTION_MAX_TTL_MS = 300000;
 
 /**
  * Multiplier for latency to compute TTL (3x for safety margin)
@@ -4453,8 +4551,9 @@ const ADOPTION_TTL_LATENCY_MULTIPLIER = 3;
 /**
  * Cleanup interval for recently-adopted Quick Tab entries (milliseconds)
  * v1.6.3.10-v7 - FIX Issue #7: Clean up every 30 seconds
+ * v1.6.3.11 - FIX Issue #33: Changed to 60 seconds for adoption cache
  */
-const ADOPTION_CLEANUP_INTERVAL_MS = 30000;
+const ADOPTION_CLEANUP_INTERVAL_MS = 60000;
 
 /**
  * Track observed handshake latencies for dynamic TTL calculation
@@ -4632,6 +4731,7 @@ function _getAdoptionOwnership(quickTabId) {
  * Clean up expired adoption tracking entries
  * v1.6.3.10-v7 - FIX Issue #7
  * v1.6.3.10-v11 - FIX Issue #5: Use per-entry TTL for cleanup
+ * v1.6.3.11 - FIX Issue #33: Add specific logging format for adoption cache cleanup
  */
 function _cleanupAdoptionTracking() {
   const now = Date.now();
@@ -4645,12 +4745,10 @@ function _cleanupAdoptionTracking() {
     }
   }
   
+  // v1.6.3.11 - FIX Issue #33: Log cleanup with specific format
   if (cleanedCount > 0) {
-    console.log('[Content] ADOPTION_CLEANUP:', {
-      cleanedCount,
-      remainingCount: recentlyAdoptedQuickTabs.size,
-      metrics: adoptionCacheMetrics
-    });
+    console.log('[Content] ADOPTION_CACHE_CLEANUP:', cleanedCount, 'entries expired,', 
+      recentlyAdoptedQuickTabs.size, 'remaining');
   }
 }
 
@@ -6591,9 +6689,40 @@ if (IS_TEST_MODE) {
 }
 
 /**
+ * Check if message is intended for current tab
+ * v1.6.3.11 - FIX Issue #40: Validate targetTabId before processing broadcast
+ * @private
+ * @param {Object} message - Message to validate
+ * @returns {{ shouldProcess: boolean, reason: string }}
+ */
+function _shouldProcessMessageForThisTab(message) {
+  // If message has no targetTabId, process it (legacy compatibility)
+  if (message.targetTabId === undefined || message.targetTabId === null) {
+    return { shouldProcess: true, reason: 'no-target-specified' };
+  }
+  
+  // Get current tab ID
+  const currentTabId = quickTabsManager?.currentTabId ?? null;
+  
+  // If we don't know our tab ID yet, process to be safe
+  if (currentTabId === null) {
+    return { shouldProcess: true, reason: 'current-tab-id-unknown' };
+  }
+  
+  // Check if message is for this tab
+  if (message.targetTabId !== currentTabId) {
+    console.log('[Content] BROADCAST_IGNORED: targetTabId', message.targetTabId, '!= currentTabId', currentTabId);
+    return { shouldProcess: false, reason: 'target-mismatch' };
+  }
+  
+  return { shouldProcess: true, reason: 'target-matches' };
+}
+
+/**
  * Main message dispatcher
  * Routes messages to appropriate handler based on action or type
  * v1.6.3.5-v10 - FIX Issue #3: Added entry/exit logging for message tracing
+ * v1.6.3.11 - FIX Issue #40: Add targetTabId validation for broadcasts
  * @private
  */
 function _dispatchMessage(message, _sender, sendResponse) {
@@ -6603,6 +6732,14 @@ function _dispatchMessage(message, _sender, sendResponse) {
     type: message.type || 'none',
     hasData: !!message.data
   });
+
+  // v1.6.3.11 - FIX Issue #40: Check if message is intended for this tab
+  const targetCheck = _shouldProcessMessageForThisTab(message);
+  if (!targetCheck.shouldProcess) {
+    // Message not for this tab - silently acknowledge
+    sendResponse({ success: true, ignored: true, reason: targetCheck.reason });
+    return true;
+  }
 
   // Check action-based handlers first
   if (message.action && ACTION_HANDLERS[message.action]) {
@@ -6634,12 +6771,55 @@ function _dispatchMessage(message, _sender, sendResponse) {
 // Note: Content scripts are injected once per page load, but we add a guard for safety
 
 /**
+ * Reset all initialization flags on navigation
+ * v1.6.3.11 - FIX Issue #34: Reset initialization flags on beforeunload
+ * @private
+ * @returns {number} Count of flags that were reset
+ */
+function _resetInitializationFlags() {
+  let flagsReset = 0;
+  
+  // Reset contentScriptInitialized
+  if (contentScriptInitialized) {
+    contentScriptInitialized = false;
+    flagsReset++;
+  }
+  
+  // Reset isHydrationComplete
+  if (isHydrationComplete) {
+    isHydrationComplete = false;
+    flagsReset++;
+  }
+  
+  // Reset isBackgroundReady
+  if (isBackgroundReady) {
+    isBackgroundReady = false;
+    flagsReset++;
+  }
+  
+  // Reset portListenersRegistered
+  if (portListenersRegistered) {
+    portListenersRegistered = false;
+    flagsReset++;
+  }
+  
+  return flagsReset;
+}
+
+/**
  * Handler for beforeunload event to cleanup resources
  * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
+ * v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
  * @private
  */
 function _handleBeforeUnload() {
   console.log('[Content] beforeunload event - starting cleanup');
+
+  // v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
+  const flagsReset = _resetInitializationFlags();
+  if (flagsReset > 0) {
+    console.log('[Content] STATE_RESET_ON_NAVIGATION:', flagsReset, 'flags reset');
+  }
 
   // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
   stopPeriodicLatencyMeasurement();

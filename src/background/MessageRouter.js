@@ -101,6 +101,15 @@ export class MessageRouter {
     this._lastRejectedCommand = null;
     // v1.6.3.10-v12 - FIX Issue #8: Store background generation ID for responses
     this._backgroundGenerationId = null;
+    // v1.6.3.11 - FIX Issue #35: Track initialization state
+    this._isInitialized = false;
+    this._initStartTime = Date.now();
+    
+    // v1.6.3.11 - FIX Issue #35: Log when MessageRouter is initialized
+    console.log('[MessageRouter] INITIALIZED:', {
+      timestamp: new Date().toISOString(),
+      protocolVersion: MESSAGE_PROTOCOL_VERSION
+    });
   }
   
   /**
@@ -124,6 +133,7 @@ export class MessageRouter {
 
   /**
    * Register a handler for specific message action(s)
+   * v1.6.3.11 - FIX Issue #35: Log when handlers are registered
    * @param {string|string[]} actions - Action type(s) to handle
    * @param {Function} handler - Handler function (message, sender) => Promise<any>
    */
@@ -136,6 +146,13 @@ export class MessageRouter {
       }
       this.handlers.set(action, handler);
     }
+    
+    // v1.6.3.11 - FIX Issue #35: Log handler registration count
+    console.log('[MessageRouter] HANDLERS_REGISTERED:', {
+      newActions: actionList.length,
+      totalHandlers: this.handlers.size,
+      actions: actionList.join(', ')
+    });
   }
 
   /**
@@ -144,6 +161,35 @@ export class MessageRouter {
    */
   setExtensionId(extensionId) {
     this.extensionId = extensionId;
+    // v1.6.3.11 - FIX Issue #35: Log extension ID configuration
+    console.log('[MessageRouter] EXTENSION_ID_CONFIGURED:', {
+      extensionId: extensionId ? extensionId.substring(0, 20) + '...' : 'null'
+    });
+  }
+
+  /**
+   * Mark router as fully initialized
+   * v1.6.3.11 - FIX Issue #35: Track initialization completion
+   */
+  markInitialized() {
+    this._isInitialized = true;
+    const initDuration = Date.now() - this._initStartTime;
+    console.log('[MessageRouter] FULLY_INITIALIZED:', {
+      timestamp: new Date().toISOString(),
+      totalHandlers: this.handlers.size,
+      initDurationMs: initDuration,
+      hasExtensionId: !!this.extensionId,
+      hasGenerationId: !!this._backgroundGenerationId
+    });
+  }
+
+  /**
+   * Check if router is initialized
+   * v1.6.3.11 - FIX Issue #35
+   * @returns {boolean}
+   */
+  isInitialized() {
+    return this._isInitialized;
   }
 
   /**

@@ -5096,26 +5096,62 @@ const quickTabHostTabs = new Map();
 /**
  * Ensure initialization is complete before processing
  * v1.6.3.10-v8 - FIX Code Health: Extracted initialization logic
+ * v1.6.3.11 - FIX Issue #36: Add logging for content script readiness validation
  * @private
  */
 async function _ensureInitializedForHandler(handlerName) {
   const guard = checkInitializationGuard(handlerName);
   if (guard.initialized) return { ready: true };
   
+  // v1.6.3.11 - FIX Issue #36: Log when background receives messages while not ready
+  console.log('[Background] READINESS_CHECK:', {
+    handler: handlerName,
+    isInitialized: false,
+    waitingForInit: true,
+    timestamp: Date.now()
+  });
+  
   const initialized = await waitForInitialization(2000);
   if (!initialized) {
     console.warn(`[Background] ${handlerName} rejected - not initialized`);
+    // v1.6.3.11 - FIX Issue #36: Log readiness mismatch
+    console.log('[Background] READINESS_MISMATCH:', {
+      handler: handlerName,
+      backgroundReady: false,
+      message: 'Content script sent message before background was ready'
+    });
     return { ready: false, errorResponse: guard.errorResponse };
   }
   return { ready: true };
 }
 
 /**
+ * Log content script readiness state on critical operations
+ * v1.6.3.11 - FIX Issue #36: Symmetric readiness logging
+ * @private
+ */
+function _logContentReadinessState(handler, sender, message) {
+  console.log('[Background] CONTENT_READINESS_LOG:', {
+    handler,
+    senderTabId: sender?.tab?.id ?? 'unknown',
+    senderFrameId: sender?.frameId ?? 'unknown',
+    messageHasTabId: !!message?.originTabId,
+    messageTimestamp: message?.timestamp,
+    backgroundUptime: Date.now() - backgroundStartupTime,
+    isBackgroundInitialized: isInitialized
+  });
+}
+
+/**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ * v1.6.3.11 - FIX Issue #36: Add readiness logging
  */
 async function handleQuickTabStateChange(message, sender) {
+  // v1.6.3.11 - FIX Issue #36: Log content readiness state
+  _logContentReadinessState('handleQuickTabStateChange', sender, message);
+  
   const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
   if (!initCheck.ready) return initCheck.errorResponse;
 
