@@ -38,11 +38,14 @@ async function _executeStorageOperation(operation, operationType, keyList) {
     const result = await operation();
     const duration = performance.now() - startTime;
 
-    console.log(`[STORAGE] ${operationType} ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
-      keys: keyList,
-      durationMs: duration.toFixed(2),
-      success: true
-    });
+    console.log(
+      `[STORAGE] ${operationType} ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`,
+      {
+        keys: keyList,
+        durationMs: duration.toFixed(2),
+        success: true
+      }
+    );
 
     if (duration > STORAGE_SLOW_THRESHOLD_MS) {
       console.warn(`[STORAGE] SLOW_OPERATION: ${operationType} exceeded threshold`, {
@@ -55,11 +58,14 @@ async function _executeStorageOperation(operation, operationType, keyList) {
     return result;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[STORAGE] ${operationType} ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
-      keys: keyList,
-      durationMs: duration.toFixed(2),
-      error: error.message
-    });
+    console.error(
+      `[STORAGE] ${operationType} ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`,
+      {
+        keys: keyList,
+        durationMs: duration.toFixed(2),
+        error: error.message
+      }
+    );
     throw error;
   }
 }
@@ -83,11 +89,7 @@ function _normalizeKeys(keys) {
  */
 function loggedStorageGet(keys) {
   const keyList = _normalizeKeys(keys);
-  return _executeStorageOperation(
-    () => browserAPI.storage.local.get(keys),
-    'GET',
-    keyList
-  );
+  return _executeStorageOperation(() => browserAPI.storage.local.get(keys), 'GET', keyList);
 }
 
 /**
@@ -98,11 +100,7 @@ function loggedStorageGet(keys) {
  */
 function loggedStorageSet(items) {
   const keyList = Object.keys(items);
-  return _executeStorageOperation(
-    () => browserAPI.storage.local.set(items),
-    'SET',
-    keyList
-  );
+  return _executeStorageOperation(() => browserAPI.storage.local.set(items), 'SET', keyList);
 }
 
 /**
@@ -113,11 +111,7 @@ function loggedStorageSet(items) {
  */
 function loggedStorageRemove(keys) {
   const keyList = Array.isArray(keys) ? keys : [keys];
-  return _executeStorageOperation(
-    () => browserAPI.storage.local.remove(keys),
-    'REMOVE',
-    keyList
-  );
+  return _executeStorageOperation(() => browserAPI.storage.local.remove(keys), 'REMOVE', keyList);
 }
 
 // ==================== END STORAGE LOGGING UTILITIES ====================

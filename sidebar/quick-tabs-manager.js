@@ -1541,7 +1541,12 @@ async function handleAdoptionCompletion(message) {
 
   // v1.6.3.10-v7 - FIX Bug #2: Validate containers match before processing adoption
   const containerValidation = await _validateAdoptionContainers(oldOriginTabId, newOriginTabId);
-  _logContainerValidationWarningIfNeeded(containerValidation, adoptedQuickTabId, oldOriginTabId, newOriginTabId);
+  _logContainerValidationWarningIfNeeded(
+    containerValidation,
+    adoptedQuickTabId,
+    oldOriginTabId,
+    newOriginTabId
+  );
 
   // v1.6.3.10-v3 - FIX Issue #47: Update cache staleness tracking
   lastCacheSyncFromStorage = Date.now();
@@ -1576,7 +1581,12 @@ function _logAdoptionReceived(adoptedQuickTabId, oldOriginTabId, newOriginTabId,
  * v1.6.4.14 - Extracted to reduce handleAdoptionCompletion complexity
  * @private
  */
-function _logContainerValidationWarningIfNeeded(containerValidation, adoptedQuickTabId, oldOriginTabId, newOriginTabId) {
+function _logContainerValidationWarningIfNeeded(
+  containerValidation,
+  adoptedQuickTabId,
+  oldOriginTabId,
+  newOriginTabId
+) {
   if (containerValidation.valid) {
     return;
   }
@@ -2847,7 +2857,13 @@ function _findOrphanedHostInfoEntries(validQuickTabIds) {
  * @param {number} options.validQuickTabCount - Count of valid Quick Tabs
  * @param {number} options.startTime - Start timestamp for duration calculation
  */
-function _logMaintenanceResultIfNeeded({ entriesBefore, orphanedEntries, prunedOldest, validQuickTabCount, startTime }) {
+function _logMaintenanceResultIfNeeded({
+  entriesBefore,
+  orphanedEntries,
+  prunedOldest,
+  validQuickTabCount,
+  startTime
+}) {
   if (orphanedEntries.length === 0 && prunedOldest === 0) {
     return;
   }
@@ -3757,7 +3773,7 @@ function _reloadStateFromStorage(storageState, inMemoryHash, storageHash) {
   if (!storageState?.tabs) {
     return;
   }
-  
+
   quickTabsState = storageState;
   _updateInMemoryCache(storageState.tabs);
   console.log('[Manager] STALE_STATE_RELOADED:', {
@@ -5001,7 +5017,9 @@ function _checkSingleTabDataChanges(oldTab, newTab) {
  */
 function _checkOriginTabIdChange(oldTab, newTab, reasons) {
   if (oldTab.originTabId !== newTab.originTabId) {
-    reasons.push(`originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`);
+    reasons.push(
+      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
+    );
   }
 }
 
@@ -5546,7 +5564,7 @@ async function closeMinimizedTabs() {
  */
 function _handleCloseMinimizedResponse(response) {
   const isSuccess = response?.success || response?.timedOut;
-  
+
   if (isSuccess) {
     _logCloseMinimizedSuccess(response);
     scheduleRender('close-minimized-success');

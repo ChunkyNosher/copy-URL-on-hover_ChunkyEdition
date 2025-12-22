@@ -508,14 +508,11 @@ export class MessageRouter {
    * @param {Object} sender - Message sender
    */
   _logLegacyClient(message, sender) {
-    console.log(
-      '[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)',
-      {
-        action: message.action || message.type,
-        senderTabId: sender?.tab?.id,
-        serverVersion: MESSAGE_PROTOCOL_VERSION
-      }
-    );
+    console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)', {
+      action: message.action || message.type,
+      senderTabId: sender?.tab?.id,
+      serverVersion: MESSAGE_PROTOCOL_VERSION
+    });
   }
 
   /**
@@ -1062,7 +1059,12 @@ export class MessageRouter {
    */
   _checkRouteEarlyExit(ctx) {
     // Check re-entrance and queue if needed
-    const reEntranceResult = this._checkReentrance(ctx.action, ctx.message, ctx.sender, ctx.sendResponse);
+    const reEntranceResult = this._checkReentrance(
+      ctx.action,
+      ctx.message,
+      ctx.sender,
+      ctx.sendResponse
+    );
     if (reEntranceResult.wasQueued) {
       // Message was queued, caller should exit and not process further
       return { shouldExit: true, returnValue: true }; // Return true to keep channel open

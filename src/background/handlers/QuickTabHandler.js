@@ -362,12 +362,18 @@ export class QuickTabHandler {
    */
   _compareDomains(senderDomain, storedDomain, quickTabId) {
     if (senderDomain === storedDomain) {
-      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SUCCESS:', { quickTabId, domain: senderDomain });
+      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SUCCESS:', {
+        quickTabId,
+        domain: senderDomain
+      });
       return { valid: true, senderDomain };
     }
 
     console.error('[QuickTabHandler] DOMAIN_VALIDATION_FAILED: Domain mismatch', {
-      quickTabId, senderDomain, storedDomain, warning: 'Cross-domain access attempt detected'
+      quickTabId,
+      senderDomain,
+      storedDomain,
+      warning: 'Cross-domain access attempt detected'
     });
     return this._buildDomainFailResult(senderDomain, storedDomain);
   }
@@ -406,7 +412,8 @@ export class QuickTabHandler {
     const senderDomain = this._getSenderDomain(sender);
     if (!senderDomain) {
       console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: Cannot determine sender domain', {
-        quickTabId, hasSenderUrl: !!(sender?.tab?.url || sender?.url)
+        quickTabId,
+        hasSenderUrl: !!(sender?.tab?.url || sender?.url)
       });
       return this._buildDomainSkipResult('no-sender-domain');
     }
@@ -762,8 +769,16 @@ export class QuickTabHandler {
     }
     const validatedOriginTabId = originValidation.tabId;
 
-    console.log('[QuickTabHandler] Create:', message.url, 'ID:', message.id,
-      'Container:', message.cookieStoreId, 'OriginTabId:', validatedOriginTabId);
+    console.log(
+      '[QuickTabHandler] Create:',
+      message.url,
+      'ID:',
+      message.id,
+      'Container:',
+      message.cookieStoreId,
+      'OriginTabId:',
+      validatedOriginTabId
+    );
 
     if (!this.isInitialized) {
       await this.initializeFn();
@@ -772,7 +787,9 @@ export class QuickTabHandler {
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
     const assignedSequenceId = ++_globalCreateSequenceId;
     console.log('[QuickTabHandler] SEQUENCE_ASSIGNED:', {
-      quickTabId: message.id, assignedSequenceId, timestamp: Date.now()
+      quickTabId: message.id,
+      assignedSequenceId,
+      timestamp: Date.now()
     });
 
     const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
@@ -911,44 +928,66 @@ export class QuickTabHandler {
       action: 'UPDATE_QUICK_TAB_POSITION',
       finalAction: 'UPDATE_QUICK_TAB_POSITION_FINAL',
       getValues: msg => ({ left: msg.left, top: msg.top }),
-      applyFn: (tab, msg) => { tab.left = msg.left; tab.top = msg.top; }
+      applyFn: (tab, msg) => {
+        tab.left = msg.left;
+        tab.top = msg.top;
+      }
     },
     size: {
       name: 'Size',
       action: 'UPDATE_QUICK_TAB_SIZE',
       finalAction: 'UPDATE_QUICK_TAB_SIZE_FINAL',
       getValues: msg => ({ width: msg.width, height: msg.height }),
-      applyFn: (tab, msg) => { tab.width = msg.width; tab.height = msg.height; }
+      applyFn: (tab, msg) => {
+        tab.width = msg.width;
+        tab.height = msg.height;
+      }
     },
     pin: {
       name: 'Pin',
       action: 'UPDATE_QUICK_TAB_PIN',
       getValues: msg => ({ pinnedToUrl: msg.pinnedToUrl }),
-      applyFn: (tab, msg) => { tab.pinnedToUrl = msg.pinnedToUrl; }
+      applyFn: (tab, msg) => {
+        tab.pinnedToUrl = msg.pinnedToUrl;
+      }
     },
     solo: {
       name: 'Solo',
       action: 'UPDATE_QUICK_TAB_SOLO',
-      getValues: msg => ({ soloedOnTabs: msg.soloedOnTabs || [], tabCount: (msg.soloedOnTabs || []).length }),
-      applyFn: (tab, msg) => { tab.soloedOnTabs = msg.soloedOnTabs || []; }
+      getValues: msg => ({
+        soloedOnTabs: msg.soloedOnTabs || [],
+        tabCount: (msg.soloedOnTabs || []).length
+      }),
+      applyFn: (tab, msg) => {
+        tab.soloedOnTabs = msg.soloedOnTabs || [];
+      }
     },
     mute: {
       name: 'Mute',
       action: 'UPDATE_QUICK_TAB_MUTE',
-      getValues: msg => ({ mutedOnTabs: msg.mutedOnTabs || [], tabCount: (msg.mutedOnTabs || []).length }),
-      applyFn: (tab, msg) => { tab.mutedOnTabs = msg.mutedOnTabs || []; }
+      getValues: msg => ({
+        mutedOnTabs: msg.mutedOnTabs || [],
+        tabCount: (msg.mutedOnTabs || []).length
+      }),
+      applyFn: (tab, msg) => {
+        tab.mutedOnTabs = msg.mutedOnTabs || [];
+      }
     },
     minimize: {
       name: 'Minimize',
       action: 'UPDATE_QUICK_TAB_MINIMIZE',
       getValues: msg => ({ minimized: msg.minimized }),
-      applyFn: (tab, msg) => { tab.minimized = msg.minimized; }
+      applyFn: (tab, msg) => {
+        tab.minimized = msg.minimized;
+      }
     },
     zIndex: {
       name: 'Z-Index',
       action: 'UPDATE_QUICK_TAB_ZINDEX',
       getValues: msg => ({ zIndex: msg.zIndex }),
-      applyFn: (tab, msg) => { tab.zIndex = msg.zIndex; }
+      applyFn: (tab, msg) => {
+        tab.zIndex = msg.zIndex;
+      }
     }
   };
 
@@ -1109,7 +1148,9 @@ export class QuickTabHandler {
   handleGetCurrentTabId(message, sender) {
     try {
       if (this._hasValidSenderTabId(sender)) {
-        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`);
+        console.log(
+          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`
+        );
         return this._buildTabIdSuccessResponse(sender.tab.id);
       }
 

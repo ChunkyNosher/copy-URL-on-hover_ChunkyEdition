@@ -54,7 +54,8 @@ const PLATFORM_CONFIGS = {
     useQuerySelectorAll: true
   },
   tikTok: {
-    containerSelector: '[data-e2e="user-post-item"], .video-feed-item, [data-e2e="recommend-list-item-container"]',
+    containerSelector:
+      '[data-e2e="user-post-item"], .video-feed-item, [data-e2e="recommend-list-item-container"]',
     linkSelector: 'a[href*="/@"], a[href*="/video/"]',
     logPrefix: 'TikTok',
     useShadowDOM: true,

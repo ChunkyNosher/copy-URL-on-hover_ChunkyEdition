@@ -1726,7 +1726,12 @@ function _checkQueueBackpressure(queueSize) {
  */
 function _getDroppedMessageMetadata(dropped) {
   if (!dropped) {
-    return { droppedMessageType: null, droppedQuickTabId: null, droppedTimestamp: null, messageAgeMs: null };
+    return {
+      droppedMessageType: null,
+      droppedQuickTabId: null,
+      droppedTimestamp: null,
+      messageAgeMs: null
+    };
   }
 
   const message = dropped.message || {};
@@ -4030,10 +4035,10 @@ function _initializePortConnection(tabId) {
   const port = browser.runtime.connect({ name: `quicktabs-content-${tabId}` });
   logContentPortLifecycle('open', { portName: port.name });
 
-  console.log(
-    '[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_START: Registering port listeners',
-    { portName: port.name, timestamp: Date.now() }
-  );
+  console.log('[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_START: Registering port listeners', {
+    portName: port.name,
+    timestamp: Date.now()
+  });
 
   return port;
 }
@@ -4048,10 +4053,12 @@ function _initializePortConnection(tabId) {
 function _finalizePortSetup(tabId) {
   portListenersRegistered = true;
 
-  console.log(
-    '[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: Both listeners attached',
-    { portName: backgroundPort.name, hasOnDisconnect: true, hasOnMessage: true, timestamp: Date.now() }
-  );
+  console.log('[Content][PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: Both listeners attached', {
+    portName: backgroundPort.name,
+    hasOnDisconnect: true,
+    hasOnMessage: true,
+    timestamp: Date.now()
+  });
 
   if (portDisconnectedDuringSetup) {
     _handleDeferredDisconnect(tabId);
@@ -4777,7 +4784,9 @@ function _logManagerInitSuccess(currentTabId, totalDurationMs) {
   const tabIdStr = currentTabId !== null ? currentTabId : 'NULL';
 
   console.log('[INIT][Content] INIT_PHASE_5: Adoption message sent', {
-    hasManager: true, currentTabId: tabIdStr, timestamp: new Date().toISOString()
+    hasManager: true,
+    currentTabId: tabIdStr,
+    timestamp: new Date().toISOString()
   });
 
   console.log('[INIT][Content] INIT_PHASE_6: Background adoption confirmed', {
@@ -4785,16 +4794,24 @@ function _logManagerInitSuccess(currentTabId, totalDurationMs) {
   });
 
   console.log('[INIT][Content] PHASE_COMPLETE:', {
-    success: true, currentTabId: tabIdStr, totalDurationMs, hasManager: true,
+    success: true,
+    currentTabId: tabIdStr,
+    totalDurationMs,
+    hasManager: true,
     timestamp: new Date().toISOString()
   });
 
   console.log('[INIT][Content] INIT_COMPLETE: All systems ready', {
-    totalDurationMs, tabId: currentTabId, timestamp: new Date().toISOString()
+    totalDurationMs,
+    tabId: currentTabId,
+    timestamp: new Date().toISOString()
   });
 
   console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
-  console.log('[Copy-URL-on-Hover] Manager has createQuickTab:', typeof quickTabsManager.createQuickTab);
+  console.log(
+    '[Copy-URL-on-Hover] Manager has createQuickTab:',
+    typeof quickTabsManager.createQuickTab
+  );
   console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
 }
 
@@ -6081,8 +6098,10 @@ async function handleCreateQuickTab(url, targetElement = null) {
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
 
-  const { quickTabData, quickTabId, saveId, canUseManagerSaveId } =
-    _prepareQuickTabCreationData(url, targetElement);
+  const { quickTabData, quickTabId, saveId, canUseManagerSaveId } = _prepareQuickTabCreationData(
+    url,
+    targetElement
+  );
 
   console.log('[Content] QUICK_TAB_CREATE_REQUEST:', {
     id: quickTabId,
