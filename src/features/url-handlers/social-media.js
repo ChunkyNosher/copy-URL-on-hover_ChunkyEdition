@@ -166,7 +166,9 @@ function findTikTokUrl(element) {
     hasShadow: !!element.shadowRoot
   });
 
-  const video = element.closest('[data-e2e="user-post-item"], .video-feed-item, [data-e2e="recommend-list-item-container"]');
+  const video = element.closest(
+    '[data-e2e="user-post-item"], .video-feed-item, [data-e2e="recommend-list-item-container"]'
+  );
   if (!video) {
     // v1.6.3.11-v4 - Try cross-shadow search for TikTok
     const closestLink = findClosestAcrossShadow(element, 'a[href*="/@"], a[href*="/video/"]', 15);

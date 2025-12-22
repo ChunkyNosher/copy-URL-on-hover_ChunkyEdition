@@ -5017,32 +5017,24 @@ function setupHoverDetection() {
   // v1.6.3.11-v4 - FIX Issue #5: Use Pointer Events API for cross-input support
   if (window.PointerEvent) {
     // Primary: Pointer Events (supports mouse, touch, pen)
-    document.addEventListener(
-      'pointerover',
-      event => _handleHoverEvent(event, context),
-      { passive: true }
-    );
+    document.addEventListener('pointerover', event => _handleHoverEvent(event, context), {
+      passive: true
+    });
 
-    document.addEventListener(
-      'pointerout',
-      event => _handleHoverEndEvent(event, context),
-      { passive: true }
-    );
+    document.addEventListener('pointerout', event => _handleHoverEndEvent(event, context), {
+      passive: true
+    });
 
     console.log('[HOVER_EVENT] Using Pointer Events API (pointerover/pointerout)');
   } else {
     // Fallback: Mouse events for older browsers (Firefox < 59, Safari < 13)
-    document.addEventListener(
-      'mouseover',
-      event => _handleHoverEvent(event, context),
-      { passive: true }
-    );
+    document.addEventListener('mouseover', event => _handleHoverEvent(event, context), {
+      passive: true
+    });
 
-    document.addEventListener(
-      'mouseout',
-      event => _handleHoverEndEvent(event, context),
-      { passive: true }
-    );
+    document.addEventListener('mouseout', event => _handleHoverEndEvent(event, context), {
+      passive: true
+    });
 
     console.log('[HOVER_EVENT] Fallback to mouse events (mouseover/mouseout)');
   }

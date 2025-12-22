@@ -141,41 +141,41 @@ references.
 
 ### Key Timing Constants (v1.6.3.11-v4)
 
-| Constant                     | Value    | Purpose                        |
-| ---------------------------- | -------- | ------------------------------ |
-| `HOVER_DEBOUNCE_MS`          | 100      | Event debouncing (NEW)         |
-| `STORAGE_SLOW_THRESHOLD_MS`  | 100      | Storage timing warning (NEW)   |
-| `DEDUP_WINDOW_MS`            | 100      | Message dedup                  |
-| `DEDUP_TTL_MS`               | 3000     | Dedup entry TTL                |
-| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000     | Firefox message timeout        |
-| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000     | PORT_VERIFY timeout            |
-| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000   | Extended tab ID timeout        |
-| `HYDRATION_TIMEOUT_MS`       | 10000    | Storage hydration              |
-| `TAB_REMOVAL_DEBOUNCE_MS`    | 200      | Tab onRemoved debounce         |
-| `QUERY_TIMEOUT_MS`           | 2000     | browser.tabs.query timeout     |
-| `ADOPTION_CACHE_MAX_SIZE`    | 100      | Max adoption cache entries     |
-| `HEARTBEAT_INTERVAL_MS`      | 15000    | Background health check        |
-| `LRU_MAP_MAX_SIZE`           | 500      | Maximum map entries            |
-| `LRU_STALE_THRESHOLD_MS`     | 86400000 | Stale threshold (24h)          |
+| Constant                     | Value    | Purpose                      |
+| ---------------------------- | -------- | ---------------------------- |
+| `HOVER_DEBOUNCE_MS`          | 100      | Event debouncing (NEW)       |
+| `STORAGE_SLOW_THRESHOLD_MS`  | 100      | Storage timing warning (NEW) |
+| `DEDUP_WINDOW_MS`            | 100      | Message dedup                |
+| `DEDUP_TTL_MS`               | 3000     | Dedup entry TTL              |
+| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000     | Firefox message timeout      |
+| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000     | PORT_VERIFY timeout          |
+| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000   | Extended tab ID timeout      |
+| `HYDRATION_TIMEOUT_MS`       | 10000    | Storage hydration            |
+| `TAB_REMOVAL_DEBOUNCE_MS`    | 200      | Tab onRemoved debounce       |
+| `QUERY_TIMEOUT_MS`           | 2000     | browser.tabs.query timeout   |
+| `ADOPTION_CACHE_MAX_SIZE`    | 100      | Max adoption cache entries   |
+| `HEARTBEAT_INTERVAL_MS`      | 15000    | Background health check      |
+| `LRU_MAP_MAX_SIZE`           | 500      | Maximum map entries          |
+| `LRU_STALE_THRESHOLD_MS`     | 86400000 | Stale threshold (24h)        |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                                            |
-| --------------------- | ------------------------------------------------------------------ |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                                  |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                             |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                        |
-| TabStateManager       | `getTabState()`, `setTabState()`                                   |
-| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`           |
-| QuickTabHandler       | `_ensureInitialized()`, `_enqueueStorageWrite()`                   |
-| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`|
-| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)          |
-| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`        |
-| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`          |
-| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`               |
-| Manager               | `scheduleRender()`, `_startHostInfoMaintenance()`                  |
+| Class                 | Methods                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                                     |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                           |
+| TabStateManager       | `getTabState()`, `setTabState()`                                      |
+| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`              |
+| QuickTabHandler       | `_ensureInitialized()`, `_enqueueStorageWrite()`                      |
+| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`   |
+| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)             |
+| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`           |
+| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`             |
+| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                  |
+| Manager               | `scheduleRender()`, `_startHostInfoMaintenance()`                     |
 | TabLifecycleHandler   | `start()`, `stop()`, `handleTabRemoved()`, `validateAdoptionTarget()` |
 
 ---
@@ -276,18 +276,18 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                             | Features                                        |
-| ------------------------------------------------ | ----------------------------------------------- |
-| `src/constants.js`                               | Centralized constants                           |
-| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (NEW v4)              |
-| `src/background/tab-events.js`                   | Tabs API listeners                              |
-| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts            |
-| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation     |
-| `src/messaging/message-router.js`                | ACTION-based routing                            |
-| `src/background/message-handler.js`              | TYPE-based v2 routing                           |
-| `background.js`                                  | \_computeStateChecksum(), commands listener (v4)|
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()     |
-| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                 |
+| File                                             | Features                                         |
+| ------------------------------------------------ | ------------------------------------------------ |
+| `src/constants.js`                               | Centralized constants                            |
+| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (NEW v4)               |
+| `src/background/tab-events.js`                   | Tabs API listeners                               |
+| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts             |
+| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation      |
+| `src/messaging/message-router.js`                | ACTION-based routing                             |
+| `src/background/message-handler.js`              | TYPE-based v2 routing                            |
+| `background.js`                                  | \_computeStateChecksum(), commands listener (v4) |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()      |
+| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                  |
 
 ### Storage
 

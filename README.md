@@ -36,7 +36,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 **Phase 3: Logging & Instrumentation (6 Issues):**
 
 - ✅ **Content Pipeline Logging** - Event tracking throughout content script
-- ✅ **Event Bus Visibility** - [LISTENER_REG], [LISTENER_INVOKE], [EVENT_COMPLETE]
+- ✅ **Event Bus Visibility** - [LISTENER_REG], [LISTENER_INVOKE],
+  [EVENT_COMPLETE]
 - ✅ **Storage Timing Telemetry** - Warns if operations >100ms
 - ✅ **Error Context Augmentation** - Handler name, operation, request context
 

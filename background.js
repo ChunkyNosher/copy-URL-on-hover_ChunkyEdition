@@ -2555,7 +2555,11 @@ messageRouter.register('UPDATE_KEYBOARD_SHORTCUT', async (msg, _sender) => {
   // Check if browser.commands.update is available
   if (!browser?.commands?.update) {
     console.error('[KEYBOARD_CMD] browser.commands.update not available');
-    return { success: false, error: 'Keyboard shortcut API not available', code: 'API_UNAVAILABLE' };
+    return {
+      success: false,
+      error: 'Keyboard shortcut API not available',
+      code: 'API_UNAVAILABLE'
+    };
   }
 
   try {
@@ -2598,7 +2602,11 @@ messageRouter.register('GET_KEYBOARD_SHORTCUTS', async () => {
 
   if (!browser?.commands?.getAll) {
     console.error('[KEYBOARD_CMD] browser.commands.getAll not available');
-    return { success: false, error: 'Keyboard shortcut API not available', code: 'API_UNAVAILABLE' };
+    return {
+      success: false,
+      error: 'Keyboard shortcut API not available',
+      code: 'API_UNAVAILABLE'
+    };
   }
 
   try {
@@ -2681,7 +2689,9 @@ function handleKeyboardCommandLogging(command) {
   // Log specific command details (actual handling is done by listener at line ~3745)
   switch (command) {
     case 'toggle-quick-tabs-manager':
-      console.log('[KEYBOARD_CMD] toggle-quick-tabs-manager triggered (handler will toggle sidebar)');
+      console.log(
+        '[KEYBOARD_CMD] toggle-quick-tabs-manager triggered (handler will toggle sidebar)'
+      );
       break;
 
     case '_execute_sidebar_action':

@@ -203,4 +203,3 @@ function _searchElementShadowRoot(element, selector) {
   if (!element.shadowRoot) return null;
   return findLinkInShadowDOM(element, selector, 0);
 }
-

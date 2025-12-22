@@ -26,7 +26,11 @@ const STORAGE_SLOW_THRESHOLD_MS = 100;
  */
 async function loggedStorageGet(keys) {
   const startTime = performance.now();
-  const keyList = Array.isArray(keys) ? keys : typeof keys === 'object' ? Object.keys(keys) : [keys];
+  const keyList = Array.isArray(keys)
+    ? keys
+    : typeof keys === 'object'
+      ? Object.keys(keys)
+      : [keys];
 
   console.log('[STORAGE] GET starting:', {
     keys: keyList,
@@ -1799,7 +1803,8 @@ function validateKeyboardShortcut(shortcut) {
   const trimmed = shortcut.trim();
 
   // Check for basic format (modifier+key or just function/media key)
-  const modifierPattern = /^(Ctrl|Alt|Shift|MacCtrl|Command)(\+(Ctrl|Alt|Shift|MacCtrl|Command))*\+(.+)$/i;
+  const modifierPattern =
+    /^(Ctrl|Alt|Shift|MacCtrl|Command)(\+(Ctrl|Alt|Shift|MacCtrl|Command))*\+(.+)$/i;
   const functionKeyPattern = /^F([1-9]|1[0-2])$/i;
   const mediaKeyPattern = /^Media(PlayPause|NextTrack|PrevTrack|Stop)$/i;
 
@@ -1826,7 +1831,8 @@ function validateKeyboardShortcut(shortcut) {
   const finalKey = match[4];
 
   // Validate the final key
-  const validSingleKeys = /^([A-Z]|[0-9]|F[1-9]|F1[0-2]|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/i;
+  const validSingleKeys =
+    /^([A-Z]|[0-9]|F[1-9]|F1[0-2]|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/i;
   if (!validSingleKeys.test(finalKey)) {
     return {
       valid: false,
