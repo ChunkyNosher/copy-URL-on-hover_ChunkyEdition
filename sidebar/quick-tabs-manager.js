@@ -6521,7 +6521,7 @@ function _handleAdoptSuccess({ quickTabId, targetTabId, response, correlationId,
 function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId, durationMs }) {
   const error = response?.error || 'Unknown error';
   const errorCode = response?.code || 'UNKNOWN_ERROR';
-  
+
   console.error('[Manager] OPERATION_FAILED:', {
     action: 'ADOPT_TAB',
     quickTabId,
@@ -6564,21 +6564,21 @@ function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId,
 function _displayAdoptionErrorNotification(quickTabId, error, errorCode) {
   // Truncate quick tab ID for display
   const shortId = quickTabId.length > 12 ? quickTabId.substring(0, 12) + '...' : quickTabId;
-  
+
   // User-friendly error messages
   const errorMessages = {
-    'ORIGIN_TAB_CLOSED': 'Original tab was closed',
-    'QUICK_TAB_NOT_FOUND': 'Quick Tab no longer exists',
-    'TARGET_TAB_NOT_FOUND': 'Target tab not available',
-    'TIMEOUT': 'Operation timed out - will retry',
-    'NETWORK_ERROR': 'Network error - will retry'
+    ORIGIN_TAB_CLOSED: 'Original tab was closed',
+    QUICK_TAB_NOT_FOUND: 'Quick Tab no longer exists',
+    TARGET_TAB_NOT_FOUND: 'Target tab not available',
+    TIMEOUT: 'Operation timed out - will retry',
+    NETWORK_ERROR: 'Network error - will retry'
   };
-  
+
   // v1.6.3.11-v3 - FIX Code Review: Use generic fallback instead of raw error
   // to avoid potentially sensitive information in user-facing messages
   const userMessage = errorMessages[errorCode] || 'Adoption failed - please try again';
   console.warn(`[Manager] ADOPTION_ERROR_DISPLAY: ${shortId} - ${userMessage}`);
-  
+
   // Note: Actual UI notification would require DOM access
   // The error is logged for now - UI notification can be added via event bus
 }
@@ -6590,7 +6590,7 @@ function _displayAdoptionErrorNotification(quickTabId, error, errorCode) {
 function _isRetryableAdoptionError(errorCode) {
   const retryableCodes = new Set([
     'TIMEOUT',
-    'NETWORK_ERROR', 
+    'NETWORK_ERROR',
     'BACKGROUND_NOT_READY',
     'HANDLER_ERROR'
   ]);
@@ -6639,7 +6639,7 @@ function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt)
   // Safe for attempts 1-3: (1 << 0) = 1, (1 << 1) = 2, (1 << 2) = 4
   const safeAttempt = Math.min(attempt, ADOPTION_RETRY_MAX_SHIFT_ATTEMPT);
   const delayMs = ADOPTION_RETRY_BASE_DELAY_MS * (1 << (safeAttempt - 1));
-  
+
   console.log('[Manager] ADOPTION_RETRY_SCHEDULED:', {
     quickTabId,
     targetTabId,
@@ -6657,7 +6657,7 @@ function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt)
       attempt,
       correlationId: `${correlationId}-retry${attempt}`
     });
-    
+
     try {
       await adoptQuickTabToCurrentTab(quickTabId, targetTabId);
       // Success - clean up retry tracking

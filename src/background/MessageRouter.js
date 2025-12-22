@@ -845,7 +845,7 @@ export class MessageRouter {
     }
 
     const queue = this._reEntranceQueues.get(action);
-    
+
     // Check queue size limit
     if (queue.length >= MAX_REENTRANCE_QUEUE_SIZE) {
       console.warn('[MSG][MessageRouter] RE_ENTRANCE_QUEUE_FULL: Dropping oldest message', {
@@ -867,7 +867,7 @@ export class MessageRouter {
 
     // Queue this message
     queue.push({ message, sender, sendResponse, queuedAt: Date.now() });
-    
+
     console.log('[MSG][MessageRouter] RE_ENTRANCE_QUEUED:', {
       action,
       queueSize: queue.length,
@@ -935,7 +935,7 @@ export class MessageRouter {
 
     // Clean up empty queue
     this._reEntranceQueues.delete(action);
-    
+
     console.log('[MSG][MessageRouter] DRAIN_RE_ENTRANCE_QUEUE_COMPLETE:', { action });
   }
 

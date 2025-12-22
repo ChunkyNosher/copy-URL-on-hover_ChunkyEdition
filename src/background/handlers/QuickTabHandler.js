@@ -86,19 +86,19 @@ export class QuickTabHandler {
   /**
    * Clear dedup entries for a specific sender (tab)
    * v1.6.3.11-v3 - FIX Issue #76: Clear stale dedup entries on port reconnection
-   * 
+   *
    * Called when a port reconnects to prevent old dedup entries from blocking
    * legitimate new messages after reconnection.
-   * 
+   *
    * @param {number} senderTabId - Tab ID whose dedup entries should be cleared
    */
   clearDedupEntriesForSender(senderTabId) {
     const senderKey = `tab-${senderTabId}`;
     const hadEntries = this.processedMessages.has(senderKey);
     const entryCount = hadEntries ? this.processedMessages.get(senderKey).size : 0;
-    
+
     this.processedMessages.delete(senderKey);
-    
+
     console.log('[QuickTabHandler] DEDUP_ENTRIES_CLEARED:', {
       senderTabId,
       senderKey,
@@ -127,7 +127,7 @@ export class QuickTabHandler {
     // Simple hash function (DJB2)
     let hash = 5381;
     for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) + hash) + str.charCodeAt(i);
+      hash = (hash << 5) + hash + str.charCodeAt(i);
     }
     return (hash >>> 0).toString(36); // Convert to unsigned and base36
   }
@@ -158,9 +158,10 @@ export class QuickTabHandler {
     // v1.6.3.11-v3 - FIX Code Review: Use unique fallback to prevent cross-sender dedup
     const senderTabId = sender?.tab?.id;
     // If no tab ID, use message ID as fallback to prevent cross-sender dedup collision
-    const senderKey = senderTabId != null 
-      ? `tab-${senderTabId}` 
-      : `msg-${message.id || now}-${Math.random().toString(36).slice(2, 8)}`;
+    const senderKey =
+      senderTabId != null
+        ? `tab-${senderTabId}`
+        : `msg-${message.id || now}-${Math.random().toString(36).slice(2, 8)}`;
 
     // v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
     // This ensures messages with same ID but different parameters are NOT deduplicated
@@ -201,7 +202,7 @@ export class QuickTabHandler {
    */
   _cleanupOldProcessedMessages(now) {
     const cutoff = now - QuickTabHandler.DEDUP_TTL_MS;
-    
+
     // v1.6.3.11-v3 - FIX Issue #76: Iterate nested maps
     for (const [senderKey, senderMap] of this.processedMessages.entries()) {
       this._cleanupSenderMapEntries(senderMap, cutoff);
@@ -300,7 +301,7 @@ export class QuickTabHandler {
 
     // Extract stored domain from Quick Tab's originDomain or URL
     const storedDomain = quickTab.originDomain || this._extractDomain(quickTab.url);
-    
+
     // If Quick Tab has no stored domain, skip validation (backward compatibility)
     if (!storedDomain) {
       console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: Quick Tab has no stored domain', {
@@ -378,7 +379,7 @@ export class QuickTabHandler {
           error: 'Missing originTabId field - required for ownership operations'
         };
       }
-      
+
       // For non-required cases (internal/manager ops), fall back to sender.tab.id
       // SAFE: Only used when sender IS the authority (e.g., sidebar manager operations)
       console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as fallback', {
@@ -536,7 +537,13 @@ export class QuickTabHandler {
    * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleCreate complexity
    * @private
    */
-  _buildCreateTabData(message, cookieStoreId, validatedOriginTabId, assignedSequenceId, originDomain) {
+  _buildCreateTabData(
+    message,
+    cookieStoreId,
+    validatedOriginTabId,
+    assignedSequenceId,
+    originDomain
+  ) {
     return {
       id: message.id,
       url: message.url,
@@ -627,7 +634,11 @@ export class QuickTabHandler {
 
     // v1.6.3.11-v3 - FIX Code Health: Use helper to build tab data
     const tabData = this._buildCreateTabData(
-      message, cookieStoreId, validatedOriginTabId, assignedSequenceId, originDomain
+      message,
+      cookieStoreId,
+      validatedOriginTabId,
+      assignedSequenceId,
+      originDomain
     );
 
     if (existingIndex !== -1) {

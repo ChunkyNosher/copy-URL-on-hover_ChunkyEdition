@@ -1266,7 +1266,9 @@ initializeGlobalState();
 // Note: initializeGlobalState() is async but we don't await it here (intentional for eager loading)
 // We still mark initialized immediately since handlers are registered synchronously
 messageRouter.markInitialized();
-console.log('[Background] v1.6.3.11-v3 MessageRouter marked initialized (pre-init queue will drain)');
+console.log(
+  '[Background] v1.6.3.11-v3 MessageRouter marked initialized (pre-init queue will drain)'
+);
 
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
@@ -1441,7 +1443,10 @@ async function migrateSettings() {
     const { migratedSettings, needsMigration } = _addMissingSettingsKeys(currentSettings);
 
     // Check settings version for forced migration
-    const versionMigrationNeeded = _checkSettingsVersionMigration(currentSettings, migratedSettings);
+    const versionMigrationNeeded = _checkSettingsVersionMigration(
+      currentSettings,
+      migratedSettings
+    );
 
     // Save if migration occurred
     if (needsMigration || versionMigrationNeeded) {
@@ -1473,7 +1478,10 @@ function _addMissingSettingsKeys(currentSettings) {
 
   for (const [key, defaultValue] of Object.entries(DEFAULT_SETTINGS)) {
     if (!(key in currentSettings)) {
-      console.log(`[Background][Settings] Migration: Adding missing key '${key}' with default:`, defaultValue);
+      console.log(
+        `[Background][Settings] Migration: Adding missing key '${key}' with default:`,
+        defaultValue
+      );
       migratedSettings[key] = defaultValue;
       needsMigration = true;
     }
@@ -3380,7 +3388,9 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
     // Handle settings changes
     if (changes.quick_tab_settings) {
-      console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
+      console.log(
+        '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change'
+      );
       _handleSettingsChange(changes);
     }
   } catch (err) {
@@ -4428,7 +4438,7 @@ function handleLegacyAction(message, portInfo) {
 /**
  * Maximum Quick Tabs per browser tab
  * v1.6.3.11-v3 - FIX Issue #78: Capacity limit per tab
- * 
+ *
  * Rationale: 50 Quick Tabs per tab provides generous capacity for power users
  * while preventing UI clutter and memory issues. Average users have <10.
  * This value may be made configurable in future versions if needed.
@@ -4438,7 +4448,7 @@ const MAX_QUICK_TABS_PER_TAB = 50;
 /**
  * Maximum total Quick Tabs across all tabs
  * v1.6.3.11-v3 - FIX Issue #78: Global capacity limit
- * 
+ *
  * Rationale: 500 total Quick Tabs balances extensibility with browser performance.
  * Each Quick Tab requires ~5KB DOM overhead + iframe memory. 500 Quick Tabs
  * should stay under 100MB even with heavy content. Extension storage is limited
@@ -4449,11 +4459,11 @@ const MAX_TOTAL_QUICK_TABS = 500;
 /**
  * Validate adoption capacity before starting adoption
  * v1.6.3.11-v3 - FIX Issue #78: Check available capacity
- * 
+ *
  * Prevents adoption if:
  * 1. Target tab would exceed MAX_QUICK_TABS_PER_TAB
  * 2. Total Quick Tabs would exceed MAX_TOTAL_QUICK_TABS
- * 
+ *
  * @private
  * @param {string} quickTabId - Quick Tab being adopted (for logging)
  * @param {number} targetTabId - Tab that would own the adopted Quick Tab
@@ -4661,7 +4671,14 @@ function _updateCacheAndHostTracking(quickTabId, targetTabId) {
  * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
  * @private
  */
-async function _broadcastAdoptionCompletion({ quickTabId, oldOriginTabId, targetTabId, correlationId, adoptionDuration, position }) {
+async function _broadcastAdoptionCompletion({
+  quickTabId,
+  oldOriginTabId,
+  targetTabId,
+  correlationId,
+  adoptionDuration,
+  position
+}) {
   broadcastToAllPorts({
     type: 'ADOPTION_COMPLETED',
     adoptedQuickTabId: quickTabId,
@@ -4717,19 +4734,32 @@ async function handleAdoptAction(payload) {
 
   const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
   if (!findResult.found) return { success: false, error: findResult.error };
-  
+
   const { oldOriginTabId, tabIndex } = findResult;
-  const adoptedTab = (tabIndex >= 0 && tabIndex < state.tabs.length) ? state.tabs[tabIndex] : null;
+  const adoptedTab = tabIndex >= 0 && tabIndex < state.tabs.length ? state.tabs[tabIndex] : null;
   const position = adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
 
   // Write and verify state
-  const writeResult = await _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime });
+  const writeResult = await _writeAndVerifyAdoptionState({
+    state,
+    quickTabId,
+    targetTabId,
+    correlationId,
+    startTime
+  });
   if (!writeResult.success) return writeResult;
 
   // Update cache and broadcast
   _updateCacheAndHostTracking(quickTabId, targetTabId);
   const adoptionDuration = Date.now() - startTime;
-  await _broadcastAdoptionCompletion({ quickTabId, oldOriginTabId, targetTabId, correlationId, adoptionDuration, position });
+  await _broadcastAdoptionCompletion({
+    quickTabId,
+    oldOriginTabId,
+    targetTabId,
+    correlationId,
+    adoptionDuration,
+    position
+  });
 
   // v1.6.4.15 - FIX Issue #20: Log successful completion
   console.log('[Background] MANAGER_ACTION_COMPLETED:', {
@@ -4741,7 +4771,14 @@ async function handleAdoptAction(payload) {
     durationMs: Date.now() - startTime
   });
 
-  return { success: true, quickTabId, oldOriginTabId, newOriginTabId: targetTabId, adoptionDuration, position };
+  return {
+    success: true,
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    adoptionDuration,
+    position
+  };
 }
 
 /**

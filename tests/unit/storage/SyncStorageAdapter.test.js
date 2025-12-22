@@ -50,11 +50,11 @@ describe('SyncStorageAdapter', () => {
      */
     function mockStorageWithVerification() {
       let savedData = null;
-      browser.storage.local.set.mockImplementation(async (data) => {
+      browser.storage.local.set.mockImplementation(async data => {
         savedData = data;
         return undefined;
       });
-      browser.storage.local.get.mockImplementation(async (key) => {
+      browser.storage.local.get.mockImplementation(async key => {
         if (savedData && savedData[key]) {
           return { [key]: savedData[key] };
         }
@@ -185,7 +185,7 @@ describe('SyncStorageAdapter', () => {
       // v1.6.3.11-v3 - Updated test for atomic migration with verification
       // The migration reads state twice (first in load, then in _executeMigration)
       // and writes the migrated data, then verifies by reading again
-      
+
       const containerData = {
         quick_tabs_state_v2: {
           containers: {
@@ -200,10 +200,10 @@ describe('SyncStorageAdapter', () => {
           }
         }
       };
-      
+
       let savedData = null;
       let _callCount = 0;
-      
+
       // Mock get to return container format on first calls, then migrated format after save
       browser.storage.local.get.mockImplementation(async () => {
         _callCount++;
@@ -214,9 +214,9 @@ describe('SyncStorageAdapter', () => {
         // Before migration, return container format
         return containerData;
       });
-      
+
       // Mock set to capture saved data
-      browser.storage.local.set.mockImplementation(async (data) => {
+      browser.storage.local.set.mockImplementation(async data => {
         savedData = data;
         return undefined;
       });
@@ -234,7 +234,7 @@ describe('SyncStorageAdapter', () => {
           ])
         );
       }
-      
+
       // Should save in new format after migration
       expect(browser.storage.local.set).toHaveBeenCalled();
     });

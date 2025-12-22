@@ -115,13 +115,15 @@ export class SyncStorageAdapter extends StorageAdapter {
         bytesAvailable: quotaCheck.bytesAvailable,
         tabsToSave: tabs.length
       });
-      
+
       // Attempt garbage collection and retry
       const gcResult = await this._garbageCollectOldestTabs(stateToSave[this.STORAGE_KEY].tabs);
       if (!gcResult.success) {
-        throw new Error(`Storage quota exceeded: need ${size} bytes, only ${quotaCheck.bytesAvailable} available`);
+        throw new Error(
+          `Storage quota exceeded: need ${size} bytes, only ${quotaCheck.bytesAvailable} available`
+        );
       }
-      
+
       // Update state with GC'd tabs
       stateToSave[this.STORAGE_KEY].tabs = gcResult.remainingTabs;
       console.log('[SyncStorageAdapter] GARBAGE_COLLECTION_COMPLETE:', {
@@ -132,7 +134,7 @@ export class SyncStorageAdapter extends StorageAdapter {
 
     try {
       await browser.storage.local.set(stateToSave);
-      
+
       // v1.6.3.11-v2 - FIX Issue #69: Verify write succeeded by reading back
       const verifyResult = await this._verifyWriteSuccess(saveId);
       if (!verifyResult.success) {
@@ -143,7 +145,7 @@ export class SyncStorageAdapter extends StorageAdapter {
         });
         throw new Error('Storage write verification failed - data may not have been persisted');
       }
-      
+
       console.log(
         `[SyncStorageAdapter] Saved ${tabs.length} tabs (unified format v${FORMAT_VERSION_UNIFIED}, saveId: ${saveId}, size: ${size} bytes, verified: true)`
       );
@@ -177,10 +179,10 @@ export class SyncStorageAdapter extends StorageAdapter {
         const currentState = await this._loadRawState();
         bytesUsed = this._calculateSize({ [this.STORAGE_KEY]: currentState });
       }
-      
+
       const bytesAvailable = STORAGE_LOCAL_QUOTA_BYTES - bytesUsed;
       const usagePercent = (bytesUsed / STORAGE_LOCAL_QUOTA_BYTES) * 100;
-      
+
       console.log('[SyncStorageAdapter] QUOTA_CHECK:', {
         bytesUsed,
         bytesAvailable,
@@ -188,23 +190,28 @@ export class SyncStorageAdapter extends StorageAdapter {
         usagePercent: usagePercent.toFixed(2) + '%',
         quota: STORAGE_LOCAL_QUOTA_BYTES
       });
-      
+
       // Check if we have enough headroom
-      const canWrite = (bytesAvailable - bytesToWrite) > STORAGE_QUOTA_HEADROOM_BYTES;
-      
+      const canWrite = bytesAvailable - bytesToWrite > STORAGE_QUOTA_HEADROOM_BYTES;
+
       // Emit warning if above threshold
       if (usagePercent > STORAGE_QUOTA_WARNING_THRESHOLD * 100) {
         console.warn('[SyncStorageAdapter] STORAGE_QUOTA_WARNING:', {
           usagePercent: usagePercent.toFixed(2) + '%',
-          threshold: (STORAGE_QUOTA_WARNING_THRESHOLD * 100) + '%',
+          threshold: STORAGE_QUOTA_WARNING_THRESHOLD * 100 + '%',
           bytesAvailable
         });
       }
-      
+
       return { canWrite, bytesUsed, bytesAvailable, usagePercent };
     } catch (err) {
       console.warn('[SyncStorageAdapter] Quota check failed, allowing write:', err.message);
-      return { canWrite: true, bytesUsed: 0, bytesAvailable: STORAGE_LOCAL_QUOTA_BYTES, usagePercent: 0 };
+      return {
+        canWrite: true,
+        bytesUsed: 0,
+        bytesAvailable: STORAGE_LOCAL_QUOTA_BYTES,
+        usagePercent: 0
+      };
     }
   }
 
@@ -218,15 +225,15 @@ export class SyncStorageAdapter extends StorageAdapter {
     try {
       const result = await browser.storage.local.get(this.STORAGE_KEY);
       const state = result[this.STORAGE_KEY];
-      
+
       if (!state) {
         return { success: false, actualSaveId: null };
       }
-      
+
       if (state.saveId === expectedSaveId) {
         return { success: true, actualSaveId: state.saveId };
       }
-      
+
       // SaveId doesn't match - write may have been overwritten or silently failed
       return { success: false, actualSaveId: state.saveId };
     } catch (err) {
@@ -245,19 +252,19 @@ export class SyncStorageAdapter extends StorageAdapter {
     if (!Array.isArray(tabs) || tabs.length === 0) {
       return { success: false, removedCount: 0, remainingTabs: tabs || [] };
     }
-    
+
     // Sort by timestamp/createdAt to find oldest
     const sortedTabs = [...tabs].sort((a, b) => {
       const aTime = a.createdAt || a.timestamp || 0;
       const bTime = b.createdAt || b.timestamp || 0;
       return aTime - bTime; // Oldest first
     });
-    
+
     // Remove oldest tabs up to limit
     const tabsToRemove = Math.min(GARBAGE_COLLECTION_MAX_TABS, Math.ceil(tabs.length * 0.2)); // Remove up to 20% or max limit
     const removedTabs = sortedTabs.slice(0, tabsToRemove);
     const remainingTabs = sortedTabs.slice(tabsToRemove);
-    
+
     console.log('[SyncStorageAdapter] GARBAGE_COLLECTION:', {
       originalCount: tabs.length,
       removedCount: removedTabs.length,
@@ -265,7 +272,7 @@ export class SyncStorageAdapter extends StorageAdapter {
       removedIds: removedTabs.map(t => t.id),
       oldestRemovedTimestamp: removedTabs[0]?.createdAt || removedTabs[0]?.timestamp
     });
-    
+
     return {
       success: remainingTabs.length < tabs.length,
       removedCount: removedTabs.length,
@@ -578,9 +585,10 @@ export class SyncStorageAdapter extends StorageAdapter {
    */
   async _verifyMigration(migratedTabs, correlationId) {
     const verifyState = await this._loadRawState();
-    const verified = verifyState.formatVersion === FORMAT_VERSION_UNIFIED &&
-                     Array.isArray(verifyState.tabs) &&
-                     verifyState.tabs.length === migratedTabs.length;
+    const verified =
+      verifyState.formatVersion === FORMAT_VERSION_UNIFIED &&
+      Array.isArray(verifyState.tabs) &&
+      verifyState.tabs.length === migratedTabs.length;
     if (!verified) {
       console.error('[StorageAdapter] MIGRATION_VERIFICATION_FAILED:', {
         correlationId,

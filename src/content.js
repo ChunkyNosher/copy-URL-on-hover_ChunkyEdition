@@ -529,7 +529,9 @@ function _getAdaptiveTimeout() {
  */
 class MessageTimeoutError extends Error {
   constructor(messageType, timeoutMs, elapsedMs) {
-    super(`Message timeout: ${messageType} did not respond within ${timeoutMs}ms (elapsed: ${elapsedMs}ms)`);
+    super(
+      `Message timeout: ${messageType} did not respond within ${timeoutMs}ms (elapsed: ${elapsedMs}ms)`
+    );
     this.name = 'MessageTimeoutError';
     this.messageType = messageType;
     this.timeoutMs = timeoutMs;
@@ -596,14 +598,10 @@ function _handleTimeoutRetry(err, attempts, maxRetries, context) {
  * @throws {MessageTimeoutError} If message times out
  */
 async function sendMessageWithTimeout(message, options = {}) {
-  const {
-    timeout,
-    useAdaptiveTimeout = true,
-    maxRetries = 0
-  } = options;
+  const { timeout, useAdaptiveTimeout = true, maxRetries = 0 } = options;
 
-  const effectiveTimeout = timeout ||
-    (useAdaptiveTimeout ? _getAdaptiveTimeout() : DEFAULT_MESSAGE_TIMEOUT_MS);
+  const effectiveTimeout =
+    timeout || (useAdaptiveTimeout ? _getAdaptiveTimeout() : DEFAULT_MESSAGE_TIMEOUT_MS);
   const messageType = message.action || message.type || 'unknown';
   const startTime = Date.now();
   const context = { messageType, effectiveTimeout, startTime, useAdaptiveTimeout };
@@ -614,15 +612,15 @@ async function sendMessageWithTimeout(message, options = {}) {
   while (attempts <= maxRetries) {
     attempts++;
     const result = await _attemptSendMessage(message, effectiveTimeout);
-    
+
     if (result.success) {
       return result.response;
     }
-    
+
     lastError = result.error;
     const shouldRetry = _shouldRetryAfterError(lastError, attempts, maxRetries, context);
     if (!shouldRetry) break;
-    
+
     await new Promise(resolve => setTimeout(resolve, shouldRetry.backoffMs));
   }
 
@@ -637,7 +635,7 @@ async function sendMessageWithTimeout(message, options = {}) {
 async function _attemptSendMessage(message, effectiveTimeout) {
   const attemptStart = Date.now();
   const messageType = message.action || message.type || 'unknown';
-  
+
   try {
     const response = await Promise.race([
       browser.runtime.sendMessage(message),
@@ -667,10 +665,10 @@ async function _attemptSendMessage(message, effectiveTimeout) {
  */
 function _shouldRetryAfterError(err, attempts, maxRetries, context) {
   if (!_isRetryableTimeoutError(err)) return null;
-  
+
   const backoffMs = _handleTimeoutRetry(err, attempts, maxRetries, context);
   if (backoffMs === null) return null;
-  
+
   return { backoffMs };
 }
 
@@ -1054,16 +1052,16 @@ let pendingMessageGcIntervalId = null;
 function _checkMessageIdMatch(request, response) {
   const requestMessageId = request.messageId;
   const responseMessageId = response?.messageId;
-  
+
   if (responseMessageId && responseMessageId !== requestMessageId) {
     console.warn('[Content] RESPONSE_ID_MISMATCH:', {
       requestMessageId,
       responseMessageId,
       requestAction: request.action || request.type
     });
-    return { 
-      valid: false, 
-      reason: `Message ID mismatch: expected ${requestMessageId}, got ${responseMessageId}` 
+    return {
+      valid: false,
+      reason: `Message ID mismatch: expected ${requestMessageId}, got ${responseMessageId}`
     };
   }
   return { valid: true };
@@ -1078,7 +1076,7 @@ function _checkQuickTabIdMatch(request, response) {
   if (request.action !== 'CREATE_QUICK_TAB') {
     return { valid: true };
   }
-  
+
   if (response.quickTabId && response.quickTabId !== request.id) {
     console.warn('[Content] RESPONSE_QUICKTAB_ID_MISMATCH:', {
       requestId: request.id,
@@ -1102,11 +1100,15 @@ function _warnIfGenerationStale(requestMessageId, responseGeneration) {
   if (responseGeneration === undefined || responseGeneration === null) {
     return; // No generation to check
   }
-  
+
   const requestGenMatch = requestMessageId?.match(/g(\d+)-/);
   const requestGen = requestGenMatch ? parseInt(requestGenMatch[1], 10) : null;
-  
-  if (requestGen !== null && typeof responseGeneration === 'number' && responseGeneration < requestGen) {
+
+  if (
+    requestGen !== null &&
+    typeof responseGeneration === 'number' &&
+    responseGeneration < requestGen
+  ) {
     console.warn('[Content] RESPONSE_GENERATION_STALE:', {
       requestGeneration: requestGen,
       responseGeneration,
@@ -1130,22 +1132,22 @@ function _warnIfGenerationStale(requestMessageId, responseGeneration) {
  */
 function _validateResponseMatchesRequest(response, pendingEntry) {
   const request = pendingEntry?.message;
-  
+
   if (!request) {
     return { valid: false, reason: 'No pending request found' };
   }
-  
+
   // Validate messageId matches
   const idCheck = _checkMessageIdMatch(request, response);
   if (!idCheck.valid) return idCheck;
-  
+
   // Validate Quick Tab ID for CREATE operations
   const qtCheck = _checkQuickTabIdMatch(request, response);
   if (!qtCheck.valid) return qtCheck;
-  
+
   // Warn if generation is stale (doesn't invalidate response)
   _warnIfGenerationStale(request.messageId, response?.generation);
-  
+
   return { valid: true };
 }
 
@@ -1180,9 +1182,9 @@ function _gcPendingMessages() {
   for (const [messageId, pending] of pendingMessages) {
     const messageAge = now - pending.sentAt;
     const isStale = messageAge >= PENDING_MESSAGE_MAX_AGE_MS;
-    
+
     if (!isStale) continue;
-    
+
     // Reject the stale message before removing
     if (pending.reject) {
       pending.reject(new Error(`Message timeout after ${messageAge}ms (garbage collected)`));
@@ -1402,7 +1404,7 @@ async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
     // v1.6.3.11-v3 - FIX Issue #73: Validate response matches request before resolving
     const pendingEntry = pendingMessages.get(messageId);
     const validation = _validateResponseMatchesRequest(response, pendingEntry);
-    
+
     if (!validation.valid) {
       console.error('[Content] RESPONSE_VALIDATION_FAILED:', {
         messageId,
@@ -2516,9 +2518,7 @@ function _recordHandshakeLatency(latencyMs) {
     });
   } else {
     // Update with exponential moving average (α = 0.3)
-    measuredHandshakeBaselineMs = Math.round(
-      0.3 * latencyMs + 0.7 * measuredHandshakeBaselineMs
-    );
+    measuredHandshakeBaselineMs = Math.round(0.3 * latencyMs + 0.7 * measuredHandshakeBaselineMs);
   }
 }
 
@@ -2645,7 +2645,7 @@ async function _drainBFCacheMessageQueue() {
  */
 async function _handleStateRefreshResponse(response) {
   if (!response?.success || !response?.data) return;
-  
+
   console.log('[Content][BFCACHE] STATE_REFRESH_RECEIVED:', {
     tabCount: response.data.tabs?.length ?? 0,
     lastUpdate: response.data.lastUpdate
@@ -2665,11 +2665,14 @@ async function _requestStateRefreshAfterBFCache() {
   try {
     console.log('[Content][BFCACHE] REQUESTING_STATE_REFRESH: Querying backend for current state');
 
-    const response = await sendMessageWithTimeout({
-      action: 'GET_QUICK_TABS_STATE',
-      reason: 'bfcache-restore',
-      timestamp: Date.now()
-    }, { timeout: 5000 });
+    const response = await sendMessageWithTimeout(
+      {
+        action: 'GET_QUICK_TABS_STATE',
+        reason: 'bfcache-restore',
+        timestamp: Date.now()
+      },
+      { timeout: 5000 }
+    );
 
     await _handleStateRefreshResponse(response);
   } catch (err) {
@@ -3672,12 +3675,12 @@ function _categorizeDisconnectReason(error) {
  */
 function _clearPendingMessagesOnDisconnect() {
   const pendingCount = pendingMessages.size;
-  
+
   // v1.6.3.11-v3 - FIX Issue #27: Increment port generation BEFORE clearing
   // This ensures new messages after reconnection have different generation prefix
   const previousGeneration = portGeneration;
   portGeneration++;
-  
+
   console.log(
     '[Content][PORT_LIFECYCLE] CLEARING_PENDING_MESSAGES: Port disconnected, clearing in-flight messages',
     {
@@ -3687,9 +3690,9 @@ function _clearPendingMessagesOnDisconnect() {
       timestamp: Date.now()
     }
   );
-  
+
   if (pendingCount === 0) return;
-  
+
   // Reject all pending messages before clearing
   for (const [messageId, pending] of pendingMessages) {
     if (pending.reject) {

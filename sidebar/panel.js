@@ -126,7 +126,7 @@ function _selectByTimestamp(sessionState, syncState, sessionTimestamp, syncTimes
  */
 function _selectMoreRecentState(sessionState, syncState) {
   if (!sessionState && !syncState) return null;
-  
+
   const now = Date.now();
   const sessionTimestamp = sessionState?.timestamp || 0;
   const syncTimestamp = syncState?.timestamp || 0;
@@ -136,8 +136,13 @@ function _selectMoreRecentState(sessionState, syncState) {
   const isSyncStale = _isTimestampStale(syncTimestamp, syncAge);
 
   console.log('[Panel] STORAGE_TIMESTAMP_COMPARISON:', {
-    sessionTimestamp, syncTimestamp, sessionAgeMs: sessionAge, syncAgeMs: syncAge,
-    isSessionStale, isSyncStale, staleThresholdMs: STALE_DATA_THRESHOLD_MS
+    sessionTimestamp,
+    syncTimestamp,
+    sessionAgeMs: sessionAge,
+    syncAgeMs: syncAge,
+    isSessionStale,
+    isSyncStale,
+    staleThresholdMs: STALE_DATA_THRESHOLD_MS
   });
 
   // Both stale - reject all
@@ -523,7 +528,7 @@ function setupEventListeners() {
 function _handleStorageChange(changes, areaName) {
   const isStateChange = areaName === 'sync' && changes[STATE_KEY];
   const isSessionChange = areaName === 'session' && changes[SESSION_KEY];
-  
+
   if (!isStateChange && !isSessionChange) {
     return;
   }

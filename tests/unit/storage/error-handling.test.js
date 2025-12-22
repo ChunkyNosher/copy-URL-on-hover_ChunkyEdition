@@ -43,11 +43,11 @@ describe('Storage Error Handling', () => {
    */
   function mockStorageWithVerification() {
     let savedData = null;
-    browser.storage.local.set.mockImplementation(async (data) => {
+    browser.storage.local.set.mockImplementation(async data => {
       savedData = data;
       return undefined;
     });
-    browser.storage.local.get.mockImplementation(async (key) => {
+    browser.storage.local.get.mockImplementation(async key => {
       if (typeof key === 'string' && savedData && savedData[key]) {
         return { [key]: savedData[key] };
       }
@@ -65,7 +65,7 @@ describe('Storage Error Handling', () => {
 
     // Default mock implementations with write verification support
     mockStorageWithVerification();
-    
+
     browser.storage.local.remove.mockResolvedValue(undefined);
     browser.storage.sync.get.mockResolvedValue({});
     browser.storage.sync.set.mockResolvedValue(undefined);
@@ -212,7 +212,7 @@ describe('Storage Error Handling', () => {
         if (savedData) return savedData;
         return containerData;
       });
-      browser.storage.local.set.mockImplementation(async (data) => {
+      browser.storage.local.set.mockImplementation(async data => {
         savedData = data;
         return undefined;
       });
@@ -424,11 +424,11 @@ describe('Storage Error Handling', () => {
     it('should preserve all Quick Tab properties during save/load cycle', async () => {
       // v1.6.3.11-v3 - Updated for write verification
       let savedData = null;
-      browser.storage.local.set.mockImplementation(async (data) => {
+      browser.storage.local.set.mockImplementation(async data => {
         savedData = data;
         return undefined;
       });
-      browser.storage.local.get.mockImplementation(async (key) => {
+      browser.storage.local.get.mockImplementation(async key => {
         if (typeof key === 'string' && savedData && savedData[key]) {
           return { [key]: savedData[key] };
         }
@@ -544,7 +544,7 @@ describe('Storage Error Handling', () => {
         return containerData;
       });
 
-      browser.storage.local.set.mockImplementation(async (data) => {
+      browser.storage.local.set.mockImplementation(async data => {
         savedData = data;
         return undefined;
       });
@@ -558,7 +558,7 @@ describe('Storage Error Handling', () => {
         expect(result.tabs.map(t => t.id)).toContain('qt-default');
         expect(result.tabs.map(t => t.id)).toContain('qt-container');
       }
-      
+
       // Should attempt to save in new format after migration
       expect(browser.storage.local.set).toHaveBeenCalled();
     });

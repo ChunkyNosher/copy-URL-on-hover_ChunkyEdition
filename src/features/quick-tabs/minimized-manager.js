@@ -259,7 +259,7 @@ export class MinimizedManager {
     if (this._batchPersistTimerId !== null) {
       clearInterval(this._batchPersistTimerId);
       this._batchPersistTimerId = null;
-      
+
       // Flush any pending changes (skip if already flushing)
       if (this._volatileStateDirty && !this._isFlushingVolatileState) {
         this._flushVolatileState();
@@ -1563,7 +1563,7 @@ export class MinimizedManager {
           savedPosition: snapshot.savedPosition,
           savedSize: snapshot.savedSize,
           savedOriginTabId: snapshot.savedOriginTabId,
-          savedOriginContainerId: snapshot.savedOriginContainerId,
+          savedOriginContainerId: snapshot.savedOriginContainerId
           // Don't persist window reference - it's not serializable
           // Don't persist isRestoring - it's transient state
         });
@@ -1671,7 +1671,10 @@ export class MinimizedManager {
   _buildPartialSnapshot(tabData) {
     return {
       window: null, // Will be set by UICoordinator when rendering
-      savedPosition: tabData.savedPosition || { left: DEFAULT_POSITION_LEFT, top: DEFAULT_POSITION_TOP },
+      savedPosition: tabData.savedPosition || {
+        left: DEFAULT_POSITION_LEFT,
+        top: DEFAULT_POSITION_TOP
+      },
       savedSize: tabData.savedSize || { width: DEFAULT_SIZE_WIDTH, height: DEFAULT_SIZE_HEIGHT },
       savedOriginTabId: tabData.savedOriginTabId ?? null,
       savedOriginContainerId: tabData.savedOriginContainerId ?? null,

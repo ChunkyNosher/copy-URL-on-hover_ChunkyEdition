@@ -58,7 +58,8 @@ Tabs Manager
 **Storage & Sync (Issues #21, #22, #32, #40, #69, #70):**
 
 - **Storage Write Verification** - Verify writes by reading back data
-- **Format Detection Refactored** - _detectStorageFormat() + _normalizeStorageFormat()
+- **Format Detection Refactored** - \_detectStorageFormat() +
+  \_normalizeStorageFormat()
 - **Migration Validation** - Atomic migration with rollback marker
 - **Stale Data Rejection** - 1-hour threshold for sync storage fallback
 - **Storage.onChanged Debouncing** - 100ms debounce in sidebar panel
@@ -128,7 +129,8 @@ references.
 
 ### v1.6.3.11-v3 Patterns (Current)
 
-- **Message Dedup** - 100ms window (from 250ms), 3s TTL (from 10s), content hash key
+- **Message Dedup** - 100ms window (from 250ms), 3s TTL (from 10s), content hash
+  key
 - **Firefox Message Timeout** - sendMessageWithTimeout() with adaptive timeout
 - **BFCache Message Queue** - Queue during pagehide, drain on pageshow
 - **Storage Write Verification** - Read back after write to verify success
@@ -159,29 +161,29 @@ references.
 
 ### Key Timing Constants (v1.6.3.11-v3)
 
-| Constant                        | Value    | Purpose                             |
-| ------------------------------- | -------- | ----------------------------------- |
-| `DEDUP_WINDOW_MS`               | 100      | Message dedup (was 250)             |
-| `DEDUP_TTL_MS`                  | 3000     | Dedup entry TTL (was 10000)         |
-| `DEDUP_CLEANUP_INTERVAL_MS`     | 1000     | Dedup cleanup (was 5000)            |
-| `STORAGE_CHANGE_DEBOUNCE_MS`    | 100      | Sidebar storage.onChanged debounce  |
-| `DEFAULT_MESSAGE_TIMEOUT_MS`    | 5000     | Firefox message timeout default     |
-| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000     | PORT_VERIFY timeout                 |
-| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000   | Extended tab ID timeout             |
-| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000     | Extended retry interval             |
-| `HYDRATION_TIMEOUT_MS`          | 10000    | Storage hydration                   |
-| `TAB_REMOVAL_DEBOUNCE_MS`       | 200      | Tab onRemoved debounce              |
-| `QUERY_TIMEOUT_MS`              | 2000     | browser.tabs.query timeout          |
-| `ADOPTION_CACHE_MAX_SIZE`       | 100      | Max adoption cache entries          |
-| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000   | 5-minute cleanup interval           |
-| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75     | Warning threshold (75%)             |
-| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100      | Max queue items                     |
-| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500      | UICoordinator acknowledgment        |
-| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000    | Dynamic TTL default                 |
-| `HEARTBEAT_INTERVAL_MS`         | 15000    | Background health check             |
-| `LRU_MAP_MAX_SIZE`              | 500      | Maximum map entries                 |
-| `LRU_CLEANUP_INTERVAL_MS`       | 30000    | Periodic cleanup (30s)              |
-| `LRU_STALE_THRESHOLD_MS`        | 86400000 | Stale threshold (24h)               |
+| Constant                        | Value    | Purpose                            |
+| ------------------------------- | -------- | ---------------------------------- |
+| `DEDUP_WINDOW_MS`               | 100      | Message dedup (was 250)            |
+| `DEDUP_TTL_MS`                  | 3000     | Dedup entry TTL (was 10000)        |
+| `DEDUP_CLEANUP_INTERVAL_MS`     | 1000     | Dedup cleanup (was 5000)           |
+| `STORAGE_CHANGE_DEBOUNCE_MS`    | 100      | Sidebar storage.onChanged debounce |
+| `DEFAULT_MESSAGE_TIMEOUT_MS`    | 5000     | Firefox message timeout default    |
+| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000     | PORT_VERIFY timeout                |
+| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000   | Extended tab ID timeout            |
+| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000     | Extended retry interval            |
+| `HYDRATION_TIMEOUT_MS`          | 10000    | Storage hydration                  |
+| `TAB_REMOVAL_DEBOUNCE_MS`       | 200      | Tab onRemoved debounce             |
+| `QUERY_TIMEOUT_MS`              | 2000     | browser.tabs.query timeout         |
+| `ADOPTION_CACHE_MAX_SIZE`       | 100      | Max adoption cache entries         |
+| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000   | 5-minute cleanup interval          |
+| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75     | Warning threshold (75%)            |
+| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100      | Max queue items                    |
+| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500      | UICoordinator acknowledgment       |
+| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000    | Dynamic TTL default                |
+| `HEARTBEAT_INTERVAL_MS`         | 15000    | Background health check            |
+| `LRU_MAP_MAX_SIZE`              | 500      | Maximum map entries                |
+| `LRU_CLEANUP_INTERVAL_MS`       | 30000    | Periodic cleanup (30s)             |
+| `LRU_STALE_THRESHOLD_MS`        | 86400000 | Stale threshold (24h)              |
 
 ---
 
