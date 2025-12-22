@@ -1261,6 +1261,13 @@ function logSuccessfulLoad(source, format) {
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
 
+// v1.6.3.11-v3 - FIX Issue #50: Mark MessageRouter as initialized after state is ready
+// This drains any messages that arrived during background initialization
+// Note: initializeGlobalState() is async but we don't await it here (intentional for eager loading)
+// We still mark initialized immediately since handlers are registered synchronously
+messageRouter.markInitialized();
+console.log('[Background] v1.6.3.11-v3 MessageRouter marked initialized (pre-init queue will drain)');
+
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
  * v1.6.2.2 - Updated for unified format
