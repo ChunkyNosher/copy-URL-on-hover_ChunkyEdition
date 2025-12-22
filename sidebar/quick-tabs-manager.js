@@ -6565,7 +6565,9 @@ function _displayAdoptionErrorNotification(quickTabId, error, errorCode) {
     'NETWORK_ERROR': 'Network error - will retry'
   };
   
-  const userMessage = errorMessages[errorCode] || `Adoption failed: ${error}`;
+  // v1.6.3.11-v3 - FIX Code Review: Use generic fallback instead of raw error
+  // to avoid potentially sensitive information in user-facing messages
+  const userMessage = errorMessages[errorCode] || 'Adoption failed - please try again';
   console.warn(`[Manager] ADOPTION_ERROR_DISPLAY: ${shortId} - ${userMessage}`);
   
   // Note: Actual UI notification would require DOM access
@@ -6603,6 +6605,12 @@ const ADOPTION_MAX_RETRIES = 3;
 const ADOPTION_RETRY_BASE_DELAY_MS = 1000;
 
 /**
+ * v1.6.3.11-v3 - FIX Code Review: Maximum bit shift attempt for overflow prevention
+ * At 10: 2^9 = 512 seconds max delay
+ */
+const ADOPTION_RETRY_MAX_SHIFT_ATTEMPT = 10;
+
+/**
  * v1.6.3.11-v3 - FIX Issue #31: Schedule adoption retry with exponential backoff
  * @private
  */
@@ -6620,7 +6628,7 @@ function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt)
 
   // v1.6.3.11-v3 - FIX Code Review: Bounds check before bit shift to prevent overflow
   // Safe for attempts 1-3: (1 << 0) = 1, (1 << 1) = 2, (1 << 2) = 4
-  const safeAttempt = Math.min(attempt, 10); // Max 2^9 = 512 seconds
+  const safeAttempt = Math.min(attempt, ADOPTION_RETRY_MAX_SHIFT_ATTEMPT);
   const delayMs = ADOPTION_RETRY_BASE_DELAY_MS * (1 << (safeAttempt - 1));
   
   console.log('[Manager] ADOPTION_RETRY_SCHEDULED:', {

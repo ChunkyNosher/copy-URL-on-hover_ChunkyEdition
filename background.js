@@ -2309,10 +2309,11 @@ messageRouter.register('REFRESH_CACHED_SETTINGS', async (msg, _sender) => {
     }
 
     // Also reload from storage.sync for good measure
-    const result = await browser.storage.sync.get('quick_tab_settings');
+    // v1.6.3.11-v3 - FIX Code Review: Use SETTINGS_STORAGE_KEY constant
+    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
     console.log('[Background] REFRESH_CACHED_SETTINGS: Settings refreshed', {
-      hasSettings: !!result.quick_tab_settings,
-      keys: result.quick_tab_settings ? Object.keys(result.quick_tab_settings).length : 0
+      hasSettings: !!result[SETTINGS_STORAGE_KEY],
+      keys: result[SETTINGS_STORAGE_KEY] ? Object.keys(result[SETTINGS_STORAGE_KEY]).length : 0
     });
 
     return { success: true };
