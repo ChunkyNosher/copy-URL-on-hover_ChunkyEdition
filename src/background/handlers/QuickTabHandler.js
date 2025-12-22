@@ -52,6 +52,41 @@ export class QuickTabHandler {
   // 3000ms: Shorter TTL reduces memory bloat in high-frequency scenarios
   static DEDUP_TTL_MS = 3000;
 
+  /**
+   * Augment an error with handler context for diagnostics
+   * v1.6.3.11-v4 - FIX Issue #6: Adds handler name, operation, and request context to errors
+   * @param {Error} error - Original error
+   * @param {string} handlerName - Handler class name
+   * @param {string} operation - Operation being performed
+   * @param {Object} context - Additional context (action, quickTabId, etc.)
+   * @returns {Error} Error with augmented message
+   */
+  static augmentError(error, handlerName, operation, context = {}) {
+    const contextStr = Object.entries(context)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+
+    const augmentedMessage = `[ERROR] [${handlerName}] ${operation} failed: ${error.message}${contextStr ? ` (${contextStr})` : ''}`;
+
+    console.error(augmentedMessage, {
+      handlerName,
+      operation,
+      context,
+      originalError: error.message,
+      stack: error.stack,
+      timestamp: Date.now()
+    });
+
+    // Create new error with augmented message
+    const augmentedError = new Error(augmentedMessage);
+    augmentedError.originalError = error;
+    augmentedError.handlerName = handlerName;
+    augmentedError.operation = operation;
+    augmentedError.context = context;
+    return augmentedError;
+  }
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;

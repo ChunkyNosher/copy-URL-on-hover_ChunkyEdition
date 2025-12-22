@@ -4413,10 +4413,23 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
+  // v1.6.3.11-v4 - FIX Issue #3: Added [STATE_LISTEN] logging prefix
+  console.log('[STATE_LISTEN] Registering storage.onChanged listener in sidebar:', {
+    stateKey: STATE_KEY,
+    timestamp: Date.now()
+  });
   browser.storage.onChanged.addListener((changes, areaName) => {
+    // v1.6.3.11-v4 - FIX Issue #3: Log listener invocation
+    console.log('[STATE_LISTEN] storage.onChanged listener invoked:', {
+      areaName,
+      hasStateKey: !!changes[STATE_KEY],
+      changedKeys: Object.keys(changes),
+      timestamp: Date.now()
+    });
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
+  console.log('[STATE_LISTEN] ✓ storage.onChanged listener registered');
 }
 
 /**
@@ -4688,11 +4701,24 @@ function _checkTabChanges(oldTabs, newTabs) {
 /**
  * Update local state cache without triggering renderUI()
  * v1.6.3.7 - FIX Issue #3: Keep local state in sync during metadata-only updates
+ * v1.6.3.11-v4 - FIX Issue #3: Added [STATE_UPDATE] logging
  * @private
  * @param {Object} newValue - New storage value
  */
 function _updateLocalStateCache(newValue) {
   if (newValue?.tabs) {
+    const beforeTabCount = quickTabsState?.tabs?.length ?? 0;
+    const afterTabCount = newValue.tabs.length;
+
+    // v1.6.3.11-v4 - FIX Issue #3: [STATE_UPDATE] logging for state changes
+    console.log('[STATE_UPDATE] quickTabsState updated from storage:', {
+      beforeTabCount,
+      afterTabCount,
+      delta: afterTabCount - beforeTabCount,
+      saveId: newValue.saveId || 'none',
+      timestamp: Date.now()
+    });
+
     quickTabsState = newValue;
     _updateInMemoryCache(newValue.tabs);
   }

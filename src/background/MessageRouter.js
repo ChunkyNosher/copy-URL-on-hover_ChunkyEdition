@@ -983,17 +983,21 @@ export class MessageRouter {
    */
   async route(message, sender, sendResponse) {
     // v1.6.3.11-v3 - FIX Issue #3: Log route start
+    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG] prefix for arrival logging
     const routeStartTime = Date.now();
-    console.log('[MSG_ROUTE] Route started:', {
+    console.log('[MSG] Message arrived:', {
       action: message?.action || message?.type,
       senderTabId: sender?.tab?.id,
+      senderUrl: sender?.url?.substring(0, 50),
+      messageKeys: Object.keys(message || {}),
       timestamp: routeStartTime
     });
 
     // v1.6.3.11 - FIX Issue #25: Validate structure before processing
+    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:VALIDATE] prefix
     const structureValidation = this._validateMessageStructure(message);
     if (!structureValidation.valid) {
-      console.warn('[MSG_VALIDATION] Structure validation failed:', {
+      console.warn('[MSG:VALIDATE] Structure validation failed:', {
         error: structureValidation.error,
         code: structureValidation.code
       });
@@ -1011,16 +1015,18 @@ export class MessageRouter {
 
     // Validate message format
     if (!action) {
-      console.warn('[MSG_VALIDATION] No action extracted from message');
+      console.warn('[MSG:VALIDATE] No action extracted from message');
       this._handleInvalidFormat(message, messageId, sendResponse);
       return false;
     }
 
     // v1.6.3.11-v3 - FIX Issue #3: Log action extraction
-    console.log('[MSG_COMMAND] Action extracted:', {
+    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:VALIDATE] prefix
+    console.log('[MSG:VALIDATE] Action validated:', {
       action,
       messageId,
-      senderTabId: sender?.tab?.id
+      senderTabId: sender?.tab?.id,
+      isValidAction: VALID_MESSAGE_ACTIONS.has(action)
     });
 
     // v1.6.3.11-v3 - FIX Issue #24: Check for re-entrance and queue if needed
@@ -1031,12 +1037,19 @@ export class MessageRouter {
     this._validateProtocolVersion(message, sender);
 
     if (messageId) {
-      console.log('[MSG][MessageRouter] MESSAGE_CORRELATION:', {
+      console.log('[MSG] MESSAGE_CORRELATION:', {
         messageId,
         action,
         senderTabId: sender?.tab?.id
       });
     }
+
+    // v1.6.3.11-v4 - FIX Issue #4: [MSG:ROUTE] prefix for handler selection
+    console.log('[MSG:ROUTE] Routing to handler:', {
+      action,
+      hasHandler: this.handlers.has(action),
+      messageId
+    });
 
     // Route to handler
     // Note: ESLint require-await rule flags this, but async is needed for awaiting callers
@@ -1052,13 +1065,14 @@ export class MessageRouter {
   async _routeToHandler(message, sender, sendResponse, action, messageId) {
     const handler = this.handlers.get(action);
     if (!handler) {
-      console.warn('[MSG_ROUTE] No handler found for action:', action);
+      console.warn('[MSG:ROUTE] No handler found for action:', action);
       const result = this._handleNoHandler(message, sender, sendResponse, action);
       return result.handled ? result.returnValue : false;
     }
 
     // v1.6.3.11-v3 - FIX Issue #3: Log handler found
-    console.log('[MSG_ROUTE] Handler found, validating ownership:', {
+    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:ROUTE] prefix
+    console.log('[MSG:ROUTE] Handler found, validating ownership:', {
       action,
       handlerExists: true
     });
@@ -1066,7 +1080,7 @@ export class MessageRouter {
     // Validate ownership
     const ownershipValidation = this._validateOwnership(message, sender, action);
     if (!ownershipValidation.valid) {
-      console.warn('[MSG_VALIDATION] Ownership validation failed:', {
+      console.warn('[MSG:VALIDATE] Ownership validation failed:', {
         action,
         error: ownershipValidation.error,
         code: ownershipValidation.code
@@ -1079,33 +1093,55 @@ export class MessageRouter {
     this._processingActions.add(action);
 
     // v1.6.3.11-v3 - FIX Issue #3: Log handler execution start
+    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:EXEC] prefix
     const handlerStartTime = Date.now();
-    console.log('[MSG_ROUTE] Executing handler:', {
+    console.log('[MSG:EXEC] Handler execution starting:', {
       action,
       messageId,
+      senderTabId: sender?.tab?.id,
       startTime: handlerStartTime
     });
 
     try {
       const result = await handler(message, sender);
       const normalizedResponse = this._normalizeResponse(result, action, messageId);
+      const handlerDurationMs = Date.now() - handlerStartTime;
 
-      // v1.6.3.11-v3 - FIX Issue #3: Log handler success
-      console.log('[MSG_ROUTE] Handler completed successfully:', {
+      // v1.6.3.11-v4 - FIX Issue #4: [MSG:EXEC] success logging
+      console.log('[MSG:EXEC] Handler completed successfully:', {
         action,
-        durationMs: Date.now() - handlerStartTime,
+        durationMs: handlerDurationMs,
         success: normalizedResponse.success !== false
+      });
+
+      // v1.6.3.11-v4 - FIX Issue #4: [MSG:RESPONSE] logging for response structure
+      console.log('[MSG:RESPONSE] Sending response:', {
+        action,
+        success: normalizedResponse.success,
+        hasData: 'data' in normalizedResponse,
+        messageId,
+        durationMs: handlerDurationMs
       });
 
       if (sendResponse) sendResponse(normalizedResponse);
       return true;
     } catch (error) {
-      // v1.6.3.11-v3 - FIX Issue #3: Log handler error
-      console.error('[MSG_ROUTE] Handler threw error:', {
+      // v1.6.3.11-v4 - FIX Issue #4: [MSG:EXEC] error logging
+      console.error('[MSG:EXEC] Handler threw error:', {
         action,
         durationMs: Date.now() - handlerStartTime,
-        error: error.message
+        error: error.message,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n')
       });
+
+      // v1.6.3.11-v4 - FIX Issue #4: [MSG:RESPONSE] error response logging
+      console.log('[MSG:RESPONSE] Sending error response:', {
+        action,
+        success: false,
+        error: error.message,
+        messageId
+      });
+
       this._handleHandlerError(action, error, messageId, sendResponse);
       return true;
     } finally {

@@ -2555,28 +2555,47 @@ console.log(
 // v1.6.3.11 - FIX Issue #1 & #3: Register message listener synchronously at module load time
 // This ensures handlers are ready BEFORE any content script sends messages
 // Mozilla/Chrome documentation: "Listeners must be at the top-level to activate the background script"
-console.log(
-  `[Background] ✓ Registering onMessage listener (${messageRouter.handlers.size} handlers)`
-);
+// v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging prefix
+console.log('[LISTENER_REG] Registering runtime.onMessage listener:', {
+  handlerCount: messageRouter.handlers.size,
+  timestamp: Date.now()
+});
 
 // Handle messages from content script and sidebar - using MessageRouter
 chrome.runtime.onMessage.addListener(messageRouter.createListener());
 
 // v1.6.3.11 - FIX Issue #3: Log successful listener registration
-console.log('[Background] ✓ onMessage listener registered - GET_CURRENT_TAB_ID ready');
+// v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG] prefix
+console.log('[LISTENER_REG] ✓ runtime.onMessage listener registered:', {
+  handlerCount: messageRouter.handlers.size,
+  timestamp: Date.now(),
+  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL']
+});
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
 // v1.6.3.11-v3 - FIX Issue #1: Add browser.commands.onCommand listener for logging
+// v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG], [LISTENER_INVOKE], [EVENT_COMPLETE] prefixes
 // NOTE: The actual command handling is done at line ~3745 with toggle logic
 // This listener adds comprehensive logging with [KEYBOARD_CMD] prefix
 
 /**
  * Handle keyboard command from browser.commands API (logging only)
  * v1.6.3.11-v3 - FIX Issue #1: Add detailed logging for keyboard commands
+ * v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_INVOKE] and [EVENT_COMPLETE] logging
  * @param {string} command - The command name from manifest.json
  */
 function handleKeyboardCommandLogging(command) {
   const timestamp = Date.now();
+  const invokeStartTime = performance.now();
+
+  // v1.6.3.11-v4 - FIX Issue #2: [LISTENER_INVOKE] logging for keyboard commands
+  console.log('[LISTENER_INVOKE] Keyboard command listener invoked:', {
+    command,
+    listenerType: 'browser.commands.onCommand',
+    timestamp,
+    backgroundUptime: timestamp - backgroundStartupTime
+  });
+
   console.log('[KEYBOARD_CMD] Command received:', {
     command,
     timestamp,
@@ -2596,17 +2615,35 @@ function handleKeyboardCommandLogging(command) {
     default:
       console.warn('[KEYBOARD_CMD] Unknown command:', command);
   }
+
+  // v1.6.3.11-v4 - FIX Issue #2: [EVENT_COMPLETE] logging for keyboard commands
+  const invokeDuration = performance.now() - invokeStartTime;
+  console.log('[EVENT_COMPLETE] Keyboard command listener completed:', {
+    command,
+    listenerType: 'browser.commands.onCommand',
+    durationMs: invokeDuration.toFixed(2),
+    timestamp: Date.now()
+  });
 }
 
 // Register the keyboard command listener for logging
+// v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging
 if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCommand) {
+  console.log('[LISTENER_REG] Registering keyboard command listener:', {
+    api: 'browser.commands.onCommand',
+    timestamp: Date.now()
+  });
   browser.commands.onCommand.addListener(handleKeyboardCommandLogging);
-  console.log('[KEYBOARD_CMD] ✓ browser.commands.onCommand logging listener registered');
+  console.log('[LISTENER_REG] ✓ browser.commands.onCommand listener registered successfully');
 } else if (typeof chrome !== 'undefined' && chrome.commands && chrome.commands.onCommand) {
+  console.log('[LISTENER_REG] Registering keyboard command listener:', {
+    api: 'chrome.commands.onCommand',
+    timestamp: Date.now()
+  });
   chrome.commands.onCommand.addListener(handleKeyboardCommandLogging);
-  console.log('[KEYBOARD_CMD] ✓ chrome.commands.onCommand logging listener registered');
+  console.log('[LISTENER_REG] ✓ chrome.commands.onCommand listener registered successfully');
 } else {
-  console.warn('[KEYBOARD_CMD] ⚠ browser.commands API not available');
+  console.warn('[LISTENER_REG] ⚠ browser.commands API not available - listener NOT registered');
 }
 
 // v1.6.3.11-v3 - FIX Issue #2: Listen for external shortcut changes
@@ -3513,6 +3550,7 @@ async function _handleSettingsChange(changes) {
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 // v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
 // v1.6.3.10-v6 - FIX Issue #14: Health check logging for storage.onChanged listener
+// v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging prefix
 
 // v1.6.3.10-v6 - FIX Issue #14: Track storage listener health
 let storageOnChangedEventCount = 0;
@@ -3536,7 +3574,7 @@ function _logStorageListenerHealth(areaName, changedKeys) {
   // Log every N events as health check (at 100, 200, 300, etc.)
   // v1.6.3.10-v6 - FIX Code Review: Use === 0 to log at round intervals
   if (storageOnChangedEventCount % STORAGE_LISTENER_LOG_INTERVAL === 0) {
-    console.log('[Background][StorageListener] v1.6.3.10-v6 HEALTH_CHECK: Listener active', {
+    console.log('[STATE_LISTEN] Storage listener health check:', {
       totalEventsProcessed: storageOnChangedEventCount,
       timeSinceLastEventMs: timeSinceLastEvent,
       lastEventArea: areaName,
@@ -3545,10 +3583,24 @@ function _logStorageListenerHealth(areaName, changedKeys) {
   }
 }
 
+// v1.6.3.11-v4 - FIX Issue #2: Log storage.onChanged listener registration
+console.log('[LISTENER_REG] Registering storage.onChanged listener:', {
+  api: 'browser.storage.onChanged',
+  timestamp: Date.now()
+});
+
 browser.storage.onChanged.addListener((changes, areaName) => {
   // v1.6.3.11-v3 - FIX Issue #59: Wrap entire listener in try-catch to prevent blocking other listeners
   try {
     const changedKeys = Object.keys(changes);
+
+    // v1.6.3.11-v4 - FIX Issue #2: [LISTENER_INVOKE] logging for storage changes
+    console.log('[LISTENER_INVOKE] storage.onChanged listener invoked:', {
+      areaName,
+      keys: changedKeys,
+      eventNumber: storageOnChangedEventCount + 1,
+      timestamp: Date.now()
+    });
 
     // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
     _logStorageListenerHealth(areaName, changedKeys);

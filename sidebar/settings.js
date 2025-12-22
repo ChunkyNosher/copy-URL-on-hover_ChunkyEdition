@@ -9,6 +9,149 @@ if (!browserAPI) {
   console.error('[Popup] Browser API not available. Extension may not work properly.');
 }
 
+// ==================== v1.6.3.11-v4 STORAGE LOGGING UTILITIES ====================
+// FIX Issue #5: Storage operation logging with timing and success/failure
+
+/**
+ * Storage operation performance threshold (ms)
+ * v1.6.3.11-v4 - FIX Issue #5: Warn if operation exceeds this
+ */
+const STORAGE_SLOW_THRESHOLD_MS = 100;
+
+/**
+ * Wrap storage.local.get with logging
+ * v1.6.3.11-v4 - FIX Issue #5: Add [STORAGE] logging prefix with timing
+ * @param {string|string[]|Object} keys - Keys to get
+ * @returns {Promise<Object>} Storage values
+ */
+async function loggedStorageGet(keys) {
+  const startTime = performance.now();
+  const keyList = Array.isArray(keys) ? keys : typeof keys === 'object' ? Object.keys(keys) : [keys];
+
+  console.log('[STORAGE] GET starting:', {
+    keys: keyList,
+    timestamp: Date.now()
+  });
+
+  try {
+    const result = await browserAPI.storage.local.get(keys);
+    const duration = performance.now() - startTime;
+    const success = true;
+
+    console.log(`[STORAGE] GET ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
+      keys: keyList,
+      durationMs: duration.toFixed(2),
+      success
+    });
+
+    if (duration > STORAGE_SLOW_THRESHOLD_MS) {
+      console.warn('[STORAGE] SLOW_OPERATION: GET exceeded threshold', {
+        keys: keyList,
+        durationMs: duration.toFixed(2),
+        thresholdMs: STORAGE_SLOW_THRESHOLD_MS
+      });
+    }
+
+    return result;
+  } catch (error) {
+    const duration = performance.now() - startTime;
+    console.error(`[STORAGE] GET ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
+      keys: keyList,
+      durationMs: duration.toFixed(2),
+      error: error.message
+    });
+    throw error;
+  }
+}
+
+/**
+ * Wrap storage.local.set with logging
+ * v1.6.3.11-v4 - FIX Issue #5: Add [STORAGE] logging prefix with timing
+ * @param {Object} items - Items to set
+ * @returns {Promise<void>}
+ */
+async function loggedStorageSet(items) {
+  const startTime = performance.now();
+  const keyList = Object.keys(items);
+
+  console.log('[STORAGE] SET starting:', {
+    keys: keyList,
+    timestamp: Date.now()
+  });
+
+  try {
+    await browserAPI.storage.local.set(items);
+    const duration = performance.now() - startTime;
+
+    console.log(`[STORAGE] SET ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
+      keys: keyList,
+      durationMs: duration.toFixed(2),
+      success: true
+    });
+
+    if (duration > STORAGE_SLOW_THRESHOLD_MS) {
+      console.warn('[STORAGE] SLOW_OPERATION: SET exceeded threshold', {
+        keys: keyList,
+        durationMs: duration.toFixed(2),
+        thresholdMs: STORAGE_SLOW_THRESHOLD_MS
+      });
+    }
+  } catch (error) {
+    const duration = performance.now() - startTime;
+    console.error(`[STORAGE] SET ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
+      keys: keyList,
+      durationMs: duration.toFixed(2),
+      error: error.message
+    });
+    throw error;
+  }
+}
+
+/**
+ * Wrap storage.local.remove with logging
+ * v1.6.3.11-v4 - FIX Issue #5: Add [STORAGE] logging prefix with timing
+ * @param {string|string[]} keys - Keys to remove
+ * @returns {Promise<void>}
+ */
+async function loggedStorageRemove(keys) {
+  const startTime = performance.now();
+  const keyList = Array.isArray(keys) ? keys : [keys];
+
+  console.log('[STORAGE] REMOVE starting:', {
+    keys: keyList,
+    timestamp: Date.now()
+  });
+
+  try {
+    await browserAPI.storage.local.remove(keys);
+    const duration = performance.now() - startTime;
+
+    console.log(`[STORAGE] REMOVE ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
+      keys: keyList,
+      durationMs: duration.toFixed(2),
+      success: true
+    });
+
+    if (duration > STORAGE_SLOW_THRESHOLD_MS) {
+      console.warn('[STORAGE] SLOW_OPERATION: REMOVE exceeded threshold', {
+        keys: keyList,
+        durationMs: duration.toFixed(2),
+        thresholdMs: STORAGE_SLOW_THRESHOLD_MS
+      });
+    }
+  } catch (error) {
+    const duration = performance.now() - startTime;
+    console.error(`[STORAGE] REMOVE ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
+      keys: keyList,
+      durationMs: duration.toFixed(2),
+      error: error.message
+    });
+    throw error;
+  }
+}
+
+// ==================== END STORAGE LOGGING UTILITIES ====================
+
 // ==================== LOG EXPORT FUNCTIONS ====================
 
 /**
@@ -853,11 +996,12 @@ async function saveSettings() {
     const settings = gatherSettingsFromForm();
     const { liveSettings, exportSettings } = gatherFilterSettings();
 
+    // v1.6.3.11-v4 - FIX Issue #5: Use logged storage operations
     // Save main settings
-    await browserAPI.storage.local.set(settings);
+    await loggedStorageSet(settings);
 
     // Save filter settings
-    await browserAPI.storage.local.set({
+    await loggedStorageSet({
       liveConsoleCategoriesEnabled: liveSettings,
       exportLogCategoriesEnabled: exportSettings
     });
@@ -882,14 +1026,15 @@ document.getElementById('saveBtn').addEventListener('click', saveSettings);
 
 // Reset to defaults
 // v1.6.0.11 - Now also resets filter settings
+// v1.6.3.11-v4 - FIX Issue #5: Use logged storage operations
 document.getElementById('resetBtn').addEventListener('click', async () => {
   if (confirm('Reset all settings to defaults?')) {
     try {
       // Reset main settings
-      await browserAPI.storage.local.set(DEFAULT_SETTINGS);
+      await loggedStorageSet(DEFAULT_SETTINGS);
 
       // Reset filter settings
-      await browserAPI.storage.local.set({
+      await loggedStorageSet({
         liveConsoleCategoriesEnabled: getDefaultLiveConsoleSettings(),
         exportLogCategoriesEnabled: getDefaultExportSettings()
       });
@@ -1120,10 +1265,11 @@ function storeSecondaryTab(secondaryTab) {
  * v1.6.3.4-v3 - FIX Bug #3: Check storage for requested tab from keyboard shortcut
  * Background script sets _requestedPrimaryTab before opening sidebar to ensure
  * the correct tab is shown even on first open (when message listener isn't ready)
+ * v1.6.3.11-v4 - FIX Issue #5: Use logged storage operations
  */
 async function _checkAndApplyRequestedTab() {
   try {
-    const result = await browserAPI.storage.local.get('_requestedPrimaryTab');
+    const result = await loggedStorageGet('_requestedPrimaryTab');
     const requestedTab = result._requestedPrimaryTab;
 
     if (requestedTab) {
@@ -1133,7 +1279,7 @@ async function _checkAndApplyRequestedTab() {
       handlePrimaryTabSwitch(requestedTab);
 
       // Clear the request so it doesn't persist across sessions
-      await browserAPI.storage.local.remove('_requestedPrimaryTab');
+      await loggedStorageRemove('_requestedPrimaryTab');
       console.debug('[Settings] Cleared _requestedPrimaryTab from storage');
     } else {
       // No keyboard shortcut request - restore last used tab
