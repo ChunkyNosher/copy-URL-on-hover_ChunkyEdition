@@ -1384,21 +1384,56 @@ const DEFAULT_SETTINGS = {
 };
 
 /**
+ * Helper: Read settings from storage with sync fallback to local
+ * v1.6.3.11-v3 - FIX Code Review: Extracted to reduce nesting depth
+ * @private
+ */
+async function _readSettingsWithFallback() {
+  try {
+    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
+    return result[SETTINGS_STORAGE_KEY];
+  } catch (syncErr) {
+    console.warn('[Background][Settings] Migration: Sync storage failed, trying local', {
+      error: syncErr.message
+    });
+    const localResult = await browser.storage.local.get(SETTINGS_STORAGE_KEY);
+    return localResult[SETTINGS_STORAGE_KEY];
+  }
+}
+
+/**
+ * Helper: Write settings to storage with sync fallback to local
+ * v1.6.3.11-v3 - FIX Code Review: Extracted to reduce nesting depth
+ * @private
+ */
+async function _writeSettingsWithFallback(settings) {
+  try {
+    await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: settings });
+  } catch (syncSetErr) {
+    console.warn('[Background][Settings] Migration: Sync write failed, using local', {
+      error: syncSetErr.message
+    });
+    await browser.storage.local.set({ [SETTINGS_STORAGE_KEY]: settings });
+  }
+}
+
+/**
  * Migrate settings to add missing keys with defaults
  * v1.6.3.11-v3 - FIX Issue #39: Version-aware config migration
+ * v1.6.3.11-v3 - FIX Code Review: Added fallback for sync storage failures
+ * v1.6.3.11-v3 - FIX Code Review: Extracted helpers to reduce nesting depth
  */
 async function migrateSettings() {
   try {
     console.log('[Background][Settings] Migration: Checking settings for missing keys');
 
-    // Read current settings from storage.sync (where options_page saves them)
-    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
-    const currentSettings = result[SETTINGS_STORAGE_KEY];
+    // Read current settings with fallback
+    const currentSettings = await _readSettingsWithFallback();
 
     // If no settings exist, create with defaults
     if (!currentSettings) {
       console.log('[Background][Settings] Migration: No settings found, creating defaults');
-      await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: DEFAULT_SETTINGS });
+      await _writeSettingsWithFallback(DEFAULT_SETTINGS);
       return;
     }
 
@@ -1410,7 +1445,7 @@ async function migrateSettings() {
 
     // Save if migration occurred
     if (needsMigration || versionMigrationNeeded) {
-      await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: migratedSettings });
+      await _writeSettingsWithFallback(migratedSettings);
       console.log('[Background][Settings] Migration: Settings migrated successfully', {
         keysAdded: Object.keys(DEFAULT_SETTINGS).filter(k => !(k in currentSettings)).length,
         newVersion: SETTINGS_VERSION

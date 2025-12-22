@@ -6618,8 +6618,10 @@ function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt)
     return;
   }
 
-  // Exponential backoff: 1s, 2s, 4s (using bit shift for efficiency)
-  const delayMs = ADOPTION_RETRY_BASE_DELAY_MS * (1 << (attempt - 1));
+  // v1.6.3.11-v3 - FIX Code Review: Bounds check before bit shift to prevent overflow
+  // Safe for attempts 1-3: (1 << 0) = 1, (1 << 1) = 2, (1 << 2) = 4
+  const safeAttempt = Math.min(attempt, 10); // Max 2^9 = 512 seconds
+  const delayMs = ADOPTION_RETRY_BASE_DELAY_MS * (1 << (safeAttempt - 1));
   
   console.log('[Manager] ADOPTION_RETRY_SCHEDULED:', {
     quickTabId,
@@ -6641,6 +6643,7 @@ function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt)
     
     try {
       await adoptQuickTabToCurrentTab(quickTabId, targetTabId);
+      // Success - clean up retry tracking
       _adoptionRetryAttempts.delete(quickTabId);
     } catch (err) {
       console.warn('[Manager] ADOPTION_RETRY_FAILED:', {
@@ -6648,8 +6651,19 @@ function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt)
         attempt,
         error: err.message
       });
-      // Don't schedule another retry here - the adoptQuickTabToCurrentTab 
-      // will call _handleAdoptFailure which handles retry scheduling
+      // v1.6.3.11-v3 - FIX Code Review: Clean up retry state and schedule next retry if under max
+      // This handles the case where adoptQuickTabToCurrentTab doesn't call _handleAdoptFailure
+      const nextAttempt = attempt + 1;
+      if (nextAttempt <= ADOPTION_MAX_RETRIES) {
+        _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, nextAttempt);
+      } else {
+        console.error('[Manager] ADOPTION_RETRY_EXHAUSTED_IN_CATCH:', {
+          quickTabId,
+          targetTabId,
+          finalAttempt: attempt
+        });
+        _adoptionRetryAttempts.delete(quickTabId);
+      }
     }
   }, delayMs);
 }
