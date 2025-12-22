@@ -20,6 +20,7 @@
 // This serves as documentation and validation for the message protocol
 // v1.6.3.11-v3 - FIX Issue #47: Added HEARTBEAT to allowlist for restart detection
 // v1.6.3.11-v3 - FIX Issue #23: Added REFRESH_CACHED_SETTINGS for options page
+// v1.6.3.11-v3 - FIX Issue #2: Added keyboard shortcut actions
 export const VALID_MESSAGE_ACTIONS = new Set([
   // Quick Tab CRUD operations
   'CREATE_QUICK_TAB',
@@ -54,7 +55,10 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   // v1.6.3.11-v3 - FIX Issue #47: HEARTBEAT for restart detection
   'HEARTBEAT',
   // v1.6.3.11-v3 - FIX Issue #23: Settings refresh from options page
-  'REFRESH_CACHED_SETTINGS'
+  'REFRESH_CACHED_SETTINGS',
+  // v1.6.3.11-v3 - FIX Issue #2: Keyboard shortcut management
+  'UPDATE_KEYBOARD_SHORTCUT',
+  'GET_KEYBOARD_SHORTCUTS'
 ]);
 
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format
@@ -971,15 +975,28 @@ export class MessageRouter {
    * v1.6.3.10-v12 - FIX Code Health: Extracted helpers to reduce complexity
    * v1.6.3.11 - FIX Issue #24: Re-entrance guard for circular dependencies
    * v1.6.3.11 - FIX Issue #25: Basic structure validation before routing
+   * v1.6.3.11-v3 - FIX Issue #3: Enhanced logging with MSG_COMMAND/MSG_VALIDATION/MSG_ROUTE prefixes
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
    * @returns {boolean} True if async response expected
    */
   async route(message, sender, sendResponse) {
+    // v1.6.3.11-v3 - FIX Issue #3: Log route start
+    const routeStartTime = Date.now();
+    console.log('[MSG_ROUTE] Route started:', {
+      action: message?.action || message?.type,
+      senderTabId: sender?.tab?.id,
+      timestamp: routeStartTime
+    });
+
     // v1.6.3.11 - FIX Issue #25: Validate structure before processing
     const structureValidation = this._validateMessageStructure(message);
     if (!structureValidation.valid) {
+      console.warn('[MSG_VALIDATION] Structure validation failed:', {
+        error: structureValidation.error,
+        code: structureValidation.code
+      });
       sendResponse({
         success: false,
         error: structureValidation.error,
@@ -994,9 +1011,17 @@ export class MessageRouter {
 
     // Validate message format
     if (!action) {
+      console.warn('[MSG_VALIDATION] No action extracted from message');
       this._handleInvalidFormat(message, messageId, sendResponse);
       return false;
     }
+
+    // v1.6.3.11-v3 - FIX Issue #3: Log action extraction
+    console.log('[MSG_COMMAND] Action extracted:', {
+      action,
+      messageId,
+      senderTabId: sender?.tab?.id
+    });
 
     // v1.6.3.11-v3 - FIX Issue #24: Check for re-entrance and queue if needed
     const earlyExit = this._checkRouteEarlyExit(message, sender, action, messageId, sendResponse);
@@ -1021,18 +1046,31 @@ export class MessageRouter {
   /**
    * Route message to handler after validation passes
    * v1.6.3.11-v3 - FIX Issue #24: Added queue draining after handler completes
+   * v1.6.3.11-v3 - FIX Issue #3: Enhanced logging with MSG_ROUTE prefix
    * @private
    */
   async _routeToHandler(message, sender, sendResponse, action, messageId) {
     const handler = this.handlers.get(action);
     if (!handler) {
+      console.warn('[MSG_ROUTE] No handler found for action:', action);
       const result = this._handleNoHandler(message, sender, sendResponse, action);
       return result.handled ? result.returnValue : false;
     }
 
+    // v1.6.3.11-v3 - FIX Issue #3: Log handler found
+    console.log('[MSG_ROUTE] Handler found, validating ownership:', {
+      action,
+      handlerExists: true
+    });
+
     // Validate ownership
     const ownershipValidation = this._validateOwnership(message, sender, action);
     if (!ownershipValidation.valid) {
+      console.warn('[MSG_VALIDATION] Ownership validation failed:', {
+        action,
+        error: ownershipValidation.error,
+        code: ownershipValidation.code
+      });
       this._handleOwnershipFailure(ownershipValidation, messageId, sendResponse);
       return false;
     }
@@ -1040,12 +1078,34 @@ export class MessageRouter {
     // v1.6.3.11-v3 - FIX Issue #24: Track action being processed
     this._processingActions.add(action);
 
+    // v1.6.3.11-v3 - FIX Issue #3: Log handler execution start
+    const handlerStartTime = Date.now();
+    console.log('[MSG_ROUTE] Executing handler:', {
+      action,
+      messageId,
+      startTime: handlerStartTime
+    });
+
     try {
       const result = await handler(message, sender);
       const normalizedResponse = this._normalizeResponse(result, action, messageId);
+
+      // v1.6.3.11-v3 - FIX Issue #3: Log handler success
+      console.log('[MSG_ROUTE] Handler completed successfully:', {
+        action,
+        durationMs: Date.now() - handlerStartTime,
+        success: normalizedResponse.success !== false
+      });
+
       if (sendResponse) sendResponse(normalizedResponse);
       return true;
     } catch (error) {
+      // v1.6.3.11-v3 - FIX Issue #3: Log handler error
+      console.error('[MSG_ROUTE] Handler threw error:', {
+        action,
+        durationMs: Date.now() - handlerStartTime,
+        error: error.message
+      });
       this._handleHandlerError(action, error, messageId, sendResponse);
       return true;
     } finally {

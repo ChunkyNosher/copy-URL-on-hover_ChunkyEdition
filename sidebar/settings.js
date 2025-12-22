@@ -1354,6 +1354,62 @@ document.addEventListener('DOMContentLoaded', () => {
   initCollapsibleGroups();
   loadFilterSettings();
   // ==================== END COLLAPSIBLE FILTER GROUPS ====================
+
+  // ==================== KEYBOARD SHORTCUTS (v1.6.3.11-v3) ====================
+  // FIX Issue #5: Setup keyboard shortcut update handlers
+
+  // Update Manager shortcut button
+  const updateManagerBtn = document.getElementById('update-shortcut-manager');
+  const managerInput = document.getElementById('shortcut-toggle-manager');
+  if (updateManagerBtn && managerInput) {
+    updateManagerBtn.addEventListener('click', async () => {
+      await updateKeyboardShortcut(
+        'toggle-quick-tabs-manager',
+        managerInput.value.trim(),
+        managerInput
+      );
+    });
+  }
+
+  // Update Sidebar shortcut button
+  const updateSidebarBtn = document.getElementById('update-shortcut-sidebar');
+  const sidebarInput = document.getElementById('shortcut-toggle-sidebar');
+  if (updateSidebarBtn && sidebarInput) {
+    updateSidebarBtn.addEventListener('click', async () => {
+      await updateKeyboardShortcut(
+        '_execute_sidebar_action',
+        sidebarInput.value.trim(),
+        sidebarInput
+      );
+    });
+  }
+
+  // Load current shortcuts button
+  const loadShortcutsBtn = document.getElementById('loadShortcutsBtn');
+  if (loadShortcutsBtn) {
+    loadShortcutsBtn.addEventListener('click', async () => {
+      loadShortcutsBtn.disabled = true;
+      loadShortcutsBtn.textContent = '⏳ Loading...';
+      try {
+        await loadKeyboardShortcuts();
+        loadShortcutsBtn.textContent = '✓ Shortcuts Loaded';
+        setTimeout(() => {
+          loadShortcutsBtn.textContent = '🔄 Refresh Current Shortcuts';
+          loadShortcutsBtn.disabled = false;
+        }, 2000);
+      } catch (err) {
+        loadShortcutsBtn.textContent = '✗ Failed to Load';
+        setTimeout(() => {
+          loadShortcutsBtn.textContent = '🔄 Refresh Current Shortcuts';
+          loadShortcutsBtn.disabled = false;
+        }, 3000);
+      }
+    });
+  }
+
+  // Load keyboard shortcuts on page load
+  loadKeyboardShortcuts();
+  // ==================== END KEYBOARD SHORTCUTS ====================
 });
 
 // ==================== FILTER SETTINGS FUNCTIONS ====================
@@ -1571,5 +1627,230 @@ async function refreshLiveConsoleFiltersInAllTabs() {
 
 // ==================== END FILTER SETTINGS FUNCTIONS ====================
 
+// ==================== KEYBOARD SHORTCUT FUNCTIONS (v1.6.3.11-v3) ====================
+// FIX Issues #4 & #5: Keyboard shortcut validation and browser.commands integration
+
+/**
+ * Firefox keyboard shortcut format validation
+ * v1.6.3.11-v3 - FIX Issue #4: Validate shortcut syntax
+ *
+ * Valid formats:
+ * - "Ctrl+Alt+Z", "Alt+Shift+S", "Ctrl+Shift+O"
+ * - "MacCtrl+Alt+U" (Mac-specific)
+ * - "Alt+Comma", "Ctrl+Period"
+ * - Function keys: "F1", "F12", "Ctrl+F5"
+ * - Media keys: "MediaPlayPause", "MediaNextTrack"
+ *
+ * @param {string} shortcut - Shortcut string to validate
+ * @returns {{ valid: boolean, error?: string }} Validation result
+ */
+function validateKeyboardShortcut(shortcut) {
+  // Empty shortcut is valid (clears the shortcut)
+  if (!shortcut || shortcut.trim() === '') {
+    return { valid: true };
+  }
+
+  const trimmed = shortcut.trim();
+
+  // Check for basic format (modifier+key or just function/media key)
+  const modifierPattern = /^(Ctrl|Alt|Shift|MacCtrl|Command)(\+(Ctrl|Alt|Shift|MacCtrl|Command))*\+(.+)$/i;
+  const functionKeyPattern = /^F([1-9]|1[0-2])$/i;
+  const mediaKeyPattern = /^Media(PlayPause|NextTrack|PrevTrack|Stop)$/i;
+
+  // Check if it's a function key alone
+  if (functionKeyPattern.test(trimmed)) {
+    return { valid: true };
+  }
+
+  // Check if it's a media key alone
+  if (mediaKeyPattern.test(trimmed)) {
+    return { valid: true };
+  }
+
+  // Check modifier+key format
+  const match = trimmed.match(modifierPattern);
+  if (!match) {
+    return {
+      valid: false,
+      error: `Invalid shortcut format: "${trimmed}". Use format like "Ctrl+Alt+Z" or "Alt+Shift+S".`
+    };
+  }
+
+  // Extract the final key
+  const finalKey = match[4];
+
+  // Validate the final key
+  const validSingleKeys = /^([A-Z]|[0-9]|F[1-9]|F1[0-2]|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/i;
+  if (!validSingleKeys.test(finalKey)) {
+    return {
+      valid: false,
+      error: `Invalid key: "${finalKey}". Use A-Z, 0-9, F1-F12, or special keys like Comma, Period, Space.`
+    };
+  }
+
+  // Check that at least one modifier is present (required by Firefox)
+  const parts = trimmed.split('+');
+  const modifiers = parts.slice(0, -1);
+  if (modifiers.length === 0) {
+    return {
+      valid: false,
+      error: 'At least one modifier (Ctrl, Alt, Shift) is required.'
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Show keyboard shortcut validation error
+ * v1.6.3.11-v3 - FIX Issue #4: User feedback for invalid shortcuts
+ * @param {HTMLElement} inputElement - Input element to mark as invalid
+ * @param {string} errorMessage - Error message to display
+ */
+function showShortcutError(inputElement, errorMessage) {
+  inputElement.classList.add('shortcut-error');
+  inputElement.title = errorMessage;
+
+  // Show error in status area
+  showStatus(`⚠️ ${errorMessage}`, false);
+
+  // Clear error styling after 5 seconds
+  setTimeout(() => {
+    inputElement.classList.remove('shortcut-error');
+    inputElement.title = '';
+  }, 5000);
+}
+
+/**
+ * Show keyboard shortcut update success
+ * v1.6.3.11-v3 - FIX Issue #5: Visual feedback for successful updates
+ * @param {HTMLElement} inputElement - Input element to mark as valid
+ * @param {string} message - Success message to display
+ */
+function showShortcutSuccess(inputElement, message) {
+  inputElement.classList.add('shortcut-success');
+
+  // Show success in status area
+  showStatus(`✓ ${message}`, true);
+
+  // Clear success styling after 3 seconds
+  setTimeout(() => {
+    inputElement.classList.remove('shortcut-success');
+  }, 3000);
+}
+
+/**
+ * Update a keyboard shortcut via background script
+ * v1.6.3.11-v3 - FIX Issue #5: Connect sidebar UI to browser.commands API
+ * @param {string} commandName - Command name from manifest.json
+ * @param {string} shortcut - New shortcut value
+ * @param {HTMLElement} inputElement - Input element for visual feedback
+ */
+async function updateKeyboardShortcut(commandName, shortcut, inputElement) {
+  console.log('[Settings] Updating keyboard shortcut:', { commandName, shortcut });
+
+  // Validate shortcut format first
+  const validation = validateKeyboardShortcut(shortcut);
+  if (!validation.valid) {
+    showShortcutError(inputElement, validation.error);
+    return false;
+  }
+
+  try {
+    const response = await browserAPI.runtime.sendMessage({
+      action: 'UPDATE_KEYBOARD_SHORTCUT',
+      commandName,
+      shortcut
+    });
+
+    if (response && response.success) {
+      showShortcutSuccess(inputElement, response.message || 'Shortcut updated');
+      return true;
+    } else {
+      showShortcutError(inputElement, response?.error || 'Failed to update shortcut');
+      return false;
+    }
+  } catch (error) {
+    console.error('[Settings] Failed to update keyboard shortcut:', error);
+    showShortcutError(inputElement, error.message);
+    return false;
+  }
+}
+
+/**
+ * Update UI elements with loaded keyboard shortcuts
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
+ * @param {Array} commands - Array of command objects
+ */
+function _updateShortcutInputs(commands) {
+  for (const cmd of commands) {
+    const inputId = getShortcutInputId(cmd.name);
+    const inputElement = document.getElementById(inputId);
+    if (!inputElement) continue;
+
+    inputElement.value = cmd.shortcut || '';
+    inputElement.dataset.currentShortcut = cmd.shortcut || '';
+  }
+}
+
+/**
+ * Load current keyboard shortcuts from browser
+ * v1.6.3.11-v3 - FIX Issue #5: Reflect browser's actual shortcuts in UI
+ */
+async function loadKeyboardShortcuts() {
+  console.log('[Settings] Loading keyboard shortcuts...');
+
+  try {
+    const response = await browserAPI.runtime.sendMessage({
+      action: 'GET_KEYBOARD_SHORTCUTS'
+    });
+
+    if (!response || !response.success) {
+      console.warn('[Settings] Failed to load shortcuts:', response?.error);
+      return [];
+    }
+
+    console.log('[Settings] Keyboard shortcuts loaded:', response.commands);
+    _updateShortcutInputs(response.commands);
+    return response.commands;
+  } catch (error) {
+    console.error('[Settings] Error loading keyboard shortcuts:', error);
+    return [];
+  }
+}
+
+/**
+ * Get input element ID for a command name
+ * v1.6.3.11-v3 - FIX Issue #5: Map command names to UI element IDs
+ * @param {string} commandName - Command name from manifest
+ * @returns {string} Input element ID
+ */
+function getShortcutInputId(commandName) {
+  const mapping = {
+    'toggle-quick-tabs-manager': 'shortcut-toggle-manager',
+    _execute_sidebar_action: 'shortcut-toggle-sidebar'
+  };
+  return mapping[commandName] || `shortcut-${commandName}`;
+}
+
+/**
+ * Listen for external shortcut changes from Firefox settings
+ * v1.6.3.11-v3 - FIX Issue #2: Sync external changes to UI
+ */
+function listenForShortcutChanges() {
+  browserAPI.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+    if (message.type === 'KEYBOARD_SHORTCUT_CHANGED') {
+      console.log('[Settings] External shortcut change detected:', message.changeInfo);
+      // Reload shortcuts to update UI
+      loadKeyboardShortcuts();
+    }
+  });
+}
+
+// ==================== END KEYBOARD SHORTCUT FUNCTIONS ====================
+
 // Load settings on popup open
 loadSettings();
+
+// v1.6.3.11-v3 - FIX Issue #5: Initialize keyboard shortcut listeners
+listenForShortcutChanges();

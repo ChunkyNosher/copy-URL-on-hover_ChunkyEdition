@@ -2421,6 +2421,133 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
   }
 });
 
+// ==================== v1.6.3.11-v3 KEYBOARD SHORTCUT UPDATE HANDLER ====================
+// FIX Issue #2: Dynamic shortcut update mechanism via browser.commands.update()
+
+/**
+ * Parse and categorize keyboard shortcut update error
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce complexity
+ * @param {Error} err - Error from browser.commands.update()
+ * @param {string} shortcut - The shortcut that failed
+ * @returns {{ errorCode: string, errorMessage: string }}
+ */
+function _parseShortcutUpdateError(err, shortcut) {
+  const errMsg = err.message || '';
+
+  if (errMsg.includes('Invalid shortcut')) {
+    return {
+      errorCode: 'INVALID_SHORTCUT',
+      errorMessage: `Invalid shortcut format: ${shortcut}. Use format like "Ctrl+Alt+Z" or "Alt+Shift+S".`
+    };
+  }
+
+  if (errMsg.includes('already in use')) {
+    return {
+      errorCode: 'SHORTCUT_CONFLICT',
+      errorMessage: `Shortcut "${shortcut}" is already in use by another extension or browser feature.`
+    };
+  }
+
+  return {
+    errorCode: 'UPDATE_FAILED',
+    errorMessage: errMsg
+  };
+}
+
+/**
+ * Update a keyboard shortcut via browser.commands.update()
+ * v1.6.3.11-v3 - FIX Issue #2: Dynamic shortcut update mechanism
+ * @param {Object} msg - Message containing commandName and shortcut
+ * @param {Object} _sender - Message sender (unused)
+ * @returns {Promise<Object>} Result with success status
+ */
+messageRouter.register('UPDATE_KEYBOARD_SHORTCUT', async (msg, _sender) => {
+  const { commandName, shortcut } = msg;
+
+  console.log('[KEYBOARD_CMD] UPDATE_KEYBOARD_SHORTCUT received:', {
+    commandName,
+    shortcut,
+    timestamp: Date.now()
+  });
+
+  // Validate inputs
+  if (!commandName || typeof commandName !== 'string') {
+    console.error('[KEYBOARD_CMD] Invalid commandName:', commandName);
+    return { success: false, error: 'Invalid command name', code: 'INVALID_COMMAND_NAME' };
+  }
+
+  // Check if browser.commands.update is available
+  if (!browser?.commands?.update) {
+    console.error('[KEYBOARD_CMD] browser.commands.update not available');
+    return { success: false, error: 'Keyboard shortcut API not available', code: 'API_UNAVAILABLE' };
+  }
+
+  try {
+    // Call browser.commands.update()
+    await browser.commands.update({
+      name: commandName,
+      shortcut: shortcut || '' // Empty string clears the shortcut
+    });
+
+    console.log('[KEYBOARD_CMD] Shortcut updated successfully:', {
+      commandName,
+      shortcut: shortcut || '(cleared)'
+    });
+
+    return {
+      success: true,
+      commandName,
+      shortcut: shortcut || null,
+      message: shortcut ? `Shortcut updated to ${shortcut}` : 'Shortcut cleared'
+    };
+  } catch (err) {
+    console.error('[KEYBOARD_CMD] Failed to update shortcut:', {
+      commandName,
+      shortcut,
+      error: err.message
+    });
+
+    const { errorCode, errorMessage } = _parseShortcutUpdateError(err, shortcut);
+    return { success: false, error: errorMessage, code: errorCode };
+  }
+});
+
+/**
+ * Get all registered keyboard shortcuts
+ * v1.6.3.11-v3 - FIX Issue #5: Allow sidebar to query current shortcuts
+ * @returns {Promise<Object>} Object with commands array
+ */
+messageRouter.register('GET_KEYBOARD_SHORTCUTS', async () => {
+  console.log('[KEYBOARD_CMD] GET_KEYBOARD_SHORTCUTS received');
+
+  if (!browser?.commands?.getAll) {
+    console.error('[KEYBOARD_CMD] browser.commands.getAll not available');
+    return { success: false, error: 'Keyboard shortcut API not available', code: 'API_UNAVAILABLE' };
+  }
+
+  try {
+    const commands = await browser.commands.getAll();
+    console.log('[KEYBOARD_CMD] Retrieved shortcuts:', {
+      count: commands.length,
+      commands: commands.map(c => ({ name: c.name, shortcut: c.shortcut }))
+    });
+
+    return {
+      success: true,
+      commands: commands.map(cmd => ({
+        name: cmd.name,
+        description: cmd.description,
+        shortcut: cmd.shortcut || null
+      }))
+    };
+  } catch (err) {
+    console.error('[KEYBOARD_CMD] Failed to get shortcuts:', err.message);
+    return { success: false, error: err.message, code: 'GET_FAILED' };
+  }
+});
+
+// ==================== END KEYBOARD SHORTCUT UPDATE HANDLER ====================
+
 console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
@@ -2439,8 +2566,68 @@ chrome.runtime.onMessage.addListener(messageRouter.createListener());
 console.log('[Background] ✓ onMessage listener registered - GET_CURRENT_TAB_ID ready');
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
-// v1.6.0 - Removed obsolete toggle-minimized-manager listener
-// Now handled by the toggle-quick-tabs-manager listener below (line 1240)
+// v1.6.3.11-v3 - FIX Issue #1: Add browser.commands.onCommand listener for logging
+// NOTE: The actual command handling is done at line ~3745 with toggle logic
+// This listener adds comprehensive logging with [KEYBOARD_CMD] prefix
+
+/**
+ * Handle keyboard command from browser.commands API (logging only)
+ * v1.6.3.11-v3 - FIX Issue #1: Add detailed logging for keyboard commands
+ * @param {string} command - The command name from manifest.json
+ */
+function handleKeyboardCommandLogging(command) {
+  const timestamp = Date.now();
+  console.log('[KEYBOARD_CMD] Command received:', {
+    command,
+    timestamp,
+    backgroundUptime: timestamp - backgroundStartupTime
+  });
+
+  // Log specific command details (actual handling is done by listener at line ~3745)
+  switch (command) {
+    case 'toggle-quick-tabs-manager':
+      console.log('[KEYBOARD_CMD] toggle-quick-tabs-manager triggered (handler will toggle sidebar)');
+      break;
+
+    case '_execute_sidebar_action':
+      console.log('[KEYBOARD_CMD] _execute_sidebar_action triggered (Firefox handles toggle)');
+      break;
+
+    default:
+      console.warn('[KEYBOARD_CMD] Unknown command:', command);
+  }
+}
+
+// Register the keyboard command listener for logging
+if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCommand) {
+  browser.commands.onCommand.addListener(handleKeyboardCommandLogging);
+  console.log('[KEYBOARD_CMD] ✓ browser.commands.onCommand logging listener registered');
+} else if (typeof chrome !== 'undefined' && chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener(handleKeyboardCommandLogging);
+  console.log('[KEYBOARD_CMD] ✓ chrome.commands.onCommand logging listener registered');
+} else {
+  console.warn('[KEYBOARD_CMD] ⚠ browser.commands API not available');
+}
+
+// v1.6.3.11-v3 - FIX Issue #2: Listen for external shortcut changes
+// This syncs UI when user changes shortcuts via Firefox's addon settings
+if (typeof browser !== 'undefined' && browser.commands && browser.commands.onChanged) {
+  browser.commands.onChanged.addListener(changeInfo => {
+    console.log('[KEYBOARD_CMD] Shortcut changed externally:', changeInfo);
+    // Broadcast to any open settings panels
+    browser.runtime
+      .sendMessage({
+        type: 'KEYBOARD_SHORTCUT_CHANGED',
+        changeInfo,
+        timestamp: Date.now()
+      })
+      .catch(() => {
+        // No listeners - that's OK
+      });
+  });
+  console.log('[KEYBOARD_CMD] ✓ browser.commands.onChanged listener registered');
+}
+
 // ==================== END KEYBOARD COMMAND LISTENER ====================
 
 // Handle sidePanel toggle for Chrome (optional)
