@@ -220,35 +220,66 @@ async function _getValidRecoveryData() {
 }
 
 /**
- * Log and apply recovery actions
- * v1.6.3.10-v11 - FIX Issue #17: Helper to reduce complexity
+ * Log recovery actions for adoptions and transactions
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _applyRecoveryData
  * @private
  * @param {Object} recoveryData - Recovery data from storage
  */
-function _applyRecoveryData(recoveryData) {
-  // Log recovery actions
+function _logRecoveryActions(recoveryData) {
   if (recoveryData.adoptions?.length > 0) {
     console.log(
       '[Background] RECOVERY_ACTION: Restoring pending adoptions:',
       recoveryData.adoptions.length
     );
   }
-
   if (recoveryData.transactions?.length > 0) {
     console.log(
       '[Background] RECOVERY_ACTION: Marking transactions as stale:',
       recoveryData.transactions.length
     );
   }
+}
 
-  // Use stored global state if current is empty
-  if (globalQuickTabState.tabs.length === 0 && recoveryData.globalState?.tabs?.length > 0) {
-    console.log('[Background] RECOVERY_ACTION: Restoring global state from recovery data:', {
-      tabCount: recoveryData.globalState.tabs.length
-    });
-    globalQuickTabState.tabs = recoveryData.globalState.tabs;
-    globalQuickTabState.lastUpdate = recoveryData.globalState.lastUpdate;
-    globalQuickTabState.saveId = recoveryData.globalState.saveId;
+/**
+ * Check if global state should be restored from recovery data
+ * v1.6.3.11-v5 - FIX Code Health: Extracted predicate
+ * @private
+ * @param {Object} recoveryData - Recovery data from storage
+ * @returns {boolean} True if should restore
+ */
+function _shouldRestoreGlobalState(recoveryData) {
+  const currentEmpty = globalQuickTabState.tabs.length === 0;
+  const recoveryHasTabs = recoveryData.globalState?.tabs?.length > 0;
+  return currentEmpty && recoveryHasTabs;
+}
+
+/**
+ * Restore global state from recovery data
+ * v1.6.3.11-v5 - FIX Code Health: Extracted state restoration
+ * @private
+ * @param {Object} globalState - Global state to restore
+ */
+function _restoreGlobalState(globalState) {
+  console.log('[Background] RECOVERY_ACTION: Restoring global state from recovery data:', {
+    tabCount: globalState.tabs.length
+  });
+  globalQuickTabState.tabs = globalState.tabs;
+  globalQuickTabState.lastUpdate = globalState.lastUpdate;
+  globalQuickTabState.saveId = globalState.saveId;
+}
+
+/**
+ * Log and apply recovery actions
+ * v1.6.3.10-v11 - FIX Issue #17: Helper to reduce complexity
+ * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
+ * @private
+ * @param {Object} recoveryData - Recovery data from storage
+ */
+function _applyRecoveryData(recoveryData) {
+  _logRecoveryActions(recoveryData);
+
+  if (_shouldRestoreGlobalState(recoveryData)) {
+    _restoreGlobalState(recoveryData.globalState);
   }
 }
 
@@ -2531,8 +2562,69 @@ function _parseShortcutUpdateError(err, shortcut) {
 }
 
 /**
+ * Validate command name for shortcut update
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from UPDATE_KEYBOARD_SHORTCUT
+ * @private
+ * @param {string} commandName - Command name to validate
+ * @returns {Object|null} Error object if invalid, null if valid
+ */
+function _validateCommandName(commandName) {
+  if (!commandName || typeof commandName !== 'string') {
+    console.error('[KEYBOARD_CMD] Invalid commandName:', commandName);
+    return { success: false, error: 'Invalid command name', code: 'INVALID_COMMAND_NAME' };
+  }
+  return null;
+}
+
+/**
+ * Check if browser.commands.update API is available
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from UPDATE_KEYBOARD_SHORTCUT
+ * @private
+ * @returns {Object|null} Error object if unavailable, null if available
+ */
+function _checkCommandsApiAvailable() {
+  if (!browser?.commands?.update) {
+    console.error('[KEYBOARD_CMD] browser.commands.update not available');
+    return {
+      success: false,
+      error: 'Keyboard shortcut API not available',
+      code: 'API_UNAVAILABLE'
+    };
+  }
+  return null;
+}
+
+/**
+ * Execute browser.commands.update and return result
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from UPDATE_KEYBOARD_SHORTCUT
+ * @private
+ * @param {string} commandName - Command name
+ * @param {string} shortcut - Shortcut key combination
+ * @returns {Promise<Object>} Result object
+ */
+async function _executeShortcutUpdate(commandName, shortcut) {
+  await browser.commands.update({
+    name: commandName,
+    shortcut: shortcut || ''
+  });
+
+  console.log('[KEYBOARD_CMD] Shortcut updated successfully:', {
+    commandName,
+    shortcut: shortcut || '(cleared)'
+  });
+
+  return {
+    success: true,
+    commandName,
+    shortcut: shortcut || null,
+    message: shortcut ? `Shortcut updated to ${shortcut}` : 'Shortcut cleared'
+  };
+}
+
+/**
  * Update a keyboard shortcut via browser.commands.update()
  * v1.6.3.11-v3 - FIX Issue #2: Dynamic shortcut update mechanism
+ * v1.6.3.11-v5 - FIX Code Health: Reduced complexity via extraction
  * @param {Object} msg - Message containing commandName and shortcut
  * @param {Object} _sender - Message sender (unused)
  * @returns {Promise<Object>} Result with success status
@@ -2546,47 +2638,20 @@ messageRouter.register('UPDATE_KEYBOARD_SHORTCUT', async (msg, _sender) => {
     timestamp: Date.now()
   });
 
-  // Validate inputs
-  if (!commandName || typeof commandName !== 'string') {
-    console.error('[KEYBOARD_CMD] Invalid commandName:', commandName);
-    return { success: false, error: 'Invalid command name', code: 'INVALID_COMMAND_NAME' };
-  }
+  const validationError = _validateCommandName(commandName);
+  if (validationError) return validationError;
 
-  // Check if browser.commands.update is available
-  if (!browser?.commands?.update) {
-    console.error('[KEYBOARD_CMD] browser.commands.update not available');
-    return {
-      success: false,
-      error: 'Keyboard shortcut API not available',
-      code: 'API_UNAVAILABLE'
-    };
-  }
+  const apiError = _checkCommandsApiAvailable();
+  if (apiError) return apiError;
 
   try {
-    // Call browser.commands.update()
-    await browser.commands.update({
-      name: commandName,
-      shortcut: shortcut || '' // Empty string clears the shortcut
-    });
-
-    console.log('[KEYBOARD_CMD] Shortcut updated successfully:', {
-      commandName,
-      shortcut: shortcut || '(cleared)'
-    });
-
-    return {
-      success: true,
-      commandName,
-      shortcut: shortcut || null,
-      message: shortcut ? `Shortcut updated to ${shortcut}` : 'Shortcut cleared'
-    };
+    return await _executeShortcutUpdate(commandName, shortcut);
   } catch (err) {
     console.error('[KEYBOARD_CMD] Failed to update shortcut:', {
       commandName,
       shortcut,
       error: err.message
     });
-
     const { errorCode, errorMessage } = _parseShortcutUpdateError(err, shortcut);
     return { success: false, error: errorMessage, code: errorCode };
   }
@@ -2763,40 +2828,53 @@ if (chrome.sidePanel) {
 }
 
 /**
- * Apply unified format state to global state from storage
- * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
- * v1.6.3.6-v12 - FIX Issue #7: Enhanced logging with before/after state snapshots
- * @param {Object} newValue - Storage value with tabs array
+ * Create state snapshot for before/after comparison logging
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _applyUnifiedFormatFromStorage
+ * @private
+ * @param {Object} state - Global Quick Tab state
+ * @returns {Object} State snapshot
  */
-function _applyUnifiedFormatFromStorage(newValue) {
-  // v1.6.3.6-v12 - FIX Issue #7: Log before state for before/after comparison
-  const beforeState = {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    saveId: globalQuickTabState.saveId,
-    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id) // Sample first 5
+function _createStateSnapshot(state) {
+  return {
+    tabCount: state.tabs?.length || 0,
+    saveId: state.saveId,
+    tabIds: (state.tabs || []).slice(0, 5).map(t => t.id)
   };
+}
 
-  globalQuickTabState.tabs = newValue.tabs;
-  globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
-  // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
-  globalQuickTabState.saveId = newValue.saveId || null;
-
-  // v1.6.3.6-v12 - FIX Issue #7: Log after state with comparison
-  const afterState = {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    saveId: globalQuickTabState.saveId,
-    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id)
-  };
-
+/**
+ * Log cache update with before/after comparison
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _applyUnifiedFormatFromStorage
+ * @private
+ * @param {Object} beforeState - State before update
+ * @param {Object} afterState - State after update
+ */
+function _logCacheUpdate(beforeState, afterState) {
   console.log('[Background] v1.6.3.6-v12 CACHE_UPDATE:', {
     before: beforeState,
     after: afterState,
     delta: afterState.tabCount - beforeState.tabCount,
     saveIdChanged: beforeState.saveId !== afterState.saveId
   });
-
-  // Store for debugging
   _lastCacheUpdateLog = { beforeState, afterState, timestamp: Date.now() };
+}
+
+/**
+ * Apply unified format state to global state from storage
+ * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
+ * v1.6.3.6-v12 - FIX Issue #7: Enhanced logging with before/after state snapshots
+ * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
+ * @param {Object} newValue - Storage value with tabs array
+ */
+function _applyUnifiedFormatFromStorage(newValue) {
+  const beforeState = _createStateSnapshot(globalQuickTabState);
+
+  globalQuickTabState.tabs = newValue.tabs;
+  globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
+  globalQuickTabState.saveId = newValue.saveId || null;
+
+  const afterState = _createStateSnapshot(globalQuickTabState);
+  _logCacheUpdate(beforeState, afterState);
 }
 
 /**
@@ -3539,25 +3617,23 @@ function _logBroadcastDecision(decision, reason, targetTabCount = 0, filteredCou
   });
 }
 
-function _processStorageUpdate(newValue) {
-  // Handle empty/missing tabs
-  if (_isTabsEmptyOrMissing(newValue)) {
-    _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
-    _clearCacheForEmptyStorage(newValue);
-    return;
-  }
-
-  // Reset counters for valid tabs
+/**
+ * Reset counters and timestamp for valid tabs state
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _processStorageUpdate
+ * @private
+ */
+function _resetTabCounters() {
   consecutiveZeroTabReads = 0;
   lastNonEmptyStateTimestamp = Date.now();
+}
 
-  // Check if state actually requires update
-  if (!_shouldUpdateState(newValue)) {
-    _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
-    return;
-  }
-
-  // Filter out tabs with invalid URLs and update cache
+/**
+ * Filter and update cache with valid tabs
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _processStorageUpdate
+ * @private
+ * @param {Object} newValue - New storage value
+ */
+function _filterAndUpdateCache(newValue) {
   const filteredValue = filterValidTabs(newValue);
   const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
   _logBroadcastDecision(
@@ -3567,6 +3643,30 @@ function _processStorageUpdate(newValue) {
     filteredCount
   );
   _updateGlobalStateFromStorage(filteredValue);
+}
+
+/**
+ * Process storage update and update global cache
+ * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
+ * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
+ * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
+ * @param {Object} newValue - New storage value
+ */
+function _processStorageUpdate(newValue) {
+  if (_isTabsEmptyOrMissing(newValue)) {
+    _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
+    _clearCacheForEmptyStorage(newValue);
+    return;
+  }
+
+  _resetTabCounters();
+
+  if (!_shouldUpdateState(newValue)) {
+    _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
+    return;
+  }
+
+  _filterAndUpdateCache(newValue);
 }
 
 /**
@@ -4283,17 +4383,11 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
 }
 
 /**
- * Handle incoming port connection
- * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
- * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
- * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
- * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Enhanced port state transition logging
+ * Log port connection state transition
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
+ * @private
  */
-function handlePortConnect(port) {
-  const connectTime = Date.now();
-  const { type, tabId, origin } = _parsePortName(port);
-
-  // v1.6.3.11-v2 - FIX Issue #8: Log DISCONNECTED → CONNECTING transition
+function _logPortConnecting(port, tabId, type, origin) {
   console.log('[PORT_LIFECYCLE] STATE_TRANSITION: DISCONNECTED → CONNECTING', {
     portName: port.name,
     tabId,
@@ -4301,8 +4395,6 @@ function handlePortConnect(port) {
     origin,
     timestamp: Date.now()
   });
-
-  // v1.6.4.15 - FIX Issue #16: Log port lifecycle - created
   console.log('[PORT_LIFECYCLE] Port created:', {
     event: 'created',
     portName: port.name,
@@ -4312,33 +4404,33 @@ function handlePortConnect(port) {
     isBackgroundInitialized: isInitialized,
     timestamp: new Date().toISOString()
   });
+}
 
-  const portId = registerPort(port, origin, tabId, type);
-  port._portId = portId;
-
-  _sendBackgroundHandshake(port, portId, tabId, origin);
-
-  // v1.6.3.11-v2 - FIX Issue #8: Log CONNECTING → CONNECTED transition
+/**
+ * Log port connected state with listener registration
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
+ * @private
+ */
+function _logPortConnected(portId, portName, tabId) {
   console.log('[PORT_LIFECYCLE] STATE_TRANSITION: CONNECTING → CONNECTED', {
     portId,
-    portName: port.name,
+    portName,
     tabId,
     timestamp: Date.now()
   });
-
-  // v1.6.3.11-v2 - FIX Issue #8: Log listener registration completion
   console.log(
     '[PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: onMessage and onDisconnect attached',
-    {
-      portId,
-      hasOnMessage: true,
-      hasOnDisconnect: true,
-      timestamp: Date.now()
-    }
+    { portId, hasOnMessage: true, hasOnDisconnect: true, timestamp: Date.now() }
   );
+}
 
-  // v1.6.4.15 - FIX Issue #16: Enhanced port message handler with lifecycle logging
-  port.onMessage.addListener(message => {
+/**
+ * Create onMessage handler for port
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
+ * @private
+ */
+function _createPortMessageHandler(port, portId) {
+  return message => {
     console.log('[PORT_LIFECYCLE] Message sent:', {
       event: 'message-sent',
       portId,
@@ -4346,13 +4438,19 @@ function handlePortConnect(port) {
       timestamp: new Date().toISOString()
     });
     handlePortMessage(port, portId, message);
-  });
+  };
+}
 
-  port.onDisconnect.addListener(() => {
+/**
+ * Create onDisconnect handler for port
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
+ * @private
+ */
+function _createPortDisconnectHandler(portId, tabId, origin, connectTime) {
+  return () => {
     const error = browser.runtime.lastError;
     const connectionDuration = Date.now() - connectTime;
 
-    // v1.6.3.11-v2 - FIX Issue #8: Log CONNECTED → DISCONNECTED transition
     console.log('[PORT_LIFECYCLE] STATE_TRANSITION: CONNECTED → DISCONNECTED', {
       portId,
       tabId,
@@ -4361,7 +4459,6 @@ function handlePortConnect(port) {
       timestamp: Date.now()
     });
 
-    // v1.6.4.15 - FIX Issue #16: Log port lifecycle - closed
     console.log('[PORT_LIFECYCLE] Port closed:', {
       event: 'closed',
       portId,
@@ -4377,7 +4474,31 @@ function handlePortConnect(port) {
       logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
     }
     unregisterPort(portId, 'client-disconnect');
-  });
+  };
+}
+
+/**
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
+ * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Enhanced port state transition logging
+ * v1.6.3.11-v5 - FIX Code Health: Reduced line count via extraction
+ */
+function handlePortConnect(port) {
+  const connectTime = Date.now();
+  const { type, tabId, origin } = _parsePortName(port);
+
+  _logPortConnecting(port, tabId, type, origin);
+
+  const portId = registerPort(port, origin, tabId, type);
+  port._portId = portId;
+
+  _sendBackgroundHandshake(port, portId, tabId, origin);
+  _logPortConnected(portId, port.name, tabId);
+
+  port.onMessage.addListener(_createPortMessageHandler(port, portId));
+  port.onDisconnect.addListener(_createPortDisconnectHandler(portId, tabId, origin, connectTime));
 }
 
 /**
@@ -5020,73 +5141,33 @@ async function _broadcastAdoptionCompletion({
 }
 
 /**
- * Handle adopt action (atomic single write)
- * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
- * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
- * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
- * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
- * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
- * @param {Object} payload - Adoption payload
+ * Extract position from adopted tab
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
+ * @private
+ * @param {Object} state - Storage state
+ * @param {number} tabIndex - Index of tab in array
+ * @returns {Object|null} Position object or null
  */
-async function handleAdoptAction(payload) {
-  const { quickTabId, targetTabId, correlationId: payloadCorrelationId } = payload;
-  const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
-  const startTime = Date.now();
+function _extractAdoptedTabPosition(state, tabIndex) {
+  const isValidIndex = tabIndex >= 0 && tabIndex < state.tabs.length;
+  const adoptedTab = isValidIndex ? state.tabs[tabIndex] : null;
+  return adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
+}
 
-  // v1.6.4.15 - FIX Issue #20: Log Manager action requested
-  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
-    action: 'ADOPT_TAB',
-    quickTabId,
-    targetTabId,
-    correlationId,
-    timestamp: startTime
-  });
-
-  // v1.6.3.11-v3 - FIX Issue #78: Validate adoption capacity before starting
-  const capacityCheck = _validateAdoptionCapacity(quickTabId, targetTabId);
-  if (!capacityCheck.valid) {
-    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', capacityCheck);
-    return { success: false, error: capacityCheck.reason, code: 'CAPACITY_EXCEEDED' };
-  }
-
-  // Validate prerequisites
-  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
-  if (!validation.valid) return { success: false, error: validation.error };
-
-  // Read state and find Quick Tab
-  const result = await browser.storage.local.get('quick_tabs_state_v2');
-  const state = result?.quick_tabs_state_v2;
-
-  const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
-  if (!findResult.found) return { success: false, error: findResult.error };
-
-  const { oldOriginTabId, tabIndex } = findResult;
-  const adoptedTab = tabIndex >= 0 && tabIndex < state.tabs.length ? state.tabs[tabIndex] : null;
-  const position = adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
-
-  // Write and verify state
-  const writeResult = await _writeAndVerifyAdoptionState({
-    state,
-    quickTabId,
-    targetTabId,
-    correlationId,
-    startTime
-  });
-  if (!writeResult.success) return writeResult;
-
-  // Update cache and broadcast
-  _updateCacheAndHostTracking(quickTabId, targetTabId);
-  const adoptionDuration = Date.now() - startTime;
-  await _broadcastAdoptionCompletion({
-    quickTabId,
-    oldOriginTabId,
-    targetTabId,
-    correlationId,
-    adoptionDuration,
-    position
-  });
-
-  // v1.6.4.15 - FIX Issue #20: Log successful completion
+/**
+ * Log and return adoption success result
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+function _createAdoptionSuccessResult({
+  quickTabId,
+  oldOriginTabId,
+  targetTabId,
+  adoptionDuration,
+  position,
+  correlationId,
+  startTime
+}) {
   console.log('[Background] MANAGER_ACTION_COMPLETED:', {
     action: 'ADOPT_TAB',
     quickTabId,
@@ -5104,6 +5185,78 @@ async function handleAdoptAction(payload) {
     adoptionDuration,
     position
   };
+}
+
+/**
+ * Handle adopt action (atomic single write)
+ * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
+ * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
+ * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
+ * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
+ * v1.6.3.11-v5 - FIX Code Health: Further extraction to reduce cc
+ * @param {Object} payload - Adoption payload
+ */
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId, correlationId: payloadCorrelationId } = payload;
+  const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
+  const startTime = Date.now();
+
+  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    timestamp: startTime
+  });
+
+  const capacityCheck = _validateAdoptionCapacity(quickTabId, targetTabId);
+  if (!capacityCheck.valid) {
+    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', capacityCheck);
+    return { success: false, error: capacityCheck.reason, code: 'CAPACITY_EXCEEDED' };
+  }
+
+  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
+  if (!validation.valid) return { success: false, error: validation.error };
+
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  const state = result?.quick_tabs_state_v2;
+
+  const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
+  if (!findResult.found) return { success: false, error: findResult.error };
+
+  const { oldOriginTabId, tabIndex } = findResult;
+  const position = _extractAdoptedTabPosition(state, tabIndex);
+
+  const writeResult = await _writeAndVerifyAdoptionState({
+    state,
+    quickTabId,
+    targetTabId,
+    correlationId,
+    startTime
+  });
+  if (!writeResult.success) return writeResult;
+
+  _updateCacheAndHostTracking(quickTabId, targetTabId);
+  const adoptionDuration = Date.now() - startTime;
+  await _broadcastAdoptionCompletion({
+    quickTabId,
+    oldOriginTabId,
+    targetTabId,
+    correlationId,
+    adoptionDuration,
+    position
+  });
+
+  return _createAdoptionSuccessResult({
+    quickTabId,
+    oldOriginTabId,
+    targetTabId,
+    adoptionDuration,
+    position,
+    correlationId,
+    startTime
+  });
 }
 
 /**
@@ -6459,10 +6612,71 @@ async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlation
 }
 
 /**
+ * Process settled results from Promise.allSettled for deletion broadcast
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _broadcastDeletionToAllTabs
+ * @private
+ * @param {Array} settledResults - Results from Promise.allSettled
+ * @param {string} quickTabId - Quick Tab ID being deleted
+ * @param {string} corrId - Correlation ID
+ * @returns {Array} Processed results
+ */
+function _processDeletionSettledResults(settledResults, quickTabId, corrId) {
+  return settledResults.map(result => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    }
+    console.warn('[Background] DELETION_BROADCAST_PARTIAL_FAILURE:', {
+      quickTabId,
+      error: result.reason?.message || 'Unknown error',
+      correlationId: corrId
+    });
+    return { sent: false, skipped: false, error: result.reason?.message };
+  });
+}
+
+/**
+ * Calculate broadcast counts from results
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _broadcastDeletionToAllTabs
+ * @private
+ * @param {Array} results - Broadcast results array
+ * @returns {Object} Counts object
+ */
+function _calculateBroadcastCounts(results) {
+  return {
+    successCount: results.filter(r => r.sent).length,
+    skipCount: results.filter(r => r.skipped).length,
+    failCount: results.filter(r => !r.sent && !r.skipped && r.error).length
+  };
+}
+
+/**
+ * Log deletion broadcast completion
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from _broadcastDeletionToAllTabs
+ * @private
+ */
+function _logDeletionBroadcastComplete(quickTabId, tabs, counts, corrId) {
+  logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
+    totalTabs: tabs.length,
+    successCount: counts.successCount,
+    skipCount: counts.skipCount
+  });
+
+  console.log('[Background] Deletion broadcast complete:', {
+    quickTabId,
+    totalTabs: tabs.length,
+    successCount: counts.successCount,
+    skipCount: counts.skipCount,
+    failCount: counts.failCount,
+    correlationId: corrId
+  });
+}
+
+/**
  * Broadcast deletion event to all content scripts except the sender tab
  * v1.6.3.7 - FIX Issue #3: Unified deletion behavior across UI and Manager paths
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging with correlation IDs
  * v1.6.3.6-v12 - FIX Issue #6: Added acknowledgment tracking for message ordering
+ * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
  * @private
  * @param {string} quickTabId - Quick Tab ID being deleted
  * @param {string} source - Source of deletion
@@ -6470,7 +6684,6 @@ async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlation
  * @param {string} correlationId - Correlation ID for end-to-end tracing
  */
 async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, correlationId) {
-  // v1.6.3.6-v5 - FIX Issue #4e: Use provided correlation ID or generate one
   const corrId = correlationId || `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
 
   console.log('[Background] Broadcasting deletion to all tabs:', {
@@ -6482,55 +6695,18 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
 
   try {
     const tabs = await browser.tabs.query({});
-
-    // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
     const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
-
-    // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
 
-    // v1.6.3.11-v3 - FIX Issue #74: Use Promise.allSettled instead of Promise.all
-    // This ensures we get results from all tabs even if some fail
     const settledResults = await Promise.allSettled(
       tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
     );
 
-    // v1.6.3.11-v3 - FIX Issue #74: Process mixed success/failure results
-    const results = settledResults.map(result => {
-      if (result.status === 'fulfilled') {
-        return result.value;
-      }
-      // Failed - log and return as not sent
-      console.warn('[Background] DELETION_BROADCAST_PARTIAL_FAILURE:', {
-        quickTabId,
-        error: result.reason?.message || 'Unknown error',
-        correlationId: corrId
-      });
-      return { sent: false, skipped: false, error: result.reason?.message };
-    });
+    const results = _processDeletionSettledResults(settledResults, quickTabId, corrId);
+    const counts = _calculateBroadcastCounts(results);
 
-    const successCount = results.filter(r => r.sent).length;
-    const skipCount = results.filter(r => r.skipped).length;
-    const failCount = results.filter(r => !r.sent && !r.skipped && r.error).length;
-
-    // v1.6.3.6-v12 - FIX Issue #6: Wait for acknowledgments (with timeout)
     await _waitForDeletionAcks(corrId, ackPromise);
-
-    // v1.6.3.6-v5 - FIX Issue #4e: Log deletion broadcast complete with correlation ID
-    logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
-      totalTabs: tabs.length,
-      successCount,
-      skipCount
-    });
-
-    console.log('[Background] Deletion broadcast complete:', {
-      quickTabId,
-      totalTabs: tabs.length,
-      successCount,
-      skipCount,
-      failCount, // v1.6.3.11-v3 - FIX Issue #74: Log failure count
-      correlationId: corrId
-    });
+    _logDeletionBroadcastComplete(quickTabId, tabs, counts, corrId);
   } catch (err) {
     console.error('[Background] Error broadcasting deletion:', err.message);
   }
@@ -6646,11 +6822,6 @@ const VALID_MANAGER_COMMANDS = new Set([
 
 /**
  * Log Manager action result
- * v1.6.4.16 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
- * @private
- */
-/**
- * Log Manager action result
  * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 7 parameters
  * @param {Object} opts - Logging options
  */
@@ -6677,10 +6848,99 @@ function _logManagerActionResult({
 }
 
 /**
+ * Validate command and return rejection result if invalid
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from executeManagerCommand
+ * @private
+ */
+function _validateManagerCommand(command, quickTabId, correlationId) {
+  if (!VALID_MANAGER_COMMANDS.has(command)) {
+    console.warn('[Background] MANAGER_ACTION_REJECTED:', {
+      action: command,
+      quickTabId,
+      correlationId,
+      reason: 'invalid-command'
+    });
+    return { success: false, error: `Unknown command: ${command}` };
+  }
+  return null;
+}
+
+/**
+ * Execute command via messaging with timeout
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from executeManagerCommand
+ * @private
+ */
+function _executeCommandViaMessaging(hostTabId, executeMessage) {
+  return Promise.race([
+    browser.tabs.sendMessage(hostTabId, executeMessage),
+    createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
+  ]);
+}
+
+/**
+ * Handle fallback execution via Scripting API
+ * v1.6.3.11-v5 - FIX Code Health: Extracted from executeManagerCommand
+ * @private
+ */
+async function _handleScriptingFallback({
+  hostTabId,
+  command,
+  quickTabId,
+  correlationId,
+  startTime,
+  messagingError
+}) {
+  console.log('[Background] Messaging failed, falling back to Scripting API:', {
+    command,
+    quickTabId,
+    correlationId,
+    error: messagingError.message
+  });
+
+  try {
+    const fallbackResult = await _executeViaScripting(
+      hostTabId,
+      command,
+      { quickTabId },
+      correlationId
+    );
+    _logManagerActionResult({
+      action: command,
+      quickTabId,
+      hostTabId,
+      correlationId,
+      result: fallbackResult,
+      startTime,
+      method: 'scripting-fallback'
+    });
+    return fallbackResult;
+  } catch (fallbackErr) {
+    _logManagerActionResult({
+      action: command,
+      quickTabId,
+      hostTabId,
+      correlationId,
+      result: { success: false, error: fallbackErr.message },
+      startTime,
+      method: 'scripting-fallback'
+    });
+    console.error('[Background] Both messaging and scripting failed:', {
+      command,
+      quickTabId,
+      hostTabId,
+      messagingError: messagingError.message,
+      scriptingError: fallbackErr.message
+    });
+    return { success: false, error: fallbackErr.message, fallbackFailed: true };
+  }
+}
+
+/**
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
  * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
  * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (99 -> ~55)
+ * v1.6.3.11-v5 - FIX Code Health: Further extraction to meet 70 line limit
  * @param {string} command - Command to execute
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
@@ -6698,16 +6958,8 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     timestamp: startTime
   });
 
-  // Validate command against allowlist
-  if (!VALID_MANAGER_COMMANDS.has(command)) {
-    console.warn('[Background] MANAGER_ACTION_REJECTED:', {
-      action: command,
-      quickTabId,
-      correlationId,
-      reason: 'invalid-command'
-    });
-    return { success: false, error: `Unknown command: ${command}` };
-  }
+  const validationError = _validateManagerCommand(command, quickTabId, correlationId);
+  if (validationError) return validationError;
 
   const executeMessage = {
     type: 'EXECUTE_COMMAND',
@@ -6724,12 +6976,8 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     correlationId
   });
 
-  // Try messaging first, fall back to Scripting API
   try {
-    const response = await Promise.race([
-      browser.tabs.sendMessage(hostTabId, executeMessage),
-      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
-    ]);
+    const response = await _executeCommandViaMessaging(hostTabId, executeMessage);
     _logManagerActionResult({
       action: command,
       quickTabId,
@@ -6742,49 +6990,14 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    console.log('[Background] Messaging failed, falling back to Scripting API:', {
+    return _handleScriptingFallback({
+      hostTabId,
       command,
       quickTabId,
       correlationId,
-      error: err.message
+      startTime,
+      messagingError: err
     });
-
-    try {
-      const fallbackResult = await _executeViaScripting(
-        hostTabId,
-        command,
-        { quickTabId },
-        correlationId
-      );
-      _logManagerActionResult({
-        action: command,
-        quickTabId,
-        hostTabId,
-        correlationId,
-        result: fallbackResult,
-        startTime,
-        method: 'scripting-fallback'
-      });
-      return fallbackResult;
-    } catch (fallbackErr) {
-      _logManagerActionResult({
-        action: command,
-        quickTabId,
-        hostTabId,
-        correlationId,
-        result: { success: false, error: fallbackErr.message },
-        startTime,
-        method: 'scripting-fallback'
-      });
-      console.error('[Background] Both messaging and scripting failed:', {
-        command,
-        quickTabId,
-        hostTabId,
-        messagingError: err.message,
-        scriptingError: fallbackErr.message
-      });
-      return { success: false, error: fallbackErr.message, fallbackFailed: true };
-    }
   }
 }
 
