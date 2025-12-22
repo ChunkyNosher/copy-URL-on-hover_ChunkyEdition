@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v2** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v4** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,74 +9,64 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v2 Status:** 40 Issues Fixed (3 Diagnostic Reports) ✅
+**🔧 v1.6.3.11-v4 Status:** 22 Issues Fixed ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.11-v2
+## 🎉 What's New in v1.6.3.11-v4
 
-**🔧 40 Issues Fixed - 3 Diagnostic Reports (December 2025) ✅**
+**🔧 22 Issues Fixed - 4 Phases (December 2025) ✅**
 
-**Port/BFCache/Init Improvements (#1-8):**
+**Phase 1: Keyboard Shortcut & Settings (5 Issues):**
 
-- ✅ **BFCache PORT_VERIFY Timeout** - Increased to 2000ms for reliability
-- ✅ **Port Race Condition Fix** - onDisconnect registered before onMessage
-- ✅ **Tab ID Timeout Extended** - 120s total timeout (from 60s)
-- ✅ **Hydration Timeout Increased** - 10s timeout (from 3s)
-- ✅ **RESTORE Messages Queued** - Queue instead of reject during init
+- ✅ **browser.commands.onCommand** - Listener in background.js
+- ✅ **Dynamic Shortcut Updates** - browser.commands.update() integration
+- ✅ **Firefox Format Validation** - Keyboard shortcut state validation
+- ✅ **Sidebar-to-Commands API** - Connected settings with UI feedback
 
-**Tab Lifecycle/Message Routing (#9-20):**
+**Phase 2: Hover Detection & Shadow DOM (5 Issues):**
 
-- ✅ **Tab onRemoved Debounce** - 200ms debounce for cleanup
-- ✅ **browser.tabs.query Timeout** - 2s timeout with fallback
-- ✅ **Periodic openTabs Cleanup** - Every 5 minutes
-- ✅ **Dedup Window Increased** - 250ms (from 100ms)
-- ✅ **MessageRouter Pre-Init Queue** - Messages queued before init
+- ✅ **Shadow DOM Detection** - YouTube, Twitter, Instagram, TikTok support
+- ✅ **Event Debouncing** - 100ms debounce, CPU 40-60% → 5-10%
+- ✅ **Pointer Events API** - Migration from mouse events with passive listeners
+- ✅ **New Module** - src/utils/shadow-dom.js for Shadow DOM traversal
 
-**Sidebar/State/Security/Config (#21-40):**
+**Phase 3: Logging & Instrumentation (6 Issues):**
 
-- ✅ **Sidebar Write Protection** - Storage write guards added
-- ✅ **Storage Format Detection** - Flat/nested format auto-detection
-- ✅ **Adoption Cache Size Limit** - 100 entries maximum
-- ✅ **MessageRouter Re-entrance Guard** - Prevents recursive handling
-- ✅ **Config Migration** - Handles missing settings gracefully
+- ✅ **Content Pipeline Logging** - Event tracking throughout content script
+- ✅ **Event Bus Visibility** - [LISTENER_REG], [LISTENER_INVOKE], [EVENT_COMPLETE]
+- ✅ **Storage Timing Telemetry** - Warns if operations >100ms
+- ✅ **Error Context Augmentation** - Handler name, operation, request context
 
----
+**Phase 4: Cross-Component Integration (6 Issues):**
 
-## 🎉 What's New in v1.6.3.11
-
-**🔧 40 Issues Fixed (December 2025) ✅**
-
-- ✅ GET_CURRENT_TAB_ID no init dependency, synchronous listener registration
-- ✅ BFCache port recovery with 50ms delay, port listener race fix
-- ✅ Cross-queue overflow protection at 300 messages, hydration drain lock
-- ✅ Namespaced message IDs, background sequence IDs, BFCache verify timeout
-- ✅ Adoption cache TTL (5-min expiration), navigation state reset
+- ✅ **Content Storage Sync** - storage.onChanged with [STORAGE_SYNC] prefix
+- ✅ **Operation Acknowledgment** - { success, operation, details } pattern
+- ✅ **Error Recovery** - Exponential backoff in content scripts
+- ✅ **Multi-Tab Reconciliation** - [CROSS_TAB_SYNC] prefix
 
 ---
 
-## 🎉 What's New in v1.6.3.10-v11
+## 🎉 What's New in v1.6.3.11-v3
 
-- ✅ Extended Tab ID (60s timeout), OPERATION_TYPE enum, adaptive dedup
-- ✅ Queue backpressure (100 max), hydration barrier, three-phase handshake
-- ✅ LRU Map Guard (500 max, 30s cleanup)
+**🔧 55+ Issues Fixed (December 2025) ✅**
 
----
-
-## 🎉 What's New in v1.6.3.10-v10
-
-- ✅ Tab ID exponential backoff, storage write validation
-- ✅ Adoption lock timeout (10s), checkpoint system
+- ✅ HEARTBEAT Handler, Re-entrance Queue, Message Structure Validation
+- ✅ pendingMessages Cleared, State Machine Persistence, Memory Leak Fix
+- ✅ sendMessageWithTimeout(), Adaptive Handshake, BFCache Message Queue
+- ✅ Dedup Window 100ms, Content Hash Dedup Key, Enhanced Rejection Logging
+- ✅ Storage Write Verification, Format Detection, Migration Validation
 
 ---
 
 ## 🎉 Previous Releases
 
-**v1.6.3.10-v10:** Issues 1-28 & areas A-F, checkpoint system, message timeout  
-**v1.6.3.10-v9:** Storage & cross-tab fixes, identity gating, quota monitoring  
-**v1.6.3.10-v8:** Code health 9.0+, options object pattern, issues #1-23 fixed
+**v1.6.3.11-v2:** 40 Issues Fixed - BFCache, Tab ID, Hydration improvements  
+**v1.6.3.11:** 40 Issues Fixed - GET_CURRENT_TAB_ID, listener registration  
+**v1.6.3.10-v11:** Extended Tab ID, OPERATION_TYPE, LRU Map Guard  
+**v1.6.3.10-v10:** Tab ID backoff, checkpoint system, message timeout
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -101,8 +91,6 @@ in the sidebar!
 - **Storage Abstraction Layer** - Async-first adapters (92% coverage)
 - **Phase 1 COMPLETE** - 96% average coverage, 249 tests
 
-See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
-
 ---
 
 ## ✨ Key Features
@@ -112,7 +100,7 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for architecture details.
 ✓ **Solo/Mute Visibility Control** - Tab-specific Quick Tab visibility  
 ✓ **Container Isolation** - Firefox Container support with originContainerId  
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
-✓ **Tab Grouping** - tabs.group() API support, Firefox 138+ (v1.6.3.7-v3)  
+✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok (v1.6.3.11-v4)  
 ✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
 ✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
@@ -139,65 +127,19 @@ automatically.
 1. Go to
    [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
 2. Download latest `chrome-extension-vX.X.X.zip` file
-3. Extract the ZIP file to a permanent folder (don't delete after installation!)
-4. Open browser extensions page:
-   - Chrome: `chrome://extensions/`
-   - Edge: `edge://extensions/`
-   - Brave: `brave://extensions/`
-   - Opera: `opera://extensions/`
-5. Enable "Developer mode" (toggle in top-right corner)
-6. Click "Load unpacked" and select the extracted folder
-
-**Note:** Chrome/Chromium-based browsers don't support auto-updates for manually
-installed extensions. Check the
-[Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
-page for updates.
-
-### Manual Installation (Development)
-
-**Firefox:**
-
-1. Navigate to `about:debugging` in Firefox
-2. Click "This Firefox" → "Load Temporary Add-on"
-3. Select `manifest.json` from the extension folder
-4. Extension loaded (removed on browser restart)
-
-**Chrome/Chromium:**
-
-1. Navigate to `chrome://extensions/`
-2. Enable "Developer mode" (top-right toggle)
-3. Click "Load unpacked"
-4. Select the extension's `dist/` directory
+3. Extract the ZIP file to a permanent folder
+4. Open browser extensions page (`chrome://extensions/` etc.)
+5. Enable "Developer mode" and click "Load unpacked"
 
 ## 🌐 Browser Compatibility
 
-### Fully Supported
-
-✅ **Firefox** - All features including Firefox Container isolation  
-✅ **Zen Browser** - Full Firefox-based feature set  
-✅ **Chrome/Chromium** - Core features (containers degrade to single default
-container)  
-✅ **Edge** - Chrome-compatible, all core features work  
-✅ **Brave** - Chrome-compatible, all core features work  
-✅ **Opera** - Chrome-compatible, all core features work
-
-### Feature Matrix
-
-| Feature                 | Firefox/Zen       | Chrome/Edge/Brave/Opera     |
-| ----------------------- | ----------------- | --------------------------- |
-| Copy URL (Y key)        | ✅                | ✅                          |
-| Copy Text (X key)       | ✅                | ✅                          |
-| Quick Tabs              | ✅                | ✅                          |
-| Solo/Mute               | ✅                | ✅ (global only)            |
-| Container Isolation     | ✅                | ⚠️ Single default container |
-| Quick Tabs Manager      | ✅                | ✅                          |
-| Settings Persistence    | ✅                | ✅                          |
-| **Sidebar Settings UI** | ✅ Native sidebar | ⚠️ Traditional popup        |
-| **Keyboard Shortcut**   | ✅ Ctrl+Shift+S   | ⚠️ Via extensions menu      |
-
-**Note:** Firefox Containers are a Firefox-exclusive feature. On Chrome/Chromium
-browsers, all tabs are treated as a single "default" container, and Solo/Mute
-works globally rather than per-container.
+| Feature             | Firefox/Zen       | Chrome/Edge/Brave/Opera     |
+| ------------------- | ----------------- | --------------------------- |
+| Copy URL (Y key)    | ✅                | ✅                          |
+| Quick Tabs          | ✅                | ✅                          |
+| Solo/Mute           | ✅                | ✅ (global only)            |
+| Container Isolation | ✅                | ⚠️ Single default container |
+| Sidebar Settings    | ✅ Native sidebar | ⚠️ Traditional popup        |
 
 ## 📖 Usage
 
@@ -208,26 +150,10 @@ works globally rather than per-container.
 
 **Quick Tabs Manager:** **Ctrl+Alt+Z** to toggle panel
 
-## ⚙️ Settings
-
-Access via extension icon or sidebar (Firefox). Tabs: Copy URL, Quick Tabs,
-Appearance, Advanced.
-
 ## 🔒 Security Notice
 
 Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers.
 **Only open Quick Tabs from trusted websites.**
-
-## 🐛 Known Limitations
-
-- Quick Tab Focus: Click main page to restore shortcuts after iframe interaction
-- Nested Quick Tabs: Same-origin only; use "Open in New Tab" for cross-origin
-- Manifest v2: Required for `webRequestBlocking` support
-
-## 📚 Documentation
-
-See [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and
-[docs/manual/](docs/manual/) for architecture.
 
 ## 🛠️ Development
 
@@ -237,32 +163,19 @@ npm test                        # Run tests
 npm run lint                    # Lint
 ```
 
-## 🌐 Supported Websites (100+)
-
-See [docs/manual/supported-sites.md](docs/manual/supported-sites.md) for the
-complete list of optimized websites including:
-
-- Social media (Twitter, LinkedIn, Facebook, Instagram)
-- Code repositories (GitHub, GitLab, Bitbucket)
-- Shopping (Amazon, eBay, Walmart)
-- News and media sites
-- And many more...
-
 ## 📝 Notes
 
 - Quick Tabs persist across browser tabs automatically
 - Session Quick Tabs clear on browser close (`permanent: false`)
 - Container isolation prevents cross-container state leaks
 - Solo/Mute features replace old "Pin to Page" functionality
-- All settings stored in browser.storage.sync with automatic cloud sync
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
-for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v2** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
