@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v2  
+**Version:** 1.6.3.11-v3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,42 +23,45 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed Across 3 Diagnostic Reports:**
+**v1.6.3.11-v3 Features (NEW) - 55+ Issues Fixed:**
 
-**Port/BFCache/Init (Issues #1-8):**
+**Message Routing & Security (Issues #24, #25, #36, #47, #56):**
 
-- **BFCache PORT_VERIFY Timeout** - Increased to 2000ms (from 1000ms)
-- **Port Race Fix** - onDisconnect registered before onMessage
-- **Keyboard Shortcut Guard** - Ignores shortcuts during initialization
-- **Tab ID Timeout Extended** - 120s total timeout (from 60s)
-- **RESTORE Messages Queued** - Queue instead of reject during init
-- **Storage Sync Docs** - storage.onChanged mechanism documented
-- **Hydration Timeout** - Increased to 10s (from 3s)
-- **Port Lifecycle Logging** - Comprehensive port state tracking
+- **HEARTBEAT Handler** - Added to MessageRouter VALID_MESSAGE_ACTIONS
+- **Re-entrance Queue** - Queue instead of reject re-entrant messages
+- **Message Structure Validation** - Validates action/type before routing
+- **originTabId Validation** - REQUIRE for ownership operations (no bypass)
+- **Backward Compat Bypass Removed** - Security fix for ownership validation
 
-**Tab Lifecycle/Message Routing (Issues #9-20):**
+**Port/State Lifecycle (Issues #27, #29, #30, #33, #37):**
 
-- **Tab onRemoved Debounce** - 200ms debounce, **browser.tabs.query Timeout** -
-  2s wrapper
-- **Periodic openTabs Cleanup** - Every 5 min, **Dedup Window** - 250ms (from
-  100ms)
-- **MessageRouter Pre-Init Queue** - Messages queued, originTabId in CREATE
-  response
-- **Ownership Validation Logging** - Query timeout fallback, cross-origin iframe
-  docs
+- **pendingMessages Cleared** - On port disconnect with port generation tracking
+- **State Machine Persistence** - Persist/restore from storage.session
+- **Minimized State Persistence** - Persist/restore minimized Quick Tabs
+- **Memory Leak Fix** - Garbage collection for pendingMessages Map
+- **Mediator Listener Cleanup** - Already implemented in cleanup() method
 
-**Sidebar/State/Security/Config (Issues #21-40):**
+**Cross-Browser & BFCache (Issues #48, #49, #51, #52):**
 
-- **Sidebar Write Protection** - Storage write guards, format detection
-  (flat/nested)
-- **MessageRouter Re-entrance Guard** - Prevents recursive, message structure
-  validation
-- **Adoption Cache Size Limit** - 100 entries max, state machine staleness
-  detection
-- **Config Migration** - Handles missing settings, session/sync timestamp
-  comparison
-- **RESTORE Message Validation** - Mediator listener cleanup, cross-origin
-  limitation docs
+- **sendMessageWithTimeout()** - Firefox message timeout wrapper (adaptive)
+- **Adaptive Handshake Timeout** - measuredHandshakeBaselineMs baseline tracking
+- **BFCache Message Queue** - Queue messages during pagehide, drain on pageshow
+- **Stale Event Rejection** - Reject events with timestamps before inactivity
+
+**Message Deduplication (Issues #53, #54, #55, #60):**
+
+- **Dedup Window Reduced** - 100ms (from 250ms) to allow rapid operations
+- **Dedup TTL Reduced** - 3s (from 10s), cleanup 1s (from 5s)
+- **Content Hash in Dedup Key** - Prevents false duplicate rejection
+- **Enhanced Rejection Logging** - Full sender context in rejection logs
+
+**Storage & Sync (Issues #21, #22, #32, #40, #69, #70):**
+
+- **Storage Write Verification** - Verify writes by reading back data
+- **Format Detection Refactored** - _detectStorageFormat() + _normalizeStorageFormat()
+- **Migration Validation** - Atomic migration with rollback marker
+- **Stale Data Rejection** - 1-hour threshold for sync storage fallback
+- **Storage.onChanged Debouncing** - 100ms debounce in sidebar panel
 
 **v1.6.3.11 Features (Previous):** GET_CURRENT_TAB_ID no init dependency,
 synchronous listener registration, BFCache port recovery, port listener race
@@ -123,7 +126,16 @@ references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v2 Patterns (Current)
+### v1.6.3.11-v3 Patterns (Current)
+
+- **Message Dedup** - 100ms window (from 250ms), 3s TTL (from 10s), content hash key
+- **Firefox Message Timeout** - sendMessageWithTimeout() with adaptive timeout
+- **BFCache Message Queue** - Queue during pagehide, drain on pageshow
+- **Storage Write Verification** - Read back after write to verify success
+- **Storage.onChanged Debouncing** - 100ms debounce in sidebar panel
+- **Enhanced Rejection Logging** - Full sender context in MessageRouter
+
+### v1.6.3.11-v2 Patterns (Previous)
 
 - BFCache PORT_VERIFY timeout (2000ms), Tab ID acquisition (120s total)
 - Hydration timeout (10s), dedup window (250ms), tab onRemoved 200ms debounce
@@ -131,7 +143,7 @@ references.
 - Sidebar write protection, storage format detection, re-entrance guard
 - State machine staleness, RESTORE validation, config migration
 
-### v1.6.3.10-v11 Patterns (Previous)
+### v1.6.3.10-v11 & Earlier Patterns (Consolidated)
 
 - Extended Tab ID (60s total, 5s intervals), OPERATION_TYPE enum
 - Adaptive dedup window (2x latency, 500ms min), queue backpressure 75%/100
@@ -139,37 +151,34 @@ references.
 - Hydration barrier (3s timeout), operation ID tracking
 - Background lifecycle markers, storage quota monitoring (90% threshold)
 - Three-phase port handshake, LRU Map Guard (500 max, 30s cleanup, 24h stale)
-
-### v1.6.3.10-v10 & Earlier Patterns (Consolidated)
-
 - Tab ID exponential backoff (200ms, 500ms, 1500ms, 5000ms)
 - `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE` helpers
 - Checkpoint system: `createCheckpoint()`, `rollbackToCheckpoint()`
 - Identity-ready gating, storage error classification, write queue recovery
 - Z-index recycling at threshold 100000, code health 9.0+ refactoring
 
-### Key Timing Constants (v1.6.3.11-v2)
+### Key Timing Constants (v1.6.3.11-v3)
 
 | Constant                        | Value    | Purpose                             |
 | ------------------------------- | -------- | ----------------------------------- |
-| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000     | PORT_VERIFY timeout (was 1000)      |
-| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000   | Extended tab ID timeout (was 60000) |
+| `DEDUP_WINDOW_MS`               | 100      | Message dedup (was 250)             |
+| `DEDUP_TTL_MS`                  | 3000     | Dedup entry TTL (was 10000)         |
+| `DEDUP_CLEANUP_INTERVAL_MS`     | 1000     | Dedup cleanup (was 5000)            |
+| `STORAGE_CHANGE_DEBOUNCE_MS`    | 100      | Sidebar storage.onChanged debounce  |
+| `DEFAULT_MESSAGE_TIMEOUT_MS`    | 5000     | Firefox message timeout default     |
+| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000     | PORT_VERIFY timeout                 |
+| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000   | Extended tab ID timeout             |
 | `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000     | Extended retry interval             |
-| `HYDRATION_TIMEOUT_MS`          | 10000    | Storage hydration (was 3000)        |
-| `DEDUP_WINDOW_MS`               | 250      | Message dedup (was 100)             |
-| `TAB_REMOVAL_DEBOUNCE_MS`       | 200      | Tab onRemoved debounce (NEW)        |
-| `QUERY_TIMEOUT_MS`              | 2000     | browser.tabs.query timeout (NEW)    |
-| `ADOPTION_CACHE_MAX_SIZE`       | 100      | Max adoption cache entries (NEW)    |
-| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000   | 5-minute cleanup interval (NEW)     |
+| `HYDRATION_TIMEOUT_MS`          | 10000    | Storage hydration                   |
+| `TAB_REMOVAL_DEBOUNCE_MS`       | 200      | Tab onRemoved debounce              |
+| `QUERY_TIMEOUT_MS`              | 2000     | browser.tabs.query timeout          |
+| `ADOPTION_CACHE_MAX_SIZE`       | 100      | Max adoption cache entries          |
+| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000   | 5-minute cleanup interval           |
 | `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75     | Warning threshold (75%)             |
 | `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100      | Max queue items                     |
 | `CALLBACK_REWIRE_TIMEOUT_MS`    | 500      | UICoordinator acknowledgment        |
 | `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000    | Dynamic TTL default                 |
 | `HEARTBEAT_INTERVAL_MS`         | 15000    | Background health check             |
-| `MESSAGE_RETRY_TIMEOUT_MS`      | 5000     | Message retry timeout               |
-| `MESSAGE_MAX_RETRIES`           | 3        | Max retry attempts                  |
-| `STATE_CONSISTENCY_CHECK_MS`    | 5000     | Periodic validation interval        |
-| `PORT_HANDSHAKE_PHASE_MS`       | 2000     | Per-phase handshake timeout         |
 | `LRU_MAP_MAX_SIZE`              | 500      | Maximum map entries                 |
 | `LRU_CLEANUP_INTERVAL_MS`       | 30000    | Periodic cleanup (30s)              |
 | `LRU_STALE_THRESHOLD_MS`        | 86400000 | Stale threshold (24h)               |
