@@ -1840,16 +1840,6 @@ function validateKeyboardShortcut(shortcut) {
     };
   }
 
-  // Check that at least one modifier is present (required by Firefox)
-  const parts = trimmed.split('+');
-  const modifiers = parts.slice(0, -1);
-  if (modifiers.length === 0) {
-    return {
-      valid: false,
-      error: 'At least one modifier (Ctrl, Alt, Shift) is required.'
-    };
-  }
-
   return { valid: true };
 }
 
