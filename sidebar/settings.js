@@ -19,37 +19,33 @@ if (!browserAPI) {
 const STORAGE_SLOW_THRESHOLD_MS = 100;
 
 /**
- * Wrap storage.local.get with logging
- * v1.6.3.11-v4 - FIX Issue #5: Add [STORAGE] logging prefix with timing
- * @param {string|string[]|Object} keys - Keys to get
- * @returns {Promise<Object>} Storage values
+ * Execute a storage operation with logging, timing, and error handling
+ * v1.6.3.11-v5 - DRY refactor: Extracted common storage operation logic
+ * @param {Function} operation - The storage operation to execute (returns Promise)
+ * @param {string} operationType - Operation type for logging ('GET', 'SET', 'REMOVE')
+ * @param {string[]} keyList - List of keys involved in the operation
+ * @returns {Promise<*>} Result of the storage operation (or undefined for SET/REMOVE)
  */
-async function loggedStorageGet(keys) {
+async function _executeStorageOperation(operation, operationType, keyList) {
   const startTime = performance.now();
-  const keyList = Array.isArray(keys)
-    ? keys
-    : typeof keys === 'object'
-      ? Object.keys(keys)
-      : [keys];
 
-  console.log('[STORAGE] GET starting:', {
+  console.log(`[STORAGE] ${operationType} starting:`, {
     keys: keyList,
     timestamp: Date.now()
   });
 
   try {
-    const result = await browserAPI.storage.local.get(keys);
+    const result = await operation();
     const duration = performance.now() - startTime;
-    const success = true;
 
-    console.log(`[STORAGE] GET ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
+    console.log(`[STORAGE] ${operationType} ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
       keys: keyList,
       durationMs: duration.toFixed(2),
-      success
+      success: true
     });
 
     if (duration > STORAGE_SLOW_THRESHOLD_MS) {
-      console.warn('[STORAGE] SLOW_OPERATION: GET exceeded threshold', {
+      console.warn(`[STORAGE] SLOW_OPERATION: ${operationType} exceeded threshold`, {
         keys: keyList,
         durationMs: duration.toFixed(2),
         thresholdMs: STORAGE_SLOW_THRESHOLD_MS
@@ -59,13 +55,39 @@ async function loggedStorageGet(keys) {
     return result;
   } catch (error) {
     const duration = performance.now() - startTime;
-    console.error(`[STORAGE] GET ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
+    console.error(`[STORAGE] ${operationType} ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
       keys: keyList,
       durationMs: duration.toFixed(2),
       error: error.message
     });
     throw error;
   }
+}
+
+/**
+ * Normalize keys to an array for consistent logging
+ * @param {string|string[]|Object} keys - Keys in various formats
+ * @returns {string[]} Normalized array of keys
+ */
+function _normalizeKeys(keys) {
+  if (Array.isArray(keys)) return keys;
+  if (typeof keys === 'object') return Object.keys(keys);
+  return [keys];
+}
+
+/**
+ * Wrap storage.local.get with logging
+ * v1.6.3.11-v4 - FIX Issue #5: Add [STORAGE] logging prefix with timing
+ * @param {string|string[]|Object} keys - Keys to get
+ * @returns {Promise<Object>} Storage values
+ */
+function loggedStorageGet(keys) {
+  const keyList = _normalizeKeys(keys);
+  return _executeStorageOperation(
+    () => browserAPI.storage.local.get(keys),
+    'GET',
+    keyList
+  );
 }
 
 /**
@@ -74,41 +96,13 @@ async function loggedStorageGet(keys) {
  * @param {Object} items - Items to set
  * @returns {Promise<void>}
  */
-async function loggedStorageSet(items) {
-  const startTime = performance.now();
+function loggedStorageSet(items) {
   const keyList = Object.keys(items);
-
-  console.log('[STORAGE] SET starting:', {
-    keys: keyList,
-    timestamp: Date.now()
-  });
-
-  try {
-    await browserAPI.storage.local.set(items);
-    const duration = performance.now() - startTime;
-
-    console.log(`[STORAGE] SET ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
-      keys: keyList,
-      durationMs: duration.toFixed(2),
-      success: true
-    });
-
-    if (duration > STORAGE_SLOW_THRESHOLD_MS) {
-      console.warn('[STORAGE] SLOW_OPERATION: SET exceeded threshold', {
-        keys: keyList,
-        durationMs: duration.toFixed(2),
-        thresholdMs: STORAGE_SLOW_THRESHOLD_MS
-      });
-    }
-  } catch (error) {
-    const duration = performance.now() - startTime;
-    console.error(`[STORAGE] SET ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
-      keys: keyList,
-      durationMs: duration.toFixed(2),
-      error: error.message
-    });
-    throw error;
-  }
+  return _executeStorageOperation(
+    () => browserAPI.storage.local.set(items),
+    'SET',
+    keyList
+  );
 }
 
 /**
@@ -117,41 +111,13 @@ async function loggedStorageSet(items) {
  * @param {string|string[]} keys - Keys to remove
  * @returns {Promise<void>}
  */
-async function loggedStorageRemove(keys) {
-  const startTime = performance.now();
+function loggedStorageRemove(keys) {
   const keyList = Array.isArray(keys) ? keys : [keys];
-
-  console.log('[STORAGE] REMOVE starting:', {
-    keys: keyList,
-    timestamp: Date.now()
-  });
-
-  try {
-    await browserAPI.storage.local.remove(keys);
-    const duration = performance.now() - startTime;
-
-    console.log(`[STORAGE] REMOVE ${keyList.join(',')} → ${duration.toFixed(0)}ms → SUCCESS`, {
-      keys: keyList,
-      durationMs: duration.toFixed(2),
-      success: true
-    });
-
-    if (duration > STORAGE_SLOW_THRESHOLD_MS) {
-      console.warn('[STORAGE] SLOW_OPERATION: REMOVE exceeded threshold', {
-        keys: keyList,
-        durationMs: duration.toFixed(2),
-        thresholdMs: STORAGE_SLOW_THRESHOLD_MS
-      });
-    }
-  } catch (error) {
-    const duration = performance.now() - startTime;
-    console.error(`[STORAGE] REMOVE ${keyList.join(',')} → ${duration.toFixed(0)}ms → FAILED`, {
-      keys: keyList,
-      durationMs: duration.toFixed(2),
-      error: error.message
-    });
-    throw error;
-  }
+  return _executeStorageOperation(
+    () => browserAPI.storage.local.remove(keys),
+    'REMOVE',
+    keyList
+  );
 }
 
 // ==================== END STORAGE LOGGING UTILITIES ====================
@@ -1565,51 +1531,66 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==================== FILTER SETTINGS FUNCTIONS ====================
 
 /**
+ * List of all filter categories
+ * v1.6.3.11-v5 - DRY refactor: Single source of truth for category list
+ */
+const FILTER_CATEGORIES = [
+  'url-detection',
+  'hover',
+  'clipboard',
+  'keyboard',
+  'quick-tabs',
+  'quick-tab-manager',
+  'event-bus',
+  'config',
+  'state',
+  'storage',
+  'messaging',
+  'webrequest',
+  'tabs',
+  'performance',
+  'errors',
+  'initialization'
+];
+
+/**
+ * Create default filter settings with specified overrides
+ * v1.6.3.11-v5 - DRY refactor: Extracted common filter creation logic
+ * @param {boolean} defaultValue - Default value for all categories
+ * @param {Object} [overrides={}] - Category-specific overrides
+ * @returns {Object} Filter settings object with all categories
+ */
+function _createDefaultFilterSettings(defaultValue, overrides = {}) {
+  const settings = {};
+  for (const category of FILTER_CATEGORIES) {
+    settings[category] = Object.hasOwn(overrides, category) ? overrides[category] : defaultValue;
+  }
+  return settings;
+}
+
+/**
  * Get default live console filter settings
+ * v1.6.3.11-v5 - DRY refactor: Uses shared _createDefaultFilterSettings
  */
 function getDefaultLiveConsoleSettings() {
-  return {
+  // Start with all enabled, then disable noisy categories
+  return _createDefaultFilterSettings(true, {
     'url-detection': false, // Noisy - disabled by default
     hover: false, // Noisy - disabled by default
-    clipboard: true,
-    keyboard: true,
-    'quick-tabs': true,
-    'quick-tab-manager': true,
     'event-bus': false,
-    config: true,
     state: false,
-    storage: true,
     messaging: false,
-    webrequest: true,
-    tabs: true,
-    performance: false,
-    errors: true,
-    initialization: true
-  };
+    performance: false
+  });
 }
 
 /**
  * Get default export filter settings
+ * v1.6.3.11-v5 - DRY refactor: Uses shared _createDefaultFilterSettings
  */
 function getDefaultExportSettings() {
-  return {
-    'url-detection': true, // All enabled by default for comprehensive export
-    hover: true,
-    clipboard: true,
-    keyboard: true,
-    'quick-tabs': true,
-    'quick-tab-manager': true,
-    'event-bus': true,
-    config: true,
-    state: true,
-    storage: true,
-    messaging: true,
-    webrequest: true,
-    tabs: true,
-    performance: true,
-    errors: true,
-    initialization: true
-  };
+  // All enabled by default for comprehensive export
+  return _createDefaultFilterSettings(true);
 }
 
 /**
