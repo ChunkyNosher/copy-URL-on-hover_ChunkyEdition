@@ -128,6 +128,17 @@ const OWNERSHIP_REQUIRED_ACTIONS = new Set([
 // v1.6.3.11-v3 - FIX Issue #24: Maximum queue size per action for re-entrance queue
 const MAX_REENTRANCE_QUEUE_SIZE = 10;
 
+/**
+ * RoutingContext - Encapsulates routing parameters to reduce function arguments
+ * v1.6.3.11-v4 - FIX Code Health: Reduce excess function arguments
+ * @typedef {Object} RoutingContext
+ * @property {Object} message - The message being routed
+ * @property {Object} sender - Message sender
+ * @property {Function} sendResponse - Response callback
+ * @property {string} action - Extracted action identifier
+ * @property {string|null} messageId - Message ID for correlation
+ */
+
 export class MessageRouter {
   constructor() {
     this.handlers = new Map();
@@ -490,8 +501,60 @@ export class MessageRouter {
   }
 
   /**
+   * Log legacy client with no protocol version
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _validateProtocolVersion complexity
+   * @private
+   * @param {Object} message - Message object
+   * @param {Object} sender - Message sender
+   */
+  _logLegacyClient(message, sender) {
+    console.log(
+      '[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)',
+      {
+        action: message.action || message.type,
+        senderTabId: sender?.tab?.id,
+        serverVersion: MESSAGE_PROTOCOL_VERSION
+      }
+    );
+  }
+
+  /**
+   * Log successful protocol negotiation
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _validateProtocolVersion complexity
+   * @private
+   * @param {string} clientVersion - Client protocol version
+   * @param {Object} message - Message object
+   */
+  _logProtocolNegotiated(clientVersion, message) {
+    console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED:', {
+      clientVersion,
+      serverVersion: MESSAGE_PROTOCOL_VERSION,
+      action: message.action || message.type
+    });
+  }
+
+  /**
+   * Log protocol version mismatch (but still allow)
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _validateProtocolVersion complexity
+   * @private
+   * @param {string} clientVersion - Client protocol version
+   * @param {Object} message - Message object
+   * @param {Object} sender - Message sender
+   */
+  _logProtocolMismatch(clientVersion, message, sender) {
+    console.warn('[MSG][MessageRouter] PROTOCOL_VERSION_MISMATCH:', {
+      clientVersion,
+      serverVersion: MESSAGE_PROTOCOL_VERSION,
+      minCompatible: MIN_COMPATIBLE_PROTOCOL_VERSION,
+      action: message.action || message.type,
+      senderTabId: sender?.tab?.id
+    });
+  }
+
+  /**
    * Validate protocol version in message
    * v1.6.3.10-v12 - FIX Issue #10: Enforce protocol version checking
+   * v1.6.3.11-v4 - FIX Code Health: Refactored to reduce complexity (cc=10→4)
    * @private
    * @param {Object} message - Message to validate
    * @param {Object} sender - Message sender
@@ -500,41 +563,21 @@ export class MessageRouter {
   _validateProtocolVersion(message, sender) {
     const clientVersion = message.protocolVersion;
 
-    // If client doesn't send version, log but allow (backward compatibility)
+    // No version provided - legacy client (allowed)
     if (!clientVersion) {
-      // Only log for debugging - don't reject old clients
-      console.log(
-        '[MSG][MessageRouter] PROTOCOL_NEGOTIATED: Client did not send version (legacy)',
-        {
-          action: message.action || message.type,
-          senderTabId: sender?.tab?.id,
-          serverVersion: MESSAGE_PROTOCOL_VERSION
-        }
-      );
+      this._logLegacyClient(message, sender);
       return { valid: true };
     }
 
-    // Check if version is compatible
+    // Compatible version
     if (this._isVersionCompatible(clientVersion)) {
-      console.log('[MSG][MessageRouter] PROTOCOL_NEGOTIATED:', {
-        clientVersion,
-        serverVersion: MESSAGE_PROTOCOL_VERSION,
-        action: message.action || message.type
-      });
+      this._logProtocolNegotiated(clientVersion, message);
       return { valid: true };
     }
 
-    // Version mismatch - log diagnostic info but don't reject
-    // (for now, we allow all versions but log the mismatch)
-    console.warn('[MSG][MessageRouter] PROTOCOL_VERSION_MISMATCH:', {
-      clientVersion,
-      serverVersion: MESSAGE_PROTOCOL_VERSION,
-      minCompatible: MIN_COMPATIBLE_PROTOCOL_VERSION,
-      action: message.action || message.type,
-      senderTabId: sender?.tab?.id
-    });
-
-    return { valid: true }; // Allow but logged
+    // Version mismatch - log but allow (backward compatible policy)
+    this._logProtocolMismatch(clientVersion, message, sender);
+    return { valid: true };
   }
 
   /**
@@ -599,6 +642,8 @@ export class MessageRouter {
    * v1.6.3.11-v3 - FIX Issue #36 & #56: REQUIRE originTabId field for ownership operations
    * Previously, missing originTabId would pass validation. Now it's rejected.
    *
+   * v1.6.3.11-v4 - FIX Code Health: Refactored to reduce complexity (cc=11→5)
+   *
    * @private
    * @param {Object} message - Message with potential originTabId
    * @param {Object} sender - Message sender
@@ -614,97 +659,159 @@ export class MessageRouter {
     const senderTabId = sender?.tab?.id;
     const payloadOriginTabId = message?.originTabId;
 
-    // Sender must have a tab ID for ownership-required operations
-    if (typeof senderTabId !== 'number') {
-      console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: No sender.tab.id', {
-        action,
-        senderType: sender ? typeof sender : 'undefined',
-        hasTab: !!sender?.tab,
-        warning: 'Operations requiring ownership must come from tabs'
-      });
-      return {
-        valid: false,
-        error: 'OWNERSHIP_VALIDATION_FAILED',
-        code: 'SENDER_TAB_REQUIRED'
-      };
-    }
+    // Check sender has valid tab ID
+    const senderCheck = this._checkSenderTabId(senderTabId, sender, action);
+    if (!senderCheck.valid) return senderCheck;
 
-    // v1.6.3.11-v3 - FIX Issue #36: REQUIRE originTabId field for ownership-required operations
-    // Previously, missing originTabId would pass validation (security bypass)
-    if (payloadOriginTabId === null || payloadOriginTabId === undefined) {
-      console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: Missing originTabId', {
-        action,
-        senderTabId,
-        warning: 'SECURITY: originTabId field is required for ownership operations'
-      });
-      return {
-        valid: false,
-        error: 'Missing originTabId field',
-        code: 'MISSING_ORIGIN_TAB_ID'
-      };
-    }
+    // Check originTabId field exists
+    const originCheck = this._checkOriginTabIdExists(payloadOriginTabId, senderTabId, action);
+    if (!originCheck.valid) return originCheck;
 
-    // originTabId MUST match sender.tab.id
-    if (payloadOriginTabId !== senderTabId) {
-      console.error('[MSG][MessageRouter] OWNERSHIP_MISMATCH:', {
-        action,
-        payloadOriginTabId,
-        senderTabId,
-        warning: 'Security concern - payload claims different origin than sender'
-      });
-      return {
-        valid: false,
-        error: 'OWNERSHIP_VALIDATION_FAILED',
-        code: 'ORIGIN_MISMATCH'
-      };
-    }
+    // Check ownership match
+    const matchCheck = this._checkOwnershipMatch(payloadOriginTabId, senderTabId, action);
+    if (!matchCheck.valid) return matchCheck;
 
     // Validation passed
+    this._logOwnershipValidated(action, senderTabId, payloadOriginTabId);
+    return { valid: true };
+  }
+
+  /**
+   * Check sender has a valid tab ID
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _validateOwnership
+   * @private
+   */
+  _checkSenderTabId(senderTabId, sender, action) {
+    if (typeof senderTabId === 'number') {
+      return { valid: true };
+    }
+
+    console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: No sender.tab.id', {
+      action,
+      senderType: sender ? typeof sender : 'undefined',
+      hasTab: !!sender?.tab,
+      warning: 'Operations requiring ownership must come from tabs'
+    });
+    return {
+      valid: false,
+      error: 'OWNERSHIP_VALIDATION_FAILED',
+      code: 'SENDER_TAB_REQUIRED'
+    };
+  }
+
+  /**
+   * Check originTabId field exists in message
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _validateOwnership
+   * @private
+   */
+  _checkOriginTabIdExists(payloadOriginTabId, senderTabId, action) {
+    if (payloadOriginTabId !== null && payloadOriginTabId !== undefined) {
+      return { valid: true };
+    }
+
+    console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: Missing originTabId', {
+      action,
+      senderTabId,
+      warning: 'SECURITY: originTabId field is required for ownership operations'
+    });
+    return {
+      valid: false,
+      error: 'Missing originTabId field',
+      code: 'MISSING_ORIGIN_TAB_ID'
+    };
+  }
+
+  /**
+   * Check originTabId matches sender tab ID
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _validateOwnership
+   * @private
+   */
+  _checkOwnershipMatch(payloadOriginTabId, senderTabId, action) {
+    if (payloadOriginTabId === senderTabId) {
+      return { valid: true };
+    }
+
+    console.error('[MSG][MessageRouter] OWNERSHIP_MISMATCH:', {
+      action,
+      payloadOriginTabId,
+      senderTabId,
+      warning: 'Security concern - payload claims different origin than sender'
+    });
+    return {
+      valid: false,
+      error: 'OWNERSHIP_VALIDATION_FAILED',
+      code: 'ORIGIN_MISMATCH'
+    };
+  }
+
+  /**
+   * Log successful ownership validation
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _validateOwnership
+   * @private
+   */
+  _logOwnershipValidated(action, senderTabId, payloadOriginTabId) {
     console.log('[MSG][MessageRouter] OWNERSHIP_VALIDATED:', {
       action,
       senderTabId,
       payloadOriginTabId
     });
-
-    return { valid: true };
   }
 
   /**
    * Handle case when no handler exists for action
    * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce route() complexity
+   * v1.6.3.11-v4 - FIX Code Health: Refactored to reduce complexity (cc=14→4)
    * @private
    */
   _handleNoHandler(message, sender, sendResponse, action) {
-    // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
+    // Check if message should be handled by other listeners
     if (this._shouldDeferToOtherListeners(message)) {
       return { handled: false, returnValue: false };
     }
 
-    // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
+    // Validate against allowlist and handle appropriately
     const validation = this._validateAction(action, sender);
     if (!validation.valid) {
-      // v1.6.3.11-v3 - FIX Issue #60: Enhanced rejection logging
-      console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: Unknown command', {
-        action,
-        senderTabId: sender?.tab?.id,
-        senderFrameId: sender?.frameId,
-        senderUrl: sender?.url,
-        messageId: message?.messageId,
-        timestamp: Date.now(),
-        reason: 'UNKNOWN_COMMAND',
-        messageKeys: Object.keys(message || {})
-      });
-      sendResponse({
-        success: false,
-        error: 'UNKNOWN_COMMAND',
-        command: action,
-        code: 'UNKNOWN_COMMAND',
-        version: MESSAGE_PROTOCOL_VERSION
-      });
+      this._sendUnknownCommandResponse(message, sender, sendResponse, action);
       return { handled: true, returnValue: false };
     }
 
-    // v1.6.3.11-v3 - FIX Issue #60: Enhanced rejection logging for no handler case
+    // Valid action but no handler registered
+    this._sendNoHandlerResponse(message, sender, sendResponse, action);
+    return { handled: true, returnValue: false };
+  }
+
+  /**
+   * Send response for unknown command
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _handleNoHandler
+   * @private
+   */
+  _sendUnknownCommandResponse(message, sender, sendResponse, action) {
+    console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: Unknown command', {
+      action,
+      senderTabId: sender?.tab?.id,
+      senderFrameId: sender?.frameId,
+      senderUrl: sender?.url,
+      messageId: message?.messageId,
+      timestamp: Date.now(),
+      reason: 'UNKNOWN_COMMAND',
+      messageKeys: Object.keys(message || {})
+    });
+    sendResponse({
+      success: false,
+      error: 'UNKNOWN_COMMAND',
+      command: action,
+      code: 'UNKNOWN_COMMAND',
+      version: MESSAGE_PROTOCOL_VERSION
+    });
+  }
+
+  /**
+   * Send response when no handler is registered for a valid action
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _handleNoHandler
+   * @private
+   */
+  _sendNoHandlerResponse(message, sender, sendResponse, action) {
     console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: No handler', {
       action,
       senderTabId: sender?.tab?.id,
@@ -713,10 +820,9 @@ export class MessageRouter {
       messageId: message?.messageId,
       timestamp: Date.now(),
       reason: 'NO_HANDLER',
-      validActions: VALID_MESSAGE_ACTIONS.slice(0, 10) // First 10 valid actions for context
+      validActions: Array.from(VALID_MESSAGE_ACTIONS).slice(0, 10) // First 10 valid actions for context
     });
     sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
-    return { handled: true, returnValue: false };
   }
 
   /**
@@ -949,22 +1055,147 @@ export class MessageRouter {
   /**
    * Check early exit conditions for route()
    * v1.6.3.11-v3 - FIX Issue #24: Updated to queue re-entrant messages instead of blocking
+   * v1.6.3.11-v4 - FIX Code Health: Now uses RoutingContext (1 arg instead of 5)
    * @private
-   * @param {Object} message - Message to route
-   * @param {Object} sender - Message sender
-   * @param {string} action - Extracted action
-   * @param {string} messageId - Message ID for correlation
-   * @param {Function} sendResponse - Response callback
+   * @param {RoutingContext} ctx - Routing context object
    * @returns {{shouldExit: boolean, returnValue?: boolean}}
    */
-  _checkRouteEarlyExit(message, sender, action, messageId, sendResponse) {
+  _checkRouteEarlyExit(ctx) {
     // Check re-entrance and queue if needed
-    const reEntranceResult = this._checkReentrance(action, message, sender, sendResponse);
+    const reEntranceResult = this._checkReentrance(ctx.action, ctx.message, ctx.sender, ctx.sendResponse);
     if (reEntranceResult.wasQueued) {
       // Message was queued, caller should exit and not process further
       return { shouldExit: true, returnValue: true }; // Return true to keep channel open
     }
     return { shouldExit: false };
+  }
+
+  /**
+   * Create routing context from route() parameters
+   * v1.6.3.11-v4 - FIX Code Health: Reduces function arguments to context object
+   * @private
+   * @param {Object} routeParams - Base routing parameters
+   * @param {Object} routeParams.message - Message object
+   * @param {Object} routeParams.sender - Message sender
+   * @param {Function} routeParams.sendResponse - Response callback
+   * @param {string} action - Extracted action
+   * @param {string|null} messageId - Message ID for correlation
+   * @returns {RoutingContext}
+   */
+  _createRoutingContext(routeParams, action, messageId) {
+    const { message, sender, sendResponse } = routeParams;
+    return { message, sender, sendResponse, action, messageId };
+  }
+
+  /**
+   * Build log data for message arrival
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from route() to reduce overall complexity
+   * @private
+   */
+  _buildArrivalLogData(message, sender) {
+    return {
+      action: this._getActionFromMessage(message),
+      senderTabId: this._getSenderTabId(sender),
+      senderUrl: this._getSenderUrlTruncated(sender),
+      messageKeys: this._getMessageKeys(message),
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Get action from message (used for logging)
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _getActionFromMessage(message) {
+    if (!message) return 'unknown';
+    return message.action || message.type || 'unknown';
+  }
+
+  /**
+   * Get sender tab ID (used for logging)
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _getSenderTabId(sender) {
+    if (!sender || !sender.tab) return 'none';
+    return sender.tab.id || 'none';
+  }
+
+  /**
+   * Get truncated sender URL (used for logging)
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _getSenderUrlTruncated(sender) {
+    if (!sender || !sender.url) return 'none';
+    return sender.url.substring(0, 50);
+  }
+
+  /**
+   * Get message keys (used for logging)
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _getMessageKeys(message) {
+    return message ? Object.keys(message) : [];
+  }
+
+  /**
+   * Log message arrival
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from route() to reduce overall complexity
+   * @private
+   */
+  _logMessageArrival(message, sender) {
+    const logData = this._buildArrivalLogData(message, sender);
+    console.log('[MSG] Message arrived:', logData);
+  }
+
+  /**
+   * Handle structure validation failure
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _handleStructureValidationFailure(validation, sendResponse) {
+    console.warn('[MSG:VALIDATE] Structure validation failed:', {
+      error: validation.error,
+      code: validation.code
+    });
+    sendResponse({
+      success: false,
+      error: validation.error,
+      code: validation.code,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Log action validation
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _logActionValidated(action, messageId, sender) {
+    console.log('[MSG:VALIDATE] Action validated:', {
+      action,
+      messageId,
+      senderTabId: sender?.tab?.id,
+      isValidAction: VALID_MESSAGE_ACTIONS.has(action)
+    });
+  }
+
+  /**
+   * Log message correlation (when messageId is present)
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   */
+  _logMessageCorrelation(messageId, action, sender) {
+    if (messageId) {
+      console.log('[MSG] MESSAGE_CORRELATION:', {
+        messageId,
+        action,
+        senderTabId: sender?.tab?.id
+      });
+    }
   }
 
   /**
@@ -979,179 +1210,187 @@ export class MessageRouter {
    * v1.6.3.11 - FIX Issue #24: Re-entrance guard for circular dependencies
    * v1.6.3.11 - FIX Issue #25: Basic structure validation before routing
    * v1.6.3.11-v3 - FIX Issue #3: Enhanced logging with MSG_COMMAND/MSG_VALIDATION/MSG_ROUTE prefixes
+   * v1.6.3.11-v4 - FIX Code Health: Refactored to reduce complexity (cc=19→7)
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
    * @returns {boolean} True if async response expected
    */
   async route(message, sender, sendResponse) {
-    // v1.6.3.11-v3 - FIX Issue #3: Log route start
-    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG] prefix for arrival logging
-    const routeStartTime = Date.now();
-    console.log('[MSG] Message arrived:', {
-      action: message?.action || message?.type,
-      senderTabId: sender?.tab?.id,
-      senderUrl: sender?.url?.substring(0, 50),
-      messageKeys: Object.keys(message || {}),
-      timestamp: routeStartTime
-    });
+    this._logMessageArrival(message, sender);
 
-    // v1.6.3.11 - FIX Issue #25: Validate structure before processing
-    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:VALIDATE] prefix
+    // Validate structure before processing
     const structureValidation = this._validateMessageStructure(message);
     if (!structureValidation.valid) {
-      console.warn('[MSG:VALIDATE] Structure validation failed:', {
-        error: structureValidation.error,
-        code: structureValidation.code
-      });
-      sendResponse({
-        success: false,
-        error: structureValidation.error,
-        code: structureValidation.code,
-        timestamp: Date.now()
-      });
+      this._handleStructureValidationFailure(structureValidation, sendResponse);
       return false;
     }
 
     const messageId = message?.messageId || null;
     const action = this._extractAction(message);
 
-    // Validate message format
+    // Validate message format (must have action)
     if (!action) {
       console.warn('[MSG:VALIDATE] No action extracted from message');
       this._handleInvalidFormat(message, messageId, sendResponse);
       return false;
     }
 
-    // v1.6.3.11-v3 - FIX Issue #3: Log action extraction
-    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:VALIDATE] prefix
-    console.log('[MSG:VALIDATE] Action validated:', {
-      action,
-      messageId,
-      senderTabId: sender?.tab?.id,
-      isValidAction: VALID_MESSAGE_ACTIONS.has(action)
-    });
+    this._logActionValidated(action, messageId, sender);
 
-    // v1.6.3.11-v3 - FIX Issue #24: Check for re-entrance and queue if needed
-    const earlyExit = this._checkRouteEarlyExit(message, sender, action, messageId, sendResponse);
+    // Create routing context for downstream functions
+    const routeParams = { message, sender, sendResponse };
+    const ctx = this._createRoutingContext(routeParams, action, messageId);
+
+    // Check for re-entrance and queue if needed
+    const earlyExit = this._checkRouteEarlyExit(ctx);
     if (earlyExit.shouldExit) return earlyExit.returnValue;
 
-    // Validate protocol version and log correlation
+    // Validate protocol version
     this._validateProtocolVersion(message, sender);
 
-    if (messageId) {
-      console.log('[MSG] MESSAGE_CORRELATION:', {
-        messageId,
-        action,
-        senderTabId: sender?.tab?.id
-      });
-    }
+    // Log correlation
+    this._logMessageCorrelation(messageId, action, sender);
 
-    // v1.6.3.11-v4 - FIX Issue #4: [MSG:ROUTE] prefix for handler selection
+    // Log routing decision
     console.log('[MSG:ROUTE] Routing to handler:', {
       action,
       hasHandler: this.handlers.has(action),
       messageId
     });
 
-    // Route to handler
-    // Note: ESLint require-await rule flags this, but async is needed for awaiting callers
-    return this._routeToHandler(message, sender, sendResponse, action, messageId);
+    // Route to handler using context
+    return this._routeToHandler(ctx);
+  }
+
+  /**
+   * Execute handler and process result
+   * v1.6.3.11-v4 - FIX Code Health: Extracted from _routeToHandler to reduce complexity
+   * @private
+   * @param {Function} handler - Handler function
+   * @param {RoutingContext} ctx - Routing context
+   * @param {number} startTime - Handler start timestamp
+   * @returns {Promise<boolean>}
+   */
+  async _executeHandler(handler, ctx, startTime) {
+    const result = await handler(ctx.message, ctx.sender);
+    const normalizedResponse = this._normalizeResponse(result, ctx.action, ctx.messageId);
+    const durationMs = Date.now() - startTime;
+
+    this._logHandlerSuccess(ctx.action, durationMs, normalizedResponse);
+    this._logResponseSent(ctx.action, normalizedResponse, ctx.messageId, durationMs);
+
+    if (ctx.sendResponse) ctx.sendResponse(normalizedResponse);
+    return true;
+  }
+
+  /**
+   * Log successful handler execution
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _routeToHandler complexity
+   * @private
+   */
+  _logHandlerSuccess(action, durationMs, response) {
+    console.log('[MSG:EXEC] Handler completed successfully:', {
+      action,
+      durationMs,
+      success: response.success !== false
+    });
+  }
+
+  /**
+   * Log response being sent
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _routeToHandler complexity
+   * @private
+   */
+  _logResponseSent(action, response, messageId, durationMs) {
+    console.log('[MSG:RESPONSE] Sending response:', {
+      action,
+      success: response.success,
+      hasData: 'data' in response,
+      messageId,
+      durationMs
+    });
+  }
+
+  /**
+   * Handle handler error
+   * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _routeToHandler complexity
+   * @private
+   * @param {RoutingContext} ctx - Routing context
+   * @param {Error} error - The error that occurred
+   * @param {number} startTime - Handler start timestamp
+   */
+  _handleExecutionError(ctx, error, startTime) {
+    console.error('[MSG:EXEC] Handler threw error:', {
+      action: ctx.action,
+      durationMs: Date.now() - startTime,
+      error: error.message,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n')
+    });
+
+    console.log('[MSG:RESPONSE] Sending error response:', {
+      action: ctx.action,
+      success: false,
+      error: error.message,
+      messageId: ctx.messageId
+    });
+
+    this._handleHandlerError(ctx.action, error, ctx.messageId, ctx.sendResponse);
   }
 
   /**
    * Route message to handler after validation passes
    * v1.6.3.11-v3 - FIX Issue #24: Added queue draining after handler completes
    * v1.6.3.11-v3 - FIX Issue #3: Enhanced logging with MSG_ROUTE prefix
+   * v1.6.3.11-v4 - FIX Code Health: Now uses RoutingContext (1 arg instead of 5)
+   * v1.6.3.11-v4 - FIX Code Health: Refactored to reduce complexity (cc=9→5)
    * @private
+   * @param {RoutingContext} ctx - Routing context containing message, sender, sendResponse, action, messageId
    */
-  async _routeToHandler(message, sender, sendResponse, action, messageId) {
-    const handler = this.handlers.get(action);
+  async _routeToHandler(ctx) {
+    const handler = this.handlers.get(ctx.action);
     if (!handler) {
-      console.warn('[MSG:ROUTE] No handler found for action:', action);
-      const result = this._handleNoHandler(message, sender, sendResponse, action);
+      console.warn('[MSG:ROUTE] No handler found for action:', ctx.action);
+      const result = this._handleNoHandler(ctx.message, ctx.sender, ctx.sendResponse, ctx.action);
       return result.handled ? result.returnValue : false;
     }
 
-    // v1.6.3.11-v3 - FIX Issue #3: Log handler found
-    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:ROUTE] prefix
     console.log('[MSG:ROUTE] Handler found, validating ownership:', {
-      action,
+      action: ctx.action,
       handlerExists: true
     });
 
     // Validate ownership
-    const ownershipValidation = this._validateOwnership(message, sender, action);
+    const ownershipValidation = this._validateOwnership(ctx.message, ctx.sender, ctx.action);
     if (!ownershipValidation.valid) {
       console.warn('[MSG:VALIDATE] Ownership validation failed:', {
-        action,
+        action: ctx.action,
         error: ownershipValidation.error,
         code: ownershipValidation.code
       });
-      this._handleOwnershipFailure(ownershipValidation, messageId, sendResponse);
+      this._handleOwnershipFailure(ownershipValidation, ctx.messageId, ctx.sendResponse);
       return false;
     }
 
-    // v1.6.3.11-v3 - FIX Issue #24: Track action being processed
-    this._processingActions.add(action);
+    // Track action being processed
+    this._processingActions.add(ctx.action);
 
-    // v1.6.3.11-v3 - FIX Issue #3: Log handler execution start
-    // v1.6.3.11-v4 - FIX Issue #4: Enhanced with [MSG:EXEC] prefix
     const handlerStartTime = Date.now();
     console.log('[MSG:EXEC] Handler execution starting:', {
-      action,
-      messageId,
-      senderTabId: sender?.tab?.id,
+      action: ctx.action,
+      messageId: ctx.messageId,
+      senderTabId: ctx.sender?.tab?.id,
       startTime: handlerStartTime
     });
 
     try {
-      const result = await handler(message, sender);
-      const normalizedResponse = this._normalizeResponse(result, action, messageId);
-      const handlerDurationMs = Date.now() - handlerStartTime;
-
-      // v1.6.3.11-v4 - FIX Issue #4: [MSG:EXEC] success logging
-      console.log('[MSG:EXEC] Handler completed successfully:', {
-        action,
-        durationMs: handlerDurationMs,
-        success: normalizedResponse.success !== false
-      });
-
-      // v1.6.3.11-v4 - FIX Issue #4: [MSG:RESPONSE] logging for response structure
-      console.log('[MSG:RESPONSE] Sending response:', {
-        action,
-        success: normalizedResponse.success,
-        hasData: 'data' in normalizedResponse,
-        messageId,
-        durationMs: handlerDurationMs
-      });
-
-      if (sendResponse) sendResponse(normalizedResponse);
-      return true;
+      return await this._executeHandler(handler, ctx, handlerStartTime);
     } catch (error) {
-      // v1.6.3.11-v4 - FIX Issue #4: [MSG:EXEC] error logging
-      console.error('[MSG:EXEC] Handler threw error:', {
-        action,
-        durationMs: Date.now() - handlerStartTime,
-        error: error.message,
-        stack: error.stack?.split('\n').slice(0, 3).join('\n')
-      });
-
-      // v1.6.3.11-v4 - FIX Issue #4: [MSG:RESPONSE] error response logging
-      console.log('[MSG:RESPONSE] Sending error response:', {
-        action,
-        success: false,
-        error: error.message,
-        messageId
-      });
-
-      this._handleHandlerError(action, error, messageId, sendResponse);
+      this._handleExecutionError(ctx, error, handlerStartTime);
       return true;
     } finally {
-      // v1.6.3.11-v3 - FIX Issue #24: Clear processing flag and drain queue
-      this._processingActions.delete(action);
-      // Drain any queued messages for this action
-      await this._drainReEntranceQueue(action);
+      this._processingActions.delete(ctx.action);
+      await this._drainReEntranceQueue(ctx.action);
     }
   }
 
