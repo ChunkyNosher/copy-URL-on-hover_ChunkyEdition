@@ -21,6 +21,7 @@
 // v1.6.3.11-v3 - FIX Issue #47: Added HEARTBEAT to allowlist for restart detection
 // v1.6.3.11-v3 - FIX Issue #23: Added REFRESH_CACHED_SETTINGS for options page
 // v1.6.3.11-v3 - FIX Issue #2: Added keyboard shortcut actions
+// v1.6.3.11-v4 - FIX Issue #4: Added RECONCILE_STALE_TABS for sidebar state verification
 export const VALID_MESSAGE_ACTIONS = new Set([
   // Quick Tab CRUD operations
   'CREATE_QUICK_TAB',
@@ -58,7 +59,9 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   'REFRESH_CACHED_SETTINGS',
   // v1.6.3.11-v3 - FIX Issue #2: Keyboard shortcut management
   'UPDATE_KEYBOARD_SHORTCUT',
-  'GET_KEYBOARD_SHORTCUTS'
+  'GET_KEYBOARD_SHORTCUTS',
+  // v1.6.3.11-v4 - FIX Issue #4: Sidebar state verification
+  'RECONCILE_STALE_TABS'
 ]);
 
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format

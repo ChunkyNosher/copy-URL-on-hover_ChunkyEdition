@@ -2841,6 +2841,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load Quick Tabs state from storage
   await loadQuickTabsState();
 
+  // v1.6.3.11-v4 - FIX Issue #4: Verify stored Quick Tabs exist on initial load
+  if (quickTabsState?.tabs?.length > 0) {
+    const reconcileResult = await _reconcileStoredTabsWithBrowser(quickTabsState.tabs);
+    if (reconcileResult.removedCount > 0) {
+      console.log('[Manager] Reconciliation removed stale entries:', {
+        removedCount: reconcileResult.removedCount,
+        remainingCount: reconcileResult.validTabs.length
+      });
+      // Update local state with valid tabs only (storage update via background)
+      quickTabsState.tabs = reconcileResult.validTabs;
+    }
+  }
+
   // Render initial UI
   renderUI();
 
@@ -2861,7 +2874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }, 2000);
 
   console.log(
-    '[Manager] v1.6.3.10-v7 Port connection + Message infrastructure + Host info maintenance initialized'
+    '[Manager] v1.6.3.11-v4 Port connection + Message infrastructure + Host info maintenance + State verification initialized'
   );
 });
 
@@ -3188,12 +3201,135 @@ function _updateInMemoryCache(tabs) {
   // because this might be a storage storm. _detectStorageStorm handles that case.
 }
 
+// ==================== v1.6.3.11-v4 FIX ISSUE #4: STATE VERIFICATION ====================
+// Verify stored Quick Tabs still exist in the browser
+
+/**
+ * Categorize a Quick Tab as valid or stale
+ * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _categorizeQuickTab(quickTab, browserTabIds) {
+  const originTabId = quickTab.originTabId;
+
+  // Quick Tab with valid origin tab
+  if (originTabId && browserTabIds.has(originTabId)) {
+    return { isValid: true, quickTab };
+  }
+
+  // Quick Tab without originTabId - keep for adoption
+  if (!originTabId) {
+    console.log('[RECONCILE] Quick Tab without originTabId:', { quickTabId: quickTab.id });
+    return { isValid: true, quickTab };
+  }
+
+  // Origin tab no longer exists - stale
+  return {
+    isValid: false,
+    staleInfo: {
+      quickTabId: quickTab.id,
+      originTabId: originTabId,
+      url: quickTab.url?.substring(0, 50)
+    }
+  };
+}
+
+/**
+ * Categorize all Quick Tabs into valid and stale
+ * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _categorizeAllQuickTabs(storedTabs, browserTabIds) {
+  const validTabs = [];
+  const staleTabs = [];
+
+  for (const quickTab of storedTabs) {
+    const result = _categorizeQuickTab(quickTab, browserTabIds);
+    if (result.isValid) {
+      validTabs.push(result.quickTab);
+    } else {
+      staleTabs.push(result.staleInfo);
+    }
+  }
+
+  return { validTabs, staleTabs };
+}
+
+/**
+ * Send reconciliation message to background
+ * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+async function _sendReconciliationMessage(staleTabs) {
+  try {
+    await browser.runtime.sendMessage({
+      action: 'RECONCILE_STALE_TABS',
+      staleQuickTabIds: staleTabs.map(t => t.quickTabId),
+      correlationId: `reconcile-${Date.now()}`
+    });
+  } catch (msgErr) {
+    console.warn('[RECONCILE] Failed to send reconciliation message:', msgErr.message);
+  }
+}
+
+/**
+ * Verify stored Quick Tabs against actual browser tabs
+ * v1.6.3.11-v4 - FIX Issue #4: Remove stale Quick Tabs on sidebar load
+ * v1.6.3.11-v4 - FIX Code Health: Reduced complexity with helper functions
+ *
+ * @param {Array} storedTabs - Quick Tabs from storage
+ * @returns {Promise<{validTabs: Array, removedCount: number}>}
+ */
+async function _reconcileStoredTabsWithBrowser(storedTabs) {
+  if (!storedTabs || storedTabs.length === 0) {
+    console.log('[RECONCILE] No stored tabs to verify');
+    return { validTabs: [], removedCount: 0 };
+  }
+
+  console.log('[RECONCILE] Starting tab verification:', {
+    storedTabCount: storedTabs.length,
+    timestamp: Date.now()
+  });
+
+  try {
+    // Query all open browser tabs
+    const browserTabs = await browser.tabs.query({});
+    const browserTabIds = new Set(browserTabs.map(t => t.id));
+
+    // Categorize all Quick Tabs
+    const { validTabs, staleTabs } = _categorizeAllQuickTabs(storedTabs, browserTabIds);
+
+    // Log reconciliation results
+    console.log('[RECONCILE] Tab verification complete:', {
+      storedCount: storedTabs.length,
+      validCount: validTabs.length,
+      staleCount: staleTabs.length,
+      staleQuickTabs: staleTabs
+    });
+
+    // If we found stale tabs, notify background to remove them
+    if (staleTabs.length > 0) {
+      console.log('[RECONCILE] Requesting background to remove stale entries');
+      await _sendReconciliationMessage(staleTabs);
+    }
+
+    return { validTabs, removedCount: staleTabs.length };
+  } catch (err) {
+    console.error('[RECONCILE] Tab verification failed:', err.message);
+    // On error, return all tabs (fail-safe: don't remove anything)
+    return { validTabs: storedTabs, removedCount: 0 };
+  }
+}
+
+// ==================== END STATE VERIFICATION ====================
+
 /**
  * Load Quick Tabs state from browser.storage.local
  * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
+ * v1.6.3.11-v4 - FIX Issue #4: Call reconciliation on initial load
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  */
 async function loadQuickTabsState() {

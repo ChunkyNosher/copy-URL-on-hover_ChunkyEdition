@@ -2342,6 +2342,82 @@ messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
   return { success: true, message: 'Global Quick Tab state cache reset' };
 });
 
+// v1.6.3.11-v4 - FIX Issue #4: Handler for sidebar state reconciliation
+// Removes stale Quick Tab entries when sidebar verifies they no longer exist
+messageRouter.register('RECONCILE_STALE_TABS', async (msg, _sender) => {
+  const { staleQuickTabIds, correlationId } = msg;
+
+  console.log('[Background] RECONCILE_STALE_TABS: Received reconciliation request', {
+    staleCount: staleQuickTabIds?.length ?? 0,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  if (!staleQuickTabIds || staleQuickTabIds.length === 0) {
+    return {
+      success: true,
+      operation: 'RECONCILE_STALE_TABS',
+      details: {
+        removedCount: 0,
+        message: 'No stale tabs to remove'
+      }
+    };
+  }
+
+  try {
+    // Get current state
+    const originalCount = globalQuickTabState.tabs?.length ?? 0;
+
+    // Remove stale tabs from global state
+    const staleIdSet = new Set(staleQuickTabIds);
+    globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab => !staleIdSet.has(tab.id));
+    globalQuickTabState.lastUpdate = Date.now();
+
+    const removedCount = originalCount - globalQuickTabState.tabs.length;
+
+    console.log('[Background] RECONCILE_STALE_TABS: Removed stale entries', {
+      originalCount,
+      newCount: globalQuickTabState.tabs.length,
+      removedCount,
+      correlationId
+    });
+
+    // Save updated state to storage
+    if (removedCount > 0) {
+      const writeSourceId = `bg-reconcile-${Date.now()}`;
+      await browser.storage.local.set({
+        quick_tabs_state_v2: {
+          tabs: globalQuickTabState.tabs,
+          timestamp: globalQuickTabState.lastUpdate,
+          writeSourceId: writeSourceId
+        }
+      });
+    }
+
+    return {
+      success: true,
+      operation: 'RECONCILE_STALE_TABS',
+      details: {
+        removedCount,
+        originalCount,
+        currentCount: globalQuickTabState.tabs.length,
+        correlationId
+      }
+    };
+  } catch (err) {
+    console.error('[Background] RECONCILE_STALE_TABS: Failed', {
+      error: err.message,
+      correlationId
+    });
+    return {
+      success: false,
+      operation: 'RECONCILE_STALE_TABS',
+      error: err.message,
+      details: { correlationId }
+    };
+  }
+});
+
 /**
  * v1.6.3.5-v10 - FIX Issue #1: Broadcast QUICK_TABS_CLEARED to all tabs with per-tab logging
  * Extracted from COORDINATED_CLEAR_ALL_QUICK_TABS to reduce nesting depth

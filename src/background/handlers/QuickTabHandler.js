@@ -546,12 +546,22 @@ export class QuickTabHandler {
     }
 
     // v1.6.3.6-v4 - FIX Issue #1: Log successful completion
+    // v1.6.3.11-v4 - FIX Issue #2: Standardized response format with operation details
     console.log('[QuickTabHandler] updateQuickTabProperty EXIT:', {
       id: message.id,
       shouldSave,
       lastUpdate: this.globalState.lastUpdate
     });
-    return { success: true };
+    return {
+      success: true,
+      operation: message.action || 'UPDATE_QUICK_TAB_PROPERTY',
+      details: {
+        quickTabId: message.id,
+        savedToStorage: shouldSave,
+        tabFound: true,
+        lastUpdate: this.globalState.lastUpdate
+      }
+    };
   }
 
   /**
@@ -689,8 +699,19 @@ export class QuickTabHandler {
 
     // v1.6.3.11-v3 - FIX Issue #12: Include originTabId in CREATE response
     // This allows content script to verify the validated originTabId assigned by background
+    // v1.6.3.11-v4 - FIX Issue #2: Standardized response format with operation details
     return {
       success: true,
+      operation: 'CREATE_QUICK_TAB',
+      details: {
+        quickTabId: message.id,
+        sequenceId: assignedSequenceId,
+        originTabId: validatedOriginTabId,
+        cookieStoreId: cookieStoreId,
+        url: message.url,
+        tabCount: this.globalState.tabs.length
+      },
+      // Legacy fields for backward compatibility
       sequenceId: assignedSequenceId,
       originTabId: validatedOriginTabId,
       quickTabId: message.id
@@ -766,7 +787,19 @@ export class QuickTabHandler {
       });
     }
 
-    return { success: true };
+    // v1.6.3.11-v4 - FIX Issue #2: Standardized response format with operation details
+    const wasRemoved = this.globalState.tabs.length !== originalLength;
+    return {
+      success: true,
+      operation: 'CLOSE_QUICK_TAB',
+      details: {
+        quickTabId: message.id,
+        removed: wasRemoved,
+        previousTabCount: originalLength,
+        currentTabCount: this.globalState.tabs.length,
+        cookieStoreId: cookieStoreId
+      }
+    };
   }
 
   /**

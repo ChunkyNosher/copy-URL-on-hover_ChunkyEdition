@@ -8367,6 +8367,265 @@ function _dispatchMessage(message, _sender, sendResponse) {
   return false;
 }
 
+// ==================== v1.6.3.11-v3 FIX ISSUE #1 & #6: STORAGE.ONCHANGED LISTENER ====================
+// Issue #1: Content script state sync via storage.onChanged
+// Issue #6: Cross-tab state propagation (<500ms)
+
+/**
+ * Debounce timer for storage change handling
+ * v1.6.3.11-v3 - FIX Issue #70: Prevent cascading updates
+ */
+let storageChangeDebounceTimer = null;
+
+/**
+ * Debounce interval for storage changes (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #70
+ */
+const STORAGE_CHANGE_DEBOUNCE_MS = 100;
+
+/**
+ * Handle storage changes to sync state across tabs
+ * v1.6.3.11-v3 - FIX Issue #1: React to storage updates for cross-tab sync
+ * v1.6.3.11-v3 - FIX Issue #6: Ensure <500ms propagation
+ *
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area that changed ('local', 'sync', 'session')
+ */
+function _handleStorageChange(changes, areaName) {
+  // Only handle local storage changes (Quick Tab state)
+  if (areaName !== 'local') {
+    return;
+  }
+
+  // Check for Quick Tab state changes
+  const stateChange = changes['quick_tabs_state_v2'];
+  if (!stateChange) {
+    return;
+  }
+
+  const newValue = stateChange.newValue;
+  const oldValue = stateChange.oldValue;
+
+  console.log('[STORAGE_SYNC] Storage change detected:', {
+    hasNewValue: !!newValue,
+    hasOldValue: !!oldValue,
+    newTabCount: newValue?.tabs?.length ?? 0,
+    oldTabCount: oldValue?.tabs?.length ?? 0,
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.11-v3 - FIX Issue #70: Debounce rapid storage changes
+  if (storageChangeDebounceTimer) {
+    clearTimeout(storageChangeDebounceTimer);
+  }
+
+  storageChangeDebounceTimer = setTimeout(() => {
+    storageChangeDebounceTimer = null;
+    _processStorageChange(newValue, oldValue);
+  }, STORAGE_CHANGE_DEBOUNCE_MS);
+}
+
+/**
+ * Process storage change after debounce
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _processStorageChange(newValue, oldValue) {
+  if (!newValue) {
+    console.log('[STORAGE_SYNC] State cleared from storage');
+    return;
+  }
+
+  const newTabs = newValue.tabs || [];
+  const oldTabs = oldValue?.tabs || [];
+
+  console.log('[CROSS_TAB_SYNC] Processing state change:', {
+    newTabCount: newTabs.length,
+    oldTabCount: oldTabs.length,
+    timestamp: newValue.timestamp,
+    writeSourceId: newValue.writeSourceId?.substring(0, 20)
+  });
+
+  // Notify Quick Tabs manager if available
+  if (quickTabsManager?.hydrateFromStorage) {
+    console.log('[CROSS_TAB_SYNC] Triggering hydration from storage change');
+    quickTabsManager.hydrateFromStorage().catch(err => {
+      console.warn('[CROSS_TAB_SYNC] Hydration failed:', err.message);
+    });
+  }
+
+  // Emit event for any other listeners
+  if (typeof eventBus !== 'undefined' && eventBus.emit) {
+    eventBus.emit('storage:changed', {
+      newTabs,
+      oldTabs,
+      timestamp: Date.now()
+    });
+  }
+}
+
+// Register storage.onChanged listener (once during module load)
+if (typeof browser !== 'undefined' && browser.storage?.onChanged) {
+  browser.storage.onChanged.addListener(_handleStorageChange);
+  console.log('[STORAGE_SYNC] ✓ storage.onChanged listener registered');
+}
+
+// ==================== END STORAGE.ONCHANGED LISTENER ====================
+
+// ==================== v1.6.3.11-v3 FIX ISSUE #5: ERROR RECOVERY MECHANISM ====================
+// Track hover detection failures and implement exponential backoff
+
+/**
+ * Error counter for hover detection failures
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+let hoverErrorCounter = 0;
+
+/**
+ * Timestamp of first error in current window
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+let hoverErrorWindowStart = 0;
+
+/**
+ * Error threshold before notification (5 errors in 10 seconds)
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+const HOVER_ERROR_THRESHOLD = 5;
+
+/**
+ * Error window duration (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+const HOVER_ERROR_WINDOW_MS = 10000;
+
+/**
+ * Current backoff delay (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #5: Starts at 100ms, doubles on each failure
+ */
+let hoverBackoffDelay = 100;
+
+/**
+ * Maximum backoff delay (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+const MAX_HOVER_BACKOFF_MS = 5000;
+
+/**
+ * Flag to indicate if recovery mode is active
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+let isInRecoveryMode = false;
+
+/**
+ * Record a hover detection error
+ * v1.6.3.11-v3 - FIX Issue #5
+ * @param {Error} error - The error that occurred
+ */
+function _recordHoverError(error) {
+  const now = Date.now();
+
+  // Reset window if expired
+  if (now - hoverErrorWindowStart > HOVER_ERROR_WINDOW_MS) {
+    hoverErrorCounter = 0;
+    hoverErrorWindowStart = now;
+  }
+
+  hoverErrorCounter++;
+
+  console.warn('[ERROR_RECOVERY] Hover detection error recorded:', {
+    errorCount: hoverErrorCounter,
+    threshold: HOVER_ERROR_THRESHOLD,
+    windowMs: HOVER_ERROR_WINDOW_MS,
+    currentBackoffMs: hoverBackoffDelay,
+    error: error?.message || 'Unknown error'
+  });
+
+  // Check if threshold exceeded
+  if (hoverErrorCounter >= HOVER_ERROR_THRESHOLD && !isInRecoveryMode) {
+    _enterRecoveryMode();
+  }
+
+  // Apply exponential backoff
+  hoverBackoffDelay = Math.min(hoverBackoffDelay * 2, MAX_HOVER_BACKOFF_MS);
+}
+
+/**
+ * Reset error counter on successful detection
+ * v1.6.3.11-v3 - FIX Issue #5
+ */
+function _resetHoverErrors() {
+  if (hoverErrorCounter > 0) {
+    console.log('[ERROR_RECOVERY] Successful detection - resetting error counter');
+  }
+  hoverErrorCounter = 0;
+  hoverBackoffDelay = 100; // Reset backoff
+  isInRecoveryMode = false;
+}
+
+/**
+ * Enter recovery mode when error threshold exceeded
+ * v1.6.3.11-v3 - FIX Issue #5
+ * @private
+ */
+function _enterRecoveryMode() {
+  isInRecoveryMode = true;
+
+  console.error('[ERROR_RECOVERY] THRESHOLD_EXCEEDED: Entering recovery mode', {
+    errorCount: hoverErrorCounter,
+    threshold: HOVER_ERROR_THRESHOLD,
+    backoffMs: hoverBackoffDelay,
+    timestamp: Date.now()
+  });
+
+  // Notify user via console (and toast if available)
+  const message = 'Copy URL on Hover: Experiencing connection issues. Auto-recovering...';
+  console.warn(`[ERROR_RECOVERY] USER_NOTIFICATION: ${message}`);
+
+  // Try to show notification to user
+  // v1.6.3.11-v4 - FIX Code Review: Handle Promise from showToast (non-blocking)
+  _tryShowRecoveryNotification(message);
+
+  // Schedule recovery attempt
+  setTimeout(() => {
+    console.log('[ERROR_RECOVERY] Attempting recovery after backoff');
+    isInRecoveryMode = false;
+  }, hoverBackoffDelay);
+}
+
+/**
+ * Try to show recovery notification (non-blocking)
+ * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _tryShowRecoveryNotification(message) {
+  if (!notificationManager?.showToast) {
+    return;
+  }
+
+  try {
+    const toastPromise = notificationManager.showToast(message, 'warning');
+    if (toastPromise?.catch) {
+      toastPromise.catch(_err => {
+        // Already handled by fallback in toast.js
+      });
+    }
+  } catch (_e) {
+    // Fallback to console only (handled above)
+  }
+}
+
+/**
+ * Check if we should skip due to recovery backoff
+ * v1.6.3.11-v3 - FIX Issue #5
+ * @returns {boolean} True if should skip this operation
+ */
+function _shouldSkipForRecovery() {
+  return isInRecoveryMode;
+}
+
+// ==================== END ERROR RECOVERY MECHANISM ====================
+
 // ==================== BEFOREUNLOAD CLEANUP HANDLER ====================
 // v1.6.3.4-v11 - FIX Issue #3: Cleanup resources on page navigation to prevent memory leaks
 // This handler ensures storage listeners and other resources are properly released

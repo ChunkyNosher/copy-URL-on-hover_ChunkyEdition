@@ -53,6 +53,7 @@ export class TabHandler {
   /**
    * Open URL in new tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
+   * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
    */
   async handleOpenTab(message, _sender) {
     try {
@@ -69,7 +70,17 @@ export class TabHandler {
       }
 
       const tab = await this.browserAPI.tabs.create(createProperties);
-      return { success: true, tabId: tab.id };
+      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+      return {
+        success: true,
+        operation: 'openTab',
+        details: {
+          tabId: tab.id,
+          url: message.url,
+          active: message.active ?? true
+        },
+        tabId: tab.id // Legacy field for backward compatibility
+      };
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleOpenTab', {
         action: message.action,
@@ -81,6 +92,7 @@ export class TabHandler {
   /**
    * Save Quick Tab state for browser tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
+   * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
    */
   handleSaveState(message, sender) {
     try {
@@ -91,7 +103,15 @@ export class TabHandler {
       }
 
       this.quickTabStates.set(tabId, message.state);
-      return { success: true };
+      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+      return {
+        success: true,
+        operation: 'saveQuickTabState',
+        details: {
+          tabId: tabId,
+          stateSize: JSON.stringify(message.state || {}).length
+        }
+      };
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleSaveState', {
         action: message.action,
@@ -103,6 +123,7 @@ export class TabHandler {
   /**
    * Get Quick Tab state for browser tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
+   * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
    */
   handleGetState(_message, sender) {
     try {
@@ -113,7 +134,16 @@ export class TabHandler {
       }
 
       const state = this.quickTabStates.get(tabId);
-      return { success: true, state: state || null };
+      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+      return {
+        success: true,
+        operation: 'getQuickTabState',
+        details: {
+          tabId: tabId,
+          hasState: state !== null && state !== undefined
+        },
+        state: state || null // Legacy field for backward compatibility
+      };
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleGetState', {
         senderTabId: sender?.tab?.id
@@ -124,6 +154,7 @@ export class TabHandler {
   /**
    * Clear Quick Tab state for browser tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
+   * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
    */
   handleClearState(_message, sender) {
     try {
@@ -133,8 +164,17 @@ export class TabHandler {
         throw new Error('Tab ID not available');
       }
 
+      const hadState = this.quickTabStates.has(tabId);
       this.quickTabStates.delete(tabId);
-      return { success: true };
+      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+      return {
+        success: true,
+        operation: 'clearQuickTabState',
+        details: {
+          tabId: tabId,
+          hadState: hadState
+        }
+      };
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleClearState', {
         senderTabId: sender?.tab?.id
