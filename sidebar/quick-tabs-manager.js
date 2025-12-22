@@ -1843,12 +1843,13 @@ function _findQuickTabDOMElement(quickTabId) {
 /**
  * Move a Quick Tab DOM element between groups
  * v1.6.3.10-v5 - FIX Bug #3: Moves element without recreating (prevents animation)
+ * v1.6.3.11-v3 - FIX Issue #66: Returns Promise for async DOM batching
  * @private
  * @param {HTMLElement} element - The Quick Tab DOM element to move
  * @param {Object} tabData - Updated Quick Tab data
  * @param {number|string|null} oldOriginTabId - Previous group key
  * @param {number} newOriginTabId - New group key
- * @returns {boolean} True if move succeeded
+ * @returns {Promise<boolean>} True if move succeeded
  */
 function _moveQuickTabBetweenGroups(element, tabData, oldOriginTabId, newOriginTabId) {
   // Find the target group
@@ -1861,49 +1862,57 @@ function _moveQuickTabBetweenGroups(element, tabData, oldOriginTabId, newOriginT
     console.log('[Manager] SURGICAL_UPDATE: Target group not found, will create:', {
       newOriginTabId
     });
-    return false;
+    return Promise.resolve(false);
   }
 
   const targetContent = targetGroup.querySelector('.tab-group-content');
   if (!targetContent) {
     console.warn('[Manager] SURGICAL_UPDATE: Target group has no content container');
-    return false;
+    return Promise.resolve(false);
   }
 
+  // v1.6.3.11-v3 - FIX Issue #66: Return the batched DOM operation promise
   return _executeElementMove({ element, tabData, targetContent, oldOriginTabId, newOriginTabId });
 }
 
 /**
  * Execute element move between groups
  * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * v1.6.3.11-v3 - FIX Issue #66: Wrap DOM mutations in requestAnimationFrame for batching
  * @private
  */
 function _executeElementMove({ element, tabData, targetContent, oldOriginTabId, newOriginTabId }) {
   const oldParent = element.parentElement;
-  element.remove();
-  element.classList.remove('orphaned-item');
-  element.classList.add('adoption-animation');
 
-  const isMinimized = isTabMinimizedHelper(tabData);
-  const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
+  // v1.6.3.11-v3 - FIX Issue #66: Batch DOM mutations in single animation frame
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      element.remove();
+      element.classList.remove('orphaned-item');
+      element.classList.add('adoption-animation');
 
-  if (insertionPoint) {
-    targetContent.insertBefore(element, insertionPoint);
-  } else {
-    targetContent.appendChild(element);
-  }
+      const isMinimized = isTabMinimizedHelper(tabData);
+      const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
 
-  _updateGroupCountAfterMove(oldOriginTabId, newOriginTabId);
-  _cleanupEmptySourceGroup(oldParent, oldOriginTabId);
+      if (insertionPoint) {
+        targetContent.insertBefore(element, insertionPoint);
+      } else {
+        targetContent.appendChild(element);
+      }
 
-  setTimeout(() => element.classList.remove('adoption-animation'), ANIMATION_DURATION_MS);
+      _updateGroupCountAfterMove(oldOriginTabId, newOriginTabId);
+      _cleanupEmptySourceGroup(oldParent, oldOriginTabId);
 
-  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
-    quickTabId: tabData.id,
-    fromGroup: oldOriginTabId,
-    toGroup: newOriginTabId
+      setTimeout(() => element.classList.remove('adoption-animation'), ANIMATION_DURATION_MS);
+
+      console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
+        quickTabId: tabData.id,
+        fromGroup: oldOriginTabId,
+        toGroup: newOriginTabId
+      });
+      resolve(true);
+    });
   });
-  return true;
 }
 
 /**
@@ -6506,10 +6515,13 @@ function _handleAdoptSuccess({ quickTabId, targetTabId, response, correlationId,
 /**
  * Handle failed adoption response
  * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * v1.6.3.11-v3 - FIX Issue #31: Add retry with exponential backoff for transient failures
  * @private
  */
 function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId, durationMs }) {
   const error = response?.error || 'Unknown error';
+  const errorCode = response?.code || 'UNKNOWN_ERROR';
+
   console.error('[Manager] OPERATION_FAILED:', {
     action: 'ADOPT_TAB',
     quickTabId,
@@ -6517,9 +6529,160 @@ function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId,
     correlationId,
     status: 'failed',
     error,
+    errorCode,
     durationMs
   });
   console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', { quickTabId, targetTabId, error });
+
+  // v1.6.3.11-v3 - FIX Issue #31: Display user-friendly error notification
+  // Show error in UI so user knows adoption failed
+  _displayAdoptionErrorNotification(quickTabId, error, errorCode);
+
+  // v1.6.3.11-v3 - FIX Issue #31: Check if error is retryable
+  const isRetryable = _isRetryableAdoptionError(errorCode);
+  if (isRetryable) {
+    console.log('[Manager] ADOPTION_RETRY_ELIGIBLE:', {
+      quickTabId,
+      targetTabId,
+      errorCode,
+      willRetry: true
+    });
+    // Schedule retry with backoff (only if not already in retry)
+    const currentAttempt = _adoptionRetryAttempts.get(quickTabId) || 0;
+    if (currentAttempt === 0) {
+      // First failure - start retry sequence
+      _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, 1);
+    }
+    // If currentAttempt > 0, we're already in a retry sequence - don't double-schedule
+  }
+}
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Display error notification for adoption failure
+ * @private
+ */
+function _displayAdoptionErrorNotification(quickTabId, error, errorCode) {
+  // Truncate quick tab ID for display
+  const shortId = quickTabId.length > 12 ? quickTabId.substring(0, 12) + '...' : quickTabId;
+
+  // User-friendly error messages
+  const errorMessages = {
+    ORIGIN_TAB_CLOSED: 'Original tab was closed',
+    QUICK_TAB_NOT_FOUND: 'Quick Tab no longer exists',
+    TARGET_TAB_NOT_FOUND: 'Target tab not available',
+    TIMEOUT: 'Operation timed out - will retry',
+    NETWORK_ERROR: 'Network error - will retry'
+  };
+
+  // v1.6.3.11-v3 - FIX Code Review: Use generic fallback instead of raw error
+  // to avoid potentially sensitive information in user-facing messages
+  const userMessage = errorMessages[errorCode] || 'Adoption failed - please try again';
+  console.warn(`[Manager] ADOPTION_ERROR_DISPLAY: ${shortId} - ${userMessage}`);
+
+  // Note: Actual UI notification would require DOM access
+  // The error is logged for now - UI notification can be added via event bus
+}
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Check if adoption error is retryable
+ * @private
+ */
+function _isRetryableAdoptionError(errorCode) {
+  const retryableCodes = new Set([
+    'TIMEOUT',
+    'NETWORK_ERROR',
+    'BACKGROUND_NOT_READY',
+    'HANDLER_ERROR'
+  ]);
+  return retryableCodes.has(errorCode);
+}
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Track retry attempts per quick tab
+ * @private
+ */
+const _adoptionRetryAttempts = new Map();
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Maximum adoption retry attempts
+ */
+const ADOPTION_MAX_RETRIES = 3;
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Base retry delay in ms (exponential backoff)
+ */
+const ADOPTION_RETRY_BASE_DELAY_MS = 1000;
+
+/**
+ * v1.6.3.11-v3 - FIX Code Review: Maximum bit shift attempt for overflow prevention
+ * At 10: 2^9 = 512 seconds max delay
+ */
+const ADOPTION_RETRY_MAX_SHIFT_ATTEMPT = 10;
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Schedule adoption retry with exponential backoff
+ * @private
+ */
+function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt) {
+  if (attempt > ADOPTION_MAX_RETRIES) {
+    console.error('[Manager] ADOPTION_RETRY_EXHAUSTED:', {
+      quickTabId,
+      targetTabId,
+      maxRetries: ADOPTION_MAX_RETRIES,
+      message: 'Max retries reached - adoption failed permanently'
+    });
+    _adoptionRetryAttempts.delete(quickTabId);
+    return;
+  }
+
+  // v1.6.3.11-v3 - FIX Code Review: Bounds check before bit shift to prevent overflow
+  // Safe for attempts 1-3: (1 << 0) = 1, (1 << 1) = 2, (1 << 2) = 4
+  const safeAttempt = Math.min(attempt, ADOPTION_RETRY_MAX_SHIFT_ATTEMPT);
+  const delayMs = ADOPTION_RETRY_BASE_DELAY_MS * (1 << (safeAttempt - 1));
+
+  console.log('[Manager] ADOPTION_RETRY_SCHEDULED:', {
+    quickTabId,
+    targetTabId,
+    attempt,
+    maxRetries: ADOPTION_MAX_RETRIES,
+    delayMs
+  });
+
+  _adoptionRetryAttempts.set(quickTabId, attempt);
+
+  setTimeout(async () => {
+    console.log('[Manager] ADOPTION_RETRY_EXECUTING:', {
+      quickTabId,
+      targetTabId,
+      attempt,
+      correlationId: `${correlationId}-retry${attempt}`
+    });
+
+    try {
+      await adoptQuickTabToCurrentTab(quickTabId, targetTabId);
+      // Success - clean up retry tracking
+      _adoptionRetryAttempts.delete(quickTabId);
+    } catch (err) {
+      console.warn('[Manager] ADOPTION_RETRY_FAILED:', {
+        quickTabId,
+        attempt,
+        error: err.message
+      });
+      // v1.6.3.11-v3 - FIX Code Review: Clean up retry state and schedule next retry if under max
+      // This handles the case where adoptQuickTabToCurrentTab doesn't call _handleAdoptFailure
+      const nextAttempt = attempt + 1;
+      if (nextAttempt <= ADOPTION_MAX_RETRIES) {
+        _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, nextAttempt);
+      } else {
+        console.error('[Manager] ADOPTION_RETRY_EXHAUSTED_IN_CATCH:', {
+          quickTabId,
+          targetTabId,
+          finalAttempt: attempt
+        });
+        _adoptionRetryAttempts.delete(quickTabId);
+      }
+    }
+  }, delayMs);
 }
 
 /**

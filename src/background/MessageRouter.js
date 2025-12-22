@@ -18,6 +18,8 @@
 
 // v1.6.4.15 - FIX Issue #18: Allowlist of valid command types for validation
 // This serves as documentation and validation for the message protocol
+// v1.6.3.11-v3 - FIX Issue #47: Added HEARTBEAT to allowlist for restart detection
+// v1.6.3.11-v3 - FIX Issue #23: Added REFRESH_CACHED_SETTINGS for options page
 export const VALID_MESSAGE_ACTIONS = new Set([
   // Quick Tab CRUD operations
   'CREATE_QUICK_TAB',
@@ -47,8 +49,12 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   // Tab management
   'GET_TABS',
   'SWITCH_TAB',
-  // Keepalive
-  'KEEPALIVE_PING'
+  // Keepalive and heartbeat
+  'KEEPALIVE_PING',
+  // v1.6.3.11-v3 - FIX Issue #47: HEARTBEAT for restart detection
+  'HEARTBEAT',
+  // v1.6.3.11-v3 - FIX Issue #23: Settings refresh from options page
+  'REFRESH_CACHED_SETTINGS'
 ]);
 
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format
@@ -96,9 +102,11 @@ export const MIN_COMPATIBLE_PROTOCOL_VERSION = '1.0.0';
 const MAX_PRE_INIT_MESSAGE_QUEUE = 50;
 
 // v1.6.3.10-v11 - FIX Issue #11: Operations requiring ownership validation
+// v1.6.3.11-v3 - FIX Issue #36 & #56: Added CLOSE_QUICK_TAB to ownership-required actions
 // These operations modify Quick Tab state and must validate sender.tab.id === message.originTabId
 const OWNERSHIP_REQUIRED_ACTIONS = new Set([
   'CREATE_QUICK_TAB',
+  'CLOSE_QUICK_TAB', // v1.6.3.11-v3 - FIX Issue #36: CLOSE requires ownership validation
   'UPDATE_QUICK_TAB_POSITION',
   'UPDATE_QUICK_TAB_POSITION_FINAL',
   'UPDATE_QUICK_TAB_SIZE',
@@ -109,6 +117,9 @@ const OWNERSHIP_REQUIRED_ACTIONS = new Set([
   'UPDATE_QUICK_TAB_MINIMIZE',
   'UPDATE_QUICK_TAB_ZINDEX'
 ]);
+
+// v1.6.3.11-v3 - FIX Issue #24: Maximum queue size per action for re-entrance queue
+const MAX_REENTRANCE_QUEUE_SIZE = 10;
 
 export class MessageRouter {
   constructor() {
@@ -126,8 +137,10 @@ export class MessageRouter {
     // v1.6.3.11-v3 - FIX Issue #20: Queue for messages received before initialization
     this._preInitMessageQueue = [];
 
-    // v1.6.3.11 - FIX Issue #24: Re-entrance guard for recursive handler calls
+    // v1.6.3.11-v3 - FIX Issue #24: Re-entrance guard using Map<action, Queue>
+    // Instead of blocking re-entrant messages, queue them and process in order
     this._processingActions = new Set();
+    this._reEntranceQueues = new Map(); // action -> Array of queued messages
 
     // v1.6.3.11 - FIX Issue #35: Log when MessageRouter is initialized
     console.log('[MessageRouter] INITIALIZED:', {
@@ -576,6 +589,9 @@ export class MessageRouter {
    * This prevents spoofing attacks where a malicious content script could
    * claim to be acting on behalf of a different tab.
    *
+   * v1.6.3.11-v3 - FIX Issue #36 & #56: REQUIRE originTabId field for ownership operations
+   * Previously, missing originTabId would pass validation. Now it's rejected.
+   *
    * @private
    * @param {Object} message - Message with potential originTabId
    * @param {Object} sender - Message sender
@@ -606,28 +622,41 @@ export class MessageRouter {
       };
     }
 
-    // If payload has originTabId, it MUST match sender.tab.id
-    if (payloadOriginTabId !== null && payloadOriginTabId !== undefined) {
-      if (payloadOriginTabId !== senderTabId) {
-        console.error('[MSG][MessageRouter] OWNERSHIP_MISMATCH:', {
-          action,
-          payloadOriginTabId,
-          senderTabId,
-          warning: 'Security concern - payload claims different origin than sender'
-        });
-        return {
-          valid: false,
-          error: 'OWNERSHIP_VALIDATION_FAILED',
-          code: 'ORIGIN_MISMATCH'
-        };
-      }
+    // v1.6.3.11-v3 - FIX Issue #36: REQUIRE originTabId field for ownership-required operations
+    // Previously, missing originTabId would pass validation (security bypass)
+    if (payloadOriginTabId === null || payloadOriginTabId === undefined) {
+      console.error('[MSG][MessageRouter] OWNERSHIP_VALIDATION_FAILED: Missing originTabId', {
+        action,
+        senderTabId,
+        warning: 'SECURITY: originTabId field is required for ownership operations'
+      });
+      return {
+        valid: false,
+        error: 'Missing originTabId field',
+        code: 'MISSING_ORIGIN_TAB_ID'
+      };
+    }
+
+    // originTabId MUST match sender.tab.id
+    if (payloadOriginTabId !== senderTabId) {
+      console.error('[MSG][MessageRouter] OWNERSHIP_MISMATCH:', {
+        action,
+        payloadOriginTabId,
+        senderTabId,
+        warning: 'Security concern - payload claims different origin than sender'
+      });
+      return {
+        valid: false,
+        error: 'OWNERSHIP_VALIDATION_FAILED',
+        code: 'ORIGIN_MISMATCH'
+      };
     }
 
     // Validation passed
     console.log('[MSG][MessageRouter] OWNERSHIP_VALIDATED:', {
       action,
       senderTabId,
-      payloadOriginTabId: payloadOriginTabId ?? 'not-provided'
+      payloadOriginTabId
     });
 
     return { valid: true };
@@ -647,6 +676,17 @@ export class MessageRouter {
     // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
     const validation = this._validateAction(action, sender);
     if (!validation.valid) {
+      // v1.6.3.11-v3 - FIX Issue #60: Enhanced rejection logging
+      console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: Unknown command', {
+        action,
+        senderTabId: sender?.tab?.id,
+        senderFrameId: sender?.frameId,
+        senderUrl: sender?.url,
+        messageId: message?.messageId,
+        timestamp: Date.now(),
+        reason: 'UNKNOWN_COMMAND',
+        messageKeys: Object.keys(message || {})
+      });
       sendResponse({
         success: false,
         error: 'UNKNOWN_COMMAND',
@@ -657,7 +697,17 @@ export class MessageRouter {
       return { handled: true, returnValue: false };
     }
 
-    console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
+    // v1.6.3.11-v3 - FIX Issue #60: Enhanced rejection logging for no handler case
+    console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: No handler', {
+      action,
+      senderTabId: sender?.tab?.id,
+      senderFrameId: sender?.frameId,
+      senderUrl: sender?.url,
+      messageId: message?.messageId,
+      timestamp: Date.now(),
+      reason: 'NO_HANDLER',
+      validActions: VALID_MESSAGE_ACTIONS.slice(0, 10) // First 10 valid actions for context
+    });
     sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
     return { handled: true, returnValue: false };
   }
@@ -710,10 +760,19 @@ export class MessageRouter {
   /**
    * Handle handler execution error
    * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce route() complexity
+   * v1.6.3.11-v3 - FIX Issue #58: Enhanced error logging with stack trace
    * @private
    */
   _handleHandlerError(action, error, messageId, sendResponse) {
-    console.error(`[MSG][MessageRouter] Handler error for ${action}:`, error);
+    // v1.6.3.11-v3 - FIX Issue #58: Log error with full context including stack trace
+    console.error(`[MSG][MessageRouter] HANDLER_ERROR for ${action}:`, {
+      action,
+      messageId,
+      errorMessage: error.message || 'Unknown error',
+      errorName: error.name || 'Error',
+      stack: error.stack || 'No stack trace',
+      timestamp: Date.now()
+    });
 
     if (sendResponse) {
       sendResponse({
@@ -766,44 +825,137 @@ export class MessageRouter {
   }
 
   /**
-   * Check for re-entrance (recursive handler call)
-   * v1.6.3.11 - FIX Issue #24: Circular handler dependencies
+   * Check for re-entrance (recursive handler call) and queue if needed
+   * v1.6.3.11-v3 - FIX Issue #24: Queue re-entrant messages instead of blocking
    * @private
    * @param {string} action - Action being processed
-   * @returns {boolean} True if re-entrance detected
+   * @param {Object} message - Message to potentially queue
+   * @param {Object} sender - Message sender
+   * @param {Function} sendResponse - Response callback
+   * @returns {{shouldQueue: boolean, wasQueued: boolean}} True if message was queued
    */
-  _checkReentrance(action) {
-    if (this._processingActions.has(action)) {
-      console.warn('[MSG][MessageRouter] RE_ENTRANCE_DETECTED: Blocking recursive call', {
-        action,
-        currentlyProcessing: Array.from(this._processingActions)
-      });
-      return true;
+  _checkReentrance(action, message, sender, sendResponse) {
+    if (!this._processingActions.has(action)) {
+      return { shouldQueue: false, wasQueued: false };
     }
-    return false;
+
+    // Re-entrance detected - queue the message instead of blocking
+    if (!this._reEntranceQueues.has(action)) {
+      this._reEntranceQueues.set(action, []);
+    }
+
+    const queue = this._reEntranceQueues.get(action);
+
+    // Check queue size limit
+    if (queue.length >= MAX_REENTRANCE_QUEUE_SIZE) {
+      console.warn('[MSG][MessageRouter] RE_ENTRANCE_QUEUE_FULL: Dropping oldest message', {
+        action,
+        queueSize: queue.length,
+        maxSize: MAX_REENTRANCE_QUEUE_SIZE
+      });
+      // Remove oldest message (FIFO overflow)
+      const droppedMessage = queue.shift();
+      if (droppedMessage.sendResponse) {
+        droppedMessage.sendResponse({
+          success: false,
+          error: 'Message dropped due to queue overflow',
+          code: 'QUEUE_OVERFLOW',
+          timestamp: Date.now()
+        });
+      }
+    }
+
+    // Queue this message
+    queue.push({ message, sender, sendResponse, queuedAt: Date.now() });
+
+    console.log('[MSG][MessageRouter] RE_ENTRANCE_QUEUED:', {
+      action,
+      queueSize: queue.length,
+      messageId: message?.messageId
+    });
+
+    return { shouldQueue: true, wasQueued: true };
+  }
+
+  /**
+   * Handle error during queue drain
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
+   * @private
+   */
+  _handleQueueDrainError(entry, action, err, queueDuration) {
+    console.error('[MSG][MessageRouter] RE_ENTRANCE_MESSAGE_FAILED:', {
+      action,
+      error: err.message,
+      queueDurationMs: queueDuration
+    });
+    if (entry.sendResponse) {
+      entry.sendResponse({
+        success: false,
+        error: 'Failed during queue drain',
+        code: 'QUEUE_DRAIN_ERROR',
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Drain re-entrance queue for a specific action after handler completes
+   * v1.6.3.11-v3 - FIX Issue #24: Process queued messages in order
+   * @private
+   * @param {string} action - Action whose queue to drain
+   */
+  async _drainReEntranceQueue(action) {
+    const queue = this._reEntranceQueues.get(action);
+    if (!queue || queue.length === 0) {
+      return;
+    }
+
+    console.log('[MSG][MessageRouter] DRAIN_RE_ENTRANCE_QUEUE_START:', {
+      action,
+      queueSize: queue.length
+    });
+
+    // Process all queued messages for this action
+    while (queue.length > 0) {
+      const entry = queue.shift();
+      const queueDuration = Date.now() - entry.queuedAt;
+
+      try {
+        // Re-route the queued message through the full routing pipeline
+        await this.route(entry.message, entry.sender, entry.sendResponse);
+        console.log('[MSG][MessageRouter] RE_ENTRANCE_MESSAGE_PROCESSED:', {
+          action,
+          queueDurationMs: queueDuration,
+          remainingInQueue: queue.length
+        });
+      } catch (err) {
+        this._handleQueueDrainError(entry, action, err, queueDuration);
+      }
+    }
+
+    // Clean up empty queue
+    this._reEntranceQueues.delete(action);
+
+    console.log('[MSG][MessageRouter] DRAIN_RE_ENTRANCE_QUEUE_COMPLETE:', { action });
   }
 
   /**
    * Check early exit conditions for route()
-   * v1.6.3.11 - FIX Code Health: Extracted to reduce route() complexity
+   * v1.6.3.11-v3 - FIX Issue #24: Updated to queue re-entrant messages instead of blocking
    * @private
    * @param {Object} message - Message to route
+   * @param {Object} sender - Message sender
    * @param {string} action - Extracted action
    * @param {string} messageId - Message ID for correlation
    * @param {Function} sendResponse - Response callback
    * @returns {{shouldExit: boolean, returnValue?: boolean}}
    */
-  _checkRouteEarlyExit(message, action, messageId, sendResponse) {
-    // Check re-entrance
-    if (this._checkReentrance(action)) {
-      sendResponse({
-        success: false,
-        error: 'Re-entrance blocked',
-        code: 'RE_ENTRANCE_BLOCKED',
-        ...(messageId ? { messageId } : {}),
-        timestamp: Date.now()
-      });
-      return { shouldExit: true, returnValue: false };
+  _checkRouteEarlyExit(message, sender, action, messageId, sendResponse) {
+    // Check re-entrance and queue if needed
+    const reEntranceResult = this._checkReentrance(action, message, sender, sendResponse);
+    if (reEntranceResult.wasQueued) {
+      // Message was queued, caller should exit and not process further
+      return { shouldExit: true, returnValue: true }; // Return true to keep channel open
     }
     return { shouldExit: false };
   }
@@ -846,8 +998,8 @@ export class MessageRouter {
       return false;
     }
 
-    // v1.6.3.11 - FIX Issue #24: Check for re-entrance
-    const earlyExit = this._checkRouteEarlyExit(message, action, messageId, sendResponse);
+    // v1.6.3.11-v3 - FIX Issue #24: Check for re-entrance and queue if needed
+    const earlyExit = this._checkRouteEarlyExit(message, sender, action, messageId, sendResponse);
     if (earlyExit.shouldExit) return earlyExit.returnValue;
 
     // Validate protocol version and log correlation
@@ -862,12 +1014,13 @@ export class MessageRouter {
     }
 
     // Route to handler
+    // Note: ESLint require-await rule flags this, but async is needed for awaiting callers
     return this._routeToHandler(message, sender, sendResponse, action, messageId);
   }
 
   /**
    * Route message to handler after validation passes
-   * v1.6.3.11 - FIX Code Health: Extracted to reduce route() complexity
+   * v1.6.3.11-v3 - FIX Issue #24: Added queue draining after handler completes
    * @private
    */
   async _routeToHandler(message, sender, sendResponse, action, messageId) {
@@ -884,7 +1037,7 @@ export class MessageRouter {
       return false;
     }
 
-    // v1.6.3.11 - FIX Issue #24: Track action being processed
+    // v1.6.3.11-v3 - FIX Issue #24: Track action being processed
     this._processingActions.add(action);
 
     try {
@@ -896,8 +1049,10 @@ export class MessageRouter {
       this._handleHandlerError(action, error, messageId, sendResponse);
       return true;
     } finally {
-      // v1.6.3.11 - FIX Issue #24: Clear processing flag after handler completes
+      // v1.6.3.11-v3 - FIX Issue #24: Clear processing flag and drain queue
       this._processingActions.delete(action);
+      // Drain any queued messages for this action
+      await this._drainReEntranceQueue(action);
     }
   }
 

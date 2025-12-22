@@ -443,6 +443,283 @@ const RETRYABLE_ERROR_CODES = new Set(['NOT_INITIALIZED', 'GLOBAL_STATE_NOT_READ
 // v1.6.4.15 - FIX Code Review: Convert to Set for O(1) lookup and consistency
 const RETRYABLE_MESSAGE_PATTERNS = new Set(['disconnected', 'receiving end', 'Extension context']);
 
+// ==================== v1.6.3.11-v3 FIX ISSUE #48: CROSS-BROWSER MESSAGE TIMEOUT ====================
+// Firefox browser.runtime.sendMessage has NO built-in timeout unlike Chrome's ~9s implicit timeout
+// This wrapper enforces explicit timeouts for cross-browser compatibility
+
+/**
+ * Default message timeout (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #48: Explicit timeout for Firefox compatibility
+ */
+const DEFAULT_MESSAGE_TIMEOUT_MS = 5000;
+
+/**
+ * Minimum message timeout (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #48: Never go below this threshold
+ */
+const MIN_MESSAGE_TIMEOUT_MS = 1000;
+
+/**
+ * Maximum message timeout (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #48: Cap adaptive timeout at reasonable limit
+ */
+const MAX_MESSAGE_TIMEOUT_MS = 15000;
+
+/**
+ * Message latency tracking for adaptive timeout
+ * v1.6.3.11-v3 - FIX Issue #48: Array of recent message latencies
+ */
+const recentMessageLatencies = [];
+
+/**
+ * Maximum latency samples to keep
+ * v1.6.3.11-v3 - FIX Issue #48
+ */
+const MAX_LATENCY_SAMPLES = 10;
+
+/**
+ * Multiplier for adaptive timeout (based on 95th percentile latency)
+ * v1.6.3.11-v3 - FIX Issue #48: timeout = max latency * multiplier
+ */
+const ADAPTIVE_TIMEOUT_MULTIPLIER = 3;
+
+/**
+ * Record a message latency for adaptive timeout calculation
+ * v1.6.3.11-v3 - FIX Issue #48
+ * @param {number} latencyMs - Message round-trip latency in milliseconds
+ */
+function _recordMessageLatency(latencyMs) {
+  if (typeof latencyMs !== 'number' || latencyMs <= 0) return;
+
+  recentMessageLatencies.push(latencyMs);
+
+  // Keep only recent samples
+  while (recentMessageLatencies.length > MAX_LATENCY_SAMPLES) {
+    recentMessageLatencies.shift();
+  }
+}
+
+/**
+ * Calculate adaptive timeout based on recent message latencies
+ * v1.6.3.11-v3 - FIX Issue #48
+ * @returns {number} Adaptive timeout in milliseconds
+ */
+function _getAdaptiveTimeout() {
+  if (recentMessageLatencies.length < 3) {
+    // Not enough samples - use default
+    return DEFAULT_MESSAGE_TIMEOUT_MS;
+  }
+
+  // Sort for percentile calculation
+  const sorted = [...recentMessageLatencies].sort((a, b) => a - b);
+
+  // Use 95th percentile (or max if small sample)
+  const p95Index = Math.floor(sorted.length * 0.95);
+  const p95Latency = sorted[Math.min(p95Index, sorted.length - 1)];
+
+  // Apply multiplier and clamp to range
+  const adaptiveTimeout = Math.round(p95Latency * ADAPTIVE_TIMEOUT_MULTIPLIER);
+
+  return Math.max(MIN_MESSAGE_TIMEOUT_MS, Math.min(adaptiveTimeout, MAX_MESSAGE_TIMEOUT_MS));
+}
+
+/**
+ * Error class for message timeout
+ * v1.6.3.11-v3 - FIX Issue #48: Distinct error type for timeout vs handler error
+ */
+class MessageTimeoutError extends Error {
+  constructor(messageType, timeoutMs, elapsedMs) {
+    super(
+      `Message timeout: ${messageType} did not respond within ${timeoutMs}ms (elapsed: ${elapsedMs}ms)`
+    );
+    this.name = 'MessageTimeoutError';
+    this.messageType = messageType;
+    this.timeoutMs = timeoutMs;
+    this.elapsedMs = elapsedMs;
+    this.isTimeout = true;
+  }
+}
+
+/**
+ * Check if error is a retryable timeout error
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+function _isRetryableTimeoutError(err) {
+  return err instanceof MessageTimeoutError;
+}
+
+/**
+ * Handle timeout retry with exponential backoff
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+function _handleTimeoutRetry(err, attempts, maxRetries, context) {
+  const { messageType, effectiveTimeout, startTime, useAdaptiveTimeout } = context;
+  const elapsed = Date.now() - startTime;
+
+  console.warn('[Content][MSG_TIMEOUT] Message timeout:', {
+    messageType,
+    attempt: attempts,
+    maxRetries,
+    timeoutMs: effectiveTimeout,
+    elapsedMs: elapsed,
+    adaptiveTimeout: useAdaptiveTimeout,
+    recentLatencies: recentMessageLatencies.slice(-3)
+  });
+
+  // Return backoff delay if retries remaining, otherwise null
+  if (attempts <= maxRetries) {
+    const backoffMs = Math.min(1000 * Math.pow(2, attempts - 1), 5000);
+    console.log('[Content][MSG_TIMEOUT] Retrying after backoff:', {
+      attempt: attempts + 1,
+      backoffMs
+    });
+    return backoffMs;
+  }
+
+  return null; // No retry
+}
+
+/**
+ * Send message to background with explicit timeout
+ * v1.6.3.11-v3 - FIX Issue #48: Cross-browser message wrapper with timeout enforcement
+ *
+ * Firefox's browser.runtime.sendMessage() has no built-in timeout, unlike Chrome's
+ * ~9 second implicit timeout. This wrapper enforces explicit timeouts for cross-browser
+ * compatibility and handles timeout as a distinct error from handler errors.
+ *
+ * @param {Object} message - Message to send
+ * @param {Object} options - Options
+ * @param {number} [options.timeout] - Custom timeout in ms (default: adaptive)
+ * @param {boolean} [options.useAdaptiveTimeout=true] - Use adaptive timeout based on latency
+ * @param {number} [options.maxRetries=0] - Maximum retries for timeout errors
+ * @returns {Promise<any>} Response from background
+ * @throws {MessageTimeoutError} If message times out
+ */
+async function sendMessageWithTimeout(message, options = {}) {
+  const { timeout, useAdaptiveTimeout = true, maxRetries = 0 } = options;
+
+  const effectiveTimeout =
+    timeout || (useAdaptiveTimeout ? _getAdaptiveTimeout() : DEFAULT_MESSAGE_TIMEOUT_MS);
+  const messageType = message.action || message.type || 'unknown';
+  const startTime = Date.now();
+  const context = { messageType, effectiveTimeout, startTime, useAdaptiveTimeout };
+
+  let lastError = null;
+  let attempts = 0;
+
+  while (attempts <= maxRetries) {
+    attempts++;
+    const result = await _attemptSendMessage(message, effectiveTimeout);
+
+    if (result.success) {
+      return result.response;
+    }
+
+    lastError = result.error;
+    const shouldRetry = _shouldRetryAfterError(lastError, attempts, maxRetries, context);
+    if (!shouldRetry) break;
+
+    await new Promise(resolve => setTimeout(resolve, shouldRetry.backoffMs));
+  }
+
+  throw lastError;
+}
+
+/**
+ * Attempt to send a single message with timeout
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+async function _attemptSendMessage(message, effectiveTimeout) {
+  const attemptStart = Date.now();
+  const messageType = message.action || message.type || 'unknown';
+
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage(message),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          const elapsed = Date.now() - attemptStart;
+          reject(new MessageTimeoutError(messageType, effectiveTimeout, elapsed));
+        }, effectiveTimeout);
+      })
+    ]);
+
+    // Record successful latency for adaptive timeout
+    const latency = Date.now() - attemptStart;
+    _recordMessageLatency(latency);
+
+    return { success: true, response };
+  } catch (err) {
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Determine if error should trigger a retry
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ * @returns {{backoffMs: number}|null} Backoff info if should retry, null otherwise
+ */
+function _shouldRetryAfterError(err, attempts, maxRetries, context) {
+  if (!_isRetryableTimeoutError(err)) return null;
+
+  const backoffMs = _handleTimeoutRetry(err, attempts, maxRetries, context);
+  if (backoffMs === null) return null;
+
+  return { backoffMs };
+}
+
+// ==================== END ISSUE #48 FIX ====================
+
+// ==================== v1.6.3.11-v3 FIX ISSUE #52: STALE EVENT REJECTION ====================
+// Events received after BFCache restoration may have old timestamps
+
+/**
+ * Timestamp when page became inactive (entered BFCache)
+ * v1.6.3.11-v3 - FIX Issue #52: Track inactivity start for stale event rejection
+ */
+let pageInactiveTimestamp = null;
+
+/**
+ * Check if an event timestamp is stale (occurred while page was inactive)
+ * v1.6.3.11-v3 - FIX Issue #52
+ * @param {number} eventTimestamp - Timestamp of the event
+ * @returns {boolean} True if event is stale and should be rejected
+ */
+function _isStaleEvent(eventTimestamp) {
+  if (!pageInactiveTimestamp || !eventTimestamp) return false;
+
+  // Event occurred before page became inactive
+  return eventTimestamp < pageInactiveTimestamp;
+}
+
+/**
+ * Mark page as inactive (entering BFCache)
+ * v1.6.3.11-v3 - FIX Issue #52
+ */
+function _markPageInactive() {
+  pageInactiveTimestamp = Date.now();
+}
+
+/**
+ * Mark page as active (restored from BFCache)
+ * v1.6.3.11-v3 - FIX Issue #52: Clear inactive timestamp on restoration
+ */
+function _markPageActive() {
+  if (pageInactiveTimestamp) {
+    console.log('[Content][BFCACHE] PAGE_ACTIVE: Cleared inactive timestamp', {
+      wasInactiveSince: pageInactiveTimestamp,
+      inactiveDuration: Date.now() - pageInactiveTimestamp
+    });
+  }
+  pageInactiveTimestamp = null;
+}
+
+// ==================== END ISSUE #52 FIX ====================
+
 // ==================== v1.6.4.15 FIX ISSUE #14: MESSAGE QUEUE DURING INIT ====================
 // Queue messages while content script initializes to prevent lost messages
 
@@ -740,13 +1017,149 @@ let messageIdCounter = 0;
 const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt, resolve, reject }
 
 /**
+ * Port generation counter - incremented on each port reconnection
+ * v1.6.3.11-v3 - FIX Issue #27: Include port generation in message IDs to prevent collision across reconnections
+ * @type {number}
+ */
+let portGeneration = 0;
+
+/**
+ * Pending message garbage collection interval (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #33: Periodically clean up stale entries
+ * @type {number}
+ */
+const PENDING_MESSAGE_GC_INTERVAL_MS = 30000; // 30 seconds
+
+/**
+ * Maximum age for pending messages before garbage collection (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #33: Messages older than this are stale
+ * @type {number}
+ */
+const PENDING_MESSAGE_MAX_AGE_MS = 30000; // 30 seconds (same as timeout threshold from issue)
+
+/**
+ * Garbage collection interval ID
+ * v1.6.3.11-v3 - FIX Issue #33
+ * @type {number|null}
+ */
+let pendingMessageGcIntervalId = null;
+
+/**
+ * Check if message IDs match between request and response
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce _validateResponseMatchesRequest complexity
+ * @private
+ */
+function _checkMessageIdMatch(request, response) {
+  const requestMessageId = request.messageId;
+  const responseMessageId = response?.messageId;
+
+  if (responseMessageId && responseMessageId !== requestMessageId) {
+    console.warn('[Content] RESPONSE_ID_MISMATCH:', {
+      requestMessageId,
+      responseMessageId,
+      requestAction: request.action || request.type
+    });
+    return {
+      valid: false,
+      reason: `Message ID mismatch: expected ${requestMessageId}, got ${responseMessageId}`
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Check if Quick Tab ID matches for CREATE operations
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce _validateResponseMatchesRequest complexity
+ * @private
+ */
+function _checkQuickTabIdMatch(request, response) {
+  if (request.action !== 'CREATE_QUICK_TAB') {
+    return { valid: true };
+  }
+
+  if (response.quickTabId && response.quickTabId !== request.id) {
+    console.warn('[Content] RESPONSE_QUICKTAB_ID_MISMATCH:', {
+      requestId: request.id,
+      responseQuickTabId: response.quickTabId,
+      requestAction: request.action
+    });
+    return {
+      valid: false,
+      reason: `Quick Tab ID mismatch: expected ${request.id}, got ${response.quickTabId}`
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Warn if response generation is stale compared to request
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce _validateResponseMatchesRequest complexity
+ * @private
+ */
+function _warnIfGenerationStale(requestMessageId, responseGeneration) {
+  if (responseGeneration === undefined || responseGeneration === null) {
+    return; // No generation to check
+  }
+
+  const requestGenMatch = requestMessageId?.match(/g(\d+)-/);
+  const requestGen = requestGenMatch ? parseInt(requestGenMatch[1], 10) : null;
+
+  if (
+    requestGen !== null &&
+    typeof responseGeneration === 'number' &&
+    responseGeneration < requestGen
+  ) {
+    console.warn('[Content] RESPONSE_GENERATION_STALE:', {
+      requestGeneration: requestGen,
+      responseGeneration,
+      messageId: requestMessageId
+    });
+  }
+}
+
+/**
+ * Validate that a response matches the expected request
+ * v1.6.3.11-v3 - FIX Issue #73: Prevent out-of-order response matching
+ * v1.6.3.11-v3 - FIX Code Health: Refactored to reduce complexity
+ *
+ * Validates:
+ * 1. Response messageId matches request messageId
+ * 2. Response echoes expected request parameters (action, quickTabId, etc.)
+ *
+ * @param {Object} response - Response from background
+ * @param {Object} pendingEntry - Pending message entry from pendingMessages Map
+ * @returns {{valid: boolean, reason?: string}}
+ */
+function _validateResponseMatchesRequest(response, pendingEntry) {
+  const request = pendingEntry?.message;
+
+  if (!request) {
+    return { valid: false, reason: 'No pending request found' };
+  }
+
+  // Validate messageId matches
+  const idCheck = _checkMessageIdMatch(request, response);
+  if (!idCheck.valid) return idCheck;
+
+  // Validate Quick Tab ID for CREATE operations
+  const qtCheck = _checkQuickTabIdMatch(request, response);
+  if (!qtCheck.valid) return qtCheck;
+
+  // Warn if generation is stale (doesn't invalidate response)
+  _warnIfGenerationStale(request.messageId, response?.generation);
+
+  return { valid: true };
+}
+
+/**
  * Generate unique message ID for correlation
  * v1.6.3.10-v11 - FIX Issue #23
  * v1.6.3.11 - FIX Issue #28: Add namespace prefix to prevent collision with background
- * @returns {string} Unique message ID with content script namespace
+ * v1.6.3.11-v3 - FIX Issue #27: Include portGeneration to prevent collision across reconnections
+ * @returns {string} Unique message ID with content script namespace and port generation
  */
 function _generateMessageId() {
-  const newId = `msg-content-${Date.now()}-${++messageIdCounter}`;
+  const newId = `msg-content-g${portGeneration}-${Date.now()}-${++messageIdCounter}`;
 
   // v1.6.3.11 - FIX Issue #28: Collision detection
   if (pendingMessages.has(newId)) {
@@ -755,6 +1168,68 @@ function _generateMessageId() {
   }
 
   return newId;
+}
+
+/**
+ * Garbage collect stale pending messages
+ * v1.6.3.11-v3 - FIX Issue #33: Prevent unbounded Map growth from network timeouts
+ * @private
+ */
+function _gcPendingMessages() {
+  const now = Date.now();
+  let collectedCount = 0;
+
+  for (const [messageId, pending] of pendingMessages) {
+    const messageAge = now - pending.sentAt;
+    const isStale = messageAge >= PENDING_MESSAGE_MAX_AGE_MS;
+
+    if (!isStale) continue;
+
+    // Reject the stale message before removing
+    if (pending.reject) {
+      pending.reject(new Error(`Message timeout after ${messageAge}ms (garbage collected)`));
+    }
+    pendingMessages.delete(messageId);
+    collectedCount++;
+  }
+
+  if (collectedCount > 0) {
+    console.log('[Content][GC] PENDING_MESSAGES_COLLECTED:', {
+      collectedCount,
+      remainingCount: pendingMessages.size,
+      thresholdMs: PENDING_MESSAGE_MAX_AGE_MS,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Start periodic garbage collection of pending messages
+ * v1.6.3.11-v3 - FIX Issue #33
+ * @private
+ */
+function _startPendingMessageGc() {
+  if (pendingMessageGcIntervalId) {
+    clearInterval(pendingMessageGcIntervalId);
+  }
+  pendingMessageGcIntervalId = setInterval(_gcPendingMessages, PENDING_MESSAGE_GC_INTERVAL_MS);
+  console.log('[Content][GC] PENDING_MESSAGE_GC_STARTED:', {
+    intervalMs: PENDING_MESSAGE_GC_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop periodic garbage collection of pending messages
+ * v1.6.3.11-v3 - FIX Issue #33
+ * @private
+ */
+function _stopPendingMessageGc() {
+  if (pendingMessageGcIntervalId) {
+    clearInterval(pendingMessageGcIntervalId);
+    pendingMessageGcIntervalId = null;
+    console.log('[Content][GC] PENDING_MESSAGE_GC_STOPPED');
+  }
 }
 
 /**
@@ -926,9 +1401,25 @@ async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
       )
     ]);
 
+    // v1.6.3.11-v3 - FIX Issue #73: Validate response matches request before resolving
+    const pendingEntry = pendingMessages.get(messageId);
+    const validation = _validateResponseMatchesRequest(response, pendingEntry);
+
+    if (!validation.valid) {
+      console.error('[Content] RESPONSE_VALIDATION_FAILED:', {
+        messageId,
+        reason: validation.reason,
+        responseMessageId: response?.messageId,
+        action: message.action || message.type
+      });
+      // Still resolve since we got a response, but log the mismatch
+      // The response may still be valid even if validation failed due to backward compat
+    }
+
     console.log('[Content] MESSAGE_RECEIVED_RESPONSE:', {
       messageId,
-      success: response?.success ?? true
+      success: response?.success ?? true,
+      validationPassed: validation.valid
     });
 
     pendingMessages.delete(messageId);
@@ -994,6 +1485,31 @@ function _stopHeartbeat() {
 }
 
 // ==================== END ISSUE #23 FIX ====================
+
+// ==================== v1.6.3.11-v3 FIX ISSUE #33: START GC ON INIT ====================
+// Start pending message garbage collection alongside heartbeat
+
+/**
+ * Start all periodic maintenance tasks
+ * v1.6.3.11-v3 - FIX Issue #33: Centralized maintenance start
+ * @private
+ */
+function _startPeriodicMaintenance() {
+  _startHeartbeat();
+  _startPendingMessageGc();
+}
+
+/**
+ * Stop all periodic maintenance tasks
+ * v1.6.3.11-v3 - FIX Issue #33: Centralized maintenance stop
+ * @private
+ */
+function _stopPeriodicMaintenance() {
+  _stopHeartbeat();
+  _stopPendingMessageGc();
+}
+
+// ==================== END ISSUE #33 FIX ====================
 
 /**
  * Check if a message has valid format for sending
@@ -1958,8 +2474,225 @@ let currentHandshakePhase = HANDSHAKE_PHASE.NONE;
  *   - Reconnection backoff starts at 150ms, multiplies by 1.5x
  *   - 3 phases × 500ms = 1500ms total (vs 6000ms before)
  *   - Ensures predictable recovery timing
+ * v1.6.3.11-v3 - FIX Issue #49: Now serves as default; actual timeout is adaptive
  */
-const HANDSHAKE_PHASE_TIMEOUT_MS = 500;
+const DEFAULT_HANDSHAKE_PHASE_TIMEOUT_MS = 1000;
+
+/**
+ * Minimum handshake phase timeout (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #49: Floor for adaptive timeout
+ */
+const MIN_HANDSHAKE_PHASE_TIMEOUT_MS = 1000;
+
+/**
+ * Maximum handshake phase timeout (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #49: Ceiling for adaptive timeout
+ */
+const MAX_HANDSHAKE_PHASE_TIMEOUT_MS = 5000;
+
+/**
+ * Multiplier for adaptive handshake timeout
+ * v1.6.3.11-v3 - FIX Issue #49: timeout = baseline * multiplier
+ */
+const HANDSHAKE_TIMEOUT_MULTIPLIER = 3;
+
+/**
+ * Measured baseline handshake latency from first successful connection
+ * v1.6.3.11-v3 - FIX Issue #49: Used for adaptive timeout calculation
+ */
+let measuredHandshakeBaselineMs = null;
+
+/**
+ * Record handshake latency for adaptive timeout
+ * v1.6.3.11-v3 - FIX Issue #49
+ * @param {number} latencyMs - Handshake latency in milliseconds
+ */
+function _recordHandshakeLatency(latencyMs) {
+  if (typeof latencyMs !== 'number' || latencyMs <= 0) return;
+
+  if (measuredHandshakeBaselineMs === null) {
+    measuredHandshakeBaselineMs = latencyMs;
+    console.log('[Content][HANDSHAKE] BASELINE_RECORDED:', {
+      baselineMs: latencyMs,
+      timestamp: Date.now()
+    });
+  } else {
+    // Update with exponential moving average (α = 0.3)
+    measuredHandshakeBaselineMs = Math.round(0.3 * latencyMs + 0.7 * measuredHandshakeBaselineMs);
+  }
+}
+
+/**
+ * Get adaptive handshake phase timeout based on measured baseline
+ * v1.6.3.11-v3 - FIX Issue #49: timeout = max(MIN, baseline * multiplier)
+ * @returns {number} Timeout in milliseconds
+ */
+function _getAdaptiveHandshakeTimeout() {
+  if (measuredHandshakeBaselineMs === null) {
+    // No baseline yet - use default
+    return DEFAULT_HANDSHAKE_PHASE_TIMEOUT_MS;
+  }
+
+  const adaptiveTimeout = Math.round(measuredHandshakeBaselineMs * HANDSHAKE_TIMEOUT_MULTIPLIER);
+
+  return Math.max(
+    MIN_HANDSHAKE_PHASE_TIMEOUT_MS,
+    Math.min(adaptiveTimeout, MAX_HANDSHAKE_PHASE_TIMEOUT_MS)
+  );
+}
+
+// Backward compatibility: keep HANDSHAKE_PHASE_TIMEOUT_MS as getter
+const HANDSHAKE_PHASE_TIMEOUT_MS = DEFAULT_HANDSHAKE_PHASE_TIMEOUT_MS;
+
+// ==================== v1.6.3.11-v3 FIX ISSUE #51: BFCACHE MESSAGE QUEUE ====================
+// Queue messages when page is frozen in BFCache and drain on restoration
+
+/**
+ * Whether port is frozen due to BFCache (messages should be queued)
+ * v1.6.3.11-v3 - FIX Issue #51
+ */
+let _isPortFrozenDueToBFCache = false;
+
+/**
+ * Message queue for messages that arrived while page was in BFCache
+ * v1.6.3.11-v3 - FIX Issue #51
+ */
+const _bfcacheMessageQueue = [];
+
+/**
+ * Maximum BFCache message queue size
+ * v1.6.3.11-v3 - FIX Issue #51
+ */
+const MAX_BFCACHE_MESSAGE_QUEUE_SIZE = 50;
+
+/**
+ * Queue a message for retry after BFCache restoration
+ * v1.6.3.11-v3 - FIX Issue #51
+ * @param {Object} message - Message to queue
+ * @returns {boolean} True if queued, false if queue full
+ */
+function _queueMessageForBFCacheRetry(message) {
+  if (_bfcacheMessageQueue.length >= MAX_BFCACHE_MESSAGE_QUEUE_SIZE) {
+    console.warn('[Content][BFCACHE] MESSAGE_QUEUE_FULL: Dropping message', {
+      queueSize: _bfcacheMessageQueue.length,
+      messageType: message?.type || message?.action
+    });
+    return false;
+  }
+
+  _bfcacheMessageQueue.push({
+    message,
+    queuedAt: Date.now()
+  });
+
+  console.log('[Content][BFCACHE] MESSAGE_QUEUED: Will retry after restoration', {
+    queueSize: _bfcacheMessageQueue.length,
+    messageType: message?.type || message?.action
+  });
+
+  return true;
+}
+
+/**
+ * Send a single queued message
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+async function _sendQueuedMessage(message) {
+  if (backgroundPort) {
+    backgroundPort.postMessage(message);
+  } else {
+    await browser.runtime.sendMessage(message);
+  }
+}
+
+/**
+ * Drain BFCache message queue after restoration
+ * v1.6.3.11-v3 - FIX Issue #51
+ */
+async function _drainBFCacheMessageQueue() {
+  if (_bfcacheMessageQueue.length === 0) return;
+
+  console.log('[Content][BFCACHE] DRAINING_MESSAGE_QUEUE:', {
+    queueSize: _bfcacheMessageQueue.length,
+    timestamp: Date.now()
+  });
+
+  while (_bfcacheMessageQueue.length > 0) {
+    const { message, queuedAt } = _bfcacheMessageQueue.shift();
+    const queueDuration = Date.now() - queuedAt;
+
+    try {
+      await _sendQueuedMessage(message);
+      console.log('[Content][BFCACHE] QUEUED_MESSAGE_SENT:', {
+        messageType: message?.type || message?.action,
+        queueDurationMs: queueDuration
+      });
+    } catch (err) {
+      console.error('[Content][BFCACHE] QUEUED_MESSAGE_FAILED:', {
+        messageType: message?.type || message?.action,
+        error: err.message,
+        queueDurationMs: queueDuration
+      });
+    }
+  }
+}
+
+/**
+ * Handle successful state refresh response
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+async function _handleStateRefreshResponse(response) {
+  if (!response?.success || !response?.data) return;
+
+  console.log('[Content][BFCACHE] STATE_REFRESH_RECEIVED:', {
+    tabCount: response.data.tabs?.length ?? 0,
+    lastUpdate: response.data.lastUpdate
+  });
+
+  // Trigger hydration with fresh state if Quick Tabs manager exists
+  if (quickTabsManager?.hydrateFromStorage) {
+    await quickTabsManager.hydrateFromStorage();
+  }
+}
+
+/**
+ * Request state refresh from backend after BFCache restoration
+ * v1.6.3.11-v3 - FIX Issue #52: Query backend for current state instead of relying on stale events
+ */
+async function _requestStateRefreshAfterBFCache() {
+  try {
+    console.log('[Content][BFCACHE] REQUESTING_STATE_REFRESH: Querying backend for current state');
+
+    const response = await sendMessageWithTimeout(
+      {
+        action: 'GET_QUICK_TABS_STATE',
+        reason: 'bfcache-restore',
+        timestamp: Date.now()
+      },
+      { timeout: 5000 }
+    );
+
+    await _handleStateRefreshResponse(response);
+  } catch (err) {
+    console.warn('[Content][BFCACHE] STATE_REFRESH_FAILED:', {
+      error: err.message,
+      isTimeout: err.isTimeout
+    });
+  }
+}
+
+/**
+ * Check if port is frozen (in BFCache) and message should be queued
+ * v1.6.3.11-v3 - FIX Issue #51
+ * @returns {boolean} True if port is frozen
+ */
+function _isPortFrozen() {
+  return _isPortFrozenDueToBFCache;
+}
+
+// ==================== END ISSUE #51 FIX ====================
 
 /**
  * Handshake timeout ID
@@ -2254,12 +2987,16 @@ function _handleInitResponse(message, port) {
 /**
  * Complete the handshake and transition to READY state
  * v1.6.3.10-v11 - FIX Issue #24
+ * v1.6.3.11-v3 - FIX Issue #33: Start periodic maintenance on handshake complete
  */
 function _completeHandshake() {
   _clearHandshakeTimeout();
   currentHandshakePhase = HANDSHAKE_PHASE.NONE;
 
   _transitionPortState(PORT_CONNECTION_STATE.READY, 'handshake-complete');
+
+  // v1.6.3.11-v3 - FIX Issue #33: Start periodic maintenance (heartbeat + GC) on successful connection
+  _startPeriodicMaintenance();
 
   console.log('[Content][HANDSHAKE] COMPLETE: Connection ready', {
     portState: portConnectionState,
@@ -2322,20 +3059,26 @@ function _getHandshakePhaseDescription(phase) {
 /**
  * Set handshake phase timeout
  * v1.6.3.10-v11 - FIX Issue #24
+ * v1.6.3.11-v3 - FIX Issue #49: Use adaptive timeout based on measured baseline
  * @param {string} phase - Current phase name
  * @param {Function} callback - Callback on timeout
  */
 function _setHandshakeTimeout(phase, callback) {
   _clearHandshakeTimeout();
 
+  // v1.6.3.11-v3 - FIX Issue #49: Use adaptive timeout
+  const timeoutMs = _getAdaptiveHandshakeTimeout();
+
   handshakeTimeoutId = setTimeout(() => {
     handshakeTimeoutId = null;
     callback();
-  }, HANDSHAKE_PHASE_TIMEOUT_MS);
+  }, timeoutMs);
 
   console.log('[Content][HANDSHAKE] Timeout set for phase:', {
     phase,
-    timeoutMs: HANDSHAKE_PHASE_TIMEOUT_MS
+    timeoutMs,
+    isAdaptive: measuredHandshakeBaselineMs !== null,
+    baselineMs: measuredHandshakeBaselineMs
   });
 }
 
@@ -2895,24 +3638,71 @@ function _handleReconnection(tabId, reason) {
 }
 
 /**
+ * Categorize the disconnect reason from runtime.lastError
+ * v1.6.3.11-v3 - FIX Issue #62: Provide human-readable disconnect reason
+ * @private
+ * @param {Object|null} error - Error object from browser.runtime.lastError
+ * @returns {string} Categorized reason
+ */
+function _categorizeDisconnectReason(error) {
+  if (!error || !error.message) {
+    return 'UNKNOWN';
+  }
+
+  const msg = error.message.toLowerCase();
+
+  if (msg.includes('receiving end does not exist')) {
+    return 'BACKGROUND_NOT_RUNNING';
+  }
+  if (msg.includes('extension context invalidated')) {
+    return 'EXTENSION_CONTEXT_INVALIDATED';
+  }
+  if (msg.includes('message port closed')) {
+    return 'PORT_CLOSED_BY_PEER';
+  }
+  if (msg.includes('disconnected')) {
+    return 'EXPLICIT_DISCONNECT';
+  }
+
+  return 'OTHER';
+}
+
+/**
  * Clear pending messages on port disconnect
  * v1.6.3.11 - FIX Code Health: Extracted to reduce nesting depth in onDisconnect handler
+ * v1.6.3.11-v3 - FIX Issue #27: Increment portGeneration on disconnect to prevent message ID collision
  * @private
  */
 function _clearPendingMessagesOnDisconnect() {
   const pendingCount = pendingMessages.size;
-  if (pendingCount === 0) return;
+
+  // v1.6.3.11-v3 - FIX Issue #27: Increment port generation BEFORE clearing
+  // This ensures new messages after reconnection have different generation prefix
+  const previousGeneration = portGeneration;
+  portGeneration++;
 
   console.log(
     '[Content][PORT_LIFECYCLE] CLEARING_PENDING_MESSAGES: Port disconnected, clearing in-flight messages',
     {
       pendingCount,
+      previousPortGeneration: previousGeneration,
+      newPortGeneration: portGeneration,
       timestamp: Date.now()
     }
   );
+
+  if (pendingCount === 0) return;
+
   // Reject all pending messages before clearing
-  for (const [_messageId, pending] of pendingMessages) {
-    if (pending.reject) pending.reject(new Error('Port disconnected'));
+  for (const [messageId, pending] of pendingMessages) {
+    if (pending.reject) {
+      pending.reject(new Error(`Port disconnected (generation ${previousGeneration})`));
+    }
+    console.log('[Content][PORT_LIFECYCLE] PENDING_MESSAGE_REJECTED:', {
+      messageId,
+      age: Date.now() - pending.sentAt,
+      retryCount: pending.retryCount
+    });
   }
   pendingMessages.clear();
 }
@@ -2988,11 +3778,19 @@ function connectContentToBackground(tabId) {
 
       // Normal operation - proceed with disconnect handling
       // v1.6.3.11-v2 - FIX Issue #8: Enhanced disconnect logging with state transition
+      // v1.6.3.11-v3 - FIX Issue #62: Comprehensive port disconnect logging
       console.log(
         '[Content][PORT_LIFECYCLE] DISCONNECT_NORMAL: Port disconnected in normal operation',
         {
           error: error?.message,
+          disconnectReason: _categorizeDisconnectReason(error),
           previousState: portConnectionState,
+          portState: {
+            wasBackgroundReady: isBackgroundReady,
+            hadPort: !!backgroundPort,
+            portName: backgroundPort?.name || 'unknown'
+          },
+          pendingMessagesAtDisconnect: pendingMessages.size,
           timestamp: Date.now()
         }
       );
@@ -3287,6 +4085,8 @@ window.addEventListener('unload', () => {
 /**
  * Handle pagehide event for BFCache entry detection
  * v1.6.3.10-v12 - FIX Issue #2: Mark port as potentially invalid on BFCache entry
+ * v1.6.3.11-v3 - FIX Issue #51: Queue messages while frozen, prevent sending
+ * v1.6.3.11-v3 - FIX Issue #52: Mark page as inactive for stale event rejection
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageHide(event) {
@@ -3300,6 +4100,12 @@ function _handlePageHide(event) {
 
     portPotentiallyInvalidDueToBFCache = true;
 
+    // v1.6.3.11-v3 - FIX Issue #51: Mark port as frozen (messages will be queued)
+    _isPortFrozenDueToBFCache = true;
+
+    // v1.6.3.11-v3 - FIX Issue #52: Mark page inactive for stale event rejection
+    _markPageInactive();
+
     // Mark port as potentially invalid but don't disconnect
     // It may still work when restored
   }
@@ -3308,6 +4114,9 @@ function _handlePageHide(event) {
 /**
  * Handle pageshow event for BFCache exit detection
  * v1.6.3.10-v12 - FIX Issue #2: Verify port functionality after BFCache restore
+ * v1.6.3.11-v3 - FIX Issue #51: Drain queued messages after restore
+ * v1.6.3.11-v3 - FIX Issue #52: Mark page as active, query backend for current state
+ * v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore and refresh tab ID
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageShow(event) {
@@ -3317,13 +4126,31 @@ function _handlePageShow(event) {
       timestamp: Date.now(),
       hasPort: !!backgroundPort,
       portState: portConnectionState,
-      wasMarkedInvalid: portPotentiallyInvalidDueToBFCache
+      wasMarkedInvalid: portPotentiallyInvalidDueToBFCache,
+      wasFrozen: _isPortFrozenDueToBFCache,
+      queuedMessages: _bfcacheMessageQueue.length
     });
+
+    // v1.6.3.11-v3 - FIX Issue #52: Mark page as active
+    _markPageActive();
+
+    // v1.6.3.11-v3 - FIX Issue #51: Unfreeze port
+    _isPortFrozenDueToBFCache = false;
+
+    // v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore
+    // This handles cross-domain navigation detected after back/forward cache restore
+    _checkHostnameChange();
 
     if (portPotentiallyInvalidDueToBFCache) {
       // Verify port functionality by attempting a ping
       _verifyPortAfterBFCache();
+    } else if (backgroundPort && _bfcacheMessageQueue.length > 0) {
+      // v1.6.3.11-v3 - FIX Issue #51: Port still valid, drain queued messages
+      _drainBFCacheMessageQueue();
     }
+
+    // v1.6.3.11-v3 - FIX Issue #52: Query backend for current state to avoid stale events
+    _requestStateRefreshAfterBFCache();
   }
 }
 
@@ -5063,12 +5890,13 @@ function _getObservedHandshakeLatency() {
 }
 
 /**
- * Record a handshake latency sample
+ * Record an adoption latency sample (used for dynamic TTL calculation)
  * v1.6.3.10-v11 - FIX Issue #5
  * v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count for periodic recalculation
+ * v1.6.3.11-v3 - Renamed from _recordHandshakeLatency to avoid conflict
  * @param {number} latencyMs - Observed latency in milliseconds
  */
-function _recordHandshakeLatency(latencyMs) {
+function _recordAdoptionLatencySample(latencyMs) {
   if (typeof latencyMs !== 'number' || latencyMs < 0) return;
 
   // v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count
@@ -7391,6 +8219,7 @@ function _resetInitializationFlags() {
  * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
  * v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
  * v1.6.3.11-v3 - FIX Issue #19: Clear pendingRestoreOperations to prevent memory leaks
+ * v1.6.3.11-v3 - FIX Issue #33: Stop pending message garbage collection
  * @private
  */
 function _handleBeforeUnload() {
@@ -7422,6 +8251,9 @@ function _handleBeforeUnload() {
 
   // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
   stopPeriodicLatencyMeasurement();
+
+  // v1.6.3.11-v3 - FIX Issue #33: Stop periodic maintenance (heartbeat + GC)
+  _stopPeriodicMaintenance();
 
   if (quickTabsManager?.destroy) {
     console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');

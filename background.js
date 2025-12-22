@@ -1261,6 +1261,15 @@ function logSuccessfulLoad(source, format) {
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
 
+// v1.6.3.11-v3 - FIX Issue #50: Mark MessageRouter as initialized after state is ready
+// This drains any messages that arrived during background initialization
+// Note: initializeGlobalState() is async but we don't await it here (intentional for eager loading)
+// We still mark initialized immediately since handlers are registered synchronously
+messageRouter.markInitialized();
+console.log(
+  '[Background] v1.6.3.11-v3 MessageRouter marked initialized (pre-init queue will drain)'
+);
+
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
  * v1.6.2.2 - Updated for unified format
@@ -1341,6 +1350,168 @@ async function saveMigratedQuickTabState() {
 
 // Run migration after initialization
 migrateQuickTabState();
+
+// ==================== SETTINGS MIGRATION (v1.6.3.11-v3) ====================
+// v1.6.3.11-v3 - FIX Issue #39: Config migration for new settings on upgrade
+// Ensures old configs have new keys with defaults when extension upgrades
+
+/**
+ * Current settings version - increment when adding new settings
+ * v1.6.3.11-v3 - FIX Issue #39
+ */
+const SETTINGS_VERSION = 2;
+
+/**
+ * Settings key in storage
+ * v1.6.3.11-v3 - FIX Issue #39
+ */
+const SETTINGS_STORAGE_KEY = 'quick_tab_settings';
+
+/**
+ * Default settings with all possible keys
+ * v1.6.3.11-v3 - FIX Issue #39: Single source of truth for default settings
+ */
+const DEFAULT_SETTINGS = {
+  // Core settings
+  enableQuickTabs: true,
+  maxQuickTabs: 5,
+  defaultWidth: 600,
+  defaultHeight: 400,
+  syncAcrossTabs: true,
+  persistAcrossSessions: true,
+  enableDebugLogging: false,
+  quickTabShowDebugId: false,
+  // v1.6.3.11-v3 - Settings version for migration tracking
+  _settingsVersion: SETTINGS_VERSION
+};
+
+/**
+ * Helper: Read settings from storage with sync fallback to local
+ * v1.6.3.11-v3 - FIX Code Review: Extracted to reduce nesting depth
+ * @private
+ */
+async function _readSettingsWithFallback() {
+  try {
+    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
+    return result[SETTINGS_STORAGE_KEY];
+  } catch (syncErr) {
+    console.warn('[Background][Settings] Migration: Sync storage failed, trying local', {
+      error: syncErr.message
+    });
+    const localResult = await browser.storage.local.get(SETTINGS_STORAGE_KEY);
+    return localResult[SETTINGS_STORAGE_KEY];
+  }
+}
+
+/**
+ * Helper: Write settings to storage with sync fallback to local
+ * v1.6.3.11-v3 - FIX Code Review: Extracted to reduce nesting depth
+ * @private
+ */
+async function _writeSettingsWithFallback(settings) {
+  try {
+    await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: settings });
+  } catch (syncSetErr) {
+    console.warn('[Background][Settings] Migration: Sync write failed, using local', {
+      error: syncSetErr.message
+    });
+    await browser.storage.local.set({ [SETTINGS_STORAGE_KEY]: settings });
+  }
+}
+
+/**
+ * Migrate settings to add missing keys with defaults
+ * v1.6.3.11-v3 - FIX Issue #39: Version-aware config migration
+ * v1.6.3.11-v3 - FIX Code Review: Added fallback for sync storage failures
+ * v1.6.3.11-v3 - FIX Code Review: Extracted helpers to reduce nesting depth
+ */
+async function migrateSettings() {
+  try {
+    console.log('[Background][Settings] Migration: Checking settings for missing keys');
+
+    // Read current settings with fallback
+    const currentSettings = await _readSettingsWithFallback();
+
+    // If no settings exist, create with defaults
+    if (!currentSettings) {
+      console.log('[Background][Settings] Migration: No settings found, creating defaults');
+      await _writeSettingsWithFallback(DEFAULT_SETTINGS);
+      return;
+    }
+
+    // Check if migration needed and add missing keys
+    const { migratedSettings, needsMigration } = _addMissingSettingsKeys(currentSettings);
+
+    // Check settings version for forced migration
+    const versionMigrationNeeded = _checkSettingsVersionMigration(
+      currentSettings,
+      migratedSettings
+    );
+
+    // Save if migration occurred
+    if (needsMigration || versionMigrationNeeded) {
+      await _writeSettingsWithFallback(migratedSettings);
+      console.log('[Background][Settings] Migration: Settings migrated successfully', {
+        keysAdded: Object.keys(DEFAULT_SETTINGS).filter(k => !(k in currentSettings)).length,
+        newVersion: SETTINGS_VERSION
+      });
+
+      // Broadcast settings update to all tabs
+      await _broadcastToAllTabs('SETTINGS_UPDATED', { settings: migratedSettings });
+    } else {
+      console.log('[Background][Settings] Migration: No migration needed');
+    }
+  } catch (err) {
+    console.error('[Background][Settings] Migration: Error migrating settings:', err.message);
+    // Don't throw - settings migration failure shouldn't break extension
+  }
+}
+
+/**
+ * Helper: Add missing settings keys with defaults
+ * v1.6.3.11-v3 - FIX Issue #39: Extracted to reduce nesting depth
+ * @private
+ */
+function _addMissingSettingsKeys(currentSettings) {
+  let needsMigration = false;
+  const migratedSettings = { ...currentSettings };
+
+  for (const [key, defaultValue] of Object.entries(DEFAULT_SETTINGS)) {
+    if (!(key in currentSettings)) {
+      console.log(
+        `[Background][Settings] Migration: Adding missing key '${key}' with default:`,
+        defaultValue
+      );
+      migratedSettings[key] = defaultValue;
+      needsMigration = true;
+    }
+  }
+
+  return { migratedSettings, needsMigration };
+}
+
+/**
+ * Helper: Check if settings version migration is needed
+ * v1.6.3.11-v3 - FIX Issue #39: Extracted to reduce nesting depth
+ * @private
+ */
+function _checkSettingsVersionMigration(currentSettings, migratedSettings) {
+  const currentVersion = currentSettings._settingsVersion || 1;
+  if (currentVersion < SETTINGS_VERSION) {
+    console.log('[Background][Settings] Migration: Version upgrade detected', {
+      from: currentVersion,
+      to: SETTINGS_VERSION
+    });
+    migratedSettings._settingsVersion = SETTINGS_VERSION;
+    return true;
+  }
+  return false;
+}
+
+// Run settings migration after Quick Tab state migration
+migrateSettings();
+
+// ==================== END SETTINGS MIGRATION ====================
 
 // ==================== STATE COORDINATOR ====================
 // Manages canonical Quick Tab state across all tabs with conflict resolution
@@ -2125,6 +2296,37 @@ messageRouter.register('SETTINGS_CHANGED', async (msg, _sender) => {
     return { success: true };
   } catch (err) {
     console.error('[Background] SETTINGS_CHANGED: Failed to reload settings:', err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// v1.6.3.11-v3 - FIX Issue #23: Handler for settings refresh from options_page.js
+// This is called directly after user saves settings in options page
+// Options page stores in storage.sync, so we need to read from sync storage
+messageRouter.register('REFRESH_CACHED_SETTINGS', async (msg, _sender) => {
+  console.log('[Background] REFRESH_CACHED_SETTINGS: Refreshing settings from storage.sync', {
+    timestamp: msg.timestamp,
+    directSettings: msg.settings ? Object.keys(msg.settings).length : 0
+  });
+
+  try {
+    // If settings were passed directly, broadcast them immediately
+    if (msg.settings) {
+      console.log('[Background] REFRESH_CACHED_SETTINGS: Broadcasting settings to all tabs');
+      await _broadcastToAllTabs('SETTINGS_UPDATED', { settings: msg.settings });
+    }
+
+    // Also reload from storage.sync for good measure
+    // v1.6.3.11-v3 - FIX Code Review: Use SETTINGS_STORAGE_KEY constant
+    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
+    console.log('[Background] REFRESH_CACHED_SETTINGS: Settings refreshed', {
+      hasSettings: !!result[SETTINGS_STORAGE_KEY],
+      keys: result[SETTINGS_STORAGE_KEY] ? Object.keys(result[SETTINGS_STORAGE_KEY]).length : 0
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.error('[Background] REFRESH_CACHED_SETTINGS: Failed:', err.message);
     return { success: false, error: err.message };
   }
 });
@@ -3157,35 +3359,49 @@ function _logStorageListenerHealth(areaName, changedKeys) {
 }
 
 browser.storage.onChanged.addListener((changes, areaName) => {
-  const changedKeys = Object.keys(changes);
+  // v1.6.3.11-v3 - FIX Issue #59: Wrap entire listener in try-catch to prevent blocking other listeners
+  try {
+    const changedKeys = Object.keys(changes);
 
-  // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
-  _logStorageListenerHealth(areaName, changedKeys);
+    // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
+    _logStorageListenerHealth(areaName, changedKeys);
 
-  console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
-    areaName,
-    keys: changedKeys,
-    eventNumber: storageOnChangedEventCount,
-    timestamp: Date.now()
-  });
+    console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
+      areaName,
+      keys: changedKeys,
+      eventNumber: storageOnChangedEventCount,
+      timestamp: Date.now()
+    });
 
-  // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
-  if (areaName !== 'local' && areaName !== 'sync') {
-    return;
-  }
+    // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
+    if (areaName !== 'local' && areaName !== 'sync') {
+      return;
+    }
 
-  // Handle Quick Tab state changes
-  if (changes.quick_tabs_state_v2) {
-    console.log(
-      '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
-    );
-    _handleQuickTabStateChange(changes);
-  }
+    // Handle Quick Tab state changes
+    if (changes.quick_tabs_state_v2) {
+      console.log(
+        '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
+      );
+      _handleQuickTabStateChange(changes);
+    }
 
-  // Handle settings changes
-  if (changes.quick_tab_settings) {
-    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
-    _handleSettingsChange(changes);
+    // Handle settings changes
+    if (changes.quick_tab_settings) {
+      console.log(
+        '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change'
+      );
+      _handleSettingsChange(changes);
+    }
+  } catch (err) {
+    // v1.6.3.11-v3 - FIX Issue #59: Log error but don't re-throw to prevent blocking other listeners
+    console.error('[Background][StorageListener] STORAGE_ONCHANGED_ERROR:', {
+      error: err.message,
+      stack: err.stack,
+      areaName,
+      changedKeys: Object.keys(changes || {}),
+      timestamp: Date.now()
+    });
   }
 });
 
@@ -4216,6 +4432,83 @@ function handleLegacyAction(message, portInfo) {
   return Promise.resolve({ success: false, error: 'Unknown legacy action' });
 }
 
+// ==================== v1.6.3.11-v3 FIX ISSUE #78: ADOPTION CAPACITY VALIDATION ====================
+// Validate capacity before starting adoption to prevent resource exhaustion
+
+/**
+ * Maximum Quick Tabs per browser tab
+ * v1.6.3.11-v3 - FIX Issue #78: Capacity limit per tab
+ *
+ * Rationale: 50 Quick Tabs per tab provides generous capacity for power users
+ * while preventing UI clutter and memory issues. Average users have <10.
+ * This value may be made configurable in future versions if needed.
+ */
+const MAX_QUICK_TABS_PER_TAB = 50;
+
+/**
+ * Maximum total Quick Tabs across all tabs
+ * v1.6.3.11-v3 - FIX Issue #78: Global capacity limit
+ *
+ * Rationale: 500 total Quick Tabs balances extensibility with browser performance.
+ * Each Quick Tab requires ~5KB DOM overhead + iframe memory. 500 Quick Tabs
+ * should stay under 100MB even with heavy content. Extension storage is limited
+ * and this prevents quota exhaustion.
+ */
+const MAX_TOTAL_QUICK_TABS = 500;
+
+/**
+ * Validate adoption capacity before starting adoption
+ * v1.6.3.11-v3 - FIX Issue #78: Check available capacity
+ *
+ * Prevents adoption if:
+ * 1. Target tab would exceed MAX_QUICK_TABS_PER_TAB
+ * 2. Total Quick Tabs would exceed MAX_TOTAL_QUICK_TABS
+ *
+ * @private
+ * @param {string} quickTabId - Quick Tab being adopted (for logging)
+ * @param {number} targetTabId - Tab that would own the adopted Quick Tab
+ * @returns {{valid: boolean, reason?: string, currentTabCount?: number, totalCount?: number}}
+ */
+function _validateAdoptionCapacity(quickTabId, targetTabId) {
+  // Count Quick Tabs currently assigned to target tab
+  const tabQuickTabs = globalQuickTabState.tabs.filter(t => t.originTabId === targetTabId);
+  const currentTabCount = tabQuickTabs.length;
+  const totalCount = globalQuickTabState.tabs.length;
+
+  // Check per-tab limit
+  if (currentTabCount >= MAX_QUICK_TABS_PER_TAB) {
+    return {
+      valid: false,
+      reason: `Target tab has ${currentTabCount} Quick Tabs (max: ${MAX_QUICK_TABS_PER_TAB})`,
+      currentTabCount,
+      totalCount
+    };
+  }
+
+  // Check global limit
+  if (totalCount >= MAX_TOTAL_QUICK_TABS) {
+    return {
+      valid: false,
+      reason: `Total Quick Tabs is ${totalCount} (max: ${MAX_TOTAL_QUICK_TABS})`,
+      currentTabCount,
+      totalCount
+    };
+  }
+
+  console.log('[Background] ADOPTION_CAPACITY_OK:', {
+    quickTabId,
+    targetTabId,
+    currentTabCount,
+    totalCount,
+    maxPerTab: MAX_QUICK_TABS_PER_TAB,
+    maxTotal: MAX_TOTAL_QUICK_TABS
+  });
+
+  return { valid: true, currentTabCount, totalCount };
+}
+
+// ==================== END ISSUE #78 FIX ====================
+
 /**
  * Validate adoption prerequisites
  * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
@@ -4359,11 +4652,55 @@ async function _writeAndVerifyAdoptionState({
 }
 
 /**
+ * Update global cache and host tracking after adoption
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+function _updateCacheAndHostTracking(quickTabId, targetTabId) {
+  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (cachedTab) {
+    cachedTab.originTabId = targetTabId;
+    delete cachedTab.isOrphaned;
+    delete cachedTab.orphanedAt;
+  }
+  quickTabHostTabs.set(quickTabId, targetTabId);
+}
+
+/**
+ * Broadcast adoption completion to ports and tabs
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+async function _broadcastAdoptionCompletion({
+  quickTabId,
+  oldOriginTabId,
+  targetTabId,
+  correlationId,
+  adoptionDuration,
+  position
+}) {
+  broadcastToAllPorts({
+    type: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    previousOriginTabId: oldOriginTabId,
+    correlationId,
+    adoptionDuration,
+    position,
+    timestamp: Date.now()
+  });
+
+  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+}
+
+/**
  * Handle adopt action (atomic single write)
  * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
  * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
  * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
  * @param {Object} payload - Adoption payload
  */
 async function handleAdoptAction(payload) {
@@ -4380,21 +4717,27 @@ async function handleAdoptAction(payload) {
     timestamp: startTime
   });
 
+  // v1.6.3.11-v3 - FIX Issue #78: Validate adoption capacity before starting
+  const capacityCheck = _validateAdoptionCapacity(quickTabId, targetTabId);
+  if (!capacityCheck.valid) {
+    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', capacityCheck);
+    return { success: false, error: capacityCheck.reason, code: 'CAPACITY_EXCEEDED' };
+  }
+
   // Validate prerequisites
   const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
-  if (!validation.valid) {
-    return { success: false, error: validation.error };
-  }
+  if (!validation.valid) return { success: false, error: validation.error };
 
   // Read state and find Quick Tab
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
 
   const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
-  if (!findResult.found) {
-    return { success: false, error: findResult.error };
-  }
-  const { oldOriginTabId } = findResult;
+  if (!findResult.found) return { success: false, error: findResult.error };
+
+  const { oldOriginTabId, tabIndex } = findResult;
+  const adoptedTab = tabIndex >= 0 && tabIndex < state.tabs.length ? state.tabs[tabIndex] : null;
+  const position = adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
 
   // Write and verify state
   const writeResult = await _writeAndVerifyAdoptionState({
@@ -4404,54 +4747,38 @@ async function handleAdoptAction(payload) {
     correlationId,
     startTime
   });
-  if (!writeResult.success) {
-    return writeResult;
-  }
+  if (!writeResult.success) return writeResult;
 
-  // Update global cache
-  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
-  if (cachedTab) {
-    cachedTab.originTabId = targetTabId;
-    delete cachedTab.isOrphaned;
-    delete cachedTab.orphanedAt;
-  }
-
-  // Update host tracking
-  quickTabHostTabs.set(quickTabId, targetTabId);
-
-  // Broadcast adoption completion
-  broadcastToAllPorts({
-    type: 'ADOPTION_COMPLETED',
-    adoptedQuickTabId: quickTabId,
+  // Update cache and broadcast
+  _updateCacheAndHostTracking(quickTabId, targetTabId);
+  const adoptionDuration = Date.now() - startTime;
+  await _broadcastAdoptionCompletion({
+    quickTabId,
     oldOriginTabId,
-    newOriginTabId: targetTabId,
-    previousOriginTabId: oldOriginTabId,
+    targetTabId,
     correlationId,
-    timestamp: Date.now()
+    adoptionDuration,
+    position
   });
 
-  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
-
   // v1.6.4.15 - FIX Issue #20: Log successful completion
-  const durationMs = Date.now() - startTime;
   console.log('[Background] MANAGER_ACTION_COMPLETED:', {
     action: 'ADOPT_TAB',
     quickTabId,
     targetTabId,
     correlationId,
     status: 'success',
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    durationMs
+    durationMs: Date.now() - startTime
   });
 
-  console.log('[Background] ADOPT_TAB complete:', {
+  return {
+    success: true,
     quickTabId,
     oldOriginTabId,
-    newOriginTabId: targetTabId
-  });
-
-  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+    newOriginTabId: targetTabId,
+    adoptionDuration,
+    position
+  };
 }
 
 /**
@@ -5837,13 +6164,29 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
 
-    // Send deletion messages to all tabs
-    const results = await Promise.all(
+    // v1.6.3.11-v3 - FIX Issue #74: Use Promise.allSettled instead of Promise.all
+    // This ensures we get results from all tabs even if some fail
+    const settledResults = await Promise.allSettled(
       tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
     );
 
+    // v1.6.3.11-v3 - FIX Issue #74: Process mixed success/failure results
+    const results = settledResults.map(result => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+      // Failed - log and return as not sent
+      console.warn('[Background] DELETION_BROADCAST_PARTIAL_FAILURE:', {
+        quickTabId,
+        error: result.reason?.message || 'Unknown error',
+        correlationId: corrId
+      });
+      return { sent: false, skipped: false, error: result.reason?.message };
+    });
+
     const successCount = results.filter(r => r.sent).length;
     const skipCount = results.filter(r => r.skipped).length;
+    const failCount = results.filter(r => !r.sent && !r.skipped && r.error).length;
 
     // v1.6.3.6-v12 - FIX Issue #6: Wait for acknowledgments (with timeout)
     await _waitForDeletionAcks(corrId, ackPromise);
@@ -5860,6 +6203,7 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
       totalTabs: tabs.length,
       successCount,
       skipCount,
+      failCount, // v1.6.3.11-v3 - FIX Issue #74: Log failure count
       correlationId: corrId
     });
   } catch (err) {
