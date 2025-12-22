@@ -68,7 +68,9 @@ export class QuickTabHandler {
 
     // v1.6.2.4 - BUG FIX Issue 4: Message deduplication tracking
     // Prevents duplicate CREATE_QUICK_TAB messages sent within 100ms
-    this.processedMessages = new Map(); // messageKey -> timestamp
+    // v1.6.3.11-v3 - FIX Issue #76: Map structure is now: senderKey -> (messageKey -> timestamp)
+    // This allows clearing dedup entries per-sender on port reconnection
+    this.processedMessages = new Map(); // senderKey -> Map(messageKey -> timestamp)
     this.lastCleanup = Date.now();
 
     // v1.6.3.10-v7 - FIX Issue #15: Storage write serialization
@@ -79,6 +81,31 @@ export class QuickTabHandler {
     this._storageVersion = 0;
     // Expected version from last read (for conflict detection)
     this._expectedVersion = 0;
+  }
+
+  /**
+   * Clear dedup entries for a specific sender (tab)
+   * v1.6.3.11-v3 - FIX Issue #76: Clear stale dedup entries on port reconnection
+   * 
+   * Called when a port reconnects to prevent old dedup entries from blocking
+   * legitimate new messages after reconnection.
+   * 
+   * @param {number} senderTabId - Tab ID whose dedup entries should be cleared
+   */
+  clearDedupEntriesForSender(senderTabId) {
+    const senderKey = `tab-${senderTabId}`;
+    const hadEntries = this.processedMessages.has(senderKey);
+    const entryCount = hadEntries ? this.processedMessages.get(senderKey).size : 0;
+    
+    this.processedMessages.delete(senderKey);
+    
+    console.log('[QuickTabHandler] DEDUP_ENTRIES_CLEARED:', {
+      senderTabId,
+      senderKey,
+      hadEntries,
+      entriesCleared: entryCount,
+      timestamp: Date.now()
+    });
   }
 
   /**
@@ -109,10 +136,12 @@ export class QuickTabHandler {
    * Check if message is a duplicate (same action + id + content within dedup window)
    * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
    * v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
+   * v1.6.3.11-v3 - FIX Issue #76: Scope dedup entries by sender (port generation)
    * @param {Object} message - Message to check
+   * @param {Object} sender - Message sender (optional, for scoping)
    * @returns {boolean} True if this is a duplicate message
    */
-  _isDuplicateMessage(message) {
+  _isDuplicateMessage(message, sender = null) {
     // Only deduplicate creation messages
     if (message.action !== 'CREATE_QUICK_TAB') {
       return false;
@@ -124,11 +153,23 @@ export class QuickTabHandler {
       this._cleanupOldProcessedMessages(now);
     }
 
+    // v1.6.3.11-v3 - FIX Issue #76: Scope by sender to prevent cross-port collision
+    const senderTabId = sender?.tab?.id;
+    const senderKey = senderTabId ? `tab-${senderTabId}` : 'unknown';
+
     // v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
     // This ensures messages with same ID but different parameters are NOT deduplicated
     const contentHash = this._generateContentHash(message);
     const messageKey = `${message.action}-${message.id}-${contentHash}`;
-    const lastProcessed = this.processedMessages.get(messageKey);
+
+    // v1.6.3.11-v3 - FIX Issue #76: Get or create per-sender dedup map
+    let senderMap = this.processedMessages.get(senderKey);
+    if (!senderMap) {
+      senderMap = new Map();
+      this.processedMessages.set(senderKey, senderMap);
+    }
+
+    const lastProcessed = senderMap.get(messageKey);
 
     // Check if recently processed
     if (lastProcessed && now - lastProcessed < QuickTabHandler.DEDUP_WINDOW_MS) {
@@ -136,29 +177,50 @@ export class QuickTabHandler {
         action: message.action,
         id: message.id,
         contentHash,
+        senderKey,
         timeSinceLastMs: now - lastProcessed
       });
       return true;
     }
 
     // Record this message
-    this.processedMessages.set(messageKey, now);
+    senderMap.set(messageKey, now);
     return false;
   }
 
   /**
    * Clean up old processed message entries
+   * v1.6.3.11-v3 - FIX Issue #76: Updated for nested Map structure
    * @private
    * @param {number} now - Current timestamp
    */
   _cleanupOldProcessedMessages(now) {
     const cutoff = now - QuickTabHandler.DEDUP_TTL_MS;
-    for (const [key, timestamp] of this.processedMessages.entries()) {
-      if (timestamp < cutoff) {
-        this.processedMessages.delete(key);
+    
+    // v1.6.3.11-v3 - FIX Issue #76: Iterate nested maps
+    for (const [senderKey, senderMap] of this.processedMessages.entries()) {
+      this._cleanupSenderMapEntries(senderMap, cutoff);
+      // Remove empty sender maps
+      if (senderMap.size === 0) {
+        this.processedMessages.delete(senderKey);
       }
     }
     this.lastCleanup = now;
+  }
+
+  /**
+   * Clean up expired entries in a sender's dedup map
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
+   * @private
+   * @param {Map} senderMap - Map of messageKey -> timestamp
+   * @param {number} cutoff - Timestamp cutoff for expiration
+   */
+  _cleanupSenderMapEntries(senderMap, cutoff) {
+    for (const [messageKey, timestamp] of senderMap.entries()) {
+      if (timestamp < cutoff) {
+        senderMap.delete(messageKey);
+      }
+    }
   }
 
   /**
@@ -493,10 +555,12 @@ export class QuickTabHandler {
    * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
    * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId against sender.tab.id
    * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
+   * v1.6.3.11-v3 - FIX Issue #76: Pass sender to dedup for port-scoped deduplication
    */
   async handleCreate(message, sender) {
     // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
-    if (this._isDuplicateMessage(message)) {
+    // v1.6.3.11-v3 - FIX Issue #76: Pass sender for port-scoped deduplication
+    if (this._isDuplicateMessage(message, sender)) {
       console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
       return { success: true, duplicate: true };
     }

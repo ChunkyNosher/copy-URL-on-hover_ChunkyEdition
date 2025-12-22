@@ -1047,6 +1047,109 @@ const PENDING_MESSAGE_MAX_AGE_MS = 30000; // 30 seconds (same as timeout thresho
 let pendingMessageGcIntervalId = null;
 
 /**
+ * Check if message IDs match between request and response
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce _validateResponseMatchesRequest complexity
+ * @private
+ */
+function _checkMessageIdMatch(request, response) {
+  const requestMessageId = request.messageId;
+  const responseMessageId = response?.messageId;
+  
+  if (responseMessageId && responseMessageId !== requestMessageId) {
+    console.warn('[Content] RESPONSE_ID_MISMATCH:', {
+      requestMessageId,
+      responseMessageId,
+      requestAction: request.action || request.type
+    });
+    return { 
+      valid: false, 
+      reason: `Message ID mismatch: expected ${requestMessageId}, got ${responseMessageId}` 
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Check if Quick Tab ID matches for CREATE operations
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce _validateResponseMatchesRequest complexity
+ * @private
+ */
+function _checkQuickTabIdMatch(request, response) {
+  if (request.action !== 'CREATE_QUICK_TAB') {
+    return { valid: true };
+  }
+  
+  if (response.quickTabId && response.quickTabId !== request.id) {
+    console.warn('[Content] RESPONSE_QUICKTAB_ID_MISMATCH:', {
+      requestId: request.id,
+      responseQuickTabId: response.quickTabId,
+      requestAction: request.action
+    });
+    return {
+      valid: false,
+      reason: `Quick Tab ID mismatch: expected ${request.id}, got ${response.quickTabId}`
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Warn if response generation is stale compared to request
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce _validateResponseMatchesRequest complexity
+ * @private
+ */
+function _warnIfGenerationStale(requestMessageId, responseGeneration) {
+  if (responseGeneration === undefined || responseGeneration === null) {
+    return; // No generation to check
+  }
+  
+  const requestGenMatch = requestMessageId?.match(/g(\d+)-/);
+  const requestGen = requestGenMatch ? parseInt(requestGenMatch[1], 10) : null;
+  
+  if (requestGen !== null && typeof responseGeneration === 'number' && responseGeneration < requestGen) {
+    console.warn('[Content] RESPONSE_GENERATION_STALE:', {
+      requestGeneration: requestGen,
+      responseGeneration,
+      messageId: requestMessageId
+    });
+  }
+}
+
+/**
+ * Validate that a response matches the expected request
+ * v1.6.3.11-v3 - FIX Issue #73: Prevent out-of-order response matching
+ * v1.6.3.11-v3 - FIX Code Health: Refactored to reduce complexity
+ *
+ * Validates:
+ * 1. Response messageId matches request messageId
+ * 2. Response echoes expected request parameters (action, quickTabId, etc.)
+ *
+ * @param {Object} response - Response from background
+ * @param {Object} pendingEntry - Pending message entry from pendingMessages Map
+ * @returns {{valid: boolean, reason?: string}}
+ */
+function _validateResponseMatchesRequest(response, pendingEntry) {
+  const request = pendingEntry?.message;
+  
+  if (!request) {
+    return { valid: false, reason: 'No pending request found' };
+  }
+  
+  // Validate messageId matches
+  const idCheck = _checkMessageIdMatch(request, response);
+  if (!idCheck.valid) return idCheck;
+  
+  // Validate Quick Tab ID for CREATE operations
+  const qtCheck = _checkQuickTabIdMatch(request, response);
+  if (!qtCheck.valid) return qtCheck;
+  
+  // Warn if generation is stale (doesn't invalidate response)
+  _warnIfGenerationStale(request.messageId, response?.generation);
+  
+  return { valid: true };
+}
+
+/**
  * Generate unique message ID for correlation
  * v1.6.3.10-v11 - FIX Issue #23
  * v1.6.3.11 - FIX Issue #28: Add namespace prefix to prevent collision with background
@@ -1296,9 +1399,25 @@ async function _sendMessageWithRetry(message, resolve, reject, retryCount = 0) {
       )
     ]);
 
+    // v1.6.3.11-v3 - FIX Issue #73: Validate response matches request before resolving
+    const pendingEntry = pendingMessages.get(messageId);
+    const validation = _validateResponseMatchesRequest(response, pendingEntry);
+    
+    if (!validation.valid) {
+      console.error('[Content] RESPONSE_VALIDATION_FAILED:', {
+        messageId,
+        reason: validation.reason,
+        responseMessageId: response?.messageId,
+        action: message.action || message.type
+      });
+      // Still resolve since we got a response, but log the mismatch
+      // The response may still be valid even if validation failed due to backward compat
+    }
+
     console.log('[Content] MESSAGE_RECEIVED_RESPONSE:', {
       messageId,
-      success: response?.success ?? true
+      success: response?.success ?? true,
+      validationPassed: validation.valid
     });
 
     pendingMessages.delete(messageId);

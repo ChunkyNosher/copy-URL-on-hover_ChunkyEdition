@@ -4422,6 +4422,74 @@ function handleLegacyAction(message, portInfo) {
   return Promise.resolve({ success: false, error: 'Unknown legacy action' });
 }
 
+// ==================== v1.6.3.11-v3 FIX ISSUE #78: ADOPTION CAPACITY VALIDATION ====================
+// Validate capacity before starting adoption to prevent resource exhaustion
+
+/**
+ * Maximum Quick Tabs per browser tab
+ * v1.6.3.11-v3 - FIX Issue #78: Capacity limit per tab
+ */
+const MAX_QUICK_TABS_PER_TAB = 50;
+
+/**
+ * Maximum total Quick Tabs across all tabs
+ * v1.6.3.11-v3 - FIX Issue #78: Global capacity limit
+ */
+const MAX_TOTAL_QUICK_TABS = 500;
+
+/**
+ * Validate adoption capacity before starting adoption
+ * v1.6.3.11-v3 - FIX Issue #78: Check available capacity
+ * 
+ * Prevents adoption if:
+ * 1. Target tab would exceed MAX_QUICK_TABS_PER_TAB
+ * 2. Total Quick Tabs would exceed MAX_TOTAL_QUICK_TABS
+ * 
+ * @private
+ * @param {string} quickTabId - Quick Tab being adopted (for logging)
+ * @param {number} targetTabId - Tab that would own the adopted Quick Tab
+ * @returns {{valid: boolean, reason?: string, currentTabCount?: number, totalCount?: number}}
+ */
+function _validateAdoptionCapacity(quickTabId, targetTabId) {
+  // Count Quick Tabs currently assigned to target tab
+  const tabQuickTabs = globalQuickTabState.tabs.filter(t => t.originTabId === targetTabId);
+  const currentTabCount = tabQuickTabs.length;
+  const totalCount = globalQuickTabState.tabs.length;
+
+  // Check per-tab limit
+  if (currentTabCount >= MAX_QUICK_TABS_PER_TAB) {
+    return {
+      valid: false,
+      reason: `Target tab has ${currentTabCount} Quick Tabs (max: ${MAX_QUICK_TABS_PER_TAB})`,
+      currentTabCount,
+      totalCount
+    };
+  }
+
+  // Check global limit
+  if (totalCount >= MAX_TOTAL_QUICK_TABS) {
+    return {
+      valid: false,
+      reason: `Total Quick Tabs is ${totalCount} (max: ${MAX_TOTAL_QUICK_TABS})`,
+      currentTabCount,
+      totalCount
+    };
+  }
+
+  console.log('[Background] ADOPTION_CAPACITY_OK:', {
+    quickTabId,
+    targetTabId,
+    currentTabCount,
+    totalCount,
+    maxPerTab: MAX_QUICK_TABS_PER_TAB,
+    maxTotal: MAX_TOTAL_QUICK_TABS
+  });
+
+  return { valid: true, currentTabCount, totalCount };
+}
+
+// ==================== END ISSUE #78 FIX ====================
+
 /**
  * Validate adoption prerequisites
  * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
@@ -4586,6 +4654,18 @@ async function handleAdoptAction(payload) {
     timestamp: startTime
   });
 
+  // v1.6.3.11-v3 - FIX Issue #78: Validate adoption capacity before starting
+  const capacityCheck = _validateAdoptionCapacity(quickTabId, targetTabId);
+  if (!capacityCheck.valid) {
+    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', {
+      quickTabId,
+      targetTabId,
+      correlationId,
+      reason: capacityCheck.reason
+    });
+    return { success: false, error: capacityCheck.reason, code: 'CAPACITY_EXCEEDED' };
+  }
+
   // Validate prerequisites
   const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
   if (!validation.valid) {
@@ -4600,7 +4680,11 @@ async function handleAdoptAction(payload) {
   if (!findResult.found) {
     return { success: false, error: findResult.error };
   }
-  const { oldOriginTabId } = findResult;
+  const { oldOriginTabId, tabIndex } = findResult;
+
+  // v1.6.3.11-v3 - FIX Issue #72: Get position for complete response
+  const adoptedTab = state.tabs[tabIndex];
+  const position = adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
 
   // Write and verify state
   const writeResult = await _writeAndVerifyAdoptionState({
@@ -4625,6 +4709,9 @@ async function handleAdoptAction(payload) {
   // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
 
+  // v1.6.3.11-v3 - FIX Issue #72: Calculate adoption duration for response
+  const adoptionDuration = Date.now() - startTime;
+
   // Broadcast adoption completion
   broadcastToAllPorts({
     type: 'ADOPTION_COMPLETED',
@@ -4633,6 +4720,9 @@ async function handleAdoptAction(payload) {
     newOriginTabId: targetTabId,
     previousOriginTabId: oldOriginTabId,
     correlationId,
+    // v1.6.3.11-v3 - FIX Issue #72: Include additional fields for complete signaling
+    adoptionDuration,
+    position,
     timestamp: Date.now()
   });
 
@@ -4657,7 +4747,15 @@ async function handleAdoptAction(payload) {
     newOriginTabId: targetTabId
   });
 
-  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+  // v1.6.3.11-v3 - FIX Issue #72: Return complete adoption response
+  return {
+    success: true,
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    adoptionDuration,
+    position
+  };
 }
 
 /**
@@ -6043,13 +6141,29 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
     // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
 
-    // Send deletion messages to all tabs
-    const results = await Promise.all(
+    // v1.6.3.11-v3 - FIX Issue #74: Use Promise.allSettled instead of Promise.all
+    // This ensures we get results from all tabs even if some fail
+    const settledResults = await Promise.allSettled(
       tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
     );
 
+    // v1.6.3.11-v3 - FIX Issue #74: Process mixed success/failure results
+    const results = settledResults.map(result => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+      // Failed - log and return as not sent
+      console.warn('[Background] DELETION_BROADCAST_PARTIAL_FAILURE:', {
+        quickTabId,
+        error: result.reason?.message || 'Unknown error',
+        correlationId: corrId
+      });
+      return { sent: false, skipped: false, error: result.reason?.message };
+    });
+
     const successCount = results.filter(r => r.sent).length;
     const skipCount = results.filter(r => r.skipped).length;
+    const failCount = results.filter(r => !r.sent && !r.skipped && r.error).length;
 
     // v1.6.3.6-v12 - FIX Issue #6: Wait for acknowledgments (with timeout)
     await _waitForDeletionAcks(corrId, ackPromise);
@@ -6066,6 +6180,7 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
       totalTabs: tabs.length,
       successCount,
       skipCount,
+      failCount, // v1.6.3.11-v3 - FIX Issue #74: Log failure count
       correlationId: corrId
     });
   } catch (err) {
