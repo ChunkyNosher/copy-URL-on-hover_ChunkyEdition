@@ -537,6 +537,209 @@ export class QuickTabStateMachine {
 
     return { states, histories };
   }
+
+  // ==================== v1.6.3.11-v3 FIX ISSUE #29: STORAGE PERSISTENCE ====================
+
+  /**
+   * Storage key for persisting Quick Tab states
+   * v1.6.3.11-v3 - FIX Issue #29: Persist state across background restarts
+   * @type {string}
+   */
+  static STORAGE_KEY = 'quicktab_states_v1';
+
+  /**
+   * Persist current state to storage
+   * v1.6.3.11-v3 - FIX Issue #29: Save state changes immediately after update
+   * @returns {Promise<boolean>} True if persistence succeeded
+   */
+  async persistToStorage() {
+    try {
+      const stateData = {};
+      for (const [id, state] of this._states) {
+        stateData[id] = state;
+      }
+
+      await browser.storage.session.set({
+        [QuickTabStateMachine.STORAGE_KEY]: {
+          states: stateData,
+          timestamp: Date.now(),
+          version: 1
+        }
+      });
+
+      console.log('[QuickTabStateMachine] PERSIST_TO_STORAGE:', {
+        stateCount: this._states.size,
+        timestamp: Date.now()
+      });
+
+      return true;
+    } catch (err) {
+      console.error('[QuickTabStateMachine] PERSIST_FAILED:', {
+        error: err.message,
+        stateCount: this._states.size
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Restore state from storage
+   * v1.6.3.11-v3 - FIX Issue #29: Load state on reconnect after background restart
+   * @returns {Promise<{success: boolean, stateCount: number, timestamp?: number}>}
+   */
+  async restoreFromStorage() {
+    try {
+      const result = await browser.storage.session.get(QuickTabStateMachine.STORAGE_KEY);
+      const stored = result[QuickTabStateMachine.STORAGE_KEY];
+
+      if (!stored || !stored.states) {
+        console.log('[QuickTabStateMachine] RESTORE_FROM_STORAGE: No stored state found');
+        return { success: false, stateCount: 0 };
+      }
+
+      // Clear current state and restore from storage
+      this._states.clear();
+      const restoredCount = this._restoreStatesFromData(stored.states);
+
+      this._lastInitTime = Date.now();
+
+      console.log('[QuickTabStateMachine] RESTORE_FROM_STORAGE:', {
+        restoredCount,
+        storedTimestamp: stored.timestamp,
+        ageMs: Date.now() - stored.timestamp
+      });
+
+      return {
+        success: true,
+        stateCount: restoredCount,
+        timestamp: stored.timestamp
+      };
+    } catch (err) {
+      console.error('[QuickTabStateMachine] RESTORE_FAILED:', {
+        error: err.message
+      });
+      return { success: false, stateCount: 0 };
+    }
+  }
+
+  /**
+   * Helper to restore states from data object
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce restoreFromStorage complexity
+   * @private
+   * @param {Object} statesData - States data from storage
+   * @returns {number} Count of restored states
+   */
+  _restoreStatesFromData(statesData) {
+    let restoredCount = 0;
+    const validStates = Object.values(QuickTabState);
+
+    for (const [id, state] of Object.entries(statesData)) {
+      const isValidState = validStates.includes(state);
+      if (!isValidState) {
+        console.warn('[QuickTabStateMachine] RESTORE_SKIPPED: Unknown state:', { id, state });
+        continue;
+      }
+      this._states.set(id, state);
+      restoredCount++;
+    }
+
+    return restoredCount;
+  }
+
+  /**
+   * Verify state matches backend and reconcile if needed
+   * v1.6.3.11-v3 - FIX Issue #29: On reconnect, verify state with backend
+   * @param {Object} backendState - State from backend { quickTabId: state }
+   * @returns {{ matched: boolean, reconciled: string[] }}
+   */
+  reconcileWithBackend(backendState) {
+    if (!backendState || typeof backendState !== 'object') {
+      console.warn('[QuickTabStateMachine] RECONCILE: Invalid backend state');
+      return { matched: true, reconciled: [] };
+    }
+
+    const reconciled = [];
+
+    // Reconcile backend states with local
+    this._reconcileBackendStates(backendState, reconciled);
+
+    // Check for ghost Quick Tabs (local but not in backend)
+    this._reconcileGhostTabs(backendState, reconciled);
+
+    if (reconciled.length > 0) {
+      console.log('[QuickTabStateMachine] RECONCILE_COMPLETE:', {
+        reconciledCount: reconciled.length,
+        reconciledIds: reconciled
+      });
+    }
+
+    return {
+      matched: reconciled.length === 0,
+      reconciled
+    };
+  }
+
+  /**
+   * Reconcile backend states with local states
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce reconcileWithBackend complexity
+   * @private
+   */
+  _reconcileBackendStates(backendState, reconciled) {
+    for (const [id, backendStateValue] of Object.entries(backendState)) {
+      const localState = this._states.get(id);
+
+      if (localState === backendStateValue) continue;
+
+      console.log('[QuickTabStateMachine] RECONCILE_MISMATCH:', {
+        id,
+        localState: localState || 'UNKNOWN',
+        backendState: backendStateValue
+      });
+
+      // Update to match backend (backend is source of truth)
+      this._states.set(id, backendStateValue);
+      this._addToHistory(id, {
+        fromState: localState || QuickTabState.UNKNOWN,
+        toState: backendStateValue,
+        timestamp: Date.now(),
+        source: 'reconcile-with-backend',
+        metadata: { type: 'reconciliation' }
+      });
+
+      reconciled.push(id);
+    }
+  }
+
+  /**
+   * Find and mark ghost Quick Tabs (local but not in backend)
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce reconcileWithBackend complexity
+   * @private
+   */
+  _reconcileGhostTabs(backendState, reconciled) {
+    for (const [id, localState] of this._states) {
+      if (id in backendState) continue;
+
+      console.warn('[QuickTabStateMachine] GHOST_DETECTED:', {
+        id,
+        localState,
+        action: 'marking-destroyed'
+      });
+
+      // Mark as destroyed (it doesn't exist on backend)
+      this._states.set(id, QuickTabState.DESTROYED);
+      this._addToHistory(id, {
+        fromState: localState,
+        toState: QuickTabState.DESTROYED,
+        timestamp: Date.now(),
+        source: 'reconcile-ghost-cleanup',
+        metadata: { type: 'ghost-cleanup' }
+      });
+
+      reconciled.push(id);
+    }
+  }
+
+  // ==================== END ISSUE #29 FIX ====================
 }
 
 // Singleton instance for use across the application

@@ -1430,4 +1430,174 @@ export class MinimizedManager {
   hasAdoptionLock(quickTabId) {
     return this._adoptionLocks.has(quickTabId);
   }
+
+  // ==================== v1.6.3.11-v3 FIX ISSUE #30: STORAGE PERSISTENCE ====================
+
+  /**
+   * Storage key for persisting minimized Quick Tab state
+   * v1.6.3.11-v3 - FIX Issue #30: Persist minimized state across background restarts
+   * @type {string}
+   */
+  static STORAGE_KEY = 'minimized_quicktabs_v1';
+
+  /**
+   * Persist minimized state to storage
+   * v1.6.3.11-v3 - FIX Issue #30: Save minimized state immediately after updates
+   * @returns {Promise<boolean>} True if persistence succeeded
+   */
+  async persistToStorage() {
+    try {
+      const minimizedData = [];
+
+      for (const [id, snapshot] of this.minimizedTabs) {
+        minimizedData.push({
+          id,
+          savedPosition: snapshot.savedPosition,
+          savedSize: snapshot.savedSize,
+          savedOriginTabId: snapshot.savedOriginTabId,
+          savedOriginContainerId: snapshot.savedOriginContainerId,
+          // Don't persist window reference - it's not serializable
+          // Don't persist isRestoring - it's transient state
+        });
+      }
+
+      await browser.storage.session.set({
+        [MinimizedManager.STORAGE_KEY]: {
+          minimizedTabs: minimizedData,
+          timestamp: Date.now(),
+          version: 1
+        }
+      });
+
+      console.log('[MinimizedManager] PERSIST_TO_STORAGE:', {
+        minimizedCount: minimizedData.length,
+        timestamp: Date.now()
+      });
+
+      return true;
+    } catch (err) {
+      console.error('[MinimizedManager] PERSIST_FAILED:', {
+        error: err.message,
+        minimizedCount: this.minimizedTabs.size
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Restore minimized state from storage
+   * v1.6.3.11-v3 - FIX Issue #30: Load minimized state on init after background restart
+   * Note: This only restores metadata. Window references must be re-established separately.
+   * @returns {Promise<{success: boolean, minimizedCount: number, timestamp?: number}>}
+   */
+  async restoreFromStorage() {
+    try {
+      const result = await browser.storage.session.get(MinimizedManager.STORAGE_KEY);
+      const stored = result[MinimizedManager.STORAGE_KEY];
+
+      if (!stored || !stored.minimizedTabs) {
+        console.log('[MinimizedManager] RESTORE_FROM_STORAGE: No stored state found');
+        return { success: false, minimizedCount: 0 };
+      }
+
+      // Note: We don't clear existing state - this allows merging with any tabs
+      // that were already restored through other means
+      const restoredCount = this._restoreMinimizedTabsFromData(stored.minimizedTabs);
+
+      console.log('[MinimizedManager] RESTORE_FROM_STORAGE:', {
+        restoredCount,
+        totalMinimized: this.minimizedTabs.size,
+        storedTimestamp: stored.timestamp,
+        ageMs: Date.now() - stored.timestamp
+      });
+
+      return {
+        success: true,
+        minimizedCount: restoredCount,
+        timestamp: stored.timestamp
+      };
+    } catch (err) {
+      console.error('[MinimizedManager] RESTORE_FAILED:', {
+        error: err.message
+      });
+      return { success: false, minimizedCount: 0 };
+    }
+  }
+
+  /**
+   * Helper to restore minimized tabs from stored data
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce restoreFromStorage complexity
+   * @private
+   * @param {Array} minimizedTabsData - Array of tab data from storage
+   * @returns {number} Count of restored tabs
+   */
+  _restoreMinimizedTabsFromData(minimizedTabsData) {
+    let restoredCount = 0;
+
+    for (const tabData of minimizedTabsData) {
+      // Skip if already tracked (from another restore path)
+      if (this.minimizedTabs.has(tabData.id)) continue;
+
+      const partialSnapshot = this._buildPartialSnapshot(tabData);
+      this.minimizedTabs.set(tabData.id, partialSnapshot);
+      restoredCount++;
+
+      console.log('[MinimizedManager] RESTORE_TAB:', {
+        id: tabData.id,
+        position: partialSnapshot.savedPosition,
+        size: partialSnapshot.savedSize,
+        originTabId: partialSnapshot.savedOriginTabId
+      });
+    }
+
+    return restoredCount;
+  }
+
+  /**
+   * Build a partial snapshot from stored tab data
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   * @param {Object} tabData - Tab data from storage
+   * @returns {Object} Partial snapshot object
+   */
+  _buildPartialSnapshot(tabData) {
+    return {
+      window: null, // Will be set by UICoordinator when rendering
+      savedPosition: tabData.savedPosition || { left: DEFAULT_POSITION_LEFT, top: DEFAULT_POSITION_TOP },
+      savedSize: tabData.savedSize || { width: DEFAULT_SIZE_WIDTH, height: DEFAULT_SIZE_HEIGHT },
+      savedOriginTabId: tabData.savedOriginTabId ?? null,
+      savedOriginContainerId: tabData.savedOriginContainerId ?? null,
+      isRestoring: false
+    };
+  }
+
+  /**
+   * Update window reference in restored snapshot
+   * v1.6.3.11-v3 - FIX Issue #30: After restoring from storage, link window reference
+   * @param {string} id - Quick Tab ID
+   * @param {Object} window - QuickTabWindow instance
+   * @returns {boolean} True if updated
+   */
+  linkRestoredWindow(id, window) {
+    const snapshot = this.minimizedTabs.get(id);
+    if (!snapshot) {
+      console.warn('[MinimizedManager] LINK_WINDOW_FAILED: No snapshot for:', id);
+      return false;
+    }
+
+    if (snapshot.window !== null) {
+      console.log('[MinimizedManager] LINK_WINDOW_SKIPPED: Already has window reference:', id);
+      return false;
+    }
+
+    snapshot.window = window;
+    console.log('[MinimizedManager] LINK_WINDOW_SUCCESS:', {
+      id,
+      hasWindow: !!snapshot.window
+    });
+
+    return true;
+  }
+
+  // ==================== END ISSUE #30 FIX ====================
 }

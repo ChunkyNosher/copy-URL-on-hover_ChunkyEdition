@@ -740,13 +740,42 @@ let messageIdCounter = 0;
 const pendingMessages = new Map(); // messageId -> { message, retryCount, sentAt, resolve, reject }
 
 /**
+ * Port generation counter - incremented on each port reconnection
+ * v1.6.3.11-v3 - FIX Issue #27: Include port generation in message IDs to prevent collision across reconnections
+ * @type {number}
+ */
+let portGeneration = 0;
+
+/**
+ * Pending message garbage collection interval (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #33: Periodically clean up stale entries
+ * @type {number}
+ */
+const PENDING_MESSAGE_GC_INTERVAL_MS = 30000; // 30 seconds
+
+/**
+ * Maximum age for pending messages before garbage collection (milliseconds)
+ * v1.6.3.11-v3 - FIX Issue #33: Messages older than this are stale
+ * @type {number}
+ */
+const PENDING_MESSAGE_MAX_AGE_MS = 30000; // 30 seconds (same as timeout threshold from issue)
+
+/**
+ * Garbage collection interval ID
+ * v1.6.3.11-v3 - FIX Issue #33
+ * @type {number|null}
+ */
+let pendingMessageGcIntervalId = null;
+
+/**
  * Generate unique message ID for correlation
  * v1.6.3.10-v11 - FIX Issue #23
  * v1.6.3.11 - FIX Issue #28: Add namespace prefix to prevent collision with background
- * @returns {string} Unique message ID with content script namespace
+ * v1.6.3.11-v3 - FIX Issue #27: Include portGeneration to prevent collision across reconnections
+ * @returns {string} Unique message ID with content script namespace and port generation
  */
 function _generateMessageId() {
-  const newId = `msg-content-${Date.now()}-${++messageIdCounter}`;
+  const newId = `msg-content-g${portGeneration}-${Date.now()}-${++messageIdCounter}`;
 
   // v1.6.3.11 - FIX Issue #28: Collision detection
   if (pendingMessages.has(newId)) {
@@ -755,6 +784,68 @@ function _generateMessageId() {
   }
 
   return newId;
+}
+
+/**
+ * Garbage collect stale pending messages
+ * v1.6.3.11-v3 - FIX Issue #33: Prevent unbounded Map growth from network timeouts
+ * @private
+ */
+function _gcPendingMessages() {
+  const now = Date.now();
+  let collectedCount = 0;
+
+  for (const [messageId, pending] of pendingMessages) {
+    const messageAge = now - pending.sentAt;
+    const isStale = messageAge >= PENDING_MESSAGE_MAX_AGE_MS;
+    
+    if (!isStale) continue;
+    
+    // Reject the stale message before removing
+    if (pending.reject) {
+      pending.reject(new Error(`Message timeout after ${messageAge}ms (garbage collected)`));
+    }
+    pendingMessages.delete(messageId);
+    collectedCount++;
+  }
+
+  if (collectedCount > 0) {
+    console.log('[Content][GC] PENDING_MESSAGES_COLLECTED:', {
+      collectedCount,
+      remainingCount: pendingMessages.size,
+      thresholdMs: PENDING_MESSAGE_MAX_AGE_MS,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Start periodic garbage collection of pending messages
+ * v1.6.3.11-v3 - FIX Issue #33
+ * @private
+ */
+function _startPendingMessageGc() {
+  if (pendingMessageGcIntervalId) {
+    clearInterval(pendingMessageGcIntervalId);
+  }
+  pendingMessageGcIntervalId = setInterval(_gcPendingMessages, PENDING_MESSAGE_GC_INTERVAL_MS);
+  console.log('[Content][GC] PENDING_MESSAGE_GC_STARTED:', {
+    intervalMs: PENDING_MESSAGE_GC_INTERVAL_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Stop periodic garbage collection of pending messages
+ * v1.6.3.11-v3 - FIX Issue #33
+ * @private
+ */
+function _stopPendingMessageGc() {
+  if (pendingMessageGcIntervalId) {
+    clearInterval(pendingMessageGcIntervalId);
+    pendingMessageGcIntervalId = null;
+    console.log('[Content][GC] PENDING_MESSAGE_GC_STOPPED');
+  }
 }
 
 /**
@@ -994,6 +1085,31 @@ function _stopHeartbeat() {
 }
 
 // ==================== END ISSUE #23 FIX ====================
+
+// ==================== v1.6.3.11-v3 FIX ISSUE #33: START GC ON INIT ====================
+// Start pending message garbage collection alongside heartbeat
+
+/**
+ * Start all periodic maintenance tasks
+ * v1.6.3.11-v3 - FIX Issue #33: Centralized maintenance start
+ * @private
+ */
+function _startPeriodicMaintenance() {
+  _startHeartbeat();
+  _startPendingMessageGc();
+}
+
+/**
+ * Stop all periodic maintenance tasks
+ * v1.6.3.11-v3 - FIX Issue #33: Centralized maintenance stop
+ * @private
+ */
+function _stopPeriodicMaintenance() {
+  _stopHeartbeat();
+  _stopPendingMessageGc();
+}
+
+// ==================== END ISSUE #33 FIX ====================
 
 /**
  * Check if a message has valid format for sending
@@ -2254,12 +2370,16 @@ function _handleInitResponse(message, port) {
 /**
  * Complete the handshake and transition to READY state
  * v1.6.3.10-v11 - FIX Issue #24
+ * v1.6.3.11-v3 - FIX Issue #33: Start periodic maintenance on handshake complete
  */
 function _completeHandshake() {
   _clearHandshakeTimeout();
   currentHandshakePhase = HANDSHAKE_PHASE.NONE;
 
   _transitionPortState(PORT_CONNECTION_STATE.READY, 'handshake-complete');
+
+  // v1.6.3.11-v3 - FIX Issue #33: Start periodic maintenance (heartbeat + GC) on successful connection
+  _startPeriodicMaintenance();
 
   console.log('[Content][HANDSHAKE] COMPLETE: Connection ready', {
     portState: portConnectionState,
@@ -2897,22 +3017,39 @@ function _handleReconnection(tabId, reason) {
 /**
  * Clear pending messages on port disconnect
  * v1.6.3.11 - FIX Code Health: Extracted to reduce nesting depth in onDisconnect handler
+ * v1.6.3.11-v3 - FIX Issue #27: Increment portGeneration on disconnect to prevent message ID collision
  * @private
  */
 function _clearPendingMessagesOnDisconnect() {
   const pendingCount = pendingMessages.size;
-  if (pendingCount === 0) return;
-
+  
+  // v1.6.3.11-v3 - FIX Issue #27: Increment port generation BEFORE clearing
+  // This ensures new messages after reconnection have different generation prefix
+  const previousGeneration = portGeneration;
+  portGeneration++;
+  
   console.log(
     '[Content][PORT_LIFECYCLE] CLEARING_PENDING_MESSAGES: Port disconnected, clearing in-flight messages',
     {
       pendingCount,
+      previousPortGeneration: previousGeneration,
+      newPortGeneration: portGeneration,
       timestamp: Date.now()
     }
   );
+  
+  if (pendingCount === 0) return;
+  
   // Reject all pending messages before clearing
-  for (const [_messageId, pending] of pendingMessages) {
-    if (pending.reject) pending.reject(new Error('Port disconnected'));
+  for (const [messageId, pending] of pendingMessages) {
+    if (pending.reject) {
+      pending.reject(new Error(`Port disconnected (generation ${previousGeneration})`));
+    }
+    console.log('[Content][PORT_LIFECYCLE] PENDING_MESSAGE_REJECTED:', {
+      messageId,
+      age: Date.now() - pending.sentAt,
+      retryCount: pending.retryCount
+    });
   }
   pendingMessages.clear();
 }
@@ -7391,6 +7528,7 @@ function _resetInitializationFlags() {
  * v1.6.3.10-v13 - FIX Issue #9: Also stop periodic latency measurement
  * v1.6.3.11 - FIX Issue #34: Reset initialization flags on navigation
  * v1.6.3.11-v3 - FIX Issue #19: Clear pendingRestoreOperations to prevent memory leaks
+ * v1.6.3.11-v3 - FIX Issue #33: Stop pending message garbage collection
  * @private
  */
 function _handleBeforeUnload() {
@@ -7422,6 +7560,9 @@ function _handleBeforeUnload() {
 
   // v1.6.3.10-v13 - FIX Issue #9: Stop periodic latency measurement
   stopPeriodicLatencyMeasurement();
+
+  // v1.6.3.11-v3 - FIX Issue #33: Stop periodic maintenance (heartbeat + GC)
+  _stopPeriodicMaintenance();
 
   if (quickTabsManager?.destroy) {
     console.log('[Content] Calling quickTabsManager.destroy() for resource cleanup');
