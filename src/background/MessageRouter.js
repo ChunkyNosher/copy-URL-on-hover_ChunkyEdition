@@ -19,6 +19,7 @@
 // v1.6.4.15 - FIX Issue #18: Allowlist of valid command types for validation
 // This serves as documentation and validation for the message protocol
 // v1.6.3.11-v3 - FIX Issue #47: Added HEARTBEAT to allowlist for restart detection
+// v1.6.3.11-v3 - FIX Issue #23: Added REFRESH_CACHED_SETTINGS for options page
 export const VALID_MESSAGE_ACTIONS = new Set([
   // Quick Tab CRUD operations
   'CREATE_QUICK_TAB',
@@ -51,7 +52,9 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   // Keepalive and heartbeat
   'KEEPALIVE_PING',
   // v1.6.3.11-v3 - FIX Issue #47: HEARTBEAT for restart detection
-  'HEARTBEAT'
+  'HEARTBEAT',
+  // v1.6.3.11-v3 - FIX Issue #23: Settings refresh from options page
+  'REFRESH_CACHED_SETTINGS'
 ]);
 
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format

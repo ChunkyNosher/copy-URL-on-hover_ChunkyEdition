@@ -6506,10 +6506,13 @@ function _handleAdoptSuccess({ quickTabId, targetTabId, response, correlationId,
 /**
  * Handle failed adoption response
  * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * v1.6.3.11-v3 - FIX Issue #31: Add retry with exponential backoff for transient failures
  * @private
  */
 function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId, durationMs }) {
   const error = response?.error || 'Unknown error';
+  const errorCode = response?.code || 'UNKNOWN_ERROR';
+  
   console.error('[Manager] OPERATION_FAILED:', {
     action: 'ADOPT_TAB',
     quickTabId,
@@ -6517,9 +6520,138 @@ function _handleAdoptFailure({ quickTabId, targetTabId, response, correlationId,
     correlationId,
     status: 'failed',
     error,
+    errorCode,
     durationMs
   });
   console.error('[Manager] ❌ ADOPT_COMMAND_FAILED:', { quickTabId, targetTabId, error });
+
+  // v1.6.3.11-v3 - FIX Issue #31: Display user-friendly error notification
+  // Show error in UI so user knows adoption failed
+  _displayAdoptionErrorNotification(quickTabId, error, errorCode);
+
+  // v1.6.3.11-v3 - FIX Issue #31: Check if error is retryable
+  const isRetryable = _isRetryableAdoptionError(errorCode);
+  if (isRetryable) {
+    console.log('[Manager] ADOPTION_RETRY_ELIGIBLE:', {
+      quickTabId,
+      targetTabId,
+      errorCode,
+      willRetry: true
+    });
+    // Schedule retry with backoff (only if not already in retry)
+    const currentAttempt = _adoptionRetryAttempts.get(quickTabId) || 0;
+    if (currentAttempt === 0) {
+      // First failure - start retry sequence
+      _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, 1);
+    }
+    // If currentAttempt > 0, we're already in a retry sequence - don't double-schedule
+  }
+}
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Display error notification for adoption failure
+ * @private
+ */
+function _displayAdoptionErrorNotification(quickTabId, error, errorCode) {
+  // Truncate quick tab ID for display
+  const shortId = quickTabId.length > 12 ? quickTabId.substring(0, 12) + '...' : quickTabId;
+  
+  // User-friendly error messages
+  const errorMessages = {
+    'ORIGIN_TAB_CLOSED': 'Original tab was closed',
+    'QUICK_TAB_NOT_FOUND': 'Quick Tab no longer exists',
+    'TARGET_TAB_NOT_FOUND': 'Target tab not available',
+    'TIMEOUT': 'Operation timed out - will retry',
+    'NETWORK_ERROR': 'Network error - will retry'
+  };
+  
+  const userMessage = errorMessages[errorCode] || `Adoption failed: ${error}`;
+  console.warn(`[Manager] ADOPTION_ERROR_DISPLAY: ${shortId} - ${userMessage}`);
+  
+  // Note: Actual UI notification would require DOM access
+  // The error is logged for now - UI notification can be added via event bus
+}
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Check if adoption error is retryable
+ * @private
+ */
+function _isRetryableAdoptionError(errorCode) {
+  const retryableCodes = new Set([
+    'TIMEOUT',
+    'NETWORK_ERROR', 
+    'BACKGROUND_NOT_READY',
+    'HANDLER_ERROR'
+  ]);
+  return retryableCodes.has(errorCode);
+}
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Track retry attempts per quick tab
+ * @private
+ */
+const _adoptionRetryAttempts = new Map();
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Maximum adoption retry attempts
+ */
+const ADOPTION_MAX_RETRIES = 3;
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Base retry delay in ms (exponential backoff)
+ */
+const ADOPTION_RETRY_BASE_DELAY_MS = 1000;
+
+/**
+ * v1.6.3.11-v3 - FIX Issue #31: Schedule adoption retry with exponential backoff
+ * @private
+ */
+function _scheduleAdoptionRetry(quickTabId, targetTabId, correlationId, attempt) {
+  if (attempt > ADOPTION_MAX_RETRIES) {
+    console.error('[Manager] ADOPTION_RETRY_EXHAUSTED:', {
+      quickTabId,
+      targetTabId,
+      maxRetries: ADOPTION_MAX_RETRIES,
+      message: 'Max retries reached - adoption failed permanently'
+    });
+    _adoptionRetryAttempts.delete(quickTabId);
+    return;
+  }
+
+  // Exponential backoff: 1s, 2s, 4s (using bit shift for efficiency)
+  const delayMs = ADOPTION_RETRY_BASE_DELAY_MS * (1 << (attempt - 1));
+  
+  console.log('[Manager] ADOPTION_RETRY_SCHEDULED:', {
+    quickTabId,
+    targetTabId,
+    attempt,
+    maxRetries: ADOPTION_MAX_RETRIES,
+    delayMs
+  });
+
+  _adoptionRetryAttempts.set(quickTabId, attempt);
+
+  setTimeout(async () => {
+    console.log('[Manager] ADOPTION_RETRY_EXECUTING:', {
+      quickTabId,
+      targetTabId,
+      attempt,
+      correlationId: `${correlationId}-retry${attempt}`
+    });
+    
+    try {
+      await adoptQuickTabToCurrentTab(quickTabId, targetTabId);
+      _adoptionRetryAttempts.delete(quickTabId);
+    } catch (err) {
+      console.warn('[Manager] ADOPTION_RETRY_FAILED:', {
+        quickTabId,
+        attempt,
+        error: err.message
+      });
+      // Don't schedule another retry here - the adoptQuickTabToCurrentTab 
+      // will call _handleAdoptFailure which handles retry scheduling
+    }
+  }, delayMs);
 }
 
 /**

@@ -182,6 +182,91 @@ export class QuickTabHandler {
   }
 
   /**
+   * Extract domain from URL for domain validation
+   * v1.6.3.11-v3 - FIX Issue #38: Domain isolation helper
+   * @private
+   * @param {string} url - URL to extract domain from
+   * @returns {string|null} Domain or null if invalid
+   */
+  _extractDomain(url) {
+    if (!url || typeof url !== 'string') return null;
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  /**
+   * Validate domain ownership for Quick Tab operations
+   * v1.6.3.11-v3 - FIX Issue #38: Domain isolation for Quick Tab validation
+   *
+   * Quick Tab created on `a.example.com` should NOT be accessible from `b.example.com`
+   * even if the tabId is the same. This adds an extra layer of security beyond tabId.
+   *
+   * @private
+   * @param {string} quickTabId - Quick Tab ID being accessed
+   * @param {Object} sender - Message sender object
+   * @returns {{valid: boolean, error?: string, senderDomain?: string, storedDomain?: string, skipped?: boolean, reason?: string}}
+   */
+  _validateDomainOwnership(quickTabId, sender) {
+    // Extract sender domain
+    const senderUrl = sender?.tab?.url || sender?.url;
+    const senderDomain = this._extractDomain(senderUrl);
+
+    // If we can't determine sender domain, skip domain validation (fail-open for extensibility)
+    if (!senderDomain) {
+      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: Cannot determine sender domain', {
+        quickTabId,
+        hasSenderUrl: !!senderUrl
+      });
+      return { valid: true, skipped: true };
+    }
+
+    // Find the Quick Tab in global state
+    const quickTab = this.globalState.tabs?.find(t => t.id === quickTabId);
+    if (!quickTab) {
+      // Quick Tab not found - skip domain validation (will fail on other validation)
+      return { valid: true, skipped: true, reason: 'quick-tab-not-found' };
+    }
+
+    // Extract stored domain from Quick Tab's originDomain or URL
+    const storedDomain = quickTab.originDomain || this._extractDomain(quickTab.url);
+    
+    // If Quick Tab has no stored domain, skip validation (backward compatibility)
+    if (!storedDomain) {
+      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: Quick Tab has no stored domain', {
+        quickTabId,
+        hasUrl: !!quickTab.url
+      });
+      return { valid: true, skipped: true, reason: 'no-stored-domain' };
+    }
+
+    // Compare domains
+    if (senderDomain !== storedDomain) {
+      console.error('[QuickTabHandler] DOMAIN_VALIDATION_FAILED: Domain mismatch', {
+        quickTabId,
+        senderDomain,
+        storedDomain,
+        warning: 'Cross-domain access attempt detected'
+      });
+      return {
+        valid: false,
+        error: `Domain mismatch: sender=${senderDomain}, stored=${storedDomain}`,
+        senderDomain,
+        storedDomain
+      };
+    }
+
+    console.log('[QuickTabHandler] DOMAIN_VALIDATION_SUCCESS:', {
+      quickTabId,
+      domain: senderDomain
+    });
+    return { valid: true, senderDomain };
+  }
+
+  /**
    * Validate originTabId from message payload against sender.tab.id
    * v1.6.3.10-v11 - FIX Issue #4: Mandatory validation for originTabId ownership
    * v1.6.3.11-v3 - FIX Issue #56: Removed backward compatibility fallback for ownership ops
@@ -380,10 +465,34 @@ export class QuickTabHandler {
   }
 
   /**
+   * Build tab data object for Quick Tab creation
+   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleCreate complexity
+   * @private
+   */
+  _buildCreateTabData(message, cookieStoreId, validatedOriginTabId, assignedSequenceId, originDomain) {
+    return {
+      id: message.id,
+      url: message.url,
+      left: message.left,
+      top: message.top,
+      width: message.width,
+      height: message.height,
+      pinnedToUrl: message.pinnedToUrl || null,
+      title: message.title || 'Quick Tab',
+      minimized: message.minimized || false,
+      cookieStoreId: cookieStoreId,
+      originTabId: validatedOriginTabId,
+      sequenceId: assignedSequenceId,
+      originDomain: originDomain
+    };
+  }
+
+  /**
    * Handle Quick Tab creation
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
    * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId against sender.tab.id
+   * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
    */
   async handleCreate(message, sender) {
     // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
@@ -433,20 +542,24 @@ export class QuickTabHandler {
     // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
     const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
 
-    const tabData = {
-      id: message.id,
-      url: message.url,
-      left: message.left,
-      top: message.top,
-      width: message.width,
-      height: message.height,
-      pinnedToUrl: message.pinnedToUrl || null,
-      title: message.title || 'Quick Tab',
-      minimized: message.minimized || false,
-      cookieStoreId: cookieStoreId, // v1.6.2.2 - Store container info on tab itself
-      originTabId: validatedOriginTabId, // v1.6.3.10-v11 - FIX Issue #4: Store validated originTabId
-      sequenceId: assignedSequenceId // v1.6.3.11 - FIX Issue #31: Background-assigned sequence ID
-    };
+    // v1.6.3.11-v3 - FIX Issue #38: Extract and store originDomain for domain isolation
+    const senderUrl = sender?.tab?.url || sender?.url;
+    const originDomain = this._extractDomain(senderUrl);
+
+    // v1.6.3.11-v3 - FIX Code Review: Log warning when originDomain cannot be extracted
+    // This affects domain validation security - Quick Tab may skip domain checks
+    if (!originDomain) {
+      console.warn('[QuickTabHandler] CREATE_ORIGIN_DOMAIN_NULL: Could not extract domain', {
+        quickTabId: message.id,
+        hasSenderUrl: !!senderUrl,
+        note: 'Domain validation will be skipped for this Quick Tab'
+      });
+    }
+
+    // v1.6.3.11-v3 - FIX Code Health: Use helper to build tab data
+    const tabData = this._buildCreateTabData(
+      message, cookieStoreId, validatedOriginTabId, assignedSequenceId, originDomain
+    );
 
     if (existingIndex !== -1) {
       this.globalState.tabs[existingIndex] = tabData;
@@ -474,6 +587,7 @@ export class QuickTabHandler {
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId for close operations
    * v1.6.3.11-v3 - FIX Issue #36: originTabId now required (validated by MessageRouter)
+   * v1.6.3.11-v3 - FIX Issue #38: Add domain validation
    */
   async handleClose(message, sender) {
     // v1.6.3.11-v3 - FIX Issue #36: originTabId is now validated by MessageRouter
@@ -487,6 +601,18 @@ export class QuickTabHandler {
         note: 'Defensive check - MessageRouter should have rejected this first'
       });
       return { success: false, error: validation.error, code: 'ORIGIN_VALIDATION_FAILED' };
+    }
+
+    // v1.6.3.11-v3 - FIX Issue #38: Domain validation
+    const domainValidation = this._validateDomainOwnership(message.id, sender);
+    if (!domainValidation.valid) {
+      console.error('[QuickTabHandler] CLOSE_REJECTED: domain validation failed', {
+        error: domainValidation.error,
+        quickTabId: message.id,
+        senderDomain: domainValidation.senderDomain,
+        storedDomain: domainValidation.storedDomain
+      });
+      return { success: false, error: domainValidation.error, code: 'DOMAIN_VALIDATION_FAILED' };
     }
 
     console.log(

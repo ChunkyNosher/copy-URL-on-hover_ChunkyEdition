@@ -3956,6 +3956,7 @@ function _handlePageHide(event) {
  * v1.6.3.10-v12 - FIX Issue #2: Verify port functionality after BFCache restore
  * v1.6.3.11-v3 - FIX Issue #51: Drain queued messages after restore
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as active, query backend for current state
+ * v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore and refresh tab ID
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageShow(event) {
@@ -3975,6 +3976,10 @@ function _handlePageShow(event) {
 
     // v1.6.3.11-v3 - FIX Issue #51: Unfreeze port
     _isPortFrozenDueToBFCache = false;
+
+    // v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore
+    // This handles cross-domain navigation detected after back/forward cache restore
+    _checkHostnameChange();
 
     if (portPotentiallyInvalidDueToBFCache) {
       // Verify port functionality by attempting a ping

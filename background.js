@@ -1349,6 +1349,127 @@ async function saveMigratedQuickTabState() {
 // Run migration after initialization
 migrateQuickTabState();
 
+// ==================== SETTINGS MIGRATION (v1.6.3.11-v3) ====================
+// v1.6.3.11-v3 - FIX Issue #39: Config migration for new settings on upgrade
+// Ensures old configs have new keys with defaults when extension upgrades
+
+/**
+ * Current settings version - increment when adding new settings
+ * v1.6.3.11-v3 - FIX Issue #39
+ */
+const SETTINGS_VERSION = 2;
+
+/**
+ * Settings key in storage
+ * v1.6.3.11-v3 - FIX Issue #39
+ */
+const SETTINGS_STORAGE_KEY = 'quick_tab_settings';
+
+/**
+ * Default settings with all possible keys
+ * v1.6.3.11-v3 - FIX Issue #39: Single source of truth for default settings
+ */
+const DEFAULT_SETTINGS = {
+  // Core settings
+  enableQuickTabs: true,
+  maxQuickTabs: 5,
+  defaultWidth: 600,
+  defaultHeight: 400,
+  syncAcrossTabs: true,
+  persistAcrossSessions: true,
+  enableDebugLogging: false,
+  quickTabShowDebugId: false,
+  // v1.6.3.11-v3 - Settings version for migration tracking
+  _settingsVersion: SETTINGS_VERSION
+};
+
+/**
+ * Migrate settings to add missing keys with defaults
+ * v1.6.3.11-v3 - FIX Issue #39: Version-aware config migration
+ */
+async function migrateSettings() {
+  try {
+    console.log('[Background][Settings] Migration: Checking settings for missing keys');
+
+    // Read current settings from storage.sync (where options_page saves them)
+    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
+    const currentSettings = result[SETTINGS_STORAGE_KEY];
+
+    // If no settings exist, create with defaults
+    if (!currentSettings) {
+      console.log('[Background][Settings] Migration: No settings found, creating defaults');
+      await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: DEFAULT_SETTINGS });
+      return;
+    }
+
+    // Check if migration needed and add missing keys
+    const { migratedSettings, needsMigration } = _addMissingSettingsKeys(currentSettings);
+
+    // Check settings version for forced migration
+    const versionMigrationNeeded = _checkSettingsVersionMigration(currentSettings, migratedSettings);
+
+    // Save if migration occurred
+    if (needsMigration || versionMigrationNeeded) {
+      await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: migratedSettings });
+      console.log('[Background][Settings] Migration: Settings migrated successfully', {
+        keysAdded: Object.keys(DEFAULT_SETTINGS).filter(k => !(k in currentSettings)).length,
+        newVersion: SETTINGS_VERSION
+      });
+
+      // Broadcast settings update to all tabs
+      await _broadcastToAllTabs('SETTINGS_UPDATED', { settings: migratedSettings });
+    } else {
+      console.log('[Background][Settings] Migration: No migration needed');
+    }
+  } catch (err) {
+    console.error('[Background][Settings] Migration: Error migrating settings:', err.message);
+    // Don't throw - settings migration failure shouldn't break extension
+  }
+}
+
+/**
+ * Helper: Add missing settings keys with defaults
+ * v1.6.3.11-v3 - FIX Issue #39: Extracted to reduce nesting depth
+ * @private
+ */
+function _addMissingSettingsKeys(currentSettings) {
+  let needsMigration = false;
+  const migratedSettings = { ...currentSettings };
+
+  for (const [key, defaultValue] of Object.entries(DEFAULT_SETTINGS)) {
+    if (!(key in currentSettings)) {
+      console.log(`[Background][Settings] Migration: Adding missing key '${key}' with default:`, defaultValue);
+      migratedSettings[key] = defaultValue;
+      needsMigration = true;
+    }
+  }
+
+  return { migratedSettings, needsMigration };
+}
+
+/**
+ * Helper: Check if settings version migration is needed
+ * v1.6.3.11-v3 - FIX Issue #39: Extracted to reduce nesting depth
+ * @private
+ */
+function _checkSettingsVersionMigration(currentSettings, migratedSettings) {
+  const currentVersion = currentSettings._settingsVersion || 1;
+  if (currentVersion < SETTINGS_VERSION) {
+    console.log('[Background][Settings] Migration: Version upgrade detected', {
+      from: currentVersion,
+      to: SETTINGS_VERSION
+    });
+    migratedSettings._settingsVersion = SETTINGS_VERSION;
+    return true;
+  }
+  return false;
+}
+
+// Run settings migration after Quick Tab state migration
+migrateSettings();
+
+// ==================== END SETTINGS MIGRATION ====================
+
 // ==================== STATE COORDINATOR ====================
 // Manages canonical Quick Tab state across all tabs with conflict resolution
 
@@ -2132,6 +2253,36 @@ messageRouter.register('SETTINGS_CHANGED', async (msg, _sender) => {
     return { success: true };
   } catch (err) {
     console.error('[Background] SETTINGS_CHANGED: Failed to reload settings:', err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// v1.6.3.11-v3 - FIX Issue #23: Handler for settings refresh from options_page.js
+// This is called directly after user saves settings in options page
+// Options page stores in storage.sync, so we need to read from sync storage
+messageRouter.register('REFRESH_CACHED_SETTINGS', async (msg, _sender) => {
+  console.log('[Background] REFRESH_CACHED_SETTINGS: Refreshing settings from storage.sync', {
+    timestamp: msg.timestamp,
+    directSettings: msg.settings ? Object.keys(msg.settings).length : 0
+  });
+
+  try {
+    // If settings were passed directly, broadcast them immediately
+    if (msg.settings) {
+      console.log('[Background] REFRESH_CACHED_SETTINGS: Broadcasting settings to all tabs');
+      await _broadcastToAllTabs('SETTINGS_UPDATED', { settings: msg.settings });
+    }
+
+    // Also reload from storage.sync for good measure
+    const result = await browser.storage.sync.get('quick_tab_settings');
+    console.log('[Background] REFRESH_CACHED_SETTINGS: Settings refreshed', {
+      hasSettings: !!result.quick_tab_settings,
+      keys: result.quick_tab_settings ? Object.keys(result.quick_tab_settings).length : 0
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.error('[Background] REFRESH_CACHED_SETTINGS: Failed:', err.message);
     return { success: false, error: err.message };
   }
 });
