@@ -5,15 +5,204 @@
  * v1.6.3.11-v4 Changes:
  * - FIX Issue #1: Added Shadow DOM support for Twitter/X, Instagram, TikTok
  * - FIX Issue #4: Enhanced fallback chain with Shadow DOM traversal
+ *
+ * v1.6.3.11-v5 Changes:
+ * - Refactored to reduce cyclomatic complexity (Code Health 8.28 → 9.0+)
+ * - Extracted common patterns into _findSocialMediaUrl helper
+ * - Eliminated code duplication across find*Url functions
  */
 
 import { findGenericUrl } from './generic.js';
 import { findLinkInShadowDOM, findClosestAcrossShadow } from './shadow-dom.js';
 import { debug } from '../../utils/debug.js';
 
+// ==================== CONFIGURATION ====================
+
+/**
+ * Platform-specific configuration for social media URL detection
+ * @private
+ */
+const PLATFORM_CONFIGS = {
+  twitter: {
+    containerSelector: '[data-testid="tweet"], [data-testid="tweetText"], article',
+    linkSelector: 'a[href*="/status/"]',
+    logPrefix: 'Twitter',
+    useShadowDOM: true,
+    useCrossShadow: true
+  },
+  reddit: {
+    containerSelector: '[data-testid="post-container"], .Post, .post-container, [role="article"]',
+    linkSelector: 'a[data-testid="post-title"], h3 a, .PostTitle a, [data-click-id="body"] a',
+    logPrefix: 'Reddit',
+    useShadowDOM: true,
+    useCrossShadow: false
+  },
+  instagram: {
+    containerSelector: '[role="article"], article',
+    linkSelector: 'a[href*="/p/"], a[href*="/reel/"], time a',
+    crossShadowSelector: 'a[href*="/p/"], a[href*="/reel/"]',
+    logPrefix: 'Instagram',
+    useShadowDOM: true,
+    useCrossShadow: true
+  },
+  facebook: {
+    containerSelector: '[role="article"], [data-testid="post"]',
+    linkSelector: 'a[href*="/posts/"], a[href*="/photos/"], a[href*="/videos/"]',
+    logPrefix: 'Facebook',
+    useShadowDOM: true,
+    useCrossShadow: false,
+    useQuerySelectorAll: true
+  },
+  tikTok: {
+    containerSelector: '[data-e2e="user-post-item"], .video-feed-item, [data-e2e="recommend-list-item-container"]',
+    linkSelector: 'a[href*="/@"], a[href*="/video/"]',
+    logPrefix: 'TikTok',
+    useShadowDOM: true,
+    useCrossShadow: true
+  },
+  threads: {
+    containerSelector: '[role="article"]',
+    linkSelector: 'a[href*="/t/"], time a',
+    logPrefix: 'Threads',
+    useShadowDOM: true,
+    useCrossShadow: false
+  },
+  bluesky: {
+    containerSelector: '[data-testid="postThreadItem"], [role="article"]',
+    linkSelector: 'a[href*="/post/"]',
+    logPrefix: 'Bluesky',
+    useShadowDOM: true,
+    useCrossShadow: false
+  }
+};
+
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Check element for direct href
+ * @private
+ * @param {Element} element - DOM element
+ * @param {string} logPrefix - Logging prefix for platform
+ * @returns {string|null} URL or null
+ */
+function _checkDirectHref(element, logPrefix) {
+  if (element?.href) {
+    console.log(`[URL_EXTRACT] ${logPrefix} direct link:`, { href: element.href });
+    return element.href;
+  }
+  return null;
+}
+
+/**
+ * Search for link in container using standard and Shadow DOM methods
+ * @private
+ * @param {Element} container - Container element
+ * @param {Object} config - Platform configuration
+ * @returns {string|null} URL or null
+ */
+function _searchInContainer(container, config) {
+  // Try standard selectors
+  const link = config.useQuerySelectorAll
+    ? container.querySelectorAll(config.linkSelector)[0]
+    : container.querySelector(config.linkSelector);
+
+  if (link?.href) {
+    console.log(`[URL_EXTRACT] ${config.logPrefix} post link:`, { href: link.href });
+    return link.href;
+  }
+
+  // Try Shadow DOM search if enabled
+  if (config.useShadowDOM) {
+    const shadowLink = findLinkInShadowDOM(container, config.linkSelector, 0);
+    if (shadowLink?.href) {
+      console.log(`[URL_EXTRACT] ${config.logPrefix} Shadow DOM link:`, { href: shadowLink.href });
+      return shadowLink.href;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Try cross-shadow boundary search
+ * @private
+ * @param {Element} element - DOM element
+ * @param {Object} config - Platform configuration
+ * @returns {string|null} URL or null
+ */
+function _tryCrossShadowSearch(element, config) {
+  if (!config.useCrossShadow) return null;
+
+  const crossSelector = config.crossShadowSelector || config.linkSelector;
+  const closestLink = findClosestAcrossShadow(element, crossSelector, 15);
+  if (closestLink?.href) {
+    console.log(`[URL_EXTRACT] ${config.logPrefix} cross-shadow link:`, { href: closestLink.href });
+    return closestLink.href;
+  }
+  return null;
+}
+
+/**
+ * Generic social media URL finder using configuration-driven approach
+ * v1.6.3.11-v5 - Reduces code duplication across handlers
+ * @private
+ * @param {Element} element - DOM element
+ * @param {Object} config - Platform configuration
+ * @returns {string|null} Found URL or null
+ */
+function _findSocialMediaUrl(element, config) {
+  console.log(`[HANDLER_SELECT] ${config.logPrefix} handler invoked:`, {
+    tag: element.tagName,
+    hasShadow: !!element.shadowRoot
+  });
+
+  // Find container
+  const container = element.closest(config.containerSelector);
+
+  // No container found - try cross-shadow or fallback to generic
+  if (!container) {
+    const crossShadowResult = _tryCrossShadowSearch(element, config);
+    if (crossShadowResult) return crossShadowResult;
+    return findGenericUrl(element);
+  }
+
+  // Search in container
+  const result = _searchInContainer(container, config);
+  if (result) return result;
+
+  return null;
+}
+
+/**
+ * Search tweet container for status link
+ * @private
+ * @param {Element} tweet - Tweet container element
+ * @returns {string|null} URL or null
+ */
+function _searchTweetContainer(tweet) {
+  // Try standard selectors
+  const tweetLink = tweet.querySelector('a[href*="/status/"]');
+  if (tweetLink?.href) {
+    console.log('[URL_EXTRACT] Twitter status link:', { href: tweetLink.href });
+    return tweetLink.href;
+  }
+
+  // Try Shadow DOM search
+  const shadowLink = findLinkInShadowDOM(tweet, 'a[href*="/status/"]', 0);
+  if (shadowLink?.href) {
+    console.log('[URL_EXTRACT] Twitter Shadow DOM link:', { href: shadowLink.href });
+    return shadowLink.href;
+  }
+
+  return null;
+}
+
+// ==================== PLATFORM HANDLERS ====================
+
 /**
  * Find Twitter/X URL with Shadow DOM support
  * v1.6.3.11-v4 - FIX Issue #1 & #4: Twitter uses web components
+ * v1.6.3.11-v5 - Refactored to reduce cyclomatic complexity (cc=10 → cc<9)
  * @param {Element} element - DOM element
  * @returns {string|null} Found URL or null
  */
@@ -27,29 +216,17 @@ function findTwitterUrl(element) {
   });
 
   // Direct href check
-  if (element && element.href) {
-    debug(`URL found directly from hovered element: ${element.href}`);
-    console.log('[URL_EXTRACT] Twitter direct link:', { href: element.href });
-    return element.href;
+  const directUrl = _checkDirectHref(element, 'Twitter');
+  if (directUrl) {
+    debug(`URL found directly from hovered element: ${directUrl}`);
+    return directUrl;
   }
 
   // v1.6.3.11-v4 - FIX Issue #1: Try Shadow DOM traversal for Twitter
-  // Twitter uses custom elements like <div data-testid="tweet">
   const tweet = element.closest('[data-testid="tweet"], [data-testid="tweetText"], article');
   if (tweet) {
-    // Try standard selectors
-    const tweetLink = tweet.querySelector('a[href*="/status/"]');
-    if (tweetLink?.href) {
-      console.log('[URL_EXTRACT] Twitter status link:', { href: tweetLink.href });
-      return tweetLink.href;
-    }
-
-    // Try Shadow DOM search
-    const shadowLink = findLinkInShadowDOM(tweet, 'a[href*="/status/"]', 0);
-    if (shadowLink?.href) {
-      console.log('[URL_EXTRACT] Twitter Shadow DOM link:', { href: shadowLink.href });
-      return shadowLink.href;
-    }
+    const containerUrl = _searchTweetContainer(tweet);
+    if (containerUrl) return containerUrl;
   }
 
   // v1.6.3.11-v4 - Fallback: cross-shadow boundary search
@@ -63,22 +240,14 @@ function findTwitterUrl(element) {
   return null;
 }
 
+/**
+ * Find Reddit URL
+ * v1.6.3.11-v5 - Refactored to use _findSocialMediaUrl helper
+ * @param {Element} element - DOM element
+ * @returns {string|null} Found URL or null
+ */
 function findRedditUrl(element) {
-  const post = element.closest(
-    '[data-testid="post-container"], .Post, .post-container, [role="article"]'
-  );
-  if (!post) return findGenericUrl(element);
-
-  const titleLink = post.querySelector(
-    'a[data-testid="post-title"], h3 a, .PostTitle a, [data-click-id="body"] a'
-  );
-  if (titleLink?.href) return titleLink.href;
-
-  // v1.6.3.11-v4 - Shadow DOM fallback
-  const shadowLink = findLinkInShadowDOM(post, 'a[href]', 0);
-  if (shadowLink?.href) return shadowLink.href;
-
-  return null;
+  return _findSocialMediaUrl(element, PLATFORM_CONFIGS.reddit);
 }
 
 function findLinkedInUrl(element) {
@@ -101,127 +270,53 @@ function findLinkedInUrl(element) {
 /**
  * Find Instagram URL with Shadow DOM support
  * v1.6.3.11-v4 - FIX Issue #1 & #4: Instagram uses web components
+ * v1.6.3.11-v5 - Refactored to use _findSocialMediaUrl helper
  * @param {Element} element - DOM element
  * @returns {string|null} Found URL or null
  */
 function findInstagramUrl(element) {
-  console.log('[HANDLER_SELECT] Instagram handler invoked:', {
-    tag: element.tagName,
-    hasShadow: !!element.shadowRoot
-  });
-
-  const post = element.closest('[role="article"], article');
-  if (!post) {
-    // v1.6.3.11-v4 - Try cross-shadow search for Instagram
-    const closestLink = findClosestAcrossShadow(element, 'a[href*="/p/"], a[href*="/reel/"]', 15);
-    if (closestLink?.href) {
-      console.log('[URL_EXTRACT] Instagram cross-shadow link:', { href: closestLink.href });
-      return closestLink.href;
-    }
-    return findGenericUrl(element);
-  }
-
-  // Standard selectors
-  const link = post.querySelector('a[href*="/p/"], a[href*="/reel/"], time a');
-  if (link?.href) {
-    console.log('[URL_EXTRACT] Instagram post link:', { href: link.href });
-    return link.href;
-  }
-
-  // v1.6.3.11-v4 - Shadow DOM search
-  const shadowLink = findLinkInShadowDOM(post, 'a[href*="/p/"], a[href*="/reel/"]', 0);
-  if (shadowLink?.href) {
-    console.log('[URL_EXTRACT] Instagram Shadow DOM link:', { href: shadowLink.href });
-    return shadowLink.href;
-  }
-
-  return null;
+  return _findSocialMediaUrl(element, PLATFORM_CONFIGS.instagram);
 }
 
+/**
+ * Find Facebook URL
+ * v1.6.3.11-v5 - Refactored to use _findSocialMediaUrl helper
+ * @param {Element} element - DOM element
+ * @returns {string|null} Found URL or null
+ */
 function findFacebookUrl(element) {
-  const post = element.closest('[role="article"], [data-testid="post"]');
-  if (!post) return findGenericUrl(element);
-
-  const links = post.querySelectorAll(
-    'a[href*="/posts/"], a[href*="/photos/"], a[href*="/videos/"]'
-  );
-  if (links.length > 0) return links[0].href;
-
-  // v1.6.3.11-v4 - Shadow DOM fallback
-  const shadowLink = findLinkInShadowDOM(post, 'a[href]', 0);
-  if (shadowLink?.href) return shadowLink.href;
-
-  return null;
+  return _findSocialMediaUrl(element, PLATFORM_CONFIGS.facebook);
 }
 
 /**
  * Find TikTok URL with Shadow DOM support
  * v1.6.3.11-v4 - FIX Issue #1 & #4: TikTok uses web components
+ * v1.6.3.11-v5 - Refactored to use _findSocialMediaUrl helper
  * @param {Element} element - DOM element
  * @returns {string|null} Found URL or null
  */
 function findTikTokUrl(element) {
-  console.log('[HANDLER_SELECT] TikTok handler invoked:', {
-    tag: element.tagName,
-    hasShadow: !!element.shadowRoot
-  });
-
-  const video = element.closest(
-    '[data-e2e="user-post-item"], .video-feed-item, [data-e2e="recommend-list-item-container"]'
-  );
-  if (!video) {
-    // v1.6.3.11-v4 - Try cross-shadow search for TikTok
-    const closestLink = findClosestAcrossShadow(element, 'a[href*="/@"], a[href*="/video/"]', 15);
-    if (closestLink?.href) {
-      console.log('[URL_EXTRACT] TikTok cross-shadow link:', { href: closestLink.href });
-      return closestLink.href;
-    }
-    return findGenericUrl(element);
-  }
-
-  // Standard selectors
-  const link = video.querySelector('a[href*="/@"], a[href*="/video/"]');
-  if (link?.href) {
-    console.log('[URL_EXTRACT] TikTok video link:', { href: link.href });
-    return link.href;
-  }
-
-  // v1.6.3.11-v4 - Shadow DOM search
-  const shadowLink = findLinkInShadowDOM(video, 'a[href*="/@"], a[href*="/video/"]', 0);
-  if (shadowLink?.href) {
-    console.log('[URL_EXTRACT] TikTok Shadow DOM link:', { href: shadowLink.href });
-    return shadowLink.href;
-  }
-
-  return null;
+  return _findSocialMediaUrl(element, PLATFORM_CONFIGS.tikTok);
 }
 
+/**
+ * Find Threads URL
+ * v1.6.3.11-v5 - Refactored to use _findSocialMediaUrl helper
+ * @param {Element} element - DOM element
+ * @returns {string|null} Found URL or null
+ */
 function findThreadsUrl(element) {
-  const post = element.closest('[role="article"]');
-  if (!post) return findGenericUrl(element);
-
-  const link = post.querySelector('a[href*="/t/"], time a');
-  if (link?.href) return link.href;
-
-  // v1.6.3.11-v4 - Shadow DOM fallback
-  const shadowLink = findLinkInShadowDOM(post, 'a[href]', 0);
-  if (shadowLink?.href) return shadowLink.href;
-
-  return null;
+  return _findSocialMediaUrl(element, PLATFORM_CONFIGS.threads);
 }
 
+/**
+ * Find Bluesky URL
+ * v1.6.3.11-v5 - Refactored to use _findSocialMediaUrl helper
+ * @param {Element} element - DOM element
+ * @returns {string|null} Found URL or null
+ */
 function findBlueskyUrl(element) {
-  const post = element.closest('[data-testid="postThreadItem"], [role="article"]');
-  if (!post) return findGenericUrl(element);
-
-  const link = post.querySelector('a[href*="/post/"]');
-  if (link?.href) return link.href;
-
-  // v1.6.3.11-v4 - Shadow DOM fallback
-  const shadowLink = findLinkInShadowDOM(post, 'a[href]', 0);
-  if (shadowLink?.href) return shadowLink.href;
-
-  return null;
+  return _findSocialMediaUrl(element, PLATFORM_CONFIGS.bluesky);
 }
 
 function findMastodonUrl(element) {
