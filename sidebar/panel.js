@@ -10,6 +10,10 @@ let refreshInterval;
 // v1.6.3.11 - FIX Issue #21: Track storage write in progress to prevent reading partial data
 let storageWriteInProgress = false;
 
+// v1.6.3.11-v3 - FIX Issue #70: Debounced storage.onChanged handler
+let _storageChangeDebounceTimer = null;
+const STORAGE_CHANGE_DEBOUNCE_MS = 100;
+
 // v1.6.3.11 - FIX Issue #22: Storage format version for migration detection
 // Unused but kept for potential future use
 const _EXPECTED_FORMAT_VERSION = 2;
@@ -512,6 +516,7 @@ function setupEventListeners() {
 
 // Listen for storage changes to auto-update
 // v1.6.3.11 - FIX Issue #21: Track storage write state to prevent race conditions
+// v1.6.3.11-v3 - FIX Issue #70: Debounce storage.onChanged to prevent cascading listener invocations
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (
     (areaName === 'sync' && changes[STATE_KEY]) ||
@@ -526,6 +531,15 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     }
 
     storageWriteInProgress = false;
-    displayAllQuickTabs();
+
+    // v1.6.3.11-v3 - FIX Issue #70: Debounce the displayAllQuickTabs call
+    // This prevents cascading listener invocations when multiple storage changes occur rapidly
+    if (_storageChangeDebounceTimer) {
+      clearTimeout(_storageChangeDebounceTimer);
+    }
+    _storageChangeDebounceTimer = setTimeout(() => {
+      _storageChangeDebounceTimer = null;
+      displayAllQuickTabs();
+    }, STORAGE_CHANGE_DEBOUNCE_MS);
   }
 });
