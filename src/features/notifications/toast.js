@@ -81,6 +81,30 @@ function _scheduleToastRemoval(toast, duration) {
 }
 
 /**
+ * Validate and convert message to string with logging for invalid types
+ * v1.6.3.11-v4 - FIX Code Review: Extracted to reduce complexity
+ * @private
+ * @param {*} message - Message to validate
+ * @returns {string} Validated message string
+ */
+function _validateMessage(message) {
+  if (typeof message === 'string') {
+    return message;
+  }
+  if (message === null || message === undefined) {
+    console.warn('[NOTIFICATION] Warning: showToast called with null/undefined message, using empty string');
+    return '';
+  }
+  // Log warning for non-string types (objects, numbers, etc.) that will be converted
+  console.warn('[NOTIFICATION] Warning: showToast called with non-string message type:', {
+    receivedType: typeof message,
+    value: message,
+    converted: String(message)
+  });
+  return String(message);
+}
+
+/**
  * Show toast notification in configured corner
  * v1.6.3.11-v4 - FIX Issue #3: Wrapped in try-catch with DOM verification
  * @param {string} message - Message to display
@@ -89,8 +113,9 @@ function _scheduleToastRemoval(toast, duration) {
  * @returns {Promise<{success: boolean, element?: HTMLElement, error?: string}>}
  */
 export function showToast(message, type, config) {
-  // v1.6.3.11-v4 - FIX Code Review: Use String() to safely handle non-string messages
-  const messageStr = String(message || '');
+  // v1.6.3.11-v4 - FIX Code Review: Validate message type and log warning for invalid types
+  const messageStr = _validateMessage(message);
+
   console.log('[NOTIFICATION] Toast display attempt:', {
     message: messageStr.substring(0, 50),
     type,
