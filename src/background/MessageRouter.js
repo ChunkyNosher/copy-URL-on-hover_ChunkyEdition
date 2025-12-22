@@ -760,10 +760,19 @@ export class MessageRouter {
   /**
    * Handle handler execution error
    * v1.6.3.10-v12 - FIX Code Health: Extracted to reduce route() complexity
+   * v1.6.3.11-v3 - FIX Issue #58: Enhanced error logging with stack trace
    * @private
    */
   _handleHandlerError(action, error, messageId, sendResponse) {
-    console.error(`[MSG][MessageRouter] Handler error for ${action}:`, error);
+    // v1.6.3.11-v3 - FIX Issue #58: Log error with full context including stack trace
+    console.error(`[MSG][MessageRouter] HANDLER_ERROR for ${action}:`, {
+      action,
+      messageId,
+      errorMessage: error.message || 'Unknown error',
+      errorName: error.name || 'Error',
+      stack: error.stack || 'No stack trace',
+      timestamp: Date.now()
+    });
 
     if (sendResponse) {
       sendResponse({

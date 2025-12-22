@@ -3351,35 +3351,47 @@ function _logStorageListenerHealth(areaName, changedKeys) {
 }
 
 browser.storage.onChanged.addListener((changes, areaName) => {
-  const changedKeys = Object.keys(changes);
+  // v1.6.3.11-v3 - FIX Issue #59: Wrap entire listener in try-catch to prevent blocking other listeners
+  try {
+    const changedKeys = Object.keys(changes);
 
-  // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
-  _logStorageListenerHealth(areaName, changedKeys);
+    // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
+    _logStorageListenerHealth(areaName, changedKeys);
 
-  console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
-    areaName,
-    keys: changedKeys,
-    eventNumber: storageOnChangedEventCount,
-    timestamp: Date.now()
-  });
+    console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
+      areaName,
+      keys: changedKeys,
+      eventNumber: storageOnChangedEventCount,
+      timestamp: Date.now()
+    });
 
-  // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
-  if (areaName !== 'local' && areaName !== 'sync') {
-    return;
-  }
+    // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
+    if (areaName !== 'local' && areaName !== 'sync') {
+      return;
+    }
 
-  // Handle Quick Tab state changes
-  if (changes.quick_tabs_state_v2) {
-    console.log(
-      '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
-    );
-    _handleQuickTabStateChange(changes);
-  }
+    // Handle Quick Tab state changes
+    if (changes.quick_tabs_state_v2) {
+      console.log(
+        '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
+      );
+      _handleQuickTabStateChange(changes);
+    }
 
-  // Handle settings changes
-  if (changes.quick_tab_settings) {
-    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
-    _handleSettingsChange(changes);
+    // Handle settings changes
+    if (changes.quick_tab_settings) {
+      console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
+      _handleSettingsChange(changes);
+    }
+  } catch (err) {
+    // v1.6.3.11-v3 - FIX Issue #59: Log error but don't re-throw to prevent blocking other listeners
+    console.error('[Background][StorageListener] STORAGE_ONCHANGED_ERROR:', {
+      error: err.message,
+      stack: err.stack,
+      areaName,
+      changedKeys: Object.keys(changes || {}),
+      timestamp: Date.now()
+    });
   }
 });
 
