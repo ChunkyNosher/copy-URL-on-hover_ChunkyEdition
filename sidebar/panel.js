@@ -514,36 +514,47 @@ function setupEventListeners() {
   document.getElementById('clearAllBtn').addEventListener('click', clearAllQuickTabs);
 }
 
+/**
+ * v1.6.3.11-v3 - FIX Issue #70: Handle storage change with debouncing
+ * Extracted to reduce complexity and nesting depth in listener
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area name
+ */
+function _handleStorageChange(changes, areaName) {
+  const isStateChange = areaName === 'sync' && changes[STATE_KEY];
+  const isSessionChange = areaName === 'session' && changes[SESSION_KEY];
+  
+  if (!isStateChange && !isSessionChange) {
+    return;
+  }
+
+  // v1.6.3.11 - FIX Issue #21: Check for dirty flag indicating partial write
+  const change = changes[STATE_KEY] || changes[SESSION_KEY];
+  if (change?.newValue?._writeInProgress) {
+    storageWriteInProgress = true;
+    console.log('[Panel] Storage write in progress, deferring render');
+    return;
+  }
+
+  storageWriteInProgress = false;
+
+  // v1.6.3.11-v3 - FIX Issue #70: Debounce the displayAllQuickTabs call
+  if (_storageChangeDebounceTimer) {
+    clearTimeout(_storageChangeDebounceTimer);
+  }
+  _storageChangeDebounceTimer = setTimeout(() => {
+    _storageChangeDebounceTimer = null;
+    displayAllQuickTabs();
+  }, STORAGE_CHANGE_DEBOUNCE_MS);
+}
+
 // Listen for storage changes to auto-update
 // v1.6.3.11 - FIX Issue #21: Track storage write state to prevent race conditions
 // v1.6.3.11-v3 - FIX Issue #70: Debounce storage.onChanged to prevent cascading listener invocations
 // v1.6.3.11-v3 - FIX Issue #59: Wrap in try-catch to prevent listener cascade failures
 browser.storage.onChanged.addListener((changes, areaName) => {
   try {
-    if (
-      (areaName === 'sync' && changes[STATE_KEY]) ||
-      (areaName === 'session' && changes[SESSION_KEY])
-    ) {
-      // v1.6.3.11 - FIX Issue #21: Check for dirty flag indicating partial write
-      const change = changes[STATE_KEY] || changes[SESSION_KEY];
-      if (change?.newValue?._writeInProgress) {
-        storageWriteInProgress = true;
-        console.log('[Panel] Storage write in progress, deferring render');
-        return;
-      }
-
-      storageWriteInProgress = false;
-
-      // v1.6.3.11-v3 - FIX Issue #70: Debounce the displayAllQuickTabs call
-      // This prevents cascading listener invocations when multiple storage changes occur rapidly
-      if (_storageChangeDebounceTimer) {
-        clearTimeout(_storageChangeDebounceTimer);
-      }
-      _storageChangeDebounceTimer = setTimeout(() => {
-        _storageChangeDebounceTimer = null;
-        displayAllQuickTabs();
-      }, STORAGE_CHANGE_DEBOUNCE_MS);
-    }
+    _handleStorageChange(changes, areaName);
   } catch (err) {
     // v1.6.3.11-v3 - FIX Issue #59: Log error but don't re-throw to prevent blocking other listeners
     console.error('[Panel] STORAGE_ONCHANGED_ERROR:', {
