@@ -74,6 +74,10 @@ const MESSAGE_TIMEOUT_MS = 5000;
 const STORAGE_RETRY_DELAYS_MS = [100, 500, 1000];
 const STORAGE_MAX_RETRIES = STORAGE_RETRY_DELAYS_MS.length;
 
+// v1.6.3.11-v3 - FIX Issue #61: Storage write verification timeout
+// Shorter than write timeout since read should be faster
+const STORAGE_VERIFY_TIMEOUT_MS = 1000;
+
 // v1.6.3.10-v9 - FIX Issue M/D: Quota monitoring constants
 // Minimum available bytes required before allowing a storage write
 const STORAGE_QUOTA_MIN_HEADROOM_BYTES = 1024 * 1024; // 1MB minimum headroom
@@ -4214,12 +4218,89 @@ async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt
   try {
     const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
     await Promise.race([storagePromise, timeout.promise]);
+
+    // v1.6.3.11-v3 - FIX Issue #61: Verify storage write by reading back
+    const verifyResult = await _verifyStorageWrite(
+      browserAPI,
+      stateWithTxn.transactionId,
+      stateWithTxn.tabs?.length ?? 0,
+      logPrefix
+    );
+
+    if (!verifyResult.verified) {
+      console.error(`${logPrefix} Storage write verification FAILED:`, {
+        attemptNumber,
+        transactionId: stateWithTxn.transactionId,
+        reason: verifyResult.reason,
+        expectedTabs: stateWithTxn.tabs?.length ?? 0,
+        actualTabs: verifyResult.actualTabCount
+      });
+      return false;
+    }
+
     return true;
   } catch (err) {
     console.warn(`${logPrefix} Storage write attempt ${attemptNumber} failed:`, err.message || err);
     return false;
   } finally {
     timeout.clear();
+  }
+}
+
+/**
+ * Verify storage write by reading back and checking transactionId
+ * v1.6.3.11-v3 - FIX Issue #61: Verify writes after storage.local.set()
+ * @private
+ * @param {Object} browserAPI - Browser storage API
+ * @param {string} expectedTransactionId - Transaction ID that should be in storage
+ * @param {number} expectedTabCount - Expected number of tabs
+ * @param {string} logPrefix - Log prefix
+ * @returns {Promise<{verified: boolean, reason?: string, actualTabCount?: number}>}
+ */
+async function _verifyStorageWrite(browserAPI, expectedTransactionId, expectedTabCount, logPrefix) {
+  const verifyTimeout = createTimeoutPromise(STORAGE_VERIFY_TIMEOUT_MS, 'storage.local.get');
+
+  try {
+    const readPromise = browserAPI.storage.local.get(STATE_KEY);
+    const result = await Promise.race([readPromise, verifyTimeout.promise]);
+    const storedState = result[STATE_KEY];
+
+    // Check if state exists
+    if (!storedState) {
+      return { verified: false, reason: 'NO_STATE_FOUND', actualTabCount: 0 };
+    }
+
+    // Check transactionId matches
+    if (storedState.transactionId !== expectedTransactionId) {
+      console.warn(`${logPrefix} Write verification: Transaction ID mismatch`, {
+        expected: expectedTransactionId,
+        actual: storedState.transactionId
+      });
+      return {
+        verified: false,
+        reason: 'TRANSACTION_ID_MISMATCH',
+        actualTabCount: storedState.tabs?.length ?? 0
+      };
+    }
+
+    // Check tab count matches (approximate verification)
+    const actualTabCount = storedState.tabs?.length ?? 0;
+    if (actualTabCount !== expectedTabCount) {
+      console.warn(`${logPrefix} Write verification: Tab count mismatch`, {
+        expected: expectedTabCount,
+        actual: actualTabCount
+      });
+      // This is a warning but still considered verified if transactionId matches
+      // Tab count mismatch could indicate corruption
+    }
+
+    return { verified: true, actualTabCount };
+  } catch (err) {
+    console.error(`${logPrefix} Write verification error:`, err.message);
+    // On verification error, assume write succeeded (fail-open for verification)
+    return { verified: true, reason: 'VERIFICATION_ERROR' };
+  } finally {
+    verifyTimeout.clear();
   }
 }
 

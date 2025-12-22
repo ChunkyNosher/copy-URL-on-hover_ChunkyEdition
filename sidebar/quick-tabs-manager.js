@@ -1843,12 +1843,13 @@ function _findQuickTabDOMElement(quickTabId) {
 /**
  * Move a Quick Tab DOM element between groups
  * v1.6.3.10-v5 - FIX Bug #3: Moves element without recreating (prevents animation)
+ * v1.6.3.11-v3 - FIX Issue #66: Returns Promise for async DOM batching
  * @private
  * @param {HTMLElement} element - The Quick Tab DOM element to move
  * @param {Object} tabData - Updated Quick Tab data
  * @param {number|string|null} oldOriginTabId - Previous group key
  * @param {number} newOriginTabId - New group key
- * @returns {boolean} True if move succeeded
+ * @returns {Promise<boolean>} True if move succeeded
  */
 function _moveQuickTabBetweenGroups(element, tabData, oldOriginTabId, newOriginTabId) {
   // Find the target group
@@ -1861,49 +1862,57 @@ function _moveQuickTabBetweenGroups(element, tabData, oldOriginTabId, newOriginT
     console.log('[Manager] SURGICAL_UPDATE: Target group not found, will create:', {
       newOriginTabId
     });
-    return false;
+    return Promise.resolve(false);
   }
 
   const targetContent = targetGroup.querySelector('.tab-group-content');
   if (!targetContent) {
     console.warn('[Manager] SURGICAL_UPDATE: Target group has no content container');
-    return false;
+    return Promise.resolve(false);
   }
 
+  // v1.6.3.11-v3 - FIX Issue #66: Return the batched DOM operation promise
   return _executeElementMove({ element, tabData, targetContent, oldOriginTabId, newOriginTabId });
 }
 
 /**
  * Execute element move between groups
  * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * v1.6.3.11-v3 - FIX Issue #66: Wrap DOM mutations in requestAnimationFrame for batching
  * @private
  */
 function _executeElementMove({ element, tabData, targetContent, oldOriginTabId, newOriginTabId }) {
   const oldParent = element.parentElement;
-  element.remove();
-  element.classList.remove('orphaned-item');
-  element.classList.add('adoption-animation');
 
-  const isMinimized = isTabMinimizedHelper(tabData);
-  const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
+  // v1.6.3.11-v3 - FIX Issue #66: Batch DOM mutations in single animation frame
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      element.remove();
+      element.classList.remove('orphaned-item');
+      element.classList.add('adoption-animation');
 
-  if (insertionPoint) {
-    targetContent.insertBefore(element, insertionPoint);
-  } else {
-    targetContent.appendChild(element);
-  }
+      const isMinimized = isTabMinimizedHelper(tabData);
+      const insertionPoint = _findInsertionPoint(targetContent, isMinimized);
 
-  _updateGroupCountAfterMove(oldOriginTabId, newOriginTabId);
-  _cleanupEmptySourceGroup(oldParent, oldOriginTabId);
+      if (insertionPoint) {
+        targetContent.insertBefore(element, insertionPoint);
+      } else {
+        targetContent.appendChild(element);
+      }
 
-  setTimeout(() => element.classList.remove('adoption-animation'), ANIMATION_DURATION_MS);
+      _updateGroupCountAfterMove(oldOriginTabId, newOriginTabId);
+      _cleanupEmptySourceGroup(oldParent, oldOriginTabId);
 
-  console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
-    quickTabId: tabData.id,
-    fromGroup: oldOriginTabId,
-    toGroup: newOriginTabId
+      setTimeout(() => element.classList.remove('adoption-animation'), ANIMATION_DURATION_MS);
+
+      console.log('[Manager] SURGICAL_MOVE_COMPLETE:', {
+        quickTabId: tabData.id,
+        fromGroup: oldOriginTabId,
+        toGroup: newOriginTabId
+      });
+      resolve(true);
+    });
   });
-  return true;
 }
 
 /**

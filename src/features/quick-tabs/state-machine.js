@@ -234,15 +234,17 @@ export class QuickTabStateMachine {
 
   /**
    * Perform a state transition with validation and logging
+   * v1.6.3.11-v3 - FIX Issue #63: Enhanced state change logging with trigger type
    * @param {string} id - Quick Tab ID
    * @param {string} toState - Target state
    * @param {Object} options - Transition options
    * @param {string} options.source - Who initiated the transition
    * @param {Object} [options.metadata] - Additional context
+   * @param {string} [options.trigger='system'] - Trigger type ('user' or 'system')
    * @returns {{ success: boolean, error?: string, fromState: string, toState: string }}
    */
   transition(id, toState, options = {}) {
-    const { source = 'unknown', metadata = {} } = options;
+    const { source = 'unknown', metadata = {}, trigger = 'system' } = options;
     const fromState = this.getState(id);
     const timestamp = Date.now();
 
@@ -252,6 +254,7 @@ export class QuickTabStateMachine {
       toState,
       timestamp,
       source,
+      trigger,
       metadata
     };
 
@@ -282,11 +285,12 @@ export class QuickTabStateMachine {
     // Add to history
     this._addToHistory(id, transitionEntry);
 
-    // Log successful transition
-    console.log('[QuickTabStateMachine] Transition:', {
+    // v1.6.3.11-v3 - FIX Issue #63: Enhanced state change logging
+    console.log('[QuickTabStateMachine] STATE_TRANSITION:', {
       id,
-      fromState,
-      toState,
+      previousState: fromState,
+      newState: toState,
+      trigger,
       source,
       timestamp: new Date(timestamp).toISOString()
     });

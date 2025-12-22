@@ -3516,6 +3516,36 @@ function _handleReconnection(tabId, reason) {
 }
 
 /**
+ * Categorize the disconnect reason from runtime.lastError
+ * v1.6.3.11-v3 - FIX Issue #62: Provide human-readable disconnect reason
+ * @private
+ * @param {Object|null} error - Error object from browser.runtime.lastError
+ * @returns {string} Categorized reason
+ */
+function _categorizeDisconnectReason(error) {
+  if (!error || !error.message) {
+    return 'UNKNOWN';
+  }
+
+  const msg = error.message.toLowerCase();
+
+  if (msg.includes('receiving end does not exist')) {
+    return 'BACKGROUND_NOT_RUNNING';
+  }
+  if (msg.includes('extension context invalidated')) {
+    return 'EXTENSION_CONTEXT_INVALIDATED';
+  }
+  if (msg.includes('message port closed')) {
+    return 'PORT_CLOSED_BY_PEER';
+  }
+  if (msg.includes('disconnected')) {
+    return 'EXPLICIT_DISCONNECT';
+  }
+
+  return 'OTHER';
+}
+
+/**
  * Clear pending messages on port disconnect
  * v1.6.3.11 - FIX Code Health: Extracted to reduce nesting depth in onDisconnect handler
  * v1.6.3.11-v3 - FIX Issue #27: Increment portGeneration on disconnect to prevent message ID collision
@@ -3626,11 +3656,19 @@ function connectContentToBackground(tabId) {
 
       // Normal operation - proceed with disconnect handling
       // v1.6.3.11-v2 - FIX Issue #8: Enhanced disconnect logging with state transition
+      // v1.6.3.11-v3 - FIX Issue #62: Comprehensive port disconnect logging
       console.log(
         '[Content][PORT_LIFECYCLE] DISCONNECT_NORMAL: Port disconnected in normal operation',
         {
           error: error?.message,
+          disconnectReason: _categorizeDisconnectReason(error),
           previousState: portConnectionState,
+          portState: {
+            wasBackgroundReady: isBackgroundReady,
+            hadPort: !!backgroundPort,
+            portName: backgroundPort?.name || 'unknown'
+          },
+          pendingMessagesAtDisconnect: pendingMessages.size,
           timestamp: Date.now()
         }
       );
