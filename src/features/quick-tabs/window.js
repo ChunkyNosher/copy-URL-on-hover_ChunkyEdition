@@ -33,7 +33,7 @@ import { DragController } from './window/DragController.js';
 import { ResizeController } from './window/ResizeController.js';
 import { TitlebarBuilder } from './window/TitlebarBuilder.js';
 import { CONSTANTS } from '../../core/config.js';
-import { createElement } from '../../utils/dom.js';
+import { createElement, isDOMReady } from '../../utils/dom.js';
 import { isValidQuickTabUrl } from '../../utils/storage-utils.js';
 
 // v1.6.3.4-v8 - Default dimensions for fallback when invalid values provided
@@ -302,11 +302,22 @@ export class QuickTabWindow {
    * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
    * v1.6.3.4-v11 - Refactored to extract helper methods for improved code health
    * v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild and force reflow
+   * v1.6.3.11-v4 - FIX Issue #82: Check DOM readiness before accessing document.body
    */
   render() {
     if (this.container) {
       console.warn('[QuickTabWindow] Already rendered:', this.id);
       return this.container;
+    }
+
+    // v1.6.3.11-v4 - FIX Issue #82: Check DOM readiness before rendering
+    if (!isDOMReady()) {
+      console.error('[QuickTabWindow] Cannot render - DOM not ready:', {
+        id: this.id,
+        hasBody: !!document.body,
+        readyState: document.readyState
+      });
+      throw new Error('Cannot render Quick Tab: DOM is not ready (document.body is null)');
     }
 
     // Step 1: Validate and normalize dimensions

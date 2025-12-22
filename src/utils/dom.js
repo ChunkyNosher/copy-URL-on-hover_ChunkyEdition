@@ -1,7 +1,134 @@
 /**
  * DOM Utilities
  * Helper functions for DOM manipulation
+ *
+ * v1.6.3.11-v4 - FIX Issue #82: Added DOM readiness checks
+ *   - isDOMReady() - Check if DOM is ready for manipulation
+ *   - ensureDOMReady() - Wait for DOM to be ready
+ *   - waitForDocumentBody() - Wait for document.body to exist
  */
+
+// v1.6.3.11-v4 - FIX Issue #82: DOM readiness check timeout
+const DOM_READY_TIMEOUT_MS = 5000;
+const DOM_READY_CHECK_INTERVAL_MS = 50;
+
+/**
+ * Check if the DOM is ready for manipulation
+ * v1.6.3.11-v4 - FIX Issue #82: DOM readiness check
+ *
+ * @returns {boolean} True if DOM is ready (document.body exists and readyState is not loading)
+ */
+export function isDOMReady() {
+  // Check document.body exists
+  if (!document.body) {
+    return false;
+  }
+
+  // Check document.readyState is not 'loading'
+  // 'interactive' or 'complete' means DOM is parsed
+  if (document.readyState === 'loading') {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Wait for document.body to exist
+ * v1.6.3.11-v4 - FIX Issue #82: Wait for document.body
+ *
+ * @param {number} [timeoutMs=DOM_READY_TIMEOUT_MS] - Maximum wait time
+ * @returns {Promise<HTMLElement>} Resolves with document.body or rejects on timeout
+ */
+export function waitForDocumentBody(timeoutMs = DOM_READY_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    // Already ready
+    if (document.body) {
+      resolve(document.body);
+      return;
+    }
+
+    const startTime = Date.now();
+
+    const checkBody = () => {
+      if (document.body) {
+        console.log('[DOM] waitForDocumentBody: document.body available', {
+          waitedMs: Date.now() - startTime
+        });
+        resolve(document.body);
+        return;
+      }
+
+      // Check timeout
+      if (Date.now() - startTime > timeoutMs) {
+        console.error('[DOM] waitForDocumentBody: Timeout waiting for document.body', {
+          timeoutMs
+        });
+        reject(new Error('Timeout waiting for document.body'));
+        return;
+      }
+
+      // Check again after interval
+      setTimeout(checkBody, DOM_READY_CHECK_INTERVAL_MS);
+    };
+
+    checkBody();
+  });
+}
+
+/**
+ * Ensure DOM is ready before executing callback
+ * v1.6.3.11-v4 - FIX Issue #82: DOM readiness wrapper
+ *
+ * @param {number} [timeoutMs=DOM_READY_TIMEOUT_MS] - Maximum wait time
+ * @returns {Promise<void>} Resolves when DOM is ready
+ */
+export function ensureDOMReady(timeoutMs = DOM_READY_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    // Already ready
+    if (isDOMReady()) {
+      resolve();
+      return;
+    }
+
+    // Use DOMContentLoaded if document is still loading
+    if (document.readyState === 'loading') {
+      const handleDOMReady = () => {
+        document.removeEventListener('DOMContentLoaded', handleDOMReady);
+        // Also wait for body just to be safe
+        waitForDocumentBody(timeoutMs).then(resolve).catch(reject);
+      };
+      document.addEventListener('DOMContentLoaded', handleDOMReady);
+      return;
+    }
+
+    // readyState is 'interactive' or 'complete' but body is null (edge case)
+    // This can happen in some iframe scenarios
+    waitForDocumentBody(timeoutMs).then(resolve).catch(reject);
+  });
+}
+
+/**
+ * Safe wrapper for document.body operations
+ * v1.6.3.11-v4 - FIX Issue #82: Safe document.body accessor
+ *
+ * @param {Function} operation - Function that receives document.body
+ * @param {*} [fallbackValue=null] - Value to return if body is not available
+ * @returns {*} Result of operation or fallbackValue
+ */
+export function withDocumentBody(operation, fallbackValue = null) {
+  if (!document.body) {
+    console.warn('[DOM] withDocumentBody: document.body is null, returning fallback');
+    return fallbackValue;
+  }
+
+  try {
+    return operation(document.body);
+  } catch (err) {
+    console.error('[DOM] withDocumentBody: Operation failed:', err);
+    return fallbackValue;
+  }
+}
 
 /**
  * Create an element with attributes
@@ -234,4 +361,91 @@ export function removeQuickTabElement(quickTabId) {
     return true;
   }
   return false;
+}
+
+/**
+ * Check if current context is inside an iframe
+ * v1.6.3.11-v4 - FIX Issue #80: Iframe scroll boundary detection
+ * @returns {boolean} True if in an iframe
+ */
+export function isInIframe() {
+  try {
+    return window.self !== window.top;
+  } catch (_e) {
+    // Cross-origin iframe - return true as we're definitely in an iframe
+    return true;
+  }
+}
+
+/**
+ * Get viewport bounds accounting for iframe context
+ * v1.6.3.11-v4 - FIX Issue #80: Handle iframe scroll boundaries
+ *
+ * When in an iframe, the viewport bounds are relative to the iframe,
+ * not the parent window. This function returns the correct bounds.
+ *
+ * @returns {{ width: number, height: number, scrollX: number, scrollY: number }}
+ */
+export function getViewportBounds() {
+  const scrollElement = document.scrollingElement || document.documentElement;
+
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    scrollX: scrollElement.scrollLeft || window.scrollX || 0,
+    scrollY: scrollElement.scrollTop || window.scrollY || 0
+  };
+}
+
+/**
+ * Constrain position within viewport bounds
+ * v1.6.3.11-v4 - FIX Issue #80: Position constraint helper
+ *
+ * @param {number} left - Desired left position
+ * @param {number} top - Desired top position
+ * @param {number} width - Element width
+ * @param {number} height - Element height
+ * @param {Object} [options] - Options
+ * @param {number} [options.margin=10] - Margin from edges
+ * @returns {{ left: number, top: number, constrained: boolean }}
+ */
+export function constrainPositionToViewport(left, top, width, height, options = {}) {
+  const { margin = 10 } = options;
+  const bounds = getViewportBounds();
+
+  let constrainedLeft = left;
+  let constrainedTop = top;
+  let wasConstrained = false;
+
+  // Constrain left (minimum is at edge + margin)
+  if (left < margin) {
+    constrainedLeft = margin;
+    wasConstrained = true;
+  }
+
+  // Constrain right (keep at least margin visible)
+  const maxLeft = bounds.width - width - margin;
+  if (left > maxLeft && maxLeft > margin) {
+    constrainedLeft = maxLeft;
+    wasConstrained = true;
+  }
+
+  // Constrain top (minimum is at edge + margin)
+  if (top < margin) {
+    constrainedTop = margin;
+    wasConstrained = true;
+  }
+
+  // Constrain bottom (keep at least margin visible)
+  const maxTop = bounds.height - height - margin;
+  if (top > maxTop && maxTop > margin) {
+    constrainedTop = maxTop;
+    wasConstrained = true;
+  }
+
+  return {
+    left: constrainedLeft,
+    top: constrainedTop,
+    constrained: wasConstrained
+  };
 }

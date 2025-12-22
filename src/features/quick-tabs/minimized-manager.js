@@ -61,6 +61,10 @@ const PENDING_SNAPSHOT_EXPIRATION_MS = 5000;
 // This should be longer than typical retry intervals (~900ms) to avoid racing.
 const DEFERRED_EXPIRATION_WAIT_MS = 500;
 
+// v1.6.3.11-v4 - FIX Issue #71: Batched persistence interval
+// Volatile state is persisted every 10 seconds to reduce storage thrashing
+const VOLATILE_STATE_BATCH_INTERVAL_MS = 10000;
+
 /**
  * Extract tab ID from Quick Tab ID pattern
  * v1.6.3.6-v8 - FIX Issue #3: Fallback extraction from ID pattern
@@ -214,6 +218,90 @@ export class MinimizedManager {
     this._adoptionLocks = new Map();
     // v1.6.3.10-v10 - FIX Issue #11: Track forced lock releases for debugging
     this._forcedLockReleaseCount = 0;
+
+    // v1.6.3.11-v4 - FIX Issue #71: Volatile state batching
+    // Track whether volatile state has changed since last persistence
+    this._volatileStateDirty = false;
+    // Batched persistence timer ID
+    this._batchPersistTimerId = null;
+  }
+
+  /**
+   * Start batched persistence timer
+   * v1.6.3.11-v4 - FIX Issue #71: Batch volatile state changes
+   *
+   * Call this when the MinimizedManager is initialized to enable
+   * automatic batched persistence every 10 seconds when state changes.
+   */
+  startBatchedPersistence() {
+    if (this._batchPersistTimerId !== null) {
+      return; // Already running
+    }
+
+    this._batchPersistTimerId = setInterval(() => {
+      if (this._volatileStateDirty) {
+        this._flushVolatileState();
+      }
+    }, VOLATILE_STATE_BATCH_INTERVAL_MS);
+
+    console.log('[MinimizedManager] BATCHED_PERSISTENCE_STARTED:', {
+      intervalMs: VOLATILE_STATE_BATCH_INTERVAL_MS
+    });
+  }
+
+  /**
+   * Stop batched persistence timer
+   * v1.6.3.11-v4 - FIX Issue #71: Cleanup on shutdown
+   */
+  stopBatchedPersistence() {
+    if (this._batchPersistTimerId !== null) {
+      clearInterval(this._batchPersistTimerId);
+      this._batchPersistTimerId = null;
+      
+      // Flush any pending changes
+      if (this._volatileStateDirty) {
+        this._flushVolatileState();
+      }
+
+      console.log('[MinimizedManager] BATCHED_PERSISTENCE_STOPPED');
+    }
+  }
+
+  /**
+   * Mark volatile state as dirty (needs persistence)
+   * v1.6.3.11-v4 - FIX Issue #71: Track state changes
+   * @private
+   */
+  _markVolatileStateDirty() {
+    this._volatileStateDirty = true;
+  }
+
+  /**
+   * Flush volatile state to storage
+   * v1.6.3.11-v4 - FIX Issue #71: Batched persistence
+   * @private
+   */
+  async _flushVolatileState() {
+    if (!this._volatileStateDirty) {
+      return;
+    }
+
+    this._volatileStateDirty = false;
+
+    console.log('[MinimizedManager] VOLATILE_STATE_FLUSH:', {
+      minimizedCount: this.minimizedTabs.size,
+      timestamp: Date.now()
+    });
+
+    try {
+      await this.persistToStorage();
+    } catch (err) {
+      console.error('[MinimizedManager] VOLATILE_STATE_FLUSH_FAILED:', {
+        error: err.message
+      });
+      // Re-mark as dirty so next interval retries
+      this._volatileStateDirty = true;
+    }
   }
 
   /**
@@ -533,6 +621,9 @@ export class MinimizedManager {
 
     // Log snapshot capture
     this._logSnapshotCapture(id, snapshot, resolvedOriginTabId !== tabWindow.originTabId);
+
+    // v1.6.3.11-v4 - FIX Issue #71: Mark volatile state as dirty for batched persistence
+    this._markVolatileStateDirty();
   }
 
   /**
@@ -613,10 +704,16 @@ export class MinimizedManager {
 
   /**
    * Remove a minimized Quick Tab
+   * v1.6.3.11-v4 - FIX Issue #71: Mark state dirty for batched persistence
    */
   remove(id) {
-    this.minimizedTabs.delete(id);
+    const hadEntry = this.minimizedTabs.delete(id);
     console.log('[MinimizedManager] Removed minimized tab:', id);
+
+    // v1.6.3.11-v4 - FIX Issue #71: Mark volatile state as dirty
+    if (hadEntry) {
+      this._markVolatileStateDirty();
+    }
   }
 
   /**
