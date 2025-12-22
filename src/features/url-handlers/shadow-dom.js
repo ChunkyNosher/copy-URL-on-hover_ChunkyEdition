@@ -19,7 +19,8 @@ const SHADOW_DOM_MAX_DEPTH = 5;
  * @private
  */
 function _logMaxDepthReached(element) {
-  console.log('[SHADOW_DOM_SEARCH] MAX_DEPTH_REACHED:', {
+  // v1.6.3.11-v4 - FIX Code Review: Use console.debug for routine operations
+  console.debug('[SHADOW_DOM_SEARCH] MAX_DEPTH_REACHED:', {
     maxDepth: SHADOW_DOM_MAX_DEPTH,
     element: element?.tagName || 'null'
   });
@@ -35,7 +36,8 @@ function _getShadowRootSafe(element) {
   try {
     return element.shadowRoot;
   } catch (err) {
-    console.log('[SHADOW_DOM_SEARCH] SECURITY_ERROR:', {
+    // v1.6.3.11-v4 - FIX Code Review: Use console.debug for routine operations
+    console.debug('[SHADOW_DOM_SEARCH] SECURITY_ERROR:', {
       error: err.message,
       element: element.tagName
     });
@@ -132,7 +134,8 @@ export function findLinkInShadowDOM(element, selector = 'a[href]', depth = 0) {
     return null;
   }
 
-  console.log('[SHADOW_DOM_SEARCH] Searching element:', {
+  // v1.6.3.11-v4 - FIX Code Review: Use console.debug for routine operations
+  console.debug('[SHADOW_DOM_SEARCH] Searching element:', {
     tag: element.tagName,
     depth,
     hasShadowRoot: !!element.shadowRoot
@@ -140,6 +143,7 @@ export function findLinkInShadowDOM(element, selector = 'a[href]', depth = 0) {
 
   // Check if element itself matches
   if (element.matches?.(selector)) {
+    // Keep console.log for actual findings (important results)
     console.log('[SHADOW_DOM_SEARCH] MATCH_FOUND: Element matches selector directly');
     return element;
   }

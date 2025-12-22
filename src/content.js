@@ -4982,14 +4982,15 @@ function _handleHoverEndEvent(event, context) {
     currentHoveredElement: null
   });
 
-  // Clear tracking
-  lastProcessedElement = null;
-
-  // Cancel any pending processing
+  // v1.6.3.11-v4 - FIX Code Review: Cancel timeout BEFORE clearing lastProcessedElement
+  // to prevent race condition where timeout fires after hover ends
   if (pendingHoverTimeoutId) {
     clearTimeout(pendingHoverTimeoutId);
     pendingHoverTimeoutId = null;
   }
+
+  // Clear tracking (after cancelling timeout to prevent race)
+  lastProcessedElement = null;
 
   eventBus.emit(Events.HOVER_END);
   context.hoverStartTime = null;

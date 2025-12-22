@@ -109,10 +109,11 @@ function _validateMessage(message) {
 /**
  * Show toast notification in configured corner
  * v1.6.3.11-v4 - FIX Issue #3: Wrapped in try-catch with DOM verification
+ * v1.6.3.11-v4 - FIX Code Review: Changed to synchronous return (no Promise needed)
  * @param {string} message - Message to display
  * @param {string} type - Notification type (info, success, warning, error)
  * @param {object} config - Configuration object
- * @returns {Promise<{success: boolean, element?: HTMLElement, error?: string}>}
+ * @returns {{success: boolean, element?: HTMLElement, error?: string}} Result object
  */
 export function showToast(message, type, config) {
   // v1.6.3.11-v4 - FIX Code Review: Validate message type and log warning for invalid types
@@ -148,7 +149,8 @@ export function showToast(message, type, config) {
       position: config?.notifPosition || 'bottom-right'
     });
 
-    return Promise.resolve({ success: true, element: toast });
+    // v1.6.3.11-v4 - FIX Code Review: Return synchronous result (DOM ops are synchronous)
+    return { success: true, element: toast };
   } catch (err) {
     // v1.6.3.11-v4 - FIX Issue #3: Log failure and fallback to console
     // v1.6.3.11-v4 - FIX Code Review: Use messageStr for consistent safe handling
@@ -162,6 +164,7 @@ export function showToast(message, type, config) {
     // Fallback: log message to console as notification
     console.warn(`[NOTIFICATION FALLBACK] ${type?.toUpperCase() || 'INFO'}: ${messageStr}`);
 
-    return Promise.resolve({ success: false, error: err.message });
+    // v1.6.3.11-v4 - FIX Code Review: Return synchronous result
+    return { success: false, error: err.message };
   }
 }
