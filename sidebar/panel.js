@@ -14,6 +14,12 @@ let storageWriteInProgress = false;
 // Unused but kept for potential future use
 const _EXPECTED_FORMAT_VERSION = 2;
 
+// v1.6.3.11-v2 - FIX Issue #40: Stale data threshold (1 hour in milliseconds)
+const STALE_DATA_THRESHOLD_MS = 60 * 60 * 1000;
+
+// v1.6.3.11-v2 - FIX Issue #21: Required fields for a valid Quick Tab object
+const REQUIRED_QUICK_TAB_FIELDS = ['id', 'url', 'left', 'top', 'width', 'height'];
+
 // Initialize panel
 document.addEventListener('DOMContentLoaded', () => {
   checkSessionStorageAvailability();
@@ -76,31 +82,75 @@ async function _loadFromSyncStorage() {
 }
 
 /**
+ * v1.6.3.11-v2 - FIX Issue #40: Check if timestamp is stale
+ * @private
+ * @param {number} timestamp - Timestamp to check
+ * @param {number} ageMs - Age in milliseconds
+ * @returns {boolean} True if stale
+ */
+function _isTimestampStale(timestamp, ageMs) {
+  return timestamp > 0 && ageMs > STALE_DATA_THRESHOLD_MS;
+}
+
+/**
+ * v1.6.3.11-v2 - FIX Issue #40: Select based on staleness, returning the non-stale one if only one is stale
+ * @private
+ */
+function _selectNonStaleState(sessionState, syncState, isSessionStale, isSyncStale) {
+  if (isSessionStale && !isSyncStale) return syncState;
+  if (isSyncStale && !isSessionStale) return sessionState;
+  return null; // Neither or both stale
+}
+
+/**
+ * v1.6.3.11-v2 - FIX Issue #40: Select the more recent state by timestamp
+ * @private
+ */
+function _selectByTimestamp(sessionState, syncState, sessionTimestamp, syncTimestamp) {
+  if (!sessionState) return syncState;
+  if (!syncState) return sessionState;
+  return sessionTimestamp > syncTimestamp ? sessionState : syncState;
+}
+
+/**
  * Compare timestamps to determine which storage has more recent data
  * v1.6.3.11 - FIX Issue #40: Session vs Sync Storage Race During Init
+ * v1.6.3.11-v2 - FIX Issue #40: Add stale data rejection (data older than 1 hour)
  * @param {Object|null} sessionState - State from session storage
  * @param {Object|null} syncState - State from sync storage
- * @returns {Object|null} More recent state or null if both are null
+ * @returns {Object|null} More recent state or null if both are null/stale
  */
 function _selectMoreRecentState(sessionState, syncState) {
   if (!sessionState && !syncState) return null;
-  if (!sessionState) return syncState;
-  if (!syncState) return sessionState;
-
-  const sessionTimestamp = sessionState.timestamp || 0;
-  const syncTimestamp = syncState.timestamp || 0;
+  
+  const now = Date.now();
+  const sessionTimestamp = sessionState?.timestamp || 0;
+  const syncTimestamp = syncState?.timestamp || 0;
+  const sessionAge = now - sessionTimestamp;
+  const syncAge = now - syncTimestamp;
+  const isSessionStale = _isTimestampStale(sessionTimestamp, sessionAge);
+  const isSyncStale = _isTimestampStale(syncTimestamp, syncAge);
 
   console.log('[Panel] STORAGE_TIMESTAMP_COMPARISON:', {
-    sessionTimestamp,
-    syncTimestamp,
-    sessionIsNewer: sessionTimestamp > syncTimestamp
+    sessionTimestamp, syncTimestamp, sessionAgeMs: sessionAge, syncAgeMs: syncAge,
+    isSessionStale, isSyncStale, staleThresholdMs: STALE_DATA_THRESHOLD_MS
   });
 
-  // Return whichever has the more recent timestamp
-  if (sessionTimestamp > syncTimestamp) {
-    return sessionState;
+  // Both stale - reject all
+  if (isSessionStale && isSyncStale) {
+    console.warn('[Panel] STALE_DATA_REJECTED: Both storages older than threshold');
+    return null;
   }
-  return syncState;
+
+  // One stale, one fresh - use the fresh one
+  const nonStale = _selectNonStaleState(sessionState, syncState, isSessionStale, isSyncStale);
+  if (nonStale) {
+    console.log('[Panel] Using non-stale storage');
+    return nonStale;
+  }
+
+  // Neither stale - use the more recent one
+  return _selectByTimestamp(sessionState, syncState, sessionTimestamp, syncTimestamp);
 }
 
 /**
@@ -117,7 +167,93 @@ function _showEmptyState() {
 }
 
 /**
+ * v1.6.3.11-v2 - FIX Issue #21: Validate Quick Tab object completeness
+ * Detects incomplete objects that may result from non-atomic storage writes
+ * @param {Object} tab - Quick Tab object to validate
+ * @returns {{valid: boolean, missingFields: string[]}} Validation result
+ */
+function _validateQuickTabFields(tab) {
+  if (!tab || typeof tab !== 'object') {
+    return { valid: false, missingFields: ['entire object'] };
+  }
+
+  const missingFields = REQUIRED_QUICK_TAB_FIELDS.filter(field => {
+    const value = tab[field];
+    // Check for undefined, null, or empty string for id/url
+    if (value === undefined || value === null) return true;
+    if ((field === 'id' || field === 'url') && value === '') return true;
+    return false;
+  });
+
+  return {
+    valid: missingFields.length === 0,
+    missingFields
+  };
+}
+
+/**
+ * v1.6.3.11-v2 - FIX Issue #21: Validate all tabs in state and filter incomplete ones
+ * @param {Array} tabs - Array of Quick Tab objects
+ * @returns {{validTabs: Array, invalidCount: number, warnings: string[]}} Filtered result
+ */
+function _filterValidQuickTabs(tabs) {
+  if (!Array.isArray(tabs)) {
+    return { validTabs: [], invalidCount: 0, warnings: ['tabs is not an array'] };
+  }
+
+  const validTabs = [];
+  const warnings = [];
+  let invalidCount = 0;
+
+  for (let i = 0; i < tabs.length; i++) {
+    const tab = tabs[i];
+    const validation = _validateQuickTabFields(tab);
+
+    if (validation.valid) {
+      validTabs.push(tab);
+    } else {
+      invalidCount++;
+      warnings.push(`Tab[${i}] missing fields: ${validation.missingFields.join(', ')}`);
+    }
+  }
+
+  if (invalidCount > 0) {
+    console.warn('[Panel] INCOMPLETE_QUICK_TABS_DETECTED:', {
+      totalTabs: tabs.length,
+      validTabs: validTabs.length,
+      invalidCount,
+      warnings: warnings.slice(0, 5) // Limit warning output
+    });
+  }
+
+  return { validTabs, invalidCount, warnings };
+}
+
+/**
+ * v1.6.3.11-v2 - FIX Issue #22: Extract tabs from container format
+ * @private
+ * @param {Object} containers - Container object with tabs
+ * @returns {Array|null} Extracted tabs or null on error
+ */
+function _extractTabsFromContainers(containers) {
+  const tabs = [];
+  try {
+    for (const containerKey of Object.keys(containers)) {
+      const containerTabs = containers[containerKey]?.tabs;
+      if (Array.isArray(containerTabs)) {
+        tabs.push(...containerTabs);
+      }
+    }
+    return tabs;
+  } catch (err) {
+    console.error('[Panel] Error extracting tabs from container format:', err.message);
+    return null;
+  }
+}
+
+/**
  * v1.6.3.11 - FIX Issue #22: Detect and normalize storage format
+ * v1.6.3.11-v2 - FIX Issue #22: Add defensive checks and better error handling
  * Handles both flat array format (state.tabs) and nested object format (state.allQuickTabs)
  * @param {Object} state - Raw state from storage
  * @returns {Array|null} Normalized tabs array or null if invalid
@@ -125,31 +261,53 @@ function _showEmptyState() {
 function _normalizeStorageFormat(state) {
   if (!state) return null;
 
+  let tabs = null;
+
   // Format 1: Flat array format (state.tabs)
   if (Array.isArray(state.tabs)) {
     console.log('[Panel] Using flat tabs array format');
-    return state.tabs;
+    tabs = state.tabs;
   }
-
   // Format 2: Nested object format (state.allQuickTabs)
-  if (Array.isArray(state.allQuickTabs)) {
+  else if (Array.isArray(state.allQuickTabs)) {
     console.log('[Panel] Using allQuickTabs nested format (v2)');
-    return state.allQuickTabs;
+    tabs = state.allQuickTabs;
   }
-
   // Format 3: Direct array (legacy)
-  if (Array.isArray(state)) {
+  else if (Array.isArray(state)) {
     console.log('[Panel] Using direct array format (legacy)');
-    return state;
+    tabs = state;
+  }
+  // Format 4: Handle object with container keys (old container format)
+  else if (typeof state === 'object' && state.containers) {
+    console.log('[Panel] Detected container format, extracting tabs');
+    tabs = _extractTabsFromContainers(state.containers);
+    if (tabs === null) return null;
+  }
+  else {
+    console.warn('[Panel] Unknown storage format detected:', {
+      keys: Object.keys(state || {}),
+      tabsType: typeof state.tabs,
+      allQuickTabsType: typeof state.allQuickTabs
+    });
+    return null;
   }
 
-  console.warn('[Panel] Unknown storage format detected:', Object.keys(state || {}));
-  return null;
+  // Defensive type check after extraction
+  if (!Array.isArray(tabs)) {
+    console.error('[Panel] FORMAT_NORMALIZATION_FAILED: tabs is not an array after normalization', {
+      resultType: typeof tabs
+    });
+    return null;
+  }
+
+  return tabs;
 }
 
 /**
  * Render Quick Tabs list
  * v1.6.3.11 - FIX Issue #22: Handle both flat and nested storage formats
+ * v1.6.3.11-v2 - FIX Issue #21: Filter incomplete Quick Tab objects before rendering
  * @param {Object} state - State containing tabs
  */
 function _renderQuickTabsList(state) {
@@ -166,8 +324,20 @@ function _renderQuickTabsList(state) {
     return;
   }
 
+  // v1.6.3.11-v2 - FIX Issue #21: Filter out incomplete Quick Tab objects
+  const { validTabs, invalidCount } = _filterValidQuickTabs(tabs);
+
+  if (invalidCount > 0) {
+    console.warn('[Panel] RENDER_SKIPPED_INCOMPLETE_TABS:', {
+      originalCount: tabs.length,
+      validCount: validTabs.length,
+      skippedCount: invalidCount,
+      note: 'Some Quick Tabs were incomplete (possible partial storage write)'
+    });
+  }
+
   // Update tab count
-  tabCountElement.textContent = tabs.length;
+  tabCountElement.textContent = validTabs.length;
 
   // Update last sync time
   if (state.timestamp) {
@@ -175,9 +345,9 @@ function _renderQuickTabsList(state) {
     lastSyncElement.textContent = date.toLocaleTimeString();
   }
 
-  // Display all tabs
+  // Display all valid tabs
   container.innerHTML = '';
-  tabs.forEach((tab, index) => {
+  validTabs.forEach((tab, index) => {
     const tabElement = createTabElement(tab, index);
     container.appendChild(tabElement);
   });
