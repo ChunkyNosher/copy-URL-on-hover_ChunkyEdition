@@ -539,6 +539,47 @@ class MessageTimeoutError extends Error {
 }
 
 /**
+ * Check if error is a retryable timeout error
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+function _isRetryableTimeoutError(err) {
+  return err instanceof MessageTimeoutError;
+}
+
+/**
+ * Handle timeout retry with exponential backoff
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+function _handleTimeoutRetry(err, attempts, maxRetries, context) {
+  const { messageType, effectiveTimeout, startTime, useAdaptiveTimeout } = context;
+  const elapsed = Date.now() - startTime;
+
+  console.warn('[Content][MSG_TIMEOUT] Message timeout:', {
+    messageType,
+    attempt: attempts,
+    maxRetries,
+    timeoutMs: effectiveTimeout,
+    elapsedMs: elapsed,
+    adaptiveTimeout: useAdaptiveTimeout,
+    recentLatencies: recentMessageLatencies.slice(-3)
+  });
+
+  // Return backoff delay if retries remaining, otherwise null
+  if (attempts <= maxRetries) {
+    const backoffMs = Math.min(1000 * Math.pow(2, attempts - 1), 5000);
+    console.log('[Content][MSG_TIMEOUT] Retrying after backoff:', {
+      attempt: attempts + 1,
+      backoffMs
+    });
+    return backoffMs;
+  }
+
+  return null; // No retry
+}
+
+/**
  * Send message to background with explicit timeout
  * v1.6.3.11-v3 - FIX Issue #48: Cross-browser message wrapper with timeout enforcement
  *
@@ -565,63 +606,72 @@ async function sendMessageWithTimeout(message, options = {}) {
     (useAdaptiveTimeout ? _getAdaptiveTimeout() : DEFAULT_MESSAGE_TIMEOUT_MS);
   const messageType = message.action || message.type || 'unknown';
   const startTime = Date.now();
+  const context = { messageType, effectiveTimeout, startTime, useAdaptiveTimeout };
 
   let lastError = null;
   let attempts = 0;
 
   while (attempts <= maxRetries) {
     attempts++;
-    const attemptStart = Date.now();
-
-    try {
-      const response = await Promise.race([
-        browser.runtime.sendMessage(message),
-        new Promise((_, reject) => {
-          setTimeout(() => {
-            const elapsed = Date.now() - attemptStart;
-            reject(new MessageTimeoutError(messageType, effectiveTimeout, elapsed));
-          }, effectiveTimeout);
-        })
-      ]);
-
-      // Record successful latency for adaptive timeout
-      const latency = Date.now() - attemptStart;
-      _recordMessageLatency(latency);
-
-      return response;
-    } catch (err) {
-      lastError = err;
-      const elapsed = Date.now() - startTime;
-
-      // Log timeout with details
-      if (err instanceof MessageTimeoutError) {
-        console.warn('[Content][MSG_TIMEOUT] Message timeout:', {
-          messageType,
-          attempt: attempts,
-          maxRetries,
-          timeoutMs: effectiveTimeout,
-          elapsedMs: elapsed,
-          adaptiveTimeout: useAdaptiveTimeout,
-          recentLatencies: recentMessageLatencies.slice(-3)
-        });
-
-        // If retries remaining, apply exponential backoff
-        if (attempts <= maxRetries) {
-          const backoffMs = Math.min(1000 * Math.pow(2, attempts - 1), 5000);
-          console.log('[Content][MSG_TIMEOUT] Retrying after backoff:', {
-            attempt: attempts + 1,
-            backoffMs
-          });
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-          continue;
-        }
-      }
-
-      throw lastError;
+    const result = await _attemptSendMessage(message, effectiveTimeout);
+    
+    if (result.success) {
+      return result.response;
     }
+    
+    lastError = result.error;
+    const shouldRetry = _shouldRetryAfterError(lastError, attempts, maxRetries, context);
+    if (!shouldRetry) break;
+    
+    await new Promise(resolve => setTimeout(resolve, shouldRetry.backoffMs));
   }
 
   throw lastError;
+}
+
+/**
+ * Attempt to send a single message with timeout
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+async function _attemptSendMessage(message, effectiveTimeout) {
+  const attemptStart = Date.now();
+  const messageType = message.action || message.type || 'unknown';
+  
+  try {
+    const response = await Promise.race([
+      browser.runtime.sendMessage(message),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          const elapsed = Date.now() - attemptStart;
+          reject(new MessageTimeoutError(messageType, effectiveTimeout, elapsed));
+        }, effectiveTimeout);
+      })
+    ]);
+
+    // Record successful latency for adaptive timeout
+    const latency = Date.now() - attemptStart;
+    _recordMessageLatency(latency);
+
+    return { success: true, response };
+  } catch (err) {
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Determine if error should trigger a retry
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ * @returns {{backoffMs: number}|null} Backoff info if should retry, null otherwise
+ */
+function _shouldRetryAfterError(err, attempts, maxRetries, context) {
+  if (!_isRetryableTimeoutError(err)) return null;
+  
+  const backoffMs = _handleTimeoutRetry(err, attempts, maxRetries, context);
+  if (backoffMs === null) return null;
+  
+  return { backoffMs };
 }
 
 // ==================== END ISSUE #48 FIX ====================
@@ -2425,6 +2475,19 @@ function _queueMessageForBFCacheRetry(message) {
 }
 
 /**
+ * Send a single queued message
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+async function _sendQueuedMessage(message) {
+  if (backgroundPort) {
+    backgroundPort.postMessage(message);
+  } else {
+    await browser.runtime.sendMessage(message);
+  }
+}
+
+/**
  * Drain BFCache message queue after restoration
  * v1.6.3.11-v3 - FIX Issue #51
  */
@@ -2441,13 +2504,7 @@ async function _drainBFCacheMessageQueue() {
     const queueDuration = Date.now() - queuedAt;
 
     try {
-      // Re-send via port if available, otherwise via runtime.sendMessage
-      if (backgroundPort) {
-        backgroundPort.postMessage(message);
-      } else {
-        await browser.runtime.sendMessage(message);
-      }
-
+      await _sendQueuedMessage(message);
       console.log('[Content][BFCACHE] QUEUED_MESSAGE_SENT:', {
         messageType: message?.type || message?.action,
         queueDurationMs: queueDuration
@@ -2459,6 +2516,25 @@ async function _drainBFCacheMessageQueue() {
         queueDurationMs: queueDuration
       });
     }
+  }
+}
+
+/**
+ * Handle successful state refresh response
+ * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * @private
+ */
+async function _handleStateRefreshResponse(response) {
+  if (!response?.success || !response?.data) return;
+  
+  console.log('[Content][BFCACHE] STATE_REFRESH_RECEIVED:', {
+    tabCount: response.data.tabs?.length ?? 0,
+    lastUpdate: response.data.lastUpdate
+  });
+
+  // Trigger hydration with fresh state if Quick Tabs manager exists
+  if (quickTabsManager?.hydrateFromStorage) {
+    await quickTabsManager.hydrateFromStorage();
   }
 }
 
@@ -2476,17 +2552,7 @@ async function _requestStateRefreshAfterBFCache() {
       timestamp: Date.now()
     }, { timeout: 5000 });
 
-    if (response?.success && response?.data) {
-      console.log('[Content][BFCACHE] STATE_REFRESH_RECEIVED:', {
-        tabCount: response.data.tabs?.length ?? 0,
-        lastUpdate: response.data.lastUpdate
-      });
-
-      // Trigger hydration with fresh state if Quick Tabs manager exists
-      if (quickTabsManager?.hydrateFromStorage) {
-        await quickTabsManager.hydrateFromStorage();
-      }
-    }
+    await _handleStateRefreshResponse(response);
   } catch (err) {
     console.warn('[Content][BFCACHE] STATE_REFRESH_FAILED:', {
       error: err.message,
@@ -5659,12 +5725,13 @@ function _getObservedHandshakeLatency() {
 }
 
 /**
- * Record a handshake latency sample
+ * Record an adoption latency sample (used for dynamic TTL calculation)
  * v1.6.3.10-v11 - FIX Issue #5
  * v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count for periodic recalculation
+ * v1.6.3.11-v3 - Renamed from _recordHandshakeLatency to avoid conflict
  * @param {number} latencyMs - Observed latency in milliseconds
  */
-function _recordHandshakeLatency(latencyMs) {
+function _recordAdoptionLatencySample(latencyMs) {
   if (typeof latencyMs !== 'number' || latencyMs < 0) return;
 
   // v1.6.3.10-v12 - FIX Issue #4: Track heartbeat count
