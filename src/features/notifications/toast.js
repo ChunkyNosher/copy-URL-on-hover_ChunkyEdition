@@ -92,7 +92,9 @@ function _validateMessage(message) {
     return message;
   }
   if (message === null || message === undefined) {
-    console.warn('[NOTIFICATION] Warning: showToast called with null/undefined message, using empty string');
+    console.warn(
+      '[NOTIFICATION] Warning: showToast called with null/undefined message, using empty string'
+    );
     return '';
   }
   // Log warning for non-string types (objects, numbers, etc.) that will be converted
