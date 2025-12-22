@@ -41,14 +41,16 @@ let _globalCreateSequenceId = 0;
 
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
-  // v1.6.3.11-v3 - FIX Issue #18: Increased from 100ms to 250ms
-  // 250ms: Provides better margin for slow systems while preventing legitimate rapid operations
-  // from being rejected. Typical double-fire interval for keyboard/context menu events is <10ms.
-  static DEDUP_WINDOW_MS = 250;
-  // 5000ms: Cleanup interval balances memory usage vs CPU overhead
-  static DEDUP_CLEANUP_INTERVAL_MS = 5000;
-  // 10000ms: TTL keeps entries long enough for debugging but prevents memory bloat
-  static DEDUP_TTL_MS = 10000;
+  // v1.6.3.11-v3 - FIX Issue #53: Reduced from 250ms to 100ms
+  // 100ms: Only catches true duplicates from network/browser retries
+  // Allows legitimate rapid operations (double-click ~40ms won't be blocked)
+  static DEDUP_WINDOW_MS = 100;
+  // v1.6.3.11-v3 - FIX Issue #54: Reduced from 5000ms to 1000ms
+  // 1000ms: More frequent cleanup to prevent memory accumulation
+  static DEDUP_CLEANUP_INTERVAL_MS = 1000;
+  // v1.6.3.11-v3 - FIX Issue #54: Reduced from 10000ms to 3000ms
+  // 3000ms: Shorter TTL reduces memory bloat in high-frequency scenarios
+  static DEDUP_TTL_MS = 3000;
 
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
@@ -80,8 +82,33 @@ export class QuickTabHandler {
   }
 
   /**
-   * Check if message is a duplicate (same action + id within dedup window)
+   * Generate a simple content hash for dedup key
+   * v1.6.3.11-v3 - FIX Issue #55: Include message content in dedup key
+   * @private
+   * @param {Object} message - Message to hash
+   * @returns {string} Short hash of message content
+   */
+  _generateContentHash(message) {
+    // Include relevant parameters that would make messages different
+    const relevant = {
+      url: message.url,
+      position: message.position,
+      size: message.size,
+      originTabId: message.originTabId
+    };
+    const str = JSON.stringify(relevant);
+    // Simple hash function (DJB2)
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    }
+    return (hash >>> 0).toString(36); // Convert to unsigned and base36
+  }
+
+  /**
+   * Check if message is a duplicate (same action + id + content within dedup window)
    * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
+   * v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
    * @param {Object} message - Message to check
    * @returns {boolean} True if this is a duplicate message
    */
@@ -97,8 +124,10 @@ export class QuickTabHandler {
       this._cleanupOldProcessedMessages(now);
     }
 
-    // Generate unique key for this message
-    const messageKey = `${message.action}-${message.id}`;
+    // v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
+    // This ensures messages with same ID but different parameters are NOT deduplicated
+    const contentHash = this._generateContentHash(message);
+    const messageKey = `${message.action}-${message.id}-${contentHash}`;
     const lastProcessed = this.processedMessages.get(messageKey);
 
     // Check if recently processed
@@ -106,6 +135,7 @@ export class QuickTabHandler {
       console.log('[QuickTabHandler] Ignoring duplicate message:', {
         action: message.action,
         id: message.id,
+        contentHash,
         timeSinceLastMs: now - lastProcessed
       });
       return true;

@@ -673,6 +673,17 @@ export class MessageRouter {
     // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
     const validation = this._validateAction(action, sender);
     if (!validation.valid) {
+      // v1.6.3.11-v3 - FIX Issue #60: Enhanced rejection logging
+      console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: Unknown command', {
+        action,
+        senderTabId: sender?.tab?.id,
+        senderFrameId: sender?.frameId,
+        senderUrl: sender?.url,
+        messageId: message?.messageId,
+        timestamp: Date.now(),
+        reason: 'UNKNOWN_COMMAND',
+        messageKeys: Object.keys(message || {})
+      });
       sendResponse({
         success: false,
         error: 'UNKNOWN_COMMAND',
@@ -683,7 +694,17 @@ export class MessageRouter {
       return { handled: true, returnValue: false };
     }
 
-    console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
+    // v1.6.3.11-v3 - FIX Issue #60: Enhanced rejection logging for no handler case
+    console.warn('[MSG][MessageRouter] MESSAGE_REJECTED: No handler', {
+      action,
+      senderTabId: sender?.tab?.id,
+      senderFrameId: sender?.frameId,
+      senderUrl: sender?.url,
+      messageId: message?.messageId,
+      timestamp: Date.now(),
+      reason: 'NO_HANDLER',
+      validActions: VALID_MESSAGE_ACTIONS.slice(0, 10) // First 10 valid actions for context
+    });
     sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
     return { handled: true, returnValue: false };
   }
