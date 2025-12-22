@@ -224,6 +224,8 @@ export class MinimizedManager {
     this._volatileStateDirty = false;
     // Batched persistence timer ID
     this._batchPersistTimerId = null;
+    // FIX Code Review: Track if flush is in progress to prevent concurrent flushes
+    this._isFlushingVolatileState = false;
   }
 
   /**
@@ -239,7 +241,7 @@ export class MinimizedManager {
     }
 
     this._batchPersistTimerId = setInterval(() => {
-      if (this._volatileStateDirty) {
+      if (this._volatileStateDirty && !this._isFlushingVolatileState) {
         this._flushVolatileState();
       }
     }, VOLATILE_STATE_BATCH_INTERVAL_MS);
@@ -258,8 +260,8 @@ export class MinimizedManager {
       clearInterval(this._batchPersistTimerId);
       this._batchPersistTimerId = null;
       
-      // Flush any pending changes
-      if (this._volatileStateDirty) {
+      // Flush any pending changes (skip if already flushing)
+      if (this._volatileStateDirty && !this._isFlushingVolatileState) {
         this._flushVolatileState();
       }
 
@@ -279,6 +281,7 @@ export class MinimizedManager {
   /**
    * Flush volatile state to storage
    * v1.6.3.11-v4 - FIX Issue #71: Batched persistence
+   * FIX Code Review: Added _isFlushingVolatileState flag to prevent concurrent flushes
    * @private
    */
   async _flushVolatileState() {
@@ -286,6 +289,12 @@ export class MinimizedManager {
       return;
     }
 
+    // FIX Code Review: Prevent concurrent flushes
+    if (this._isFlushingVolatileState) {
+      return;
+    }
+
+    this._isFlushingVolatileState = true;
     this._volatileStateDirty = false;
 
     console.log('[MinimizedManager] VOLATILE_STATE_FLUSH:', {
@@ -301,6 +310,8 @@ export class MinimizedManager {
       });
       // Re-mark as dirty so next interval retries
       this._volatileStateDirty = true;
+    } finally {
+      this._isFlushingVolatileState = false;
     }
   }
 

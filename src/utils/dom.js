@@ -48,19 +48,20 @@ export function waitForDocumentBody(timeoutMs = DOM_READY_TIMEOUT_MS) {
       return;
     }
 
-    const startTime = Date.now();
+    // FIX Code Review: Store deadline once instead of repeated Date.now() calls
+    const deadline = Date.now() + timeoutMs;
 
     const checkBody = () => {
       if (document.body) {
         console.log('[DOM] waitForDocumentBody: document.body available', {
-          waitedMs: Date.now() - startTime
+          waitedMs: Date.now() - (deadline - timeoutMs)
         });
         resolve(document.body);
         return;
       }
 
-      // Check timeout
-      if (Date.now() - startTime > timeoutMs) {
+      // Check timeout using pre-calculated deadline
+      if (Date.now() > deadline) {
         console.error('[DOM] waitForDocumentBody: Timeout waiting for document.body', {
           timeoutMs
         });
