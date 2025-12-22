@@ -154,12 +154,18 @@ export class QuickTabHandler {
   /**
    * Validate originTabId from message payload against sender.tab.id
    * v1.6.3.10-v11 - FIX Issue #4: Mandatory validation for originTabId ownership
+   * v1.6.3.11-v3 - FIX Issue #56: Removed backward compatibility fallback for ownership ops
+   *   Previously, missing originTabId would fall back to sender.tab.id (security bypass)
+   *   Now, missing originTabId is rejected for ownership-required operations
    *
    * @param {Object} message - Message containing originTabId
    * @param {Object} sender - Message sender object from browser.runtime
+   * @param {boolean} requireOriginTabId - Whether originTabId is required (default: true)
+   *   - true: For ownership operations (CREATE, CLOSE, UPDATE) - security critical
+   *   - false: Only used for internal/manager operations where sender IS the authority
    * @returns {{valid: boolean, resolvedTabId: number|null, error?: string}}
    */
-  _validateOriginTabId(message, sender) {
+  _validateOriginTabId(message, sender, requireOriginTabId = true) {
     const senderTabId = sender?.tab?.id;
     const payloadTabId = message?.originTabId;
 
@@ -173,12 +179,31 @@ export class QuickTabHandler {
       return { valid: false, resolvedTabId: null, error: 'sender.tab.id unavailable' };
     }
 
-    // If payload doesn't have originTabId, use sender.tab.id as default
+    // v1.6.3.11-v3 - FIX Issue #56: Removed backward compatibility fallback
+    // If payload doesn't have originTabId, check if it's required
     if (payloadTabId === null || payloadTabId === undefined) {
-      console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as default', {
+      if (requireOriginTabId) {
+        // v1.6.3.11-v3 - FIX Issue #56: Log legacy client attempt and reject
+        console.warn('[QuickTabHandler] ORIGIN_VALIDATION_LEGACY_CLIENT:', {
+          senderTabId,
+          messageAction: message?.action,
+          quickTabId: message?.id,
+          warning: 'SECURITY: Legacy client without originTabId field - rejecting'
+        });
+        return {
+          valid: false,
+          resolvedTabId: null,
+          error: 'Missing originTabId field - required for ownership operations'
+        };
+      }
+      
+      // For non-required cases (internal/manager ops), fall back to sender.tab.id
+      // SAFE: Only used when sender IS the authority (e.g., sidebar manager operations)
+      console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as fallback', {
         senderTabId,
         messageAction: message?.action,
-        quickTabId: message?.id
+        quickTabId: message?.id,
+        note: 'originTabId not required for this internal operation'
       });
       return { valid: true, resolvedTabId: senderTabId };
     }
@@ -418,18 +443,20 @@ export class QuickTabHandler {
    * Handle Quick Tab close
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId for close operations
+   * v1.6.3.11-v3 - FIX Issue #36: originTabId now required (validated by MessageRouter)
    */
   async handleClose(message, sender) {
-    // v1.6.3.10-v11 - FIX Issue #4: Validate originTabId if provided
-    const validation = this._validateOriginTabId(message, sender);
+    // v1.6.3.11-v3 - FIX Issue #36: originTabId is now validated by MessageRouter
+    // This validation is DEFENSIVE PROGRAMMING - MessageRouter should reject first,
+    // but we validate again in case handler is called directly (e.g., during testing)
+    const validation = this._validateOriginTabId(message, sender, true);
     if (!validation.valid) {
-      console.warn('[QuickTabHandler] CLOSE_VALIDATION_WARNING: originTabId validation failed', {
+      console.error('[QuickTabHandler] CLOSE_REJECTED: originTabId validation failed', {
         error: validation.error,
         quickTabId: message.id,
-        // Allow close operations even with invalid originTabId for backward compatibility
-        // This prevents orphaned Quick Tabs when manager closes tabs
-        allowingOperation: true
+        note: 'Defensive check - MessageRouter should have rejected this first'
       });
+      return { success: false, error: validation.error, code: 'ORIGIN_VALIDATION_FAILED' };
     }
 
     console.log(
