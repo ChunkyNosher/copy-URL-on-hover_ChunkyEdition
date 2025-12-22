@@ -231,20 +231,14 @@ function _filterValidQuickTabs(tabs) {
 
 /**
  * v1.6.3.11-v2 - FIX Issue #22: Extract tabs from container format
+ * v1.6.3.11-v3 - Refactored to reduce nesting depth
  * @private
  * @param {Object} containers - Container object with tabs
  * @returns {Array|null} Extracted tabs or null on error
  */
 function _extractTabsFromContainers(containers) {
-  const tabs = [];
   try {
-    for (const containerKey of Object.keys(containers)) {
-      const containerTabs = containers[containerKey]?.tabs;
-      if (Array.isArray(containerTabs)) {
-        tabs.push(...containerTabs);
-      }
-    }
-    return tabs;
+    return _collectTabsFromContainers(containers);
   } catch (err) {
     console.error('[Panel] Error extracting tabs from container format:', err.message);
     return null;
@@ -252,8 +246,38 @@ function _extractTabsFromContainers(containers) {
 }
 
 /**
+ * v1.6.3.11-v3 - Helper to collect tabs from containers
+ * @private
+ */
+function _collectTabsFromContainers(containers) {
+  const tabs = [];
+  const containerKeys = Object.keys(containers);
+  for (const containerKey of containerKeys) {
+    const containerTabs = containers[containerKey]?.tabs;
+    if (Array.isArray(containerTabs)) tabs.push(...containerTabs);
+  }
+  return tabs;
+}
+
+/**
+ * v1.6.3.11-v2 - FIX Issue #22: Detect storage format type
+ * @private
+ * @param {Object} state - Raw state from storage
+ * @returns {string} Format type: 'flat', 'nested', 'direct', 'container', or 'unknown'
+ */
+function _detectStorageFormat(state) {
+  if (!state) return 'unknown';
+  if (Array.isArray(state.tabs)) return 'flat';
+  if (Array.isArray(state.allQuickTabs)) return 'nested';
+  if (Array.isArray(state)) return 'direct';
+  if (typeof state === 'object' && state.containers) return 'container';
+  return 'unknown';
+}
+
+/**
  * v1.6.3.11 - FIX Issue #22: Detect and normalize storage format
  * v1.6.3.11-v2 - FIX Issue #22: Add defensive checks and better error handling
+ * v1.6.3.11-v3 - Refactored to reduce complexity
  * Handles both flat array format (state.tabs) and nested object format (state.allQuickTabs)
  * @param {Object} state - Raw state from storage
  * @returns {Array|null} Normalized tabs array or null if invalid
@@ -261,41 +285,38 @@ function _extractTabsFromContainers(containers) {
 function _normalizeStorageFormat(state) {
   if (!state) return null;
 
+  const format = _detectStorageFormat(state);
   let tabs = null;
 
-  // Format 1: Flat array format (state.tabs)
-  if (Array.isArray(state.tabs)) {
-    console.log('[Panel] Using flat tabs array format');
-    tabs = state.tabs;
-  }
-  // Format 2: Nested object format (state.allQuickTabs)
-  else if (Array.isArray(state.allQuickTabs)) {
-    console.log('[Panel] Using allQuickTabs nested format (v2)');
-    tabs = state.allQuickTabs;
-  }
-  // Format 3: Direct array (legacy)
-  else if (Array.isArray(state)) {
-    console.log('[Panel] Using direct array format (legacy)');
-    tabs = state;
-  }
-  // Format 4: Handle object with container keys (old container format)
-  else if (typeof state === 'object' && state.containers) {
-    console.log('[Panel] Detected container format, extracting tabs');
-    tabs = _extractTabsFromContainers(state.containers);
-    if (tabs === null) return null;
-  }
-  else {
-    console.warn('[Panel] Unknown storage format detected:', {
-      keys: Object.keys(state || {}),
-      tabsType: typeof state.tabs,
-      allQuickTabsType: typeof state.allQuickTabs
-    });
-    return null;
+  switch (format) {
+    case 'flat':
+      console.log('[Panel] Using flat tabs array format');
+      tabs = state.tabs;
+      break;
+    case 'nested':
+      console.log('[Panel] Using allQuickTabs nested format (v2)');
+      tabs = state.allQuickTabs;
+      break;
+    case 'direct':
+      console.log('[Panel] Using direct array format (legacy)');
+      tabs = state;
+      break;
+    case 'container':
+      console.log('[Panel] Detected container format, extracting tabs');
+      tabs = _extractTabsFromContainers(state.containers);
+      break;
+    default:
+      console.warn('[Panel] Unknown storage format detected:', {
+        keys: Object.keys(state || {}),
+        tabsType: typeof state.tabs,
+        allQuickTabsType: typeof state.allQuickTabs
+      });
+      return null;
   }
 
   // Defensive type check after extraction
   if (!Array.isArray(tabs)) {
-    console.error('[Panel] FORMAT_NORMALIZATION_FAILED: tabs is not an array after normalization', {
+    console.error('[Panel] FORMAT_NORMALIZATION_FAILED: tabs is not an array', {
       resultType: typeof tabs
     });
     return null;
