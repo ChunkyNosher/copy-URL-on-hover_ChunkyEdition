@@ -4428,12 +4428,21 @@ function handleLegacyAction(message, portInfo) {
 /**
  * Maximum Quick Tabs per browser tab
  * v1.6.3.11-v3 - FIX Issue #78: Capacity limit per tab
+ * 
+ * Rationale: 50 Quick Tabs per tab provides generous capacity for power users
+ * while preventing UI clutter and memory issues. Average users have <10.
+ * This value may be made configurable in future versions if needed.
  */
 const MAX_QUICK_TABS_PER_TAB = 50;
 
 /**
  * Maximum total Quick Tabs across all tabs
  * v1.6.3.11-v3 - FIX Issue #78: Global capacity limit
+ * 
+ * Rationale: 500 total Quick Tabs balances extensibility with browser performance.
+ * Each Quick Tab requires ~5KB DOM overhead + iframe memory. 500 Quick Tabs
+ * should stay under 100MB even with heavy content. Extension storage is limited
+ * and this prevents quota exhaustion.
  */
 const MAX_TOTAL_QUICK_TABS = 500;
 
@@ -4633,11 +4642,48 @@ async function _writeAndVerifyAdoptionState({
 }
 
 /**
+ * Update global cache and host tracking after adoption
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+function _updateCacheAndHostTracking(quickTabId, targetTabId) {
+  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (cachedTab) {
+    cachedTab.originTabId = targetTabId;
+    delete cachedTab.isOrphaned;
+    delete cachedTab.orphanedAt;
+  }
+  quickTabHostTabs.set(quickTabId, targetTabId);
+}
+
+/**
+ * Broadcast adoption completion to ports and tabs
+ * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
+ * @private
+ */
+async function _broadcastAdoptionCompletion({ quickTabId, oldOriginTabId, targetTabId, correlationId, adoptionDuration, position }) {
+  broadcastToAllPorts({
+    type: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    previousOriginTabId: oldOriginTabId,
+    correlationId,
+    adoptionDuration,
+    position,
+    timestamp: Date.now()
+  });
+
+  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+}
+
+/**
  * Handle adopt action (atomic single write)
  * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
  * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
  * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
  * @param {Object} payload - Adoption payload
  */
 async function handleAdoptAction(payload) {
@@ -4657,105 +4703,45 @@ async function handleAdoptAction(payload) {
   // v1.6.3.11-v3 - FIX Issue #78: Validate adoption capacity before starting
   const capacityCheck = _validateAdoptionCapacity(quickTabId, targetTabId);
   if (!capacityCheck.valid) {
-    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', {
-      quickTabId,
-      targetTabId,
-      correlationId,
-      reason: capacityCheck.reason
-    });
+    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', capacityCheck);
     return { success: false, error: capacityCheck.reason, code: 'CAPACITY_EXCEEDED' };
   }
 
   // Validate prerequisites
   const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
-  if (!validation.valid) {
-    return { success: false, error: validation.error };
-  }
+  if (!validation.valid) return { success: false, error: validation.error };
 
   // Read state and find Quick Tab
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
 
   const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
-  if (!findResult.found) {
-    return { success: false, error: findResult.error };
-  }
+  if (!findResult.found) return { success: false, error: findResult.error };
+  
   const { oldOriginTabId, tabIndex } = findResult;
-
-  // v1.6.3.11-v3 - FIX Issue #72: Get position for complete response
-  const adoptedTab = state.tabs[tabIndex];
+  const adoptedTab = (tabIndex >= 0 && tabIndex < state.tabs.length) ? state.tabs[tabIndex] : null;
   const position = adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
 
   // Write and verify state
-  const writeResult = await _writeAndVerifyAdoptionState({
-    state,
-    quickTabId,
-    targetTabId,
-    correlationId,
-    startTime
-  });
-  if (!writeResult.success) {
-    return writeResult;
-  }
+  const writeResult = await _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime });
+  if (!writeResult.success) return writeResult;
 
-  // Update global cache
-  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
-  if (cachedTab) {
-    cachedTab.originTabId = targetTabId;
-    delete cachedTab.isOrphaned;
-    delete cachedTab.orphanedAt;
-  }
-
-  // Update host tracking
-  quickTabHostTabs.set(quickTabId, targetTabId);
-
-  // v1.6.3.11-v3 - FIX Issue #72: Calculate adoption duration for response
+  // Update cache and broadcast
+  _updateCacheAndHostTracking(quickTabId, targetTabId);
   const adoptionDuration = Date.now() - startTime;
-
-  // Broadcast adoption completion
-  broadcastToAllPorts({
-    type: 'ADOPTION_COMPLETED',
-    adoptedQuickTabId: quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    previousOriginTabId: oldOriginTabId,
-    correlationId,
-    // v1.6.3.11-v3 - FIX Issue #72: Include additional fields for complete signaling
-    adoptionDuration,
-    position,
-    timestamp: Date.now()
-  });
-
-  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+  await _broadcastAdoptionCompletion({ quickTabId, oldOriginTabId, targetTabId, correlationId, adoptionDuration, position });
 
   // v1.6.4.15 - FIX Issue #20: Log successful completion
-  const durationMs = Date.now() - startTime;
   console.log('[Background] MANAGER_ACTION_COMPLETED:', {
     action: 'ADOPT_TAB',
     quickTabId,
     targetTabId,
     correlationId,
     status: 'success',
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    durationMs
+    durationMs: Date.now() - startTime
   });
 
-  console.log('[Background] ADOPT_TAB complete:', {
-    quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId
-  });
-
-  // v1.6.3.11-v3 - FIX Issue #72: Return complete adoption response
-  return {
-    success: true,
-    quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    adoptionDuration,
-    position
-  };
+  return { success: true, quickTabId, oldOriginTabId, newOriginTabId: targetTabId, adoptionDuration, position };
 }
 
 /**

@@ -137,6 +137,7 @@ export class QuickTabHandler {
    * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
    * v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
    * v1.6.3.11-v3 - FIX Issue #76: Scope dedup entries by sender (port generation)
+   * v1.6.3.11-v3 - FIX Code Review: Use unique fallback key when sender tab ID unavailable
    * @param {Object} message - Message to check
    * @param {Object} sender - Message sender (optional, for scoping)
    * @returns {boolean} True if this is a duplicate message
@@ -154,8 +155,12 @@ export class QuickTabHandler {
     }
 
     // v1.6.3.11-v3 - FIX Issue #76: Scope by sender to prevent cross-port collision
+    // v1.6.3.11-v3 - FIX Code Review: Use unique fallback to prevent cross-sender dedup
     const senderTabId = sender?.tab?.id;
-    const senderKey = senderTabId ? `tab-${senderTabId}` : 'unknown';
+    // If no tab ID, use message ID as fallback to prevent cross-sender dedup collision
+    const senderKey = senderTabId != null 
+      ? `tab-${senderTabId}` 
+      : `msg-${message.id || now}-${Math.random().toString(36).slice(2, 8)}`;
 
     // v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
     // This ensures messages with same ID but different parameters are NOT deduplicated
