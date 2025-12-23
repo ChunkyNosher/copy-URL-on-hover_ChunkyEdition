@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,76 +9,58 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v5 Status:** 23 Issues Fixed ✅
+**🔧 v1.6.3.11-v6 Status:** 14 Firefox Critical Fixes ✅ | 1,974 Tests
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.11-v5
+## 🎉 What's New in v1.6.3.11-v6
 
-**🔧 23 Issues Fixed - 6 Phases (December 2025) ✅**
+**🔧 Firefox Critical Fixes (December 2025) - 14 Issues Fixed ✅**
 
-**Phase 1: Critical Missing Listeners (2 Issues):**
+**Critical Fixes (4):**
 
-- ✅ **browser.commands.onCommand** - Enhanced logging with [COMMAND_RECEIVED]
-- ✅ **browser.browserAction.onClicked** - Enhanced with [SIDEBAR_TOGGLED]
+- ✅ **BFCache Port Validation** - Auto-reconnect after back/forward navigation
+- ✅ **Adaptive Message Timeout** - 90th percentile, 7s default for Firefox
+- ✅ **Load Shedding** - Reject non-critical at 50%/75%/90% thresholds
+- ✅ **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent completions
 
-**Phase 2: Storage Sync Infrastructure (2 Issues):**
+**High-Priority Fixes (5):**
 
-- ✅ **Content storage.onChanged** - STORAGE_STATE_SYNC handler
-- ✅ **Background storage.onChanged** - Re-broadcast to all tabs
+- ✅ **Message ID Collision** - Iterative retry with counter suffix
+- ✅ **Clock Skew Tolerance** - 150ms window for stale event detection
+- ✅ **Heartbeat Circuit Breaker** - Exponential backoff (15s→30s→60s→120s)
+- ✅ **Operation Timeout** - 5-second per-operation limit
+- ✅ **Response Validation** - Schema-based field checking
 
-**Phase 3: Message Ordering & Port Lifecycle (3 Issues):**
+**Medium-Priority Fixes (3):**
 
-- ✅ **Global Operation Sequence** - Cross-tab message ordering
-- ✅ **Port Viability Checks** - Heartbeat-based health monitoring
-- ✅ **Port Readiness Flag** - BFCache restoration message queue
+- ✅ **Initialization Logging** - Per-feature and hydration progress
+- ✅ **Port Adoption Scaling** - Dynamic timeout based on latency
+- ✅ **Module Import Graceful Degradation** - Critical vs optional distinction
 
-**Phase 4: State Verification & Error Handling (5 Issues):**
-
-- ✅ **Sidebar State Verification** - Origin tab existence checks
-- ✅ **Handler Error Response** - Retry logic for transient failures
-- ✅ **Notification Delivery Verification** - Success tracking
-- ✅ **Hover Detection Recovery** - Diagnostic messages to background
-- ✅ **Map Storage Consistency** - quickTabHostInfo verification
-
-**Phase 5: Content Script Init & Cache (2 Issues):**
-
-- ✅ **State Readiness Gating** - Features wait for hydration
-- ✅ **Cache Dirty Flag** - Storage storm detection
-
-**Phase 6: Logging & Telemetry (2 Issues):**
-
-- ✅ **Logging Infrastructure** - L1-L7 prefixes (logging-infrastructure.js)
-- ✅ **Error Telemetry** - Threshold alerting (error-telemetry.js)
+**Test Coverage:** 1,974 tests (192 new Firefox-specific tests)
 
 ---
+
+## 🎉 What's New in v1.6.3.11-v5
+
+**🔧 23 Issues Fixed (December 2025) ✅** - Global Operation Sequence, Port
+Viability Checks, State Readiness Gating, Cache Dirty Flag, Logging
+Infrastructure (L1-L7 prefixes), Error Telemetry with threshold alerting.
 
 ## 🎉 What's New in v1.6.3.11-v4
 
-**🔧 22 Issues Fixed - 4 Phases (December 2025) ✅**
-
-- ✅ Shadow DOM Detection, Event Debouncing, Pointer Events API
-- ✅ Content Pipeline Logging, Event Bus Visibility, Storage Timing Telemetry
-- ✅ Content Storage Sync, Operation Acknowledgment, Error Recovery
-
----
-
-## 🎉 What's New in v1.6.3.11-v3
-
-**🔧 55+ Issues Fixed (December 2025) ✅**
-
-- ✅ HEARTBEAT Handler, Re-entrance Queue, Message Structure Validation
-- ✅ pendingMessages Cleared, State Machine Persistence, Memory Leak Fix
-- ✅ sendMessageWithTimeout(), Adaptive Handshake, BFCache Message Queue
-- ✅ Dedup Window 100ms, Content Hash Dedup Key, Enhanced Rejection Logging
-- ✅ Storage Write Verification, Format Detection, Migration Validation
+**🔧 22 Issues Fixed (December 2025) ✅** - Shadow DOM Detection, Event
+Debouncing, Pointer Events API, Content Pipeline Logging, Storage Timing
+Telemetry, Operation Acknowledgment, Error Recovery.
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.11-v3:** 55+ Issues Fixed - HEARTBEAT, Re-entrance Queue, BFCache Queue  
 **v1.6.3.11-v2:** 40 Issues Fixed - BFCache, Tab ID, Hydration improvements  
 **v1.6.3.11:** 40 Issues Fixed - GET_CURRENT_TAB_ID, listener registration  
 **v1.6.3.10-v11:** Extended Tab ID, OPERATION_TYPE, LRU Map Guard
@@ -116,7 +98,7 @@ in the sidebar!
 ✓ **Container Isolation** - Firefox Container support with originContainerId  
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok (v1.6.3.11-v4)  
-✓ **Error Telemetry** - Threshold-based alerting (v1.6.3.11-v5)  
+✓ **Firefox Critical Fixes** - BFCache, Adaptive Timeout, Load Shedding (v1.6.3.11-v6)  
 ✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
 ✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
@@ -192,6 +174,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v5** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v6** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
