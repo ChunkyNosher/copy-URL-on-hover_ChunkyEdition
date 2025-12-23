@@ -281,8 +281,31 @@ import { initQuickTabs } from './features/quick-tabs/index.js';
 import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
+// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry for content script
+// Note: Some imports prefixed with _ to indicate available for future use
+import {
+  ERROR_TYPES,
+  recordError,
+  recordHandlerError as _recordHandlerError,
+  recordTimeoutError as _recordTimeoutError,
+  startRecoveryAttempt,
+  recordRecoveryRetry as _recordRecoveryRetry,
+  completeRecovery
+} from './utils/error-telemetry.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
+// v1.6.4.17 - FIX Issues L1-L7: Import logging infrastructure
+// Note: Some imports prefixed with _ to indicate available for future use
+import {
+  LOG_PREFIX as _LOG_PREFIX,
+  logListenerRegistration,
+  logListenerRegistered,
+  logInitializationComplete as _logInitializationComplete,
+  logMessageReceived,
+  logHandlerInvoked,
+  logHandlerComplete,
+  logStorageListenerFired as _logStorageListenerFired
+} from './utils/logging-infrastructure.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.10-v13 - FIX Issue #9: Import periodic latency measurement functions
@@ -756,6 +779,126 @@ let contentScriptInitialized = false;
  * Operations like CREATE_QUICK_TAB should wait until hydration is complete
  */
 let isHydrationComplete = false;
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #15: STATE READINESS TRACKING ====================
+// Track state readiness to gate feature activation until hydration complete
+
+/**
+ * State readiness flag - true when state is fully hydrated and features can use it
+ * v1.6.3.11-v5 - FIX Issue #15: Gate feature activation until state ready
+ */
+let isStateReady = false;
+
+/**
+ * Timestamp when initialization phases started
+ * v1.6.3.11-v5 - FIX Issue #15: Track initialization timing
+ */
+let initPhaseStartTime = 0;
+
+/**
+ * Timestamp when hydration phase started
+ * v1.6.3.11-v5 - FIX Issue #15: Track hydration timing separately
+ */
+let hydrationPhaseStartTime = 0;
+
+/**
+ * Track completion of individual initialization phases
+ * v1.6.3.11-v5 - FIX Issue #15: Structured phase tracking
+ */
+const initPhaseStatus = {
+  moduleLoad: { complete: false, timestamp: 0, durationMs: 0 },
+  managerInit: { complete: false, timestamp: 0, durationMs: 0 },
+  configLoad: { complete: false, timestamp: 0, durationMs: 0 },
+  stateHydration: { complete: false, timestamp: 0, durationMs: 0 },
+  featureActivation: { complete: false, timestamp: 0, durationMs: 0 }
+};
+
+/**
+ * Log initialization phase start
+ * v1.6.3.11-v5 - FIX Issue #15: Structured phase logging
+ * @param {string} phase - Phase name
+ */
+function _logInitPhaseStart(phase) {
+  const now = Date.now();
+  console.log(`[Content][INIT_PHASE] ${phase} started:`, {
+    phase,
+    elapsedSinceInitMs: initPhaseStartTime > 0 ? now - initPhaseStartTime : 0,
+    timestamp: now
+  });
+}
+
+/**
+ * Log initialization phase complete
+ * v1.6.3.11-v5 - FIX Issue #15: Structured phase logging
+ * @param {string} phase - Phase name
+ * @param {number} startTime - Phase start timestamp
+ */
+function _logInitPhaseComplete(phase, startTime) {
+  const now = Date.now();
+  const durationMs = now - startTime;
+  
+  if (initPhaseStatus[phase]) {
+    initPhaseStatus[phase].complete = true;
+    initPhaseStatus[phase].timestamp = now;
+    initPhaseStatus[phase].durationMs = durationMs;
+  }
+  
+  console.log(`[Content][INIT_PHASE] ${phase} complete:`, {
+    phase,
+    durationMs,
+    elapsedSinceInitMs: initPhaseStartTime > 0 ? now - initPhaseStartTime : 0,
+    timestamp: now
+  });
+}
+
+/**
+ * Check if state is ready for feature use
+ * v1.6.3.11-v5 - FIX Issue #15: Gate feature operations
+ * @returns {boolean} True if state is ready
+ */
+function _isStateReadyForFeatures() {
+  return isStateReady && isHydrationComplete;
+}
+
+/**
+ * Log attempt to use uninitialized state
+ * v1.6.3.11-v5 - FIX Issue #15: Track uninitialized state access
+ * @param {string} feature - Feature that attempted access
+ * @param {string} operation - Operation that was attempted
+ */
+function _logUninitializedStateAccess(feature, operation) {
+  console.warn('[Content][STATE_READY] Attempt to use uninitialized state:', {
+    feature,
+    operation,
+    isStateReady,
+    isHydrationComplete,
+    contentScriptInitialized,
+    initPhaseStatus: Object.entries(initPhaseStatus)
+      .filter(([_, v]) => v.complete)
+      .map(([k]) => k),
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Mark state as ready and log transition
+ * v1.6.3.11-v5 - FIX Issue #15: State readiness transition
+ */
+function _markStateReady() {
+  if (isStateReady) return;
+  
+  isStateReady = true;
+  const now = Date.now();
+  const totalInitTime = initPhaseStartTime > 0 ? now - initPhaseStartTime : 0;
+  
+  console.log('[Content][STATE_READY] State now ready for features:', {
+    totalInitTimeMs: totalInitTime,
+    phases: initPhaseStatus,
+    timestamp: now
+  });
+}
+
+// ==================== END ISSUE #15 STATE READINESS ====================
 
 /**
  * Timeout for hydration (milliseconds)
@@ -1933,13 +2076,59 @@ function _updateBackgroundResponseTime() {
 /**
  * Mark content script as initialized and flush queued messages
  * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.11-v5 - FIX Issue #15: Gate feature activation until state ready
  */
 async function _markContentScriptInitialized() {
   if (contentScriptInitialized) return;
 
+  // v1.6.3.11-v5 - FIX Issue #15: Log feature activation phase start
+  const featureActivationStart = Date.now();
+  _logInitPhaseStart('featureActivation');
+
+  // v1.6.3.11-v5 - FIX Issue #15: Wait for state readiness before activating features
+  if (!_isStateReadyForFeatures()) {
+    console.log('[Content][FEATURE_GATE] Deferring feature activation until state ready:', {
+      isStateReady,
+      isHydrationComplete,
+      timestamp: Date.now()
+    });
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Wait for state readiness with exponential backoff
+    // This avoids inefficient polling while still being responsive
+    const maxWaitMs = 500; // Max wait for state readiness
+    const startWait = Date.now();
+    let waitInterval = 25; // Start with 25ms, double each iteration up to 100ms max
+    
+    while (!_isStateReadyForFeatures() && (Date.now() - startWait) < maxWaitMs) {
+      await new Promise(resolve => setTimeout(resolve, waitInterval));
+      waitInterval = Math.min(waitInterval * 2, 100); // Exponential backoff capped at 100ms
+    }
+    
+    if (!_isStateReadyForFeatures()) {
+      console.warn('[Content][FEATURE_GATE] Proceeding with feature activation despite incomplete state:', {
+        isStateReady,
+        isHydrationComplete,
+        waitedMs: Date.now() - startWait,
+        timestamp: Date.now()
+      });
+    } else {
+      console.log('[Content][FEATURE_GATE] State became ready, proceeding with feature activation:', {
+        waitedMs: Date.now() - startWait,
+        timestamp: Date.now()
+      });
+    }
+  }
+
   contentScriptInitialized = true;
+  
+  // v1.6.3.11-v5 - FIX Issue #15: Log feature activation complete
+  _logInitPhaseComplete('featureActivation', featureActivationStart);
+  
   console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    isStateReady,
+    isHydrationComplete,
+    totalInitTimeMs: initPhaseStartTime > 0 ? Date.now() - initPhaseStartTime : 0
   });
 
   // Flush any queued messages
@@ -1977,11 +2166,20 @@ async function _markHydrationComplete(loadedTabCount = 0) {
   }
 
   isHydrationComplete = true;
+  
+  // v1.6.3.11-v5 - FIX Issue #15: Log hydration phase complete with correct start time
+  // Use hydrationPhaseStartTime if set, otherwise fall back to initPhaseStartTime
+  const hydrationStartForLogging = hydrationPhaseStartTime > 0 ? hydrationPhaseStartTime : initPhaseStartTime;
+  _logInitPhaseComplete('stateHydration', hydrationStartForLogging);
+  
   console.log('[Content] HYDRATION_COMPLETE:', {
     loadedTabCount,
     queuedOperations: preHydrationOperationQueue.length,
     timestamp: Date.now()
   });
+
+  // v1.6.3.11-v5 - FIX Issue #15: Mark state as ready after hydration
+  _markStateReady();
 
   // Drain queued operations
   await _drainPreHydrationQueue();
@@ -2103,8 +2301,12 @@ function _shouldWaitForHydration(operationType) {
  * v1.6.3.11-v2 - FIX Issue #7 (Diagnostic Report): Extended timeout with progress warnings
  */
 function _initHydrationTimeout() {
-  const hydrationStartTime = Date.now();
+  // v1.6.3.11-v5 - FIX Issue #15: Set global hydration phase start time
+  hydrationPhaseStartTime = Date.now();
   const loggedWarnings = new Set();
+
+  // v1.6.3.11-v5 - FIX Issue #15: Log hydration phase start
+  _logInitPhaseStart('stateHydration');
 
   // v1.6.3.11-v2 - FIX Issue #7: Set up warning interval for progress logging
   const warningIntervalId = setInterval(() => {
@@ -2113,7 +2315,7 @@ function _initHydrationTimeout() {
       return;
     }
 
-    const elapsed = Date.now() - hydrationStartTime;
+    const elapsed = Date.now() - hydrationPhaseStartTime;
 
     // Log warnings at each threshold
     for (const threshold of HYDRATION_WARNING_THRESHOLDS_MS) {
@@ -2746,6 +2948,326 @@ const _bfcacheMessageQueue = [];
  * v1.6.3.11-v3 - FIX Issue #51
  */
 const MAX_BFCACHE_MESSAGE_QUEUE_SIZE = 50;
+
+// ==================== v1.6.3.12 FIX ISSUE #9: MESSAGE ORDERING BUFFER ====================
+// Buffer out-of-order messages by sequence number and process in order
+
+/**
+ * Highest processed operation sequence number
+ * v1.6.3.12 - FIX Issue #9: Track which messages have been processed
+ */
+let _highestProcessedSequence = 0;
+
+/**
+ * Buffer for out-of-order messages awaiting processing
+ * v1.6.3.12 - FIX Issue #9: Map of operationSequence -> message
+ */
+const _messageOrderingBuffer = new Map();
+
+/**
+ * Maximum size of message ordering buffer
+ * v1.6.3.12 - FIX Issue #9: Prevent unbounded growth
+ */
+const MAX_MESSAGE_ORDERING_BUFFER_SIZE = 100;
+
+/**
+ * Timeout for buffered messages (milliseconds)
+ * v1.6.3.12 - FIX Issue #9: Discard stale buffered messages
+ */
+const MESSAGE_ORDERING_BUFFER_TIMEOUT_MS = 10000;
+
+/**
+ * Check if message should be processed based on sequence ordering
+ * v1.6.3.12 - FIX Issue #9: Validate message ordering
+ * @param {number} operationSequence - Message sequence number
+ * @returns {{ shouldProcess: boolean, reason: string }}
+ */
+function _shouldProcessMessageBySequence(operationSequence) {
+  // No sequence - process immediately (legacy message)
+  if (operationSequence === undefined || operationSequence === null) {
+    return { shouldProcess: true, reason: 'no-sequence' };
+  }
+  
+  // Already processed a higher sequence - discard
+  if (operationSequence <= _highestProcessedSequence) {
+    console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+      action: 'discarded',
+      reason: 'already-processed-newer',
+      incomingSequence: operationSequence,
+      highestProcessed: _highestProcessedSequence,
+      timestamp: Date.now()
+    });
+    return { shouldProcess: false, reason: 'already-processed-newer' };
+  }
+  
+  // Next expected sequence - process now
+  if (operationSequence === _highestProcessedSequence + 1) {
+    return { shouldProcess: true, reason: 'in-order' };
+  }
+  
+  // Out of order - buffer for later
+  console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+    action: 'buffering',
+    reason: 'out-of-order',
+    incomingSequence: operationSequence,
+    expectedSequence: _highestProcessedSequence + 1,
+    timestamp: Date.now()
+  });
+  return { shouldProcess: false, reason: 'out-of-order' };
+}
+
+/**
+ * Buffer a message for later processing
+ * v1.6.3.12 - FIX Issue #9: Store out-of-order messages
+ * @param {number} operationSequence - Message sequence number
+ * @param {Object} message - Message to buffer
+ */
+function _bufferMessageForOrdering(operationSequence, message) {
+  // Prevent unbounded growth
+  if (_messageOrderingBuffer.size >= MAX_MESSAGE_ORDERING_BUFFER_SIZE) {
+    // Remove oldest entry
+    const oldestKey = Math.min(..._messageOrderingBuffer.keys());
+    _messageOrderingBuffer.delete(oldestKey);
+    console.warn('[Content] MESSAGE_BUFFERED:', {
+      action: 'evicted-oldest',
+      evictedSequence: oldestKey,
+      bufferSize: _messageOrderingBuffer.size,
+      timestamp: Date.now()
+    });
+  }
+  
+  _messageOrderingBuffer.set(operationSequence, {
+    message,
+    bufferedAt: Date.now()
+  });
+  
+  console.log('[Content] MESSAGE_BUFFERED:', {
+    operationSequence,
+    messageType: message.type || message.action,
+    bufferSize: _messageOrderingBuffer.size,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Process buffered messages in order
+ * v1.6.3.12 - FIX Issue #9: Drain buffer after processing a message
+ * @param {Function} processMessage - Function to process each message
+ */
+async function _processBufferedMessages(processMessage) {
+  const now = Date.now();
+  
+  // Clean up stale buffered messages
+  for (const [seq, entry] of _messageOrderingBuffer.entries()) {
+    if (now - entry.bufferedAt > MESSAGE_ORDERING_BUFFER_TIMEOUT_MS) {
+      _messageOrderingBuffer.delete(seq);
+      console.warn('[Content] MESSAGE_BUFFERED:', {
+        action: 'expired',
+        operationSequence: seq,
+        ageMs: now - entry.bufferedAt,
+        timestamp: now
+      });
+    }
+  }
+  
+  // Process buffered messages in order
+  let processed = 0;
+  while (_messageOrderingBuffer.has(_highestProcessedSequence + 1)) {
+    const nextSeq = _highestProcessedSequence + 1;
+    const entry = _messageOrderingBuffer.get(nextSeq);
+    _messageOrderingBuffer.delete(nextSeq);
+    
+    console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+      action: 'processing-buffered',
+      operationSequence: nextSeq,
+      bufferedForMs: now - entry.bufferedAt,
+      timestamp: now
+    });
+    
+    await processMessage(entry.message);
+    _highestProcessedSequence = nextSeq;
+    processed++;
+  }
+  
+  if (processed > 0) {
+    console.log('[Content] MESSAGE_BUFFERED:', {
+      action: 'drain-complete',
+      processedCount: processed,
+      remainingBuffered: _messageOrderingBuffer.size,
+      highestProcessed: _highestProcessedSequence,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Update highest processed sequence and process buffer
+ * v1.6.3.12 - FIX Issue #9: Called after successfully processing a message
+ * @param {number} operationSequence - Processed sequence number
+ * @param {Function} processMessage - Function to process buffered messages
+ */
+async function _markSequenceProcessed(operationSequence, processMessage) {
+  if (operationSequence !== undefined && operationSequence !== null) {
+    _highestProcessedSequence = operationSequence;
+    
+    // Process any buffered messages that are now in order
+    await _processBufferedMessages(processMessage);
+  }
+}
+
+// ==================== END ISSUE #9 FIX ====================
+
+// ==================== v1.6.3.12 FIX ISSUE #14: PORT READINESS FLAG ====================
+// Synchronous flag to track port readiness for BFCache restoration
+
+/**
+ * Flag indicating port is ready for messages
+ * v1.6.3.12 - FIX Issue #14: Set to false on pagehide, true after port connection completes
+ */
+let _isPortReadyForMessagesFlag = true;
+
+/**
+ * Message queue for messages that arrived before port was ready
+ * v1.6.3.12 - FIX Issue #14: Buffer messages during port reconnection
+ */
+const _portReadinessMessageQueue = [];
+
+/**
+ * Maximum port readiness queue size
+ * v1.6.3.12 - FIX Issue #14
+ */
+const MAX_PORT_READINESS_QUEUE_SIZE = 50;
+
+/**
+ * Check if port is ready for sending messages
+ * v1.6.3.12 - FIX Issue #14: Synchronous check before port usage
+ * @returns {boolean} True if port is ready
+ */
+function _isPortReadyForMessages() {
+  return _isPortReadyForMessagesFlag && !_isPortFrozenDueToBFCache;
+}
+
+/**
+ * Mark port as not ready (entering BFCache or disconnected)
+ * v1.6.3.12 - FIX Issue #14
+ */
+function markPortNotReady() {
+  const wasReady = _isPortReadyForMessagesFlag;
+  _isPortReadyForMessagesFlag = false;
+  
+  if (wasReady) {
+    console.log('[Content] BFCACHE_PORT_STATE:', {
+      state: 'not-ready',
+      previousState: 'ready',
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Mark port as ready (connection complete after BFCache restore)
+ * v1.6.3.12 - FIX Issue #14
+ */
+function markPortReady() {
+  const wasReady = _isPortReadyForMessagesFlag;
+  _isPortReadyForMessagesFlag = true;
+  
+  console.log('[Content] BFCACHE_PORT_STATE:', {
+    state: 'ready',
+    previousState: wasReady ? 'ready' : 'not-ready',
+    queuedMessages: _portReadinessMessageQueue.length,
+    timestamp: Date.now()
+  });
+  
+  // Drain queued messages
+  _drainPortReadinessQueue();
+}
+
+/**
+ * Queue a message for sending after port becomes ready
+ * v1.6.3.12 - FIX Issue #14
+ * @param {Object} message - Message to queue
+ * @returns {boolean} True if queued
+ */
+function _queueMessageUntilPortReady(message) {
+  if (_portReadinessMessageQueue.length >= MAX_PORT_READINESS_QUEUE_SIZE) {
+    console.warn('[Content] BFCACHE_PORT_STATE:', {
+      action: 'queue-full',
+      queueSize: _portReadinessMessageQueue.length,
+      messageType: message?.type || message?.action,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+  
+  _portReadinessMessageQueue.push({
+    message,
+    queuedAt: Date.now()
+  });
+  
+  console.log('[Content] BFCACHE_PORT_STATE:', {
+    action: 'message-queued',
+    queueSize: _portReadinessMessageQueue.length,
+    messageType: message?.type || message?.action,
+    timestamp: Date.now()
+  });
+  
+  return true;
+}
+
+/**
+ * Send a single queued port readiness message
+ * v1.6.3.12 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+async function _sendQueuedPortReadinessMessage(message) {
+  if (backgroundPort) {
+    backgroundPort.postMessage(message);
+    return;
+  }
+  await browser.runtime.sendMessage(message);
+}
+
+/**
+ * Drain port readiness queue after port becomes ready
+ * v1.6.3.12 - FIX Issue #14
+ * @private
+ */
+async function _drainPortReadinessQueue() {
+  if (_portReadinessMessageQueue.length === 0) return;
+  
+  console.log('[Content] BFCACHE_PORT_STATE:', {
+    action: 'draining-queue',
+    queueSize: _portReadinessMessageQueue.length,
+    timestamp: Date.now()
+  });
+  
+  while (_portReadinessMessageQueue.length > 0) {
+    const entry = _portReadinessMessageQueue.shift();
+    const { message, queuedAt } = entry;
+    const queueDuration = Date.now() - queuedAt;
+    
+    try {
+      await _sendQueuedPortReadinessMessage(message);
+      
+      console.log('[Content] BFCACHE_PORT_STATE:', {
+        action: 'queued-message-sent',
+        messageType: message?.type || message?.action,
+        queueDurationMs: queueDuration,
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      console.error('[Content] BFCACHE_PORT_STATE:', {
+        action: 'queued-message-failed',
+        messageType: message?.type || message?.action,
+        error: err.message,
+        timestamp: Date.now()
+      });
+    }
+  }
+}
+
+// ==================== END ISSUE #14 FIX ====================
 
 /**
  * Queue a message for retry after BFCache restoration
@@ -4346,6 +4868,7 @@ window.addEventListener('unload', () => {
  * v1.6.3.10-v12 - FIX Issue #2: Mark port as potentially invalid on BFCache entry
  * v1.6.3.11-v3 - FIX Issue #51: Queue messages while frozen, prevent sending
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as inactive for stale event rejection
+ * v1.6.3.12 - FIX Issue #14: Set port readiness flag to false
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageHide(event) {
@@ -4362,6 +4885,9 @@ function _handlePageHide(event) {
     // v1.6.3.11-v3 - FIX Issue #51: Mark port as frozen (messages will be queued)
     _isPortFrozenDueToBFCache = true;
 
+    // v1.6.3.12 - FIX Issue #14: Mark port as not ready for messages
+    markPortNotReady();
+
     // v1.6.3.11-v3 - FIX Issue #52: Mark page inactive for stale event rejection
     _markPageInactive();
 
@@ -4376,6 +4902,7 @@ function _handlePageHide(event) {
  * v1.6.3.11-v3 - FIX Issue #51: Drain queued messages after restore
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as active, query backend for current state
  * v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore and refresh tab ID
+ * v1.6.3.12 - FIX Issue #14: Port readiness restored after verification
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageShow(event) {
@@ -4387,7 +4914,8 @@ function _handlePageShow(event) {
       portState: portConnectionState,
       wasMarkedInvalid: portPotentiallyInvalidDueToBFCache,
       wasFrozen: _isPortFrozenDueToBFCache,
-      queuedMessages: _bfcacheMessageQueue.length
+      queuedMessages: _bfcacheMessageQueue.length,
+      portReadinessQueueSize: _portReadinessMessageQueue.length
     });
 
     // v1.6.3.11-v3 - FIX Issue #52: Mark page as active
@@ -4402,10 +4930,16 @@ function _handlePageShow(event) {
 
     if (portPotentiallyInvalidDueToBFCache) {
       // Verify port functionality by attempting a ping
+      // v1.6.3.12 - FIX Issue #14: Port readiness will be restored after verification
       _verifyPortAfterBFCache();
     } else if (backgroundPort && _bfcacheMessageQueue.length > 0) {
       // v1.6.3.11-v3 - FIX Issue #51: Port still valid, drain queued messages
+      // v1.6.3.12 - FIX Issue #14: Mark port ready before draining
+      markPortReady();
       _drainBFCacheMessageQueue();
+    } else if (backgroundPort) {
+      // v1.6.3.12 - FIX Issue #14: Port exists and is valid, mark ready
+      markPortReady();
     }
 
     // v1.6.3.11-v3 - FIX Issue #52: Query backend for current state to avoid stale events
@@ -4506,6 +5040,7 @@ function _clearBFCacheVerifyTimeout() {
  * Handle PORT_VERIFY response from background
  * v1.6.3.11 - FIX Issue #32: Clear timeout on successful response
  * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log PORT_VERIFY success with latency
+ * v1.6.3.12 - FIX Issue #14: Mark port ready after successful verification
  */
 function _handlePortVerifyResponse() {
   _clearBFCacheVerifyTimeout();
@@ -4521,6 +5056,9 @@ function _handlePortVerifyResponse() {
     }
   );
   bfcacheVerifyStartTime = 0; // Reset
+  
+  // v1.6.3.12 - FIX Issue #14: Mark port ready and drain queued messages
+  markPortReady();
 }
 
 /**
@@ -4921,9 +5459,17 @@ function reportInitializationError(err) {
  */
 (async function initExtension() {
   try {
+    // v1.6.3.11-v5 - FIX Issue #15: Track initialization start time
+    initPhaseStartTime = Date.now();
+    _logInitPhaseStart('moduleLoad');
+    
     // v1.6.1: Wait for filter settings to load from storage BEFORE starting extension logs
     // This ensures user's filter preferences are active from the very first log
     const settingsResult = await settingsReady;
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Log module load complete
+    _logInitPhaseComplete('moduleLoad', initPhaseStartTime);
+    
     if (settingsResult.success) {
       console.log(
         `[Copy-URL-on-Hover] ✓ Filter settings loaded (source: ${settingsResult.source})`
@@ -4951,8 +5497,15 @@ function reportInitializationError(err) {
       );
     }
 
+    // v1.6.3.11-v5 - FIX Issue #15: Log config load phase start
+    const configLoadStart = Date.now();
+    _logInitPhaseStart('configLoad');
+    
     // Load configuration
     CONFIG = await loadConfiguration();
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Log config load complete
+    _logInitPhaseComplete('configLoad', configLoadStart);
 
     // Setup debug mode
     setupDebugMode();
@@ -4960,8 +5513,15 @@ function reportInitializationError(err) {
     // Initialize state (critical - will throw on error)
     initializeState();
 
+    // v1.6.3.11-v5 - FIX Issue #15: Log manager init phase start
+    const managerInitStart = Date.now();
+    _logInitPhaseStart('managerInit');
+    
     // Initialize features
     await initializeFeatures();
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Log manager init complete
+    _logInitPhaseComplete('managerInit', managerInitStart);
 
     debug('Extension initialized successfully');
 
@@ -5226,38 +5786,62 @@ function _detectAndLogUrl(element, domainType) {
 /**
  * Process hover element after debouncing
  * v1.6.3.11-v4 - FIX Issue #2 & #3: Core hover processing with logging
+ * v1.6.3.11-v5 - FIX Issue #7: Add error recovery integration
  * @private
  * @param {PointerEvent|MouseEvent} event - Event object
  * @param {Object} context - Shared context
  */
 function _processHoverElement(event, context) {
-  const element = event.target;
-  const now = performance.now();
+  // v1.6.3.11-v5 - FIX Issue #7: Skip processing if in recovery mode
+  if (_shouldSkipForRecovery()) {
+    console.debug('[Content] HOVER_SKIPPED: In recovery mode', {
+      backoffMs: hoverBackoffDelay,
+      errorCount: hoverErrorCounter
+    });
+    return;
+  }
 
-  // Update tracking
-  lastProcessedElement = element;
-  lastHoverProcessTime = now;
-  pendingHoverTimeoutId = null;
-  context.hoverStartTime = now;
+  try {
+    const element = event.target;
+    const now = performance.now();
 
-  const domainType = getDomainType();
+    // Update tracking
+    lastProcessedElement = element;
+    lastHoverProcessTime = now;
+    pendingHoverTimeoutId = null;
+    context.hoverStartTime = now;
 
-  // Log hover entry
-  _logHoverEntry(element, event, domainType);
+    const domainType = getDomainType();
 
-  // Detect URL
-  const url = _detectAndLogUrl(element, domainType);
+    // Log hover entry
+    _logHoverEntry(element, event, domainType);
 
-  // Always set element, URL can be null
-  stateManager.setState({
-    currentHoveredLink: url || null,
-    currentHoveredElement: element
-  });
+    // Detect URL
+    const url = _detectAndLogUrl(element, domainType);
 
-  if (url) {
-    // v1.6.3.11-v4 - FIX Issue #3: [TOOLTIP] logging (for display operations)
-    console.log('[TOOLTIP] URL ready for display:', { url });
-    eventBus.emit(Events.HOVER_START, { url, element, domainType });
+    // Always set element, URL can be null
+    stateManager.setState({
+      currentHoveredLink: url || null,
+      currentHoveredElement: element
+    });
+
+    if (url) {
+      // v1.6.3.11-v4 - FIX Issue #3: [TOOLTIP] logging (for display operations)
+      console.log('[TOOLTIP] URL ready for display:', { url });
+      eventBus.emit(Events.HOVER_START, { url, element, domainType });
+      
+      // v1.6.3.11-v5 - FIX Issue #7: Reset errors on successful URL detection
+      _resetHoverErrors();
+    }
+  } catch (error) {
+    // v1.6.3.11-v5 - FIX Issue #7: Record hover detection error
+    console.error('[Content] HOVER_DETECTION_ERROR:', {
+      error: error.message,
+      stack: error.stack?.substring(0, 200),
+      target: event?.target?.tagName,
+      timestamp: Date.now()
+    });
+    _recordHoverError(error);
   }
 }
 
@@ -5485,11 +6069,17 @@ function _handleShortcutDuringInit(event) {
  * v1.6.0 Phase 2.4 - Extracted handler for keyboard shortcuts
  * v1.6.3.11 - FIX Issue #38: Add guard for initialization window
  * v1.6.3.11-v4 - FIX Code Health: Encapsulated complex conditionals, flattened structure
+ * v1.6.3.11-v5 - FIX Issue #15: Check state readiness before using state
  */
 async function handleKeyboardShortcut(event) {
   if (!contentScriptInitialized) {
     _handleShortcutDuringInit(event);
     return;
+  }
+
+  // v1.6.3.11-v5 - FIX Issue #15: Log if state not ready but still proceeding
+  if (!_isStateReadyForFeatures()) {
+    _logUninitializedStateAccess('keyboard', 'handleKeyboardShortcut');
   }
 
   if (isInputField(event.target)) {
@@ -5968,61 +6558,194 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 }
 
 /**
- * v1.6.0 Phase 2.4 - Extracted helper for background persistence
- * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
- * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
- *   - Background generates globally-ordered sequence IDs
- *   - Prevents out-of-order IDs from multiple tabs creating simultaneously
- * v1.6.3.11-v3 - FIX Issue #15: Enhanced logging for originTabId sent with message
+ * Build message data for CREATE_QUICK_TAB operation
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce persistQuickTabToBackground complexity
+ * @private
+ * @param {Object} quickTabData - Quick Tab data
+ * @param {string} saveId - Save tracking ID
+ * @param {number|null} originTabId - Origin tab ID
+ * @returns {Object} Message data
  */
-async function persistQuickTabToBackground(quickTabData, saveId) {
-  // v1.6.3.11 - FIX Issue #31: Let background assign sequence ID for global ordering
-  // Note: Background will generate globally-ordered sequence ID on receipt
-
-  // v1.6.3.11-v3 - FIX Issue #15: Log originTabId being sent for ownership validation tracking
-  const originTabId = quickTabData.originTabId || quickTabsManager?.currentTabId || null;
-
-  console.log('[Content] Sending CREATE_QUICK_TAB with originTabId:', {
-    quickTabId: quickTabData.id,
+function _buildCreateQuickTabMessage(quickTabData, saveId, originTabId) {
+  return {
+    action: 'CREATE_QUICK_TAB',
+    ...quickTabData,
     originTabId,
-    hasExplicitOriginTabId: quickTabData.originTabId !== undefined,
-    fallbackToCurrentTabId: quickTabData.originTabId === undefined && originTabId !== null,
+    saveId,
+    operationType: OPERATION_TYPE.CREATE
+  };
+}
+
+/**
+ * Log successful CREATE_QUICK_TAB response
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _logCreateQuickTabSuccess(response, originTabId, quickTabId, attempt) {
+  console.log('[Content] CREATE_QUICK_TAB response received:', {
+    success: response.success,
+    returnedOriginTabId: response.originTabId,
+    sequenceId: response.sequenceId,
+    validationMatch: response.originTabId === originTabId,
+    attempt
+  });
+
+  if (response.originTabId !== undefined && response.originTabId !== originTabId) {
+    console.warn('[Content] OWNERSHIP_VALIDATION: Background assigned different originTabId', {
+      sentOriginTabId: originTabId,
+      assignedOriginTabId: response.originTabId,
+      quickTabId
+    });
+  }
+}
+
+/**
+ * Log retry attempt for handler operation
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _logHandlerRetryAttempt(operation, quickTabId, attempt, delayMs, errorInfo) {
+  console.log('[Content] HANDLER_RETRY_ATTEMPT:', {
+    operation,
+    quickTabId,
+    attempt: attempt + 1,
+    maxRetries: HANDLER_RETRY_CONFIG.maxRetries,
+    delayMs,
+    ...errorInfo
+  });
+}
+
+/**
+ * Perform a single attempt to persist Quick Tab to background
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity (cc=9→4)
+ * @private
+ */
+async function _attemptPersistQuickTab(messageData, context, originTabId, attempt) {
+  const response = await sendMessageToBackground(messageData);
+  const result = _processHandlerResponse(response, 'CREATE_QUICK_TAB', context);
+
+  if (result.success) {
+    _logCreateQuickTabSuccess(response, originTabId, context.quickTabId, attempt);
+    return { success: true, response };
+  }
+
+  // Handler returned error
+  if (!result.shouldRetry || attempt >= HANDLER_RETRY_CONFIG.maxRetries) {
+    _showHandlerErrorNotification('CREATE_QUICK_TAB', response);
+    const errorMsg = response?.error?.message || response?.errorMessage || 'Handler returned error';
+    return { success: false, shouldRetry: false, error: new Error(errorMsg) };
+  }
+
+  // Transient error - need retry
+  const delayMs = _calculateHandlerRetryDelay(attempt);
+  _logHandlerRetryAttempt('CREATE_QUICK_TAB', context.quickTabId, attempt, delayMs, {
+    errorType: response?.errorType
+  });
+  
+  return { success: false, shouldRetry: true, delayMs };
+}
+
+/**
+ * Handle error during persist attempt - determine retry behavior
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handlePersistError(err, attempt, quickTabId) {
+  if (attempt >= HANDLER_RETRY_CONFIG.maxRetries) {
+    return { shouldRetry: false, error: err };
+  }
+  
+  const delayMs = _calculateHandlerRetryDelay(attempt);
+  _logHandlerRetryAttempt('CREATE_QUICK_TAB', quickTabId, attempt, delayMs, {
+    error: err.message
+  });
+  
+  return { shouldRetry: true, delayMs };
+}
+
+/**
+ * Execute single persist attempt with error handling
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @returns {Object} Result with {done, response, error, delayMs}
+ */
+async function _executePersistAttempt(messageData, context, originTabId, attempt) {
+  try {
+    const result = await _attemptPersistQuickTab(messageData, context, originTabId, attempt);
+    
+    if (result.success) return { done: true, response: result.response };
+    if (!result.shouldRetry) return { done: true, error: result.error };
+    
+    return { done: false, delayMs: result.delayMs };
+  } catch (err) {
+    const errorResult = _handlePersistError(err, attempt, context.quickTabId);
+    if (!errorResult.shouldRetry) return { done: true, error: err };
+    return { done: false, delayMs: errorResult.delayMs, lastError: err };
+  }
+}
+
+/**
+ * Log CREATE_QUICK_TAB request initialization
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _logCreateQuickTabInit(quickTabId, originTabId, hasExplicitOriginTabId) {
+  console.log('[Content] Sending CREATE_QUICK_TAB with originTabId:', {
+    quickTabId,
+    originTabId,
+    hasExplicitOriginTabId,
+    fallbackToCurrentTabId: !hasExplicitOriginTabId && originTabId !== null,
     timestamp: Date.now(),
     note: 'Background will validate ownership and assign global sequenceId'
   });
+}
 
-  // v1.6.3.11-v3 - FIX Issue #15: Ensure originTabId is included in message
-  const messageData = {
-    action: 'CREATE_QUICK_TAB',
-    ...quickTabData,
-    originTabId, // Explicitly include for ownership validation
-    saveId,
-    // v1.6.3.11 - FIX Issue #31: No client sequenceId - background assigns it
-    operationType: OPERATION_TYPE.CREATE
-  };
+/**
+ * Execute retry loop for persist operation
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity (cc=11→4)
+ * @private
+ * @returns {Object} {response} on success, throws on failure
+ */
+async function _executeRetryLoop(messageData, context, originTabId) {
+  let lastError = null;
 
-  const response = await sendMessageToBackground(messageData);
-
-  // v1.6.3.11-v3 - FIX Issue #15: Log validation result from background
-  if (response) {
-    console.log('[Content] CREATE_QUICK_TAB response received:', {
-      success: response.success,
-      returnedOriginTabId: response.originTabId,
-      sequenceId: response.sequenceId,
-      validationMatch: response.originTabId === originTabId
-    });
-
-    // Log warning if originTabId was changed by background validation
-    if (response.originTabId !== undefined && response.originTabId !== originTabId) {
-      console.warn('[Content] OWNERSHIP_VALIDATION: Background assigned different originTabId', {
-        sentOriginTabId: originTabId,
-        assignedOriginTabId: response.originTabId,
-        quickTabId: quickTabData.id
-      });
-    }
+  for (let attempt = 0; attempt <= HANDLER_RETRY_CONFIG.maxRetries; attempt++) {
+    const result = await _executePersistAttempt(messageData, context, originTabId, attempt);
+    
+    if (result.done && result.response) return result.response;
+    if (result.done && result.error) throw result.error;
+    if (result.lastError) lastError = result.lastError;
+    
+    await new Promise(resolve => setTimeout(resolve, result.delayMs));
   }
 
-  return response;
+  console.error('[Content] HANDLER_RESPONSE_ERROR: All retries exhausted for CREATE_QUICK_TAB', {
+    quickTabId: context.quickTabId,
+    originTabId,
+    lastError: lastError?.message
+  });
+
+  throw lastError || new Error('Failed to persist Quick Tab after retries');
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for background persistence
+ * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
+ * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
+ * v1.6.3.11-v3 - FIX Issue #15: Enhanced logging for originTabId sent with message
+ * v1.6.3.11-v5 - FIX Issue #5: Add handler response checking with retry logic
+ * v1.6.3.11-v5 - FIX Code Health: Refactored to extract helpers (cc=11→3)
+ */
+async function persistQuickTabToBackground(quickTabData, saveId) {
+  const originTabId = quickTabData.originTabId || quickTabsManager?.currentTabId || null;
+  const hasExplicitOriginTabId = quickTabData.originTabId !== undefined;
+  
+  _logCreateQuickTabInit(quickTabData.id, originTabId, hasExplicitOriginTabId);
+
+  const messageData = _buildCreateQuickTabMessage(quickTabData, saveId, originTabId);
+  const context = { quickTabId: quickTabData.id, originTabId, operation: 'CREATE_QUICK_TAB' };
+  
+  return _executeRetryLoop(messageData, context, originTabId);
 }
 
 /**
@@ -6180,16 +6903,11 @@ async function handleOpenInNewTab(url) {
 /**
  * Show notification to user
  * v1.5.9.0 - Now delegates to notification manager
+ * v1.6.3.11-v5 - FIX Issue #6: Use verification wrapper for delivery checking
  */
 function showNotification(message, type = 'info') {
-  debug('Notification:', message, type);
-
-  // Delegate to notification manager
-  if (notificationManager) {
-    notificationManager.showNotification(message, type);
-  } else {
-    console.warn('[Content] Notification manager not initialized, skipping notification');
-  }
+  // v1.6.3.11-v5 - FIX Issue #6: Use verification wrapper
+  _showNotificationWithVerification(message, type);
 }
 
 /**
@@ -8473,6 +9191,53 @@ function _executeQuickTabCommand(command, quickTabId, source) {
 }
 
 const TYPE_HANDLERS = {
+  // v1.6.3.11-v6 - FIX Issue #11: Handle storage state sync from background re-broadcast
+  STORAGE_STATE_SYNC: (message, sendResponse) => {
+    const { state, context } = message;
+    const startTime = Date.now();
+
+    console.log('[Content][STORAGE_SYNC] STORAGE_STATE_SYNC received from background:', {
+      tabCount: state?.tabs?.length ?? 0,
+      timestamp: state?.timestamp,
+      source: context?.source,
+      addedCount: context?.addedIds?.length ?? 0,
+      removedCount: context?.removedIds?.length ?? 0
+    });
+
+    // Trigger hydration with the new state
+    if (quickTabsManager?.hydrateFromStorage) {
+      quickTabsManager
+        .hydrateFromStorage()
+        .then(() => {
+          const duration = Date.now() - startTime;
+          console.log('[Content][STORAGE_SYNC] Hydration complete:', {
+            durationMs: duration,
+            tabCount: state?.tabs?.length ?? 0
+          });
+        })
+        .catch(err => {
+          console.warn('[Content][STORAGE_SYNC] Hydration failed:', err.message);
+        });
+    }
+
+    // Emit event for any listeners
+    if (typeof eventBus !== 'undefined' && eventBus.emit) {
+      eventBus.emit('storage:synced', {
+        tabs: state?.tabs || [],
+        context,
+        timestamp: startTime
+      });
+    }
+
+    sendResponse({
+      success: true,
+      received: true,
+      tabCount: state?.tabs?.length ?? 0,
+      timestamp: Date.now()
+    });
+    return true;
+  },
+
   // v1.6.3.5-v3 - FIX Architecture Phase 3: Handle EXECUTE_COMMAND from background
   // This enables Manager sidebar to control Quick Tabs in this tab remotely
   EXECUTE_COMMAND: (message, sendResponse) => {
@@ -8498,14 +9263,85 @@ const TYPE_HANDLERS = {
   },
 
   // v1.6.3.5-v3 - FIX Architecture Phase 1: Handle state update notifications
+  // v1.6.3.12 - FIX Issue #9: Add message ordering support
   QUICK_TAB_STATE_UPDATED: (message, sendResponse) => {
-    console.log('[Content] QUICK_TAB_STATE_UPDATED received:', {
-      quickTabId: message.quickTabId,
-      changes: message.changes
+    const { operationSequence, quickTabId, changes, messageId } = message;
+    
+    console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+      action: 'received',
+      messageId,
+      operationSequence: operationSequence ?? 'none',
+      highestProcessed: _highestProcessedSequence,
+      quickTabId,
+      changeType: Object.keys(changes || {})[0] || 'unknown',
+      timestamp: Date.now()
     });
+    
+    // v1.6.3.12 - FIX Issue #9: Check message ordering
+    const orderCheck = _shouldProcessMessageBySequence(operationSequence);
+    
+    if (!orderCheck.shouldProcess && orderCheck.reason === 'out-of-order') {
+      // Buffer for later processing
+      _bufferMessageForOrdering(operationSequence, message);
+      sendResponse({ received: true, buffered: true, operationSequence });
+      return true;
+    }
+    
+    if (!orderCheck.shouldProcess) {
+      // Already processed newer - discard
+      sendResponse({ received: true, discarded: true, reason: orderCheck.reason });
+      return true;
+    }
+    
+    // Process the message
+    console.log('[Content] QUICK_TAB_STATE_UPDATED processing:', {
+      quickTabId,
+      changes,
+      operationSequence
+    });
+    
     // Content script doesn't need to do anything - it manages its own state
     // This handler is mainly for logging and potential future use
-    sendResponse({ received: true });
+    
+    // v1.6.3.12 - FIX Issue #9: Mark sequence as processed and drain buffer
+    if (operationSequence !== undefined && operationSequence !== null) {
+      _highestProcessedSequence = operationSequence;
+      
+      // Async processing of buffered messages
+      _processBufferedMessages((bufferedMsg) => {
+        console.log('[Content] Processing buffered QUICK_TAB_STATE_UPDATED:', {
+          quickTabId: bufferedMsg.quickTabId,
+          operationSequence: bufferedMsg.operationSequence
+        });
+        // Process buffered state update (logging only for now)
+        return Promise.resolve();
+      }).catch(err => {
+        console.warn('[Content] Error processing buffered messages:', err.message);
+      });
+    }
+    
+    sendResponse({ received: true, processed: true, operationSequence });
+    return true;
+  },
+  
+  // v1.6.3.12 - FIX Issue #10: Handle PORT_HEARTBEAT_PING from background
+  PORT_HEARTBEAT_PING: (message, sendResponse) => {
+    const { heartbeatId, timestamp } = message;
+    const latencyMs = Date.now() - timestamp;
+    
+    console.log('[Content] PORT_HEARTBEAT_PING received:', {
+      heartbeatId,
+      latencyMs,
+      timestamp: Date.now()
+    });
+    
+    // Respond to heartbeat
+    sendResponse({
+      type: 'PORT_HEARTBEAT_PONG',
+      heartbeatId,
+      receivedAt: Date.now(),
+      latencyMs
+    });
     return true;
   }
 };
@@ -8660,17 +9496,33 @@ function _dispatchMessage(message, _sender, sendResponse) {
     return true;
   }
 
+  // v1.6.4.17 - FIX Issue L2: Log message received for handler tracing
+  const handlerId = logMessageReceived('background', message.action || message.type, {
+    hasData: !!message.data,
+    quickTabId: message.quickTabId
+  });
+
   // Check action-based handlers first
   if (message.action && ACTION_HANDLERS[message.action]) {
     console.log('[Content] Dispatching to ACTION_HANDLERS:', message.action);
-    return ACTION_HANDLERS[message.action](message, sendResponse);
+    // v1.6.4.17 - FIX Issue L2: Log handler invocation
+    logHandlerInvoked(handlerId, `ACTION_HANDLERS.${message.action}`);
+    const result = ACTION_HANDLERS[message.action](message, sendResponse);
+    // Note: logHandlerComplete will be called asynchronously by the handler
+    return result;
   }
 
   // Check type-based handlers (test bridge)
   if (message.type && TYPE_HANDLERS[message.type]) {
     console.log('[Content] Dispatching to TYPE_HANDLERS:', message.type);
-    return TYPE_HANDLERS[message.type](message, sendResponse);
+    // v1.6.4.17 - FIX Issue L2: Log handler invocation
+    logHandlerInvoked(handlerId, `TYPE_HANDLERS.${message.type}`);
+    const result = TYPE_HANDLERS[message.type](message, sendResponse);
+    return result;
   }
+
+  // v1.6.4.17 - FIX Issue L2: Log no handler found
+  logHandlerComplete(handlerId, { error: 'No handler found' }, false);
 
   // v1.6.3.5-v10 - FIX Issue #3: Warn about unknown messages with available handlers
   console.warn('[Content] ⚠️ Unknown message - no handler found:', {
@@ -8704,11 +9556,14 @@ const STORAGE_CHANGE_DEBOUNCE_MS = 100;
  * Handle storage changes to sync state across tabs
  * v1.6.3.11-v3 - FIX Issue #1: React to storage updates for cross-tab sync
  * v1.6.3.11-v3 - FIX Issue #6: Ensure <500ms propagation
+ * v1.6.3.11-v6 - FIX Issue #3: Enhanced logging with [Content][STORAGE_SYNC] prefix
  *
  * @param {Object} changes - Storage changes object
  * @param {string} areaName - Storage area that changed ('local', 'sync', 'session')
  */
 function _handleStorageChange(changes, areaName) {
+  const startTime = Date.now();
+
   // Only handle local storage changes (Quick Tab state)
   if (areaName !== 'local') {
     return;
@@ -8723,12 +9578,15 @@ function _handleStorageChange(changes, areaName) {
   const newValue = stateChange.newValue;
   const oldValue = stateChange.oldValue;
 
-  console.log('[STORAGE_SYNC] Storage change detected:', {
+  // v1.6.3.11-v6 - FIX Issue #3: Enhanced logging with timestamps
+  console.log('[Content][STORAGE_SYNC] Storage change detected:', {
     hasNewValue: !!newValue,
     hasOldValue: !!oldValue,
     newTabCount: newValue?.tabs?.length ?? 0,
     oldTabCount: oldValue?.tabs?.length ?? 0,
-    timestamp: Date.now()
+    saveId: newValue?.saveId,
+    writeSourceId: newValue?.writeSourceId?.substring(0, 16),
+    timestamp: startTime
   });
 
   // v1.6.3.11-v3 - FIX Issue #70: Debounce rapid storage changes
@@ -8738,22 +9596,37 @@ function _handleStorageChange(changes, areaName) {
 
   storageChangeDebounceTimer = setTimeout(() => {
     storageChangeDebounceTimer = null;
-    _processStorageChange(newValue, oldValue);
+    _processStorageChange(newValue, oldValue, startTime);
   }, STORAGE_CHANGE_DEBOUNCE_MS);
 }
 
 /**
  * Trigger hydration from storage change
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _processStorageChange complexity
+ * v1.6.3.11-v6 - FIX Issue #3: Enhanced logging with [Content][STORAGE_SYNC] prefix
  * @private
  */
 function _triggerHydrationFromStorageChange() {
-  if (!quickTabsManager?.hydrateFromStorage) return;
+  if (!quickTabsManager?.hydrateFromStorage) {
+    console.log('[Content][STORAGE_SYNC] Hydration skipped: manager not available');
+    return;
+  }
 
-  console.log('[CROSS_TAB_SYNC] Triggering hydration from storage change');
-  quickTabsManager.hydrateFromStorage().catch(err => {
-    console.warn('[CROSS_TAB_SYNC] Hydration failed:', err.message);
-  });
+  const startTime = Date.now();
+  console.log('[Content][STORAGE_SYNC] Triggering hydration from storage change');
+
+  quickTabsManager
+    .hydrateFromStorage()
+    .then(() => {
+      const duration = Date.now() - startTime;
+      console.log('[Content][STORAGE_SYNC] Hydration completed:', {
+        durationMs: duration,
+        timestamp: Date.now()
+      });
+    })
+    .catch(err => {
+      console.warn('[Content][STORAGE_SYNC] Hydration failed:', err.message);
+    });
 }
 
 /**
@@ -8777,32 +9650,69 @@ function _emitStorageChangeEvent(newTabs, oldTabs) {
  * Process storage change after debounce
  * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
  * v1.6.3.11-v4 - FIX Code Health: Extracted helpers to reduce complexity (cc=11→4)
+ * v1.6.3.11-v6 - FIX Issue #3: Added timing tracking for <500ms validation
  * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @param {number} detectionTime - Timestamp when change was detected
  */
-function _processStorageChange(newValue, oldValue) {
+function _processStorageChange(newValue, oldValue, detectionTime) {
+  const processStartTime = Date.now();
+  const debounceDelay = processStartTime - detectionTime;
+
   if (!newValue) {
-    console.log('[STORAGE_SYNC] State cleared from storage');
+    console.log('[Content][STORAGE_SYNC] State cleared from storage');
     return;
   }
 
   const newTabs = newValue.tabs || [];
   const oldTabs = oldValue?.tabs || [];
 
-  console.log('[CROSS_TAB_SYNC] Processing state change:', {
+  console.log('[Content][STORAGE_SYNC] Processing state change:', {
     newTabCount: newTabs.length,
     oldTabCount: oldTabs.length,
     timestamp: newValue.timestamp,
-    writeSourceId: newValue.writeSourceId?.substring(0, 20)
+    writeSourceId: newValue.writeSourceId?.substring(0, 16),
+    debounceDelayMs: debounceDelay,
+    processStartTime
   });
 
   _triggerHydrationFromStorageChange();
   _emitStorageChangeEvent(newTabs, oldTabs);
+
+  const totalDuration = Date.now() - detectionTime;
+  console.log('[Content][STORAGE_SYNC] Processing complete:', {
+    totalDurationMs: totalDuration,
+    withinTarget: totalDuration < 500,
+    timestamp: Date.now()
+  });
 }
 
 // Register storage.onChanged listener (once during module load)
+// v1.6.3.11-v6 - FIX Issue #3: Enhanced logging for storage listener registration
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
 if (typeof browser !== 'undefined' && browser.storage?.onChanged) {
+  logListenerRegistration('storage_onChanged', 'browser.storage.onChanged', {
+    key: 'quick_tabs_state_v2',
+    purpose: 'cross-tab-sync'
+  });
   browser.storage.onChanged.addListener(_handleStorageChange);
-  console.log('[STORAGE_SYNC] ✓ storage.onChanged listener registered');
+  logListenerRegistered('storage_onChanged', {
+    api: 'browser.storage.onChanged',
+    key: 'quick_tabs_state_v2'
+  });
+  console.log('[Content][STORAGE_SYNC] ✓ storage.onChanged listener registered:', {
+    api: 'browser.storage.onChanged',
+    key: 'quick_tabs_state_v2',
+    purpose: 'cross-tab-sync',
+    timestamp: Date.now()
+  });
+} else {
+  console.warn('[Content][STORAGE_SYNC] ⚠ storage.onChanged not available:', {
+    hasBrowser: typeof browser !== 'undefined',
+    hasStorage: typeof browser !== 'undefined' && !!browser.storage,
+    timestamp: Date.now()
+  });
 }
 
 // ==================== END STORAGE.ONCHANGED LISTENER ====================
@@ -8868,12 +9778,21 @@ function _recordHoverError(error) {
 
   hoverErrorCounter++;
 
-  console.warn('[ERROR_RECOVERY] Hover detection error recorded:', {
+  // v1.6.3.11-v5 - FIX Issue #7: Use correct logging prefix
+  // v1.6.4.17 - FIX Issue #13: Record error in telemetry system
+  recordError(ERROR_TYPES.HANDLER_FAILURE, error?.message || 'Hover detection error', {
+    errorCount: hoverErrorCounter,
+    threshold: HOVER_ERROR_THRESHOLD,
+    backoffMs: hoverBackoffDelay
+  });
+
+  console.warn('[Content] HOVER_ERROR_RECORDED:', {
     errorCount: hoverErrorCounter,
     threshold: HOVER_ERROR_THRESHOLD,
     windowMs: HOVER_ERROR_WINDOW_MS,
     currentBackoffMs: hoverBackoffDelay,
-    error: error?.message || 'Unknown error'
+    error: error?.message || 'Unknown error',
+    timestamp: now
   });
 
   // Check if threshold exceeded
@@ -8888,10 +9807,15 @@ function _recordHoverError(error) {
 /**
  * Reset error counter on successful detection
  * v1.6.3.11-v3 - FIX Issue #5
+ * v1.6.3.11-v5 - FIX Issue #7: Called on successful URL detection
  */
 function _resetHoverErrors() {
   if (hoverErrorCounter > 0) {
-    console.log('[ERROR_RECOVERY] Successful detection - resetting error counter');
+    console.log('[Content] HOVER_ERRORS_RESET: Successful detection - resetting error counter', {
+      previousCount: hoverErrorCounter,
+      previousBackoffMs: hoverBackoffDelay,
+      timestamp: Date.now()
+    });
   }
   hoverErrorCounter = 0;
   hoverBackoffDelay = 100; // Reset backoff
@@ -8901,21 +9825,34 @@ function _resetHoverErrors() {
 /**
  * Enter recovery mode when error threshold exceeded
  * v1.6.3.11-v3 - FIX Issue #5
+ * v1.6.3.11-v5 - FIX Issue #7: Send diagnostic message to background
+ * v1.6.4.17 - FIX Issue L4: Use error recovery tracking infrastructure
  * @private
  */
 function _enterRecoveryMode() {
   isInRecoveryMode = true;
 
-  console.error('[ERROR_RECOVERY] THRESHOLD_EXCEEDED: Entering recovery mode', {
+  // v1.6.4.17 - FIX Issue L4: Start tracking recovery attempt
+  const recoveryId = startRecoveryAttempt(null, ERROR_TYPES.HANDLER_FAILURE, {
+    errorCount: hoverErrorCounter,
+    threshold: HOVER_ERROR_THRESHOLD,
+    backoffMs: hoverBackoffDelay
+  });
+
+  // v1.6.3.11-v5 - FIX Issue #7: Use correct logging prefix
+  console.error('[Content] HOVER_THRESHOLD_EXCEEDED: Entering recovery mode', {
     errorCount: hoverErrorCounter,
     threshold: HOVER_ERROR_THRESHOLD,
     backoffMs: hoverBackoffDelay,
     timestamp: Date.now()
   });
 
+  // v1.6.3.11-v5 - FIX Issue #7: Send diagnostic message to background
+  _sendHoverDiagnosticToBackground();
+
   // Notify user via console (and toast if available)
   const message = 'Copy URL on Hover: Experiencing connection issues. Auto-recovering...';
-  console.warn(`[ERROR_RECOVERY] USER_NOTIFICATION: ${message}`);
+  console.warn(`[Content] HOVER_RECOVERY_NOTIFICATION: ${message}`);
 
   // Try to show notification to user
   // v1.6.3.11-v4 - FIX Code Review: Handle Promise from showToast (non-blocking)
@@ -8923,9 +9860,41 @@ function _enterRecoveryMode() {
 
   // Schedule recovery attempt
   setTimeout(() => {
-    console.log('[ERROR_RECOVERY] Attempting recovery after backoff');
+    // v1.6.4.17 - FIX Issue L4: Log recovery completion
+    completeRecovery(recoveryId, true, 'Backoff period completed');
+    console.log('[Content] HOVER_RECOVERY_ATTEMPT: Attempting recovery after backoff', {
+      backoffMs: hoverBackoffDelay,
+      timestamp: Date.now()
+    });
     isInRecoveryMode = false;
   }, hoverBackoffDelay);
+}
+
+/**
+ * Send hover diagnostic message to background
+ * v1.6.3.11-v5 - FIX Issue #7
+ * @private
+ */
+function _sendHoverDiagnosticToBackground() {
+  try {
+    browser.runtime.sendMessage({
+      action: 'HOVER_DIAGNOSTIC',
+      data: {
+        errorCount: hoverErrorCounter,
+        threshold: HOVER_ERROR_THRESHOLD,
+        windowMs: HOVER_ERROR_WINDOW_MS,
+        backoffMs: hoverBackoffDelay,
+        userAgent: navigator.userAgent,
+        url: window.location.href.substring(0, 100),
+        timestamp: Date.now()
+      }
+    }).catch(() => {
+      // Non-critical - just log locally
+      console.debug('[Content] HOVER_DIAGNOSTIC: Failed to send to background');
+    });
+  } catch (_e) {
+    // Non-critical diagnostic
+  }
 }
 
 /**
@@ -8960,6 +9929,238 @@ function _shouldSkipForRecovery() {
 }
 
 // ==================== END ERROR RECOVERY MECHANISM ====================
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #5: HANDLER RESPONSE ERROR CHECKING ====================
+// Check handler response success field and implement retry logic for transient failures
+
+/**
+ * Transient error types that should trigger retry
+ * v1.6.3.11-v5 - FIX Issue #5
+ */
+const TRANSIENT_ERROR_TYPES = ['TIMEOUT', 'NETWORK', 'VERSION_MISMATCH', 'TRANSIENT'];
+
+/**
+ * Handler retry configuration
+ * v1.6.3.11-v5 - FIX Issue #5
+ */
+const HANDLER_RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 500,
+  maxDelayMs: 4000
+};
+
+/**
+ * Check if an error is transient and should trigger retry
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {Object} response - Handler response
+ * @returns {boolean} True if error is transient
+ */
+function _isTransientHandlerError(response) {
+  if (!response || response.success !== false) return false;
+  
+  const errorType = response.errorType || response.error?.type || '';
+  const errorMessage = response.error?.message || response.errorMessage || '';
+  
+  // Check error type
+  if (TRANSIENT_ERROR_TYPES.includes(errorType.toUpperCase())) {
+    return true;
+  }
+  
+  // Check error message patterns
+  const transientPatterns = ['timeout', 'network', 'connection', 'temporary', 'retry'];
+  return transientPatterns.some(pattern => errorMessage.toLowerCase().includes(pattern));
+}
+
+/**
+ * Calculate retry delay with exponential backoff
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {number} attempt - Current attempt number (0-indexed)
+ * @returns {number} Delay in milliseconds
+ */
+function _calculateHandlerRetryDelay(attempt) {
+  const delay = HANDLER_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
+  return Math.min(delay, HANDLER_RETRY_CONFIG.maxDelayMs);
+}
+
+/**
+ * Log handler response error with full context
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {string} operation - Operation name (e.g., 'CREATE_QUICK_TAB')
+ * @param {Object} response - Handler response
+ * @param {Object} context - Additional context (quickTabId, etc.)
+ */
+function _logHandlerResponseError(operation, response, context = {}) {
+  console.error('[Content] HANDLER_RESPONSE_ERROR:', {
+    operation,
+    success: response?.success,
+    errorType: response?.errorType || response?.error?.type,
+    errorMessage: response?.error?.message || response?.errorMessage,
+    errorCode: response?.errorCode || response?.error?.code,
+    quickTabId: context.quickTabId,
+    originTabId: context.originTabId,
+    timestamp: Date.now(),
+    isTransient: _isTransientHandlerError(response)
+  });
+}
+
+/**
+ * Process handler response and handle errors
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @param {Object} response - Handler response
+ * @param {string} operation - Operation name
+ * @param {Object} context - Context for error logging
+ * @returns {{success: boolean, shouldRetry: boolean, response: Object}}
+ */
+function _processHandlerResponse(response, operation, context = {}) {
+  // No response indicates a send failure (different from handler error)
+  if (!response) {
+    console.warn('[Content] HANDLER_RESPONSE_ERROR: No response received', {
+      operation,
+      ...context,
+      timestamp: Date.now()
+    });
+    return { success: false, shouldRetry: true, response: null };
+  }
+  
+  // Success case
+  if (response.success !== false) {
+    return { success: true, shouldRetry: false, response };
+  }
+  
+  // Handler returned error
+  _logHandlerResponseError(operation, response, context);
+  
+  const shouldRetry = _isTransientHandlerError(response);
+  return { success: false, shouldRetry, response };
+}
+
+/**
+ * Show error notification to user for handler failures
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {string} operation - Operation that failed
+ * @param {Object} response - Handler response
+ */
+function _showHandlerErrorNotification(operation, response) {
+  const operationNames = {
+    CREATE_QUICK_TAB: 'create Quick Tab',
+    CLOSE_QUICK_TAB: 'close Quick Tab',
+    UPDATE_QUICK_TAB: 'update Quick Tab',
+    openTab: 'open tab'
+  };
+  
+  const friendlyName = operationNames[operation] || operation;
+  const errorMessage = response?.error?.message || response?.errorMessage || 'Unknown error';
+  
+  _showNotificationWithVerification(
+    `✗ Failed to ${friendlyName}: ${errorMessage.substring(0, 50)}`,
+    'error'
+  );
+}
+
+// ==================== END ISSUE #5 FIX ====================
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #6: NOTIFICATION DELIVERY VERIFICATION ====================
+// Verify toast notifications are delivered and retry on failure
+
+/**
+ * Notification delivery configuration
+ * v1.6.3.11-v5 - FIX Issue #6
+ */
+const NOTIFICATION_RETRY_DELAY_MS = 500;
+const NOTIFICATION_MAX_RETRIES = 2;
+
+/**
+ * Notification success tracking
+ * v1.6.3.11-v5 - FIX Issue #6
+ */
+let notificationSuccessCount = 0;
+let notificationFailureCount = 0;
+
+/**
+ * Show notification with delivery verification and retry
+ * v1.6.3.11-v5 - FIX Issue #6
+ * @param {string} message - Notification message
+ * @param {string} type - Notification type (info, success, warning, error)
+ * @param {number} retryCount - Current retry attempt (internal)
+ */
+function _showNotificationWithVerification(message, type = 'info', retryCount = 0) {
+  debug('Notification with verification:', message, type);
+  
+  if (!notificationManager) {
+    console.warn('[Content] NOTIFICATION_DELIVERY_FAILED: Manager not initialized', {
+      message: message.substring(0, 50),
+      type,
+      timestamp: Date.now()
+    });
+    notificationFailureCount++;
+    return;
+  }
+  
+  // Use showToast directly to get return value (showNotification doesn't return)
+  let result;
+  try {
+    // Check if we should use toast mode based on config
+    if (notificationManager.config?.notifDisplayMode === 'tooltip') {
+      // Tooltip mode - no verification available
+      notificationManager.showTooltip(message);
+      notificationSuccessCount++;
+      return;
+    }
+    
+    // Toast mode - get verification result
+    result = notificationManager.showToast(message, type);
+  } catch (err) {
+    result = { success: false, error: err.message };
+  }
+  
+  // Check delivery success
+  if (result?.success) {
+    notificationSuccessCount++;
+    
+    // Log success rate periodically (every 10 notifications)
+    if ((notificationSuccessCount + notificationFailureCount) % 10 === 0) {
+      console.log('[Content] NOTIFICATION_SUCCESS_RATE:', {
+        success: notificationSuccessCount,
+        failure: notificationFailureCount,
+        rate: `${((notificationSuccessCount / (notificationSuccessCount + notificationFailureCount)) * 100).toFixed(1)}%`
+      });
+    }
+    return;
+  }
+  
+  // Delivery failed
+  notificationFailureCount++;
+  console.warn('[Content] NOTIFICATION_DELIVERY_FAILED:', {
+    message: message.substring(0, 50),
+    type,
+    error: result?.error || 'Unknown error',
+    retryCount,
+    timestamp: Date.now()
+  });
+  
+  // Retry if under max retries
+  if (retryCount < NOTIFICATION_MAX_RETRIES) {
+    console.log('[Content] NOTIFICATION_RETRY:', {
+      message: message.substring(0, 50),
+      type,
+      retryCount: retryCount + 1,
+      delayMs: NOTIFICATION_RETRY_DELAY_MS
+    });
+    
+    setTimeout(() => {
+      _showNotificationWithVerification(message, type, retryCount + 1);
+    }, NOTIFICATION_RETRY_DELAY_MS);
+  } else {
+    // Max retries exceeded - fallback to console
+    console.warn(`[Content] NOTIFICATION_FALLBACK: ${type.toUpperCase()}: ${message}`);
+  }
+}
+
+// ==================== END ISSUE #6 FIX ====================
 
 // ==================== BEFOREUNLOAD CLEANUP HANDLER ====================
 // v1.6.3.4-v11 - FIX Issue #3: Cleanup resources on page navigation to prevent memory leaks

@@ -92,6 +92,35 @@ import {
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
+// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry and logging infrastructure
+import {
+  ERROR_TYPES,
+  recordError,
+  recordHandlerError,
+  recordTimeoutError,
+  recordStorageError,
+  startRecoveryAttempt,
+  recordRecoveryRetry,
+  completeRecovery
+} from '../src/utils/error-telemetry.js';
+import {
+  LOG_PREFIX,
+  logListenerRegistration,
+  logListenerRegistered,
+  logListenerRegistrationFailed,
+  logInitializationComplete,
+  logMessageReceived,
+  logHandlerInvoked,
+  logHandlerComplete,
+  logPortConnected,
+  logPortConnectionFailed,
+  logPortMessage,
+  logPortDisconnected,
+  logPortReconnectAttempt,
+  logStateReconciliation,
+  logSyncStateChanged,
+  logSyncDetectedByTab
+} from '../src/utils/logging-infrastructure.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
@@ -127,6 +156,35 @@ const MESSAGE_RETRY_BACKOFF_MS = 150;
 const CACHE_STALENESS_ALERT_MS = 30000; // Alert if cache diverges for >30 seconds
 // FIX Issue #1: Sliding-window debounce maximum wait time
 const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #16: RAPID STORAGE STORM TRACKING ====================
+// Track storage event frequency and adapt cache invalidation
+
+/**
+ * Threshold for detecting storage storm (events per second)
+ * v1.6.3.11-v5 - FIX Issue #16: If >5 events/second, consider it a storm
+ */
+const STORAGE_STORM_THRESHOLD_EPS = 5;
+
+/**
+ * Time window for measuring storage event frequency (milliseconds)
+ * v1.6.3.11-v5 - FIX Issue #16: Measure over 1 second windows
+ */
+const STORAGE_STORM_WINDOW_MS = 1000;
+
+/**
+ * Tighter cache staleness threshold during storms (milliseconds)
+ * v1.6.3.11-v5 - FIX Issue #16: During storms, check staleness more aggressively
+ */
+const CACHE_STALENESS_STORM_MS = 500;
+
+/**
+ * Adaptive render debounce during storms (milliseconds)
+ * v1.6.3.11-v5 - FIX Issue #16: Increase debounce during storms to let cache settle
+ */
+const RENDER_DEBOUNCE_STORM_MS = 200;
+
+// ==================== END ISSUE #16 CONSTANTS ====================
 
 // ==================== v1.6.3.10-v7 CONSTANTS ====================
 // FIX Bug #1: quickTabHostInfo memory leak prevention
@@ -184,6 +242,48 @@ const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 
 // v1.6.3.10-v2 - FIX Issue #8: Cache staleness tracking
 let lastCacheSyncFromStorage = 0; // Timestamp when cache was last synchronized with storage
 let cacheHydrationComplete = false; // Flag to track if initial hydration is done
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #16: CACHE DIRTY FLAG & STORM TRACKING ====================
+// Track cache invalidation events and storage storm detection
+
+/**
+ * Cache dirty flag - set when storage changes, cleared when render uses fresh storage
+ * v1.6.3.11-v5 - FIX Issue #16: Ensure render uses current storage state
+ */
+let isCacheDirty = false;
+
+/**
+ * Timestamp of last cache invalidation
+ * v1.6.3.11-v5 - FIX Issue #16: Track when cache was marked dirty
+ * Prefixed with _ as reserved for future cache invalidation analytics
+ */
+let _lastCacheInvalidationTime = 0;
+
+/**
+ * Storage event timestamps for frequency tracking
+ * v1.6.3.11-v5 - FIX Issue #16: Sliding window of recent storage events
+ */
+const storageEventTimestamps = [];
+
+/**
+ * Maximum storage event timestamps to track
+ * v1.6.3.11-v5 - FIX Issue #16: Keep last 20 events for frequency calculation
+ */
+const STORAGE_EVENT_TIMESTAMPS_MAX = 20;
+
+/**
+ * Current storage storm state
+ * v1.6.3.11-v5 - FIX Issue #16: Track if we're currently in a storm
+ */
+let isInStorageStorm = false;
+
+/**
+ * Last storage storm detection time
+ * v1.6.3.11-v5 - FIX Issue #16
+ */
+let lastStorageStormDetection = 0;
+
+// ==================== END ISSUE #16 STATE TRACKING ====================
 
 // UI Elements (cached for performance)
 let containersList;
@@ -438,6 +538,7 @@ function logPortStateTransition(fromState, toState, reason, context = {}) {
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
  * v1.6.3.10-v1 - FIX Issue #2: Port state machine tracking
  * v1.6.3.10-v2 - FIX Issue #4: Flush pending action queue on successful reconnect
+ * v1.6.4.17 - FIX Issue L5: Enhanced port lifecycle logging via infrastructure
  */
 function connectToBackground() {
   const previousState = portState;
@@ -466,6 +567,11 @@ function connectToBackground() {
       name: 'quicktabs-sidebar'
     });
 
+    // v1.6.4.17 - FIX Issue L5: Use logging infrastructure for port connection
+    logPortConnected('quicktabs-sidebar', 'outbound', {
+      previousState,
+      circuitBreakerState
+    });
     logPortLifecycle('CONNECT', { portName: backgroundPort.name });
 
     // Handle messages from background
@@ -474,6 +580,10 @@ function connectToBackground() {
     // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
+      // v1.6.4.17 - FIX Issue L5: Use logging infrastructure for disconnect
+      logPortDisconnected('quicktabs-sidebar', error ? 'error' : 'normal', {
+        error: error?.message
+      });
       logPortLifecycle('DISCONNECT', {
         error: error?.message,
         recoveryAction: 'scheduling reconnect'
@@ -518,6 +628,16 @@ function connectToBackground() {
     console.log('[Manager] v1.6.3.10-v2 Port connection established with action queue flush');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
+    // v1.6.4.17 - FIX Issue L5, #13: Log connection failure and record in telemetry
+    logPortConnectionFailed('quicktabs-sidebar', err, {
+      previousState,
+      circuitBreakerState
+    });
+    recordError(ERROR_TYPES.PORT_TIMEOUT, err.message, {
+      operation: 'connectToBackground',
+      previousState,
+      circuitBreakerState
+    });
     logPortLifecycle('CONNECT_ERROR', {
       error: err.message,
       recoveryAction: 'scheduling reconnect'
@@ -534,9 +654,13 @@ function connectToBackground() {
  * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
  * v1.6.3.10-v1 - FIX Issue #2: Zombie detection bypasses circuit breaker delay
  * v1.6.3.10-v2 - FIX Issue #4: Sliding-window failure tracking
+ * v1.6.4.17 - FIX Issue L5: Enhanced reconnection logging
  * @param {string} [failureReason=FAILURE_REASON.TRANSIENT] - Reason for failure
  */
 function scheduleReconnect(failureReason = FAILURE_REASON.TRANSIENT) {
+  // v1.6.4.17 - FIX Issue L5: Log reconnect attempt with infrastructure
+  logPortReconnectAttempt('quicktabs-sidebar', reconnectAttempts + 1, reconnectBackoffMs);
+
   // v1.6.3.10-v2 - FIX Issue #4: Zombie port doesn't count toward failures
   if (failureReason === FAILURE_REASON.ZOMBIE_PORT) {
     logPortLifecycle('RECONNECT_ZOMBIE_BYPASS', {
@@ -1618,6 +1742,7 @@ function _invalidateBrowserTabInfoCache(oldOriginTabId, newOriginTabId) {
 /**
  * Update quickTabHostInfo to reflect new owner after adoption
  * v1.6.4.14 - Extracted to reduce handleAdoptionCompletion complexity
+ * v1.6.3.11-v5 - FIX Issue #12: Add storage verification after update
  * @private
  */
 function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContainerId) {
@@ -1631,7 +1756,9 @@ function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContai
     containerId: newContainerId || null,
     lastUpdate: Date.now(),
     lastOperation: 'adoption',
-    confirmed: true
+    confirmed: true,
+    // v1.6.3.11-v5 - FIX Issue #12: Track pending verification
+    storageVerified: false
   });
   console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
     adoptedQuickTabId,
@@ -1639,7 +1766,268 @@ function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContai
     newHostTabId: newOriginTabId,
     containerId: newContainerId
   });
+
+  // v1.6.3.11-v5 - FIX Issue #12: Schedule storage verification
+  _verifyHostInfoAgainstStorage(adoptedQuickTabId, newOriginTabId);
 }
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #12: HOST INFO STORAGE VERIFICATION ====================
+// Verify quickTabHostInfo Map matches storage after adoption to prevent divergence
+
+/**
+ * Maximum retries for storage verification
+ * v1.6.3.11-v5 - FIX Issue #12: Retry configuration
+ */
+const HOSTINFO_VERIFY_MAX_RETRIES = 3;
+
+/**
+ * Delay between retries for storage verification (exponential backoff base)
+ * v1.6.3.11-v5 - FIX Issue #12: Start at 100ms, doubles each retry
+ */
+const HOSTINFO_VERIFY_RETRY_BASE_MS = 100;
+
+/**
+ * Verify quickTabHostInfo Map matches storage after adoption
+ * v1.6.3.11-v5 - FIX Issue #12: Prevent divergence between Map and storage
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to verify
+ * @param {number} expectedOriginTabId - Expected origin tab ID in storage
+ * @param {number} [retryCount=0] - Current retry attempt
+ */
+async function _verifyHostInfoAgainstStorage(quickTabId, expectedOriginTabId, retryCount = 0) {
+  console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE:', {
+    quickTabId,
+    expectedOriginTabId,
+    retryCount,
+    timestamp: Date.now()
+  });
+
+  try {
+    const verifyResult = await _performHostInfoVerification(quickTabId, expectedOriginTabId);
+    _handleHostInfoVerifyResult(verifyResult, quickTabId, expectedOriginTabId, retryCount);
+  } catch (err) {
+    console.error('[Sidebar] HOSTINFO_STORAGE_COMPARE: Verification failed:', {
+      quickTabId,
+      error: err.message,
+      retryCount
+    });
+  }
+}
+
+/**
+ * Perform host info verification against storage
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+async function _performHostInfoVerification(quickTabId, expectedOriginTabId) {
+  const result = await browser.storage.local.get(STATE_KEY);
+  const state = result?.[STATE_KEY];
+  const storedTab = state?.tabs?.find(t => t.id === quickTabId);
+
+  if (!storedTab) {
+    console.warn('[Sidebar] HOSTINFO_STORAGE_COMPARE: Quick Tab not found in storage:', {
+      quickTabId,
+      tabCount: state?.tabs?.length ?? 0
+    });
+    return { found: false };
+  }
+
+  const storageOriginTabId = storedTab.originTabId;
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const isConsistent = storageOriginTabId === expectedOriginTabId;
+
+  return {
+    found: true,
+    isConsistent,
+    storageOriginTabId,
+    hostInfo,
+    mapOriginTabId: hostInfo?.hostTabId
+  };
+}
+
+/**
+ * Handle host info verification result
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleHostInfoVerifyResult(verifyResult, quickTabId, expectedOriginTabId, retryCount) {
+  if (!verifyResult.found) return;
+
+  const { isConsistent, storageOriginTabId, hostInfo, mapOriginTabId } = verifyResult;
+
+  if (isConsistent) {
+    _markHostInfoAsVerified(quickTabId, hostInfo, storageOriginTabId, mapOriginTabId, retryCount);
+    return;
+  }
+
+  _handleHostInfoDivergence(quickTabId, storageOriginTabId, mapOriginTabId, expectedOriginTabId, retryCount);
+}
+
+/**
+ * Mark host info as verified
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _markHostInfoAsVerified(quickTabId, hostInfo, storageOriginTabId, mapOriginTabId, retryCount) {
+  if (hostInfo) {
+    hostInfo.storageVerified = true;
+    quickTabHostInfo.set(quickTabId, hostInfo);
+  }
+  console.log('[Sidebar] HOSTINFO_SYNC_COMPLETE:', {
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId,
+    consistent: true,
+    retries: retryCount
+  });
+}
+
+/**
+ * Handle host info divergence from storage
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleHostInfoDivergence(quickTabId, storageOriginTabId, mapOriginTabId, expectedOriginTabId, retryCount) {
+  console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED:', {
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId,
+    expectedOriginTabId,
+    retryCount,
+    maxRetries: HOSTINFO_VERIFY_MAX_RETRIES
+  });
+
+  if (retryCount < HOSTINFO_VERIFY_MAX_RETRIES) {
+    _scheduleHostInfoRetry(quickTabId, expectedOriginTabId, retryCount);
+    return;
+  }
+
+  _reconcileHostInfoFromStorage(quickTabId, storageOriginTabId, mapOriginTabId);
+}
+
+/**
+ * Schedule retry for host info verification
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _scheduleHostInfoRetry(quickTabId, expectedOriginTabId, retryCount) {
+  const delayMs = HOSTINFO_VERIFY_RETRY_BASE_MS * Math.pow(2, retryCount);
+  console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: Scheduling retry:', {
+    quickTabId,
+    delayMs,
+    nextRetry: retryCount + 1
+  });
+  setTimeout(() => {
+    _verifyHostInfoAgainstStorage(quickTabId, expectedOriginTabId, retryCount + 1);
+  }, delayMs);
+}
+
+/**
+ * Reconcile host info Map from storage (storage is authoritative)
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _reconcileHostInfoFromStorage(quickTabId, storageOriginTabId, mapOriginTabId) {
+  console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED: Max retries exceeded:', {
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId
+  });
+
+  if (!storageOriginTabId) return;
+
+  const updatedHostInfo = quickTabHostInfo.get(quickTabId) || {};
+  quickTabHostInfo.set(quickTabId, {
+    ...updatedHostInfo,
+    hostTabId: storageOriginTabId,
+    lastUpdate: Date.now(),
+    lastOperation: 'storage-reconcile',
+    storageVerified: true
+  });
+  console.log('[Sidebar] HOSTINFO_SYNC_COMPLETE: Map updated to match storage:', {
+    quickTabId,
+    newHostTabId: storageOriginTabId
+  });
+}
+
+/**
+ * Check if host info is storage-verified before allowing critical operations
+ * v1.6.3.11-v5 - FIX Issue #12: Gate operations on verification status
+ * @param {string} quickTabId - Quick Tab ID to check
+ * @returns {Promise<boolean>} True if verified or verification passed
+ */
+async function _ensureHostInfoStorageConsistency(quickTabId) {
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+
+  // If already verified, allow operation
+  if (hostInfo?.storageVerified) {
+    return true;
+  }
+
+  // If no host info, allow operation (will use storage directly)
+  if (!hostInfo) {
+    console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: No host info, operation will use storage directly:', {
+      quickTabId
+    });
+    return true;
+  }
+
+  // Trigger verification and wait for result
+  console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: Triggering verification before operation:', {
+    quickTabId,
+    currentHostTabId: hostInfo.hostTabId
+  });
+
+  // Read storage to check consistency
+  try {
+    const result = await browser.storage.local.get(STATE_KEY);
+    const state = result?.[STATE_KEY];
+    const storedTab = state?.tabs?.find(t => t.id === quickTabId);
+
+    if (!storedTab) {
+      console.warn('[Sidebar] HOSTINFO_STORAGE_COMPARE: Quick Tab not in storage:', { quickTabId });
+      return true; // Allow operation, it will fail gracefully
+    }
+
+    const storageOriginTabId = storedTab.originTabId;
+    const isConsistent = storageOriginTabId === hostInfo.hostTabId;
+
+    if (!isConsistent) {
+      console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED: Updating Map before operation:', {
+        quickTabId,
+        mapHostTabId: hostInfo.hostTabId,
+        storageOriginTabId
+      });
+
+      // Update Map to match storage
+      quickTabHostInfo.set(quickTabId, {
+        ...hostInfo,
+        hostTabId: storageOriginTabId,
+        lastUpdate: Date.now(),
+        storageVerified: true
+      });
+    } else {
+      // Mark as verified
+      hostInfo.storageVerified = true;
+      quickTabHostInfo.set(quickTabId, hostInfo);
+    }
+
+    console.log('[Sidebar] HOSTINFO_SYNC_COMPLETE: Pre-operation verification passed:', {
+      quickTabId,
+      finalHostTabId: isConsistent ? hostInfo.hostTabId : storageOriginTabId
+    });
+    return true;
+  } catch (err) {
+    console.error('[Sidebar] HOSTINFO_STORAGE_COMPARE: Pre-operation verification failed:', {
+      quickTabId,
+      error: err.message
+    });
+    // Allow operation to proceed, it will use whatever host info is available
+    return true;
+  }
+}
+
+// ==================== END HOST INFO STORAGE VERIFICATION ====================
 
 /**
  * Perform DOM update for adoption (surgical or full render)
@@ -3306,6 +3694,9 @@ function _updateInMemoryCache(tabs) {
   // v1.6.3.10-v2 - FIX Issue #8: Always update cache sync timestamp
   lastCacheSyncFromStorage = Date.now();
 
+  // v1.6.3.11-v5 - FIX Issue #16: Clear dirty flag when cache is refreshed from storage
+  isCacheDirty = false;
+
   // v1.6.3.10-v2 - FIX Issue #8: Mark initial hydration as complete
   if (!cacheHydrationComplete && tabs.length >= 0) {
     cacheHydrationComplete = true;
@@ -3332,16 +3723,157 @@ function _updateInMemoryCache(tabs) {
   // because this might be a storage storm. _detectStorageStorm handles that case.
 }
 
+// ==================== v1.6.3.11-v5 FIX ISSUE #16: CACHE DIRTY FLAG & STORM DETECTION ====================
+// Functions for tracking cache staleness and storage storms
+
+/**
+ * Mark cache as dirty when storage changes
+ * v1.6.3.11-v5 - FIX Issue #16: Set dirty flag on any storage change
+ */
+function _markCacheDirty() {
+  const now = Date.now();
+  isCacheDirty = true;
+  _lastCacheInvalidationTime = now;
+  
+  console.log('[Sidebar][CACHE_DIRTY] Cache marked dirty:', {
+    timestamp: now,
+    timeSinceLastSync: now - lastCacheSyncFromStorage,
+    isInStorageStorm
+  });
+}
+
+/**
+ * Record a storage event timestamp for frequency tracking
+ * v1.6.3.11-v5 - FIX Issue #16: Track storage event frequency
+ * v1.6.3.11-v5 - FIX Code Review: Optimized array maintenance
+ */
+function _recordStorageEvent() {
+  const now = Date.now();
+  storageEventTimestamps.push(now);
+  
+  // Keep only recent timestamps - use slice for efficiency instead of shift in loop
+  if (storageEventTimestamps.length > STORAGE_EVENT_TIMESTAMPS_MAX) {
+    // Remove oldest entries in one operation
+    const toRemove = storageEventTimestamps.length - STORAGE_EVENT_TIMESTAMPS_MAX;
+    storageEventTimestamps.splice(0, toRemove);
+  }
+  
+  // Check for storage storm
+  _checkStorageStorm(now);
+}
+
+/**
+ * Check if we're in a storage storm based on event frequency
+ * v1.6.3.11-v5 - FIX Issue #16: Detect rapid storage operations
+ * v1.6.3.11-v5 - FIX Code Review: Optimized with reverse iteration instead of filter
+ * @param {number} now - Current timestamp
+ */
+function _checkStorageStorm(now) {
+  // Count events in the last window using reverse iteration (array is chronological)
+  const windowStart = now - STORAGE_STORM_WINDOW_MS;
+  let recentEventCount = 0;
+  
+  // Iterate backwards since array is chronological - stop when we hit old events
+  for (let i = storageEventTimestamps.length - 1; i >= 0; i--) {
+    if (storageEventTimestamps[i] > windowStart) {
+      recentEventCount++;
+    } else {
+      break; // All earlier events are outside the window
+    }
+  }
+  
+  const eventsPerSecond = recentEventCount / (STORAGE_STORM_WINDOW_MS / 1000);
+  
+  const wasInStorm = isInStorageStorm;
+  isInStorageStorm = eventsPerSecond >= STORAGE_STORM_THRESHOLD_EPS;
+  
+  // Log storm state changes
+  if (isInStorageStorm && !wasInStorm) {
+    lastStorageStormDetection = now;
+    console.warn('[Sidebar][STORAGE_STORM] Storm DETECTED:', {
+      eventsPerSecond: eventsPerSecond.toFixed(1),
+      threshold: STORAGE_STORM_THRESHOLD_EPS,
+      recentEventCount,
+      windowMs: STORAGE_STORM_WINDOW_MS,
+      timestamp: now
+    });
+  } else if (!isInStorageStorm && wasInStorm) {
+    const stormDurationMs = now - lastStorageStormDetection;
+    console.log('[Sidebar][STORAGE_STORM] Storm ENDED:', {
+      durationMs: stormDurationMs,
+      eventsPerSecond: eventsPerSecond.toFixed(1),
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Get current render debounce time based on storm state
+ * v1.6.3.11-v5 - FIX Issue #16: Adaptive debounce during storms
+ * @returns {number} Debounce time in milliseconds
+ */
+function _getAdaptiveRenderDebounce() {
+  return isInStorageStorm ? RENDER_DEBOUNCE_STORM_MS : RENDER_DEBOUNCE_MS;
+}
+
+/**
+ * Get current cache staleness threshold based on storm state
+ * v1.6.3.11-v5 - FIX Issue #16: Tighter staleness check during storms
+ * @returns {number} Staleness threshold in milliseconds
+ */
+function _getCacheStalenessThreshold() {
+  return isInStorageStorm ? CACHE_STALENESS_STORM_MS : CACHE_STALENESS_ALERT_MS;
+}
+
+/**
+ * Check if cache is stale and should be refreshed
+ * v1.6.3.11-v5 - FIX Issue #16: Check staleness based on storm state
+ * @returns {boolean} True if cache is stale
+ */
+function _isCacheStale() {
+  const now = Date.now();
+  const threshold = _getCacheStalenessThreshold();
+  const staleness = now - lastCacheSyncFromStorage;
+  
+  return staleness > threshold;
+}
+
+/**
+ * Log cache refresh event
+ * v1.6.3.11-v5 - FIX Issue #16: Track cache refresh operations
+ * @param {string} source - Source of the refresh (e.g., 'render', 'storage-change')
+ */
+function _logCacheRefresh(source) {
+  console.log('[Sidebar][CACHE_REFRESH] Cache refreshed from storage:', {
+    source,
+    wasDirty: isCacheDirty,
+    wasStale: _isCacheStale(),
+    timeSinceLastSync: Date.now() - lastCacheSyncFromStorage,
+    isInStorageStorm,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== END ISSUE #16 HELPER FUNCTIONS ====================
+
 // ==================== v1.6.3.11-v4 FIX ISSUE #4: STATE VERIFICATION ====================
 // Verify stored Quick Tabs still exist in the browser
 
 /**
  * Categorize a Quick Tab as valid or stale
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.3.11-v5 - FIX Issue #4: Added proper logging prefixes per requirements
  * @private
  */
 function _categorizeQuickTab(quickTab, browserTabIds) {
   const originTabId = quickTab.originTabId;
+
+  // Log each tab check
+  console.log('[Sidebar] ORIGIN_TAB_CHECK:', {
+    quickTabId: quickTab.id,
+    originTabId,
+    exists: originTabId ? browserTabIds.has(originTabId) : 'no-origin-tab'
+  });
 
   // Quick Tab with valid origin tab
   if (originTabId && browserTabIds.has(originTabId)) {
@@ -3350,11 +3882,18 @@ function _categorizeQuickTab(quickTab, browserTabIds) {
 
   // Quick Tab without originTabId - keep for adoption
   if (!originTabId) {
-    console.log('[RECONCILE] Quick Tab without originTabId:', { quickTabId: quickTab.id });
+    console.log('[Sidebar] ORIGIN_TAB_CHECK: Quick Tab without originTabId (will keep for adoption):', { quickTabId: quickTab.id });
     return { isValid: true, quickTab };
   }
 
   // Origin tab no longer exists - stale
+  console.log('[Sidebar] STALE_ENTRY_REMOVED:', {
+    quickTabId: quickTab.id,
+    originTabId: originTabId,
+    reason: 'origin tab no longer exists',
+    url: quickTab.url?.substring(0, 50)
+  });
+
   return {
     isValid: false,
     staleInfo: {
@@ -3407,17 +3946,18 @@ async function _sendReconciliationMessage(staleTabs) {
  * Verify stored Quick Tabs against actual browser tabs
  * v1.6.3.11-v4 - FIX Issue #4: Remove stale Quick Tabs on sidebar load
  * v1.6.3.11-v4 - FIX Code Health: Reduced complexity with helper functions
+ * v1.6.3.11-v5 - FIX Issue #4: Added proper logging prefixes per requirements
  *
  * @param {Array} storedTabs - Quick Tabs from storage
  * @returns {Promise<{validTabs: Array, removedCount: number}>}
  */
 async function _reconcileStoredTabsWithBrowser(storedTabs) {
   if (!storedTabs || storedTabs.length === 0) {
-    console.log('[RECONCILE] No stored tabs to verify');
+    console.log('[Sidebar] STATE_VERIFICATION_START: No stored tabs to verify');
     return { validTabs: [], removedCount: 0 };
   }
 
-  console.log('[RECONCILE] Starting tab verification:', {
+  console.log('[Sidebar] STATE_VERIFICATION_START:', {
     storedTabCount: storedTabs.length,
     timestamp: Date.now()
   });
@@ -3430,23 +3970,24 @@ async function _reconcileStoredTabsWithBrowser(storedTabs) {
     // Categorize all Quick Tabs
     const { validTabs, staleTabs } = _categorizeAllQuickTabs(storedTabs, browserTabIds);
 
-    // Log reconciliation results
-    console.log('[RECONCILE] Tab verification complete:', {
+    // Log reconciliation results with proper prefix
+    console.log('[Sidebar] STATE_VERIFICATION_COMPLETE:', {
       storedCount: storedTabs.length,
       validCount: validTabs.length,
       staleCount: staleTabs.length,
-      staleQuickTabs: staleTabs
+      staleQuickTabs: staleTabs,
+      browserTabCount: browserTabs.length
     });
 
     // If we found stale tabs, notify background to remove them
     if (staleTabs.length > 0) {
-      console.log('[RECONCILE] Requesting background to remove stale entries');
+      console.log('[Sidebar] STATE_VERIFICATION_COMPLETE: Requesting background to remove stale entries');
       await _sendReconciliationMessage(staleTabs);
     }
 
     return { validTabs, removedCount: staleTabs.length };
   } catch (err) {
-    console.error('[RECONCILE] Tab verification failed:', err.message);
+    console.error('[Sidebar] STATE_VERIFICATION_COMPLETE: Tab verification failed:', err.message);
     // On error, return all tabs (fail-safe: don't remove anything)
     return { validTabs: storedTabs, removedCount: 0 };
   }
@@ -3616,6 +4157,7 @@ function _shouldForceRenderOnMaxWait(now) {
 /**
  * Calculate debounce time based on sliding window
  * v1.6.4.14 - Extracted to reduce renderUI complexity
+ * v1.6.3.11-v5 - FIX Issue #16: Use adaptive debounce during storms
  * @private
  * @param {number} now - Current timestamp
  * @returns {number} Debounce time in milliseconds
@@ -3623,12 +4165,17 @@ function _shouldForceRenderOnMaxWait(now) {
 function _calculateDebounceTime(now) {
   const elapsedSinceStart = now - debounceStartTimestamp;
   const remainingMaxWait = RENDER_DEBOUNCE_MAX_WAIT_MS - elapsedSinceStart;
-  return Math.min(RENDER_DEBOUNCE_MS, remainingMaxWait);
+  
+  // v1.6.3.11-v5 - FIX Issue #16: Use adaptive debounce based on storm state
+  const baseDebounce = _getAdaptiveRenderDebounce();
+  
+  return Math.min(baseDebounce, remainingMaxWait);
 }
 
 /**
  * Execute the debounced render after timer fires
  * v1.6.4.14 - Extracted to reduce renderUI complexity
+ * v1.6.3.11-v5 - FIX Issue #16: Check cache staleness before render
  * @private
  * @param {number} debounceTime - The debounce time used
  */
@@ -3647,6 +4194,18 @@ async function _executeDebounceRender(debounceTime) {
   // Reset sliding window tracking
   debounceStartTimestamp = 0;
   debounceExtensionCount = 0;
+
+  // v1.6.3.11-v5 - FIX Issue #16: Check if cache is dirty or stale
+  if (isCacheDirty || _isCacheStale()) {
+    console.log('[Manager] RENDER_CACHE_CHECK: Cache dirty/stale, refreshing from storage:', {
+      isCacheDirty,
+      isStale: _isCacheStale(),
+      staleness: Date.now() - lastCacheSyncFromStorage,
+      threshold: _getCacheStalenessThreshold(),
+      isInStorageStorm
+    });
+    _logCacheRefresh('render-debounce');
+  }
 
   // v1.6.3.10-v2 - FIX Issue #1: Fetch CURRENT state from storage, not captured hash
   const staleCheckResult = await _checkAndReloadStaleState();
@@ -4757,6 +5316,7 @@ function setupEventListeners() {
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   // v1.6.3.11-v4 - FIX Issue #3: Added [STATE_LISTEN] logging prefix
+  // v1.6.3.11-v5 - FIX Issue #16: Added cache dirty flag and storm detection
   console.log('[STATE_LISTEN] Registering storage.onChanged listener in sidebar:', {
     stateKey: STATE_KEY,
     timestamp: Date.now()
@@ -4770,6 +5330,13 @@ function setupEventListeners() {
       timestamp: Date.now()
     });
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    
+    // v1.6.3.11-v5 - FIX Issue #16: Record storage event for storm detection
+    _recordStorageEvent();
+    
+    // v1.6.3.11-v5 - FIX Issue #16: Mark cache as dirty
+    _markCacheDirty();
+    
     _handleStorageChange(changes[STATE_KEY]);
   });
   console.log('[STATE_LISTEN] ✓ storage.onChanged listener registered');
@@ -4851,10 +5418,13 @@ function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
 
   // v1.6.3.7 - FIX Issue #8: Log storage listener entry
+  // v1.6.3.11-v5 - FIX Issue #16: Added storm state to logging
   console.log('[Manager] STORAGE_LISTENER:', {
     event: 'storage.onChanged',
     oldSaveId: context.oldValue?.saveId || 'none',
     newSaveId: context.newValue?.saveId || 'none',
+    isInStorageStorm,
+    isCacheDirty,
     timestamp: Date.now()
   });
 
@@ -5850,17 +6420,25 @@ async function _checkPortViabilityOrQueue(action, quickTabId, correlationId) {
 /**
  * Resolve target tab ID from host info or origin tab ID
  * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * v1.6.3.11-v5 - FIX Issue #12: Ensure consistency before resolving target
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {string} action - Action name for logging
  * @param {string} correlationId - Correlation ID for logging
- * @returns {{ targetTabId: number|null, originTabId: number|null }}
+ * @returns {Promise<{ targetTabId: number|null, originTabId: number|null }>}
  */
-function _resolveTargetTab(quickTabId, action, correlationId) {
+async function _resolveTargetTab(quickTabId, action, correlationId) {
+  // v1.6.3.11-v5 - FIX Issue #12: Ensure consistency before resolving target
+  await _ensureHostInfoStorageConsistency(quickTabId);
+
   const tabData = findTabInState(quickTabId, quickTabsState);
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const originTabId = tabData?.originTabId;
-  const targetTabId = hostInfo?.hostTabId || originTabId;
+
+  // v1.6.3.11-v5 - FIX Issue #12: Prioritize storage originTabId over hostInfo after consistency check
+  // After consistency check, hostInfo should match storage, but prefer storage to be safe
+  const targetTabId = originTabId || hostInfo?.hostTabId;
+
   console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
     action,
     quickTabId,
@@ -5868,7 +6446,8 @@ function _resolveTargetTab(quickTabId, action, correlationId) {
     targetTabId,
     originTabId,
     hostInfoTabId: hostInfo?.hostTabId,
-    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
+    hostInfoStorageVerified: hostInfo?.storageVerified ?? false,
+    source: originTabId ? 'originTabId (storage)' : hostInfo?.hostTabId ? 'hostInfo' : 'none'
   });
   return { targetTabId, originTabId };
 }
@@ -5981,7 +6560,8 @@ async function minimizeQuickTab(quickTabId) {
   }
 
   // Resolve target tab
-  const { targetTabId, originTabId } = _resolveTargetTab(
+  // v1.6.3.11-v5 - FIX Issue #12: _resolveTargetTab is now async for consistency check
+  const { targetTabId, originTabId } = await _resolveTargetTab(
     quickTabId,
     'MINIMIZE_QUICK_TAB',
     correlationId
@@ -6240,12 +6820,16 @@ function _showErrorNotification(message) {
  * v1.6.3.6-v8 - Extracted to reduce restoreQuickTab complexity
  * v1.6.3.7-v1 - FIX ISSUE #2: Implement per-message confirmation with timeout
  * v1.6.4.12 - Refactored to reduce cyclomatic complexity
+ * v1.6.3.11-v5 - FIX Issue #12: Ensure host info consistency before operation
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} tabData - Tab data with originTabId
  * @returns {Promise<{ success: boolean, confirmedBy?: number, error?: string }>}
  */
-function _sendRestoreMessage(quickTabId, tabData) {
+async function _sendRestoreMessage(quickTabId, tabData) {
+  // v1.6.3.11-v5 - FIX Issue #12: Ensure consistency before operation
+  await _ensureHostInfoStorageConsistency(quickTabId);
+
   const targetTabId = _resolveRestoreTarget(quickTabId, tabData);
 
   _logRestoreTargetResolution(quickTabId, tabData, targetTabId);
@@ -6831,7 +7415,8 @@ async function closeQuickTab(quickTabId) {
   }
 
   // Resolve target tab
-  const { targetTabId, originTabId } = _resolveTargetTab(
+  // v1.6.3.11-v5 - FIX Issue #12: _resolveTargetTab is now async for consistency check
+  const { targetTabId, originTabId } = await _resolveTargetTab(
     quickTabId,
     'CLOSE_QUICK_TAB',
     correlationId

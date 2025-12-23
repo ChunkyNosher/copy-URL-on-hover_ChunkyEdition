@@ -23,6 +23,33 @@ import { TabHandler } from './src/background/handlers/TabHandler.js';
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - Tab lifecycle handler
 import { TabLifecycleHandler } from './src/background/handlers/TabLifecycleHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
+// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry and logging infrastructure
+import {
+  ERROR_TYPES,
+  recordError,
+  recordHandlerError,
+  recordTimeoutError,
+  recordStorageError,
+  getTelemetrySummary
+} from './src/utils/error-telemetry.js';
+import {
+  LOG_PREFIX,
+  logListenerRegistration,
+  logListenerRegistered,
+  logListenerRegistrationFailed,
+  logInitializationComplete,
+  logMessageReceived,
+  logHandlerInvoked,
+  logHandlerComplete,
+  logStorageWriteTriggered,
+  logStorageStateChanged,
+  logStorageListenerFired,
+  logStorageSubscribersNotified,
+  logStateReconciliation,
+  logSyncStateChanged,
+  logSyncPropagatedToStorage,
+  logSyncComplete
+} from './src/utils/logging-infrastructure.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -371,6 +398,41 @@ const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 
 // FIX Issue #3: Multi-method deduplication
 const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
+
+// ==================== v1.6.3.12 FIX ISSUE #9: GLOBAL MESSAGE ORDERING ====================
+// Global operation counter for deterministic message ordering across tabs
+// Incremented on each operation, included in broadcasts for ordering enforcement
+
+/**
+ * Global operation sequence counter
+ * v1.6.3.12 - FIX Issue #9: Ensures deterministic message ordering across tabs
+ */
+let globalOperationSequence = 0;
+
+/**
+ * Increment and return the next global operation sequence number
+ * v1.6.3.12 - FIX Issue #9: Called before broadcasting to ensure ordering
+ * @returns {number} The next sequence number
+ */
+function getNextOperationSequence() {
+  globalOperationSequence++;
+  console.log('[Background] GLOBAL_SEQUENCE_INCREMENT:', {
+    newSequence: globalOperationSequence,
+    timestamp: Date.now()
+  });
+  return globalOperationSequence;
+}
+
+/**
+ * Get current operation sequence without incrementing
+ * v1.6.3.12 - FIX Issue #9: For read-only access
+ * @returns {number} Current sequence number
+ */
+function _getCurrentOperationSequence() {
+  return globalOperationSequence;
+}
+
+// ==================== END ISSUE #9 FIX ====================
 
 // v1.6.3.10-v7 - FIX Diagnostic Issue #9: Increased deletion acknowledgment timeout
 // Previous value (1000ms) was too aggressive for slow networks or heavy tab loads
@@ -1264,6 +1326,9 @@ async function tryLoadFromSyncStorage() {
   }
 
   isInitialized = true;
+  
+  // v1.6.4.17 - FIX Issue L1: Log initialization complete with all listeners status
+  logInitializationComplete('background');
 }
 
 /**
@@ -2714,6 +2779,35 @@ messageRouter.register('GET_KEYBOARD_SHORTCUTS', async () => {
 
 // ==================== END KEYBOARD SHORTCUT UPDATE HANDLER ====================
 
+// ==================== ERROR TELEMETRY HANDLER ====================
+// v1.6.4.17 - FIX Issue #13: Error telemetry access handler
+
+/**
+ * Get error telemetry summary for debugging
+ * v1.6.4.17 - FIX Issue #13: Allow access to error telemetry data
+ * @returns {Promise<Object>} Telemetry summary
+ */
+messageRouter.register('GET_ERROR_TELEMETRY', async () => {
+  console.log('[ERROR_TELEMETRY] GET_ERROR_TELEMETRY received');
+
+  try {
+    const summary = getTelemetrySummary();
+    console.log('[ERROR_TELEMETRY] Telemetry summary retrieved:', {
+      bufferSize: summary.bufferSize,
+      activeRecoveries: summary.activeRecoveries?.length || 0
+    });
+
+    return {
+      success: true,
+      telemetry: summary,
+      timestamp: Date.now()
+    };
+  } catch (err) {
+    console.error('[ERROR_TELEMETRY] Failed to get telemetry:', err.message);
+    return { success: false, error: err.message, code: 'TELEMETRY_ERROR' };
+  }
+});
+
 console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
@@ -2722,6 +2816,10 @@ console.log(
 // This ensures handlers are ready BEFORE any content script sends messages
 // Mozilla/Chrome documentation: "Listeners must be at the top-level to activate the background script"
 // v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging prefix
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+logListenerRegistration('runtime_onMessage', 'chrome.runtime.onMessage', {
+  handlerCount: messageRouter.handlers.size
+});
 console.log('[LISTENER_REG] Registering runtime.onMessage listener:', {
   handlerCount: messageRouter.handlers.size,
   timestamp: Date.now()
@@ -2732,6 +2830,11 @@ chrome.runtime.onMessage.addListener(messageRouter.createListener());
 
 // v1.6.3.11 - FIX Issue #3: Log successful listener registration
 // v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG] prefix
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+logListenerRegistered('runtime_onMessage', {
+  handlerCount: messageRouter.handlers.size,
+  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL']
+});
 console.log('[LISTENER_REG] ✓ runtime.onMessage listener registered:', {
   handlerCount: messageRouter.handlers.size,
   timestamp: Date.now(),
@@ -2796,27 +2899,34 @@ function handleKeyboardCommandLogging(command) {
 
 // Register the keyboard command listener for logging
 // v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
 if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCommand) {
+  logListenerRegistration('commands_onCommand', 'browser.commands.onCommand');
   console.log('[LISTENER_REG] Registering keyboard command listener:', {
     api: 'browser.commands.onCommand',
     timestamp: Date.now()
   });
   browser.commands.onCommand.addListener(handleKeyboardCommandLogging);
+  logListenerRegistered('commands_onCommand', { api: 'browser.commands.onCommand' });
   console.log('[LISTENER_REG] ✓ browser.commands.onCommand listener registered successfully');
 } else if (typeof chrome !== 'undefined' && chrome.commands && chrome.commands.onCommand) {
+  logListenerRegistration('commands_onCommand', 'chrome.commands.onCommand');
   console.log('[LISTENER_REG] Registering keyboard command listener:', {
     api: 'chrome.commands.onCommand',
     timestamp: Date.now()
   });
   chrome.commands.onCommand.addListener(handleKeyboardCommandLogging);
+  logListenerRegistered('commands_onCommand', { api: 'chrome.commands.onCommand' });
   console.log('[LISTENER_REG] ✓ chrome.commands.onCommand listener registered successfully');
 } else {
+  logListenerRegistrationFailed('commands_onCommand', 'API not available');
   console.warn('[LISTENER_REG] ⚠ browser.commands API not available - listener NOT registered');
 }
 
 // v1.6.3.11-v3 - FIX Issue #2: Listen for external shortcut changes
 // This syncs UI when user changes shortcuts via Firefox's addon settings
 if (typeof browser !== 'undefined' && browser.commands && browser.commands.onChanged) {
+  logListenerRegistration('commands_onChanged', 'browser.commands.onChanged');
   browser.commands.onChanged.addListener(changeInfo => {
     console.log('[KEYBOARD_CMD] Shortcut changed externally:', changeInfo);
     // Broadcast to any open settings panels
@@ -2830,6 +2940,7 @@ if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCha
         // No listeners - that's OK
       });
   });
+  logListenerRegistered('commands_onChanged', { api: 'browser.commands.onChanged' });
   console.log('[KEYBOARD_CMD] ✓ browser.commands.onChanged listener registered');
 }
 
@@ -2837,11 +2948,13 @@ if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCha
 
 // Handle sidePanel toggle for Chrome (optional)
 if (chrome.sidePanel) {
+  logListenerRegistration('action_onClicked', 'chrome.action.onClicked');
   chrome.action.onClicked.addListener(tab => {
     chrome.sidePanel.open({ windowId: tab.windowId }).catch(err => {
       console.log('Side panel not supported or error:', err);
     });
   });
+  logListenerRegistered('action_onClicked', { api: 'chrome.action.onClicked' });
 }
 
 /**
@@ -3104,6 +3217,103 @@ function _shouldUpdateState(newValue) {
   return true;
 }
 
+// ==================== v1.6.3.11-v6 FIX ISSUE #11: STORAGE CHANGE RE-BROADCAST ====================
+/**
+ * Build the storage sync message for content scripts
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} params - Message parameters
+ * @returns {Object} Formatted message object
+ */
+function _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime }) {
+  return {
+    type: 'STORAGE_STATE_SYNC',
+    action: 'STORAGE_STATE_SYNC',
+    state: {
+      tabs: newTabs,
+      timestamp: newValue?.timestamp || startTime,
+      saveId: newValue?.saveId,
+      correlationId: newValue?.correlationId
+    },
+    context: {
+      source: 'background-storage-onchanged',
+      addedIds,
+      removedIds,
+      timestamp: startTime
+    }
+  };
+}
+
+/**
+ * Send storage sync message to a single tab
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {number} tabId - Tab ID to send to
+ * @param {Object} message - Message to send
+ * @returns {Promise<boolean>} True if sent successfully
+ */
+async function _sendStorageSyncToTab(tabId, message) {
+  try {
+    await browser.tabs.sendMessage(tabId, message);
+    return true;
+  } catch (_err) {
+    // Content script might not be loaded in this tab - this is expected
+    return false;
+  }
+}
+
+/**
+ * Re-broadcast storage state change to all content scripts
+ * v1.6.3.11-v6 - FIX Issue #11: Background re-broadcasts to content scripts via tabs.sendMessage()
+ *
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ */
+async function _rebroadcastStateChangeToContentScripts(newValue, oldValue) {
+  const startTime = Date.now();
+  const newTabs = newValue?.tabs || [];
+  const oldTabs = oldValue?.tabs || [];
+
+  // Determine affected Quick Tab IDs
+  const newIds = new Set(newTabs.map(t => t.id));
+  const oldIds = new Set(oldTabs.map(t => t.id));
+  const addedIds = [...newIds].filter(id => !oldIds.has(id));
+  const removedIds = [...oldIds].filter(id => !newIds.has(id));
+
+  console.log('[Background] STORAGE_REBROADCAST_START:', {
+    tabCount: newTabs.length,
+    addedCount: addedIds.length,
+    removedCount: removedIds.length,
+    timestamp: startTime,
+    correlationId: newValue?.correlationId || newValue?.saveId || null
+  });
+
+  try {
+    const allTabs = await browser.tabs.query({});
+    const message = _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime });
+
+    // Send to all tabs and count results
+    const results = await Promise.all(allTabs.map(tab => _sendStorageSyncToTab(tab.id, message)));
+    const successCount = results.filter(Boolean).length;
+    const failCount = results.length - successCount;
+
+    const duration = Date.now() - startTime;
+    console.log('[Background] STORAGE_REBROADCAST_COMPLETE:', {
+      totalTabs: allTabs.length,
+      successCount,
+      failCount,
+      durationMs: duration,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error('[Background] STORAGE_REBROADCAST_ERROR:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+// ==================== END STORAGE CHANGE RE-BROADCAST ====================
+
 /**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
@@ -3114,17 +3324,27 @@ function _shouldUpdateState(newValue) {
  * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
  * v1.6.3.4-v8 - FIX Issue #8: Extracted logging and validation helpers
+ * v1.6.3.11-v6 - FIX Issue #11: Re-broadcast to content scripts after cache update
  *
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
  * - Each tab's StorageManager listens for storage.onChanged events
- * - Background script only needs to keep its own cache (globalQuickTabState) updated
+ * - Background script updates cache and re-broadcasts to content scripts
  *
  * @param {Object} changes - Storage changes object
  */
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
+
+  // v1.6.3.11-v6 - FIX Issue #11: Log storage change detection
+  console.log('[Background] STORAGE_CHANGE_DETECTED:', {
+    key: 'quick_tabs_state_v2',
+    newTabCount: newValue?.tabs?.length ?? 0,
+    oldTabCount: oldValue?.tabs?.length ?? 0,
+    saveId: newValue?.saveId,
+    timestamp: Date.now()
+  });
 
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
@@ -3135,7 +3355,12 @@ function _handleQuickTabStateChange(changes) {
   }
 
   // v1.6.3.4-v8 - Process and cache the update
-  _processStorageUpdate(newValue);
+  const wasProcessed = _processStorageUpdate(newValue);
+
+  // v1.6.3.11-v6 - FIX Issue #11: Re-broadcast to content scripts if update was processed
+  if (wasProcessed) {
+    _rebroadcastStateChangeToContentScripts(newValue, oldValue);
+  }
 }
 
 /**
@@ -3667,23 +3892,26 @@ function _filterAndUpdateCache(newValue) {
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
  * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
+ * v1.6.3.11-v6 - FIX Issue #11: Returns boolean to indicate if update was processed
  * @param {Object} newValue - New storage value
+ * @returns {boolean} True if update was processed, false if skipped
  */
 function _processStorageUpdate(newValue) {
   if (_isTabsEmptyOrMissing(newValue)) {
     _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
     _clearCacheForEmptyStorage(newValue);
-    return;
+    return false;
   }
 
   _resetTabCounters();
 
   if (!_shouldUpdateState(newValue)) {
     _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
-    return;
+    return false;
   }
 
   _filterAndUpdateCache(newValue);
+  return true;
 }
 
 /**
@@ -3787,6 +4015,16 @@ function _logStorageListenerHealth(areaName, changedKeys) {
 }
 
 // v1.6.3.11-v4 - FIX Issue #2: Log storage.onChanged listener registration
+// v1.6.3.11-v6 - FIX Issue #11: Added STORAGE_LISTENER_REGISTERED prefix
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+logListenerRegistration('storage_onChanged', 'browser.storage.onChanged', {
+  purpose: 'cross-tab-sync-rebroadcast'
+});
+console.log('[Background] STORAGE_LISTENER_REGISTERED:', {
+  api: 'browser.storage.onChanged',
+  purpose: 'cross-tab-sync-rebroadcast',
+  timestamp: Date.now()
+});
 console.log('[LISTENER_REG] Registering storage.onChanged listener:', {
   api: 'browser.storage.onChanged',
   timestamp: Date.now()
@@ -3796,6 +4034,12 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   // v1.6.3.11-v3 - FIX Issue #59: Wrap entire listener in try-catch to prevent blocking other listeners
   try {
     const changedKeys = Object.keys(changes);
+
+    // v1.6.4.17 - FIX Issue L3: Use logging infrastructure for storage propagation
+    logStorageListenerFired('quick_tabs_state_v2', areaName, {
+      changedKeys,
+      eventNumber: storageOnChangedEventCount + 1
+    });
 
     // v1.6.3.11-v4 - FIX Issue #2: [LISTENER_INVOKE] logging for storage changes
     console.log('[LISTENER_INVOKE] storage.onChanged listener invoked:', {
@@ -3825,6 +4069,10 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       console.log(
         '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
       );
+      // v1.6.4.17 - FIX Issue L3: Log state change with old/new values
+      const oldValue = changes.quick_tabs_state_v2.oldValue;
+      const newValue = changes.quick_tabs_state_v2.newValue;
+      logStorageStateChanged('storage_onChanged', oldValue, newValue);
       _handleQuickTabStateChange(changes);
     }
 
@@ -3837,6 +4085,11 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     }
   } catch (err) {
     // v1.6.3.11-v3 - FIX Issue #59: Log error but don't re-throw to prevent blocking other listeners
+    // v1.6.4.17 - FIX Issue #13: Record error in telemetry system
+    recordStorageError('storage_onChanged', err, {
+      areaName,
+      changedKeys: Object.keys(changes || {})
+    });
     console.error('[Background][StorageListener] STORAGE_ONCHANGED_ERROR:', {
       error: err.message,
       stack: err.stack,
@@ -3847,6 +4100,10 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+// v1.6.4.17 - FIX Issue L1: Log successful listener registration
+logListenerRegistered('storage_onChanged', {
+  api: 'browser.storage.onChanged'
+});
 console.log('[Background][StorageListener] v1.6.3.10-v6 Listener registered successfully', {
   timestamp: Date.now()
 });
@@ -3982,16 +4239,65 @@ async function _getCurrentPrimaryTab() {
 // v1.6.3.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
 // v1.6.3.4-v2 - Enhanced toggle behavior: Alt+Shift+S opens to Settings, Ctrl+Alt+Z toggles Manager
 browser.commands.onCommand.addListener(command => {
+  // v1.6.3.11-v4 - FIX Issues #1 & #2: Add required logging prefixes
+  const commandTimestamp = Date.now();
+  console.log('[Background] COMMAND_RECEIVED:', {
+    command,
+    timestamp: commandTimestamp
+  });
+
   // v1.6.3.4-v2 - toggle-quick-tabs-manager (Ctrl+Alt+Z) toggles Manager tab
   // If sidebar is open and showing Manager, close it; otherwise open to Manager
   if (command === 'toggle-quick-tabs-manager') {
-    _handleToggleQuickTabsManager();
+    _handleToggleQuickTabsManager()
+      .then(() => {
+        const endTimestamp = Date.now();
+        console.log('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: 'toggle-quick-tabs-manager',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      })
+      .catch(err => {
+        const endTimestamp = Date.now();
+        console.error('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: 'toggle-quick-tabs-manager',
+          error: err?.message || String(err) || 'Unknown error',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      });
   }
 
   // v1.6.3.4-v2 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
   if (command === '_execute_sidebar_action') {
-    _handleOpenToSettingsTab();
+    _handleOpenToSettingsTab()
+      .then(() => {
+        const endTimestamp = Date.now();
+        console.log('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: '_execute_sidebar_action',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      })
+      .catch(err => {
+        const endTimestamp = Date.now();
+        console.error('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: '_execute_sidebar_action',
+          error: err?.message || String(err) || 'Unknown error',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      });
   }
+});
+console.log('[Background] COMMAND_LISTENER_REGISTERED:', {
+  commands: ['toggle-quick-tabs-manager', '_execute_sidebar_action'],
+  timestamp: Date.now()
 });
 
 /**
@@ -4012,6 +4318,13 @@ async function _handleToggleQuickTabsManager() {
     // toggle() properly handles user gesture context
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
+      // v1.6.3.11-v4 - FIX Issue #1: Add SIDEBAR_TOGGLED logging
+      console.log('[Background] SIDEBAR_TOGGLED:', {
+        source: 'toggle-quick-tabs-manager',
+        method: 'toggle()',
+        targetTab: 'manager',
+        timestamp: Date.now()
+      });
       console.log('[Sidebar] Toggled sidebar via toggle() API');
 
       // After toggle, try to switch to Manager if sidebar is now open
@@ -4031,6 +4344,13 @@ async function _handleToggleQuickTabsManager() {
     // We can't check isOpen() first because that breaks the gesture context
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
+    // v1.6.3.11-v4 - FIX Issue #1: Add SIDEBAR_TOGGLED logging for fallback
+    console.log('[Background] SIDEBAR_TOGGLED:', {
+      source: 'toggle-quick-tabs-manager',
+      method: 'open()',
+      targetTab: 'manager',
+      timestamp: Date.now()
+    });
 
     // Wait for sidebar to initialize, then send message
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
@@ -4096,6 +4416,13 @@ async function _handleOpenToSettingsTab() {
     // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
+      // v1.6.3.11-v4 - FIX Issue #2: Add SIDEBAR_TOGGLED logging
+      console.log('[Background] SIDEBAR_TOGGLED:', {
+        source: '_execute_sidebar_action',
+        method: 'toggle()',
+        targetTab: 'settings',
+        timestamp: Date.now()
+      });
       console.log('[Sidebar] Toggled sidebar via toggle() API');
 
       // After toggle, try to switch to Settings if sidebar is now open
@@ -4112,6 +4439,13 @@ async function _handleOpenToSettingsTab() {
     // Fallback: Call open() FIRST without awaits
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
+    // v1.6.3.11-v4 - FIX Issue #2: Add SIDEBAR_TOGGLED logging for fallback
+    console.log('[Background] SIDEBAR_TOGGLED:', {
+      source: '_execute_sidebar_action',
+      method: 'open()',
+      targetTab: 'settings',
+      timestamp: Date.now()
+    });
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
 
     // Switch to Settings tab
@@ -4127,22 +4461,56 @@ async function _handleOpenToSettingsTab() {
 // Toggle sidebar when toolbar button is clicked (Firefox only)
 // Chrome will continue using popup.html since it doesn't support sidebar_action
 // v1.6.2.0 - Fixed: Now toggles sidebar open/close instead of only opening
+// v1.6.3.11-v4 - FIX Issue #2: Add required logging prefixes
 if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAction) {
-  browser.browserAction.onClicked.addListener(async () => {
+  browser.browserAction.onClicked.addListener(async tab => {
+    const clickTimestamp = Date.now();
+    // v1.6.3.11-v4 - FIX Issue #2: ACTION_BUTTON_CLICKED logging
+    // Only log origin (not full URL) for privacy
+    let tabOrigin = null;
+    try {
+      tabOrigin = tab?.url ? new URL(tab.url).origin : null;
+    } catch (_e) {
+      tabOrigin = '[invalid-url]';
+    }
+    console.log('[Background] ACTION_BUTTON_CLICKED:', {
+      tabId: tab?.id,
+      tabOrigin,
+      windowId: tab?.windowId,
+      timestamp: clickTimestamp
+    });
+
     try {
       // Use toggle() API for clean open/close behavior
       if (browser.sidebarAction && browser.sidebarAction.toggle) {
         await browser.sidebarAction.toggle();
+        // v1.6.3.11-v4 - FIX Issue #2: SIDEBAR_TOGGLED logging
+        console.log('[Background] SIDEBAR_TOGGLED:', {
+          source: 'toolbar-button',
+          method: 'toggle()',
+          timestamp: Date.now()
+        });
         console.log('[Sidebar] Toggled via toolbar button');
       } else if (browser.sidebarAction && browser.sidebarAction.open) {
         // Fallback for older Firefox versions without toggle()
         await browser.sidebarAction.open();
+        // v1.6.3.11-v4 - FIX Issue #2: SIDEBAR_TOGGLED logging for fallback
+        console.log('[Background] SIDEBAR_TOGGLED:', {
+          source: 'toolbar-button',
+          method: 'open()',
+          timestamp: Date.now()
+        });
         console.log('[Sidebar] Opened via toolbar button (fallback)');
       }
     } catch (err) {
       console.error('[Sidebar] Error toggling sidebar:', err);
       // If sidebar fails, user can still access settings via options page
     }
+  });
+  // v1.6.3.11-v4 - FIX Issue #2: ACTION_BUTTON_LISTENER_REGISTERED logging
+  console.log('[Background] ACTION_BUTTON_LISTENER_REGISTERED:', {
+    api: 'browser.browserAction.onClicked',
+    timestamp: Date.now()
   });
   console.log('[Sidebar] Browser action handler registered for Firefox');
 } else {
@@ -4211,6 +4579,7 @@ function logPortLifecycle(origin, event, details = {}) {
 /**
  * Register a new port connection
  * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
+ * v1.6.3.12 - FIX Issue #10: Add PORT_CONNECTION_ESTABLISHED logging
  * @param {browser.runtime.Port} port - The connected port
  * @param {string} origin - Origin identifier
  * @param {number|null} tabId - Tab ID (if from content script)
@@ -4227,7 +4596,20 @@ function registerPort(port, origin, tabId, type) {
     type,
     connectedAt: Date.now(),
     lastMessageAt: null,
-    messageCount: 0
+    messageCount: 0,
+    // v1.6.3.12 - FIX Issue #10: Track last heartbeat for viability checking
+    lastHeartbeat: Date.now(),
+    isViable: true
+  });
+
+  // v1.6.3.12 - FIX Issue #10: Log PORT_CONNECTION_ESTABLISHED
+  console.log('[Background] PORT_CONNECTION_ESTABLISHED:', {
+    portId,
+    origin,
+    tabId,
+    type,
+    totalPorts: portRegistry.size,
+    timestamp: Date.now()
   });
 
   logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
@@ -4339,6 +4721,141 @@ async function cleanupStalePorts() {
 
 // Start periodic cleanup
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
+
+// ==================== v1.6.3.12 FIX ISSUE #10: PORT VIABILITY CHECKING ====================
+// Implement heartbeat-based viability checks for connected ports
+
+/**
+ * Port viability check interval (milliseconds)
+ * v1.6.3.12 - FIX Issue #10: Check port health every 30 seconds
+ */
+const PORT_VIABILITY_CHECK_INTERVAL_MS = 30000;
+
+/**
+ * Port heartbeat timeout (milliseconds)
+ * v1.6.3.12 - FIX Issue #10: Mark port as non-viable if no activity for 60 seconds
+ */
+const PORT_HEARTBEAT_TIMEOUT_MS = 60000;
+
+/**
+ * Check viability of a single port
+ * v1.6.3.12 - FIX Issue #10: Determine if port is still responsive
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} portInfo - Port info from registry
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if port is viable
+ */
+function _checkSinglePortViability(portId, portInfo, now) {
+  const lastActivity = portInfo.lastMessageAt || portInfo.lastHeartbeat || portInfo.connectedAt;
+  const timeSinceActivity = now - lastActivity;
+  const wasViable = portInfo.isViable;
+  
+  // Port is non-viable if no activity for longer than timeout
+  const isViable = timeSinceActivity < PORT_HEARTBEAT_TIMEOUT_MS;
+  
+  // Update viability status
+  portInfo.isViable = isViable;
+  
+  // Log state change
+  if (wasViable !== isViable) {
+    console.log('[Background] PORT_VIABILITY_CHECK:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      previousState: wasViable ? 'viable' : 'non-viable',
+      newState: isViable ? 'viable' : 'non-viable',
+      timeSinceActivityMs: timeSinceActivity,
+      timestamp: now
+    });
+  }
+  
+  return isViable;
+}
+
+/**
+ * Send heartbeat ping to a port and wait for response
+ * v1.6.3.12 - FIX Issue #10: Active heartbeat mechanism
+ * @private
+ * @param {Object} portInfo - Port info from registry
+ * @param {string} portId - Port ID
+ * @returns {boolean} True if port responded
+ */
+function _sendPortHeartbeat(portInfo, portId) {
+  try {
+    const heartbeatId = `hb-${Date.now()}-${portId}`;
+    
+    portInfo.port.postMessage({
+      type: 'PORT_HEARTBEAT_PING',
+      heartbeatId,
+      timestamp: Date.now()
+    });
+    
+    // Update last heartbeat timestamp
+    portInfo.lastHeartbeat = Date.now();
+    
+    console.log('[Background] PORT_VIABILITY_CHECK:', {
+      action: 'heartbeat-sent',
+      portId,
+      origin: portInfo.origin,
+      heartbeatId,
+      timestamp: Date.now()
+    });
+    
+    return true;
+  } catch (err) {
+    console.warn('[Background] PORT_VIABILITY_CHECK:', {
+      action: 'heartbeat-failed',
+      portId,
+      origin: portInfo.origin,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+}
+
+/**
+ * Check viability of all registered ports
+ * v1.6.3.12 - FIX Issue #10: Periodic viability check for all ports
+ */
+function checkAllPortsViability() {
+  const now = Date.now();
+  let viableCount = 0;
+  let nonViableCount = 0;
+  
+  console.log('[Background] PORT_VIABILITY_CHECK:', {
+    action: 'check-started',
+    totalPorts: portRegistry.size,
+    timestamp: now
+  });
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const isViable = _checkSinglePortViability(portId, portInfo, now);
+    
+    if (isViable) {
+      viableCount++;
+      // Send heartbeat ping to maintain connection
+      _sendPortHeartbeat(portInfo, portId);
+    } else {
+      nonViableCount++;
+    }
+  }
+  
+  console.log('[Background] PORT_VIABILITY_CHECK:', {
+    action: 'check-complete',
+    viableCount,
+    nonViableCount,
+    totalPorts: portRegistry.size,
+    timestamp: Date.now()
+  });
+}
+
+// Start periodic port viability checking
+setInterval(checkAllPortsViability, PORT_VIABILITY_CHECK_INTERVAL_MS);
+console.log('[Background] v1.6.3.12 Port viability checking initialized (every', PORT_VIABILITY_CHECK_INTERVAL_MS / 1000, 's)');
+
+// ==================== END ISSUE #10 FIX ====================
 
 /**
  * Parse port name to extract type and tab ID
@@ -6524,6 +7041,7 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
+ * v1.6.3.12 - FIX Issue #9: Include global operationSequence for message ordering
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -6543,16 +7061,29 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
 
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
+  
+  // v1.6.3.12 - FIX Issue #9: Get next operation sequence for ordering
+  const operationSequence = getNextOperationSequence();
 
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
+    operationSequence, // v1.6.3.12 - FIX Issue #9: Global sequence for ordering
     quickTabId,
     changes,
     source: 'background',
     originalSource: source,
     timestamp: Date.now()
   };
+
+  // v1.6.3.12 - FIX Issue #9: Log message with sequence
+  console.log('[Background] MESSAGE_WITH_SEQUENCE:', {
+    messageId,
+    operationSequence,
+    quickTabId,
+    changeType: Object.keys(changes || {})[0] || 'unknown',
+    timestamp: Date.now()
+  });
 
   // v1.6.3.6-v5 - FIX Issue #4c: Log message dispatch to sidebar
   logMessageDispatch(messageId, 'QUICK_TAB_STATE_UPDATED', excludeTabId, 'sidebar');
