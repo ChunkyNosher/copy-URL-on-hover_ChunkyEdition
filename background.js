@@ -162,22 +162,27 @@ function _isTypeBasedMessage(message) {
  */
 function _handleTypeBasedMessage(message, sender, sendResponse) {
   if (!_typeBasedHandlers) return false;
-  
+
   if (message.type === 'HEARTBEAT' && _typeBasedHandlers.handleHeartbeat) {
     _typeBasedHandlers.handleHeartbeat(message, sender, sendResponse);
     return true;
   }
-  
+
   if (message.type === 'QUICK_TAB_STATE_CHANGE' && _typeBasedHandlers.handleQuickTabStateChange) {
-    _invokeAsyncHandler(_typeBasedHandlers.handleQuickTabStateChange, message, sender, sendResponse);
+    _invokeAsyncHandler(
+      _typeBasedHandlers.handleQuickTabStateChange,
+      message,
+      sender,
+      sendResponse
+    );
     return true;
   }
-  
+
   if (message.type === 'MANAGER_COMMAND' && _typeBasedHandlers.handleManagerCommand) {
     _invokeAsyncHandler(_typeBasedHandlers.handleManagerCommand, message, sender, sendResponse);
     return true;
   }
-  
+
   return false;
 }
 
@@ -212,12 +217,12 @@ async function _processQueuedEarlyMessage(entry) {
       return { success: true };
     }
   }
-  
+
   // Otherwise use MessageRouter
   if (!_messageRouterInstance) {
     throw new Error('MessageRouter not available');
   }
-  
+
   await _messageRouterInstance.route(entry.message, entry.sender, entry.sendResponse);
   console.log('[Background] EARLY_MESSAGE_PROCESSED:', {
     action: entry.message?.action || entry.message?.type,
@@ -347,7 +352,9 @@ function _shouldRegisterBrowserListener() {
 
 // REGISTER EARLY LISTENERS IMMEDIATELY
 // These are registered BEFORE any imports to ensure messages are never lost
-console.log('[Background] EARLY_LISTENER_REGISTRATION: Registering message listeners at TOP of script');
+console.log(
+  '[Background] EARLY_LISTENER_REGISTRATION: Registering message listeners at TOP of script'
+);
 
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
   chrome.runtime.onMessage.addListener(_earlyMessageListener);
@@ -1675,7 +1682,7 @@ async function tryLoadFromSyncStorage() {
   }
 
   isInitialized = true;
-  
+
   // v1.6.4.17 - FIX Issue L1: Log initialization complete with all listeners status
   logInitializationComplete('background');
 }
@@ -3642,7 +3649,13 @@ async function _rebroadcastStateChangeToContentScripts(newValue, oldValue) {
 
   try {
     const allTabs = await browser.tabs.query({});
-    const message = _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime });
+    const message = _buildStorageSyncMessage({
+      newTabs,
+      newValue,
+      addedIds,
+      removedIds,
+      startTime
+    });
 
     // Send to all tabs and count results
     const results = await Promise.all(allTabs.map(tab => _sendStorageSyncToTab(tab.id, message)));
@@ -5102,13 +5115,13 @@ function _checkSinglePortViability(portId, portInfo, now) {
   const lastActivity = portInfo.lastMessageAt || portInfo.lastHeartbeat || portInfo.connectedAt;
   const timeSinceActivity = now - lastActivity;
   const wasViable = portInfo.isViable;
-  
+
   // Port is non-viable if no activity for longer than timeout
   const isViable = timeSinceActivity < PORT_HEARTBEAT_TIMEOUT_MS;
-  
+
   // Update viability status
   portInfo.isViable = isViable;
-  
+
   // Log state change
   if (wasViable !== isViable) {
     console.log('[Background] PORT_VIABILITY_CHECK:', {
@@ -5121,7 +5134,7 @@ function _checkSinglePortViability(portId, portInfo, now) {
       timestamp: now
     });
   }
-  
+
   return isViable;
 }
 
@@ -5136,16 +5149,16 @@ function _checkSinglePortViability(portId, portInfo, now) {
 function _sendPortHeartbeat(portInfo, portId) {
   try {
     const heartbeatId = `hb-${Date.now()}-${portId}`;
-    
+
     portInfo.port.postMessage({
       type: 'PORT_HEARTBEAT_PING',
       heartbeatId,
       timestamp: Date.now()
     });
-    
+
     // Update last heartbeat timestamp
     portInfo.lastHeartbeat = Date.now();
-    
+
     console.log('[Background] PORT_VIABILITY_CHECK:', {
       action: 'heartbeat-sent',
       portId,
@@ -5153,7 +5166,7 @@ function _sendPortHeartbeat(portInfo, portId) {
       heartbeatId,
       timestamp: Date.now()
     });
-    
+
     return true;
   } catch (err) {
     console.warn('[Background] PORT_VIABILITY_CHECK:', {
@@ -5175,16 +5188,16 @@ function checkAllPortsViability() {
   const now = Date.now();
   let viableCount = 0;
   let nonViableCount = 0;
-  
+
   console.log('[Background] PORT_VIABILITY_CHECK:', {
     action: 'check-started',
     totalPorts: portRegistry.size,
     timestamp: now
   });
-  
+
   for (const [portId, portInfo] of portRegistry.entries()) {
     const isViable = _checkSinglePortViability(portId, portInfo, now);
-    
+
     if (isViable) {
       viableCount++;
       // Send heartbeat ping to maintain connection
@@ -5193,7 +5206,7 @@ function checkAllPortsViability() {
       nonViableCount++;
     }
   }
-  
+
   console.log('[Background] PORT_VIABILITY_CHECK:', {
     action: 'check-complete',
     viableCount,
@@ -5205,7 +5218,11 @@ function checkAllPortsViability() {
 
 // Start periodic port viability checking
 setInterval(checkAllPortsViability, PORT_VIABILITY_CHECK_INTERVAL_MS);
-console.log('[Background] v1.6.3.12 Port viability checking initialized (every', PORT_VIABILITY_CHECK_INTERVAL_MS / 1000, 's)');
+console.log(
+  '[Background] v1.6.3.12 Port viability checking initialized (every',
+  PORT_VIABILITY_CHECK_INTERVAL_MS / 1000,
+  's)'
+);
 
 // ==================== END ISSUE #10 FIX ====================
 
@@ -7413,7 +7430,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
 
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
-  
+
   // v1.6.3.12 - FIX Issue #9: Get next operation sequence for ordering
   const operationSequence = getNextOperationSequence();
 
@@ -7952,13 +7969,13 @@ _setTypeBasedHandlers({
 
     sendResponse(response);
   },
-  
+
   /**
    * Handle Quick Tab state change
    * v1.6.3.5-v3 - FIX Architecture Phase 1-3
    */
   handleQuickTabStateChange: handleQuickTabStateChange,
-  
+
   /**
    * Handle Manager command
    * v1.6.3.5-v3 - FIX Architecture Phase 3
@@ -7966,7 +7983,5 @@ _setTypeBasedHandlers({
   handleManagerCommand: handleManagerCommand
 });
 
-console.log(
-  '[Background] v1.6.3.12 Type-based message handlers registered with early listener'
-);
+console.log('[Background] v1.6.3.12 Type-based message handlers registered with early listener');
 // ==================== END MESSAGE INFRASTRUCTURE ====================

@@ -106,11 +106,15 @@ export class TabHandler {
       }
 
       const tab = await this.browserAPI.tabs.create(createProperties);
-      return buildSuccessResponse('openTab', {
-        tabId: tab.id,
-        url: message.url,
-        active: message.active ?? true
-      }, { tabId: tab.id }); // Legacy field for backward compatibility
+      return buildSuccessResponse(
+        'openTab',
+        {
+          tabId: tab.id,
+          url: message.url,
+          active: message.active ?? true
+        },
+        { tabId: tab.id }
+      ); // Legacy field for backward compatibility
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleOpenTab', {
         action: message.action,
@@ -151,10 +155,14 @@ export class TabHandler {
     try {
       const tabId = extractTabId(sender);
       const state = this.quickTabStates.get(tabId);
-      return buildSuccessResponse('getQuickTabState', {
-        tabId,
-        hasState: state !== null && state !== undefined
-      }, { state: state || null }); // Legacy field for backward compatibility
+      return buildSuccessResponse(
+        'getQuickTabState',
+        {
+          tabId,
+          hasState: state !== null && state !== undefined
+        },
+        { state: state || null }
+      ); // Legacy field for backward compatibility
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleGetState', {
         senderTabId: sender?.tab?.id

@@ -35,7 +35,8 @@ Tabs Manager
 **Phase 2: Storage Sync Infrastructure (2 Issues):**
 
 - **Content storage.onChanged** - STORAGE_STATE_SYNC handler in content scripts
-- **Background storage.onChanged** - Re-broadcast to all tabs via tabs.sendMessage
+- **Background storage.onChanged** - Re-broadcast to all tabs via
+  tabs.sendMessage
 
 **Phase 3: Message Ordering & Port Lifecycle (3 Issues):**
 
@@ -147,22 +148,22 @@ references.
 
 ### Key Timing Constants (v1.6.3.11-v5)
 
-| Constant                      | Value    | Purpose                          |
-| ----------------------------- | -------- | -------------------------------- |
-| `ERROR_THRESHOLD_PER_MINUTE`  | 5        | Telemetry escalation (NEW v5)    |
-| `ERROR_BUFFER_MAX_SIZE`       | 100      | Rolling error buffer (NEW v5)    |
-| `STORM_DETECTION_THRESHOLD`   | 100      | Cache storm detection ms (NEW)   |
-| `STORM_DEBOUNCE_MS`           | 200      | Adaptive render debounce (NEW)   |
-| `HOVER_DEBOUNCE_MS`           | 100      | Event debouncing                 |
-| `STORAGE_SLOW_THRESHOLD_MS`   | 100      | Storage timing warning           |
-| `DEDUP_WINDOW_MS`             | 100      | Message dedup                    |
-| `DEFAULT_MESSAGE_TIMEOUT_MS`  | 5000     | Firefox message timeout          |
-| `BFCACHE_VERIFY_TIMEOUT_MS`   | 2000     | PORT_VERIFY timeout              |
-| `TAB_ID_EXTENDED_TOTAL_MS`    | 120000   | Extended tab ID timeout          |
-| `HYDRATION_TIMEOUT_MS`        | 10000    | Storage hydration                |
-| `TAB_REMOVAL_DEBOUNCE_MS`     | 200      | Tab onRemoved debounce           |
-| `HEARTBEAT_INTERVAL_MS`       | 15000    | Background health check          |
-| `LRU_MAP_MAX_SIZE`            | 500      | Maximum map entries              |
+| Constant                     | Value  | Purpose                        |
+| ---------------------------- | ------ | ------------------------------ |
+| `ERROR_THRESHOLD_PER_MINUTE` | 5      | Telemetry escalation (NEW v5)  |
+| `ERROR_BUFFER_MAX_SIZE`      | 100    | Rolling error buffer (NEW v5)  |
+| `STORM_DETECTION_THRESHOLD`  | 100    | Cache storm detection ms (NEW) |
+| `STORM_DEBOUNCE_MS`          | 200    | Adaptive render debounce (NEW) |
+| `HOVER_DEBOUNCE_MS`          | 100    | Event debouncing               |
+| `STORAGE_SLOW_THRESHOLD_MS`  | 100    | Storage timing warning         |
+| `DEDUP_WINDOW_MS`            | 100    | Message dedup                  |
+| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000   | Firefox message timeout        |
+| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000   | PORT_VERIFY timeout            |
+| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000 | Extended tab ID timeout        |
+| `HYDRATION_TIMEOUT_MS`       | 10000  | Storage hydration              |
+| `TAB_REMOVAL_DEBOUNCE_MS`    | 200    | Tab onRemoved debounce         |
+| `HEARTBEAT_INTERVAL_MS`      | 15000  | Background health check        |
+| `LRU_MAP_MAX_SIZE`           | 500    | Maximum map entries            |
 
 ---
 
@@ -203,9 +204,9 @@ references.
 
 **v1.6.3.11-v5 (NEW):** `[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]`
 `[COMMAND_LISTENER_REGISTERED]` `[ACTION_BUTTON_CLICKED]`
-`[ACTION_BUTTON_LISTENER_REGISTERED]` `[SIDEBAR_TOGGLED]`
-`[STORAGE_PROPAGATE]` `[ERROR_RECOVERY]` `[PORT_LIFECYCLE]`
-`[STATE_RECONCILE]` `[SYNC_LATENCY]` `[ERROR_TELEMETRY]`
+`[ACTION_BUTTON_LISTENER_REGISTERED]` `[SIDEBAR_TOGGLED]` `[STORAGE_PROPAGATE]`
+`[ERROR_RECOVERY]` `[PORT_LIFECYCLE]` `[STATE_RECONCILE]` `[SYNC_LATENCY]`
+`[ERROR_TELEMETRY]`
 
 **v1.6.3.11-v4:** `[MSG_COMMAND]` `[MSG_VALIDATION]` `[MSG_ROUTE]`
 `[HOVER_EVENT]` `[PLATFORM_DETECT]` `[HANDLER_SELECT]` `[SHADOW_DOM_SEARCH]`
@@ -289,20 +290,20 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                             | Features                                          |
-| ------------------------------------------------ | ------------------------------------------------- |
-| `src/constants.js`                               | Centralized constants                             |
-| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (v4)                    |
-| `src/utils/error-telemetry.js`                   | Threshold-based alerting (NEW v5)                 |
-| `src/utils/logging-infrastructure.js`            | L1-L7 logging prefixes (NEW v5)                   |
-| `src/background/tab-events.js`                   | Tabs API listeners                                |
-| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts              |
-| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation       |
-| `src/messaging/message-router.js`                | ACTION-based routing                              |
-| `src/background/message-handler.js`              | TYPE-based v2 routing                             |
-| `background.js`                                  | commands, browserAction listeners (enhanced v5)   |
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()       |
-| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                   |
+| File                                             | Features                                        |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `src/constants.js`                               | Centralized constants                           |
+| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (v4)                  |
+| `src/utils/error-telemetry.js`                   | Threshold-based alerting (NEW v5)               |
+| `src/utils/logging-infrastructure.js`            | L1-L7 logging prefixes (NEW v5)                 |
+| `src/background/tab-events.js`                   | Tabs API listeners                              |
+| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts            |
+| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation     |
+| `src/messaging/message-router.js`                | ACTION-based routing                            |
+| `src/background/message-handler.js`              | TYPE-based v2 routing                           |
+| `background.js`                                  | commands, browserAction listeners (enhanced v5) |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()     |
+| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                 |
 
 ### Storage
 

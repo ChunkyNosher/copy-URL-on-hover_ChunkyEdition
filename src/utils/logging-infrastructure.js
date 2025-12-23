@@ -610,7 +610,7 @@ function _sanitizeParams(params) {
 
   const sensitiveKeys = ['password', 'token', 'secret'];
   const sanitized = {};
-  
+
   for (const [key, value] of Object.entries(params)) {
     if (sensitiveKeys.includes(key.toLowerCase())) continue;
     sanitized[key] = _sanitizeParamValue(value);
