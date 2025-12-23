@@ -757,6 +757,126 @@ let contentScriptInitialized = false;
  */
 let isHydrationComplete = false;
 
+// ==================== v1.6.3.11-v5 FIX ISSUE #15: STATE READINESS TRACKING ====================
+// Track state readiness to gate feature activation until hydration complete
+
+/**
+ * State readiness flag - true when state is fully hydrated and features can use it
+ * v1.6.3.11-v5 - FIX Issue #15: Gate feature activation until state ready
+ */
+let isStateReady = false;
+
+/**
+ * Timestamp when initialization phases started
+ * v1.6.3.11-v5 - FIX Issue #15: Track initialization timing
+ */
+let initPhaseStartTime = 0;
+
+/**
+ * Timestamp when hydration phase started
+ * v1.6.3.11-v5 - FIX Issue #15: Track hydration timing separately
+ */
+let hydrationPhaseStartTime = 0;
+
+/**
+ * Track completion of individual initialization phases
+ * v1.6.3.11-v5 - FIX Issue #15: Structured phase tracking
+ */
+const initPhaseStatus = {
+  moduleLoad: { complete: false, timestamp: 0, durationMs: 0 },
+  managerInit: { complete: false, timestamp: 0, durationMs: 0 },
+  configLoad: { complete: false, timestamp: 0, durationMs: 0 },
+  stateHydration: { complete: false, timestamp: 0, durationMs: 0 },
+  featureActivation: { complete: false, timestamp: 0, durationMs: 0 }
+};
+
+/**
+ * Log initialization phase start
+ * v1.6.3.11-v5 - FIX Issue #15: Structured phase logging
+ * @param {string} phase - Phase name
+ */
+function _logInitPhaseStart(phase) {
+  const now = Date.now();
+  console.log(`[Content][INIT_PHASE] ${phase} started:`, {
+    phase,
+    elapsedSinceInitMs: initPhaseStartTime > 0 ? now - initPhaseStartTime : 0,
+    timestamp: now
+  });
+}
+
+/**
+ * Log initialization phase complete
+ * v1.6.3.11-v5 - FIX Issue #15: Structured phase logging
+ * @param {string} phase - Phase name
+ * @param {number} startTime - Phase start timestamp
+ */
+function _logInitPhaseComplete(phase, startTime) {
+  const now = Date.now();
+  const durationMs = now - startTime;
+  
+  if (initPhaseStatus[phase]) {
+    initPhaseStatus[phase].complete = true;
+    initPhaseStatus[phase].timestamp = now;
+    initPhaseStatus[phase].durationMs = durationMs;
+  }
+  
+  console.log(`[Content][INIT_PHASE] ${phase} complete:`, {
+    phase,
+    durationMs,
+    elapsedSinceInitMs: initPhaseStartTime > 0 ? now - initPhaseStartTime : 0,
+    timestamp: now
+  });
+}
+
+/**
+ * Check if state is ready for feature use
+ * v1.6.3.11-v5 - FIX Issue #15: Gate feature operations
+ * @returns {boolean} True if state is ready
+ */
+function _isStateReadyForFeatures() {
+  return isStateReady && isHydrationComplete;
+}
+
+/**
+ * Log attempt to use uninitialized state
+ * v1.6.3.11-v5 - FIX Issue #15: Track uninitialized state access
+ * @param {string} feature - Feature that attempted access
+ * @param {string} operation - Operation that was attempted
+ */
+function _logUninitializedStateAccess(feature, operation) {
+  console.warn('[Content][STATE_READY] Attempt to use uninitialized state:', {
+    feature,
+    operation,
+    isStateReady,
+    isHydrationComplete,
+    contentScriptInitialized,
+    initPhaseStatus: Object.entries(initPhaseStatus)
+      .filter(([_, v]) => v.complete)
+      .map(([k]) => k),
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Mark state as ready and log transition
+ * v1.6.3.11-v5 - FIX Issue #15: State readiness transition
+ */
+function _markStateReady() {
+  if (isStateReady) return;
+  
+  isStateReady = true;
+  const now = Date.now();
+  const totalInitTime = initPhaseStartTime > 0 ? now - initPhaseStartTime : 0;
+  
+  console.log('[Content][STATE_READY] State now ready for features:', {
+    totalInitTimeMs: totalInitTime,
+    phases: initPhaseStatus,
+    timestamp: now
+  });
+}
+
+// ==================== END ISSUE #15 STATE READINESS ====================
+
 /**
  * Timeout for hydration (milliseconds)
  * v1.6.3.10-v11 - FIX Issue #15: If hydration doesn't complete within this time, allow operations anyway
@@ -1933,13 +2053,59 @@ function _updateBackgroundResponseTime() {
 /**
  * Mark content script as initialized and flush queued messages
  * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.11-v5 - FIX Issue #15: Gate feature activation until state ready
  */
 async function _markContentScriptInitialized() {
   if (contentScriptInitialized) return;
 
+  // v1.6.3.11-v5 - FIX Issue #15: Log feature activation phase start
+  const featureActivationStart = Date.now();
+  _logInitPhaseStart('featureActivation');
+
+  // v1.6.3.11-v5 - FIX Issue #15: Wait for state readiness before activating features
+  if (!_isStateReadyForFeatures()) {
+    console.log('[Content][FEATURE_GATE] Deferring feature activation until state ready:', {
+      isStateReady,
+      isHydrationComplete,
+      timestamp: Date.now()
+    });
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Wait for state readiness with exponential backoff
+    // This avoids inefficient polling while still being responsive
+    const maxWaitMs = 500; // Max wait for state readiness
+    const startWait = Date.now();
+    let waitInterval = 25; // Start with 25ms, double each iteration up to 100ms max
+    
+    while (!_isStateReadyForFeatures() && (Date.now() - startWait) < maxWaitMs) {
+      await new Promise(resolve => setTimeout(resolve, waitInterval));
+      waitInterval = Math.min(waitInterval * 2, 100); // Exponential backoff capped at 100ms
+    }
+    
+    if (!_isStateReadyForFeatures()) {
+      console.warn('[Content][FEATURE_GATE] Proceeding with feature activation despite incomplete state:', {
+        isStateReady,
+        isHydrationComplete,
+        waitedMs: Date.now() - startWait,
+        timestamp: Date.now()
+      });
+    } else {
+      console.log('[Content][FEATURE_GATE] State became ready, proceeding with feature activation:', {
+        waitedMs: Date.now() - startWait,
+        timestamp: Date.now()
+      });
+    }
+  }
+
   contentScriptInitialized = true;
+  
+  // v1.6.3.11-v5 - FIX Issue #15: Log feature activation complete
+  _logInitPhaseComplete('featureActivation', featureActivationStart);
+  
   console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    isStateReady,
+    isHydrationComplete,
+    totalInitTimeMs: initPhaseStartTime > 0 ? Date.now() - initPhaseStartTime : 0
   });
 
   // Flush any queued messages
@@ -1977,11 +2143,20 @@ async function _markHydrationComplete(loadedTabCount = 0) {
   }
 
   isHydrationComplete = true;
+  
+  // v1.6.3.11-v5 - FIX Issue #15: Log hydration phase complete with correct start time
+  // Use hydrationPhaseStartTime if set, otherwise fall back to initPhaseStartTime
+  const hydrationStartForLogging = hydrationPhaseStartTime > 0 ? hydrationPhaseStartTime : initPhaseStartTime;
+  _logInitPhaseComplete('stateHydration', hydrationStartForLogging);
+  
   console.log('[Content] HYDRATION_COMPLETE:', {
     loadedTabCount,
     queuedOperations: preHydrationOperationQueue.length,
     timestamp: Date.now()
   });
+
+  // v1.6.3.11-v5 - FIX Issue #15: Mark state as ready after hydration
+  _markStateReady();
 
   // Drain queued operations
   await _drainPreHydrationQueue();
@@ -2103,8 +2278,12 @@ function _shouldWaitForHydration(operationType) {
  * v1.6.3.11-v2 - FIX Issue #7 (Diagnostic Report): Extended timeout with progress warnings
  */
 function _initHydrationTimeout() {
-  const hydrationStartTime = Date.now();
+  // v1.6.3.11-v5 - FIX Issue #15: Set global hydration phase start time
+  hydrationPhaseStartTime = Date.now();
   const loggedWarnings = new Set();
+
+  // v1.6.3.11-v5 - FIX Issue #15: Log hydration phase start
+  _logInitPhaseStart('stateHydration');
 
   // v1.6.3.11-v2 - FIX Issue #7: Set up warning interval for progress logging
   const warningIntervalId = setInterval(() => {
@@ -2113,7 +2292,7 @@ function _initHydrationTimeout() {
       return;
     }
 
-    const elapsed = Date.now() - hydrationStartTime;
+    const elapsed = Date.now() - hydrationPhaseStartTime;
 
     // Log warnings at each threshold
     for (const threshold of HYDRATION_WARNING_THRESHOLDS_MS) {
@@ -5257,9 +5436,17 @@ function reportInitializationError(err) {
  */
 (async function initExtension() {
   try {
+    // v1.6.3.11-v5 - FIX Issue #15: Track initialization start time
+    initPhaseStartTime = Date.now();
+    _logInitPhaseStart('moduleLoad');
+    
     // v1.6.1: Wait for filter settings to load from storage BEFORE starting extension logs
     // This ensures user's filter preferences are active from the very first log
     const settingsResult = await settingsReady;
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Log module load complete
+    _logInitPhaseComplete('moduleLoad', initPhaseStartTime);
+    
     if (settingsResult.success) {
       console.log(
         `[Copy-URL-on-Hover] ✓ Filter settings loaded (source: ${settingsResult.source})`
@@ -5287,8 +5474,15 @@ function reportInitializationError(err) {
       );
     }
 
+    // v1.6.3.11-v5 - FIX Issue #15: Log config load phase start
+    const configLoadStart = Date.now();
+    _logInitPhaseStart('configLoad');
+    
     // Load configuration
     CONFIG = await loadConfiguration();
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Log config load complete
+    _logInitPhaseComplete('configLoad', configLoadStart);
 
     // Setup debug mode
     setupDebugMode();
@@ -5296,8 +5490,15 @@ function reportInitializationError(err) {
     // Initialize state (critical - will throw on error)
     initializeState();
 
+    // v1.6.3.11-v5 - FIX Issue #15: Log manager init phase start
+    const managerInitStart = Date.now();
+    _logInitPhaseStart('managerInit');
+    
     // Initialize features
     await initializeFeatures();
+    
+    // v1.6.3.11-v5 - FIX Issue #15: Log manager init complete
+    _logInitPhaseComplete('managerInit', managerInitStart);
 
     debug('Extension initialized successfully');
 
@@ -5845,11 +6046,17 @@ function _handleShortcutDuringInit(event) {
  * v1.6.0 Phase 2.4 - Extracted handler for keyboard shortcuts
  * v1.6.3.11 - FIX Issue #38: Add guard for initialization window
  * v1.6.3.11-v4 - FIX Code Health: Encapsulated complex conditionals, flattened structure
+ * v1.6.3.11-v5 - FIX Issue #15: Check state readiness before using state
  */
 async function handleKeyboardShortcut(event) {
   if (!contentScriptInitialized) {
     _handleShortcutDuringInit(event);
     return;
+  }
+
+  // v1.6.3.11-v5 - FIX Issue #15: Log if state not ready but still proceeding
+  if (!_isStateReadyForFeatures()) {
+    _logUninitializedStateAccess('keyboard', 'handleKeyboardShortcut');
   }
 
   if (isInputField(event.target)) {

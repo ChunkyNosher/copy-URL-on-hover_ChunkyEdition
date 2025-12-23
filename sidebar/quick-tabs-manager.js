@@ -128,6 +128,35 @@ const CACHE_STALENESS_ALERT_MS = 30000; // Alert if cache diverges for >30 secon
 // FIX Issue #1: Sliding-window debounce maximum wait time
 const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
 
+// ==================== v1.6.3.11-v5 FIX ISSUE #16: RAPID STORAGE STORM TRACKING ====================
+// Track storage event frequency and adapt cache invalidation
+
+/**
+ * Threshold for detecting storage storm (events per second)
+ * v1.6.3.11-v5 - FIX Issue #16: If >5 events/second, consider it a storm
+ */
+const STORAGE_STORM_THRESHOLD_EPS = 5;
+
+/**
+ * Time window for measuring storage event frequency (milliseconds)
+ * v1.6.3.11-v5 - FIX Issue #16: Measure over 1 second windows
+ */
+const STORAGE_STORM_WINDOW_MS = 1000;
+
+/**
+ * Tighter cache staleness threshold during storms (milliseconds)
+ * v1.6.3.11-v5 - FIX Issue #16: During storms, check staleness more aggressively
+ */
+const CACHE_STALENESS_STORM_MS = 500;
+
+/**
+ * Adaptive render debounce during storms (milliseconds)
+ * v1.6.3.11-v5 - FIX Issue #16: Increase debounce during storms to let cache settle
+ */
+const RENDER_DEBOUNCE_STORM_MS = 200;
+
+// ==================== END ISSUE #16 CONSTANTS ====================
+
 // ==================== v1.6.3.10-v7 CONSTANTS ====================
 // FIX Bug #1: quickTabHostInfo memory leak prevention
 const HOST_INFO_MAX_ENTRIES = 500; // Maximum entries before pruning old ones
@@ -184,6 +213,48 @@ const MIN_TABS_FOR_CACHE_PROTECTION = 1; // Protect cache if we have at least 1 
 // v1.6.3.10-v2 - FIX Issue #8: Cache staleness tracking
 let lastCacheSyncFromStorage = 0; // Timestamp when cache was last synchronized with storage
 let cacheHydrationComplete = false; // Flag to track if initial hydration is done
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #16: CACHE DIRTY FLAG & STORM TRACKING ====================
+// Track cache invalidation events and storage storm detection
+
+/**
+ * Cache dirty flag - set when storage changes, cleared when render uses fresh storage
+ * v1.6.3.11-v5 - FIX Issue #16: Ensure render uses current storage state
+ */
+let isCacheDirty = false;
+
+/**
+ * Timestamp of last cache invalidation
+ * v1.6.3.11-v5 - FIX Issue #16: Track when cache was marked dirty
+ * Prefixed with _ as reserved for future cache invalidation analytics
+ */
+let _lastCacheInvalidationTime = 0;
+
+/**
+ * Storage event timestamps for frequency tracking
+ * v1.6.3.11-v5 - FIX Issue #16: Sliding window of recent storage events
+ */
+const storageEventTimestamps = [];
+
+/**
+ * Maximum storage event timestamps to track
+ * v1.6.3.11-v5 - FIX Issue #16: Keep last 20 events for frequency calculation
+ */
+const STORAGE_EVENT_TIMESTAMPS_MAX = 20;
+
+/**
+ * Current storage storm state
+ * v1.6.3.11-v5 - FIX Issue #16: Track if we're currently in a storm
+ */
+let isInStorageStorm = false;
+
+/**
+ * Last storage storm detection time
+ * v1.6.3.11-v5 - FIX Issue #16
+ */
+let lastStorageStormDetection = 0;
+
+// ==================== END ISSUE #16 STATE TRACKING ====================
 
 // UI Elements (cached for performance)
 let containersList;
@@ -3570,6 +3641,9 @@ function _updateInMemoryCache(tabs) {
   // v1.6.3.10-v2 - FIX Issue #8: Always update cache sync timestamp
   lastCacheSyncFromStorage = Date.now();
 
+  // v1.6.3.11-v5 - FIX Issue #16: Clear dirty flag when cache is refreshed from storage
+  isCacheDirty = false;
+
   // v1.6.3.10-v2 - FIX Issue #8: Mark initial hydration as complete
   if (!cacheHydrationComplete && tabs.length >= 0) {
     cacheHydrationComplete = true;
@@ -3595,6 +3669,139 @@ function _updateInMemoryCache(tabs) {
   // Note: If lastKnownGoodTabCount > 1 and tabs.length === 0, we don't clear the cache
   // because this might be a storage storm. _detectStorageStorm handles that case.
 }
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #16: CACHE DIRTY FLAG & STORM DETECTION ====================
+// Functions for tracking cache staleness and storage storms
+
+/**
+ * Mark cache as dirty when storage changes
+ * v1.6.3.11-v5 - FIX Issue #16: Set dirty flag on any storage change
+ */
+function _markCacheDirty() {
+  const now = Date.now();
+  isCacheDirty = true;
+  _lastCacheInvalidationTime = now;
+  
+  console.log('[Sidebar][CACHE_DIRTY] Cache marked dirty:', {
+    timestamp: now,
+    timeSinceLastSync: now - lastCacheSyncFromStorage,
+    isInStorageStorm
+  });
+}
+
+/**
+ * Record a storage event timestamp for frequency tracking
+ * v1.6.3.11-v5 - FIX Issue #16: Track storage event frequency
+ * v1.6.3.11-v5 - FIX Code Review: Optimized array maintenance
+ */
+function _recordStorageEvent() {
+  const now = Date.now();
+  storageEventTimestamps.push(now);
+  
+  // Keep only recent timestamps - use slice for efficiency instead of shift in loop
+  if (storageEventTimestamps.length > STORAGE_EVENT_TIMESTAMPS_MAX) {
+    // Remove oldest entries in one operation
+    const toRemove = storageEventTimestamps.length - STORAGE_EVENT_TIMESTAMPS_MAX;
+    storageEventTimestamps.splice(0, toRemove);
+  }
+  
+  // Check for storage storm
+  _checkStorageStorm(now);
+}
+
+/**
+ * Check if we're in a storage storm based on event frequency
+ * v1.6.3.11-v5 - FIX Issue #16: Detect rapid storage operations
+ * v1.6.3.11-v5 - FIX Code Review: Optimized with reverse iteration instead of filter
+ * @param {number} now - Current timestamp
+ */
+function _checkStorageStorm(now) {
+  // Count events in the last window using reverse iteration (array is chronological)
+  const windowStart = now - STORAGE_STORM_WINDOW_MS;
+  let recentEventCount = 0;
+  
+  // Iterate backwards since array is chronological - stop when we hit old events
+  for (let i = storageEventTimestamps.length - 1; i >= 0; i--) {
+    if (storageEventTimestamps[i] > windowStart) {
+      recentEventCount++;
+    } else {
+      break; // All earlier events are outside the window
+    }
+  }
+  
+  const eventsPerSecond = recentEventCount / (STORAGE_STORM_WINDOW_MS / 1000);
+  
+  const wasInStorm = isInStorageStorm;
+  isInStorageStorm = eventsPerSecond >= STORAGE_STORM_THRESHOLD_EPS;
+  
+  // Log storm state changes
+  if (isInStorageStorm && !wasInStorm) {
+    lastStorageStormDetection = now;
+    console.warn('[Sidebar][STORAGE_STORM] Storm DETECTED:', {
+      eventsPerSecond: eventsPerSecond.toFixed(1),
+      threshold: STORAGE_STORM_THRESHOLD_EPS,
+      recentEventCount,
+      windowMs: STORAGE_STORM_WINDOW_MS,
+      timestamp: now
+    });
+  } else if (!isInStorageStorm && wasInStorm) {
+    const stormDurationMs = now - lastStorageStormDetection;
+    console.log('[Sidebar][STORAGE_STORM] Storm ENDED:', {
+      durationMs: stormDurationMs,
+      eventsPerSecond: eventsPerSecond.toFixed(1),
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Get current render debounce time based on storm state
+ * v1.6.3.11-v5 - FIX Issue #16: Adaptive debounce during storms
+ * @returns {number} Debounce time in milliseconds
+ */
+function _getAdaptiveRenderDebounce() {
+  return isInStorageStorm ? RENDER_DEBOUNCE_STORM_MS : RENDER_DEBOUNCE_MS;
+}
+
+/**
+ * Get current cache staleness threshold based on storm state
+ * v1.6.3.11-v5 - FIX Issue #16: Tighter staleness check during storms
+ * @returns {number} Staleness threshold in milliseconds
+ */
+function _getCacheStalenessThreshold() {
+  return isInStorageStorm ? CACHE_STALENESS_STORM_MS : CACHE_STALENESS_ALERT_MS;
+}
+
+/**
+ * Check if cache is stale and should be refreshed
+ * v1.6.3.11-v5 - FIX Issue #16: Check staleness based on storm state
+ * @returns {boolean} True if cache is stale
+ */
+function _isCacheStale() {
+  const now = Date.now();
+  const threshold = _getCacheStalenessThreshold();
+  const staleness = now - lastCacheSyncFromStorage;
+  
+  return staleness > threshold;
+}
+
+/**
+ * Log cache refresh event
+ * v1.6.3.11-v5 - FIX Issue #16: Track cache refresh operations
+ * @param {string} source - Source of the refresh (e.g., 'render', 'storage-change')
+ */
+function _logCacheRefresh(source) {
+  console.log('[Sidebar][CACHE_REFRESH] Cache refreshed from storage:', {
+    source,
+    wasDirty: isCacheDirty,
+    wasStale: _isCacheStale(),
+    timeSinceLastSync: Date.now() - lastCacheSyncFromStorage,
+    isInStorageStorm,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== END ISSUE #16 HELPER FUNCTIONS ====================
 
 // ==================== v1.6.3.11-v4 FIX ISSUE #4: STATE VERIFICATION ====================
 // Verify stored Quick Tabs still exist in the browser
@@ -3897,6 +4104,7 @@ function _shouldForceRenderOnMaxWait(now) {
 /**
  * Calculate debounce time based on sliding window
  * v1.6.4.14 - Extracted to reduce renderUI complexity
+ * v1.6.3.11-v5 - FIX Issue #16: Use adaptive debounce during storms
  * @private
  * @param {number} now - Current timestamp
  * @returns {number} Debounce time in milliseconds
@@ -3904,12 +4112,17 @@ function _shouldForceRenderOnMaxWait(now) {
 function _calculateDebounceTime(now) {
   const elapsedSinceStart = now - debounceStartTimestamp;
   const remainingMaxWait = RENDER_DEBOUNCE_MAX_WAIT_MS - elapsedSinceStart;
-  return Math.min(RENDER_DEBOUNCE_MS, remainingMaxWait);
+  
+  // v1.6.3.11-v5 - FIX Issue #16: Use adaptive debounce based on storm state
+  const baseDebounce = _getAdaptiveRenderDebounce();
+  
+  return Math.min(baseDebounce, remainingMaxWait);
 }
 
 /**
  * Execute the debounced render after timer fires
  * v1.6.4.14 - Extracted to reduce renderUI complexity
+ * v1.6.3.11-v5 - FIX Issue #16: Check cache staleness before render
  * @private
  * @param {number} debounceTime - The debounce time used
  */
@@ -3928,6 +4141,18 @@ async function _executeDebounceRender(debounceTime) {
   // Reset sliding window tracking
   debounceStartTimestamp = 0;
   debounceExtensionCount = 0;
+
+  // v1.6.3.11-v5 - FIX Issue #16: Check if cache is dirty or stale
+  if (isCacheDirty || _isCacheStale()) {
+    console.log('[Manager] RENDER_CACHE_CHECK: Cache dirty/stale, refreshing from storage:', {
+      isCacheDirty,
+      isStale: _isCacheStale(),
+      staleness: Date.now() - lastCacheSyncFromStorage,
+      threshold: _getCacheStalenessThreshold(),
+      isInStorageStorm
+    });
+    _logCacheRefresh('render-debounce');
+  }
 
   // v1.6.3.10-v2 - FIX Issue #1: Fetch CURRENT state from storage, not captured hash
   const staleCheckResult = await _checkAndReloadStaleState();
@@ -5038,6 +5263,7 @@ function setupEventListeners() {
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   // v1.6.3.11-v4 - FIX Issue #3: Added [STATE_LISTEN] logging prefix
+  // v1.6.3.11-v5 - FIX Issue #16: Added cache dirty flag and storm detection
   console.log('[STATE_LISTEN] Registering storage.onChanged listener in sidebar:', {
     stateKey: STATE_KEY,
     timestamp: Date.now()
@@ -5051,6 +5277,13 @@ function setupEventListeners() {
       timestamp: Date.now()
     });
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    
+    // v1.6.3.11-v5 - FIX Issue #16: Record storage event for storm detection
+    _recordStorageEvent();
+    
+    // v1.6.3.11-v5 - FIX Issue #16: Mark cache as dirty
+    _markCacheDirty();
+    
     _handleStorageChange(changes[STATE_KEY]);
   });
   console.log('[STATE_LISTEN] ✓ storage.onChanged listener registered');
@@ -5132,10 +5365,13 @@ function _handleStorageChange(change) {
   const context = _buildStorageChangeContext(change);
 
   // v1.6.3.7 - FIX Issue #8: Log storage listener entry
+  // v1.6.3.11-v5 - FIX Issue #16: Added storm state to logging
   console.log('[Manager] STORAGE_LISTENER:', {
     event: 'storage.onChanged',
     oldSaveId: context.oldValue?.saveId || 'none',
     newSaveId: context.newValue?.saveId || 'none',
+    isInStorageStorm,
+    isCacheDirty,
     timestamp: Date.now()
   });
 
