@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v5  
+**Version:** 1.6.3.12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,55 +23,26 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v5 Features (NEW) - 23 Issues Fixed:**
+**v1.6.3.12 Features (NEW) - Early Message Listener:**
 
-**Phase 1: Critical Missing Listeners (2 Issues):**
+- **Early Message Listener** - Register chrome.runtime.onMessage and
+  browser.runtime.onMessage at TOP of background.js
+- **Message Queue** - Queue messages received before MessageRouter is ready
+  (_earlyMessageQueue, max 100)
+- **Queue Drain** - Drain queued messages when MessageRouter is marked ready via
+  _setMessageRouterReady()
+- **Type-Based Handler Integration** - HEARTBEAT, QUICK_TAB_STATE_CHANGE,
+  MANAGER_COMMAND handled via _setTypeBasedHandlers()
 
-- **browser.commands.onCommand** - Enhanced with [COMMAND_RECEIVED],
-  [COMMAND_EXECUTED], [COMMAND_LISTENER_REGISTERED] logging
-- **browser.browserAction.onClicked** - Enhanced with [ACTION_BUTTON_CLICKED],
-  [ACTION_BUTTON_LISTENER_REGISTERED], [SIDEBAR_TOGGLED] logging
+**v1.6.3.11-v5 Features (Previous) - 23 Issues Fixed:**
 
-**Phase 2: Storage Sync Infrastructure (2 Issues):**
+- Phase 1-2: commands.onCommand, browserAction.onClicked, storage.onChanged
+- Phase 3-4: Operation sequence, port viability, state verification, error handling
+- Phase 5-6: State readiness gating, cache dirty flag, logging infrastructure
 
-- **Content storage.onChanged** - STORAGE_STATE_SYNC handler in content scripts
-- **Background storage.onChanged** - Re-broadcast to all tabs via
-  tabs.sendMessage
-
-**Phase 3: Message Ordering & Port Lifecycle (3 Issues):**
-
-- **Global Operation Sequence** - Counter for cross-tab message ordering
-- **Port Viability Checks** - Enhanced port handling with heartbeat
-- **Port Readiness Flag** - Message queue for BFCache restoration
-
-**Phase 4: State Verification & Error Handling (5 Issues):**
-
-- **Sidebar State Verification** - Origin tab existence checks on load
-- **Handler Error Response** - Retry logic for transient failures
-- **Notification Delivery Verification** - Retry and success tracking
-- **Hover Detection Recovery** - Diagnostic messages to background
-- **Map Storage Consistency** - quickTabHostInfo verification with backoff
-
-**Phase 5: Content Script Init & Cache (2 Issues):**
-
-- **State Readiness Gating** - Features wait for hydration before activating
-- **Cache Dirty Flag** - Storage storm detection for adaptive rendering
-
-**Phase 6: Logging & Telemetry (2 Issues):**
-
-- **Logging Infrastructure** - L1-L7 prefixes via logging-infrastructure.js
-- **Error Telemetry** - Threshold-based alerting via error-telemetry.js
-
-**v1.6.3.11-v4 Features (Previous) - 22 Issues Fixed:**
-
-- Shadow DOM Detection (YouTube, Twitter, Instagram, TikTok)
-- Event Debouncing 100ms, Pointer Events API, Content Pipeline Logging
-- Event Bus Visibility, Storage Timing Telemetry, Error Context Augmentation
-- Content Storage Sync, Operation Acknowledgment, Error Recovery Backoff
-
-**v1.6.3.11-v3 & Earlier (Consolidated):** HEARTBEAT Handler, Re-entrance Queue,
-Message Validation, sendMessageWithTimeout(), BFCache Message Queue, Dedup
-Window, GET_CURRENT_TAB_ID no init, BFCache port recovery, LRU map guard
+**v1.6.3.11-v4 & Earlier (Consolidated):** Shadow DOM detection, event debouncing,
+pointer events, HEARTBEAT handler, re-entrance queue, message validation,
+BFCache recovery, LRU map guard, GET_CURRENT_TAB_ID no init
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
@@ -121,7 +92,37 @@ references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v5 Patterns (Current)
+### v1.6.3.12 Patterns (Current)
+
+- **Early Message Listener** - Register listeners at TOP of background.js before
+  imports
+- **Message Queue** - Queue messages before MessageRouter ready (max 100)
+- **Queue Drain** - Drain queued messages via _setMessageRouterReady()
+- **Type-Based Handlers** - HEARTBEAT, QUICK_TAB_STATE_CHANGE, MANAGER_COMMAND
+
+**Key Pattern:**
+
+```javascript
+// At TOP of background.js, BEFORE imports:
+// 1. Register early listener immediately
+chrome.runtime.onMessage.addListener(_earlyMessageListener);
+
+// Later, after MessageRouter is configured:
+// 2. Mark router ready and drain queue
+_setMessageRouterReady(messageRouter);
+
+// 3. Register type-based handlers
+_setTypeBasedHandlers({...});
+```
+
+**Why This Pattern:**
+
+- ES module imports are hoisted, so code BEFORE imports executes first in
+  bundled output
+- Messages sent before MessageRouter is ready are queued (not lost)
+- Fixes "Receiving end does not exist" error that occurred in v1.6.3.11-v5
+
+### v1.6.3.11-v5 Patterns (Previous)
 
 - **Global Operation Sequence** - Cross-tab message ordering counter
 - **Port Viability Checks** - Heartbeat-based port health monitoring
@@ -146,24 +147,25 @@ references.
 - Tab ID exponential backoff, `VALID_MESSAGE_ACTIONS` allowlist
 - Checkpoint system, identity-ready gating, code health 9.0+
 
-### Key Timing Constants (v1.6.3.11-v5)
+### Key Timing Constants (v1.6.3.12)
 
-| Constant                     | Value  | Purpose                        |
-| ---------------------------- | ------ | ------------------------------ |
-| `ERROR_THRESHOLD_PER_MINUTE` | 5      | Telemetry escalation (NEW v5)  |
-| `ERROR_BUFFER_MAX_SIZE`      | 100    | Rolling error buffer (NEW v5)  |
-| `STORM_DETECTION_THRESHOLD`  | 100    | Cache storm detection ms (NEW) |
-| `STORM_DEBOUNCE_MS`          | 200    | Adaptive render debounce (NEW) |
-| `HOVER_DEBOUNCE_MS`          | 100    | Event debouncing               |
-| `STORAGE_SLOW_THRESHOLD_MS`  | 100    | Storage timing warning         |
-| `DEDUP_WINDOW_MS`            | 100    | Message dedup                  |
-| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000   | Firefox message timeout        |
-| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000   | PORT_VERIFY timeout            |
-| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000 | Extended tab ID timeout        |
-| `HYDRATION_TIMEOUT_MS`       | 10000  | Storage hydration              |
-| `TAB_REMOVAL_DEBOUNCE_MS`    | 200    | Tab onRemoved debounce         |
-| `HEARTBEAT_INTERVAL_MS`      | 15000  | Background health check        |
-| `LRU_MAP_MAX_SIZE`           | 500    | Maximum map entries            |
+| Constant                     | Value  | Purpose                               |
+| ---------------------------- | ------ | ------------------------------------- |
+| `_MAX_EARLY_QUEUE_SIZE`      | 100    | Max queued messages before ready (v12)|
+| `ERROR_THRESHOLD_PER_MINUTE` | 5      | Telemetry escalation (NEW v5)         |
+| `ERROR_BUFFER_MAX_SIZE`      | 100    | Rolling error buffer (NEW v5)         |
+| `STORM_DETECTION_THRESHOLD`  | 100    | Cache storm detection ms (NEW)        |
+| `STORM_DEBOUNCE_MS`          | 200    | Adaptive render debounce (NEW)        |
+| `HOVER_DEBOUNCE_MS`          | 100    | Event debouncing                      |
+| `STORAGE_SLOW_THRESHOLD_MS`  | 100    | Storage timing warning                |
+| `DEDUP_WINDOW_MS`            | 100    | Message dedup                         |
+| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000   | Firefox message timeout               |
+| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000   | PORT_VERIFY timeout                   |
+| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000 | Extended tab ID timeout               |
+| `HYDRATION_TIMEOUT_MS`       | 10000  | Storage hydration                     |
+| `TAB_REMOVAL_DEBOUNCE_MS`    | 200    | Tab onRemoved debounce                |
+| `HEARTBEAT_INTERVAL_MS`      | 15000  | Background health check               |
+| `LRU_MAP_MAX_SIZE`           | 500    | Maximum map entries                   |
 
 ---
 
@@ -202,7 +204,10 @@ references.
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.11-v5 (NEW):** `[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]`
+**v1.6.3.12 (NEW):** `[EARLY_LISTENER_REGISTRATION]` `[EARLY_MESSAGE_QUEUED]`
+`[MESSAGE_ROUTER_READY]` `[TYPE_BASED_HANDLERS_SET]`
+
+**v1.6.3.11-v5:** `[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]`
 `[COMMAND_LISTENER_REGISTERED]` `[ACTION_BUTTON_CLICKED]`
 `[ACTION_BUTTON_LISTENER_REGISTERED]` `[SIDEBAR_TOGGLED]` `[STORAGE_PROPAGATE]`
 `[ERROR_RECOVERY]` `[PORT_LIFECYCLE]` `[STATE_RECONCILE]` `[SYNC_LATENCY]`
@@ -301,7 +306,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation     |
 | `src/messaging/message-router.js`                | ACTION-based routing                            |
 | `src/background/message-handler.js`              | TYPE-based v2 routing                           |
-| `background.js`                                  | commands, browserAction listeners (enhanced v5) |
+| `background.js`                                  | Early message listener, queue drain (v12)       |
 | `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()     |
 | `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                 |
 
