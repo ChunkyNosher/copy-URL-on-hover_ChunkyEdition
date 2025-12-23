@@ -52,6 +52,41 @@ export class QuickTabHandler {
   // 3000ms: Shorter TTL reduces memory bloat in high-frequency scenarios
   static DEDUP_TTL_MS = 3000;
 
+  /**
+   * Augment an error with handler context for diagnostics
+   * v1.6.3.11-v4 - FIX Issue #6: Adds handler name, operation, and request context to errors
+   * @param {Error} error - Original error
+   * @param {string} handlerName - Handler class name
+   * @param {string} operation - Operation being performed
+   * @param {Object} context - Additional context (action, quickTabId, etc.)
+   * @returns {Error} Error with augmented message
+   */
+  static augmentError(error, handlerName, operation, context = {}) {
+    const contextStr = Object.entries(context)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+
+    const augmentedMessage = `[ERROR] [${handlerName}] ${operation} failed: ${error.message}${contextStr ? ` (${contextStr})` : ''}`;
+
+    console.error(augmentedMessage, {
+      handlerName,
+      operation,
+      context,
+      originalError: error.message,
+      stack: error.stack,
+      timestamp: Date.now()
+    });
+
+    // Create new error with augmented message
+    const augmentedError = new Error(augmentedMessage);
+    augmentedError.originalError = error;
+    augmentedError.handlerName = handlerName;
+    augmentedError.operation = operation;
+    augmentedError.context = context;
+    return augmentedError;
+  }
+
   constructor(globalState, stateCoordinator, browserAPI, initializeFn) {
     this.globalState = globalState;
     this.stateCoordinator = stateCoordinator;
@@ -133,51 +168,64 @@ export class QuickTabHandler {
   }
 
   /**
-   * Check if message is a duplicate (same action + id + content within dedup window)
-   * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
-   * v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
-   * v1.6.3.11-v3 - FIX Issue #76: Scope dedup entries by sender (port generation)
-   * v1.6.3.11-v3 - FIX Code Review: Use unique fallback key when sender tab ID unavailable
-   * @param {Object} message - Message to check
-   * @param {Object} sender - Message sender (optional, for scoping)
-   * @returns {boolean} True if this is a duplicate message
+   * Build sender key for deduplication
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _isDuplicateMessage complexity
+   * @private
+   * @param {Object} sender - Message sender
+   * @param {Object} message - Message object
+   * @param {number} now - Current timestamp
+   * @returns {string} Sender key for dedup map
    */
-  _isDuplicateMessage(message, sender = null) {
-    // Only deduplicate creation messages
-    if (message.action !== 'CREATE_QUICK_TAB') {
-      return false;
-    }
-
-    // Clean up old entries periodically
-    const now = Date.now();
-    if (now - this.lastCleanup > QuickTabHandler.DEDUP_CLEANUP_INTERVAL_MS) {
-      this._cleanupOldProcessedMessages(now);
-    }
-
-    // v1.6.3.11-v3 - FIX Issue #76: Scope by sender to prevent cross-port collision
-    // v1.6.3.11-v3 - FIX Code Review: Use unique fallback to prevent cross-sender dedup
+  _buildSenderKey(sender, message, now) {
     const senderTabId = sender?.tab?.id;
-    // If no tab ID, use message ID as fallback to prevent cross-sender dedup collision
-    const senderKey =
-      senderTabId != null
-        ? `tab-${senderTabId}`
-        : `msg-${message.id || now}-${Math.random().toString(36).slice(2, 8)}`;
+    return senderTabId != null
+      ? `tab-${senderTabId}`
+      : `msg-${message.id || now}-${Math.random().toString(36).slice(2, 8)}`;
+  }
 
-    // v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
-    // This ensures messages with same ID but different parameters are NOT deduplicated
-    const contentHash = this._generateContentHash(message);
-    const messageKey = `${message.action}-${message.id}-${contentHash}`;
-
-    // v1.6.3.11-v3 - FIX Issue #76: Get or create per-sender dedup map
+  /**
+   * Get or create sender dedup map
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _isDuplicateMessage complexity
+   * @private
+   * @param {string} senderKey - Key for sender
+   * @returns {Map} Sender's dedup map
+   */
+  _getOrCreateSenderMap(senderKey) {
     let senderMap = this.processedMessages.get(senderKey);
     if (!senderMap) {
       senderMap = new Map();
       this.processedMessages.set(senderKey, senderMap);
     }
+    return senderMap;
+  }
 
+  /**
+   * Check if message is a duplicate (same action + id + content within dedup window)
+   * v1.6.2.4 - BUG FIX Issue 4: Prevents double-creation of Quick Tabs
+   * v1.6.3.11-v3 - FIX Issue #55: Include content hash in dedup key
+   * v1.6.3.11-v3 - FIX Issue #76: Scope dedup entries by sender (port generation)
+   * v1.6.3.11-v3 - FIX Code Review: Use unique fallback key when sender tab ID unavailable
+   * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
+   * @param {Object} message - Message to check
+   * @param {Object} sender - Message sender (optional, for scoping)
+   * @returns {boolean} True if this is a duplicate message
+   */
+  _isDuplicateMessage(message, sender = null) {
+    if (message.action !== 'CREATE_QUICK_TAB') {
+      return false;
+    }
+
+    const now = Date.now();
+    if (now - this.lastCleanup > QuickTabHandler.DEDUP_CLEANUP_INTERVAL_MS) {
+      this._cleanupOldProcessedMessages(now);
+    }
+
+    const senderKey = this._buildSenderKey(sender, message, now);
+    const contentHash = this._generateContentHash(message);
+    const messageKey = `${message.action}-${message.id}-${contentHash}`;
+    const senderMap = this._getOrCreateSenderMap(senderKey);
     const lastProcessed = senderMap.get(messageKey);
 
-    // Check if recently processed
     if (lastProcessed && now - lastProcessed < QuickTabHandler.DEDUP_WINDOW_MS) {
       console.log('[QuickTabHandler] Ignoring duplicate message:', {
         action: message.action,
@@ -189,7 +237,6 @@ export class QuickTabHandler {
       return true;
     }
 
-    // Record this message
     senderMap.set(messageKey, now);
     return false;
   }
@@ -267,8 +314,91 @@ export class QuickTabHandler {
   }
 
   /**
+   * Build domain validation skip result
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _validateDomainOwnership complexity
+   * @private
+   */
+  _buildDomainSkipResult(reason) {
+    return { valid: true, skipped: true, reason };
+  }
+
+  /**
+   * Build domain validation failure result
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _validateDomainOwnership complexity
+   * @private
+   */
+  _buildDomainFailResult(senderDomain, storedDomain) {
+    return {
+      valid: false,
+      error: `Domain mismatch: sender=${senderDomain}, stored=${storedDomain}`,
+      senderDomain,
+      storedDomain
+    };
+  }
+
+  /**
+   * Get sender domain for validation
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _getSenderDomain(sender) {
+    const senderUrl = sender?.tab?.url || sender?.url;
+    return this._extractDomain(senderUrl);
+  }
+
+  /**
+   * Get stored domain from Quick Tab
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _getStoredDomain(quickTab) {
+    return quickTab?.originDomain || this._extractDomain(quickTab?.url);
+  }
+
+  /**
+   * Compare sender and stored domains
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _compareDomains(senderDomain, storedDomain, quickTabId) {
+    if (senderDomain === storedDomain) {
+      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SUCCESS:', {
+        quickTabId,
+        domain: senderDomain
+      });
+      return { valid: true, senderDomain };
+    }
+
+    console.error('[QuickTabHandler] DOMAIN_VALIDATION_FAILED: Domain mismatch', {
+      quickTabId,
+      senderDomain,
+      storedDomain,
+      warning: 'Cross-domain access attempt detected'
+    });
+    return this._buildDomainFailResult(senderDomain, storedDomain);
+  }
+
+  /**
+  /**
+   * Get Quick Tab and its stored domain
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _validateDomainOwnership complexity
+   * @private
+   * @param {string} quickTabId - Quick Tab ID to look up
+   * @returns {{found: boolean, quickTab?: Object, storedDomain?: string}}
+   */
+  _getQuickTabWithDomain(quickTabId) {
+    const quickTab = this.globalState.tabs?.find(t => t.id === quickTabId);
+    if (!quickTab) {
+      return { found: false };
+    }
+    const storedDomain = this._getStoredDomain(quickTab);
+    return { found: true, quickTab, storedDomain };
+  }
+
+  /**
    * Validate domain ownership for Quick Tab operations
    * v1.6.3.11-v3 - FIX Issue #38: Domain isolation for Quick Tab validation
+   * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
    *
    * Quick Tab created on `a.example.com` should NOT be accessible from `b.example.com`
    * even if the tabId is the same. This adds an extra layer of security beyond tabId.
@@ -279,59 +409,25 @@ export class QuickTabHandler {
    * @returns {{valid: boolean, error?: string, senderDomain?: string, storedDomain?: string, skipped?: boolean, reason?: string}}
    */
   _validateDomainOwnership(quickTabId, sender) {
-    // Extract sender domain
-    const senderUrl = sender?.tab?.url || sender?.url;
-    const senderDomain = this._extractDomain(senderUrl);
-
-    // If we can't determine sender domain, skip domain validation (fail-open for extensibility)
+    const senderDomain = this._getSenderDomain(sender);
     if (!senderDomain) {
       console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: Cannot determine sender domain', {
         quickTabId,
-        hasSenderUrl: !!senderUrl
+        hasSenderUrl: !!(sender?.tab?.url || sender?.url)
       });
-      return { valid: true, skipped: true };
+      return this._buildDomainSkipResult('no-sender-domain');
     }
 
-    // Find the Quick Tab in global state
-    const quickTab = this.globalState.tabs?.find(t => t.id === quickTabId);
-    if (!quickTab) {
-      // Quick Tab not found - skip domain validation (will fail on other validation)
-      return { valid: true, skipped: true, reason: 'quick-tab-not-found' };
+    const tabInfo = this._getQuickTabWithDomain(quickTabId);
+    if (!tabInfo.found) {
+      return this._buildDomainSkipResult('quick-tab-not-found');
+    }
+    if (!tabInfo.storedDomain) {
+      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: No stored domain', { quickTabId });
+      return this._buildDomainSkipResult('no-stored-domain');
     }
 
-    // Extract stored domain from Quick Tab's originDomain or URL
-    const storedDomain = quickTab.originDomain || this._extractDomain(quickTab.url);
-
-    // If Quick Tab has no stored domain, skip validation (backward compatibility)
-    if (!storedDomain) {
-      console.log('[QuickTabHandler] DOMAIN_VALIDATION_SKIPPED: Quick Tab has no stored domain', {
-        quickTabId,
-        hasUrl: !!quickTab.url
-      });
-      return { valid: true, skipped: true, reason: 'no-stored-domain' };
-    }
-
-    // Compare domains
-    if (senderDomain !== storedDomain) {
-      console.error('[QuickTabHandler] DOMAIN_VALIDATION_FAILED: Domain mismatch', {
-        quickTabId,
-        senderDomain,
-        storedDomain,
-        warning: 'Cross-domain access attempt detected'
-      });
-      return {
-        valid: false,
-        error: `Domain mismatch: sender=${senderDomain}, stored=${storedDomain}`,
-        senderDomain,
-        storedDomain
-      };
-    }
-
-    console.log('[QuickTabHandler] DOMAIN_VALIDATION_SUCCESS:', {
-      quickTabId,
-      domain: senderDomain
-    });
-    return { valid: true, senderDomain };
+    return this._compareDomains(senderDomain, tabInfo.storedDomain, quickTabId);
   }
 
   /**
@@ -352,62 +448,52 @@ export class QuickTabHandler {
     const senderTabId = sender?.tab?.id;
     const payloadTabId = message?.originTabId;
 
-    // Check if sender has a valid tab ID
-    if (typeof senderTabId !== 'number') {
-      console.error('[QuickTabHandler] ORIGIN_VALIDATION_FAILED: sender.tab.id unavailable', {
-        senderType: typeof sender,
-        hasTab: !!sender?.tab,
-        messageAction: message?.action
-      });
-      return { valid: false, resolvedTabId: null, error: 'sender.tab.id unavailable' };
+    const senderValidation = this._validateSenderTabId(senderTabId, sender, message);
+    if (!senderValidation.valid) {
+      return senderValidation;
     }
 
-    // v1.6.3.11-v3 - FIX Issue #56: Removed backward compatibility fallback
-    // If payload doesn't have originTabId, check if it's required
+    const payloadValidation = this._validatePayloadOriginTabId(
+      payloadTabId,
+      senderTabId,
+      requireOriginTabId,
+      message
+    );
+    return payloadValidation;
+  }
+
+  /**
+   * Validate sender has a valid tab ID
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _validateOriginTabId complexity
+   * @private
+   */
+  _validateSenderTabId(senderTabId, sender, message) {
+    if (typeof senderTabId === 'number') {
+      return { valid: true };
+    }
+
+    console.error('[QuickTabHandler] ORIGIN_VALIDATION_FAILED: sender.tab.id unavailable', {
+      senderType: typeof sender,
+      hasTab: !!sender?.tab,
+      messageAction: message?.action
+    });
+    return { valid: false, resolvedTabId: null, error: 'sender.tab.id unavailable' };
+  }
+
+  /**
+   * Validate payload originTabId against sender tab ID
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce _validateOriginTabId complexity
+   * @private
+   */
+  _validatePayloadOriginTabId(payloadTabId, senderTabId, requireOriginTabId, message) {
+    // Missing originTabId handling
     if (payloadTabId === null || payloadTabId === undefined) {
-      if (requireOriginTabId) {
-        // v1.6.3.11-v3 - FIX Issue #56: Log legacy client attempt and reject
-        console.warn('[QuickTabHandler] ORIGIN_VALIDATION_LEGACY_CLIENT:', {
-          senderTabId,
-          messageAction: message?.action,
-          quickTabId: message?.id,
-          warning: 'SECURITY: Legacy client without originTabId field - rejecting'
-        });
-        return {
-          valid: false,
-          resolvedTabId: null,
-          error: 'Missing originTabId field - required for ownership operations'
-        };
-      }
-
-      // For non-required cases (internal/manager ops), fall back to sender.tab.id
-      // SAFE: Only used when sender IS the authority (e.g., sidebar manager operations)
-      console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as fallback', {
-        senderTabId,
-        messageAction: message?.action,
-        quickTabId: message?.id,
-        note: 'originTabId not required for this internal operation'
-      });
-      return { valid: true, resolvedTabId: senderTabId };
+      return this._handleMissingOriginTabId(senderTabId, requireOriginTabId, message);
     }
 
-    // Validate that payload originTabId matches sender.tab.id
+    // Mismatch check
     if (payloadTabId !== senderTabId) {
-      console.error(
-        '[QuickTabHandler] ORIGIN_VALIDATION_MISMATCH: Security concern - payload originTabId does not match sender.tab.id',
-        {
-          payloadOriginTabId: payloadTabId,
-          senderTabId: senderTabId,
-          messageAction: message?.action,
-          quickTabId: message?.id,
-          warning: 'Potential cross-tab ownership attack or stale message'
-        }
-      );
-      return {
-        valid: false,
-        resolvedTabId: null,
-        error: `originTabId mismatch: payload=${payloadTabId}, sender=${senderTabId}`
-      };
+      return this._handleOriginTabIdMismatch(payloadTabId, senderTabId, message);
     }
 
     console.log('[QuickTabHandler] ORIGIN_VALIDATION_SUCCESS:', {
@@ -416,6 +502,58 @@ export class QuickTabHandler {
       quickTabId: message?.id
     });
     return { valid: true, resolvedTabId: senderTabId };
+  }
+
+  /**
+   * Handle missing originTabId in payload
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _handleMissingOriginTabId(senderTabId, requireOriginTabId, message) {
+    if (requireOriginTabId) {
+      console.warn('[QuickTabHandler] ORIGIN_VALIDATION_LEGACY_CLIENT:', {
+        senderTabId,
+        messageAction: message?.action,
+        quickTabId: message?.id,
+        warning: 'SECURITY: Legacy client without originTabId field - rejecting'
+      });
+      return {
+        valid: false,
+        resolvedTabId: null,
+        error: 'Missing originTabId field - required for ownership operations'
+      };
+    }
+
+    console.log('[QuickTabHandler] ORIGIN_VALIDATION: Using sender.tab.id as fallback', {
+      senderTabId,
+      messageAction: message?.action,
+      quickTabId: message?.id,
+      note: 'originTabId not required for this internal operation'
+    });
+    return { valid: true, resolvedTabId: senderTabId };
+  }
+
+  /**
+   * Handle originTabId mismatch between payload and sender
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _handleOriginTabIdMismatch(payloadTabId, senderTabId, message) {
+    console.error(
+      '[QuickTabHandler] ORIGIN_VALIDATION_MISMATCH: Security concern - payload originTabId does not match sender.tab.id',
+      {
+        payloadOriginTabId: payloadTabId,
+        senderTabId: senderTabId,
+        messageAction: message?.action,
+        quickTabId: message?.id,
+        warning: 'Potential cross-tab ownership attack or stale message'
+      }
+    );
+    return {
+      valid: false,
+      resolvedTabId: null,
+      error: `originTabId mismatch: payload=${payloadTabId}, sender=${senderTabId}`
+    };
   }
 
   /**
@@ -511,12 +649,22 @@ export class QuickTabHandler {
     }
 
     // v1.6.3.6-v4 - FIX Issue #1: Log successful completion
+    // v1.6.3.11-v4 - FIX Issue #2: Standardized response format with operation details
     console.log('[QuickTabHandler] updateQuickTabProperty EXIT:', {
       id: message.id,
       shouldSave,
       lastUpdate: this.globalState.lastUpdate
     });
-    return { success: true };
+    return {
+      success: true,
+      operation: message.action || 'UPDATE_QUICK_TAB_PROPERTY',
+      details: {
+        quickTabId: message.id,
+        savedToStorage: shouldSave,
+        tabFound: true,
+        lastUpdate: this.globalState.lastUpdate
+      }
+    };
   }
 
   /**
@@ -535,15 +683,18 @@ export class QuickTabHandler {
   /**
    * Build tab data object for Quick Tab creation
    * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleCreate complexity
+   * v1.6.4.15 - FIX Code Health: Changed to options object to reduce arguments
    * @private
+   * @param {Object} options - Creation options
+   * @param {Object} options.message - Original message with tab properties
+   * @param {string} options.cookieStoreId - Container ID
+   * @param {number} options.originTabId - Validated origin tab ID
+   * @param {number} options.sequenceId - Assigned sequence ID
+   * @param {string|null} options.originDomain - Origin domain for validation
+   * @returns {Object} Tab data object
    */
-  _buildCreateTabData(
-    message,
-    cookieStoreId,
-    validatedOriginTabId,
-    assignedSequenceId,
-    originDomain
-  ) {
+  _buildCreateTabData(options) {
+    const { message, cookieStoreId, originTabId, sequenceId, originDomain } = options;
     return {
       id: message.id,
       url: message.url,
@@ -555,10 +706,46 @@ export class QuickTabHandler {
       title: message.title || 'Quick Tab',
       minimized: message.minimized || false,
       cookieStoreId: cookieStoreId,
-      originTabId: validatedOriginTabId,
-      sequenceId: assignedSequenceId,
+      originTabId: originTabId,
+      sequenceId: sequenceId,
       originDomain: originDomain
     };
+  }
+
+  /**
+   * Validate originTabId for handleCreate
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce handleCreate complexity
+   * @private
+   */
+  _validateCreateOriginTabId(message, sender) {
+    try {
+      return { valid: true, tabId: this._requireValidOriginTabId(message, sender) };
+    } catch (err) {
+      console.error('[QuickTabHandler] CREATE_REJECTED: originTabId validation failed', {
+        error: err.message,
+        quickTabId: message.id
+      });
+      return { valid: false, error: err.message };
+    }
+  }
+
+  /**
+   * Extract and validate origin domain for handleCreate
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce handleCreate complexity
+   * @private
+   */
+  _extractCreateOriginDomain(sender, quickTabId) {
+    const senderUrl = sender?.tab?.url || sender?.url;
+    const originDomain = this._extractDomain(senderUrl);
+
+    if (!originDomain) {
+      console.warn('[QuickTabHandler] CREATE_ORIGIN_DOMAIN_NULL: Could not extract domain', {
+        quickTabId,
+        hasSenderUrl: !!senderUrl,
+        note: 'Domain validation will be skipped for this Quick Tab'
+      });
+    }
+    return originDomain;
   }
 
   /**
@@ -568,26 +755,19 @@ export class QuickTabHandler {
    * v1.6.3.10-v11 - FIX Issue #4: Validate originTabId against sender.tab.id
    * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
    * v1.6.3.11-v3 - FIX Issue #76: Pass sender to dedup for port-scoped deduplication
+   * v1.6.4.15 - FIX Code Health: Further extraction to reduce line count and complexity
    */
   async handleCreate(message, sender) {
-    // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
-    // v1.6.3.11-v3 - FIX Issue #76: Pass sender for port-scoped deduplication
     if (this._isDuplicateMessage(message, sender)) {
       console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
       return { success: true, duplicate: true };
     }
 
-    // v1.6.3.10-v11 - FIX Issue #4: Validate originTabId ownership
-    let validatedOriginTabId;
-    try {
-      validatedOriginTabId = this._requireValidOriginTabId(message, sender);
-    } catch (err) {
-      console.error('[QuickTabHandler] CREATE_REJECTED: originTabId validation failed', {
-        error: err.message,
-        quickTabId: message.id
-      });
-      return { success: false, error: err.message, rejected: true };
+    const originValidation = this._validateCreateOriginTabId(message, sender);
+    if (!originValidation.valid) {
+      return { success: false, error: originValidation.error, rejected: true };
     }
+    const validatedOriginTabId = originValidation.tabId;
 
     console.log(
       '[QuickTabHandler] Create:',
@@ -600,14 +780,11 @@ export class QuickTabHandler {
       validatedOriginTabId
     );
 
-    // Wait for initialization if needed
     if (!this.isInitialized) {
       await this.initializeFn();
     }
 
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-    // v1.6.3.11 - FIX Issue #31: Assign global sequence ID for CREATE ordering
     const assignedSequenceId = ++_globalCreateSequenceId;
     console.log('[QuickTabHandler] SEQUENCE_ASSIGNED:', {
       quickTabId: message.id,
@@ -615,31 +792,16 @@ export class QuickTabHandler {
       timestamp: Date.now()
     });
 
-    // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
     const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
+    const originDomain = this._extractCreateOriginDomain(sender, message.id);
 
-    // v1.6.3.11-v3 - FIX Issue #38: Extract and store originDomain for domain isolation
-    const senderUrl = sender?.tab?.url || sender?.url;
-    const originDomain = this._extractDomain(senderUrl);
-
-    // v1.6.3.11-v3 - FIX Code Review: Log warning when originDomain cannot be extracted
-    // This affects domain validation security - Quick Tab may skip domain checks
-    if (!originDomain) {
-      console.warn('[QuickTabHandler] CREATE_ORIGIN_DOMAIN_NULL: Could not extract domain', {
-        quickTabId: message.id,
-        hasSenderUrl: !!senderUrl,
-        note: 'Domain validation will be skipped for this Quick Tab'
-      });
-    }
-
-    // v1.6.3.11-v3 - FIX Code Health: Use helper to build tab data
-    const tabData = this._buildCreateTabData(
+    const tabData = this._buildCreateTabData({
       message,
       cookieStoreId,
-      validatedOriginTabId,
-      assignedSequenceId,
+      originTabId: validatedOriginTabId,
+      sequenceId: assignedSequenceId,
       originDomain
-    );
+    });
 
     if (existingIndex !== -1) {
       this.globalState.tabs[existingIndex] = tabData;
@@ -648,14 +810,23 @@ export class QuickTabHandler {
     }
 
     this.globalState.lastUpdate = Date.now();
-
-    // Save state
     await this.saveState(message.saveId, cookieStoreId, message);
 
     // v1.6.3.11-v3 - FIX Issue #12: Include originTabId in CREATE response
     // This allows content script to verify the validated originTabId assigned by background
+    // v1.6.3.11-v4 - FIX Issue #2: Standardized response format with operation details
     return {
       success: true,
+      operation: 'CREATE_QUICK_TAB',
+      details: {
+        quickTabId: message.id,
+        sequenceId: assignedSequenceId,
+        originTabId: validatedOriginTabId,
+        cookieStoreId: cookieStoreId,
+        url: message.url,
+        tabCount: this.globalState.tabs.length
+      },
+      // Legacy fields for backward compatibility
       sequenceId: assignedSequenceId,
       originTabId: validatedOriginTabId,
       quickTabId: message.id
@@ -731,172 +902,184 @@ export class QuickTabHandler {
       });
     }
 
-    return { success: true };
+    // v1.6.3.11-v4 - FIX Issue #2: Standardized response format with operation details
+    const wasRemoved = this.globalState.tabs.length !== originalLength;
+    return {
+      success: true,
+      operation: 'CLOSE_QUICK_TAB',
+      details: {
+        quickTabId: message.id,
+        removed: wasRemoved,
+        previousTabCount: originalLength,
+        currentTabCount: this.globalState.tabs.length,
+        cookieStoreId: cookieStoreId
+      }
+    };
+  }
+
+  /**
+   * Generic property update handler configuration
+   * v1.6.4.15 - FIX Code Health: DRY update handlers with configuration
+   * @private
+   */
+  static PROPERTY_UPDATE_CONFIGS = {
+    position: {
+      name: 'Position',
+      action: 'UPDATE_QUICK_TAB_POSITION',
+      finalAction: 'UPDATE_QUICK_TAB_POSITION_FINAL',
+      getValues: msg => ({ left: msg.left, top: msg.top }),
+      applyFn: (tab, msg) => {
+        tab.left = msg.left;
+        tab.top = msg.top;
+      }
+    },
+    size: {
+      name: 'Size',
+      action: 'UPDATE_QUICK_TAB_SIZE',
+      finalAction: 'UPDATE_QUICK_TAB_SIZE_FINAL',
+      getValues: msg => ({ width: msg.width, height: msg.height }),
+      applyFn: (tab, msg) => {
+        tab.width = msg.width;
+        tab.height = msg.height;
+      }
+    },
+    pin: {
+      name: 'Pin',
+      action: 'UPDATE_QUICK_TAB_PIN',
+      getValues: msg => ({ pinnedToUrl: msg.pinnedToUrl }),
+      applyFn: (tab, msg) => {
+        tab.pinnedToUrl = msg.pinnedToUrl;
+      }
+    },
+    solo: {
+      name: 'Solo',
+      action: 'UPDATE_QUICK_TAB_SOLO',
+      getValues: msg => ({
+        soloedOnTabs: msg.soloedOnTabs || [],
+        tabCount: (msg.soloedOnTabs || []).length
+      }),
+      applyFn: (tab, msg) => {
+        tab.soloedOnTabs = msg.soloedOnTabs || [];
+      }
+    },
+    mute: {
+      name: 'Mute',
+      action: 'UPDATE_QUICK_TAB_MUTE',
+      getValues: msg => ({
+        mutedOnTabs: msg.mutedOnTabs || [],
+        tabCount: (msg.mutedOnTabs || []).length
+      }),
+      applyFn: (tab, msg) => {
+        tab.mutedOnTabs = msg.mutedOnTabs || [];
+      }
+    },
+    minimize: {
+      name: 'Minimize',
+      action: 'UPDATE_QUICK_TAB_MINIMIZE',
+      getValues: msg => ({ minimized: msg.minimized }),
+      applyFn: (tab, msg) => {
+        tab.minimized = msg.minimized;
+      }
+    },
+    zIndex: {
+      name: 'Z-Index',
+      action: 'UPDATE_QUICK_TAB_ZINDEX',
+      getValues: msg => ({ zIndex: msg.zIndex }),
+      applyFn: (tab, msg) => {
+        tab.zIndex = msg.zIndex;
+      }
+    }
+  };
+
+  /**
+   * Generic property update handler
+   * v1.6.4.15 - FIX Code Health: DRY handler for all simple property updates
+   * @private
+   * @param {string} propertyType - Property type key from PROPERTY_UPDATE_CONFIGS
+   * @param {Object} message - Update message
+   * @param {boolean} shouldSave - Whether to persist to storage
+   * @returns {Promise<Object>} Update result
+   */
+  _handlePropertyUpdate(propertyType, message, shouldSave = true) {
+    const config = QuickTabHandler.PROPERTY_UPDATE_CONFIGS[propertyType];
+    const values = config.getValues(message);
+
+    console.log(`[QuickTabHandler] ${config.name} Update:`, {
+      action: config.action,
+      quickTabId: message.id,
+      ...values,
+      cookieStoreId: message.cookieStoreId || 'firefox-default',
+      shouldSave,
+      timestamp: Date.now()
+    });
+
+    return this.updateQuickTabProperty(message, config.applyFn, shouldSave);
   }
 
   /**
    * Handle position update
-   * v1.6.3.6-v4 - FIX Issue #1: Added entry logging similar to handlePinUpdate()
+   * v1.6.3.6-v4 - FIX Issue #1: Added entry logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handlePositionUpdate(message, _sender) {
     const shouldSave = message.action === 'UPDATE_QUICK_TAB_POSITION_FINAL';
-
-    // v1.6.3.6-v4 - FIX Issue #1: Entry logging for position updates
-    console.log('[QuickTabHandler] Position Update:', {
-      action: message.action,
-      quickTabId: message.id,
-      left: message.left,
-      top: message.top,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      shouldSave,
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(
-      message,
-      (tab, msg) => {
-        const oldLeft = tab.left;
-        const oldTop = tab.top;
-        tab.left = msg.left;
-        tab.top = msg.top;
-        // v1.6.3.6-v4 - FIX Issue #1: Log old vs new values
-        console.log('[QuickTabHandler] Position applied:', {
-          quickTabId: msg.id,
-          oldPosition: { left: oldLeft, top: oldTop },
-          newPosition: { left: tab.left, top: tab.top }
-        });
-      },
-      shouldSave
-    );
+    return this._handlePropertyUpdate('position', message, shouldSave);
   }
 
   /**
    * Handle size update
-   * v1.6.3.6-v4 - FIX Issue #1: Added entry logging similar to handlePinUpdate()
+   * v1.6.3.6-v4 - FIX Issue #1: Added entry logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handleSizeUpdate(message, _sender) {
     const shouldSave = message.action === 'UPDATE_QUICK_TAB_SIZE_FINAL';
-
-    // v1.6.3.6-v4 - FIX Issue #1: Entry logging for size updates
-    console.log('[QuickTabHandler] Size Update:', {
-      action: message.action,
-      quickTabId: message.id,
-      width: message.width,
-      height: message.height,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      shouldSave,
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(
-      message,
-      (tab, msg) => {
-        const oldWidth = tab.width;
-        const oldHeight = tab.height;
-        tab.width = msg.width;
-        tab.height = msg.height;
-        // v1.6.3.6-v4 - FIX Issue #1: Log old vs new values
-        console.log('[QuickTabHandler] Size applied:', {
-          quickTabId: msg.id,
-          oldSize: { width: oldWidth, height: oldHeight },
-          newSize: { width: tab.width, height: tab.height }
-        });
-      },
-      shouldSave
-    );
+    return this._handlePropertyUpdate('size', message, shouldSave);
   }
 
   /**
    * Handle pin update
    * v1.6.0.13 - Added logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handlePinUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Pin Update:', {
-      action: 'UPDATE_QUICK_TAB_PIN',
-      quickTabId: message.id,
-      pinnedToUrl: message.pinnedToUrl,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(message, (tab, msg) => {
-      tab.pinnedToUrl = msg.pinnedToUrl;
-    });
+    return this._handlePropertyUpdate('pin', message);
   }
 
   /**
    * Handle solo update
    * v1.6.0.13 - Added logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handleSoloUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Solo Update:', {
-      action: 'UPDATE_QUICK_TAB_SOLO',
-      quickTabId: message.id,
-      soloedOnTabs: message.soloedOnTabs || [],
-      tabCount: (message.soloedOnTabs || []).length,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(message, (tab, msg) => {
-      tab.soloedOnTabs = msg.soloedOnTabs || [];
-    });
+    return this._handlePropertyUpdate('solo', message);
   }
 
   /**
    * Handle mute update
    * v1.6.0.13 - Added logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handleMuteUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Mute Update:', {
-      action: 'UPDATE_QUICK_TAB_MUTE',
-      quickTabId: message.id,
-      mutedOnTabs: message.mutedOnTabs || [],
-      tabCount: (message.mutedOnTabs || []).length,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(message, (tab, msg) => {
-      tab.mutedOnTabs = msg.mutedOnTabs || [];
-    });
+    return this._handlePropertyUpdate('mute', message);
   }
 
   /**
    * Handle minimize update
    * v1.6.0.13 - Added logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handleMinimizeUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Minimize Update:', {
-      action: 'UPDATE_QUICK_TAB_MINIMIZE',
-      quickTabId: message.id,
-      minimized: message.minimized,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(message, (tab, msg) => {
-      tab.minimized = msg.minimized;
-    });
+    return this._handlePropertyUpdate('minimize', message);
   }
 
   /**
    * Handle z-index update
    * v1.6.0.12 - NEW: Save z-index for cross-tab sync
    * v1.6.0.13 - Added logging
+   * v1.6.4.15 - FIX Code Health: Refactored to use generic handler
    */
   handleZIndexUpdate(message, _sender) {
-    console.log('[QuickTabHandler] Z-Index Update:', {
-      action: 'UPDATE_QUICK_TAB_ZINDEX',
-      quickTabId: message.id,
-      zIndex: message.zIndex,
-      cookieStoreId: message.cookieStoreId || 'firefox-default',
-      timestamp: Date.now()
-    });
-
-    return this.updateQuickTabProperty(message, (tab, msg) => {
-      tab.zIndex = msg.zIndex;
-    });
+    return this._handlePropertyUpdate('zIndex', message);
   }
 
   /**
@@ -964,45 +1147,53 @@ export class QuickTabHandler {
    */
   handleGetCurrentTabId(message, sender) {
     try {
-      // v1.6.3.11 - FIX Issue #2: NO initialization check required
-      // sender.tab.id comes from the browser's WebExtensions API, not from our storage
-      // This allows immediate response without waiting for storage initialization
-
-      // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
       if (this._hasValidSenderTabId(sender)) {
         console.log(
-          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id} (immediate, no init wait)`
+          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`
         );
         return this._buildTabIdSuccessResponse(sender.tab.id);
       }
 
-      // v1.6.3.11-v3 - FIX Issue #17: Check if this might be a cross-origin iframe
-      // In cross-origin iframes, sender.tab may be undefined but frameId may be present
-      const frameId = sender?.frameId;
-      const isNestedFrame = typeof frameId === 'number' && frameId > 0;
-
-      if (isNestedFrame) {
-        console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Cross-origin iframe detected', {
-          frameId,
-          senderUrl: sender?.url?.substring(0, 50) || 'unknown'
-        });
-        return this._buildTabIdErrorResponse(
-          'Cross-origin iframe cannot get tab ID directly. Use parent frame communication.',
-          'CROSS_ORIGIN_IFRAME',
-          'Nested frames should request tab ID from parent frame via postMessage'
-        );
-      }
-
-      // sender.tab not available - return error
-      console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available');
-      return this._buildTabIdErrorResponse(
-        'sender.tab not available - cannot identify requesting tab',
-        'SENDER_TAB_UNAVAILABLE'
-      );
+      return this._handleMissingSenderTabId(sender);
     } catch (err) {
       console.error('[QuickTabHandler] GET_CURRENT_TAB_ID error:', err?.message);
       return this._buildTabIdErrorResponse(err?.message || 'Unknown error', 'HANDLER_ERROR');
     }
+  }
+
+  /**
+   * Handle case when sender.tab is unavailable
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce handleGetCurrentTabId complexity
+   * @private
+   */
+  _handleMissingSenderTabId(sender) {
+    if (this._isCrossOriginIframe(sender)) {
+      console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Cross-origin iframe detected', {
+        frameId: sender?.frameId,
+        senderUrl: sender?.url?.substring(0, 50) || 'unknown'
+      });
+      return this._buildTabIdErrorResponse(
+        'Cross-origin iframe cannot get tab ID directly. Use parent frame communication.',
+        'CROSS_ORIGIN_IFRAME',
+        'Nested frames should request tab ID from parent frame via postMessage'
+      );
+    }
+
+    console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available');
+    return this._buildTabIdErrorResponse(
+      'sender.tab not available - cannot identify requesting tab',
+      'SENDER_TAB_UNAVAILABLE'
+    );
+  }
+
+  /**
+   * Check if sender is a cross-origin iframe
+   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * @private
+   */
+  _isCrossOriginIframe(sender) {
+    const frameId = sender?.frameId;
+    return typeof frameId === 'number' && frameId > 0;
   }
 
   /**
@@ -1033,40 +1224,29 @@ export class QuickTabHandler {
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
    * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    * v1.6.3.6-v12 - FIX Issue #1: Return explicit error when not initialized
+   * v1.6.4.15 - FIX Code Health: Simplified error handling
    */
   async handleGetQuickTabsState(message, _sender) {
-    try {
-      // v1.6.3.6-v12 - FIX Issue #1: Check initialization and wait with timeout
-      const initResult = await this._ensureInitialized();
-      if (!initResult.success) {
-        return initResult;
-      }
-
-      const cookieStoreId = message.cookieStoreId || 'firefox-default';
-
-      // v1.6.2.2 - Return all tabs from unified array for global visibility
-      const allTabs = this.globalState.tabs || [];
-
-      return {
-        success: true,
-        tabs: allTabs,
-        cookieStoreId: cookieStoreId,
-        lastUpdate: this.globalState.lastUpdate
-      };
-    } catch (err) {
-      console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack,
-        code: err?.code,
-        error: err
-      });
-      return {
-        success: false,
-        tabs: [],
-        error: err.message
-      };
+    const initResult = await this._ensureInitialized();
+    if (!initResult.success) {
+      return initResult;
     }
+
+    return this._buildQuickTabsStateResponse(message.cookieStoreId);
+  }
+
+  /**
+   * Build success response for getQuickTabsState
+   * v1.6.4.15 - FIX Code Health: Extracted to simplify handleGetQuickTabsState
+   * @private
+   */
+  _buildQuickTabsStateResponse(cookieStoreId) {
+    return {
+      success: true,
+      tabs: this.globalState.tabs || [],
+      cookieStoreId: cookieStoreId || 'firefox-default',
+      lastUpdate: this.globalState.lastUpdate
+    };
   }
 
   /**

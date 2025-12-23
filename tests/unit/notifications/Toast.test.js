@@ -48,11 +48,14 @@ describe('Toast Notifications', () => {
     // Mock document.body.appendChild
     jest.spyOn(document.body, 'appendChild').mockImplementation();
 
-    // Clean up any existing toast
-    const existing = document.getElementById('copy-url-toast');
-    if (existing) {
-      existing.remove();
-    }
+    // v1.6.3.11-v4 - FIX: Mock document.getElementById to return mockElement after creation
+    // This is needed because the updated toast.js verifies the element was added to DOM
+    jest.spyOn(document, 'getElementById').mockImplementation(id => {
+      if (id === 'copy-url-toast') {
+        return mockElement;
+      }
+      return null;
+    });
   });
 
   afterEach(() => {
@@ -416,7 +419,14 @@ describe('Toast Notifications', () => {
     test('should log toast display', () => {
       showToast('Test message', 'info', mockConfig);
 
-      expect(console.log).toHaveBeenCalledWith('[Toast] Displayed:', 'Test message');
+      // v1.6.3.11-v4 - Updated to match new logging format with [NOTIFICATION] prefix
+      expect(console.log).toHaveBeenCalledWith(
+        '[NOTIFICATION] Toast displayed successfully:',
+        expect.objectContaining({
+          message: 'Test message',
+          type: 'info'
+        })
+      );
     });
 
     test('should log for all message types', () => {
@@ -426,7 +436,8 @@ describe('Toast Notifications', () => {
         showToast(`Message ${type}`, type, mockConfig);
       });
 
-      expect(console.log).toHaveBeenCalledTimes(types.length);
+      // v1.6.3.11-v4 - Updated: Now logs both attempt and success for each toast (2 logs per toast)
+      expect(console.log).toHaveBeenCalledTimes(types.length * 2);
     });
   });
 

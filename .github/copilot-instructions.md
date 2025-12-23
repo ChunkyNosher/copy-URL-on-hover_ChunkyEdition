@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v3  
+**Version:** 1.6.3.11-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,56 +23,48 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v3 Features (NEW) - 55+ Issues Fixed:**
+**v1.6.3.11-v4 Features (NEW) - 22 Issues Fixed:**
 
-**Message Routing & Security (Issues #24, #25, #36, #47, #56):**
+**Phase 1: Keyboard Shortcut & Settings (5 Issues):**
 
-- **HEARTBEAT Handler** - Added to MessageRouter VALID_MESSAGE_ACTIONS
-- **Re-entrance Queue** - Queue instead of reject re-entrant messages
-- **Message Structure Validation** - Validates action/type before routing
-- **originTabId Validation** - REQUIRE for ownership operations (no bypass)
-- **Backward Compat Bypass Removed** - Security fix for ownership validation
+- **browser.commands.onCommand** - Listener in background.js
+- **Dynamic Shortcut Updates** - browser.commands.update() integration
+- **Firefox Format Validation** - Keyboard shortcut state validation
+- **Sidebar-to-Commands API** - Connected settings to browser.commands
 
-**Port/State Lifecycle (Issues #27, #29, #30, #33, #37):**
+**Phase 2: Hover Detection & Shadow DOM (5 Issues):**
 
-- **pendingMessages Cleared** - On port disconnect with port generation tracking
-- **State Machine Persistence** - Persist/restore from storage.session
-- **Minimized State Persistence** - Persist/restore minimized Quick Tabs
-- **Memory Leak Fix** - Garbage collection for pendingMessages Map
-- **Mediator Listener Cleanup** - Already implemented in cleanup() method
+- **Shadow DOM Detection** - YouTube, Twitter, Instagram, TikTok support
+- **Event Debouncing** - 100ms debounce, CPU 40-60% → 5-10%
+- **Pointer Events API** - Migration from mouse events with passive listeners
+- **New Module** - src/utils/shadow-dom.js for Shadow DOM traversal
 
-**Cross-Browser & BFCache (Issues #48, #49, #51, #52):**
+**Phase 3: Logging & Instrumentation (6 Issues):**
 
-- **sendMessageWithTimeout()** - Firefox message timeout wrapper (adaptive)
-- **Adaptive Handshake Timeout** - measuredHandshakeBaselineMs baseline tracking
-- **BFCache Message Queue** - Queue messages during pagehide, drain on pageshow
-- **Stale Event Rejection** - Reject events with timestamps before inactivity
+- **Content Pipeline Logging** - Event tracking throughout content script
+- **Event Bus Visibility** - [LISTENER_REG], [LISTENER_INVOKE], [EVENT_COMPLETE]
+- **State Management Observability** - [STATE_UPDATE], [STORAGE_WRITE]
+- **Storage Timing Telemetry** - Warns if operations >100ms
+- **Error Context Augmentation** - Handler name, operation, request context
 
-**Message Deduplication (Issues #53, #54, #55, #60):**
+**Phase 4: Cross-Component Integration (6 Issues):**
 
-- **Dedup Window Reduced** - 100ms (from 250ms) to allow rapid operations
-- **Dedup TTL Reduced** - 3s (from 10s), cleanup 1s (from 5s)
-- **Content Hash in Dedup Key** - Prevents false duplicate rejection
-- **Enhanced Rejection Logging** - Full sender context in rejection logs
+- **Content Storage Sync** - storage.onChanged with [STORAGE_SYNC] prefix
+- **Operation Acknowledgment** - { success, operation, details } pattern
+- **Error Recovery** - Exponential backoff in content scripts
+- **Multi-Tab Reconciliation** - [CROSS_TAB_SYNC] prefix
 
-**Storage & Sync (Issues #21, #22, #32, #40, #69, #70):**
+**v1.6.3.11-v3 Features (Previous) - 55+ Issues Fixed:**
 
-- **Storage Write Verification** - Verify writes by reading back data
-- **Format Detection Refactored** - \_detectStorageFormat() +
-  \_normalizeStorageFormat()
-- **Migration Validation** - Atomic migration with rollback marker
-- **Stale Data Rejection** - 1-hour threshold for sync storage fallback
-- **Storage.onChanged Debouncing** - 100ms debounce in sidebar panel
+- HEARTBEAT Handler, Re-entrance Queue, Message Structure Validation
+- pendingMessages Cleared, State Machine Persistence, Memory Leak Fix
+- sendMessageWithTimeout(), Adaptive Handshake, BFCache Message Queue
+- Dedup Window 100ms, Content Hash Dedup Key, Enhanced Rejection Logging
+- Storage Write Verification, Format Detection, Migration Validation
 
-**v1.6.3.11 Features (Previous):** GET_CURRENT_TAB_ID no init dependency,
-synchronous listener registration, BFCache port recovery, port listener race
-fix, INIT_RESPONSE timeout, cross-queue overflow protection, hydration drain
-lock, namespaced message IDs, adoption cache TTL, navigation state reset
-
-**v1.6.3.10-v14 & Earlier (Consolidated):** Tab ID pending queue, generation ID
-tracking, handler init state, three-phase port handshake, BFCache detection,
-message correlation, protocol versioning, adoption cache cleanup, dynamic
-message buffer, LRU map guard, checkpoint system, code health 9.0+
+**v1.6.3.11 & Earlier (Consolidated):** GET_CURRENT_TAB_ID no init dependency,
+BFCache port recovery, cross-queue overflow protection, Tab ID pending queue,
+three-phase port handshake, LRU map guard, checkpoint system, code health 9.0+
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
@@ -118,93 +110,73 @@ references.
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
 - **MANAGER** - Manager-initiated actions (close all, close minimized)
 
-### v1.6.3.10-v3: Issue #47 Adoption Re-render & Tabs API Phase 2
-
-- `ADOPTION_COMPLETED` message for instant Manager re-render
-- TabLifecycleHandler, orphan detection, `validateAdoptionTarget()`
-
 ---
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v3 Patterns (Current)
+### v1.6.3.11-v4 Patterns (Current)
 
-- **Message Dedup** - 100ms window (from 250ms), 3s TTL (from 10s), content hash
-  key
-- **Firefox Message Timeout** - sendMessageWithTimeout() with adaptive timeout
-- **BFCache Message Queue** - Queue during pagehide, drain on pageshow
-- **Storage Write Verification** - Read back after write to verify success
-- **Storage.onChanged Debouncing** - 100ms debounce in sidebar panel
-- **Enhanced Rejection Logging** - Full sender context in MessageRouter
+- **Shadow DOM Detection** - Traverse shadow roots for link detection
+- **Event Debouncing** - 100ms debounce on hover events
+- **Pointer Events API** - Passive listeners for hover detection
+- **Operation Acknowledgment** - { success, operation, details } responses
+- **Error Recovery Backoff** - Exponential backoff in content scripts
+- **Storage Timing** - Telemetry warns if >100ms
 
-### v1.6.3.11-v2 Patterns (Previous)
+### v1.6.3.11-v3 Patterns (Previous)
+
+- Message Dedup 100ms window, 3s TTL, content hash key
+- Firefox Message Timeout with adaptive timeout
+- BFCache Message Queue during pagehide
+- Storage Write Verification, Storage.onChanged Debouncing
+
+### v1.6.3.11-v2 & Earlier (Consolidated)
 
 - BFCache PORT_VERIFY timeout (2000ms), Tab ID acquisition (120s total)
-- Hydration timeout (10s), dedup window (250ms), tab onRemoved 200ms debounce
-- browser.tabs.query 2s timeout, adoption cache 100 entries, 5-min cleanup
-- Sidebar write protection, storage format detection, re-entrance guard
-- State machine staleness, RESTORE validation, config migration
+- Hydration timeout (10s), tab onRemoved 200ms debounce
+- browser.tabs.query 2s timeout, adoption cache 100 entries
+- LRU Map Guard (500 max, 30s cleanup, 24h stale)
+- Tab ID exponential backoff, `VALID_MESSAGE_ACTIONS` allowlist
+- Checkpoint system, identity-ready gating, code health 9.0+
 
-### v1.6.3.10-v11 & Earlier Patterns (Consolidated)
+### Key Timing Constants (v1.6.3.11-v4)
 
-- Extended Tab ID (60s total, 5s intervals), OPERATION_TYPE enum
-- Adaptive dedup window (2x latency, 500ms min), queue backpressure 75%/100
-  items
-- Hydration barrier (3s timeout), operation ID tracking
-- Background lifecycle markers, storage quota monitoring (90% threshold)
-- Three-phase port handshake, LRU Map Guard (500 max, 30s cleanup, 24h stale)
-- Tab ID exponential backoff (200ms, 500ms, 1500ms, 5000ms)
-- `VALID_MESSAGE_ACTIONS` allowlist, `RESPONSE_ENVELOPE` helpers
-- Checkpoint system: `createCheckpoint()`, `rollbackToCheckpoint()`
-- Identity-ready gating, storage error classification, write queue recovery
-- Z-index recycling at threshold 100000, code health 9.0+ refactoring
-
-### Key Timing Constants (v1.6.3.11-v3)
-
-| Constant                        | Value    | Purpose                            |
-| ------------------------------- | -------- | ---------------------------------- |
-| `DEDUP_WINDOW_MS`               | 100      | Message dedup (was 250)            |
-| `DEDUP_TTL_MS`                  | 3000     | Dedup entry TTL (was 10000)        |
-| `DEDUP_CLEANUP_INTERVAL_MS`     | 1000     | Dedup cleanup (was 5000)           |
-| `STORAGE_CHANGE_DEBOUNCE_MS`    | 100      | Sidebar storage.onChanged debounce |
-| `DEFAULT_MESSAGE_TIMEOUT_MS`    | 5000     | Firefox message timeout default    |
-| `BFCACHE_VERIFY_TIMEOUT_MS`     | 2000     | PORT_VERIFY timeout                |
-| `TAB_ID_EXTENDED_TOTAL_MS`      | 120000   | Extended tab ID timeout            |
-| `TAB_ID_EXTENDED_INTERVAL_MS`   | 5000     | Extended retry interval            |
-| `HYDRATION_TIMEOUT_MS`          | 10000    | Storage hydration                  |
-| `TAB_REMOVAL_DEBOUNCE_MS`       | 200      | Tab onRemoved debounce             |
-| `QUERY_TIMEOUT_MS`              | 2000     | browser.tabs.query timeout         |
-| `ADOPTION_CACHE_MAX_SIZE`       | 100      | Max adoption cache entries         |
-| `OPEN_TABS_CLEANUP_INTERVAL_MS` | 300000   | 5-minute cleanup interval          |
-| `QUEUE_BACKPRESSURE_THRESHOLD`  | 0.75     | Warning threshold (75%)            |
-| `MAX_INIT_MESSAGE_QUEUE_SIZE`   | 100      | Max queue items                    |
-| `CALLBACK_REWIRE_TIMEOUT_MS`    | 500      | UICoordinator acknowledgment       |
-| `ADOPTION_CACHE_DEFAULT_TTL_MS` | 30000    | Dynamic TTL default                |
-| `HEARTBEAT_INTERVAL_MS`         | 15000    | Background health check            |
-| `LRU_MAP_MAX_SIZE`              | 500      | Maximum map entries                |
-| `LRU_CLEANUP_INTERVAL_MS`       | 30000    | Periodic cleanup (30s)             |
-| `LRU_STALE_THRESHOLD_MS`        | 86400000 | Stale threshold (24h)              |
+| Constant                     | Value    | Purpose                      |
+| ---------------------------- | -------- | ---------------------------- |
+| `HOVER_DEBOUNCE_MS`          | 100      | Event debouncing (NEW)       |
+| `STORAGE_SLOW_THRESHOLD_MS`  | 100      | Storage timing warning (NEW) |
+| `DEDUP_WINDOW_MS`            | 100      | Message dedup                |
+| `DEDUP_TTL_MS`               | 3000     | Dedup entry TTL              |
+| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000     | Firefox message timeout      |
+| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000     | PORT_VERIFY timeout          |
+| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000   | Extended tab ID timeout      |
+| `HYDRATION_TIMEOUT_MS`       | 10000    | Storage hydration            |
+| `TAB_REMOVAL_DEBOUNCE_MS`    | 200      | Tab onRemoved debounce       |
+| `QUERY_TIMEOUT_MS`           | 2000     | browser.tabs.query timeout   |
+| `ADOPTION_CACHE_MAX_SIZE`    | 100      | Max adoption cache entries   |
+| `HEARTBEAT_INTERVAL_MS`      | 15000    | Background health check      |
+| `LRU_MAP_MAX_SIZE`           | 500      | Maximum map entries          |
+| `LRU_STALE_THRESHOLD_MS`     | 86400000 | Stale threshold (24h)        |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------ |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                                                    |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                               |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                                          |
-| TabStateManager       | `getTabState()`, `setTabState()`                                                     |
-| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`                             |
-| QuickTabHandler       | `_ensureInitialized()`, `_enqueueStorageWrite()`, `_performStorageWrite()`           |
-| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`                  |
-| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)                            |
-| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`                          |
-| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`                            |
-| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                                 |
-| Manager               | `scheduleRender()`, `_startHostInfoMaintenance()`, `_validateAdoptionContainers()`   |
-| TabLifecycleHandler   | `start()`, `stop()`, `handleTabRemoved()`, `validateAdoptionTarget()`, `isTabOpen()` |
-| MinimizedManager      | `_scheduleSnapshotExpiration()`, `_handleSnapshotExpiration()`                       |
+| Class                 | Methods                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| QuickTabStateMachine  | `canTransition()`, `transition()`                                     |
+| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                |
+| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                           |
+| TabStateManager       | `getTabState()`, `setTabState()`                                      |
+| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`              |
+| QuickTabHandler       | `_ensureInitialized()`, `_enqueueStorageWrite()`                      |
+| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`   |
+| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)             |
+| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`           |
+| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`             |
+| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                  |
+| Manager               | `scheduleRender()`, `_startHostInfoMaintenance()`                     |
+| TabLifecycleHandler   | `start()`, `stop()`, `handleTabRemoved()`, `validateAdoptionTarget()` |
 
 ---
 
@@ -217,17 +189,20 @@ references.
 **v1.6.3.10-v11 New Exports:** `OPERATION_TYPE` enum, `trackStorageLatency()`,
 `getAdaptiveDedupWindow()`, `LRUMapGuard`, `createSerialQueue()`
 
-**v1.6.3.10-v10 Exports:** `validateOwnershipForWriteAsync()`,
-`validateSnapshotIntegrity()`, `withTimeout()`, `createCheckpoint()`,
-`rollbackToCheckpoint()`, `VALID_MESSAGE_ACTIONS`, `RESPONSE_ENVELOPE`
-
 **Earlier Exports:** `normalizeOriginTabId()`, `checkStorageQuota()`
 
 ---
 
 ## 📝 Logging Prefixes
 
-`[INIT]` `[ADOPTION]` `[RESTORE]` `[MSG]` `[PORT_HANDSHAKE]`
+**v1.6.3.11-v4 (NEW):** `[MSG_COMMAND]` `[MSG_VALIDATION]` `[MSG_ROUTE]`
+`[HOVER_EVENT]` `[PLATFORM_DETECT]` `[HANDLER_SELECT]` `[SHADOW_DOM_SEARCH]`
+`[URL_EXTRACT]` `[TOOLTIP]` `[LISTENER_REG]` `[LISTENER_INVOKE]`
+`[EVENT_COMPLETE]` `[STATE_UPDATE]` `[STORAGE_WRITE]` `[STATE_LISTEN]`
+`[MSG:VALIDATE]` `[MSG:ROUTE]` `[MSG:EXEC]` `[MSG:RESPONSE]` `[STORAGE_SYNC]`
+`[RECONCILE]` `[CROSS_TAB_SYNC]`
+
+**Previous:** `[INIT]` `[ADOPTION]` `[RESTORE]` `[MSG]` `[PORT_HANDSHAKE]`
 `[QUEUE_BACKPRESSURE]` `[OWNERSHIP_VALIDATION]` `[STATE_CONSISTENCY]`
 `[HEARTBEAT]` `[LRU_GUARD]` `[OPERATION_ID]` `[STORAGE_LATENCY]`
 `[HYDRATION_BARRIER]` `[TIMER_LIFECYCLE]` `[LISTENER_CLEANUP]`
@@ -239,7 +214,7 @@ references.
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority. See Version Patterns Summary above for version-specific patterns.
+Authority, Shadow DOM traversal (v4), operation acknowledgment (v4).
 
 ---
 
@@ -301,20 +276,18 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                             | Features                                                    |
-| ------------------------------------------------ | ----------------------------------------------------------- |
-| `src/constants.js`                               | Centralized constants (+225 lines in v4)                    |
-| `src/background/tab-events.js`                   | Tabs API listeners (onActivated/Removed/Updated)            |
-| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts                        |
-| `src/storage/schema-v2.js`                       | Container-aware queries, version field                      |
-| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation                 |
-| `src/utils/browser-api.js`                       | Container functions, validateTabExists()                    |
-| `src/messaging/message-router.js`                | ACTION-based routing (GET_CURRENT_TAB_ID, etc.)             |
-| `src/background/message-handler.js`              | TYPE-based v2 routing (QT_CREATED, etc.)                    |
-| `background.js`                                  | \_computeStateChecksum(), \_generateQuickTabId()            |
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()                 |
-| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle events, orphan detection, adoption validation |
-| `src/utils/lru-map-guard.js`                     | LRU eviction, 500 entry max, 30s cleanup (v11)              |
+| File                                             | Features                                         |
+| ------------------------------------------------ | ------------------------------------------------ |
+| `src/constants.js`                               | Centralized constants                            |
+| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (NEW v4)               |
+| `src/background/tab-events.js`                   | Tabs API listeners                               |
+| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts             |
+| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation      |
+| `src/messaging/message-router.js`                | ACTION-based routing                             |
+| `src/background/message-handler.js`              | TYPE-based v2 routing                            |
+| `background.js`                                  | \_computeStateChecksum(), commands listener (v4) |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()      |
+| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                  |
 
 ### Storage
 
@@ -327,9 +300,6 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 **MESSAGE_TYPES:** `QT_POSITION_CHANGED`, `QT_SIZE_CHANGED`, `QT_MINIMIZED`,
 `QT_RESTORED`, `QT_CLOSED`, `MANAGER_CLOSE_ALL`, `MANAGER_CLOSE_MINIMIZED`,
 `QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
-
-**v1.6.3.10-v11 New Messages:** `PORT_INIT_REQUEST`, `PORT_INIT_RESPONSE`,
-`PORT_INIT_COMPLETE`, `OPERATION_COMPLETED`, `HEARTBEAT_PING`, `HEARTBEAT_PONG`
 
 **Patterns:** LOCAL (no broadcast), GLOBAL (broadcast to all), MANAGER
 (manager-initiated)
