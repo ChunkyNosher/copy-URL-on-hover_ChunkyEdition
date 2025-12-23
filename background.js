@@ -664,6 +664,7 @@ async function _executeViaScripting(tabId, operation, params, correlationId) {
 /**
  * Scripted operation function injected into content script context
  * v1.6.3.10-v4 - FIX Enhancement #1: Atomic execution in content script
+ * v1.6.3.11-v6 - FIX Code Health: Extracted helpers to reduce complexity
  * IMPORTANT: This function runs in the content script context via browser.scripting.executeScript
  * It must be COMPLETELY SELF-CONTAINED - no external function references allowed!
  * @param {string} operation - Operation type
@@ -672,15 +673,21 @@ async function _executeViaScripting(tabId, operation, params, correlationId) {
  * @returns {Object} Operation result
  */
 function executeScriptedOperation(operation, params, correlationId) {
+  /**
+   * Validate the extension object is available and properly structured
+   * v1.6.3.11-v6 - FIX Code Health: Encapsulate complex conditional
+   * @param {*} ext - Window.CopyURLExtension object
+   * @returns {boolean} True if extension is valid
+   */
+  const isExtensionValid = ext => {
+    if (!ext || typeof ext !== 'object') return false;
+    if (!ext.quickTabsManager || typeof ext.quickTabsManager !== 'object') return false;
+    return true;
+  };
+
   // Access the Quick Tabs manager from content script globals
-  // Validate structure to guard against tampering in content script context
   const extension = window.CopyURLExtension;
-  if (
-    !extension ||
-    typeof extension !== 'object' ||
-    !extension.quickTabsManager ||
-    typeof extension.quickTabsManager !== 'object'
-  ) {
+  if (!isExtensionValid(extension)) {
     return { success: false, error: 'QuickTabsManager not available', correlationId };
   }
 
@@ -693,32 +700,42 @@ function executeScriptedOperation(operation, params, correlationId) {
     correlationId
   });
 
-  // Self-contained handler lookup (must be inline, not external function)
-  const executeOperation = () => {
-    switch (operation) {
-      case 'RESTORE_QUICK_TAB':
-        if (!manager.restoreById) return false;
-        manager.restoreById(quickTabId, 'scripting-fallback');
-        return true;
-
-      case 'MINIMIZE_QUICK_TAB':
-        if (!manager.minimizeById) return false;
-        manager.minimizeById(quickTabId, 'scripting-fallback');
-        return true;
-
-      case 'CLOSE_QUICK_TAB':
-        if (!manager.closeById) return false;
-        manager.closeById(quickTabId);
-        return true;
-
-      case 'FOCUS_QUICK_TAB':
-        if (!manager.visibilityHandler?.handleFocus) return false;
-        manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
-        return true;
-
-      default:
-        return null; // Unknown operation
+  /**
+   * Operation handler map - maps operation types to executor functions
+   * v1.6.3.11-v6 - FIX Code Health: Replace switch with handler map to reduce cc
+   * Each handler returns: true (success), false (handler missing), null (unknown op)
+   */
+  const operationHandlers = {
+    RESTORE_QUICK_TAB: () => {
+      if (!manager.restoreById) return false;
+      manager.restoreById(quickTabId, 'scripting-fallback');
+      return true;
+    },
+    MINIMIZE_QUICK_TAB: () => {
+      if (!manager.minimizeById) return false;
+      manager.minimizeById(quickTabId, 'scripting-fallback');
+      return true;
+    },
+    CLOSE_QUICK_TAB: () => {
+      if (!manager.closeById) return false;
+      manager.closeById(quickTabId);
+      return true;
+    },
+    FOCUS_QUICK_TAB: () => {
+      if (!manager.visibilityHandler?.handleFocus) return false;
+      manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
+      return true;
     }
+  };
+
+  /**
+   * Execute the operation using the handler map
+   * v1.6.3.11-v6 - FIX Code Health: Simplified execution logic
+   * @returns {boolean|null} true=success, false=handler missing, null=unknown op
+   */
+  const executeOperation = () => {
+    const handler = operationHandlers[operation];
+    return handler ? handler() : null;
   };
 
   try {
