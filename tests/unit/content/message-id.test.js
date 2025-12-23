@@ -9,6 +9,27 @@
  * - No stack overflow under 10k msg/sec
  */
 
+// Helper function at module scope to avoid max-depth lint error
+function findNonCollidingId(baseId, maxRetries, idSet) {
+  let finalId = baseId;
+  let retryCount = 0;
+
+  while (idSet.has(finalId) && retryCount < maxRetries) {
+    retryCount++;
+    finalId = `${baseId}-r${retryCount}`;
+  }
+
+  return { finalId, retryCount };
+}
+
+// Helper to populate ID set with collision entries
+function populateCollisionIds(baseId, count, idSet) {
+  idSet.add(baseId);
+  for (let i = 1; i <= count; i++) {
+    idSet.add(`${baseId}-r${i}`);
+  }
+}
+
 describe('Message ID Collision Handling', () => {
   let generatedIds;
   let messageIdCounter;
@@ -284,20 +305,11 @@ describe('Message ID Collision Handling', () => {
     test('iterative approach should NOT fail with many collisions', () => {
       const baseId = 'msg-iterative-test';
 
-      // Pre-populate with many collisions
-      generatedIds.add(baseId);
-      for (let i = 1; i <= 500; i++) {
-        generatedIds.add(`${baseId}-r${i}`);
-      }
+      // Pre-populate with many collisions (use helper to avoid max-depth)
+      populateCollisionIds(baseId, 500, generatedIds);
 
-      // Should complete without throwing
-      let finalId = baseId;
-      let retryCount = 0;
-
-      while (generatedIds.has(finalId) && retryCount < 1000) {
-        retryCount++;
-        finalId = `${baseId}-r${retryCount}`;
-      }
+      // Should complete without throwing - use helper to avoid max-depth
+      const { finalId, retryCount } = findNonCollidingId(baseId, 1000, generatedIds);
 
       expect(retryCount).toBe(501);
       expect(finalId).toBe(`${baseId}-r501`);
@@ -325,20 +337,11 @@ describe('Message ID Collision Handling', () => {
       const baseId = 'msg-forced-fallback';
       const MAX_RETRIES = 1000;
 
-      // Pre-populate all -r1 to -r1000
-      generatedIds.add(baseId);
-      for (let i = 1; i <= MAX_RETRIES; i++) {
-        generatedIds.add(`${baseId}-r${i}`);
-      }
+      // Pre-populate all -r1 to -r1000 (use helper to avoid max-depth)
+      populateCollisionIds(baseId, MAX_RETRIES, generatedIds);
 
-      // Custom generator that uses specific baseId
-      let finalId = baseId;
-      let retryCount = 0;
-
-      while (generatedIds.has(finalId) && retryCount < MAX_RETRIES) {
-        retryCount++;
-        finalId = `${baseId}-r${retryCount}`;
-      }
+      // Use helper to find non-colliding ID (avoids max-depth lint error)
+      const { finalId, retryCount } = findNonCollidingId(baseId, MAX_RETRIES, generatedIds);
 
       // Should have exhausted retries
       expect(retryCount).toBe(MAX_RETRIES);
@@ -346,8 +349,8 @@ describe('Message ID Collision Handling', () => {
 
       // Fallback to counter suffix
       messageIdCounter++;
-      finalId = `${baseId}-c${messageIdCounter}`;
-      expect(finalId).toContain('-c');
+      const fallbackId = `${baseId}-c${messageIdCounter}`;
+      expect(fallbackId).toContain('-c');
     });
 
     test('should handle empty ID set correctly', () => {

@@ -9,6 +9,44 @@
  * - pendingHydrationCompletions queue processing
  */
 
+// Module-level helpers to avoid max-depth lint errors
+
+/**
+ * Helper: Process queue items with potential additions during processing
+ */
+async function processQueueWithAdditions(queue, processor, processedOps) {
+  while (queue.length > 0) {
+    const op = queue.shift();
+    await processor(op, processedOps);
+
+    // Simulate operation adding new operation during processing
+    if (op.addsDuringProcess) {
+      queue.push({ id: 'added-during-drain' });
+    }
+  }
+}
+
+/**
+ * Helper: Process queue items with error handling
+ */
+async function processQueueWithErrors(queue, processor) {
+  let successCount = 0;
+  let errorCount = 0;
+
+  while (queue.length > 0) {
+    const op = queue.shift();
+    try {
+      await processor(op);
+      successCount++;
+    } catch (_e) {
+      errorCount++;
+      // Continue processing despite error
+    }
+  }
+
+  return { successCount, errorCount };
+}
+
 describe('Hydration Drain Lock', () => {
   let isHydrationComplete;
   let isDrainInProgress;
@@ -279,6 +317,11 @@ describe('Hydration Drain Lock', () => {
     test('should schedule re-drain if operations added during drain', async () => {
       let reDrainScheduled = false;
 
+      const processor = async (op, processed) => {
+        processed.push({ ...op, processedAt: Date.now() });
+        return { success: true };
+      };
+
       const drainWithReschedule = async () => {
         if (isDrainInProgress) {
           reDrainScheduled = true;
@@ -288,15 +331,8 @@ describe('Hydration Drain Lock', () => {
         isDrainInProgress = true;
 
         try {
-          while (preHydrationOperationQueue.length > 0) {
-            const op = preHydrationOperationQueue.shift();
-            await processOperation(op);
-
-            // Simulate operation adding new operation during processing
-            if (op.addsDuringProcess) {
-              preHydrationOperationQueue.push({ id: 'added-during-drain' });
-            }
-          }
+          // Use module-level helper to avoid max-depth lint error
+          await processQueueWithAdditions(preHydrationOperationQueue, processor, processedOperations);
           return { success: true };
         } finally {
           isDrainInProgress = false;
@@ -330,21 +366,11 @@ describe('Hydration Drain Lock', () => {
 
       const drainWithErrorHandling = async () => {
         isDrainInProgress = true;
-        let successCount = 0;
-        let errorCount = 0;
 
         try {
-          while (preHydrationOperationQueue.length > 0) {
-            const op = preHydrationOperationQueue.shift();
-            try {
-              await failingProcessOperation(op);
-              successCount++;
-            } catch (_e) {
-              errorCount++;
-              // Continue processing despite error
-            }
-          }
-          return { success: true, successCount, errorCount };
+          // Use module-level helper to avoid max-depth lint error
+          const result = await processQueueWithErrors(preHydrationOperationQueue, failingProcessOperation);
+          return { success: true, ...result };
         } finally {
           isDrainInProgress = false;
         }
