@@ -25,25 +25,32 @@ Tabs Manager
 
 **v1.6.3.11-v6 Features (NEW) - 14 Firefox Critical Fixes:**
 
-- **BFCache Port Validation** - Validate port on pageshow, auto-reconnect on stale
+- **BFCache Port Validation** - Validate port on pageshow, auto-reconnect on
+  stale
 - **Adaptive Timeout** - 90th percentile, 7s default, backoff 2x/4x/8x
 - **Load Shedding** - 50%/75%/90% thresholds, OPERATION_PRIORITY_LEVEL enum
-- **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent completions
+- **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent
+  completions
 - **Message ID Collision** - Iterative retry with -r1/-r2 suffix, O(1) detection
 - **Clock Skew Tolerance** - 150ms tolerance for stale event rejection
 - **Heartbeat Circuit Breaker** - 15s→30s→60s→120s backoff, pause at 10 failures
 - **Queued Operation Timeout** - 5s per-op timeout, hung ops don't block drain
-- **Init Phase Logging** - _logFeatureInitStart/Complete(), _logHydrationProgress()
-- **Response Field Validation** - RESPONSE_FIELD_SCHEMA, _checkRequiredResponseFields()
+- **Init Phase Logging** - \_logFeatureInitStart/Complete(),
+  \_logHydrationProgress()
+- **Response Field Validation** - RESPONSE_FIELD_SCHEMA,
+  \_checkRequiredResponseFields()
 - **Port Adoption Scaling** - Dynamic 3x/5x/7x multiplier based on latency
-- **Module Import Degradation** - _moduleLoadStatus, critical vs optional distinction
+- **Module Import Degradation** - \_moduleLoadStatus, critical vs optional
+  distinction
 
-**v1.6.3.12 (Previous):** Early message listener at TOP, queue (max 100), drain via
-_setMessageRouterReady(), type-based handlers
+**v1.6.3.12 (Previous):** Early message listener at TOP, queue (max 100), drain
+via \_setMessageRouterReady(), type-based handlers
 
-**v1.6.3.11-v5 (Previous):** commands.onCommand, storage.onChanged, state gating, telemetry
+**v1.6.3.11-v5 (Previous):** commands.onCommand, storage.onChanged, state
+gating, telemetry
 
-**v1.6.3.11-v4 & Earlier:** Shadow DOM, event debouncing, LRU guard, message validation
+**v1.6.3.11-v4 & Earlier:** Shadow DOM, event debouncing, LRU guard, message
+validation
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
@@ -95,14 +102,16 @@ references.
 
 ### v1.6.3.11-v6 Patterns (Current)
 
-- **BFCache Port Validation** - `_handlePageShow()` validates, `_handlePageHide()` cleanup
+- **BFCache Port Validation** - `_handlePageShow()` validates,
+  `_handlePageHide()` cleanup
 - **Adaptive Timeout** - 90th percentile, 7s base, background restart detection
 - **Load Shedding** - OPERATION_PRIORITY_LEVEL enum (CRITICAL/HIGH/MEDIUM/LOW)
 - **Hydration Drain** - `pendingHydrationCompletions`, `redrainScheduled` flag
 - **Message ID Collision** - Iterative loop with counter suffix (-r1, -r2)
 - **Clock Skew** - 150ms tolerance window for stale event detection
 - **Heartbeat Circuit** - Exponential backoff, pause at 10 consecutive failures
-- **Response Validation** - RESPONSE_FIELD_SCHEMA, `_checkRequiredResponseFields()`
+- **Response Validation** - RESPONSE_FIELD_SCHEMA,
+  `_checkRequiredResponseFields()`
 - **Module Degradation** - `_moduleLoadStatus`, critical vs optional modules
 
 ### Previous Version Patterns (Consolidated)
@@ -114,22 +123,22 @@ references.
 
 ### Key Timing Constants (v1.6.3.11-v6)
 
-| Constant                       | Value  | Purpose                              |
-| ------------------------------ | ------ | ------------------------------------ |
-| `DEFAULT_MESSAGE_TIMEOUT_MS`   | 7000   | Firefox message timeout (was 5s)     |
-| `ADAPTIVE_PERCENTILE`          | 0.90   | 90th percentile for Firefox          |
-| `CLOCK_SKEW_TOLERANCE_MS`      | 150    | Stale event tolerance window         |
-| `QUEUED_OPERATION_TIMEOUT_MS`  | 5000   | Per-operation timeout in queue       |
-| `BACKPRESSURE_50_THRESHOLD`    | 50     | Reject non-critical operations       |
-| `BACKPRESSURE_75_THRESHOLD`    | 75     | Reject medium-priority operations    |
-| `BACKPRESSURE_90_THRESHOLD`    | 90     | Critical-only mode                   |
-| `HEARTBEAT_BACKOFF_MAX_MS`     | 120000 | Max heartbeat interval after fails   |
-| `HEARTBEAT_PAUSE_THRESHOLD`    | 10     | Consecutive failures before pause    |
-| `_MAX_EARLY_QUEUE_SIZE`        | 100    | Max queued messages before ready     |
-| `HYDRATION_TIMEOUT_MS`         | 10000  | Storage hydration timeout            |
-| `BFCACHE_VERIFY_TIMEOUT_MS`    | 2000   | PORT_VERIFY timeout                  |
-| `TAB_ID_EXTENDED_TOTAL_MS`     | 120000 | Extended tab ID timeout              |
-| `LRU_MAP_MAX_SIZE`             | 500    | Maximum map entries                  |
+| Constant                      | Value  | Purpose                            |
+| ----------------------------- | ------ | ---------------------------------- |
+| `DEFAULT_MESSAGE_TIMEOUT_MS`  | 7000   | Firefox message timeout (was 5s)   |
+| `ADAPTIVE_PERCENTILE`         | 0.90   | 90th percentile for Firefox        |
+| `CLOCK_SKEW_TOLERANCE_MS`     | 150    | Stale event tolerance window       |
+| `QUEUED_OPERATION_TIMEOUT_MS` | 5000   | Per-operation timeout in queue     |
+| `BACKPRESSURE_50_THRESHOLD`   | 50     | Reject non-critical operations     |
+| `BACKPRESSURE_75_THRESHOLD`   | 75     | Reject medium-priority operations  |
+| `BACKPRESSURE_90_THRESHOLD`   | 90     | Critical-only mode                 |
+| `HEARTBEAT_BACKOFF_MAX_MS`    | 120000 | Max heartbeat interval after fails |
+| `HEARTBEAT_PAUSE_THRESHOLD`   | 10     | Consecutive failures before pause  |
+| `_MAX_EARLY_QUEUE_SIZE`       | 100    | Max queued messages before ready   |
+| `HYDRATION_TIMEOUT_MS`        | 10000  | Storage hydration timeout          |
+| `BFCACHE_VERIFY_TIMEOUT_MS`   | 2000   | PORT_VERIFY timeout                |
+| `TAB_ID_EXTENDED_TOTAL_MS`    | 120000 | Extended tab ID timeout            |
+| `LRU_MAP_MAX_SIZE`            | 500    | Maximum map entries                |
 
 ---
 
@@ -174,9 +183,10 @@ references.
 `[RESPONSE_VALIDATE]` `[MODULE_LOAD]`
 
 **Previous:** `[EARLY_LISTENER_REGISTRATION]` `[MESSAGE_ROUTER_READY]`
-`[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]` `[STORAGE_PROPAGATE]` `[ERROR_TELEMETRY]`
-`[MSG_COMMAND]` `[HOVER_EVENT]` `[SHADOW_DOM_SEARCH]` `[INIT]` `[ADOPTION]`
-`[HEARTBEAT]` `[LRU_GUARD]` `[STORAGE_LATENCY]` `[HYDRATION_BARRIER]`
+`[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]` `[STORAGE_PROPAGATE]`
+`[ERROR_TELEMETRY]` `[MSG_COMMAND]` `[HOVER_EVENT]` `[SHADOW_DOM_SEARCH]`
+`[INIT]` `[ADOPTION]` `[HEARTBEAT]` `[LRU_GUARD]` `[STORAGE_LATENCY]`
+`[HYDRATION_BARRIER]`
 
 ---
 
@@ -248,20 +258,20 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                             | Features                                        |
-| ------------------------------------------------ | ----------------------------------------------- |
-| `src/constants.js`                               | Centralized constants                           |
-| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (v4)                  |
-| `src/utils/error-telemetry.js`                   | Threshold-based alerting (NEW v5)               |
-| `src/utils/logging-infrastructure.js`            | L1-L7 logging prefixes (NEW v5)                 |
-| `src/background/tab-events.js`                   | Tabs API listeners                              |
-| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts            |
-| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation     |
-| `src/messaging/message-router.js`                | ACTION-based routing                            |
-| `src/background/message-handler.js`              | TYPE-based v2 routing                           |
-| `background.js`                                  | Early message listener, queue drain (v12)       |
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground()     |
-| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection                 |
+| File                                             | Features                                    |
+| ------------------------------------------------ | ------------------------------------------- |
+| `src/constants.js`                               | Centralized constants                       |
+| `src/utils/shadow-dom.js`                        | Shadow DOM link detection (v4)              |
+| `src/utils/error-telemetry.js`                   | Threshold-based alerting (NEW v5)           |
+| `src/utils/logging-infrastructure.js`            | L1-L7 logging prefixes (NEW v5)             |
+| `src/background/tab-events.js`                   | Tabs API listeners                          |
+| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts        |
+| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation |
+| `src/messaging/message-router.js`                | ACTION-based routing                        |
+| `src/background/message-handler.js`              | TYPE-based v2 routing                       |
+| `background.js`                                  | Early message listener, queue drain (v12)   |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender(), sendMessageToBackground() |
+| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection             |
 
 ### Storage
 

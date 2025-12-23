@@ -24,7 +24,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **BFCache Port Validation** - Auto-reconnect after back/forward navigation
 - ✅ **Adaptive Message Timeout** - 90th percentile, 7s default for Firefox
 - ✅ **Load Shedding** - Reject non-critical at 50%/75%/90% thresholds
-- ✅ **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent completions
+- ✅ **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent
+  completions
 
 **High-Priority Fixes (5):**
 
@@ -60,7 +61,8 @@ Telemetry, Operation Acknowledgment, Error Recovery.
 
 ## 🎉 Previous Releases
 
-**v1.6.3.11-v3:** 55+ Issues Fixed - HEARTBEAT, Re-entrance Queue, BFCache Queue  
+**v1.6.3.11-v3:** 55+ Issues Fixed - HEARTBEAT, Re-entrance Queue, BFCache
+Queue  
 **v1.6.3.11-v2:** 40 Issues Fixed - BFCache, Tab ID, Hydration improvements  
 **v1.6.3.11:** 40 Issues Fixed - GET_CURRENT_TAB_ID, listener registration  
 **v1.6.3.10-v11:** Extended Tab ID, OPERATION_TYPE, LRU Map Guard
@@ -98,7 +100,8 @@ in the sidebar!
 ✓ **Container Isolation** - Firefox Container support with originContainerId  
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok (v1.6.3.11-v4)  
-✓ **Firefox Critical Fixes** - BFCache, Adaptive Timeout, Load Shedding (v1.6.3.11-v6)  
+✓ **Firefox Critical Fixes** - BFCache, Adaptive Timeout, Load Shedding
+(v1.6.3.11-v6)  
 ✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
 ✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  

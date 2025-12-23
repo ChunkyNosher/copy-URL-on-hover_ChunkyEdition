@@ -329,7 +329,8 @@ console.log('[Copy-URL-on-Hover] All module imports completed successfully');
  */
 const _moduleLoadStatus = {
   // Critical modules - extension cannot function without these
-  browserApi: typeof copyToClipboard === 'function' && typeof sendMessageToBackground === 'function',
+  browserApi:
+    typeof copyToClipboard === 'function' && typeof sendMessageToBackground === 'function',
   config: typeof ConfigManager === 'function' && typeof CONSTANTS === 'object',
   events: typeof EventBus === 'function',
   state: typeof StateManager === 'function',
@@ -410,9 +411,12 @@ const moduleStatus = _logModuleLoadStatus();
 
 // If critical modules failed, halt with informative error
 if (!moduleStatus.allCriticalLoaded) {
-  console.error('[Copy-URL-on-Hover] FATAL: Critical modules failed to load. Extension cannot function.', {
-    failedModules: moduleStatus.failedCritical
-  });
+  console.error(
+    '[Copy-URL-on-Hover] FATAL: Critical modules failed to load. Extension cannot function.',
+    {
+      failedModules: moduleStatus.failedCritical
+    }
+  );
   window.CUO_module_load_failed = true;
   window.CUO_failed_modules = moduleStatus.failedCritical;
   throw new Error(`Critical module load failure: ${moduleStatus.failedCritical.join(', ')}`);
@@ -617,7 +621,7 @@ const ADAPTIVE_TIMEOUT_MULTIPLIER = 4;
  * Percentile to use for adaptive timeout calculation
  * v1.6.3.11-v6 - FIX Issue #2: Changed from 95th to 90th for Firefox's higher latency variance
  */
-const ADAPTIVE_TIMEOUT_PERCENTILE = 0.90;
+const ADAPTIVE_TIMEOUT_PERCENTILE = 0.9;
 
 /**
  * Track if background restart was detected (for temporary timeout extension)
@@ -715,7 +719,10 @@ function _getAdaptiveTimeout() {
 
     // Apply multiplier and clamp to range
     baseTimeout = Math.round(percentileLatency * ADAPTIVE_TIMEOUT_MULTIPLIER);
-    baseTimeout = Math.max(DEFAULT_MESSAGE_TIMEOUT_MS, Math.min(baseTimeout, MAX_MESSAGE_TIMEOUT_MS));
+    baseTimeout = Math.max(
+      DEFAULT_MESSAGE_TIMEOUT_MS,
+      Math.min(baseTimeout, MAX_MESSAGE_TIMEOUT_MS)
+    );
   }
 
   // v1.6.3.11-v6 - FIX Issue #2: Apply restart recovery multiplier if needed
@@ -1310,7 +1317,8 @@ function _getTotalQueueDepth() {
 
   // These are declared later in the PORT_MESSAGING section (~line 3900)
   // We must use typeof check because they don't exist yet at module parse time
-  const portQueueSize = typeof messageQueue !== 'undefined' && messageQueue ? messageQueue.length : 0;
+  const portQueueSize =
+    typeof messageQueue !== 'undefined' && messageQueue ? messageQueue.length : 0;
   const commandsQueueSize =
     typeof pendingCommandsBuffer !== 'undefined' && pendingCommandsBuffer
       ? pendingCommandsBuffer.length
@@ -1360,18 +1368,26 @@ function _checkLoadShedding(operationType) {
 
   // Critical operations always allowed
   if (priority === OPERATION_PRIORITY_LEVEL.CRITICAL) {
-    return { shouldReject: false, reason: 'critical-always-allowed', queueDepthPercent: depthPercent, retryable: false };
+    return {
+      shouldReject: false,
+      reason: 'critical-always-allowed',
+      queueDepthPercent: depthPercent,
+      retryable: false
+    };
   }
 
   // At 90%: only accept critical operations
   if (depthPercent >= LOAD_SHEDDING_THRESHOLDS.CRITICAL_ONLY) {
-    console.warn('[Content][LOAD_SHEDDING] CRITICAL_ONLY mode - rejecting non-critical operation:', {
-      operationType,
-      priority,
-      queueDepthPercent: depthPercent,
-      threshold: LOAD_SHEDDING_THRESHOLDS.CRITICAL_ONLY,
-      timestamp: Date.now()
-    });
+    console.warn(
+      '[Content][LOAD_SHEDDING] CRITICAL_ONLY mode - rejecting non-critical operation:',
+      {
+        operationType,
+        priority,
+        queueDepthPercent: depthPercent,
+        threshold: LOAD_SHEDDING_THRESHOLDS.CRITICAL_ONLY,
+        timestamp: Date.now()
+      }
+    );
     return {
       shouldReject: true,
       reason: 'CRITICAL_ONLY_MODE',
@@ -1418,7 +1434,12 @@ function _checkLoadShedding(operationType) {
     }
   }
 
-  return { shouldReject: false, reason: 'allowed', queueDepthPercent: depthPercent, retryable: false };
+  return {
+    shouldReject: false,
+    reason: 'allowed',
+    queueDepthPercent: depthPercent,
+    retryable: false
+  };
 }
 
 /**
@@ -1886,18 +1907,10 @@ const RESPONSE_FIELD_SCHEMA = {
     { field: 'success', type: 'boolean' },
     { field: 'quickTabId', type: 'string', optional: true } // Required on success
   ],
-  CLOSE_QUICK_TAB: [
-    { field: 'success', type: 'boolean' }
-  ],
-  MINIMIZE_QUICK_TAB: [
-    { field: 'success', type: 'boolean' }
-  ],
-  RESTORE_QUICK_TAB: [
-    { field: 'success', type: 'boolean' }
-  ],
-  UPDATE_QUICK_TAB: [
-    { field: 'success', type: 'boolean' }
-  ],
+  CLOSE_QUICK_TAB: [{ field: 'success', type: 'boolean' }],
+  MINIMIZE_QUICK_TAB: [{ field: 'success', type: 'boolean' }],
+  RESTORE_QUICK_TAB: [{ field: 'success', type: 'boolean' }],
+  UPDATE_QUICK_TAB: [{ field: 'success', type: 'boolean' }],
   GET_CURRENT_TAB_ID: [
     { field: 'tabId', type: 'number', optional: true } // May be -1 or null
   ]
@@ -3095,7 +3108,9 @@ async function _executeQueuedOperation(operation, queueDuration) {
         timeoutId = setTimeout(
           () =>
             reject(
-              new Error(`Operation timeout: ${operation.type} exceeded ${QUEUED_OPERATION_TIMEOUT_MS}ms`)
+              new Error(
+                `Operation timeout: ${operation.type} exceeded ${QUEUED_OPERATION_TIMEOUT_MS}ms`
+              )
             ),
           QUEUED_OPERATION_TIMEOUT_MS
         );
@@ -5913,11 +5928,15 @@ function _handlePageShow(event) {
     if (portPotentiallyInvalidDueToBFCache || backgroundPort) {
       // Verify port functionality by attempting a ping
       // v1.6.3.11-v6 - FIX Issue #14: Port readiness will be restored after verification
-      console.log('[Content][BFCACHE][PORT_VALIDATE] Starting port validation after BFCache restore');
+      console.log(
+        '[Content][BFCACHE][PORT_VALIDATE] Starting port validation after BFCache restore'
+      );
       _verifyPortAfterBFCache();
     } else if (!backgroundPort) {
       // v1.6.3.11-v6 - FIX Issue #1: No port exists, initiate reconnection immediately
-      console.log('[Content][BFCACHE][PORT_RECONNECT] No port exists after BFCache restore, reconnecting');
+      console.log(
+        '[Content][BFCACHE][PORT_RECONNECT] No port exists after BFCache restore, reconnecting'
+      );
       _handleNoPortAfterBFCache();
     }
 

@@ -332,7 +332,11 @@ describe('Hydration Drain Lock', () => {
 
         try {
           // Use module-level helper to avoid max-depth lint error
-          await processQueueWithAdditions(preHydrationOperationQueue, processor, processedOperations);
+          await processQueueWithAdditions(
+            preHydrationOperationQueue,
+            processor,
+            processedOperations
+          );
           return { success: true };
         } finally {
           isDrainInProgress = false;
@@ -369,7 +373,10 @@ describe('Hydration Drain Lock', () => {
 
         try {
           // Use module-level helper to avoid max-depth lint error
-          const result = await processQueueWithErrors(preHydrationOperationQueue, failingProcessOperation);
+          const result = await processQueueWithErrors(
+            preHydrationOperationQueue,
+            failingProcessOperation
+          );
           return { success: true, ...result };
         } finally {
           isDrainInProgress = false;

@@ -343,7 +343,9 @@ describe('Queue Backpressure at Realistic Scale', () => {
     });
 
     test('should correctly map UPDATE_QUICK_TAB_POSITION to MEDIUM', () => {
-      expect(getOperationPriority('UPDATE_QUICK_TAB_POSITION')).toBe(OPERATION_PRIORITY_LEVEL.MEDIUM);
+      expect(getOperationPriority('UPDATE_QUICK_TAB_POSITION')).toBe(
+        OPERATION_PRIORITY_LEVEL.MEDIUM
+      );
     });
 
     test('should correctly map HEARTBEAT to LOW', () => {

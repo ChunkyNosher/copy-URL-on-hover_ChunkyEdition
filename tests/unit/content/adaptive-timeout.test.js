@@ -70,7 +70,10 @@ describe('Adaptive Timeout Calculations', () => {
       const percentileIndex = Math.floor(sorted.length * ADAPTIVE_TIMEOUT_PERCENTILE);
       const percentileLatency = sorted[Math.min(percentileIndex, sorted.length - 1)];
       baseTimeout = Math.round(percentileLatency * ADAPTIVE_TIMEOUT_MULTIPLIER);
-      baseTimeout = Math.max(DEFAULT_MESSAGE_TIMEOUT_MS, Math.min(baseTimeout, MAX_MESSAGE_TIMEOUT_MS));
+      baseTimeout = Math.max(
+        DEFAULT_MESSAGE_TIMEOUT_MS,
+        Math.min(baseTimeout, MAX_MESSAGE_TIMEOUT_MS)
+      );
     }
 
     if (isInRestartRecoveryPeriod()) {
@@ -90,9 +93,18 @@ describe('Adaptive Timeout Calculations', () => {
       // Firefox realistic latency distribution
       // Median ~200ms, P95 ~1500ms, P90 ~1000ms
       const firefoxLatencies = [
-        50, 80, 120, 150, 200, // Low latencies
-        250, 300, 400, 600, // Medium latencies
-        1000, 1500, 2000 // High latencies (p90-p99 range)
+        50,
+        80,
+        120,
+        150,
+        200, // Low latencies
+        250,
+        300,
+        400,
+        600, // Medium latencies
+        1000,
+        1500,
+        2000 // High latencies (p90-p99 range)
       ];
 
       firefoxLatencies.forEach(latency => recordMessageLatency(latency));
@@ -144,7 +156,7 @@ describe('Adaptive Timeout Calculations', () => {
       const sorted = [...recentMessageLatencies].sort((a, b) => a - b);
 
       // 90th percentile index: floor(10 * 0.9) = 9
-      const p90Index = Math.floor(sorted.length * 0.90);
+      const p90Index = Math.floor(sorted.length * 0.9);
       const p90Value = sorted[p90Index];
 
       // 95th percentile index: floor(10 * 0.95) = 9
@@ -167,7 +179,7 @@ describe('Adaptive Timeout Calculations', () => {
       const sorted = [...recentMessageLatencies].sort((a, b) => a - b);
 
       // 90th percentile index: floor(20 * 0.9) = 18
-      const p90Index = Math.floor(sorted.length * 0.90);
+      const p90Index = Math.floor(sorted.length * 0.9);
       expect(p90Index).toBe(18);
       expect(sorted[p90Index]).toBe(1900);
 
