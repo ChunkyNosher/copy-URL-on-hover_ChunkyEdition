@@ -2747,6 +2747,326 @@ const _bfcacheMessageQueue = [];
  */
 const MAX_BFCACHE_MESSAGE_QUEUE_SIZE = 50;
 
+// ==================== v1.6.3.12 FIX ISSUE #9: MESSAGE ORDERING BUFFER ====================
+// Buffer out-of-order messages by sequence number and process in order
+
+/**
+ * Highest processed operation sequence number
+ * v1.6.3.12 - FIX Issue #9: Track which messages have been processed
+ */
+let _highestProcessedSequence = 0;
+
+/**
+ * Buffer for out-of-order messages awaiting processing
+ * v1.6.3.12 - FIX Issue #9: Map of operationSequence -> message
+ */
+const _messageOrderingBuffer = new Map();
+
+/**
+ * Maximum size of message ordering buffer
+ * v1.6.3.12 - FIX Issue #9: Prevent unbounded growth
+ */
+const MAX_MESSAGE_ORDERING_BUFFER_SIZE = 100;
+
+/**
+ * Timeout for buffered messages (milliseconds)
+ * v1.6.3.12 - FIX Issue #9: Discard stale buffered messages
+ */
+const MESSAGE_ORDERING_BUFFER_TIMEOUT_MS = 10000;
+
+/**
+ * Check if message should be processed based on sequence ordering
+ * v1.6.3.12 - FIX Issue #9: Validate message ordering
+ * @param {number} operationSequence - Message sequence number
+ * @returns {{ shouldProcess: boolean, reason: string }}
+ */
+function _shouldProcessMessageBySequence(operationSequence) {
+  // No sequence - process immediately (legacy message)
+  if (operationSequence === undefined || operationSequence === null) {
+    return { shouldProcess: true, reason: 'no-sequence' };
+  }
+  
+  // Already processed a higher sequence - discard
+  if (operationSequence <= _highestProcessedSequence) {
+    console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+      action: 'discarded',
+      reason: 'already-processed-newer',
+      incomingSequence: operationSequence,
+      highestProcessed: _highestProcessedSequence,
+      timestamp: Date.now()
+    });
+    return { shouldProcess: false, reason: 'already-processed-newer' };
+  }
+  
+  // Next expected sequence - process now
+  if (operationSequence === _highestProcessedSequence + 1) {
+    return { shouldProcess: true, reason: 'in-order' };
+  }
+  
+  // Out of order - buffer for later
+  console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+    action: 'buffering',
+    reason: 'out-of-order',
+    incomingSequence: operationSequence,
+    expectedSequence: _highestProcessedSequence + 1,
+    timestamp: Date.now()
+  });
+  return { shouldProcess: false, reason: 'out-of-order' };
+}
+
+/**
+ * Buffer a message for later processing
+ * v1.6.3.12 - FIX Issue #9: Store out-of-order messages
+ * @param {number} operationSequence - Message sequence number
+ * @param {Object} message - Message to buffer
+ */
+function _bufferMessageForOrdering(operationSequence, message) {
+  // Prevent unbounded growth
+  if (_messageOrderingBuffer.size >= MAX_MESSAGE_ORDERING_BUFFER_SIZE) {
+    // Remove oldest entry
+    const oldestKey = Math.min(..._messageOrderingBuffer.keys());
+    _messageOrderingBuffer.delete(oldestKey);
+    console.warn('[Content] MESSAGE_BUFFERED:', {
+      action: 'evicted-oldest',
+      evictedSequence: oldestKey,
+      bufferSize: _messageOrderingBuffer.size,
+      timestamp: Date.now()
+    });
+  }
+  
+  _messageOrderingBuffer.set(operationSequence, {
+    message,
+    bufferedAt: Date.now()
+  });
+  
+  console.log('[Content] MESSAGE_BUFFERED:', {
+    operationSequence,
+    messageType: message.type || message.action,
+    bufferSize: _messageOrderingBuffer.size,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Process buffered messages in order
+ * v1.6.3.12 - FIX Issue #9: Drain buffer after processing a message
+ * @param {Function} processMessage - Function to process each message
+ */
+async function _processBufferedMessages(processMessage) {
+  const now = Date.now();
+  
+  // Clean up stale buffered messages
+  for (const [seq, entry] of _messageOrderingBuffer.entries()) {
+    if (now - entry.bufferedAt > MESSAGE_ORDERING_BUFFER_TIMEOUT_MS) {
+      _messageOrderingBuffer.delete(seq);
+      console.warn('[Content] MESSAGE_BUFFERED:', {
+        action: 'expired',
+        operationSequence: seq,
+        ageMs: now - entry.bufferedAt,
+        timestamp: now
+      });
+    }
+  }
+  
+  // Process buffered messages in order
+  let processed = 0;
+  while (_messageOrderingBuffer.has(_highestProcessedSequence + 1)) {
+    const nextSeq = _highestProcessedSequence + 1;
+    const entry = _messageOrderingBuffer.get(nextSeq);
+    _messageOrderingBuffer.delete(nextSeq);
+    
+    console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+      action: 'processing-buffered',
+      operationSequence: nextSeq,
+      bufferedForMs: now - entry.bufferedAt,
+      timestamp: now
+    });
+    
+    await processMessage(entry.message);
+    _highestProcessedSequence = nextSeq;
+    processed++;
+  }
+  
+  if (processed > 0) {
+    console.log('[Content] MESSAGE_BUFFERED:', {
+      action: 'drain-complete',
+      processedCount: processed,
+      remainingBuffered: _messageOrderingBuffer.size,
+      highestProcessed: _highestProcessedSequence,
+      timestamp: now
+    });
+  }
+}
+
+/**
+ * Update highest processed sequence and process buffer
+ * v1.6.3.12 - FIX Issue #9: Called after successfully processing a message
+ * @param {number} operationSequence - Processed sequence number
+ * @param {Function} processMessage - Function to process buffered messages
+ */
+async function _markSequenceProcessed(operationSequence, processMessage) {
+  if (operationSequence !== undefined && operationSequence !== null) {
+    _highestProcessedSequence = operationSequence;
+    
+    // Process any buffered messages that are now in order
+    await _processBufferedMessages(processMessage);
+  }
+}
+
+// ==================== END ISSUE #9 FIX ====================
+
+// ==================== v1.6.3.12 FIX ISSUE #14: PORT READINESS FLAG ====================
+// Synchronous flag to track port readiness for BFCache restoration
+
+/**
+ * Flag indicating port is ready for messages
+ * v1.6.3.12 - FIX Issue #14: Set to false on pagehide, true after port connection completes
+ */
+let _isPortReadyForMessagesFlag = true;
+
+/**
+ * Message queue for messages that arrived before port was ready
+ * v1.6.3.12 - FIX Issue #14: Buffer messages during port reconnection
+ */
+const _portReadinessMessageQueue = [];
+
+/**
+ * Maximum port readiness queue size
+ * v1.6.3.12 - FIX Issue #14
+ */
+const MAX_PORT_READINESS_QUEUE_SIZE = 50;
+
+/**
+ * Check if port is ready for sending messages
+ * v1.6.3.12 - FIX Issue #14: Synchronous check before port usage
+ * @returns {boolean} True if port is ready
+ */
+function _isPortReadyForMessages() {
+  return _isPortReadyForMessagesFlag && !_isPortFrozenDueToBFCache;
+}
+
+/**
+ * Mark port as not ready (entering BFCache or disconnected)
+ * v1.6.3.12 - FIX Issue #14
+ */
+function markPortNotReady() {
+  const wasReady = _isPortReadyForMessagesFlag;
+  _isPortReadyForMessagesFlag = false;
+  
+  if (wasReady) {
+    console.log('[Content] BFCACHE_PORT_STATE:', {
+      state: 'not-ready',
+      previousState: 'ready',
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Mark port as ready (connection complete after BFCache restore)
+ * v1.6.3.12 - FIX Issue #14
+ */
+function markPortReady() {
+  const wasReady = _isPortReadyForMessagesFlag;
+  _isPortReadyForMessagesFlag = true;
+  
+  console.log('[Content] BFCACHE_PORT_STATE:', {
+    state: 'ready',
+    previousState: wasReady ? 'ready' : 'not-ready',
+    queuedMessages: _portReadinessMessageQueue.length,
+    timestamp: Date.now()
+  });
+  
+  // Drain queued messages
+  _drainPortReadinessQueue();
+}
+
+/**
+ * Queue a message for sending after port becomes ready
+ * v1.6.3.12 - FIX Issue #14
+ * @param {Object} message - Message to queue
+ * @returns {boolean} True if queued
+ */
+function _queueMessageUntilPortReady(message) {
+  if (_portReadinessMessageQueue.length >= MAX_PORT_READINESS_QUEUE_SIZE) {
+    console.warn('[Content] BFCACHE_PORT_STATE:', {
+      action: 'queue-full',
+      queueSize: _portReadinessMessageQueue.length,
+      messageType: message?.type || message?.action,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+  
+  _portReadinessMessageQueue.push({
+    message,
+    queuedAt: Date.now()
+  });
+  
+  console.log('[Content] BFCACHE_PORT_STATE:', {
+    action: 'message-queued',
+    queueSize: _portReadinessMessageQueue.length,
+    messageType: message?.type || message?.action,
+    timestamp: Date.now()
+  });
+  
+  return true;
+}
+
+/**
+ * Send a single queued port readiness message
+ * v1.6.3.12 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+async function _sendQueuedPortReadinessMessage(message) {
+  if (backgroundPort) {
+    backgroundPort.postMessage(message);
+    return;
+  }
+  await browser.runtime.sendMessage(message);
+}
+
+/**
+ * Drain port readiness queue after port becomes ready
+ * v1.6.3.12 - FIX Issue #14
+ * @private
+ */
+async function _drainPortReadinessQueue() {
+  if (_portReadinessMessageQueue.length === 0) return;
+  
+  console.log('[Content] BFCACHE_PORT_STATE:', {
+    action: 'draining-queue',
+    queueSize: _portReadinessMessageQueue.length,
+    timestamp: Date.now()
+  });
+  
+  while (_portReadinessMessageQueue.length > 0) {
+    const entry = _portReadinessMessageQueue.shift();
+    const { message, queuedAt } = entry;
+    const queueDuration = Date.now() - queuedAt;
+    
+    try {
+      await _sendQueuedPortReadinessMessage(message);
+      
+      console.log('[Content] BFCACHE_PORT_STATE:', {
+        action: 'queued-message-sent',
+        messageType: message?.type || message?.action,
+        queueDurationMs: queueDuration,
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      console.error('[Content] BFCACHE_PORT_STATE:', {
+        action: 'queued-message-failed',
+        messageType: message?.type || message?.action,
+        error: err.message,
+        timestamp: Date.now()
+      });
+    }
+  }
+}
+
+// ==================== END ISSUE #14 FIX ====================
+
 /**
  * Queue a message for retry after BFCache restoration
  * v1.6.3.11-v3 - FIX Issue #51
@@ -4346,6 +4666,7 @@ window.addEventListener('unload', () => {
  * v1.6.3.10-v12 - FIX Issue #2: Mark port as potentially invalid on BFCache entry
  * v1.6.3.11-v3 - FIX Issue #51: Queue messages while frozen, prevent sending
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as inactive for stale event rejection
+ * v1.6.3.12 - FIX Issue #14: Set port readiness flag to false
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageHide(event) {
@@ -4362,6 +4683,9 @@ function _handlePageHide(event) {
     // v1.6.3.11-v3 - FIX Issue #51: Mark port as frozen (messages will be queued)
     _isPortFrozenDueToBFCache = true;
 
+    // v1.6.3.12 - FIX Issue #14: Mark port as not ready for messages
+    markPortNotReady();
+
     // v1.6.3.11-v3 - FIX Issue #52: Mark page inactive for stale event rejection
     _markPageInactive();
 
@@ -4376,6 +4700,7 @@ function _handlePageHide(event) {
  * v1.6.3.11-v3 - FIX Issue #51: Drain queued messages after restore
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as active, query backend for current state
  * v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore and refresh tab ID
+ * v1.6.3.12 - FIX Issue #14: Port readiness restored after verification
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageShow(event) {
@@ -4387,7 +4712,8 @@ function _handlePageShow(event) {
       portState: portConnectionState,
       wasMarkedInvalid: portPotentiallyInvalidDueToBFCache,
       wasFrozen: _isPortFrozenDueToBFCache,
-      queuedMessages: _bfcacheMessageQueue.length
+      queuedMessages: _bfcacheMessageQueue.length,
+      portReadinessQueueSize: _portReadinessMessageQueue.length
     });
 
     // v1.6.3.11-v3 - FIX Issue #52: Mark page as active
@@ -4402,10 +4728,16 @@ function _handlePageShow(event) {
 
     if (portPotentiallyInvalidDueToBFCache) {
       // Verify port functionality by attempting a ping
+      // v1.6.3.12 - FIX Issue #14: Port readiness will be restored after verification
       _verifyPortAfterBFCache();
     } else if (backgroundPort && _bfcacheMessageQueue.length > 0) {
       // v1.6.3.11-v3 - FIX Issue #51: Port still valid, drain queued messages
+      // v1.6.3.12 - FIX Issue #14: Mark port ready before draining
+      markPortReady();
       _drainBFCacheMessageQueue();
+    } else if (backgroundPort) {
+      // v1.6.3.12 - FIX Issue #14: Port exists and is valid, mark ready
+      markPortReady();
     }
 
     // v1.6.3.11-v3 - FIX Issue #52: Query backend for current state to avoid stale events
@@ -4506,6 +4838,7 @@ function _clearBFCacheVerifyTimeout() {
  * Handle PORT_VERIFY response from background
  * v1.6.3.11 - FIX Issue #32: Clear timeout on successful response
  * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log PORT_VERIFY success with latency
+ * v1.6.3.12 - FIX Issue #14: Mark port ready after successful verification
  */
 function _handlePortVerifyResponse() {
   _clearBFCacheVerifyTimeout();
@@ -4521,6 +4854,9 @@ function _handlePortVerifyResponse() {
     }
   );
   bfcacheVerifyStartTime = 0; // Reset
+  
+  // v1.6.3.12 - FIX Issue #14: Mark port ready and drain queued messages
+  markPortReady();
 }
 
 /**
@@ -8545,14 +8881,85 @@ const TYPE_HANDLERS = {
   },
 
   // v1.6.3.5-v3 - FIX Architecture Phase 1: Handle state update notifications
+  // v1.6.3.12 - FIX Issue #9: Add message ordering support
   QUICK_TAB_STATE_UPDATED: (message, sendResponse) => {
-    console.log('[Content] QUICK_TAB_STATE_UPDATED received:', {
-      quickTabId: message.quickTabId,
-      changes: message.changes
+    const { operationSequence, quickTabId, changes, messageId } = message;
+    
+    console.log('[Content] MESSAGE_SEQUENCE_CHECK:', {
+      action: 'received',
+      messageId,
+      operationSequence: operationSequence ?? 'none',
+      highestProcessed: _highestProcessedSequence,
+      quickTabId,
+      changeType: Object.keys(changes || {})[0] || 'unknown',
+      timestamp: Date.now()
     });
+    
+    // v1.6.3.12 - FIX Issue #9: Check message ordering
+    const orderCheck = _shouldProcessMessageBySequence(operationSequence);
+    
+    if (!orderCheck.shouldProcess && orderCheck.reason === 'out-of-order') {
+      // Buffer for later processing
+      _bufferMessageForOrdering(operationSequence, message);
+      sendResponse({ received: true, buffered: true, operationSequence });
+      return true;
+    }
+    
+    if (!orderCheck.shouldProcess) {
+      // Already processed newer - discard
+      sendResponse({ received: true, discarded: true, reason: orderCheck.reason });
+      return true;
+    }
+    
+    // Process the message
+    console.log('[Content] QUICK_TAB_STATE_UPDATED processing:', {
+      quickTabId,
+      changes,
+      operationSequence
+    });
+    
     // Content script doesn't need to do anything - it manages its own state
     // This handler is mainly for logging and potential future use
-    sendResponse({ received: true });
+    
+    // v1.6.3.12 - FIX Issue #9: Mark sequence as processed and drain buffer
+    if (operationSequence !== undefined && operationSequence !== null) {
+      _highestProcessedSequence = operationSequence;
+      
+      // Async processing of buffered messages
+      _processBufferedMessages((bufferedMsg) => {
+        console.log('[Content] Processing buffered QUICK_TAB_STATE_UPDATED:', {
+          quickTabId: bufferedMsg.quickTabId,
+          operationSequence: bufferedMsg.operationSequence
+        });
+        // Process buffered state update (logging only for now)
+        return Promise.resolve();
+      }).catch(err => {
+        console.warn('[Content] Error processing buffered messages:', err.message);
+      });
+    }
+    
+    sendResponse({ received: true, processed: true, operationSequence });
+    return true;
+  },
+  
+  // v1.6.3.12 - FIX Issue #10: Handle PORT_HEARTBEAT_PING from background
+  PORT_HEARTBEAT_PING: (message, sendResponse) => {
+    const { heartbeatId, timestamp } = message;
+    const latencyMs = Date.now() - timestamp;
+    
+    console.log('[Content] PORT_HEARTBEAT_PING received:', {
+      heartbeatId,
+      latencyMs,
+      timestamp: Date.now()
+    });
+    
+    // Respond to heartbeat
+    sendResponse({
+      type: 'PORT_HEARTBEAT_PONG',
+      heartbeatId,
+      receivedAt: Date.now(),
+      latencyMs
+    });
     return true;
   }
 };

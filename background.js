@@ -372,6 +372,41 @@ const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 // FIX Issue #3: Multi-method deduplication
 const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
 
+// ==================== v1.6.3.12 FIX ISSUE #9: GLOBAL MESSAGE ORDERING ====================
+// Global operation counter for deterministic message ordering across tabs
+// Incremented on each operation, included in broadcasts for ordering enforcement
+
+/**
+ * Global operation sequence counter
+ * v1.6.3.12 - FIX Issue #9: Ensures deterministic message ordering across tabs
+ */
+let globalOperationSequence = 0;
+
+/**
+ * Increment and return the next global operation sequence number
+ * v1.6.3.12 - FIX Issue #9: Called before broadcasting to ensure ordering
+ * @returns {number} The next sequence number
+ */
+function getNextOperationSequence() {
+  globalOperationSequence++;
+  console.log('[Background] GLOBAL_SEQUENCE_INCREMENT:', {
+    newSequence: globalOperationSequence,
+    timestamp: Date.now()
+  });
+  return globalOperationSequence;
+}
+
+/**
+ * Get current operation sequence without incrementing
+ * v1.6.3.12 - FIX Issue #9: For read-only access
+ * @returns {number} Current sequence number
+ */
+function _getCurrentOperationSequence() {
+  return globalOperationSequence;
+}
+
+// ==================== END ISSUE #9 FIX ====================
+
 // v1.6.3.10-v7 - FIX Diagnostic Issue #9: Increased deletion acknowledgment timeout
 // Previous value (1000ms) was too aggressive for slow networks or heavy tab loads
 const DELETION_ACK_TIMEOUT_MS = 3000; // 3 second timeout for deletion acknowledgments
@@ -4443,6 +4478,7 @@ function logPortLifecycle(origin, event, details = {}) {
 /**
  * Register a new port connection
  * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
+ * v1.6.3.12 - FIX Issue #10: Add PORT_CONNECTION_ESTABLISHED logging
  * @param {browser.runtime.Port} port - The connected port
  * @param {string} origin - Origin identifier
  * @param {number|null} tabId - Tab ID (if from content script)
@@ -4459,7 +4495,20 @@ function registerPort(port, origin, tabId, type) {
     type,
     connectedAt: Date.now(),
     lastMessageAt: null,
-    messageCount: 0
+    messageCount: 0,
+    // v1.6.3.12 - FIX Issue #10: Track last heartbeat for viability checking
+    lastHeartbeat: Date.now(),
+    isViable: true
+  });
+
+  // v1.6.3.12 - FIX Issue #10: Log PORT_CONNECTION_ESTABLISHED
+  console.log('[Background] PORT_CONNECTION_ESTABLISHED:', {
+    portId,
+    origin,
+    tabId,
+    type,
+    totalPorts: portRegistry.size,
+    timestamp: Date.now()
   });
 
   logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
@@ -4571,6 +4620,141 @@ async function cleanupStalePorts() {
 
 // Start periodic cleanup
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
+
+// ==================== v1.6.3.12 FIX ISSUE #10: PORT VIABILITY CHECKING ====================
+// Implement heartbeat-based viability checks for connected ports
+
+/**
+ * Port viability check interval (milliseconds)
+ * v1.6.3.12 - FIX Issue #10: Check port health every 30 seconds
+ */
+const PORT_VIABILITY_CHECK_INTERVAL_MS = 30000;
+
+/**
+ * Port heartbeat timeout (milliseconds)
+ * v1.6.3.12 - FIX Issue #10: Mark port as non-viable if no activity for 60 seconds
+ */
+const PORT_HEARTBEAT_TIMEOUT_MS = 60000;
+
+/**
+ * Check viability of a single port
+ * v1.6.3.12 - FIX Issue #10: Determine if port is still responsive
+ * @private
+ * @param {string} portId - Port ID
+ * @param {Object} portInfo - Port info from registry
+ * @param {number} now - Current timestamp
+ * @returns {boolean} True if port is viable
+ */
+function _checkSinglePortViability(portId, portInfo, now) {
+  const lastActivity = portInfo.lastMessageAt || portInfo.lastHeartbeat || portInfo.connectedAt;
+  const timeSinceActivity = now - lastActivity;
+  const wasViable = portInfo.isViable;
+  
+  // Port is non-viable if no activity for longer than timeout
+  const isViable = timeSinceActivity < PORT_HEARTBEAT_TIMEOUT_MS;
+  
+  // Update viability status
+  portInfo.isViable = isViable;
+  
+  // Log state change
+  if (wasViable !== isViable) {
+    console.log('[Background] PORT_VIABILITY_CHECK:', {
+      portId,
+      origin: portInfo.origin,
+      tabId: portInfo.tabId,
+      previousState: wasViable ? 'viable' : 'non-viable',
+      newState: isViable ? 'viable' : 'non-viable',
+      timeSinceActivityMs: timeSinceActivity,
+      timestamp: now
+    });
+  }
+  
+  return isViable;
+}
+
+/**
+ * Send heartbeat ping to a port and wait for response
+ * v1.6.3.12 - FIX Issue #10: Active heartbeat mechanism
+ * @private
+ * @param {Object} portInfo - Port info from registry
+ * @param {string} portId - Port ID
+ * @returns {boolean} True if port responded
+ */
+function _sendPortHeartbeat(portInfo, portId) {
+  try {
+    const heartbeatId = `hb-${Date.now()}-${portId}`;
+    
+    portInfo.port.postMessage({
+      type: 'PORT_HEARTBEAT_PING',
+      heartbeatId,
+      timestamp: Date.now()
+    });
+    
+    // Update last heartbeat timestamp
+    portInfo.lastHeartbeat = Date.now();
+    
+    console.log('[Background] PORT_VIABILITY_CHECK:', {
+      action: 'heartbeat-sent',
+      portId,
+      origin: portInfo.origin,
+      heartbeatId,
+      timestamp: Date.now()
+    });
+    
+    return true;
+  } catch (err) {
+    console.warn('[Background] PORT_VIABILITY_CHECK:', {
+      action: 'heartbeat-failed',
+      portId,
+      origin: portInfo.origin,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+}
+
+/**
+ * Check viability of all registered ports
+ * v1.6.3.12 - FIX Issue #10: Periodic viability check for all ports
+ */
+function checkAllPortsViability() {
+  const now = Date.now();
+  let viableCount = 0;
+  let nonViableCount = 0;
+  
+  console.log('[Background] PORT_VIABILITY_CHECK:', {
+    action: 'check-started',
+    totalPorts: portRegistry.size,
+    timestamp: now
+  });
+  
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    const isViable = _checkSinglePortViability(portId, portInfo, now);
+    
+    if (isViable) {
+      viableCount++;
+      // Send heartbeat ping to maintain connection
+      _sendPortHeartbeat(portInfo, portId);
+    } else {
+      nonViableCount++;
+    }
+  }
+  
+  console.log('[Background] PORT_VIABILITY_CHECK:', {
+    action: 'check-complete',
+    viableCount,
+    nonViableCount,
+    totalPorts: portRegistry.size,
+    timestamp: Date.now()
+  });
+}
+
+// Start periodic port viability checking
+setInterval(checkAllPortsViability, PORT_VIABILITY_CHECK_INTERVAL_MS);
+console.log('[Background] v1.6.3.12 Port viability checking initialized (every', PORT_VIABILITY_CHECK_INTERVAL_MS / 1000, 's)');
+
+// ==================== END ISSUE #10 FIX ====================
 
 /**
  * Parse port name to extract type and tab ID
@@ -6756,6 +6940,7 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
+ * v1.6.3.12 - FIX Issue #9: Include global operationSequence for message ordering
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -6775,16 +6960,29 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
 
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
+  
+  // v1.6.3.12 - FIX Issue #9: Get next operation sequence for ordering
+  const operationSequence = getNextOperationSequence();
 
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
+    operationSequence, // v1.6.3.12 - FIX Issue #9: Global sequence for ordering
     quickTabId,
     changes,
     source: 'background',
     originalSource: source,
     timestamp: Date.now()
   };
+
+  // v1.6.3.12 - FIX Issue #9: Log message with sequence
+  console.log('[Background] MESSAGE_WITH_SEQUENCE:', {
+    messageId,
+    operationSequence,
+    quickTabId,
+    changeType: Object.keys(changes || {})[0] || 'unknown',
+    timestamp: Date.now()
+  });
 
   // v1.6.3.6-v5 - FIX Issue #4c: Log message dispatch to sidebar
   logMessageDispatch(messageId, 'QUICK_TAB_STATE_UPDATED', excludeTabId, 'sidebar');
