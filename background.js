@@ -43,6 +43,10 @@ let _typeBasedHandlers = null;
 // handled separately from MessageRouter
 const _TYPE_BASED_MESSAGE_TYPES = ['HEARTBEAT', 'QUICK_TAB_STATE_CHANGE', 'MANAGER_COMMAND'];
 
+// v1.6.3.11-v7 - FIX Code Review: Extracted constant for stack trace line limit
+// Limits error stack traces in logs to improve readability
+const _MAX_STACK_TRACE_LINES = 3;
+
 /**
  * Handle queue overflow by dropping oldest message
  * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
@@ -79,6 +83,7 @@ function _notifyDroppedMessage(dropped) {
 /**
  * Route message to appropriate handler (type-based or MessageRouter)
  * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
+ * v1.6.3.11-v7 - FIX: Properly handle async route() with .catch() to ensure sendResponse is called
  * @private
  */
 function _routeReadyMessage(message, sender, sendResponse) {
@@ -88,7 +93,27 @@ function _routeReadyMessage(message, sender, sendResponse) {
     if (handled) return;
   }
   // Delegate to MessageRouter for action-based messages
-  _messageRouterInstance.route(message, sender, sendResponse);
+  // v1.6.3.11-v7 - FIX: Add .catch() to ensure sendResponse is always called
+  // Without this, if route() rejects, sendResponse is never called and the sender hangs forever
+  _messageRouterInstance.route(message, sender, sendResponse).catch(err => {
+    console.error('[Background] ROUTE_ERROR: Unhandled error in route():', {
+      action: message?.action || message?.type,
+      error: err.message,
+      stack: err.stack?.split('\n').slice(0, _MAX_STACK_TRACE_LINES).join('\n'),
+      timestamp: Date.now()
+    });
+    // Ensure sendResponse is called to prevent sender from hanging
+    try {
+      sendResponse({
+        success: false,
+        error: err.message || 'Internal routing error',
+        code: 'ROUTE_ERROR',
+        timestamp: Date.now()
+      });
+    } catch (_responseErr) {
+      // Channel may be closed if sender disconnected - safe to ignore response error
+    }
+  });
 }
 
 /**

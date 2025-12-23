@@ -48,6 +48,9 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   'GET_BACKGROUND_LOGS',
   'GET_ALL_LOGS',
   'CLEAR_ALL_LOGS',
+  // v1.6.3.11-v7 - FIX: Add missing log actions that are actually used
+  'CLEAR_CONSOLE_LOGS',
+  'EXPORT_LOGS',
   // Tab management
   'GET_TABS',
   'SWITCH_TAB',
