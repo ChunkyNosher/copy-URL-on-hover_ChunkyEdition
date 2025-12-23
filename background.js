@@ -38,6 +38,11 @@ let _messageRouterInstance = null;
 // These are set later when the handlers are defined
 let _typeBasedHandlers = null;
 
+// v1.6.3.12 - FIX Code Review: Extract type-based message types as constant
+// These message types use `type` property instead of `action` and are
+// handled separately from MessageRouter
+const _TYPE_BASED_MESSAGE_TYPES = ['HEARTBEAT', 'QUICK_TAB_STATE_CHANGE', 'MANAGER_COMMAND'];
+
 /**
  * Handle queue overflow by dropping oldest message
  * v1.6.3.12 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
@@ -143,8 +148,8 @@ function _isTypeBasedMessage(message) {
   if (!message || typeof message.type !== 'string') return false;
   // Type-based messages have `type` but NOT `action`
   if (typeof message.action === 'string') return false;
-  // Known type-based message types
-  return ['HEARTBEAT', 'QUICK_TAB_STATE_CHANGE', 'MANAGER_COMMAND'].includes(message.type);
+  // v1.6.3.12 - FIX Code Review: Use constant for known type-based message types
+  return _TYPE_BASED_MESSAGE_TYPES.includes(message.type);
 }
 
 /**
