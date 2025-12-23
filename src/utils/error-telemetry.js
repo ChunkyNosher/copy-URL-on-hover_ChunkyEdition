@@ -441,7 +441,7 @@ function _sanitizeContext(context) {
 
   const sensitiveKeys = ['password', 'token', 'secret', 'cookie'];
   const sanitized = {};
-  
+
   for (const [key, value] of Object.entries(context)) {
     if (sensitiveKeys.includes(key.toLowerCase())) continue;
     sanitized[key] = _sanitizeSingleValue(value);

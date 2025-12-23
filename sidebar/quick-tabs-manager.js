@@ -1860,7 +1860,13 @@ function _handleHostInfoVerifyResult(verifyResult, quickTabId, expectedOriginTab
     return;
   }
 
-  _handleHostInfoDivergence(quickTabId, storageOriginTabId, mapOriginTabId, expectedOriginTabId, retryCount);
+  _handleHostInfoDivergence(
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId,
+    expectedOriginTabId,
+    retryCount
+  );
 }
 
 /**
@@ -1868,7 +1874,13 @@ function _handleHostInfoVerifyResult(verifyResult, quickTabId, expectedOriginTab
  * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
  * @private
  */
-function _markHostInfoAsVerified(quickTabId, hostInfo, storageOriginTabId, mapOriginTabId, retryCount) {
+function _markHostInfoAsVerified(
+  quickTabId,
+  hostInfo,
+  storageOriginTabId,
+  mapOriginTabId,
+  retryCount
+) {
   if (hostInfo) {
     hostInfo.storageVerified = true;
     quickTabHostInfo.set(quickTabId, hostInfo);
@@ -1887,7 +1899,13 @@ function _markHostInfoAsVerified(quickTabId, hostInfo, storageOriginTabId, mapOr
  * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
  * @private
  */
-function _handleHostInfoDivergence(quickTabId, storageOriginTabId, mapOriginTabId, expectedOriginTabId, retryCount) {
+function _handleHostInfoDivergence(
+  quickTabId,
+  storageOriginTabId,
+  mapOriginTabId,
+  expectedOriginTabId,
+  retryCount
+) {
   console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED:', {
     quickTabId,
     storageOriginTabId,
@@ -1966,9 +1984,12 @@ async function _ensureHostInfoStorageConsistency(quickTabId) {
 
   // If no host info, allow operation (will use storage directly)
   if (!hostInfo) {
-    console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: No host info, operation will use storage directly:', {
-      quickTabId
-    });
+    console.log(
+      '[Sidebar] HOSTINFO_STORAGE_COMPARE: No host info, operation will use storage directly:',
+      {
+        quickTabId
+      }
+    );
     return true;
   }
 
@@ -3734,7 +3755,7 @@ function _markCacheDirty() {
   const now = Date.now();
   isCacheDirty = true;
   _lastCacheInvalidationTime = now;
-  
+
   console.log('[Sidebar][CACHE_DIRTY] Cache marked dirty:', {
     timestamp: now,
     timeSinceLastSync: now - lastCacheSyncFromStorage,
@@ -3750,14 +3771,14 @@ function _markCacheDirty() {
 function _recordStorageEvent() {
   const now = Date.now();
   storageEventTimestamps.push(now);
-  
+
   // Keep only recent timestamps - use slice for efficiency instead of shift in loop
   if (storageEventTimestamps.length > STORAGE_EVENT_TIMESTAMPS_MAX) {
     // Remove oldest entries in one operation
     const toRemove = storageEventTimestamps.length - STORAGE_EVENT_TIMESTAMPS_MAX;
     storageEventTimestamps.splice(0, toRemove);
   }
-  
+
   // Check for storage storm
   _checkStorageStorm(now);
 }
@@ -3772,7 +3793,7 @@ function _checkStorageStorm(now) {
   // Count events in the last window using reverse iteration (array is chronological)
   const windowStart = now - STORAGE_STORM_WINDOW_MS;
   let recentEventCount = 0;
-  
+
   // Iterate backwards since array is chronological - stop when we hit old events
   for (let i = storageEventTimestamps.length - 1; i >= 0; i--) {
     if (storageEventTimestamps[i] > windowStart) {
@@ -3781,12 +3802,12 @@ function _checkStorageStorm(now) {
       break; // All earlier events are outside the window
     }
   }
-  
+
   const eventsPerSecond = recentEventCount / (STORAGE_STORM_WINDOW_MS / 1000);
-  
+
   const wasInStorm = isInStorageStorm;
   isInStorageStorm = eventsPerSecond >= STORAGE_STORM_THRESHOLD_EPS;
-  
+
   // Log storm state changes
   if (isInStorageStorm && !wasInStorm) {
     lastStorageStormDetection = now;
@@ -3834,7 +3855,7 @@ function _isCacheStale() {
   const now = Date.now();
   const threshold = _getCacheStalenessThreshold();
   const staleness = now - lastCacheSyncFromStorage;
-  
+
   return staleness > threshold;
 }
 
@@ -3882,7 +3903,10 @@ function _categorizeQuickTab(quickTab, browserTabIds) {
 
   // Quick Tab without originTabId - keep for adoption
   if (!originTabId) {
-    console.log('[Sidebar] ORIGIN_TAB_CHECK: Quick Tab without originTabId (will keep for adoption):', { quickTabId: quickTab.id });
+    console.log(
+      '[Sidebar] ORIGIN_TAB_CHECK: Quick Tab without originTabId (will keep for adoption):',
+      { quickTabId: quickTab.id }
+    );
     return { isValid: true, quickTab };
   }
 
@@ -3981,7 +4005,9 @@ async function _reconcileStoredTabsWithBrowser(storedTabs) {
 
     // If we found stale tabs, notify background to remove them
     if (staleTabs.length > 0) {
-      console.log('[Sidebar] STATE_VERIFICATION_COMPLETE: Requesting background to remove stale entries');
+      console.log(
+        '[Sidebar] STATE_VERIFICATION_COMPLETE: Requesting background to remove stale entries'
+      );
       await _sendReconciliationMessage(staleTabs);
     }
 
@@ -4165,10 +4191,10 @@ function _shouldForceRenderOnMaxWait(now) {
 function _calculateDebounceTime(now) {
   const elapsedSinceStart = now - debounceStartTimestamp;
   const remainingMaxWait = RENDER_DEBOUNCE_MAX_WAIT_MS - elapsedSinceStart;
-  
+
   // v1.6.3.11-v5 - FIX Issue #16: Use adaptive debounce based on storm state
   const baseDebounce = _getAdaptiveRenderDebounce();
-  
+
   return Math.min(baseDebounce, remainingMaxWait);
 }
 
@@ -5330,13 +5356,13 @@ function setupEventListeners() {
       timestamp: Date.now()
     });
     if (areaName !== 'local' || !changes[STATE_KEY]) return;
-    
+
     // v1.6.3.11-v5 - FIX Issue #16: Record storage event for storm detection
     _recordStorageEvent();
-    
+
     // v1.6.3.11-v5 - FIX Issue #16: Mark cache as dirty
     _markCacheDirty();
-    
+
     _handleStorageChange(changes[STATE_KEY]);
   });
   console.log('[STATE_LISTEN] ✓ storage.onChanged listener registered');

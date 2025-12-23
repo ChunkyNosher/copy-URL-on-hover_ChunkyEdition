@@ -16,6 +16,362 @@
 // Simple log format to minimize startup overhead
 console.log('[Background] ✓ Background script loading started');
 
+// ==================== v1.6.3.11-v6 EARLY MESSAGE LISTENER ====================
+// CRITICAL FIX: Register message listeners IMMEDIATELY at the very top of the script
+// BEFORE any imports or initialization code runs.
+//
+// ROOT CAUSE: In v1.6.3.11-v5, ~1500+ lines of new code were added between imports
+// and the message listener registration, causing messages to fail with
+// "Could not establish connection. Receiving end does not exist."
+//
+// SOLUTION: Register a placeholder listener at the very top that queues messages
+// until the full MessageRouter is ready to process them.
+// ============================================================================
+
+// Early message queue for messages received before MessageRouter is ready
+const _earlyMessageQueue = [];
+const _MAX_EARLY_QUEUE_SIZE = 100;
+let _messageRouterReady = false;
+let _messageRouterInstance = null;
+
+// Type-based handlers for messages not handled by MessageRouter
+// These are set later when the handlers are defined
+let _typeBasedHandlers = null;
+
+// v1.6.3.11-v6 - FIX Code Review: Extract type-based message types as constant
+// These message types use `type` property instead of `action` and are
+// handled separately from MessageRouter
+const _TYPE_BASED_MESSAGE_TYPES = ['HEARTBEAT', 'QUICK_TAB_STATE_CHANGE', 'MANAGER_COMMAND'];
+
+/**
+ * Handle queue overflow by dropping oldest message
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
+ * @private
+ */
+function _handleEarlyQueueOverflow(message) {
+  console.warn('[Background] EARLY_QUEUE_OVERFLOW: Dropping oldest message', {
+    queueSize: _earlyMessageQueue.length,
+    action: message?.action || message?.type
+  });
+  const dropped = _earlyMessageQueue.shift();
+  _notifyDroppedMessage(dropped);
+}
+
+/**
+ * Notify sender that their message was dropped
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _notifyDroppedMessage(dropped) {
+  if (!dropped?.sendResponse) return;
+  try {
+    dropped.sendResponse({
+      success: false,
+      error: 'Message dropped due to early queue overflow',
+      code: 'EARLY_QUEUE_OVERFLOW',
+      retryable: true
+    });
+  } catch (_err) {
+    // Channel may be closed - ignore
+  }
+}
+
+/**
+ * Route message to appropriate handler (type-based or MessageRouter)
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
+ * @private
+ */
+function _routeReadyMessage(message, sender, sendResponse) {
+  // Check if this is a type-based message first
+  if (_isTypeBasedMessage(message) && _typeBasedHandlers) {
+    const handled = _handleTypeBasedMessage(message, sender, sendResponse);
+    if (handled) return;
+  }
+  // Delegate to MessageRouter for action-based messages
+  _messageRouterInstance.route(message, sender, sendResponse);
+}
+
+/**
+ * Queue a message for later processing
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
+ * @private
+ */
+function _queueEarlyMessage(message, sender, sendResponse) {
+  // Handle overflow first
+  if (_earlyMessageQueue.length >= _MAX_EARLY_QUEUE_SIZE) {
+    _handleEarlyQueueOverflow(message);
+  }
+
+  _earlyMessageQueue.push({
+    message,
+    sender,
+    sendResponse,
+    queuedAt: Date.now()
+  });
+
+  console.log('[Background] EARLY_MESSAGE_QUEUED:', {
+    action: message?.action || message?.type,
+    queueSize: _earlyMessageQueue.length,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Early message listener - registered IMMEDIATELY at script load
+ * Queues messages until MessageRouter is fully initialized
+ * v1.6.3.11-v6 - FIX: Register message listener at TOP of background.js
+ * v1.6.3.11-v6 - FIX Code Health: Refactored to reduce complexity (cc=11→5)
+ * @param {Object} message - Message from content script or sidebar
+ * @param {Object} sender - Message sender info
+ * @param {Function} sendResponse - Response callback
+ * @returns {boolean} True to keep message channel open for async response
+ */
+function _earlyMessageListener(message, sender, sendResponse) {
+  // If MessageRouter is ready, delegate to full message handling
+  if (_messageRouterReady && _messageRouterInstance) {
+    _routeReadyMessage(message, sender, sendResponse);
+    return true;
+  }
+
+  // Queue the message for later processing
+  _queueEarlyMessage(message, sender, sendResponse);
+  return true;
+}
+
+/**
+ * Check if message is a type-based message (not handled by MessageRouter)
+ * v1.6.3.11-v6 - FIX: Identify type-based messages for special handling
+ * @param {Object} message - Message to check
+ * @returns {boolean} True if type-based message
+ */
+function _isTypeBasedMessage(message) {
+  if (!message || typeof message.type !== 'string') return false;
+  // Type-based messages have `type` but NOT `action`
+  if (typeof message.action === 'string') return false;
+  // v1.6.3.11-v6 - FIX Code Review: Use constant for known type-based message types
+  return _TYPE_BASED_MESSAGE_TYPES.includes(message.type);
+}
+
+/**
+ * Handle type-based messages that aren't handled by MessageRouter
+ * v1.6.3.11-v6 - FIX: Centralize type-based message handling
+ * @param {Object} message - Message to handle
+ * @param {Object} sender - Message sender
+ * @param {Function} sendResponse - Response callback
+ * @returns {boolean} True if message was handled
+ */
+function _handleTypeBasedMessage(message, sender, sendResponse) {
+  if (!_typeBasedHandlers) return false;
+
+  if (message.type === 'HEARTBEAT' && _typeBasedHandlers.handleHeartbeat) {
+    _typeBasedHandlers.handleHeartbeat(message, sender, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'QUICK_TAB_STATE_CHANGE' && _typeBasedHandlers.handleQuickTabStateChange) {
+    _invokeAsyncHandler(
+      _typeBasedHandlers.handleQuickTabStateChange,
+      message,
+      sender,
+      sendResponse
+    );
+    return true;
+  }
+
+  if (message.type === 'MANAGER_COMMAND' && _typeBasedHandlers.handleManagerCommand) {
+    _invokeAsyncHandler(_typeBasedHandlers.handleManagerCommand, message, sender, sendResponse);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Invoke an async handler and send response
+ * v1.6.3.11-v6 - FIX Code Review: Extracted to reduce duplication
+ * @private
+ */
+function _invokeAsyncHandler(handler, message, sender, sendResponse) {
+  handler(message, sender)
+    .then(result => sendResponse(result))
+    .catch(err => sendResponse({ success: false, error: err.message }));
+}
+
+/**
+ * Process a single queued message during drain
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _drainEarlyMessageQueue complexity
+ * @private
+ * @returns {Promise<{success: boolean}>}
+ */
+async function _processQueuedEarlyMessage(entry) {
+  const queueDuration = Date.now() - entry.queuedAt;
+
+  // Check if type-based message
+  if (_isTypeBasedMessage(entry.message) && _typeBasedHandlers) {
+    const handled = _handleTypeBasedMessage(entry.message, entry.sender, entry.sendResponse);
+    if (handled) {
+      console.log('[Background] EARLY_MESSAGE_PROCESSED (type-based):', {
+        type: entry.message?.type,
+        queueDurationMs: queueDuration
+      });
+      return { success: true };
+    }
+  }
+
+  // Otherwise use MessageRouter
+  if (!_messageRouterInstance) {
+    throw new Error('MessageRouter not available');
+  }
+
+  await _messageRouterInstance.route(entry.message, entry.sender, entry.sendResponse);
+  console.log('[Background] EARLY_MESSAGE_PROCESSED:', {
+    action: entry.message?.action || entry.message?.type,
+    queueDurationMs: queueDuration
+  });
+  return { success: true };
+}
+
+/**
+ * Handle error during queue drain
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleQueueDrainError(entry, err) {
+  console.error('[Background] EARLY_MESSAGE_FAILED:', {
+    action: entry.message?.action || entry.message?.type,
+    error: err.message,
+    queueDurationMs: Date.now() - entry.queuedAt
+  });
+  _sendQueueDrainErrorResponse(entry.sendResponse);
+}
+
+/**
+ * Send error response for queue drain failure
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _sendQueueDrainErrorResponse(sendResponse) {
+  if (!sendResponse) return;
+  try {
+    sendResponse({
+      success: false,
+      error: 'Failed during early queue drain',
+      code: 'EARLY_QUEUE_DRAIN_ERROR'
+    });
+  } catch (_responseErr) {
+    // Channel may be closed - ignore
+  }
+}
+
+/**
+ * Drain the early message queue once MessageRouter is ready
+ * v1.6.3.11-v6 - FIX: Process messages that arrived before MessageRouter initialized
+ * v1.6.3.11-v6 - FIX Code Health: Refactored to reduce complexity (cc=12→6)
+ */
+async function _drainEarlyMessageQueue() {
+  if (_earlyMessageQueue.length === 0) {
+    console.log('[Background] EARLY_QUEUE_EMPTY: No messages to drain');
+    return;
+  }
+
+  console.log('[Background] DRAIN_EARLY_QUEUE_START:', {
+    queueSize: _earlyMessageQueue.length,
+    timestamp: Date.now()
+  });
+
+  let processedCount = 0;
+  let errorCount = 0;
+
+  while (_earlyMessageQueue.length > 0) {
+    const entry = _earlyMessageQueue.shift();
+    try {
+      await _processQueuedEarlyMessage(entry);
+      processedCount++;
+    } catch (err) {
+      errorCount++;
+      _handleQueueDrainError(entry, err);
+    }
+  }
+
+  console.log('[Background] DRAIN_EARLY_QUEUE_COMPLETE:', {
+    processedCount,
+    errorCount,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Mark MessageRouter as ready and drain queued messages
+ * v1.6.3.11-v6 - Called after MessageRouter is fully configured
+ * @param {Object} routerInstance - The initialized MessageRouter instance
+ */
+function _setMessageRouterReady(routerInstance) {
+  _messageRouterInstance = routerInstance;
+  _messageRouterReady = true;
+  console.log('[Background] MESSAGE_ROUTER_READY:', {
+    timestamp: Date.now(),
+    queuedMessages: _earlyMessageQueue.length
+  });
+
+  // Drain any queued messages
+  _drainEarlyMessageQueue().catch(err => {
+    console.error('[Background] Error draining early queue:', err.message);
+  });
+}
+
+/**
+ * Set type-based handlers for messages not handled by MessageRouter
+ * v1.6.3.11-v6 - Called after handlers are defined
+ * @param {Object} handlers - Object with handler functions
+ */
+function _setTypeBasedHandlers(handlers) {
+  _typeBasedHandlers = handlers;
+  console.log('[Background] TYPE_BASED_HANDLERS_SET:', {
+    hasHeartbeat: !!handlers?.handleHeartbeat,
+    hasQuickTabStateChange: !!handlers?.handleQuickTabStateChange,
+    hasManagerCommand: !!handlers?.handleManagerCommand,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Check if browser.runtime.onMessage listener should be registered separately
+ * v1.6.3.11-v6 - FIX Code Review: Extracted for clarity
+ * In Firefox, browser.runtime === chrome.runtime due to polyfill, so we avoid double registration
+ * @private
+ * @returns {boolean} True if browser listener should be registered
+ */
+function _shouldRegisterBrowserListener() {
+  // Check browser API exists
+  if (typeof browser === 'undefined' || !browser.runtime?.onMessage) return false;
+  // If chrome is undefined, browser is the only API
+  if (typeof chrome === 'undefined') return true;
+  // If they're the same object (polyfill), don't double-register
+  return chrome.runtime !== browser.runtime;
+}
+
+// REGISTER EARLY LISTENERS IMMEDIATELY
+// These are registered BEFORE any imports to ensure messages are never lost
+console.log(
+  '[Background] EARLY_LISTENER_REGISTRATION: Registering message listeners at TOP of script'
+);
+
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener(_earlyMessageListener);
+  console.log('[Background] ✓ chrome.runtime.onMessage early listener registered');
+}
+
+if (_shouldRegisterBrowserListener()) {
+  browser.runtime.onMessage.addListener(_earlyMessageListener);
+  console.log('[Background] ✓ browser.runtime.onMessage early listener registered');
+}
+
+console.log('[Background] EARLY_LISTENER_REGISTRATION_COMPLETE:', {
+  timestamp: Date.now()
+});
+
+// ==================== END EARLY MESSAGE LISTENER ====================
+
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
 import { QuickTabHandler } from './src/background/handlers/QuickTabHandler.js';
@@ -399,19 +755,19 @@ const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 // FIX Issue #3: Multi-method deduplication
 const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
 
-// ==================== v1.6.3.12 FIX ISSUE #9: GLOBAL MESSAGE ORDERING ====================
+// ==================== v1.6.3.11-v6 FIX ISSUE #9: GLOBAL MESSAGE ORDERING ====================
 // Global operation counter for deterministic message ordering across tabs
 // Incremented on each operation, included in broadcasts for ordering enforcement
 
 /**
  * Global operation sequence counter
- * v1.6.3.12 - FIX Issue #9: Ensures deterministic message ordering across tabs
+ * v1.6.3.11-v6 - FIX Issue #9: Ensures deterministic message ordering across tabs
  */
 let globalOperationSequence = 0;
 
 /**
  * Increment and return the next global operation sequence number
- * v1.6.3.12 - FIX Issue #9: Called before broadcasting to ensure ordering
+ * v1.6.3.11-v6 - FIX Issue #9: Called before broadcasting to ensure ordering
  * @returns {number} The next sequence number
  */
 function getNextOperationSequence() {
@@ -425,7 +781,7 @@ function getNextOperationSequence() {
 
 /**
  * Get current operation sequence without incrementing
- * v1.6.3.12 - FIX Issue #9: For read-only access
+ * v1.6.3.11-v6 - FIX Issue #9: For read-only access
  * @returns {number} Current sequence number
  */
 function _getCurrentOperationSequence() {
@@ -1326,7 +1682,7 @@ async function tryLoadFromSyncStorage() {
   }
 
   isInitialized = true;
-  
+
   // v1.6.4.17 - FIX Issue L1: Log initialization complete with all listeners status
   logInitializationComplete('background');
 }
@@ -2812,30 +3168,33 @@ console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
 
-// v1.6.3.11 - FIX Issue #1 & #3: Register message listener synchronously at module load time
-// This ensures handlers are ready BEFORE any content script sends messages
-// Mozilla/Chrome documentation: "Listeners must be at the top-level to activate the background script"
-// v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging prefix
-// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
-logListenerRegistration('runtime_onMessage', 'chrome.runtime.onMessage', {
+// v1.6.3.11-v6 - FIX: Mark MessageRouter as ready and drain any early-queued messages
+// The early listener was already registered at the TOP of the script.
+// Now that MessageRouter is fully configured with all handlers, we:
+// 1. Mark it as ready so the early listener delegates to it
+// 2. Drain any messages that were queued before MessageRouter was ready
+// NOTE: We do NOT add another listener - the early listener handles everything
+logListenerRegistration('runtime_onMessage', 'MessageRouter (via early listener)', {
   handlerCount: messageRouter.handlers.size
 });
-console.log('[LISTENER_REG] Registering runtime.onMessage listener:', {
+console.log('[LISTENER_REG] Activating MessageRouter for early listener:', {
   handlerCount: messageRouter.handlers.size,
   timestamp: Date.now()
 });
 
-// Handle messages from content script and sidebar - using MessageRouter
-chrome.runtime.onMessage.addListener(messageRouter.createListener());
+// v1.6.3.11-v6 - Mark MessageRouter ready (this drains the early queue)
+_setMessageRouterReady(messageRouter);
 
 // v1.6.3.11 - FIX Issue #3: Log successful listener registration
 // v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG] prefix
 // v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+// v1.6.3.11-v6 - Updated to reflect that early listener is now active with MessageRouter
 logListenerRegistered('runtime_onMessage', {
   handlerCount: messageRouter.handlers.size,
-  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL']
+  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL'],
+  mechanism: 'early_listener_with_message_router'
 });
-console.log('[LISTENER_REG] ✓ runtime.onMessage listener registered:', {
+console.log('[LISTENER_REG] ✓ MessageRouter now handling messages via early listener:', {
   handlerCount: messageRouter.handlers.size,
   timestamp: Date.now(),
   readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL']
@@ -3290,7 +3649,13 @@ async function _rebroadcastStateChangeToContentScripts(newValue, oldValue) {
 
   try {
     const allTabs = await browser.tabs.query({});
-    const message = _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime });
+    const message = _buildStorageSyncMessage({
+      newTabs,
+      newValue,
+      addedIds,
+      removedIds,
+      startTime
+    });
 
     // Send to all tabs and count results
     const results = await Promise.all(allTabs.map(tab => _sendStorageSyncToTab(tab.id, message)));
@@ -4579,7 +4944,7 @@ function logPortLifecycle(origin, event, details = {}) {
 /**
  * Register a new port connection
  * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
- * v1.6.3.12 - FIX Issue #10: Add PORT_CONNECTION_ESTABLISHED logging
+ * v1.6.3.11-v6 - FIX Issue #10: Add PORT_CONNECTION_ESTABLISHED logging
  * @param {browser.runtime.Port} port - The connected port
  * @param {string} origin - Origin identifier
  * @param {number|null} tabId - Tab ID (if from content script)
@@ -4597,12 +4962,12 @@ function registerPort(port, origin, tabId, type) {
     connectedAt: Date.now(),
     lastMessageAt: null,
     messageCount: 0,
-    // v1.6.3.12 - FIX Issue #10: Track last heartbeat for viability checking
+    // v1.6.3.11-v6 - FIX Issue #10: Track last heartbeat for viability checking
     lastHeartbeat: Date.now(),
     isViable: true
   });
 
-  // v1.6.3.12 - FIX Issue #10: Log PORT_CONNECTION_ESTABLISHED
+  // v1.6.3.11-v6 - FIX Issue #10: Log PORT_CONNECTION_ESTABLISHED
   console.log('[Background] PORT_CONNECTION_ESTABLISHED:', {
     portId,
     origin,
@@ -4722,24 +5087,24 @@ async function cleanupStalePorts() {
 // Start periodic cleanup
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 
-// ==================== v1.6.3.12 FIX ISSUE #10: PORT VIABILITY CHECKING ====================
+// ==================== v1.6.3.11-v6 FIX ISSUE #10: PORT VIABILITY CHECKING ====================
 // Implement heartbeat-based viability checks for connected ports
 
 /**
  * Port viability check interval (milliseconds)
- * v1.6.3.12 - FIX Issue #10: Check port health every 30 seconds
+ * v1.6.3.11-v6 - FIX Issue #10: Check port health every 30 seconds
  */
 const PORT_VIABILITY_CHECK_INTERVAL_MS = 30000;
 
 /**
  * Port heartbeat timeout (milliseconds)
- * v1.6.3.12 - FIX Issue #10: Mark port as non-viable if no activity for 60 seconds
+ * v1.6.3.11-v6 - FIX Issue #10: Mark port as non-viable if no activity for 60 seconds
  */
 const PORT_HEARTBEAT_TIMEOUT_MS = 60000;
 
 /**
  * Check viability of a single port
- * v1.6.3.12 - FIX Issue #10: Determine if port is still responsive
+ * v1.6.3.11-v6 - FIX Issue #10: Determine if port is still responsive
  * @private
  * @param {string} portId - Port ID
  * @param {Object} portInfo - Port info from registry
@@ -4750,13 +5115,13 @@ function _checkSinglePortViability(portId, portInfo, now) {
   const lastActivity = portInfo.lastMessageAt || portInfo.lastHeartbeat || portInfo.connectedAt;
   const timeSinceActivity = now - lastActivity;
   const wasViable = portInfo.isViable;
-  
+
   // Port is non-viable if no activity for longer than timeout
   const isViable = timeSinceActivity < PORT_HEARTBEAT_TIMEOUT_MS;
-  
+
   // Update viability status
   portInfo.isViable = isViable;
-  
+
   // Log state change
   if (wasViable !== isViable) {
     console.log('[Background] PORT_VIABILITY_CHECK:', {
@@ -4769,13 +5134,13 @@ function _checkSinglePortViability(portId, portInfo, now) {
       timestamp: now
     });
   }
-  
+
   return isViable;
 }
 
 /**
  * Send heartbeat ping to a port and wait for response
- * v1.6.3.12 - FIX Issue #10: Active heartbeat mechanism
+ * v1.6.3.11-v6 - FIX Issue #10: Active heartbeat mechanism
  * @private
  * @param {Object} portInfo - Port info from registry
  * @param {string} portId - Port ID
@@ -4784,16 +5149,16 @@ function _checkSinglePortViability(portId, portInfo, now) {
 function _sendPortHeartbeat(portInfo, portId) {
   try {
     const heartbeatId = `hb-${Date.now()}-${portId}`;
-    
+
     portInfo.port.postMessage({
       type: 'PORT_HEARTBEAT_PING',
       heartbeatId,
       timestamp: Date.now()
     });
-    
+
     // Update last heartbeat timestamp
     portInfo.lastHeartbeat = Date.now();
-    
+
     console.log('[Background] PORT_VIABILITY_CHECK:', {
       action: 'heartbeat-sent',
       portId,
@@ -4801,7 +5166,7 @@ function _sendPortHeartbeat(portInfo, portId) {
       heartbeatId,
       timestamp: Date.now()
     });
-    
+
     return true;
   } catch (err) {
     console.warn('[Background] PORT_VIABILITY_CHECK:', {
@@ -4817,22 +5182,22 @@ function _sendPortHeartbeat(portInfo, portId) {
 
 /**
  * Check viability of all registered ports
- * v1.6.3.12 - FIX Issue #10: Periodic viability check for all ports
+ * v1.6.3.11-v6 - FIX Issue #10: Periodic viability check for all ports
  */
 function checkAllPortsViability() {
   const now = Date.now();
   let viableCount = 0;
   let nonViableCount = 0;
-  
+
   console.log('[Background] PORT_VIABILITY_CHECK:', {
     action: 'check-started',
     totalPorts: portRegistry.size,
     timestamp: now
   });
-  
+
   for (const [portId, portInfo] of portRegistry.entries()) {
     const isViable = _checkSinglePortViability(portId, portInfo, now);
-    
+
     if (isViable) {
       viableCount++;
       // Send heartbeat ping to maintain connection
@@ -4841,7 +5206,7 @@ function checkAllPortsViability() {
       nonViableCount++;
     }
   }
-  
+
   console.log('[Background] PORT_VIABILITY_CHECK:', {
     action: 'check-complete',
     viableCount,
@@ -4853,7 +5218,11 @@ function checkAllPortsViability() {
 
 // Start periodic port viability checking
 setInterval(checkAllPortsViability, PORT_VIABILITY_CHECK_INTERVAL_MS);
-console.log('[Background] v1.6.3.12 Port viability checking initialized (every', PORT_VIABILITY_CHECK_INTERVAL_MS / 1000, 's)');
+console.log(
+  '[Background] v1.6.3.11-v6 Port viability checking initialized (every',
+  PORT_VIABILITY_CHECK_INTERVAL_MS / 1000,
+  's)'
+);
 
 // ==================== END ISSUE #10 FIX ====================
 
@@ -7041,7 +7410,7 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
- * v1.6.3.12 - FIX Issue #9: Include global operationSequence for message ordering
+ * v1.6.3.11-v6 - FIX Issue #9: Include global operationSequence for message ordering
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -7061,14 +7430,14 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
 
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
-  
-  // v1.6.3.12 - FIX Issue #9: Get next operation sequence for ordering
+
+  // v1.6.3.11-v6 - FIX Issue #9: Get next operation sequence for ordering
   const operationSequence = getNextOperationSequence();
 
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
-    operationSequence, // v1.6.3.12 - FIX Issue #9: Global sequence for ordering
+    operationSequence, // v1.6.3.11-v6 - FIX Issue #9: Global sequence for ordering
     quickTabId,
     changes,
     source: 'background',
@@ -7076,7 +7445,7 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
     timestamp: Date.now()
   };
 
-  // v1.6.3.12 - FIX Issue #9: Log message with sequence
+  // v1.6.3.11-v6 - FIX Issue #9: Log message with sequence
   console.log('[Background] MESSAGE_WITH_SEQUENCE:', {
     messageId,
     operationSequence,
@@ -7550,7 +7919,7 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
 }
 
 // Register message handlers for Quick Tab coordination
-// This extends the existing runtime.onMessage listener
+// v1.6.3.11-v6 - FIX: Type-based handlers are now registered with the early listener
 // v1.6.3.10-v10 - FIX Issue #6: Add [INIT] boundary logging for handler registration timestamp
 console.log('[INIT][Background] MESSAGE_HANDLER_REGISTRATION:', {
   timestamp: new Date().toISOString(),
@@ -7568,9 +7937,14 @@ console.log('[Background] v1.6.3.10-v12 Background generation ID configured:', {
   generationId: backgroundGenerationId
 });
 
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // v1.6.3.10-v11 - FIX Issue #23: Handle HEARTBEAT messages for restart detection
-  if (message.type === 'HEARTBEAT') {
+// v1.6.3.11-v6 - FIX: Register type-based handlers with the early listener
+// This replaces the separate browser.runtime.onMessage listener
+_setTypeBasedHandlers({
+  /**
+   * Handle HEARTBEAT message for restart detection
+   * v1.6.3.10-v11 - FIX Issue #23
+   */
+  handleHeartbeat: (message, sender, sendResponse) => {
     const response = {
       success: true,
       generation: backgroundGenerationId,
@@ -7594,29 +7968,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     sendResponse(response);
-    return true;
-  }
+  },
 
-  // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
-  if (message.type === 'QUICK_TAB_STATE_CHANGE') {
-    handleQuickTabStateChange(message, sender)
-      .then(result => sendResponse(result))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true; // Keep channel open for async response
-  }
+  /**
+   * Handle Quick Tab state change
+   * v1.6.3.5-v3 - FIX Architecture Phase 1-3
+   */
+  handleQuickTabStateChange: handleQuickTabStateChange,
 
-  if (message.type === 'MANAGER_COMMAND') {
-    handleManagerCommand(message)
-      .then(result => sendResponse(result))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
-  }
-
-  // Let other handlers process the message
-  return false;
+  /**
+   * Handle Manager command
+   * v1.6.3.5-v3 - FIX Architecture Phase 3
+   */
+  handleManagerCommand: handleManagerCommand
 });
 
-console.log(
-  '[Background] v1.6.3.10-v11 Message infrastructure registered (with HEARTBEAT support)'
-);
+console.log('[Background] v1.6.3.11-v6 Type-based message handlers registered with early listener');
 // ==================== END MESSAGE INFRASTRUCTURE ====================
