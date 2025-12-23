@@ -3104,6 +3104,103 @@ function _shouldUpdateState(newValue) {
   return true;
 }
 
+// ==================== v1.6.3.11-v6 FIX ISSUE #11: STORAGE CHANGE RE-BROADCAST ====================
+/**
+ * Build the storage sync message for content scripts
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {Object} params - Message parameters
+ * @returns {Object} Formatted message object
+ */
+function _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime }) {
+  return {
+    type: 'STORAGE_STATE_SYNC',
+    action: 'STORAGE_STATE_SYNC',
+    state: {
+      tabs: newTabs,
+      timestamp: newValue?.timestamp || startTime,
+      saveId: newValue?.saveId,
+      correlationId: newValue?.correlationId
+    },
+    context: {
+      source: 'background-storage-onchanged',
+      addedIds,
+      removedIds,
+      timestamp: startTime
+    }
+  };
+}
+
+/**
+ * Send storage sync message to a single tab
+ * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ * @param {number} tabId - Tab ID to send to
+ * @param {Object} message - Message to send
+ * @returns {Promise<boolean>} True if sent successfully
+ */
+async function _sendStorageSyncToTab(tabId, message) {
+  try {
+    await browser.tabs.sendMessage(tabId, message);
+    return true;
+  } catch (_err) {
+    // Content script might not be loaded in this tab - this is expected
+    return false;
+  }
+}
+
+/**
+ * Re-broadcast storage state change to all content scripts
+ * v1.6.3.11-v6 - FIX Issue #11: Background re-broadcasts to content scripts via tabs.sendMessage()
+ *
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ */
+async function _rebroadcastStateChangeToContentScripts(newValue, oldValue) {
+  const startTime = Date.now();
+  const newTabs = newValue?.tabs || [];
+  const oldTabs = oldValue?.tabs || [];
+
+  // Determine affected Quick Tab IDs
+  const newIds = new Set(newTabs.map(t => t.id));
+  const oldIds = new Set(oldTabs.map(t => t.id));
+  const addedIds = [...newIds].filter(id => !oldIds.has(id));
+  const removedIds = [...oldIds].filter(id => !newIds.has(id));
+
+  console.log('[Background] STORAGE_REBROADCAST_START:', {
+    tabCount: newTabs.length,
+    addedCount: addedIds.length,
+    removedCount: removedIds.length,
+    timestamp: startTime,
+    correlationId: newValue?.correlationId || newValue?.saveId || null
+  });
+
+  try {
+    const allTabs = await browser.tabs.query({});
+    const message = _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime });
+
+    // Send to all tabs and count results
+    const results = await Promise.all(allTabs.map(tab => _sendStorageSyncToTab(tab.id, message)));
+    const successCount = results.filter(Boolean).length;
+    const failCount = results.length - successCount;
+
+    const duration = Date.now() - startTime;
+    console.log('[Background] STORAGE_REBROADCAST_COMPLETE:', {
+      totalTabs: allTabs.length,
+      successCount,
+      failCount,
+      durationMs: duration,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error('[Background] STORAGE_REBROADCAST_ERROR:', {
+      error: err.message,
+      timestamp: Date.now()
+    });
+  }
+}
+// ==================== END STORAGE CHANGE RE-BROADCAST ====================
+
 /**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
@@ -3114,17 +3211,27 @@ function _shouldUpdateState(newValue) {
  * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
  * v1.6.3.4-v8 - FIX Issue #8: Extracted logging and validation helpers
+ * v1.6.3.11-v6 - FIX Issue #11: Re-broadcast to content scripts after cache update
  *
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
  * - Each tab's StorageManager listens for storage.onChanged events
- * - Background script only needs to keep its own cache (globalQuickTabState) updated
+ * - Background script updates cache and re-broadcasts to content scripts
  *
  * @param {Object} changes - Storage changes object
  */
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
+
+  // v1.6.3.11-v6 - FIX Issue #11: Log storage change detection
+  console.log('[Background] STORAGE_CHANGE_DETECTED:', {
+    key: 'quick_tabs_state_v2',
+    newTabCount: newValue?.tabs?.length ?? 0,
+    oldTabCount: oldValue?.tabs?.length ?? 0,
+    saveId: newValue?.saveId,
+    timestamp: Date.now()
+  });
 
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
@@ -3135,7 +3242,12 @@ function _handleQuickTabStateChange(changes) {
   }
 
   // v1.6.3.4-v8 - Process and cache the update
-  _processStorageUpdate(newValue);
+  const wasProcessed = _processStorageUpdate(newValue);
+
+  // v1.6.3.11-v6 - FIX Issue #11: Re-broadcast to content scripts if update was processed
+  if (wasProcessed) {
+    _rebroadcastStateChangeToContentScripts(newValue, oldValue);
+  }
 }
 
 /**
@@ -3667,23 +3779,26 @@ function _filterAndUpdateCache(newValue) {
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
  * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
  * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
+ * v1.6.3.11-v6 - FIX Issue #11: Returns boolean to indicate if update was processed
  * @param {Object} newValue - New storage value
+ * @returns {boolean} True if update was processed, false if skipped
  */
 function _processStorageUpdate(newValue) {
   if (_isTabsEmptyOrMissing(newValue)) {
     _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
     _clearCacheForEmptyStorage(newValue);
-    return;
+    return false;
   }
 
   _resetTabCounters();
 
   if (!_shouldUpdateState(newValue)) {
     _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
-    return;
+    return false;
   }
 
   _filterAndUpdateCache(newValue);
+  return true;
 }
 
 /**
@@ -3787,6 +3902,12 @@ function _logStorageListenerHealth(areaName, changedKeys) {
 }
 
 // v1.6.3.11-v4 - FIX Issue #2: Log storage.onChanged listener registration
+// v1.6.3.11-v6 - FIX Issue #11: Added STORAGE_LISTENER_REGISTERED prefix
+console.log('[Background] STORAGE_LISTENER_REGISTERED:', {
+  api: 'browser.storage.onChanged',
+  purpose: 'cross-tab-sync-rebroadcast',
+  timestamp: Date.now()
+});
 console.log('[LISTENER_REG] Registering storage.onChanged listener:', {
   api: 'browser.storage.onChanged',
   timestamp: Date.now()

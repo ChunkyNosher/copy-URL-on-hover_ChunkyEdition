@@ -8473,6 +8473,53 @@ function _executeQuickTabCommand(command, quickTabId, source) {
 }
 
 const TYPE_HANDLERS = {
+  // v1.6.3.11-v6 - FIX Issue #11: Handle storage state sync from background re-broadcast
+  STORAGE_STATE_SYNC: (message, sendResponse) => {
+    const { state, context } = message;
+    const startTime = Date.now();
+
+    console.log('[Content][STORAGE_SYNC] STORAGE_STATE_SYNC received from background:', {
+      tabCount: state?.tabs?.length ?? 0,
+      timestamp: state?.timestamp,
+      source: context?.source,
+      addedCount: context?.addedIds?.length ?? 0,
+      removedCount: context?.removedIds?.length ?? 0
+    });
+
+    // Trigger hydration with the new state
+    if (quickTabsManager?.hydrateFromStorage) {
+      quickTabsManager
+        .hydrateFromStorage()
+        .then(() => {
+          const duration = Date.now() - startTime;
+          console.log('[Content][STORAGE_SYNC] Hydration complete:', {
+            durationMs: duration,
+            tabCount: state?.tabs?.length ?? 0
+          });
+        })
+        .catch(err => {
+          console.warn('[Content][STORAGE_SYNC] Hydration failed:', err.message);
+        });
+    }
+
+    // Emit event for any listeners
+    if (typeof eventBus !== 'undefined' && eventBus.emit) {
+      eventBus.emit('storage:synced', {
+        tabs: state?.tabs || [],
+        context,
+        timestamp: startTime
+      });
+    }
+
+    sendResponse({
+      success: true,
+      received: true,
+      tabCount: state?.tabs?.length ?? 0,
+      timestamp: Date.now()
+    });
+    return true;
+  },
+
   // v1.6.3.5-v3 - FIX Architecture Phase 3: Handle EXECUTE_COMMAND from background
   // This enables Manager sidebar to control Quick Tabs in this tab remotely
   EXECUTE_COMMAND: (message, sendResponse) => {
@@ -8704,11 +8751,14 @@ const STORAGE_CHANGE_DEBOUNCE_MS = 100;
  * Handle storage changes to sync state across tabs
  * v1.6.3.11-v3 - FIX Issue #1: React to storage updates for cross-tab sync
  * v1.6.3.11-v3 - FIX Issue #6: Ensure <500ms propagation
+ * v1.6.3.11-v6 - FIX Issue #3: Enhanced logging with [Content][STORAGE_SYNC] prefix
  *
  * @param {Object} changes - Storage changes object
  * @param {string} areaName - Storage area that changed ('local', 'sync', 'session')
  */
 function _handleStorageChange(changes, areaName) {
+  const startTime = Date.now();
+
   // Only handle local storage changes (Quick Tab state)
   if (areaName !== 'local') {
     return;
@@ -8723,12 +8773,15 @@ function _handleStorageChange(changes, areaName) {
   const newValue = stateChange.newValue;
   const oldValue = stateChange.oldValue;
 
-  console.log('[STORAGE_SYNC] Storage change detected:', {
+  // v1.6.3.11-v6 - FIX Issue #3: Enhanced logging with timestamps
+  console.log('[Content][STORAGE_SYNC] Storage change detected:', {
     hasNewValue: !!newValue,
     hasOldValue: !!oldValue,
     newTabCount: newValue?.tabs?.length ?? 0,
     oldTabCount: oldValue?.tabs?.length ?? 0,
-    timestamp: Date.now()
+    saveId: newValue?.saveId,
+    writeSourceId: newValue?.writeSourceId?.substring(0, 16),
+    timestamp: startTime
   });
 
   // v1.6.3.11-v3 - FIX Issue #70: Debounce rapid storage changes
@@ -8738,22 +8791,37 @@ function _handleStorageChange(changes, areaName) {
 
   storageChangeDebounceTimer = setTimeout(() => {
     storageChangeDebounceTimer = null;
-    _processStorageChange(newValue, oldValue);
+    _processStorageChange(newValue, oldValue, startTime);
   }, STORAGE_CHANGE_DEBOUNCE_MS);
 }
 
 /**
  * Trigger hydration from storage change
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _processStorageChange complexity
+ * v1.6.3.11-v6 - FIX Issue #3: Enhanced logging with [Content][STORAGE_SYNC] prefix
  * @private
  */
 function _triggerHydrationFromStorageChange() {
-  if (!quickTabsManager?.hydrateFromStorage) return;
+  if (!quickTabsManager?.hydrateFromStorage) {
+    console.log('[Content][STORAGE_SYNC] Hydration skipped: manager not available');
+    return;
+  }
 
-  console.log('[CROSS_TAB_SYNC] Triggering hydration from storage change');
-  quickTabsManager.hydrateFromStorage().catch(err => {
-    console.warn('[CROSS_TAB_SYNC] Hydration failed:', err.message);
-  });
+  const startTime = Date.now();
+  console.log('[Content][STORAGE_SYNC] Triggering hydration from storage change');
+
+  quickTabsManager
+    .hydrateFromStorage()
+    .then(() => {
+      const duration = Date.now() - startTime;
+      console.log('[Content][STORAGE_SYNC] Hydration completed:', {
+        durationMs: duration,
+        timestamp: Date.now()
+      });
+    })
+    .catch(err => {
+      console.warn('[Content][STORAGE_SYNC] Hydration failed:', err.message);
+    });
 }
 
 /**
@@ -8777,32 +8845,60 @@ function _emitStorageChangeEvent(newTabs, oldTabs) {
  * Process storage change after debounce
  * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce nesting depth
  * v1.6.3.11-v4 - FIX Code Health: Extracted helpers to reduce complexity (cc=11→4)
+ * v1.6.3.11-v6 - FIX Issue #3: Added timing tracking for <500ms validation
  * @private
+ * @param {Object} newValue - New storage value
+ * @param {Object} oldValue - Previous storage value
+ * @param {number} detectionTime - Timestamp when change was detected
  */
-function _processStorageChange(newValue, oldValue) {
+function _processStorageChange(newValue, oldValue, detectionTime) {
+  const processStartTime = Date.now();
+  const debounceDelay = processStartTime - detectionTime;
+
   if (!newValue) {
-    console.log('[STORAGE_SYNC] State cleared from storage');
+    console.log('[Content][STORAGE_SYNC] State cleared from storage');
     return;
   }
 
   const newTabs = newValue.tabs || [];
   const oldTabs = oldValue?.tabs || [];
 
-  console.log('[CROSS_TAB_SYNC] Processing state change:', {
+  console.log('[Content][STORAGE_SYNC] Processing state change:', {
     newTabCount: newTabs.length,
     oldTabCount: oldTabs.length,
     timestamp: newValue.timestamp,
-    writeSourceId: newValue.writeSourceId?.substring(0, 20)
+    writeSourceId: newValue.writeSourceId?.substring(0, 16),
+    debounceDelayMs: debounceDelay,
+    processStartTime
   });
 
   _triggerHydrationFromStorageChange();
   _emitStorageChangeEvent(newTabs, oldTabs);
+
+  const totalDuration = Date.now() - detectionTime;
+  console.log('[Content][STORAGE_SYNC] Processing complete:', {
+    totalDurationMs: totalDuration,
+    withinTarget: totalDuration < 500,
+    timestamp: Date.now()
+  });
 }
 
 // Register storage.onChanged listener (once during module load)
+// v1.6.3.11-v6 - FIX Issue #3: Enhanced logging for storage listener registration
 if (typeof browser !== 'undefined' && browser.storage?.onChanged) {
   browser.storage.onChanged.addListener(_handleStorageChange);
-  console.log('[STORAGE_SYNC] ✓ storage.onChanged listener registered');
+  console.log('[Content][STORAGE_SYNC] ✓ storage.onChanged listener registered:', {
+    api: 'browser.storage.onChanged',
+    key: 'quick_tabs_state_v2',
+    purpose: 'cross-tab-sync',
+    timestamp: Date.now()
+  });
+} else {
+  console.warn('[Content][STORAGE_SYNC] ⚠ storage.onChanged not available:', {
+    hasBrowser: typeof browser !== 'undefined',
+    hasStorage: typeof browser !== 'undefined' && !!browser.storage,
+    timestamp: Date.now()
+  });
 }
 
 // ==================== END STORAGE.ONCHANGED LISTENER ====================
