@@ -318,6 +318,108 @@ import {
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
+// ==================== v1.6.3.11-v7 FIX DIAGNOSTIC ISSUE #14: MODULE LOAD TRACKING ====================
+// Track which modules loaded successfully for graceful degradation
+// Note: ES module imports are static so we can't wrap in try/catch, but we can track
+// whether critical vs optional modules are available at runtime
+
+/**
+ * Track which modules are available for graceful degradation
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #14
+ */
+const _moduleLoadStatus = {
+  // Critical modules - extension cannot function without these
+  browserApi: typeof copyToClipboard === 'function' && typeof sendMessageToBackground === 'function',
+  config: typeof ConfigManager === 'function' && typeof CONSTANTS === 'object',
+  events: typeof EventBus === 'function',
+  state: typeof StateManager === 'function',
+
+  // Optional modules - extension can function in degraded mode without these
+  notifications: typeof initNotifications === 'function',
+  quickTabs: typeof initQuickTabs === 'function',
+  urlHandlers: typeof URLHandlerRegistry === 'function',
+  debug: typeof debug === 'function',
+  errorTelemetry: typeof recordError === 'function',
+  logger: typeof logNormal === 'function',
+  loggingInfra: typeof logListenerRegistration === 'function',
+  storageUtils: typeof setWritingTabId === 'function'
+};
+
+/**
+ * Check if critical modules are loaded
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #14
+ * @returns {boolean} True if all critical modules are available
+ */
+function _areCriticalModulesLoaded() {
+  return (
+    _moduleLoadStatus.browserApi &&
+    _moduleLoadStatus.config &&
+    _moduleLoadStatus.events &&
+    _moduleLoadStatus.state
+  );
+}
+
+/**
+ * Log module load status
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #14
+ */
+function _logModuleLoadStatus() {
+  const criticalModules = ['browserApi', 'config', 'events', 'state'];
+  const optionalModules = [
+    'notifications',
+    'quickTabs',
+    'urlHandlers',
+    'debug',
+    'errorTelemetry',
+    'logger',
+    'loggingInfra',
+    'storageUtils'
+  ];
+
+  const failedCritical = criticalModules.filter(m => !_moduleLoadStatus[m]);
+  const failedOptional = optionalModules.filter(m => !_moduleLoadStatus[m]);
+
+  if (failedCritical.length > 0) {
+    console.error('[Copy-URL-on-Hover][MODULE_LOAD] CRITICAL modules failed:', {
+      failedModules: failedCritical,
+      extensionCannotFunction: true
+    });
+  }
+
+  if (failedOptional.length > 0) {
+    console.warn('[Copy-URL-on-Hover][MODULE_LOAD] Optional modules failed:', {
+      failedModules: failedOptional,
+      degradedFunctionality: true
+    });
+  }
+
+  if (failedCritical.length === 0 && failedOptional.length === 0) {
+    console.log('[Copy-URL-on-Hover][MODULE_LOAD] All modules loaded successfully');
+  }
+
+  return {
+    allCriticalLoaded: failedCritical.length === 0,
+    allOptionalLoaded: failedOptional.length === 0,
+    failedCritical,
+    failedOptional
+  };
+}
+
+// Log module status immediately after imports
+const moduleStatus = _logModuleLoadStatus();
+
+// If critical modules failed, halt with informative error
+if (!moduleStatus.allCriticalLoaded) {
+  console.error('[Copy-URL-on-Hover] FATAL: Critical modules failed to load. Extension cannot function.', {
+    failedModules: moduleStatus.failedCritical
+  });
+  window.CUO_module_load_failed = true;
+  window.CUO_failed_modules = moduleStatus.failedCritical;
+  throw new Error(`Critical module load failure: ${moduleStatus.failedCritical.join(', ')}`);
+}
+
+// ==================== END DIAGNOSTIC ISSUE #14 FIX ====================
+
 // Initialize core systems
 console.log('[Copy-URL-on-Hover] Initializing core systems...');
 const configManager = new ConfigManager();
@@ -820,16 +922,40 @@ function _shouldRetryAfterError(err, attempts, maxRetries, context) {
 let pageInactiveTimestamp = null;
 
 /**
+ * Clock skew tolerance window (milliseconds)
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #8: Prevent false positives from clock differences
+ * Events within this window of pageInactiveTimestamp are NOT considered stale
+ */
+const CLOCK_SKEW_TOLERANCE_MS = 150;
+
+/**
  * Check if an event timestamp is stale (occurred while page was inactive)
  * v1.6.3.11-v3 - FIX Issue #52
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #8: Add clock-skew tolerance window
  * @param {number} eventTimestamp - Timestamp of the event
  * @returns {boolean} True if event is stale and should be rejected
  */
 function _isStaleEvent(eventTimestamp) {
   if (!pageInactiveTimestamp || !eventTimestamp) return false;
 
-  // Event occurred before page became inactive
-  return eventTimestamp < pageInactiveTimestamp;
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #8: Add tolerance for clock skew
+  // Events within tolerance window around pageInactiveTimestamp are NOT stale
+  const toleranceAdjustedTimestamp = pageInactiveTimestamp - CLOCK_SKEW_TOLERANCE_MS;
+
+  // Event occurred before page became inactive (with tolerance)
+  const isStale = eventTimestamp < toleranceAdjustedTimestamp;
+
+  if (isStale) {
+    console.log('[Content][STALE_EVENT] Event rejected due to staleness:', {
+      eventTimestamp,
+      pageInactiveTimestamp,
+      toleranceMs: CLOCK_SKEW_TOLERANCE_MS,
+      adjustedThreshold: toleranceAdjustedTimestamp,
+      ageBeyondToleranceMs: toleranceAdjustedTimestamp - eventTimestamp
+    });
+  }
+
+  return isStale;
 }
 
 /**
@@ -905,29 +1031,47 @@ const initPhaseStatus = {
   featureActivation: { complete: false, timestamp: 0, durationMs: 0 }
 };
 
+// ==================== v1.6.3.11-v7 FIX DIAGNOSTIC ISSUE #11: COMPREHENSIVE INIT LOGGING ====================
+// Log each feature initialization start/complete with duration
+// Log state hydration progress if taking >1 second
+// Log message queue depth at each phase transition
+
 /**
- * Log initialization phase start
+ * Threshold for hydration progress warning (milliseconds)
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #11: Log progress if taking >1s
+ */
+const HYDRATION_PROGRESS_LOG_THRESHOLD_MS = 1000;
+
+/**
+ * Log initialization phase start with queue depth
  * v1.6.3.11-v5 - FIX Issue #15: Structured phase logging
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #11: Add queue depth at each phase transition
  * @param {string} phase - Phase name
  */
 function _logInitPhaseStart(phase) {
   const now = Date.now();
+  const queueDepths = _getTotalQueueDepth();
+
   console.log(`[Content][INIT_PHASE] ${phase} started:`, {
     phase,
     elapsedSinceInitMs: initPhaseStartTime > 0 ? now - initPhaseStartTime : 0,
+    queueDepth: queueDepths.total,
+    queueBreakdown: queueDepths,
     timestamp: now
   });
 }
 
 /**
- * Log initialization phase complete
+ * Log initialization phase complete with queue depth
  * v1.6.3.11-v5 - FIX Issue #15: Structured phase logging
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #11: Add queue depth at each phase transition
  * @param {string} phase - Phase name
  * @param {number} startTime - Phase start timestamp
  */
 function _logInitPhaseComplete(phase, startTime) {
   const now = Date.now();
   const durationMs = now - startTime;
+  const queueDepths = _getTotalQueueDepth();
 
   if (initPhaseStatus[phase]) {
     initPhaseStatus[phase].complete = true;
@@ -939,9 +1083,65 @@ function _logInitPhaseComplete(phase, startTime) {
     phase,
     durationMs,
     elapsedSinceInitMs: initPhaseStartTime > 0 ? now - initPhaseStartTime : 0,
+    queueDepth: queueDepths.total,
     timestamp: now
   });
 }
+
+/**
+ * Log feature initialization start
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #11: Log each feature init start/complete
+ * @param {string} featureName - Feature being initialized
+ */
+function _logFeatureInitStart(featureName) {
+  console.log('[Content][INIT_FEATURE] Starting:', {
+    feature: featureName,
+    elapsedSinceInitMs: initPhaseStartTime > 0 ? Date.now() - initPhaseStartTime : 0,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log feature initialization complete
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #11: Log each feature init start/complete
+ * @param {string} featureName - Feature that was initialized
+ * @param {number} startTime - When initialization started
+ * @param {boolean} success - Whether initialization succeeded
+ */
+function _logFeatureInitComplete(featureName, startTime, success = true) {
+  const durationMs = Date.now() - startTime;
+  console.log('[Content][INIT_FEATURE] Complete:', {
+    feature: featureName,
+    durationMs,
+    success,
+    elapsedSinceInitMs: initPhaseStartTime > 0 ? Date.now() - initPhaseStartTime : 0,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log hydration progress if taking longer than threshold
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #11: Log progress if taking >1s
+ * @param {number} hydrationStartTime - When hydration started
+ * @param {string} status - Current hydration status
+ * @param {Object} details - Additional details
+ */
+function _logHydrationProgress(hydrationStartTime, status, details = {}) {
+  const elapsedMs = Date.now() - hydrationStartTime;
+
+  if (elapsedMs >= HYDRATION_PROGRESS_LOG_THRESHOLD_MS) {
+    const queueDepths = _getTotalQueueDepth();
+    console.log('[Content][INIT_HYDRATION] Progress update:', {
+      status,
+      elapsedMs,
+      queueDepth: queueDepths.total,
+      ...details,
+      timestamp: Date.now()
+    });
+  }
+}
+
+// ==================== END DIAGNOSTIC ISSUE #11 FIX ====================
 
 /**
  * Check if state is ready for feature use
@@ -1096,23 +1296,35 @@ const _QUEUE_PRIORITY = {
 /**
  * Get total message count across all queues
  * v1.6.3.11 - FIX Issue #26: Unified queue depth tracking
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #6: Explicit initialization state tracking
+ *   Note: messageQueue and pendingCommandsBuffer are declared later in file.
+ *   Using typeof check ensures accurate queue depth from T=0ms.
  * @returns {Object} Queue depths and total
  */
 function _getTotalQueueDepth() {
-  // Note: messageQueue and pendingCommandsBuffer are declared later in the file
-  // We use optional chaining and fallback to handle the declaration order
-  const initQueueSize = initializationMessageQueue.length;
-  const hydrationQueueSize = preHydrationOperationQueue.length;
-  const portQueueSize = typeof messageQueue !== 'undefined' ? messageQueue.length : 0;
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #6: These queues are declared later in the file
+  // Using typeof check + fallback to 0 ensures backpressure calculation is accurate
+  // during early initialization before all queues are declared
+  const initQueueSize = initializationMessageQueue?.length ?? 0;
+  const hydrationQueueSize = preHydrationOperationQueue?.length ?? 0;
+
+  // These are declared later in the PORT_MESSAGING section (~line 3900)
+  // We must use typeof check because they don't exist yet at module parse time
+  const portQueueSize = typeof messageQueue !== 'undefined' && messageQueue ? messageQueue.length : 0;
   const commandsQueueSize =
-    typeof pendingCommandsBuffer !== 'undefined' ? pendingCommandsBuffer.length : 0;
+    typeof pendingCommandsBuffer !== 'undefined' && pendingCommandsBuffer
+      ? pendingCommandsBuffer.length
+      : 0;
 
   return {
     initializationMessageQueue: initQueueSize,
     preHydrationOperationQueue: hydrationQueueSize,
     messageQueue: portQueueSize,
     pendingCommandsBuffer: commandsQueueSize,
-    total: initQueueSize + hydrationQueueSize + portQueueSize + commandsQueueSize
+    total: initQueueSize + hydrationQueueSize + portQueueSize + commandsQueueSize,
+    // v1.6.3.11-v7 - FIX Diagnostic Issue #6: Track initialization state for debugging
+    _allQueuesInitialized:
+      typeof messageQueue !== 'undefined' && typeof pendingCommandsBuffer !== 'undefined'
   };
 }
 
@@ -1405,6 +1617,101 @@ let heartbeatIntervalId = null;
 let heartbeatFailureCount = 0;
 const HEARTBEAT_MAX_FAILURES = 3;
 
+// ==================== v1.6.3.11-v7 FIX DIAGNOSTIC ISSUE #9: HEARTBEAT CIRCUIT BREAKER ====================
+// Implement exponential backoff: 15s → 30s → 60s → 120s after failures
+// After 10 consecutive failures, pause heartbeat entirely
+
+/**
+ * Maximum consecutive heartbeat failures before pausing
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9
+ */
+const HEARTBEAT_PAUSE_THRESHOLD = 10;
+
+/**
+ * Current heartbeat interval (increases with backoff)
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9: Starts at 15s, doubles on failure
+ */
+let currentHeartbeatIntervalMs = HEARTBEAT_INTERVAL_MS;
+
+/**
+ * Maximum heartbeat interval after backoff (120 seconds)
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9
+ */
+const HEARTBEAT_MAX_INTERVAL_MS = 120000;
+
+/**
+ * Track if heartbeat is paused due to too many failures
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9
+ */
+let isHeartbeatPaused = false;
+
+/**
+ * Calculate next heartbeat interval with exponential backoff
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9
+ * @returns {number} Next interval in milliseconds
+ */
+function _calculateHeartbeatBackoff() {
+  // Exponential backoff: 15s → 30s → 60s → 120s
+  const backoffMultiplier = Math.pow(2, Math.min(heartbeatFailureCount, 3));
+  const nextInterval = HEARTBEAT_INTERVAL_MS * backoffMultiplier;
+  return Math.min(nextInterval, HEARTBEAT_MAX_INTERVAL_MS);
+}
+
+/**
+ * Reschedule heartbeat with new interval
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9
+ * @param {number} newIntervalMs - New interval in milliseconds
+ */
+function _rescheduleHeartbeat(newIntervalMs) {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+  }
+
+  currentHeartbeatIntervalMs = newIntervalMs;
+  heartbeatIntervalId = setInterval(_sendHeartbeat, currentHeartbeatIntervalMs);
+
+  console.log('[Content][HEARTBEAT] INTERVAL_CHANGED:', {
+    newIntervalMs: currentHeartbeatIntervalMs,
+    failureCount: heartbeatFailureCount,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Pause heartbeat due to too many failures
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9: Rely on operational messages to detect recovery
+ */
+function _pauseHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
+  isHeartbeatPaused = true;
+
+  console.warn('[Content][HEARTBEAT] PAUSED: Too many consecutive failures', {
+    failureCount: heartbeatFailureCount,
+    pauseThreshold: HEARTBEAT_PAUSE_THRESHOLD,
+    note: 'Heartbeat will resume when operational messages succeed',
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Resume heartbeat after successful operational message
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9
+ */
+function _resumeHeartbeatIfPaused() {
+  if (!isHeartbeatPaused) return;
+
+  console.log('[Content][HEARTBEAT] RESUMING: Operational message succeeded');
+  isHeartbeatPaused = false;
+  heartbeatFailureCount = 0;
+  currentHeartbeatIntervalMs = HEARTBEAT_INTERVAL_MS;
+  _startHeartbeat();
+}
+
+// ==================== END DIAGNOSTIC ISSUE #9 FIX ====================
+
 /**
  * Update background generation from any message response
  * v1.6.3.10-v12 - FIX Issue #8: Track generation from all responses for restart detection
@@ -1566,18 +1873,174 @@ function _warnIfGenerationStale(requestMessageId, responseGeneration) {
   }
 }
 
+// ==================== v1.6.3.11-v7 FIX DIAGNOSTIC ISSUE #12: RESPONSE FIELD VALIDATION ====================
+// Validate required data fields exist in response to prevent crashes from missing response.data
+
+/**
+ * Schema map: action → required response fields
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #12
+ * @type {Object.<string, Array.<{field: string, type: string, optional?: boolean}>>}
+ */
+const RESPONSE_FIELD_SCHEMA = {
+  CREATE_QUICK_TAB: [
+    { field: 'success', type: 'boolean' },
+    { field: 'quickTabId', type: 'string', optional: true } // Required on success
+  ],
+  CLOSE_QUICK_TAB: [
+    { field: 'success', type: 'boolean' }
+  ],
+  MINIMIZE_QUICK_TAB: [
+    { field: 'success', type: 'boolean' }
+  ],
+  RESTORE_QUICK_TAB: [
+    { field: 'success', type: 'boolean' }
+  ],
+  UPDATE_QUICK_TAB: [
+    { field: 'success', type: 'boolean' }
+  ],
+  GET_CURRENT_TAB_ID: [
+    { field: 'tabId', type: 'number', optional: true } // May be -1 or null
+  ]
+};
+
+/**
+ * Validate a single field against expected type
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #12
+ * @private
+ * @param {*} value - Value to check
+ * @param {string} expectedType - Expected JavaScript type
+ * @returns {boolean} True if valid
+ */
+function _isFieldTypeValid(value, expectedType) {
+  if (value === undefined || value === null) return false;
+  return typeof value === expectedType;
+}
+
+/**
+ * Check if a required field should be skipped for error responses
+ * v1.6.3.11-v7 - FIX Code Health: Extracted to reduce nesting
+ * @private
+ * @param {Object} response - Response object
+ * @param {string} field - Field name being checked
+ * @returns {boolean} True if field check should be skipped
+ */
+function _shouldSkipRequiredFieldCheck(response, field) {
+  // success=false responses may omit non-success fields
+  return response?.success === false && field !== 'success';
+}
+
+/**
+ * Validate a single optional field
+ * v1.6.3.11-v7 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @param {Object} fieldDef - Field definition {field, type, optional}
+ * @param {*} value - Field value
+ * @returns {string|null} Warning message or null if valid
+ */
+function _validateOptionalField(fieldDef, value) {
+  const { field, type } = fieldDef;
+  const isPresent = value !== undefined && value !== null;
+  const isCorrectType = _isFieldTypeValid(value, type);
+
+  if (isPresent && !isCorrectType) {
+    return `Field '${field}' has wrong type: expected ${type}, got ${typeof value}`;
+  }
+  return null;
+}
+
+/**
+ * Validate a single required field
+ * v1.6.3.11-v7 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @param {Object} fieldDef - Field definition {field, type}
+ * @param {*} value - Field value
+ * @param {Object} response - Full response object (for skip check)
+ * @returns {{ warning: string|null, isValid: boolean }}
+ */
+function _validateRequiredField(fieldDef, value, response) {
+  const { field, type } = fieldDef;
+  const isPresent = value !== undefined && value !== null;
+  const isCorrectType = _isFieldTypeValid(value, type);
+
+  if (!isPresent) {
+    if (_shouldSkipRequiredFieldCheck(response, field)) {
+      return { warning: null, isValid: true };
+    }
+    return { warning: `Required field '${field}' is missing`, isValid: false };
+  }
+
+  if (!isCorrectType) {
+    return {
+      warning: `Field '${field}' has wrong type: expected ${type}, got ${typeof value}`,
+      isValid: false
+    };
+  }
+
+  return { warning: null, isValid: true };
+}
+
+/**
+ * Check required response fields based on action schema
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #12: Prevent crashes from missing fields
+ * v1.6.3.11-v7 - FIX Code Health: Refactored to use helper functions (cc=13→5)
+ * @private
+ * @param {Object} request - Original request
+ * @param {Object} response - Response from background
+ * @returns {{valid: boolean, warnings: string[]}}
+ */
+function _checkRequiredResponseFields(request, response) {
+  const action = request?.action;
+  const schema = RESPONSE_FIELD_SCHEMA[action];
+
+  // No schema for this action - skip validation
+  if (!schema) {
+    return { valid: true, warnings: [] };
+  }
+
+  const warnings = [];
+  let allRequiredPresent = true;
+
+  for (const fieldDef of schema) {
+    const value = response?.[fieldDef.field];
+    const validationResult = fieldDef.optional
+      ? { warning: _validateOptionalField(fieldDef, value), isValid: true }
+      : _validateRequiredField(fieldDef, value, response);
+
+    if (validationResult.warning) warnings.push(validationResult.warning);
+    if (!validationResult.isValid) allRequiredPresent = false;
+  }
+
+  // Log warnings if any
+  if (warnings.length > 0) {
+    console.warn('[Content] RESPONSE_FIELD_VALIDATION:', {
+      action,
+      warnings,
+      responseKeys: Object.keys(response || {}),
+      timestamp: Date.now()
+    });
+  }
+
+  // Return valid=true even with warnings to avoid breaking existing flows
+  // The warnings are logged for diagnostics
+  return { valid: allRequiredPresent, warnings };
+}
+
+// ==================== END DIAGNOSTIC ISSUE #12 FIX ====================
+
 /**
  * Validate that a response matches the expected request
  * v1.6.3.11-v3 - FIX Issue #73: Prevent out-of-order response matching
  * v1.6.3.11-v3 - FIX Code Health: Refactored to reduce complexity
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #12: Added required field validation
  *
  * Validates:
  * 1. Response messageId matches request messageId
  * 2. Response echoes expected request parameters (action, quickTabId, etc.)
+ * 3. Required data fields are present based on action schema
  *
  * @param {Object} response - Response from background
  * @param {Object} pendingEntry - Pending message entry from pendingMessages Map
- * @returns {{valid: boolean, reason?: string}}
+ * @returns {{valid: boolean, reason?: string, warnings?: string[]}}
  */
 function _validateResponseMatchesRequest(response, pendingEntry) {
   const request = pendingEntry?.message;
@@ -1594,29 +2057,62 @@ function _validateResponseMatchesRequest(response, pendingEntry) {
   const qtCheck = _checkQuickTabIdMatch(request, response);
   if (!qtCheck.valid) return qtCheck;
 
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #12: Validate required response fields
+  const fieldCheck = _checkRequiredResponseFields(request, response);
+  // Note: We don't fail on missing fields to avoid breaking existing flows
+  // Instead, we log warnings for diagnostics
+
   // Warn if generation is stale (doesn't invalidate response)
   _warnIfGenerationStale(request.messageId, response?.generation);
 
-  return { valid: true };
+  return { valid: true, warnings: fieldCheck.warnings };
 }
+
+/**
+ * Maximum collision retries before giving up
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #7: Prevent stack overflow from recursive regeneration
+ */
+const MESSAGE_ID_MAX_COLLISION_RETRIES = 10;
 
 /**
  * Generate unique message ID for correlation
  * v1.6.3.10-v11 - FIX Issue #23
  * v1.6.3.11 - FIX Issue #28: Add namespace prefix to prevent collision with background
  * v1.6.3.11-v3 - FIX Issue #27: Include portGeneration to prevent collision across reconnections
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #7: Replace recursive regeneration with iterative retry loop
  * @returns {string} Unique message ID with content script namespace and port generation
  */
 function _generateMessageId() {
-  const newId = `msg-content-g${portGeneration}-${Date.now()}-${++messageIdCounter}`;
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #7: Iterative retry loop with counter suffix
+  // Prevents stack overflow under high throughput (10k msg/sec)
+  let collisionRetry = 0;
 
-  // v1.6.3.11 - FIX Issue #28: Collision detection
-  if (pendingMessages.has(newId)) {
-    console.warn('[Content] MESSAGE_ID_COLLISION: Regenerating ID', { collided: newId });
-    return _generateMessageId(); // Recursive regeneration
+  while (collisionRetry <= MESSAGE_ID_MAX_COLLISION_RETRIES) {
+    // Include collision retry suffix if this is a retry attempt
+    const suffix = collisionRetry > 0 ? `-r${collisionRetry}` : '';
+    const newId = `msg-content-g${portGeneration}-${Date.now()}-${++messageIdCounter}${suffix}`;
+
+    // v1.6.3.11 - FIX Issue #28: Collision detection
+    if (!pendingMessages.has(newId)) {
+      return newId;
+    }
+
+    // Log collision and increment retry counter
+    console.warn('[Content] MESSAGE_ID_COLLISION: Retrying with suffix', {
+      collided: newId,
+      retryAttempt: collisionRetry + 1,
+      maxRetries: MESSAGE_ID_MAX_COLLISION_RETRIES
+    });
+    collisionRetry++;
   }
 
-  return newId;
+  // Exhausted retries - use fallback with random component
+  const fallbackId = `msg-content-g${portGeneration}-${Date.now()}-${++messageIdCounter}-fallback-${Math.random().toString(36).slice(2, 8)}`;
+  console.error('[Content] MESSAGE_ID_COLLISION_EXHAUSTED: Using random fallback', {
+    fallbackId,
+    retriesExhausted: MESSAGE_ID_MAX_COLLISION_RETRIES
+  });
+  return fallbackId;
 }
 
 /**
@@ -1699,6 +2195,7 @@ function _hasBackgroundGenerationChanged(response) {
 /**
  * Process successful heartbeat response
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _sendHeartbeat complexity
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9: Reset backoff on success
  * @private
  * @param {Object} response - Heartbeat response from background
  * @param {string} heartbeatId - The heartbeat message ID
@@ -1707,7 +2204,20 @@ function _hasBackgroundGenerationChanged(response) {
 function _handleHeartbeatSuccess(response, heartbeatId, heartbeatStart) {
   const latencyMs = Date.now() - heartbeatStart;
   _lastHeartbeatTime = Date.now();
+
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #9: Reset backoff counter on success
+  const hadFailures = heartbeatFailureCount > 0;
   heartbeatFailureCount = 0;
+
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #9: Restore normal interval if was backed off
+  if (currentHeartbeatIntervalMs > HEARTBEAT_INTERVAL_MS) {
+    console.log('[Content][HEARTBEAT] BACKOFF_RESET: Restoring normal interval', {
+      previousIntervalMs: currentHeartbeatIntervalMs,
+      newIntervalMs: HEARTBEAT_INTERVAL_MS,
+      hadFailures
+    });
+    _rescheduleHeartbeat(HEARTBEAT_INTERVAL_MS);
+  }
 
   // v1.6.3.10-v11 - FIX Issue #5: Record latency for dynamic adoption TTL
   if (typeof _recordHandshakeLatency === 'function') {
@@ -1739,24 +2249,41 @@ function _handleHeartbeatSuccess(response, heartbeatId, heartbeatStart) {
 /**
  * Process heartbeat failure
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _sendHeartbeat complexity
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #9: Implement exponential backoff and pause
  * @private
  * @param {Error} err - The error that occurred
  * @param {string} heartbeatId - The heartbeat message ID
  */
 function _handleHeartbeatFailure(err, heartbeatId) {
   heartbeatFailureCount++;
+
   console.warn('[Content][HEARTBEAT] FAILURE:', {
     heartbeatId,
     error: err.message,
     failureCount: heartbeatFailureCount,
-    maxFailures: HEARTBEAT_MAX_FAILURES
+    maxFailures: HEARTBEAT_MAX_FAILURES,
+    pauseThreshold: HEARTBEAT_PAUSE_THRESHOLD,
+    currentIntervalMs: currentHeartbeatIntervalMs
   });
 
-  // If too many failures, assume background restarted
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #9: Check if should pause heartbeat entirely
+  if (heartbeatFailureCount >= HEARTBEAT_PAUSE_THRESHOLD) {
+    _pauseHeartbeat();
+    return;
+  }
+
+  // If past initial threshold, assume background restarted
   if (heartbeatFailureCount >= HEARTBEAT_MAX_FAILURES) {
     console.log('[Content][HEARTBEAT] MAX_FAILURES_REACHED: Assuming background restart');
     _handleBackgroundRestart(null);
+    // v1.6.3.11-v7 - FIX Code Review: Reset failure count after restart handling
     heartbeatFailureCount = 0;
+  }
+
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #9: Apply exponential backoff
+  const newInterval = _calculateHeartbeatBackoff();
+  if (newInterval > currentHeartbeatIntervalMs) {
+    _rescheduleHeartbeat(newInterval);
   }
 }
 
@@ -1897,6 +2424,7 @@ function _trackPendingMessage({ messageId, envelope, retryCount, resolve, reject
 /**
  * Handle successful message response
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce _sendMessageWithRetry complexity
+ * v1.6.3.11-v7 - FIX Code Review: Resume heartbeat if paused when operational message succeeds
  * @private
  */
 function _handleMessageSuccess(response, messageId, message, resolve) {
@@ -1917,6 +2445,10 @@ function _handleMessageSuccess(response, messageId, message, resolve) {
     success: response?.success ?? true,
     validationPassed: validation.valid
   });
+
+  // v1.6.3.11-v7 - FIX Code Review: Resume heartbeat if it was paused due to failures
+  // Successful operational message indicates background is responsive
+  _resumeHeartbeatIfPaused();
 
   pendingMessages.delete(messageId);
   resolve(response);
@@ -2533,8 +3065,16 @@ function _queuePreHydrationOperation(operation) {
 }
 
 /**
- * Execute a single queued operation callback
+ * Timeout for individual queued operation execution (milliseconds)
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #10: Prevent hung callback from blocking queue
+ */
+const QUEUED_OPERATION_TIMEOUT_MS = 5000;
+
+/**
+ * Execute a single queued operation callback with timeout
  * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce nesting depth
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #10: Wrap each operation in Promise.race with timeout
+ * v1.6.3.11-v7 - FIX Code Review: Properly clean up timeout timer
  * @private
  * @param {Object} operation - Operation from queue
  * @param {number} queueDuration - Time spent in queue
@@ -2545,15 +3085,41 @@ async function _executeQueuedOperation(operation, queueDuration) {
     queueDurationMs: queueDuration
   });
 
+  let timeoutId = null;
+
   try {
     if (typeof operation.callback === 'function') {
-      await operation.callback(operation.data);
+      // v1.6.3.11-v7 - FIX Diagnostic Issue #10: Wrap in Promise.race with timeout
+      // v1.6.3.11-v7 - FIX Code Review: Store timeout ID for cleanup
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () =>
+            reject(
+              new Error(`Operation timeout: ${operation.type} exceeded ${QUEUED_OPERATION_TIMEOUT_MS}ms`)
+            ),
+          QUEUED_OPERATION_TIMEOUT_MS
+        );
+      });
+
+      await Promise.race([operation.callback(operation.data), timeoutPromise]);
     }
   } catch (err) {
+    // v1.6.3.11-v7 - FIX Diagnostic Issue #10: Log timeout errors with operation type
+    const isTimeout = err.message?.includes('Operation timeout');
     console.error('[Content] QUEUED_OPERATION_FAILED:', {
       operationType: operation.type,
-      error: err.message
+      error: err.message,
+      isTimeout,
+      quickTabId: operation.data?.id || operation.data?.quickTabId,
+      queueDurationMs: queueDuration,
+      timestamp: Date.now()
     });
+    // Continue to next operation - don't block queue
+  } finally {
+    // v1.6.3.11-v7 - FIX Code Review: Always clean up timeout timer
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -7592,6 +8158,7 @@ function _recordAdoptionLatencySample(latencyMs) {
 /**
  * Calculate dynamic TTL based on observed latency
  * v1.6.3.10-v11 - FIX Issue #5
+ * v1.6.3.11-v7 - FIX Diagnostic Issue #13: Scale for slow Firefox with exponential backoff
  * @returns {number} TTL in milliseconds, clamped to [MIN, MAX]
  */
 function _calculateDynamicAdoptionTTL() {
@@ -7602,9 +8169,32 @@ function _calculateDynamicAdoptionTTL() {
     return ADOPTION_DEFAULT_TTL_MS;
   }
 
-  // Calculate 3x latency with clamping
-  const calculatedTTL = observedLatency * ADOPTION_TTL_LATENCY_MULTIPLIER;
-  return Math.max(ADOPTION_MIN_TTL_MS, Math.min(calculatedTTL, ADOPTION_MAX_TTL_MS));
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #13: Use higher multiplier for high latency (slow Firefox)
+  // For observed latency < 500ms: use 3x multiplier (normal)
+  // For observed latency >= 500ms: use 5x multiplier (slow system)
+  // For observed latency >= 1000ms: use 7x multiplier (very slow system)
+  let multiplier = ADOPTION_TTL_LATENCY_MULTIPLIER; // Default 3x
+
+  if (observedLatency >= 1000) {
+    multiplier = 7; // Very slow system
+    console.log('[Content] ADOPTION_TTL_SLOW_FIREFOX: Using 7x multiplier for very high latency', {
+      observedLatencyMs: observedLatency
+    });
+  } else if (observedLatency >= 500) {
+    multiplier = 5; // Slow system
+    console.log('[Content] ADOPTION_TTL_SLOW_FIREFOX: Using 5x multiplier for high latency', {
+      observedLatencyMs: observedLatency
+    });
+  }
+
+  // Calculate TTL with dynamic multiplier and clamping
+  const calculatedTTL = observedLatency * multiplier;
+
+  // v1.6.3.11-v7 - FIX Diagnostic Issue #13: Ensure minimum 5 second TTL
+  // This ensures adoption succeeds within 5 seconds even on slow systems
+  const finalTTL = Math.max(ADOPTION_MIN_TTL_MS, Math.min(calculatedTTL, ADOPTION_MAX_TTL_MS));
+
+  return finalTTL;
 }
 
 /**
