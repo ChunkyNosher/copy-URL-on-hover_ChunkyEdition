@@ -5562,38 +5562,62 @@ function _detectAndLogUrl(element, domainType) {
 /**
  * Process hover element after debouncing
  * v1.6.3.11-v4 - FIX Issue #2 & #3: Core hover processing with logging
+ * v1.6.3.11-v5 - FIX Issue #7: Add error recovery integration
  * @private
  * @param {PointerEvent|MouseEvent} event - Event object
  * @param {Object} context - Shared context
  */
 function _processHoverElement(event, context) {
-  const element = event.target;
-  const now = performance.now();
+  // v1.6.3.11-v5 - FIX Issue #7: Skip processing if in recovery mode
+  if (_shouldSkipForRecovery()) {
+    console.debug('[Content] HOVER_SKIPPED: In recovery mode', {
+      backoffMs: hoverBackoffDelay,
+      errorCount: hoverErrorCounter
+    });
+    return;
+  }
 
-  // Update tracking
-  lastProcessedElement = element;
-  lastHoverProcessTime = now;
-  pendingHoverTimeoutId = null;
-  context.hoverStartTime = now;
+  try {
+    const element = event.target;
+    const now = performance.now();
 
-  const domainType = getDomainType();
+    // Update tracking
+    lastProcessedElement = element;
+    lastHoverProcessTime = now;
+    pendingHoverTimeoutId = null;
+    context.hoverStartTime = now;
 
-  // Log hover entry
-  _logHoverEntry(element, event, domainType);
+    const domainType = getDomainType();
 
-  // Detect URL
-  const url = _detectAndLogUrl(element, domainType);
+    // Log hover entry
+    _logHoverEntry(element, event, domainType);
 
-  // Always set element, URL can be null
-  stateManager.setState({
-    currentHoveredLink: url || null,
-    currentHoveredElement: element
-  });
+    // Detect URL
+    const url = _detectAndLogUrl(element, domainType);
 
-  if (url) {
-    // v1.6.3.11-v4 - FIX Issue #3: [TOOLTIP] logging (for display operations)
-    console.log('[TOOLTIP] URL ready for display:', { url });
-    eventBus.emit(Events.HOVER_START, { url, element, domainType });
+    // Always set element, URL can be null
+    stateManager.setState({
+      currentHoveredLink: url || null,
+      currentHoveredElement: element
+    });
+
+    if (url) {
+      // v1.6.3.11-v4 - FIX Issue #3: [TOOLTIP] logging (for display operations)
+      console.log('[TOOLTIP] URL ready for display:', { url });
+      eventBus.emit(Events.HOVER_START, { url, element, domainType });
+      
+      // v1.6.3.11-v5 - FIX Issue #7: Reset errors on successful URL detection
+      _resetHoverErrors();
+    }
+  } catch (error) {
+    // v1.6.3.11-v5 - FIX Issue #7: Record hover detection error
+    console.error('[Content] HOVER_DETECTION_ERROR:', {
+      error: error.message,
+      stack: error.stack?.substring(0, 200),
+      target: event?.target?.tagName,
+      timestamp: Date.now()
+    });
+    _recordHoverError(error);
   }
 }
 
@@ -6304,61 +6328,194 @@ function createQuickTabLocally(quickTabData, saveId, canUseManagerSaveId) {
 }
 
 /**
- * v1.6.0 Phase 2.4 - Extracted helper for background persistence
- * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
- * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
- *   - Background generates globally-ordered sequence IDs
- *   - Prevents out-of-order IDs from multiple tabs creating simultaneously
- * v1.6.3.11-v3 - FIX Issue #15: Enhanced logging for originTabId sent with message
+ * Build message data for CREATE_QUICK_TAB operation
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce persistQuickTabToBackground complexity
+ * @private
+ * @param {Object} quickTabData - Quick Tab data
+ * @param {string} saveId - Save tracking ID
+ * @param {number|null} originTabId - Origin tab ID
+ * @returns {Object} Message data
  */
-async function persistQuickTabToBackground(quickTabData, saveId) {
-  // v1.6.3.11 - FIX Issue #31: Let background assign sequence ID for global ordering
-  // Note: Background will generate globally-ordered sequence ID on receipt
-
-  // v1.6.3.11-v3 - FIX Issue #15: Log originTabId being sent for ownership validation tracking
-  const originTabId = quickTabData.originTabId || quickTabsManager?.currentTabId || null;
-
-  console.log('[Content] Sending CREATE_QUICK_TAB with originTabId:', {
-    quickTabId: quickTabData.id,
+function _buildCreateQuickTabMessage(quickTabData, saveId, originTabId) {
+  return {
+    action: 'CREATE_QUICK_TAB',
+    ...quickTabData,
     originTabId,
-    hasExplicitOriginTabId: quickTabData.originTabId !== undefined,
-    fallbackToCurrentTabId: quickTabData.originTabId === undefined && originTabId !== null,
+    saveId,
+    operationType: OPERATION_TYPE.CREATE
+  };
+}
+
+/**
+ * Log successful CREATE_QUICK_TAB response
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _logCreateQuickTabSuccess(response, originTabId, quickTabId, attempt) {
+  console.log('[Content] CREATE_QUICK_TAB response received:', {
+    success: response.success,
+    returnedOriginTabId: response.originTabId,
+    sequenceId: response.sequenceId,
+    validationMatch: response.originTabId === originTabId,
+    attempt
+  });
+
+  if (response.originTabId !== undefined && response.originTabId !== originTabId) {
+    console.warn('[Content] OWNERSHIP_VALIDATION: Background assigned different originTabId', {
+      sentOriginTabId: originTabId,
+      assignedOriginTabId: response.originTabId,
+      quickTabId
+    });
+  }
+}
+
+/**
+ * Log retry attempt for handler operation
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _logHandlerRetryAttempt(operation, quickTabId, attempt, delayMs, errorInfo) {
+  console.log('[Content] HANDLER_RETRY_ATTEMPT:', {
+    operation,
+    quickTabId,
+    attempt: attempt + 1,
+    maxRetries: HANDLER_RETRY_CONFIG.maxRetries,
+    delayMs,
+    ...errorInfo
+  });
+}
+
+/**
+ * Perform a single attempt to persist Quick Tab to background
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity (cc=9→4)
+ * @private
+ */
+async function _attemptPersistQuickTab(messageData, context, originTabId, attempt) {
+  const response = await sendMessageToBackground(messageData);
+  const result = _processHandlerResponse(response, 'CREATE_QUICK_TAB', context);
+
+  if (result.success) {
+    _logCreateQuickTabSuccess(response, originTabId, context.quickTabId, attempt);
+    return { success: true, response };
+  }
+
+  // Handler returned error
+  if (!result.shouldRetry || attempt >= HANDLER_RETRY_CONFIG.maxRetries) {
+    _showHandlerErrorNotification('CREATE_QUICK_TAB', response);
+    const errorMsg = response?.error?.message || response?.errorMessage || 'Handler returned error';
+    return { success: false, shouldRetry: false, error: new Error(errorMsg) };
+  }
+
+  // Transient error - need retry
+  const delayMs = _calculateHandlerRetryDelay(attempt);
+  _logHandlerRetryAttempt('CREATE_QUICK_TAB', context.quickTabId, attempt, delayMs, {
+    errorType: response?.errorType
+  });
+  
+  return { success: false, shouldRetry: true, delayMs };
+}
+
+/**
+ * Handle error during persist attempt - determine retry behavior
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handlePersistError(err, attempt, quickTabId) {
+  if (attempt >= HANDLER_RETRY_CONFIG.maxRetries) {
+    return { shouldRetry: false, error: err };
+  }
+  
+  const delayMs = _calculateHandlerRetryDelay(attempt);
+  _logHandlerRetryAttempt('CREATE_QUICK_TAB', quickTabId, attempt, delayMs, {
+    error: err.message
+  });
+  
+  return { shouldRetry: true, delayMs };
+}
+
+/**
+ * Execute single persist attempt with error handling
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @returns {Object} Result with {done, response, error, delayMs}
+ */
+async function _executePersistAttempt(messageData, context, originTabId, attempt) {
+  try {
+    const result = await _attemptPersistQuickTab(messageData, context, originTabId, attempt);
+    
+    if (result.success) return { done: true, response: result.response };
+    if (!result.shouldRetry) return { done: true, error: result.error };
+    
+    return { done: false, delayMs: result.delayMs };
+  } catch (err) {
+    const errorResult = _handlePersistError(err, attempt, context.quickTabId);
+    if (!errorResult.shouldRetry) return { done: true, error: err };
+    return { done: false, delayMs: errorResult.delayMs, lastError: err };
+  }
+}
+
+/**
+ * Log CREATE_QUICK_TAB request initialization
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ */
+function _logCreateQuickTabInit(quickTabId, originTabId, hasExplicitOriginTabId) {
+  console.log('[Content] Sending CREATE_QUICK_TAB with originTabId:', {
+    quickTabId,
+    originTabId,
+    hasExplicitOriginTabId,
+    fallbackToCurrentTabId: !hasExplicitOriginTabId && originTabId !== null,
     timestamp: Date.now(),
     note: 'Background will validate ownership and assign global sequenceId'
   });
+}
 
-  // v1.6.3.11-v3 - FIX Issue #15: Ensure originTabId is included in message
-  const messageData = {
-    action: 'CREATE_QUICK_TAB',
-    ...quickTabData,
-    originTabId, // Explicitly include for ownership validation
-    saveId,
-    // v1.6.3.11 - FIX Issue #31: No client sequenceId - background assigns it
-    operationType: OPERATION_TYPE.CREATE
-  };
+/**
+ * Execute retry loop for persist operation
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce complexity (cc=11→4)
+ * @private
+ * @returns {Object} {response} on success, throws on failure
+ */
+async function _executeRetryLoop(messageData, context, originTabId) {
+  let lastError = null;
 
-  const response = await sendMessageToBackground(messageData);
-
-  // v1.6.3.11-v3 - FIX Issue #15: Log validation result from background
-  if (response) {
-    console.log('[Content] CREATE_QUICK_TAB response received:', {
-      success: response.success,
-      returnedOriginTabId: response.originTabId,
-      sequenceId: response.sequenceId,
-      validationMatch: response.originTabId === originTabId
-    });
-
-    // Log warning if originTabId was changed by background validation
-    if (response.originTabId !== undefined && response.originTabId !== originTabId) {
-      console.warn('[Content] OWNERSHIP_VALIDATION: Background assigned different originTabId', {
-        sentOriginTabId: originTabId,
-        assignedOriginTabId: response.originTabId,
-        quickTabId: quickTabData.id
-      });
-    }
+  for (let attempt = 0; attempt <= HANDLER_RETRY_CONFIG.maxRetries; attempt++) {
+    const result = await _executePersistAttempt(messageData, context, originTabId, attempt);
+    
+    if (result.done && result.response) return result.response;
+    if (result.done && result.error) throw result.error;
+    if (result.lastError) lastError = result.lastError;
+    
+    await new Promise(resolve => setTimeout(resolve, result.delayMs));
   }
 
-  return response;
+  console.error('[Content] HANDLER_RESPONSE_ERROR: All retries exhausted for CREATE_QUICK_TAB', {
+    quickTabId: context.quickTabId,
+    originTabId,
+    lastError: lastError?.message
+  });
+
+  throw lastError || new Error('Failed to persist Quick Tab after retries');
+}
+
+/**
+ * v1.6.0 Phase 2.4 - Extracted helper for background persistence
+ * v1.6.3.10-v12 - FIX Issue #5: Add sequenceId for CREATE ordering enforcement
+ * v1.6.3.11 - FIX Issue #31: Remove client-side sequence ID generation for CREATE
+ * v1.6.3.11-v3 - FIX Issue #15: Enhanced logging for originTabId sent with message
+ * v1.6.3.11-v5 - FIX Issue #5: Add handler response checking with retry logic
+ * v1.6.3.11-v5 - FIX Code Health: Refactored to extract helpers (cc=11→3)
+ */
+async function persistQuickTabToBackground(quickTabData, saveId) {
+  const originTabId = quickTabData.originTabId || quickTabsManager?.currentTabId || null;
+  const hasExplicitOriginTabId = quickTabData.originTabId !== undefined;
+  
+  _logCreateQuickTabInit(quickTabData.id, originTabId, hasExplicitOriginTabId);
+
+  const messageData = _buildCreateQuickTabMessage(quickTabData, saveId, originTabId);
+  const context = { quickTabId: quickTabData.id, originTabId, operation: 'CREATE_QUICK_TAB' };
+  
+  return _executeRetryLoop(messageData, context, originTabId);
 }
 
 /**
@@ -6516,16 +6673,11 @@ async function handleOpenInNewTab(url) {
 /**
  * Show notification to user
  * v1.5.9.0 - Now delegates to notification manager
+ * v1.6.3.11-v5 - FIX Issue #6: Use verification wrapper for delivery checking
  */
 function showNotification(message, type = 'info') {
-  debug('Notification:', message, type);
-
-  // Delegate to notification manager
-  if (notificationManager) {
-    notificationManager.showNotification(message, type);
-  } else {
-    console.warn('[Content] Notification manager not initialized, skipping notification');
-  }
+  // v1.6.3.11-v5 - FIX Issue #6: Use verification wrapper
+  _showNotificationWithVerification(message, type);
 }
 
 /**
@@ -9371,12 +9523,14 @@ function _recordHoverError(error) {
 
   hoverErrorCounter++;
 
-  console.warn('[ERROR_RECOVERY] Hover detection error recorded:', {
+  // v1.6.3.11-v5 - FIX Issue #7: Use correct logging prefix
+  console.warn('[Content] HOVER_ERROR_RECORDED:', {
     errorCount: hoverErrorCounter,
     threshold: HOVER_ERROR_THRESHOLD,
     windowMs: HOVER_ERROR_WINDOW_MS,
     currentBackoffMs: hoverBackoffDelay,
-    error: error?.message || 'Unknown error'
+    error: error?.message || 'Unknown error',
+    timestamp: now
   });
 
   // Check if threshold exceeded
@@ -9391,10 +9545,15 @@ function _recordHoverError(error) {
 /**
  * Reset error counter on successful detection
  * v1.6.3.11-v3 - FIX Issue #5
+ * v1.6.3.11-v5 - FIX Issue #7: Called on successful URL detection
  */
 function _resetHoverErrors() {
   if (hoverErrorCounter > 0) {
-    console.log('[ERROR_RECOVERY] Successful detection - resetting error counter');
+    console.log('[Content] HOVER_ERRORS_RESET: Successful detection - resetting error counter', {
+      previousCount: hoverErrorCounter,
+      previousBackoffMs: hoverBackoffDelay,
+      timestamp: Date.now()
+    });
   }
   hoverErrorCounter = 0;
   hoverBackoffDelay = 100; // Reset backoff
@@ -9404,21 +9563,26 @@ function _resetHoverErrors() {
 /**
  * Enter recovery mode when error threshold exceeded
  * v1.6.3.11-v3 - FIX Issue #5
+ * v1.6.3.11-v5 - FIX Issue #7: Send diagnostic message to background
  * @private
  */
 function _enterRecoveryMode() {
   isInRecoveryMode = true;
 
-  console.error('[ERROR_RECOVERY] THRESHOLD_EXCEEDED: Entering recovery mode', {
+  // v1.6.3.11-v5 - FIX Issue #7: Use correct logging prefix
+  console.error('[Content] HOVER_THRESHOLD_EXCEEDED: Entering recovery mode', {
     errorCount: hoverErrorCounter,
     threshold: HOVER_ERROR_THRESHOLD,
     backoffMs: hoverBackoffDelay,
     timestamp: Date.now()
   });
 
+  // v1.6.3.11-v5 - FIX Issue #7: Send diagnostic message to background
+  _sendHoverDiagnosticToBackground();
+
   // Notify user via console (and toast if available)
   const message = 'Copy URL on Hover: Experiencing connection issues. Auto-recovering...';
-  console.warn(`[ERROR_RECOVERY] USER_NOTIFICATION: ${message}`);
+  console.warn(`[Content] HOVER_RECOVERY_NOTIFICATION: ${message}`);
 
   // Try to show notification to user
   // v1.6.3.11-v4 - FIX Code Review: Handle Promise from showToast (non-blocking)
@@ -9426,9 +9590,39 @@ function _enterRecoveryMode() {
 
   // Schedule recovery attempt
   setTimeout(() => {
-    console.log('[ERROR_RECOVERY] Attempting recovery after backoff');
+    console.log('[Content] HOVER_RECOVERY_ATTEMPT: Attempting recovery after backoff', {
+      backoffMs: hoverBackoffDelay,
+      timestamp: Date.now()
+    });
     isInRecoveryMode = false;
   }, hoverBackoffDelay);
+}
+
+/**
+ * Send hover diagnostic message to background
+ * v1.6.3.11-v5 - FIX Issue #7
+ * @private
+ */
+function _sendHoverDiagnosticToBackground() {
+  try {
+    browser.runtime.sendMessage({
+      action: 'HOVER_DIAGNOSTIC',
+      data: {
+        errorCount: hoverErrorCounter,
+        threshold: HOVER_ERROR_THRESHOLD,
+        windowMs: HOVER_ERROR_WINDOW_MS,
+        backoffMs: hoverBackoffDelay,
+        userAgent: navigator.userAgent,
+        url: window.location.href.substring(0, 100),
+        timestamp: Date.now()
+      }
+    }).catch(() => {
+      // Non-critical - just log locally
+      console.debug('[Content] HOVER_DIAGNOSTIC: Failed to send to background');
+    });
+  } catch (_e) {
+    // Non-critical diagnostic
+  }
 }
 
 /**
@@ -9463,6 +9657,238 @@ function _shouldSkipForRecovery() {
 }
 
 // ==================== END ERROR RECOVERY MECHANISM ====================
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #5: HANDLER RESPONSE ERROR CHECKING ====================
+// Check handler response success field and implement retry logic for transient failures
+
+/**
+ * Transient error types that should trigger retry
+ * v1.6.3.11-v5 - FIX Issue #5
+ */
+const TRANSIENT_ERROR_TYPES = ['TIMEOUT', 'NETWORK', 'VERSION_MISMATCH', 'TRANSIENT'];
+
+/**
+ * Handler retry configuration
+ * v1.6.3.11-v5 - FIX Issue #5
+ */
+const HANDLER_RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 500,
+  maxDelayMs: 4000
+};
+
+/**
+ * Check if an error is transient and should trigger retry
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {Object} response - Handler response
+ * @returns {boolean} True if error is transient
+ */
+function _isTransientHandlerError(response) {
+  if (!response || response.success !== false) return false;
+  
+  const errorType = response.errorType || response.error?.type || '';
+  const errorMessage = response.error?.message || response.errorMessage || '';
+  
+  // Check error type
+  if (TRANSIENT_ERROR_TYPES.includes(errorType.toUpperCase())) {
+    return true;
+  }
+  
+  // Check error message patterns
+  const transientPatterns = ['timeout', 'network', 'connection', 'temporary', 'retry'];
+  return transientPatterns.some(pattern => errorMessage.toLowerCase().includes(pattern));
+}
+
+/**
+ * Calculate retry delay with exponential backoff
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {number} attempt - Current attempt number (0-indexed)
+ * @returns {number} Delay in milliseconds
+ */
+function _calculateHandlerRetryDelay(attempt) {
+  const delay = HANDLER_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
+  return Math.min(delay, HANDLER_RETRY_CONFIG.maxDelayMs);
+}
+
+/**
+ * Log handler response error with full context
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {string} operation - Operation name (e.g., 'CREATE_QUICK_TAB')
+ * @param {Object} response - Handler response
+ * @param {Object} context - Additional context (quickTabId, etc.)
+ */
+function _logHandlerResponseError(operation, response, context = {}) {
+  console.error('[Content] HANDLER_RESPONSE_ERROR:', {
+    operation,
+    success: response?.success,
+    errorType: response?.errorType || response?.error?.type,
+    errorMessage: response?.error?.message || response?.errorMessage,
+    errorCode: response?.errorCode || response?.error?.code,
+    quickTabId: context.quickTabId,
+    originTabId: context.originTabId,
+    timestamp: Date.now(),
+    isTransient: _isTransientHandlerError(response)
+  });
+}
+
+/**
+ * Process handler response and handle errors
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @param {Object} response - Handler response
+ * @param {string} operation - Operation name
+ * @param {Object} context - Context for error logging
+ * @returns {{success: boolean, shouldRetry: boolean, response: Object}}
+ */
+function _processHandlerResponse(response, operation, context = {}) {
+  // No response indicates a send failure (different from handler error)
+  if (!response) {
+    console.warn('[Content] HANDLER_RESPONSE_ERROR: No response received', {
+      operation,
+      ...context,
+      timestamp: Date.now()
+    });
+    return { success: false, shouldRetry: true, response: null };
+  }
+  
+  // Success case
+  if (response.success !== false) {
+    return { success: true, shouldRetry: false, response };
+  }
+  
+  // Handler returned error
+  _logHandlerResponseError(operation, response, context);
+  
+  const shouldRetry = _isTransientHandlerError(response);
+  return { success: false, shouldRetry, response };
+}
+
+/**
+ * Show error notification to user for handler failures
+ * v1.6.3.11-v5 - FIX Issue #5
+ * @private
+ * @param {string} operation - Operation that failed
+ * @param {Object} response - Handler response
+ */
+function _showHandlerErrorNotification(operation, response) {
+  const operationNames = {
+    CREATE_QUICK_TAB: 'create Quick Tab',
+    CLOSE_QUICK_TAB: 'close Quick Tab',
+    UPDATE_QUICK_TAB: 'update Quick Tab',
+    openTab: 'open tab'
+  };
+  
+  const friendlyName = operationNames[operation] || operation;
+  const errorMessage = response?.error?.message || response?.errorMessage || 'Unknown error';
+  
+  _showNotificationWithVerification(
+    `✗ Failed to ${friendlyName}: ${errorMessage.substring(0, 50)}`,
+    'error'
+  );
+}
+
+// ==================== END ISSUE #5 FIX ====================
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #6: NOTIFICATION DELIVERY VERIFICATION ====================
+// Verify toast notifications are delivered and retry on failure
+
+/**
+ * Notification delivery configuration
+ * v1.6.3.11-v5 - FIX Issue #6
+ */
+const NOTIFICATION_RETRY_DELAY_MS = 500;
+const NOTIFICATION_MAX_RETRIES = 2;
+
+/**
+ * Notification success tracking
+ * v1.6.3.11-v5 - FIX Issue #6
+ */
+let notificationSuccessCount = 0;
+let notificationFailureCount = 0;
+
+/**
+ * Show notification with delivery verification and retry
+ * v1.6.3.11-v5 - FIX Issue #6
+ * @param {string} message - Notification message
+ * @param {string} type - Notification type (info, success, warning, error)
+ * @param {number} retryCount - Current retry attempt (internal)
+ */
+function _showNotificationWithVerification(message, type = 'info', retryCount = 0) {
+  debug('Notification with verification:', message, type);
+  
+  if (!notificationManager) {
+    console.warn('[Content] NOTIFICATION_DELIVERY_FAILED: Manager not initialized', {
+      message: message.substring(0, 50),
+      type,
+      timestamp: Date.now()
+    });
+    notificationFailureCount++;
+    return;
+  }
+  
+  // Use showToast directly to get return value (showNotification doesn't return)
+  let result;
+  try {
+    // Check if we should use toast mode based on config
+    if (notificationManager.config?.notifDisplayMode === 'tooltip') {
+      // Tooltip mode - no verification available
+      notificationManager.showTooltip(message);
+      notificationSuccessCount++;
+      return;
+    }
+    
+    // Toast mode - get verification result
+    result = notificationManager.showToast(message, type);
+  } catch (err) {
+    result = { success: false, error: err.message };
+  }
+  
+  // Check delivery success
+  if (result?.success) {
+    notificationSuccessCount++;
+    
+    // Log success rate periodically (every 10 notifications)
+    if ((notificationSuccessCount + notificationFailureCount) % 10 === 0) {
+      console.log('[Content] NOTIFICATION_SUCCESS_RATE:', {
+        success: notificationSuccessCount,
+        failure: notificationFailureCount,
+        rate: `${((notificationSuccessCount / (notificationSuccessCount + notificationFailureCount)) * 100).toFixed(1)}%`
+      });
+    }
+    return;
+  }
+  
+  // Delivery failed
+  notificationFailureCount++;
+  console.warn('[Content] NOTIFICATION_DELIVERY_FAILED:', {
+    message: message.substring(0, 50),
+    type,
+    error: result?.error || 'Unknown error',
+    retryCount,
+    timestamp: Date.now()
+  });
+  
+  // Retry if under max retries
+  if (retryCount < NOTIFICATION_MAX_RETRIES) {
+    console.log('[Content] NOTIFICATION_RETRY:', {
+      message: message.substring(0, 50),
+      type,
+      retryCount: retryCount + 1,
+      delayMs: NOTIFICATION_RETRY_DELAY_MS
+    });
+    
+    setTimeout(() => {
+      _showNotificationWithVerification(message, type, retryCount + 1);
+    }, NOTIFICATION_RETRY_DELAY_MS);
+  } else {
+    // Max retries exceeded - fallback to console
+    console.warn(`[Content] NOTIFICATION_FALLBACK: ${type.toUpperCase()}: ${message}`);
+  }
+}
+
+// ==================== END ISSUE #6 FIX ====================
 
 // ==================== BEFOREUNLOAD CLEANUP HANDLER ====================
 // v1.6.3.4-v11 - FIX Issue #3: Cleanup resources on page navigation to prevent memory leaks
