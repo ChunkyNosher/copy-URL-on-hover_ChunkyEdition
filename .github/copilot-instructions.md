@@ -23,35 +23,27 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v6 Features (NEW) - Firefox Critical Fixes:**
+**v1.6.3.11-v6 Features (NEW) - 14 Firefox Critical Fixes:**
 
-- **BFCache Port Validation** - Validate port connectivity on pageshow, auto-reconnect
-  if validation fails
-- **Adaptive Timeout (Firefox)** - 90th percentile, 7s default, exponential backoff
-  (2x, 4x, 8x)
-- **Load Shedding** - Reject non-critical at 50%, medium at 75%, critical-only at 90%
-- **Hydration Drain Scheduler** - Queue-based drain to prevent lost operations
+- **BFCache Port Validation** - Validate port on pageshow, auto-reconnect on stale
+- **Adaptive Timeout** - 90th percentile, 7s default, backoff 2x/4x/8x
+- **Load Shedding** - 50%/75%/90% thresholds, OPERATION_PRIORITY_LEVEL enum
+- **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent completions
+- **Message ID Collision** - Iterative retry with -r1/-r2 suffix, O(1) detection
+- **Clock Skew Tolerance** - 150ms tolerance for stale event rejection
+- **Heartbeat Circuit Breaker** - 15s→30s→60s→120s backoff, pause at 10 failures
+- **Queued Operation Timeout** - 5s per-op timeout, hung ops don't block drain
+- **Init Phase Logging** - _logFeatureInitStart/Complete(), _logHydrationProgress()
+- **Response Field Validation** - RESPONSE_FIELD_SCHEMA, _checkRequiredResponseFields()
+- **Port Adoption Scaling** - Dynamic 3x/5x/7x multiplier based on latency
+- **Module Import Degradation** - _moduleLoadStatus, critical vs optional distinction
 
-**v1.6.3.12 Features (Previous) - Early Message Listener:**
+**v1.6.3.12 (Previous):** Early message listener at TOP, queue (max 100), drain via
+_setMessageRouterReady(), type-based handlers
 
-- **Early Message Listener** - Register chrome.runtime.onMessage and
-  browser.runtime.onMessage at TOP of background.js
-- **Message Queue** - Queue messages received before MessageRouter is ready
-  (_earlyMessageQueue, max 100)
-- **Queue Drain** - Drain queued messages when MessageRouter is marked ready via
-  _setMessageRouterReady()
-- **Type-Based Handler Integration** - HEARTBEAT, QUICK_TAB_STATE_CHANGE,
-  MANAGER_COMMAND handled via _setTypeBasedHandlers()
+**v1.6.3.11-v5 (Previous):** commands.onCommand, storage.onChanged, state gating, telemetry
 
-**v1.6.3.11-v5 Features (Previous) - 23 Issues Fixed:**
-
-- Phase 1-2: commands.onCommand, browserAction.onClicked, storage.onChanged
-- Phase 3-4: Operation sequence, port viability, state verification, error handling
-- Phase 5-6: State readiness gating, cache dirty flag, logging infrastructure
-
-**v1.6.3.11-v4 & Earlier (Consolidated):** Shadow DOM detection, event debouncing,
-pointer events, HEARTBEAT handler, re-entrance queue, message validation,
-BFCache recovery, LRU map guard, GET_CURRENT_TAB_ID no init
+**v1.6.3.11-v4 & Earlier:** Shadow DOM, event debouncing, LRU guard, message validation
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
@@ -103,86 +95,41 @@ references.
 
 ### v1.6.3.11-v6 Patterns (Current)
 
-- **BFCache Port Validation** - Validate connectivity on pageshow, auto-reconnect
-- **Adaptive Timeout (Firefox)** - 90th percentile, 7s min, backoff 2x/4x/8x
-- **Load Shedding Thresholds** - 50%/75%/90% queue depth for operation rejection
-- **Hydration Drain Scheduler** - Queue-based drain with re-drain on new ops
+- **BFCache Port Validation** - `_handlePageShow()` validates, `_handlePageHide()` cleanup
+- **Adaptive Timeout** - 90th percentile, 7s base, background restart detection
+- **Load Shedding** - OPERATION_PRIORITY_LEVEL enum (CRITICAL/HIGH/MEDIUM/LOW)
+- **Hydration Drain** - `pendingHydrationCompletions`, `redrainScheduled` flag
+- **Message ID Collision** - Iterative loop with counter suffix (-r1, -r2)
+- **Clock Skew** - 150ms tolerance window for stale event detection
+- **Heartbeat Circuit** - Exponential backoff, pause at 10 consecutive failures
+- **Response Validation** - RESPONSE_FIELD_SCHEMA, `_checkRequiredResponseFields()`
+- **Module Degradation** - `_moduleLoadStatus`, critical vs optional modules
 
-**Key Pattern:**
+### Previous Version Patterns (Consolidated)
 
-```javascript
-// BFCache port validation in _handlePageShow():
-if (event.persisted && portPotentiallyInvalidDueToBFCache) {
-  const isValid = await _validatePortConnectivity();
-  if (!isValid) {
-    _initiatePortReconnection('bfcache-stale-port');
-  }
-}
-
-// Load shedding in _queueInitializationMessage():
-const { depth, shouldReject, priority } = _checkQueueBackpressure(message);
-if (shouldReject) {
-  return { success: false, error: 'BACKPRESSURE', retryable: true };
-}
-```
-
-### v1.6.3.12 Patterns (Previous)
-
-- **Early Message Listener** - Register listeners at TOP of background.js before
-  imports
-- **Message Queue** - Queue messages before MessageRouter ready (max 100)
-- **Queue Drain** - Drain queued messages via _setMessageRouterReady()
-- **Type-Based Handlers** - HEARTBEAT, QUICK_TAB_STATE_CHANGE, MANAGER_COMMAND
-
-### v1.6.3.11-v5 Patterns (Previous)
-
-- **Global Operation Sequence** - Cross-tab message ordering counter
-- **Port Viability Checks** - Heartbeat-based port health monitoring
-- **State Readiness Gating** - Features wait for hydration
-- **Cache Storm Detection** - 100ms threshold, adaptive 200ms debounce
-- **Error Telemetry** - 5 errors/minute threshold, 100 buffer max
-
-### v1.6.3.11-v4 Patterns (Previous)
-
-- **Shadow DOM Detection** - Traverse shadow roots for link detection
-- **Event Debouncing** - 100ms debounce on hover events
-- **Pointer Events API** - Passive listeners for hover detection
-- **Operation Acknowledgment** - { success, operation, details } responses
-- **Error Recovery Backoff** - Exponential backoff in content scripts
-
-### v1.6.3.11-v3 & Earlier (Consolidated)
-
-- BFCache PORT_VERIFY timeout (2000ms), Tab ID acquisition (120s total)
-- Hydration timeout (10s), tab onRemoved 200ms debounce
-- browser.tabs.query 2s timeout, adoption cache 100 entries
-- LRU Map Guard (500 max, 30s cleanup, 24h stale)
-- Tab ID exponential backoff, `VALID_MESSAGE_ACTIONS` allowlist
-- Checkpoint system, identity-ready gating, code health 9.0+
+- **v12:** Early message listener, queue drain, type-based handlers
+- **v5:** Operation sequence, port viability, state gating, error telemetry
+- **v4:** Shadow DOM traversal, event debouncing, operation acknowledgment
+- **v3:** LRU Map Guard, checkpoint system, identity gating, code health 9.0+
 
 ### Key Timing Constants (v1.6.3.11-v6)
 
-| Constant                     | Value  | Purpose                               |
-| ---------------------------- | ------ | ------------------------------------- |
-| `DEFAULT_MESSAGE_TIMEOUT_MS` | 7000   | Firefox message timeout (v6: was 5s)  |
-| `ADAPTIVE_PERCENTILE`        | 0.90   | 90th percentile for Firefox (v6)      |
-| `BACKPRESSURE_50_THRESHOLD`  | 50     | Reject non-critical operations        |
-| `BACKPRESSURE_75_THRESHOLD`  | 75     | Reject medium-priority operations     |
-| `BACKPRESSURE_90_THRESHOLD`  | 90     | Critical-only mode                    |
-| `_MAX_EARLY_QUEUE_SIZE`      | 100    | Max queued messages before ready (v12)|
-| `ERROR_THRESHOLD_PER_MINUTE` | 5      | Telemetry escalation (NEW v5)         |
-| `ERROR_BUFFER_MAX_SIZE`      | 100    | Rolling error buffer (NEW v5)         |
-| `STORM_DETECTION_THRESHOLD`  | 100    | Cache storm detection ms (NEW)        |
-| `STORM_DEBOUNCE_MS`          | 200    | Adaptive render debounce (NEW)        |
-| `HOVER_DEBOUNCE_MS`          | 100    | Event debouncing                      |
-| `STORAGE_SLOW_THRESHOLD_MS`  | 100    | Storage timing warning                |
-| `DEDUP_WINDOW_MS`            | 100    | Message dedup                         |
-| `DEFAULT_MESSAGE_TIMEOUT_MS` | 5000   | Firefox message timeout               |
-| `BFCACHE_VERIFY_TIMEOUT_MS`  | 2000   | PORT_VERIFY timeout                   |
-| `TAB_ID_EXTENDED_TOTAL_MS`   | 120000 | Extended tab ID timeout               |
-| `HYDRATION_TIMEOUT_MS`       | 10000  | Storage hydration                     |
-| `TAB_REMOVAL_DEBOUNCE_MS`    | 200    | Tab onRemoved debounce                |
-| `HEARTBEAT_INTERVAL_MS`      | 15000  | Background health check               |
-| `LRU_MAP_MAX_SIZE`           | 500    | Maximum map entries                   |
+| Constant                       | Value  | Purpose                              |
+| ------------------------------ | ------ | ------------------------------------ |
+| `DEFAULT_MESSAGE_TIMEOUT_MS`   | 7000   | Firefox message timeout (was 5s)     |
+| `ADAPTIVE_PERCENTILE`          | 0.90   | 90th percentile for Firefox          |
+| `CLOCK_SKEW_TOLERANCE_MS`      | 150    | Stale event tolerance window         |
+| `QUEUED_OPERATION_TIMEOUT_MS`  | 5000   | Per-operation timeout in queue       |
+| `BACKPRESSURE_50_THRESHOLD`    | 50     | Reject non-critical operations       |
+| `BACKPRESSURE_75_THRESHOLD`    | 75     | Reject medium-priority operations    |
+| `BACKPRESSURE_90_THRESHOLD`    | 90     | Critical-only mode                   |
+| `HEARTBEAT_BACKOFF_MAX_MS`     | 120000 | Max heartbeat interval after fails   |
+| `HEARTBEAT_PAUSE_THRESHOLD`    | 10     | Consecutive failures before pause    |
+| `_MAX_EARLY_QUEUE_SIZE`        | 100    | Max queued messages before ready     |
+| `HYDRATION_TIMEOUT_MS`         | 10000  | Storage hydration timeout            |
+| `BFCACHE_VERIFY_TIMEOUT_MS`    | 2000   | PORT_VERIFY timeout                  |
+| `TAB_ID_EXTENDED_TOTAL_MS`     | 120000 | Extended tab ID timeout              |
+| `LRU_MAP_MAX_SIZE`             | 500    | Maximum map entries                  |
 
 ---
 
@@ -222,29 +169,14 @@ if (shouldReject) {
 ## 📝 Logging Prefixes
 
 **v1.6.3.11-v6 (NEW):** `[PORT_VALIDATE]` `[PORT_RECONNECT]` `[BACKPRESSURE]`
-`[LOAD_SHEDDING]` `[DRAIN_SCHEDULER]` `[TIMEOUT_BACKOFF]`
+`[LOAD_SHEDDING]` `[DRAIN_SCHEDULER]` `[TIMEOUT_BACKOFF]` `[HEARTBEAT_CIRCUIT]`
+`[MSG_ID_COLLISION]` `[INIT_PHASE]` `[INIT_FEATURE]` `[INIT_HYDRATION]`
+`[RESPONSE_VALIDATE]` `[MODULE_LOAD]`
 
-**v1.6.3.12 (Previous):** `[EARLY_LISTENER_REGISTRATION]` `[EARLY_MESSAGE_QUEUED]`
-`[MESSAGE_ROUTER_READY]` `[TYPE_BASED_HANDLERS_SET]`
-
-**v1.6.3.11-v5:** `[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]`
-`[COMMAND_LISTENER_REGISTERED]` `[ACTION_BUTTON_CLICKED]`
-`[ACTION_BUTTON_LISTENER_REGISTERED]` `[SIDEBAR_TOGGLED]` `[STORAGE_PROPAGATE]`
-`[ERROR_RECOVERY]` `[PORT_LIFECYCLE]` `[STATE_RECONCILE]` `[SYNC_LATENCY]`
-`[ERROR_TELEMETRY]`
-
-**v1.6.3.11-v4:** `[MSG_COMMAND]` `[MSG_VALIDATION]` `[MSG_ROUTE]`
-`[HOVER_EVENT]` `[PLATFORM_DETECT]` `[HANDLER_SELECT]` `[SHADOW_DOM_SEARCH]`
-`[URL_EXTRACT]` `[TOOLTIP]` `[LISTENER_REG]` `[LISTENER_INVOKE]`
-`[EVENT_COMPLETE]` `[STATE_UPDATE]` `[STORAGE_WRITE]` `[STATE_LISTEN]`
-`[MSG:VALIDATE]` `[MSG:ROUTE]` `[MSG:EXEC]` `[MSG:RESPONSE]` `[STORAGE_SYNC]`
-`[RECONCILE]` `[CROSS_TAB_SYNC]` `[MSG_HANDLER]`
-
-**Previous:** `[INIT]` `[ADOPTION]` `[RESTORE]` `[MSG]` `[PORT_HANDSHAKE]`
-`[QUEUE_BACKPRESSURE]` `[OWNERSHIP_VALIDATION]` `[STATE_CONSISTENCY]`
-`[HEARTBEAT]` `[LRU_GUARD]` `[OPERATION_ID]` `[STORAGE_LATENCY]`
-`[HYDRATION_BARRIER]` `[TIMER_LIFECYCLE]` `[LISTENER_CLEANUP]`
-`[CREATION_QUEUE]`
+**Previous:** `[EARLY_LISTENER_REGISTRATION]` `[MESSAGE_ROUTER_READY]`
+`[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]` `[STORAGE_PROPAGATE]` `[ERROR_TELEMETRY]`
+`[MSG_COMMAND]` `[HOVER_EVENT]` `[SHADOW_DOM_SEARCH]` `[INIT]` `[ADOPTION]`
+`[HEARTBEAT]` `[LRU_GUARD]` `[STORAGE_LATENCY]` `[HYDRATION_BARRIER]`
 
 ---
 
@@ -252,8 +184,9 @@ if (shouldReject) {
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
-Authority, Shadow DOM traversal (v4), operation acknowledgment (v4), state
-readiness gating (v5), error telemetry (v5), port viability checks (v5).
+Authority, Shadow DOM traversal, operation acknowledgment, state readiness
+gating, error telemetry, port viability checks, heartbeat circuit breaker,
+message ID collision handling, clock skew tolerance, module degradation.
 
 ---
 
