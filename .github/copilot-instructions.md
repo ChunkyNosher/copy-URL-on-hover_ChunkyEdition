@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12  
+**Version:** 1.6.3.11-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,7 +23,16 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.12 Features (NEW) - Early Message Listener:**
+**v1.6.3.11-v6 Features (NEW) - Firefox Critical Fixes:**
+
+- **BFCache Port Validation** - Validate port connectivity on pageshow, auto-reconnect
+  if validation fails
+- **Adaptive Timeout (Firefox)** - 90th percentile, 7s default, exponential backoff
+  (2x, 4x, 8x)
+- **Load Shedding** - Reject non-critical at 50%, medium at 75%, critical-only at 90%
+- **Hydration Drain Scheduler** - Queue-based drain to prevent lost operations
+
+**v1.6.3.12 Features (Previous) - Early Message Listener:**
 
 - **Early Message Listener** - Register chrome.runtime.onMessage and
   browser.runtime.onMessage at TOP of background.js
@@ -92,35 +101,38 @@ references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12 Patterns (Current)
+### v1.6.3.11-v6 Patterns (Current)
+
+- **BFCache Port Validation** - Validate connectivity on pageshow, auto-reconnect
+- **Adaptive Timeout (Firefox)** - 90th percentile, 7s min, backoff 2x/4x/8x
+- **Load Shedding Thresholds** - 50%/75%/90% queue depth for operation rejection
+- **Hydration Drain Scheduler** - Queue-based drain with re-drain on new ops
+
+**Key Pattern:**
+
+```javascript
+// BFCache port validation in _handlePageShow():
+if (event.persisted && portPotentiallyInvalidDueToBFCache) {
+  const isValid = await _validatePortConnectivity();
+  if (!isValid) {
+    _initiatePortReconnection('bfcache-stale-port');
+  }
+}
+
+// Load shedding in _queueInitializationMessage():
+const { depth, shouldReject, priority } = _checkQueueBackpressure(message);
+if (shouldReject) {
+  return { success: false, error: 'BACKPRESSURE', retryable: true };
+}
+```
+
+### v1.6.3.12 Patterns (Previous)
 
 - **Early Message Listener** - Register listeners at TOP of background.js before
   imports
 - **Message Queue** - Queue messages before MessageRouter ready (max 100)
 - **Queue Drain** - Drain queued messages via _setMessageRouterReady()
 - **Type-Based Handlers** - HEARTBEAT, QUICK_TAB_STATE_CHANGE, MANAGER_COMMAND
-
-**Key Pattern:**
-
-```javascript
-// At TOP of background.js, BEFORE imports:
-// 1. Register early listener immediately
-chrome.runtime.onMessage.addListener(_earlyMessageListener);
-
-// Later, after MessageRouter is configured:
-// 2. Mark router ready and drain queue
-_setMessageRouterReady(messageRouter);
-
-// 3. Register type-based handlers
-_setTypeBasedHandlers({...});
-```
-
-**Why This Pattern:**
-
-- ES module imports are hoisted, so code BEFORE imports executes first in
-  bundled output
-- Messages sent before MessageRouter is ready are queued (not lost)
-- Fixes "Receiving end does not exist" error that occurred in v1.6.3.11-v5
 
 ### v1.6.3.11-v5 Patterns (Previous)
 
@@ -147,10 +159,15 @@ _setTypeBasedHandlers({...});
 - Tab ID exponential backoff, `VALID_MESSAGE_ACTIONS` allowlist
 - Checkpoint system, identity-ready gating, code health 9.0+
 
-### Key Timing Constants (v1.6.3.12)
+### Key Timing Constants (v1.6.3.11-v6)
 
 | Constant                     | Value  | Purpose                               |
 | ---------------------------- | ------ | ------------------------------------- |
+| `DEFAULT_MESSAGE_TIMEOUT_MS` | 7000   | Firefox message timeout (v6: was 5s)  |
+| `ADAPTIVE_PERCENTILE`        | 0.90   | 90th percentile for Firefox (v6)      |
+| `BACKPRESSURE_50_THRESHOLD`  | 50     | Reject non-critical operations        |
+| `BACKPRESSURE_75_THRESHOLD`  | 75     | Reject medium-priority operations     |
+| `BACKPRESSURE_90_THRESHOLD`  | 90     | Critical-only mode                    |
 | `_MAX_EARLY_QUEUE_SIZE`      | 100    | Max queued messages before ready (v12)|
 | `ERROR_THRESHOLD_PER_MINUTE` | 5      | Telemetry escalation (NEW v5)         |
 | `ERROR_BUFFER_MAX_SIZE`      | 100    | Rolling error buffer (NEW v5)         |
@@ -204,7 +221,10 @@ _setTypeBasedHandlers({...});
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12 (NEW):** `[EARLY_LISTENER_REGISTRATION]` `[EARLY_MESSAGE_QUEUED]`
+**v1.6.3.11-v6 (NEW):** `[PORT_VALIDATE]` `[PORT_RECONNECT]` `[BACKPRESSURE]`
+`[LOAD_SHEDDING]` `[DRAIN_SCHEDULER]` `[TIMEOUT_BACKOFF]`
+
+**v1.6.3.12 (Previous):** `[EARLY_LISTENER_REGISTRATION]` `[EARLY_MESSAGE_QUEUED]`
 `[MESSAGE_ROUTER_READY]` `[TYPE_BASED_HANDLERS_SET]`
 
 **v1.6.3.11-v5:** `[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]`

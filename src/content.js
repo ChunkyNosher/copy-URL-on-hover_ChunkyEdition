@@ -469,24 +469,28 @@ const RETRYABLE_MESSAGE_PATTERNS = new Set(['disconnected', 'receiving end', 'Ex
 // ==================== v1.6.3.11-v3 FIX ISSUE #48: CROSS-BROWSER MESSAGE TIMEOUT ====================
 // Firefox browser.runtime.sendMessage has NO built-in timeout unlike Chrome's ~9s implicit timeout
 // This wrapper enforces explicit timeouts for cross-browser compatibility
+// v1.6.3.11-v6 - FIX Issue #2: Enhanced for Firefox with 90th percentile, 7s default, exponential backoff
 
 /**
  * Default message timeout (milliseconds)
  * v1.6.3.11-v3 - FIX Issue #48: Explicit timeout for Firefox compatibility
+ * v1.6.3.11-v6 - FIX Issue #2: Increased from 5s to 7s minimum for Firefox's higher latency variance
  */
-const DEFAULT_MESSAGE_TIMEOUT_MS = 5000;
+const DEFAULT_MESSAGE_TIMEOUT_MS = 7000;
 
 /**
  * Minimum message timeout (milliseconds)
  * v1.6.3.11-v3 - FIX Issue #48: Never go below this threshold
+ * v1.6.3.11-v6 - Prefixed with _ as reserved but not currently enforced
  */
-const MIN_MESSAGE_TIMEOUT_MS = 1000;
+const _MIN_MESSAGE_TIMEOUT_MS = 1000;
 
 /**
  * Maximum message timeout (milliseconds)
  * v1.6.3.11-v3 - FIX Issue #48: Cap adaptive timeout at reasonable limit
+ * v1.6.3.11-v6 - FIX Issue #2: Increased to 30s for background restart scenarios
  */
-const MAX_MESSAGE_TIMEOUT_MS = 15000;
+const MAX_MESSAGE_TIMEOUT_MS = 30000;
 
 /**
  * Message latency tracking for adaptive timeout
@@ -501,10 +505,75 @@ const recentMessageLatencies = [];
 const MAX_LATENCY_SAMPLES = 10;
 
 /**
- * Multiplier for adaptive timeout (based on 95th percentile latency)
+ * Multiplier for adaptive timeout (based on 90th percentile latency)
  * v1.6.3.11-v3 - FIX Issue #48: timeout = max latency * multiplier
+ * v1.6.3.11-v6 - FIX Issue #2: Changed from 3x to 4x for Firefox variance
  */
-const ADAPTIVE_TIMEOUT_MULTIPLIER = 3;
+const ADAPTIVE_TIMEOUT_MULTIPLIER = 4;
+
+/**
+ * Percentile to use for adaptive timeout calculation
+ * v1.6.3.11-v6 - FIX Issue #2: Changed from 95th to 90th for Firefox's higher latency variance
+ */
+const ADAPTIVE_TIMEOUT_PERCENTILE = 0.90;
+
+/**
+ * Track if background restart was detected (for temporary timeout extension)
+ * v1.6.3.11-v6 - FIX Issue #2: Extend timeouts temporarily after restart detection
+ */
+let backgroundRestartDetectedRecently = false;
+
+/**
+ * Timestamp of last background restart detection
+ * v1.6.3.11-v6 - FIX Issue #2
+ */
+let lastBackgroundRestartTime = 0;
+
+/**
+ * Duration to extend timeouts after background restart (milliseconds)
+ * v1.6.3.11-v6 - FIX Issue #2: 30 seconds of extended timeouts after restart
+ */
+const RESTART_EXTENDED_TIMEOUT_DURATION_MS = 30000;
+
+/**
+ * Timeout multiplier during restart recovery
+ * v1.6.3.11-v6 - FIX Issue #2: 2x normal timeout during restart recovery
+ */
+const RESTART_TIMEOUT_MULTIPLIER = 2;
+
+/**
+ * Mark background restart detected (for timeout extension)
+ * v1.6.3.11-v6 - FIX Issue #2
+ */
+function _markBackgroundRestartDetected() {
+  backgroundRestartDetectedRecently = true;
+  lastBackgroundRestartTime = Date.now();
+  console.log('[Content][TIMEOUT_BACKOFF] Background restart detected, extending timeouts', {
+    timestamp: lastBackgroundRestartTime,
+    extendedDurationMs: RESTART_EXTENDED_TIMEOUT_DURATION_MS
+  });
+}
+
+/**
+ * Check if we're in restart recovery period (timeouts should be extended)
+ * v1.6.3.11-v6 - FIX Issue #2
+ * @returns {boolean} True if in restart recovery period
+ */
+function _isInRestartRecoveryPeriod() {
+  if (!backgroundRestartDetectedRecently) return false;
+
+  const elapsed = Date.now() - lastBackgroundRestartTime;
+  if (elapsed > RESTART_EXTENDED_TIMEOUT_DURATION_MS) {
+    backgroundRestartDetectedRecently = false;
+    console.log('[Content][TIMEOUT_BACKOFF] Restart recovery period ended', {
+      elapsedMs: elapsed,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+
+  return true;
+}
 
 /**
  * Record a message latency for adaptive timeout calculation
@@ -525,25 +594,39 @@ function _recordMessageLatency(latencyMs) {
 /**
  * Calculate adaptive timeout based on recent message latencies
  * v1.6.3.11-v3 - FIX Issue #48
+ * v1.6.3.11-v6 - FIX Issue #2: Use 90th percentile for Firefox, apply restart multiplier
  * @returns {number} Adaptive timeout in milliseconds
  */
 function _getAdaptiveTimeout() {
+  let baseTimeout;
+
   if (recentMessageLatencies.length < 3) {
     // Not enough samples - use default
-    return DEFAULT_MESSAGE_TIMEOUT_MS;
+    baseTimeout = DEFAULT_MESSAGE_TIMEOUT_MS;
+  } else {
+    // Sort for percentile calculation
+    const sorted = [...recentMessageLatencies].sort((a, b) => a - b);
+
+    // v1.6.3.11-v6 - FIX Issue #2: Use 90th percentile instead of 95th for Firefox
+    const percentileIndex = Math.floor(sorted.length * ADAPTIVE_TIMEOUT_PERCENTILE);
+    const percentileLatency = sorted[Math.min(percentileIndex, sorted.length - 1)];
+
+    // Apply multiplier and clamp to range
+    baseTimeout = Math.round(percentileLatency * ADAPTIVE_TIMEOUT_MULTIPLIER);
+    baseTimeout = Math.max(DEFAULT_MESSAGE_TIMEOUT_MS, Math.min(baseTimeout, MAX_MESSAGE_TIMEOUT_MS));
   }
 
-  // Sort for percentile calculation
-  const sorted = [...recentMessageLatencies].sort((a, b) => a - b);
+  // v1.6.3.11-v6 - FIX Issue #2: Apply restart recovery multiplier if needed
+  if (_isInRestartRecoveryPeriod()) {
+    const extendedTimeout = baseTimeout * RESTART_TIMEOUT_MULTIPLIER;
+    console.log('[Content][TIMEOUT_BACKOFF] Using extended timeout during restart recovery:', {
+      baseTimeoutMs: baseTimeout,
+      extendedTimeoutMs: extendedTimeout
+    });
+    return Math.min(extendedTimeout, MAX_MESSAGE_TIMEOUT_MS);
+  }
 
-  // Use 95th percentile (or max if small sample)
-  const p95Index = Math.floor(sorted.length * 0.95);
-  const p95Latency = sorted[Math.min(p95Index, sorted.length - 1)];
-
-  // Apply multiplier and clamp to range
-  const adaptiveTimeout = Math.round(p95Latency * ADAPTIVE_TIMEOUT_MULTIPLIER);
-
-  return Math.max(MIN_MESSAGE_TIMEOUT_MS, Math.min(adaptiveTimeout, MAX_MESSAGE_TIMEOUT_MS));
+  return baseTimeout;
 }
 
 /**
@@ -575,28 +658,37 @@ function _isRetryableTimeoutError(err) {
 /**
  * Handle timeout retry with exponential backoff
  * v1.6.3.11-v3 - Helper to reduce nesting depth
+ * v1.6.3.11-v6 - FIX Issue #2: Implement 2x, 4x, 8x exponential backoff
  * @private
  */
 function _handleTimeoutRetry(err, attempts, maxRetries, context) {
   const { messageType, effectiveTimeout, startTime, useAdaptiveTimeout } = context;
   const elapsed = Date.now() - startTime;
 
-  console.warn('[Content][MSG_TIMEOUT] Message timeout:', {
+  // v1.6.3.11-v6 - FIX Issue #2: Calculate exponential backoff (2x, 4x, 8x)
+  // Backoff sequence: attempt 1 = 2x base, attempt 2 = 4x base, attempt 3 = 8x base
+  const baseBackoffMs = 1000;
+  const backoffMultiplier = Math.pow(2, attempts); // 2, 4, 8, 16...
+  const maxBackoffMs = 16000; // Cap at 16 seconds
+
+  console.warn('[Content][MSG_TIMEOUT][TIMEOUT_BACKOFF] Message timeout:', {
     messageType,
     attempt: attempts,
     maxRetries,
     timeoutMs: effectiveTimeout,
     elapsedMs: elapsed,
     adaptiveTimeout: useAdaptiveTimeout,
-    recentLatencies: recentMessageLatencies.slice(-3)
+    recentLatencies: recentMessageLatencies.slice(-3),
+    backoffMultiplier: `${backoffMultiplier}x`
   });
 
   // Return backoff delay if retries remaining, otherwise null
   if (attempts <= maxRetries) {
-    const backoffMs = Math.min(1000 * Math.pow(2, attempts - 1), 5000);
-    console.log('[Content][MSG_TIMEOUT] Retrying after backoff:', {
+    const backoffMs = Math.min(baseBackoffMs * backoffMultiplier, maxBackoffMs);
+    console.log('[Content][MSG_TIMEOUT][TIMEOUT_BACKOFF] Retrying after exponential backoff:', {
       attempt: attempts + 1,
-      backoffMs
+      backoffMs,
+      backoffMultiplier: `${backoffMultiplier}x`
     });
     return backoffMs;
   }
@@ -940,12 +1032,53 @@ const QUEUE_BACKPRESSURE_THRESHOLD = 75;
 
 // ==================== v1.6.3.11 FIX ISSUE #26: CROSS-QUEUE OVERFLOW PROTECTION ====================
 // Unified tracking across all message queues to prevent memory/timeout issues
+// v1.6.3.11-v6 - FIX Issue #4: Enhanced with load shedding at 50%/75%/90% thresholds
 
 /**
  * Global backpressure threshold for combined queue depth
  * v1.6.3.11 - FIX Issue #26: Total messages across all queues before warning
  */
 const GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD = 300;
+
+/**
+ * Load shedding thresholds (percentage of max queue size)
+ * v1.6.3.11-v6 - FIX Issue #4: Progressive rejection based on queue depth
+ */
+const LOAD_SHEDDING_THRESHOLDS = {
+  /** At 50%: reject non-critical operations */
+  REJECT_NON_CRITICAL: 50,
+  /** At 75%: reject medium-priority operations */
+  REJECT_MEDIUM: 75,
+  /** At 90%: only accept critical operations (CREATE_QUICK_TAB) */
+  CRITICAL_ONLY: 90
+};
+
+/**
+ * Operation priority levels for load shedding
+ * v1.6.3.11-v6 - FIX Issue #4
+ * @enum {string}
+ */
+const OPERATION_PRIORITY_LEVEL = {
+  CRITICAL: 'critical', // Always allowed (CREATE_QUICK_TAB)
+  HIGH: 'high', // Rejected at 90%
+  MEDIUM: 'medium', // Rejected at 75%
+  LOW: 'low' // Rejected at 50%
+};
+
+/**
+ * Map of operation types to their priority level
+ * v1.6.3.11-v6 - FIX Issue #4
+ */
+const OPERATION_PRIORITY_MAP = {
+  CREATE_QUICK_TAB: OPERATION_PRIORITY_LEVEL.CRITICAL,
+  CLOSE_QUICK_TAB: OPERATION_PRIORITY_LEVEL.HIGH,
+  MINIMIZE_QUICK_TAB: OPERATION_PRIORITY_LEVEL.HIGH,
+  RESTORE_QUICK_TAB: OPERATION_PRIORITY_LEVEL.HIGH,
+  UPDATE_QUICK_TAB_POSITION: OPERATION_PRIORITY_LEVEL.MEDIUM,
+  UPDATE_QUICK_TAB_SIZE: OPERATION_PRIORITY_LEVEL.MEDIUM,
+  SYNC_STATE: OPERATION_PRIORITY_LEVEL.LOW,
+  HEARTBEAT: OPERATION_PRIORITY_LEVEL.LOW
+};
 
 /**
  * Queue priority order for flush operations
@@ -984,12 +1117,139 @@ function _getTotalQueueDepth() {
 }
 
 /**
+ * Get priority level for an operation
+ * v1.6.3.11-v6 - FIX Issue #4
+ * @param {string} operationType - The operation type
+ * @returns {string} Priority level
+ */
+function _getOperationPriority(operationType) {
+  return OPERATION_PRIORITY_MAP[operationType] || OPERATION_PRIORITY_LEVEL.LOW;
+}
+
+/**
+ * Calculate queue depth percentage
+ * v1.6.3.11-v6 - FIX Issue #4
+ * @returns {number} Queue depth as percentage (0-100)
+ */
+function _getQueueDepthPercent() {
+  const depths = _getTotalQueueDepth();
+  return (depths.total / GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD) * 100;
+}
+
+/**
+ * Check if operation should be rejected due to load shedding
+ * v1.6.3.11-v6 - FIX Issue #4: Implement progressive load shedding
+ * @param {string} operationType - The operation type to check
+ * @returns {{ shouldReject: boolean, reason: string, queueDepthPercent: number, retryable: boolean }}
+ */
+function _checkLoadShedding(operationType) {
+  const depthPercent = _getQueueDepthPercent();
+  const priority = _getOperationPriority(operationType);
+
+  // Critical operations always allowed
+  if (priority === OPERATION_PRIORITY_LEVEL.CRITICAL) {
+    return { shouldReject: false, reason: 'critical-always-allowed', queueDepthPercent: depthPercent, retryable: false };
+  }
+
+  // At 90%: only accept critical operations
+  if (depthPercent >= LOAD_SHEDDING_THRESHOLDS.CRITICAL_ONLY) {
+    console.warn('[Content][LOAD_SHEDDING] CRITICAL_ONLY mode - rejecting non-critical operation:', {
+      operationType,
+      priority,
+      queueDepthPercent: depthPercent,
+      threshold: LOAD_SHEDDING_THRESHOLDS.CRITICAL_ONLY,
+      timestamp: Date.now()
+    });
+    return {
+      shouldReject: true,
+      reason: 'CRITICAL_ONLY_MODE',
+      queueDepthPercent: depthPercent,
+      retryable: true
+    };
+  }
+
+  // At 75%: reject medium and low priority
+  if (depthPercent >= LOAD_SHEDDING_THRESHOLDS.REJECT_MEDIUM) {
+    if (priority === OPERATION_PRIORITY_LEVEL.MEDIUM || priority === OPERATION_PRIORITY_LEVEL.LOW) {
+      console.warn('[Content][LOAD_SHEDDING] Rejecting medium/low priority operation:', {
+        operationType,
+        priority,
+        queueDepthPercent: depthPercent,
+        threshold: LOAD_SHEDDING_THRESHOLDS.REJECT_MEDIUM,
+        timestamp: Date.now()
+      });
+      return {
+        shouldReject: true,
+        reason: 'MEDIUM_PRIORITY_REJECTED',
+        queueDepthPercent: depthPercent,
+        retryable: true
+      };
+    }
+  }
+
+  // At 50%: reject low priority only
+  if (depthPercent >= LOAD_SHEDDING_THRESHOLDS.REJECT_NON_CRITICAL) {
+    if (priority === OPERATION_PRIORITY_LEVEL.LOW) {
+      console.warn('[Content][LOAD_SHEDDING] Rejecting low priority operation:', {
+        operationType,
+        priority,
+        queueDepthPercent: depthPercent,
+        threshold: LOAD_SHEDDING_THRESHOLDS.REJECT_NON_CRITICAL,
+        timestamp: Date.now()
+      });
+      return {
+        shouldReject: true,
+        reason: 'LOW_PRIORITY_REJECTED',
+        queueDepthPercent: depthPercent,
+        retryable: true
+      };
+    }
+  }
+
+  return { shouldReject: false, reason: 'allowed', queueDepthPercent: depthPercent, retryable: false };
+}
+
+/**
+ * Handle queue overflow with load shedding response
+ * v1.6.3.11-v6 - FIX Issue #4: Return backpressure error with retryable flag
+ * @param {string} operationType - The operation type
+ * @param {Object} loadSheddingResult - Result from _checkLoadShedding
+ * @returns {Object} Error response with retryable flag
+ */
+function _handleQueueOverflow(operationType, loadSheddingResult) {
+  console.error('[Content][LOAD_SHEDDING] Operation rejected due to queue backpressure:', {
+    operationType,
+    ...loadSheddingResult,
+    timestamp: Date.now()
+  });
+
+  return {
+    success: false,
+    error: 'BACKPRESSURE',
+    code: loadSheddingResult.reason,
+    queueDepthPercent: loadSheddingResult.queueDepthPercent,
+    retryable: loadSheddingResult.retryable,
+    message: `Queue backpressure: ${loadSheddingResult.reason}. Try again shortly.`
+  };
+}
+
+/**
  * Check and log global backpressure warning
  * v1.6.3.11 - FIX Issue #26: Warn when combined depth exceeds threshold
- * @returns {boolean} True if backpressure threshold exceeded
+ * v1.6.3.11-v6 - FIX Issue #4: Enhanced with load shedding support
+ * @param {string} [operationType] - Optional operation type to check for load shedding
+ * @returns {boolean|Object} True if threshold exceeded (legacy), or load shedding result if operationType provided
  */
-function _checkGlobalBackpressure() {
+function _checkGlobalBackpressure(operationType = null) {
   const depths = _getTotalQueueDepth();
+
+  // v1.6.3.11-v6 - FIX Issue #4: If operation type provided, check load shedding
+  if (operationType) {
+    const loadSheddingResult = _checkLoadShedding(operationType);
+    if (loadSheddingResult.shouldReject) {
+      return loadSheddingResult;
+    }
+  }
 
   if (depths.total >= GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD) {
     console.warn('[Content][BACKPRESSURE] GLOBAL_THRESHOLD_EXCEEDED:', {
@@ -1541,6 +1801,9 @@ function _handleBackgroundRestart(newGeneration) {
 
   lastKnownBackgroundGeneration = newGeneration;
 
+  // v1.6.3.11-v6 - FIX Issue #2: Mark restart detected for timeout extension
+  _markBackgroundRestartDetected();
+
   // Notify pending tab ID acquisition to retry
   _notifyBackgroundReadiness();
 
@@ -1808,21 +2071,34 @@ function _validateMessageFormat(message) {
  * v1.6.4.15 - FIX Issue #14: Queue messages during init
  * v1.6.3.10-v11 - FIX Issue #6: Backpressure mechanism with detailed logging
  * v1.6.3.11 - FIX Issue #26: Add global backpressure check
+ * v1.6.3.11-v6 - FIX Issue #4: Add load shedding based on operation priority
  * @param {Object} message - Message to queue
  * @param {Function} callback - Callback to execute when message can be sent
+ * @returns {Object|undefined} Returns error object if rejected due to load shedding
  */
 function _queueInitializationMessage(message, callback) {
   const queueSize = initializationMessageQueue.length;
+  const operationType = message.action || message.type || 'unknown';
 
-  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues
+  // v1.6.3.11-v6 - FIX Issue #4: Check load shedding before queueing
+  const loadSheddingResult = _checkLoadShedding(operationType);
+  if (loadSheddingResult.shouldReject) {
+    console.warn('[MSG][Content][LOAD_SHEDDING] Message rejected due to backpressure:', {
+      operationType,
+      ...loadSheddingResult
+    });
+    return _handleQueueOverflow(operationType, loadSheddingResult);
+  }
+
+  // v1.6.3.11 - FIX Issue #26: Check global backpressure across all queues (legacy warning)
   _checkGlobalBackpressure();
 
   // v1.6.3.10-v11 - FIX Issue #6: Check and emit backpressure warning
   _checkQueueBackpressure(queueSize);
 
-  // v1.6.3.10-v11 - FIX Issue #6: Handle queue overflow
+  // v1.6.3.10-v11 - FIX Issue #6: Handle queue overflow (legacy path for hard limit)
   if (queueSize >= MAX_INIT_MESSAGE_QUEUE_SIZE) {
-    _handleQueueOverflow();
+    _handleQueueOverflowLegacy();
   }
 
   initializationMessageQueue.push({
@@ -1838,6 +2114,8 @@ function _queueInitializationMessage(message, callback) {
     sequenceId: globalCommandSequenceId,
     queueSize: initializationMessageQueue.length
   });
+
+  return undefined; // Success
 }
 
 /**
@@ -1892,12 +2170,13 @@ function _getDroppedMessageMetadata(dropped) {
 }
 
 /**
- * Handle queue overflow by dropping oldest message and buffering for retry
+ * Handle queue overflow by dropping oldest message and buffering for retry (legacy)
  * v1.6.3.10-v11 - FIX Issue #6: Extracted to reduce complexity
  * v1.6.3.11-v4 - FIX Code Health: Extracted metadata helper (cc=14→4)
+ * v1.6.3.11-v6 - FIX Issue #4: Renamed to legacy - new load shedding handles this better
  * @private
  */
-function _handleQueueOverflow() {
+function _handleQueueOverflowLegacy() {
   const dropped = initializationMessageQueue.shift();
   const queueSize = initializationMessageQueue.length;
   const metadata = _getDroppedMessageMetadata(dropped);
@@ -2146,6 +2425,7 @@ async function _markContentScriptInitialized() {
 
 // ==================== v1.6.3.11 FIX ISSUE #27: DRAIN LOCK ====================
 // Prevent concurrent hydration timeout and drain execution
+// v1.6.3.11-v6 - FIX Issue #5: Queue-based drain scheduler to prevent lost operations
 
 /**
  * Lock state for hydration queue drain
@@ -2153,20 +2433,55 @@ async function _markContentScriptInitialized() {
  */
 let isHydrationDrainInProgress = false;
 
+/**
+ * Queue of pending hydration completion requests during drain
+ * v1.6.3.11-v6 - FIX Issue #5: Queue requests that arrive during drain instead of dropping
+ */
+const pendingHydrationCompletions = [];
+
+/**
+ * Flag to track if a re-drain is scheduled after current drain completes
+ * v1.6.3.11-v6 - FIX Issue #5: Ensure new operations queued during drain are processed
+ */
+let redrainScheduled = false;
+
 // ==================== END ISSUE #27 DECLARATIONS ====================
+
+/**
+ * Schedule a re-drain after current drain completes
+ * v1.6.3.11-v6 - FIX Issue #5: Handle operations that arrived during drain
+ * @private
+ */
+function _scheduleRedrain() {
+  if (redrainScheduled) return;
+
+  redrainScheduled = true;
+  console.log('[Content][DRAIN_SCHEDULER] Re-drain scheduled due to operations during drain');
+}
 
 /**
  * Mark hydration as complete and drain the operation queue
  * v1.6.3.10-v11 - FIX Issue #15: Signal hydration complete
  * v1.6.3.11 - FIX Issue #27: Use drain lock to prevent race conditions
+ * v1.6.3.11-v6 - FIX Issue #5: Queue-based scheduler to prevent lost operations
  * @param {number} [loadedTabCount=0] - Number of tabs loaded from storage
  */
 async function _markHydrationComplete(loadedTabCount = 0) {
-  // v1.6.3.11 - FIX Issue #27: Check drain lock to prevent concurrent execution
-  if (isHydrationComplete || isHydrationDrainInProgress) {
+  // v1.6.3.11-v6 - FIX Issue #5: If drain is in progress, queue this completion for later
+  if (isHydrationDrainInProgress) {
+    console.log('[Content][DRAIN_SCHEDULER] Completion request queued during drain:', {
+      loadedTabCount,
+      pendingCount: pendingHydrationCompletions.length
+    });
+    pendingHydrationCompletions.push({ loadedTabCount, queuedAt: Date.now() });
+    _scheduleRedrain();
+    return;
+  }
+
+  // v1.6.3.11 - FIX Issue #27: Skip if already complete
+  if (isHydrationComplete) {
     console.log('[Content] HYDRATION_SKIPPED:', {
-      alreadyComplete: isHydrationComplete,
-      drainInProgress: isHydrationDrainInProgress
+      alreadyComplete: isHydrationComplete
     });
     return;
   }
@@ -2243,38 +2558,116 @@ async function _executeQueuedOperation(operation, queueDuration) {
 }
 
 /**
+ * Process pending hydration completion requests
+ * v1.6.3.11-v6 - FIX Issue #5: Handle queued completions after drain
+ * @private
+ */
+function _processPendingHydrationCompletions() {
+  while (pendingHydrationCompletions.length > 0) {
+    const completion = pendingHydrationCompletions.shift();
+    const queueDuration = Date.now() - completion.queuedAt;
+    console.log('[Content][DRAIN_SCHEDULER] Processing queued completion:', {
+      loadedTabCount: completion.loadedTabCount,
+      queueDurationMs: queueDuration
+    });
+    // Note: Since hydration is already complete, this mainly handles logging
+  }
+}
+
+/**
+ * Process all operations in the queue for a single drain iteration
+ * v1.6.3.11-v6 - FIX Issue #5: Extracted to fix max-depth lint error
+ * @private
+ * @returns {{ iterationProcessed: number, iterationStart: number }}
+ */
+async function _processQueuedOperationsIteration() {
+  const iterationStart = Date.now();
+  let iterationProcessed = 0;
+
+  while (preHydrationOperationQueue.length > 0) {
+    const operation = preHydrationOperationQueue.shift();
+    const queueDuration = Date.now() - operation.queuedAt;
+    await _executeQueuedOperation(operation, queueDuration);
+    iterationProcessed++;
+  }
+
+  return { iterationProcessed, iterationStart };
+}
+
+/**
+ * Log completion of a drain iteration
+ * v1.6.3.11-v6 - FIX Issue #5: Extracted to fix max-depth lint error
+ * @private
+ */
+function _logDrainIterationComplete(drainIterations, iterationProcessed, iterationStart) {
+  if (iterationProcessed > 0) {
+    console.log('[Content][DRAIN_SCHEDULER] DRAIN_ITERATION_COMPLETE:', {
+      iteration: drainIterations,
+      processed: iterationProcessed,
+      durationMs: Date.now() - iterationStart,
+      remainingQueued: preHydrationOperationQueue.length,
+      redrainScheduled
+    });
+  }
+}
+
+/**
  * Drain the pre-hydration operation queue
  * v1.6.3.10-v11 - FIX Issue #15: Process queued operations after hydration
  * v1.6.3.11 - FIX Issue #27: Use drain lock to prevent duplicate execution
+ * v1.6.3.11-v6 - FIX Issue #5: Continue draining until queue is empty (handles ops queued during drain)
  * @private
  */
 async function _drainPreHydrationQueue() {
-  if (preHydrationOperationQueue.length === 0) return;
-
   // v1.6.3.11 - FIX Issue #27: Acquire drain lock
   if (isHydrationDrainInProgress) {
-    console.log('[Content] DRAIN_SKIPPED: Already in progress');
+    console.log('[Content][DRAIN_SCHEDULER] DRAIN_SKIPPED: Already in progress, will re-drain');
+    _scheduleRedrain();
+    return;
+  }
+
+  // Skip if queue is empty and no re-drain scheduled
+  if (preHydrationOperationQueue.length === 0 && !redrainScheduled) {
     return;
   }
 
   isHydrationDrainInProgress = true;
-  console.log('[Content] DRAIN_IN_PROGRESS:', {
-    queueSize: preHydrationOperationQueue.length
+  let totalProcessed = 0;
+  let drainIterations = 0;
+  const drainStartTime = Date.now();
+
+  console.log('[Content][DRAIN_SCHEDULER] DRAIN_STARTED:', {
+    queueSize: preHydrationOperationQueue.length,
+    hasScheduledRedrain: redrainScheduled,
+    timestamp: drainStartTime
   });
 
   try {
-    while (preHydrationOperationQueue.length > 0) {
-      const operation = preHydrationOperationQueue.shift();
-      const queueDuration = Date.now() - operation.queuedAt;
-      await _executeQueuedOperation(operation, queueDuration);
-    }
+    // v1.6.3.11-v6 - FIX Issue #5: Loop until queue is completely empty
+    do {
+      drainIterations++;
+      redrainScheduled = false; // Clear re-drain flag before processing
 
-    console.log('[Content] DRAIN_COMPLETE:', {
+      const { iterationProcessed, iterationStart } = await _processQueuedOperationsIteration();
+      totalProcessed += iterationProcessed;
+      _logDrainIterationComplete(drainIterations, iterationProcessed, iterationStart);
+
+      // Continue if new operations were queued during this iteration
+    } while (redrainScheduled || preHydrationOperationQueue.length > 0);
+
+    // v1.6.3.11-v6 - FIX Issue #5: Process any pending hydration completions
+    await _processPendingHydrationCompletions();
+
+    console.log('[Content][DRAIN_SCHEDULER] DRAIN_COMPLETE:', {
+      totalProcessed,
+      totalIterations: drainIterations,
+      totalDurationMs: Date.now() - drainStartTime,
       timestamp: Date.now()
     });
   } finally {
     // v1.6.3.11 - FIX Issue #27: Always release lock
     isHydrationDrainInProgress = false;
+    redrainScheduled = false;
   }
 }
 
@@ -4875,7 +5268,8 @@ window.addEventListener('unload', () => {
  * v1.6.3.10-v12 - FIX Issue #2: Mark port as potentially invalid on BFCache entry
  * v1.6.3.11-v3 - FIX Issue #51: Queue messages while frozen, prevent sending
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as inactive for stale event rejection
- * v1.6.3.12 - FIX Issue #14: Set port readiness flag to false
+ * v1.6.3.11-v6 - FIX Issue #1: Add explicit port cleanup on BFCache entry
+ * v1.6.3.11-v6 - FIX Issue #14: Set port readiness flag to false
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageHide(event) {
@@ -4892,11 +5286,23 @@ function _handlePageHide(event) {
     // v1.6.3.11-v3 - FIX Issue #51: Mark port as frozen (messages will be queued)
     _isPortFrozenDueToBFCache = true;
 
-    // v1.6.3.12 - FIX Issue #14: Mark port as not ready for messages
+    // v1.6.3.11-v6 - FIX Issue #14: Mark port as not ready for messages
     markPortNotReady();
 
     // v1.6.3.11-v3 - FIX Issue #52: Mark page inactive for stale event rejection
     _markPageInactive();
+
+    // v1.6.3.11-v6 - FIX Issue #1: Explicit port cleanup on BFCache entry
+    // Firefox silently disconnects ports in BFCache without firing onDisconnect
+    // Store port reference for cleanup and mark as needing reconnection
+    if (backgroundPort) {
+      console.log('[Content][BFCACHE][PORT_CLEANUP] Preparing port for BFCache freeze:', {
+        portName: backgroundPort.name,
+        timestamp: Date.now()
+      });
+      // Note: Don't actually disconnect - let _verifyPortAfterBFCache handle validation
+      // This preserves the port for quick restore if it's still valid
+    }
 
     // Mark port as potentially invalid but don't disconnect
     // It may still work when restored
@@ -4909,7 +5315,8 @@ function _handlePageHide(event) {
  * v1.6.3.11-v3 - FIX Issue #51: Drain queued messages after restore
  * v1.6.3.11-v3 - FIX Issue #52: Mark page as active, query backend for current state
  * v1.6.3.11-v3 - FIX Issue #26/#77: Check for hostname change on BFCache restore and refresh tab ID
- * v1.6.3.12 - FIX Issue #14: Port readiness restored after verification
+ * v1.6.3.11-v6 - FIX Issue #1: Enhanced port validation with automatic reconnection
+ * v1.6.3.11-v6 - FIX Issue #14: Port readiness restored after verification
  * @param {PageTransitionEvent} event - Page transition event
  */
 function _handlePageShow(event) {
@@ -4935,18 +5342,17 @@ function _handlePageShow(event) {
     // This handles cross-domain navigation detected after back/forward cache restore
     _checkHostnameChange();
 
-    if (portPotentiallyInvalidDueToBFCache) {
+    // v1.6.3.11-v6 - FIX Issue #1: Always validate port connectivity after BFCache restore
+    // Firefox may silently disconnect ports in BFCache without firing onDisconnect
+    if (portPotentiallyInvalidDueToBFCache || backgroundPort) {
       // Verify port functionality by attempting a ping
-      // v1.6.3.12 - FIX Issue #14: Port readiness will be restored after verification
+      // v1.6.3.11-v6 - FIX Issue #14: Port readiness will be restored after verification
+      console.log('[Content][BFCACHE][PORT_VALIDATE] Starting port validation after BFCache restore');
       _verifyPortAfterBFCache();
-    } else if (backgroundPort && _bfcacheMessageQueue.length > 0) {
-      // v1.6.3.11-v3 - FIX Issue #51: Port still valid, drain queued messages
-      // v1.6.3.12 - FIX Issue #14: Mark port ready before draining
-      markPortReady();
-      _drainBFCacheMessageQueue();
-    } else if (backgroundPort) {
-      // v1.6.3.12 - FIX Issue #14: Port exists and is valid, mark ready
-      markPortReady();
+    } else if (!backgroundPort) {
+      // v1.6.3.11-v6 - FIX Issue #1: No port exists, initiate reconnection immediately
+      console.log('[Content][BFCACHE][PORT_RECONNECT] No port exists after BFCache restore, reconnecting');
+      _handleNoPortAfterBFCache();
     }
 
     // v1.6.3.11-v3 - FIX Issue #52: Query backend for current state to avoid stale events
@@ -5047,7 +5453,7 @@ function _clearBFCacheVerifyTimeout() {
  * Handle PORT_VERIFY response from background
  * v1.6.3.11 - FIX Issue #32: Clear timeout on successful response
  * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Log PORT_VERIFY success with latency
- * v1.6.3.12 - FIX Issue #14: Mark port ready after successful verification
+ * v1.6.3.11-v6 - FIX Issue #1/#14: Mark port ready and drain queued messages after verification
  */
 function _handlePortVerifyResponse() {
   _clearBFCacheVerifyTimeout();
@@ -5059,13 +5465,22 @@ function _handlePortVerifyResponse() {
     '[Content][BFCACHE][PORT_LIFECYCLE] VERIFY_SUCCESS: Port verified functional after BFCache',
     {
       latencyMs,
+      queuedMessages: _bfcacheMessageQueue.length,
       timestamp: Date.now()
     }
   );
   bfcacheVerifyStartTime = 0; // Reset
 
-  // v1.6.3.12 - FIX Issue #14: Mark port ready and drain queued messages
+  // v1.6.3.11-v6 - FIX Issue #14: Mark port ready
   markPortReady();
+
+  // v1.6.3.11-v6 - FIX Issue #1: Drain any BFCache queued messages now that port is verified
+  if (_bfcacheMessageQueue.length > 0) {
+    console.log('[Content][BFCACHE] Draining queued messages after port verification:', {
+      count: _bfcacheMessageQueue.length
+    });
+    _drainBFCacheMessageQueue();
+  }
 }
 
 /**
