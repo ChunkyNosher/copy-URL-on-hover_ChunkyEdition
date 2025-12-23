@@ -282,27 +282,29 @@ import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 // v1.6.4.17 - FIX Issues #8, #13: Import error telemetry for content script
+// Note: Some imports prefixed with _ to indicate available for future use
 import {
   ERROR_TYPES,
   recordError,
-  recordHandlerError,
-  recordTimeoutError,
+  recordHandlerError as _recordHandlerError,
+  recordTimeoutError as _recordTimeoutError,
   startRecoveryAttempt,
-  recordRecoveryRetry,
+  recordRecoveryRetry as _recordRecoveryRetry,
   completeRecovery
 } from './utils/error-telemetry.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 // v1.6.4.17 - FIX Issues L1-L7: Import logging infrastructure
+// Note: Some imports prefixed with _ to indicate available for future use
 import {
-  LOG_PREFIX,
+  LOG_PREFIX as _LOG_PREFIX,
   logListenerRegistration,
   logListenerRegistered,
-  logInitializationComplete,
+  logInitializationComplete as _logInitializationComplete,
   logMessageReceived,
   logHandlerInvoked,
   logHandlerComplete,
-  logStorageListenerFired
+  logStorageListenerFired as _logStorageListenerFired
 } from './utils/logging-infrastructure.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
