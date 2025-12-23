@@ -281,8 +281,29 @@ import { initQuickTabs } from './features/quick-tabs/index.js';
 import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
+// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry for content script
+import {
+  ERROR_TYPES,
+  recordError,
+  recordHandlerError,
+  recordTimeoutError,
+  startRecoveryAttempt,
+  recordRecoveryRetry,
+  completeRecovery
+} from './utils/error-telemetry.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
+// v1.6.4.17 - FIX Issues L1-L7: Import logging infrastructure
+import {
+  LOG_PREFIX,
+  logListenerRegistration,
+  logListenerRegistered,
+  logInitializationComplete,
+  logMessageReceived,
+  logHandlerInvoked,
+  logHandlerComplete,
+  logStorageListenerFired
+} from './utils/logging-infrastructure.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.10-v13 - FIX Issue #9: Import periodic latency measurement functions
@@ -9473,17 +9494,33 @@ function _dispatchMessage(message, _sender, sendResponse) {
     return true;
   }
 
+  // v1.6.4.17 - FIX Issue L2: Log message received for handler tracing
+  const handlerId = logMessageReceived('background', message.action || message.type, {
+    hasData: !!message.data,
+    quickTabId: message.quickTabId
+  });
+
   // Check action-based handlers first
   if (message.action && ACTION_HANDLERS[message.action]) {
     console.log('[Content] Dispatching to ACTION_HANDLERS:', message.action);
-    return ACTION_HANDLERS[message.action](message, sendResponse);
+    // v1.6.4.17 - FIX Issue L2: Log handler invocation
+    logHandlerInvoked(handlerId, `ACTION_HANDLERS.${message.action}`);
+    const result = ACTION_HANDLERS[message.action](message, sendResponse);
+    // Note: logHandlerComplete will be called asynchronously by the handler
+    return result;
   }
 
   // Check type-based handlers (test bridge)
   if (message.type && TYPE_HANDLERS[message.type]) {
     console.log('[Content] Dispatching to TYPE_HANDLERS:', message.type);
-    return TYPE_HANDLERS[message.type](message, sendResponse);
+    // v1.6.4.17 - FIX Issue L2: Log handler invocation
+    logHandlerInvoked(handlerId, `TYPE_HANDLERS.${message.type}`);
+    const result = TYPE_HANDLERS[message.type](message, sendResponse);
+    return result;
   }
+
+  // v1.6.4.17 - FIX Issue L2: Log no handler found
+  logHandlerComplete(handlerId, { error: 'No handler found' }, false);
 
   // v1.6.3.5-v10 - FIX Issue #3: Warn about unknown messages with available handlers
   console.warn('[Content] ⚠️ Unknown message - no handler found:', {
@@ -9651,8 +9688,17 @@ function _processStorageChange(newValue, oldValue, detectionTime) {
 
 // Register storage.onChanged listener (once during module load)
 // v1.6.3.11-v6 - FIX Issue #3: Enhanced logging for storage listener registration
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
 if (typeof browser !== 'undefined' && browser.storage?.onChanged) {
+  logListenerRegistration('storage_onChanged', 'browser.storage.onChanged', {
+    key: 'quick_tabs_state_v2',
+    purpose: 'cross-tab-sync'
+  });
   browser.storage.onChanged.addListener(_handleStorageChange);
+  logListenerRegistered('storage_onChanged', {
+    api: 'browser.storage.onChanged',
+    key: 'quick_tabs_state_v2'
+  });
   console.log('[Content][STORAGE_SYNC] ✓ storage.onChanged listener registered:', {
     api: 'browser.storage.onChanged',
     key: 'quick_tabs_state_v2',
@@ -9731,6 +9777,13 @@ function _recordHoverError(error) {
   hoverErrorCounter++;
 
   // v1.6.3.11-v5 - FIX Issue #7: Use correct logging prefix
+  // v1.6.4.17 - FIX Issue #13: Record error in telemetry system
+  recordError(ERROR_TYPES.HANDLER_FAILURE, error?.message || 'Hover detection error', {
+    errorCount: hoverErrorCounter,
+    threshold: HOVER_ERROR_THRESHOLD,
+    backoffMs: hoverBackoffDelay
+  });
+
   console.warn('[Content] HOVER_ERROR_RECORDED:', {
     errorCount: hoverErrorCounter,
     threshold: HOVER_ERROR_THRESHOLD,
@@ -9771,10 +9824,18 @@ function _resetHoverErrors() {
  * Enter recovery mode when error threshold exceeded
  * v1.6.3.11-v3 - FIX Issue #5
  * v1.6.3.11-v5 - FIX Issue #7: Send diagnostic message to background
+ * v1.6.4.17 - FIX Issue L4: Use error recovery tracking infrastructure
  * @private
  */
 function _enterRecoveryMode() {
   isInRecoveryMode = true;
+
+  // v1.6.4.17 - FIX Issue L4: Start tracking recovery attempt
+  const recoveryId = startRecoveryAttempt(null, ERROR_TYPES.HANDLER_FAILURE, {
+    errorCount: hoverErrorCounter,
+    threshold: HOVER_ERROR_THRESHOLD,
+    backoffMs: hoverBackoffDelay
+  });
 
   // v1.6.3.11-v5 - FIX Issue #7: Use correct logging prefix
   console.error('[Content] HOVER_THRESHOLD_EXCEEDED: Entering recovery mode', {
@@ -9797,6 +9858,8 @@ function _enterRecoveryMode() {
 
   // Schedule recovery attempt
   setTimeout(() => {
+    // v1.6.4.17 - FIX Issue L4: Log recovery completion
+    completeRecovery(recoveryId, true, 'Backoff period completed');
     console.log('[Content] HOVER_RECOVERY_ATTEMPT: Attempting recovery after backoff', {
       backoffMs: hoverBackoffDelay,
       timestamp: Date.now()

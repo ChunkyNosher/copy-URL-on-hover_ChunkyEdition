@@ -23,6 +23,33 @@ import { TabHandler } from './src/background/handlers/TabHandler.js';
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - Tab lifecycle handler
 import { TabLifecycleHandler } from './src/background/handlers/TabLifecycleHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
+// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry and logging infrastructure
+import {
+  ERROR_TYPES,
+  recordError,
+  recordHandlerError,
+  recordTimeoutError,
+  recordStorageError,
+  getTelemetrySummary
+} from './src/utils/error-telemetry.js';
+import {
+  LOG_PREFIX,
+  logListenerRegistration,
+  logListenerRegistered,
+  logListenerRegistrationFailed,
+  logInitializationComplete,
+  logMessageReceived,
+  logHandlerInvoked,
+  logHandlerComplete,
+  logStorageWriteTriggered,
+  logStorageStateChanged,
+  logStorageListenerFired,
+  logStorageSubscribersNotified,
+  logStateReconciliation,
+  logSyncStateChanged,
+  logSyncPropagatedToStorage,
+  logSyncComplete
+} from './src/utils/logging-infrastructure.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -1299,6 +1326,9 @@ async function tryLoadFromSyncStorage() {
   }
 
   isInitialized = true;
+  
+  // v1.6.4.17 - FIX Issue L1: Log initialization complete with all listeners status
+  logInitializationComplete('background');
 }
 
 /**
@@ -2749,6 +2779,35 @@ messageRouter.register('GET_KEYBOARD_SHORTCUTS', async () => {
 
 // ==================== END KEYBOARD SHORTCUT UPDATE HANDLER ====================
 
+// ==================== ERROR TELEMETRY HANDLER ====================
+// v1.6.4.17 - FIX Issue #13: Error telemetry access handler
+
+/**
+ * Get error telemetry summary for debugging
+ * v1.6.4.17 - FIX Issue #13: Allow access to error telemetry data
+ * @returns {Promise<Object>} Telemetry summary
+ */
+messageRouter.register('GET_ERROR_TELEMETRY', async () => {
+  console.log('[ERROR_TELEMETRY] GET_ERROR_TELEMETRY received');
+
+  try {
+    const summary = getTelemetrySummary();
+    console.log('[ERROR_TELEMETRY] Telemetry summary retrieved:', {
+      bufferSize: summary.bufferSize,
+      activeRecoveries: summary.activeRecoveries?.length || 0
+    });
+
+    return {
+      success: true,
+      telemetry: summary,
+      timestamp: Date.now()
+    };
+  } catch (err) {
+    console.error('[ERROR_TELEMETRY] Failed to get telemetry:', err.message);
+    return { success: false, error: err.message, code: 'TELEMETRY_ERROR' };
+  }
+});
+
 console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
@@ -2757,6 +2816,10 @@ console.log(
 // This ensures handlers are ready BEFORE any content script sends messages
 // Mozilla/Chrome documentation: "Listeners must be at the top-level to activate the background script"
 // v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging prefix
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+logListenerRegistration('runtime_onMessage', 'chrome.runtime.onMessage', {
+  handlerCount: messageRouter.handlers.size
+});
 console.log('[LISTENER_REG] Registering runtime.onMessage listener:', {
   handlerCount: messageRouter.handlers.size,
   timestamp: Date.now()
@@ -2767,6 +2830,11 @@ chrome.runtime.onMessage.addListener(messageRouter.createListener());
 
 // v1.6.3.11 - FIX Issue #3: Log successful listener registration
 // v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG] prefix
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+logListenerRegistered('runtime_onMessage', {
+  handlerCount: messageRouter.handlers.size,
+  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL']
+});
 console.log('[LISTENER_REG] ✓ runtime.onMessage listener registered:', {
   handlerCount: messageRouter.handlers.size,
   timestamp: Date.now(),
@@ -2831,27 +2899,34 @@ function handleKeyboardCommandLogging(command) {
 
 // Register the keyboard command listener for logging
 // v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
 if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCommand) {
+  logListenerRegistration('commands_onCommand', 'browser.commands.onCommand');
   console.log('[LISTENER_REG] Registering keyboard command listener:', {
     api: 'browser.commands.onCommand',
     timestamp: Date.now()
   });
   browser.commands.onCommand.addListener(handleKeyboardCommandLogging);
+  logListenerRegistered('commands_onCommand', { api: 'browser.commands.onCommand' });
   console.log('[LISTENER_REG] ✓ browser.commands.onCommand listener registered successfully');
 } else if (typeof chrome !== 'undefined' && chrome.commands && chrome.commands.onCommand) {
+  logListenerRegistration('commands_onCommand', 'chrome.commands.onCommand');
   console.log('[LISTENER_REG] Registering keyboard command listener:', {
     api: 'chrome.commands.onCommand',
     timestamp: Date.now()
   });
   chrome.commands.onCommand.addListener(handleKeyboardCommandLogging);
+  logListenerRegistered('commands_onCommand', { api: 'chrome.commands.onCommand' });
   console.log('[LISTENER_REG] ✓ chrome.commands.onCommand listener registered successfully');
 } else {
+  logListenerRegistrationFailed('commands_onCommand', 'API not available');
   console.warn('[LISTENER_REG] ⚠ browser.commands API not available - listener NOT registered');
 }
 
 // v1.6.3.11-v3 - FIX Issue #2: Listen for external shortcut changes
 // This syncs UI when user changes shortcuts via Firefox's addon settings
 if (typeof browser !== 'undefined' && browser.commands && browser.commands.onChanged) {
+  logListenerRegistration('commands_onChanged', 'browser.commands.onChanged');
   browser.commands.onChanged.addListener(changeInfo => {
     console.log('[KEYBOARD_CMD] Shortcut changed externally:', changeInfo);
     // Broadcast to any open settings panels
@@ -2865,6 +2940,7 @@ if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCha
         // No listeners - that's OK
       });
   });
+  logListenerRegistered('commands_onChanged', { api: 'browser.commands.onChanged' });
   console.log('[KEYBOARD_CMD] ✓ browser.commands.onChanged listener registered');
 }
 
@@ -2872,11 +2948,13 @@ if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCha
 
 // Handle sidePanel toggle for Chrome (optional)
 if (chrome.sidePanel) {
+  logListenerRegistration('action_onClicked', 'chrome.action.onClicked');
   chrome.action.onClicked.addListener(tab => {
     chrome.sidePanel.open({ windowId: tab.windowId }).catch(err => {
       console.log('Side panel not supported or error:', err);
     });
   });
+  logListenerRegistered('action_onClicked', { api: 'chrome.action.onClicked' });
 }
 
 /**
@@ -3938,6 +4016,10 @@ function _logStorageListenerHealth(areaName, changedKeys) {
 
 // v1.6.3.11-v4 - FIX Issue #2: Log storage.onChanged listener registration
 // v1.6.3.11-v6 - FIX Issue #11: Added STORAGE_LISTENER_REGISTERED prefix
+// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
+logListenerRegistration('storage_onChanged', 'browser.storage.onChanged', {
+  purpose: 'cross-tab-sync-rebroadcast'
+});
 console.log('[Background] STORAGE_LISTENER_REGISTERED:', {
   api: 'browser.storage.onChanged',
   purpose: 'cross-tab-sync-rebroadcast',
@@ -3952,6 +4034,12 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   // v1.6.3.11-v3 - FIX Issue #59: Wrap entire listener in try-catch to prevent blocking other listeners
   try {
     const changedKeys = Object.keys(changes);
+
+    // v1.6.4.17 - FIX Issue L3: Use logging infrastructure for storage propagation
+    logStorageListenerFired('quick_tabs_state_v2', areaName, {
+      changedKeys,
+      eventNumber: storageOnChangedEventCount + 1
+    });
 
     // v1.6.3.11-v4 - FIX Issue #2: [LISTENER_INVOKE] logging for storage changes
     console.log('[LISTENER_INVOKE] storage.onChanged listener invoked:', {
@@ -3981,6 +4069,10 @@ browser.storage.onChanged.addListener((changes, areaName) => {
       console.log(
         '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
       );
+      // v1.6.4.17 - FIX Issue L3: Log state change with old/new values
+      const oldValue = changes.quick_tabs_state_v2.oldValue;
+      const newValue = changes.quick_tabs_state_v2.newValue;
+      logStorageStateChanged('storage_onChanged', oldValue, newValue);
       _handleQuickTabStateChange(changes);
     }
 
@@ -3993,6 +4085,11 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     }
   } catch (err) {
     // v1.6.3.11-v3 - FIX Issue #59: Log error but don't re-throw to prevent blocking other listeners
+    // v1.6.4.17 - FIX Issue #13: Record error in telemetry system
+    recordStorageError('storage_onChanged', err, {
+      areaName,
+      changedKeys: Object.keys(changes || {})
+    });
     console.error('[Background][StorageListener] STORAGE_ONCHANGED_ERROR:', {
       error: err.message,
       stack: err.stack,
@@ -4003,6 +4100,10 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+// v1.6.4.17 - FIX Issue L1: Log successful listener registration
+logListenerRegistered('storage_onChanged', {
+  api: 'browser.storage.onChanged'
+});
 console.log('[Background][StorageListener] v1.6.3.10-v6 Listener registered successfully', {
   timestamp: Date.now()
 });

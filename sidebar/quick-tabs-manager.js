@@ -92,6 +92,35 @@ import {
   STATE_KEY
 } from './utils/tab-operations.js';
 import { filterInvalidTabs } from './utils/validation.js';
+// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry and logging infrastructure
+import {
+  ERROR_TYPES,
+  recordError,
+  recordHandlerError,
+  recordTimeoutError,
+  recordStorageError,
+  startRecoveryAttempt,
+  recordRecoveryRetry,
+  completeRecovery
+} from '../src/utils/error-telemetry.js';
+import {
+  LOG_PREFIX,
+  logListenerRegistration,
+  logListenerRegistered,
+  logListenerRegistrationFailed,
+  logInitializationComplete,
+  logMessageReceived,
+  logHandlerInvoked,
+  logHandlerComplete,
+  logPortConnected,
+  logPortConnectionFailed,
+  logPortMessage,
+  logPortDisconnected,
+  logPortReconnectAttempt,
+  logStateReconciliation,
+  logSyncStateChanged,
+  logSyncDetectedByTab
+} from '../src/utils/logging-infrastructure.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
@@ -509,6 +538,7 @@ function logPortStateTransition(fromState, toState, reason, context = {}) {
  * v1.6.3.7 - FIX Issue #5: Implement circuit breaker with exponential backoff
  * v1.6.3.10-v1 - FIX Issue #2: Port state machine tracking
  * v1.6.3.10-v2 - FIX Issue #4: Flush pending action queue on successful reconnect
+ * v1.6.4.17 - FIX Issue L5: Enhanced port lifecycle logging via infrastructure
  */
 function connectToBackground() {
   const previousState = portState;
@@ -537,6 +567,11 @@ function connectToBackground() {
       name: 'quicktabs-sidebar'
     });
 
+    // v1.6.4.17 - FIX Issue L5: Use logging infrastructure for port connection
+    logPortConnected('quicktabs-sidebar', 'outbound', {
+      previousState,
+      circuitBreakerState
+    });
     logPortLifecycle('CONNECT', { portName: backgroundPort.name });
 
     // Handle messages from background
@@ -545,6 +580,10 @@ function connectToBackground() {
     // Handle disconnect
     backgroundPort.onDisconnect.addListener(() => {
       const error = browser.runtime.lastError;
+      // v1.6.4.17 - FIX Issue L5: Use logging infrastructure for disconnect
+      logPortDisconnected('quicktabs-sidebar', error ? 'error' : 'normal', {
+        error: error?.message
+      });
       logPortLifecycle('DISCONNECT', {
         error: error?.message,
         recoveryAction: 'scheduling reconnect'
@@ -589,6 +628,16 @@ function connectToBackground() {
     console.log('[Manager] v1.6.3.10-v2 Port connection established with action queue flush');
   } catch (err) {
     console.error('[Manager] Failed to connect to background:', err.message);
+    // v1.6.4.17 - FIX Issue L5, #13: Log connection failure and record in telemetry
+    logPortConnectionFailed('quicktabs-sidebar', err, {
+      previousState,
+      circuitBreakerState
+    });
+    recordError(ERROR_TYPES.PORT_TIMEOUT, err.message, {
+      operation: 'connectToBackground',
+      previousState,
+      circuitBreakerState
+    });
     logPortLifecycle('CONNECT_ERROR', {
       error: err.message,
       recoveryAction: 'scheduling reconnect'
@@ -605,9 +654,13 @@ function connectToBackground() {
  * v1.6.3.7 - FIX Issue #5: Exponential backoff for port reconnection
  * v1.6.3.10-v1 - FIX Issue #2: Zombie detection bypasses circuit breaker delay
  * v1.6.3.10-v2 - FIX Issue #4: Sliding-window failure tracking
+ * v1.6.4.17 - FIX Issue L5: Enhanced reconnection logging
  * @param {string} [failureReason=FAILURE_REASON.TRANSIENT] - Reason for failure
  */
 function scheduleReconnect(failureReason = FAILURE_REASON.TRANSIENT) {
+  // v1.6.4.17 - FIX Issue L5: Log reconnect attempt with infrastructure
+  logPortReconnectAttempt('quicktabs-sidebar', reconnectAttempts + 1, reconnectBackoffMs);
+
   // v1.6.3.10-v2 - FIX Issue #4: Zombie port doesn't count toward failures
   if (failureReason === FAILURE_REASON.ZOMBIE_PORT) {
     logPortLifecycle('RECONNECT_ZOMBIE_BYPASS', {
