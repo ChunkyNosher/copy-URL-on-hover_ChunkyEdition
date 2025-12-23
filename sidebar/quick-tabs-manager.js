@@ -1618,6 +1618,7 @@ function _invalidateBrowserTabInfoCache(oldOriginTabId, newOriginTabId) {
 /**
  * Update quickTabHostInfo to reflect new owner after adoption
  * v1.6.4.14 - Extracted to reduce handleAdoptionCompletion complexity
+ * v1.6.3.11-v5 - FIX Issue #12: Add storage verification after update
  * @private
  */
 function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContainerId) {
@@ -1631,7 +1632,9 @@ function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContai
     containerId: newContainerId || null,
     lastUpdate: Date.now(),
     lastOperation: 'adoption',
-    confirmed: true
+    confirmed: true,
+    // v1.6.3.11-v5 - FIX Issue #12: Track pending verification
+    storageVerified: false
   });
   console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
     adoptedQuickTabId,
@@ -1639,7 +1642,268 @@ function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContai
     newHostTabId: newOriginTabId,
     containerId: newContainerId
   });
+
+  // v1.6.3.11-v5 - FIX Issue #12: Schedule storage verification
+  _verifyHostInfoAgainstStorage(adoptedQuickTabId, newOriginTabId);
 }
+
+// ==================== v1.6.3.11-v5 FIX ISSUE #12: HOST INFO STORAGE VERIFICATION ====================
+// Verify quickTabHostInfo Map matches storage after adoption to prevent divergence
+
+/**
+ * Maximum retries for storage verification
+ * v1.6.3.11-v5 - FIX Issue #12: Retry configuration
+ */
+const HOSTINFO_VERIFY_MAX_RETRIES = 3;
+
+/**
+ * Delay between retries for storage verification (exponential backoff base)
+ * v1.6.3.11-v5 - FIX Issue #12: Start at 100ms, doubles each retry
+ */
+const HOSTINFO_VERIFY_RETRY_BASE_MS = 100;
+
+/**
+ * Verify quickTabHostInfo Map matches storage after adoption
+ * v1.6.3.11-v5 - FIX Issue #12: Prevent divergence between Map and storage
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to verify
+ * @param {number} expectedOriginTabId - Expected origin tab ID in storage
+ * @param {number} [retryCount=0] - Current retry attempt
+ */
+async function _verifyHostInfoAgainstStorage(quickTabId, expectedOriginTabId, retryCount = 0) {
+  console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE:', {
+    quickTabId,
+    expectedOriginTabId,
+    retryCount,
+    timestamp: Date.now()
+  });
+
+  try {
+    const verifyResult = await _performHostInfoVerification(quickTabId, expectedOriginTabId);
+    _handleHostInfoVerifyResult(verifyResult, quickTabId, expectedOriginTabId, retryCount);
+  } catch (err) {
+    console.error('[Sidebar] HOSTINFO_STORAGE_COMPARE: Verification failed:', {
+      quickTabId,
+      error: err.message,
+      retryCount
+    });
+  }
+}
+
+/**
+ * Perform host info verification against storage
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+async function _performHostInfoVerification(quickTabId, expectedOriginTabId) {
+  const result = await browser.storage.local.get(STATE_KEY);
+  const state = result?.[STATE_KEY];
+  const storedTab = state?.tabs?.find(t => t.id === quickTabId);
+
+  if (!storedTab) {
+    console.warn('[Sidebar] HOSTINFO_STORAGE_COMPARE: Quick Tab not found in storage:', {
+      quickTabId,
+      tabCount: state?.tabs?.length ?? 0
+    });
+    return { found: false };
+  }
+
+  const storageOriginTabId = storedTab.originTabId;
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+  const isConsistent = storageOriginTabId === expectedOriginTabId;
+
+  return {
+    found: true,
+    isConsistent,
+    storageOriginTabId,
+    hostInfo,
+    mapOriginTabId: hostInfo?.hostTabId
+  };
+}
+
+/**
+ * Handle host info verification result
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleHostInfoVerifyResult(verifyResult, quickTabId, expectedOriginTabId, retryCount) {
+  if (!verifyResult.found) return;
+
+  const { isConsistent, storageOriginTabId, hostInfo, mapOriginTabId } = verifyResult;
+
+  if (isConsistent) {
+    _markHostInfoAsVerified(quickTabId, hostInfo, storageOriginTabId, mapOriginTabId, retryCount);
+    return;
+  }
+
+  _handleHostInfoDivergence(quickTabId, storageOriginTabId, mapOriginTabId, expectedOriginTabId, retryCount);
+}
+
+/**
+ * Mark host info as verified
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _markHostInfoAsVerified(quickTabId, hostInfo, storageOriginTabId, mapOriginTabId, retryCount) {
+  if (hostInfo) {
+    hostInfo.storageVerified = true;
+    quickTabHostInfo.set(quickTabId, hostInfo);
+  }
+  console.log('[Sidebar] HOSTINFO_SYNC_COMPLETE:', {
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId,
+    consistent: true,
+    retries: retryCount
+  });
+}
+
+/**
+ * Handle host info divergence from storage
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _handleHostInfoDivergence(quickTabId, storageOriginTabId, mapOriginTabId, expectedOriginTabId, retryCount) {
+  console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED:', {
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId,
+    expectedOriginTabId,
+    retryCount,
+    maxRetries: HOSTINFO_VERIFY_MAX_RETRIES
+  });
+
+  if (retryCount < HOSTINFO_VERIFY_MAX_RETRIES) {
+    _scheduleHostInfoRetry(quickTabId, expectedOriginTabId, retryCount);
+    return;
+  }
+
+  _reconcileHostInfoFromStorage(quickTabId, storageOriginTabId, mapOriginTabId);
+}
+
+/**
+ * Schedule retry for host info verification
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _scheduleHostInfoRetry(quickTabId, expectedOriginTabId, retryCount) {
+  const delayMs = HOSTINFO_VERIFY_RETRY_BASE_MS * Math.pow(2, retryCount);
+  console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: Scheduling retry:', {
+    quickTabId,
+    delayMs,
+    nextRetry: retryCount + 1
+  });
+  setTimeout(() => {
+    _verifyHostInfoAgainstStorage(quickTabId, expectedOriginTabId, retryCount + 1);
+  }, delayMs);
+}
+
+/**
+ * Reconcile host info Map from storage (storage is authoritative)
+ * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce nesting depth
+ * @private
+ */
+function _reconcileHostInfoFromStorage(quickTabId, storageOriginTabId, mapOriginTabId) {
+  console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED: Max retries exceeded:', {
+    quickTabId,
+    storageOriginTabId,
+    mapOriginTabId
+  });
+
+  if (!storageOriginTabId) return;
+
+  const updatedHostInfo = quickTabHostInfo.get(quickTabId) || {};
+  quickTabHostInfo.set(quickTabId, {
+    ...updatedHostInfo,
+    hostTabId: storageOriginTabId,
+    lastUpdate: Date.now(),
+    lastOperation: 'storage-reconcile',
+    storageVerified: true
+  });
+  console.log('[Sidebar] HOSTINFO_SYNC_COMPLETE: Map updated to match storage:', {
+    quickTabId,
+    newHostTabId: storageOriginTabId
+  });
+}
+
+/**
+ * Check if host info is storage-verified before allowing critical operations
+ * v1.6.3.11-v5 - FIX Issue #12: Gate operations on verification status
+ * @param {string} quickTabId - Quick Tab ID to check
+ * @returns {Promise<boolean>} True if verified or verification passed
+ */
+async function _ensureHostInfoStorageConsistency(quickTabId) {
+  const hostInfo = quickTabHostInfo.get(quickTabId);
+
+  // If already verified, allow operation
+  if (hostInfo?.storageVerified) {
+    return true;
+  }
+
+  // If no host info, allow operation (will use storage directly)
+  if (!hostInfo) {
+    console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: No host info, operation will use storage directly:', {
+      quickTabId
+    });
+    return true;
+  }
+
+  // Trigger verification and wait for result
+  console.log('[Sidebar] HOSTINFO_STORAGE_COMPARE: Triggering verification before operation:', {
+    quickTabId,
+    currentHostTabId: hostInfo.hostTabId
+  });
+
+  // Read storage to check consistency
+  try {
+    const result = await browser.storage.local.get(STATE_KEY);
+    const state = result?.[STATE_KEY];
+    const storedTab = state?.tabs?.find(t => t.id === quickTabId);
+
+    if (!storedTab) {
+      console.warn('[Sidebar] HOSTINFO_STORAGE_COMPARE: Quick Tab not in storage:', { quickTabId });
+      return true; // Allow operation, it will fail gracefully
+    }
+
+    const storageOriginTabId = storedTab.originTabId;
+    const isConsistent = storageOriginTabId === hostInfo.hostTabId;
+
+    if (!isConsistent) {
+      console.warn('[Sidebar] HOSTINFO_DIVERGENCE_DETECTED: Updating Map before operation:', {
+        quickTabId,
+        mapHostTabId: hostInfo.hostTabId,
+        storageOriginTabId
+      });
+
+      // Update Map to match storage
+      quickTabHostInfo.set(quickTabId, {
+        ...hostInfo,
+        hostTabId: storageOriginTabId,
+        lastUpdate: Date.now(),
+        storageVerified: true
+      });
+    } else {
+      // Mark as verified
+      hostInfo.storageVerified = true;
+      quickTabHostInfo.set(quickTabId, hostInfo);
+    }
+
+    console.log('[Sidebar] HOSTINFO_SYNC_COMPLETE: Pre-operation verification passed:', {
+      quickTabId,
+      finalHostTabId: isConsistent ? hostInfo.hostTabId : storageOriginTabId
+    });
+    return true;
+  } catch (err) {
+    console.error('[Sidebar] HOSTINFO_STORAGE_COMPARE: Pre-operation verification failed:', {
+      quickTabId,
+      error: err.message
+    });
+    // Allow operation to proceed, it will use whatever host info is available
+    return true;
+  }
+}
+
+// ==================== END HOST INFO STORAGE VERIFICATION ====================
 
 /**
  * Perform DOM update for adoption (surgical or full render)
@@ -3338,10 +3602,18 @@ function _updateInMemoryCache(tabs) {
 /**
  * Categorize a Quick Tab as valid or stale
  * v1.6.3.11-v4 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.3.11-v5 - FIX Issue #4: Added proper logging prefixes per requirements
  * @private
  */
 function _categorizeQuickTab(quickTab, browserTabIds) {
   const originTabId = quickTab.originTabId;
+
+  // Log each tab check
+  console.log('[Sidebar] ORIGIN_TAB_CHECK:', {
+    quickTabId: quickTab.id,
+    originTabId,
+    exists: originTabId ? browserTabIds.has(originTabId) : 'no-origin-tab'
+  });
 
   // Quick Tab with valid origin tab
   if (originTabId && browserTabIds.has(originTabId)) {
@@ -3350,11 +3622,18 @@ function _categorizeQuickTab(quickTab, browserTabIds) {
 
   // Quick Tab without originTabId - keep for adoption
   if (!originTabId) {
-    console.log('[RECONCILE] Quick Tab without originTabId:', { quickTabId: quickTab.id });
+    console.log('[Sidebar] ORIGIN_TAB_CHECK: Quick Tab without originTabId (will keep for adoption):', { quickTabId: quickTab.id });
     return { isValid: true, quickTab };
   }
 
   // Origin tab no longer exists - stale
+  console.log('[Sidebar] STALE_ENTRY_REMOVED:', {
+    quickTabId: quickTab.id,
+    originTabId: originTabId,
+    reason: 'origin tab no longer exists',
+    url: quickTab.url?.substring(0, 50)
+  });
+
   return {
     isValid: false,
     staleInfo: {
@@ -3407,17 +3686,18 @@ async function _sendReconciliationMessage(staleTabs) {
  * Verify stored Quick Tabs against actual browser tabs
  * v1.6.3.11-v4 - FIX Issue #4: Remove stale Quick Tabs on sidebar load
  * v1.6.3.11-v4 - FIX Code Health: Reduced complexity with helper functions
+ * v1.6.3.11-v5 - FIX Issue #4: Added proper logging prefixes per requirements
  *
  * @param {Array} storedTabs - Quick Tabs from storage
  * @returns {Promise<{validTabs: Array, removedCount: number}>}
  */
 async function _reconcileStoredTabsWithBrowser(storedTabs) {
   if (!storedTabs || storedTabs.length === 0) {
-    console.log('[RECONCILE] No stored tabs to verify');
+    console.log('[Sidebar] STATE_VERIFICATION_START: No stored tabs to verify');
     return { validTabs: [], removedCount: 0 };
   }
 
-  console.log('[RECONCILE] Starting tab verification:', {
+  console.log('[Sidebar] STATE_VERIFICATION_START:', {
     storedTabCount: storedTabs.length,
     timestamp: Date.now()
   });
@@ -3430,23 +3710,24 @@ async function _reconcileStoredTabsWithBrowser(storedTabs) {
     // Categorize all Quick Tabs
     const { validTabs, staleTabs } = _categorizeAllQuickTabs(storedTabs, browserTabIds);
 
-    // Log reconciliation results
-    console.log('[RECONCILE] Tab verification complete:', {
+    // Log reconciliation results with proper prefix
+    console.log('[Sidebar] STATE_VERIFICATION_COMPLETE:', {
       storedCount: storedTabs.length,
       validCount: validTabs.length,
       staleCount: staleTabs.length,
-      staleQuickTabs: staleTabs
+      staleQuickTabs: staleTabs,
+      browserTabCount: browserTabs.length
     });
 
     // If we found stale tabs, notify background to remove them
     if (staleTabs.length > 0) {
-      console.log('[RECONCILE] Requesting background to remove stale entries');
+      console.log('[Sidebar] STATE_VERIFICATION_COMPLETE: Requesting background to remove stale entries');
       await _sendReconciliationMessage(staleTabs);
     }
 
     return { validTabs, removedCount: staleTabs.length };
   } catch (err) {
-    console.error('[RECONCILE] Tab verification failed:', err.message);
+    console.error('[Sidebar] STATE_VERIFICATION_COMPLETE: Tab verification failed:', err.message);
     // On error, return all tabs (fail-safe: don't remove anything)
     return { validTabs: storedTabs, removedCount: 0 };
   }
@@ -5850,17 +6131,25 @@ async function _checkPortViabilityOrQueue(action, quickTabId, correlationId) {
 /**
  * Resolve target tab ID from host info or origin tab ID
  * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * v1.6.3.11-v5 - FIX Issue #12: Ensure consistency before resolving target
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {string} action - Action name for logging
  * @param {string} correlationId - Correlation ID for logging
- * @returns {{ targetTabId: number|null, originTabId: number|null }}
+ * @returns {Promise<{ targetTabId: number|null, originTabId: number|null }>}
  */
-function _resolveTargetTab(quickTabId, action, correlationId) {
+async function _resolveTargetTab(quickTabId, action, correlationId) {
+  // v1.6.3.11-v5 - FIX Issue #12: Ensure consistency before resolving target
+  await _ensureHostInfoStorageConsistency(quickTabId);
+
   const tabData = findTabInState(quickTabId, quickTabsState);
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const originTabId = tabData?.originTabId;
-  const targetTabId = hostInfo?.hostTabId || originTabId;
+
+  // v1.6.3.11-v5 - FIX Issue #12: Prioritize storage originTabId over hostInfo after consistency check
+  // After consistency check, hostInfo should match storage, but prefer storage to be safe
+  const targetTabId = originTabId || hostInfo?.hostTabId;
+
   console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
     action,
     quickTabId,
@@ -5868,7 +6157,8 @@ function _resolveTargetTab(quickTabId, action, correlationId) {
     targetTabId,
     originTabId,
     hostInfoTabId: hostInfo?.hostTabId,
-    source: hostInfo?.hostTabId ? 'hostInfo' : 'originTabId'
+    hostInfoStorageVerified: hostInfo?.storageVerified ?? false,
+    source: originTabId ? 'originTabId (storage)' : hostInfo?.hostTabId ? 'hostInfo' : 'none'
   });
   return { targetTabId, originTabId };
 }
@@ -5981,7 +6271,8 @@ async function minimizeQuickTab(quickTabId) {
   }
 
   // Resolve target tab
-  const { targetTabId, originTabId } = _resolveTargetTab(
+  // v1.6.3.11-v5 - FIX Issue #12: _resolveTargetTab is now async for consistency check
+  const { targetTabId, originTabId } = await _resolveTargetTab(
     quickTabId,
     'MINIMIZE_QUICK_TAB',
     correlationId
@@ -6240,12 +6531,16 @@ function _showErrorNotification(message) {
  * v1.6.3.6-v8 - Extracted to reduce restoreQuickTab complexity
  * v1.6.3.7-v1 - FIX ISSUE #2: Implement per-message confirmation with timeout
  * v1.6.4.12 - Refactored to reduce cyclomatic complexity
+ * v1.6.3.11-v5 - FIX Issue #12: Ensure host info consistency before operation
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} tabData - Tab data with originTabId
  * @returns {Promise<{ success: boolean, confirmedBy?: number, error?: string }>}
  */
-function _sendRestoreMessage(quickTabId, tabData) {
+async function _sendRestoreMessage(quickTabId, tabData) {
+  // v1.6.3.11-v5 - FIX Issue #12: Ensure consistency before operation
+  await _ensureHostInfoStorageConsistency(quickTabId);
+
   const targetTabId = _resolveRestoreTarget(quickTabId, tabData);
 
   _logRestoreTargetResolution(quickTabId, tabData, targetTabId);
@@ -6831,7 +7126,8 @@ async function closeQuickTab(quickTabId) {
   }
 
   // Resolve target tab
-  const { targetTabId, originTabId } = _resolveTargetTab(
+  // v1.6.3.11-v5 - FIX Issue #12: _resolveTargetTab is now async for consistency check
+  const { targetTabId, originTabId } = await _resolveTargetTab(
     quickTabId,
     'CLOSE_QUICK_TAB',
     correlationId
