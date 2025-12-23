@@ -3982,16 +3982,65 @@ async function _getCurrentPrimaryTab() {
 // v1.6.3.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
 // v1.6.3.4-v2 - Enhanced toggle behavior: Alt+Shift+S opens to Settings, Ctrl+Alt+Z toggles Manager
 browser.commands.onCommand.addListener(command => {
+  // v1.6.3.11-v4 - FIX Issues #1 & #2: Add required logging prefixes
+  const commandTimestamp = Date.now();
+  console.log('[Background] COMMAND_RECEIVED:', {
+    command,
+    timestamp: commandTimestamp
+  });
+
   // v1.6.3.4-v2 - toggle-quick-tabs-manager (Ctrl+Alt+Z) toggles Manager tab
   // If sidebar is open and showing Manager, close it; otherwise open to Manager
   if (command === 'toggle-quick-tabs-manager') {
-    _handleToggleQuickTabsManager();
+    _handleToggleQuickTabsManager()
+      .then(() => {
+        const endTimestamp = Date.now();
+        console.log('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: 'toggle-quick-tabs-manager',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      })
+      .catch(err => {
+        const endTimestamp = Date.now();
+        console.error('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: 'toggle-quick-tabs-manager',
+          error: err?.message || String(err) || 'Unknown error',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      });
   }
 
   // v1.6.3.4-v2 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
   if (command === '_execute_sidebar_action') {
-    _handleOpenToSettingsTab();
+    _handleOpenToSettingsTab()
+      .then(() => {
+        const endTimestamp = Date.now();
+        console.log('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: '_execute_sidebar_action',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      })
+      .catch(err => {
+        const endTimestamp = Date.now();
+        console.error('[Background] COMMAND_EXECUTED:', {
+          command,
+          action: '_execute_sidebar_action',
+          error: err?.message || String(err) || 'Unknown error',
+          timestamp: endTimestamp,
+          durationMs: endTimestamp - commandTimestamp
+        });
+      });
   }
+});
+console.log('[Background] COMMAND_LISTENER_REGISTERED:', {
+  commands: ['toggle-quick-tabs-manager', '_execute_sidebar_action'],
+  timestamp: Date.now()
 });
 
 /**
@@ -4012,6 +4061,13 @@ async function _handleToggleQuickTabsManager() {
     // toggle() properly handles user gesture context
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
+      // v1.6.3.11-v4 - FIX Issue #1: Add SIDEBAR_TOGGLED logging
+      console.log('[Background] SIDEBAR_TOGGLED:', {
+        source: 'toggle-quick-tabs-manager',
+        method: 'toggle()',
+        targetTab: 'manager',
+        timestamp: Date.now()
+      });
       console.log('[Sidebar] Toggled sidebar via toggle() API');
 
       // After toggle, try to switch to Manager if sidebar is now open
@@ -4031,6 +4087,13 @@ async function _handleToggleQuickTabsManager() {
     // We can't check isOpen() first because that breaks the gesture context
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
+    // v1.6.3.11-v4 - FIX Issue #1: Add SIDEBAR_TOGGLED logging for fallback
+    console.log('[Background] SIDEBAR_TOGGLED:', {
+      source: 'toggle-quick-tabs-manager',
+      method: 'open()',
+      targetTab: 'manager',
+      timestamp: Date.now()
+    });
 
     // Wait for sidebar to initialize, then send message
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
@@ -4096,6 +4159,13 @@ async function _handleOpenToSettingsTab() {
     // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
+      // v1.6.3.11-v4 - FIX Issue #2: Add SIDEBAR_TOGGLED logging
+      console.log('[Background] SIDEBAR_TOGGLED:', {
+        source: '_execute_sidebar_action',
+        method: 'toggle()',
+        targetTab: 'settings',
+        timestamp: Date.now()
+      });
       console.log('[Sidebar] Toggled sidebar via toggle() API');
 
       // After toggle, try to switch to Settings if sidebar is now open
@@ -4112,6 +4182,13 @@ async function _handleOpenToSettingsTab() {
     // Fallback: Call open() FIRST without awaits
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
+    // v1.6.3.11-v4 - FIX Issue #2: Add SIDEBAR_TOGGLED logging for fallback
+    console.log('[Background] SIDEBAR_TOGGLED:', {
+      source: '_execute_sidebar_action',
+      method: 'open()',
+      targetTab: 'settings',
+      timestamp: Date.now()
+    });
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
 
     // Switch to Settings tab
@@ -4127,22 +4204,56 @@ async function _handleOpenToSettingsTab() {
 // Toggle sidebar when toolbar button is clicked (Firefox only)
 // Chrome will continue using popup.html since it doesn't support sidebar_action
 // v1.6.2.0 - Fixed: Now toggles sidebar open/close instead of only opening
+// v1.6.3.11-v4 - FIX Issue #2: Add required logging prefixes
 if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAction) {
-  browser.browserAction.onClicked.addListener(async () => {
+  browser.browserAction.onClicked.addListener(async tab => {
+    const clickTimestamp = Date.now();
+    // v1.6.3.11-v4 - FIX Issue #2: ACTION_BUTTON_CLICKED logging
+    // Only log origin (not full URL) for privacy
+    let tabOrigin = null;
+    try {
+      tabOrigin = tab?.url ? new URL(tab.url).origin : null;
+    } catch (_e) {
+      tabOrigin = '[invalid-url]';
+    }
+    console.log('[Background] ACTION_BUTTON_CLICKED:', {
+      tabId: tab?.id,
+      tabOrigin,
+      windowId: tab?.windowId,
+      timestamp: clickTimestamp
+    });
+
     try {
       // Use toggle() API for clean open/close behavior
       if (browser.sidebarAction && browser.sidebarAction.toggle) {
         await browser.sidebarAction.toggle();
+        // v1.6.3.11-v4 - FIX Issue #2: SIDEBAR_TOGGLED logging
+        console.log('[Background] SIDEBAR_TOGGLED:', {
+          source: 'toolbar-button',
+          method: 'toggle()',
+          timestamp: Date.now()
+        });
         console.log('[Sidebar] Toggled via toolbar button');
       } else if (browser.sidebarAction && browser.sidebarAction.open) {
         // Fallback for older Firefox versions without toggle()
         await browser.sidebarAction.open();
+        // v1.6.3.11-v4 - FIX Issue #2: SIDEBAR_TOGGLED logging for fallback
+        console.log('[Background] SIDEBAR_TOGGLED:', {
+          source: 'toolbar-button',
+          method: 'open()',
+          timestamp: Date.now()
+        });
         console.log('[Sidebar] Opened via toolbar button (fallback)');
       }
     } catch (err) {
       console.error('[Sidebar] Error toggling sidebar:', err);
       // If sidebar fails, user can still access settings via options page
     }
+  });
+  // v1.6.3.11-v4 - FIX Issue #2: ACTION_BUTTON_LISTENER_REGISTERED logging
+  console.log('[Background] ACTION_BUTTON_LISTENER_REGISTERED:', {
+    api: 'browser.browserAction.onClicked',
+    timestamp: Date.now()
   });
   console.log('[Sidebar] Browser action handler registered for Firefox');
 } else {
