@@ -9,7 +9,50 @@
  * - createQuickTab: Legacy create action (redirects to CREATE_QUICK_TAB)
  *
  * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context and logging
+ * v1.6.3.11-v5 - Refactor: Extracted helpers to reduce complexity and duplication
  */
+
+/**
+ * Extract and validate tab ID from sender
+ * @param {Object} sender - Message sender object
+ * @returns {number} Valid tab ID
+ * @throws {Error} If tab ID is not available
+ */
+function extractTabId(sender) {
+  const tabId = sender?.tab?.id;
+  if (tabId == null) {
+    throw new Error('Tab ID not available');
+  }
+  return tabId;
+}
+
+/**
+ * Build a standardized success response
+ * @param {string} operation - Operation name
+ * @param {Object} details - Operation-specific details
+ * @param {Object} [legacyFields] - Optional legacy fields for backward compatibility
+ * @returns {Object} Standardized response object
+ */
+function buildSuccessResponse(operation, details, legacyFields = {}) {
+  return {
+    success: true,
+    operation,
+    details,
+    ...legacyFields
+  };
+}
+
+/**
+ * Format error context as string for logging
+ * @param {Object} context - Context key-value pairs
+ * @returns {string} Formatted context string
+ */
+function formatErrorContext(context) {
+  return Object.entries(context)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(', ');
+}
 
 export class TabHandler {
   /**
@@ -21,11 +64,7 @@ export class TabHandler {
    * @returns {Error} Error with augmented message
    */
   static augmentError(error, operation, context = {}) {
-    const contextStr = Object.entries(context)
-      .filter(([_, v]) => v !== undefined)
-      .map(([k, v]) => `${k}=${v}`)
-      .join(', ');
-
+    const contextStr = formatErrorContext(context);
     const augmentedMessage = `[ERROR] [TabHandler] ${operation} failed: ${error.message}${contextStr ? ` (${contextStr})` : ''}`;
 
     console.error(augmentedMessage, {
@@ -61,26 +100,17 @@ export class TabHandler {
         throw new Error('URL is required');
       }
 
-      const createProperties = {
-        url: message.url
-      };
-
+      const createProperties = { url: message.url };
       if (typeof message.active !== 'undefined') {
         createProperties.active = message.active;
       }
 
       const tab = await this.browserAPI.tabs.create(createProperties);
-      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
-      return {
-        success: true,
-        operation: 'openTab',
-        details: {
-          tabId: tab.id,
-          url: message.url,
-          active: message.active ?? true
-        },
-        tabId: tab.id // Legacy field for backward compatibility
-      };
+      return buildSuccessResponse('openTab', {
+        tabId: tab.id,
+        url: message.url,
+        active: message.active ?? true
+      }, { tabId: tab.id }); // Legacy field for backward compatibility
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleOpenTab', {
         action: message.action,
@@ -93,25 +123,16 @@ export class TabHandler {
    * Save Quick Tab state for browser tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
    * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+   * v1.6.3.11-v5 - Refactor: Use shared helpers
    */
   handleSaveState(message, sender) {
     try {
-      const tabId = sender.tab?.id;
-
-      if (!tabId) {
-        throw new Error('Tab ID not available');
-      }
-
+      const tabId = extractTabId(sender);
       this.quickTabStates.set(tabId, message.state);
-      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
-      return {
-        success: true,
-        operation: 'saveQuickTabState',
-        details: {
-          tabId: tabId,
-          stateSize: JSON.stringify(message.state || {}).length
-        }
-      };
+      return buildSuccessResponse('saveQuickTabState', {
+        tabId,
+        stateSize: JSON.stringify(message.state || {}).length
+      });
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleSaveState', {
         action: message.action,
@@ -124,26 +145,16 @@ export class TabHandler {
    * Get Quick Tab state for browser tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
    * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+   * v1.6.3.11-v5 - Refactor: Use shared helpers
    */
   handleGetState(_message, sender) {
     try {
-      const tabId = sender.tab?.id;
-
-      if (!tabId) {
-        throw new Error('Tab ID not available');
-      }
-
+      const tabId = extractTabId(sender);
       const state = this.quickTabStates.get(tabId);
-      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
-      return {
-        success: true,
-        operation: 'getQuickTabState',
-        details: {
-          tabId: tabId,
-          hasState: state !== null && state !== undefined
-        },
-        state: state || null // Legacy field for backward compatibility
-      };
+      return buildSuccessResponse('getQuickTabState', {
+        tabId,
+        hasState: state !== null && state !== undefined
+      }, { state: state || null }); // Legacy field for backward compatibility
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleGetState', {
         senderTabId: sender?.tab?.id
@@ -155,26 +166,17 @@ export class TabHandler {
    * Clear Quick Tab state for browser tab
    * v1.6.3.11-v4 - FIX Issue #6: Enhanced error context
    * v1.6.3.11-v4 - FIX Issue #2: Standardized response format
+   * v1.6.3.11-v5 - Refactor: Use shared helpers
    */
   handleClearState(_message, sender) {
     try {
-      const tabId = sender.tab?.id;
-
-      if (!tabId) {
-        throw new Error('Tab ID not available');
-      }
-
+      const tabId = extractTabId(sender);
       const hadState = this.quickTabStates.has(tabId);
       this.quickTabStates.delete(tabId);
-      // v1.6.3.11-v4 - FIX Issue #2: Standardized response format
-      return {
-        success: true,
-        operation: 'clearQuickTabState',
-        details: {
-          tabId: tabId,
-          hadState: hadState
-        }
-      };
+      return buildSuccessResponse('clearQuickTabState', {
+        tabId,
+        hadState
+      });
     } catch (error) {
       throw TabHandler.augmentError(error, 'handleClearState', {
         senderTabId: sender?.tab?.id
