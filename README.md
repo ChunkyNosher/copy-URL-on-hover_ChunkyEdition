@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v4** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,44 +9,59 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v4 Status:** 22 Issues Fixed ✅
+**🔧 v1.6.3.11-v5 Status:** 23 Issues Fixed ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
+## 🎉 What's New in v1.6.3.11-v5
+
+**🔧 23 Issues Fixed - 6 Phases (December 2025) ✅**
+
+**Phase 1: Critical Missing Listeners (2 Issues):**
+
+- ✅ **browser.commands.onCommand** - Enhanced logging with [COMMAND_RECEIVED]
+- ✅ **browser.browserAction.onClicked** - Enhanced with [SIDEBAR_TOGGLED]
+
+**Phase 2: Storage Sync Infrastructure (2 Issues):**
+
+- ✅ **Content storage.onChanged** - STORAGE_STATE_SYNC handler
+- ✅ **Background storage.onChanged** - Re-broadcast to all tabs
+
+**Phase 3: Message Ordering & Port Lifecycle (3 Issues):**
+
+- ✅ **Global Operation Sequence** - Cross-tab message ordering
+- ✅ **Port Viability Checks** - Heartbeat-based health monitoring
+- ✅ **Port Readiness Flag** - BFCache restoration message queue
+
+**Phase 4: State Verification & Error Handling (5 Issues):**
+
+- ✅ **Sidebar State Verification** - Origin tab existence checks
+- ✅ **Handler Error Response** - Retry logic for transient failures
+- ✅ **Notification Delivery Verification** - Success tracking
+- ✅ **Hover Detection Recovery** - Diagnostic messages to background
+- ✅ **Map Storage Consistency** - quickTabHostInfo verification
+
+**Phase 5: Content Script Init & Cache (2 Issues):**
+
+- ✅ **State Readiness Gating** - Features wait for hydration
+- ✅ **Cache Dirty Flag** - Storage storm detection
+
+**Phase 6: Logging & Telemetry (2 Issues):**
+
+- ✅ **Logging Infrastructure** - L1-L7 prefixes (logging-infrastructure.js)
+- ✅ **Error Telemetry** - Threshold alerting (error-telemetry.js)
+
+---
+
 ## 🎉 What's New in v1.6.3.11-v4
 
 **🔧 22 Issues Fixed - 4 Phases (December 2025) ✅**
 
-**Phase 1: Keyboard Shortcut & Settings (5 Issues):**
-
-- ✅ **browser.commands.onCommand** - Listener in background.js
-- ✅ **Dynamic Shortcut Updates** - browser.commands.update() integration
-- ✅ **Firefox Format Validation** - Keyboard shortcut state validation
-- ✅ **Sidebar-to-Commands API** - Connected settings with UI feedback
-
-**Phase 2: Hover Detection & Shadow DOM (5 Issues):**
-
-- ✅ **Shadow DOM Detection** - YouTube, Twitter, Instagram, TikTok support
-- ✅ **Event Debouncing** - 100ms debounce, CPU 40-60% → 5-10%
-- ✅ **Pointer Events API** - Migration from mouse events with passive listeners
-- ✅ **New Module** - src/utils/shadow-dom.js for Shadow DOM traversal
-
-**Phase 3: Logging & Instrumentation (6 Issues):**
-
-- ✅ **Content Pipeline Logging** - Event tracking throughout content script
-- ✅ **Event Bus Visibility** - [LISTENER_REG], [LISTENER_INVOKE],
-  [EVENT_COMPLETE]
-- ✅ **Storage Timing Telemetry** - Warns if operations >100ms
-- ✅ **Error Context Augmentation** - Handler name, operation, request context
-
-**Phase 4: Cross-Component Integration (6 Issues):**
-
-- ✅ **Content Storage Sync** - storage.onChanged with [STORAGE_SYNC] prefix
-- ✅ **Operation Acknowledgment** - { success, operation, details } pattern
-- ✅ **Error Recovery** - Exponential backoff in content scripts
-- ✅ **Multi-Tab Reconciliation** - [CROSS_TAB_SYNC] prefix
+- ✅ Shadow DOM Detection, Event Debouncing, Pointer Events API
+- ✅ Content Pipeline Logging, Event Bus Visibility, Storage Timing Telemetry
+- ✅ Content Storage Sync, Operation Acknowledgment, Error Recovery
 
 ---
 
@@ -66,8 +81,7 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **v1.6.3.11-v2:** 40 Issues Fixed - BFCache, Tab ID, Hydration improvements  
 **v1.6.3.11:** 40 Issues Fixed - GET_CURRENT_TAB_ID, listener registration  
-**v1.6.3.10-v11:** Extended Tab ID, OPERATION_TYPE, LRU Map Guard  
-**v1.6.3.10-v10:** Tab ID backoff, checkpoint system, message timeout
+**v1.6.3.10-v11:** Extended Tab ID, OPERATION_TYPE, LRU Map Guard
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -102,6 +116,7 @@ in the sidebar!
 ✓ **Container Isolation** - Firefox Container support with originContainerId  
 ✓ **Session Quick Tabs** - Auto-clear on browser close (v1.6.3.7-v3)  
 ✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok (v1.6.3.11-v4)  
+✓ **Error Telemetry** - Threshold-based alerting (v1.6.3.11-v5)  
 ✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
 ✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
@@ -177,6 +192,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
