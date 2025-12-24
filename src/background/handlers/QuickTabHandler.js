@@ -237,6 +237,7 @@ export class QuickTabHandler {
    * Handle Quick Tab creation
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
    * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
+   * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Include originTabId and originContainerId in storage
    */
   async handleCreate(message, _sender) {
     // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
@@ -245,13 +246,18 @@ export class QuickTabHandler {
       return { success: true, duplicate: true };
     }
 
+    // v1.6.3.10-v10 - FIX Orphan Quick Tabs: Validate originTabId before creation
+    const originTabId = this._resolveOriginTabId(message);
+
     console.log(
       '[QuickTabHandler] Create:',
       message.url,
       'ID:',
       message.id,
       'Container:',
-      message.cookieStoreId
+      message.cookieStoreId,
+      'OriginTabId:',
+      originTabId
     );
 
     // Wait for initialization if needed
@@ -264,6 +270,7 @@ export class QuickTabHandler {
     // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
     const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
 
+    // v1.6.3.10-v10 - FIX Orphan Quick Tabs: Include originTabId and originContainerId
     const tabData = {
       id: message.id,
       url: message.url,
@@ -274,7 +281,9 @@ export class QuickTabHandler {
       pinnedToUrl: message.pinnedToUrl || null,
       title: message.title || 'Quick Tab',
       minimized: message.minimized || false,
-      cookieStoreId: cookieStoreId // v1.6.2.2 - Store container info on tab itself
+      cookieStoreId: cookieStoreId, // v1.6.2.2 - Store container info on tab itself
+      originTabId: originTabId, // v1.6.3.10-v10 - FIX: Cross-tab filtering requires originTabId
+      originContainerId: message.originContainerId || cookieStoreId // v1.6.3.10-v10 - FIX: Container isolation
     };
 
     if (existingIndex !== -1) {
@@ -289,6 +298,72 @@ export class QuickTabHandler {
     await this.saveState(message.saveId, cookieStoreId, message);
 
     return { success: true };
+  }
+
+  /**
+   * Validate and normalize a tab ID value
+   * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Extracted for code health
+   * @private
+   * @param {*} value - Value to validate
+   * @returns {number|null} Valid tab ID or null
+   */
+  _validateTabId(value) {
+    if (value === null || value === undefined) return null;
+    const tabId = Number(value);
+    return Number.isInteger(tabId) && tabId > 0 ? tabId : null;
+  }
+
+  /**
+   * Extract tab ID from Quick Tab ID pattern (qt-{tabId}-{timestamp}-{random})
+   * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Extracted for code health
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   * @returns {number|null} Extracted tab ID or null
+   */
+  _extractTabIdFromPattern(quickTabId) {
+    if (!quickTabId || typeof quickTabId !== 'string') return null;
+    const match = quickTabId.match(/^qt-(\d+)-/);
+    return match ? this._validateTabId(match[1]) : null;
+  }
+
+  /**
+   * Resolve originTabId from message with fallback to ID pattern extraction
+   * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Extract tab ID from Quick Tab ID pattern as fallback
+   * @private
+   * @param {Object} message - Create message
+   * @returns {number|null} Resolved originTabId
+   */
+  _resolveOriginTabId(message) {
+    // Priority 1: Explicit originTabId from message
+    const fromMessage = this._validateTabId(message.originTabId);
+    if (fromMessage !== null) return fromMessage;
+
+    // Log warning for invalid originTabId (non-null but not valid)
+    if (message.originTabId !== null && message.originTabId !== undefined) {
+      console.warn('[QuickTabHandler] Invalid originTabId in message:', {
+        originTabId: message.originTabId,
+        type: typeof message.originTabId
+      });
+    }
+
+    // Priority 2: Extract from Quick Tab ID pattern
+    const fromPattern = this._extractTabIdFromPattern(message.id);
+    if (fromPattern !== null) {
+      console.log('[QuickTabHandler] Recovered originTabId from ID pattern:', {
+        quickTabId: message.id,
+        extractedTabId: fromPattern
+      });
+      return fromPattern;
+    }
+
+    // No valid originTabId found - log warning but allow creation (backwards compatibility)
+    console.warn('[QuickTabHandler] CREATE_ORPHAN_WARNING: originTabId could not be resolved:', {
+      quickTabId: message.id,
+      messageOriginTabId: message.originTabId,
+      url: message.url,
+      recommendation: 'Ensure content script sends originTabId in CREATE_QUICK_TAB message'
+    });
+    return null;
   }
 
   /**
