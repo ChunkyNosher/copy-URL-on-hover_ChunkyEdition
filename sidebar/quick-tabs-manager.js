@@ -4499,6 +4499,9 @@ function _buildAnalysisResult(options) {
  * Create analysis result for tab count change
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
+ * @param {number} oldCount - Previous tab count
+ * @param {number} newCount - New tab count
+ * @returns {Object} Analysis result
  */
 function _buildTabCountChangeResult(oldCount, newCount) {
   return _buildAnalysisResult({
@@ -4513,6 +4516,8 @@ function _buildTabCountChangeResult(oldCount, newCount) {
  * Create analysis result for metadata-only change
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
+ * @param {Object} zIndexChanges - Z-index change details
+ * @returns {Object} Analysis result
  */
 function _buildMetadataOnlyResult(zIndexChanges) {
   return _buildAnalysisResult({
@@ -4528,6 +4533,8 @@ function _buildMetadataOnlyResult(zIndexChanges) {
  * Create analysis result for data change
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
+ * @param {Array<string>} dataChangeReasons - Reasons for data change
+ * @returns {Object} Analysis result
  */
 function _buildDataChangeResult(dataChangeReasons) {
   return _buildAnalysisResult({
@@ -4542,6 +4549,7 @@ function _buildDataChangeResult(dataChangeReasons) {
  * Create analysis result for no changes
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
+ * @returns {Object} Analysis result
  */
 function _buildNoChangesResult() {
   return _buildAnalysisResult({
@@ -4557,6 +4565,8 @@ function _buildNoChangesResult() {
  * Get tabs array from storage value safely
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
+ * @param {Object} value - Storage value object
+ * @returns {Array} Tabs array or empty array
  */
 function _getTabsFromValue(value) {
   return value?.tabs || [];
@@ -4566,6 +4576,8 @@ function _getTabsFromValue(value) {
  * Determine the appropriate result based on change analysis
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
+ * @param {Object} changeResults - Results from _checkTabChanges
+ * @returns {Object} Analysis result
  */
 function _buildResultFromChangeAnalysis(changeResults) {
   // If only z-index changed, skip render
@@ -5101,6 +5113,7 @@ function _scheduleNormalUpdate() {
  * Log successful close minimized command
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce closeMinimizedTabs complexity
  * @private
+ * @param {Object} response - Response from background script
  */
 function _logCloseMinimizedSuccess(response) {
   console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
@@ -5114,6 +5127,7 @@ function _logCloseMinimizedSuccess(response) {
  * Log failed close minimized command
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce closeMinimizedTabs complexity
  * @private
+ * @param {Object} response - Response from background script
  */
 function _logCloseMinimizedFailure(response) {
   console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
@@ -5125,6 +5139,8 @@ function _logCloseMinimizedFailure(response) {
  * Check if close minimized response indicates success
  * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce closeMinimizedTabs complexity
  * @private
+ * @param {Object} response - Response from background script
+ * @returns {boolean} True if operation succeeded
  */
 function _isCloseMinimizedSuccessful(response) {
   return response?.success || response?.timedOut;
