@@ -1601,7 +1601,19 @@ function _logTabIdAcquisitionFailed() {
  * @param {number} tabId - The acquired tab ID
  */
 function _handleTabIdAcquired(tabId) {
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #3: Identity state transition logging
+  // Note: Full identity acquisition duration is tracked by TAB_ID_ACQUISITION logs
+  // This measures only the local state update portion of the transition
+  const localUpdateStartTime = Date.now();
+  console.log('[Identity] State transitioning: INITIALIZING → READY');
+
   setWritingTabId(tabId);
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #3: Log identity state completion
+  const localUpdateDuration = Date.now() - localUpdateStartTime;
+  console.log('[Identity] Initialization duration:', localUpdateDuration + 'ms');
+  console.log('[Identity] Tab ID acquired:', tabId);
+
   console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
     tabId,
     isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
@@ -1629,6 +1641,9 @@ async function initializeQuickTabsFeature() {
     isWritingTabIdInitialized: isWritingTabIdInitialized()
   });
 
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Log sending GET_QUICK_TABS_STATE
+  console.log('[ContentScript][Init] Sending GET_QUICK_TABS_STATE');
+
   // v1.6.3.10-v6 - FIX Issue #4/11: Log before tab ID request
   console.log('[INIT][Content] TAB_ID_ACQUISITION_START:', {
     isWritingTabIdInitialized: isWritingTabIdInitialized(),
@@ -1640,6 +1655,12 @@ async function initializeQuickTabsFeature() {
   // in the tab they were created in (originTabId must match currentTabId)
   const currentTabId = await getCurrentTabIdFromBackground();
   const tabIdAcquisitionDuration = Date.now() - initStartTime;
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Log response received
+  console.log('[ContentScript][Init] Received response:', {
+    success: currentTabId !== null,
+    tabCountStatus: 'awaiting-hydration' // Numeric count available after hydration
+  });
 
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for tab ID result
   console.log('[INIT][Content] TAB_ID_ACQUISITION_COMPLETE:', {
@@ -1671,11 +1692,18 @@ async function initializeQuickTabsFeature() {
     timestamp: new Date().toISOString()
   });
 
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Log hydration filtering
+  console.log('[ContentScript][Hydration] Filtering by originTabId:', currentTabId);
+
   // Pass currentTabId as option so UICoordinator can filter by originTabId
   quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
 
   const initEndTime = Date.now();
   const totalInitDuration = initEndTime - initStartTime;
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Log rendering count
+  const tabCount = quickTabsManager?.tabs?.size ?? 0;
+  console.log('[ContentScript][Hydration] Rendering Quick Tabs:', tabCount);
 
   // v1.6.3.12 - Use extracted helpers for Code Health 9.0+
   if (quickTabsManager) {
@@ -1750,6 +1778,13 @@ function reportInitializationError(err) {
 
     console.log('[Copy-URL-on-Hover] STEP: Starting extension initialization...');
 
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Content script lifecycle logging
+    console.log('[ContentScript][Init] Page loaded:', {
+      url: window.location.href,
+      tabId: 'pending',
+      container: 'firefox-default'
+    });
+
     // v1.6.3.5-v4 - FIX Diagnostic Issue #7: Log content script identity on init
     // This helps track which tab ID owns which Quick Tabs
     try {
@@ -1782,6 +1817,10 @@ function reportInitializationError(err) {
     // Start main functionality
     console.log('[Copy-URL-on-Hover] STEP: Starting main features...');
     await initMainFeatures();
+
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Content script ready
+    console.log('[ContentScript][Ready] Hydration complete, listeners attached');
+
     console.log('[Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓');
 
     // Set success marker

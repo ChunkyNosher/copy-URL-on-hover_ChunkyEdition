@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v7  
+**Version:** 1.6.3.11-v8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,7 +23,22 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.11-v8 Features (NEW) - Transaction Tracking + Null originTabId Rejection:**
+
+- **Issue #10 Fix** - Transaction tracking wired to storage writes
+  - `setTransactionCallbacks()` method for background.js injection
+  - `transactionId` included in storage payloads for deduplication
+- **Issue #12 Fix** - Quick Tab creation rejected if originTabId is null
+  - `_validateOriginTabIdResolution()` validates before creation
+  - Returns retryable error with clear message
+- **Issue #21 Fix** - Identity system must be ready before creation
+  - `_hasUnknownPlaceholder()` detects "unknown" in quickTabId
+  - Creation rejected with `IDENTITY_NOT_READY` error
+- **Issue #5 Fix** - Hydration race condition handling improved
+  - `[HydrationBoundary]` logging markers added
+  - All error responses include `retryable: true` flag
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
 
 - **Orphan Quick Tabs Fix** - `originTabId` and `originContainerId` now stored
   in `handleCreate()` method in `QuickTabHandler.js`
@@ -90,10 +105,22 @@ references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v7 Patterns (Current)
+### v1.6.3.11-v8 Patterns (Current)
+
+- **Transaction Tracking Wired** - `setTransactionCallbacks()` connects
+  background.js `_trackTransaction/_completeTransaction` to QuickTabHandler
+- **transactionId in Storage** - Included in payloads for deduplication via
+  `_isTransactionSelfWrite()`
+- **Null originTabId Rejection** - `handleCreate()` rejects with retryable error
+- **Identity System Gate** - `_hasUnknownPlaceholder()` detects "unknown" in
+  quickTabId
+- **Hydration Boundary Logging** - `[HydrationBoundary]` markers in
+  `handleGetQuickTabsState()`
+
+### v1.6.3.11-v7 Patterns
 
 - **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js` lines 285-286
+  `handleCreate()` in `QuickTabHandler.js`
 - **Tab ID Resolution** - `_resolveOriginTabId()` with pattern extraction
   fallback
 - **Tab ID Validation** - `_validateTabId()` for robust integer checks
@@ -117,7 +144,7 @@ references.
 - **v4:** Shadow DOM traversal, event debouncing, operation acknowledgment
 - **v3:** LRU Map Guard, checkpoint system, identity gating, code health 9.0+
 
-### Key Timing Constants (v1.6.3.11-v7)
+### Key Timing Constants (v1.6.3.11-v8)
 
 | Constant                   | Value  | Purpose                        |
 | -------------------------- | ------ | ------------------------------ |
@@ -165,7 +192,10 @@ references.
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.11-v7 (NEW):** `[QuickTabHandler]` `[CREATE_ORPHAN_WARNING]`
+**v1.6.3.11-v8 (NEW):** `[HydrationBoundary]` `[CREATE_REJECTED]`
+`[IDENTITY_NOT_READY]`
+
+**v1.6.3.11-v7:** `[QuickTabHandler]` `[CREATE_ORPHAN_WARNING]`
 
 **Previous:** `[EARLY_LISTENER_REGISTRATION]` `[MESSAGE_ROUTER_READY]`
 `[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]` `[STORAGE_PROPAGATE]`
@@ -180,7 +210,8 @@ references.
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, Shadow DOM traversal, operation acknowledgment, state readiness
-gating, error telemetry, originTabId resolution, tab ID pattern extraction.
+gating, error telemetry, originTabId resolution, tab ID pattern extraction,
+transaction tracking, null originTabId rejection, identity system gating.
 
 ---
 

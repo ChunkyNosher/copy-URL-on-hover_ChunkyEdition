@@ -1822,6 +1822,10 @@ const quickTabHandler = new QuickTabHandler(
 
 const tabHandler = new TabHandler(quickTabStates, browser);
 
+// v1.6.3.11-v8 - FIX Issue #10: Wire up transaction tracking to QuickTabHandler
+// This enables storage write deduplication via _isTransactionSelfWrite()
+quickTabHandler.setTransactionCallbacks(_trackTransaction, _completeTransaction);
+
 // Set initialization flag for QuickTabHandler if state is already initialized
 if (isInitialized) {
   quickTabHandler.setInitialized(true);
@@ -2253,6 +2257,86 @@ function _shouldUpdateState(newValue) {
   return true;
 }
 
+// ==================== v1.6.3.11-v8 STORAGE EVENT LOGGING HELPERS ====================
+// FIX Diagnostic Logging #1: Helper functions for storage.onChanged event cascade logging
+
+/**
+ * Classify the source of a storage write for diagnostic logging
+ * v1.6.3.11-v8 - FIX Diagnostic Logging #1: Identify write source
+ * @param {Object} newValue - New storage value
+ * @returns {string} Classification: 'self-write' | 'external-write' | 'other-extension'
+ */
+function _classifyWriteSource(newValue) {
+  if (!newValue) return 'unknown';
+
+  // Check for transaction ID (our own writes track this)
+  const transactionId = newValue.transactionId;
+  if (transactionId && IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
+    return 'self-write';
+  }
+
+  // Check for write source ID pattern
+  const writeSourceId = newValue.writeSourceId;
+  if (writeSourceId && writeSourceId.startsWith('bg-')) {
+    return 'self-write';
+  }
+
+  // Check for writing tab ID or instance ID (content script writes)
+  if (newValue.writingTabId || newValue.writingInstanceId) {
+    return 'external-write';
+  }
+
+  // No identifiable source
+  return 'other-extension';
+}
+
+/**
+ * Check if a single field changed between old and new values
+ * v1.6.3.11-v8 - FIX Code Health: Extracted to reduce _identifyChangedFields complexity
+ * @private
+ */
+function _checkFieldChange(oldValue, newValue, fieldName) {
+  const oldVal = oldValue?.[fieldName];
+  const newVal = newValue?.[fieldName];
+  return oldVal !== newVal ? fieldName : null;
+}
+
+/**
+ * Identify which fields changed between old and new storage values
+ * v1.6.3.11-v8 - FIX Diagnostic Logging #1: Detailed change tracking
+ * v1.6.3.11-v8 - FIX Code Health: Refactored to reduce complexity
+ * NOTE: JSON.stringify is used for diagnostic logging only. For performance-critical
+ * comparisons, use hash-based approaches. This is acceptable here as it only runs
+ * during storage events (infrequent) and provides accurate change detection.
+ * @param {Object} oldValue - Previous storage value
+ * @param {Object} newValue - New storage value
+ * @returns {string[]} List of changed field names
+ */
+function _identifyChangedFields(oldValue, newValue) {
+  const changedFields = [];
+
+  // Check tabs array changes - count first (fast), then content (slower but only when counts match)
+  const oldTabCount = oldValue?.tabs?.length ?? 0;
+  const newTabCount = newValue?.tabs?.length ?? 0;
+  if (oldTabCount !== newTabCount) {
+    changedFields.push(`tabs (${oldTabCount}→${newTabCount})`);
+  } else if (oldTabCount > 0 && JSON.stringify(oldValue?.tabs) !== JSON.stringify(newValue?.tabs)) {
+    // Only use JSON.stringify when counts match and non-empty (for logging accuracy)
+    changedFields.push('tabs (content changed)');
+  }
+
+  // Check simple fields using helper
+  const simpleFields = ['saveId', 'timestamp', 'version', 'transactionId'];
+  for (const field of simpleFields) {
+    const result = _checkFieldChange(oldValue, newValue, field);
+    if (result) changedFields.push(result);
+  }
+
+  return changedFields.length > 0 ? changedFields : ['none'];
+}
+
+// ==================== END STORAGE EVENT LOGGING HELPERS ====================
+
 /**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
@@ -2272,19 +2356,52 @@ function _shouldUpdateState(newValue) {
  * @param {Object} changes - Storage changes object
  */
 function _handleQuickTabStateChange(changes) {
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Entry/exit with timing
+  const handlerStartTime = Date.now();
+  console.log('[Storage][Event] storage.onChanged triggered', {
+    handlerName: '_handleQuickTabStateChange',
+    timestamp: new Date().toISOString()
+  });
+
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Classify write source
+  const writeSource = _classifyWriteSource(newValue);
+  console.log('[Storage][Event] Cause:', writeSource);
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Log version changes if available
+  const prevVersion = oldValue?.version ?? 'N/A';
+  const newVersion = newValue?.version ?? 'N/A';
+  console.log('[Storage][Event] Previous version:', prevVersion);
+  console.log('[Storage][Event] New version:', newVersion);
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Log changed fields
+  const changedFields = _identifyChangedFields(oldValue, newValue);
+  console.log('[Storage][Event] Changed fields:', changedFields);
 
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
 
   // v1.6.3.4-v8 - Check early exit conditions
+  console.log('[Storage][Event] Processing handler: _handleQuickTabStateChange');
   if (_shouldIgnoreStorageChange(newValue, oldValue)) {
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Log deduplication result
+    console.log('[Storage][Event] Deduplication result: skipped');
+    const handlerDuration = Date.now() - handlerStartTime;
+    console.log('[Storage][Event] Handler completed in', handlerDuration + 'ms');
     return;
   }
 
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Log deduplication result
+  console.log('[Storage][Event] Deduplication result: processed');
+
   // v1.6.3.4-v8 - Process and cache the update
   _processStorageUpdate(newValue);
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Log completion time
+  const handlerDuration = Date.now() - handlerStartTime;
+  console.log('[Storage][Event] Handler completed in', handlerDuration + 'ms');
 }
 
 /**
@@ -4819,6 +4936,58 @@ function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) 
 
 // ==================== END MESSAGE LOGGING INFRASTRUCTURE ====================
 
+// ==================== v1.6.3.11-v8 HANDLER INSTRUMENTATION ====================
+// FIX Diagnostic Logging #5: Handler message entry/exit logging
+
+/**
+ * Log handler entry with parameters
+ * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging for handlers
+ * @param {string} handlerName - Name of the handler
+ * @param {Object} params - Handler parameters
+ * @param {number|null} senderTabId - Sender tab ID
+ * @returns {number} Start timestamp for duration calculation
+ */
+function _logHandlerEntry(handlerName, params, senderTabId = null) {
+  const startTime = Date.now();
+  console.log(`[Handler][ENTRY] ${handlerName}:`, {
+    'sender.tab.id': senderTabId,
+    parameters: params,
+    timestamp: new Date().toISOString()
+  });
+  return startTime;
+}
+
+/**
+ * Format result for logging, handling tabs array specially
+ * v1.6.3.11-v8 - FIX Code Review: Extracted to improve readability
+ * @private
+ */
+function _formatResultForLogging(result) {
+  if (!result) return 'N/A';
+  if (typeof result !== 'object') return result;
+  // For objects, replace tabs array with count to avoid verbose output
+  return { ...result, tabs: result.tabs?.length ?? 'N/A' };
+}
+
+/**
+ * Log handler exit with result and duration
+ * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Exit logging for handlers
+ * @param {string} handlerName - Name of the handler
+ * @param {number} startTime - Start timestamp from entry
+ * @param {boolean} success - Whether handler succeeded
+ * @param {*} result - Handler result (optional)
+ */
+function _logHandlerExit(handlerName, startTime, success, result = null) {
+  const duration = Date.now() - startTime;
+  console.log(`[Handler][EXIT] ${handlerName}:`, {
+    duration: duration + 'ms',
+    success,
+    result: _formatResultForLogging(result)
+  });
+}
+
+// ==================== END HANDLER INSTRUMENTATION ====================
+
 /**
  * Track which tab hosts each Quick Tab
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Enable Manager remote control
@@ -4847,13 +5016,20 @@ async function _ensureInitializedForHandler(handlerName) {
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Handler entry/exit instrumentation
  */
 async function handleQuickTabStateChange(message, sender) {
-  const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
-  if (!initCheck.ready) return initCheck.errorResponse;
-
-  const { quickTabId, changes, source } = message;
   const sourceTabId = sender?.tab?.id ?? message.sourceTabId;
+  const { quickTabId, changes, source } = message;
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging
+  const startTime = _logHandlerEntry('handleQuickTabStateChange', { quickTabId, changes, source }, sourceTabId);
+
+  const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
+  if (!initCheck.ready) {
+    _logHandlerExit('handleQuickTabStateChange', startTime, false, initCheck.errorResponse);
+    return initCheck.errorResponse;
+  }
 
   const messageId = message.messageId || generateMessageId();
   logMessageReceipt(messageId, 'QUICK_TAB_STATE_CHANGE', sourceTabId);
@@ -4864,11 +5040,14 @@ async function handleQuickTabStateChange(message, sender) {
   // Handle deletion
   if (changes?.deleted === true || source === 'destroy') {
     await _handleQuickTabDeletion(quickTabId, source, sourceTabId);
+    _logHandlerExit('handleQuickTabStateChange', startTime, true, { deleted: true });
     return { success: true };
   }
 
   _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
   await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
+  
+  _logHandlerExit('handleQuickTabStateChange', startTime, true, { success: true });
   return { success: true };
 }
 
@@ -5333,10 +5512,14 @@ function _setupDeletionAckTracking(correlationId, pendingTabs) {
 /**
  * Handle MANAGER_COMMAND message from sidebar
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Manager can control Quick Tabs in any tab
+ * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Handler entry/exit instrumentation
  * @param {Object} message - Message containing command
  */
 function handleManagerCommand(message) {
   const { command, quickTabId, sourceContext } = message;
+
+  // v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging
+  const startTime = _logHandlerEntry('handleManagerCommand', { command, quickTabId, sourceContext }, null);
 
   console.log('[Background] MANAGER_COMMAND received:', {
     command,
@@ -5354,11 +5537,15 @@ function handleManagerCommand(message) {
     if (cachedTab?.originTabId) {
       console.log('[Background] Found host from cache:', cachedTab.originTabId);
       quickTabHostTabs.set(quickTabId, cachedTab.originTabId);
-      return executeManagerCommand(command, quickTabId, cachedTab.originTabId);
+      const result = executeManagerCommand(command, quickTabId, cachedTab.originTabId);
+      _logHandlerExit('handleManagerCommand', startTime, true, { routed: true, hostFromCache: true });
+      return result;
     }
+    _logHandlerExit('handleManagerCommand', startTime, false, { error: 'Quick Tab host unknown' });
     return Promise.resolve({ success: false, error: 'Quick Tab host unknown' });
   }
 
+  _logHandlerExit('handleManagerCommand', startTime, true, { routed: true, hostTabId });
   return executeManagerCommand(command, quickTabId, hostTabId);
 }
 

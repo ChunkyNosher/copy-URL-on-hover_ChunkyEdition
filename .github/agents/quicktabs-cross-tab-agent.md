@@ -38,14 +38,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v8 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.11-v8 Features (NEW) - Transaction Tracking + Logging:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
+- **Storage.onChanged Cascade Logging** - `[Storage][Event]` prefix with timing
+- **Storage Write Lifecycle** - `[StorageWrite] LIFECYCLE_*` phases
+- **Handler Entry/Exit** - `[Handler][ENTRY/EXIT]` instrumentation
+- **Content Script Lifecycle** - `[ContentScript][Init/Hydration/Ready]` events
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
+
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` in `handleCreate()`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`
 - **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
 
 **v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
@@ -89,5 +94,5 @@ container isolation
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.10-v10 message validation,
-timeout handling, storage.onChanged PRIMARY.**
+**Your strength: Reliable cross-tab sync with v1.6.3.11-v8 storage cascade logging,
+lifecycle phases, handler instrumentation, storage.onChanged PRIMARY.**

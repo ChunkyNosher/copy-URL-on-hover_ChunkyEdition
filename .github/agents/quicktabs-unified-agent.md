@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v8 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -48,14 +48,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.11-v8 Features (NEW) - Transaction Tracking + Validation:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
+- **Transaction Tracking Wired** - `setTransactionCallbacks()` connects tracking
+- **Null originTabId Rejection** - `_validateOriginTabIdResolution()` rejects null
+- **Identity System Gate** - `_hasUnknownPlaceholder()` rejects "unknown" IDs
+- **Hydration Boundary Logging** - `[HydrationBoundary]` markers added
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
+
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` in `handleCreate()`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`
 - **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
 
 **v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
 adoption lock timeout, message validation, identity gating, storage quota
@@ -101,5 +105,5 @@ monitoring, code health 9.0+, container isolation
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.10-v10 tab ID
-acquisition, message validation, checkpoint system, storage.onChanged PRIMARY.**
+**Your strength: Complete Quick Tab system with v1.6.3.11-v8 transaction tracking,
+null originTabId rejection, identity validation, storage.onChanged PRIMARY.**
