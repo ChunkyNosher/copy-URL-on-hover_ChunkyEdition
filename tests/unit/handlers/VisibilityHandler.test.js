@@ -73,7 +73,8 @@ describe('VisibilityHandler', () => {
     mockEventBus = new EventEmitter();
 
     // Create mock z-index ref
-    mockCurrentZIndex = { value: 10000 };
+    // v1.6.3.11-v9 - Use value below Z_INDEX_RECYCLE_THRESHOLD (10000) to avoid recycling
+    mockCurrentZIndex = { value: 5000 };
 
     // Mock current tab ID
     mockCurrentTabId = 123;
@@ -375,7 +376,8 @@ describe('VisibilityHandler', () => {
 
       visibilityHandler.handleFocus('qt-123');
 
-      expect(mockCurrentZIndex.value).toBeGreaterThan(10000);
+      // v1.6.3.11-v9 - Updated expectation to work with initial z-index of 5000
+      expect(mockCurrentZIndex.value).toBeGreaterThan(5000);
       expect(mockTab.updateZIndex).toHaveBeenCalled();
       expect(eventSpy).toHaveBeenCalled();
     });

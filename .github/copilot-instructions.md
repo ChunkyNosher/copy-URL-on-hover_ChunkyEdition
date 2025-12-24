@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v8  
+**Version:** 1.6.3.11-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,7 +23,25 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v8 Features (NEW) - Transaction Tracking + Null originTabId Rejection:**
+**v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes:**
+
+- **Issue A Fix** - Content script tab identity initialization before state changes
+  - `[IDENTITY_INIT]` logging markers added (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
+- **Issue C Fix** - Identity initialization has comprehensive logging
+  - All identity phases logged with timestamps
+- **Issue D Fix** - Storage write queue enforces identity-ready precondition
+  - `waitForIdentityInit()` called before processing writes
+  - `[WRITE_PHASE]` logging for FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE
+- **Issue E Fix** - State validation has pre/post comparison logging
+  - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows delta
+- **Issue I Fix** - Debounce timer captures tab context at schedule time
+  - `capturedTabId` stored when timer is scheduled, not when it fires
+- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000 → 10000)
+- **Issue 5 Fix** - Container isolation validated in all visibility operations
+  - `_validateContainerIsolation()` helper added
+  - `currentContainerId` stored in VisibilityHandler constructor
+
+**v1.6.3.11-v8 Features - Transaction Tracking + Null originTabId Rejection:**
 
 - **Issue #10 Fix** - Transaction tracking wired to storage writes
   - `setTransactionCallbacks()` method for background.js injection
@@ -105,7 +123,17 @@ references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v8 Patterns (Current)
+### v1.6.3.11-v9 Patterns (Current)
+
+- **Identity Init Logging** - `[IDENTITY_INIT]` markers for SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY
+- **Write Phase Logging** - `[WRITE_PHASE]` markers for FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE
+- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows pre/post tabs filtered
+- **Debounce Context Capture** - `capturedTabId` stored at schedule time, not fire time
+- **Z-Index Recycling** - Threshold lowered from 100000 to 10000
+- **Container Validation** - `_validateContainerIsolation()` added to visibility operations
+- **Identity Precondition** - Write queue awaits `waitForIdentityInit()` before processing
+
+### v1.6.3.11-v8 Patterns
 
 - **Transaction Tracking Wired** - `setTransactionCallbacks()` connects
   background.js `_trackTransaction/_completeTransaction` to QuickTabHandler
@@ -192,7 +220,10 @@ references.
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.11-v8 (NEW):** `[HydrationBoundary]` `[CREATE_REJECTED]`
+**v1.6.3.11-v9 (NEW):** `[IDENTITY_INIT]` `[WRITE_PHASE]` `[STATE_VALIDATION]`
+`[CONTAINER_VALIDATION]` `TAB_CONTEXT_CHANGED`
+
+**v1.6.3.11-v8:** `[HydrationBoundary]` `[CREATE_REJECTED]`
 `[IDENTITY_NOT_READY]`
 
 **v1.6.3.11-v7:** `[QuickTabHandler]` `[CREATE_ORPHAN_WARNING]`
@@ -211,7 +242,8 @@ Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
 transaction rollback, state machine, ownership validation, Single Writer
 Authority, Shadow DOM traversal, operation acknowledgment, state readiness
 gating, error telemetry, originTabId resolution, tab ID pattern extraction,
-transaction tracking, null originTabId rejection, identity system gating.
+transaction tracking, null originTabId rejection, identity system gating,
+debounce context capture, container isolation, z-index recycling.
 
 ---
 

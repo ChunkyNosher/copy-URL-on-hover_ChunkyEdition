@@ -3997,6 +3997,16 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
  */
 async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId = null, startTime = null) {
   const actualStartTime = startTime || Date.now();
+  
+  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for fetch phase
+  console.log(`${logPrefix} [WRITE_PHASE] FETCH_PHASE: Starting storage write`, {
+    correlationId: writeCorrelationId,
+    transactionId,
+    tabCount,
+    phase: 'FETCH_PHASE',
+    timestamp: new Date().toISOString()
+  });
+  
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     // v1.6.3.10-v10 - FIX Gap 3.1: Log failure
@@ -4011,6 +4021,13 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     return false;
   }
 
+  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for quota check
+  console.log(`${logPrefix} [WRITE_PHASE] QUOTA_CHECK_PHASE: Checking storage quota`, {
+    correlationId: writeCorrelationId,
+    transactionId,
+    phase: 'QUOTA_CHECK_PHASE'
+  });
+  
   // Preflight quota check
   const quotaCheck = await checkStorageQuota(logPrefix);
   if (!quotaCheck.canWrite) {
@@ -4027,10 +4044,26 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     return false;
   }
 
+  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for serialize phase
+  console.log(`${logPrefix} [WRITE_PHASE] SERIALIZE_PHASE: Preparing write context`, {
+    correlationId: writeCorrelationId,
+    transactionId,
+    tabCount,
+    phase: 'SERIALIZE_PHASE'
+  });
+
   const context = _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPrefix);
   // v1.6.3.10-v10 - FIX Gap 3.1: Pass correlation ID to retry loop
   context.writeCorrelationId = writeCorrelationId;
   context.writeStartTime = actualStartTime;
+  
+  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for write API phase
+  console.log(`${logPrefix} [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set`, {
+    correlationId: writeCorrelationId,
+    transactionId,
+    tabCount,
+    phase: 'WRITE_API_PHASE'
+  });
   
   return _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount);
 }
@@ -4185,6 +4218,7 @@ function _logBacklogWarnings(transactionId) {
  * v1.6.3.5 - FIX Issue #5: Enhanced queue reset logging with dropped writes count
  * v1.6.3.6-v3 - FIX Issue #2: Circuit breaker blocks ALL writes when queue exceeds threshold
  * v1.6.3.10-v9 - FIX Issue F: Recovery logic for stalled queue / unload edge cases (refactored)
+ * v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write queue execution
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
@@ -4206,8 +4240,37 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
 
   // Chain operation to queue
   storageWriteQueuePromise = storageWriteQueuePromise
-    .then(() => {
+    .then(async () => {
       _logQueueStateTransition(logPrefix, transactionId, 'dequeue_start');
+      
+      // v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write execution
+      // Wait for identity to be ready before processing writes
+      if (!isIdentityReady()) {
+        console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_START [${transactionId}]:`, {
+          identityMode: identityStateMode,
+          currentWritingTabId,
+          currentWritingContainerId
+        });
+        
+        const identity = await waitForIdentityInit(3000); // 3 second timeout
+        
+        console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [${transactionId}]:`, {
+          isReady: identity.isReady,
+          tabId: identity.tabId,
+          containerId: identity.containerId
+        });
+        
+        // If identity still not ready after wait, reject write
+        if (!identity.isReady) {
+          console.warn(`${logPrefix} [WRITE_PHASE] IDENTITY_NOT_READY - WRITE_BLOCKED [${transactionId}]:`, {
+            warning: 'Identity not ready after timeout - rejecting write',
+            tabId: identity.tabId,
+            containerId: identity.containerId
+          });
+          return false;
+        }
+      }
+      
       return writeOperation();
     })
     .then(result => {
@@ -4232,6 +4295,7 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
  * v1.6.3.5-v4 - Extracted to reduce persistStateToStorage complexity
  * v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to validateOwnershipForWrite for proper empty write validation
  * v1.6.3.10-v7 - FIX Diagnostic Issue #7, #14: Enhanced logging showing storage write status
+ * v1.6.3.11-v9 - FIX Issue E: Add pre/post comparison logging with delta
  * @private
  * @param {Object} state - State to validate
  * @param {boolean} forceEmpty - Whether empty writes are forced
@@ -4240,18 +4304,47 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
  * @returns {{ shouldProceed: boolean }}
  */
 function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) {
+  // v1.6.3.11-v9 - FIX Issue E: Capture pre-validation state for delta comparison
+  const preValidationState = {
+    totalTabs: state.tabs.length,
+    minimizedTabs: state.tabs.filter(t => t.minimized).length,
+    activeTabs: state.tabs.filter(t => !t.minimized).length
+  };
+
   // v1.6.3.10-v7 - FIX Issue #7: Log storage write initiated
   console.log(`${logPrefix} STORAGE_WRITE_INITIATED [${transactionId}]:`, {
     tabCount: state.tabs.length,
     forceEmpty,
     currentWritingTabId,
     isTabIdInitialized: currentWritingTabId !== null,
-    phase: 'ownership-validation'
+    phase: 'ownership-validation',
+    preValidation: preValidationState // v1.6.3.11-v9
   });
 
   // v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to ownership validation
   // This allows validateOwnershipForWrite to properly handle empty writes
   const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId, forceEmpty);
+  
+  // v1.6.3.11-v9 - FIX Issue E: Capture post-validation state for delta comparison
+  const postValidationState = {
+    ownedTabs: ownershipCheck.ownedTabs?.length ?? 0,
+    filteredOut: preValidationState.totalTabs - (ownershipCheck.ownedTabs?.length ?? 0),
+    shouldWrite: ownershipCheck.shouldWrite
+  };
+
+  // v1.6.3.11-v9 - FIX Issue E: Log pre/post comparison with delta
+  console.log(`${logPrefix} [STATE_VALIDATION] PRE_POST_COMPARISON [${transactionId}]:`, {
+    pre: preValidationState,
+    post: postValidationState,
+    delta: {
+      tabsFiltered: postValidationState.filteredOut,
+      percentageFiltered: preValidationState.totalTabs > 0 
+        ? Math.round((postValidationState.filteredOut / preValidationState.totalTabs) * 100) 
+        : 0
+    },
+    phase: 'ownership-validation-complete'
+  });
+
   if (!ownershipCheck.shouldWrite) {
     // v1.6.3.10-v7 - FIX Issue #7, #14: Enhanced diagnostic logging when blocked
     console.warn(`${logPrefix} STORAGE_WRITE_BLOCKED [${transactionId}]:`, {

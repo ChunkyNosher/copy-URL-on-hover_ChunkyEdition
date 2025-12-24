@@ -142,6 +142,12 @@ if (_shouldSkipInitialization) {
 // Log immediately after iframe guard passes to confirm script loaded in this tab
 console.log('[Content] ✓ Content script loaded, starting initialization');
 
+// v1.6.3.11-v9 - FIX Issue C: Identity initialization logging marker
+console.log('[IDENTITY_INIT] SCRIPT_LOAD: Content script loaded, identity not yet initialized', {
+  timestamp: new Date().toISOString(),
+  phase: 'SCRIPT_LOAD'
+});
+
 // =============================================================================
 // End of Iframe Recursion Guard - Normal extension initialization below
 // =============================================================================
@@ -630,6 +636,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
  * Must send message to background script which has access to sender.tab.id
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
  * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
+ * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] logging markers
  *
  * Retry delays: 200ms, 500ms, 1500ms, 5000ms
  * Maximum 5 attempts (initial + 4 retries)
@@ -637,6 +644,12 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
  * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
  */
 async function getCurrentTabIdFromBackground() {
+  // v1.6.3.11-v9 - FIX Issue C: Log identity init request start
+  console.log('[IDENTITY_INIT] TAB_ID_REQUEST: Requesting tab ID from background', {
+    timestamp: new Date().toISOString(),
+    phase: 'TAB_ID_REQUEST'
+  });
+  
   console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
     maxRetries: TAB_ID_MAX_RETRIES,
     retryDelays: TAB_ID_RETRY_DELAYS_MS,
@@ -649,6 +662,14 @@ async function getCurrentTabIdFromBackground() {
   let result = await _attemptGetTabIdFromBackground(1);
   
   if (result.tabId !== null) {
+    // v1.6.3.11-v9 - FIX Issue C: Log successful tab ID acquisition
+    console.log('[IDENTITY_INIT] TAB_ID_RESPONSE: Tab ID received on first attempt', {
+      tabId: result.tabId,
+      durationMs: Date.now() - overallStartTime,
+      timestamp: new Date().toISOString(),
+      phase: 'TAB_ID_RESPONSE'
+    });
+    
     console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on first attempt', {
       tabId: result.tabId,
       totalDurationMs: Date.now() - overallStartTime
@@ -686,6 +707,15 @@ async function getCurrentTabIdFromBackground() {
     result = await _attemptGetTabIdFromBackground(attemptNumber);
     
     if (result.tabId !== null) {
+      // v1.6.3.11-v9 - FIX Issue C: Log successful tab ID acquisition after retry
+      console.log('[IDENTITY_INIT] TAB_ID_RESPONSE: Tab ID received after retry', {
+        tabId: result.tabId,
+        attemptNumber,
+        durationMs: Date.now() - overallStartTime,
+        timestamp: new Date().toISOString(),
+        phase: 'TAB_ID_RESPONSE'
+      });
+      
       console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on retry', {
         tabId: result.tabId,
         attemptNumber,
@@ -697,6 +727,16 @@ async function getCurrentTabIdFromBackground() {
   
   // All retries exhausted
   const totalDuration = Date.now() - overallStartTime;
+  
+  // v1.6.3.11-v9 - FIX Issue C: Log failed tab ID acquisition
+  console.error('[IDENTITY_INIT] TAB_ID_FAILED: All retries exhausted', {
+    totalAttempts: TAB_ID_MAX_RETRIES + 1,
+    lastError: result.error,
+    totalDurationMs: totalDuration,
+    timestamp: new Date().toISOString(),
+    phase: 'TAB_ID_FAILED'
+  });
+  
   console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
     totalAttempts: TAB_ID_MAX_RETRIES + 1,
     lastError: result.error,
@@ -1597,6 +1637,7 @@ function _logTabIdAcquisitionFailed() {
 /**
  * Handle successful tab ID acquisition - set writing tab ID and establish port connection
  * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
+ * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] READY logging
  * @private
  * @param {number} tabId - The acquired tab ID
  */
@@ -1613,6 +1654,13 @@ function _handleTabIdAcquired(tabId) {
   const localUpdateDuration = Date.now() - localUpdateStartTime;
   console.log('[Identity] Initialization duration:', localUpdateDuration + 'ms');
   console.log('[Identity] Tab ID acquired:', tabId);
+
+  // v1.6.3.11-v9 - FIX Issue C: Log identity ready status
+  console.log('[IDENTITY_INIT] IDENTITY_READY: Tab identity fully initialized', {
+    tabId,
+    phase: 'IDENTITY_READY',
+    timestamp: new Date().toISOString()
+  });
 
   console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
     tabId,
