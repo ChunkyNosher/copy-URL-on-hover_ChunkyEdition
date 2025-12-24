@@ -2467,16 +2467,6 @@ function _handleQuickTabStateChange(changes) {
 }
 
 /**
- * Extract tab count from storage value safely
- * @private
- * @param {Object} value - Storage value
- * @returns {number} Tab count or 0
- */
-function _getTabCount(value) {
-  return value?.tabs?.length ?? 0;
-}
-
-/**
  * Get saveId from storage value or 'none' placeholder
  * @private
  * @param {Object} value - Storage value

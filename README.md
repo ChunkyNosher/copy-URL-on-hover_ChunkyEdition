@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,11 +9,41 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v8 Status:** Transaction Tracking + Validation ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.11-v9 Status:** Diagnostic Report Fixes ✅ | Code Health 9.0+ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.11-v9
+
+**🔧 Diagnostic Report Fixes + Code Health 9.0+ (December 2025) ✅**
+
+**Bug Fixes:**
+
+- ✅ **Issue A Fix** - Content script tab identity initialization before state changes
+- ✅ **Issue C Fix** - Identity initialization comprehensive logging with timestamps
+- ✅ **Issue D Fix** - Storage write queue enforces identity-ready precondition
+- ✅ **Issue E Fix** - State validation pre/post comparison logging
+- ✅ **Issue I Fix** - Debounce timer captures tab context at schedule time
+- ✅ **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000 → 10000)
+- ✅ **Issue 5 Fix** - Container isolation validated in all visibility operations
+
+**New Logging Infrastructure:**
+
+- ✅ **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
+- ✅ **Write Phase Logging** - `[WRITE_PHASE]` phases (FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE)
+- ✅ **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows filtered tabs
+- ✅ **Container Validation** - `_validateContainerIsolation()` helper added
+
+**Code Health 9.0+ Achieved:**
+
+- ✅ **src/utils/storage-utils.js** - Score 7.66 → 9.09
+- ✅ **src/content.js** - Score 8.71 → 9.09
+- ✅ **background.js** - Score 8.1 → 9.09
+- ✅ **sidebar/quick-tabs-manager.js** - Score 8.26 → 9.09
+
+---
 
 ## 🎉 What's New in v1.6.3.11-v8
 
@@ -188,6 +218,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v8** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v9** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

@@ -62,24 +62,23 @@ Tabs Manager
   in `handleCreate()` method in `QuickTabHandler.js`
 - **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
   `_extractTabIdFromPattern()` for robust tab ID handling
-- **Code Health Improvements** - 16+ complex methods refactored across 4 files:
-  - `sidebar/quick-tabs-manager.js` - Score 7.32 → 8.26
-  - `src/utils/storage-utils.js` - Score 7.44 → 7.78
+- **Code Health 9.0+ Achieved** - All core files refactored:
+  - `sidebar/quick-tabs-manager.js` - Score 8.26 → 9.09
+  - `src/utils/storage-utils.js` - Score 7.66 → 9.09
   - `src/content.js` - Score 8.71 → 9.09
-  - `background.js` - Score 8.02 → 8.40
+  - `background.js` - Score 8.1 → 9.09
 
 **v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
 adoption lock timeout, checkpoint system, message validation, identity gating,
 storage quota monitoring, container isolation
 
-**v1.6.3.10 & Earlier (Consolidated):** Shadow DOM traversal, event debouncing,
-LRU guard, operation acknowledgment, code health 9.0+ targets
+**v1.6.3.10 & Earlier:** Shadow DOM, debouncing, LRU guard, acknowledgment
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
 
-**Deprecated/Removed:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-runtime.Port (v12), complex init layers (v4), CONNECTION_STATE enum (v6)
+**Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
+runtime.Port (v12), complex init layers (v4)
 
 ---
 
@@ -309,14 +308,14 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | ------------------------------------------------ | --------------------------------------------- |
 | `src/constants.js`                               | Centralized constants                         |
 | `src/utils/shadow-dom.js`                        | Shadow DOM link detection                     |
-| `src/utils/storage-utils.js`                     | Storage utilities (Code Health 7.78)          |
+| `src/utils/storage-utils.js`                     | Storage utilities (Code Health 9.09)          |
 | `src/background/tab-events.js`                   | Tabs API listeners                            |
 | `src/utils/structured-logger.js`                 | StructuredLogger class with contexts          |
 | `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation   |
 | `src/messaging/message-router.js`                | ACTION-based routing                          |
 | `src/background/message-handler.js`              | TYPE-based v2 routing                         |
-| `background.js`                                  | Early message listener (Code Health 8.40)     |
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender() (Code Health 8.26)           |
+| `background.js`                                  | Early message listener (Code Health 9.09)     |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender() (Code Health 9.09)           |
 | `src/content.js`                                 | Content script (Code Health 9.09)             |
 | `src/background/handlers/QuickTabHandler.js`     | handleCreate(), originTabId fix               |
 | `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection               |

@@ -37,17 +37,26 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.11-v9 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+:**
+
+- **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
+- **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
+- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` comparison
+- **Debounce Context Capture** - `capturedTabId` stored at schedule time
+- **Z-Index Recycling** - Threshold lowered from 100000 to 10000
+- **Container Validation** - `_validateContainerIsolation()` in visibility ops
+- **Code Health 9.0+** - All core files at Code Health 9.0 or higher
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
 
 - **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
   `handleCreate()` in `QuickTabHandler.js`
 - **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
   `_extractTabIdFromPattern()`
-- **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
 - **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
 
 **v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
@@ -184,7 +193,7 @@ async function closeAllTabs() {
 
 ## v1.6.3.7-v3 Fix Patterns (Retained)
 
-### Port-Based Messaging Pattern (v1.6.3.8-v8)
+### Port-Based Messaging Pattern
 
 ```javascript
 // Primary cross-tab sync via runtime.Port (NO BroadcastChannel)
@@ -197,32 +206,6 @@ port.postMessage({
 });
 ```
 
-### DOM Reconciliation Pattern
-
-```javascript
-// Track existing elements by ID for differential updates
-_itemElements = new Map(); // quickTabId → DOM element
-
-function reconcileDOM(newTabs) {
-  const newIds = new Set(newTabs.map(t => t.id));
-  // Remove deleted
-  for (const [id, el] of _itemElements) {
-    if (!newIds.has(id)) {
-      el.remove();
-      _itemElements.delete(id);
-    }
-  }
-  // Add/update existing
-  for (const tab of newTabs) {
-    if (!_itemElements.has(tab.id)) {
-      /* create new element */
-    } else {
-      /* update existing */
-    }
-  }
-}
-```
-
 ### Storage Routing Pattern
 
 ```javascript
@@ -233,94 +216,7 @@ const storage =
     : browser.storage.local;
 ```
 
-## v1.6.3.7-v1/v2/v3 Fix Patterns (Retained)
-
-### Background Keepalive Pattern
-
-```javascript
-// Firefox 30-second timeout workaround
-function _startKeepalive() {
-  setInterval(() => {
-    browser.runtime.sendMessage({ type: 'KEEPALIVE_PING' }).catch(() => {});
-    browser.tabs.query({ active: true }).catch(() => {});
-  }, 20000); // Every 20 seconds
-}
-```
-
-### Port Circuit Breaker Pattern
-
-```javascript
-// Circuit breaker states: 'closed', 'open', 'half-open'
-const circuitBreaker = {
-  state: 'closed',
-  failures: 0,
-  lastFailure: null,
-  backoffMs: 100 // Initial backoff, max 10000ms
-};
-
-function handlePortError() {
-  circuitBreaker.failures++;
-  if (circuitBreaker.failures >= 3) {
-    circuitBreaker.state = 'open';
-    setTimeout(() => {
-      circuitBreaker.state = 'half-open';
-    }, circuitBreaker.backoffMs);
-    circuitBreaker.backoffMs = Math.min(circuitBreaker.backoffMs * 2, 10000);
-  }
-}
-```
-
-### Prior Version Fix Patterns (Retained)
-
-### Port-Based Messaging Pattern
-
-```javascript
-// Message protocol with correlationId
-{
-  type: 'ACTION_REQUEST',
-  action: 'TOGGLE_GROUP',
-  correlationId: generateMessageId(),
-  source: 'sidebar',
-  timestamp: Date.now(),
-  payload: { groupId, newState }
-}
-
-// Port registry in background.js
-const portRegistry = {
-  // portId -> { port, origin, tabId, type, connectedAt, lastMessageAt, messageCount }
-};
-```
-
-### Animation Lifecycle Pattern
-
-```javascript
-// Consistent state logging
-const STATE_OPEN = 'open';
-const STATE_CLOSED = 'closed';
-
-function logStateTransition(phase, details) {
-  console.log(`[Manager] ANIMATION_${phase}:`, details);
-}
-
-// Phases: START, CALC, TRANSITION, COMPLETE, ERROR
-```
-
-### Storage Write Verification Pattern
-
-```javascript
-// Write with read-back verification
-async function verifiedStorageWrite(key, value) {
-  await browser.storage.local.set({ [key]: value });
-  const readBack = await browser.storage.local.get(key);
-  if (JSON.stringify(readBack[key]) !== JSON.stringify(value)) {
-    console.error('[Storage] Write verification FAILED');
-  }
-}
-```
-
----
-
-## Prior Version Fix Patterns (Summary)
+### Prior Version Fix Patterns (Summary)
 
 **v1.6.3.6-v10:** Orphan adoption, tab switch detection, smooth animations
 (0.35s), responsive design **v1.6.3.6-v8:** Multi-layer ID recovery,
