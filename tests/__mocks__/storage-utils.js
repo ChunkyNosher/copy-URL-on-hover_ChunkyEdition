@@ -51,6 +51,21 @@ export function getBrowserStorageAPI() {
   return null;
 }
 
+// v1.6.3.11-v9 - Mock for getWritingContainerId
+export function getWritingContainerId() {
+  return null;
+}
+
+// v1.6.3.11-v9 - Mock for isIdentityReady
+export function isIdentityReady() {
+  return true;
+}
+
+// v1.6.3.11-v9 - Mock for waitForIdentityInit
+export async function waitForIdentityInit(_timeoutMs = 3000) {
+  return { isReady: true, tabId: 123, containerId: 'firefox-default' };
+}
+
 export function buildStateForStorage(quickTabsMap, minimizedManager) {
   const tabs = [];
   for (const tab of quickTabsMap.values()) {

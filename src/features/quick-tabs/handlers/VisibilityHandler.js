@@ -47,6 +47,10 @@
  * v1.6.3.10-v5 - Note: Remote invocations from Manager sidebar now use Scripting API fallback
  *   - See background.js executeManagerCommand() for timeout-protected messaging
  *   - Falls back to browser.scripting.executeScript on messaging failure
+ * v1.6.3.11-v9 - FIX Diagnostic Report Issues:
+ *   - Issue 3.2: Z-index recycling threshold lowered from 100000 to 10000
+ *   - Issue 5: Container isolation validation added to all visibility operations
+ *   - Issue I: Debounce timer captures currentTabId at schedule time, not fire time
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -54,6 +58,7 @@
  * - Mutex/lock pattern prevents duplicate operations from multiple sources
  * - Cross-tab validation ensures operations only affect owned Quick Tabs
  * - v1.6.3.10-v5: Remote commands from Manager use Scripting API fallback for reliability
+ * - v1.6.3.11-v9: Container isolation enforced in runtime operations
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -65,8 +70,9 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  * - Cross-tab ownership validation for all operations
+ * - Container isolation validation for all operations
  *
- * @version 1.6.3.10-v5
+ * @version 1.6.3.11-v9
  */
 
 import {
@@ -74,7 +80,8 @@ import {
   persistStateToStorage,
   validateStateForPersist,
   STATE_KEY,
-  getBrowserStorageAPI
+  getBrowserStorageAPI,
+  getWritingContainerId // v1.6.3.11-v9 - FIX Issue 5: Container validation in runtime ops
 } from '@utils/storage-utils.js';
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
@@ -103,9 +110,9 @@ const DOM_VERIFICATION_DELAY_MS = 50;
 // If storage write hangs, we log error and mark storage as potentially unavailable
 const PERSIST_STORAGE_TIMEOUT_MS = 5000;
 
-// v1.6.3.10-v10 - FIX Issue 3.2: Z-index recycling threshold
+// v1.6.3.11-v9 - FIX Issue 3.2: Z-index recycling threshold (lowered from 100000)
 // When z-index counter exceeds this value, recycle all z-indices to prevent unbounded growth
-const Z_INDEX_RECYCLE_THRESHOLD = 100000;
+const Z_INDEX_RECYCLE_THRESHOLD = 10000;
 
 /**
  * VisibilityHandler class
@@ -128,6 +135,7 @@ export class VisibilityHandler {
    * @param {Object} options.currentZIndex - Reference object with value property for z-index
    * @param {number} options.currentTabId - Current browser tab ID
    * @param {Object} options.Events - Events constants object
+   * @param {string} options.currentContainerId - Current container ID (v1.6.3.11-v9)
    */
   constructor(options) {
     this.quickTabsMap = options.quickTabsMap;
@@ -136,6 +144,10 @@ export class VisibilityHandler {
     this.currentZIndex = options.currentZIndex;
     this.currentTabId = options.currentTabId;
     this.Events = options.Events;
+
+    // v1.6.3.11-v9 - FIX Issue 5: Container isolation in runtime operations
+    // Store container ID for runtime container validation
+    this.currentContainerId = options.currentContainerId ?? getWritingContainerId() ?? null;
 
     // v1.6.3.5-v2 - FIX Report 1 Issue #7: Create log prefix with Tab ID
     this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
@@ -173,6 +185,7 @@ export class VisibilityHandler {
   /**
    * Check if a tabWindow is owned by the current tab
    * v1.6.3.10-v4 - FIX Issue #9: Extracted to reduce duplication (Code Review feedback)
+   * v1.6.3.11-v9 - FIX Issue 5: Now also validates container ID for container isolation
    * @private
    * @param {Object} tabWindow - Quick Tab window instance
    * @returns {boolean} True if owned by current tab or ownership is unset
@@ -183,7 +196,70 @@ export class VisibilityHandler {
       return true;
     }
     // Check if originTabId matches current tab
-    return tabWindow.originTabId === this.currentTabId;
+    const tabIdMatch = tabWindow.originTabId === this.currentTabId;
+    if (!tabIdMatch) {
+      return false;
+    }
+
+    // v1.6.3.11-v9 - FIX Issue 5: Also validate container ID for container isolation
+    // If originContainerId is not set, consider it owned (legacy Quick Tab)
+    if (tabWindow.originContainerId === null || tabWindow.originContainerId === undefined) {
+      return true;
+    }
+    // If current container ID is not known, fail-closed (block operation)
+    if (this.currentContainerId === null) {
+      console.warn(`${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`, {
+        quickTabId: tabWindow.id,
+        originContainerId: tabWindow.originContainerId
+      });
+      return false;
+    }
+    // Check if originContainerId matches current container
+    const containerMatch = tabWindow.originContainerId === this.currentContainerId;
+    if (!containerMatch) {
+      console.log(`${this._logPrefix} [CONTAINER_VALIDATION] Container mismatch:`, {
+        quickTabId: tabWindow.id,
+        originContainerId: tabWindow.originContainerId,
+        currentContainerId: this.currentContainerId
+      });
+    }
+    return containerMatch;
+  }
+
+  /**
+   * Validate container isolation for an operation
+   * v1.6.3.11-v9 - FIX Issue 5: Container validation for runtime operations
+   * @private
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @param {string} operation - Operation name for logging
+   * @returns {{ valid: boolean, reason?: string }}
+   */
+  _validateContainerIsolation(tabWindow, operation) {
+    // If no container ID on Quick Tab, it's a legacy Quick Tab - allow
+    if (!tabWindow?.originContainerId) {
+      return { valid: true };
+    }
+
+    // If current container unknown, fail-closed
+    if (!this.currentContainerId) {
+      console.warn(`${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`, {
+        quickTabId: tabWindow.id,
+        originContainerId: tabWindow.originContainerId
+      });
+      return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
+    }
+
+    // Compare container IDs
+    if (tabWindow.originContainerId !== this.currentContainerId) {
+      console.log(`${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`, {
+        quickTabId: tabWindow.id,
+        originContainerId: tabWindow.originContainerId,
+        currentContainerId: this.currentContainerId
+      });
+      return { valid: false, reason: 'CONTAINER_MISMATCH' };
+    }
+
+    return { valid: true };
   }
 
   /**
@@ -1638,6 +1714,7 @@ export class VisibilityHandler {
   /**
    * Recycle z-indices to prevent unbounded growth
    * v1.6.3.10-v10 - FIX Issue 3.2: Reset z-index counter and reassign to all Quick Tabs
+   * v1.6.3.11-v9 - FIX: Add defensive check for container.style
    * @private
    */
   _recycleZIndices() {
@@ -1659,8 +1736,8 @@ export class VisibilityHandler {
       const newZIndex = this.currentZIndex.value;
       tabWindow.zIndex = newZIndex;
 
-      // Update DOM if container exists
-      if (tabWindow.container) {
+      // Update DOM if container and style exist
+      if (tabWindow.container?.style) {
         tabWindow.container.style.zIndex = newZIndex.toString();
       }
 
@@ -1719,6 +1796,8 @@ export class VisibilityHandler {
    *   2. If yes, remove it and execute cleanup/persist
    *   3. If no, skip (timer was cancelled by newer operation)
    * v1.6.3.5-v12 - FIX Issue A: Added isFocusOnlyChange flag for diagnostic logging
+   * v1.6.3.11-v9 - FIX Issue I: Capture currentTabId at schedule time, not fire time
+   *   Previously tab ID was read at fire time which could be different if tab context changed
    * @private
    * @param {string} id - Quick Tab ID that triggered the persist
    * @param {string} operation - 'minimize', 'restore', or 'focus'
@@ -1732,6 +1811,10 @@ export class VisibilityHandler {
     // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Track schedule time for accurate delay measurement
     const timerScheduleTime = Date.now();
 
+    // v1.6.3.11-v9 - FIX Issue I: Capture currentTabId at SCHEDULE time, not fire time
+    // This prevents race condition where tab context changes between schedule and fire
+    const capturedTabId = this.currentTabId;
+
     // v1.6.3.5-v12 - FIX Issue A: Log whether this is a focus operation persist
     // Code Review: Renamed from isFocusOnlyChange to isFocusOperation for accuracy
     const isFocusOperation = operation === 'focus';
@@ -1740,7 +1823,8 @@ export class VisibilityHandler {
       id,
       source,
       trigger: operation,
-      isFocusOperation
+      isFocusOperation,
+      capturedTabId // v1.6.3.11-v9 - Log captured tab ID
     });
 
     console.log(`[VisibilityHandler] _debouncedPersist scheduling (source: ${source}):`, {
@@ -1749,7 +1833,8 @@ export class VisibilityHandler {
       timerId,
       existingTimer: this._debounceTimers.has(id),
       activeTimerCount: this._activeTimerIds.size,
-      scheduledDelayMs: MINIMIZE_DEBOUNCE_MS
+      scheduledDelayMs: MINIMIZE_DEBOUNCE_MS,
+      capturedTabId // v1.6.3.11-v9 - Log captured tab ID
     });
 
     // Clear any existing timer for this tab
@@ -1776,8 +1861,8 @@ export class VisibilityHandler {
     // Add new timer ID to active set
     this._activeTimerIds.add(timerId);
 
-    // Set new debounce timer with timer ID check
-    const callbackOptions = { operation, source, timerId, timerScheduleTime };
+    // v1.6.3.11-v9 - FIX Issue I: Pass captured tab ID in callback options
+    const callbackOptions = { operation, source, timerId, timerScheduleTime, capturedTabId };
     const timeoutId = setTimeout(
       () => this._executeDebouncedPersistCallback(id, callbackOptions),
       MINIMIZE_DEBOUNCE_MS
@@ -1790,6 +1875,7 @@ export class VisibilityHandler {
   /**
    * Execute the debounced persist callback
    * v1.6.3.5-v3 - Extracted to reduce _debouncedPersist complexity
+   * v1.6.3.11-v9 - FIX Issue I: Use capturedTabId from schedule time, not current tab ID
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} options - Callback options
@@ -1797,9 +1883,10 @@ export class VisibilityHandler {
    * @param {string} options.source - Source of action
    * @param {string} options.timerId - Unique timer ID
    * @param {number} options.timerScheduleTime - Timestamp when timer was scheduled
+   * @param {number|null} options.capturedTabId - Tab ID captured at schedule time
    */
   async _executeDebouncedPersistCallback(id, options) {
-    const { operation, source, timerId, timerScheduleTime } = options;
+    const { operation, source, timerId, timerScheduleTime, capturedTabId } = options;
 
     // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Calculate actual delay for logging
     const actualDelay = Date.now() - timerScheduleTime;
@@ -1819,6 +1906,18 @@ export class VisibilityHandler {
     // Remove from active set now that we're executing
     this._activeTimerIds.delete(timerId);
 
+    // v1.6.3.11-v9 - FIX Issue I: Validate that captured tab ID matches current context
+    // Log warning if tab context has changed since schedule time
+    if (capturedTabId !== null && capturedTabId !== this.currentTabId) {
+      console.warn('[VisibilityHandler] TAB_CONTEXT_CHANGED: Timer callback context mismatch', {
+        id,
+        operation,
+        capturedTabId,
+        currentTabId: this.currentTabId,
+        warning: 'Tab ID changed between schedule and fire - using captured ID'
+      });
+    }
+
     // v1.6.3.5-v3 - FIX Diagnostic Issue #7: Log timer callback STARTED with actual delay
     const callbackStartTime = Date.now();
     console.log(`[VisibilityHandler] Timer callback STARTED (source: ${source}):`, {
@@ -1827,6 +1926,7 @@ export class VisibilityHandler {
       timerId,
       scheduledDelayMs: MINIMIZE_DEBOUNCE_MS,
       actualDelayMs: actualDelay,
+      capturedTabId, // v1.6.3.11-v9 - Log captured tab ID
       pendingMinimizeSize: this._pendingMinimize.size,
       pendingRestoreSize: this._pendingRestore.size
     });

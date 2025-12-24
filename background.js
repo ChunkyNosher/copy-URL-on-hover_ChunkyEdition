@@ -427,6 +427,44 @@ async function _executeViaScripting(tabId, operation, params, correlationId) {
  * @param {string} correlationId - Correlation ID for tracing
  * @returns {Object} Operation result
  */
+/**
+ * Execute a single scripted operation handler
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce executeScriptedOperation complexity
+ * @private
+ * @param {Object} manager - Quick Tabs manager
+ * @param {string} operation - Operation to execute
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {boolean|null} true if succeeded, false if handler unavailable, null if unknown operation
+ */
+function _executeScriptedOperationHandler(manager, operation, quickTabId) {
+  // v1.6.3.11-v9 - Use lookup table pattern to reduce cyclomatic complexity
+  const operationHandlers = {
+    RESTORE_QUICK_TAB: () => {
+      if (!manager.restoreById) return false;
+      manager.restoreById(quickTabId, 'scripting-fallback');
+      return true;
+    },
+    MINIMIZE_QUICK_TAB: () => {
+      if (!manager.minimizeById) return false;
+      manager.minimizeById(quickTabId, 'scripting-fallback');
+      return true;
+    },
+    CLOSE_QUICK_TAB: () => {
+      if (!manager.closeById) return false;
+      manager.closeById(quickTabId);
+      return true;
+    },
+    FOCUS_QUICK_TAB: () => {
+      if (!manager.visibilityHandler?.handleFocus) return false;
+      manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
+      return true;
+    }
+  };
+
+  const handler = operationHandlers[operation];
+  return handler ? handler() : null;
+}
+
 function executeScriptedOperation(operation, params, correlationId) {
   // Access the Quick Tabs manager from content script globals
   // Validate structure to guard against tampering in content script context
@@ -452,36 +490,8 @@ function executeScriptedOperation(operation, params, correlationId) {
     correlationId
   });
 
-  // Self-contained handler lookup (must be inline, not external function)
-  const executeOperation = () => {
-    switch (operation) {
-      case 'RESTORE_QUICK_TAB':
-        if (!manager.restoreById) return false;
-        manager.restoreById(quickTabId, 'scripting-fallback');
-        return true;
-
-      case 'MINIMIZE_QUICK_TAB':
-        if (!manager.minimizeById) return false;
-        manager.minimizeById(quickTabId, 'scripting-fallback');
-        return true;
-
-      case 'CLOSE_QUICK_TAB':
-        if (!manager.closeById) return false;
-        manager.closeById(quickTabId);
-        return true;
-
-      case 'FOCUS_QUICK_TAB':
-        if (!manager.visibilityHandler?.handleFocus) return false;
-        manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
-        return true;
-
-      default:
-        return null; // Unknown operation
-    }
-  };
-
   try {
-    const result = executeOperation();
+    const result = _executeScriptedOperationHandler(manager, operation, quickTabId);
 
     if (result === null) {
       return { success: false, error: `Unknown operation: ${operation}`, correlationId };
@@ -2016,13 +2026,25 @@ if (chrome.sidePanel) {
  * v1.6.3.6-v12 - FIX Issue #7: Enhanced logging with before/after state snapshots
  * @param {Object} newValue - Storage value with tabs array
  */
+/**
+ * Build state snapshot for cache update logging
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce _applyUnifiedFormatFromStorage complexity
+ * @private
+ * @param {Object} state - Global state object
+ * @returns {Object} State snapshot with tabCount, saveId, tabIds
+ */
+function _buildCacheStateSnapshot(state) {
+  const tabs = state.tabs || [];
+  return {
+    tabCount: tabs.length,
+    saveId: state.saveId,
+    tabIds: tabs.slice(0, 5).map(t => t.id) // Sample first 5 for logging
+  };
+}
+
 function _applyUnifiedFormatFromStorage(newValue) {
   // v1.6.3.6-v12 - FIX Issue #7: Log before state for before/after comparison
-  const beforeState = {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    saveId: globalQuickTabState.saveId,
-    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id) // Sample first 5
-  };
+  const beforeState = _buildCacheStateSnapshot(globalQuickTabState);
 
   globalQuickTabState.tabs = newValue.tabs;
   globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
@@ -2030,11 +2052,7 @@ function _applyUnifiedFormatFromStorage(newValue) {
   globalQuickTabState.saveId = newValue.saveId || null;
 
   // v1.6.3.6-v12 - FIX Issue #7: Log after state with comparison
-  const afterState = {
-    tabCount: globalQuickTabState.tabs?.length || 0,
-    saveId: globalQuickTabState.saveId,
-    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id)
-  };
+  const afterState = _buildCacheStateSnapshot(globalQuickTabState);
 
   console.log('[Background] v1.6.3.6-v12 CACHE_UPDATE:', {
     before: beforeState,
@@ -2302,9 +2320,57 @@ function _checkFieldChange(oldValue, newValue, fieldName) {
 }
 
 /**
+ * Get the tab count from a storage value safely
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @param {Object} value - Storage value
+ * @returns {number} Tab count (0 if missing)
+ */
+function _getTabCount(value) {
+  return value?.tabs?.length ?? 0;
+}
+
+/**
+ * Check if tabs content has changed (for same count comparison)
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @param {Object} oldValue - Previous storage value
+ * @param {Object} newValue - New storage value
+ * @returns {boolean} True if content changed
+ */
+function _hasTabsContentChanged(oldValue, newValue) {
+  return JSON.stringify(oldValue?.tabs) !== JSON.stringify(newValue?.tabs);
+}
+
+/**
+ * Check if tabs array changed between old and new values
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce _identifyChangedFields complexity
+ * @private
+ * @param {Object} oldValue - Previous storage value
+ * @param {Object} newValue - New storage value
+ * @returns {string|null} Description of tabs change, or null if unchanged
+ */
+function _checkTabsArrayChange(oldValue, newValue) {
+  const oldTabCount = _getTabCount(oldValue);
+  const newTabCount = _getTabCount(newValue);
+  
+  // Fast path: count changed
+  if (oldTabCount !== newTabCount) {
+    return `tabs (${oldTabCount}→${newTabCount})`;
+  }
+  
+  // Slow path: same count, check content (only when non-empty)
+  if (oldTabCount > 0 && _hasTabsContentChanged(oldValue, newValue)) {
+    return 'tabs (content changed)';
+  }
+  
+  return null;
+}
+
+/**
  * Identify which fields changed between old and new storage values
  * v1.6.3.11-v8 - FIX Diagnostic Logging #1: Detailed change tracking
- * v1.6.3.11-v8 - FIX Code Health: Refactored to reduce complexity
+ * v1.6.3.11-v9 - FIX Code Health: Refactored to reduce complexity (cc: 13 → 6)
  * NOTE: JSON.stringify is used for diagnostic logging only. For performance-critical
  * comparisons, use hash-based approaches. This is acceptable here as it only runs
  * during storage events (infrequent) and provides accurate change detection.
@@ -2315,14 +2381,10 @@ function _checkFieldChange(oldValue, newValue, fieldName) {
 function _identifyChangedFields(oldValue, newValue) {
   const changedFields = [];
 
-  // Check tabs array changes - count first (fast), then content (slower but only when counts match)
-  const oldTabCount = oldValue?.tabs?.length ?? 0;
-  const newTabCount = newValue?.tabs?.length ?? 0;
-  if (oldTabCount !== newTabCount) {
-    changedFields.push(`tabs (${oldTabCount}→${newTabCount})`);
-  } else if (oldTabCount > 0 && JSON.stringify(oldValue?.tabs) !== JSON.stringify(newValue?.tabs)) {
-    // Only use JSON.stringify when counts match and non-empty (for logging accuracy)
-    changedFields.push('tabs (content changed)');
+  // Check tabs array changes
+  const tabsChange = _checkTabsArrayChange(oldValue, newValue);
+  if (tabsChange) {
+    changedFields.push(tabsChange);
   }
 
   // Check simple fields using helper
@@ -2402,16 +2464,6 @@ function _handleQuickTabStateChange(changes) {
   // v1.6.3.11-v8 - FIX Diagnostic Logging #1: Log completion time
   const handlerDuration = Date.now() - handlerStartTime;
   console.log('[Storage][Event] Handler completed in', handlerDuration + 'ms');
-}
-
-/**
- * Extract tab count from storage value safely
- * @private
- * @param {Object} value - Storage value
- * @returns {number} Tab count or 0
- */
-function _getTabCount(value) {
-  return value?.tabs?.length ?? 0;
 }
 
 /**
@@ -2888,6 +2940,30 @@ function _logBroadcastDecision(decision, reason, targetTabCount = 0, filteredCou
   console.log('[Background][Storage] BROADCAST_DECISION:', { decision, reason, targetTabCount, filteredCount });
 }
 
+/**
+ * Reset non-empty state tracking counters
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce _processStorageUpdate complexity
+ * @private
+ */
+function _resetNonEmptyStateTracking() {
+  consecutiveZeroTabReads = 0;
+  lastNonEmptyStateTimestamp = Date.now();
+}
+
+/**
+ * Filter and update cache with valid tabs
+ * v1.6.3.11-v9 - FIX Code Health: Extracted to reduce _processStorageUpdate complexity
+ * @private
+ * @param {Object} newValue - New storage value
+ */
+function _filterAndUpdateCache(newValue) {
+  const filteredValue = filterValidTabs(newValue);
+  const originalCount = _getTabCount(newValue);
+  const filteredCount = originalCount - _getTabCount(filteredValue);
+  _logBroadcastDecision('UPDATE_CACHE', 'proceeding with cache update', _getTabCount(filteredValue), filteredCount);
+  _updateGlobalStateFromStorage(filteredValue);
+}
+
 function _processStorageUpdate(newValue) {
   // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
@@ -2897,20 +2973,16 @@ function _processStorageUpdate(newValue) {
   }
 
   // Reset counters for valid tabs
-  consecutiveZeroTabReads = 0;
-  lastNonEmptyStateTimestamp = Date.now();
+  _resetNonEmptyStateTracking();
 
   // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
-    _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
+    _logBroadcastDecision('SKIP', 'state unchanged', _getTabCount(newValue));
     return;
   }
 
   // Filter out tabs with invalid URLs and update cache
-  const filteredValue = filterValidTabs(newValue);
-  const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
-  _logBroadcastDecision('UPDATE_CACHE', 'proceeding with cache update', filteredValue.tabs?.length ?? 0, filteredCount);
-  _updateGlobalStateFromStorage(filteredValue);
+  _filterAndUpdateCache(newValue);
 }
 
 /**
