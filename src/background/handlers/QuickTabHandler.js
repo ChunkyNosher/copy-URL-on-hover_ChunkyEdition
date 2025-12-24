@@ -416,16 +416,15 @@ export class QuickTabHandler {
   /**
    * Check if Quick Tab ID contains "unknown" placeholder indicating identity not ready
    * v1.6.3.11-v8 - FIX Issue #21: Detect identity system not ready condition
+   * v1.6.3.11-v8 - FIX Code Review: Simplified check using only includes()
    * @private
    * @param {string} quickTabId - Quick Tab ID to check
    * @returns {boolean} True if ID contains "unknown" placeholder
    */
   _hasUnknownPlaceholder(quickTabId) {
     if (!quickTabId || typeof quickTabId !== 'string') return false;
-    return UNKNOWN_PLACEHOLDER_PATTERNS.some(
-      pattern =>
-        quickTabId.startsWith(pattern) || quickTabId.includes(pattern)
-    );
+    // includes() matches patterns anywhere in string including beginning
+    return UNKNOWN_PLACEHOLDER_PATTERNS.some(pattern => quickTabId.includes(pattern));
   }
 
   /**
@@ -733,40 +732,74 @@ export class QuickTabHandler {
    * v1.6.3.10-v7 - FIX Bug #1: Add initialization guard to prevent race conditions
    * v1.6.4.15 - FIX Issue #15: Consistent response envelope with code field
    * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce complexity
+   * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Handler entry/exit instrumentation
    *
    * @param {Object} _message - Message object (unused, required by message router signature)
    * @param {Object} sender - Message sender object containing tab information
    * @returns {Promise<{ success: boolean, data?: { currentTabId: number }, error?: string, code?: string }>}
    */
   async handleGetCurrentTabId(_message, sender) {
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging
+    const startTime = Date.now();
+    const senderTabId = sender?.tab?.id ?? null;
+    console.log('[Handler][ENTRY] handleGetCurrentTabId:', {
+      'sender.tab.id': senderTabId,
+      parameters: {},
+      timestamp: new Date().toISOString()
+    });
+
     try {
       // v1.6.3.10-v7 - FIX Bug #1: Check initialization FIRST
       const initResult = await this._ensureInitialized();
       if (!initResult.success) {
         console.warn('[QuickTabHandler] GET_CURRENT_TAB_ID: Init check failed');
-        return this._buildTabIdErrorResponse(
+        const response = this._buildTabIdErrorResponse(
           initResult.error || 'NOT_INITIALIZED',
           initResult.error || 'NOT_INITIALIZED',
           initResult.message,
           initResult.retryable ?? true
         );
+        console.log('[Handler][EXIT] handleGetCurrentTabId:', {
+          duration: (Date.now() - startTime) + 'ms',
+          success: false,
+          result: { error: initResult.error }
+        });
+        return response;
       }
 
       // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
       if (this._hasValidSenderTabId(sender)) {
         console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`);
-        return this._buildTabIdSuccessResponse(sender.tab.id);
+        const response = this._buildTabIdSuccessResponse(sender.tab.id);
+        console.log('[Handler][EXIT] handleGetCurrentTabId:', {
+          duration: (Date.now() - startTime) + 'ms',
+          success: true,
+          result: { tabId: sender.tab.id }
+        });
+        return response;
       }
 
       // sender.tab not available - return error
       console.error('[QuickTabHandler] GET_CURRENT_TAB_ID: sender.tab not available');
-      return this._buildTabIdErrorResponse(
+      const response = this._buildTabIdErrorResponse(
         'sender.tab not available - cannot identify requesting tab',
         'SENDER_TAB_UNAVAILABLE'
       );
+      console.log('[Handler][EXIT] handleGetCurrentTabId:', {
+        duration: (Date.now() - startTime) + 'ms',
+        success: false,
+        result: { error: 'SENDER_TAB_UNAVAILABLE' }
+      });
+      return response;
     } catch (err) {
       console.error('[QuickTabHandler] GET_CURRENT_TAB_ID error:', err?.message);
-      return this._buildTabIdErrorResponse(err?.message || 'Unknown error', 'HANDLER_ERROR');
+      const response = this._buildTabIdErrorResponse(err?.message || 'Unknown error', 'HANDLER_ERROR');
+      console.log('[Handler][EXIT] handleGetCurrentTabId:', {
+        duration: (Date.now() - startTime) + 'ms',
+        success: false,
+        result: { error: err?.message }
+      });
+      return response;
     }
   }
 
@@ -799,8 +832,18 @@ export class QuickTabHandler {
    * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    * v1.6.3.6-v12 - FIX Issue #1: Return explicit error when not initialized
    * v1.6.3.11-v8 - FIX Issue #5: Ensure retryable flag in error responses
+   * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Handler entry/exit instrumentation
    */
   async handleGetQuickTabsState(message, _sender) {
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging
+    const startTime = Date.now();
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    console.log('[Handler][ENTRY] handleGetQuickTabsState:', {
+      'sender.tab.id': _sender?.tab?.id ?? null,
+      parameters: { cookieStoreId },
+      timestamp: new Date().toISOString()
+    });
+
     try {
       // v1.6.3.6-v12 - FIX Issue #1: Check initialization and wait with timeout
       // v1.6.3.11-v8 - FIX Issue #5: _ensureInitialized already returns retryable flag
@@ -811,10 +854,13 @@ export class QuickTabHandler {
           error: initResult.error,
           retryable: initResult.retryable
         });
+        console.log('[Handler][EXIT] handleGetQuickTabsState:', {
+          duration: (Date.now() - startTime) + 'ms',
+          success: false,
+          result: { error: initResult.error }
+        });
         return initResult;
       }
-
-      const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
       // v1.6.2.2 - Return all tabs from unified array for global visibility
       const allTabs = this.globalState.tabs || [];
@@ -824,12 +870,20 @@ export class QuickTabHandler {
         cookieStoreId
       });
 
-      return {
+      const response = {
         success: true,
         tabs: allTabs,
         cookieStoreId: cookieStoreId,
         lastUpdate: this.globalState.lastUpdate
       };
+
+      console.log('[Handler][EXIT] handleGetQuickTabsState:', {
+        duration: (Date.now() - startTime) + 'ms',
+        success: true,
+        result: { tabCount: allTabs.length }
+      });
+
+      return response;
     } catch (err) {
       console.error('[QuickTabHandler] Error getting Quick Tabs state:', {
         message: err?.message,
@@ -839,12 +893,18 @@ export class QuickTabHandler {
         error: err
       });
       // v1.6.3.11-v8 - FIX Issue #5: Include retryable flag in error response
-      return {
+      const response = {
         success: false,
         tabs: [],
         error: err.message,
         retryable: true // Most errors are transient and can be retried
       };
+      console.log('[Handler][EXIT] handleGetQuickTabsState:', {
+        duration: (Date.now() - startTime) + 'ms',
+        success: false,
+        result: { error: err.message }
+      });
+      return response;
     }
   }
 
@@ -1094,6 +1154,7 @@ export class QuickTabHandler {
    * Perform the actual storage write with version tracking
    * v1.6.3.10-v7 - FIX Issue #15: Includes optimistic locking with retry
    * v1.6.3.11-v8 - FIX Issue #10: Add transaction tracking for storage deduplication
+   * v1.6.3.11-v8 - FIX Diagnostic Logging #4: Storage write lifecycle logging
    * @private
    * @param {number} queueWaitTime - Time spent waiting in queue (for logging)
    */
@@ -1105,6 +1166,14 @@ export class QuickTabHandler {
 
     // v1.6.3.11-v8 - FIX Issue #10: Generate transaction ID for storage deduplication
     const transactionId = this._generateTransactionId();
+
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #4: Log lifecycle initiated
+    console.log('[StorageWrite] LIFECYCLE_INITIATED:', {
+      correlationId: transactionId,
+      tabCount,
+      caller: 'saveStateToStorage',
+      queueWaitTime
+    });
 
     // v1.6.3.11-v8 - FIX Issue #10: Track transaction before write
     if (this._trackTransactionFn) {
@@ -1121,6 +1190,9 @@ export class QuickTabHandler {
       version: this._storageVersion
     });
 
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #4: Log in-flight status
+    const writeStartTime = Date.now();
+
     // v1.6.3.10-v7 - FIX Issue #15: Retry loop for version conflicts
     // v1.6.3.11-v8 - Refactored to reduce nesting depth
     const result = await this._executeWriteWithRetry(
@@ -1129,6 +1201,23 @@ export class QuickTabHandler {
       tabCount,
       saveTimestamp
     );
+
+    // v1.6.3.11-v8 - FIX Diagnostic Logging #4: Log completion/failure
+    const writeDuration = Date.now() - writeStartTime;
+    if (result.success) {
+      console.log('[StorageWrite] LIFECYCLE_COMPLETED:', {
+        correlationId: transactionId,
+        duration: writeDuration + 'ms',
+        success: true
+      });
+    } else {
+      console.log('[StorageWrite] LIFECYCLE_FAILED:', {
+        correlationId: transactionId,
+        duration: writeDuration + 'ms',
+        error: result.error?.message || 'Unknown error',
+        retryScheduled: false
+      });
+    }
 
     // v1.6.3.11-v8 - FIX Issue #10: Complete transaction after write (success or failure)
     if (this._completeTransactionFn) {
@@ -1148,8 +1237,9 @@ export class QuickTabHandler {
    */
   async _executeWriteWithRetry(writeSourceId, transactionId, tabCount, saveTimestamp) {
     let retryCount = 0;
-    // Initialize with null - will be set by first attempt or remain null if loop never executes
-    let lastResult = null;
+    // Initialize with failure - will be overwritten by first attempt
+    // Note: STORAGE_WRITE_MAX_RETRIES > 0 ensures loop always executes
+    let lastResult = { success: false, error: new Error('All storage write retries failed') };
 
     while (retryCount < STORAGE_WRITE_MAX_RETRIES) {
       lastResult = await this._attemptStorageWrite(
@@ -1165,8 +1255,8 @@ export class QuickTabHandler {
       retryCount++;
     }
 
-    // Return last failure result, or create error if somehow loop never executed
-    return lastResult || { success: false, error: new Error('Storage write loop did not execute') };
+    // Return last result (always populated since loop always executes at least once)
+    return lastResult;
   }
 
   /**
