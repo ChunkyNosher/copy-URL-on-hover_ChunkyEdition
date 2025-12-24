@@ -472,6 +472,59 @@ function _ensureContainerIdInitPromise() {
 }
 
 /**
+ * Generic wait-for-init function with timeout
+ * v1.6.3.12 - FIX CodeScene: Extract common logic from waitForTabIdInit/waitForContainerIdInit
+ * @private
+ * @param {Object} options - Wait options
+ * @param {*} options.cachedValue - Current cached value (return immediately if not null)
+ * @param {Function} options.getPromise - Function to get/create the init promise
+ * @param {number} options.timeoutMs - Timeout in milliseconds
+ * @param {string} options.initType - Type name for logging (e.g., 'tab ID', 'container ID')
+ * @param {string} options.logPrefix - Log prefix for messages
+ * @returns {Promise<*>} Resolved value or null on timeout
+ */
+async function _waitForInitWithTimeout({ cachedValue, getPromise, timeoutMs, initType, logPrefix }) {
+  // Fast path: already initialized
+  if (cachedValue !== null) {
+    console.log(`${logPrefix} Already initialized`, {
+      [initType.replace(' ', '')]: cachedValue,
+      source: 'cached'
+    });
+    return cachedValue;
+  }
+
+  console.log(`${logPrefix} Waiting for ${initType} initialization`, { timeoutMs });
+
+  const promise = getPromise();
+  let timeoutId = null;
+
+  try {
+    const result = await Promise.race([
+      promise.then(r => {
+        if (timeoutId) clearTimeout(timeoutId);
+        return r;
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${initType} initialization timeout`)), timeoutMs);
+      })
+    ]);
+
+    console.log(`${logPrefix} Resolved`, {
+      [initType.replace(' ', '')]: result,
+      source: 'promise'
+    });
+    return result;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    console.warn(`${logPrefix} Timeout waiting for ${initType}`, {
+      timeoutMs,
+      error: err.message
+    });
+    return null;
+  }
+}
+
+/**
  * Update identity state mode based on current initialization state
  * v1.6.3.10-v9 - FIX Issue G: Track identity mode for fail-closed container matching
  * v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
@@ -524,52 +577,20 @@ export function isIdentityReady() {
 /**
  * Wait for container ID to be initialized
  * v1.6.3.10-v9 - FIX Issue S: Parallel to waitForTabIdInit() for container ID
+ * v1.6.3.12 - FIX CodeScene: Deduplicated using _waitForInitWithTimeout
  * Content scripts must wait for container ID for proper container isolation.
  *
  * @param {number} timeoutMs - Maximum time to wait in milliseconds (default: 5000)
  * @returns {Promise<string|null>} Current container ID or null if timeout
  */
-export async function waitForContainerIdInit(timeoutMs = 5000) {
-  // Fast path: already initialized
-  if (currentWritingContainerId !== null) {
-    console.log('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Already initialized', {
-      containerId: currentWritingContainerId,
-      source: 'cached'
-    });
-    return currentWritingContainerId;
-  }
-
-  console.log('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Waiting for container ID initialization', {
-    timeoutMs
+export function waitForContainerIdInit(timeoutMs = 5000) {
+  return _waitForInitWithTimeout({
+    cachedValue: currentWritingContainerId,
+    getPromise: _ensureContainerIdInitPromise,
+    timeoutMs,
+    initType: 'container ID',
+    logPrefix: '[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit:'
   });
-
-  const promise = _ensureContainerIdInitPromise();
-
-  let timeoutId = null;
-  try {
-    const result = await Promise.race([
-      promise.then(r => {
-        if (timeoutId) clearTimeout(timeoutId);
-        return r;
-      }),
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Container ID initialization timeout')), timeoutMs);
-      })
-    ]);
-
-    console.log('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Resolved', {
-      containerId: result,
-      source: 'promise'
-    });
-    return result;
-  } catch (err) {
-    if (timeoutId) clearTimeout(timeoutId);
-    console.warn('[StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Timeout waiting for container ID', {
-      timeoutMs,
-      error: err.message
-    });
-    return null;
-  }
 }
 
 /**
@@ -613,6 +634,7 @@ export async function waitForIdentityInit(timeoutMs = 5000) {
 /**
  * Wait for writing tab ID to be initialized
  * v1.6.3.10-v6 - FIX Issue #4/11/12: Content scripts must wait for tab ID before storage writes
+ * v1.6.3.12 - FIX CodeScene: Deduplicated using _waitForInitWithTimeout
  * This is critical because content scripts cannot use browser.tabs.getCurrent() and must
  * get tab ID from background script via messaging. Storage writes will fail ownership
  * validation if currentWritingTabId is null.
@@ -620,49 +642,14 @@ export async function waitForIdentityInit(timeoutMs = 5000) {
  * @param {number} timeoutMs - Maximum time to wait in milliseconds (default: 5000)
  * @returns {Promise<number|null>} Current tab ID or null if timeout
  */
-export async function waitForTabIdInit(timeoutMs = 5000) {
-  // Fast path: already initialized
-  if (currentWritingTabId !== null) {
-    console.log('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Already initialized', {
-      tabId: currentWritingTabId,
-      source: 'cached'
-    });
-    return currentWritingTabId;
-  }
-
-  console.log('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Waiting for tab ID initialization', {
-    timeoutMs
+export function waitForTabIdInit(timeoutMs = 5000) {
+  return _waitForInitWithTimeout({
+    cachedValue: currentWritingTabId,
+    getPromise: _ensureTabIdInitPromise,
+    timeoutMs,
+    initType: 'tab ID',
+    logPrefix: '[StorageUtils] v1.6.3.10-v6 waitForTabIdInit:'
   });
-
-  const promise = _ensureTabIdInitPromise();
-
-  // v1.6.3.10-v6 - FIX Code Review: Clean up timeout timer to prevent unnecessary execution
-  let timeoutId = null;
-  try {
-    // Wait for tab ID with timeout
-    const result = await Promise.race([
-      promise.then(r => {
-        if (timeoutId) clearTimeout(timeoutId);
-        return r;
-      }),
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Tab ID initialization timeout')), timeoutMs);
-      })
-    ]);
-
-    console.log('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Resolved', {
-      tabId: result,
-      source: 'promise'
-    });
-    return result;
-  } catch (err) {
-    if (timeoutId) clearTimeout(timeoutId);
-    console.warn('[StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Timeout waiting for tab ID', {
-      timeoutMs,
-      error: err.message
-    });
-    return null;
-  }
 }
 
 /**
@@ -1376,25 +1363,28 @@ export function canCurrentTabModifyQuickTab(tabData, currentTabId = null, curren
 export const isOwnerOfQuickTab = canCurrentTabModifyQuickTab;
 
 /**
+ * Options for _determineOwnershipFilterReason
+ * @typedef {Object} OwnershipFilterOptions
+ * @property {number|null} normalizedOriginTabId - Normalized origin tab ID
+ * @property {string|null} normalizedOriginContainerId - Normalized origin container ID
+ * @property {boolean} isTabIdMatch - Whether tab IDs match
+ * @property {boolean} isContainerMatch - Whether containers match
+ */
+
+/**
  * Determine the ownership filter reason for a tab
  * v1.6.3.10-v10 - FIX Issue K: Add filter reason codes for diagnostics
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args, now uses 4-field object)
  * @private
- * @param {number|null} normalizedOriginTabId - Normalized origin tab ID
- * @param {string|null} normalizedOriginContainerId - Normalized origin container ID
- * @param {number} currentTabId - Current tab ID
- * @param {string|null} currentContainerId - Current container ID
- * @param {boolean} isTabIdMatch - Whether tab IDs match
- * @param {boolean} isContainerMatch - Whether containers match
+ * @param {OwnershipFilterOptions} options - Ownership filter options
  * @returns {string} Ownership filter reason code
  */
-function _determineOwnershipFilterReason(
+function _determineOwnershipFilterReason({
   normalizedOriginTabId,
   normalizedOriginContainerId,
-  currentTabId,
-  currentContainerId,
   isTabIdMatch,
   isContainerMatch
-) {
+}) {
   // No ownership data - can't determine ownership
   if (normalizedOriginTabId === null) {
     return OWNERSHIP_FILTER_REASON.NO_OWNERSHIP_DATA;
@@ -1480,14 +1470,13 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
     const isOwned = isTabIdMatch && isContainerMatchResult;
     
     // v1.6.3.10-v10 - FIX Issue K: Determine filter reason for diagnostics
-    const filterReason = _determineOwnershipFilterReason(
+    // v1.6.3.12 - FIX CodeScene: Use options object pattern
+    const filterReason = _determineOwnershipFilterReason({
       normalizedOriginTabId,
       normalizedOriginContainerId,
-      tabId,
-      normalizedCurrentContainerId,
       isTabIdMatch,
-      isContainerMatchResult
-    );
+      isContainerMatch: isContainerMatchResult
+    });
 
     // v1.6.3.10-v10 - FIX Issue K: Enhanced logging with ownership match type
     console.log('[StorageUtils] _filterOwnedTabs: Tab ownership check', {
@@ -3753,17 +3742,24 @@ async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt
 }
 
 /**
+ * Options for _handleSuccessfulWrite
+ * @typedef {Object} SuccessfulWriteOptions
+ * @property {string} operationId - Operation ID for logging
+ * @property {string} transactionId - Transaction ID
+ * @property {number} tabCount - Number of tabs written
+ * @property {number} startTime - Start time for duration calculation
+ * @property {number} attempt - Attempt number (1-based)
+ * @property {string} logPrefix - Log prefix
+ */
+
+/**
  * Handle successful storage write - update state and log
  * v1.6.3.10-v6 - FIX Issue A20: Extracted to reduce _executeStorageWrite complexity
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
  * @private
- * @param {string} operationId - Operation ID for logging
- * @param {string} transactionId - Transaction ID
- * @param {number} tabCount - Number of tabs written
- * @param {number} startTime - Start time for duration calculation
- * @param {number} attempt - Attempt number (1-based)
- * @param {string} logPrefix - Log prefix
+ * @param {SuccessfulWriteOptions} options - Write options
  */
-function _handleSuccessfulWrite(operationId, transactionId, tabCount, startTime, attempt, logPrefix) {
+function _handleSuccessfulWrite({ operationId, transactionId, tabCount, startTime, attempt, logPrefix }) {
   const durationMs = Date.now() - startTime;
 
   // v1.6.3.4-v8 - Update previous tab count after successful write
@@ -3824,11 +3820,23 @@ function _buildQuotaResult(canWrite, bytesUsed, bytesAvailable, usagePercent) {
 }
 
 /**
+ * Options for _logQuotaStatusIfNeeded
+ * @typedef {Object} QuotaStatusOptions
+ * @property {string} logPrefix - Log prefix
+ * @property {number} bytesUsed - Bytes used
+ * @property {number} bytesQuota - Total quota
+ * @property {number} bytesAvailable - Bytes available
+ * @property {number} usagePercent - Usage percentage
+ */
+
+/**
  * Log quota status if at sampling interval or above warning threshold
  * v1.6.3.10-v9 - FIX Issue M/D: Helper for checkStorageQuota
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 5 args)
  * @private
+ * @param {QuotaStatusOptions} options - Quota status options
  */
-function _logQuotaStatusIfNeeded(logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent) {
+function _logQuotaStatusIfNeeded({ logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent }) {
   const shouldLog = pendingWriteCount % STORAGE_QUOTA_LOG_SAMPLING_INTERVAL === 0 || usagePercent > STORAGE_QUOTA_WARNING_THRESHOLD * 100;
   if (shouldLog) {
     console.log(`${logPrefix} v1.6.3.10-v9 Storage quota status:`, {
@@ -3858,7 +3866,7 @@ export async function checkStorageQuota(logPrefix = '[StorageUtils]') {
     const bytesAvailable = bytesQuota - bytesUsed;
     const usagePercent = bytesQuota > 0 ? (bytesUsed / bytesQuota) * 100 : 0;
 
-    _logQuotaStatusIfNeeded(logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent);
+    _logQuotaStatusIfNeeded({ logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent });
 
     // Check if quota exceeded
     if (bytesAvailable < STORAGE_QUOTA_MIN_HEADROOM_BYTES) {
@@ -3892,11 +3900,24 @@ function _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPref
 }
 
 /**
+ * Options for _handleFailedWrite
+ * @typedef {Object} FailedWriteOptions
+ * @property {string} operationId - Operation ID for logging
+ * @property {string} transactionId - Transaction ID
+ * @property {number} tabCount - Number of tabs
+ * @property {number} startTime - Start time for duration calculation
+ * @property {number} totalAttempts - Total attempts made
+ * @property {string} logPrefix - Log prefix
+ */
+
+/**
  * Handle failed storage write after all retries
  * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
  * @private
+ * @param {FailedWriteOptions} options - Write failure options
  */
-function _handleFailedWrite(operationId, transactionId, tabCount, startTime, totalAttempts, logPrefix) {
+function _handleFailedWrite({ operationId, transactionId, tabCount, startTime, totalAttempts, logPrefix }) {
   const durationMs = Date.now() - startTime;
   pendingWriteCount = Math.max(0, pendingWriteCount - 1);
   logStorageWrite(operationId, STATE_KEY, 'complete', { success: false, tabCount, durationMs, transactionId, attempts: totalAttempts });
@@ -3920,49 +3941,89 @@ function _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts) {
 }
 
 /**
- * Log successful storage write
- * v1.6.3.11-v3 - FIX CodeScene: Extract from _executeWriteRetryLoop
+ * Log write result (success or failure)
+ * v1.6.3.12 - FIX CodeScene: Unified helper for _logWriteSuccess and _logRetriesExhausted
  * @private
+ * @param {Object} options - Log options
+ * @param {Object} options.context - Write context with writeCorrelationId, writeStartTime
+ * @param {string} options.transactionId - Transaction ID
+ * @param {number} options.tabCount - Number of tabs
+ * @param {number} options.attempt - Current/final attempt number
+ * @param {number} options.totalAttempts - Total attempts made
+ * @param {boolean} options.isSuccess - Whether the write succeeded
  */
-function _logWriteSuccess(context, transactionId, tabCount, attempt, totalAttempts) {
+function _logWriteResult({ context, transactionId, tabCount, attempt, totalAttempts, isSuccess }) {
   const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
-  console.log('[StorageWrite] LIFECYCLE_SUCCESS:', {
+  const logData = {
     correlationId: context.writeCorrelationId,
     transactionId,
     tabCount,
-    attempt,
     totalAttempts,
     durationMs: totalDurationMs,
     timestamp: new Date().toISOString()
-  });
+  };
+  
+  if (isSuccess) {
+    logData.attempt = attempt;
+    console.log('[StorageWrite] LIFECYCLE_SUCCESS:', logData);
+  } else {
+    logData.phase = 'ALL_RETRIES_EXHAUSTED';
+    console.error('[StorageWrite] LIFECYCLE_FAILURE:', logData);
+  }
+}
+
+/**
+ * Options for _logWriteSuccess
+ * @typedef {Object} LogWriteSuccessOptions
+ * @property {Object} context - Write context with writeCorrelationId, writeStartTime
+ * @property {string} transactionId - Transaction ID
+ * @property {number} tabCount - Number of tabs
+ * @property {number} attempt - Current attempt number
+ * @property {number} totalAttempts - Total attempts
+ */
+
+/**
+ * Log successful storage write
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _executeWriteRetryLoop
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 5 args)
+ * @private
+ * @param {LogWriteSuccessOptions} options - Success log options
+ */
+function _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts }) {
+  _logWriteResult({ context, transactionId, tabCount, attempt, totalAttempts, isSuccess: true });
 }
 
 /**
  * Log exhausted retries failure
  * v1.6.3.11-v3 - FIX CodeScene: Extract from _executeWriteRetryLoop
+ * v1.6.3.12 - FIX CodeScene: Delegate to _logWriteResult
  * @private
  */
 function _logRetriesExhausted(context, transactionId, tabCount, totalAttempts) {
-  const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
-  console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
-    correlationId: context.writeCorrelationId,
-    transactionId,
-    phase: 'ALL_RETRIES_EXHAUSTED',
-    tabCount,
-    totalAttempts,
-    durationMs: totalDurationMs,
-    timestamp: new Date().toISOString()
-  });
+  _logWriteResult({ context, transactionId, tabCount, attempt: totalAttempts, totalAttempts, isSuccess: false });
 }
+
+/**
+ * Options for _executeWriteRetryLoop
+ * @typedef {Object} WriteRetryLoopOptions
+ * @property {Object} browserAPI - Browser storage API
+ * @property {Object} stateWithTxn - State with transaction metadata
+ * @property {string} logPrefix - Log prefix
+ * @property {string} transactionId - Transaction ID
+ * @property {Object} context - Write context with operationId, startTime, etc.
+ * @property {number} tabCount - Number of tabs
+ */
 
 /**
  * Execute retry loop for storage write
  * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
  * v1.6.3.10-v10 - FIX Gap 3.1: Add write lifecycle SUCCESS logging
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting logging helpers
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
  * @private
+ * @param {WriteRetryLoopOptions} options - Retry loop options
  */
-async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount) {
+async function _executeWriteRetryLoop({ browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount }) {
   const totalAttempts = STORAGE_MAX_RETRIES + 1;
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
@@ -3972,8 +4033,15 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
 
     const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
     if (success) {
-      _logWriteSuccess(context, transactionId, tabCount, attempt, totalAttempts);
-      _handleSuccessfulWrite(context.operationId, transactionId, tabCount, context.startTime, attempt, logPrefix);
+      _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts });
+      _handleSuccessfulWrite({
+        operationId: context.operationId,
+        transactionId,
+        tabCount,
+        startTime: context.startTime,
+        attempt,
+        logPrefix
+      });
       return true;
     }
 
@@ -3984,18 +4052,38 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
   }
 
   _logRetriesExhausted(context, transactionId, tabCount, totalAttempts);
-  _handleFailedWrite(context.operationId, transactionId, tabCount, context.startTime, totalAttempts, logPrefix);
+  _handleFailedWrite({
+    operationId: context.operationId,
+    transactionId,
+    tabCount,
+    startTime: context.startTime,
+    totalAttempts,
+    logPrefix
+  });
   return false;
 }
+
+/**
+ * Options for _executeStorageWrite
+ * @typedef {Object} ExecuteStorageWriteOptions
+ * @property {Object} stateWithTxn - State with transaction metadata
+ * @property {number} tabCount - Number of tabs
+ * @property {string} logPrefix - Log prefix
+ * @property {string} transactionId - Transaction ID
+ * @property {string|null} writeCorrelationId - Correlation ID for logging
+ * @property {number|null} startTime - Start time for duration calculation
+ */
 
 /**
  * Perform the actual storage write operation with retry logic
  * v1.6.3.10-v6 - FIX Issue A20: Added exponential backoff retry
  * v1.6.3.10-v9 - FIX Issue M/D: Added preflight quota check (refactored)
  * v1.6.3.10-v10 - FIX Gap 3.1: Added write correlation ID and success logging
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
  * @private
+ * @param {ExecuteStorageWriteOptions} options - Write execution options
  */
-async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId = null, startTime = null) {
+async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId = null, startTime = null }) {
   const actualStartTime = startTime || Date.now();
   
   // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for fetch phase
@@ -4065,7 +4153,7 @@ async function _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transacti
     phase: 'WRITE_API_PHASE'
   });
   
-  return _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount);
+  return _executeWriteRetryLoop({ browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount });
 }
 
 /**
@@ -4212,6 +4300,45 @@ function _logBacklogWarnings(transactionId) {
 }
 
 /**
+ * Wait for identity to be ready before executing write operation
+ * v1.6.3.12 - FIX CodeScene: Extract from queueStorageWrite to fix bumpy road
+ * @private
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ * @returns {Promise<boolean>} True if identity is ready, false if blocked
+ */
+async function _waitForIdentityBeforeWrite(logPrefix, transactionId) {
+  if (isIdentityReady()) {
+    return true; // Already ready, proceed
+  }
+
+  console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_START [${transactionId}]:`, {
+    identityMode: identityStateMode,
+    currentWritingTabId,
+    currentWritingContainerId
+  });
+  
+  const identity = await waitForIdentityInit(3000); // 3 second timeout
+  
+  console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [${transactionId}]:`, {
+    isReady: identity.isReady,
+    tabId: identity.tabId,
+    containerId: identity.containerId
+  });
+  
+  if (!identity.isReady) {
+    console.warn(`${logPrefix} [WRITE_PHASE] IDENTITY_NOT_READY - WRITE_BLOCKED [${transactionId}]:`, {
+      warning: 'Identity not ready after timeout - rejecting write',
+      tabId: identity.tabId,
+      containerId: identity.containerId
+    });
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Queue a storage write operation (FIFO ordering)
  * v1.6.3.4-v8 - FIX Issue #7: Ensures writes are serialized
  * v1.6.3.4-v10 - FIX Issue #7: Reset queue on failure to break error propagation
@@ -4219,6 +4346,7 @@ function _logBacklogWarnings(transactionId) {
  * v1.6.3.6-v3 - FIX Issue #2: Circuit breaker blocks ALL writes when queue exceeds threshold
  * v1.6.3.10-v9 - FIX Issue F: Recovery logic for stalled queue / unload edge cases (refactored)
  * v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write queue execution
+ * v1.6.3.12 - FIX CodeScene: Extract identity wait to fix bumpy road
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
@@ -4244,31 +4372,10 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
       _logQueueStateTransition(logPrefix, transactionId, 'dequeue_start');
       
       // v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write execution
-      // Wait for identity to be ready before processing writes
-      if (!isIdentityReady()) {
-        console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_START [${transactionId}]:`, {
-          identityMode: identityStateMode,
-          currentWritingTabId,
-          currentWritingContainerId
-        });
-        
-        const identity = await waitForIdentityInit(3000); // 3 second timeout
-        
-        console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [${transactionId}]:`, {
-          isReady: identity.isReady,
-          tabId: identity.tabId,
-          containerId: identity.containerId
-        });
-        
-        // If identity still not ready after wait, reject write
-        if (!identity.isReady) {
-          console.warn(`${logPrefix} [WRITE_PHASE] IDENTITY_NOT_READY - WRITE_BLOCKED [${transactionId}]:`, {
-            warning: 'Identity not ready after timeout - rejecting write',
-            tabId: identity.tabId,
-            containerId: identity.containerId
-          });
-          return false;
-        }
+      // v1.6.3.12 - FIX CodeScene: Extracted to _waitForIdentityBeforeWrite
+      const identityReady = await _waitForIdentityBeforeWrite(logPrefix, transactionId);
+      if (!identityReady) {
+        return false;
       }
       
       return writeOperation();
@@ -4367,7 +4474,51 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
 // =============================================================================
 // LIFECYCLE LOGGING HELPERS
 // v1.6.3.11-v3 - FIX CodeScene: Extract lifecycle logging to reduce persistStateToStorage LOC
+// v1.6.3.12 - FIX CodeScene: Unified _logLifecycleEvent to reduce duplication
 // =============================================================================
+
+/**
+ * Lifecycle event type enum for structured logging
+ * @private
+ */
+const LIFECYCLE_EVENT_TYPE = {
+  QUEUED: { name: 'LIFECYCLE_QUEUED', level: 'log' },
+  FAILURE: { name: 'LIFECYCLE_FAILURE', level: 'error' },
+  COALESCED: { name: 'LIFECYCLE_COALESCED', level: 'log', phase: 'RATE_LIMIT' },
+  SKIPPED: { name: 'LIFECYCLE_SKIPPED', level: 'log', phase: 'HASH_CHECK' },
+  EXECUTE_START: { name: 'LIFECYCLE_EXECUTE_START', level: 'log' }
+};
+
+/**
+ * Unified lifecycle event logger
+ * v1.6.3.12 - FIX CodeScene: Reduce duplication across lifecycle logging functions
+ * @private
+ * @param {Object} eventType - Event type from LIFECYCLE_EVENT_TYPE
+ * @param {Object} context - Context object with correlationId, transactionId, etc.
+ * @param {Object} extraFields - Additional fields specific to this event type
+ */
+function _logLifecycleEvent(eventType, context, extraFields = {}) {
+  const logData = {
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    timestamp: context.timestamp
+  };
+  
+  // Add phase if event type defines one or if passed in extraFields
+  if (eventType.phase) logData.phase = eventType.phase;
+  if (context.phase) logData.phase = context.phase;
+  
+  // Add duration if present
+  if (context.durationMs !== undefined) logData.durationMs = context.durationMs;
+  
+  // Merge extra fields
+  Object.assign(logData, extraFields);
+  
+  // Merge extras object if present (for FAILURE event compatibility)
+  if (context.extras) Object.assign(logData, context.extras);
+  
+  console[eventType.level](`[StorageWrite] ${eventType.name}:`, logData);
+}
 
 /**
  * Log write lifecycle QUEUED event
@@ -4375,13 +4526,10 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
  * @param {Object} context - { correlationId, transactionId, tabCount, forceEmpty, logPrefix, timestamp }
  */
 function _logLifecycleQueued(context) {
-  console.log('[StorageWrite] LIFECYCLE_QUEUED:', {
-    correlationId: context.correlationId,
-    transactionId: context.transactionId,
+  _logLifecycleEvent(LIFECYCLE_EVENT_TYPE.QUEUED, context, {
     tabCount: context.tabCount,
     forceEmpty: context.forceEmpty,
-    caller: context.logPrefix.replace(/\[|\]/g, ''),
-    timestamp: context.timestamp
+    caller: context.logPrefix.replace(/\[|\]/g, '')
   });
 }
 
@@ -4391,17 +4539,9 @@ function _logLifecycleQueued(context) {
  * @param {Object} context - { correlationId, transactionId, phase, reason, durationMs, timestamp, extras }
  */
 function _logLifecycleFailure(context) {
-  const logData = {
-    correlationId: context.correlationId,
-    transactionId: context.transactionId,
-    phase: context.phase,
-    reason: context.reason,
-    durationMs: context.durationMs,
-    timestamp: context.timestamp
-  };
-  // Merge any extra fields (e.g., errors, tabCount, forceEmpty)
-  if (context.extras) Object.assign(logData, context.extras);
-  console.error('[StorageWrite] LIFECYCLE_FAILURE:', logData);
+  _logLifecycleEvent(LIFECYCLE_EVENT_TYPE.FAILURE, context, {
+    reason: context.reason
+  });
 }
 
 /**
@@ -4410,14 +4550,9 @@ function _logLifecycleFailure(context) {
  * @param {Object} context - { correlationId, transactionId, reason, tabCount, durationMs, timestamp }
  */
 function _logLifecycleCoalesced(context) {
-  console.log('[StorageWrite] LIFECYCLE_COALESCED:', {
-    correlationId: context.correlationId,
-    transactionId: context.transactionId,
-    phase: 'RATE_LIMIT',
+  _logLifecycleEvent(LIFECYCLE_EVENT_TYPE.COALESCED, context, {
     reason: context.reason,
-    tabCount: context.tabCount,
-    durationMs: context.durationMs,
-    timestamp: context.timestamp
+    tabCount: context.tabCount
   });
 }
 
@@ -4427,13 +4562,8 @@ function _logLifecycleCoalesced(context) {
  * @param {Object} context - { correlationId, transactionId, reason, durationMs, timestamp }
  */
 function _logLifecycleSkipped(context) {
-  console.log('[StorageWrite] LIFECYCLE_SKIPPED:', {
-    correlationId: context.correlationId,
-    transactionId: context.transactionId,
-    phase: 'HASH_CHECK',
-    reason: context.reason,
-    durationMs: context.durationMs,
-    timestamp: context.timestamp
+  _logLifecycleEvent(LIFECYCLE_EVENT_TYPE.SKIPPED, context, {
+    reason: context.reason
   });
 }
 
@@ -4443,13 +4573,9 @@ function _logLifecycleSkipped(context) {
  * @param {Object} context - { correlationId, transactionId, tabCount, minimizedCount, durationMs, timestamp }
  */
 function _logLifecycleExecuteStart(context) {
-  console.log('[StorageWrite] LIFECYCLE_EXECUTE_START:', {
-    correlationId: context.correlationId,
-    transactionId: context.transactionId,
+  _logLifecycleEvent(LIFECYCLE_EVENT_TYPE.EXECUTE_START, context, {
     tabCount: context.tabCount,
-    minimizedCount: context.minimizedCount,
-    durationMs: context.durationMs,
-    timestamp: context.timestamp
+    minimizedCount: context.minimizedCount
   });
 }
 
@@ -4597,17 +4723,24 @@ function _logPersistInitiation(options) {
  */
 
 /**
+ * Options for _runPersistValidationPhases
+ * @typedef {Object} PersistValidationOptions
+ * @property {Object} state - State to validate
+ * @property {number} tabCount - Number of tabs
+ * @property {boolean} forceEmpty - Force empty flag
+ * @property {string} logPrefix - Log prefix
+ * @property {string} transactionId - Transaction ID
+ */
+
+/**
  * Run early validation phases for persistStateToStorage
  * v1.6.3.11-v3 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
+ * v1.6.3.12 - FIX CodeScene: Converted to options object (was 5 args)
  * @private
- * @param {Object} state - State to validate
- * @param {number} tabCount - Number of tabs
- * @param {boolean} forceEmpty - Force empty flag
- * @param {string} logPrefix - Log prefix
- * @param {string} transactionId - Transaction ID
+ * @param {PersistValidationOptions} options - Validation options
  * @returns {PersistValidationResult} Validation result
  */
-function _runPersistValidationPhases(state, tabCount, forceEmpty, logPrefix, transactionId) {
+function _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, transactionId }) {
   // Phase 1.5: Check write coalescing
   const coalesceResult = _checkWriteCoalescing(state, logPrefix, transactionId);
   if (coalesceResult.shouldCoalesce) {
@@ -4678,7 +4811,7 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
 
   // Run validation phases 1.5-5
-  const validation = _runPersistValidationPhases(state, tabCount, forceEmpty, logPrefix, transactionId);
+  const validation = _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, transactionId });
   if (!validation.shouldProceed) {
     if (validation.failurePhase === 'COALESCE') {
       _logLifecycleCoalesced({ correlationId, transactionId, reason: validation.failureReason, tabCount, durationMs: Date.now() - startTime, timestamp });
@@ -4700,7 +4833,14 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   stateWithTxn._writeCorrelationId = correlationId;
 
   return queueStorageWrite(
-    () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, correlationId, startTime),
+    () => _executeStorageWrite({
+      stateWithTxn,
+      tabCount,
+      logPrefix,
+      transactionId,
+      writeCorrelationId: correlationId,
+      startTime
+    }),
     logPrefix,
     transactionId
   );
