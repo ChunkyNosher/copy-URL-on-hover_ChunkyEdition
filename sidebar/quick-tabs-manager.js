@@ -4475,45 +4475,135 @@ function _handleStorageChange(change) {
 /**
  * Build analysis result for storage change
  * v1.6.3.11-v3 - FIX CodeScene: Extract from _analyzeStorageChange
+ * v1.6.3.11-v9 - FIX CodeScene: Use options object to reduce argument count
+ * @private
+ * @param {Object} options - Analysis result options
+ * @param {boolean} options.requiresRender - Whether render is required
+ * @param {boolean} options.hasDataChange - Whether data changed
+ * @param {string} options.changeType - Type of change
+ * @param {string} options.changeReason - Reason for change
+ * @param {string} [options.skipReason] - Reason for skipping (optional)
+ * @returns {Object} Analysis result
+ */
+function _buildAnalysisResult(options) {
+  return {
+    requiresRender: options.requiresRender,
+    hasDataChange: options.hasDataChange,
+    changeType: options.changeType,
+    changeReason: options.changeReason,
+    skipReason: options.skipReason ?? null
+  };
+}
+
+/**
+ * Create analysis result for tab count change
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
  * @private
  */
-function _buildAnalysisResult(requiresRender, hasDataChange, changeType, changeReason, skipReason = null) {
-  return { requiresRender, hasDataChange, changeType, changeReason, skipReason };
+function _buildTabCountChangeResult(oldCount, newCount) {
+  return _buildAnalysisResult({
+    requiresRender: true,
+    hasDataChange: true,
+    changeType: 'tab-count',
+    changeReason: `Tab count changed: ${oldCount} → ${newCount}`
+  });
+}
+
+/**
+ * Create analysis result for metadata-only change
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
+ * @private
+ */
+function _buildMetadataOnlyResult(zIndexChanges) {
+  return _buildAnalysisResult({
+    requiresRender: false,
+    hasDataChange: false,
+    changeType: 'metadata-only',
+    changeReason: 'z-index only',
+    skipReason: `Only z-index changed: ${JSON.stringify(zIndexChanges)}`
+  });
+}
+
+/**
+ * Create analysis result for data change
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
+ * @private
+ */
+function _buildDataChangeResult(dataChangeReasons) {
+  return _buildAnalysisResult({
+    requiresRender: true,
+    hasDataChange: true,
+    changeType: 'data',
+    changeReason: dataChangeReasons.join('; ')
+  });
+}
+
+/**
+ * Create analysis result for no changes
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
+ * @private
+ */
+function _buildNoChangesResult() {
+  return _buildAnalysisResult({
+    requiresRender: false,
+    hasDataChange: false,
+    changeType: 'none',
+    changeReason: 'no changes',
+    skipReason: 'No detectable changes between old and new state'
+  });
+}
+
+/**
+ * Get tabs array from storage value safely
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
+ * @private
+ */
+function _getTabsFromValue(value) {
+  return value?.tabs || [];
+}
+
+/**
+ * Determine the appropriate result based on change analysis
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
+ * @private
+ */
+function _buildResultFromChangeAnalysis(changeResults) {
+  // If only z-index changed, skip render
+  if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
+    return _buildMetadataOnlyResult(changeResults.zIndexChanges);
+  }
+
+  // If there are data changes, render is required
+  if (changeResults.hasDataChange) {
+    return _buildDataChangeResult(changeResults.dataChangeReasons);
+  }
+
+  // No changes detected
+  return _buildNoChangesResult();
 }
 
 /**
  * Analyze storage change to determine if renderUI() is needed
  * v1.6.3.7 - FIX Issue #3: Differential update detection
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting result builder
+ * v1.6.3.11-v9 - FIX CodeScene: Reduce complexity by extracting result factories and change analysis
  * @private
  * @param {Object} oldValue - Previous storage value
  * @param {Object} newValue - New storage value
  * @returns {{ requiresRender: boolean, hasDataChange: boolean, changeType: string, changeReason: string, skipReason: string }}
  */
 function _analyzeStorageChange(oldValue, newValue) {
-  const oldTabs = oldValue?.tabs || [];
-  const newTabs = newValue?.tabs || [];
+  const oldTabs = _getTabsFromValue(oldValue);
+  const newTabs = _getTabsFromValue(newValue);
 
   // Tab count change always requires render
   if (oldTabs.length !== newTabs.length) {
-    return _buildAnalysisResult(true, true, 'tab-count', `Tab count changed: ${oldTabs.length} → ${newTabs.length}`);
+    return _buildTabCountChangeResult(oldTabs.length, newTabs.length);
   }
 
-  // Check for structural changes using helper
+  // Check for structural changes and determine result
   const changeResults = _checkTabChanges(oldTabs, newTabs);
-
-  // If only z-index changed, skip render
-  if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
-    return _buildAnalysisResult(false, false, 'metadata-only', 'z-index only', `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`);
-  }
-
-  // If there are data changes, render is required
-  if (changeResults.hasDataChange) {
-    return _buildAnalysisResult(true, true, 'data', changeResults.dataChangeReasons.join('; '));
-  }
-
-  // No changes detected
-  return _buildAnalysisResult(false, false, 'none', 'no changes', 'No detectable changes between old and new state');
+  return _buildResultFromChangeAnalysis(changeResults);
 }
 
 /**
@@ -5007,6 +5097,39 @@ function _scheduleNormalUpdate() {
  *   - Background processes command, updates state, writes to storage
  *   - Background sends confirmation back to Manager
  */
+/**
+ * Log successful close minimized command
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce closeMinimizedTabs complexity
+ * @private
+ */
+function _logCloseMinimizedSuccess(response) {
+  console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
+    closedCount: response?.closedCount || 0,
+    closedIds: response?.closedIds || [],
+    timedOut: response?.timedOut || false
+  });
+}
+
+/**
+ * Log failed close minimized command
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce closeMinimizedTabs complexity
+ * @private
+ */
+function _logCloseMinimizedFailure(response) {
+  console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
+    error: response?.error || 'Unknown error'
+  });
+}
+
+/**
+ * Check if close minimized response indicates success
+ * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce closeMinimizedTabs complexity
+ * @private
+ */
+function _isCloseMinimizedSuccessful(response) {
+  return response?.success || response?.timedOut;
+}
+
 async function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
 
@@ -5016,19 +5139,12 @@ async function closeMinimizedTabs() {
       timestamp: Date.now()
     });
 
-    if (response?.success || response?.timedOut) {
-      console.log('[Manager] ✅ CLOSE_MINIMIZED_COMMAND_SUCCESS:', {
-        closedCount: response?.closedCount || 0,
-        closedIds: response?.closedIds || [],
-        timedOut: response?.timedOut || false
-      });
-
+    if (_isCloseMinimizedSuccessful(response)) {
+      _logCloseMinimizedSuccess(response);
       // Re-render UI to reflect the change
       scheduleRender('close-minimized-success');
     } else {
-      console.error('[Manager] ❌ CLOSE_MINIMIZED_COMMAND_FAILED:', {
-        error: response?.error || 'Unknown error'
-      });
+      _logCloseMinimizedFailure(response);
     }
   } catch (err) {
     console.error('[Manager] Error sending close minimized command:', err);
