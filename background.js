@@ -419,6 +419,7 @@ async function _executeViaScripting(tabId, operation, params, correlationId) {
 /**
  * Scripted operation function injected into content script context
  * v1.6.3.10-v4 - FIX Enhancement #1: Atomic execution in content script
+ * v1.6.3.12 - Extracted complex conditional for improved readability
  * IMPORTANT: This function runs in the content script context via browser.scripting.executeScript
  * It must be COMPLETELY SELF-CONTAINED - no external function references allowed!
  * @param {string} operation - Operation type
@@ -430,12 +431,15 @@ function executeScriptedOperation(operation, params, correlationId) {
   // Access the Quick Tabs manager from content script globals
   // Validate structure to guard against tampering in content script context
   const extension = window.CopyURLExtension;
-  if (
-    !extension ||
-    typeof extension !== 'object' ||
-    !extension.quickTabsManager ||
-    typeof extension.quickTabsManager !== 'object'
-  ) {
+
+  // v1.6.3.12 - Extracted predicate to reduce complex conditional
+  const isValidManager =
+    extension &&
+    typeof extension === 'object' &&
+    extension.quickTabsManager &&
+    typeof extension.quickTabsManager === 'object';
+
+  if (!isValidManager) {
     return { success: false, error: 'QuickTabsManager not available', correlationId };
   }
 

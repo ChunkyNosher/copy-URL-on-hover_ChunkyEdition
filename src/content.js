@@ -1540,11 +1540,86 @@ window.addEventListener('unload', () => {
 // ==================== END PORT CONNECTION ====================
 
 /**
+ * Log successful Quick Tabs initialization
+ * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
+ * @private
+ * @param {number|null} currentTabId - The current tab ID
+ * @param {number} totalDurationMs - Total initialization duration in ms
+ */
+function _logInitSuccess(currentTabId, totalDurationMs) {
+  console.log('[INIT][Content] PHASE_COMPLETE:', {
+    success: true,
+    currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+    totalDurationMs,
+    hasManager: true,
+    timestamp: new Date().toISOString()
+  });
+  console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
+  console.log('[Copy-URL-on-Hover] Manager has createQuickTab:', typeof quickTabsManager.createQuickTab);
+  console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
+}
+
+/**
+ * Log failed Quick Tabs initialization
+ * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
+ * @private
+ * @param {number|null} currentTabId - The current tab ID
+ * @param {number} totalDurationMs - Total initialization duration in ms
+ */
+function _logInitFailure(currentTabId, totalDurationMs) {
+  console.error('[INIT][Content] PHASE_COMPLETE:', {
+    success: false,
+    currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+    totalDurationMs,
+    hasManager: false,
+    error: 'Manager is null after initialization',
+    timestamp: new Date().toISOString()
+  });
+  console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
+}
+
+/**
+ * Log tab ID acquisition failure and warnings
+ * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
+ * @private
+ */
+function _logTabIdAcquisitionFailed() {
+  console.error('[INIT][Content] TAB_ID_ACQUISITION_FAILED:', {
+    timestamp: new Date().toISOString(),
+    warning: 'Storage writes may fail ownership validation without tab ID'
+  });
+  console.warn(
+    '[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_FAILED: Could not acquire tab ID from background'
+  );
+  console.warn('[Copy-URL-on-Hover] WARNING: Storage writes may fail ownership validation without tab ID');
+}
+
+/**
+ * Handle successful tab ID acquisition - set writing tab ID and establish port connection
+ * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
+ * @private
+ * @param {number} tabId - The acquired tab ID
+ */
+function _handleTabIdAcquired(tabId) {
+  setWritingTabId(tabId);
+  console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
+    tabId,
+    isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
+  });
+
+  // Establish persistent port connection
+  console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId });
+  connectContentToBackground(tabId);
+  console.log('[INIT][Content] PORT_CONNECTION_INITIATED:', { tabId });
+}
+
+/**
  * v1.6.0.3 - Helper to initialize Quick Tabs
  * v1.6.3.5-v10 - FIX Issue #3: Get tab ID from background before initializing Quick Tabs
  * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
  * v1.6.3.10-v6 - FIX Issue #4/11/12: Enhanced logging showing tab ID acquisition flow
  * v1.6.3.10-v10 - FIX Issue #6: Add [INIT] prefix boundary logging for initialization phases
+ * v1.6.3.12 - Refactored to use helper functions for Code Health 9.0+
  */
 async function initializeQuickTabsFeature() {
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
@@ -1585,29 +1660,9 @@ async function initializeQuickTabsFeature() {
   // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
   // explicitly set the tab ID for storage-utils to validate ownership during writes
   if (currentTabId !== null) {
-    setWritingTabId(currentTabId);
-    // v1.6.3.10-v6 - FIX Issue #12: Verify tab ID was set
-    console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
-      tabId: currentTabId,
-      isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
-    });
-
-    // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
-    console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId: currentTabId });
-    connectContentToBackground(currentTabId);
-    console.log('[INIT][Content] PORT_CONNECTION_INITIATED:', { tabId: currentTabId });
+    _handleTabIdAcquired(currentTabId);
   } else {
-    // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for failure
-    console.error('[INIT][Content] TAB_ID_ACQUISITION_FAILED:', {
-      timestamp: new Date().toISOString(),
-      warning: 'Storage writes may fail ownership validation without tab ID'
-    });
-    console.warn(
-      '[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_FAILED: Could not acquire tab ID from background'
-    );
-    console.warn(
-      '[Copy-URL-on-Hover] WARNING: Storage writes may fail ownership validation without tab ID'
-    );
+    _logTabIdAcquisitionFailed();
   }
 
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for manager init
@@ -1622,31 +1677,11 @@ async function initializeQuickTabsFeature() {
   const initEndTime = Date.now();
   const totalInitDuration = initEndTime - initStartTime;
 
+  // v1.6.3.12 - Use extracted helpers for Code Health 9.0+
   if (quickTabsManager) {
-    // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for completion
-    console.log('[INIT][Content] PHASE_COMPLETE:', {
-      success: true,
-      currentTabId: currentTabId !== null ? currentTabId : 'NULL',
-      totalDurationMs: totalInitDuration,
-      hasManager: true,
-      timestamp: new Date().toISOString()
-    });
-    console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
-    console.log(
-      '[Copy-URL-on-Hover] Manager has createQuickTab:',
-      typeof quickTabsManager.createQuickTab
-    );
-    console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
+    _logInitSuccess(currentTabId, totalInitDuration);
   } else {
-    console.error('[INIT][Content] PHASE_COMPLETE:', {
-      success: false,
-      currentTabId: currentTabId !== null ? currentTabId : 'NULL',
-      totalDurationMs: totalInitDuration,
-      hasManager: false,
-      error: 'Manager is null after initialization',
-      timestamp: new Date().toISOString()
-    });
-    console.error('[Copy-URL-on-Hover] ✗ Quick Tabs manager is null after initialization!');
+    _logInitFailure(currentTabId, totalInitDuration);
   }
 }
 
