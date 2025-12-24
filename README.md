@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,39 +9,30 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v6 Status:** 14 Firefox Critical Fixes ✅ | 1,974 Tests
+**🔧 v1.6.3.11-v7 Status:** Stability Restoration ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.11-v6
+## 🎉 What's New in v1.6.3.11-v7
 
-**🔧 Firefox Critical Fixes (December 2025) - 14 Issues Fixed ✅**
+**🔧 Stability Restoration & Code Health Improvements (December 2025) ✅**
 
-**Critical Fixes (4):**
+**Stability Restoration:**
 
-- ✅ **BFCache Port Validation** - Auto-reconnect after back/forward navigation
-- ✅ **Adaptive Message Timeout** - 90th percentile, 7s default for Firefox
-- ✅ **Load Shedding** - Reject non-critical at 50%/75%/90% thresholds
-- ✅ **Hydration Drain Scheduler** - Queue-based with re-drain on concurrent
-  completions
+- ✅ **Restored to v1.6.3.10-v10** - Working version before architectural changes
+- ✅ **Fixed Orphan Quick Tabs** - Quick Tabs now properly store `originTabId` and `originContainerId`
+- ✅ **Background Handler Fix** - Added `_resolveOriginTabId()`, `_validateTabId()`, `_extractTabIdFromPattern()` helpers
 
-**High-Priority Fixes (5):**
+**Code Health Improvements:**
 
-- ✅ **Message ID Collision** - Iterative retry with counter suffix
-- ✅ **Clock Skew Tolerance** - 150ms window for stale event detection
-- ✅ **Heartbeat Circuit Breaker** - Exponential backoff (15s→30s→60s→120s)
-- ✅ **Operation Timeout** - 5-second per-operation limit
-- ✅ **Response Validation** - Schema-based field checking
+- ✅ **sidebar/quick-tabs-manager.js** - Score 7.32 → 8.26 (8 methods refactored)
+- ✅ **src/utils/storage-utils.js** - Score 7.44 → 7.78 (5 methods refactored)
+- ✅ **src/content.js** - Score 8.71 → 9.09 (exceeds 9.0 target)
+- ✅ **background.js** - Score 8.02 → 8.40 (architecture-constrained)
 
-**Medium-Priority Fixes (3):**
-
-- ✅ **Initialization Logging** - Per-feature and hydration progress
-- ✅ **Port Adoption Scaling** - Dynamic timeout based on latency
-- ✅ **Module Import Graceful Degradation** - Critical vs optional distinction
-
-**Test Coverage:** 1,974 tests (192 new Firefox-specific tests)
+**Test Coverage:** 1,971+ tests passing
 
 ---
 

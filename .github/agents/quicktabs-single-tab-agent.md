@@ -37,18 +37,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v2 - Simplified Architecture
+**Version:** 1.6.3.11-v7 - Simplified Architecture
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
 
-- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total (from 60s)
-- **Hydration Timeout** - 10s (from 3s)
-- **Persist Timeout** - 5s timeout on `persistToStorage()`
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
+  `_extractTabIdFromPattern()`
+- **Code Health 9.09** - `src/content.js` improved from 8.71
 - **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
 - **Memory Leak Fix** - Comprehensive `destroy()` method
 
-**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, Solo/Mute toggle
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, Solo/Mute toggle
 atomicity, destroyed flag check, ownership validation, code health 9.0+,
 snapshot TTL race fix
 
