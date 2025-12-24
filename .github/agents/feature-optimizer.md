@@ -61,19 +61,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
 
-- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total (from 60s)
-- **Hydration Timeout** - 10s (from 3s)
-- **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
-- **Render Performance** - `[RENDER_PERF]` logging prefix
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
+  `_extractTabIdFromPattern()`
+- **Code Health Improvements** - All core files now at Code Health 8.0+:
+  - `sidebar/quick-tabs-manager.js` - Score 8.26
+  - `src/utils/storage-utils.js` - Score 7.78
+  - `src/content.js` - Score 9.09
+  - `background.js` - Score 8.40
 
-**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, identity gating,
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
 storage quota monitoring, code health 9.0+, render queue priority, dead code
 removal
 
@@ -179,339 +183,52 @@ removal
 
 ### Phase 3: Implementation
 
-**Optimization Patterns:**
-
-**1. Memoization & Caching:**
-
-```javascript
-// ✅ GOOD - Cache expensive computations
-class OptimizedManager {
-  constructor() {
-    this.cache = new Map();
-  }
-
-  getExpensiveData(key) {
-    if (this.cache.has(key)) {
-      return this.cache.get(key);
-    }
-    const data = this.computeExpensive(key);
-    this.cache.set(key, data);
-    return data;
-  }
-}
-```
-
-**2. Debouncing/Throttling:**
-
-```javascript
-// ✅ GOOD - Limit high-frequency operations
-function debounce(fn, delay) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  };
-}
-
-const optimizedHandler = debounce(expensiveHandler, 300);
-```
-
-**3. Lazy Loading:**
-
-```javascript
-// ✅ GOOD - Load on demand
-class LazyFeature {
-  async initialize() {
-    if (!this.module) {
-      this.module = await import('./expensive-module.js');
-    }
-    return this.module;
-  }
-}
-```
-
-**4. Batch Operations:**
-
-```javascript
-// ✅ GOOD - Batch storage operations
-async function batchSave(items) {
-  const updates = items.reduce(
-    (acc, item) => ({
-      ...acc,
-      [item.key]: item.value
-    }),
-    {}
-  );
-  await browser.storage.sync.set(updates);
-}
-```
-
-**5. Algorithm Improvement:**
-
-```javascript
-// ❌ BAD - O(n²)
-for (const item of items) {
-  if (targets.includes(item)) {
-    /* ... */
-  }
-}
-
-// ✅ GOOD - O(n)
-const targetSet = new Set(targets);
-for (const item of items) {
-  if (targetSet.has(item)) {
-    /* ... */
-  }
-}
-```
+**Key Patterns:** Memoization/Caching (Map), Debouncing/Throttling,
+Lazy Loading (dynamic import), Batch Operations, Algorithm Improvement (Set vs Array)
 
 ### Phase 4: Verification
 
-**Required Metrics:**
-
-1. **Performance Benchmarks**
-   - Before/after measurements
-   - Real-world usage scenarios
-   - Edge case performance
-
-2. **Test Coverage**
-   - Maintain or improve coverage
-   - Add performance regression tests
-   - Verify no behavior changes
-
-3. **Bundle Size**
-   - `npm run build:check-size`
-   - Verify size reduction or stability
-
-**Use Jest unit tests:** Test real-world performance
+- Benchmark before/after measurements
+- Verify no behavior changes
+- Maintain test coverage
 
 ---
 
 ## MCP Server Integration
 
-**MANDATORY MCP Usage During Optimization:**
+**MANDATORY:** Context7 (API docs), Perplexity (optimization patterns), ESLint,
+CodeScene, Agentic-Tools (memories), Jest (tests), Codecov (coverage)
 
-**CRITICAL - Use During Implementation:**
-
-- **Context7:** Verify API usage for efficient patterns DURING implementation ⭐
-- **Perplexity:** Research optimization techniques, verify approach ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Identify complexity hotspots alongside ESLint ⭐
-
-**CRITICAL - Testing (BEFORE and AFTER):**
-
-- **Jest unit tests:** Test performance BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test performance BEFORE changes (baseline) ⭐
-- **Jest unit tests:** Test performance AFTER changes (verify improvement) ⭐
-- **Jest unit tests:** Test performance AFTER changes (verify improvement) ⭐
-- **Codecov:** Verify test coverage at end ⭐
-
-**Every Task:**
-
-- **Agentic-Tools:** Search memories for patterns, store performance insights
-
-### Enhanced Optimization Workflow
-
-```
-1. Search memories (Agentic-Tools) | 2. CodeScene: Identify hotspots
-3. Playwright Firefox/Chrome: Profile BEFORE (baseline metrics)
-4. Perplexity: Research optimization patterns (paste code)
-5. Context7: Get API docs for efficient patterns
-6. Implement optimization
-7. Context7: Verify implementation vs docs
-8. Perplexity: Check for better approaches (paste code)
-9. Measure performance improvement
-10. ESLint: Lint | 11. CodeScene: Check health
-12. Run all tests | 13. Playwright Firefox/Chrome: Test AFTER (verify)
-14. Verify no behavior changes | 15. Codecov: Verify coverage
-16. Document optimization (under 20KB, not docs/manual/)
-17. Store pattern (Agentic-Tools) | 18. Commit memory (.agentic-tools-mcp/)
-```
+**Workflow:** Search memories → Profile BEFORE → Research → Implement → Measure →
+Lint → Test AFTER → Store insights → Commit memory
 
 ---
 
 ## Common Optimization Patterns
 
-### Quick Tab Rendering Optimization
-
-**Problem:** Slow initial render
-
-**Solution:**
-
-```javascript
-// Use document fragment for batch DOM operations
-const fragment = document.createDocumentFragment();
-quickTabs.forEach(tab => {
-  const element = createQuickTabElement(tab);
-  fragment.appendChild(element);
-});
-container.appendChild(fragment); // Single reflow
-```
-
-### State Lookup Optimization (v1.6.3+)
-
-**Problem:** Repeated storage lookups
-
-**Solution:**
-
-```javascript
-// Cache state locally
-class StateCache {
-  constructor() {
-    this.cache = null;
-  }
-
-  async getState() {
-    if (this.cache) return this.cache;
-
-    const data = await browser.storage.local.get('quick_tabs_state_v2');
-    this.cache = data.quick_tabs_state_v2 || { tabs: [] };
-    return this.cache;
-  }
-
-  invalidate() {
-    this.cache = null;
-  }
-}
-```
-
-### Storage Sync Optimization (v1.6.2+)
-
-**Problem:** Excessive storage writes
-
-**Solution:**
-
-```javascript
-// Debounce storage updates
-class DebouncedStorage {
-  constructor() {
-    this.pending = null;
-    this.timer = null;
-  }
-
-  queueUpdate(state) {
-    this.pending = state;
-    if (!this.timer) {
-      this.timer = setTimeout(() => this.flush(), 100);
-    }
-  }
-
-  async flush() {
-    if (this.pending) {
-      await browser.storage.local.set({
-        quick_tabs_state_v2: {
-          tabs: this.pending.tabs,
-          saveId: generateId(),
-          timestamp: Date.now()
-        }
-      });
-      this.pending = null;
-    }
-    this.timer = null;
-  }
-}
-```
-
-### Storage Access Optimization
-
-**Problem:** Multiple storage reads
-
-**Solution:**
-
-```javascript
-// Read once, cache locally
-class StateCache {
-  async initialize() {
-    const data = await browser.storage.sync.get(null);
-    this.state = data;
-  }
-
-  get(key) {
-    return this.state[key];
-  }
-
-  async set(key, value) {
-    this.state[key] = value;
-    await browser.storage.sync.set({ [key]: value });
-  }
-}
-```
+- **Quick Tab Rendering** - Use DocumentFragment for batch DOM operations
+- **State Lookup** - Cache state locally, invalidate on changes
+- **Storage Sync** - Debounce storage updates, batch writes
 
 ---
 
 ## Testing Requirements
 
-**For Every Optimization:**
-
 - [ ] Benchmark before/after (quantify improvement)
 - [ ] All existing tests still pass (no behavior changes)
 - [ ] Performance regression tests added
-- [ ] Edge case performance verified
-- [ ] Memory leak checks (if applicable)
-
-**Performance Test Example:**
-
-```javascript
-test('optimization: Quick Tab render <100ms', async () => {
-  const start = performance.now();
-  await renderQuickTab(data);
-  const duration = performance.now() - start;
-  expect(duration).toBeLessThan(100);
-});
-```
-
----
-
-## Code Quality Standards
-
-**Every optimization must:**
-
 - [ ] Pass ESLint ⭐
-- [ ] Maintain or improve test coverage
-- [ ] Include performance metrics in PR
-- [ ] Document optimization rationale
-- [ ] Not sacrifice code readability (unless necessary)
-- [ ] Preserve all existing behavior
+- [ ] Memory files committed 🧠
 
 ---
 
 ## Optimization Anti-Patterns
 
-❌ **Premature Optimization** → Profile first, optimize what matters
-
-❌ **Micro-optimizations** → Focus on measurable impact (>5% improvement)
-
-❌ **Sacrificing Readability** → Maintainability > minor performance gains
-
-❌ **Breaking Behavior** → Optimization should never change functionality
-
-❌ **Removing Safety Checks** → Performance ≠ remove error handling
+❌ **Premature Optimization** → Profile first
+❌ **Micro-optimizations** → Focus on >5% improvements
+❌ **Sacrificing Readability** → Maintainability > minor gains
+❌ **Breaking Behavior** → Optimization shouldn't change functionality
 
 ---
-
-## Before Every Commit Checklist
-
-- [ ] Profiled and measured performance impact
-- [ ] Documented before/after metrics
-- [ ] ESLint passed ⭐
-- [ ] All existing tests pass
-- [ ] Performance regression tests added
-- [ ] No behavior changes
-- [ ] Code remains maintainable
-- [ ] Bundle size checked
-- [ ] Memory files committed 🧠
-
----
-
-## Success Metrics
-
-**Successful Optimization:**
-
-- ✅ Measurable performance improvement (>5%)
-- ✅ No behavior changes
-- ✅ Maintained or improved test coverage
-- ✅ Code remains maintainable
-- ✅ Documented with metrics
 
 **Your strength: Making features faster without breaking them.**

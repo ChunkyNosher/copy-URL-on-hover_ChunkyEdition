@@ -12,11 +12,11 @@ import { logNormal, logError } from '../utils/logger.js';
  * @enum {string}
  */
 export const STORAGE_ERROR_TYPE = {
-  QUOTA: 'QUOTA', // Storage quota exceeded
+  QUOTA: 'QUOTA',           // Storage quota exceeded
   PERMISSION: 'PERMISSION', // Permission denied
   UNAVAILABLE: 'UNAVAILABLE', // Storage API not available
-  TRANSIENT: 'TRANSIENT', // Temporary failure (retry may help)
-  UNKNOWN: 'UNKNOWN' // Unknown error type
+  TRANSIENT: 'TRANSIENT',   // Temporary failure (retry may help)
+  UNKNOWN: 'UNKNOWN'        // Unknown error type
 };
 
 /**
@@ -25,12 +25,8 @@ export const STORAGE_ERROR_TYPE = {
  * @private
  */
 function _isQuotaError(message, name) {
-  return (
-    message.includes('quota') ||
-    message.includes('exceeded') ||
-    message.includes('bytes') ||
-    name === 'quotaexceedederror'
-  );
+  return message.includes('quota') || message.includes('exceeded') || 
+         message.includes('bytes') || name === 'quotaexceedederror';
 }
 
 /**
@@ -39,12 +35,8 @@ function _isQuotaError(message, name) {
  * @private
  */
 function _isPermissionError(message, name) {
-  return (
-    message.includes('permission') ||
-    message.includes('denied') ||
-    name === 'securityerror' ||
-    name === 'notallowederror'
-  );
+  return message.includes('permission') || message.includes('denied') ||
+         name === 'securityerror' || name === 'notallowederror';
 }
 
 /**
@@ -53,12 +45,8 @@ function _isPermissionError(message, name) {
  * @private
  */
 function _isUnavailableError(message) {
-  return (
-    message.includes('unavailable') ||
-    message.includes('not found') ||
-    message.includes('not supported') ||
-    message.includes('undefined')
-  );
+  return message.includes('unavailable') || message.includes('not found') ||
+         message.includes('not supported') || message.includes('undefined');
 }
 
 /**
@@ -67,12 +55,8 @@ function _isUnavailableError(message) {
  * @private
  */
 function _isTransientError(message) {
-  return (
-    message.includes('timeout') ||
-    message.includes('network') ||
-    message.includes('aborted') ||
-    message.includes('interrupted')
-  );
+  return message.includes('timeout') || message.includes('network') ||
+         message.includes('aborted') || message.includes('interrupted');
 }
 
 /**
@@ -83,15 +67,15 @@ function _isTransientError(message) {
  */
 export function classifyStorageError(err) {
   if (!err) return STORAGE_ERROR_TYPE.UNKNOWN;
-
+  
   const message = (err.message || '').toLowerCase();
   const name = (err.name || '').toLowerCase();
-
+  
   if (_isQuotaError(message, name)) return STORAGE_ERROR_TYPE.QUOTA;
   if (_isPermissionError(message, name)) return STORAGE_ERROR_TYPE.PERMISSION;
   if (_isUnavailableError(message)) return STORAGE_ERROR_TYPE.UNAVAILABLE;
   if (_isTransientError(message)) return STORAGE_ERROR_TYPE.TRANSIENT;
-
+  
   return STORAGE_ERROR_TYPE.UNKNOWN;
 }
 
@@ -104,7 +88,7 @@ export function classifyStorageError(err) {
  */
 function logStorageError(operation, err, context = {}) {
   const errorType = classifyStorageError(err);
-
+  
   console.error(`[Browser API] Storage ${operation} failed:`, {
     errorType,
     errorName: err?.name,
@@ -151,7 +135,7 @@ export async function getStorage(keys, storageType = 'local') {
       keys: Array.isArray(keys) ? keys : [keys],
       keyCount: Array.isArray(keys) ? keys.length : 1
     });
-
+    
     // Rethrow with enhanced info
     err.storageErrorType = errorType;
     throw err;
@@ -174,7 +158,7 @@ export async function setStorage(data, storageType = 'local') {
     // Log debug info for serialization issues
     console.debug('[Browser API] Bytes estimation failed:', estimateErr.message);
   }
-
+  
   try {
     const storage = browser.storage[storageType];
     if (!storage) {
@@ -189,7 +173,7 @@ export async function setStorage(data, storageType = 'local') {
       keyCount: Object.keys(data).length,
       bytesEstimate
     });
-
+    
     // Rethrow with enhanced info
     err.storageErrorType = errorType;
     err.bytesAttempted = bytesEstimate;
@@ -219,7 +203,7 @@ export async function removeStorage(keys, storageType = 'local') {
       keys: Array.isArray(keys) ? keys : [keys],
       keyCount: Array.isArray(keys) ? keys.length : 1
     });
-
+    
     // Rethrow with enhanced info
     err.storageErrorType = errorType;
     throw err;
@@ -245,7 +229,7 @@ export async function clearStorage(storageType = 'local') {
     logStorageError('clear', err, {
       storageType
     });
-
+    
     // Rethrow with enhanced info
     err.storageErrorType = errorType;
     throw err;

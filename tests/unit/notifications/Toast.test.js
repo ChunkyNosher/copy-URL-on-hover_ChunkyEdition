@@ -419,14 +419,8 @@ describe('Toast Notifications', () => {
     test('should log toast display', () => {
       showToast('Test message', 'info', mockConfig);
 
-      // v1.6.3.11-v4 - Updated to match new logging format with [NOTIFICATION] prefix
-      expect(console.log).toHaveBeenCalledWith(
-        '[NOTIFICATION] Toast displayed successfully:',
-        expect.objectContaining({
-          message: 'Test message',
-          type: 'info'
-        })
-      );
+      // v1.6.3.11-v7 - Restored to v1.6.3.10-v10 logging format
+      expect(console.log).toHaveBeenCalledWith('[Toast] Displayed:', 'Test message');
     });
 
     test('should log for all message types', () => {
@@ -436,8 +430,8 @@ describe('Toast Notifications', () => {
         showToast(`Message ${type}`, type, mockConfig);
       });
 
-      // v1.6.3.11-v4 - Updated: Now logs both attempt and success for each toast (2 logs per toast)
-      expect(console.log).toHaveBeenCalledTimes(types.length * 2);
+      // v1.6.3.11-v7 - Restored: Each toast logs once
+      expect(console.log).toHaveBeenCalledTimes(types.length);
     });
   });
 

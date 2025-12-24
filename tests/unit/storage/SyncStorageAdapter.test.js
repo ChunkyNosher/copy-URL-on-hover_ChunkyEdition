@@ -148,10 +148,10 @@ describe('SyncStorageAdapter', () => {
       });
     });
 
-    test('should throw error when write verification fails', async () => {
-      // v1.6.3.11-v3 - Issue #69: Test write verification failure
-      browser.storage.local.set.mockResolvedValue(undefined);
-      browser.storage.local.get.mockResolvedValue({}); // Return empty = verification fails
+    test('should handle storage errors gracefully', async () => {
+      // v1.6.3.11-v7 - Restored to v1.6.3.10-v10 behavior: save() throws on storage errors
+      // Write verification was added in v1.6.3.11-v3 but removed in restoration
+      browser.storage.local.set.mockRejectedValue(new Error('Storage quota exceeded'));
 
       const quickTab = QuickTab.create({
         id: 'qt-123',
@@ -160,7 +160,7 @@ describe('SyncStorageAdapter', () => {
         size: { width: 400, height: 300 }
       });
 
-      await expect(adapter.save([quickTab])).rejects.toThrow('Storage write verification failed');
+      await expect(adapter.save([quickTab])).rejects.toThrow('Storage quota exceeded');
     });
   });
 

@@ -47,16 +47,6 @@
  * v1.6.3.10-v5 - Note: Remote invocations from Manager sidebar now use Scripting API fallback
  *   - See background.js executeManagerCommand() for timeout-protected messaging
  *   - Falls back to browser.scripting.executeScript on messaging failure
- * v1.6.3.10-v12 - FIX Issue #22: State consistency checks between VisibilityHandler and MinimizedManager
- *   - startConsistencyChecks() validates DOM state matches snapshot state every 5 seconds
- *   - Automatic recovery for MISSING_SNAPSHOT (create from DOM) and STALE_SNAPSHOT (remove)
- *   - Consistency checks started automatically by QuickTabsManager._setupComponents()
- *
- * KNOWN LIMITATION (v1.6.3.11 - Issue #38):
- * Cross-origin subdomain Quick Tabs are NOT isolated by domain.
- * originTabId check only validates tab ID, not domain scope.
- * Quick Tabs created on sub.example.com may be visible on www.example.com
- * if they share the same tab ID. Consider adding domain validation in future.
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -64,7 +54,6 @@
  * - Mutex/lock pattern prevents duplicate operations from multiple sources
  * - Cross-tab validation ensures operations only affect owned Quick Tabs
  * - v1.6.3.10-v5: Remote commands from Manager use Scripting API fallback for reliability
- * - v1.6.3.10-v12: Periodic consistency checks detect and recover from state desync
  *
  * Responsibilities:
  * - Handle solo toggle (show only on specific tabs)
@@ -76,9 +65,8 @@
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  * - Cross-tab ownership validation for all operations
- * - Periodic state consistency checks with automatic recovery
  *
- * @version 1.6.3.10-v12
+ * @version 1.6.3.10-v5
  */
 
 import {
@@ -119,14 +107,6 @@ const PERSIST_STORAGE_TIMEOUT_MS = 5000;
 // When z-index counter exceeds this value, recycle all z-indices to prevent unbounded growth
 const Z_INDEX_RECYCLE_THRESHOLD = 100000;
 
-// v1.6.3.10-v11 - FIX Issue #10: Lock timeout for stale lock recovery
-// If a lock is held longer than this, log warning and auto-release
-const LOCK_TIMEOUT_MS = 1000;
-
-// v1.6.3.10-v11 - FIX Issue #10: Lock warning threshold (5x normal lock duration)
-// Log warning if lock held longer than this but not yet timed out
-const LOCK_WARNING_THRESHOLD_MS = OPERATION_LOCK_MS * 5;
-
 /**
  * VisibilityHandler class
  * Manages Quick Tab visibility states (solo, mute, minimize, focus)
@@ -141,21 +121,6 @@ const LOCK_WARNING_THRESHOLD_MS = OPERATION_LOCK_MS * 5;
  */
 export class VisibilityHandler {
   /**
-   * Initialization states for handler lifecycle tracking
-   * v1.6.3.10-v13 - FIX Issue #2: Handler initialization sequence validation
-   * @enum {string}
-   */
-  static get INITIALIZATION_STATE() {
-    return {
-      UNINITIALIZED: 'UNINITIALIZED',
-      INITIALIZING: 'INITIALIZING',
-      INITIALIZED: 'INITIALIZED',
-      DESTROYING: 'DESTROYING',
-      DESTROYED: 'DESTROYED'
-    };
-  }
-
-  /**
    * @param {Object} options - Configuration options
    * @param {Map} options.quickTabsMap - Map of Quick Tab instances
    * @param {MinimizedManager} options.minimizedManager - Manager for minimized Quick Tabs
@@ -165,10 +130,6 @@ export class VisibilityHandler {
    * @param {Object} options.Events - Events constants object
    */
   constructor(options) {
-    // v1.6.3.10-v13 - FIX Issue #2: Track initialization state
-    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.UNINITIALIZED;
-    console.log('[VisibilityHandler] Handler initialization START');
-
     this.quickTabsMap = options.quickTabsMap;
     this.minimizedManager = options.minimizedManager;
     this.eventBus = options.eventBus;
@@ -178,9 +139,6 @@ export class VisibilityHandler {
 
     // v1.6.3.5-v2 - FIX Report 1 Issue #7: Create log prefix with Tab ID
     this._logPrefix = `[VisibilityHandler][Tab ${options.currentTabId ?? 'unknown'}]`;
-
-    // v1.6.3.10-v13 - FIX Issue #2: Transition to INITIALIZING
-    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.INITIALIZING;
 
     // v1.6.3.4-v6 - FIX Issues #1, #2: Track pending operations to prevent duplicates
     this._pendingMinimize = new Set();
@@ -210,260 +168,7 @@ export class VisibilityHandler {
     // Set to false if storage write times out to prevent further hangs
     this._storageAvailable = true;
     this._storageTimeoutCount = 0;
-
-    // v1.6.3.10-v11 - FIX Issue #19: Track registered event listeners for cleanup
-    // Map of { target, type, listener, options } for later removal
-    this._registeredListeners = [];
-
-    // v1.6.3.10-v11 - FIX Issue #20: Track active timers with metadata
-    // Map of timerId -> { type, description, createdAt, callback }
-    this._activeTimers = new Map();
-
-    // v1.6.3.10-v11 - FIX Issue #19: Track if handler is destroyed
-    this._isDestroyed = false;
-
-    // v1.6.3.10-v11 - FIX Issue #22: Track state consistency check interval
-    this._consistencyCheckIntervalId = null;
-
-    // v1.6.3.10-v13 - FIX Issue #2: Transition to INITIALIZED
-    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.INITIALIZED;
-
-    // Log handler creation
-    console.log(`${this._logPrefix} HANDLER_CREATED:`, {
-      tabId: this.currentTabId,
-      initializationState: this._initializationState,
-      timestamp: Date.now()
-    });
-    console.log('[VisibilityHandler] Handler initialization COMPLETE');
   }
-
-  /**
-   * Check if handler is ready to perform operations
-   * v1.6.3.10-v13 - FIX Issue #2: Pre-operation validation
-   * @returns {boolean} True if handler is initialized and ready
-   */
-  isInitialized() {
-    return this._initializationState === VisibilityHandler.INITIALIZATION_STATE.INITIALIZED;
-  }
-
-  /**
-   * Validate handler state before operation
-   * v1.6.3.10-v13 - FIX Issue #2: Pre-operation validation helper
-   * @param {string} methodName - Name of method being called
-   * @returns {boolean} True if operation can proceed
-   */
-  _validateInitializationState(methodName) {
-    if (this._initializationState !== VisibilityHandler.INITIALIZATION_STATE.INITIALIZED) {
-      console.warn(
-        `${this._logPrefix} Handler method called: ${methodName} (state: ${this._initializationState})`,
-        {
-          warning: 'Handler not fully initialized - operation may fail',
-          allowedState: VisibilityHandler.INITIALIZATION_STATE.INITIALIZED
-        }
-      );
-      return false;
-    }
-    return true;
-  }
-
-  // ==================== v1.6.3.10-v11 FIX ISSUE #22: STATE CONSISTENCY ====================
-
-  /**
-   * Interval for periodic state consistency checks (milliseconds)
-   * v1.6.3.10-v11 - FIX Issue #22
-   */
-  static get STATE_CONSISTENCY_CHECK_INTERVAL_MS() {
-    return 5000; // 5 seconds
-  }
-
-  /**
-   * Start periodic state consistency checks
-   * v1.6.3.10-v11 - FIX Issue #22: Detect and recover from state desync between VisibilityHandler and MinimizedManager
-   */
-  startConsistencyChecks() {
-    if (this._consistencyCheckIntervalId) {
-      return; // Already running
-    }
-
-    this._consistencyCheckIntervalId = setInterval(() => {
-      this._performConsistencyCheck();
-    }, VisibilityHandler.STATE_CONSISTENCY_CHECK_INTERVAL_MS);
-
-    console.log(`${this._logPrefix} STATE_CONSISTENCY_CHECKS_STARTED:`, {
-      intervalMs: VisibilityHandler.STATE_CONSISTENCY_CHECK_INTERVAL_MS
-    });
-  }
-
-  /**
-   * Stop periodic state consistency checks
-   * v1.6.3.10-v11 - FIX Issue #22
-   */
-  stopConsistencyChecks() {
-    if (this._consistencyCheckIntervalId) {
-      clearInterval(this._consistencyCheckIntervalId);
-      this._consistencyCheckIntervalId = null;
-      console.log(`${this._logPrefix} STATE_CONSISTENCY_CHECKS_STOPPED`);
-    }
-  }
-
-  /**
-   * Check if a minimized tab has a snapshot
-   * v1.6.3.10-v11 - FIX Issue #22: Helper to reduce nesting depth
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @returns {boolean} True if snapshot exists
-   */
-  _hasSnapshotForTab(id) {
-    if (this.minimizedManager?.has?.(id)) return true;
-    return this.minimizedManager?.minimizedTabs?.has(id) ?? false;
-  }
-
-  /**
-   * Check minimized tabs for missing snapshots
-   * v1.6.3.10-v11 - FIX Issue #22: Helper to reduce complexity
-   * @private
-   * @returns {Array} Array of MISSING_SNAPSHOT issues
-   */
-  _checkForMissingSnapshots() {
-    const issues = [];
-
-    for (const [id, tabWindow] of this.quickTabsMap) {
-      if (!this._isOwnedByCurrentTab(tabWindow)) continue;
-      if (!tabWindow.minimized) continue;
-
-      if (!this._hasSnapshotForTab(id)) {
-        issues.push({
-          type: 'MISSING_SNAPSHOT',
-          id,
-          message: 'Minimized Quick Tab has no snapshot in MinimizedManager'
-        });
-      }
-    }
-
-    return issues;
-  }
-
-  /**
-   * Check snapshots for stale entries
-   * v1.6.3.10-v11 - FIX Issue #22: Helper to reduce complexity
-   * @private
-   * @returns {Array} Array of STALE_SNAPSHOT issues
-   */
-  _checkForStaleSnapshots() {
-    const issues = [];
-
-    if (!this.minimizedManager?.minimizedTabs) return issues;
-
-    for (const [id] of this.minimizedManager.minimizedTabs) {
-      const tabWindow = this.quickTabsMap.get(id);
-      if (!tabWindow || !this._isOwnedByCurrentTab(tabWindow)) continue;
-
-      if (!tabWindow.minimized) {
-        issues.push({
-          type: 'STALE_SNAPSHOT',
-          id,
-          message: 'MinimizedManager has snapshot for non-minimized Quick Tab'
-        });
-      }
-    }
-
-    return issues;
-  }
-
-  /**
-   * Perform a state consistency check between VisibilityHandler's quickTabsMap and MinimizedManager
-   * v1.6.3.10-v11 - FIX Issue #22 (refactored to reduce complexity)
-   * @private
-   */
-  _performConsistencyCheck() {
-    if (this._isDestroyed) return;
-
-    // Check both directions of state consistency
-    const issues = [...this._checkForMissingSnapshots(), ...this._checkForStaleSnapshots()];
-
-    // Log and recover from issues
-    if (issues.length > 0) {
-      console.warn(`${this._logPrefix} STATE_CONSISTENCY_ISSUES:`, {
-        issueCount: issues.length,
-        issues
-      });
-
-      // Attempt recovery
-      for (const issue of issues) {
-        this._recoverFromConsistencyIssue(issue);
-      }
-    }
-  }
-
-  /**
-   * Attempt to recover from a state consistency issue
-   * v1.6.3.10-v11 - FIX Issue #22
-   * @private
-   * @param {Object} issue - Issue to recover from
-   */
-  _recoverFromConsistencyIssue(issue) {
-    console.log(`${this._logPrefix} STATE_RECOVERY_ATTEMPT:`, {
-      type: issue.type,
-      id: issue.id
-    });
-
-    switch (issue.type) {
-      case 'MISSING_SNAPSHOT': {
-        // Minimized tab has no snapshot - create one
-        const tabWindow = this.quickTabsMap.get(issue.id);
-        if (tabWindow && this.minimizedManager?.add) {
-          console.log(
-            `${this._logPrefix} STATE_RECOVERY: Creating missing snapshot for ${issue.id}`
-          );
-          this.minimizedManager.add(issue.id, tabWindow);
-        }
-        break;
-      }
-
-      case 'STALE_SNAPSHOT': {
-        // Non-minimized tab has stale snapshot - remove it
-        if (this.minimizedManager?.remove) {
-          console.log(`${this._logPrefix} STATE_RECOVERY: Removing stale snapshot for ${issue.id}`);
-          this.minimizedManager.remove(issue.id);
-        }
-        break;
-      }
-
-      default:
-        console.warn(`${this._logPrefix} STATE_RECOVERY: Unknown issue type ${issue.type}`);
-    }
-  }
-
-  /**
-   * Verify minimize operation completed successfully
-   * v1.6.3.10-v11 - FIX Issue #22: Transactional verification
-   * @param {string} id - Quick Tab ID
-   * @returns {{ success: boolean, error?: string }}
-   */
-  _verifyMinimizeComplete(id) {
-    const tabWindow = this.quickTabsMap.get(id);
-
-    // Check DOM state
-    if (tabWindow && !tabWindow.minimized) {
-      return { success: false, error: 'DOM state not updated (minimized flag is false)' };
-    }
-
-    // Check snapshot exists
-    const hasSnapshot = this.minimizedManager?.minimizedTabs?.has(id);
-    if (!hasSnapshot) {
-      return { success: false, error: 'Snapshot not created in MinimizedManager' };
-    }
-
-    // Get snapshot to verify it's valid
-    const snapshot = this.minimizedManager.minimizedTabs.get(id);
-    if (!snapshot || !snapshot.savedPosition || !snapshot.savedSize) {
-      return { success: false, error: 'Snapshot is incomplete or invalid' };
-    }
-
-    return { success: true };
-  }
-
-  // ==================== END ISSUE #22 FIX ====================
 
   /**
    * Check if a tabWindow is owned by the current tab
@@ -534,18 +239,13 @@ export class VisibilityHandler {
       return validation.result;
     }
 
-    // v1.6.3.10-v11 - FIX Issue #10: Pass source to _handleVisibilityToggle
-    this._handleVisibilityToggle(
-      quickTabId,
-      {
-        mode: 'SOLO',
-        newTabs: newSoloedTabs,
-        tabsProperty: 'soloedOnTabs',
-        clearProperty: 'mutedOnTabs',
-        updateButton: this._updateSoloButton.bind(this)
-      },
-      source
-    );
+    this._handleVisibilityToggle(quickTabId, {
+      mode: 'SOLO',
+      newTabs: newSoloedTabs,
+      tabsProperty: 'soloedOnTabs',
+      clearProperty: 'mutedOnTabs',
+      updateButton: this._updateSoloButton.bind(this)
+    });
     return { success: true };
   }
 
@@ -566,18 +266,13 @@ export class VisibilityHandler {
       return validation.result;
     }
 
-    // v1.6.3.10-v11 - FIX Issue #10: Pass source to _handleVisibilityToggle
-    this._handleVisibilityToggle(
-      quickTabId,
-      {
-        mode: 'MUTE',
-        newTabs: newMutedTabs,
-        tabsProperty: 'mutedOnTabs',
-        clearProperty: 'soloedOnTabs',
-        updateButton: this._updateMuteButton.bind(this)
-      },
-      source
-    );
+    this._handleVisibilityToggle(quickTabId, {
+      mode: 'MUTE',
+      newTabs: newMutedTabs,
+      tabsProperty: 'mutedOnTabs',
+      clearProperty: 'soloedOnTabs',
+      updateButton: this._updateMuteButton.bind(this)
+    });
     return { success: true };
   }
 
@@ -585,13 +280,11 @@ export class VisibilityHandler {
    * Common handler for solo/mute visibility toggles
    * v1.6.3 - Local only (no storage writes)
    * v1.6.3.10-v10 - FIX Issue 5.1: Add ownership validation and lock for atomicity
-   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock methods
    * @private
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} config - Configuration for toggle operation
-   * @param {string} [source='UI'] - Source of the operation
    */
-  _handleVisibilityToggle(quickTabId, config, source = 'UI') {
+  _handleVisibilityToggle(quickTabId, config) {
     const { mode, newTabs, tabsProperty, clearProperty, updateButton } = config;
 
     console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
@@ -611,12 +304,10 @@ export class VisibilityHandler {
     }
 
     // v1.6.3.10-v10 - FIX Issue 5.1: Use lock to prevent concurrent modifications
-    // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock
-    if (!this._tryAcquireLock('visibility', quickTabId, source)) {
+    if (!this._tryAcquireLock('visibility', quickTabId)) {
       console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Lock held for:`, {
         quickTabId,
-        mode,
-        source
+        mode
       });
       return;
     }
@@ -629,7 +320,7 @@ export class VisibilityHandler {
       // Update button states if tab has them
       updateButton(tab, newTabs);
     } finally {
-      this._releaseLock('visibility', quickTabId, source);
+      this._releaseLock('visibility', quickTabId);
     }
   }
 
@@ -762,75 +453,25 @@ export class VisibilityHandler {
   /**
    * Try to acquire a lock for an operation
    * v1.6.3.2 - FIX Issue #2: Mutex pattern to prevent duplicate operations
-   * v1.6.3.10-v11 - FIX Issue #10: Add source to lock key, add timeout recovery
    * @private
-   * @param {string} operation - Operation type ('minimize', 'restore', 'visibility', etc.)
+   * @param {string} operation - Operation type ('minimize' or 'restore')
    * @param {string} id - Quick Tab ID
-   * @param {string} [source='unknown'] - Source of the operation ('UI', 'Manager', 'background', etc.)
    * @returns {boolean} True if lock acquired, false if operation already in progress
    */
-  _tryAcquireLock(operation, id, source = 'unknown') {
+  _tryAcquireLock(operation, id) {
     // v1.6.3.10-v4 - FIX Issue #14: Include tab context to prevent cross-tab lock conflicts
-    // v1.6.3.10-v11 - FIX Issue #10: Include source in lock key to distinguish operation origins
-    const lockKey = `${operation}-${this.currentTabId}-${id}-${source}`;
+    const lockKey = `${operation}-${this.currentTabId}-${id}`;
     const now = Date.now();
     const existingLock = this._operationLocks.get(lockKey);
 
-    // If lock exists, check if it's still valid
-    if (existingLock) {
-      const lockAge = now - existingLock.timestamp;
-
-      // v1.6.3.10-v11 - FIX Issue #10: Log warning if lock held too long
-      if (lockAge >= LOCK_WARNING_THRESHOLD_MS && lockAge < LOCK_TIMEOUT_MS) {
-        console.warn(`${this._logPrefix} LOCK_HELD_WARNING: Lock held for ${lockAge}ms`, {
-          lockKey,
-          operation,
-          id,
-          source,
-          holder: existingLock.source,
-          warningThresholdMs: LOCK_WARNING_THRESHOLD_MS
-        });
-      }
-
-      // v1.6.3.10-v11 - FIX Issue #10: Auto-release if lock held too long (timeout recovery)
-      if (lockAge >= LOCK_TIMEOUT_MS) {
-        console.error(`${this._logPrefix} LOCK_TIMEOUT_RECOVERY: Auto-releasing stale lock`, {
-          lockKey,
-          operation,
-          id,
-          source,
-          previousHolder: existingLock.source,
-          lockAgeMs: lockAge,
-          timeoutMs: LOCK_TIMEOUT_MS
-        });
-        // Fall through to acquire the lock
-      } else if (lockAge < OPERATION_LOCK_MS) {
-        // Lock is still valid and not timed out
-        console.log(`${this._logPrefix} Lock blocked duplicate ${operation} for:`, {
-          id,
-          requestingSource: source,
-          holdingSource: existingLock.source,
-          lockAgeMs: lockAge
-        });
-        return false;
-      }
+    // If lock exists and hasn't expired, operation is in progress
+    if (existingLock && now - existingLock < OPERATION_LOCK_MS) {
+      console.log(`[VisibilityHandler] Lock blocked duplicate ${operation} for:`, id);
+      return false;
     }
 
-    // Acquire lock with source tracking
-    this._operationLocks.set(lockKey, {
-      timestamp: now,
-      source,
-      operation,
-      id
-    });
-
-    console.log(`${this._logPrefix} Lock acquired:`, {
-      lockKey,
-      operation,
-      id,
-      source
-    });
-
+    // Acquire lock
+    this._operationLocks.set(lockKey, now);
     return true;
   }
 
@@ -838,36 +479,19 @@ export class VisibilityHandler {
    * Release a lock for an operation
    * v1.6.3.2 - FIX Issue #2: Mutex pattern cleanup
    * v1.6.3.10-v4 - FIX Issue #14: Include tab context in lock key
-   * v1.6.3.10-v11 - FIX Issue #10: Include source in lock key
    * @private
-   * @param {string} operation - Operation type ('minimize', 'restore', 'visibility', etc.)
+   * @param {string} operation - Operation type ('minimize' or 'restore')
    * @param {string} id - Quick Tab ID
-   * @param {string} [source='unknown'] - Source of the operation
    */
-  _releaseLock(operation, id, source = 'unknown') {
+  _releaseLock(operation, id) {
     // v1.6.3.10-v4 - FIX Issue #14: Include tab context in lock key
-    // v1.6.3.10-v11 - FIX Issue #10: Include source in lock key
-    const lockKey = `${operation}-${this.currentTabId}-${id}-${source}`;
-    const lock = this._operationLocks.get(lockKey);
-
-    if (lock) {
-      const lockDuration = Date.now() - lock.timestamp;
-      console.log(`${this._logPrefix} Lock released:`, {
-        lockKey,
-        operation,
-        id,
-        source,
-        lockDurationMs: lockDuration
-      });
-    }
-
+    const lockKey = `${operation}-${this.currentTabId}-${id}`;
     this._operationLocks.delete(lockKey);
   }
 
   /**
    * Check minimize preconditions
    * v1.6.3.5-v11 - Extracted to reduce handleMinimize complexity
-   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock methods
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object|null} tabWindow - TabWindow instance
@@ -897,8 +521,8 @@ export class VisibilityHandler {
       return { canProceed: false, result: { success: true, error: 'Suppressed callback' } };
     }
 
-    // Check mutex lock - v1.6.3.10-v11: Pass source
-    if (!this._tryAcquireLock('minimize', id, source)) {
+    // Check mutex lock
+    if (!this._tryAcquireLock('minimize', id)) {
       console.log(
         `${this._logPrefix} Ignoring duplicate minimize request (lock held, source: ${source}) for:`,
         id
@@ -912,7 +536,7 @@ export class VisibilityHandler {
         `${this._logPrefix} Ignoring duplicate minimize request (pending, source: ${source}) for:`,
         id
       );
-      this._releaseLock('minimize', id, source);
+      this._releaseLock('minimize', id);
       return { canProceed: false, result: { success: false, error: 'Operation pending' } };
     }
 
@@ -953,48 +577,6 @@ export class VisibilityHandler {
   }
 
   /**
-   * Perform pre-validation for handleMinimize operation
-   * v1.6.3.10-v14 - FIX Complexity: Extracted to reduce handleMinimize complexity
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {string} source - Source of action
-   * @param {string} operationId - Operation ID for tracing
-   * @param {number} operationStartTime - Operation start timestamp
-   * @returns {{ valid: boolean, result?: Object, tabWindow?: Object }} Validation result
-   */
-  _performMinimizePreValidation(id, source, operationId, operationStartTime) {
-    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
-    if (!ownershipValidation.valid) {
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'error',
-        errorReason: 'ownership_validation_failed',
-        durationMs: Date.now() - operationStartTime
-      });
-      return { valid: false, result: ownershipValidation.result };
-    }
-
-    const tabWindow = this.quickTabsMap.get(id);
-
-    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
-    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
-    if (!preconditions.canProceed) {
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'blocked',
-        errorReason: preconditions.result?.error || 'precondition_failed',
-        durationMs: Date.now() - operationStartTime
-      });
-      return { valid: false, result: preconditions.result };
-    }
-
-    return { valid: true, tabWindow };
-  }
-
-  /**
    * Handle Quick Tab minimize
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.1 - FIX Bug #7: Emit state:updated for panel sync
@@ -1008,48 +590,25 @@ export class VisibilityHandler {
    * v1.6.3.4-v8 - FIX Issue #3: Suppress callbacks during handler-initiated operations
    * v1.6.3.5-v11 - FIX Issue #4: Check tabWindow.isMinimizing flag for operation-specific suppression
    * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-   * v1.6.3.10-v11 - FIX Issue #16: Operation completion logging with operation ID
-   * v1.6.3.10-v14 - FIX Complexity: Extracted pre-validation to helper method
    *
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   handleMinimize(id, source = 'unknown') {
-    // v1.6.3.10-v13 - FIX Issue #2: Validate handler is initialized
-    if (!this._validateInitializationState('handleMinimize')) {
-      return { success: false, error: 'Handler not initialized' };
+    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'minimize', source);
+    if (!ownershipValidation.valid) {
+      return ownershipValidation.result;
     }
 
-    // v1.6.3.10-v11 - FIX Issue #16: Generate operation ID for tracing
-    const operationStartTime = Date.now();
-    const operationId = `minimize-${id}-${operationStartTime}`;
+    const tabWindow = this.quickTabsMap.get(id);
 
-    // v1.6.3.10-v13 - FIX Issue #3: Operation context logging
-    console.log(`${this._logPrefix} OPERATION_START: minimize`, {
-      context: { quickTabIds: [id], timestamp: operationStartTime },
-      operationId,
-      source
-    });
-
-    console.log(`${this._logPrefix} handleMinimize ENTRY:`, {
-      id,
-      source,
-      operationId
-    });
-
-    // v1.6.3.10-v14 - FIX Complexity: Use helper for pre-validation
-    const preValidation = this._performMinimizePreValidation(
-      id,
-      source,
-      operationId,
-      operationStartTime
-    );
-    if (!preValidation.valid) {
-      return preValidation.result;
+    // v1.6.3.5-v11 - FIX Issue #4: Check preconditions
+    const preconditions = this._checkMinimizePreconditions(id, tabWindow, source);
+    if (!preconditions.canProceed) {
+      return preconditions.result;
     }
-
-    const tabWindow = preValidation.tabWindow;
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
@@ -1061,13 +620,6 @@ export class VisibilityHandler {
       // Validate instance
       const validation = this._validateMinimizeInstance(id, tabWindow, source);
       if (!validation.valid) {
-        console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-          id,
-          operationId,
-          outcome: 'error',
-          errorReason: 'instance_validation_failed',
-          durationMs: Date.now() - operationStartTime
-        });
         return validation.result;
       }
       const tabWindowInstance = validation.instance;
@@ -1141,31 +693,10 @@ export class VisibilityHandler {
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
       this._debouncedPersist(id, 'minimize', source);
 
-      // v1.6.3.10-v11 - FIX Issue #16: Log completion with success
-      console.log(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'success',
-        durationMs: Date.now() - operationStartTime,
-        storageWriteScheduled: true
-      });
-
       return { success: true };
-    } catch (err) {
-      // v1.6.3.10-v11 - FIX Issue #16: Log completion with exception
-      console.error(`${this._logPrefix} handleMinimize COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'error',
-        errorReason: err.message,
-        durationMs: Date.now() - operationStartTime,
-        stack: err.stack
-      });
-      throw err;
     } finally {
       // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
-      // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock
-      this._releaseLock('minimize', id, source);
+      this._releaseLock('minimize', id);
     }
   }
 
@@ -1173,15 +704,14 @@ export class VisibilityHandler {
    * Check if restore operation can proceed
    * v1.6.3.2 - Helper to reduce handleRestore complexity
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
-   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock methods
    * @private
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action
    * @returns {boolean} True if operation can proceed
    */
   _canProceedWithRestore(id, source = 'unknown') {
-    // Check mutex lock - v1.6.3.10-v11: Pass source
-    if (!this._tryAcquireLock('restore', id, source)) {
+    // Check mutex lock
+    if (!this._tryAcquireLock('restore', id)) {
       console.log(
         `[VisibilityHandler] Ignoring duplicate restore request (lock held, source: ${source}) for:`,
         id
@@ -1195,7 +725,7 @@ export class VisibilityHandler {
         `[VisibilityHandler] Ignoring duplicate restore request (pending, source: ${source}) for:`,
         id
       );
-      this._releaseLock('restore', id, source);
+      this._releaseLock('restore', id);
       return false;
     }
 
@@ -1205,14 +735,12 @@ export class VisibilityHandler {
   /**
    * Cleanup after failed restore attempt
    * v1.6.3.2 - Helper to reduce handleRestore complexity
-   * v1.6.3.10-v11 - FIX Issue #10: Add source parameter for lock release
    * @private
    * @param {string} id - Quick Tab ID
-   * @param {string} [source='unknown'] - Source of action
    */
-  _cleanupFailedRestore(id, source = 'unknown') {
+  _cleanupFailedRestore(id) {
     this._pendingRestore.delete(id);
-    this._releaseLock('restore', id, source);
+    this._releaseLock('restore', id);
   }
 
   /**
@@ -1283,32 +811,14 @@ export class VisibilityHandler {
    *   - Issue #7: Entity state is single source of truth - update FIRST
    * v1.6.3.4-v7 - FIX Issues #3, #6: Instance validation and try/finally for lock cleanup
    * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-   * v1.6.3.10-v11 - FIX Issue #10: Pass source to lock, Issue #16: Operation completion logging
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    * @returns {{ success: boolean, error?: string }} Result object for message handlers
    */
   async handleRestore(id, source = 'unknown') {
-    // v1.6.3.10-v11 - FIX Issue #16: Generate operation ID for tracing
-    const operationStartTime = Date.now();
-    const operationId = `restore-${id}-${operationStartTime}`;
-
-    console.log(`${this._logPrefix} handleRestore ENTRY:`, {
-      id,
-      source,
-      operationId
-    });
-
     // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
     const ownershipValidation = this._validateCrossTabOwnership(id, 'restore', source);
     if (!ownershipValidation.valid) {
-      console.log(`${this._logPrefix} handleRestore COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'error',
-        errorReason: 'ownership_validation_failed',
-        durationMs: Date.now() - operationStartTime
-      });
       return ownershipValidation.result;
     }
 
@@ -1321,35 +831,15 @@ export class VisibilityHandler {
 
     // v1.6.3.2 - Check preconditions for restore
     if (!this._canProceedWithRestore(id, source)) {
-      console.log(`${this._logPrefix} handleRestore COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'blocked',
-        errorReason: 'precondition_failed',
-        durationMs: Date.now() - operationStartTime
-      });
       return { success: false, error: 'Operation blocked (lock held or pending)' };
     }
 
     // v1.6.3.4-v7 - FIX Issue #6: Use try/finally to ensure lock is ALWAYS released
     try {
-      const result = this._executeRestore(id, source, operationId, operationStartTime);
-      return result;
-    } catch (err) {
-      // v1.6.3.10-v11 - FIX Issue #16: Log completion with exception
-      console.error(`${this._logPrefix} handleRestore COMPLETED:`, {
-        id,
-        operationId,
-        outcome: 'error',
-        errorReason: err.message,
-        durationMs: Date.now() - operationStartTime,
-        stack: err.stack
-      });
-      throw err;
+      return this._executeRestore(id, source);
     } finally {
       // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
-      // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock
-      this._releaseLock('restore', id, source);
+      this._releaseLock('restore', id);
     }
   }
 
@@ -1436,7 +926,6 @@ export class VisibilityHandler {
   /**
    * Re-wire callbacks on tabWindow after restore
    * v1.6.3.5-v11 - FIX Issue #2: Missing callback re-wiring after restore
-   * v1.6.3.10-v11 - FIX Issue #9: Enhanced callback re-wiring with timeout recovery
    * Creates fresh callback functions that capture CURRENT handler context
    * @private
    * @param {Object} tabWindow - QuickTabWindow instance
@@ -1467,73 +956,19 @@ export class VisibilityHandler {
     // Note: Position/size callbacks (onPositionChange, onPositionChangeEnd, onSizeChange, onSizeChangeEnd)
     // are wired by UICoordinator via UpdateHandler as they require UpdateHandler context.
     // Emit an event so UICoordinator can re-wire those callbacks.
-    // v1.6.3.10-v11 - FIX Issue #9: Add timeout recovery for UICoordinator event
-    const CALLBACK_REWIRE_TIMEOUT_MS = 500;
-    let callbackRewireAcknowledged = false;
-
     if (this.eventBus) {
-      // Set up one-time listener for acknowledgment
-      const ackHandler = ackData => {
-        if (ackData?.id === id) {
-          callbackRewireAcknowledged = true;
-          console.log(`${this._logPrefix} Callback re-wire acknowledged by UICoordinator:`, {
-            id,
-            source,
-            ackData
-          });
-        }
-      };
-
-      // Listen for acknowledgment (UICoordinator should emit this after re-wiring)
-      this.eventBus.once('tab:callback-rewire-ack', ackHandler);
-
       this.eventBus.emit('tab:needs-callback-rewire', {
         id,
         source,
-        callbacksNeeded: [
-          'onPositionChange',
-          'onPositionChangeEnd',
-          'onSizeChange',
-          'onSizeChangeEnd'
-        ]
+        callbacksNeeded: ['onPositionChange', 'onPositionChangeEnd', 'onSizeChange', 'onSizeChangeEnd']
       });
-
-      // v1.6.3.10-v11 - FIX Issue #9: Timeout recovery if UICoordinator doesn't acknowledge
-      setTimeout(() => {
-        if (!callbackRewireAcknowledged) {
-          console.warn(
-            `${this._logPrefix} CALLBACK_REWIRE_TIMEOUT: UICoordinator did not acknowledge within ${CALLBACK_REWIRE_TIMEOUT_MS}ms`,
-            {
-              id,
-              source,
-              note: 'Position/size callbacks may not be re-wired. User may need to reload page.'
-            }
-          );
-
-          // Remove the listener to prevent memory leak
-          this.eventBus.off('tab:callback-rewire-ack', ackHandler);
-
-          // v1.6.3.10-v11 - FIX Issue #9: Emit warning event for monitoring
-          this.eventBus.emit('tab:callback-rewire-timeout', {
-            id,
-            source,
-            timeoutMs: CALLBACK_REWIRE_TIMEOUT_MS
-          });
-        }
-      }, CALLBACK_REWIRE_TIMEOUT_MS);
     }
 
     const rewired = tabWindow.rewireCallbacks(freshCallbacks);
     console.log(`${this._logPrefix} Re-wired callbacks after restore (source: ${source}):`, {
       id,
       rewired,
-      callbacksProvided: Object.keys(freshCallbacks),
-      pendingUICoordinatorCallbacks: [
-        'onPositionChange',
-        'onPositionChangeEnd',
-        'onSizeChange',
-        'onSizeChangeEnd'
-      ]
+      callbacksProvided: Object.keys(freshCallbacks)
     });
   }
 
@@ -1591,66 +1026,22 @@ export class VisibilityHandler {
   }
 
   /**
-   * Log operation completion with tracing info
-   * v1.6.3.10-v11 - FIX Code Health: Extracted to reduce _executeRestore complexity
-   * @private
-   */
-  _logOperationCompletion(options) {
-    const { id, operationId, operationStartTime, outcome, error, note, tabWindow } = options;
-
-    if (!operationId || !operationStartTime) return;
-
-    const completionLog = {
-      id,
-      operationId,
-      outcome,
-      durationMs: Date.now() - operationStartTime
-    };
-
-    if (error) completionLog.errorReason = error;
-    if (note) completionLog.note = note;
-    if (outcome === 'success') {
-      completionLog.storageWriteScheduled = true;
-      if (tabWindow?.zIndex !== undefined) {
-        completionLog.newZIndex = tabWindow.zIndex;
-      }
-    }
-
-    console.log(`${this._logPrefix} handleRestore COMPLETED:`, completionLog);
-  }
-
-  /**
    * Execute restore operation (extracted to reduce handleRestore complexity)
    * v1.6.3.4-v7 - Helper for try/finally pattern in handleRestore
    * v1.6.3.4-v9 - FIX Issue #20: Add validation before proceeding
    * v1.6.3.5-v5 - FIX Issues #1, #6: DOM verification and transaction pattern with rollback
    * v1.6.3.5-v11 - FIX Issue #7, #9: Z-index sync and logging during restore
-   * v1.6.3.10-v11 - FIX Issue #16: Operation ID for completion logging
    * Refactored: Extracted helpers to reduce complexity
    * @private
-   * @param {string} id - Quick Tab ID
-   * @param {string} source - Source of action
-   * @param {string} [operationId] - Operation ID for tracing
-   * @param {number} [operationStartTime] - Operation start timestamp
    */
-  _executeRestore(id, source, operationId = null, operationStartTime = null) {
-    console.log(`${this._logPrefix}[_executeRestore] ENTRY (source: ${source}):`, {
-      id,
-      operationId
-    });
+  _executeRestore(id, source) {
+    console.log(`${this._logPrefix}[_executeRestore] ENTRY (source: ${source}):`, { id });
 
     const tabWindow = this.quickTabsMap.get(id);
 
     // Validate preconditions
     const validation = this._validateRestorePreconditions(tabWindow, id, source);
     if (!validation.valid) {
-      this._logOperationCompletion({
-        id,
-        operationId,
-        operationStartTime,
-        outcome: 'error',
-        error: validation.error
-      });
       return { success: false, error: validation.error };
     }
 
@@ -1670,13 +1061,6 @@ export class VisibilityHandler {
     // Restore from minimized manager
     if (!this.minimizedManager.restore(id)) {
       this._handleNotInMinimizedManager(id, tabWindow, source);
-      this._logOperationCompletion({
-        id,
-        operationId,
-        operationStartTime,
-        outcome: 'success',
-        note: 'not_in_minimized_manager'
-      });
       return { success: true };
     }
 
@@ -1688,15 +1072,6 @@ export class VisibilityHandler {
 
     // Emit restore event for legacy handlers
     this._emitLegacyRestoredEvent(id, source);
-
-    // Log completion with success
-    this._logOperationCompletion({
-      id,
-      operationId,
-      operationStartTime,
-      outcome: 'success',
-      tabWindow
-    });
 
     console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
       id,
@@ -2272,9 +1647,8 @@ export class VisibilityHandler {
     });
 
     // Sort tabs by current z-index to maintain stacking order
-    const sortedTabs = Array.from(this.quickTabsMap.entries()).sort(
-      ([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0)
-    );
+    const sortedTabs = Array.from(this.quickTabsMap.entries())
+      .sort(([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0));
 
     // Reset counter to base value
     this.currentZIndex.value = 1000;
@@ -2464,9 +1838,8 @@ export class VisibilityHandler {
     this._pendingRestore.delete(id);
 
     // v1.6.3.2 - FIX Issue #2: Release operation locks
-    // v1.6.3.10-v11 - FIX Issue #10: Pass source to lock release
-    this._releaseLock('minimize', id, source);
-    this._releaseLock('restore', id, source);
+    this._releaseLock('minimize', id);
+    this._releaseLock('restore', id);
 
     // v1.6.3.10-v10 - FIX Issue 10.1: Skip persist if storage marked unavailable
     if (!this._storageAvailable) {
@@ -2520,7 +1893,10 @@ export class VisibilityHandler {
     });
 
     try {
-      await Promise.race([this._persistToStorage(), timeoutPromise]);
+      await Promise.race([
+        this._persistToStorage(),
+        timeoutPromise
+      ]);
       // Reset timeout count on success
       this._storageTimeoutCount = 0;
     } catch (err) {
@@ -2657,233 +2033,25 @@ export class VisibilityHandler {
   }
 
   /**
-   * Register an event listener with tracking for cleanup
-   * v1.6.3.10-v11 - FIX Issue #19: Track listeners for later removal
-   * @param {EventTarget} target - Target to add listener to
-   * @param {string} type - Event type
-   * @param {Function} listener - Event listener function
-   * @param {Object} [options] - addEventListener options
-   */
-  _registerListener(target, type, listener, options = {}) {
-    if (this._isDestroyed) {
-      console.warn(`${this._logPrefix} LISTENER_BLOCKED: Handler is destroyed`);
-      return;
-    }
-
-    target.addEventListener(type, listener, options);
-    this._registeredListeners.push({ target, type, listener, options });
-
-    console.log(`${this._logPrefix} LISTENER_REGISTERED:`, {
-      type,
-      targetType: target.constructor?.name ?? 'unknown',
-      listenerCount: this._registeredListeners.length
-    });
-  }
-
-  /**
-   * Create a tracked timer with metadata
-   * v1.6.3.10-v11 - FIX Issue #20: Track timers for cleanup and validation
-   * @param {Function} callback - Timer callback
-   * @param {number} delay - Delay in milliseconds
-   * @param {string} type - Timer type ('timeout' or 'interval')
-   * @param {string} description - Human-readable description
-   * @returns {number} Timer ID
-   */
-  _createTrackedTimer(callback, delay, type, description) {
-    if (this._isDestroyed) {
-      console.warn(
-        `${this._logPrefix} TIMER_BLOCKED: Handler is destroyed, skipping ${description}`
-      );
-      return null;
-    }
-
-    const createdAt = Date.now();
-    const wrappedCallback = () => {
-      // v1.6.3.10-v11 - FIX Issue #20: Validate handler is still active before executing
-      if (this._isDestroyed) {
-        console.log(`${this._logPrefix} TIMER_SKIPPED: Handler destroyed before execution`, {
-          description,
-          createdAt,
-          waitedMs: Date.now() - createdAt
-        });
-        return;
-      }
-
-      // Remove from tracking
-      this._activeTimers.delete(timerId);
-
-      // Log timer execution
-      console.log(`${this._logPrefix} TIMER_FIRED: ${description}`, {
-        type,
-        activeForMs: Date.now() - createdAt
-      });
-
-      callback();
-    };
-
-    let timerId;
-    if (type === 'interval') {
-      timerId = setInterval(wrappedCallback, delay);
-    } else {
-      timerId = setTimeout(wrappedCallback, delay);
-    }
-
-    this._activeTimers.set(timerId, {
-      type,
-      description,
-      createdAt,
-      delay
-    });
-
-    console.log(`${this._logPrefix} TIMER_CREATED: ${description}`, {
-      timerId,
-      type,
-      delay,
-      activeTimers: this._activeTimers.size
-    });
-
-    return timerId;
-  }
-
-  /**
-   * Cancel a tracked timer
-   * v1.6.3.10-v11 - FIX Issue #20: Log timer cancellation
-   * @param {number} timerId - Timer ID to cancel
-   */
-  _cancelTrackedTimer(timerId) {
-    const timerInfo = this._activeTimers.get(timerId);
-
-    if (timerInfo) {
-      if (timerInfo.type === 'interval') {
-        clearInterval(timerId);
-      } else {
-        clearTimeout(timerId);
-      }
-
-      const activeForMs = Date.now() - timerInfo.createdAt;
-      console.log(`${this._logPrefix} TIMER_CANCELLED: ${timerInfo.description}`, {
-        timerId,
-        activeForMs
-      });
-
-      this._activeTimers.delete(timerId);
-    }
-  }
-
-  /**
-   * Remove all registered event listeners
-   * v1.6.3.10-v11 - FIX Issue #19: Helper to reduce destroy() complexity
-   * @private
-   */
-  _cleanupEventListeners() {
-    if (!this._registeredListeners) return;
-
-    const count = this._registeredListeners.length;
-    for (const { target, type, listener, options } of this._registeredListeners) {
-      try {
-        target.removeEventListener(type, listener, options);
-      } catch (err) {
-        console.warn(`${this._logPrefix} Failed to remove listener:`, { type, error: err.message });
-      }
-    }
-    console.log(`${this._logPrefix} LISTENERS_REMOVED: ${count}`);
-    this._registeredListeners = [];
-  }
-
-  /**
-   * Clear a single timer by ID and type
-   * v1.6.3.10-v11 - FIX Issue #20: Helper to reduce nesting depth
-   * @private
-   * @param {number} timerId - Timer ID
-   * @param {Object} timerInfo - Timer info object
-   */
-  _clearSingleTimer(timerId, timerInfo) {
-    const activeForMs = Date.now() - timerInfo.createdAt;
-    console.log(`${this._logPrefix} TIMER_CLEARED: ${timerInfo.description}`, {
-      timerId,
-      activeForMs
-    });
-
-    if (timerInfo.type === 'interval') {
-      clearInterval(timerId);
-    } else {
-      clearTimeout(timerId);
-    }
-  }
-
-  /**
-   * Clear all tracked timers
-   * v1.6.3.10-v11 - FIX Issue #20: Helper to reduce destroy() complexity
-   * @private
-   */
-  _cleanupTrackedTimers() {
-    if (!this._activeTimers) return;
-
-    let clearedCount = 0;
-    for (const [timerId, timerInfo] of this._activeTimers) {
-      this._clearSingleTimer(timerId, timerInfo);
-      clearedCount++;
-    }
-    console.log(`${this._logPrefix} TIMERS_CLEARED: ${clearedCount}`);
-    this._activeTimers.clear();
-  }
-
-  /**
-   * Clear debounce timers
-   * v1.6.3.10-v11 - FIX Issue #20: Helper to reduce destroy() complexity
-   * @private
-   */
-  _cleanupDebounceTimers() {
-    for (const timer of this._debounceTimers.values()) {
-      const timerId = timer?.timeoutId ?? (typeof timer === 'number' ? timer : null);
-      if (timerId !== null) {
-        clearTimeout(timerId);
-      }
-    }
-    this._debounceTimers.clear();
-  }
-
-  /**
    * Destroy handler and cleanup resources
    * v1.6.3.10-v10 - FIX Issue 3.3: Clear all Set/Map references to prevent memory leaks
-   * v1.6.3.10-v11 - FIX Issue #19: Remove all event listeners (refactored)
-   * v1.6.3.10-v11 - FIX Issue #20: Clear all tracked timers with logging (refactored)
-   * v1.6.3.10-v13 - FIX Issue #2: Track initialization state transitions
    */
   destroy() {
-    // v1.6.3.10-v13 - FIX Issue #2: Transition to DESTROYING state
-    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.DESTROYING;
-
-    console.log(`${this._logPrefix} HANDLER_DESTROY_START:`, {
-      initializationState: this._initializationState,
-      registeredListeners: this._registeredListeners?.length ?? 0,
-      activeTimers: this._activeTimers?.size ?? 0,
-      pendingMinimize: this._pendingMinimize?.size ?? 0,
-      pendingRestore: this._pendingRestore?.size ?? 0
-    });
-
-    // v1.6.3.10-v11 - FIX Issue #19: Mark as destroyed first to prevent new registrations
-    this._isDestroyed = true;
-
-    // v1.6.3.10-v11 - FIX Issue #19: Remove all registered event listeners
-    this._cleanupEventListeners();
-
-    // v1.6.3.10-v11 - FIX Issue #20: Clear all tracked timers
-    this._cleanupTrackedTimers();
-
-    // v1.6.3.10-v11 - FIX Issue #22: Clear consistency check interval
-    if (this._consistencyCheckIntervalId) {
-      clearInterval(this._consistencyCheckIntervalId);
-      this._consistencyCheckIntervalId = null;
-      console.log(`${this._logPrefix} CONSISTENCY_CHECK_STOPPED`);
-    }
+    console.log(`${this._logPrefix} Destroying VisibilityHandler`);
 
     // Clear all pending operations
     this._pendingMinimize.clear();
     this._pendingRestore.clear();
 
     // Clear all debounce timers
-    this._cleanupDebounceTimers();
+    for (const timer of this._debounceTimers.values()) {
+      if (timer?.timeoutId) {
+        clearTimeout(timer.timeoutId);
+      } else if (typeof timer === 'number') {
+        clearTimeout(timer);
+      }
+    }
+    this._debounceTimers.clear();
 
     // v1.6.3.10-v10 - FIX Issue 3.3: Clear active timer IDs
     this._activeTimerIds.clear();
@@ -2897,12 +2065,6 @@ export class VisibilityHandler {
     // Clear focus time tracking
     this._lastFocusTime.clear();
 
-    // v1.6.3.10-v13 - FIX Issue #2: Transition to DESTROYED state
-    this._initializationState = VisibilityHandler.INITIALIZATION_STATE.DESTROYED;
-
-    console.log(`${this._logPrefix} HANDLER_DESTROY_COMPLETE:`, {
-      initializationState: this._initializationState,
-      timestamp: Date.now()
-    });
+    console.log(`${this._logPrefix} VisibilityHandler destroyed`);
   }
 }

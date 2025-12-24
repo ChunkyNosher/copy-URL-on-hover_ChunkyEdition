@@ -6,371 +6,6 @@
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 // v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
-// v1.6.3.11 - FIX Issues #1-3, #10: Background initialization and tab ID acquisition fixes
-//   - Issue #1: Message handlers registered synchronously at module top-level
-//   - Issue #2: GET_CURRENT_TAB_ID handler returns sender.tab.id without init dependency
-//   - Issue #3: Comprehensive initialization logging added
-//   - Issue #10: Async initialization does not block message handlers
-
-// v1.6.3.11 - CRITICAL: Log background script load immediately at top of file
-// Simple log format to minimize startup overhead
-console.log('[Background] ✓ Background script loading started');
-
-// ==================== v1.6.3.11-v6 EARLY MESSAGE LISTENER ====================
-// CRITICAL FIX: Register message listeners IMMEDIATELY at the very top of the script
-// BEFORE any imports or initialization code runs.
-//
-// ROOT CAUSE: In v1.6.3.11-v5, ~1500+ lines of new code were added between imports
-// and the message listener registration, causing messages to fail with
-// "Could not establish connection. Receiving end does not exist."
-//
-// SOLUTION: Register a placeholder listener at the very top that queues messages
-// until the full MessageRouter is ready to process them.
-// ============================================================================
-
-// Early message queue for messages received before MessageRouter is ready
-const _earlyMessageQueue = [];
-const _MAX_EARLY_QUEUE_SIZE = 100;
-let _messageRouterReady = false;
-let _messageRouterInstance = null;
-
-// Type-based handlers for messages not handled by MessageRouter
-// These are set later when the handlers are defined
-let _typeBasedHandlers = null;
-
-// v1.6.3.11-v6 - FIX Code Review: Extract type-based message types as constant
-// These message types use `type` property instead of `action` and are
-// handled separately from MessageRouter
-const _TYPE_BASED_MESSAGE_TYPES = ['HEARTBEAT', 'QUICK_TAB_STATE_CHANGE', 'MANAGER_COMMAND'];
-
-/**
- * Handle queue overflow by dropping oldest message
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
- * @private
- */
-function _handleEarlyQueueOverflow(message) {
-  console.warn('[Background] EARLY_QUEUE_OVERFLOW: Dropping oldest message', {
-    queueSize: _earlyMessageQueue.length,
-    action: message?.action || message?.type
-  });
-  const dropped = _earlyMessageQueue.shift();
-  _notifyDroppedMessage(dropped);
-}
-
-/**
- * Notify sender that their message was dropped
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
- * @private
- */
-function _notifyDroppedMessage(dropped) {
-  if (!dropped?.sendResponse) return;
-  try {
-    dropped.sendResponse({
-      success: false,
-      error: 'Message dropped due to early queue overflow',
-      code: 'EARLY_QUEUE_OVERFLOW',
-      retryable: true
-    });
-  } catch (_err) {
-    // Channel may be closed - ignore
-  }
-}
-
-/**
- * Route message to appropriate handler (type-based or MessageRouter)
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
- * @private
- */
-function _routeReadyMessage(message, sender, sendResponse) {
-  // Check if this is a type-based message first
-  if (_isTypeBasedMessage(message) && _typeBasedHandlers) {
-    const handled = _handleTypeBasedMessage(message, sender, sendResponse);
-    if (handled) return;
-  }
-  // Delegate to MessageRouter for action-based messages
-  _messageRouterInstance.route(message, sender, sendResponse);
-}
-
-/**
- * Queue a message for later processing
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _earlyMessageListener complexity
- * @private
- */
-function _queueEarlyMessage(message, sender, sendResponse) {
-  // Handle overflow first
-  if (_earlyMessageQueue.length >= _MAX_EARLY_QUEUE_SIZE) {
-    _handleEarlyQueueOverflow(message);
-  }
-
-  _earlyMessageQueue.push({
-    message,
-    sender,
-    sendResponse,
-    queuedAt: Date.now()
-  });
-
-  console.log('[Background] EARLY_MESSAGE_QUEUED:', {
-    action: message?.action || message?.type,
-    queueSize: _earlyMessageQueue.length,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Early message listener - registered IMMEDIATELY at script load
- * Queues messages until MessageRouter is fully initialized
- * v1.6.3.11-v6 - FIX: Register message listener at TOP of background.js
- * v1.6.3.11-v6 - FIX Code Health: Refactored to reduce complexity (cc=11→5)
- * @param {Object} message - Message from content script or sidebar
- * @param {Object} sender - Message sender info
- * @param {Function} sendResponse - Response callback
- * @returns {boolean} True to keep message channel open for async response
- */
-function _earlyMessageListener(message, sender, sendResponse) {
-  // If MessageRouter is ready, delegate to full message handling
-  if (_messageRouterReady && _messageRouterInstance) {
-    _routeReadyMessage(message, sender, sendResponse);
-    return true;
-  }
-
-  // Queue the message for later processing
-  _queueEarlyMessage(message, sender, sendResponse);
-  return true;
-}
-
-/**
- * Check if message is a type-based message (not handled by MessageRouter)
- * v1.6.3.11-v6 - FIX: Identify type-based messages for special handling
- * @param {Object} message - Message to check
- * @returns {boolean} True if type-based message
- */
-function _isTypeBasedMessage(message) {
-  if (!message || typeof message.type !== 'string') return false;
-  // Type-based messages have `type` but NOT `action`
-  if (typeof message.action === 'string') return false;
-  // v1.6.3.11-v6 - FIX Code Review: Use constant for known type-based message types
-  return _TYPE_BASED_MESSAGE_TYPES.includes(message.type);
-}
-
-/**
- * Handle type-based messages that aren't handled by MessageRouter
- * v1.6.3.11-v6 - FIX: Centralize type-based message handling
- * @param {Object} message - Message to handle
- * @param {Object} sender - Message sender
- * @param {Function} sendResponse - Response callback
- * @returns {boolean} True if message was handled
- */
-function _handleTypeBasedMessage(message, sender, sendResponse) {
-  if (!_typeBasedHandlers) return false;
-
-  if (message.type === 'HEARTBEAT' && _typeBasedHandlers.handleHeartbeat) {
-    _typeBasedHandlers.handleHeartbeat(message, sender, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'QUICK_TAB_STATE_CHANGE' && _typeBasedHandlers.handleQuickTabStateChange) {
-    _invokeAsyncHandler(
-      _typeBasedHandlers.handleQuickTabStateChange,
-      message,
-      sender,
-      sendResponse
-    );
-    return true;
-  }
-
-  if (message.type === 'MANAGER_COMMAND' && _typeBasedHandlers.handleManagerCommand) {
-    _invokeAsyncHandler(_typeBasedHandlers.handleManagerCommand, message, sender, sendResponse);
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Invoke an async handler and send response
- * v1.6.3.11-v6 - FIX Code Review: Extracted to reduce duplication
- * @private
- */
-function _invokeAsyncHandler(handler, message, sender, sendResponse) {
-  handler(message, sender)
-    .then(result => sendResponse(result))
-    .catch(err => sendResponse({ success: false, error: err.message }));
-}
-
-/**
- * Process a single queued message during drain
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce _drainEarlyMessageQueue complexity
- * @private
- * @returns {Promise<{success: boolean}>}
- */
-async function _processQueuedEarlyMessage(entry) {
-  const queueDuration = Date.now() - entry.queuedAt;
-
-  // Check if type-based message
-  if (_isTypeBasedMessage(entry.message) && _typeBasedHandlers) {
-    const handled = _handleTypeBasedMessage(entry.message, entry.sender, entry.sendResponse);
-    if (handled) {
-      console.log('[Background] EARLY_MESSAGE_PROCESSED (type-based):', {
-        type: entry.message?.type,
-        queueDurationMs: queueDuration
-      });
-      return { success: true };
-    }
-  }
-
-  // Otherwise use MessageRouter
-  if (!_messageRouterInstance) {
-    throw new Error('MessageRouter not available');
-  }
-
-  await _messageRouterInstance.route(entry.message, entry.sender, entry.sendResponse);
-  console.log('[Background] EARLY_MESSAGE_PROCESSED:', {
-    action: entry.message?.action || entry.message?.type,
-    queueDurationMs: queueDuration
-  });
-  return { success: true };
-}
-
-/**
- * Handle error during queue drain
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
- * @private
- */
-function _handleQueueDrainError(entry, err) {
-  console.error('[Background] EARLY_MESSAGE_FAILED:', {
-    action: entry.message?.action || entry.message?.type,
-    error: err.message,
-    queueDurationMs: Date.now() - entry.queuedAt
-  });
-  _sendQueueDrainErrorResponse(entry.sendResponse);
-}
-
-/**
- * Send error response for queue drain failure
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
- * @private
- */
-function _sendQueueDrainErrorResponse(sendResponse) {
-  if (!sendResponse) return;
-  try {
-    sendResponse({
-      success: false,
-      error: 'Failed during early queue drain',
-      code: 'EARLY_QUEUE_DRAIN_ERROR'
-    });
-  } catch (_responseErr) {
-    // Channel may be closed - ignore
-  }
-}
-
-/**
- * Drain the early message queue once MessageRouter is ready
- * v1.6.3.11-v6 - FIX: Process messages that arrived before MessageRouter initialized
- * v1.6.3.11-v6 - FIX Code Health: Refactored to reduce complexity (cc=12→6)
- */
-async function _drainEarlyMessageQueue() {
-  if (_earlyMessageQueue.length === 0) {
-    console.log('[Background] EARLY_QUEUE_EMPTY: No messages to drain');
-    return;
-  }
-
-  console.log('[Background] DRAIN_EARLY_QUEUE_START:', {
-    queueSize: _earlyMessageQueue.length,
-    timestamp: Date.now()
-  });
-
-  let processedCount = 0;
-  let errorCount = 0;
-
-  while (_earlyMessageQueue.length > 0) {
-    const entry = _earlyMessageQueue.shift();
-    try {
-      await _processQueuedEarlyMessage(entry);
-      processedCount++;
-    } catch (err) {
-      errorCount++;
-      _handleQueueDrainError(entry, err);
-    }
-  }
-
-  console.log('[Background] DRAIN_EARLY_QUEUE_COMPLETE:', {
-    processedCount,
-    errorCount,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Mark MessageRouter as ready and drain queued messages
- * v1.6.3.11-v6 - Called after MessageRouter is fully configured
- * @param {Object} routerInstance - The initialized MessageRouter instance
- */
-function _setMessageRouterReady(routerInstance) {
-  _messageRouterInstance = routerInstance;
-  _messageRouterReady = true;
-  console.log('[Background] MESSAGE_ROUTER_READY:', {
-    timestamp: Date.now(),
-    queuedMessages: _earlyMessageQueue.length
-  });
-
-  // Drain any queued messages
-  _drainEarlyMessageQueue().catch(err => {
-    console.error('[Background] Error draining early queue:', err.message);
-  });
-}
-
-/**
- * Set type-based handlers for messages not handled by MessageRouter
- * v1.6.3.11-v6 - Called after handlers are defined
- * @param {Object} handlers - Object with handler functions
- */
-function _setTypeBasedHandlers(handlers) {
-  _typeBasedHandlers = handlers;
-  console.log('[Background] TYPE_BASED_HANDLERS_SET:', {
-    hasHeartbeat: !!handlers?.handleHeartbeat,
-    hasQuickTabStateChange: !!handlers?.handleQuickTabStateChange,
-    hasManagerCommand: !!handlers?.handleManagerCommand,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Check if browser.runtime.onMessage listener should be registered separately
- * v1.6.3.11-v6 - FIX Code Review: Extracted for clarity
- * In Firefox, browser.runtime === chrome.runtime due to polyfill, so we avoid double registration
- * @private
- * @returns {boolean} True if browser listener should be registered
- */
-function _shouldRegisterBrowserListener() {
-  // Check browser API exists
-  if (typeof browser === 'undefined' || !browser.runtime?.onMessage) return false;
-  // If chrome is undefined, browser is the only API
-  if (typeof chrome === 'undefined') return true;
-  // If they're the same object (polyfill), don't double-register
-  return chrome.runtime !== browser.runtime;
-}
-
-// REGISTER EARLY LISTENERS IMMEDIATELY
-// These are registered BEFORE any imports to ensure messages are never lost
-console.log(
-  '[Background] EARLY_LISTENER_REGISTRATION: Registering message listeners at TOP of script'
-);
-
-if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-  chrome.runtime.onMessage.addListener(_earlyMessageListener);
-  console.log('[Background] ✓ chrome.runtime.onMessage early listener registered');
-}
-
-if (_shouldRegisterBrowserListener()) {
-  browser.runtime.onMessage.addListener(_earlyMessageListener);
-  console.log('[Background] ✓ browser.runtime.onMessage early listener registered');
-}
-
-console.log('[Background] EARLY_LISTENER_REGISTRATION_COMPLETE:', {
-  timestamp: Date.now()
-});
-
-// ==================== END EARLY MESSAGE LISTENER ====================
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -379,33 +14,6 @@ import { TabHandler } from './src/background/handlers/TabHandler.js';
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - Tab lifecycle handler
 import { TabLifecycleHandler } from './src/background/handlers/TabLifecycleHandler.js';
 import { MessageRouter } from './src/background/MessageRouter.js';
-// v1.6.4.17 - FIX Issues #8, #13: Import error telemetry and logging infrastructure
-import {
-  ERROR_TYPES,
-  recordError,
-  recordHandlerError,
-  recordTimeoutError,
-  recordStorageError,
-  getTelemetrySummary
-} from './src/utils/error-telemetry.js';
-import {
-  LOG_PREFIX,
-  logListenerRegistration,
-  logListenerRegistered,
-  logListenerRegistrationFailed,
-  logInitializationComplete,
-  logMessageReceived,
-  logHandlerInvoked,
-  logHandlerComplete,
-  logStorageWriteTriggered,
-  logStorageStateChanged,
-  logStorageListenerFired,
-  logStorageSubscribersNotified,
-  logStateReconciliation,
-  logSyncStateChanged,
-  logSyncPropagatedToStorage,
-  logSyncComplete
-} from './src/utils/logging-infrastructure.js';
 
 const runtimeAPI =
   (typeof browser !== 'undefined' && browser.runtime) ||
@@ -511,242 +119,6 @@ let consecutiveZeroTabReads = 0;
 const ZERO_TAB_CLEAR_THRESHOLD = 2; // Require 2 consecutive 0-tab reads
 const NON_EMPTY_STATE_COOLDOWN_MS = 1000; // Don't clear within 1 second of last non-empty state
 
-// ==================== v1.6.3.10-v11 FIX ISSUE #17: BACKGROUND TERMINATION HANDLING ====================
-// FIX Issue #17: Background service worker cleanup and state persistence on termination
-// MV2 uses beforeunload to persist pending state before Firefox terminates background script
-
-/**
- * Storage key for in-flight recovery markers
- * v1.6.3.10-v11 - FIX Issue #17
- */
-const IN_FLIGHT_RECOVERY_KEY = 'quick_tabs_in_flight_recovery';
-
-/**
- * Track pending operations that need recovery if background restarts
- * v1.6.3.10-v11 - FIX Issue #17
- */
-const pendingOperations = {
-  adoptions: new Map(), // quickTabId -> { originTabId, startedAt }
-  queuedWrites: [], // Array of pending storage writes
-  locksHeld: new Map() // lockId -> { heldBy, acquiredAt }
-};
-
-/**
- * Persist pending state before background termination
- * v1.6.3.10-v11 - FIX Issue #17: MV2 beforeunload handler
- */
-async function _persistPendingStateBeforeTermination() {
-  const now = Date.now();
-
-  // Check if there's anything pending
-  const hasPending =
-    pendingOperations.adoptions.size > 0 ||
-    pendingOperations.queuedWrites.length > 0 ||
-    pendingOperations.locksHeld.size > 0 ||
-    IN_PROGRESS_TRANSACTIONS.size > 0;
-
-  if (!hasPending) {
-    console.log('[Background] TERMINATION_CLEANUP: No pending operations to persist');
-    return;
-  }
-
-  console.log('[Background] TERMINATION_CLEANUP: Persisting pending state before termination', {
-    pendingAdoptions: pendingOperations.adoptions.size,
-    queuedWrites: pendingOperations.queuedWrites.length,
-    locksHeld: pendingOperations.locksHeld.size,
-    inProgressTransactions: IN_PROGRESS_TRANSACTIONS.size,
-    timestamp: now
-  });
-
-  const recoveryData = {
-    marker: 'in-flight-recovery-needed',
-    timestamp: now,
-    backgroundStartupTime: backgroundStartupTime,
-    adoptions: Array.from(pendingOperations.adoptions.entries()),
-    queuedWrites: pendingOperations.queuedWrites,
-    locksHeld: Array.from(pendingOperations.locksHeld.entries()),
-    transactions: Array.from(IN_PROGRESS_TRANSACTIONS),
-    globalState: {
-      tabs: globalQuickTabState.tabs,
-      lastUpdate: globalQuickTabState.lastUpdate,
-      saveId: globalQuickTabState.saveId
-    }
-  };
-
-  try {
-    await browser.storage.local.set({ [IN_FLIGHT_RECOVERY_KEY]: recoveryData });
-    console.log('[Background] TERMINATION_CLEANUP: Recovery data persisted successfully');
-  } catch (err) {
-    console.error(
-      '[Background] TERMINATION_CLEANUP: Failed to persist recovery data:',
-      err.message
-    );
-  }
-}
-
-/**
- * Validate and get recovery data from storage
- * v1.6.3.10-v11 - FIX Issue #17: Helper to reduce complexity
- * @private
- * @returns {Promise<{valid: boolean, data?: Object, age?: number}>}
- */
-async function _getValidRecoveryData() {
-  const result = await browser.storage.local.get(IN_FLIGHT_RECOVERY_KEY);
-  const recoveryData = result[IN_FLIGHT_RECOVERY_KEY];
-
-  if (!recoveryData || recoveryData.marker !== 'in-flight-recovery-needed') {
-    return { valid: false };
-  }
-
-  const recoveryAge = Date.now() - recoveryData.timestamp;
-  return { valid: true, data: recoveryData, age: recoveryAge };
-}
-
-/**
- * Log recovery actions for adoptions and transactions
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _applyRecoveryData
- * @private
- * @param {Object} recoveryData - Recovery data from storage
- */
-function _logRecoveryActions(recoveryData) {
-  if (recoveryData.adoptions?.length > 0) {
-    console.log(
-      '[Background] RECOVERY_ACTION: Restoring pending adoptions:',
-      recoveryData.adoptions.length
-    );
-  }
-  if (recoveryData.transactions?.length > 0) {
-    console.log(
-      '[Background] RECOVERY_ACTION: Marking transactions as stale:',
-      recoveryData.transactions.length
-    );
-  }
-}
-
-/**
- * Check if global state should be restored from recovery data
- * v1.6.3.11-v5 - FIX Code Health: Extracted predicate
- * @private
- * @param {Object} recoveryData - Recovery data from storage
- * @returns {boolean} True if should restore
- */
-function _shouldRestoreGlobalState(recoveryData) {
-  const currentEmpty = globalQuickTabState.tabs.length === 0;
-  const recoveryHasTabs = recoveryData.globalState?.tabs?.length > 0;
-  return currentEmpty && recoveryHasTabs;
-}
-
-/**
- * Restore global state from recovery data
- * v1.6.3.11-v5 - FIX Code Health: Extracted state restoration
- * @private
- * @param {Object} globalState - Global state to restore
- */
-function _restoreGlobalState(globalState) {
-  console.log('[Background] RECOVERY_ACTION: Restoring global state from recovery data:', {
-    tabCount: globalState.tabs.length
-  });
-  globalQuickTabState.tabs = globalState.tabs;
-  globalQuickTabState.lastUpdate = globalState.lastUpdate;
-  globalQuickTabState.saveId = globalState.saveId;
-}
-
-/**
- * Log and apply recovery actions
- * v1.6.3.10-v11 - FIX Issue #17: Helper to reduce complexity
- * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
- * @private
- * @param {Object} recoveryData - Recovery data from storage
- */
-function _applyRecoveryData(recoveryData) {
-  _logRecoveryActions(recoveryData);
-
-  if (_shouldRestoreGlobalState(recoveryData)) {
-    _restoreGlobalState(recoveryData.globalState);
-  }
-}
-
-/**
- * Check for and process in-flight recovery markers on startup
- * v1.6.3.10-v11 - FIX Issue #17: Recovery on background restart (refactored)
- */
-async function _checkAndRecoverInFlightState() {
-  try {
-    const { valid, data: recoveryData, age: recoveryAge } = await _getValidRecoveryData();
-
-    if (!valid) {
-      console.log('[Background] RECOVERY_CHECK: No in-flight recovery needed');
-      return;
-    }
-
-    console.log('[Background] RECOVERY_CHECK: Found in-flight recovery data', {
-      age: recoveryAge,
-      pendingAdoptions: recoveryData.adoptions?.length ?? 0,
-      queuedWrites: recoveryData.queuedWrites?.length ?? 0,
-      transactions: recoveryData.transactions?.length ?? 0,
-      previousStartupTime: recoveryData.backgroundStartupTime
-    });
-
-    // Only process recovery if it's recent (within 5 minutes)
-    const MAX_RECOVERY_AGE_MS = 5 * 60 * 1000;
-    if (recoveryAge > MAX_RECOVERY_AGE_MS) {
-      console.log('[Background] RECOVERY_CHECK: Recovery data too old, clearing');
-      await browser.storage.local.remove(IN_FLIGHT_RECOVERY_KEY);
-      return;
-    }
-
-    _applyRecoveryData(recoveryData);
-
-    // Clear recovery marker after processing
-    await browser.storage.local.remove(IN_FLIGHT_RECOVERY_KEY);
-    console.log('[Background] RECOVERY_CHECK: Recovery processing complete');
-  } catch (err) {
-    console.error('[Background] RECOVERY_CHECK: Error during recovery:', err.message);
-  }
-}
-
-/**
- * Track a pending adoption for recovery
- * v1.6.3.10-v11 - FIX Issue #17
- * @param {string} quickTabId - Quick Tab being adopted
- * @param {number} originTabId - Original owner tab ID
- */
-function _trackPendingAdoption(quickTabId, originTabId) {
-  pendingOperations.adoptions.set(quickTabId, {
-    originTabId,
-    startedAt: Date.now()
-  });
-}
-
-/**
- * Clear a completed adoption from pending tracking
- * v1.6.3.10-v11 - FIX Issue #17
- * @param {string} quickTabId - Quick Tab that was adopted
- */
-function _clearPendingAdoption(quickTabId) {
-  pendingOperations.adoptions.delete(quickTabId);
-}
-
-// Register beforeunload handler for MV2
-// Note: In MV2, background pages can use beforeunload unlike MV3 service workers
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    // Use synchronous storage write where possible
-    // Firefox MV2 supports navigator.sendBeacon or synchronous storage
-    _persistPendingStateBeforeTermination().catch(err => {
-      console.error('[Background] beforeunload persistence failed:', err.message);
-    });
-  });
-  console.log('[Background] v1.6.3.10-v11 beforeunload handler registered');
-}
-
-// Check for recovery on script load
-_checkAndRecoverInFlightState().catch(err => {
-  console.error('[Background] Recovery check failed:', err.message);
-});
-
-// ==================== END ISSUE #17 FIX ====================
-
 // ==================== v1.6.3.6-v12 CONSTANTS ====================
 // FIX Issue #2, #4: Heartbeat mechanism to prevent Firefox background script termination
 const _HEARTBEAT_INTERVAL_MS = 25000; // 25 seconds (Firefox idle timeout is 30s)
@@ -754,41 +126,6 @@ const _HEARTBEAT_TIMEOUT_MS = 5000; // 5 second timeout for response
 
 // FIX Issue #3: Multi-method deduplication
 const DEDUP_SAVEID_TIMESTAMP_WINDOW_MS = 50; // Window for saveId+timestamp comparison
-
-// ==================== v1.6.3.11-v6 FIX ISSUE #9: GLOBAL MESSAGE ORDERING ====================
-// Global operation counter for deterministic message ordering across tabs
-// Incremented on each operation, included in broadcasts for ordering enforcement
-
-/**
- * Global operation sequence counter
- * v1.6.3.11-v6 - FIX Issue #9: Ensures deterministic message ordering across tabs
- */
-let globalOperationSequence = 0;
-
-/**
- * Increment and return the next global operation sequence number
- * v1.6.3.11-v6 - FIX Issue #9: Called before broadcasting to ensure ordering
- * @returns {number} The next sequence number
- */
-function getNextOperationSequence() {
-  globalOperationSequence++;
-  console.log('[Background] GLOBAL_SEQUENCE_INCREMENT:', {
-    newSequence: globalOperationSequence,
-    timestamp: Date.now()
-  });
-  return globalOperationSequence;
-}
-
-/**
- * Get current operation sequence without incrementing
- * v1.6.3.11-v6 - FIX Issue #9: For read-only access
- * @returns {number} Current sequence number
- */
-function _getCurrentOperationSequence() {
-  return globalOperationSequence;
-}
-
-// ==================== END ISSUE #9 FIX ====================
 
 // v1.6.3.10-v7 - FIX Diagnostic Issue #9: Increased deletion acknowledgment timeout
 // Previous value (1000ms) was too aggressive for slow networks or heavy tab loads
@@ -1082,7 +419,7 @@ async function _executeViaScripting(tabId, operation, params, correlationId) {
 /**
  * Scripted operation function injected into content script context
  * v1.6.3.10-v4 - FIX Enhancement #1: Atomic execution in content script
- * v1.6.3.11-v6 - FIX Code Health: Extracted helpers to reduce complexity
+ * v1.6.3.12 - Extracted complex conditional for improved readability
  * IMPORTANT: This function runs in the content script context via browser.scripting.executeScript
  * It must be COMPLETELY SELF-CONTAINED - no external function references allowed!
  * @param {string} operation - Operation type
@@ -1091,21 +428,18 @@ async function _executeViaScripting(tabId, operation, params, correlationId) {
  * @returns {Object} Operation result
  */
 function executeScriptedOperation(operation, params, correlationId) {
-  /**
-   * Validate the extension object is available and properly structured
-   * v1.6.3.11-v6 - FIX Code Health: Encapsulate complex conditional
-   * @param {*} ext - Window.CopyURLExtension object
-   * @returns {boolean} True if extension is valid
-   */
-  const isExtensionValid = ext => {
-    if (!ext || typeof ext !== 'object') return false;
-    if (!ext.quickTabsManager || typeof ext.quickTabsManager !== 'object') return false;
-    return true;
-  };
-
   // Access the Quick Tabs manager from content script globals
+  // Validate structure to guard against tampering in content script context
   const extension = window.CopyURLExtension;
-  if (!isExtensionValid(extension)) {
+
+  // v1.6.3.12 - Extracted predicate to reduce complex conditional
+  const isValidManager =
+    extension &&
+    typeof extension === 'object' &&
+    extension.quickTabsManager &&
+    typeof extension.quickTabsManager === 'object';
+
+  if (!isValidManager) {
     return { success: false, error: 'QuickTabsManager not available', correlationId };
   }
 
@@ -1118,42 +452,32 @@ function executeScriptedOperation(operation, params, correlationId) {
     correlationId
   });
 
-  /**
-   * Operation handler map - maps operation types to executor functions
-   * v1.6.3.11-v6 - FIX Code Health: Replace switch with handler map to reduce cc
-   * Each handler returns: true (success), false (handler missing), null (unknown op)
-   */
-  const operationHandlers = {
-    RESTORE_QUICK_TAB: () => {
-      if (!manager.restoreById) return false;
-      manager.restoreById(quickTabId, 'scripting-fallback');
-      return true;
-    },
-    MINIMIZE_QUICK_TAB: () => {
-      if (!manager.minimizeById) return false;
-      manager.minimizeById(quickTabId, 'scripting-fallback');
-      return true;
-    },
-    CLOSE_QUICK_TAB: () => {
-      if (!manager.closeById) return false;
-      manager.closeById(quickTabId);
-      return true;
-    },
-    FOCUS_QUICK_TAB: () => {
-      if (!manager.visibilityHandler?.handleFocus) return false;
-      manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
-      return true;
-    }
-  };
-
-  /**
-   * Execute the operation using the handler map
-   * v1.6.3.11-v6 - FIX Code Health: Simplified execution logic
-   * @returns {boolean|null} true=success, false=handler missing, null=unknown op
-   */
+  // Self-contained handler lookup (must be inline, not external function)
   const executeOperation = () => {
-    const handler = operationHandlers[operation];
-    return handler ? handler() : null;
+    switch (operation) {
+      case 'RESTORE_QUICK_TAB':
+        if (!manager.restoreById) return false;
+        manager.restoreById(quickTabId, 'scripting-fallback');
+        return true;
+
+      case 'MINIMIZE_QUICK_TAB':
+        if (!manager.minimizeById) return false;
+        manager.minimizeById(quickTabId, 'scripting-fallback');
+        return true;
+
+      case 'CLOSE_QUICK_TAB':
+        if (!manager.closeById) return false;
+        manager.closeById(quickTabId);
+        return true;
+
+      case 'FOCUS_QUICK_TAB':
+        if (!manager.visibilityHandler?.handleFocus) return false;
+        manager.visibilityHandler.handleFocus(quickTabId, 'scripting-fallback');
+        return true;
+
+      default:
+        return null; // Unknown operation
+    }
   };
 
   try {
@@ -1396,7 +720,7 @@ const MAX_INITIALIZATION_RETRIES = 3;
 function _logInitializationComplete(source, initStartTime) {
   const durationMs = Date.now() - initStartTime;
   const tabCount = globalQuickTabState.tabs?.length || 0;
-
+  
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
   console.log('[INIT][Background] STORAGE_LOAD_COMPLETE:', {
     source,
@@ -1404,7 +728,7 @@ function _logInitializationComplete(source, initStartTime) {
     durationMs,
     timestamp: new Date().toISOString()
   });
-
+  
   console.log('[INIT][Background] PHASE_COMPLETE:', {
     success: true,
     source,
@@ -1413,7 +737,7 @@ function _logInitializationComplete(source, initStartTime) {
     isInitialized: true,
     timestamp: new Date().toISOString()
   });
-
+  
   console.log(`[Background] Initialization complete from ${source}:`, {
     tabCount,
     durationMs
@@ -1428,7 +752,7 @@ function _logInitializationComplete(source, initStartTime) {
  */
 function _handleInitializationFailure(err, initStartTime) {
   const durationMs = Date.now() - initStartTime;
-
+  
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for failure
   console.error('[INIT][Background] PHASE_FAILED:', {
     error: err.message,
@@ -1438,7 +762,7 @@ function _handleInitializationFailure(err, initStartTime) {
     willRetry: initializationRetryCount < MAX_INITIALIZATION_RETRIES,
     timestamp: new Date().toISOString()
   });
-
+  
   console.error('[Background] INITIALIZATION FAILED:', {
     error: err.message,
     durationMs,
@@ -1455,9 +779,7 @@ function _handleInitializationFailure(err, initStartTime) {
       backoffMs,
       timestamp: new Date().toISOString()
     });
-    console.log(
-      `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
-    );
+    console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
     setTimeout(() => initializeGlobalState(), backoffMs);
   } else {
     console.error('[INIT][Background] MAX_RETRIES_EXCEEDED:', {
@@ -1489,7 +811,7 @@ async function initializeGlobalState() {
     console.log('[INIT][Background] STORAGE_LOAD_START:', {
       timestamp: new Date().toISOString()
     });
-
+    
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
       initializationRetryCount = 0;
@@ -1682,9 +1004,6 @@ async function tryLoadFromSyncStorage() {
   }
 
   isInitialized = true;
-
-  // v1.6.4.17 - FIX Issue L1: Log initialization complete with all listeners status
-  logInitializationComplete('background');
 }
 
 /**
@@ -1729,15 +1048,6 @@ function logSuccessfulLoad(source, format) {
 
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
-
-// v1.6.3.11-v3 - FIX Issue #50: Mark MessageRouter as initialized after state is ready
-// This drains any messages that arrived during background initialization
-// Note: initializeGlobalState() is async but we don't await it here (intentional for eager loading)
-// We still mark initialized immediately since handlers are registered synchronously
-messageRouter.markInitialized();
-console.log(
-  '[Background] v1.6.3.11-v3 MessageRouter marked initialized (pre-init queue will drain)'
-);
 
 /**
  * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
@@ -1819,168 +1129,6 @@ async function saveMigratedQuickTabState() {
 
 // Run migration after initialization
 migrateQuickTabState();
-
-// ==================== SETTINGS MIGRATION (v1.6.3.11-v3) ====================
-// v1.6.3.11-v3 - FIX Issue #39: Config migration for new settings on upgrade
-// Ensures old configs have new keys with defaults when extension upgrades
-
-/**
- * Current settings version - increment when adding new settings
- * v1.6.3.11-v3 - FIX Issue #39
- */
-const SETTINGS_VERSION = 2;
-
-/**
- * Settings key in storage
- * v1.6.3.11-v3 - FIX Issue #39
- */
-const SETTINGS_STORAGE_KEY = 'quick_tab_settings';
-
-/**
- * Default settings with all possible keys
- * v1.6.3.11-v3 - FIX Issue #39: Single source of truth for default settings
- */
-const DEFAULT_SETTINGS = {
-  // Core settings
-  enableQuickTabs: true,
-  maxQuickTabs: 5,
-  defaultWidth: 600,
-  defaultHeight: 400,
-  syncAcrossTabs: true,
-  persistAcrossSessions: true,
-  enableDebugLogging: false,
-  quickTabShowDebugId: false,
-  // v1.6.3.11-v3 - Settings version for migration tracking
-  _settingsVersion: SETTINGS_VERSION
-};
-
-/**
- * Helper: Read settings from storage with sync fallback to local
- * v1.6.3.11-v3 - FIX Code Review: Extracted to reduce nesting depth
- * @private
- */
-async function _readSettingsWithFallback() {
-  try {
-    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
-    return result[SETTINGS_STORAGE_KEY];
-  } catch (syncErr) {
-    console.warn('[Background][Settings] Migration: Sync storage failed, trying local', {
-      error: syncErr.message
-    });
-    const localResult = await browser.storage.local.get(SETTINGS_STORAGE_KEY);
-    return localResult[SETTINGS_STORAGE_KEY];
-  }
-}
-
-/**
- * Helper: Write settings to storage with sync fallback to local
- * v1.6.3.11-v3 - FIX Code Review: Extracted to reduce nesting depth
- * @private
- */
-async function _writeSettingsWithFallback(settings) {
-  try {
-    await browser.storage.sync.set({ [SETTINGS_STORAGE_KEY]: settings });
-  } catch (syncSetErr) {
-    console.warn('[Background][Settings] Migration: Sync write failed, using local', {
-      error: syncSetErr.message
-    });
-    await browser.storage.local.set({ [SETTINGS_STORAGE_KEY]: settings });
-  }
-}
-
-/**
- * Migrate settings to add missing keys with defaults
- * v1.6.3.11-v3 - FIX Issue #39: Version-aware config migration
- * v1.6.3.11-v3 - FIX Code Review: Added fallback for sync storage failures
- * v1.6.3.11-v3 - FIX Code Review: Extracted helpers to reduce nesting depth
- */
-async function migrateSettings() {
-  try {
-    console.log('[Background][Settings] Migration: Checking settings for missing keys');
-
-    // Read current settings with fallback
-    const currentSettings = await _readSettingsWithFallback();
-
-    // If no settings exist, create with defaults
-    if (!currentSettings) {
-      console.log('[Background][Settings] Migration: No settings found, creating defaults');
-      await _writeSettingsWithFallback(DEFAULT_SETTINGS);
-      return;
-    }
-
-    // Check if migration needed and add missing keys
-    const { migratedSettings, needsMigration } = _addMissingSettingsKeys(currentSettings);
-
-    // Check settings version for forced migration
-    const versionMigrationNeeded = _checkSettingsVersionMigration(
-      currentSettings,
-      migratedSettings
-    );
-
-    // Save if migration occurred
-    if (needsMigration || versionMigrationNeeded) {
-      await _writeSettingsWithFallback(migratedSettings);
-      console.log('[Background][Settings] Migration: Settings migrated successfully', {
-        keysAdded: Object.keys(DEFAULT_SETTINGS).filter(k => !(k in currentSettings)).length,
-        newVersion: SETTINGS_VERSION
-      });
-
-      // Broadcast settings update to all tabs
-      await _broadcastToAllTabs('SETTINGS_UPDATED', { settings: migratedSettings });
-    } else {
-      console.log('[Background][Settings] Migration: No migration needed');
-    }
-  } catch (err) {
-    console.error('[Background][Settings] Migration: Error migrating settings:', err.message);
-    // Don't throw - settings migration failure shouldn't break extension
-  }
-}
-
-/**
- * Helper: Add missing settings keys with defaults
- * v1.6.3.11-v3 - FIX Issue #39: Extracted to reduce nesting depth
- * @private
- */
-function _addMissingSettingsKeys(currentSettings) {
-  let needsMigration = false;
-  const migratedSettings = { ...currentSettings };
-
-  for (const [key, defaultValue] of Object.entries(DEFAULT_SETTINGS)) {
-    if (!(key in currentSettings)) {
-      console.log(
-        `[Background][Settings] Migration: Adding missing key '${key}' with default:`,
-        defaultValue
-      );
-      migratedSettings[key] = defaultValue;
-      needsMigration = true;
-    }
-  }
-
-  return { migratedSettings, needsMigration };
-}
-
-/**
- * Helper: Check if settings version migration is needed
- * v1.6.3.11-v3 - FIX Issue #39: Extracted to reduce nesting depth
- * @private
- */
-function _checkSettingsVersionMigration(currentSettings, migratedSettings) {
-  const currentVersion = currentSettings._settingsVersion || 1;
-  if (currentVersion < SETTINGS_VERSION) {
-    console.log('[Background][Settings] Migration: Version upgrade detected', {
-      from: currentVersion,
-      to: SETTINGS_VERSION
-    });
-    migratedSettings._settingsVersion = SETTINGS_VERSION;
-    return true;
-  }
-  return false;
-}
-
-// Run settings migration after Quick Tab state migration
-migrateSettings();
-
-// ==================== END SETTINGS MIGRATION ====================
 
 // ==================== STATE COORDINATOR ====================
 // Manages canonical Quick Tab state across all tabs with conflict resolution
@@ -2747,59 +1895,6 @@ messageRouter.register('createQuickTab', (msg, sender) =>
   tabHandler.handleLegacyCreate(msg, sender)
 );
 
-// v1.6.3.11 - FIX Issue #23: Handler for settings changes from sidebar/popup
-// Background reloads cached settings when user saves settings
-messageRouter.register('SETTINGS_CHANGED', async (msg, _sender) => {
-  console.log('[Background] SETTINGS_CHANGED: Reloading cached settings', {
-    timestamp: msg.timestamp,
-    settingsKeys: msg.settings ? Object.keys(msg.settings).length : 0
-  });
-
-  try {
-    // Reload settings from storage to pick up changes
-    // The settings are stored in storage.local by sidebar/popup
-    const result = await browser.storage.local.get(null);
-    console.log('[Background] SETTINGS_RELOADED: Settings cache refreshed', {
-      totalKeys: Object.keys(result).length
-    });
-    return { success: true };
-  } catch (err) {
-    console.error('[Background] SETTINGS_CHANGED: Failed to reload settings:', err.message);
-    return { success: false, error: err.message };
-  }
-});
-
-// v1.6.3.11-v3 - FIX Issue #23: Handler for settings refresh from options_page.js
-// This is called directly after user saves settings in options page
-// Options page stores in storage.sync, so we need to read from sync storage
-messageRouter.register('REFRESH_CACHED_SETTINGS', async (msg, _sender) => {
-  console.log('[Background] REFRESH_CACHED_SETTINGS: Refreshing settings from storage.sync', {
-    timestamp: msg.timestamp,
-    directSettings: msg.settings ? Object.keys(msg.settings).length : 0
-  });
-
-  try {
-    // If settings were passed directly, broadcast them immediately
-    if (msg.settings) {
-      console.log('[Background] REFRESH_CACHED_SETTINGS: Broadcasting settings to all tabs');
-      await _broadcastToAllTabs('SETTINGS_UPDATED', { settings: msg.settings });
-    }
-
-    // Also reload from storage.sync for good measure
-    // v1.6.3.11-v3 - FIX Code Review: Use SETTINGS_STORAGE_KEY constant
-    const result = await browser.storage.sync.get(SETTINGS_STORAGE_KEY);
-    console.log('[Background] REFRESH_CACHED_SETTINGS: Settings refreshed', {
-      hasSettings: !!result[SETTINGS_STORAGE_KEY],
-      keys: result[SETTINGS_STORAGE_KEY] ? Object.keys(result[SETTINGS_STORAGE_KEY]).length : 0
-    });
-
-    return { success: true };
-  } catch (err) {
-    console.error('[Background] REFRESH_CACHED_SETTINGS: Failed:', err.message);
-    return { success: false, error: err.message };
-  }
-});
-
 // v1.6.3 - FIX: Handler for resetting globalQuickTabState cache when storage is cleared from popup
 // This is called after popup.js clears storage to ensure background's cache is also reset
 messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
@@ -2809,82 +1904,6 @@ messageRouter.register('RESET_GLOBAL_QUICK_TAB_STATE', () => {
   // Reset the state hash to allow next storage write to proceed
   lastBroadcastedStateHash = 0;
   return { success: true, message: 'Global Quick Tab state cache reset' };
-});
-
-// v1.6.3.11-v4 - FIX Issue #4: Handler for sidebar state reconciliation
-// Removes stale Quick Tab entries when sidebar verifies they no longer exist
-messageRouter.register('RECONCILE_STALE_TABS', async (msg, _sender) => {
-  const { staleQuickTabIds, correlationId } = msg;
-
-  console.log('[Background] RECONCILE_STALE_TABS: Received reconciliation request', {
-    staleCount: staleQuickTabIds?.length ?? 0,
-    correlationId,
-    timestamp: Date.now()
-  });
-
-  if (!staleQuickTabIds || staleQuickTabIds.length === 0) {
-    return {
-      success: true,
-      operation: 'RECONCILE_STALE_TABS',
-      details: {
-        removedCount: 0,
-        message: 'No stale tabs to remove'
-      }
-    };
-  }
-
-  try {
-    // Get current state
-    const originalCount = globalQuickTabState.tabs?.length ?? 0;
-
-    // Remove stale tabs from global state
-    const staleIdSet = new Set(staleQuickTabIds);
-    globalQuickTabState.tabs = globalQuickTabState.tabs.filter(tab => !staleIdSet.has(tab.id));
-    globalQuickTabState.lastUpdate = Date.now();
-
-    const removedCount = originalCount - globalQuickTabState.tabs.length;
-
-    console.log('[Background] RECONCILE_STALE_TABS: Removed stale entries', {
-      originalCount,
-      newCount: globalQuickTabState.tabs.length,
-      removedCount,
-      correlationId
-    });
-
-    // Save updated state to storage
-    if (removedCount > 0) {
-      const writeSourceId = `bg-reconcile-${Date.now()}`;
-      await browser.storage.local.set({
-        quick_tabs_state_v2: {
-          tabs: globalQuickTabState.tabs,
-          timestamp: globalQuickTabState.lastUpdate,
-          writeSourceId: writeSourceId
-        }
-      });
-    }
-
-    return {
-      success: true,
-      operation: 'RECONCILE_STALE_TABS',
-      details: {
-        removedCount,
-        originalCount,
-        currentCount: globalQuickTabState.tabs.length,
-        correlationId
-      }
-    };
-  } catch (err) {
-    console.error('[Background] RECONCILE_STALE_TABS: Failed', {
-      error: err.message,
-      correlationId
-    });
-    return {
-      success: false,
-      operation: 'RECONCILE_STALE_TABS',
-      error: err.message,
-      details: { correlationId }
-    };
-  }
 });
 
 /**
@@ -2966,404 +1985,62 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
   }
 });
 
-// ==================== v1.6.3.11-v3 KEYBOARD SHORTCUT UPDATE HANDLER ====================
-// FIX Issue #2: Dynamic shortcut update mechanism via browser.commands.update()
-
-/**
- * Parse and categorize keyboard shortcut update error
- * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce complexity
- * @param {Error} err - Error from browser.commands.update()
- * @param {string} shortcut - The shortcut that failed
- * @returns {{ errorCode: string, errorMessage: string }}
- */
-function _parseShortcutUpdateError(err, shortcut) {
-  const errMsg = err.message || '';
-
-  if (errMsg.includes('Invalid shortcut')) {
-    return {
-      errorCode: 'INVALID_SHORTCUT',
-      errorMessage: `Invalid shortcut format: ${shortcut}. Use format like "Ctrl+Alt+Z" or "Alt+Shift+S".`
-    };
-  }
-
-  if (errMsg.includes('already in use')) {
-    return {
-      errorCode: 'SHORTCUT_CONFLICT',
-      errorMessage: `Shortcut "${shortcut}" is already in use by another extension or browser feature.`
-    };
-  }
-
-  return {
-    errorCode: 'UPDATE_FAILED',
-    errorMessage: errMsg
-  };
-}
-
-/**
- * Validate command name for shortcut update
- * v1.6.3.11-v5 - FIX Code Health: Extracted from UPDATE_KEYBOARD_SHORTCUT
- * @private
- * @param {string} commandName - Command name to validate
- * @returns {Object|null} Error object if invalid, null if valid
- */
-function _validateCommandName(commandName) {
-  if (!commandName || typeof commandName !== 'string') {
-    console.error('[KEYBOARD_CMD] Invalid commandName:', commandName);
-    return { success: false, error: 'Invalid command name', code: 'INVALID_COMMAND_NAME' };
-  }
-  return null;
-}
-
-/**
- * Check if browser.commands.update API is available
- * v1.6.3.11-v5 - FIX Code Health: Extracted from UPDATE_KEYBOARD_SHORTCUT
- * @private
- * @returns {Object|null} Error object if unavailable, null if available
- */
-function _checkCommandsApiAvailable() {
-  if (!browser?.commands?.update) {
-    console.error('[KEYBOARD_CMD] browser.commands.update not available');
-    return {
-      success: false,
-      error: 'Keyboard shortcut API not available',
-      code: 'API_UNAVAILABLE'
-    };
-  }
-  return null;
-}
-
-/**
- * Execute browser.commands.update and return result
- * v1.6.3.11-v5 - FIX Code Health: Extracted from UPDATE_KEYBOARD_SHORTCUT
- * @private
- * @param {string} commandName - Command name
- * @param {string} shortcut - Shortcut key combination
- * @returns {Promise<Object>} Result object
- */
-async function _executeShortcutUpdate(commandName, shortcut) {
-  await browser.commands.update({
-    name: commandName,
-    shortcut: shortcut || ''
-  });
-
-  console.log('[KEYBOARD_CMD] Shortcut updated successfully:', {
-    commandName,
-    shortcut: shortcut || '(cleared)'
-  });
-
-  return {
-    success: true,
-    commandName,
-    shortcut: shortcut || null,
-    message: shortcut ? `Shortcut updated to ${shortcut}` : 'Shortcut cleared'
-  };
-}
-
-/**
- * Update a keyboard shortcut via browser.commands.update()
- * v1.6.3.11-v3 - FIX Issue #2: Dynamic shortcut update mechanism
- * v1.6.3.11-v5 - FIX Code Health: Reduced complexity via extraction
- * @param {Object} msg - Message containing commandName and shortcut
- * @param {Object} _sender - Message sender (unused)
- * @returns {Promise<Object>} Result with success status
- */
-messageRouter.register('UPDATE_KEYBOARD_SHORTCUT', async (msg, _sender) => {
-  const { commandName, shortcut } = msg;
-
-  console.log('[KEYBOARD_CMD] UPDATE_KEYBOARD_SHORTCUT received:', {
-    commandName,
-    shortcut,
-    timestamp: Date.now()
-  });
-
-  const validationError = _validateCommandName(commandName);
-  if (validationError) return validationError;
-
-  const apiError = _checkCommandsApiAvailable();
-  if (apiError) return apiError;
-
-  try {
-    return await _executeShortcutUpdate(commandName, shortcut);
-  } catch (err) {
-    console.error('[KEYBOARD_CMD] Failed to update shortcut:', {
-      commandName,
-      shortcut,
-      error: err.message
-    });
-    const { errorCode, errorMessage } = _parseShortcutUpdateError(err, shortcut);
-    return { success: false, error: errorMessage, code: errorCode };
-  }
-});
-
-/**
- * Get all registered keyboard shortcuts
- * v1.6.3.11-v3 - FIX Issue #5: Allow sidebar to query current shortcuts
- * @returns {Promise<Object>} Object with commands array
- */
-messageRouter.register('GET_KEYBOARD_SHORTCUTS', async () => {
-  console.log('[KEYBOARD_CMD] GET_KEYBOARD_SHORTCUTS received');
-
-  if (!browser?.commands?.getAll) {
-    console.error('[KEYBOARD_CMD] browser.commands.getAll not available');
-    return {
-      success: false,
-      error: 'Keyboard shortcut API not available',
-      code: 'API_UNAVAILABLE'
-    };
-  }
-
-  try {
-    const commands = await browser.commands.getAll();
-    console.log('[KEYBOARD_CMD] Retrieved shortcuts:', {
-      count: commands.length,
-      commands: commands.map(c => ({ name: c.name, shortcut: c.shortcut }))
-    });
-
-    return {
-      success: true,
-      commands: commands.map(cmd => ({
-        name: cmd.name,
-        description: cmd.description,
-        shortcut: cmd.shortcut || null
-      }))
-    };
-  } catch (err) {
-    console.error('[KEYBOARD_CMD] Failed to get shortcuts:', err.message);
-    return { success: false, error: err.message, code: 'GET_FAILED' };
-  }
-});
-
-// ==================== END KEYBOARD SHORTCUT UPDATE HANDLER ====================
-
-// ==================== ERROR TELEMETRY HANDLER ====================
-// v1.6.4.17 - FIX Issue #13: Error telemetry access handler
-
-/**
- * Get error telemetry summary for debugging
- * v1.6.4.17 - FIX Issue #13: Allow access to error telemetry data
- * @returns {Promise<Object>} Telemetry summary
- */
-messageRouter.register('GET_ERROR_TELEMETRY', async () => {
-  console.log('[ERROR_TELEMETRY] GET_ERROR_TELEMETRY received');
-
-  try {
-    const summary = getTelemetrySummary();
-    console.log('[ERROR_TELEMETRY] Telemetry summary retrieved:', {
-      bufferSize: summary.bufferSize,
-      activeRecoveries: summary.activeRecoveries?.length || 0
-    });
-
-    return {
-      success: true,
-      telemetry: summary,
-      timestamp: Date.now()
-    };
-  } catch (err) {
-    console.error('[ERROR_TELEMETRY] Failed to get telemetry:', err.message);
-    return { success: false, error: err.message, code: 'TELEMETRY_ERROR' };
-  }
-});
-
 console.log(
   `[Background] MessageRouter initialized with ${messageRouter.handlers.size} registered handlers`
 );
 
-// v1.6.3.11-v6 - FIX: Mark MessageRouter as ready and drain any early-queued messages
-// The early listener was already registered at the TOP of the script.
-// Now that MessageRouter is fully configured with all handlers, we:
-// 1. Mark it as ready so the early listener delegates to it
-// 2. Drain any messages that were queued before MessageRouter was ready
-// NOTE: We do NOT add another listener - the early listener handles everything
-logListenerRegistration('runtime_onMessage', 'MessageRouter (via early listener)', {
-  handlerCount: messageRouter.handlers.size
-});
-console.log('[LISTENER_REG] Activating MessageRouter for early listener:', {
-  handlerCount: messageRouter.handlers.size,
-  timestamp: Date.now()
-});
-
-// v1.6.3.11-v6 - Mark MessageRouter ready (this drains the early queue)
-_setMessageRouterReady(messageRouter);
-
-// v1.6.3.11 - FIX Issue #3: Log successful listener registration
-// v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG] prefix
-// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
-// v1.6.3.11-v6 - Updated to reflect that early listener is now active with MessageRouter
-logListenerRegistered('runtime_onMessage', {
-  handlerCount: messageRouter.handlers.size,
-  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL'],
-  mechanism: 'early_listener_with_message_router'
-});
-console.log('[LISTENER_REG] ✓ MessageRouter now handling messages via early listener:', {
-  handlerCount: messageRouter.handlers.size,
-  timestamp: Date.now(),
-  readyFor: ['GET_CURRENT_TAB_ID', 'CREATE_QUICK_TAB', 'COPY_URL']
-});
+// Handle messages from content script and sidebar - using MessageRouter
+chrome.runtime.onMessage.addListener(messageRouter.createListener());
 
 // ==================== KEYBOARD COMMAND LISTENER ====================
-// v1.6.3.11-v3 - FIX Issue #1: Add browser.commands.onCommand listener for logging
-// v1.6.3.11-v4 - FIX Issue #2: Enhanced with [LISTENER_REG], [LISTENER_INVOKE], [EVENT_COMPLETE] prefixes
-// NOTE: The actual command handling is done at line ~3745 with toggle logic
-// This listener adds comprehensive logging with [KEYBOARD_CMD] prefix
-
-/**
- * Handle keyboard command from browser.commands API (logging only)
- * v1.6.3.11-v3 - FIX Issue #1: Add detailed logging for keyboard commands
- * v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_INVOKE] and [EVENT_COMPLETE] logging
- * @param {string} command - The command name from manifest.json
- */
-function handleKeyboardCommandLogging(command) {
-  const timestamp = Date.now();
-  const invokeStartTime = performance.now();
-
-  // v1.6.3.11-v4 - FIX Issue #2: [LISTENER_INVOKE] logging for keyboard commands
-  console.log('[LISTENER_INVOKE] Keyboard command listener invoked:', {
-    command,
-    listenerType: 'browser.commands.onCommand',
-    timestamp,
-    backgroundUptime: timestamp - backgroundStartupTime
-  });
-
-  console.log('[KEYBOARD_CMD] Command received:', {
-    command,
-    timestamp,
-    backgroundUptime: timestamp - backgroundStartupTime
-  });
-
-  // Log specific command details (actual handling is done by listener at line ~3745)
-  switch (command) {
-    case 'toggle-quick-tabs-manager':
-      console.log(
-        '[KEYBOARD_CMD] toggle-quick-tabs-manager triggered (handler will toggle sidebar)'
-      );
-      break;
-
-    case '_execute_sidebar_action':
-      console.log('[KEYBOARD_CMD] _execute_sidebar_action triggered (Firefox handles toggle)');
-      break;
-
-    default:
-      console.warn('[KEYBOARD_CMD] Unknown command:', command);
-  }
-
-  // v1.6.3.11-v4 - FIX Issue #2: [EVENT_COMPLETE] logging for keyboard commands
-  const invokeDuration = performance.now() - invokeStartTime;
-  console.log('[EVENT_COMPLETE] Keyboard command listener completed:', {
-    command,
-    listenerType: 'browser.commands.onCommand',
-    durationMs: invokeDuration.toFixed(2),
-    timestamp: Date.now()
-  });
-}
-
-// Register the keyboard command listener for logging
-// v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging
-// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
-if (typeof browser !== 'undefined' && browser.commands && browser.commands.onCommand) {
-  logListenerRegistration('commands_onCommand', 'browser.commands.onCommand');
-  console.log('[LISTENER_REG] Registering keyboard command listener:', {
-    api: 'browser.commands.onCommand',
-    timestamp: Date.now()
-  });
-  browser.commands.onCommand.addListener(handleKeyboardCommandLogging);
-  logListenerRegistered('commands_onCommand', { api: 'browser.commands.onCommand' });
-  console.log('[LISTENER_REG] ✓ browser.commands.onCommand listener registered successfully');
-} else if (typeof chrome !== 'undefined' && chrome.commands && chrome.commands.onCommand) {
-  logListenerRegistration('commands_onCommand', 'chrome.commands.onCommand');
-  console.log('[LISTENER_REG] Registering keyboard command listener:', {
-    api: 'chrome.commands.onCommand',
-    timestamp: Date.now()
-  });
-  chrome.commands.onCommand.addListener(handleKeyboardCommandLogging);
-  logListenerRegistered('commands_onCommand', { api: 'chrome.commands.onCommand' });
-  console.log('[LISTENER_REG] ✓ chrome.commands.onCommand listener registered successfully');
-} else {
-  logListenerRegistrationFailed('commands_onCommand', 'API not available');
-  console.warn('[LISTENER_REG] ⚠ browser.commands API not available - listener NOT registered');
-}
-
-// v1.6.3.11-v3 - FIX Issue #2: Listen for external shortcut changes
-// This syncs UI when user changes shortcuts via Firefox's addon settings
-if (typeof browser !== 'undefined' && browser.commands && browser.commands.onChanged) {
-  logListenerRegistration('commands_onChanged', 'browser.commands.onChanged');
-  browser.commands.onChanged.addListener(changeInfo => {
-    console.log('[KEYBOARD_CMD] Shortcut changed externally:', changeInfo);
-    // Broadcast to any open settings panels
-    browser.runtime
-      .sendMessage({
-        type: 'KEYBOARD_SHORTCUT_CHANGED',
-        changeInfo,
-        timestamp: Date.now()
-      })
-      .catch(() => {
-        // No listeners - that's OK
-      });
-  });
-  logListenerRegistered('commands_onChanged', { api: 'browser.commands.onChanged' });
-  console.log('[KEYBOARD_CMD] ✓ browser.commands.onChanged listener registered');
-}
-
+// v1.6.0 - Removed obsolete toggle-minimized-manager listener
+// Now handled by the toggle-quick-tabs-manager listener below (line 1240)
 // ==================== END KEYBOARD COMMAND LISTENER ====================
 
 // Handle sidePanel toggle for Chrome (optional)
 if (chrome.sidePanel) {
-  logListenerRegistration('action_onClicked', 'chrome.action.onClicked');
   chrome.action.onClicked.addListener(tab => {
     chrome.sidePanel.open({ windowId: tab.windowId }).catch(err => {
       console.log('Side panel not supported or error:', err);
     });
   });
-  logListenerRegistered('action_onClicked', { api: 'chrome.action.onClicked' });
-}
-
-/**
- * Create state snapshot for before/after comparison logging
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _applyUnifiedFormatFromStorage
- * @private
- * @param {Object} state - Global Quick Tab state
- * @returns {Object} State snapshot
- */
-function _createStateSnapshot(state) {
-  return {
-    tabCount: state.tabs?.length || 0,
-    saveId: state.saveId,
-    tabIds: (state.tabs || []).slice(0, 5).map(t => t.id)
-  };
-}
-
-/**
- * Log cache update with before/after comparison
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _applyUnifiedFormatFromStorage
- * @private
- * @param {Object} beforeState - State before update
- * @param {Object} afterState - State after update
- */
-function _logCacheUpdate(beforeState, afterState) {
-  console.log('[Background] v1.6.3.6-v12 CACHE_UPDATE:', {
-    before: beforeState,
-    after: afterState,
-    delta: afterState.tabCount - beforeState.tabCount,
-    saveIdChanged: beforeState.saveId !== afterState.saveId
-  });
-  _lastCacheUpdateLog = { beforeState, afterState, timestamp: Date.now() };
 }
 
 /**
  * Apply unified format state to global state from storage
  * v1.6.3.4-v11 - Extracted from _updateGlobalStateFromStorage to reduce complexity
  * v1.6.3.6-v12 - FIX Issue #7: Enhanced logging with before/after state snapshots
- * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
  * @param {Object} newValue - Storage value with tabs array
  */
 function _applyUnifiedFormatFromStorage(newValue) {
-  const beforeState = _createStateSnapshot(globalQuickTabState);
+  // v1.6.3.6-v12 - FIX Issue #7: Log before state for before/after comparison
+  const beforeState = {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    saveId: globalQuickTabState.saveId,
+    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id) // Sample first 5
+  };
 
   globalQuickTabState.tabs = newValue.tabs;
   globalQuickTabState.lastUpdate = newValue.timestamp || Date.now();
+  // v1.6.3.4 - FIX Bug #7: Track saveId for hash collision detection
   globalQuickTabState.saveId = newValue.saveId || null;
 
-  const afterState = _createStateSnapshot(globalQuickTabState);
-  _logCacheUpdate(beforeState, afterState);
+  // v1.6.3.6-v12 - FIX Issue #7: Log after state with comparison
+  const afterState = {
+    tabCount: globalQuickTabState.tabs?.length || 0,
+    saveId: globalQuickTabState.saveId,
+    tabIds: (globalQuickTabState.tabs || []).slice(0, 5).map(t => t.id)
+  };
+
+  console.log('[Background] v1.6.3.6-v12 CACHE_UPDATE:', {
+    before: beforeState,
+    after: afterState,
+    delta: afterState.tabCount - beforeState.tabCount,
+    saveIdChanged: beforeState.saveId !== afterState.saveId
+  });
+
+  // Store for debugging
+  _lastCacheUpdateLog = { beforeState, afterState, timestamp: Date.now() };
 }
 
 /**
@@ -3576,109 +2253,6 @@ function _shouldUpdateState(newValue) {
   return true;
 }
 
-// ==================== v1.6.3.11-v6 FIX ISSUE #11: STORAGE CHANGE RE-BROADCAST ====================
-/**
- * Build the storage sync message for content scripts
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
- * @private
- * @param {Object} params - Message parameters
- * @returns {Object} Formatted message object
- */
-function _buildStorageSyncMessage({ newTabs, newValue, addedIds, removedIds, startTime }) {
-  return {
-    type: 'STORAGE_STATE_SYNC',
-    action: 'STORAGE_STATE_SYNC',
-    state: {
-      tabs: newTabs,
-      timestamp: newValue?.timestamp || startTime,
-      saveId: newValue?.saveId,
-      correlationId: newValue?.correlationId
-    },
-    context: {
-      source: 'background-storage-onchanged',
-      addedIds,
-      removedIds,
-      timestamp: startTime
-    }
-  };
-}
-
-/**
- * Send storage sync message to a single tab
- * v1.6.3.11-v6 - FIX Code Health: Extracted to reduce nesting depth
- * @private
- * @param {number} tabId - Tab ID to send to
- * @param {Object} message - Message to send
- * @returns {Promise<boolean>} True if sent successfully
- */
-async function _sendStorageSyncToTab(tabId, message) {
-  try {
-    await browser.tabs.sendMessage(tabId, message);
-    return true;
-  } catch (_err) {
-    // Content script might not be loaded in this tab - this is expected
-    return false;
-  }
-}
-
-/**
- * Re-broadcast storage state change to all content scripts
- * v1.6.3.11-v6 - FIX Issue #11: Background re-broadcasts to content scripts via tabs.sendMessage()
- *
- * @param {Object} newValue - New storage value
- * @param {Object} oldValue - Previous storage value
- */
-async function _rebroadcastStateChangeToContentScripts(newValue, oldValue) {
-  const startTime = Date.now();
-  const newTabs = newValue?.tabs || [];
-  const oldTabs = oldValue?.tabs || [];
-
-  // Determine affected Quick Tab IDs
-  const newIds = new Set(newTabs.map(t => t.id));
-  const oldIds = new Set(oldTabs.map(t => t.id));
-  const addedIds = [...newIds].filter(id => !oldIds.has(id));
-  const removedIds = [...oldIds].filter(id => !newIds.has(id));
-
-  console.log('[Background] STORAGE_REBROADCAST_START:', {
-    tabCount: newTabs.length,
-    addedCount: addedIds.length,
-    removedCount: removedIds.length,
-    timestamp: startTime,
-    correlationId: newValue?.correlationId || newValue?.saveId || null
-  });
-
-  try {
-    const allTabs = await browser.tabs.query({});
-    const message = _buildStorageSyncMessage({
-      newTabs,
-      newValue,
-      addedIds,
-      removedIds,
-      startTime
-    });
-
-    // Send to all tabs and count results
-    const results = await Promise.all(allTabs.map(tab => _sendStorageSyncToTab(tab.id, message)));
-    const successCount = results.filter(Boolean).length;
-    const failCount = results.length - successCount;
-
-    const duration = Date.now() - startTime;
-    console.log('[Background] STORAGE_REBROADCAST_COMPLETE:', {
-      totalTabs: allTabs.length,
-      successCount,
-      failCount,
-      durationMs: duration,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.error('[Background] STORAGE_REBROADCAST_ERROR:', {
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-}
-// ==================== END STORAGE CHANGE RE-BROADCAST ====================
-
 /**
  * Handle Quick Tab state changes from storage
  * v1.6.2 - MIGRATION: Removed legacy _broadcastToAllTabs call
@@ -3689,27 +2263,17 @@ async function _rebroadcastStateChangeToContentScripts(newValue, oldValue) {
  * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
  * v1.6.3.4-v6 - FIX Issues #1, #2, #5: Transaction tracking, URL filtering, cooldown
  * v1.6.3.4-v8 - FIX Issue #8: Extracted logging and validation helpers
- * v1.6.3.11-v6 - FIX Issue #11: Re-broadcast to content scripts after cache update
  *
  * Cross-tab sync is now handled exclusively via storage.onChanged:
  * - When any tab writes to storage.local, ALL OTHER tabs automatically receive the change
  * - Each tab's StorageManager listens for storage.onChanged events
- * - Background script updates cache and re-broadcasts to content scripts
+ * - Background script only needs to keep its own cache (globalQuickTabState) updated
  *
  * @param {Object} changes - Storage changes object
  */
 function _handleQuickTabStateChange(changes) {
   const newValue = changes.quick_tabs_state_v2.newValue;
   const oldValue = changes.quick_tabs_state_v2.oldValue;
-
-  // v1.6.3.11-v6 - FIX Issue #11: Log storage change detection
-  console.log('[Background] STORAGE_CHANGE_DETECTED:', {
-    key: 'quick_tabs_state_v2',
-    newTabCount: newValue?.tabs?.length ?? 0,
-    oldTabCount: oldValue?.tabs?.length ?? 0,
-    saveId: newValue?.saveId,
-    timestamp: Date.now()
-  });
 
   // v1.6.3.4-v8 - Log state change for debugging
   _logStorageChange(oldValue, newValue);
@@ -3720,12 +2284,7 @@ function _handleQuickTabStateChange(changes) {
   }
 
   // v1.6.3.4-v8 - Process and cache the update
-  const wasProcessed = _processStorageUpdate(newValue);
-
-  // v1.6.3.11-v6 - FIX Issue #11: Re-broadcast to content scripts if update was processed
-  if (wasProcessed) {
-    _rebroadcastStateChangeToContentScripts(newValue, oldValue);
-  }
+  _processStorageUpdate(newValue);
 }
 
 /**
@@ -3865,14 +2424,8 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  */
 function _checkTimestampWindowDedup(newValue, now) {
   const eventHash = _computeEventDeduplicationHash(newValue);
-  if (
-    lastStorageEventHash === eventHash &&
-    now - lastStorageEventTimestamp < STORAGE_DEDUP_WINDOW_MS
-  ) {
-    return {
-      method: 'timestamp-window',
-      reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window`
-    };
+  if (lastStorageEventHash === eventHash && (now - lastStorageEventTimestamp) < STORAGE_DEDUP_WINDOW_MS) {
+    return { method: 'timestamp-window', reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window` };
   }
   lastStorageEventHash = eventHash;
   lastStorageEventTimestamp = now;
@@ -3911,8 +2464,7 @@ function _checkContentHashDedup(newValue, oldValue) {
 
 function _multiMethodDeduplication(newValue, oldValue) {
   const now = Date.now();
-  const logMatch = (method, reason) =>
-    console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
+  const logMatch = (method, reason) => console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
 
   // Check each dedup method in priority order using extracted helpers
   const checks = [
@@ -4216,67 +2768,32 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * @private
  */
 function _logBroadcastDecision(decision, reason, targetTabCount = 0, filteredCount = 0) {
-  console.log('[Background][Storage] BROADCAST_DECISION:', {
-    decision,
-    reason,
-    targetTabCount,
-    filteredCount
-  });
+  console.log('[Background][Storage] BROADCAST_DECISION:', { decision, reason, targetTabCount, filteredCount });
 }
 
-/**
- * Reset counters and timestamp for valid tabs state
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _processStorageUpdate
- * @private
- */
-function _resetTabCounters() {
-  consecutiveZeroTabReads = 0;
-  lastNonEmptyStateTimestamp = Date.now();
-}
-
-/**
- * Filter and update cache with valid tabs
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _processStorageUpdate
- * @private
- * @param {Object} newValue - New storage value
- */
-function _filterAndUpdateCache(newValue) {
-  const filteredValue = filterValidTabs(newValue);
-  const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
-  _logBroadcastDecision(
-    'UPDATE_CACHE',
-    'proceeding with cache update',
-    filteredValue.tabs?.length ?? 0,
-    filteredCount
-  );
-  _updateGlobalStateFromStorage(filteredValue);
-}
-
-/**
- * Process storage update and update global cache
- * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
- * v1.6.3.4-v11 - FIX Issue #3, #8: Cache update only, no broadcast; reset consecutive counter
- * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
- * v1.6.3.11-v6 - FIX Issue #11: Returns boolean to indicate if update was processed
- * @param {Object} newValue - New storage value
- * @returns {boolean} True if update was processed, false if skipped
- */
 function _processStorageUpdate(newValue) {
+  // Handle empty/missing tabs
   if (_isTabsEmptyOrMissing(newValue)) {
     _logBroadcastDecision('SKIP', 'tabs empty or missing - clearing cache instead');
     _clearCacheForEmptyStorage(newValue);
-    return false;
+    return;
   }
 
-  _resetTabCounters();
+  // Reset counters for valid tabs
+  consecutiveZeroTabReads = 0;
+  lastNonEmptyStateTimestamp = Date.now();
 
+  // Check if state actually requires update
   if (!_shouldUpdateState(newValue)) {
     _logBroadcastDecision('SKIP', 'state unchanged', newValue?.tabs?.length ?? 0);
-    return false;
+    return;
   }
 
-  _filterAndUpdateCache(newValue);
-  return true;
+  // Filter out tabs with invalid URLs and update cache
+  const filteredValue = filterValidTabs(newValue);
+  const filteredCount = (newValue?.tabs?.length ?? 0) - (filteredValue.tabs?.length ?? 0);
+  _logBroadcastDecision('UPDATE_CACHE', 'proceeding with cache update', filteredValue.tabs?.length ?? 0, filteredCount);
+  _updateGlobalStateFromStorage(filteredValue);
 }
 
 /**
@@ -4294,59 +2811,11 @@ async function _handleSettingsChange(changes) {
 }
 
 // ==================== STORAGE SYNC BROADCASTING ====================
-/**
- * v1.6.3.11-v2 - FIX Issue #6 (Diagnostic Report): Document storage synchronization mechanisms
- *
- * STORAGE SYNCHRONIZATION ARCHITECTURE:
- * =====================================
- *
- * This extension uses multiple overlapping storage synchronization mechanisms.
- * Understanding their interactions is critical for debugging sync issues.
- *
- * MECHANISM 1: storage.onChanged (PRIMARY)
- * ----------------------------------------
- * - Listens to browser.storage.onChanged events
- * - Fires automatically when any extension context writes to storage.local
- * - Updates background's globalQuickTabState cache
- * - SUPERSEDES: Direct storage reads (background always uses cache after initial load)
- *
- * MECHANISM 2: Content Script StorageManager
- * ------------------------------------------
- * - Each tab's content script has its own StorageManager instance
- * - Also listens to storage.onChanged for its own sync
- * - SUPERSEDES: Port-based state broadcast (removed in v1.6.2)
- *
- * MECHANISM 3: Background Port Messages (DEPRECATED)
- * --------------------------------------------------
- * - Previously used for real-time state broadcasting
- * - Now only used for: command routing, tab ID queries, health checks
- * - SUPERSEDED BY: storage.onChanged mechanism
- *
- * MECHANISM 4: StateCoordinator (INITIALIZATION ONLY)
- * ---------------------------------------------------
- * - Used only during background startup to load initial state
- * - Once loaded, defers to storage.onChanged for updates
- * - SUPERSEDED BY: storage.onChanged after initialization
- *
- * INTERACTION NOTES:
- * - storage.onChanged is the authoritative sync mechanism
- * - Background script updates its cache when storage.onChanged fires
- * - Content scripts receive the same storage.onChanged events independently
- * - Hash-based deduplication prevents processing duplicate writes
- * - saveId tracking prevents hash collision false negatives
- *
- * DEBUGGING TIP: If state is out of sync, check:
- * 1. storage.onChanged listener health (see _logStorageListenerHealth)
- * 2. saveId tracking in storage writes
- * 3. Hash comparison results in _shouldIgnoreStorageChange
- */
-
 // Listen for local/sync storage changes and broadcast them to all tabs
 // This enables real-time Quick Tab state synchronization across all tabs
 // v1.6.0 - PHASE 4.3: Refactored to extract handlers (cc=11 → cc<9, max-depth fixed)
 // v1.6.0.12 - FIX: Listen for local storage changes (where we now save)
 // v1.6.3.10-v6 - FIX Issue #14: Health check logging for storage.onChanged listener
-// v1.6.3.11-v4 - FIX Issue #2: Added [LISTENER_REG] logging prefix
 
 // v1.6.3.10-v6 - FIX Issue #14: Track storage listener health
 let storageOnChangedEventCount = 0;
@@ -4363,14 +2832,13 @@ const STORAGE_LISTENER_LOG_INTERVAL = 100; // Log health every 100 events
 function _logStorageListenerHealth(areaName, changedKeys) {
   storageOnChangedEventCount++;
   const now = Date.now();
-  const timeSinceLastEvent =
-    storageOnChangedLastEventTime > 0 ? now - storageOnChangedLastEventTime : 0;
+  const timeSinceLastEvent = storageOnChangedLastEventTime > 0 ? now - storageOnChangedLastEventTime : 0;
   storageOnChangedLastEventTime = now;
 
   // Log every N events as health check (at 100, 200, 300, etc.)
   // v1.6.3.10-v6 - FIX Code Review: Use === 0 to log at round intervals
   if (storageOnChangedEventCount % STORAGE_LISTENER_LOG_INTERVAL === 0) {
-    console.log('[STATE_LISTEN] Storage listener health check:', {
+    console.log('[Background][StorageListener] v1.6.3.10-v6 HEALTH_CHECK: Listener active', {
       totalEventsProcessed: storageOnChangedEventCount,
       timeSinceLastEventMs: timeSinceLastEvent,
       lastEventArea: areaName,
@@ -4379,96 +2847,37 @@ function _logStorageListenerHealth(areaName, changedKeys) {
   }
 }
 
-// v1.6.3.11-v4 - FIX Issue #2: Log storage.onChanged listener registration
-// v1.6.3.11-v6 - FIX Issue #11: Added STORAGE_LISTENER_REGISTERED prefix
-// v1.6.4.17 - FIX Issue L1: Use logging infrastructure
-logListenerRegistration('storage_onChanged', 'browser.storage.onChanged', {
-  purpose: 'cross-tab-sync-rebroadcast'
-});
-console.log('[Background] STORAGE_LISTENER_REGISTERED:', {
-  api: 'browser.storage.onChanged',
-  purpose: 'cross-tab-sync-rebroadcast',
-  timestamp: Date.now()
-});
-console.log('[LISTENER_REG] Registering storage.onChanged listener:', {
-  api: 'browser.storage.onChanged',
-  timestamp: Date.now()
-});
-
 browser.storage.onChanged.addListener((changes, areaName) => {
-  // v1.6.3.11-v3 - FIX Issue #59: Wrap entire listener in try-catch to prevent blocking other listeners
-  try {
-    const changedKeys = Object.keys(changes);
+  const changedKeys = Object.keys(changes);
 
-    // v1.6.4.17 - FIX Issue L3: Use logging infrastructure for storage propagation
-    logStorageListenerFired('quick_tabs_state_v2', areaName, {
-      changedKeys,
-      eventNumber: storageOnChangedEventCount + 1
-    });
+  // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
+  _logStorageListenerHealth(areaName, changedKeys);
 
-    // v1.6.3.11-v4 - FIX Issue #2: [LISTENER_INVOKE] logging for storage changes
-    console.log('[LISTENER_INVOKE] storage.onChanged listener invoked:', {
-      areaName,
-      keys: changedKeys,
-      eventNumber: storageOnChangedEventCount + 1,
-      timestamp: Date.now()
-    });
+  console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
+    areaName,
+    keys: changedKeys,
+    eventNumber: storageOnChangedEventCount,
+    timestamp: Date.now()
+  });
 
-    // v1.6.3.10-v6 - FIX Issue #14: Log storage listener health
-    _logStorageListenerHealth(areaName, changedKeys);
+  // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
+  if (areaName !== 'local' && areaName !== 'sync') {
+    return;
+  }
 
-    console.log('[Background][StorageListener] v1.6.3.10-v6 EVENT_RECEIVED:', {
-      areaName,
-      keys: changedKeys,
-      eventNumber: storageOnChangedEventCount,
-      timestamp: Date.now()
-    });
+  // Handle Quick Tab state changes
+  if (changes.quick_tabs_state_v2) {
+    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change');
+    _handleQuickTabStateChange(changes);
+  }
 
-    // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
-    if (areaName !== 'local' && areaName !== 'sync') {
-      return;
-    }
-
-    // Handle Quick Tab state changes
-    if (changes.quick_tabs_state_v2) {
-      console.log(
-        '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
-      );
-      // v1.6.4.17 - FIX Issue L3: Log state change with old/new values
-      const oldValue = changes.quick_tabs_state_v2.oldValue;
-      const newValue = changes.quick_tabs_state_v2.newValue;
-      logStorageStateChanged('storage_onChanged', oldValue, newValue);
-      _handleQuickTabStateChange(changes);
-    }
-
-    // Handle settings changes
-    if (changes.quick_tab_settings) {
-      console.log(
-        '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change'
-      );
-      _handleSettingsChange(changes);
-    }
-  } catch (err) {
-    // v1.6.3.11-v3 - FIX Issue #59: Log error but don't re-throw to prevent blocking other listeners
-    // v1.6.4.17 - FIX Issue #13: Record error in telemetry system
-    recordStorageError('storage_onChanged', err, {
-      areaName,
-      changedKeys: Object.keys(changes || {})
-    });
-    console.error('[Background][StorageListener] STORAGE_ONCHANGED_ERROR:', {
-      error: err.message,
-      stack: err.stack,
-      areaName,
-      changedKeys: Object.keys(changes || {}),
-      timestamp: Date.now()
-    });
+  // Handle settings changes
+  if (changes.quick_tab_settings) {
+    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
+    _handleSettingsChange(changes);
   }
 });
 
-// v1.6.4.17 - FIX Issue L1: Log successful listener registration
-logListenerRegistered('storage_onChanged', {
-  api: 'browser.storage.onChanged'
-});
 console.log('[Background][StorageListener] v1.6.3.10-v6 Listener registered successfully', {
   timestamp: Date.now()
 });
@@ -4604,65 +3013,16 @@ async function _getCurrentPrimaryTab() {
 // v1.6.3.4 - Removed floating panel and duplicate command. Only toggle-quick-tabs-manager remains.
 // v1.6.3.4-v2 - Enhanced toggle behavior: Alt+Shift+S opens to Settings, Ctrl+Alt+Z toggles Manager
 browser.commands.onCommand.addListener(command => {
-  // v1.6.3.11-v4 - FIX Issues #1 & #2: Add required logging prefixes
-  const commandTimestamp = Date.now();
-  console.log('[Background] COMMAND_RECEIVED:', {
-    command,
-    timestamp: commandTimestamp
-  });
-
   // v1.6.3.4-v2 - toggle-quick-tabs-manager (Ctrl+Alt+Z) toggles Manager tab
   // If sidebar is open and showing Manager, close it; otherwise open to Manager
   if (command === 'toggle-quick-tabs-manager') {
-    _handleToggleQuickTabsManager()
-      .then(() => {
-        const endTimestamp = Date.now();
-        console.log('[Background] COMMAND_EXECUTED:', {
-          command,
-          action: 'toggle-quick-tabs-manager',
-          timestamp: endTimestamp,
-          durationMs: endTimestamp - commandTimestamp
-        });
-      })
-      .catch(err => {
-        const endTimestamp = Date.now();
-        console.error('[Background] COMMAND_EXECUTED:', {
-          command,
-          action: 'toggle-quick-tabs-manager',
-          error: err?.message || String(err) || 'Unknown error',
-          timestamp: endTimestamp,
-          durationMs: endTimestamp - commandTimestamp
-        });
-      });
+    _handleToggleQuickTabsManager();
   }
 
   // v1.6.3.4-v2 - _execute_sidebar_action (Alt+Shift+S) always opens to Settings tab
   if (command === '_execute_sidebar_action') {
-    _handleOpenToSettingsTab()
-      .then(() => {
-        const endTimestamp = Date.now();
-        console.log('[Background] COMMAND_EXECUTED:', {
-          command,
-          action: '_execute_sidebar_action',
-          timestamp: endTimestamp,
-          durationMs: endTimestamp - commandTimestamp
-        });
-      })
-      .catch(err => {
-        const endTimestamp = Date.now();
-        console.error('[Background] COMMAND_EXECUTED:', {
-          command,
-          action: '_execute_sidebar_action',
-          error: err?.message || String(err) || 'Unknown error',
-          timestamp: endTimestamp,
-          durationMs: endTimestamp - commandTimestamp
-        });
-      });
+    _handleOpenToSettingsTab();
   }
-});
-console.log('[Background] COMMAND_LISTENER_REGISTERED:', {
-  commands: ['toggle-quick-tabs-manager', '_execute_sidebar_action'],
-  timestamp: Date.now()
 });
 
 /**
@@ -4683,13 +3043,6 @@ async function _handleToggleQuickTabsManager() {
     // toggle() properly handles user gesture context
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
-      // v1.6.3.11-v4 - FIX Issue #1: Add SIDEBAR_TOGGLED logging
-      console.log('[Background] SIDEBAR_TOGGLED:', {
-        source: 'toggle-quick-tabs-manager',
-        method: 'toggle()',
-        targetTab: 'manager',
-        timestamp: Date.now()
-      });
       console.log('[Sidebar] Toggled sidebar via toggle() API');
 
       // After toggle, try to switch to Manager if sidebar is now open
@@ -4709,13 +3062,6 @@ async function _handleToggleQuickTabsManager() {
     // We can't check isOpen() first because that breaks the gesture context
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
-    // v1.6.3.11-v4 - FIX Issue #1: Add SIDEBAR_TOGGLED logging for fallback
-    console.log('[Background] SIDEBAR_TOGGLED:', {
-      source: 'toggle-quick-tabs-manager',
-      method: 'open()',
-      targetTab: 'manager',
-      timestamp: Date.now()
-    });
 
     // Wait for sidebar to initialize, then send message
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
@@ -4781,13 +3127,6 @@ async function _handleOpenToSettingsTab() {
     // v1.6.3.4-v5 - FIX Bug #1: Use toggle() API if available (Firefox 57+)
     if (browser.sidebarAction.toggle) {
       await browser.sidebarAction.toggle();
-      // v1.6.3.11-v4 - FIX Issue #2: Add SIDEBAR_TOGGLED logging
-      console.log('[Background] SIDEBAR_TOGGLED:', {
-        source: '_execute_sidebar_action',
-        method: 'toggle()',
-        targetTab: 'settings',
-        timestamp: Date.now()
-      });
       console.log('[Sidebar] Toggled sidebar via toggle() API');
 
       // After toggle, try to switch to Settings if sidebar is now open
@@ -4804,13 +3143,6 @@ async function _handleOpenToSettingsTab() {
     // Fallback: Call open() FIRST without awaits
     console.log('[Sidebar] Using fallback approach (no toggle API)');
     await browser.sidebarAction.open();
-    // v1.6.3.11-v4 - FIX Issue #2: Add SIDEBAR_TOGGLED logging for fallback
-    console.log('[Background] SIDEBAR_TOGGLED:', {
-      source: '_execute_sidebar_action',
-      method: 'open()',
-      targetTab: 'settings',
-      timestamp: Date.now()
-    });
     await new Promise(resolve => setTimeout(resolve, SIDEBAR_INIT_DELAY_MS));
 
     // Switch to Settings tab
@@ -4826,56 +3158,22 @@ async function _handleOpenToSettingsTab() {
 // Toggle sidebar when toolbar button is clicked (Firefox only)
 // Chrome will continue using popup.html since it doesn't support sidebar_action
 // v1.6.2.0 - Fixed: Now toggles sidebar open/close instead of only opening
-// v1.6.3.11-v4 - FIX Issue #2: Add required logging prefixes
 if (typeof browser !== 'undefined' && browser.browserAction && browser.sidebarAction) {
-  browser.browserAction.onClicked.addListener(async tab => {
-    const clickTimestamp = Date.now();
-    // v1.6.3.11-v4 - FIX Issue #2: ACTION_BUTTON_CLICKED logging
-    // Only log origin (not full URL) for privacy
-    let tabOrigin = null;
-    try {
-      tabOrigin = tab?.url ? new URL(tab.url).origin : null;
-    } catch (_e) {
-      tabOrigin = '[invalid-url]';
-    }
-    console.log('[Background] ACTION_BUTTON_CLICKED:', {
-      tabId: tab?.id,
-      tabOrigin,
-      windowId: tab?.windowId,
-      timestamp: clickTimestamp
-    });
-
+  browser.browserAction.onClicked.addListener(async () => {
     try {
       // Use toggle() API for clean open/close behavior
       if (browser.sidebarAction && browser.sidebarAction.toggle) {
         await browser.sidebarAction.toggle();
-        // v1.6.3.11-v4 - FIX Issue #2: SIDEBAR_TOGGLED logging
-        console.log('[Background] SIDEBAR_TOGGLED:', {
-          source: 'toolbar-button',
-          method: 'toggle()',
-          timestamp: Date.now()
-        });
         console.log('[Sidebar] Toggled via toolbar button');
       } else if (browser.sidebarAction && browser.sidebarAction.open) {
         // Fallback for older Firefox versions without toggle()
         await browser.sidebarAction.open();
-        // v1.6.3.11-v4 - FIX Issue #2: SIDEBAR_TOGGLED logging for fallback
-        console.log('[Background] SIDEBAR_TOGGLED:', {
-          source: 'toolbar-button',
-          method: 'open()',
-          timestamp: Date.now()
-        });
         console.log('[Sidebar] Opened via toolbar button (fallback)');
       }
     } catch (err) {
       console.error('[Sidebar] Error toggling sidebar:', err);
       // If sidebar fails, user can still access settings via options page
     }
-  });
-  // v1.6.3.11-v4 - FIX Issue #2: ACTION_BUTTON_LISTENER_REGISTERED logging
-  console.log('[Background] ACTION_BUTTON_LISTENER_REGISTERED:', {
-    api: 'browser.browserAction.onClicked',
-    timestamp: Date.now()
   });
   console.log('[Sidebar] Browser action handler registered for Firefox');
 } else {
@@ -4944,7 +3242,6 @@ function logPortLifecycle(origin, event, details = {}) {
 /**
  * Register a new port connection
  * v1.6.3.6-v11 - FIX Issue #11: Track connected ports
- * v1.6.3.11-v6 - FIX Issue #10: Add PORT_CONNECTION_ESTABLISHED logging
  * @param {browser.runtime.Port} port - The connected port
  * @param {string} origin - Origin identifier
  * @param {number|null} tabId - Tab ID (if from content script)
@@ -4961,20 +3258,7 @@ function registerPort(port, origin, tabId, type) {
     type,
     connectedAt: Date.now(),
     lastMessageAt: null,
-    messageCount: 0,
-    // v1.6.3.11-v6 - FIX Issue #10: Track last heartbeat for viability checking
-    lastHeartbeat: Date.now(),
-    isViable: true
-  });
-
-  // v1.6.3.11-v6 - FIX Issue #10: Log PORT_CONNECTION_ESTABLISHED
-  console.log('[Background] PORT_CONNECTION_ESTABLISHED:', {
-    portId,
-    origin,
-    tabId,
-    type,
-    totalPorts: portRegistry.size,
-    timestamp: Date.now()
+    messageCount: 0
   });
 
   logPortLifecycle(origin, 'open', { tabId, portId, type, totalPorts: portRegistry.size });
@@ -5087,145 +3371,6 @@ async function cleanupStalePorts() {
 // Start periodic cleanup
 setInterval(cleanupStalePorts, PORT_CLEANUP_INTERVAL_MS);
 
-// ==================== v1.6.3.11-v6 FIX ISSUE #10: PORT VIABILITY CHECKING ====================
-// Implement heartbeat-based viability checks for connected ports
-
-/**
- * Port viability check interval (milliseconds)
- * v1.6.3.11-v6 - FIX Issue #10: Check port health every 30 seconds
- */
-const PORT_VIABILITY_CHECK_INTERVAL_MS = 30000;
-
-/**
- * Port heartbeat timeout (milliseconds)
- * v1.6.3.11-v6 - FIX Issue #10: Mark port as non-viable if no activity for 60 seconds
- */
-const PORT_HEARTBEAT_TIMEOUT_MS = 60000;
-
-/**
- * Check viability of a single port
- * v1.6.3.11-v6 - FIX Issue #10: Determine if port is still responsive
- * @private
- * @param {string} portId - Port ID
- * @param {Object} portInfo - Port info from registry
- * @param {number} now - Current timestamp
- * @returns {boolean} True if port is viable
- */
-function _checkSinglePortViability(portId, portInfo, now) {
-  const lastActivity = portInfo.lastMessageAt || portInfo.lastHeartbeat || portInfo.connectedAt;
-  const timeSinceActivity = now - lastActivity;
-  const wasViable = portInfo.isViable;
-
-  // Port is non-viable if no activity for longer than timeout
-  const isViable = timeSinceActivity < PORT_HEARTBEAT_TIMEOUT_MS;
-
-  // Update viability status
-  portInfo.isViable = isViable;
-
-  // Log state change
-  if (wasViable !== isViable) {
-    console.log('[Background] PORT_VIABILITY_CHECK:', {
-      portId,
-      origin: portInfo.origin,
-      tabId: portInfo.tabId,
-      previousState: wasViable ? 'viable' : 'non-viable',
-      newState: isViable ? 'viable' : 'non-viable',
-      timeSinceActivityMs: timeSinceActivity,
-      timestamp: now
-    });
-  }
-
-  return isViable;
-}
-
-/**
- * Send heartbeat ping to a port and wait for response
- * v1.6.3.11-v6 - FIX Issue #10: Active heartbeat mechanism
- * @private
- * @param {Object} portInfo - Port info from registry
- * @param {string} portId - Port ID
- * @returns {boolean} True if port responded
- */
-function _sendPortHeartbeat(portInfo, portId) {
-  try {
-    const heartbeatId = `hb-${Date.now()}-${portId}`;
-
-    portInfo.port.postMessage({
-      type: 'PORT_HEARTBEAT_PING',
-      heartbeatId,
-      timestamp: Date.now()
-    });
-
-    // Update last heartbeat timestamp
-    portInfo.lastHeartbeat = Date.now();
-
-    console.log('[Background] PORT_VIABILITY_CHECK:', {
-      action: 'heartbeat-sent',
-      portId,
-      origin: portInfo.origin,
-      heartbeatId,
-      timestamp: Date.now()
-    });
-
-    return true;
-  } catch (err) {
-    console.warn('[Background] PORT_VIABILITY_CHECK:', {
-      action: 'heartbeat-failed',
-      portId,
-      origin: portInfo.origin,
-      error: err.message,
-      timestamp: Date.now()
-    });
-    return false;
-  }
-}
-
-/**
- * Check viability of all registered ports
- * v1.6.3.11-v6 - FIX Issue #10: Periodic viability check for all ports
- */
-function checkAllPortsViability() {
-  const now = Date.now();
-  let viableCount = 0;
-  let nonViableCount = 0;
-
-  console.log('[Background] PORT_VIABILITY_CHECK:', {
-    action: 'check-started',
-    totalPorts: portRegistry.size,
-    timestamp: now
-  });
-
-  for (const [portId, portInfo] of portRegistry.entries()) {
-    const isViable = _checkSinglePortViability(portId, portInfo, now);
-
-    if (isViable) {
-      viableCount++;
-      // Send heartbeat ping to maintain connection
-      _sendPortHeartbeat(portInfo, portId);
-    } else {
-      nonViableCount++;
-    }
-  }
-
-  console.log('[Background] PORT_VIABILITY_CHECK:', {
-    action: 'check-complete',
-    viableCount,
-    nonViableCount,
-    totalPorts: portRegistry.size,
-    timestamp: Date.now()
-  });
-}
-
-// Start periodic port viability checking
-setInterval(checkAllPortsViability, PORT_VIABILITY_CHECK_INTERVAL_MS);
-console.log(
-  '[Background] v1.6.3.11-v6 Port viability checking initialized (every',
-  PORT_VIABILITY_CHECK_INTERVAL_MS / 1000,
-  's)'
-);
-
-// ==================== END ISSUE #10 FIX ====================
-
 /**
  * Parse port name to extract type and tab ID
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce handlePortConnect complexity
@@ -5253,7 +3398,7 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
     const handshakeStartTime = Date.now();
     const initReady = await waitForInitialization(5000);
     const handshakeDuration = Date.now() - handshakeStartTime;
-
+    
     // v1.6.4.15 - FIX Issue #16: Log port lifecycle - initialized
     console.log('[PORT_LIFECYCLE] Port initialized:', {
       event: 'initialized',
@@ -5264,40 +3409,33 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
       handshakeDurationMs: handshakeDuration,
       timestamp: new Date().toISOString()
     });
-
+    
     port.postMessage({
       type: 'BACKGROUND_HANDSHAKE',
       ...getBackgroundStartupInfo(),
       isInitialized: initReady,
       // v1.6.4.15 - FIX Issue #16: Add isReadyForCommands field
       isReadyForCommands: initReady,
-      portId,
-      tabId,
+      portId, tabId,
       timestamp: Date.now()
     });
-    console.log('[Background] Sent BACKGROUND_HANDSHAKE:', {
-      portId,
-      origin,
-      isInitialized: initReady
-    });
+    console.log('[Background] Sent BACKGROUND_HANDSHAKE:', { portId, origin, isInitialized: initReady });
   } catch (err) {
     console.warn('[Background] Failed to send handshake:', err.message);
   }
 }
 
 /**
- * Log port connection state transition
- * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
- * @private
+ * Handle incoming port connection
+ * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
+ * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
+ * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
  */
-function _logPortConnecting(port, tabId, type, origin) {
-  console.log('[PORT_LIFECYCLE] STATE_TRANSITION: DISCONNECTED → CONNECTING', {
-    portName: port.name,
-    tabId,
-    type,
-    origin,
-    timestamp: Date.now()
-  });
+function handlePortConnect(port) {
+  const connectTime = Date.now();
+  const { type, tabId, origin } = _parsePortName(port);
+  
+  // v1.6.4.15 - FIX Issue #16: Log port lifecycle - created
   console.log('[PORT_LIFECYCLE] Port created:', {
     event: 'created',
     portName: port.name,
@@ -5307,33 +3445,14 @@ function _logPortConnecting(port, tabId, type, origin) {
     isBackgroundInitialized: isInitialized,
     timestamp: new Date().toISOString()
   });
-}
+  
+  const portId = registerPort(port, origin, tabId, type);
+  port._portId = portId;
 
-/**
- * Log port connected state with listener registration
- * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
- * @private
- */
-function _logPortConnected(portId, portName, tabId) {
-  console.log('[PORT_LIFECYCLE] STATE_TRANSITION: CONNECTING → CONNECTED', {
-    portId,
-    portName,
-    tabId,
-    timestamp: Date.now()
-  });
-  console.log(
-    '[PORT_LIFECYCLE] LISTENER_REGISTRATION_COMPLETE: onMessage and onDisconnect attached',
-    { portId, hasOnMessage: true, hasOnDisconnect: true, timestamp: Date.now() }
-  );
-}
+  _sendBackgroundHandshake(port, portId, tabId, origin);
 
-/**
- * Create onMessage handler for port
- * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
- * @private
- */
-function _createPortMessageHandler(port, portId) {
-  return message => {
+  // v1.6.4.15 - FIX Issue #16: Enhanced port message handler with lifecycle logging
+  port.onMessage.addListener(message => {
     console.log('[PORT_LIFECYCLE] Message sent:', {
       event: 'message-sent',
       portId,
@@ -5341,27 +3460,13 @@ function _createPortMessageHandler(port, portId) {
       timestamp: new Date().toISOString()
     });
     handlePortMessage(port, portId, message);
-  };
-}
+  });
 
-/**
- * Create onDisconnect handler for port
- * v1.6.3.11-v5 - FIX Code Health: Extracted from handlePortConnect
- * @private
- */
-function _createPortDisconnectHandler(portId, tabId, origin, connectTime) {
-  return () => {
+  port.onDisconnect.addListener(() => {
     const error = browser.runtime.lastError;
     const connectionDuration = Date.now() - connectTime;
-
-    console.log('[PORT_LIFECYCLE] STATE_TRANSITION: CONNECTED → DISCONNECTED', {
-      portId,
-      tabId,
-      connectionDurationMs: connectionDuration,
-      reason: error?.message || 'normal-disconnect',
-      timestamp: Date.now()
-    });
-
+    
+    // v1.6.4.15 - FIX Issue #16: Log port lifecycle - closed
     console.log('[PORT_LIFECYCLE] Port closed:', {
       event: 'closed',
       portId,
@@ -5372,36 +3477,12 @@ function _createPortDisconnectHandler(portId, tabId, origin, connectTime) {
       errorMessage: error?.message,
       timestamp: new Date().toISOString()
     });
-
+    
     if (error) {
       logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
     }
     unregisterPort(portId, 'client-disconnect');
-  };
-}
-
-/**
- * Handle incoming port connection
- * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
- * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
- * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
- * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Enhanced port state transition logging
- * v1.6.3.11-v5 - FIX Code Health: Reduced line count via extraction
- */
-function handlePortConnect(port) {
-  const connectTime = Date.now();
-  const { type, tabId, origin } = _parsePortName(port);
-
-  _logPortConnecting(port, tabId, type, origin);
-
-  const portId = registerPort(port, origin, tabId, type);
-  port._portId = portId;
-
-  _sendBackgroundHandshake(port, portId, tabId, origin);
-  _logPortConnected(portId, port.name, tabId);
-
-  port.onMessage.addListener(_createPortMessageHandler(port, portId));
-  port.onDisconnect.addListener(_createPortDisconnectHandler(portId, tabId, origin, connectTime));
+  });
 }
 
 /**
@@ -5418,7 +3499,7 @@ function handlePortConnect(port) {
  */
 function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
   if (!message.correlationId) return;
-
+  
   // Spread response first, then set explicit properties to ensure they take precedence
   const ack = {
     ...response,
@@ -5432,9 +3513,7 @@ function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
   try {
     port.postMessage(ack);
     logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
-      portId,
-      correlationId: message.correlationId,
-      success: ack.success
+      portId, correlationId: message.correlationId, success: ack.success
     });
   } catch (err) {
     console.error('[Background] Failed to send acknowledgment:', err.message);
@@ -5446,14 +3525,10 @@ async function handlePortMessage(port, portId, message) {
   updatePortActivity(portId);
 
   logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
-    portId,
-    tabId: portInfo?.tabId,
-    messageType: message.type,
-    correlationId: message.correlationId
+    portId, tabId: portInfo?.tabId, messageType: message.type, correlationId: message.correlationId
   });
 
-  // v1.6.3.11 - FIX Issue #32: Pass port to routePortMessage for PORT_VERIFY response
-  const response = await routePortMessage(message, portInfo, port);
+  const response = await routePortMessage(message, portInfo);
   _sendAcknowledgment({ port, message, response, portInfo, portId });
 }
 
@@ -5473,18 +3548,13 @@ async function handlePortMessage(port, portId, message) {
  */
 function handleGetBackgroundInfo() {
   return Promise.resolve({
-    success: true,
-    type: 'BACKGROUND_INFO',
-    ...getBackgroundStartupInfo(),
-    isInitialized,
-    timestamp: Date.now()
+    success: true, type: 'BACKGROUND_INFO', ...getBackgroundStartupInfo(), isInitialized, timestamp: Date.now()
   });
 }
 
 /**
  * Port message handlers lookup
  * v1.6.3.10-v8 - FIX Code Health: Converted switch to lookup table
- * v1.6.3.11 - FIX Issue #32: Added PORT_VERIFY handler for BFCache verification
  * @private
  */
 const PORT_MESSAGE_HANDLERS = {
@@ -5494,26 +3564,15 @@ const PORT_MESSAGE_HANDLERS = {
   BROADCAST: (msg, portInfo) => handleBroadcastRequest(msg, portInfo),
   DELETION_ACK: (msg, portInfo) => handleDeletionAck(msg, portInfo),
   REQUEST_FULL_STATE_SYNC: (msg, portInfo) => handleFullStateSyncRequest(msg, portInfo),
-  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo(),
-  // v1.6.3.11 - FIX Issue #32: BFCache port verification response
-  PORT_VERIFY: (msg, portInfo, port) => handlePortVerify(msg, portInfo, port)
+  GET_BACKGROUND_INFO: () => handleGetBackgroundInfo()
 };
 
-/**
- * Route port message to appropriate handler
- * v1.6.3.11 - FIX Issue #32: Added port parameter for PORT_VERIFY response
- * @param {Object} message - Message to route
- * @param {Object} portInfo - Port info
- * @param {Object} port - Port object for direct response
- * @returns {Promise<Object>} Handler response
- */
-function routePortMessage(message, portInfo, port) {
+function routePortMessage(message, portInfo) {
   const { type, action } = message;
 
   const handler = PORT_MESSAGE_HANDLERS[type];
   if (handler) {
-    // v1.6.3.11 - FIX Issue #32: Pass port to handler for PORT_VERIFY
-    return handler(message, portInfo, port);
+    return handler(message, portInfo);
   }
 
   // Fallback to action-based routing for backwards compatibility
@@ -5561,60 +3620,6 @@ function handleHeartbeat(message, portInfo) {
     backgroundAlive: true,
     isInitialized,
     ...getBackgroundStartupInfo()
-  });
-}
-
-/**
- * Handle PORT_VERIFY message for BFCache port verification
- * v1.6.3.11 - FIX Issue #32: Send immediate response to content script
- * v1.6.3.11-v2 - FIX Issue #8 (Diagnostic Report): Enhanced PORT_VERIFY logging with latency
- * @param {Object} message - PORT_VERIFY message
- * @param {Object} portInfo - Port info
- * @param {Object} port - Port to send response
- * @returns {Promise<Object>} Verification acknowledgment
- */
-function handlePortVerify(message, portInfo, port) {
-  const { timestamp, reason } = message;
-  const now = Date.now();
-  const latencyMs = timestamp ? now - timestamp : null;
-
-  // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY received with latency
-  console.log('[Background][PORT_LIFECYCLE] PORT_VERIFY_RECEIVED:', {
-    reason,
-    tabId: portInfo?.tabId,
-    portId: port?._portId,
-    latencyMs,
-    timestamp: now
-  });
-
-  // v1.6.3.11 - FIX Issue #32: Send immediate response via port
-  try {
-    port.postMessage({
-      type: 'PORT_VERIFY_RESPONSE',
-      timestamp: now,
-      originalTimestamp: timestamp,
-      success: true
-    });
-
-    // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY success with timing
-    console.log('[Background][PORT_LIFECYCLE] PORT_VERIFY_SUCCESS: Response sent', {
-      tabId: portInfo?.tabId,
-      latencyMs,
-      responseTimestamp: Date.now()
-    });
-  } catch (err) {
-    // v1.6.3.11-v2 - FIX Issue #8: Log PORT_VERIFY failure
-    console.error('[Background][PORT_LIFECYCLE] PORT_VERIFY_FAILURE: Failed to send response', {
-      tabId: portInfo?.tabId,
-      error: err.message,
-      timestamp: Date.now()
-    });
-  }
-
-  return Promise.resolve({
-    success: true,
-    type: 'PORT_VERIFY_ACK',
-    timestamp: now
   });
 }
 
@@ -5678,13 +3683,10 @@ function handleDeletionAck(message, portInfo) {
  */
 const ACTION_REQUEST_HANDLERS = {
   TOGGLE_GROUP: () => ({ success: true }),
-  MINIMIZE_TAB: (payload, portInfo) =>
-    executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  RESTORE_TAB: (payload, portInfo) =>
-    executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  CLOSE_TAB: (payload, portInfo) =>
-    executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  ADOPT_TAB: payload => handleAdoptAction(payload),
+  MINIMIZE_TAB: (payload, portInfo) => executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  RESTORE_TAB: (payload, portInfo) => executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  CLOSE_TAB: (payload, portInfo) => executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  ADOPT_TAB: (payload) => handleAdoptAction(payload),
   CLOSE_MINIMIZED_TABS: () => handleCloseMinimizedTabsCommand(),
   DELETE_GROUP: () => ({ success: false, error: 'Not implemented' })
 };
@@ -5781,83 +3783,6 @@ function handleLegacyAction(message, portInfo) {
   return Promise.resolve({ success: false, error: 'Unknown legacy action' });
 }
 
-// ==================== v1.6.3.11-v3 FIX ISSUE #78: ADOPTION CAPACITY VALIDATION ====================
-// Validate capacity before starting adoption to prevent resource exhaustion
-
-/**
- * Maximum Quick Tabs per browser tab
- * v1.6.3.11-v3 - FIX Issue #78: Capacity limit per tab
- *
- * Rationale: 50 Quick Tabs per tab provides generous capacity for power users
- * while preventing UI clutter and memory issues. Average users have <10.
- * This value may be made configurable in future versions if needed.
- */
-const MAX_QUICK_TABS_PER_TAB = 50;
-
-/**
- * Maximum total Quick Tabs across all tabs
- * v1.6.3.11-v3 - FIX Issue #78: Global capacity limit
- *
- * Rationale: 500 total Quick Tabs balances extensibility with browser performance.
- * Each Quick Tab requires ~5KB DOM overhead + iframe memory. 500 Quick Tabs
- * should stay under 100MB even with heavy content. Extension storage is limited
- * and this prevents quota exhaustion.
- */
-const MAX_TOTAL_QUICK_TABS = 500;
-
-/**
- * Validate adoption capacity before starting adoption
- * v1.6.3.11-v3 - FIX Issue #78: Check available capacity
- *
- * Prevents adoption if:
- * 1. Target tab would exceed MAX_QUICK_TABS_PER_TAB
- * 2. Total Quick Tabs would exceed MAX_TOTAL_QUICK_TABS
- *
- * @private
- * @param {string} quickTabId - Quick Tab being adopted (for logging)
- * @param {number} targetTabId - Tab that would own the adopted Quick Tab
- * @returns {{valid: boolean, reason?: string, currentTabCount?: number, totalCount?: number}}
- */
-function _validateAdoptionCapacity(quickTabId, targetTabId) {
-  // Count Quick Tabs currently assigned to target tab
-  const tabQuickTabs = globalQuickTabState.tabs.filter(t => t.originTabId === targetTabId);
-  const currentTabCount = tabQuickTabs.length;
-  const totalCount = globalQuickTabState.tabs.length;
-
-  // Check per-tab limit
-  if (currentTabCount >= MAX_QUICK_TABS_PER_TAB) {
-    return {
-      valid: false,
-      reason: `Target tab has ${currentTabCount} Quick Tabs (max: ${MAX_QUICK_TABS_PER_TAB})`,
-      currentTabCount,
-      totalCount
-    };
-  }
-
-  // Check global limit
-  if (totalCount >= MAX_TOTAL_QUICK_TABS) {
-    return {
-      valid: false,
-      reason: `Total Quick Tabs is ${totalCount} (max: ${MAX_TOTAL_QUICK_TABS})`,
-      currentTabCount,
-      totalCount
-    };
-  }
-
-  console.log('[Background] ADOPTION_CAPACITY_OK:', {
-    quickTabId,
-    targetTabId,
-    currentTabCount,
-    totalCount,
-    maxPerTab: MAX_QUICK_TABS_PER_TAB,
-    maxTotal: MAX_TOTAL_QUICK_TABS
-  });
-
-  return { valid: true, currentTabCount, totalCount };
-}
-
-// ==================== END ISSUE #78 FIX ====================
-
 /**
  * Validate adoption prerequisites
  * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
@@ -5933,16 +3858,10 @@ function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _writeAndVerifyAdoptionState({
-  state,
-  quickTabId,
-  targetTabId,
-  correlationId,
-  startTime
-}) {
+async function _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeStartTime = Date.now();
-
+  
   try {
     await browser.storage.local.set({
       quick_tabs_state_v2: {
@@ -5953,141 +3872,29 @@ async function _writeAndVerifyAdoptionState({
         writingInstanceId: `background-adopt-${Date.now()}`
       }
     });
-
+    
     const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
-
+    
     if (!verifiedState || verifiedState.saveId !== saveId) {
       console.error('[Background] MANAGER_ACTION_FAILED:', {
-        action: 'ADOPT_TAB',
-        quickTabId,
-        targetTabId,
-        correlationId,
-        status: 'failed',
-        error: 'storage-verification-failed',
-        expectedSaveId: saveId,
-        actualSaveId: verifiedState?.saveId,
+        action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+        status: 'failed', error: 'storage-verification-failed',
+        expectedSaveId: saveId, actualSaveId: verifiedState?.saveId,
         durationMs: Date.now() - startTime
       });
-      return {
-        success: false,
-        error: 'Storage write verification failed',
-        reason: 'storage-verification-failed'
-      };
+      return { success: false, error: 'Storage write verification failed', reason: 'storage-verification-failed' };
     }
-
-    console.log('[Background] ADOPT_TAB: Storage write verified:', {
-      saveId,
-      correlationId,
-      durationMs: Date.now() - writeStartTime
-    });
+    
+    console.log('[Background] ADOPT_TAB: Storage write verified:', { saveId, correlationId, durationMs: Date.now() - writeStartTime });
     return { success: true, saveId };
   } catch (writeErr) {
     console.error('[Background] MANAGER_ACTION_FAILED:', {
-      action: 'ADOPT_TAB',
-      quickTabId,
-      targetTabId,
-      correlationId,
-      status: 'failed',
-      error: writeErr.message,
-      durationMs: Date.now() - startTime
+      action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+      status: 'failed', error: writeErr.message, durationMs: Date.now() - startTime
     });
-    return {
-      success: false,
-      error: `Storage write failed: ${writeErr.message}`,
-      reason: 'storage-write-error'
-    };
+    return { success: false, error: `Storage write failed: ${writeErr.message}`, reason: 'storage-write-error' };
   }
-}
-
-/**
- * Update global cache and host tracking after adoption
- * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
- * @private
- */
-function _updateCacheAndHostTracking(quickTabId, targetTabId) {
-  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
-  if (cachedTab) {
-    cachedTab.originTabId = targetTabId;
-    delete cachedTab.isOrphaned;
-    delete cachedTab.orphanedAt;
-  }
-  quickTabHostTabs.set(quickTabId, targetTabId);
-}
-
-/**
- * Broadcast adoption completion to ports and tabs
- * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
- * @private
- */
-async function _broadcastAdoptionCompletion({
-  quickTabId,
-  oldOriginTabId,
-  targetTabId,
-  correlationId,
-  adoptionDuration,
-  position
-}) {
-  broadcastToAllPorts({
-    type: 'ADOPTION_COMPLETED',
-    adoptedQuickTabId: quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    previousOriginTabId: oldOriginTabId,
-    correlationId,
-    adoptionDuration,
-    position,
-    timestamp: Date.now()
-  });
-
-  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
-}
-
-/**
- * Extract position from adopted tab
- * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
- * @private
- * @param {Object} state - Storage state
- * @param {number} tabIndex - Index of tab in array
- * @returns {Object|null} Position object or null
- */
-function _extractAdoptedTabPosition(state, tabIndex) {
-  const isValidIndex = tabIndex >= 0 && tabIndex < state.tabs.length;
-  const adoptedTab = isValidIndex ? state.tabs[tabIndex] : null;
-  return adoptedTab ? { left: adoptedTab.left, top: adoptedTab.top } : null;
-}
-
-/**
- * Log and return adoption success result
- * v1.6.3.11-v5 - FIX Code Health: Extracted to reduce handleAdoptAction complexity
- * @private
- */
-function _createAdoptionSuccessResult({
-  quickTabId,
-  oldOriginTabId,
-  targetTabId,
-  adoptionDuration,
-  position,
-  correlationId,
-  startTime
-}) {
-  console.log('[Background] MANAGER_ACTION_COMPLETED:', {
-    action: 'ADOPT_TAB',
-    quickTabId,
-    targetTabId,
-    correlationId,
-    status: 'success',
-    durationMs: Date.now() - startTime
-  });
-
-  return {
-    success: true,
-    quickTabId,
-    oldOriginTabId,
-    newOriginTabId: targetTabId,
-    adoptionDuration,
-    position
-  };
 }
 
 /**
@@ -6096,8 +3903,6 @@ function _createAdoptionSuccessResult({
  * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
  * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
- * v1.6.3.11-v3 - FIX Code Health: Extracted helpers to reduce complexity
- * v1.6.3.11-v5 - FIX Code Health: Further extraction to reduce cc
  * @param {Object} payload - Adoption payload
  */
 async function handleAdoptAction(payload) {
@@ -6105,6 +3910,7 @@ async function handleAdoptAction(payload) {
   const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
   const startTime = Date.now();
 
+  // v1.6.4.15 - FIX Issue #20: Log Manager action requested
   console.log('[Background] MANAGER_ACTION_REQUESTED:', {
     action: 'ADOPT_TAB',
     quickTabId,
@@ -6113,53 +3919,72 @@ async function handleAdoptAction(payload) {
     timestamp: startTime
   });
 
-  const capacityCheck = _validateAdoptionCapacity(quickTabId, targetTabId);
-  if (!capacityCheck.valid) {
-    console.warn('[Background] ADOPTION_CAPACITY_EXCEEDED:', capacityCheck);
-    return { success: false, error: capacityCheck.reason, code: 'CAPACITY_EXCEEDED' };
+  // Validate prerequisites
+  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
   }
 
-  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
-  if (!validation.valid) return { success: false, error: validation.error };
-
+  // Read state and find Quick Tab
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
-
+  
   const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
-  if (!findResult.found) return { success: false, error: findResult.error };
+  if (!findResult.found) {
+    return { success: false, error: findResult.error };
+  }
+  const { oldOriginTabId } = findResult;
 
-  const { oldOriginTabId, tabIndex } = findResult;
-  const position = _extractAdoptedTabPosition(state, tabIndex);
+  // Write and verify state
+  const writeResult = await _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime });
+  if (!writeResult.success) {
+    return writeResult;
+  }
 
-  const writeResult = await _writeAndVerifyAdoptionState({
-    state,
+  // Update global cache
+  const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
+  if (cachedTab) {
+    cachedTab.originTabId = targetTabId;
+    delete cachedTab.isOrphaned;
+    delete cachedTab.orphanedAt;
+  }
+
+  // Update host tracking
+  quickTabHostTabs.set(quickTabId, targetTabId);
+
+  // Broadcast adoption completion
+  broadcastToAllPorts({
+    type: 'ADOPTION_COMPLETED',
+    adoptedQuickTabId: quickTabId,
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    previousOriginTabId: oldOriginTabId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+
+  // v1.6.4.15 - FIX Issue #20: Log successful completion
+  const durationMs = Date.now() - startTime;
+  console.log('[Background] MANAGER_ACTION_COMPLETED:', {
+    action: 'ADOPT_TAB',
     quickTabId,
     targetTabId,
     correlationId,
-    startTime
+    status: 'success',
+    oldOriginTabId,
+    newOriginTabId: targetTabId,
+    durationMs
   });
-  if (!writeResult.success) return writeResult;
 
-  _updateCacheAndHostTracking(quickTabId, targetTabId);
-  const adoptionDuration = Date.now() - startTime;
-  await _broadcastAdoptionCompletion({
+  console.log('[Background] ADOPT_TAB complete:', {
     quickTabId,
     oldOriginTabId,
-    targetTabId,
-    correlationId,
-    adoptionDuration,
-    position
+    newOriginTabId: targetTabId
   });
 
-  return _createAdoptionSuccessResult({
-    quickTabId,
-    oldOriginTabId,
-    targetTabId,
-    adoptionDuration,
-    position,
-    correlationId,
-    startTime
-  });
+  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
 }
 
 /**
@@ -6187,14 +4012,11 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
     timestamp
   };
 
-  console.log(
-    '[Background] ADOPTION_BROADCAST_TO_TABS: Starting broadcast to all content scripts:',
-    {
-      quickTabId,
-      previousOriginTabId: oldOriginTabId,
-      newOriginTabId
-    }
-  );
+  console.log('[Background] ADOPTION_BROADCAST_TO_TABS: Starting broadcast to all content scripts:', {
+    quickTabId,
+    previousOriginTabId: oldOriginTabId,
+    newOriginTabId
+  });
 
   try {
     const tabs = await browser.tabs.query({});
@@ -6279,13 +4101,13 @@ function _matchErrorPattern(errorMessage, patterns) {
  */
 function _classifyBroadcastError(error) {
   const errorMessage = error?.message || String(error);
-
+  
   const permanentMatch = _matchErrorPattern(errorMessage, PERMANENT_ERROR_PATTERNS);
   if (permanentMatch) return { isPermanent: true, reason: permanentMatch };
-
+  
   const transientMatch = _matchErrorPattern(errorMessage, TRANSIENT_ERROR_PATTERNS);
   if (transientMatch) return { isPermanent: false, reason: transientMatch };
-
+  
   // Default: treat unknown errors as transient (will retry)
   return { isPermanent: false, reason: 'unknown-error' };
 }
@@ -6305,21 +4127,14 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
   const pendingTabs = tabs.map(tab => ({ tabId: tab.id, retryCount: 0 }));
   const completedTabs = new Set();
   const metrics = { successCount: 0, permanentFailures: 0, transientFailures: 0 };
-
+  
   // First pass - try all tabs
   await _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId });
-
+  
   // Retry pass for transient failures
   const tabsToRetry = pendingTabs.filter(p => !completedTabs.has(p.tabId));
   if (tabsToRetry.length > 0) {
-    await _sendAdoptionRetryPass({
-      tabsToRetry,
-      pendingTabs,
-      completedTabs,
-      metrics,
-      message,
-      quickTabId
-    });
+    await _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId });
   }
 
   return metrics;
@@ -6336,13 +4151,7 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _sendAdoptionFirstPass({
-  pendingTabs,
-  completedTabs,
-  metrics,
-  message,
-  quickTabId
-}) {
+async function _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId }) {
   for (const pending of pendingTabs) {
     const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
     _processSendResult(result, pending.tabId, completedTabs, metrics);
@@ -6370,34 +4179,15 @@ function _processSendResult(result, tabId, completedTabs, metrics) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _sendAdoptionRetryPass({
-  tabsToRetry,
-  pendingTabs,
-  completedTabs,
-  metrics,
-  message,
-  quickTabId
-}) {
-  console.log('[Background] ADOPTION_BROADCAST_RETRY:', {
-    quickTabId,
-    tabCount: tabsToRetry.length
-  });
-
+async function _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId }) {
+  console.log('[Background] ADOPTION_BROADCAST_RETRY:', { quickTabId, tabCount: tabsToRetry.length });
+  
   for (let retryAttempt = 1; retryAttempt <= ADOPTION_BROADCAST_MAX_RETRIES; retryAttempt++) {
-    await new Promise(resolve =>
-      setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt)
-    );
-    await _sendAdoptionRetryAttempt({
-      tabsToRetry,
-      completedTabs,
-      metrics,
-      message,
-      quickTabId,
-      retryAttempt
-    });
+    await new Promise(resolve => setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt));
+    await _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt });
     if (completedTabs.size === pendingTabs.length) break;
   }
-
+  
   _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId);
 }
 
@@ -6406,28 +4196,17 @@ async function _sendAdoptionRetryPass({
  * v1.6.4.14 - Extracted to reduce complexity
  * @private
  */
-async function _sendAdoptionRetryAttempt({
-  tabsToRetry,
-  completedTabs,
-  metrics,
-  message,
-  quickTabId,
-  retryAttempt
-}) {
+async function _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt }) {
   for (const pending of tabsToRetry) {
     if (completedTabs.has(pending.tabId)) continue;
-
+    
     pending.retryCount++;
     const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
-
+    
     if (result.success) {
       metrics.successCount++;
       completedTabs.add(pending.tabId);
-      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', {
-        tabId: pending.tabId,
-        quickTabId,
-        attempt: retryAttempt
-      });
+      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', { tabId: pending.tabId, quickTabId, attempt: retryAttempt });
     } else if (result.isPermanent) {
       metrics.permanentFailures++;
       completedTabs.add(pending.tabId);
@@ -6474,7 +4253,7 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
     return { success: true };
   } catch (err) {
     const classification = _classifyBroadcastError(err);
-
+    
     // Only log if permanent or first transient (to reduce noise)
     if (classification.isPermanent) {
       console.log('[Background] ADOPTION_BROADCAST_PERMANENT_FAILURE:', {
@@ -6484,9 +4263,9 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
         error: err.message
       });
     }
-
-    return {
-      success: false,
+    
+    return { 
+      success: false, 
       isPermanent: classification.isPermanent,
       reason: classification.reason
     };
@@ -6658,16 +4437,8 @@ async function handleCloseMinimizedTabsCommand() {
   const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
   closedIds.forEach(id => quickTabHostTabs.delete(id));
 
-  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {
-    closedCount: closedIds.length,
-    verified: writeResult.verified
-  });
-  return {
-    success: true,
-    closedCount: closedIds.length,
-    closedIds,
-    verified: writeResult.verified
-  };
+  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', { closedCount: closedIds.length, verified: writeResult.verified });
+  return { success: true, closedCount: closedIds.length, closedIds, verified: writeResult.verified };
 }
 
 /**
@@ -6783,13 +4554,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite({
-      operation,
-      saveId,
-      tabCount: stateToWrite.tabs.length,
-      attempt,
-      backoffMs
-    });
+    return await _verifyStorageWrite({ operation, saveId, tabCount: stateToWrite.tabs.length, attempt, backoffMs });
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -6808,23 +4573,13 @@ async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backo
   const verified = readBack?.saveId === saveId;
 
   if (verified) {
-    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
-      operation,
-      saveId,
-      tabCount
-    });
+    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, { operation, saveId, tabCount });
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(
-    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
-    {
-      operation,
-      expectedSaveId: saveId,
-      actualSaveId: readBack?.saveId,
-      backoffMs
-    }
-  );
+  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
+    operation, expectedSaveId: saveId, actualSaveId: readBack?.saveId, backoffMs
+  });
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -6860,13 +4615,8 @@ function broadcastToAllPorts(message, excludePortId = null) {
   });
 }
 
-// v1.6.3.11 - FIX Issue #1 & #3: Register port connection listener synchronously
-console.log('[Background] ✓ Registering onConnect listener');
-
 // Register port connection listener
 browser.runtime.onConnect.addListener(handlePortConnect);
-
-console.log('[Background] ✓ onConnect listener registered');
 
 console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
 
@@ -7000,7 +4750,8 @@ function generateMessageId() {
 const LOGGING_THROTTLE_MS = 1000;
 // Debug mode flag - set to true to enable verbose logging
 // v1.6.3.10-v5 - Use globalThis for service worker compatibility
-const _debugModeEnabled = typeof globalThis !== 'undefined' && globalThis.DEBUG_MODE === true;
+const _debugModeEnabled =
+  typeof globalThis !== 'undefined' && globalThis.DEBUG_MODE === true;
 
 /**
  * Check if logging should be throttled for a specific log type
@@ -7033,23 +4784,14 @@ const _receiptThrottle = { time: 0 };
  * Log message dispatch (outgoing)
  */
 function logMessageDispatch(messageId, messageType, senderTabId, target) {
-  _logThrottled('📤', 'MESSAGE DISPATCH', _dispatchThrottle, {
-    messageId,
-    messageType,
-    senderTabId,
-    target
-  });
+  _logThrottled('📤', 'MESSAGE DISPATCH', _dispatchThrottle, { messageId, messageType, senderTabId, target });
 }
 
 /**
  * Log message receipt (incoming)
  */
 function logMessageReceipt(messageId, messageType, senderTabId) {
-  _logThrottled('📥', 'MESSAGE RECEIPT', _receiptThrottle, {
-    messageId: messageId || 'N/A',
-    messageType,
-    senderTabId
-  });
+  _logThrottled('📥', 'MESSAGE RECEIPT', _receiptThrottle, { messageId: messageId || 'N/A', messageType, senderTabId });
 }
 
 // Throttle tracker for deletion logs
@@ -7063,31 +4805,15 @@ function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) 
   if (_shouldThrottleLog(_deletionThrottle.time)) return;
   _deletionThrottle.time = Date.now();
 
-  const phaseEmoji = {
-    submit: '🗑️ DELETION SUBMIT',
-    received: '🗑️ DELETION RECEIVED',
-    'broadcast-complete': '🗑️ DELETION BROADCAST COMPLETE'
-  };
+  const phaseEmoji = { submit: '🗑️ DELETION SUBMIT', received: '🗑️ DELETION RECEIVED', 'broadcast-complete': '🗑️ DELETION BROADCAST COMPLETE' };
   const baseData = { correlationId, quickTabId, timestamp: Date.now() };
-
+  
   if (phase === 'submit') {
-    console.log(`[Background] ${phaseEmoji[phase]}:`, {
-      ...baseData,
-      source: details.source,
-      excludeTabId: details.excludeTabId
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, source: details.source, excludeTabId: details.excludeTabId });
   } else if (phase === 'received') {
-    console.log(`[Background] ${phaseEmoji[phase]}:`, {
-      ...baseData,
-      receiverTabId: details.receiverTabId,
-      stateApplied: details.stateApplied
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, receiverTabId: details.receiverTabId, stateApplied: details.stateApplied });
   } else if (phase === 'broadcast-complete') {
-    console.log(`[Background] ${phaseEmoji[phase]}:`, {
-      ...baseData,
-      totalTabs: details.totalTabs,
-      successCount: details.successCount
-    });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, totalTabs: details.totalTabs, successCount: details.successCount });
   }
 }
 
@@ -7103,62 +4829,26 @@ const quickTabHostTabs = new Map();
 /**
  * Ensure initialization is complete before processing
  * v1.6.3.10-v8 - FIX Code Health: Extracted initialization logic
- * v1.6.3.11 - FIX Issue #36: Add logging for content script readiness validation
  * @private
  */
 async function _ensureInitializedForHandler(handlerName) {
   const guard = checkInitializationGuard(handlerName);
   if (guard.initialized) return { ready: true };
-
-  // v1.6.3.11 - FIX Issue #36: Log when background receives messages while not ready
-  console.log('[Background] READINESS_CHECK:', {
-    handler: handlerName,
-    isInitialized: false,
-    waitingForInit: true,
-    timestamp: Date.now()
-  });
-
+  
   const initialized = await waitForInitialization(2000);
   if (!initialized) {
     console.warn(`[Background] ${handlerName} rejected - not initialized`);
-    // v1.6.3.11 - FIX Issue #36: Log readiness mismatch
-    console.log('[Background] READINESS_MISMATCH:', {
-      handler: handlerName,
-      backgroundReady: false,
-      message: 'Content script sent message before background was ready'
-    });
     return { ready: false, errorResponse: guard.errorResponse };
   }
   return { ready: true };
 }
 
 /**
- * Log content script readiness state on critical operations
- * v1.6.3.11 - FIX Issue #36: Symmetric readiness logging
- * @private
- */
-function _logContentReadinessState(handler, sender, message) {
-  console.log('[Background] CONTENT_READINESS_LOG:', {
-    handler,
-    senderTabId: sender?.tab?.id ?? 'unknown',
-    senderFrameId: sender?.frameId ?? 'unknown',
-    messageHasTabId: !!message?.originTabId,
-    messageTimestamp: message?.timestamp,
-    backgroundUptime: Date.now() - backgroundStartupTime,
-    isBackgroundInitialized: isInitialized
-  });
-}
-
-/**
  * Handle QUICK_TAB_STATE_CHANGE message from content scripts
  * v1.6.3.5-v3 - FIX Architecture Phase 1-2: Content scripts report state changes to background
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
- * v1.6.3.11 - FIX Issue #36: Add readiness logging
  */
 async function handleQuickTabStateChange(message, sender) {
-  // v1.6.3.11 - FIX Issue #36: Log content readiness state
-  _logContentReadinessState('handleQuickTabStateChange', sender, message);
-
   const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
   if (!initCheck.ready) return initCheck.errorResponse;
 
@@ -7410,7 +5100,6 @@ function _shouldAllowBroadcast(quickTabId, changes) {
  * v1.6.3.6-v4 - FIX Issue #4: Added broadcast deduplication and circuit breaker
  * v1.6.3.6-v5 - FIX Issue #4c: Added message dispatch logging
  * v1.6.3.7 - FIX Issue #3: Broadcast deletions to ALL tabs for unified deletion behavior
- * v1.6.3.11-v6 - FIX Issue #9: Include global operationSequence for message ordering
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - State changes
  * @param {string} source - Source of change
@@ -7431,28 +5120,15 @@ async function broadcastQuickTabStateUpdate(quickTabId, changes, source, exclude
   // v1.6.3.6-v5 - FIX Issue #4c: Generate message ID for correlation
   const messageId = generateMessageId();
 
-  // v1.6.3.11-v6 - FIX Issue #9: Get next operation sequence for ordering
-  const operationSequence = getNextOperationSequence();
-
   const message = {
     type: 'QUICK_TAB_STATE_UPDATED',
     messageId, // v1.6.3.6-v5: Include message ID for tracing
-    operationSequence, // v1.6.3.11-v6 - FIX Issue #9: Global sequence for ordering
     quickTabId,
     changes,
     source: 'background',
     originalSource: source,
     timestamp: Date.now()
   };
-
-  // v1.6.3.11-v6 - FIX Issue #9: Log message with sequence
-  console.log('[Background] MESSAGE_WITH_SEQUENCE:', {
-    messageId,
-    operationSequence,
-    quickTabId,
-    changeType: Object.keys(changes || {})[0] || 'unknown',
-    timestamp: Date.now()
-  });
 
   // v1.6.3.6-v5 - FIX Issue #4c: Log message dispatch to sidebar
   logMessageDispatch(messageId, 'QUICK_TAB_STATE_UPDATED', excludeTabId, 'sidebar');
@@ -7529,71 +5205,10 @@ async function _processDeletionForTab(tab, quickTabId, excludeTabId, correlation
 }
 
 /**
- * Process settled results from Promise.allSettled for deletion broadcast
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _broadcastDeletionToAllTabs
- * @private
- * @param {Array} settledResults - Results from Promise.allSettled
- * @param {string} quickTabId - Quick Tab ID being deleted
- * @param {string} corrId - Correlation ID
- * @returns {Array} Processed results
- */
-function _processDeletionSettledResults(settledResults, quickTabId, corrId) {
-  return settledResults.map(result => {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    }
-    console.warn('[Background] DELETION_BROADCAST_PARTIAL_FAILURE:', {
-      quickTabId,
-      error: result.reason?.message || 'Unknown error',
-      correlationId: corrId
-    });
-    return { sent: false, skipped: false, error: result.reason?.message };
-  });
-}
-
-/**
- * Calculate broadcast counts from results
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _broadcastDeletionToAllTabs
- * @private
- * @param {Array} results - Broadcast results array
- * @returns {Object} Counts object
- */
-function _calculateBroadcastCounts(results) {
-  return {
-    successCount: results.filter(r => r.sent).length,
-    skipCount: results.filter(r => r.skipped).length,
-    failCount: results.filter(r => !r.sent && !r.skipped && r.error).length
-  };
-}
-
-/**
- * Log deletion broadcast completion
- * v1.6.3.11-v5 - FIX Code Health: Extracted from _broadcastDeletionToAllTabs
- * @private
- */
-function _logDeletionBroadcastComplete(quickTabId, tabs, counts, corrId) {
-  logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
-    totalTabs: tabs.length,
-    successCount: counts.successCount,
-    skipCount: counts.skipCount
-  });
-
-  console.log('[Background] Deletion broadcast complete:', {
-    quickTabId,
-    totalTabs: tabs.length,
-    successCount: counts.successCount,
-    skipCount: counts.skipCount,
-    failCount: counts.failCount,
-    correlationId: corrId
-  });
-}
-
-/**
  * Broadcast deletion event to all content scripts except the sender tab
  * v1.6.3.7 - FIX Issue #3: Unified deletion behavior across UI and Manager paths
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion propagation logging with correlation IDs
  * v1.6.3.6-v12 - FIX Issue #6: Added acknowledgment tracking for message ordering
- * v1.6.3.11-v5 - FIX Code Health: Reduced cc via extraction
  * @private
  * @param {string} quickTabId - Quick Tab ID being deleted
  * @param {string} source - Source of deletion
@@ -7601,6 +5216,7 @@ function _logDeletionBroadcastComplete(quickTabId, tabs, counts, corrId) {
  * @param {string} correlationId - Correlation ID for end-to-end tracing
  */
 async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, correlationId) {
+  // v1.6.3.6-v5 - FIX Issue #4e: Use provided correlation ID or generate one
   const corrId = correlationId || `del-${Date.now()}-${quickTabId.substring(0, 8)}`;
 
   console.log('[Background] Broadcasting deletion to all tabs:', {
@@ -7612,18 +5228,38 @@ async function _broadcastDeletionToAllTabs(quickTabId, source, excludeTabId, cor
 
   try {
     const tabs = await browser.tabs.query({});
+
+    // v1.6.3.6-v12 - FIX Issue #6: Track pending acknowledgments
     const pendingTabs = new Set(tabs.filter(t => t.id !== excludeTabId).map(t => t.id));
+
+    // Set up acknowledgment tracking with timeout
     const ackPromise = _setupDeletionAckTracking(corrId, pendingTabs);
 
-    const settledResults = await Promise.allSettled(
+    // Send deletion messages to all tabs
+    const results = await Promise.all(
       tabs.map(tab => _processDeletionForTab(tab, quickTabId, excludeTabId, corrId))
     );
 
-    const results = _processDeletionSettledResults(settledResults, quickTabId, corrId);
-    const counts = _calculateBroadcastCounts(results);
+    const successCount = results.filter(r => r.sent).length;
+    const skipCount = results.filter(r => r.skipped).length;
 
+    // v1.6.3.6-v12 - FIX Issue #6: Wait for acknowledgments (with timeout)
     await _waitForDeletionAcks(corrId, ackPromise);
-    _logDeletionBroadcastComplete(quickTabId, tabs, counts, corrId);
+
+    // v1.6.3.6-v5 - FIX Issue #4e: Log deletion broadcast complete with correlation ID
+    logDeletionPropagation(corrId, 'broadcast-complete', quickTabId, {
+      totalTabs: tabs.length,
+      successCount,
+      skipCount
+    });
+
+    console.log('[Background] Deletion broadcast complete:', {
+      quickTabId,
+      totalTabs: tabs.length,
+      successCount,
+      skipCount,
+      correlationId: corrId
+    });
   } catch (err) {
     console.error('[Background] Error broadcasting deletion:', err.message);
   }
@@ -7739,116 +5375,21 @@ const VALID_MANAGER_COMMANDS = new Set([
 
 /**
  * Log Manager action result
+ * v1.6.4.16 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
+ * @private
+ */
+/**
+ * Log Manager action result
  * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 7 parameters
  * @param {Object} opts - Logging options
  */
-function _logManagerActionResult({
-  action,
-  quickTabId,
-  hostTabId,
-  correlationId,
-  result,
-  startTime,
-  method
-}) {
+function _logManagerActionResult({ action, quickTabId, hostTabId, correlationId, result, startTime, method }) {
   const durationMs = Date.now() - startTime;
   const baseData = { action, quickTabId, hostTabId, correlationId, method, durationMs };
   if (result.success !== false) {
     console.log('[Background] MANAGER_ACTION_COMPLETED:', { ...baseData, status: 'success' });
   } else {
-    console.error('[Background] MANAGER_ACTION_FAILED:', {
-      ...baseData,
-      status: 'failed',
-      error: result.error
-    });
-  }
-}
-
-/**
- * Validate command and return rejection result if invalid
- * v1.6.3.11-v5 - FIX Code Health: Extracted from executeManagerCommand
- * @private
- */
-function _validateManagerCommand(command, quickTabId, correlationId) {
-  if (!VALID_MANAGER_COMMANDS.has(command)) {
-    console.warn('[Background] MANAGER_ACTION_REJECTED:', {
-      action: command,
-      quickTabId,
-      correlationId,
-      reason: 'invalid-command'
-    });
-    return { success: false, error: `Unknown command: ${command}` };
-  }
-  return null;
-}
-
-/**
- * Execute command via messaging with timeout
- * v1.6.3.11-v5 - FIX Code Health: Extracted from executeManagerCommand
- * @private
- */
-function _executeCommandViaMessaging(hostTabId, executeMessage) {
-  return Promise.race([
-    browser.tabs.sendMessage(hostTabId, executeMessage),
-    createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
-  ]);
-}
-
-/**
- * Handle fallback execution via Scripting API
- * v1.6.3.11-v5 - FIX Code Health: Extracted from executeManagerCommand
- * @private
- */
-async function _handleScriptingFallback({
-  hostTabId,
-  command,
-  quickTabId,
-  correlationId,
-  startTime,
-  messagingError
-}) {
-  console.log('[Background] Messaging failed, falling back to Scripting API:', {
-    command,
-    quickTabId,
-    correlationId,
-    error: messagingError.message
-  });
-
-  try {
-    const fallbackResult = await _executeViaScripting(
-      hostTabId,
-      command,
-      { quickTabId },
-      correlationId
-    );
-    _logManagerActionResult({
-      action: command,
-      quickTabId,
-      hostTabId,
-      correlationId,
-      result: fallbackResult,
-      startTime,
-      method: 'scripting-fallback'
-    });
-    return fallbackResult;
-  } catch (fallbackErr) {
-    _logManagerActionResult({
-      action: command,
-      quickTabId,
-      hostTabId,
-      correlationId,
-      result: { success: false, error: fallbackErr.message },
-      startTime,
-      method: 'scripting-fallback'
-    });
-    console.error('[Background] Both messaging and scripting failed:', {
-      command,
-      quickTabId,
-      hostTabId,
-      messagingError: messagingError.message,
-      scriptingError: fallbackErr.message
-    });
-    return { success: false, error: fallbackErr.message, fallbackFailed: true };
+    console.error('[Background] MANAGER_ACTION_FAILED:', { ...baseData, status: 'failed', error: result.error });
   }
 }
 
@@ -7857,7 +5398,6 @@ async function _handleScriptingFallback({
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
  * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
  * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (99 -> ~55)
- * v1.6.3.11-v5 - FIX Code Health: Further extraction to meet 70 line limit
  * @param {string} command - Command to execute
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
@@ -7868,120 +5408,73 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
   const startTime = Date.now();
 
   console.log('[Background] MANAGER_ACTION_REQUESTED:', {
-    action: command,
-    quickTabId,
-    hostTabId,
-    correlationId,
-    timestamp: startTime
+    action: command, quickTabId, hostTabId, correlationId, timestamp: startTime
   });
 
-  const validationError = _validateManagerCommand(command, quickTabId, correlationId);
-  if (validationError) return validationError;
+  // Validate command against allowlist
+  if (!VALID_MANAGER_COMMANDS.has(command)) {
+    console.warn('[Background] MANAGER_ACTION_REJECTED:', { action: command, quickTabId, correlationId, reason: 'invalid-command' });
+    return { success: false, error: `Unknown command: ${command}` };
+  }
 
   const executeMessage = {
-    type: 'EXECUTE_COMMAND',
-    command,
-    quickTabId,
-    source: 'manager',
-    correlationId
+    type: 'EXECUTE_COMMAND', command, quickTabId, source: 'manager', correlationId
   };
 
-  console.log('[Background] Routing command to tab:', {
-    command,
-    quickTabId,
-    hostTabId,
-    correlationId
-  });
+  console.log('[Background] Routing command to tab:', { command, quickTabId, hostTabId, correlationId });
 
+  // Try messaging first, fall back to Scripting API
   try {
-    const response = await _executeCommandViaMessaging(hostTabId, executeMessage);
-    _logManagerActionResult({
-      action: command,
-      quickTabId,
-      hostTabId,
-      correlationId,
-      result: { success: true },
-      startTime,
-      method: 'messaging'
-    });
+    const response = await Promise.race([
+      browser.tabs.sendMessage(hostTabId, executeMessage),
+      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
+    ]);
+    _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: true }, startTime, method: 'messaging' });
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    return _handleScriptingFallback({
-      hostTabId,
-      command,
-      quickTabId,
-      correlationId,
-      startTime,
-      messagingError: err
-    });
+    console.log('[Background] Messaging failed, falling back to Scripting API:', { command, quickTabId, correlationId, error: err.message });
+
+    try {
+      const fallbackResult = await _executeViaScripting(hostTabId, command, { quickTabId }, correlationId);
+      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: fallbackResult, startTime, method: 'scripting-fallback' });
+      return fallbackResult;
+    } catch (fallbackErr) {
+      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: false, error: fallbackErr.message }, startTime, method: 'scripting-fallback' });
+      console.error('[Background] Both messaging and scripting failed:', { command, quickTabId, hostTabId, messagingError: err.message, scriptingError: fallbackErr.message });
+      return { success: false, error: fallbackErr.message, fallbackFailed: true };
+    }
   }
 }
 
 // Register message handlers for Quick Tab coordination
-// v1.6.3.11-v6 - FIX: Type-based handlers are now registered with the early listener
+// This extends the existing runtime.onMessage listener
 // v1.6.3.10-v10 - FIX Issue #6: Add [INIT] boundary logging for handler registration timestamp
 console.log('[INIT][Background] MESSAGE_HANDLER_REGISTRATION:', {
   timestamp: new Date().toISOString(),
-  handler: 'QUICK_TAB_STATE_CHANGE + MANAGER_COMMAND + HEARTBEAT',
+  handler: 'QUICK_TAB_STATE_CHANGE + MANAGER_COMMAND',
   isInitialized
 });
 
-// v1.6.3.10-v11 - FIX Issue #23: Background generation counter for restart detection
-// Increment on each background script load
-const backgroundGenerationId = `gen-${backgroundStartupTime}-${Math.random().toString(36).slice(2, 9)}`;
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // v1.6.3.5-v3 - FIX Architecture Phase 1-3: Handle Quick Tab coordination messages
+  if (message.type === 'QUICK_TAB_STATE_CHANGE') {
+    handleQuickTabStateChange(message, sender)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true; // Keep channel open for async response
+  }
 
-// v1.6.3.10-v12 - FIX Issue #8: Set generation ID on MessageRouter for all responses
-messageRouter.setBackgroundGenerationId(backgroundGenerationId);
-console.log('[Background] v1.6.3.10-v12 Background generation ID configured:', {
-  generationId: backgroundGenerationId
+  if (message.type === 'MANAGER_COMMAND') {
+    handleManagerCommand(message)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  // Let other handlers process the message
+  return false;
 });
 
-// v1.6.3.11-v6 - FIX: Register type-based handlers with the early listener
-// This replaces the separate browser.runtime.onMessage listener
-_setTypeBasedHandlers({
-  /**
-   * Handle HEARTBEAT message for restart detection
-   * v1.6.3.10-v11 - FIX Issue #23
-   */
-  handleHeartbeat: (message, sender, sendResponse) => {
-    const response = {
-      success: true,
-      generation: backgroundGenerationId,
-      startupTime: backgroundStartupTime,
-      uptime: Date.now() - backgroundStartupTime,
-      isInitialized,
-      timestamp: Date.now()
-    };
-
-    // Log heartbeat receipt (throttled to avoid spam)
-    if (Date.now() - (message.lastKnownGeneration ? 0 : message.timestamp) < 1000) {
-      console.log('[Background] HEARTBEAT received:', {
-        messageId: message.messageId,
-        tabId: sender.tab?.id,
-        clientGeneration: message.lastKnownGeneration,
-        serverGeneration: backgroundGenerationId,
-        isRestart:
-          message.lastKnownGeneration !== null &&
-          message.lastKnownGeneration !== backgroundGenerationId
-      });
-    }
-
-    sendResponse(response);
-  },
-
-  /**
-   * Handle Quick Tab state change
-   * v1.6.3.5-v3 - FIX Architecture Phase 1-3
-   */
-  handleQuickTabStateChange: handleQuickTabStateChange,
-
-  /**
-   * Handle Manager command
-   * v1.6.3.5-v3 - FIX Architecture Phase 3
-   */
-  handleManagerCommand: handleManagerCommand
-});
-
-console.log('[Background] v1.6.3.11-v6 Type-based message handlers registered with early listener');
+console.log('[Background] v1.6.3.5-v3 Message infrastructure registered');
 // ==================== END MESSAGE INFRASTRUCTURE ====================

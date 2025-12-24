@@ -60,17 +60,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v2 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
 
-- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total (from 60s)
-- **Hydration Timeout** - 10s (from 3s)
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js`
+- **Code Health 9.09** - `src/content.js` improved from 8.71
 - **Navigation Detection** - `[NAVIGATION]` logging prefix for domain changes
 - **Hydration Domain Check** - `[HYDRATION_DOMAIN_CHECK]` logging prefix
 
-**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, identity gating,
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
 storage quota monitoring, code health 9.0+, response helper, dead code removal
 
 **URL Detection Features:**
@@ -105,72 +105,22 @@ storage quota monitoring, code health 9.0+, response helper, dead code removal
 ## Your Responsibilities
 
 1. **Link Hover Detection** - Track cursor over links in real-time
-2. **URL Parsing** - Extract clean URLs from various formats
-3. **Site-Specific Handlers** - Custom extractors for complex sites
-4. **URL Validation** - Ensure URLs are valid and safe
+2. **URL Parsing** - Extract clean URLs using native URL API
+3. **Site-Specific Handlers** - Custom extractors for 100+ sites
+4. **URL Validation** - Ensure URLs are valid HTTP(S)
 5. **Fallback Handling** - Default behavior for unknown sites
 
 ---
 
 ## Link Hover Detection
 
-**Track hovered links for Q key shortcut:**
+**Track hovered links with passive event listeners:**
 
 ```javascript
-// content.js
-class LinkHoverTracker {
-  constructor() {
-    this.currentLink = null;
-    this.setupListeners();
-  }
-
-  setupListeners() {
-    // Track mouseover on links
-    document.addEventListener(
-      'mouseover',
-      e => {
-        const link = e.target.closest('a[href]');
-        if (link) {
-          this.currentLink = link;
-          this.highlightLink(link);
-        }
-      },
-      { passive: true }
-    );
-
-    // Clear on mouseout
-    document.addEventListener(
-      'mouseout',
-      e => {
-        const link = e.target.closest('a[href]');
-        if (link === this.currentLink) {
-          this.unhighlightLink(link);
-          this.currentLink = null;
-        }
-      },
-      { passive: true }
-    );
-  }
-
-  getCurrentLink() {
-    return this.currentLink;
-  }
-
-  getCleanUrl(link) {
-    if (!link) return null;
-
-    const href = link.href;
-    const site = this.detectSite(window.location.hostname);
-
-    // Use site-specific handler if available
-    if (site && this.handlers[site]) {
-      return this.handlers[site](link, href);
-    }
-
-    // Default: return href as-is
-    return href;
-  }
-}
+document.addEventListener('mouseover', e => {
+  const link = e.target.closest('a[href]');
+  if (link) currentLink = link;
+}, { passive: true });
 ```
 
 ---
@@ -181,72 +131,19 @@ class LinkHoverTracker {
 
 ```javascript
 class URLParser {
-  static parse(urlString) {
+  static validate(urlString) {
     try {
       const url = new URL(urlString);
-      return {
-        href: url.href,
-        protocol: url.protocol,
-        hostname: url.hostname,
-        pathname: url.pathname,
-        search: url.search,
-        hash: url.hash,
-        isValid: true
-      };
-    } catch (error) {
-      return { isValid: false, error: error.message };
-    }
+      if (!['http:', 'https:'].includes(url.protocol)) return { valid: false };
+      if (!url.hostname) return { valid: false };
+      return { valid: true, url };
+    } catch { return { valid: false }; }
   }
 
-  static validate(urlString) {
-    const parsed = this.parse(urlString);
-
-    if (!parsed.isValid) {
-      return { valid: false, reason: 'Invalid URL format' };
-    }
-
-    // Check protocol
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { valid: false, reason: 'Only HTTP(S) supported' };
-    }
-
-    // Check hostname exists
-    if (!parsed.hostname) {
-      return { valid: false, reason: 'Missing hostname' };
-    }
-
-    return { valid: true };
-  }
-
-  static normalize(urlString) {
-    const parsed = this.parse(urlString);
-    if (!parsed.isValid) return urlString;
-
-    // Remove tracking parameters
-    const cleanParams = this.removeTrackingParams(parsed.search);
-
-    // Rebuild URL
-    return `${parsed.protocol}//${parsed.hostname}${parsed.pathname}${cleanParams}${parsed.hash}`;
-  }
-
-  static removeTrackingParams(search) {
-    const params = new URLSearchParams(search);
-
-    // Common tracking parameters
-    const trackingParams = [
-      'utm_source',
-      'utm_medium',
-      'utm_campaign',
-      'fbclid',
-      'gclid',
-      'mc_cid',
-      'mc_eid'
-    ];
-
-    trackingParams.forEach(param => params.delete(param));
-
-    const cleanSearch = params.toString();
-    return cleanSearch ? `?${cleanSearch}` : '';
+  static removeTrackingParams(url) {
+    const params = new URLSearchParams(url.search);
+    ['utm_source', 'utm_medium', 'fbclid', 'gclid'].forEach(p => params.delete(p));
+    return params.toString() ? `?${params}` : '';
   }
 }
 ```
@@ -255,174 +152,28 @@ class URLParser {
 
 ## Site-Specific Handlers
 
-**Custom extractors for 100+ websites:**
+**100+ site handlers** for Twitter/X, GitHub, Amazon, YouTube, Reddit, etc.
+Each handler cleans URLs by removing tracking params, extracting clean paths.
 
 ```javascript
-class SiteHandlers {
-  constructor() {
-    this.handlers = {
-      // Social Media
-      'twitter.com': this.handleTwitter,
-      'x.com': this.handleTwitter,
-      'linkedin.com': this.handleLinkedIn,
-      'facebook.com': this.handleFacebook,
-      'instagram.com': this.handleInstagram,
-
-      // Code Repositories
-      'github.com': this.handleGitHub,
-      'gitlab.com': this.handleGitLab,
-      'bitbucket.org': this.handleBitbucket,
-
-      // Shopping
-      'amazon.com': this.handleAmazon,
-      'ebay.com': this.handleEbay,
-
-      // Media
-      'youtube.com': this.handleYouTube,
-      'reddit.com': this.handleReddit
-
-      // Add 90+ more sites...
-    };
-  }
-
-  handleTwitter(link, href) {
-    // Extract clean tweet URL
-    const url = new URL(href);
-
-    // Remove tracking params
-    url.search = '';
-
-    // Keep only tweet path
-    const pathParts = url.pathname.split('/');
-    if (pathParts.includes('status')) {
-      const statusIndex = pathParts.indexOf('status');
-      url.pathname = pathParts.slice(0, statusIndex + 2).join('/');
-    }
-
-    return url.href;
-  }
-
-  handleGitHub(link, href) {
-    // Clean GitHub URLs (remove refs, line numbers)
-    const url = new URL(href);
-
-    // Remove line highlights from blob URLs
-    if (url.pathname.includes('/blob/')) {
-      url.hash = '';
-    }
-
-    // Remove ref params
-    url.searchParams.delete('ref');
-
-    return url.href;
-  }
-
-  handleAmazon(link, href) {
-    // Extract clean product URL
-    const url = new URL(href);
-
-    // Amazon product URL pattern: /dp/ASIN or /gp/product/ASIN
-    const dpMatch = url.pathname.match(/\/dp\/([A-Z0-9]{10})/);
-    const gpMatch = url.pathname.match(/\/gp\/product\/([A-Z0-9]{10})/);
-
-    const asin = dpMatch?.[1] || gpMatch?.[1];
-
-    if (asin) {
-      // Clean product URL
-      return `https://www.amazon.com/dp/${asin}`;
-    }
-
-    return href;
-  }
-
-  handleYouTube(link, href) {
-    // Extract video ID and create clean URL
-    const url = new URL(href);
-
-    let videoId = url.searchParams.get('v');
-
-    // Handle youtu.be short URLs
-    if (url.hostname === 'youtu.be') {
-      videoId = url.pathname.slice(1);
-    }
-
-    if (videoId) {
-      // Clean URL with just video ID
-      return `https://www.youtube.com/watch?v=${videoId}`;
-    }
-
-    return href;
-  }
-
-  getHandler(hostname) {
-    // Check for exact match
-    if (this.handlers[hostname]) {
-      return this.handlers[hostname];
-    }
-
-    // Check for subdomain match (e.g., www.twitter.com → twitter.com)
-    const parts = hostname.split('.');
-    if (parts.length > 2) {
-      const baseDomain = parts.slice(-2).join('.');
-      if (this.handlers[baseDomain]) {
-        return this.handlers[baseDomain];
-      }
-    }
-
-    return null;
-  }
+// Example: Twitter handler
+handleTwitter(href) {
+  const url = new URL(href);
+  url.search = '';
+  return url.href;
 }
-```
 
----
+// Example: Amazon handler - extract ASIN
+handleAmazon(href) {
+  const match = href.match(/\/dp\/([A-Z0-9]{10})/);
+  return match ? `https://www.amazon.com/dp/${match[1]}` : href;
+}
 
-## URL Extraction Workflow
-
-**Complete flow from hover to clean URL:**
-
-```javascript
-// Main URL extraction function
-async function extractUrlFromHoveredLink() {
-  const tracker = new LinkHoverTracker();
-  const link = tracker.getCurrentLink();
-
-  if (!link) {
-    return { success: false, reason: 'No link hovered' };
-  }
-
-  // Get href attribute
-  const rawHref = link.href;
-
-  // Validate URL
-  const validation = URLParser.validate(rawHref);
-  if (!validation.valid) {
-    return { success: false, reason: validation.reason };
-  }
-
-  // Get site-specific handler
-  const url = new URL(rawHref);
-  const siteHandlers = new SiteHandlers();
-  const handler = siteHandlers.getHandler(url.hostname);
-
-  // Extract clean URL
-  let cleanUrl;
-  if (handler) {
-    cleanUrl = handler(link, rawHref);
-  } else {
-    cleanUrl = URLParser.normalize(rawHref);
-  }
-
-  // Get link text
-  const linkText =
-    link.textContent.trim() || link.getAttribute('aria-label') || 'Link';
-
-  return {
-    success: true,
-    url: cleanUrl,
-    originalUrl: rawHref,
-    title: linkText,
-    site: url.hostname
-  };
+// Subdomain matching
+getHandler(hostname) {
+  if (this.handlers[hostname]) return this.handlers[hostname];
+  const baseDomain = hostname.split('.').slice(-2).join('.');
+  return this.handlers[baseDomain];
 }
 ```
 
@@ -430,112 +181,26 @@ async function extractUrlFromHoveredLink() {
 
 ## MCP Server Integration
 
-**MANDATORY for URL Detection Work:**
-
-**CRITICAL - During Implementation:**
-
-- **Context7:** Verify URL APIs DURING implementation ⭐
-- **Perplexity:** Research site-specific patterns (paste code) ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-
-**CRITICAL - Testing:**
-
-- **Playwright Firefox/Chrome MCP:** Test URL extraction BEFORE/AFTER ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-
-- **Agentic-Tools:** Search memories, store handler solutions
+**MANDATORY:** Context7 (URL APIs), Perplexity (site patterns), ESLint,
+CodeScene, Agentic-Tools (memories), Playwright (testing)
 
 ---
 
 ## Common URL Detection Issues
 
-### Issue: URL Not Detected on Hover
-
-**Fix:** Ensure event listeners on correct element
-
-```javascript
-// ✅ CORRECT - Listen on document
-document.addEventListener('mouseover', (e) => {
-  const link = e.target.closest('a[href]');
-  if (link) {
-    currentLink = link;
-  }
-});
-
-// ❌ WRONG - Only captures direct link targets
-link.addEventListener('mouseover', ...); // Misses children
-```
-
-### Issue: Site Handler Not Working
-
-**Fix:** Check hostname matching
-
-```javascript
-// ✅ CORRECT - Handle subdomains
-function getHandler(hostname) {
-  // Exact match
-  if (handlers[hostname]) return handlers[hostname];
-
-  // Base domain match
-  const baseDomain = hostname.split('.').slice(-2).join('.');
-  return handlers[baseDomain];
-}
-```
-
-### Issue: Invalid URL Crashes Extension
-
-**Fix:** Always validate before processing
-
-```javascript
-// ✅ CORRECT - Validate first
-function processUrl(urlString) {
-  try {
-    const url = new URL(urlString);
-    return extractInfo(url);
-  } catch (error) {
-    console.error('Invalid URL:', urlString);
-    return null;
-  }
-}
-```
+- **URL Not Detected** - Listen on document, use `e.target.closest('a[href]')`
+- **Site Handler Not Working** - Check hostname/subdomain matching
+- **Invalid URL Crashes** - Always validate with try-catch before processing
 
 ---
 
 ## Adding New Site Handlers
 
-**Process for adding site-specific handler:**
-
-1. **Research site URL structure**
-   - Use Perplexity MCP to research patterns
-   - Test multiple URL examples
-
-2. **Implement handler function**
-
-   ```javascript
-   handleNewSite(link, href) {
-     const url = new URL(href);
-     // Extract clean URL
-     return cleanUrl;
-   }
-   ```
-
-3. **Add to handlers object**
-
-   ```javascript
-   this.handlers = {
-     ...
-     'newsite.com': this.handleNewSite,
-   };
-   ```
-
-4. **Test with real URLs**
-   - Use Jest unit tests for testing
-
-5. **Document in supported-sites.md**
+1. Research site URL structure (use Perplexity)
+2. Implement handler function to clean URL
+3. Add to handlers object with domain key
+4. Test with real URLs using Playwright
+5. Document in supported-sites.md
 
 ---
 

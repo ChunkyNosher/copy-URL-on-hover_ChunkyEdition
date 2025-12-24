@@ -1,10 +1,6 @@
 /**
  * URL Handler Registry
  * Main entry point for URL detection across all supported sites
- *
- * v1.6.3.11-v4 Changes:
- * - FIX Issue #1: Added Shadow DOM traversal helpers for platforms using web components
- * - FIX Issue #3: Added structured logging with [SHADOW_DOM_SEARCH], [HANDLER_SELECT], [URL_EXTRACT] prefixes
  */
 
 import { bloggingHandlers } from './blogging.js';
@@ -17,13 +13,9 @@ import { image_designHandlers } from './image-design.js';
 import { learningHandlers } from './learning.js';
 import { news_discussionHandlers } from './news-discussion.js';
 import { otherHandlers } from './other.js';
-import { findLinkInShadowDOM, findClosestAcrossShadow } from './shadow-dom.js';
 import { social_mediaHandlers } from './social-media.js';
 import { videoHandlers } from './video.js';
 import { logNormal } from '../../utils/logger.js';
-
-// Re-export Shadow DOM helpers for use by other modules
-export { findLinkInShadowDOM, findClosestAcrossShadow };
 
 /**
  * URL Handler Registry
@@ -62,22 +54,10 @@ export class URLHandlerRegistry {
 
   /**
    * Try to find URL in parent elements
-   * v1.6.3.11-v4 - FIX Issue #1: Enhanced with Shadow DOM traversal
    */
   _findInParents(element) {
     logNormal('url-detection', 'Hierarchy', 'Element not direct link, checking parent elements');
 
-    // First, try Shadow DOM-aware traversal
-    const shadowLink = findClosestAcrossShadow(element, 'a[href]', 20);
-    if (shadowLink?.href) {
-      console.log('[URL_EXTRACT] SHADOW_PARENT_FOUND:', {
-        href: shadowLink.href,
-        method: 'shadow-dom-traversal'
-      });
-      return shadowLink.href;
-    }
-
-    // Fallback to regular parent traversal
     let parent = element.parentElement;
     let levelsTraversed = 0;
 
@@ -108,22 +88,14 @@ export class URLHandlerRegistry {
 
   /**
    * Try site-specific handler
-   * v1.6.3.11-v4 - FIX Issue #3: Enhanced logging with [HANDLER_SELECT] prefix
    */
   _trySiteHandler(element, domainType) {
-    console.log('[HANDLER_SELECT] Trying site-specific handler:', {
-      domainType,
-      hasHandler: this.isSupported(domainType),
-      timestamp: Date.now()
-    });
-
     logNormal('url-detection', 'Handler', 'Trying site-specific handler', {
       domainType: domainType,
       hasHandler: this.isSupported(domainType)
     });
 
     if (!this.handlers[domainType]) {
-      console.log('[HANDLER_SELECT] NO_HANDLER_FOUND:', { domainType });
       return null;
     }
 
@@ -132,11 +104,6 @@ export class URLHandlerRegistry {
     const handlerDuration = performance.now() - handlerStart;
 
     if (url) {
-      console.log('[URL_EXTRACT] HANDLER_SUCCESS:', {
-        url,
-        domainType,
-        handlerTime: `${handlerDuration.toFixed(2)}ms`
-      });
       logNormal('url-detection', 'Success', 'Site-specific handler found URL', {
         url: url,
         domainType: domainType,
@@ -146,10 +113,6 @@ export class URLHandlerRegistry {
       return url;
     }
 
-    console.log('[URL_EXTRACT] HANDLER_NO_RESULT:', {
-      domainType,
-      handlerTime: `${handlerDuration.toFixed(2)}ms`
-    });
     logNormal('url-detection', 'Handler', 'Site-specific handler returned null', {
       domainType: domainType,
       handlerTime: `${handlerDuration.toFixed(2)}ms`

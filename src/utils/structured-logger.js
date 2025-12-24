@@ -207,7 +207,9 @@ export class StructuredLogger {
    */
   _buildPrefix(event) {
     const prefix = `[${this._component}]`;
-    const correlationSuffix = this._correlationId ? ` [${this._correlationId}]` : '';
+    const correlationSuffix = this._correlationId
+      ? ` [${this._correlationId}]`
+      : '';
     return `${prefix}${correlationSuffix} ${event}:`;
   }
 

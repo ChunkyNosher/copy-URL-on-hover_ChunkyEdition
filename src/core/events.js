@@ -1,73 +1,29 @@
 /**
  * Event Bus
  * Pub/sub event system for inter-module communication
- *
- * v1.6.3.11-v4 - FIX Issue #81: Added context scoping support
- *   - Each content script instance gets its own EventBus via createScopedEventBus()
- *   - Context ID prevents events from different contexts from interfering
- *   - Optional namespace prefix for event isolation
  */
-
-/**
- * Global counter for generating unique context IDs
- * v1.6.3.11-v4 - FIX Issue #81: Ensure unique IDs across instances
- * @type {number}
- */
-let _contextIdCounter = 0;
-
-/**
- * Generate a unique context ID for EventBus scoping
- * v1.6.3.11-v4 - FIX Issue #81
- * @returns {string} Unique context ID
- */
-function _generateContextId() {
-  return `ctx-${Date.now()}-${++_contextIdCounter}`;
-}
 
 export class EventBus {
-  /**
-   * Create a new EventBus instance
-   * v1.6.3.11-v4 - FIX Issue #81: Added contextId for scoping
-   * @param {Object} options - Options
-   * @param {string} [options.contextId] - Unique context ID for scoping
-   * @param {string} [options.namespace] - Namespace prefix for events
-   */
-  constructor(options = {}) {
+  constructor() {
     this.events = new Map();
     this.debugMode = false;
-
-    // v1.6.3.11-v4 - FIX Issue #81: Context scoping
-    this.contextId = options.contextId || null;
-    this.namespace = options.namespace || null;
-
-    if (this.contextId) {
-      console.log('[EventBus] Created with context:', {
-        contextId: this.contextId,
-        namespace: this.namespace
-      });
-    }
   }
 
   /**
    * Subscribe to an event
-   * v1.6.3.11-v4 - FIX Issue #81: Uses scoped event names
    * @param {string} eventName - Event name
    * @param {function} callback - Callback function
    * @returns {function} Unsubscribe function
    */
   on(eventName, callback) {
-    const scopedName = this._getScopedEventName(eventName);
-
-    if (!this.events.has(scopedName)) {
-      this.events.set(scopedName, []);
+    if (!this.events.has(eventName)) {
+      this.events.set(eventName, []);
     }
 
-    this.events.get(scopedName).push(callback);
+    this.events.get(eventName).push(callback);
 
     if (this.debugMode) {
-      console.log(`[EventBus] Subscribed to "${scopedName}"`, {
-        contextId: this.contextId
-      });
+      console.log(`[EventBus] Subscribed to "${eventName}"`);
     }
 
     // Return unsubscribe function
@@ -76,58 +32,47 @@ export class EventBus {
 
   /**
    * Unsubscribe from an event
-   * v1.6.3.11-v4 - FIX Issue #81: Uses scoped event names
    * @param {string} eventName - Event name
    * @param {function} callback - Callback function
    */
   off(eventName, callback) {
-    const scopedName = this._getScopedEventName(eventName);
+    if (!this.events.has(eventName)) return;
 
-    if (!this.events.has(scopedName)) return;
-
-    const callbacks = this.events.get(scopedName);
+    const callbacks = this.events.get(eventName);
     const index = callbacks.indexOf(callback);
 
     if (index !== -1) {
       callbacks.splice(index, 1);
 
       if (this.debugMode) {
-        console.log(`[EventBus] Unsubscribed from "${scopedName}"`, {
-          contextId: this.contextId
-        });
+        console.log(`[EventBus] Unsubscribed from "${eventName}"`);
       }
     }
 
     // Clean up empty event arrays
     if (callbacks.length === 0) {
-      this.events.delete(scopedName);
+      this.events.delete(eventName);
     }
   }
 
   /**
    * Emit an event
-   * v1.6.3.11-v4 - FIX Issue #81: Uses scoped event names
    * @param {string} eventName - Event name
    * @param {any} data - Event data
    */
   emit(eventName, data) {
-    const scopedName = this._getScopedEventName(eventName);
-
-    if (!this.events.has(scopedName)) return;
+    if (!this.events.has(eventName)) return;
 
     if (this.debugMode) {
-      console.log(`[EventBus] Emitting "${scopedName}"`, {
-        contextId: this.contextId,
-        data
-      });
+      console.log(`[EventBus] Emitting "${eventName}"`, data);
     }
 
-    const callbacks = this.events.get(scopedName);
+    const callbacks = this.events.get(eventName);
     callbacks.forEach(callback => {
       try {
         callback(data);
       } catch (err) {
-        console.error(`[EventBus] Error in "${scopedName}" handler:`, err);
+        console.error(`[EventBus] Error in "${eventName}" handler:`, err);
       }
     });
   }
@@ -182,40 +127,7 @@ export class EventBus {
    * @returns {number} Number of listeners
    */
   listenerCount(eventName) {
-    const scopedName = this._getScopedEventName(eventName);
-    return this.events.has(scopedName) ? this.events.get(scopedName).length : 0;
-  }
-
-  /**
-   * Get scoped event name (with namespace prefix if configured)
-   * v1.6.3.11-v4 - FIX Issue #81: Event name scoping
-   * @private
-   * @param {string} eventName - Original event name
-   * @returns {string} Scoped event name
-   */
-  _getScopedEventName(eventName) {
-    if (this.namespace) {
-      return `${this.namespace}:${eventName}`;
-    }
-    return eventName;
-  }
-
-  /**
-   * Get context ID of this EventBus
-   * v1.6.3.11-v4 - FIX Issue #81
-   * @returns {string|null} Context ID or null if not scoped
-   */
-  getContextId() {
-    return this.contextId;
-  }
-
-  /**
-   * Check if this EventBus is scoped (has a context ID)
-   * v1.6.3.11-v4 - FIX Issue #81
-   * @returns {boolean}
-   */
-  isScoped() {
-    return this.contextId !== null;
+    return this.events.has(eventName) ? this.events.get(eventName).length : 0;
   }
 }
 
@@ -272,32 +184,3 @@ export const Events = {
   RESIZE_MOVE: 'resize:move',
   RESIZE_END: 'resize:end'
 };
-
-/**
- * Create a scoped EventBus instance for a specific context
- * v1.6.3.11-v4 - FIX Issue #81: Factory function for scoped EventBus
- *
- * Each content script instance should call this to get its own EventBus
- * that won't interfere with EventBus instances in other contexts.
- *
- * @param {Object} options - Options
- * @param {string} [options.namespace] - Namespace prefix for events
- * @returns {EventBus} Scoped EventBus instance
- *
- * @example
- * // In content script initialization:
- * const eventBus = createScopedEventBus({ namespace: 'quicktabs' });
- */
-export function createScopedEventBus(options = {}) {
-  const contextId = _generateContextId();
-
-  console.log('[EventBus] createScopedEventBus:', {
-    contextId,
-    namespace: options.namespace || null
-  });
-
-  return new EventBus({
-    contextId,
-    namespace: options.namespace || null
-  });
-}

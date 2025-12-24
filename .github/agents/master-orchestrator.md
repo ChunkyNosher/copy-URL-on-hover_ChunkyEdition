@@ -60,20 +60,22 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v2 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
 
-- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total (from 60s)
-- **Hydration Timeout** - 10s (from 3s)
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
+  `_extractTabIdFromPattern()`
+- **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
 - **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
 - **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
 
-**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, identity gating,
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
 storage quota monitoring, code health 9.0+, render queue priority, dead code
 removal
 
@@ -200,248 +202,53 @@ Breakdown:
 4. **Testing** - Comprehensive coverage
 5. **Documentation** - Update all relevant docs
 
-**Each phase must:**
-
-- Be independently committable
-- Pass all existing tests
-- Not break existing functionality
+**Each phase must be independently committable and pass all existing tests.**
 
 ### Phase 3: Coordination
 
-**Ensure consistency across domains:**
-
-**Cross-Domain Contracts:**
-
-- API boundaries clearly defined
-- Event names standardized
-- Unified storage format (tabs array)
-- Error handling consistent
-
-**Example Coordination:**
-
-```javascript
-// Domain layer defines contract (v1.6.3+)
-class QuickTab {
-  export() {
-    return {
-      version: 2,
-      id: this.id,
-      url: this.url,
-      soloedOnTabs: this.soloedOnTabs,
-      mutedOnTabs: this.mutedOnTabs
-    };
-  }
-
-  static import(data) {
-    // Validation + migration
-    if (data.version < 2) {
-      data = migrateToV2(data);
-    }
-    return new QuickTab(data);
-  }
-}
-
-// Storage layer uses unified format (v1.6.3+)
-class QuickTabStorage {
-  async exportAll() {
-    const state = await browser.storage.local.get('quick_tabs_state_v2');
-    return state.quick_tabs_state_v2?.tabs || [];
-  }
-
-  async importAll(tabs) {
-    await browser.storage.local.set({
-      quick_tabs_state_v2: {
-        tabs: tabs,
-        saveId: generateId(),
-        timestamp: Date.now()
-      }
-    });
-  }
-}
-
-// UI layer uses contract
-async function handleExport() {
-  const data = await storage.exportAll();
-  downloadFile('quicktabs.json', JSON.stringify(data));
-}
-```
+**Cross-Domain Contracts:** API boundaries defined, event names standardized,
+unified storage format (tabs array), consistent error handling.
 
 ---
 
 ## MCP Server Integration
 
-**MANDATORY for Orchestration:**
+**MANDATORY:** Context7 (API docs), Perplexity (architecture), ESLint,
+CodeScene, Agentic-Tools (memories), Playwright (E2E), Codecov (coverage)
 
-**CRITICAL - During Implementation:**
-
-- **Context7:** Verify APIs for all domains DURING implementation ⭐
-- **Perplexity:** Research architectural patterns, verify approach (paste code)
-  ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Monitor complexity across domains ⭐
-
-**CRITICAL - Testing:**
-
-- **Playwright Firefox/Chrome MCP:** End-to-end testing BEFORE/AFTER ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-
-- **Agentic-Tools:** Search memories, store coordination decisions
-
-### Enhanced Orchestration Workflow
-
-```
-1. Search memories (Agentic-Tools) | 2. Perplexity: Research (paste code)
-3. Decompose into specialist tasks | 4. Playwright: Test BEFORE
-5. Coordinate implementation sequence
-6. Context7: Verify all domain APIs | 7. Perplexity: Check alternatives
-8. ESLint + CodeScene: Quality check
-9. Run all tests | 10. Playwright: Test AFTER (end-to-end)
-11. Codecov: Verify coverage
-12. Store decisions (Agentic-Tools) | 13. GitHub: Create PR
-14. Commit memory (.agentic-tools-mcp/)
-```
+**Workflow:** Search memories → Decompose tasks → Test BEFORE → Coordinate →
+Verify APIs → Lint → Test AFTER → Store decisions → Commit memory
 
 ---
 
 ## Complex Task Examples
 
-### Example 1: Container-Specific Settings
+**Container-Specific Settings:** Domain (entity) → Storage (methods) →
+Quick Tabs (apply) → UI/UX (selector) → Testing (all layers)
 
-**Complexity:** Spans Domain, Storage, UI/UX, Quick Tabs
-
-**Orchestration Plan:**
-
-1. **Domain Layer** (feature-builder)
-   - Add `ContainerSettings` entity
-   - Define per-container preferences
-   - Validation rules
-
-2. **Storage Layer** (feature-builder)
-   - Add container-scoped storage methods
-   - Migration for existing settings
-
-3. **Quick Tabs Integration** (quicktabs-unified-specialist)
-   - Use container-specific settings
-   - Apply on Quick Tab creation
-
-4. **UI/UX** (ui-ux-settings-agent)
-   - Add container selector to settings
-   - Per-container setting panels
-
-5. **Testing** (Coordinate)
-   - Domain tests (100% coverage)
-   - Storage tests (90% coverage)
-   - Integration tests (all paths)
-
-### Example 2: Quick Tab Templates
-
-**Complexity:** Spans all Quick Tab domains + UI
-
-**Orchestration Plan:**
-
-1. **Domain Layer** (feature-builder)
-   - Add `QuickTabTemplate` entity
-   - Template validation + defaults
-
-2. **Manager** (quicktabs-manager-specialist)
-   - Template selection UI
-   - Apply template button
-
-3. **Single Tab** (quicktabs-single-tab-specialist)
-   - Apply template on creation
-   - Template-specific styling
-
-4. **Cross-Tab Sync** (quicktabs-cross-tab-specialist)
-   - Sync template changes
-   - Template-created events
-
-5. **UI/UX** (ui-ux-settings-agent)
-   - Template management page
-   - Create/edit/delete templates
+**Quick Tab Templates:** Domain (template) → Manager (selection UI) →
+Single Tab (apply) → Cross-Tab (sync) → UI/UX (management)
 
 ---
 
-## Quality Standards for Orchestrated Work
-
-**Every coordinated task must:**
+## Quality Standards
 
 - [ ] All domains updated consistently
 - [ ] Cross-domain contracts documented
-- [ ] ESLint passed on all changes ⭐
-- [ ] Tests at all layers (unit, integration, e2e)
-- [ ] Documentation updated across all domains
+- [ ] ESLint passed ⭐
+- [ ] Tests at all layers
 - [ ] No domain left in broken state
-- [ ] All phases independently committable
 - [ ] Memory files committed 🧠
 
 ---
 
 ## Common Orchestration Patterns
 
-### Pattern 1: Bottom-Up (Domain → UI)
-
-**Use when:** Adding new capability
-
-**Sequence:**
-
-1. Domain entities + business logic
-2. Storage adapters
-3. Feature layer orchestration
-4. UI components
-5. Integration + e2e tests
-
-### Pattern 2: Top-Down (UI → Domain)
-
-**Use when:** User request drives design
-
-**Sequence:**
-
-1. UI mockup/wireframe
-2. Define required domain operations
-3. Implement domain + storage
-4. Connect UI to domain
-5. Polish UI + tests
-
-### Pattern 3: Middle-Out (Feature → Both)
-
-**Use when:** Feature layer change affects multiple areas
-
-**Sequence:**
-
-1. Define new feature interface
-2. Update domain to support interface
-3. Update UI to use interface
-4. Add cross-cutting concerns (logging, errors)
-5. Comprehensive testing
+- **Bottom-Up (Domain → UI)** - Adding new capability
+- **Top-Down (UI → Domain)** - User request drives design
+- **Middle-Out (Feature → Both)** - Feature layer change affects multiple areas
 
 ---
-
-## Before Every Commit Checklist
-
-- [ ] All specialist tasks completed
-- [ ] Cross-domain consistency verified
-- [ ] ESLint passed ⭐
-- [ ] Tests at all layers pass
-- [ ] Documentation complete
-- [ ] No domain in broken state
-- [ ] Architecture boundaries respected
-- [ ] Memory files committed 🧠
-
----
-
-## Success Metrics
-
-**Successful Orchestration:**
-
-- ✅ All domains updated cohesively
-- ✅ No specialist domain breaks
-- ✅ Clear cross-domain contracts
-- ✅ Comprehensive testing
-- ✅ Complete documentation
-- ✅ Future maintainability
 
 **Your strength: Seeing the whole system and coordinating perfect execution
 across all domains.**

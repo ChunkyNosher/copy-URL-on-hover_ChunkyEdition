@@ -74,20 +74,6 @@ async function saveSettings() {
     console.log('Settings saved:', settings);
     showStatus('Settings saved successfully!', 'success');
 
-    // v1.6.3.11-v3 - FIX Issue #23: Notify background script directly to refresh cached settings
-    // Background listens to storage.onChanged but may have stale cache from previous read
-    try {
-      await browser.runtime.sendMessage({
-        action: 'REFRESH_CACHED_SETTINGS',
-        settings: settings,
-        timestamp: Date.now()
-      });
-      console.log('Background notified of settings change');
-    } catch (bgErr) {
-      // Background may not be ready or have handler, but storage.onChanged will still work
-      console.warn('Failed to notify background directly:', bgErr.message);
-    }
-
     // Notify all tabs about settings change
     const tabs = await browser.tabs.query({});
     for (const tab of tabs) {

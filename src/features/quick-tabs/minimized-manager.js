@@ -24,20 +24,6 @@
  *   - Defer expiration timeout if isRestoring=true when timeout fires
  *   - Cancel and reschedule timeout when restore retries occur
  *   - Add DEBUG level logging for snapshot lifecycle transitions
- * v1.6.3.10-v12 - FIX Issue #22: State consistency with VisibilityHandler
- *   - VisibilityHandler.startConsistencyChecks() validates DOM state matches snapshot state
- *   - MISSING_SNAPSHOT: Minimized in DOM but no snapshot - create one from current state
- *   - STALE_SNAPSHOT: Non-minimized in DOM but has snapshot - remove stale snapshot
- *   - Checks run every 5 seconds when enabled by QuickTabsManager
- * v1.6.3.11 - FIX Issue #30: Document limitation - minimized state is memory-only
- *
- * KNOWN LIMITATION (v1.6.3.11 - Issue #30):
- * Minimized state (minimizedTabs Map) is stored in memory only and is NOT persisted across:
- * - Browser restarts
- * - Background script restarts
- * - Tab refreshes
- * When state is lost, minimized Quick Tabs will need to be re-minimized by the user.
- * FUTURE: Consider persisting minimized state to storage.session for session persistence.
  */
 
 // Default values for position/size when not provided
@@ -60,10 +46,6 @@ const PENDING_SNAPSHOT_EXPIRATION_MS = 5000;
 // When expiration fires while restore is in progress, we defer and re-check after this interval.
 // This should be longer than typical retry intervals (~900ms) to avoid racing.
 const DEFERRED_EXPIRATION_WAIT_MS = 500;
-
-// v1.6.3.11-v4 - FIX Issue #71: Batched persistence interval
-// Volatile state is persisted every 10 seconds to reduce storage thrashing
-const VOLATILE_STATE_BATCH_INTERVAL_MS = 10000;
 
 /**
  * Extract tab ID from Quick Tab ID pattern
@@ -155,26 +137,26 @@ function _logSnapshotValidationResult(valid, errors, snapshot, context) {
  */
 export function validateSnapshotIntegrity(snapshot, context = 'unknown') {
   const errors = [];
-
+  
   // Check if snapshot exists
   if (!snapshot) {
     errors.push('Snapshot is null or undefined');
     console.warn('[SNAPSHOT_VALIDATE] Validation failed:', { context, errors });
     return { valid: false, errors };
   }
-
+  
   // Validate position and size using helpers
   _validateSnapshotPosition(snapshot.savedPosition, errors);
   _validateSnapshotSize(snapshot.savedSize, errors);
-
+  
   // Check window reference (optional but logged)
   if (!snapshot.window) {
     console.log('[SNAPSHOT_VALIDATE] Warning: Snapshot has no window reference:', { context });
   }
-
+  
   const valid = errors.length === 0;
   _logSnapshotValidationResult(valid, errors, snapshot, context);
-
+  
   return { valid, errors };
 }
 
@@ -190,7 +172,7 @@ export function validateSnapshotIntegrity(snapshot, context = 'unknown') {
 
 // v1.6.3.10-v10 - FIX Issue #11: Adoption lock timeout constants
 const ADOPTION_LOCK_TIMEOUT_MS = 10000; // 10 seconds max lock duration
-const ADOPTION_LOCK_WARNING_MS = 5000; // Warn after 5 seconds
+const ADOPTION_LOCK_WARNING_MS = 5000;  // Warn after 5 seconds
 
 export class MinimizedManager {
   /**
@@ -218,110 +200,15 @@ export class MinimizedManager {
     this._adoptionLocks = new Map();
     // v1.6.3.10-v10 - FIX Issue #11: Track forced lock releases for debugging
     this._forcedLockReleaseCount = 0;
-
-    // v1.6.3.11-v4 - FIX Issue #71: Volatile state batching
-    // Track whether volatile state has changed since last persistence
-    this._volatileStateDirty = false;
-    // Batched persistence timer ID
-    this._batchPersistTimerId = null;
-    // FIX Code Review: Track if flush is in progress to prevent concurrent flushes
-    this._isFlushingVolatileState = false;
-  }
-
-  /**
-   * Start batched persistence timer
-   * v1.6.3.11-v4 - FIX Issue #71: Batch volatile state changes
-   *
-   * Call this when the MinimizedManager is initialized to enable
-   * automatic batched persistence every 10 seconds when state changes.
-   */
-  startBatchedPersistence() {
-    if (this._batchPersistTimerId !== null) {
-      return; // Already running
-    }
-
-    this._batchPersistTimerId = setInterval(() => {
-      if (this._volatileStateDirty && !this._isFlushingVolatileState) {
-        this._flushVolatileState();
-      }
-    }, VOLATILE_STATE_BATCH_INTERVAL_MS);
-
-    console.log('[MinimizedManager] BATCHED_PERSISTENCE_STARTED:', {
-      intervalMs: VOLATILE_STATE_BATCH_INTERVAL_MS
-    });
-  }
-
-  /**
-   * Stop batched persistence timer
-   * v1.6.3.11-v4 - FIX Issue #71: Cleanup on shutdown
-   */
-  stopBatchedPersistence() {
-    if (this._batchPersistTimerId !== null) {
-      clearInterval(this._batchPersistTimerId);
-      this._batchPersistTimerId = null;
-
-      // Flush any pending changes (skip if already flushing)
-      if (this._volatileStateDirty && !this._isFlushingVolatileState) {
-        this._flushVolatileState();
-      }
-
-      console.log('[MinimizedManager] BATCHED_PERSISTENCE_STOPPED');
-    }
-  }
-
-  /**
-   * Mark volatile state as dirty (needs persistence)
-   * v1.6.3.11-v4 - FIX Issue #71: Track state changes
-   * @private
-   */
-  _markVolatileStateDirty() {
-    this._volatileStateDirty = true;
-  }
-
-  /**
-   * Flush volatile state to storage
-   * v1.6.3.11-v4 - FIX Issue #71: Batched persistence
-   * FIX Code Review: Added _isFlushingVolatileState flag to prevent concurrent flushes
-   * @private
-   */
-  async _flushVolatileState() {
-    if (!this._volatileStateDirty) {
-      return;
-    }
-
-    // FIX Code Review: Prevent concurrent flushes
-    if (this._isFlushingVolatileState) {
-      return;
-    }
-
-    this._isFlushingVolatileState = true;
-    this._volatileStateDirty = false;
-
-    console.log('[MinimizedManager] VOLATILE_STATE_FLUSH:', {
-      minimizedCount: this.minimizedTabs.size,
-      timestamp: Date.now()
-    });
-
-    try {
-      await this.persistToStorage();
-    } catch (err) {
-      console.error('[MinimizedManager] VOLATILE_STATE_FLUSH_FAILED:', {
-        error: err.message
-      });
-      // Re-mark as dirty so next interval retries
-      this._volatileStateDirty = true;
-    } finally {
-      this._isFlushingVolatileState = false;
-    }
   }
 
   /**
    * Acquire adoption lock for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #9/#11: Coordinate adoption with restore operations
-   *
+   * 
    * The lock prevents restore operations from proceeding while adoption is in flight.
    * Includes timeout and escalation mechanism to prevent indefinite waits.
-   *
+   * 
    * @param {string} quickTabId - Quick Tab ID
    * @param {string} reason - Reason for acquiring lock (for logging)
    * @returns {Promise<{acquired: boolean, wasForced: boolean}>}
@@ -339,7 +226,7 @@ export class MinimizedManager {
       timeout: ADOPTION_LOCK_TIMEOUT_MS,
       timestamp: new Date().toISOString()
     });
-
+    
     let timeoutId = null;
     try {
       await Promise.race([
@@ -371,7 +258,7 @@ export class MinimizedManager {
    */
   async _handleExistingLock(existingLock, quickTabId) {
     const lockAge = Date.now() - existingLock.timestamp;
-
+    
     // Force-release stale locks
     if (lockAge >= ADOPTION_LOCK_TIMEOUT_MS) {
       console.warn('[ADOPTION][MinimizedManager] LOCK_FORCE_RELEASE:', {
@@ -384,13 +271,9 @@ export class MinimizedManager {
       this._forcedLockReleaseCount++;
       return;
     }
-
+    
     // Wait for existing lock
-    await this._waitForExistingLockWithTimeout(
-      existingLock,
-      quickTabId,
-      ADOPTION_LOCK_TIMEOUT_MS - lockAge
-    );
+    await this._waitForExistingLockWithTimeout(existingLock, quickTabId, ADOPTION_LOCK_TIMEOUT_MS - lockAge);
   }
 
   /**
@@ -400,10 +283,8 @@ export class MinimizedManager {
    */
   _createNewAdoptionLock(quickTabId, reason) {
     let resolver;
-    const promise = new Promise(resolve => {
-      resolver = resolve;
-    });
-
+    const promise = new Promise(resolve => { resolver = resolve; });
+    
     const warningTimeoutId = setTimeout(() => {
       console.warn('[ADOPTION][MinimizedManager] LOCK_WARNING:', {
         quickTabId,
@@ -412,7 +293,7 @@ export class MinimizedManager {
         timestamp: new Date().toISOString()
       });
     }, ADOPTION_LOCK_WARNING_MS);
-
+    
     const timeoutId = setTimeout(() => {
       console.error('[ADOPTION][MinimizedManager] LOCK_TIMEOUT_ESCALATION:', {
         quickTabId,
@@ -424,7 +305,7 @@ export class MinimizedManager {
       this._forceReleaseAdoptionLock(quickTabId);
       this._forcedLockReleaseCount++;
     }, ADOPTION_LOCK_TIMEOUT_MS);
-
+    
     this._adoptionLocks.set(quickTabId, {
       timestamp: Date.now(),
       promise,
@@ -438,10 +319,10 @@ export class MinimizedManager {
   /**
    * Acquire adoption lock for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #9/#11: Coordinate adoption with restore operations
-   *
+   * 
    * The lock prevents restore operations from proceeding while adoption is in flight.
    * Includes timeout and escalation mechanism to prevent indefinite waits.
-   *
+   * 
    * @param {string} quickTabId - Quick Tab ID
    * @param {string} reason - Reason for acquiring lock (for logging)
    * @returns {Promise<{acquired: boolean, wasForced: boolean}>}
@@ -453,25 +334,25 @@ export class MinimizedManager {
       existingLock: this._adoptionLocks.has(quickTabId),
       timestamp: new Date().toISOString()
     });
-
+    
     // Check for existing lock
     const existingLock = this._adoptionLocks.get(quickTabId);
     if (existingLock) {
       await this._handleExistingLock(existingLock, quickTabId);
     }
-
+    
     // Create new lock
     this._createNewAdoptionLock(quickTabId, reason);
-
+    
     console.log('[ADOPTION][MinimizedManager] LOCK_ACQUIRED:', {
       quickTabId,
       reason,
       timestamp: new Date().toISOString()
     });
-
+    
     return { acquired: true, wasForced: false };
   }
-
+  
   /**
    * Release adoption lock for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #9/#11: Release lock after adoption completes
@@ -487,17 +368,17 @@ export class MinimizedManager {
       });
       return;
     }
-
+    
     // Clear timeouts
     if (lock.timeoutId) clearTimeout(lock.timeoutId);
     if (lock.warningTimeoutId) clearTimeout(lock.warningTimeoutId);
-
+    
     // Resolve the promise
     if (lock.resolver) lock.resolver();
-
+    
     // Remove the lock
     this._adoptionLocks.delete(quickTabId);
-
+    
     const holdDuration = Date.now() - lock.timestamp;
     console.log('[ADOPTION][MinimizedManager] LOCK_RELEASED:', {
       quickTabId,
@@ -505,7 +386,7 @@ export class MinimizedManager {
       timestamp: new Date().toISOString()
     });
   }
-
+  
   /**
    * Force-release adoption lock (for timeout escalation)
    * v1.6.3.10-v10 - FIX Issue #11: Force-release stale locks
@@ -514,18 +395,18 @@ export class MinimizedManager {
   _forceReleaseAdoptionLock(quickTabId) {
     const lock = this._adoptionLocks.get(quickTabId);
     if (!lock) return;
-
+    
     // Clear timeouts
     if (lock.timeoutId) clearTimeout(lock.timeoutId);
     if (lock.warningTimeoutId) clearTimeout(lock.warningTimeoutId);
-
+    
     // Resolve the promise
     if (lock.resolver) lock.resolver();
-
+    
     // Remove the lock
     this._adoptionLocks.delete(quickTabId);
   }
-
+  
   /**
    * Check if adoption lock is held for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #12: Check adoption state before ownership check
@@ -543,7 +424,7 @@ export class MinimizedManager {
       reason: lock.reason
     };
   }
-
+  
   /**
    * Update snapshot's originTabId during adoption
    * v1.6.3.10-v10 - FIX Issue #10: Update snapshot when adoption occurs
@@ -552,8 +433,7 @@ export class MinimizedManager {
    * @returns {boolean} True if updated, false if snapshot not found
    */
   updateSnapshotOriginTabId(quickTabId, newOriginTabId) {
-    const snapshot =
-      this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId);
+    const snapshot = this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId);
     if (!snapshot) {
       console.warn('[ADOPTION][MinimizedManager] UPDATE_ORIGIN_TAB_ID_FAILED:', {
         quickTabId,
@@ -563,20 +443,20 @@ export class MinimizedManager {
       });
       return false;
     }
-
+    
     const oldOriginTabId = snapshot.savedOriginTabId;
     snapshot.savedOriginTabId = newOriginTabId;
-
+    
     console.log('[ADOPTION][MinimizedManager] UPDATE_ORIGIN_TAB_ID:', {
       quickTabId,
       oldOriginTabId,
       newOriginTabId,
       timestamp: new Date().toISOString()
     });
-
+    
     return true;
   }
-
+  
   /**
    * Cleanup stale adoption locks on startup
    * v1.6.3.10-v10 - FIX Issue #11: Clear any leftover locks from crashes/restarts
@@ -584,7 +464,7 @@ export class MinimizedManager {
   cleanupStaleAdoptionLocks() {
     const now = Date.now();
     let cleanedCount = 0;
-
+    
     for (const [quickTabId, lock] of this._adoptionLocks.entries()) {
       const lockAge = now - lock.timestamp;
       if (lockAge >= ADOPTION_LOCK_TIMEOUT_MS) {
@@ -592,7 +472,7 @@ export class MinimizedManager {
         cleanedCount++;
       }
     }
-
+    
     if (cleanedCount > 0) {
       console.log('[ADOPTION][MinimizedManager] STARTUP_CLEANUP:', {
         cleanedLocks: cleanedCount,
@@ -632,9 +512,6 @@ export class MinimizedManager {
 
     // Log snapshot capture
     this._logSnapshotCapture(id, snapshot, resolvedOriginTabId !== tabWindow.originTabId);
-
-    // v1.6.3.11-v4 - FIX Issue #71: Mark volatile state as dirty for batched persistence
-    this._markVolatileStateDirty();
   }
 
   /**
@@ -715,16 +592,10 @@ export class MinimizedManager {
 
   /**
    * Remove a minimized Quick Tab
-   * v1.6.3.11-v4 - FIX Issue #71: Mark state dirty for batched persistence
    */
   remove(id) {
-    const hadEntry = this.minimizedTabs.delete(id);
+    this.minimizedTabs.delete(id);
     console.log('[MinimizedManager] Removed minimized tab:', id);
-
-    // v1.6.3.11-v4 - FIX Issue #71: Mark volatile state as dirty
-    if (hadEntry) {
-      this._markVolatileStateDirty();
-    }
   }
 
   /**
@@ -754,7 +625,7 @@ export class MinimizedManager {
   restore(id) {
     const restoreStartTime = Date.now();
     const restoreAttemptId = `restore-${id}-${restoreStartTime}`;
-
+    
     // v1.6.4.15 - FIX Issue #17: Log restore attempt timing
     console.log('[RESTORE] Attempt started:', {
       quickTabId: id,
@@ -945,13 +816,10 @@ export class MinimizedManager {
 
     // v1.6.3.10-v7 - FIX Issue #12: Lifecycle guard - defer if restore in progress
     if (snapshot.isRestoring) {
-      console.debug(
-        '[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: Expiration deferred (isRestoring=true):',
-        {
-          id,
-          deferMs: DEFERRED_EXPIRATION_WAIT_MS
-        }
-      );
+      console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: Expiration deferred (isRestoring=true):', {
+        id,
+        deferMs: DEFERRED_EXPIRATION_WAIT_MS
+      });
       // Reschedule expiration check after deferred wait
       this._snapshotExpirationTimeouts.delete(id);
       const deferredTimeoutId = setTimeout(() => {
@@ -962,13 +830,10 @@ export class MinimizedManager {
     }
 
     // Snapshot is not being restored - safe to expire
-    console.warn(
-      '[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):',
-      {
-        id,
-        timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
-      }
-    );
+    console.warn('[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):', {
+      id,
+      timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
+    });
     this.pendingClearSnapshots.delete(id);
     this._snapshotExpirationTimeouts.delete(id);
   }
@@ -1492,7 +1357,9 @@ export class MinimizedManager {
    * @returns {Object|null} Snapshot object or null
    */
   _findSnapshotInAllMaps(quickTabId) {
-    return this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId) || null;
+    return this.minimizedTabs.get(quickTabId) || 
+           this.pendingClearSnapshots.get(quickTabId) || 
+           null;
   }
 
   /**
@@ -1503,7 +1370,7 @@ export class MinimizedManager {
    */
   getSnapshotOriginTabId(quickTabId) {
     const snapshot = this._findSnapshotInAllMaps(quickTabId);
-
+    
     if (!snapshot) {
       return null;
     }
@@ -1538,177 +1405,4 @@ export class MinimizedManager {
   hasAdoptionLock(quickTabId) {
     return this._adoptionLocks.has(quickTabId);
   }
-
-  // ==================== v1.6.3.11-v3 FIX ISSUE #30: STORAGE PERSISTENCE ====================
-
-  /**
-   * Storage key for persisting minimized Quick Tab state
-   * v1.6.3.11-v3 - FIX Issue #30: Persist minimized state across background restarts
-   * @type {string}
-   */
-  static STORAGE_KEY = 'minimized_quicktabs_v1';
-
-  /**
-   * Persist minimized state to storage
-   * v1.6.3.11-v3 - FIX Issue #30: Save minimized state immediately after updates
-   * @returns {Promise<boolean>} True if persistence succeeded
-   */
-  async persistToStorage() {
-    try {
-      const minimizedData = [];
-
-      for (const [id, snapshot] of this.minimizedTabs) {
-        minimizedData.push({
-          id,
-          savedPosition: snapshot.savedPosition,
-          savedSize: snapshot.savedSize,
-          savedOriginTabId: snapshot.savedOriginTabId,
-          savedOriginContainerId: snapshot.savedOriginContainerId
-          // Don't persist window reference - it's not serializable
-          // Don't persist isRestoring - it's transient state
-        });
-      }
-
-      await browser.storage.session.set({
-        [MinimizedManager.STORAGE_KEY]: {
-          minimizedTabs: minimizedData,
-          timestamp: Date.now(),
-          version: 1
-        }
-      });
-
-      console.log('[MinimizedManager] PERSIST_TO_STORAGE:', {
-        minimizedCount: minimizedData.length,
-        timestamp: Date.now()
-      });
-
-      return true;
-    } catch (err) {
-      console.error('[MinimizedManager] PERSIST_FAILED:', {
-        error: err.message,
-        minimizedCount: this.minimizedTabs.size
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Restore minimized state from storage
-   * v1.6.3.11-v3 - FIX Issue #30: Load minimized state on init after background restart
-   * Note: This only restores metadata. Window references must be re-established separately.
-   * @returns {Promise<{success: boolean, minimizedCount: number, timestamp?: number}>}
-   */
-  async restoreFromStorage() {
-    try {
-      const result = await browser.storage.session.get(MinimizedManager.STORAGE_KEY);
-      const stored = result[MinimizedManager.STORAGE_KEY];
-
-      if (!stored || !stored.minimizedTabs) {
-        console.log('[MinimizedManager] RESTORE_FROM_STORAGE: No stored state found');
-        return { success: false, minimizedCount: 0 };
-      }
-
-      // Note: We don't clear existing state - this allows merging with any tabs
-      // that were already restored through other means
-      const restoredCount = this._restoreMinimizedTabsFromData(stored.minimizedTabs);
-
-      console.log('[MinimizedManager] RESTORE_FROM_STORAGE:', {
-        restoredCount,
-        totalMinimized: this.minimizedTabs.size,
-        storedTimestamp: stored.timestamp,
-        ageMs: Date.now() - stored.timestamp
-      });
-
-      return {
-        success: true,
-        minimizedCount: restoredCount,
-        timestamp: stored.timestamp
-      };
-    } catch (err) {
-      console.error('[MinimizedManager] RESTORE_FAILED:', {
-        error: err.message
-      });
-      return { success: false, minimizedCount: 0 };
-    }
-  }
-
-  /**
-   * Helper to restore minimized tabs from stored data
-   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce restoreFromStorage complexity
-   * @private
-   * @param {Array} minimizedTabsData - Array of tab data from storage
-   * @returns {number} Count of restored tabs
-   */
-  _restoreMinimizedTabsFromData(minimizedTabsData) {
-    let restoredCount = 0;
-
-    for (const tabData of minimizedTabsData) {
-      // Skip if already tracked (from another restore path)
-      if (this.minimizedTabs.has(tabData.id)) continue;
-
-      const partialSnapshot = this._buildPartialSnapshot(tabData);
-      this.minimizedTabs.set(tabData.id, partialSnapshot);
-      restoredCount++;
-
-      console.log('[MinimizedManager] RESTORE_TAB:', {
-        id: tabData.id,
-        position: partialSnapshot.savedPosition,
-        size: partialSnapshot.savedSize,
-        originTabId: partialSnapshot.savedOriginTabId
-      });
-    }
-
-    return restoredCount;
-  }
-
-  /**
-   * Build a partial snapshot from stored tab data
-   * v1.6.3.11-v3 - FIX Code Health: Extracted to reduce complexity
-   * @private
-   * @param {Object} tabData - Tab data from storage
-   * @returns {Object} Partial snapshot object
-   */
-  _buildPartialSnapshot(tabData) {
-    return {
-      window: null, // Will be set by UICoordinator when rendering
-      savedPosition: tabData.savedPosition || {
-        left: DEFAULT_POSITION_LEFT,
-        top: DEFAULT_POSITION_TOP
-      },
-      savedSize: tabData.savedSize || { width: DEFAULT_SIZE_WIDTH, height: DEFAULT_SIZE_HEIGHT },
-      savedOriginTabId: tabData.savedOriginTabId ?? null,
-      savedOriginContainerId: tabData.savedOriginContainerId ?? null,
-      isRestoring: false
-    };
-  }
-
-  /**
-   * Update window reference in restored snapshot
-   * v1.6.3.11-v3 - FIX Issue #30: After restoring from storage, link window reference
-   * @param {string} id - Quick Tab ID
-   * @param {Object} window - QuickTabWindow instance
-   * @returns {boolean} True if updated
-   */
-  linkRestoredWindow(id, window) {
-    const snapshot = this.minimizedTabs.get(id);
-    if (!snapshot) {
-      console.warn('[MinimizedManager] LINK_WINDOW_FAILED: No snapshot for:', id);
-      return false;
-    }
-
-    if (snapshot.window !== null) {
-      console.log('[MinimizedManager] LINK_WINDOW_SKIPPED: Already has window reference:', id);
-      return false;
-    }
-
-    snapshot.window = window;
-    console.log('[MinimizedManager] LINK_WINDOW_SUCCESS:', {
-      id,
-      hasWindow: !!snapshot.window
-    });
-
-    return true;
-  }
-
-  // ==================== END ISSUE #30 FIX ====================
 }

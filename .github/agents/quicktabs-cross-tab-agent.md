@@ -38,21 +38,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v2 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v7 - Quick Tabs Architecture v2 (Simplified)
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
 
-- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total (from 60s)
-- **Hydration Timeout** - 10s (from 3s)
-- **Dedup Window** - 250ms (from 100ms)
-- **Tab onRemoved Debounce** - 200ms debounce
-- **browser.tabs.query Timeout** - 2s timeout wrapper with fallback
-- **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
+  `_extractTabIdFromPattern()`
+- **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
 
-**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, handler deferral,
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
 message validation, identity gating, storage quota monitoring, code health 9.0+,
-port circuit breaker, container isolation
+container isolation
 
 **Key Modules (v1.6.3.10-v9):**
 

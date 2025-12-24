@@ -73,50 +73,7 @@ export class QuickTabMediator {
      */
     this._rollbackStack = new Map();
 
-    /**
-     * v1.6.3.11 - FIX Issue #37: Track registered event listeners for cleanup
-     * @type {Array<{eventName: string, handler: Function}>}
-     * @private
-     */
-    this._registeredListeners = [];
-
     console.log('[QuickTabMediator] Initialized');
-  }
-
-  /**
-   * Register an event listener and track it for cleanup
-   * v1.6.3.11 - FIX Issue #37: Prevent listener accumulation on reinit
-   * @param {string} eventName - Event name
-   * @param {Function} handler - Event handler
-   */
-  _registerListener(eventName, handler) {
-    if (!this.eventBus) return;
-
-    this.eventBus.on(eventName, handler);
-    this._registeredListeners.push({ eventName, handler });
-    console.log('[QuickTabMediator] Registered listener:', eventName);
-  }
-
-  /**
-   * Unregister all tracked event listeners
-   * v1.6.3.11 - FIX Issue #37: Clean up before reinit
-   */
-  cleanup() {
-    // Remove all registered listeners
-    if (this.eventBus) {
-      for (const { eventName, handler } of this._registeredListeners) {
-        this.eventBus.off(eventName, handler);
-      }
-      console.log(
-        '[QuickTabMediator] CLEANUP: Removed',
-        this._registeredListeners.length,
-        'listeners'
-      );
-    }
-    this._registeredListeners = [];
-
-    // Clear locks and rollbacks
-    this.clearLocks();
   }
 
   /**
@@ -204,14 +161,12 @@ export class QuickTabMediator {
 
   /**
    * Coordinate a minimize operation
-   * v1.6.3.11-v3 - FIX Issue #63: Pass trigger type to state machine
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
-   * @param {string} [trigger='user'] - Trigger type ('user' or 'system')
    * @returns {OperationResult}
    */
-  minimize(id, source = 'unknown', trigger = 'user') {
-    console.log('[QuickTabMediator] minimize() called:', { id, source, trigger });
+  minimize(id, source = 'unknown') {
+    console.log('[QuickTabMediator] minimize() called:', { id, source });
 
     // Step 1: Acquire lock
     if (!this._tryAcquireLock('minimize', id)) {
@@ -232,7 +187,6 @@ export class QuickTabMediator {
       // Step 3: Transition to MINIMIZING state
       const transitionResult = this._stateMachine.transition(id, QuickTabState.MINIMIZING, {
         source,
-        trigger,
         metadata: { operation: 'minimize' }
       });
 
@@ -247,7 +201,6 @@ export class QuickTabMediator {
         // Rollback state machine
         this._stateMachine.transition(id, QuickTabState.VISIBLE, {
           source: 'mediator-rollback',
-          trigger: 'system',
           metadata: { reason: result.error }
         });
         return result;
@@ -256,7 +209,6 @@ export class QuickTabMediator {
       // Step 5: Transition to MINIMIZED state
       this._stateMachine.transition(id, QuickTabState.MINIMIZED, {
         source,
-        trigger,
         metadata: { operation: 'minimize-complete' }
       });
 
@@ -269,14 +221,12 @@ export class QuickTabMediator {
 
   /**
    * Coordinate a restore operation
-   * v1.6.3.11-v3 - FIX Issue #63: Pass trigger type to state machine
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
-   * @param {string} [trigger='user'] - Trigger type ('user' or 'system')
    * @returns {OperationResult}
    */
-  restore(id, source = 'unknown', trigger = 'user') {
-    console.log('[QuickTabMediator] restore() called:', { id, source, trigger });
+  restore(id, source = 'unknown') {
+    console.log('[QuickTabMediator] restore() called:', { id, source });
 
     // Step 1: Acquire lock
     if (!this._tryAcquireLock('restore', id)) {
@@ -297,7 +247,6 @@ export class QuickTabMediator {
       // Step 3: Transition to RESTORING state
       const transitionResult = this._stateMachine.transition(id, QuickTabState.RESTORING, {
         source,
-        trigger,
         metadata: { operation: 'restore' }
       });
 
@@ -312,7 +261,6 @@ export class QuickTabMediator {
         // Rollback state machine
         this._stateMachine.transition(id, QuickTabState.MINIMIZED, {
           source: 'mediator-rollback',
-          trigger: 'system',
           metadata: { reason: result.error }
         });
         return result;
@@ -321,7 +269,6 @@ export class QuickTabMediator {
       // Step 5: Transition to VISIBLE state
       this._stateMachine.transition(id, QuickTabState.VISIBLE, {
         source,
-        trigger,
         metadata: { operation: 'restore-complete' }
       });
 
@@ -334,14 +281,12 @@ export class QuickTabMediator {
 
   /**
    * Coordinate a destroy operation
-   * v1.6.3.11-v3 - FIX Issue #63: Pass trigger type to state machine
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
-   * @param {string} [trigger='user'] - Trigger type ('user' or 'system')
    * @returns {OperationResult}
    */
-  destroy(id, source = 'unknown', trigger = 'user') {
-    console.log('[QuickTabMediator] destroy() called:', { id, source, trigger });
+  destroy(id, source = 'unknown') {
+    console.log('[QuickTabMediator] destroy() called:', { id, source });
 
     // Step 1: Acquire lock
     if (!this._tryAcquireLock('destroy', id)) {
@@ -360,7 +305,6 @@ export class QuickTabMediator {
       // Allow from any state except DESTROYED
       this._stateMachine.transition(id, QuickTabState.DESTROYED, {
         source,
-        trigger,
         metadata: { operation: 'destroy', previousState: currentState }
       });
 
@@ -478,12 +422,10 @@ export function getMediator(options) {
 
 /**
  * Reset the singleton instance (for testing)
- * v1.6.3.11 - FIX Issue #37: Clean up listeners before resetting
  */
 export function resetMediator() {
   if (mediatorInstance) {
-    // v1.6.3.11 - FIX Issue #37: Clean up event listeners before destroying instance
-    mediatorInstance.cleanup();
+    mediatorInstance.clearLocks();
   }
   mediatorInstance = null;
 }

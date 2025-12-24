@@ -78,7 +78,6 @@ export class ConfigManager {
 
   /**
    * Load configuration from browser storage
-   * v1.6.3.11 - FIX Issue #39: Populate missing keys with defaults during migration
    */
   async load() {
     console.log('[ConfigManager] Starting configuration load...');
@@ -105,9 +104,6 @@ export class ConfigManager {
       // Merge with defaults (user settings override defaults)
       this.config = { ...DEFAULT_CONFIG, ...result };
 
-      // v1.6.3.11 - FIX Issue #39: Detect and migrate missing settings
-      await this._detectAndMigrateMissingSettings(result);
-
       console.log('[ConfigManager] Configuration loaded successfully');
       console.log('[ConfigManager] Config summary:', {
         debugMode: this.config.debugMode,
@@ -124,56 +120,6 @@ export class ConfigManager {
     }
 
     return this.config;
-  }
-
-  /**
-   * Detect and migrate missing settings
-   * v1.6.3.11 - FIX Code Health: Extracted to reduce load() complexity
-   * @private
-   * @param {Object} result - Storage result
-   */
-  async _detectAndMigrateMissingSettings(result) {
-    const missingKeys = [];
-    for (const key of Object.keys(DEFAULT_CONFIG)) {
-      if (!(key in result) || result[key] === undefined) {
-        missingKeys.push(key);
-      }
-    }
-
-    if (missingKeys.length > 0) {
-      console.log('[ConfigManager] CONFIG_MIGRATION: Populated missing settings with defaults:', {
-        missingKeys,
-        count: missingKeys.length
-      });
-      // Persist the migrated config to storage so future loads have all keys
-      await this._persistMigratedConfig(missingKeys);
-    }
-  }
-
-  /**
-   * Persist migrated configuration with new default keys
-   * v1.6.3.11 - FIX Issue #39: Save new defaults to storage after migration
-   * @private
-   * @param {string[]} newKeys - Keys that were added from defaults
-   */
-  async _persistMigratedConfig(newKeys) {
-    try {
-      // Only save the new keys to avoid overwriting user settings
-      const newSettings = {};
-      for (const key of newKeys) {
-        newSettings[key] = DEFAULT_CONFIG[key];
-      }
-      await browser.storage.local.set(newSettings);
-      console.log('[ConfigManager] CONFIG_MIGRATION: Persisted new default settings:', {
-        savedKeys: newKeys
-      });
-    } catch (err) {
-      console.warn(
-        '[ConfigManager] CONFIG_MIGRATION: Failed to persist new defaults:',
-        err.message
-      );
-      // Non-fatal - settings will work with in-memory defaults
-    }
   }
 
   /**

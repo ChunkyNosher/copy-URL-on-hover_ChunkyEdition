@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.11-v2.
+  documentation. Current version: v1.6.3.11-v7.
 tools: ['*']
 ---
 
@@ -69,32 +69,25 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.11-v2)
+## Current Extension State (v1.6.3.11-v7)
 
-### v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports)
+### v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health
 
-- **BFCache PORT_VERIFY Timeout** - Increased to 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total timeout (from 60s)
-- **Hydration Timeout** - Increased to 10s (from 3s)
-- **Dedup Window** - Increased to 250ms (from 100ms)
-- **Tab onRemoved Debounce** - 200ms debounce for cleanup
-- **browser.tabs.query Timeout** - 2s timeout wrapper with fallback
-- **Periodic openTabs Cleanup** - Every 5 minutes
-- **Adoption Cache Size Limit** - 100 entries max
-- **MessageRouter Re-entrance Guard** - Prevents recursive handling
-- **Sidebar Write Protection** - Storage write guards
+- **Orphan Quick Tabs Fix** - `originTabId` and `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js` lines 285-286
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
+  `_extractTabIdFromPattern()` for robust tab ID handling
+- **Code Health Improvements** - 16+ methods refactored across 4 files:
+  - `sidebar/quick-tabs-manager.js` - Score 7.32 → 8.26
+  - `src/utils/storage-utils.js` - Score 7.44 → 7.78
+  - `src/content.js` - Score 8.71 → 9.09
+  - `background.js` - Score 8.02 → 8.40
 
-### v1.6.3.11 Features (Previous) - 40 Issues Fixed
-
-- GET_CURRENT_TAB_ID no init dependency, synchronous listener registration
-- BFCache port recovery, port listener race fix, INIT_RESPONSE timeout
-- Cross-queue overflow protection, hydration drain lock, namespaced message IDs
-
-### v1.6.3.10 & Earlier (Consolidated)
+### v1.6.3.10-v10 Base (Restored)
 
 - Tab ID exponential backoff, handler deferral, adoption lock timeout
 - Checkpoint system, message validation, identity gating, quota monitoring
-- Code health 9.0+ scores, options object pattern, container isolation
+- tabs.sendMessage messaging, single storage key, storage.onChanged PRIMARY
 
 ### Architecture
 
@@ -107,8 +100,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.11-v2
-- [ ] **v1.6.3.11-v2:** 40 Issues Fixed features documented
+- [ ] Version numbers match 1.6.3.11-v7
+- [ ] **v1.6.3.11-v7:** Orphan Quick Tabs fix documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -118,7 +111,7 @@ nothing.
 
 | Error                 | Fix                         |
 | --------------------- | --------------------------- |
-| v1.6.3.11 or earlier  | Update to 1.6.3.11-v2       |
+| v1.6.3.11-v6 or earlier | Update to 1.6.3.11-v7     |
 | "Pin to Page"         | Use "Solo/Mute"             |
 | Direct storage writes | Use Single Writer Authority |
 | BroadcastChannel refs | REMOVE - BC DELETED in v6   |

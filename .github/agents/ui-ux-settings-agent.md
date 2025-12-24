@@ -59,18 +59,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v2 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.11-v7 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.11-v2 Features (NEW) - 40 Issues Fixed (3 Diagnostic Reports):**
+**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
 
-- **BFCache PORT_VERIFY Timeout** - 2000ms (from 1000ms)
-- **Tab ID Timeout Extended** - 120s total (from 60s)
-- **Hydration Timeout** - 10s (from 3s)
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
+  `handleCreate()` in `QuickTabHandler.js`
+- **Code Health 8.26** - `sidebar/quick-tabs-manager.js` improved from 7.32
 - **Sidebar Lifecycle** - `[SIDEBAR_LIFECYCLE]` logging prefix
 - **Render Performance** - `[RENDER_PERF]` logging prefix
-- **Sidebar Write Protection** - Storage write guards
 
-**v1.6.3.11 & Earlier (Consolidated):** Tab ID acquisition, identity gating,
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
 storage quota monitoring, code health 9.0+, render queue priority, simplified
 init
 
@@ -125,228 +124,48 @@ init
 
 ## Settings Page Architecture
 
-**Multi-tab settings interface:**
-
-```html
-<!-- options_page.html -->
-<div class="settings-container">
-  <!-- Tab Navigation -->
-  <div class="tabs">
-    <button class="tab-btn active" data-tab="copy-url">Copy URL</button>
-    <button class="tab-btn" data-tab="quick-tabs">Quick Tabs</button>
-    <button class="tab-btn" data-tab="appearance">Appearance</button>
-    <button class="tab-btn" data-tab="advanced">Advanced</button>
-  </div>
-
-  <!-- Tab Panels -->
-  <div class="tab-panel active" id="copy-url-panel">
-    <h2>Copy URL Settings</h2>
-
-    <!-- Keyboard Shortcuts -->
-    <div class="setting-group">
-      <label>Copy URL Shortcut</label>
-      <input type="text" id="copy-url-key" value="y" />
-
-      <label>
-        <input type="checkbox" id="copy-url-ctrl" />
-        Ctrl
-      </label>
-      <label>
-        <input type="checkbox" id="copy-url-alt" />
-        Alt
-      </label>
-      <label>
-        <input type="checkbox" id="copy-url-shift" />
-        Shift
-      </label>
-    </div>
-
-    <!-- Similar for Copy Text and Open in New Tab -->
-  </div>
-
-  <div class="tab-panel" id="quick-tabs-panel">
-    <h2>Quick Tabs Settings</h2>
-
-    <div class="setting-group">
-      <label>Quick Tab Shortcut</label>
-      <input type="text" id="quick-tab-key" value="q" />
-    </div>
-
-    <div class="setting-group">
-      <label>Maximum Quick Tabs</label>
-      <input type="number" id="max-tabs" min="1" max="10" value="5" />
-    </div>
-
-    <div class="setting-group">
-      <label>Default Width (px)</label>
-      <input type="number" id="default-width" value="600" />
-    </div>
-  </div>
-
-  <div class="tab-panel" id="appearance-panel">
-    <h2>Appearance Settings</h2>
-
-    <div class="setting-group">
-      <label>
-        <input type="checkbox" id="dark-mode" />
-        Enable Dark Mode
-      </label>
-    </div>
-
-    <div class="setting-group">
-      <label>Quick Tab Border Color</label>
-      <input type="color" id="border-color" value="#3498db" />
-    </div>
-
-    <div class="setting-group">
-      <label>Notification Style</label>
-      <select id="notification-style">
-        <option value="tooltip">Tooltip</option>
-        <option value="notification">Notification</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="tab-panel" id="advanced-panel">
-    <h2>Advanced Settings</h2>
-
-    <div class="setting-group">
-      <label>
-        <input type="checkbox" id="debug-mode" />
-        Enable Debug Mode
-      </label>
-    </div>
-
-    <button id="clear-storage">Clear Quick Tab Storage</button>
-    <button id="export-logs">Export Console Logs</button>
-    <button id="reset-settings">Reset All Settings</button>
-  </div>
-</div>
-```
+**Multi-tab settings interface:** Four tabs (Copy URL, Quick Tabs, Appearance,
+Advanced) with settings groups for keyboard shortcuts, max tabs, default sizes,
+dark mode, colors, debug mode, and storage management.
 
 ---
 
 ## Settings Persistence
 
-**Use browser.storage.sync for automatic cloud sync:**
+**Use browser.storage.sync for settings:**
 
 ```javascript
-// Load settings on page load
+// Load with defaults, populate form, apply dark mode
 async function loadSettings() {
   const settings = await browser.storage.sync.get({
-    // Defaults
-    copyUrlKey: 'y',
-    copyUrlCtrl: false,
-    copyUrlAlt: false,
-    copyUrlShift: false,
-    quickTabKey: 'q',
-    maxTabs: 5,
-    defaultWidth: 600,
-    defaultHeight: 400,
-    darkMode: false,
-    borderColor: '#3498db',
-    notificationStyle: 'tooltip'
+    copyUrlKey: 'y', quickTabKey: 'q', maxTabs: 5,
+    defaultWidth: 600, darkMode: false, borderColor: '#3498db'
   });
-
-  // Populate form
-  document.getElementById('copy-url-key').value = settings.copyUrlKey;
-  document.getElementById('copy-url-ctrl').checked = settings.copyUrlCtrl;
-  document.getElementById('quick-tab-key').value = settings.quickTabKey;
-  document.getElementById('max-tabs').value = settings.maxTabs;
-  document.getElementById('dark-mode').checked = settings.darkMode;
-  document.getElementById('border-color').value = settings.borderColor;
-
-  // Apply dark mode
-  if (settings.darkMode) {
-    document.body.classList.add('dark-mode');
-  }
+  // Apply to form and UI...
 }
 
-// Save settings on change
-function setupAutoSave() {
-  const inputs = document.querySelectorAll('input, select');
-
-  inputs.forEach(input => {
-    input.addEventListener('change', async () => {
-      const settings = {};
-      settings[input.id] =
-        input.type === 'checkbox' ? input.checked : input.value;
-
-      await browser.storage.sync.set(settings);
-
-      // Broadcast change
-      broadcastChannel.postMessage({
-        type: 'SETTINGS_CHANGED',
-        data: settings
-      });
-    });
-  });
-}
+// Auto-save on change
+input.addEventListener('change', async () => {
+  await browser.storage.sync.set({ [input.id]: input.value });
+});
 ```
 
 ---
 
-## Dark Mode Implementation
+## Dark Mode
 
-**Theme switching with CSS variables:**
+**Use CSS variables for theming:**
 
 ```css
-/* Light mode (default) */
-:root {
-  --bg-color: #ffffff;
-  --text-color: #333333;
-  --border-color: #cccccc;
-  --input-bg: #f5f5f5;
-  --button-bg: #3498db;
-  --button-text: #ffffff;
-}
-
-/* Dark mode */
-body.dark-mode {
-  --bg-color: #1e1e1e;
-  --text-color: #e0e0e0;
-  --border-color: #444444;
-  --input-bg: #2d2d2d;
-  --button-bg: #5dade2;
-  --button-text: #ffffff;
-}
-
-/* Apply variables */
-body {
-  background-color: var(--bg-color);
-  color: var(--text-color);
-}
-
-input,
-select {
-  background-color: var(--input-bg);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-button {
-  background-color: var(--button-bg);
-  color: var(--button-text);
-}
+:root { --bg-color: #ffffff; --text-color: #333333; }
+body.dark-mode { --bg-color: #1e1e1e; --text-color: #e0e0e0; }
+body { background-color: var(--bg-color); color: var(--text-color); }
 ```
-
-**Toggle dark mode:**
 
 ```javascript
 async function toggleDarkMode(enabled) {
-  if (enabled) {
-    document.body.classList.add('dark-mode');
-  } else {
-    document.body.classList.remove('dark-mode');
-  }
-
+  document.body.classList.toggle('dark-mode', enabled);
   await browser.storage.sync.set({ darkMode: enabled });
-
-  // Broadcast to all tabs
-  broadcastChannel.postMessage({
-    type: 'DARK_MODE_CHANGED',
-    data: { enabled }
-  });
 }
 ```
 
@@ -354,171 +173,29 @@ async function toggleDarkMode(enabled) {
 
 ## Notification System
 
-**Two styles: Tooltip vs Notification:**
-
-```javascript
-class NotificationManager {
-  constructor(style = 'tooltip') {
-    this.style = style;
-  }
-
-  show(message, duration = 2000) {
-    if (this.style === 'tooltip') {
-      this.showTooltip(message, duration);
-    } else {
-      this.showNotification(message, duration);
-    }
-  }
-
-  showTooltip(message, duration) {
-    const tooltip = document.createElement('div');
-    tooltip.className = 'notification-tooltip';
-    tooltip.textContent = message;
-
-    // Position near cursor
-    tooltip.style.left = `${this.lastX}px`;
-    tooltip.style.top = `${this.lastY - 50}px`;
-
-    document.body.appendChild(tooltip);
-
-    setTimeout(() => {
-      tooltip.classList.add('fade-out');
-      setTimeout(() => tooltip.remove(), 300);
-    }, duration);
-  }
-
-  showNotification(message, duration) {
-    const notification = document.createElement('div');
-    notification.className = 'notification-banner';
-    notification.textContent = message;
-
-    // Position top-right
-    notification.style.top = '20px';
-    notification.style.right = '20px';
-
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-      notification.classList.add('slide-out');
-      setTimeout(() => notification.remove(), 300);
-    }, duration);
-  }
-}
-```
+**Two styles:** Tooltip (near cursor) and Notification (top-right banner).
+Use `NotificationManager` class with configurable style and duration.
 
 ---
 
 ## Form Validation
 
-**Validate settings before save:**
-
-```javascript
-function validateSettings(settings) {
-  const errors = [];
-
-  // Validate max tabs
-  if (settings.maxTabs < 1 || settings.maxTabs > 10) {
-    errors.push('Maximum tabs must be between 1 and 10');
-  }
-
-  // Validate dimensions
-  if (settings.defaultWidth < 200 || settings.defaultWidth > 2000) {
-    errors.push('Default width must be between 200 and 2000');
-  }
-
-  if (settings.defaultHeight < 200 || settings.defaultHeight > 2000) {
-    errors.push('Default height must be between 200 and 2000');
-  }
-
-  // Validate keyboard shortcuts
-  if (!/^[a-z]$/i.test(settings.copyUrlKey)) {
-    errors.push('Copy URL shortcut must be a single letter');
-  }
-
-  return errors;
-}
-
-// Show validation errors
-function showValidationErrors(errors) {
-  const errorContainer = document.getElementById('validation-errors');
-  errorContainer.innerHTML = errors
-    .map(err => `<div class="error">${err}</div>`)
-    .join('');
-  errorContainer.style.display = 'block';
-}
-```
+Validate before save: max tabs 1-10, dimensions 200-2000, shortcuts single letter.
 
 ---
 
 ## MCP Server Integration
 
-**MANDATORY for UI/UX Work:**
-
-**CRITICAL - During Implementation:**
-
-- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
-- **Perplexity:** Research UI/UX patterns (paste code) ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-
-**CRITICAL - Testing:**
-
-- **Playwright Firefox/Chrome MCP:** Test UI BEFORE/AFTER changes ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-
-- **Agentic-Tools:** Search memories, store UX solutions
+**MANDATORY:** Context7 (WebExtensions APIs), Perplexity (UI patterns), ESLint,
+CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 
 ---
 
 ## Common UI/UX Issues
 
-### Issue: Settings Not Saving
-
-**Fix:** Ensure browser.storage.sync is used correctly
-
-```javascript
-// ✅ CORRECT - Proper save
-await browser.storage.sync.set({ darkMode: true });
-
-// ❌ WRONG - Missing await
-browser.storage.sync.set({ darkMode: true }); // May not complete
-```
-
-### Issue: Dark Mode Not Applying
-
-**Fix:** Check class toggle and CSS variables
-
-```javascript
-// ✅ CORRECT - Toggle class properly
-function applyDarkMode(enabled) {
-  if (enabled) {
-    document.body.classList.add('dark-mode');
-  } else {
-    document.body.classList.remove('dark-mode');
-  }
-}
-```
-
-### Issue: Form Validation Not Working
-
-**Fix:** Validate before save
-
-```javascript
-// ✅ CORRECT - Validate first
-async function saveSettings(settings) {
-  const errors = validateSettings(settings);
-  if (errors.length > 0) {
-    showValidationErrors(errors);
-    return;
-  }
-
-  await browser.storage.sync.set(settings);
-  showSuccessMessage();
-}
-```
+- **Settings Not Saving** - Ensure `await browser.storage.sync.set()`
+- **Dark Mode Not Applying** - Check class toggle and CSS variables
+- **Form Validation Not Working** - Validate before save
 
 ---
 
@@ -527,8 +204,6 @@ async function saveSettings(settings) {
 - [ ] Settings save/load correctly
 - [ ] Dark mode applies across all UI
 - [ ] Form validation catches invalid input
-- [ ] Notifications display correctly
-- [ ] Keyboard shortcuts work
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
