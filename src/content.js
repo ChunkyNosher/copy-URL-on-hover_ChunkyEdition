@@ -631,53 +631,67 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
 }
 
 /**
- * Get current tab ID from background script with exponential backoff retry
- * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
- * Must send message to background script which has access to sender.tab.id
- * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
- * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
- * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] logging markers
- *
- * Retry delays: 200ms, 500ms, 1500ms, 5000ms
- * Maximum 5 attempts (initial + 4 retries)
- *
- * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
+ * Log successful tab ID acquisition
+ * v1.6.3.11-v9 - FIX Code Health: Extracted from getCurrentTabIdFromBackground
+ * @private
+ * @param {number} tabId - The acquired tab ID
+ * @param {number} durationMs - Total duration in milliseconds
+ * @param {number|null} attemptNumber - Attempt number (null for first attempt)
  */
-async function getCurrentTabIdFromBackground() {
-  // v1.6.3.11-v9 - FIX Issue C: Log identity init request start
-  console.log('[IDENTITY_INIT] TAB_ID_REQUEST: Requesting tab ID from background', {
+function _logTabIdAcquisitionSuccess(tabId, durationMs, attemptNumber) {
+  const isFirstAttempt = attemptNumber === null;
+  const message = isFirstAttempt ? 'Tab ID received on first attempt' : 'Tab ID received after retry';
+  
+  console.log(`[IDENTITY_INIT] TAB_ID_RESPONSE: ${message}`, {
+    tabId,
+    ...(attemptNumber !== null && { attemptNumber }),
+    durationMs,
     timestamp: new Date().toISOString(),
-    phase: 'TAB_ID_REQUEST'
+    phase: 'TAB_ID_RESPONSE'
   });
   
-  console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
-    maxRetries: TAB_ID_MAX_RETRIES,
-    retryDelays: TAB_ID_RETRY_DELAYS_MS,
+  console.log(`[Content][TabID][INIT] COMPLETE: Tab ID acquired ${isFirstAttempt ? 'on first attempt' : 'on retry'}`, {
+    tabId,
+    ...(attemptNumber !== null && { attemptNumber }),
+    totalDurationMs: durationMs
+  });
+}
+
+/**
+ * Log failed tab ID acquisition after all retries exhausted
+ * v1.6.3.11-v9 - FIX Code Health: Extracted from getCurrentTabIdFromBackground
+ * @private
+ * @param {string} lastError - The last error message
+ * @param {number} totalDurationMs - Total duration in milliseconds
+ */
+function _logTabIdAcquisitionFailure(lastError, totalDurationMs) {
+  console.error('[IDENTITY_INIT] TAB_ID_FAILED: All retries exhausted', {
+    totalAttempts: TAB_ID_MAX_RETRIES + 1,
+    lastError,
+    totalDurationMs,
+    timestamp: new Date().toISOString(),
+    phase: 'TAB_ID_FAILED'
+  });
+  
+  console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
+    totalAttempts: TAB_ID_MAX_RETRIES + 1,
+    lastError,
+    totalDurationMs,
     timestamp: new Date().toISOString()
   });
+}
+
+/**
+ * Execute retry loop for tab ID acquisition
+ * v1.6.3.11-v9 - FIX Code Health: Extracted from getCurrentTabIdFromBackground
+ * @private
+ * @param {Object} initialResult - Result from first attempt
+ * @param {number} overallStartTime - Start time for duration tracking
+ * @returns {Promise<{tabId: number|null, error: string|null}>}
+ */
+async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
+  let result = initialResult;
   
-  const overallStartTime = Date.now();
-  
-  // Initial attempt (attempt #1)
-  let result = await _attemptGetTabIdFromBackground(1);
-  
-  if (result.tabId !== null) {
-    // v1.6.3.11-v9 - FIX Issue C: Log successful tab ID acquisition
-    console.log('[IDENTITY_INIT] TAB_ID_RESPONSE: Tab ID received on first attempt', {
-      tabId: result.tabId,
-      durationMs: Date.now() - overallStartTime,
-      timestamp: new Date().toISOString(),
-      phase: 'TAB_ID_RESPONSE'
-    });
-    
-    console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on first attempt', {
-      tabId: result.tabId,
-      totalDurationMs: Date.now() - overallStartTime
-    });
-    return result.tabId;
-  }
-  
-  // Retry loop with exponential backoff
   for (let retryIndex = 0; retryIndex < TAB_ID_MAX_RETRIES; retryIndex++) {
     const attemptNumber = retryIndex + 2; // First retry is attempt #2
     const delayMs = TAB_ID_RETRY_DELAYS_MS[retryIndex];
@@ -700,50 +714,63 @@ async function getCurrentTabIdFromBackground() {
       elapsedMs: Date.now() - overallStartTime
     });
     
-    // Wait before retry
     await new Promise(resolve => setTimeout(resolve, delayMs));
-    
-    // Retry attempt
     result = await _attemptGetTabIdFromBackground(attemptNumber);
     
     if (result.tabId !== null) {
-      // v1.6.3.11-v9 - FIX Issue C: Log successful tab ID acquisition after retry
-      console.log('[IDENTITY_INIT] TAB_ID_RESPONSE: Tab ID received after retry', {
-        tabId: result.tabId,
-        attemptNumber,
-        durationMs: Date.now() - overallStartTime,
-        timestamp: new Date().toISOString(),
-        phase: 'TAB_ID_RESPONSE'
-      });
-      
-      console.log('[Content][TabID][INIT] COMPLETE: Tab ID acquired on retry', {
-        tabId: result.tabId,
-        attemptNumber,
-        totalDurationMs: Date.now() - overallStartTime
-      });
-      return result.tabId;
+      _logTabIdAcquisitionSuccess(result.tabId, Date.now() - overallStartTime, attemptNumber);
+      return { tabId: result.tabId, error: null };
     }
   }
   
-  // All retries exhausted
-  const totalDuration = Date.now() - overallStartTime;
-  
-  // v1.6.3.11-v9 - FIX Issue C: Log failed tab ID acquisition
-  console.error('[IDENTITY_INIT] TAB_ID_FAILED: All retries exhausted', {
-    totalAttempts: TAB_ID_MAX_RETRIES + 1,
-    lastError: result.error,
-    totalDurationMs: totalDuration,
+  return { tabId: null, error: result.error };
+}
+
+/**
+ * Get current tab ID from background script with exponential backoff retry
+ * v1.6.3.5-v10 - FIX Issue #3: Content scripts cannot use browser.tabs.getCurrent()
+ * Must send message to background script which has access to sender.tab.id
+ * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: Add validation logging
+ * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
+ * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] logging markers
+ * v1.6.3.11-v9 - FIX Code Health: Extracted helpers to reduce function length
+ *
+ * Retry delays: 200ms, 500ms, 1500ms, 5000ms
+ * Maximum 5 attempts (initial + 4 retries)
+ *
+ * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
+ */
+async function getCurrentTabIdFromBackground() {
+  console.log('[IDENTITY_INIT] TAB_ID_REQUEST: Requesting tab ID from background', {
     timestamp: new Date().toISOString(),
-    phase: 'TAB_ID_FAILED'
+    phase: 'TAB_ID_REQUEST'
   });
   
-  console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
-    totalAttempts: TAB_ID_MAX_RETRIES + 1,
-    lastError: result.error,
-    totalDurationMs: totalDuration,
+  console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
+    maxRetries: TAB_ID_MAX_RETRIES,
+    retryDelays: TAB_ID_RETRY_DELAYS_MS,
     timestamp: new Date().toISOString()
   });
   
+  const overallStartTime = Date.now();
+  
+  // Initial attempt (attempt #1)
+  const initialResult = await _attemptGetTabIdFromBackground(1);
+  
+  if (initialResult.tabId !== null) {
+    _logTabIdAcquisitionSuccess(initialResult.tabId, Date.now() - overallStartTime, null);
+    return initialResult.tabId;
+  }
+  
+  // Execute retry loop
+  const retryResult = await _executeTabIdRetryLoop(initialResult, overallStartTime);
+  
+  if (retryResult.tabId !== null) {
+    return retryResult.tabId;
+  }
+  
+  // All retries exhausted
+  _logTabIdAcquisitionFailure(retryResult.error, Date.now() - overallStartTime);
   return null;
 }
 
