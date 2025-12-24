@@ -5,20 +5,20 @@ import { StorageAdapter } from './StorageAdapter.js';
 /**
  * SessionStorageAdapter - Storage adapter for browser.storage.session API
  * v1.6.3.10-v7 - FIX Diagnostic Issues #4, #15: Standardized to unified format (matching SyncStorageAdapter)
- *
+ * 
  * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
- *
+ * 
  * CANONICAL ADAPTER SELECTION:
  * - **SyncStorageAdapter** is the CANONICAL adapter for Quick Tab persistence
  *   - Uses browser.storage.local for permanent state
  *   - Data survives browser restart
  *   - Used for hydration on extension load
- *
+ * 
  * - **SessionStorageAdapter** is for TEMPORARY session state only
  *   - Uses browser.storage.session (cleared on browser close)
  *   - Used for rollback buffers and temporary caching
  *   - NOT used for Quick Tab persistence
- *
+ * 
  * Features:
  * - Unified storage format for global Quick Tab visibility (STANDARDIZED)
  * - Temporary storage (cleared on browser restart)
@@ -56,9 +56,7 @@ export class SessionStorageAdapter extends StorageAdapter {
   constructor() {
     super();
     this.STORAGE_KEY = 'quick_tabs_state_v2';
-    console.log(
-      '[SessionStorageAdapter] Initialized (session storage - temporary, cleared on browser close)'
-    );
+    console.log('[SessionStorageAdapter] Initialized (session storage - temporary, cleared on browser close)');
   }
 
   /**

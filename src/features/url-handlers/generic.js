@@ -1,13 +1,7 @@
 /**
  * Generic URL Handler
  * Fallback URL detection for any website
- *
- * v1.6.3.11-v4 Changes:
- * - FIX Issue #1: Added Shadow DOM fallback for web components
- * - FIX Issue #3: Added [URL_EXTRACT] logging prefix
  */
-
-import { findLinkInShadowDOM, findClosestAcrossShadow } from './shadow-dom.js';
 
 /**
  * Check if element is a container that should be searched for links
@@ -27,64 +21,24 @@ function isLinkContainer(element) {
 
 /**
  * Find generic URL from any element
- * v1.6.3.11-v4 - FIX Issue #1: Added Shadow DOM fallback
  * @param {Element} element - DOM element
  * @returns {string|null} Found URL or null
  */
 export function findGenericUrl(element) {
   // Look for direct href on clicked element
-  if (element.href) {
-    console.log('[URL_EXTRACT] GENERIC_DIRECT_HREF:', { href: element.href });
-    return element.href;
-  }
+  if (element.href) return element.href;
 
-  // Look for closest link (regular DOM)
+  // Look for closest link
   const link = element.closest('a[href]');
-  if (link?.href) {
-    console.log('[URL_EXTRACT] GENERIC_CLOSEST_LINK:', { href: link.href });
-    return link.href;
-  }
-
-  // v1.6.3.11-v4 - FIX Issue #1: Try Shadow DOM parent traversal
-  // Only if element itself has no shadowRoot - avoid duplicate child search
-  const shadowParentLink = findClosestAcrossShadow(element.parentElement, 'a[href]', 10);
-  if (shadowParentLink?.href) {
-    console.log('[URL_EXTRACT] GENERIC_SHADOW_DOM:', { href: shadowParentLink.href });
-    return shadowParentLink.href;
-  }
+  if (link?.href) return link.href;
 
   // Only search within element if it's a clear container
   if (isLinkContainer(element)) {
-    const containerResult = _searchContainerForLink(element);
-    if (containerResult) return containerResult;
+    const innerLink = element.querySelector('a[href]');
+    if (innerLink?.href) return innerLink.href;
   }
 
   // Don't search siblings - that's too broad and causes false positives
-  console.log('[URL_EXTRACT] GENERIC_NO_RESULT');
-  return null;
-}
-
-/**
- * Search container element for links (including Shadow DOM)
- * v1.6.3.11-v4 - Extracted to reduce nesting
- * @private
- */
-function _searchContainerForLink(element) {
-  const innerLink = element.querySelector('a[href]');
-  if (innerLink?.href) {
-    console.log('[URL_EXTRACT] GENERIC_CONTAINER_INNER:', { href: innerLink.href });
-    return innerLink.href;
-  }
-
-  // Search container's Shadow DOM only if it has one
-  if (!element.shadowRoot) return null;
-
-  const shadowInnerLink = findLinkInShadowDOM(element, 'a[href]', 0);
-  if (shadowInnerLink?.href) {
-    console.log('[URL_EXTRACT] GENERIC_CONTAINER_SHADOW:', { href: shadowInnerLink.href });
-    return shadowInnerLink.href;
-  }
-
   return null;
 }
 

@@ -539,31 +539,6 @@
         flex: 1;
         font-size: 12px;
       }
-
-      /* v1.6.3.11-v3 - FIX Issue #4: Keyboard shortcut validation styles */
-      .shortcut-error {
-        border-color: #f44336 !important;
-        box-shadow: 0 0 4px rgba(244, 67, 54, 0.5) !important;
-        animation: shake 0.3s ease-in-out;
-      }
-
-      .shortcut-success {
-        border-color: #4caf50 !important;
-        box-shadow: 0 0 4px rgba(76, 175, 80, 0.5) !important;
-      }
-
-      @keyframes shake {
-        0%,
-        100% {
-          transform: translateX(0);
-        }
-        25% {
-          transform: translateX(-5px);
-        }
-        75% {
-          transform: translateX(5px);
-        }
-      }
     </style>
   </head>
   <body>
@@ -1486,107 +1461,6 @@
                 </label>
               </div>
             </div>
-          </div>
-
-          <hr style="border: none; border-top: 1px solid #3a3a3a; margin: 24px 0" />
-
-          <!-- v1.6.3.11-v3 - FIX Issue #5: Global Keyboard Shortcuts Section -->
-          <div class="setting-group">
-            <h3 style="margin-bottom: 8px; font-size: 14px">⌨️ Global Keyboard Shortcuts</h3>
-            <div class="info-box">
-              <strong>Firefox Commands:</strong> These shortcuts work anywhere in Firefox, not just
-              when hovering over links. They are managed by Firefox's command system.<br />
-              <strong>Format:</strong> Use Ctrl+Alt+Key, Alt+Shift+Key, or similar combinations.
-            </div>
-          </div>
-
-          <!-- Quick Tabs Manager Shortcut -->
-          <div class="setting-group">
-            <label>Open Quick Tabs Manager (Sidebar):</label>
-            <div style="display: flex; gap: 8px; align-items: center">
-              <input
-                type="text"
-                id="shortcut-toggle-manager"
-                style="flex: 1"
-                placeholder="Ctrl+Alt+Z"
-                data-command="toggle-quick-tabs-manager"
-              />
-              <button
-                type="button"
-                id="update-shortcut-manager"
-                style="
-                  padding: 8px 12px;
-                  background: #4caf50;
-                  color: white;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 12px;
-                "
-              >
-                Update
-              </button>
-            </div>
-            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
-              Default: Ctrl+Alt+Z. Opens the sidebar and switches to Quick Tabs Manager.
-            </small>
-          </div>
-
-          <!-- Toggle Sidebar Shortcut -->
-          <div class="setting-group">
-            <label>Toggle Sidebar:</label>
-            <div style="display: flex; gap: 8px; align-items: center">
-              <input
-                type="text"
-                id="shortcut-toggle-sidebar"
-                style="flex: 1"
-                placeholder="Alt+Shift+S"
-                data-command="_execute_sidebar_action"
-              />
-              <button
-                type="button"
-                id="update-shortcut-sidebar"
-                style="
-                  padding: 8px 12px;
-                  background: #4caf50;
-                  color: white;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 12px;
-                "
-              >
-                Update
-              </button>
-            </div>
-            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
-              Default: Alt+Shift+S. Toggles the extension sidebar open/closed.
-            </small>
-          </div>
-
-          <!-- Load Current Shortcuts Button -->
-          <div class="setting-group">
-            <button
-              type="button"
-              id="loadShortcutsBtn"
-              style="
-                width: 100%;
-                padding: 10px;
-                background: #555;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 13px;
-                font-weight: 500;
-              "
-            >
-              🔄 Refresh Current Shortcuts
-            </button>
-            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
-              Load the currently active shortcuts from Firefox. Useful after changing shortcuts in
-              Firefox's Add-ons Manager.
-            </small>
           </div>
 
           <hr style="border: none; border-top: 1px solid #3a3a3a; margin: 24px 0" />

@@ -8,7 +8,6 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
- * v1.6.3.10-v11 - FIX Issue #21: Add LRU eviction and map size monitoring via LRUMapGuard
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -16,7 +15,6 @@
  * - Maintains backward compatibility with legacy API (with deprecation warnings)
  * - Delegates all business logic to specialized components
  * - No cross-tab broadcasting - storage used for persistence and hydration only
- * - LRUMapGuard monitors tabs Map and evicts stale entries to prevent memory leaks
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -32,14 +30,12 @@ import { StateManager } from './managers/StateManager.js';
 import { MinimizedManager } from './minimized-manager.js';
 import { QuickTabWindow } from './window.js'; // v1.6.3.4-v7 - FIX Issue #1: Import for hydration
 import { CONSTANTS } from '../../core/config.js';
-import { LRUMapGuard } from '../../utils/lru-map-guard.js'; // v1.6.3.10-v11 - FIX Issue #21
 import { STATE_KEY } from '../../utils/storage-utils.js';
 
 /**
  * QuickTabsManager - Facade for Quick Tab management
  * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
  * v1.6.3.4 - FIX Issues #1, #8: Add state rehydration on startup with logging
- * v1.6.3.10-v11 - FIX Issue #21: Add LRUMapGuard for memory management
  */
 class QuickTabsManager {
   constructor(options = {}) {
@@ -78,15 +74,6 @@ class QuickTabsManager {
 
     // MemoryGuard for emergency shutdown
     this.memoryGuard = null;
-
-    // v1.6.3.10-v11 - FIX Issue #21: LRUMapGuard for map size monitoring and eviction
-    // This prevents unbounded memory growth by evicting LRU entries when threshold exceeded
-    this.lruMapGuard = new LRUMapGuard(this.tabs, {
-      maxSize: 500, // Maximum entries before eviction
-      evictionPercent: 0.1, // Evict 10% when threshold exceeded
-      staleAgeMs: 24 * 60 * 60 * 1000, // 24 hours
-      logPrefix: '[QuickTabsManager][LRU]'
-    });
 
     // Track all generated IDs to prevent collisions within this session
     this.generatedIds = new Set();
@@ -660,9 +647,8 @@ class QuickTabsManager {
   _detectDomainChange(tabData) {
     const storedDomain = this._extractDomainFromUrl(tabData?.url);
     const currentDomain = this._getCurrentDomain();
-    const domainChanged =
-      storedDomain !== currentDomain && storedDomain !== 'unknown' && currentDomain !== 'unknown';
-
+    const domainChanged = storedDomain !== currentDomain && storedDomain !== 'unknown' && currentDomain !== 'unknown';
+    
     if (domainChanged) {
       console.log('[NAVIGATION] Domain changed:', {
         oldDomain: storedDomain,
@@ -671,7 +657,7 @@ class QuickTabsManager {
         storedUrl: tabData?.url
       });
     }
-
+    
     return { domainChanged, oldDomain: storedDomain, newDomain: currentDomain };
   }
 
@@ -685,21 +671,18 @@ class QuickTabsManager {
    */
   _extractTabIdFromQuickTabId(quickTabId) {
     if (!quickTabId || typeof quickTabId !== 'string') return null;
-
+    
     // v1.6.3.10-v10 - FIX Issue #4: Handle "qt-unknown-*" pattern
     // Check if the pattern contains "unknown" (no tab ID was available at creation time)
     if (quickTabId.startsWith('qt-unknown-')) {
-      console.warn(
-        '[QuickTabsManager] v1.6.3.10-v10 PATTERN_EXTRACTION: "unknown" pattern detected',
-        {
-          quickTabId,
-          warning: 'Quick Tab was created without valid tab ID',
-          recommendation: 'Check explicit originTabId field in storage'
-        }
-      );
+      console.warn('[QuickTabsManager] v1.6.3.10-v10 PATTERN_EXTRACTION: "unknown" pattern detected', {
+        quickTabId,
+        warning: 'Quick Tab was created without valid tab ID',
+        recommendation: 'Check explicit originTabId field in storage'
+      });
       return null;
     }
-
+    
     const match = quickTabId.match(/^qt-(\d+)-/);
     return match ? parseInt(match[1], 10) : null;
   }
@@ -925,7 +908,6 @@ class QuickTabsManager {
    * Hydrate a visible (non-minimized) Quick Tab
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.4-v7 - FIX Issue #7: Emit state:added after creation for UICoordinator tracking
-   * v1.6.3.10-v11 - FIX Issue #21: Track creation in LRU guard
    * @private
    * @param {Object} options - Quick Tab options with callbacks
    */
@@ -933,11 +915,6 @@ class QuickTabsManager {
     const result = this.createHandler.create(options);
     if (result) {
       this.currentZIndex.value = result.newZIndex;
-
-      // v1.6.3.10-v11 - FIX Issue #21: Track hydrated entry in LRU guard
-      if (this.lruMapGuard) {
-        this.lruMapGuard.recordCreation(options.id);
-      }
 
       // v1.6.3.4-v7 - FIX Issue #7: Emit state:added so UICoordinator can track
       if (this.internalEventBus && result.tabWindow) {
@@ -1028,11 +1005,6 @@ class QuickTabsManager {
 
       // Store in tabs Map - now a REAL QuickTabWindow instance with all methods
       this.tabs.set(options.id, tabWindow);
-
-      // v1.6.3.10-v11 - FIX Issue #21: Track hydrated entry in LRU guard
-      if (this.lruMapGuard) {
-        this.lruMapGuard.recordCreation(options.id);
-      }
 
       // v1.6.3.4-v7 - FIX Issue #7: Emit state:added so UICoordinator can track this tab
       if (this.internalEventBus) {
@@ -1214,24 +1186,6 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] MemoryGuard monitoring started');
     }
 
-    // v1.6.3.10-v11 - FIX Issue #21: Start LRU map guard periodic cleanup
-    if (this.lruMapGuard) {
-      this.lruMapGuard.startPeriodicCleanup({
-        isClosedChecker: (key, entry) => {
-          // Check if entry represents a closed Quick Tab
-          // Entries with minimizeState === 'closed' or destroyed flag should be cleaned up
-          return entry?.minimizeState === 'closed' || entry?.destroyed === true;
-        }
-      });
-      console.log('[QuickTabsManager] LRUMapGuard periodic cleanup started');
-    }
-
-    // v1.6.3.10-v12 - FIX Issue #22: Start state consistency checks for VisibilityHandler/MinimizedManager sync
-    if (this.visibilityHandler?.startConsistencyChecks) {
-      this.visibilityHandler.startConsistencyChecks();
-      console.log('[QuickTabsManager] VisibilityHandler consistency checks started');
-    }
-
     console.log('[QuickTabsManager] ✓ _setupComponents complete');
   }
 
@@ -1369,7 +1323,6 @@ class QuickTabsManager {
    * Delegates to CreateHandler
    * v1.6.3.4 - FIX Issue #4: Wire UI close button to DestroyHandler via onDestroy callback
    * v1.6.3.4 - FIX Issue #6: Add source tracking for logs
-   * v1.6.3.10-v11 - FIX Issue #21: Track creation and check for eviction
    */
   createQuickTab(options) {
     console.log('[QuickTabsManager] createQuickTab called with:', options);
@@ -1400,14 +1353,6 @@ class QuickTabsManager {
       throw new Error('[QuickTabsManager] createHandler.create() returned undefined');
     }
 
-    // v1.6.3.10-v11 - FIX Issue #21: Track creation in LRU guard and check for eviction
-    // FIX Code Review: Use nullish coalescing (??) to handle null/undefined, not falsy empty string
-    if (this.lruMapGuard) {
-      const tabId = result.tabWindow?.id ?? options.id;
-      this.lruMapGuard.recordCreation(tabId);
-      this.lruMapGuard.checkAndEvict();
-    }
-
     this.currentZIndex.value = result.newZIndex;
     return result.tabWindow;
   }
@@ -1416,18 +1361,11 @@ class QuickTabsManager {
    * Handle Quick Tab destruction
    * v1.6.3.4 - FIX Issue #4: All closes (UI and Manager) now route through DestroyHandler
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
-   * v1.6.3.10-v11 - FIX Issue #21: Record deletion in LRU guard
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
   handleDestroy(id, source = 'unknown') {
     console.log(`[QuickTabsManager] handleDestroy called for: ${id} (source: ${source})`);
-
-    // v1.6.3.10-v11 - FIX Issue #21: Record deletion in LRU guard
-    if (this.lruMapGuard) {
-      this.lruMapGuard.recordDeletion(id);
-    }
-
     return this.destroyHandler.handleDestroy(id, source);
   }
 
@@ -1444,13 +1382,8 @@ class QuickTabsManager {
 
   /**
    * Handle Quick Tab focus
-   * v1.6.3.10-v11 - FIX Issue #21: Track access in LRU guard
    */
   handleFocus(id) {
-    // v1.6.3.10-v11 - FIX Issue #21: Update LRU status on focus
-    if (this.lruMapGuard) {
-      this.lruMapGuard.trackAccess(id);
-    }
     return this.visibilityHandler.handleFocus(id);
   }
 
@@ -1521,16 +1454,11 @@ class QuickTabsManager {
   /**
    * Restore Quick Tab from minimized state
    * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
-   * v1.6.3.10-v11 - FIX Issue #21: Track access in LRU guard
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
   restoreQuickTab(id, source = 'unknown') {
     console.log(`[QuickTabsManager] restoreQuickTab called for: ${id} (source: ${source})`);
-    // v1.6.3.10-v11 - FIX Issue #21: Update LRU status on restore
-    if (this.lruMapGuard) {
-      this.lruMapGuard.trackAccess(id);
-    }
     return this.visibilityHandler.restoreQuickTab(id, source);
   }
 
@@ -1547,27 +1475,17 @@ class QuickTabsManager {
   /**
    * Restore Quick Tab by ID (backward compat)
    * v1.6.3.4 - FIX Issue #6: Add source parameter
-   * v1.6.3.10-v11 - FIX Issue #21: Track access in LRU guard
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action
    */
   restoreById(id, source = 'unknown') {
-    // v1.6.3.10-v11 - FIX Issue #21: Update LRU status on restore
-    if (this.lruMapGuard) {
-      this.lruMapGuard.trackAccess(id);
-    }
     return this.visibilityHandler.restoreById(id, source);
   }
 
   /**
    * Get Quick Tab by ID (backward compat)
-   * v1.6.3.10-v11 - FIX Issue #21: Track access in LRU guard
    */
   getQuickTab(id) {
-    // v1.6.3.10-v11 - FIX Issue #21: Track access to update LRU status
-    if (this.lruMapGuard && this.tabs.has(id)) {
-      this.lruMapGuard.trackAccess(id);
-    }
     return this.tabs.get(id);
   }
 
@@ -1583,15 +1501,6 @@ class QuickTabsManager {
    */
   getMinimizedQuickTabs() {
     return this.minimizedManager.getAll();
-  }
-
-  /**
-   * Get LRU Map Guard statistics for monitoring
-   * v1.6.3.10-v11 - FIX Issue #21: Expose map stats for debugging
-   * @returns {Object|null} Statistics object or null if guard not initialized
-   */
-  getMapStats() {
-    return this.lruMapGuard ? this.lruMapGuard.getStats() : null;
   }
 
   // ============================================================================
@@ -1632,7 +1541,7 @@ class QuickTabsManager {
     const tabId = this.currentTabId || 'unknown';
     const timestamp = Date.now();
     const random = this._generateSecureRandom();
-
+    
     // v1.6.3.10-v10 - FIX Issue #3: Log warning when generating ID with unknown tab ID
     if (tabId === 'unknown') {
       console.warn('[QuickTabsManager] v1.6.3.10-v10 QUICKTAB_ID_UNKNOWN:', {
@@ -1642,7 +1551,7 @@ class QuickTabsManager {
         recommendation: 'Tab ID should be acquired before Quick Tab creation'
       });
     }
-
+    
     return `qt-${tabId}-${timestamp}-${random}`;
   }
 
@@ -1757,43 +1666,15 @@ class QuickTabsManager {
   }
 
   /**
-   * Cleanup LRUMapGuard during teardown
-   * v1.6.3.10-v11 - FIX Issue #21: Proper LRU guard cleanup
-   * @private
-   */
-  _destroyStep5_CleanupLRUMapGuard() {
-    if (this.lruMapGuard) {
-      console.log('[QuickTabsManager] Destroying LRUMapGuard');
-      this.lruMapGuard.destroy();
-    }
-  }
-
-  /**
-   * Cleanup VisibilityHandler consistency checks during teardown
-   * v1.6.3.10-v12 - FIX Issue #22: Stop consistency check interval
-   * @private
-   */
-  _destroyStep6_StopConsistencyChecks() {
-    if (this.visibilityHandler?.stopConsistencyChecks) {
-      console.log('[QuickTabsManager] Stopping VisibilityHandler consistency checks');
-      this.visibilityHandler.stopConsistencyChecks();
-    }
-  }
-
-  /**
    * Cleanup and teardown the QuickTabsManager
    * v1.6.3.4-v11 - FIX Issue #1, #2, #3: Proper resource cleanup to prevent memory leaks
    * v1.6.3.6-v10 - Refactored: Extracted steps to helper methods to reduce cc from 9 to 2
-   * v1.6.3.10-v11 - FIX Issue #21: Add LRUMapGuard cleanup
-   * v1.6.3.10-v12 - FIX Issue #22: Add VisibilityHandler consistency check cleanup
    *
    * This method:
    * - Stops MemoryGuard monitoring
    * - Removes storage.onChanged listener via CreateHandler.destroy()
    * - Closes all Quick Tabs (DOM cleanup)
    * - Removes all event listeners from internalEventBus
-   * - Destroys LRUMapGuard (stops periodic cleanup)
-   * - Stops VisibilityHandler consistency checks
    * - Marks manager as uninitialized
    *
    * This method is idempotent - safe to call multiple times.
@@ -1813,10 +1694,8 @@ class QuickTabsManager {
     this._destroyStep2_RemoveStorageListener();
     this._destroyStep3_CloseAllTabs();
     this._destroyStep4_RemoveEventListeners();
-    this._destroyStep5_CleanupLRUMapGuard(); // v1.6.3.10-v11 - FIX Issue #21
-    this._destroyStep6_StopConsistencyChecks(); // v1.6.3.10-v12 - FIX Issue #22
 
-    // Step 7: Mark as uninitialized
+    // Step 5: Mark as uninitialized
     this.initialized = false;
 
     console.log('[QuickTabsManager] ✓ Cleanup/teardown complete');

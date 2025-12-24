@@ -33,7 +33,7 @@ import { DragController } from './window/DragController.js';
 import { ResizeController } from './window/ResizeController.js';
 import { TitlebarBuilder } from './window/TitlebarBuilder.js';
 import { CONSTANTS } from '../../core/config.js';
-import { createElement, isDOMReady } from '../../utils/dom.js';
+import { createElement } from '../../utils/dom.js';
 import { isValidQuickTabUrl } from '../../utils/storage-utils.js';
 
 // v1.6.3.4-v8 - Default dimensions for fallback when invalid values provided
@@ -204,12 +204,12 @@ export class QuickTabWindow {
     // instead of using a broad time-based window that suppresses ALL callbacks
     this.isMinimizing = false;
     this.isRestoring = false;
-
+    
     // v1.6.4.16 - FIX Issue #24: State synchronization tracking
     // Track last confirmed state for bidirectional sync
     this._lastSyncedState = null;
     this._pendingStateSync = false;
-
+    
     // v1.6.4.16 - FIX Issue #28: Sidebar lifecycle tracking
     // Track origin tab ID for lifecycle monitoring
     this.originTabId = null;
@@ -228,7 +228,7 @@ export class QuickTabWindow {
       originTabId: tabId
     });
   }
-
+  
   /**
    * Acknowledge state sync from content script
    * v1.6.4.16 - FIX Issue #24: State synchronization acknowledgment
@@ -237,7 +237,7 @@ export class QuickTabWindow {
   acknowledgeStateSync(state) {
     this._lastSyncedState = state;
     this._pendingStateSync = false;
-
+    
     console.log('[STATE_SYNC] State acknowledged:', {
       quickTabId: this.id,
       minimized: state?.minimized,
@@ -245,7 +245,7 @@ export class QuickTabWindow {
       timestamp: Date.now()
     });
   }
-
+  
   /**
    * Mark state sync as pending
    * v1.6.4.16 - FIX Issue #24: Track pending state sync
@@ -257,7 +257,7 @@ export class QuickTabWindow {
       timestamp: Date.now()
     });
   }
-
+  
   /**
    * Check if state sync is pending
    * v1.6.4.16 - FIX Issue #24: Check pending state
@@ -302,22 +302,11 @@ export class QuickTabWindow {
    * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
    * v1.6.3.4-v11 - Refactored to extract helper methods for improved code health
    * v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild and force reflow
-   * v1.6.3.11-v4 - FIX Issue #82: Check DOM readiness before accessing document.body
    */
   render() {
     if (this.container) {
       console.warn('[QuickTabWindow] Already rendered:', this.id);
       return this.container;
-    }
-
-    // v1.6.3.11-v4 - FIX Issue #82: Check DOM readiness before rendering
-    if (!isDOMReady()) {
-      console.error('[QuickTabWindow] Cannot render - DOM not ready:', {
-        id: this.id,
-        hasBody: !!document.body,
-        readyState: document.readyState
-      });
-      throw new Error('Cannot render Quick Tab: DOM is not ready (document.body is null)');
     }
 
     // Step 1: Validate and normalize dimensions
@@ -918,10 +907,7 @@ export class QuickTabWindow {
       console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback:', this.id);
       element.remove();
     } else {
-      console.log(
-        '[QuickTabWindow][minimize] No container or fallback DOM element found:',
-        this.id
-      );
+      console.log('[QuickTabWindow][minimize] No container or fallback DOM element found:', this.id);
     }
   }
 
@@ -958,9 +944,7 @@ export class QuickTabWindow {
     this.minimized = true;
 
     console.log('[QuickTabWindow][minimize] ENTRY:', {
-      id: this.id,
-      url: this.url,
-      title: this.title,
+      id: this.id, url: this.url, title: this.title,
       position: { left: this.left, top: this.top },
       size: { width: this.width, height: this.height }
     });
@@ -981,17 +965,14 @@ export class QuickTabWindow {
     this._clearDOMReferences();
 
     console.log('[QuickTabWindow][minimize] Container cleared:', {
-      id: this.id,
-      hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
+      id: this.id, hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
     });
 
     // Clear operation flag
     this.isMinimizing = false;
 
     console.log('[QuickTabWindow][minimize] EXIT:', {
-      id: this.id,
-      minimized: this.minimized,
-      rendered: this.rendered
+      id: this.id, minimized: this.minimized, rendered: this.rendered
     });
 
     this.onMinimize(this.id);
@@ -1570,7 +1551,7 @@ export class QuickTabWindow {
 
     // v1.6.3.2 - FIX Issue #5: Set destroyed flag early to prevent new events
     this.destroyed = true;
-
+    
     // v1.6.4.16 - FIX Area C: Track cleaned up listeners
     let cleanedListenerCount = 0;
 
@@ -1602,7 +1583,7 @@ export class QuickTabWindow {
     // v1.6.3.2 - FIX Issue #5: Clear button references
     this.soloButton = null;
     this.muteButton = null;
-
+    
     // v1.6.4.16 - FIX Issue #24/#28: Clear state sync tracking
     this._lastSyncedState = null;
     this._pendingStateSync = false;
@@ -1616,7 +1597,7 @@ export class QuickTabWindow {
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');
     }
-
+    
     // v1.6.4.16 - FIX Area C: Log listener cleanup summary
     console.log('[LISTENER_CLEANUP] QuickTabWindow destroy complete:', {
       quickTabId: this.id,
