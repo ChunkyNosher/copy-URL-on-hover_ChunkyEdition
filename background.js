@@ -73,6 +73,80 @@ console.info = function (...args) {
   originalConsoleInfo.apply(console, args);
 };
 
+// ==================== CRITICAL: SYNCHRONOUS MESSAGE LISTENER REGISTRATION ====================
+// v1.6.3.11-v10 - FIX 8-Second Delay Root Cause
+// Per Mozilla WebExtensions spec: "Listeners must be registered synchronously at module top-level"
+// This handler MUST be registered BEFORE any async initialization code runs
+// The GET_CURRENT_TAB_ID handler responds IMMEDIATELY using sender.tab.id without any state checks
+
+console.log('[INIT][Background] PHASE_START:', {
+  timestamp: new Date().toISOString(),
+  phase: 'EARLY_LISTENER_REGISTRATION'
+});
+
+// v1.6.3.11-v10 - CRITICAL: Early message listener for GET_CURRENT_TAB_ID
+// This listener is registered synchronously at module top-level (NOT inside any async function)
+// It handles the critical GET_CURRENT_TAB_ID action that content scripts need immediately
+// sender.tab.id is available instantly from the message context - NO storage/state checks needed
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // v1.6.3.11-v10 - Handle GET_CURRENT_TAB_ID immediately without initialization checks
+  // This is the FIX for the 8-second delay - respond instantly using sender.tab.id
+  if (message.action === 'GET_CURRENT_TAB_ID') {
+    const tabId = sender?.tab?.id;
+    
+    console.log('[INIT][Background] GET_CURRENT_TAB_ID_EARLY:', {
+      timestamp: new Date().toISOString(),
+      'sender.tab.id': tabId,
+      hasValidTabId: typeof tabId === 'number' && tabId > 0
+    });
+    
+    if (typeof tabId === 'number' && tabId > 0) {
+      // SUCCESS: Return tab ID immediately - this is the fast path
+      // Response format matches QuickTabHandler._buildTabIdSuccessResponse() for consistency
+      sendResponse({
+        success: true,
+        data: { currentTabId: tabId },
+        tabId: tabId, // Backward compatibility
+        source: 'early_listener'
+      });
+      return true; // Indicate we handled the response - prevents MessageRouter from processing
+    }
+    
+    // sender.tab.id not available (rare edge case - maybe sidebar or devtools)
+    // Return error but with retryable flag so content script can fallback
+    // Response format matches QuickTabHandler._buildTabIdErrorResponse() for consistency
+    console.warn('[INIT][Background] GET_CURRENT_TAB_ID_EARLY: sender.tab.id not available', {
+      sender: {
+        id: sender?.id,
+        url: sender?.url,
+        frameId: sender?.frameId,
+        tab: sender?.tab ? 'present' : 'missing'
+      }
+    });
+    
+    sendResponse({
+      success: false,
+      data: { currentTabId: null },
+      tabId: null,
+      error: 'sender.tab.id not available from early listener',
+      code: 'SENDER_TAB_UNAVAILABLE',
+      retryable: true,
+      source: 'early_listener'
+    });
+    return true; // Indicate we handled the response - prevents MessageRouter from processing
+  }
+  
+  // Other messages are NOT handled by this early listener
+  // Return false so they can be processed by the MessageRouter registered later
+  return false;
+});
+
+console.log('[INIT][Background] MESSAGE_HANDLER_REGISTRATION:', {
+  timestamp: new Date().toISOString(),
+  handler: 'GET_CURRENT_TAB_ID_EARLY',
+  status: 'REGISTERED_SYNCHRONOUSLY'
+});
+
 // ==================== STATE MANAGEMENT ====================
 
 // Store Quick Tab states per tab
