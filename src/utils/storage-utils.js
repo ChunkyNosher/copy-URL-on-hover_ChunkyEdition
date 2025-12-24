@@ -1519,11 +1519,61 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
 }
 
 /**
+ * Check if a tab matches the current ownership (tab ID and container ID)
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _logOwnershipFiltering
+ * @private
+ * @param {Object} tab - Tab to check
+ * @param {number} tabId - Current tab ID
+ * @param {string|null} normalizedCurrentContainerId - Normalized container ID
+ * @returns {boolean} True if tab is owned by current context
+ */
+function _isTabOwnedByContext(tab, tabId, normalizedCurrentContainerId) {
+  const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_isTabOwnedByContext');
+  const normalizedOriginContainerId = normalizeOriginContainerId(tab.originContainerId, '_isTabOwnedByContext');
+
+  // Legacy tabs with null originTabId are always included
+  if (normalizedOriginTabId === null) return true;
+
+  // Check tab ID match
+  const isTabIdMatch = normalizedOriginTabId === tabId;
+
+  // Check container ID match (legacy Quick Tabs with null originContainerId always match)
+  let isContainerMatch = true;
+  if (normalizedOriginContainerId !== null && normalizedCurrentContainerId !== null) {
+    isContainerMatch = normalizedOriginContainerId === normalizedCurrentContainerId;
+  }
+
+  return isTabIdMatch && isContainerMatch;
+}
+
+/**
+ * Build filtered tab details for logging
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _logOwnershipFiltering
+ * @private
+ * @param {Array} filteredTabs - Tabs that were filtered out
+ * @returns {Array} Details array for logging
+ */
+function _buildFilteredTabDetails(filteredTabs) {
+  if (filteredTabs.length === 0) return [];
+
+  return filteredTabs.map(t => ({
+    quickTabId: t.id,
+    originTabIdRaw: t.originTabId,
+    originTabIdType: typeof t.originTabId,
+    originTabIdNormalized: normalizeOriginTabId(t.originTabId, '_buildFilteredTabDetails'),
+    originContainerId: t.originContainerId,
+    originContainerIdNormalized: normalizeOriginContainerId(t.originContainerId, '_buildFilteredTabDetails'),
+    url: t.url?.substring(0, 50) + (t.url?.length > 50 ? '...' : '')
+  }));
+}
+
+/**
  * Log ownership filtering decision
  * v1.6.3.6-v2 - Extracted from validateOwnershipForWrite to reduce complexity
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced logging with filtered tab details
  * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Enhanced logging with type information for originTabId
  * v1.6.3.10-v6 - FIX Issue #13: Include container ID information in logging
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * @private
  * @param {Array} tabs - All tabs being filtered
  * @param {Array} ownedTabs - Tabs that passed ownership filter
@@ -1531,56 +1581,17 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
  * @param {string|null} containerId - Current container ID
  */
 function _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId = null) {
-  const nonOwnedCount = tabs.length - ownedTabs.length;
   const normalizedCurrentContainerId = normalizeOriginContainerId(containerId, '_logOwnershipFiltering');
+  const filteredTabs = tabs.filter(t => !_isTabOwnedByContext(t, tabId, normalizedCurrentContainerId));
 
-  // v1.6.3.10-v6 - FIX Issue #13: Filter tabs considering both tab ID and container ID
-  const filteredTabs = tabs.filter(t => {
-    const normalizedOriginTabId = normalizeOriginTabId(t.originTabId, '_logOwnershipFiltering');
-    const normalizedOriginContainerId = normalizeOriginContainerId(t.originContainerId, '_logOwnershipFiltering');
-
-    // If originTabId is null, tab is included (legacy), so not filtered out
-    if (normalizedOriginTabId === null) return false;
-
-    // Check tab ID match
-    const isTabIdMatch = normalizedOriginTabId === tabId;
-
-    // Check container ID match (legacy Quick Tabs with null originContainerId always match)
-    let isContainerMatch = true;
-    if (normalizedOriginContainerId !== null && normalizedCurrentContainerId !== null) {
-      isContainerMatch = normalizedOriginContainerId === normalizedCurrentContainerId;
-    }
-
-    // Tab is filtered out if it doesn't match both
-    return !(isTabIdMatch && isContainerMatch);
-  });
-
-  // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Always log filtering decision for traceability
-  // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Include type information
-  // v1.6.3.10-v6 - FIX Issue #13: Include container ID information
   console.log('[StorageUtils] v1.6.3.10-v6 Ownership filtering:', {
     currentTabId: tabId,
     currentTabIdType: typeof tabId,
     currentContainerId: normalizedCurrentContainerId,
     totalTabs: tabs.length,
     ownedTabs: ownedTabs.length,
-    filteredOut: nonOwnedCount,
-    // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Include which tabs filtered out and originTabId values
-    // v1.6.3.10-v6 - FIX Diagnostic Issue #8: Include type information for each tab
-    // v1.6.3.10-v6 - FIX Issue #13: Include container ID information
-    filteredTabDetails:
-      filteredTabs.length > 0
-        ? filteredTabs.map(t => ({
-            quickTabId: t.id,
-            originTabIdRaw: t.originTabId,
-            originTabIdType: typeof t.originTabId,
-            originTabIdNormalized: normalizeOriginTabId(t.originTabId, '_logOwnershipFiltering'),
-            originContainerId: t.originContainerId,
-            originContainerIdNormalized: normalizeOriginContainerId(t.originContainerId, '_logOwnershipFiltering'),
-            url: t.url?.substring(0, 50) + (t.url?.length > 50 ? '...' : '')
-          }))
-        : [],
-    // v1.6.3.10-v5 - FIX Diagnostic Issue #3: Include owned tab IDs for correlation
+    filteredOut: tabs.length - ownedTabs.length,
+    filteredTabDetails: _buildFilteredTabDetails(filteredTabs),
     ownedTabIds: ownedTabs.map(t => t.id)
   });
 }
@@ -1645,64 +1656,91 @@ let tabIdNullSinceTimestamp = null;
 let emergencyReacquisitionInProgress = false;
 
 /**
+ * Check if browser API is available for tab ID reacquisition
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _attemptEmergencyTabIdReacquisition
+ * @private
+ * @returns {Object|null} Browser API or null if unavailable
+ */
+function _getBrowserAPIForReacquisition() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.tabs?.getCurrent) {
+    console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
+      reason: 'browser.tabs.getCurrent not available'
+    });
+    return null;
+  }
+  return browserAPI;
+}
+
+/**
+ * Validate tab result from browser API
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _attemptEmergencyTabIdReacquisition
+ * @private
+ * @param {Object|null} tab - Tab result from browser API
+ * @returns {boolean} True if tab has valid ID
+ */
+function _isValidTabForReacquisition(tab) {
+  if (!tab?.id || typeof tab.id !== 'number') {
+    console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
+      reason: 'Could not get tab via browser.tabs.getCurrent()',
+      tabResult: tab
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Apply reacquired tab ID to cached values
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _attemptEmergencyTabIdReacquisition
+ * @private
+ * @param {Object} tab - Tab object with id and cookieStoreId
+ */
+function _applyReacquiredTabId(tab) {
+  console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: SUCCESS', {
+    reacquiredTabId: tab.id,
+    containerId: tab.cookieStoreId
+  });
+
+  currentWritingTabId = tab.id;
+  currentWritingContainerId = tab.cookieStoreId ?? null;
+  tabIdNullSinceTimestamp = null;
+
+  _resolveTabIdInitPromise(tab.id, 'emergency-reacquisition');
+  if (tab.cookieStoreId) {
+    _resolveContainerIdInitPromise(tab.cookieStoreId, 'emergency-reacquisition');
+  }
+}
+
+/**
  * Attempt emergency re-acquisition of tab ID from background
  * v1.6.3.10-v10 - FIX Issue #2: Fallback when tab ID remains null after timeout
  * v1.6.3.10-v10 - FIX Code Review: Added synchronization guard against concurrent attempts
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * @private
  * @returns {Promise<number|null>} Re-acquired tab ID or null
  */
 async function _attemptEmergencyTabIdReacquisition() {
-  // Guard against concurrent re-acquisition attempts
   if (emergencyReacquisitionInProgress) {
     console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Skipped (already in progress)');
     return null;
   }
-  
+
   emergencyReacquisitionInProgress = true;
-  
   console.warn('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Attempting re-acquisition', {
     tabIdNullSinceTimestamp,
     nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
     currentWritingTabId
   });
-  
+
   try {
-    // Use the browser API directly to avoid circular dependencies
-    const browserAPI = getBrowserStorageAPI();
-    if (!browserAPI?.tabs?.getCurrent) {
-      console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
-        reason: 'browser.tabs.getCurrent not available'
-      });
-      return null;
-    }
-    
+    const browserAPI = _getBrowserAPIForReacquisition();
+    if (!browserAPI) return null;
+
     const tab = await browserAPI.tabs.getCurrent();
-    if (!tab?.id || typeof tab.id !== 'number') {
-      console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: FAILED', {
-        reason: 'Could not get tab via browser.tabs.getCurrent()',
-        tabResult: tab
-      });
-      return null;
-    }
-    
-    console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: SUCCESS', {
-      reacquiredTabId: tab.id,
-      containerId: tab.cookieStoreId
-    });
-    
-    // Update the cached values
-    currentWritingTabId = tab.id;
-    currentWritingContainerId = tab.cookieStoreId ?? null;
-    
-    // Reset the null timestamp
-    tabIdNullSinceTimestamp = null;
-    
-    // Resolve any waiting promises
-    _resolveTabIdInitPromise(tab.id, 'emergency-reacquisition');
-    if (tab.cookieStoreId) {
-      _resolveContainerIdInitPromise(tab.cookieStoreId, 'emergency-reacquisition');
-    }
-    
+    if (!_isValidTabForReacquisition(tab)) return null;
+
+    _applyReacquiredTabId(tab);
     return tab.id;
   } catch (err) {
     console.error('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: ERROR', {
@@ -1710,7 +1748,6 @@ async function _attemptEmergencyTabIdReacquisition() {
     });
     return null;
   } finally {
-    // Always release the guard
     emergencyReacquisitionInProgress = false;
   }
 }
@@ -2552,15 +2589,27 @@ export function createCheckpoint(operationId, stepName, stateSnapshot = null) {
 }
 
 /**
+ * Check if operation has valid checkpoint steps
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from getLastCheckpoint
+ * @private
+ * @param {Object|undefined} operation - Operation object
+ * @returns {boolean} True if operation has valid steps array
+ */
+function _hasValidCheckpointSteps(operation) {
+  return operation && Array.isArray(operation.steps) && operation.steps.length > 0;
+}
+
+/**
  * Get the last checkpoint for an operation
  * v1.6.4.16 - FIX Area D: Retrieve checkpoint for recovery
+ * v1.6.3.11-v3 - FIX CodeScene: Simplify complex conditional
  * 
  * @param {string} operationId - Operation identifier
  * @returns {Object|null} Last checkpoint or null
  */
 export function getLastCheckpoint(operationId) {
   const operation = operationCheckpoints.get(operationId);
-  if (!operation || !operation.steps || operation.steps.length === 0) {
+  if (!_hasValidCheckpointSteps(operation)) {
     return null;
   }
   return operation.steps[operation.steps.length - 1];
@@ -3855,52 +3904,45 @@ function _handleFailedWrite(operationId, transactionId, tabCount, startTime, tot
 }
 
 /**
- * Execute retry loop for storage write
- * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
- * v1.6.3.10-v10 - FIX Gap 3.1: Add write lifecycle SUCCESS logging
+ * Log retry attempt during storage write
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _executeWriteRetryLoop
  * @private
  */
-async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount) {
-  const totalAttempts = STORAGE_MAX_RETRIES + 1;
-  
-  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
-    if (attempt > 1) {
-      // v1.6.3.10-v10 - FIX Gap 3.1: Retry attempt logging
-      console.warn('[StorageWrite] LIFECYCLE_RETRY:', {
-        correlationId: context.writeCorrelationId,
-        transactionId,
-        attemptNumber: attempt,
-        totalAttempts,
-        previousDelayMs: STORAGE_RETRY_DELAYS_MS[attempt - 2] || 0,
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
-    if (success) {
-      // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle SUCCESS
-      const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
-      console.log('[StorageWrite] LIFECYCLE_SUCCESS:', {
-        correlationId: context.writeCorrelationId,
-        transactionId,
-        tabCount,
-        attempt,
-        totalAttempts,
-        durationMs: totalDurationMs,
-        timestamp: new Date().toISOString()
-      });
-      
-      _handleSuccessfulWrite(context.operationId, transactionId, tabCount, context.startTime, attempt, logPrefix);
-      return true;
-    }
-    
-    // Wait before retry if more attempts remain
-    if (attempt < totalAttempts && attempt - 1 < STORAGE_RETRY_DELAYS_MS.length) {
-      await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
-    }
-  }
-  
-  // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE after all retries
+function _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts) {
+  console.warn('[StorageWrite] LIFECYCLE_RETRY:', {
+    correlationId: context.writeCorrelationId,
+    transactionId,
+    attemptNumber: attempt,
+    totalAttempts,
+    previousDelayMs: STORAGE_RETRY_DELAYS_MS[attempt - 2] || 0,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Log successful storage write
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _executeWriteRetryLoop
+ * @private
+ */
+function _logWriteSuccess(context, transactionId, tabCount, attempt, totalAttempts) {
+  const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
+  console.log('[StorageWrite] LIFECYCLE_SUCCESS:', {
+    correlationId: context.writeCorrelationId,
+    transactionId,
+    tabCount,
+    attempt,
+    totalAttempts,
+    durationMs: totalDurationMs,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Log exhausted retries failure
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _executeWriteRetryLoop
+ * @private
+ */
+function _logRetriesExhausted(context, transactionId, tabCount, totalAttempts) {
   const totalDurationMs = context.writeStartTime ? Date.now() - context.writeStartTime : 0;
   console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
     correlationId: context.writeCorrelationId,
@@ -3911,7 +3953,37 @@ async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, trans
     durationMs: totalDurationMs,
     timestamp: new Date().toISOString()
   });
-  
+}
+
+/**
+ * Execute retry loop for storage write
+ * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
+ * v1.6.3.10-v10 - FIX Gap 3.1: Add write lifecycle SUCCESS logging
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting logging helpers
+ * @private
+ */
+async function _executeWriteRetryLoop(browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount) {
+  const totalAttempts = STORAGE_MAX_RETRIES + 1;
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+    if (attempt > 1) {
+      _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts);
+    }
+
+    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
+    if (success) {
+      _logWriteSuccess(context, transactionId, tabCount, attempt, totalAttempts);
+      _handleSuccessfulWrite(context.operationId, transactionId, tabCount, context.startTime, attempt, logPrefix);
+      return true;
+    }
+
+    // Wait before retry if more attempts remain
+    if (attempt < totalAttempts && attempt - 1 < STORAGE_RETRY_DELAYS_MS.length) {
+      await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
+    }
+  }
+
+  _logRetriesExhausted(context, transactionId, tabCount, totalAttempts);
   _handleFailedWrite(context.operationId, transactionId, tabCount, context.startTime, totalAttempts, logPrefix);
   return false;
 }
@@ -4199,6 +4271,95 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
   return { shouldProceed: true };
 }
 
+// =============================================================================
+// LIFECYCLE LOGGING HELPERS
+// v1.6.3.11-v3 - FIX CodeScene: Extract lifecycle logging to reduce persistStateToStorage LOC
+// =============================================================================
+
+/**
+ * Log write lifecycle QUEUED event
+ * @private
+ * @param {Object} context - { correlationId, transactionId, tabCount, forceEmpty, logPrefix, timestamp }
+ */
+function _logLifecycleQueued(context) {
+  console.log('[StorageWrite] LIFECYCLE_QUEUED:', {
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    tabCount: context.tabCount,
+    forceEmpty: context.forceEmpty,
+    caller: context.logPrefix.replace(/\[|\]/g, ''),
+    timestamp: context.timestamp
+  });
+}
+
+/**
+ * Log write lifecycle FAILURE event
+ * @private
+ * @param {Object} context - { correlationId, transactionId, phase, reason, durationMs, timestamp, extras }
+ */
+function _logLifecycleFailure(context) {
+  const logData = {
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    phase: context.phase,
+    reason: context.reason,
+    durationMs: context.durationMs,
+    timestamp: context.timestamp
+  };
+  // Merge any extra fields (e.g., errors, tabCount, forceEmpty)
+  if (context.extras) Object.assign(logData, context.extras);
+  console.error('[StorageWrite] LIFECYCLE_FAILURE:', logData);
+}
+
+/**
+ * Log write lifecycle COALESCED event
+ * @private
+ * @param {Object} context - { correlationId, transactionId, reason, tabCount, durationMs, timestamp }
+ */
+function _logLifecycleCoalesced(context) {
+  console.log('[StorageWrite] LIFECYCLE_COALESCED:', {
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    phase: 'RATE_LIMIT',
+    reason: context.reason,
+    tabCount: context.tabCount,
+    durationMs: context.durationMs,
+    timestamp: context.timestamp
+  });
+}
+
+/**
+ * Log write lifecycle SKIPPED event
+ * @private
+ * @param {Object} context - { correlationId, transactionId, reason, durationMs, timestamp }
+ */
+function _logLifecycleSkipped(context) {
+  console.log('[StorageWrite] LIFECYCLE_SKIPPED:', {
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    phase: 'HASH_CHECK',
+    reason: context.reason,
+    durationMs: context.durationMs,
+    timestamp: context.timestamp
+  });
+}
+
+/**
+ * Log write lifecycle EXECUTE_START event
+ * @private
+ * @param {Object} context - { correlationId, transactionId, tabCount, minimizedCount, durationMs, timestamp }
+ */
+function _logLifecycleExecuteStart(context) {
+  console.log('[StorageWrite] LIFECYCLE_EXECUTE_START:', {
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    tabCount: context.tabCount,
+    minimizedCount: context.minimizedCount,
+    durationMs: context.durationMs,
+    timestamp: context.timestamp
+  });
+}
+
 /**
  * Check if write should be coalesced/rate-limited
  * v1.6.3.10-v10 - FIX Issue H: Add write scheduling policy for high-frequency UI events
@@ -4333,6 +4494,58 @@ function _logPersistInitiation(options) {
 }
 
 /**
+ * Result of persist validation phases
+ * @typedef {Object} PersistValidationResult
+ * @property {boolean} shouldProceed - Whether to proceed with write
+ * @property {boolean} shouldReturnTrue - If not proceeding, return true (vs false)
+ * @property {string|null} failurePhase - Phase that failed (if any)
+ * @property {string|null} failureReason - Reason for failure (if any)
+ * @property {Object|null} extras - Extra data for failure logging
+ */
+
+/**
+ * Run early validation phases for persistStateToStorage
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
+ * @private
+ * @param {Object} state - State to validate
+ * @param {number} tabCount - Number of tabs
+ * @param {boolean} forceEmpty - Force empty flag
+ * @param {string} logPrefix - Log prefix
+ * @param {string} transactionId - Transaction ID
+ * @returns {PersistValidationResult} Validation result
+ */
+function _runPersistValidationPhases(state, tabCount, forceEmpty, logPrefix, transactionId) {
+  // Phase 1.5: Check write coalescing
+  const coalesceResult = _checkWriteCoalescing(state, logPrefix, transactionId);
+  if (coalesceResult.shouldCoalesce) {
+    return { shouldProceed: false, shouldReturnTrue: true, failurePhase: 'COALESCE', failureReason: coalesceResult.reason, extras: { tabCount } };
+  }
+
+  // Phase 2: Check empty write protection
+  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
+    return { shouldProceed: false, shouldReturnTrue: false, failurePhase: 'EMPTY_CHECK', failureReason: 'Empty write rejected', extras: { tabCount, forceEmpty } };
+  }
+
+  // Phase 3: Validate ownership
+  if (!_validatePersistOwnership(state, forceEmpty, logPrefix, transactionId).shouldProceed) {
+    return { shouldProceed: false, shouldReturnTrue: false, failurePhase: 'OWNERSHIP_FILTER', failureReason: 'Ownership validation failed', extras: null };
+  }
+
+  // Phase 4: Check for state changes
+  if (!hasStateChanged(state)) {
+    return { shouldProceed: false, shouldReturnTrue: true, failurePhase: 'HASH_CHECK', failureReason: 'No changes detected', extras: null };
+  }
+
+  // Phase 5: Validate state content
+  const validation = validateStateForPersist(state);
+  if (!validation.valid) {
+    return { shouldProceed: false, shouldReturnTrue: false, failurePhase: 'VALIDATE_CONTENT', failureReason: 'State validation failed', extras: { errors: validation.errors } };
+  }
+
+  return { shouldProceed: true, shouldReturnTrue: false, failurePhase: null, failureReason: null, extras: null };
+}
+
+/**
  * Persist Quick Tab state to storage.local
  * v1.6.3.4 - Extracted from handlers
  * v1.6.3.4-v2 - FIX Bug #1: Add Promise timeout, validation, and detailed logging
@@ -4342,6 +4555,7 @@ function _logPersistInitiation(options) {
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Ownership validation extracted
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting phases
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced phase logging with correlation ID
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity to cc≤8 by extracting validation phases
  *
  * @param {Object} state - State object to persist
  * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
@@ -4351,30 +4565,18 @@ function _logPersistInitiation(options) {
 export function persistStateToStorage(state, logPrefix = '[StorageUtils]', forceEmpty = false) {
   const transactionId = generateTransactionId();
   const startTime = Date.now();
-  
-  // v1.6.3.10-v10 - FIX Gap 3.1: Generate write correlation ID
-  const writeCorrelationId = `write-${new Date().toISOString()}-${Math.random().toString(36).substring(2, 8)}`;
+  const timestamp = new Date().toISOString();
+  const correlationId = `write-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
 
-  // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle QUEUED
-  console.log('[StorageWrite] LIFECYCLE_QUEUED:', {
-    correlationId: writeCorrelationId,
-    transactionId,
-    tabCount: state?.tabs?.length ?? 0,
-    forceEmpty,
-    caller: logPrefix.replace(/\[|\]/g, ''),
-    timestamp: new Date().toISOString()
+  _logLifecycleQueued({
+    correlationId, transactionId, tabCount: state?.tabs?.length ?? 0, forceEmpty, logPrefix, timestamp
   });
 
   // Phase 1: Validate state structure
   if (!_validateStateStructure(state, logPrefix).valid) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
-    console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'VALIDATE_STRUCTURE',
-      reason: 'Invalid state structure',
-      durationMs: Date.now() - startTime,
-      timestamp: new Date().toISOString()
+    _logLifecycleFailure({
+      correlationId, transactionId, phase: 'VALIDATE_STRUCTURE',
+      reason: 'Invalid state structure', durationMs: Date.now() - startTime, timestamp
     });
     return Promise.resolve(false);
   }
@@ -4382,105 +4584,30 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const tabCount = state.tabs.length;
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
 
-  // v1.6.3.10-v10 - FIX Issue H: Phase 1.5: Check write coalescing (rate limiting)
-  // This must be early to avoid unnecessary validation work for coalesced writes
-  const coalesceResult = _checkWriteCoalescing(state, logPrefix, transactionId);
-  if (coalesceResult.shouldCoalesce) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle COALESCED
-    console.log('[StorageWrite] LIFECYCLE_COALESCED:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'RATE_LIMIT',
-      reason: coalesceResult.reason,
-      tabCount,
-      durationMs: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    });
-    // Return true because the state will be persisted by a later write
-    return Promise.resolve(true);
-  }
-
-  // Phase 2: Check empty write protection
-  if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
-    console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'EMPTY_CHECK',
-      reason: 'Empty write rejected',
-      tabCount,
-      forceEmpty,
-      durationMs: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    });
-    return Promise.resolve(false);
-  }
-
-  // Phase 3: Validate ownership
-  const ownershipResult = _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId);
-  if (!ownershipResult.shouldProceed) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
-    console.log('[StorageWrite] LIFECYCLE_FAILURE:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'OWNERSHIP_FILTER',
-      reason: 'Ownership validation failed',
-      durationMs: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    });
-    return Promise.resolve(false);
-  }
-
-  // Phase 4: Check for state changes
-  if (!hasStateChanged(state)) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle SKIPPED
-    console.log('[StorageWrite] LIFECYCLE_SKIPPED:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'HASH_CHECK',
-      reason: 'No changes detected',
-      durationMs: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    });
-    return Promise.resolve(true);
-  }
-
-  // Phase 5: Validate state content
-  const validation = validateStateForPersist(state);
-  if (!validation.valid) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle FAILURE
-    console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'VALIDATE_CONTENT',
-      reason: 'State validation failed',
-      errors: validation.errors,
-      durationMs: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    });
-    return Promise.resolve(false);
+  // Run validation phases 1.5-5
+  const validation = _runPersistValidationPhases(state, tabCount, forceEmpty, logPrefix, transactionId);
+  if (!validation.shouldProceed) {
+    if (validation.failurePhase === 'COALESCE') {
+      _logLifecycleCoalesced({ correlationId, transactionId, reason: validation.failureReason, tabCount, durationMs: Date.now() - startTime, timestamp });
+    } else if (validation.failurePhase === 'HASH_CHECK') {
+      _logLifecycleSkipped({ correlationId, transactionId, reason: validation.failureReason, durationMs: Date.now() - startTime, timestamp });
+    } else {
+      _logLifecycleFailure({ correlationId, transactionId, phase: validation.failurePhase, reason: validation.failureReason, durationMs: Date.now() - startTime, timestamp, extras: validation.extras });
+    }
+    return Promise.resolve(validation.shouldReturnTrue);
   }
 
   // Phase 6: Log and execute write
-  // v1.6.3.10-v10 - FIX Gap 3.1: Write lifecycle EXECUTE_START
-  console.log('[StorageWrite] LIFECYCLE_EXECUTE_START:', {
-    correlationId: writeCorrelationId,
-    transactionId,
-    tabCount,
-    minimizedCount,
-    durationMs: Date.now() - startTime,
-    timestamp: new Date().toISOString()
+  _logLifecycleExecuteStart({
+    correlationId, transactionId, tabCount, minimizedCount, durationMs: Date.now() - startTime, timestamp
   });
-
   _logPersistInitiation({ logPrefix, transactionId, tabCount, minimizedCount, forceEmpty });
 
   const stateWithTxn = _prepareStateForWrite(state, transactionId);
-  
-  // v1.6.3.10-v10 - FIX Gap 3.1: Add write correlation ID to state for tracking
-  stateWithTxn._writeCorrelationId = writeCorrelationId;
+  stateWithTxn._writeCorrelationId = correlationId;
 
   return queueStorageWrite(
-    () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId, startTime),
+    () => _executeStorageWrite(stateWithTxn, tabCount, logPrefix, transactionId, correlationId, startTime),
     logPrefix,
     transactionId
   );

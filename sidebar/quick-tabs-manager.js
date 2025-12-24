@@ -1224,8 +1224,24 @@ let debounceSetTimestamp = 0;
 const STATE_SYNC_TIMEOUT_MS = 5000;
 
 /**
+ * Build state sync request message
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _requestFullStateSync
+ * @private
+ */
+function _buildStateSyncRequest() {
+  return {
+    type: 'REQUEST_FULL_STATE_SYNC',
+    timestamp: Date.now(),
+    source: 'sidebar',
+    currentCacheHash: computeStateHash(quickTabsState),
+    currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
+  };
+}
+
+/**
  * Request full state sync from background after port reconnection
  * v1.6.4.0 - FIX Issue E: Ensure Manager has latest state after reconnection
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * @private
  */
 async function _requestFullStateSync() {
@@ -1237,16 +1253,7 @@ async function _requestFullStateSync() {
   console.log('[Manager] STATE_SYNC_REQUESTED: requesting full state from background');
 
   try {
-    const response = await sendPortMessageWithTimeout(
-      {
-        type: 'REQUEST_FULL_STATE_SYNC',
-        timestamp: Date.now(),
-        source: 'sidebar',
-        currentCacheHash: computeStateHash(quickTabsState),
-        currentCacheTabCount: quickTabsState?.tabs?.length ?? 0
-      },
-      STATE_SYNC_TIMEOUT_MS
-    );
+    const response = await sendPortMessageWithTimeout(_buildStateSyncRequest(), STATE_SYNC_TIMEOUT_MS);
 
     if (response?.success && response?.state) {
       _handleStateSyncResponse(response);
@@ -1254,12 +1261,7 @@ async function _requestFullStateSync() {
       console.warn('[Manager] State sync response did not include state:', response);
     }
   } catch (err) {
-    console.warn(
-      '[Manager] State sync timed out after',
-      STATE_SYNC_TIMEOUT_MS,
-      'ms, proceeding with cached state (may be stale):',
-      err.message
-    );
+    console.warn('[Manager] State sync timed out after', STATE_SYNC_TIMEOUT_MS, 'ms, proceeding with cached state (may be stale):', err.message);
   }
 }
 
@@ -1486,83 +1488,79 @@ function handleStateUpdateBroadcast(message) {
  * v1.6.3.10-v7 - FIX Bug #2: Container validation for adoption
  * @param {Object} message - Adoption completion message
  */
+/**
+ * Invalidate browser tab info cache for affected tabs during adoption
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from handleAdoptionCompletion
+ * @private
+ */
+function _invalidateAffectedTabCaches(oldOriginTabId, newOriginTabId) {
+  if (oldOriginTabId) browserTabInfoCache.delete(oldOriginTabId);
+  if (newOriginTabId) browserTabInfoCache.delete(newOriginTabId);
+}
+
+/**
+ * Update quickTabHostInfo for adopted Quick Tab
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from handleAdoptionCompletion
+ * @private
+ */
+function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContainerId) {
+  if (!adoptedQuickTabId || !newOriginTabId) return;
+
+  const previousHostInfo = quickTabHostInfo.get(adoptedQuickTabId);
+  quickTabHostInfo.set(adoptedQuickTabId, {
+    hostTabId: newOriginTabId,
+    containerId: newContainerId || null,
+    lastUpdate: Date.now(),
+    lastOperation: 'adoption',
+    confirmed: true
+  });
+  console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
+    adoptedQuickTabId,
+    previousHostTabId: previousHostInfo?.hostTabId ?? null,
+    newHostTabId: newOriginTabId,
+    containerId: newContainerId
+  });
+}
+
+/**
+ * Handle adoption completion from background script
+ * v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
+ * v1.6.3.10-v7 - FIX Bug #2: Container validation for adoption
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
+ * @param {Object} message - Adoption completion message
+ */
 async function handleAdoptionCompletion(message) {
   const { adoptedQuickTabId, oldOriginTabId, newOriginTabId, timestamp } = message;
 
   console.log('[Manager] ADOPTION_COMPLETED received via port:', {
-    adoptedQuickTabId,
-    oldOriginTabId,
-    newOriginTabId,
-    timestamp,
-    timeSinceBroadcast: Date.now() - timestamp
+    adoptedQuickTabId, oldOriginTabId, newOriginTabId, timestamp, timeSinceBroadcast: Date.now() - timestamp
   });
 
-  // v1.6.3.10-v7 - FIX Bug #2: Validate containers match before processing adoption
+  // Validate containers match before processing adoption
   const containerValidation = await _validateAdoptionContainers(oldOriginTabId, newOriginTabId);
   if (!containerValidation.valid) {
     console.warn('[Manager] ADOPTION_CONTAINER_MISMATCH:', {
-      adoptedQuickTabId,
-      oldOriginTabId,
-      newOriginTabId,
+      adoptedQuickTabId, oldOriginTabId, newOriginTabId,
       oldContainerId: containerValidation.oldContainerId,
       newContainerId: containerValidation.newContainerId,
-      reason: containerValidation.reason,
-      action: 'proceeding with warning - cross-container adoption'
+      reason: containerValidation.reason, action: 'proceeding with warning - cross-container adoption'
     });
-    // Note: We proceed anyway but log warning - containers diverging is allowed but tracked
   }
 
-  // v1.6.3.10-v3 - FIX Issue #47: Update cache staleness tracking (uses Issue #8 infrastructure)
   lastCacheSyncFromStorage = Date.now();
+  _invalidateAffectedTabCaches(oldOriginTabId, newOriginTabId);
+  _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, containerValidation.newContainerId);
 
-  // Invalidate browser tab info cache for affected tabs
-  if (oldOriginTabId) {
-    browserTabInfoCache.delete(oldOriginTabId);
-  }
-  if (newOriginTabId) {
-    browserTabInfoCache.delete(newOriginTabId);
-  }
-
-  // v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to reflect new owner
-  // v1.6.3.10-v7 - FIX Bug #2: Also store container ID
-  // This ensures restore operations route to the correct tab after adoption
-  if (adoptedQuickTabId && newOriginTabId) {
-    const previousHostInfo = quickTabHostInfo.get(adoptedQuickTabId);
-    quickTabHostInfo.set(adoptedQuickTabId, {
-      hostTabId: newOriginTabId,
-      containerId: containerValidation.newContainerId || null,
-      lastUpdate: Date.now(),
-      lastOperation: 'adoption',
-      confirmed: true
-    });
-    console.log('[Manager] ADOPTION_HOST_INFO_UPDATED:', {
-      adoptedQuickTabId,
-      previousHostTabId: previousHostInfo?.hostTabId ?? null,
-      newHostTabId: newOriginTabId,
-      containerId: containerValidation.newContainerId
-    });
-  }
-
-  // v1.6.3.10-v5 - FIX Bug #3: Attempt surgical DOM update first
-  // This prevents all Quick Tabs from animating when only one was adopted
-  const surgicalUpdateSuccess = await _performSurgicalAdoptionUpdate(
-    adoptedQuickTabId,
-    oldOriginTabId,
-    newOriginTabId
-  );
+  // Attempt surgical DOM update first (prevents all Quick Tabs from animating)
+  const surgicalUpdateSuccess = await _performSurgicalAdoptionUpdate(adoptedQuickTabId, oldOriginTabId, newOriginTabId);
 
   if (surgicalUpdateSuccess) {
     console.log('[Manager] ADOPTION_SURGICAL_UPDATE_SUCCESS:', {
-      adoptedQuickTabId,
-      oldOriginTabId,
-      newOriginTabId,
-      message: 'Only adopted Quick Tab updated - no full rebuild'
+      adoptedQuickTabId, oldOriginTabId, newOriginTabId, message: 'Only adopted Quick Tab updated - no full rebuild'
     });
   } else {
-    // Fall back to full render if surgical update fails
     console.log('[Manager] ADOPTION_SURGICAL_UPDATE_FAILED, falling back to full render:', {
-      adoptedQuickTabId,
-      reason: 'surgical update returned false'
+      adoptedQuickTabId, reason: 'surgical update returned false'
     });
     scheduleRender('adoption-completed-fallback');
   }
@@ -2621,30 +2619,49 @@ function _stopHostInfoMaintenance() {
 }
 
 /**
+ * Get set of valid Quick Tab IDs from current state
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _performHostInfoMaintenance
+ * @private
+ * @returns {Set} Set of valid Quick Tab IDs
+ */
+function _getValidQuickTabIds() {
+  const validIds = new Set();
+  if (quickTabsState?.tabs && Array.isArray(quickTabsState.tabs)) {
+    quickTabsState.tabs.forEach(tab => validIds.add(tab.id));
+  }
+  return validIds;
+}
+
+/**
+ * Find orphaned host info entries
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _performHostInfoMaintenance
+ * @private
+ * @param {Set} validQuickTabIds - Set of valid Quick Tab IDs
+ * @returns {Array} Array of orphaned entry IDs
+ */
+function _findOrphanedHostInfoEntries(validQuickTabIds) {
+  const orphaned = [];
+  for (const [quickTabId] of quickTabHostInfo.entries()) {
+    if (!validQuickTabIds.has(quickTabId)) {
+      orphaned.push(quickTabId);
+    }
+  }
+  return orphaned;
+}
+
+/**
  * Perform maintenance on quickTabHostInfo - remove orphaned entries
  * v1.6.3.10-v7 - FIX Bug #1: Validates entries against current quickTabsState
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  */
 function _performHostInfoMaintenance() {
   const startTime = Date.now();
   const entriesBefore = quickTabHostInfo.size;
 
-  if (entriesBefore === 0) {
-    return; // Nothing to maintain
-  }
+  if (entriesBefore === 0) return;
 
-  // Get current valid Quick Tab IDs from state
-  const validQuickTabIds = new Set();
-  if (quickTabsState?.tabs && Array.isArray(quickTabsState.tabs)) {
-    quickTabsState.tabs.forEach(tab => validQuickTabIds.add(tab.id));
-  }
-
-  // Remove entries that don't correspond to existing Quick Tabs
-  const orphanedEntries = [];
-  for (const [quickTabId, _info] of quickTabHostInfo.entries()) {
-    if (!validQuickTabIds.has(quickTabId)) {
-      orphanedEntries.push(quickTabId);
-    }
-  }
+  const validQuickTabIds = _getValidQuickTabIds();
+  const orphanedEntries = _findOrphanedHostInfoEntries(validQuickTabIds);
 
   // Delete orphaned entries
   orphanedEntries.forEach(id => quickTabHostInfo.delete(id));
@@ -2652,17 +2669,14 @@ function _performHostInfoMaintenance() {
   // Check if we still exceed max size - prune oldest entries
   const prunedOldest = _pruneOldestHostInfoEntries();
 
-  const entriesAfter = quickTabHostInfo.size;
-  const durationMs = Date.now() - startTime;
-
   if (orphanedEntries.length > 0 || prunedOldest > 0) {
     console.log('[Manager] HOST_INFO_MAINTENANCE_COMPLETE:', {
       entriesBefore,
-      entriesAfter,
+      entriesAfter: quickTabHostInfo.size,
       orphanedRemoved: orphanedEntries.length,
       oldestPruned: prunedOldest,
       validQuickTabCount: validQuickTabIds.size,
-      durationMs
+      durationMs: Date.now() - startTime
     });
   }
 }
@@ -3195,6 +3209,59 @@ function updateUIStats(totalTabs, latestTimestamp) {
 }
 
 /**
+ * Execute the debounced render operation
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from renderUI to reduce complexity
+ * @private
+ * @param {number} debounceTime - The debounce time used
+ */
+async function _executeDebounceRender(debounceTime) {
+  renderDebounceTimer = null;
+
+  // Only render if still pending (wasn't cancelled)
+  if (!pendingRenderUI) {
+    console.log('[Manager] Skipping debounced render - no longer pending');
+    return;
+  }
+
+  pendingRenderUI = false;
+  const completionTime = Date.now();
+  console.log('[Manager] RENDER_DEBOUNCE_COMPLETE:', {
+    totalWaitMs: completionTime - debounceStartTimestamp,
+    extensions: debounceExtensionCount,
+    finalDebounceMs: debounceTime
+  });
+
+  // Reset sliding window tracking
+  debounceStartTimestamp = 0;
+  debounceExtensionCount = 0;
+
+  // Fetch CURRENT state from storage, not captured hash
+  const staleCheckResult = await _checkAndReloadStaleState();
+  if (staleCheckResult.stateReloaded) {
+    console.log('[Manager] State changed while debounce was waiting, rendering with fresh state', staleCheckResult);
+  }
+
+  // Recalculate hash after potential fresh load
+  const finalHash = computeStateHash(quickTabsState);
+  if (finalHash === lastRenderedHash) {
+    console.log('[Manager] Skipping render - state hash unchanged', {
+      hash: finalHash,
+      tabCount: quickTabsState?.tabs?.length ?? 0
+    });
+    return;
+  }
+
+  // Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
+  lastRenderedHash = finalHash;
+  lastRenderedStateHash = finalHash;
+
+  // Synchronize DOM mutation with requestAnimationFrame
+  requestAnimationFrame(() => {
+    _renderUIImmediate();
+  });
+}
+
+/**
  * Render the Quick Tabs Manager UI (debounced)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
  * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
@@ -3202,107 +3269,81 @@ function updateUIStats(totalTabs, latestTimestamp) {
  *   - Reduced debounce from 300ms to 100ms
  *   - Timer extends on each new change (up to RENDER_DEBOUNCE_MAX_WAIT_MS)
  *   - Compares against CURRENT storage read, not captured hash
+ * v1.6.3.11-v3 - FIX CodeScene: Extract debounce callback to reduce complexity
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
   const now = Date.now();
-
-  // v1.6.3.7 - FIX Issue #3: Set flag indicating render is pending
   pendingRenderUI = true;
 
-  // v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce logic
+  // Sliding-window debounce logic
   const isNewDebounceWindow = debounceStartTimestamp === 0 || !renderDebounceTimer;
 
   if (isNewDebounceWindow) {
-    // Starting a new debounce window
     debounceStartTimestamp = now;
     debounceExtensionCount = 0;
     capturedStateHashAtDebounce = computeStateHash(quickTabsState);
   } else {
-    // Extending existing debounce window (state changed again)
     debounceExtensionCount++;
-
-    // v1.6.3.10-v2 - FIX Issue #1: Check if we've exceeded max wait time
     const totalWaitTime = now - debounceStartTimestamp;
     if (totalWaitTime >= RENDER_DEBOUNCE_MAX_WAIT_MS) {
-      // Force render now - we've waited long enough
       _forceRenderOnMaxWait(totalWaitTime);
       return;
     }
   }
 
-  // v1.6.4.0 - FIX Issue D: Update captured hash to latest state
   debounceSetTimestamp = now;
-
-  // Clear any existing debounce timer
   if (renderDebounceTimer) {
     clearTimeout(renderDebounceTimer);
   }
 
-  // v1.6.3.10-v2 - FIX Issue #1: Calculate remaining wait time for sliding window
+  // Calculate remaining wait time for sliding window
   const elapsedSinceStart = now - debounceStartTimestamp;
   const remainingMaxWait = RENDER_DEBOUNCE_MAX_WAIT_MS - elapsedSinceStart;
   const debounceTime = Math.min(RENDER_DEBOUNCE_MS, remainingMaxWait);
 
   // Schedule the actual render
-  renderDebounceTimer = setTimeout(async () => {
-    renderDebounceTimer = null;
+  renderDebounceTimer = setTimeout(() => _executeDebounceRender(debounceTime), debounceTime);
+}
 
-    // Only render if still pending (wasn't cancelled)
-    if (!pendingRenderUI) {
-      console.log('[Manager] Skipping debounced render - no longer pending');
-      return;
-    }
+/**
+ * Build stale check result object
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _checkAndReloadStaleState
+ * @private
+ */
+function _buildStaleCheckResult(stateReloaded, inMemoryHash, storageHash, debounceWaitTime) {
+  return {
+    stateReloaded,
+    capturedHash: capturedStateHashAtDebounce,
+    currentHash: inMemoryHash,
+    storageHash,
+    debounceWaitMs: debounceWaitTime
+  };
+}
 
-    pendingRenderUI = false;
-
-    // v1.6.3.10-v2 - FIX Issue #1: Log debounce completion with sliding window stats
-    const completionTime = Date.now();
-    console.log('[Manager] RENDER_DEBOUNCE_COMPLETE:', {
-      totalWaitMs: completionTime - debounceStartTimestamp,
-      extensions: debounceExtensionCount,
-      finalDebounceMs: debounceTime
+/**
+ * Apply fresh state from storage if valid
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _checkAndReloadStaleState
+ * @private
+ */
+function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
+  if (storageState?.tabs) {
+    quickTabsState = storageState;
+    _updateInMemoryCache(storageState.tabs);
+    console.log('[Manager] STALE_STATE_RELOADED:', {
+      inMemoryHash,
+      storageHash,
+      inMemoryTabCount: quickTabsState?.tabs?.length ?? 0,
+      storageTabCount: storageState.tabs.length
     });
-
-    // Reset sliding window tracking
-    debounceStartTimestamp = 0;
-    debounceExtensionCount = 0;
-
-    // v1.6.3.10-v2 - FIX Issue #1: Fetch CURRENT state from storage, not captured hash
-    const staleCheckResult = await _checkAndReloadStaleState();
-    if (staleCheckResult.stateReloaded) {
-      console.log(
-        '[Manager] State changed while debounce was waiting, rendering with fresh state',
-        staleCheckResult
-      );
-    }
-
-    // Recalculate hash after potential fresh load
-    const finalHash = computeStateHash(quickTabsState);
-    if (finalHash === lastRenderedHash) {
-      console.log('[Manager] Skipping render - state hash unchanged', {
-        hash: finalHash,
-        tabCount: quickTabsState?.tabs?.length ?? 0
-      });
-      return;
-    }
-
-    // v1.6.3.7 - Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
-    // This ensures consistent state even on render failure
-    lastRenderedHash = finalHash;
-    lastRenderedStateHash = finalHash;
-
-    // Synchronize DOM mutation with requestAnimationFrame
-    requestAnimationFrame(() => {
-      _renderUIImmediate();
-    });
-  }, debounceTime);
+  }
 }
 
 /**
  * Check for stale state during debounce and reload if needed
  * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
@@ -3310,8 +3351,6 @@ async function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
-  // v1.6.3.10-v2 - FIX Issue #1: Always fetch current storage state to compare
-  // This ensures we render the latest state even under storage churn
   try {
     const freshResult = await browser.storage.local.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
@@ -3319,43 +3358,15 @@ async function _checkAndReloadStaleState() {
 
     // Compare in-memory state against storage state
     if (storageHash === inMemoryHash) {
-      return {
-        stateReloaded: false,
-        capturedHash: capturedStateHashAtDebounce,
-        currentHash: inMemoryHash,
-        storageHash,
-        debounceWaitMs: debounceWaitTime
-      };
+      return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
     }
 
     // Storage has different state - reload it
-    if (storageState?.tabs) {
-      quickTabsState = storageState;
-      _updateInMemoryCache(storageState.tabs);
-      console.log('[Manager] STALE_STATE_RELOADED:', {
-        inMemoryHash,
-        storageHash,
-        inMemoryTabCount: quickTabsState?.tabs?.length ?? 0,
-        storageTabCount: storageState.tabs.length
-      });
-    }
-
-    return {
-      stateReloaded: true,
-      capturedHash: capturedStateHashAtDebounce,
-      currentHash: inMemoryHash,
-      storageHash,
-      debounceWaitMs: debounceWaitTime
-    };
+    _applyFreshStorageState(storageState, inMemoryHash, storageHash);
+    return _buildStaleCheckResult(true, inMemoryHash, storageHash, debounceWaitTime);
   } catch (err) {
     console.warn('[Manager] Failed to check storage state, using in-memory:', err.message);
-    return {
-      stateReloaded: false,
-      capturedHash: capturedStateHashAtDebounce,
-      currentHash: inMemoryHash,
-      storageHash: 0,
-      debounceWaitMs: debounceWaitTime
-    };
+    return _buildStaleCheckResult(false, inMemoryHash, 0, debounceWaitTime);
   }
 }
 
@@ -4462,9 +4473,18 @@ function _handleStorageChange(change) {
 }
 
 /**
+ * Build analysis result for storage change
+ * v1.6.3.11-v3 - FIX CodeScene: Extract from _analyzeStorageChange
+ * @private
+ */
+function _buildAnalysisResult(requiresRender, hasDataChange, changeType, changeReason, skipReason = null) {
+  return { requiresRender, hasDataChange, changeType, changeReason, skipReason };
+}
+
+/**
  * Analyze storage change to determine if renderUI() is needed
  * v1.6.3.7 - FIX Issue #3: Differential update detection
- * Refactored to reduce complexity by extracting helper functions
+ * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting result builder
  * @private
  * @param {Object} oldValue - Previous storage value
  * @param {Object} newValue - New storage value
@@ -4476,13 +4496,7 @@ function _analyzeStorageChange(oldValue, newValue) {
 
   // Tab count change always requires render
   if (oldTabs.length !== newTabs.length) {
-    return {
-      requiresRender: true,
-      hasDataChange: true,
-      changeType: 'tab-count',
-      changeReason: `Tab count changed: ${oldTabs.length} → ${newTabs.length}`,
-      skipReason: null
-    };
+    return _buildAnalysisResult(true, true, 'tab-count', `Tab count changed: ${oldTabs.length} → ${newTabs.length}`);
   }
 
   // Check for structural changes using helper
@@ -4490,39 +4504,22 @@ function _analyzeStorageChange(oldValue, newValue) {
 
   // If only z-index changed, skip render
   if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
-    return {
-      requiresRender: false,
-      hasDataChange: false,
-      changeType: 'metadata-only',
-      changeReason: 'z-index only',
-      skipReason: `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`
-    };
+    return _buildAnalysisResult(false, false, 'metadata-only', 'z-index only', `Only z-index changed: ${JSON.stringify(changeResults.zIndexChanges)}`);
   }
 
   // If there are data changes, render is required
   if (changeResults.hasDataChange) {
-    return {
-      requiresRender: true,
-      hasDataChange: true,
-      changeType: 'data',
-      changeReason: changeResults.dataChangeReasons.join('; '),
-      skipReason: null
-    };
+    return _buildAnalysisResult(true, true, 'data', changeResults.dataChangeReasons.join('; '));
   }
 
   // No changes detected
-  return {
-    requiresRender: false,
-    hasDataChange: false,
-    changeType: 'none',
-    changeReason: 'no changes',
-    skipReason: 'No detectable changes between old and new state'
-  };
+  return _buildAnalysisResult(false, false, 'none', 'no changes', 'No detectable changes between old and new state');
 }
 
 /**
  * Check a single tab for data changes
  * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
+ * v1.6.3.11-v3 - FIX CodeScene: Use data-driven approach to reduce complexity
  * @private
  * @param {Object} oldTab - Previous tab state
  * @param {Object} newTab - New tab state
@@ -4530,29 +4527,20 @@ function _analyzeStorageChange(oldValue, newValue) {
  */
 function _checkSingleTabDataChanges(oldTab, newTab) {
   const reasons = [];
+  const tabId = newTab.id;
 
-  if (oldTab.originTabId !== newTab.originTabId) {
-    reasons.push(
-      `originTabId changed for ${newTab.id}: ${oldTab.originTabId} → ${newTab.originTabId}`
-    );
-  }
-  if (oldTab.minimized !== newTab.minimized) {
-    reasons.push(`minimized changed for ${newTab.id}`);
-  }
-  if (oldTab.left !== newTab.left || oldTab.top !== newTab.top) {
-    reasons.push(`position changed for ${newTab.id}`);
-  }
-  if (oldTab.width !== newTab.width || oldTab.height !== newTab.height) {
-    reasons.push(`size changed for ${newTab.id}`);
-  }
-  if (oldTab.title !== newTab.title || oldTab.url !== newTab.url) {
-    reasons.push(`title/url changed for ${newTab.id}`);
-  }
+  // Data-driven change checks
+  const checks = [
+    { cond: oldTab.originTabId !== newTab.originTabId, msg: `originTabId changed for ${tabId}: ${oldTab.originTabId} → ${newTab.originTabId}` },
+    { cond: oldTab.minimized !== newTab.minimized, msg: `minimized changed for ${tabId}` },
+    { cond: oldTab.left !== newTab.left || oldTab.top !== newTab.top, msg: `position changed for ${tabId}` },
+    { cond: oldTab.width !== newTab.width || oldTab.height !== newTab.height, msg: `size changed for ${tabId}` },
+    { cond: oldTab.title !== newTab.title || oldTab.url !== newTab.url, msg: `title/url changed for ${tabId}` }
+  ];
 
-  return {
-    hasDataChange: reasons.length > 0,
-    reasons
-  };
+  checks.forEach(check => { if (check.cond) reasons.push(check.msg); });
+
+  return { hasDataChange: reasons.length > 0, reasons };
 }
 
 /**
