@@ -1822,6 +1822,10 @@ const quickTabHandler = new QuickTabHandler(
 
 const tabHandler = new TabHandler(quickTabStates, browser);
 
+// v1.6.3.11-v8 - FIX Issue #10: Wire up transaction tracking to QuickTabHandler
+// This enables storage write deduplication via _isTransactionSelfWrite()
+quickTabHandler.setTransactionCallbacks(_trackTransaction, _completeTransaction);
+
 // Set initialization flag for QuickTabHandler if state is already initialized
 if (isInitialized) {
   quickTabHandler.setInitialized(true);

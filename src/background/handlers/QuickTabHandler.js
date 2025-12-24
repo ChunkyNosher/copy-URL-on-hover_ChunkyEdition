@@ -25,6 +25,9 @@
 const STORAGE_WRITE_MAX_RETRIES = 3;
 const STORAGE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.11-v8 - FIX Issue #21: Pattern for detecting identity not ready
+const UNKNOWN_PLACEHOLDER_PATTERNS = ['qt-unknown-', '-unknown-'];
+
 export class QuickTabHandler {
   // v1.6.2.4 - Message deduplication constants for Issue 4 fix
   // 100ms: Typical double-fire interval for keyboard/context menu events is <10ms
@@ -62,6 +65,42 @@ export class QuickTabHandler {
     this._storageVersion = 0;
     // Expected version from last read (for conflict detection)
     this._expectedVersion = 0;
+
+    /**
+     * v1.6.3.11-v8 - FIX Issue #10: Transaction tracking callbacks
+     * @type {Function|null} - Callback to track transaction start (injected by background.js)
+     * @private
+     */
+    this._trackTransactionFn = null;
+
+    /**
+     * v1.6.3.11-v8 - FIX Issue #10: Transaction tracking callbacks
+     * @type {Function|null} - Callback to mark transaction complete (injected by background.js)
+     * @private
+     */
+    this._completeTransactionFn = null;
+  }
+
+  /**
+   * Generate unique transaction ID for storage operations
+   * v1.6.3.11-v8 - FIX Issue #10: Extracted to reduce duplication
+   * @private
+   * @returns {string} Unique transaction ID
+   */
+  _generateTransactionId() {
+    return `tx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  /**
+   * Set transaction tracking callbacks for storage operations
+   * v1.6.3.11-v8 - FIX Issue #10: Wire up transaction tracking to storage writes
+   * @param {Function} trackFn - Function to call before storage write
+   * @param {Function} completeFn - Function to call after storage write completes
+   */
+  setTransactionCallbacks(trackFn, completeFn) {
+    this._trackTransactionFn = trackFn;
+    this._completeTransactionFn = completeFn;
+    console.log('[QuickTabHandler] v1.6.3.11-v8 Transaction callbacks registered');
   }
 
   /**
@@ -234,44 +273,57 @@ export class QuickTabHandler {
   }
 
   /**
-   * Handle Quick Tab creation
-   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
-   * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
-   * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Include originTabId and originContainerId in storage
+   * Validate originTabId resolution and return error response if invalid
+   * v1.6.3.11-v8 - FIX Issue #12 & #21: Extracted to reduce handleCreate complexity
+   * @private
+   * @param {Object} resolution - Result from _resolveOriginTabId
+   * @param {Object} message - Original create message
+   * @returns {Object|null} Error response if invalid, null if valid
    */
-  async handleCreate(message, _sender) {
-    // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
-    if (this._isDuplicateMessage(message)) {
-      console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
-      return { success: true, duplicate: true };
+  _validateOriginTabIdResolution(resolution, message) {
+    // v1.6.3.11-v8 - FIX Issue #21: Reject if identity system was not ready
+    if (resolution.hasUnknownPlaceholder) {
+      console.error('[QuickTabHandler] v1.6.3.11-v8 CREATE_REJECTED: Identity not ready', {
+        quickTabId: message.id,
+        url: message.url
+      });
+      return {
+        success: false,
+        error: 'IDENTITY_NOT_READY',
+        message: 'Tab ID is "unknown". Wait for identity initialization before creating Quick Tab.',
+        retryable: true
+      };
     }
 
-    // v1.6.3.10-v10 - FIX Orphan Quick Tabs: Validate originTabId before creation
-    const originTabId = this._resolveOriginTabId(message);
-
-    console.log(
-      '[QuickTabHandler] Create:',
-      message.url,
-      'ID:',
-      message.id,
-      'Container:',
-      message.cookieStoreId,
-      'OriginTabId:',
-      originTabId
-    );
-
-    // Wait for initialization if needed
-    if (!this.isInitialized) {
-      await this.initializeFn();
+    // v1.6.3.11-v8 - FIX Issue #12: Reject if originTabId is null
+    if (resolution.originTabId === null) {
+      console.error('[QuickTabHandler] v1.6.3.11-v8 CREATE_REJECTED: originTabId is null', {
+        quickTabId: message.id,
+        url: message.url,
+        messageOriginTabId: message.originTabId
+      });
+      return {
+        success: false,
+        error: 'ORIGIN_TAB_ID_NULL',
+        message: 'Cannot create Quick Tab without valid originTabId. Content script must provide originTabId.',
+        retryable: true
+      };
     }
 
-    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+    return null; // Valid
+  }
 
-    // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
-    const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
-
-    // v1.6.3.10-v10 - FIX Orphan Quick Tabs: Include originTabId and originContainerId
-    const tabData = {
+  /**
+   * Build tab data object for Quick Tab creation
+   * v1.6.3.11-v8 - Extracted to reduce handleCreate complexity
+   * @private
+   * @param {Object} message - Create message
+   * @param {number} originTabId - Validated origin tab ID
+   * @param {string} cookieStoreId - Container ID
+   * @returns {Object} Tab data object
+   */
+  _buildTabData(message, originTabId, cookieStoreId) {
+    return {
       id: message.id,
       url: message.url,
       left: message.left,
@@ -281,10 +333,45 @@ export class QuickTabHandler {
       pinnedToUrl: message.pinnedToUrl || null,
       title: message.title || 'Quick Tab',
       minimized: message.minimized || false,
-      cookieStoreId: cookieStoreId, // v1.6.2.2 - Store container info on tab itself
-      originTabId: originTabId, // v1.6.3.10-v10 - FIX: Cross-tab filtering requires originTabId
-      originContainerId: message.originContainerId || cookieStoreId // v1.6.3.10-v10 - FIX: Container isolation
+      cookieStoreId: cookieStoreId,
+      originTabId: originTabId,
+      originContainerId: message.originContainerId || cookieStoreId
     };
+  }
+
+  /**
+   * Handle Quick Tab creation
+   * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.2.4 - BUG FIX Issue 4: Added message deduplication to prevent double-creation
+   * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Include originTabId and originContainerId in storage
+   * v1.6.3.11-v8 - FIX Issue #12 & #21: Reject creation if originTabId is null or identity not ready
+   */
+  async handleCreate(message, _sender) {
+    // v1.6.2.4 - BUG FIX Issue 4: Check for duplicate CREATE messages
+    if (this._isDuplicateMessage(message)) {
+      console.log('[QuickTabHandler] Skipping duplicate Create:', message.id);
+      return { success: true, duplicate: true };
+    }
+
+    // v1.6.3.10-v10 - FIX Orphan Quick Tabs: Validate originTabId before creation
+    // v1.6.3.11-v8 - FIX Issue #12 & #21: Now returns object with status
+    const resolution = this._resolveOriginTabId(message);
+    const validationError = this._validateOriginTabIdResolution(resolution, message);
+    if (validationError) return validationError;
+
+    const originTabId = resolution.originTabId;
+    const cookieStoreId = message.cookieStoreId || 'firefox-default';
+
+    console.log('[QuickTabHandler] Create:', message.url, 'ID:', message.id, 'OriginTabId:', originTabId);
+
+    // Wait for initialization if needed
+    if (!this.isInitialized) {
+      await this.initializeFn();
+    }
+
+    // v1.6.2.2 - Check if tab already exists by ID in unified tabs array
+    const existingIndex = this.globalState.tabs.findIndex(t => t.id === message.id);
+    const tabData = this._buildTabData(message, originTabId, cookieStoreId);
 
     if (existingIndex !== -1) {
       this.globalState.tabs[existingIndex] = tabData;
@@ -327,16 +414,43 @@ export class QuickTabHandler {
   }
 
   /**
+   * Check if Quick Tab ID contains "unknown" placeholder indicating identity not ready
+   * v1.6.3.11-v8 - FIX Issue #21: Detect identity system not ready condition
+   * @private
+   * @param {string} quickTabId - Quick Tab ID to check
+   * @returns {boolean} True if ID contains "unknown" placeholder
+   */
+  _hasUnknownPlaceholder(quickTabId) {
+    if (!quickTabId || typeof quickTabId !== 'string') return false;
+    return UNKNOWN_PLACEHOLDER_PATTERNS.some(
+      pattern =>
+        quickTabId.startsWith(pattern) || quickTabId.includes(pattern)
+    );
+  }
+
+  /**
    * Resolve originTabId from message with fallback to ID pattern extraction
    * v1.6.3.10-v10 - FIX Orphan Quick Tabs: Extract tab ID from Quick Tab ID pattern as fallback
+   * v1.6.3.11-v8 - FIX Issue #12 & #21: Detect and reject "unknown" placeholder in quickTabId
    * @private
    * @param {Object} message - Create message
-   * @returns {number|null} Resolved originTabId
+   * @returns {{ originTabId: number|null, hasUnknownPlaceholder: boolean }} Resolved originTabId with status
    */
   _resolveOriginTabId(message) {
+    // v1.6.3.11-v8 - FIX Issue #21: Check for "unknown" placeholder in quickTabId
+    const hasUnknown = this._hasUnknownPlaceholder(message.id);
+    if (hasUnknown) {
+      console.warn('[QuickTabHandler] v1.6.3.11-v8 IDENTITY_NOT_READY: quickTabId contains "unknown":', {
+        quickTabId: message.id,
+        recommendation: 'Content script should wait for tab ID before creating Quick Tab'
+      });
+      // Return special marker indicating identity was not ready
+      return { originTabId: null, hasUnknownPlaceholder: true };
+    }
+
     // Priority 1: Explicit originTabId from message
     const fromMessage = this._validateTabId(message.originTabId);
-    if (fromMessage !== null) return fromMessage;
+    if (fromMessage !== null) return { originTabId: fromMessage, hasUnknownPlaceholder: false };
 
     // Log warning for invalid originTabId (non-null but not valid)
     if (message.originTabId !== null && message.originTabId !== undefined) {
@@ -353,17 +467,17 @@ export class QuickTabHandler {
         quickTabId: message.id,
         extractedTabId: fromPattern
       });
-      return fromPattern;
+      return { originTabId: fromPattern, hasUnknownPlaceholder: false };
     }
 
-    // No valid originTabId found - log warning but allow creation (backwards compatibility)
+    // No valid originTabId found
     console.warn('[QuickTabHandler] CREATE_ORPHAN_WARNING: originTabId could not be resolved:', {
       quickTabId: message.id,
       messageOriginTabId: message.originTabId,
       url: message.url,
       recommendation: 'Ensure content script sends originTabId in CREATE_QUICK_TAB message'
     });
-    return null;
+    return { originTabId: null, hasUnknownPlaceholder: false };
   }
 
   /**
@@ -684,12 +798,19 @@ export class QuickTabHandler {
    * Critical for fixing Issue #35 and #51 - content scripts need to load from background's authoritative state
    * v1.6.2.2 - Updated for unified format (returns all tabs for global visibility)
    * v1.6.3.6-v12 - FIX Issue #1: Return explicit error when not initialized
+   * v1.6.3.11-v8 - FIX Issue #5: Ensure retryable flag in error responses
    */
   async handleGetQuickTabsState(message, _sender) {
     try {
       // v1.6.3.6-v12 - FIX Issue #1: Check initialization and wait with timeout
+      // v1.6.3.11-v8 - FIX Issue #5: _ensureInitialized already returns retryable flag
+      console.log('[HydrationBoundary] handleGetQuickTabsState request received');
       const initResult = await this._ensureInitialized();
       if (!initResult.success) {
+        console.warn('[HydrationBoundary] handleGetQuickTabsState: initialization pending', {
+          error: initResult.error,
+          retryable: initResult.retryable
+        });
         return initResult;
       }
 
@@ -697,6 +818,11 @@ export class QuickTabHandler {
 
       // v1.6.2.2 - Return all tabs from unified array for global visibility
       const allTabs = this.globalState.tabs || [];
+
+      console.log('[HydrationBoundary] handleGetQuickTabsState: returning state', {
+        tabCount: allTabs.length,
+        cookieStoreId
+      });
 
       return {
         success: true,
@@ -712,10 +838,12 @@ export class QuickTabHandler {
         code: err?.code,
         error: err
       });
+      // v1.6.3.11-v8 - FIX Issue #5: Include retryable flag in error response
       return {
         success: false,
         tabs: [],
-        error: err.message
+        error: err.message,
+        retryable: true // Most errors are transient and can be retried
       };
     }
   }
@@ -834,6 +962,7 @@ export class QuickTabHandler {
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
    * v1.6.1.6 - FIX: Add writeSourceId to prevent feedback loop (memory leak fix)
    * v1.6.2.2 - Updated for unified format (tabs array instead of containers object)
+   * v1.6.3.11-v8 - FIX Issue #10: Add transaction tracking for storage deduplication
    */
   async saveState(saveId, cookieStoreId, message) {
     const generatedSaveId = saveId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -841,12 +970,21 @@ export class QuickTabHandler {
     // v1.6.1.6 - Generate unique write source ID to detect self-writes
     const writeSourceId = this._generateWriteSourceId();
 
+    // v1.6.3.11-v8 - FIX Issue #10: Generate transaction ID for storage deduplication
+    const transactionId = this._generateTransactionId();
+
+    // v1.6.3.11-v8 - FIX Issue #10: Track transaction before write
+    if (this._trackTransactionFn) {
+      this._trackTransactionFn(transactionId);
+    }
+
     // v1.6.2.2 - Unified format: single tabs array
     const stateToSave = {
       tabs: this.globalState.tabs,
       saveId: generatedSaveId,
       timestamp: Date.now(),
-      writeSourceId: writeSourceId // v1.6.1.6 - Include source ID for loop detection
+      writeSourceId: writeSourceId, // v1.6.1.6 - Include source ID for loop detection
+      transactionId: transactionId // v1.6.3.11-v8 - Include transaction ID for deduplication
     };
 
     try {
@@ -855,6 +993,11 @@ export class QuickTabHandler {
       await this.browserAPI.storage.local.set({
         quick_tabs_state_v2: stateToSave
       });
+
+      // v1.6.3.11-v8 - FIX Issue #10: Complete transaction after successful write
+      if (this._completeTransactionFn) {
+        this._completeTransactionFn(transactionId);
+      }
 
       // Broadcast to tabs in same container
       await this.broadcastToContainer(cookieStoreId, {
@@ -869,6 +1012,11 @@ export class QuickTabHandler {
         cookieStoreId: cookieStoreId
       });
     } catch (err) {
+      // v1.6.3.11-v8 - FIX Issue #10: Complete transaction even on error (to prevent leaks)
+      if (this._completeTransactionFn) {
+        this._completeTransactionFn(transactionId);
+      }
+
       // DOMException and browser-native errors don't serialize properly
       // Extract properties explicitly for proper logging
       console.error('[QuickTabHandler] Error saving state:', {
@@ -945,6 +1093,7 @@ export class QuickTabHandler {
   /**
    * Perform the actual storage write with version tracking
    * v1.6.3.10-v7 - FIX Issue #15: Includes optimistic locking with retry
+   * v1.6.3.11-v8 - FIX Issue #10: Add transaction tracking for storage deduplication
    * @private
    * @param {number} queueWaitTime - Time spent waiting in queue (for logging)
    */
@@ -954,9 +1103,18 @@ export class QuickTabHandler {
     const tabCount = this.globalState.tabs?.length ?? 0;
     const saveTimestamp = Date.now();
 
+    // v1.6.3.11-v8 - FIX Issue #10: Generate transaction ID for storage deduplication
+    const transactionId = this._generateTransactionId();
+
+    // v1.6.3.11-v8 - FIX Issue #10: Track transaction before write
+    if (this._trackTransactionFn) {
+      this._trackTransactionFn(transactionId);
+    }
+
     // v1.6.3.6-v4 - FIX Issue #1: Log before storage write
     console.log('[QuickTabHandler] saveStateToStorage ENTRY:', {
       writeSourceId,
+      transactionId,
       tabCount,
       timestamp: saveTimestamp,
       queueWaitTime,
@@ -964,26 +1122,61 @@ export class QuickTabHandler {
     });
 
     // v1.6.3.10-v7 - FIX Issue #15: Retry loop for version conflicts
+    // v1.6.3.11-v8 - Refactored to reduce nesting depth
+    const result = await this._executeWriteWithRetry(
+      writeSourceId,
+      transactionId,
+      tabCount,
+      saveTimestamp
+    );
+
+    // v1.6.3.11-v8 - FIX Issue #10: Complete transaction after write (success or failure)
+    if (this._completeTransactionFn) {
+      this._completeTransactionFn(transactionId);
+    }
+
+    if (!result.success) {
+      throw result.error;
+    }
+  }
+
+  /**
+   * Execute storage write with retry logic
+   * v1.6.3.11-v8 - Extracted to reduce nesting depth in _performStorageWrite
+   * @private
+   * @returns {Promise<{success: boolean, error?: Error}>}
+   */
+  async _executeWriteWithRetry(writeSourceId, transactionId, tabCount, saveTimestamp) {
     let retryCount = 0;
+    // Initialize with null - will be set by first attempt or remain null if loop never executes
+    let lastResult = null;
+
     while (retryCount < STORAGE_WRITE_MAX_RETRIES) {
-      const result = await this._attemptStorageWrite(writeSourceId, tabCount, saveTimestamp, retryCount);
-      if (result.success) {
-        return; // Success - exit retry loop
+      lastResult = await this._attemptStorageWrite(
+        writeSourceId,
+        transactionId,
+        tabCount,
+        saveTimestamp,
+        retryCount
+      );
+      if (lastResult.success) {
+        return lastResult;
       }
       retryCount++;
-      if (retryCount >= STORAGE_WRITE_MAX_RETRIES) {
-        throw result.error; // Max retries reached, propagate error
-      }
     }
+
+    // Return last failure result, or create error if somehow loop never executed
+    return lastResult || { success: false, error: new Error('Storage write loop did not execute') };
   }
 
   /**
    * Attempt a single storage write operation
    * v1.6.3.10-v7 - FIX Issue #15: Extracted to reduce nesting depth
+   * v1.6.3.11-v8 - FIX Issue #10: Add transactionId to storage payload
    * @private
    * @returns {Promise<{success: boolean, error?: Error}>}
    */
-  async _attemptStorageWrite(writeSourceId, tabCount, saveTimestamp, retryCount) {
+  async _attemptStorageWrite(writeSourceId, transactionId, tabCount, saveTimestamp, retryCount) {
     try {
       // Read current version from storage to detect conflicts
       const currentState = await this.browserAPI.storage.local.get(STORAGE_KEY);
@@ -1000,6 +1193,7 @@ export class QuickTabHandler {
         tabs: this.globalState.tabs,
         timestamp: saveTimestamp,
         writeSourceId: writeSourceId, // v1.6.1.6 - Include source ID for loop detection
+        transactionId: transactionId, // v1.6.3.11-v8 - Include transaction ID for deduplication
         version: newVersion // v1.6.3.10-v7 - Version for conflict detection
       };
 
@@ -1015,6 +1209,7 @@ export class QuickTabHandler {
       // v1.6.3.6-v4 - FIX Issue #1: Log successful completion
       console.log('[QuickTabHandler] saveStateToStorage SUCCESS:', {
         writeSourceId,
+        transactionId,
         tabCount,
         timestamp: saveTimestamp,
         version: newVersion,
