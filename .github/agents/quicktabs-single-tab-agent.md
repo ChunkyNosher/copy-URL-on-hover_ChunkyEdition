@@ -37,17 +37,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Simplified Architecture
+**Version:** 1.6.3.11-v8 - Simplified Architecture
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.11-v8 Features (NEW) - Identity State Logging:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
+- **Identity State Transitions** - `[Identity]` prefix for INITIALIZING → READY
+- **Content Script Lifecycle** - `[ContentScript][Init/Hydration/Ready]` logging
+- **Unknown Identity Rejection** - Quick Tab IDs with "unknown" are rejected
+- **Retryable Error Responses** - All errors include `retryable: true` flag
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
+
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` in `handleCreate()`
+- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`
 - **Code Health 9.09** - `src/content.js` improved from 8.71
-- **Snapshot Integrity** - `validateSnapshotIntegrity()` structural validation
-- **Memory Leak Fix** - Comprehensive `destroy()` method
 
 **v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, Solo/Mute toggle
 atomicity, destroyed flag check, ownership validation, code health 9.0+,
@@ -82,5 +85,5 @@ snapshot TTL race fix
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.10-v10 tab ID
-acquisition, snapshot integrity, storage.onChanged PRIMARY.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.11-v8 identity state
+logging, retryable errors, content script lifecycle, storage.onChanged PRIMARY.**

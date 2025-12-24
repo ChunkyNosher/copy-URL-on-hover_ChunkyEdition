@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,11 +9,31 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v7 Status:** Stability Restoration ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.11-v8 Status:** Transaction Tracking + Validation ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.11-v8
+
+**🔧 Transaction Tracking + Validation (December 2025) ✅**
+
+**Bug Fixes:**
+
+- ✅ **Transaction Tracking Wired** - `_trackTransaction()` now called during storage writes
+- ✅ **Null originTabId Rejection** - Quick Tab creation rejects null originTabId
+- ✅ **Unknown Identity Rejection** - IDs with "unknown" placeholder rejected
+- ✅ **Hydration Boundary Logging** - GET_QUICK_TABS_STATE logs hydration state
+
+**New Logging Infrastructure:**
+
+- ✅ **Storage.onChanged Cascade** - `[Storage][Event]` timing and source logging
+- ✅ **Identity State Transitions** - `[Identity]` INITIALIZING → READY logging
+- ✅ **Storage Write Lifecycle** - `[StorageWrite] LIFECYCLE_*` phases
+- ✅ **Handler Entry/Exit** - `[Handler][ENTRY/EXIT]` instrumentation
+
+---
 
 ## 🎉 What's New in v1.6.3.11-v7
 
@@ -168,6 +188,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v6** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v8** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
