@@ -2,6 +2,7 @@
  * QuickTab Domain Entity
  * v1.6.0 - Pure business logic, no browser APIs or UI dependencies
  * v1.6.3 - Added slot property for global ID persistence
+ * v1.6.4 - Removed Solo/Mute visibility control (always visible on all tabs)
  *
  * Represents a Quick Tab with its state and behavior.
  * Extracted from QuickTabsManager to separate domain logic from infrastructure.
@@ -100,155 +101,31 @@ export class QuickTab {
     // "Quick Tab 1" always refers to the Quick Tab with slot=1
     this.slot = slot;
 
-    // Visibility state (v1.5.9.13 - Solo/Mute feature)
+    // Visibility state (v1.6.4 - Solo/Mute removed, only minimized state remains)
     this.visibility = {
-      minimized: visibility?.minimized || false,
-      soloedOnTabs: visibility?.soloedOnTabs || [],
-      mutedOnTabs: visibility?.mutedOnTabs || []
+      minimized: visibility?.minimized || false
     };
   }
 
   /**
    * Determine if this Quick Tab should be visible on a specific tab
-   * v1.5.9.13 - Implements Solo/Mute visibility logic
+   * v1.6.4 - Simplified: Only checks minimized state (Solo/Mute removed)
    *
    * Business Rules:
    * 1. If minimized, never visible
-   * 2. If soloedOnTabs has entries, only visible on those tabs
-   * 3. If mutedOnTabs has entries, NOT visible on those tabs
-   * 4. Solo takes precedence over mute
+   * 2. Otherwise, visible on all tabs
    *
-   * @param {number} tabId - Browser tab ID to check visibility for
-   * @returns {boolean} - True if Quick Tab should be visible on this tab
+   * @param {number} _tabId - Browser tab ID (unused after Solo/Mute removal)
+   * @returns {boolean} - True if Quick Tab should be visible
    */
-  shouldBeVisible(tabId) {
+  shouldBeVisible(_tabId) {
     // Rule 1: Minimized tabs are never visible
     if (this.visibility.minimized) {
       return false;
     }
 
-    // Rule 2: Solo mode - only visible on specific tabs
-    if (this.visibility.soloedOnTabs.length > 0) {
-      return this.visibility.soloedOnTabs.includes(tabId);
-    }
-
-    // Rule 3: Mute mode - NOT visible on specific tabs
-    if (this.visibility.mutedOnTabs.length > 0) {
-      return !this.visibility.mutedOnTabs.includes(tabId);
-    }
-
-    // Default: visible everywhere
+    // Default: visible everywhere (Solo/Mute removed in v1.6.4)
     return true;
-  }
-
-  /**
-   * Toggle solo mode for a specific tab
-   * v1.5.9.13 - Solo: Show ONLY on this tab
-   *
-   * @param {number} tabId - Tab ID to solo on
-   * @returns {boolean} - True if tab was added to solo list, false if removed
-   */
-  toggleSolo(tabId) {
-    const index = this.visibility.soloedOnTabs.indexOf(tabId);
-
-    if (index === -1) {
-      // Add to solo list
-      this.visibility.soloedOnTabs.push(tabId);
-      // Clear mute list (mutual exclusivity)
-      this.visibility.mutedOnTabs = [];
-      return true;
-    } else {
-      // Remove from solo list
-      this.visibility.soloedOnTabs.splice(index, 1);
-      return false;
-    }
-  }
-
-  /**
-   * Add tab to solo list (make visible ONLY on this tab)
-   * v1.5.9.13
-   *
-   * @param {number} tabId - Tab ID to solo on
-   */
-  solo(tabId) {
-    if (!this.visibility.soloedOnTabs.includes(tabId)) {
-      this.visibility.soloedOnTabs.push(tabId);
-    }
-    // Clear mute list (mutual exclusivity)
-    this.visibility.mutedOnTabs = [];
-  }
-
-  /**
-   * Remove tab from solo list
-   * v1.5.9.13
-   *
-   * @param {number} tabId - Tab ID to remove from solo list
-   */
-  unsolo(tabId) {
-    this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(id => id !== tabId);
-  }
-
-  /**
-   * Clear all solo tabs
-   * v1.5.9.13
-   */
-  clearSolo() {
-    this.visibility.soloedOnTabs = [];
-  }
-
-  /**
-   * Toggle mute mode for a specific tab
-   * v1.5.9.13 - Mute: Hide ONLY on this tab
-   *
-   * @param {number} tabId - Tab ID to mute on
-   * @returns {boolean} - True if tab was added to mute list, false if removed
-   */
-  toggleMute(tabId) {
-    const index = this.visibility.mutedOnTabs.indexOf(tabId);
-
-    if (index === -1) {
-      // Add to mute list
-      this.visibility.mutedOnTabs.push(tabId);
-      // Clear solo list (mutual exclusivity)
-      this.visibility.soloedOnTabs = [];
-      return true;
-    } else {
-      // Remove from mute list
-      this.visibility.mutedOnTabs.splice(index, 1);
-      return false;
-    }
-  }
-
-  /**
-   * Add tab to mute list (hide ONLY on this tab)
-   * v1.5.9.13
-   *
-   * @param {number} tabId - Tab ID to mute on
-   */
-  mute(tabId) {
-    if (!this.visibility.mutedOnTabs.includes(tabId)) {
-      this.visibility.mutedOnTabs.push(tabId);
-    }
-    // Clear solo list (mutual exclusivity)
-    this.visibility.soloedOnTabs = [];
-  }
-
-  /**
-   * Remove tab from mute list
-   * v1.5.9.13
-   *
-   * @param {number} tabId - Tab ID to remove from mute list
-   */
-  unmute(tabId) {
-    this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => id !== tabId);
-  }
-
-  /**
-   * Clear all muted tabs
-   * v1.5.9.13
-   */
-  clearMute() {
-    this.visibility.mutedOnTabs = [];
   }
 
   /**
@@ -335,20 +212,6 @@ export class QuickTab {
     this.lastModified = Date.now(); // v1.6.1.5
   }
 
-  /**
-   * Clean up dead tab IDs from solo/mute arrays
-   * Should be called when tabs are closed
-   *
-   * @param {number[]} activeTabIds - Array of currently active tab IDs
-   */
-  cleanupDeadTabs(activeTabIds) {
-    const activeSet = new Set(activeTabIds);
-
-    this.visibility.soloedOnTabs = this.visibility.soloedOnTabs.filter(id => activeSet.has(id));
-
-    this.visibility.mutedOnTabs = this.visibility.mutedOnTabs.filter(id => activeSet.has(id));
-  }
-
   // v1.6.2.2 - REMOVED: belongsToContainer() method
   // Container isolation removed for global visibility (Issue #35, #51, #47)
 
@@ -358,6 +221,7 @@ export class QuickTab {
    * v1.6.1.5 - Include lastModified timestamp
    * v1.6.2.2 - Removed container field for global visibility
    * v1.6.3 - Include slot for global ID persistence
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    *
    * @returns {Object} - Plain object suitable for storage
    */
@@ -369,9 +233,7 @@ export class QuickTab {
       position: { ...this.position },
       size: { ...this.size },
       visibility: {
-        minimized: this.visibility.minimized,
-        soloedOnTabs: [...this.visibility.soloedOnTabs],
-        mutedOnTabs: [...this.visibility.mutedOnTabs]
+        minimized: this.visibility.minimized
       },
       zIndex: this.zIndex,
       createdAt: this.createdAt,
@@ -398,6 +260,7 @@ export class QuickTab {
    * v1.6.1.5 - Extract to reduce complexity
    * v1.6.2.2 - Removed container field for global visibility
    * v1.6.3 - Include slot for global ID persistence
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    *
    * @private
    * @param {Object} data - Raw storage data
@@ -416,7 +279,7 @@ export class QuickTab {
       title: data.title ?? 'Quick Tab',
       position: data.position ?? { left: 100, top: 100 },
       size: data.size ?? { width: 800, height: 600 },
-      visibility: data.visibility ?? { minimized: false, soloedOnTabs: [], mutedOnTabs: [] },
+      visibility: data.visibility ?? { minimized: false },
       zIndex: data.zIndex ?? 1000,
       createdAt,
       lastModified,
@@ -429,6 +292,7 @@ export class QuickTab {
    * Convenience factory method for creating new Quick Tabs
    * v1.6.2.2 - Removed container parameter for global visibility
    * v1.6.3 - Added slot parameter for global ID persistence
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    *
    * @param {Object} params - Partial parameters
    * @param {number} [params.slot] - Global slot number (should be assigned by StateManager)
@@ -449,9 +313,7 @@ export class QuickTab {
       position: { left, top },
       size: { width, height },
       visibility: {
-        minimized: false,
-        soloedOnTabs: [],
-        mutedOnTabs: []
+        minimized: false
       },
       zIndex: 1000,
       createdAt: Date.now(),

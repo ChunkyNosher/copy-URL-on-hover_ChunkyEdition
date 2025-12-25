@@ -288,6 +288,7 @@ export class CreateHandler {
    * Get default option values
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
    * v1.6.3.10-v4 - FIX Issue #13: Add originContainerId default for container isolation
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    */
   _getDefaults() {
@@ -298,8 +299,6 @@ export class CreateHandler {
       height: 600,
       title: 'Quick Tab',
       minimized: false,
-      soloedOnTabs: [],
-      mutedOnTabs: [],
       showDebugId: false, // v1.6.3.2 - Default for Debug ID display
       originTabId: null, // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
       originContainerId: null // v1.6.3.10-v4 - FIX Issue #13: Track originating container for Firefox Multi-Account Containers
@@ -504,10 +503,9 @@ export class CreateHandler {
     // v1.6.3.10-v4 - FIX Issue #13: Capture origin container ID for Firefox Multi-Account Container isolation
     const originContainerId = this._getOriginContainerId(options, defaults, quickTabId);
 
+    // v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
     return {
       minimized: options.minimized ?? defaults.minimized,
-      soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
-      mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
       showDebugId: options.showDebugId ?? this.showDebugIdSetting,
       originTabId,
       originContainerId, // v1.6.3.10-v4 - FIX Issue #13: Include container ID
@@ -519,6 +517,7 @@ export class CreateHandler {
   /**
    * Extract callback options
    * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
+   * v1.6.4 - Removed Solo/Mute callbacks
    * @private
    */
   _extractCallbacks(options) {
@@ -529,9 +528,7 @@ export class CreateHandler {
       onPositionChange: options.onPositionChange,
       onPositionChangeEnd: options.onPositionChangeEnd,
       onSizeChange: options.onSizeChange,
-      onSizeChangeEnd: options.onSizeChangeEnd,
-      onSolo: options.onSolo,
-      onMute: options.onMute
+      onSizeChangeEnd: options.onSizeChangeEnd
     };
   }
 

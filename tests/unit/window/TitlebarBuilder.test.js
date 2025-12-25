@@ -3,6 +3,7 @@
  *
  * Tests for TitlebarBuilder component extracted from QuickTabWindow
  * Ensures all titlebar functionality is preserved during refactoring
+ * v1.6.4 - Removed Solo/Mute tests (functionality removed)
  *
  * @created 2025-11-19
  * @refactoring Phase 2.9 Task 4
@@ -27,20 +28,18 @@ describe('TitlebarBuilder', () => {
     mockIframe = document.createElement('iframe');
     mockIframe.src = 'https://example.com/page';
 
+    // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from config
     config = {
       title: 'Test Page',
       url: 'https://example.com/page',
-      soloedOnTabs: [],
-      mutedOnTabs: [],
       currentTabId: 123,
       iframe: mockIframe
     };
 
+    // v1.6.4 - Removed onSolo/onMute callbacks
     callbacks = {
       onClose: jest.fn(),
       onMinimize: jest.fn(),
-      onSolo: jest.fn(),
-      onMute: jest.fn(),
       onOpenInTab: jest.fn()
     };
 
@@ -48,6 +47,7 @@ describe('TitlebarBuilder', () => {
   });
 
   describe('Constructor', () => {
+    // v1.6.4 - Removed Solo/Mute button tests
     test('should initialize with config and callbacks', () => {
       const builder = new TitlebarBuilder(config, callbacks);
 
@@ -55,8 +55,6 @@ describe('TitlebarBuilder', () => {
       expect(builder.callbacks).toBe(callbacks);
       expect(builder.titlebar).toBeNull();
       expect(builder.titleElement).toBeNull();
-      expect(builder.soloButton).toBeNull();
-      expect(builder.muteButton).toBeNull();
       expect(builder.faviconElement).toBeNull();
     });
 
@@ -115,21 +113,7 @@ describe('TitlebarBuilder', () => {
       expect(builder.titleElement.textContent).toBe('Test Page');
     });
 
-    test('should create solo button', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      expect(builder.soloButton).toBeTruthy();
-      expect(builder.soloButton.textContent).toBe('⭕'); // Not soloed
-    });
-
-    test('should create mute button', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      expect(builder.muteButton).toBeTruthy();
-      expect(builder.muteButton.textContent).toBe('🔊'); // Not muted
-    });
+    // v1.6.4 - Solo/Mute button tests removed
 
     test('should create navigation buttons', () => {
       const builder = new TitlebarBuilder(config, callbacks);
@@ -170,105 +154,8 @@ describe('TitlebarBuilder', () => {
     });
   });
 
-  describe('updateSoloButton()', () => {
-    test('should update button to soloed state', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      builder.updateSoloButton(true);
-
-      expect(builder.soloButton.textContent).toBe('🎯');
-      expect(builder.soloButton.title).toContain('Un-solo');
-      expect(builder.soloButton.style.background).toBe('rgb(68, 68, 68)'); // #444 as RGB
-    });
-
-    test('should update button to unsoloed state', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      builder.updateSoloButton(false);
-
-      expect(builder.soloButton.textContent).toBe('⭕');
-      expect(builder.soloButton.title).toContain('Solo');
-      expect(builder.soloButton.style.background).toBe('transparent');
-    });
-
-    test('should handle update before build', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-
-      // Should not throw
-      expect(() => builder.updateSoloButton(true)).not.toThrow();
-    });
-  });
-
-  describe('updateMuteButton()', () => {
-    test('should update button to muted state', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      builder.updateMuteButton(true);
-
-      expect(builder.muteButton.textContent).toBe('🔇');
-      expect(builder.muteButton.title).toContain('Unmute');
-      expect(builder.muteButton.style.background).toBe('rgb(204, 68, 68)'); // #c44
-    });
-
-    test('should update button to unmuted state', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      builder.updateMuteButton(false);
-
-      expect(builder.muteButton.textContent).toBe('🔊');
-      expect(builder.muteButton.title).toContain('Mute');
-      expect(builder.muteButton.style.background).toBe('transparent');
-    });
-
-    test('should handle update before build', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-
-      // Should not throw
-      expect(() => builder.updateMuteButton(true)).not.toThrow();
-    });
-  });
-
-  describe('Solo/Mute State Detection', () => {
-    test('should show soloed icon when current tab is soloed', () => {
-      config.soloedOnTabs = [123]; // Current tab
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      expect(builder.soloButton.textContent).toBe('🎯');
-      expect(builder.soloButton.style.background).toBe('rgb(68, 68, 68)'); // #444 as RGB
-    });
-
-    test('should show unsoloed icon when current tab not soloed', () => {
-      config.soloedOnTabs = [456]; // Different tab
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      expect(builder.soloButton.textContent).toBe('⭕');
-      expect(builder.soloButton.style.background).toBe('transparent');
-    });
-
-    test('should show muted icon when current tab is muted', () => {
-      config.mutedOnTabs = [123]; // Current tab
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      expect(builder.muteButton.textContent).toBe('🔇');
-      expect(builder.muteButton.style.background).toBe('rgb(204, 68, 68)'); // #c44
-    });
-
-    test('should show unmuted icon when current tab not muted', () => {
-      config.mutedOnTabs = [456]; // Different tab
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      expect(builder.muteButton.textContent).toBe('🔊');
-      expect(builder.muteButton.style.background).toBe('transparent');
-    });
-  });
+  // v1.6.4 - updateSoloButton() and updateMuteButton() tests removed
+  // v1.6.4 - Solo/Mute State Detection tests removed
 
   describe('Button Callbacks', () => {
     test('should call onClose when close button clicked', () => {
@@ -297,25 +184,7 @@ describe('TitlebarBuilder', () => {
       expect(callbacks.onMinimize).toHaveBeenCalledTimes(1);
     });
 
-    test('should call onSolo when solo button clicked', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      builder.soloButton.click();
-
-      expect(callbacks.onSolo).toHaveBeenCalledTimes(1);
-      expect(callbacks.onSolo).toHaveBeenCalledWith(builder.soloButton);
-    });
-
-    test('should call onMute when mute button clicked', () => {
-      const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
-
-      builder.muteButton.click();
-
-      expect(callbacks.onMute).toHaveBeenCalledTimes(1);
-      expect(callbacks.onMute).toHaveBeenCalledWith(builder.muteButton);
-    });
+    // v1.6.4 - onSolo/onMute tests removed
 
     test('should call onOpenInTab when open button clicked', () => {
       const builder = new TitlebarBuilder(config, callbacks);
@@ -624,18 +493,24 @@ describe('TitlebarBuilder', () => {
 
     test('button clicks should stop propagation', () => {
       const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
+      const titlebar = builder.build();
+      
+      // Get the close button (a button that always exists after Solo/Mute removal)
+      const closeBtn = Array.from(titlebar.querySelectorAll('button')).find(
+        btn => btn.title === 'Close'
+      );
 
       const clickEvent = new Event('click', { bubbles: true });
       const stopPropagationSpy = jest.spyOn(clickEvent, 'stopPropagation');
 
-      builder.soloButton.dispatchEvent(clickEvent);
+      closeBtn.dispatchEvent(clickEvent);
 
       expect(stopPropagationSpy).toHaveBeenCalled();
     });
   });
 
   describe('Integration', () => {
+    // v1.6.4 - Updated for Solo/Mute removal
     test('should build complete functional titlebar', () => {
       const builder = new TitlebarBuilder(config, callbacks);
       const titlebar = builder.build();
@@ -643,11 +518,9 @@ describe('TitlebarBuilder', () => {
       // Verify structure
       expect(titlebar.children).toHaveLength(2); // Left + Right sections
 
-      // Verify all elements accessible
+      // Verify all elements accessible (Solo/Mute buttons removed in v1.6.4)
       expect(builder.titleElement).toBeTruthy();
       expect(builder.faviconElement).toBeTruthy();
-      expect(builder.soloButton).toBeTruthy();
-      expect(builder.muteButton).toBeTruthy();
       expect(builder.zoomDisplay).toBeTruthy();
 
       // Verify initial state
@@ -656,15 +529,11 @@ describe('TitlebarBuilder', () => {
       expect(builder.zoomDisplay.textContent).toBe('100%');
     });
 
+    // v1.6.4 - Updated for Solo/Mute removal
     test('should handle all callbacks correctly', () => {
       const builder = new TitlebarBuilder(config, callbacks);
-      builder.build();
+      const titlebar = builder.build();
 
-      // Click all control buttons
-      builder.soloButton.click();
-      builder.muteButton.click();
-
-      const titlebar = builder.titlebar;
       const minimizeBtn = Array.from(titlebar.querySelectorAll('button')).find(
         btn => btn.title === 'Minimize'
       );
@@ -675,9 +544,7 @@ describe('TitlebarBuilder', () => {
       minimizeBtn.click();
       closeBtn.click();
 
-      // Verify all callbacks invoked
-      expect(callbacks.onSolo).toHaveBeenCalled();
-      expect(callbacks.onMute).toHaveBeenCalled();
+      // Verify all callbacks invoked (Solo/Mute callbacks removed in v1.6.4)
       expect(callbacks.onMinimize).toHaveBeenCalled();
       expect(callbacks.onClose).toHaveBeenCalled();
     });

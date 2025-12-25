@@ -1,10 +1,11 @@
 /**
  * ReactiveQuickTab - Proxy-wrapped Quick Tab with automatic change detection
  * v1.6.2.1 - NEW: Reactive state management for Quick Tabs
+ * v1.6.4 - Removed Solo/Mute functionality (always visible on all tabs)
  *
  * Features:
  * - Automatic change detection via Proxy
- * - Computed properties (isVisible, isSoloed, isMuted)
+ * - Computed properties (isVisible)
  * - Validation (returns boolean, logs warnings - no exceptions)
  * - Watch API for reactive UI updates
  * - Computed property caching with dependency tracking
@@ -30,8 +31,6 @@ const MAX_PROXY_DEPTH = 3;
  * @property {number} height - Height
  * @property {number} zIndex - Z-index for stacking
  * @property {boolean} minimized - Whether minimized
- * @property {number[]} soloedOnTabs - Tab IDs where soloed
- * @property {number[]} mutedOnTabs - Tab IDs where muted
  * @property {string} [url] - URL of the Quick Tab
  * @property {string} [title] - Title of the Quick Tab
  * @property {string} [cookieStoreId] - Firefox container ID
@@ -76,11 +75,10 @@ export class ReactiveQuickTab {
     this._computedDirty = new Set();
 
     // Track dependencies: computed property → Set of data properties
+    // v1.6.4 - Simplified: Only isVisible depends on minimized (Solo/Mute removed)
     /** @private @type {Map<string, Set<string>>} */
     this._dependencies = new Map();
-    this._dependencies.set('isVisible', new Set(['minimized', 'soloedOnTabs', 'mutedOnTabs']));
-    this._dependencies.set('isSoloed', new Set(['soloedOnTabs']));
-    this._dependencies.set('isMuted', new Set(['mutedOnTabs']));
+    this._dependencies.set('isVisible', new Set(['minimized']));
 
     // Create reactive proxy
     /** @type {Proxy<ReactiveQuickTabData>} */
@@ -97,6 +95,7 @@ export class ReactiveQuickTab {
 
   /**
    * Normalize data with defaults
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    * @param {Object} data - Raw data
    * @returns {ReactiveQuickTabData} - Normalized data
@@ -111,8 +110,6 @@ export class ReactiveQuickTab {
       height: this._getNumber(data.height, 600),
       zIndex: this._getNumber(data.zIndex, 1000),
       minimized: typeof data.minimized === 'boolean' ? data.minimized : false,
-      soloedOnTabs: Array.isArray(data.soloedOnTabs) ? [...data.soloedOnTabs] : [],
-      mutedOnTabs: Array.isArray(data.mutedOnTabs) ? [...data.mutedOnTabs] : [],
       url: data.url || '',
       title: data.title || 'Quick Tab',
       cookieStoreId: data.cookieStoreId || 'firefox-default',
@@ -186,9 +183,6 @@ export class ReactiveQuickTab {
         // Capture old computed values BEFORE changing data
         const oldComputedValues = self._captureAffectedComputedValues(prop);
 
-        // Handle Solo/Mute mutual exclusion
-        self._enforceMutualExclusion(prop, value);
-
         // Apply change
         obj[prop] = value;
 
@@ -253,6 +247,7 @@ export class ReactiveQuickTab {
 
   /**
    * Validation rules for each property type
+   * v1.6.4 - Removed tabArray validator (Solo/Mute removed)
    * @private
    */
   static _validators = {
@@ -260,13 +255,13 @@ export class ReactiveQuickTab {
     size: v => typeof v === 'number' && v >= 100 && v < 5000,
     zIndex: v => typeof v === 'number' && v >= 0,
     boolean: v => typeof v === 'boolean',
-    tabArray: v => Array.isArray(v) && v.every(id => typeof id === 'number'),
     string: v => typeof v === 'string',
     timestamp: v => typeof v === 'number' && v >= 0
   };
 
   /**
    * Property to validator mapping
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    */
   static _validatorMap = {
@@ -276,8 +271,6 @@ export class ReactiveQuickTab {
     height: 'size',
     zIndex: 'zIndex',
     minimized: 'boolean',
-    soloedOnTabs: 'tabArray',
-    mutedOnTabs: 'tabArray',
     url: 'string',
     title: 'string',
     cookieStoreId: 'string',
@@ -303,48 +296,19 @@ export class ReactiveQuickTab {
   }
 
   /**
-   * Enforce Solo/Mute mutual exclusion
-   * @private
-   * @param {string} prop - Property being set
-   * @param {any} value - New value
-   */
-  _enforceMutualExclusion(prop, value) {
-    // If setting solo with non-empty array, clear mute
-    if (prop === 'soloedOnTabs' && Array.isArray(value) && value.length > 0) {
-      const oldMutedOnTabs = [...this._data.mutedOnTabs];
-      if (oldMutedOnTabs.length > 0) {
-        this._data.mutedOnTabs = [];
-        // Notify watchers about mute change
-        this._notify('mutedOnTabs', oldMutedOnTabs, []);
-        // Also invalidate computed properties
-        this._invalidateComputed('mutedOnTabs');
-      }
-    }
-    // If setting mute with non-empty array, clear solo
-    else if (prop === 'mutedOnTabs' && Array.isArray(value) && value.length > 0) {
-      const oldSoloedOnTabs = [...this._data.soloedOnTabs];
-      if (oldSoloedOnTabs.length > 0) {
-        this._data.soloedOnTabs = [];
-        // Notify watchers about solo change
-        this._notify('soloedOnTabs', oldSoloedOnTabs, []);
-        // Also invalidate computed properties
-        this._invalidateComputed('soloedOnTabs');
-      }
-    }
-  }
-
-  /**
    * Check if property is computed
+   * v1.6.4 - Simplified: Only isVisible (Solo/Mute removed)
    * @private
    * @param {string|symbol} prop - Property name
    * @returns {boolean} - True if computed
    */
   _isComputedProperty(prop) {
-    return prop === 'isVisible' || prop === 'isSoloed' || prop === 'isMuted';
+    return prop === 'isVisible';
   }
 
   /**
    * Get computed property value (with caching)
+   * v1.6.4 - Simplified: Only isVisible (Solo/Mute removed)
    * @private
    * @param {string} prop - Computed property name
    * @returns {any} - Computed value
@@ -360,12 +324,6 @@ export class ReactiveQuickTab {
       case 'isVisible':
         value = this._computeVisibility();
         break;
-      case 'isSoloed':
-        value = this._data.soloedOnTabs.length > 0;
-        break;
-      case 'isMuted':
-        value = this._data.mutedOnTabs.includes(this.currentTabId);
-        break;
       default:
         return undefined;
     }
@@ -378,27 +336,18 @@ export class ReactiveQuickTab {
   }
 
   /**
-   * Compute visibility based on solo/mute/minimized state
+   * Compute visibility based on minimized state
+   * v1.6.4 - Simplified: Only checks minimized (Solo/Mute removed)
    * @private
    * @returns {boolean} - True if visible
    */
   _computeVisibility() {
-    const { minimized, soloedOnTabs, mutedOnTabs } = this._data;
+    const { minimized } = this._data;
 
     // Minimized = always hidden
     if (minimized) return false;
 
-    // Solo mode = only visible on soloed tabs
-    if (soloedOnTabs.length > 0) {
-      return soloedOnTabs.includes(this.currentTabId);
-    }
-
-    // Mute mode = hidden on muted tabs
-    if (mutedOnTabs.includes(this.currentTabId)) {
-      return false;
-    }
-
-    // Global mode = always visible
+    // Global mode = always visible (Solo/Mute removed in v1.6.4)
     return true;
   }
 
@@ -523,6 +472,7 @@ export class ReactiveQuickTab {
 
   /**
    * Serialize for storage (strip Proxy wrapper)
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @returns {Object} - Plain object suitable for JSON serialization
    */
   toJSON() {
@@ -534,8 +484,6 @@ export class ReactiveQuickTab {
       height: this._data.height,
       zIndex: this._data.zIndex,
       minimized: this._data.minimized,
-      soloedOnTabs: [...this._data.soloedOnTabs],
-      mutedOnTabs: [...this._data.mutedOnTabs],
       url: this._data.url,
       title: this._data.title,
       cookieStoreId: this._data.cookieStoreId,
@@ -546,6 +494,7 @@ export class ReactiveQuickTab {
 
   /**
    * Update current tab ID (for visibility computation)
+   * v1.6.4 - Simplified: Only invalidates isVisible (Solo/Mute removed)
    * @param {number} tabId - New current tab ID
    */
   updateCurrentTabId(tabId) {
@@ -567,10 +516,6 @@ export class ReactiveQuickTab {
     // Clear isVisible cache - need to recompute with new tabId
     this._computedCache.delete('isVisible');
     this._computedDirty.add('isVisible');
-
-    // Also clear isMuted cache since it depends on currentTabId
-    this._computedCache.delete('isMuted');
-    this._computedDirty.add('isMuted');
 
     // Compute new visibility
     const isVisible = this._getComputed('isVisible');

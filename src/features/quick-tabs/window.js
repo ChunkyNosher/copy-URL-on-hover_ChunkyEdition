@@ -1406,10 +1406,6 @@ export class QuickTabWindow {
     if (this.titlebarBuilder) {
       this.titlebarBuilder = null;
     }
-
-    // v1.6.3.2 - FIX Issue #5: Clear button references
-    this.soloButton = null;
-    this.muteButton = null;
     
     // v1.6.4.16 - FIX Issue #24/#28: Clear state sync tracking
     this._lastSyncedState = null;
@@ -1456,6 +1452,7 @@ export class QuickTabWindow {
   /**
    * Get current state for persistence
    * v1.5.9.13 - Updated to include soloedOnTabs and mutedOnTabs
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    */
   getState() {
     return {
@@ -1468,9 +1465,7 @@ export class QuickTabWindow {
       title: this.title,
       cookieStoreId: this.cookieStoreId,
       minimized: this.minimized,
-      zIndex: this.zIndex,
-      soloedOnTabs: this.soloedOnTabs, // v1.5.9.13
-      mutedOnTabs: this.mutedOnTabs // v1.5.9.13
+      zIndex: this.zIndex
     };
   }
 }

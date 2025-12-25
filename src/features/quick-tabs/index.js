@@ -519,6 +519,7 @@ class QuickTabsManager {
   /**
    * Default values for tab hydration
    * v1.6.3.4-v11 - Extracted to reduce _buildHydrationOptions complexity
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    * @type {Object}
    */
@@ -530,8 +531,6 @@ class QuickTabsManager {
       width: 400,
       height: 300,
       minimized: false,
-      soloedOnTabs: [],
-      mutedOnTabs: [],
       zIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
     };
   }
@@ -552,15 +551,8 @@ class QuickTabsManager {
    * Build options object for tab hydration
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.4-v11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
-   * @private
-   * @param {Object} tabData - Tab data from storage
-   * @returns {Object} Options for createQuickTab
-   */
-  /**
-   * Build options object for tab hydration
-   * v1.6.3.4 - Helper to reduce complexity
-   * v1.6.3.4-v11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
    * v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    * @param {Object} tabData - Tab data from storage
    * @returns {Object} Options for createQuickTab
@@ -577,8 +569,6 @@ class QuickTabsManager {
       width: this._getWithDefault(tabData.width, defaults.width),
       height: this._getWithDefault(tabData.height, defaults.height),
       minimized: this._getWithDefault(tabData.minimized, defaults.minimized),
-      soloedOnTabs: this._getWithDefault(tabData.soloedOnTabs, defaults.soloedOnTabs),
-      mutedOnTabs: this._getWithDefault(tabData.mutedOnTabs, defaults.mutedOnTabs),
       zIndex: this._getWithDefault(tabData.zIndex, defaults.zIndex),
       // v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
       originTabId: tabData.originTabId ?? null,
@@ -591,6 +581,7 @@ class QuickTabsManager {
    * Add callbacks to hydration options
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
+   * v1.6.4 - Removed Solo/Mute callbacks
    * @private
    * @param {Object} options - Base options
    * @returns {Object} Options with callbacks
@@ -606,9 +597,7 @@ class QuickTabsManager {
       onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
       onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
       onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
-      onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
-      onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs),
-      onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
+      onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height)
     };
   }
 
@@ -894,6 +883,7 @@ class QuickTabsManager {
    * Determine if a Quick Tab should render on this tab
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Cross-tab filtering logic
    * v1.6.3.10-v4 - FIX Issue #13: Add container isolation check
+   * v1.6.4 - Simplified: Solo/Mute removed, only check originTabId and container
    * @private
    * @param {Object} tabData - Quick Tab data
    * @returns {boolean} True if should render
@@ -901,18 +891,6 @@ class QuickTabsManager {
   _shouldRenderOnThisTab(tabData) {
     const currentTabId = this.currentTabId;
     const originTabId = tabData.originTabId;
-    const soloedOnTabs = tabData.soloedOnTabs || [];
-    const mutedOnTabs = tabData.mutedOnTabs || [];
-
-    // If soloed to specific tabs, only render on those tabs
-    if (soloedOnTabs.length > 0) {
-      return soloedOnTabs.includes(currentTabId);
-    }
-
-    // If muted on this tab, don't render
-    if (mutedOnTabs.includes(currentTabId)) {
-      return false;
-    }
 
     // Check originTabId match
     if (originTabId !== currentTabId) {
@@ -977,6 +955,7 @@ class QuickTabsManager {
       // NOTE: We use `new QuickTabWindow()` directly instead of `createQuickTabWindow()` factory
       // because the factory calls render() which we DON'T want for minimized tabs.
       // The instance exists with all methods but no DOM attached (minimized=true)
+      // v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
       const tabWindow = new QuickTabWindow({
         id: options.id,
         url: options.url,
@@ -986,8 +965,6 @@ class QuickTabsManager {
         width: options.width,
         height: options.height,
         minimized: true,
-        soloedOnTabs: options.soloedOnTabs,
-        mutedOnTabs: options.mutedOnTabs,
         zIndex: options.zIndex,
         // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
         currentTabId: this.currentTabId,
@@ -995,15 +972,14 @@ class QuickTabsManager {
         originTabId: options.originTabId ?? this.currentTabId,
         originContainerId: options.originContainerId ?? this.cookieStoreId,
         // Wire up callbacks - these persist through restore cycles
+        // v1.6.4 - Removed Solo/Mute callbacks
         onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
         onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
         onFocus: tabId => this.handleFocus(tabId),
         onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
         onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
         onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
-        onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
-        onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs),
-        onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
+        onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height)
       });
 
       // v1.6.3.4-v7 - Log instance type to confirm real QuickTabWindow
@@ -1352,6 +1328,7 @@ class QuickTabsManager {
    * Delegates to CreateHandler
    * v1.6.3.4 - FIX Issue #4: Wire UI close button to DestroyHandler via onDestroy callback
    * v1.6.3.4 - FIX Issue #6: Add source tracking for logs
+   * v1.6.4 - Removed Solo/Mute callbacks
    */
   createQuickTab(options) {
     console.log('[QuickTabsManager] createQuickTab called with:', options);
@@ -1361,19 +1338,18 @@ class QuickTabsManager {
     // v1.6.3.4 - FIX Issue #6: Source defaults to 'UI' for window callbacks
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Set originTabId for cross-tab filtering
     // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
+    // v1.6.4 - Removed Solo/Mute callbacks
     const optionsWithCallbacks = {
       ...options,
       originTabId: options.originTabId ?? this.currentTabId, // v1.6.3.5-v2
-      currentTabId: this.currentTabId, // v1.6.3.5-v5 - FIX Issue #2: Pass for Solo/Mute
+      currentTabId: this.currentTabId, // v1.6.3.5-v5 - FIX Issue #2: Pass for visibility checks
       onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
       onFocus: tabId => this.handleFocus(tabId),
       onPositionChange: (tabId, left, top) => this.handlePositionChange(tabId, left, top),
       onPositionChangeEnd: (tabId, left, top) => this.handlePositionChangeEnd(tabId, left, top),
       onSizeChange: (tabId, width, height) => this.handleSizeChange(tabId, width, height),
-      onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height),
-      onSolo: (tabId, soloedOnTabs) => this.handleSoloToggle(tabId, soloedOnTabs),
-      onMute: (tabId, mutedOnTabs) => this.handleMuteToggle(tabId, mutedOnTabs)
+      onSizeChangeEnd: (tabId, width, height) => this.handleSizeChangeEnd(tabId, width, height)
     };
 
     const result = this.createHandler.create(optionsWithCallbacks);
@@ -1442,28 +1418,6 @@ class QuickTabsManager {
    */
   handleSizeChangeEnd(id, width, height) {
     return this.updateHandler.handleSizeChangeEnd(id, width, height);
-  }
-
-  /**
-   * Handle solo toggle
-   * v1.6.3.10-v4 - Added source parameter for cross-tab validation logging
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {number[]} newSoloedTabs - Array of tab IDs
-   * @param {string} source - Source of action (default: 'UI')
-   */
-  handleSoloToggle(quickTabId, newSoloedTabs, source = 'UI') {
-    return this.visibilityHandler.handleSoloToggle(quickTabId, newSoloedTabs, source);
-  }
-
-  /**
-   * Handle mute toggle
-   * v1.6.3.10-v4 - Added source parameter for cross-tab validation logging
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {number[]} newMutedTabs - Array of tab IDs
-   * @param {string} source - Source of action (default: 'UI')
-   */
-  handleMuteToggle(quickTabId, newMutedTabs, source = 'UI') {
-    return this.visibilityHandler.handleMuteToggle(quickTabId, newMutedTabs, source);
   }
 
   /**
