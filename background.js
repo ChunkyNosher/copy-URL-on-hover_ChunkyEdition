@@ -91,22 +91,31 @@ console.log('[INIT][Background] PHASE_START:', {
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // v1.6.3.11-v10 - Handle GET_CURRENT_TAB_ID immediately without initialization checks
   // This is the FIX for the 8-second delay - respond instantly using sender.tab.id
+  // v1.6.3.11-v11 - FIX Issue #47 Problem 1 & 3: Also return cookieStoreId for container isolation
   if (message.action === 'GET_CURRENT_TAB_ID') {
     const tabId = sender?.tab?.id;
+    // v1.6.3.11-v11 - FIX Issue #47: Extract cookieStoreId for Firefox Multi-Account Container support
+    const cookieStoreId = sender?.tab?.cookieStoreId ?? null;
 
     console.log('[INIT][Background] GET_CURRENT_TAB_ID_EARLY:', {
       timestamp: new Date().toISOString(),
       'sender.tab.id': tabId,
+      'sender.tab.cookieStoreId': cookieStoreId,
       hasValidTabId: typeof tabId === 'number' && tabId > 0
     });
 
     if (typeof tabId === 'number' && tabId > 0) {
-      // SUCCESS: Return tab ID immediately - this is the fast path
+      // SUCCESS: Return tab ID and container ID immediately - this is the fast path
       // Response format matches QuickTabHandler._buildTabIdSuccessResponse() for consistency
+      // v1.6.3.11-v11 - FIX Issue #47: Include cookieStoreId in response
       sendResponse({
         success: true,
-        data: { currentTabId: tabId },
+        data: {
+          currentTabId: tabId,
+          cookieStoreId: cookieStoreId // v1.6.3.11-v11: Include container ID
+        },
         tabId: tabId, // Backward compatibility
+        cookieStoreId: cookieStoreId, // v1.6.3.11-v11: Backward compatibility
         source: 'early_listener'
       });
       return true; // Indicate we handled the response - prevents MessageRouter from processing
@@ -126,8 +135,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     sendResponse({
       success: false,
-      data: { currentTabId: null },
+      data: { currentTabId: null, cookieStoreId: null },
       tabId: null,
+      cookieStoreId: null,
       error: 'sender.tab.id not available from early listener',
       code: 'SENDER_TAB_UNAVAILABLE',
       retryable: true,

@@ -719,11 +719,16 @@ export class QuickTabHandler {
    * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
    * @private
    */
-  _buildTabIdSuccessResponse(tabId) {
+  _buildTabIdSuccessResponse(tabId, cookieStoreId = null) {
+    // v1.6.3.11-v11 - FIX Issue #47: Include cookieStoreId for container isolation
     return {
       success: true,
-      data: { currentTabId: tabId },
-      tabId // Keep for backward compatibility
+      data: {
+        currentTabId: tabId,
+        cookieStoreId: cookieStoreId // v1.6.3.11-v11: Include container ID
+      },
+      tabId, // Keep for backward compatibility
+      cookieStoreId // v1.6.3.11-v11: Keep for backward compatibility
     };
   }
 
@@ -737,6 +742,25 @@ export class QuickTabHandler {
   }
 
   /**
+   * Handle successful tab ID response
+   * v1.6.3.11-v11 - FIX Issue #47: Extracted to reduce handleGetCurrentTabId complexity
+   * @private
+   */
+  _handleValidTabIdResponse(sender, startTime) {
+    const cookieStoreId = sender.tab.cookieStoreId ?? null;
+    console.log(
+      `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}, cookieStoreId=${cookieStoreId}`
+    );
+    const response = this._buildTabIdSuccessResponse(sender.tab.id, cookieStoreId);
+    console.log('[Handler][EXIT] handleGetCurrentTabId:', {
+      duration: Date.now() - startTime + 'ms',
+      success: true,
+      result: { tabId: sender.tab.id, cookieStoreId }
+    });
+    return response;
+  }
+
+  /**
    * Get current tab ID
    * v1.6.2.4 - FIX Issue #4: Add fallback when sender.tab is unavailable
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: ALWAYS prioritize sender.tab.id
@@ -744,6 +768,7 @@ export class QuickTabHandler {
    * v1.6.4.15 - FIX Issue #15: Consistent response envelope with code field
    * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce complexity
    * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Handler entry/exit instrumentation
+   * v1.6.3.11-v11 - FIX Issue #47: Return cookieStoreId for container isolation
    *
    * @param {Object} _message - Message object (unused, required by message router signature)
    * @param {Object} sender - Message sender object containing tab information
@@ -779,17 +804,9 @@ export class QuickTabHandler {
       }
 
       // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
+      // v1.6.3.11-v11 - FIX Issue #47: Also pass cookieStoreId for container isolation
       if (this._hasValidSenderTabId(sender)) {
-        console.log(
-          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`
-        );
-        const response = this._buildTabIdSuccessResponse(sender.tab.id);
-        console.log('[Handler][EXIT] handleGetCurrentTabId:', {
-          duration: Date.now() - startTime + 'ms',
-          success: true,
-          result: { tabId: sender.tab.id }
-        });
-        return response;
+        return this._handleValidTabIdResponse(sender, startTime);
       }
 
       // sender.tab not available - return error
