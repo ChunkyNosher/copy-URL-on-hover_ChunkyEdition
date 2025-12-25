@@ -494,7 +494,7 @@ describe('TitlebarBuilder', () => {
     test('button clicks should stop propagation', () => {
       const builder = new TitlebarBuilder(config, callbacks);
       const titlebar = builder.build();
-      
+
       // Get the close button (a button that always exists after Solo/Mute removal)
       const closeBtn = Array.from(titlebar.querySelectorAll('button')).find(
         btn => btn.title === 'Close'

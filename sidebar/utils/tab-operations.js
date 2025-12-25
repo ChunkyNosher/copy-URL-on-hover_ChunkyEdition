@@ -429,7 +429,8 @@ export async function sendRestoreMessage(quickTabId, tabData, quickTabHostInfo) 
     originTabId: tabData.originTabId,
     source,
     // v1.6.4.13 - Show if hostInfo was overridden by storage originTabId
-    hostInfoOverridden: hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
+    hostInfoOverridden:
+      hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
   });
 
   // No target - fall back to broadcast

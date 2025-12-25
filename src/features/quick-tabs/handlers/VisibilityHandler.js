@@ -208,10 +208,13 @@ export class VisibilityHandler {
     }
     // If current container ID is not known, fail-closed (block operation)
     if (this.currentContainerId === null) {
-      console.warn(`${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId
-      });
+      console.warn(
+        `${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`,
+        {
+          quickTabId: tabWindow.id,
+          originContainerId: tabWindow.originContainerId
+        }
+      );
       return false;
     }
     // Check if originContainerId matches current container
@@ -242,20 +245,26 @@ export class VisibilityHandler {
 
     // If current container unknown, fail-closed
     if (!this.currentContainerId) {
-      console.warn(`${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId
-      });
+      console.warn(
+        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`,
+        {
+          quickTabId: tabWindow.id,
+          originContainerId: tabWindow.originContainerId
+        }
+      );
       return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
     }
 
     // Compare container IDs
     if (tabWindow.originContainerId !== this.currentContainerId) {
-      console.log(`${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId,
-        currentContainerId: this.currentContainerId
-      });
+      console.log(
+        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`,
+        {
+          quickTabId: tabWindow.id,
+          originContainerId: tabWindow.originContainerId,
+          currentContainerId: this.currentContainerId
+        }
+      );
       return { valid: false, reason: 'CONTAINER_MISMATCH' };
     }
 
@@ -931,7 +940,12 @@ export class VisibilityHandler {
       this.eventBus.emit('tab:needs-callback-rewire', {
         id,
         source,
-        callbacksNeeded: ['onPositionChange', 'onPositionChangeEnd', 'onSizeChange', 'onSizeChangeEnd']
+        callbacksNeeded: [
+          'onPositionChange',
+          'onPositionChangeEnd',
+          'onSizeChange',
+          'onSizeChangeEnd'
+        ]
       });
     }
 
@@ -1626,8 +1640,9 @@ export class VisibilityHandler {
     });
 
     // Sort tabs by current z-index to maintain stacking order
-    const sortedTabs = Array.from(this.quickTabsMap.entries())
-      .sort(([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0));
+    const sortedTabs = Array.from(this.quickTabsMap.entries()).sort(
+      ([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0)
+    );
 
     // Reset counter to base value
     this.currentZIndex.value = 1000;
@@ -1870,10 +1885,7 @@ export class VisibilityHandler {
     });
 
     try {
-      await Promise.race([
-        this._persistToStorage(),
-        timeoutPromise
-      ]);
+      await Promise.race([this._persistToStorage(), timeoutPromise]);
       // Reset timeout count on success
       this._storageTimeoutCount = 0;
     } catch (err) {

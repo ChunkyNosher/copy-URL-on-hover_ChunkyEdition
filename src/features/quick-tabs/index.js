@@ -178,15 +178,24 @@ class QuickTabsManager {
       this.currentZIndex.value = restoredZIndex;
       console.log('[QuickTabsManager] STEP 1: Z-index counter restored:', restoredZIndex);
     } catch (err) {
-      console.warn('[QuickTabsManager] STEP 1: Z-index restore failed, using default:', err.message);
+      console.warn(
+        '[QuickTabsManager] STEP 1: Z-index restore failed, using default:',
+        err.message
+      );
     }
 
     // v1.6.3.12 - FIX Issue #15: Start storage listener health monitoring
     try {
       const monitorStarted = startStorageListenerHealthMonitor();
-      console.log('[QuickTabsManager] STEP 1: Storage health monitor:', monitorStarted ? 'started' : 'failed');
+      console.log(
+        '[QuickTabsManager] STEP 1: Storage health monitor:',
+        monitorStarted ? 'started' : 'failed'
+      );
     } catch (err) {
-      console.warn('[QuickTabsManager] STEP 1: Storage health monitor failed to start:', err.message);
+      console.warn(
+        '[QuickTabsManager] STEP 1: Storage health monitor failed to start:',
+        err.message
+      );
     }
 
     console.log('[QuickTabsManager] STEP 1 Complete - currentTabId:', this.currentTabId);
@@ -660,8 +669,9 @@ class QuickTabsManager {
   _detectDomainChange(tabData) {
     const storedDomain = this._extractDomainFromUrl(tabData?.url);
     const currentDomain = this._getCurrentDomain();
-    const domainChanged = storedDomain !== currentDomain && storedDomain !== 'unknown' && currentDomain !== 'unknown';
-    
+    const domainChanged =
+      storedDomain !== currentDomain && storedDomain !== 'unknown' && currentDomain !== 'unknown';
+
     if (domainChanged) {
       console.log('[NAVIGATION] Domain changed:', {
         oldDomain: storedDomain,
@@ -670,7 +680,7 @@ class QuickTabsManager {
         storedUrl: tabData?.url
       });
     }
-    
+
     return { domainChanged, oldDomain: storedDomain, newDomain: currentDomain };
   }
 
@@ -684,18 +694,21 @@ class QuickTabsManager {
    */
   _extractTabIdFromQuickTabId(quickTabId) {
     if (!quickTabId || typeof quickTabId !== 'string') return null;
-    
+
     // v1.6.3.10-v10 - FIX Issue #4: Handle "qt-unknown-*" pattern
     // Check if the pattern contains "unknown" (no tab ID was available at creation time)
     if (quickTabId.startsWith('qt-unknown-')) {
-      console.warn('[QuickTabsManager] v1.6.3.10-v10 PATTERN_EXTRACTION: "unknown" pattern detected', {
-        quickTabId,
-        warning: 'Quick Tab was created without valid tab ID',
-        recommendation: 'Check explicit originTabId field in storage'
-      });
+      console.warn(
+        '[QuickTabsManager] v1.6.3.10-v10 PATTERN_EXTRACTION: "unknown" pattern detected',
+        {
+          quickTabId,
+          warning: 'Quick Tab was created without valid tab ID',
+          recommendation: 'Check explicit originTabId field in storage'
+        }
+      );
       return null;
     }
-    
+
     const match = quickTabId.match(/^qt-(\d+)-/);
     return match ? parseInt(match[1], 10) : null;
   }
@@ -1524,7 +1537,7 @@ class QuickTabsManager {
     const tabId = this.currentTabId || 'unknown';
     const timestamp = Date.now();
     const random = this._generateSecureRandom();
-    
+
     // v1.6.3.10-v10 - FIX Issue #3: Log warning when generating ID with unknown tab ID
     if (tabId === 'unknown') {
       console.warn('[QuickTabsManager] v1.6.3.10-v10 QUICKTAB_ID_UNKNOWN:', {
@@ -1534,7 +1547,7 @@ class QuickTabsManager {
         recommendation: 'Tab ID should be acquired before Quick Tab creation'
       });
     }
-    
+
     return `qt-${tabId}-${timestamp}-${random}`;
   }
 

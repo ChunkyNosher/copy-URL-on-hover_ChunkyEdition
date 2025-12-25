@@ -7,10 +7,10 @@ import { StorageAdapter } from './StorageAdapter.js';
  * v1.6.2.2 - ISSUE #35/#51 FIX: Unified storage format (no container separation)
  * v1.6.3.10-v10 - FIX Issue P: Atomic migration with version field and locking
  * v1.6.4.17 - FIX: Switch from storage.local to storage.session for session-scoped Quick Tabs
- * 
+ *
  * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
  * v1.6.4.17 - UPDATED: Quick Tabs now use session storage (not persistent across browser restart)
- * 
+ *
  * CANONICAL ADAPTER SELECTION:
  * - **SyncStorageAdapter** is the CANONICAL adapter for Quick Tab persistence ✓
  *   - Uses browser.storage.session for session-scoped state
@@ -18,7 +18,7 @@ import { StorageAdapter } from './StorageAdapter.js';
  *   - Data is CLEARED on browser close/restart
  *   - Used for hydration on extension load
  *   - All Quick Tab state is stored and loaded through this adapter
- * 
+ *
  * - **SessionStorageAdapter** is DEPRECATED - use SyncStorageAdapter instead
  *   - Both now use browser.storage.session
  *
@@ -65,7 +65,9 @@ export class SyncStorageAdapter extends StorageAdapter {
     this._migrationInProgress = false;
     this._migrationPromise = null;
     // v1.6.4.17 - FIX: Now uses storage.session for session-scoped Quick Tabs
-    console.log('[SyncStorageAdapter] Initialized (CANONICAL adapter - browser.storage.session - session-scoped, cleared on browser restart)');
+    console.log(
+      '[SyncStorageAdapter] Initialized (CANONICAL adapter - browser.storage.session - session-scoped, cleared on browser restart)'
+    );
   }
 
   /**
@@ -120,10 +122,10 @@ export class SyncStorageAdapter extends StorageAdapter {
    */
   async load() {
     const state = await this._loadRawState();
-    
+
     // v1.6.3.10-v10 - FIX Issue P: Detect format using version field
     const detectedFormat = this._detectStorageFormat(state);
-    
+
     console.log('[SyncStorageAdapter] v1.6.3.10-v10 Format detection:', {
       detectedFormat,
       hasFormatVersion: state.formatVersion !== undefined,
@@ -168,7 +170,7 @@ export class SyncStorageAdapter extends StorageAdapter {
     if (state.formatVersion === FORMAT_VERSION_CONTAINER) {
       return 'container';
     }
-    
+
     // Infer from structure (pre-version field data)
     if (state.tabs && Array.isArray(state.tabs)) {
       return 'unified';
@@ -176,7 +178,7 @@ export class SyncStorageAdapter extends StorageAdapter {
     if (state.containers && typeof state.containers === 'object') {
       return 'container';
     }
-    
+
     return 'empty';
   }
 
@@ -184,17 +186,17 @@ export class SyncStorageAdapter extends StorageAdapter {
    * Perform atomic migration from container to unified format
    * v1.6.3.10-v10 - FIX Issue P: Prevents race condition during migration
    * v1.6.3.10-v10 - FIX Gap 2.2: Migration trace logging with correlation ID
-   * 
+   *
    * RACE CONDITION ADDRESSED:
    * - Tab A calls load() → finds container format → starts migration
    * - Tab B calls _saveRawState() → overwrites container format
    * - Tab A's migration returns incomplete data
-   * 
+   *
    * SOLUTION:
    * - Use migration lock to serialize migrations
    * - Re-read state after lock acquisition to verify format hasn't changed
    * - Include formatVersion in saved state to prevent re-migration
-   * 
+   *
    * @private
    * @param {Object} state - State with container format
    * @returns {Promise<{tabs: Array, timestamp: number}|null>}
@@ -202,7 +204,7 @@ export class SyncStorageAdapter extends StorageAdapter {
   _performAtomicMigration(state) {
     // v1.6.3.10-v10 - FIX Gap 2.2: Generate migration correlation ID
     const migrationCorrelationId = `migration-${new Date().toISOString()}-${Math.random().toString(36).substring(2, 8)}`;
-    
+
     // v1.6.3.10-v10 - FIX Issue P: Prevent concurrent migrations
     if (this._migrationInProgress) {
       console.log('[StorageAdapter] MIGRATION_BLOCKED:', {
@@ -215,9 +217,9 @@ export class SyncStorageAdapter extends StorageAdapter {
         return this._migrationPromise;
       }
     }
-    
+
     this._migrationInProgress = true;
-    
+
     this._migrationPromise = (async () => {
       try {
         // v1.6.3.10-v10 - FIX Gap 2.2: Migration STARTED trace
@@ -227,11 +229,11 @@ export class SyncStorageAdapter extends StorageAdapter {
           containerCount: Object.keys(state.containers || {}).length,
           timestamp: new Date().toISOString()
         });
-        
+
         // Re-read state to check if another tab already migrated
         const currentState = await this._loadRawState();
         const currentFormat = this._detectStorageFormat(currentState);
-        
+
         // v1.6.3.10-v10 - FIX Gap 2.2: Log re-read result
         console.log('[StorageAdapter] MIGRATION_REREAD:', {
           correlationId: migrationCorrelationId,
@@ -241,7 +243,7 @@ export class SyncStorageAdapter extends StorageAdapter {
           formatVersion: currentState.formatVersion,
           timestamp: new Date().toISOString()
         });
-        
+
         if (currentFormat === 'unified') {
           console.log('[StorageAdapter] MIGRATION_SKIPPED:', {
             correlationId: migrationCorrelationId,
@@ -249,16 +251,18 @@ export class SyncStorageAdapter extends StorageAdapter {
             tabCount: currentState.tabs?.length ?? 0,
             timestamp: new Date().toISOString()
           });
-          return currentState.tabs?.length > 0 ? {
-            tabs: currentState.tabs,
-            timestamp: currentState.timestamp || Date.now()
-          } : null;
+          return currentState.tabs?.length > 0
+            ? {
+                tabs: currentState.tabs,
+                timestamp: currentState.timestamp || Date.now()
+              }
+            : null;
         }
-        
+
         // Perform migration
         const containersToMigrate = currentState.containers || state.containers;
         const containerKeys = Object.keys(containersToMigrate || {});
-        
+
         // v1.6.3.10-v10 - FIX Gap 2.2: Log migration data extraction
         console.log('[StorageAdapter] MIGRATION_EXTRACTING:', {
           correlationId: migrationCorrelationId,
@@ -267,9 +271,9 @@ export class SyncStorageAdapter extends StorageAdapter {
           containerCount: containerKeys.length,
           timestamp: new Date().toISOString()
         });
-        
+
         const migratedTabs = this._migrateFromContainerFormat(containersToMigrate);
-        
+
         if (migratedTabs.length === 0) {
           console.log('[StorageAdapter] MIGRATION_COMPLETED:', {
             correlationId: migrationCorrelationId,
@@ -279,7 +283,7 @@ export class SyncStorageAdapter extends StorageAdapter {
           });
           return null;
         }
-        
+
         // Save with version field to prevent re-migration
         const migratedState = {
           tabs: migratedTabs,
@@ -290,9 +294,9 @@ export class SyncStorageAdapter extends StorageAdapter {
           migratedFrom: 'container_format',
           migratedAt: Date.now()
         };
-        
+
         await this._saveRawState(migratedState);
-        
+
         // v1.6.3.10-v10 - FIX Gap 2.2: Log migration completion
         console.log('[StorageAdapter] MIGRATION_COMPLETED:', {
           correlationId: migrationCorrelationId,
@@ -302,7 +306,7 @@ export class SyncStorageAdapter extends StorageAdapter {
           saveId: migratedState.saveId,
           timestamp: new Date().toISOString()
         });
-        
+
         return {
           tabs: migratedTabs,
           timestamp: migratedState.timestamp
@@ -312,7 +316,7 @@ export class SyncStorageAdapter extends StorageAdapter {
         this._migrationPromise = null;
       }
     })();
-    
+
     return this._migrationPromise;
   }
 
@@ -477,7 +481,7 @@ export class SyncStorageAdapter extends StorageAdapter {
       ...state,
       formatVersion: state.formatVersion ?? FORMAT_VERSION_UNIFIED
     };
-    
+
     // v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
     await browser.storage.session.set({
       [this.STORAGE_KEY]: stateWithVersion

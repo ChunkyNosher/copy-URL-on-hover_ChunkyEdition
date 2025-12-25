@@ -64,7 +64,7 @@ export class CreateHandler {
     // v1.6.3.11-v10 - FIX Issue #12: Store internal event bus for window:created events
     // UICoordinator listens on internalEventBus, so window:created must be emitted there
     this.internalEventBus = internalEventBus;
-    
+
     // v1.6.3.11-v10 - FIX Issue #12: Log event bus instances for debugging
     const externalId = eventBus?.getInstanceId?.() ?? eventBus?.constructor?.name ?? 'unknown';
     const internalId = internalEventBus?.constructor?.name ?? 'null';
@@ -242,12 +242,18 @@ export class CreateHandler {
     const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
 
     // v1.6.3.12 - FIX Issue #16: Validate originTabId before creating window
-    const originValidation = validateOriginTabIdForSerialization(tabOptions, 'CreateHandler._createNewTab');
+    const originValidation = validateOriginTabIdForSerialization(
+      tabOptions,
+      'CreateHandler._createNewTab'
+    );
     if (!originValidation.valid) {
       console.warn('[CreateHandler] originTabId validation failed:', {
         id,
         warning: originValidation.warning,
-        tabOptions: { originTabId: tabOptions.originTabId, originContainerId: tabOptions.originContainerId }
+        tabOptions: {
+          originTabId: tabOptions.originTabId,
+          originContainerId: tabOptions.originContainerId
+        }
       });
       // Continue anyway - the logging will help debug serialization issues
     }
@@ -556,14 +562,14 @@ export class CreateHandler {
     // v1.6.3.11-v10 - FIX Issue #12: Prefer internalEventBus for UICoordinator communication
     // UICoordinator listens on internalEventBus, not the external eventBus from content.js
     const targetBus = this.internalEventBus || this.eventBus;
-    
+
     if (!targetBus) {
       console.warn('[CreateHandler] No event bus available for window:created');
       return;
     }
 
     targetBus.emit('window:created', { id, tabWindow });
-    
+
     // v1.6.3.11-v10 - FIX Issue #12: Log which bus was used for debugging
     const busType = this.internalEventBus ? 'internalEventBus' : 'eventBus (fallback)';
     console.log('[CreateHandler] Emitted window:created for UICoordinator:', {

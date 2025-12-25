@@ -1,7 +1,7 @@
 /**
  * Event Bus
  * Pub/sub event system for inter-module communication
- * 
+ *
  * v1.6.3.11-v10 - FIX Issue #12: Added singleton instance tracking with unique IDs
  *   Each EventBus instance gets a unique instanceId to detect instance mismatches
  *   Use getSharedEventBus() to get the singleton instance

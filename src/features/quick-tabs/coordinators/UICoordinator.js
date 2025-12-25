@@ -147,7 +147,7 @@ export class UICoordinator {
     this.updateHandler = handlers.updateHandler || null;
     this.visibilityHandler = handlers.visibilityHandler || null;
     this.destroyHandler = handlers.destroyHandler || null;
-    
+
     // v1.6.3.11-v10 - FIX Issue #12: Log event bus instance for debugging
     const busType = eventBus?.constructor?.name ?? 'unknown';
     console.log(`${this._logPrefix} Received eventBus:`, {

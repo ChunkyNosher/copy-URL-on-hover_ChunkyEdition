@@ -70,8 +70,8 @@ const relevantMemories = await searchMemories({
 - **Navigation Detection** - `[NAVIGATION]` logging prefix for domain changes
 - **Hydration Domain Check** - `[HYDRATION_DOMAIN_CHECK]` logging prefix
 
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
-storage quota monitoring, code health 9.0+, response helper, dead code removal
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating, storage
+quota monitoring, code health 9.0+, response helper, dead code removal
 
 **URL Detection Features:**
 
@@ -117,10 +117,14 @@ storage quota monitoring, code health 9.0+, response helper, dead code removal
 **Track hovered links with passive event listeners:**
 
 ```javascript
-document.addEventListener('mouseover', e => {
-  const link = e.target.closest('a[href]');
-  if (link) currentLink = link;
-}, { passive: true });
+document.addEventListener(
+  'mouseover',
+  e => {
+    const link = e.target.closest('a[href]');
+    if (link) currentLink = link;
+  },
+  { passive: true }
+);
 ```
 
 ---
@@ -137,12 +141,16 @@ class URLParser {
       if (!['http:', 'https:'].includes(url.protocol)) return { valid: false };
       if (!url.hostname) return { valid: false };
       return { valid: true, url };
-    } catch { return { valid: false }; }
+    } catch {
+      return { valid: false };
+    }
   }
 
   static removeTrackingParams(url) {
     const params = new URLSearchParams(url.search);
-    ['utm_source', 'utm_medium', 'fbclid', 'gclid'].forEach(p => params.delete(p));
+    ['utm_source', 'utm_medium', 'fbclid', 'gclid'].forEach(p =>
+      params.delete(p)
+    );
     return params.toString() ? `?${params}` : '';
   }
 }
@@ -152,8 +160,8 @@ class URLParser {
 
 ## Site-Specific Handlers
 
-**100+ site handlers** for Twitter/X, GitHub, Amazon, YouTube, Reddit, etc.
-Each handler cleans URLs by removing tracking params, extracting clean paths.
+**100+ site handlers** for Twitter/X, GitHub, Amazon, YouTube, Reddit, etc. Each
+handler cleans URLs by removing tracking params, extracting clean paths.
 
 ```javascript
 // Example: Twitter handler

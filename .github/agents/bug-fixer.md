@@ -43,9 +43,11 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+:**
 
-- **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
+- **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD,
+  TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
 - **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` comparison
+- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON`
+  comparison
 - **Debounce Context Capture** - `capturedTabId` stored at schedule time
 - **Z-Index Recycling** - Threshold lowered from 100000 to 10000
 - **Container Validation** - `_validateContainerIsolation()` in visibility ops

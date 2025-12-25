@@ -25,18 +25,22 @@ Tabs Manager
 
 **v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes:**
 
-- **Issue A Fix** - Content script tab identity initialization before state changes
-  - `[IDENTITY_INIT]` logging markers added (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
+- **Issue A Fix** - Content script tab identity initialization before state
+  changes
+  - `[IDENTITY_INIT]` logging markers added (SCRIPT_LOAD, TAB_ID_REQUEST,
+    TAB_ID_RESPONSE, IDENTITY_READY)
 - **Issue C Fix** - Identity initialization has comprehensive logging
   - All identity phases logged with timestamps
 - **Issue D Fix** - Storage write queue enforces identity-ready precondition
   - `waitForIdentityInit()` called before processing writes
-  - `[WRITE_PHASE]` logging for FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE
+  - `[WRITE_PHASE]` logging for FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE,
+    WRITE_API_PHASE
 - **Issue E Fix** - State validation has pre/post comparison logging
   - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows delta
 - **Issue I Fix** - Debounce timer captures tab context at schedule time
   - `capturedTabId` stored when timer is scheduled, not when it fires
-- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000 → 10000)
+- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000
+  → 10000)
 - **Issue 5 Fix** - Container isolation validated in all visibility operations
   - `_validateContainerIsolation()` helper added
   - `currentContainerId` stored in VisibilityHandler constructor
@@ -124,13 +128,19 @@ references.
 
 ### v1.6.3.11-v9 Patterns (Current)
 
-- **Identity Init Logging** - `[IDENTITY_INIT]` markers for SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY
-- **Write Phase Logging** - `[WRITE_PHASE]` markers for FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows pre/post tabs filtered
-- **Debounce Context Capture** - `capturedTabId` stored at schedule time, not fire time
+- **Identity Init Logging** - `[IDENTITY_INIT]` markers for SCRIPT_LOAD,
+  TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY
+- **Write Phase Logging** - `[WRITE_PHASE]` markers for FETCH_PHASE,
+  QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE
+- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows
+  pre/post tabs filtered
+- **Debounce Context Capture** - `capturedTabId` stored at schedule time, not
+  fire time
 - **Z-Index Recycling** - Threshold lowered from 100000 to 10000
-- **Container Validation** - `_validateContainerIsolation()` added to visibility operations
-- **Identity Precondition** - Write queue awaits `waitForIdentityInit()` before processing
+- **Container Validation** - `_validateContainerIsolation()` added to visibility
+  operations
+- **Identity Precondition** - Write queue awaits `waitForIdentityInit()` before
+  processing
 
 ### v1.6.3.11-v8 Patterns
 
@@ -160,7 +170,8 @@ references.
 - **tabs.sendMessage** - Background → Content script / Manager messaging
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Single Storage Key** - `quick_tabs_state_v2` with unified format
-- **Unified Barrier** - Single barrier initialization with resolve-only semantics
+- **Unified Barrier** - Single barrier initialization with resolve-only
+  semantics
 - **Tab ID Backoff** - Exponential backoff (200ms, 500ms, 1500ms, 5000ms)
 
 ### Previous Version Patterns (Consolidated)
@@ -173,14 +184,14 @@ references.
 
 ### Key Timing Constants (v1.6.3.11-v8)
 
-| Constant                   | Value  | Purpose                        |
-| -------------------------- | ------ | ------------------------------ |
-| `MESSAGE_TIMEOUT_MS`       | 5000   | Message timeout                |
-| `_MAX_EARLY_QUEUE_SIZE`    | 100    | Max queued messages before ready |
-| `HYDRATION_TIMEOUT_MS`     | 3000   | Storage hydration timeout      |
-| `TAB_ID_BACKOFF_DELAYS`    | Array  | 200, 500, 1500, 5000ms         |
-| `STORAGE_TIMEOUT_MS`       | 2000   | Storage operation timeout      |
-| `LRU_MAP_MAX_SIZE`         | 500    | Maximum map entries            |
+| Constant                | Value | Purpose                          |
+| ----------------------- | ----- | -------------------------------- |
+| `MESSAGE_TIMEOUT_MS`    | 5000  | Message timeout                  |
+| `_MAX_EARLY_QUEUE_SIZE` | 100   | Max queued messages before ready |
+| `HYDRATION_TIMEOUT_MS`  | 3000  | Storage hydration timeout        |
+| `TAB_ID_BACKOFF_DELAYS` | Array | 200, 500, 1500, 5000ms           |
+| `STORAGE_TIMEOUT_MS`    | 2000  | Storage operation timeout        |
+| `LRU_MAP_MAX_SIZE`      | 500   | Maximum map entries              |
 
 ---
 
@@ -193,7 +204,7 @@ references.
 | MapTransactionManager | `beginTransaction()`, `commitTransaction()`                           |
 | TabStateManager       | `getTabState()`, `setTabState()`                                      |
 | StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`              |
-| QuickTabHandler       | `handleCreate()`, `_resolveOriginTabId()`, `_validateTabId()`             |
+| QuickTabHandler       | `handleCreate()`, `_resolveOriginTabId()`, `_validateTabId()`         |
 | MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`   |
 | MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)             |
 | EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`           |
@@ -304,21 +315,21 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                             | Features                                      |
-| ------------------------------------------------ | --------------------------------------------- |
-| `src/constants.js`                               | Centralized constants                         |
-| `src/utils/shadow-dom.js`                        | Shadow DOM link detection                     |
-| `src/utils/storage-utils.js`                     | Storage utilities (Code Health 9.09)          |
-| `src/background/tab-events.js`                   | Tabs API listeners                            |
-| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts          |
-| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation   |
-| `src/messaging/message-router.js`                | ACTION-based routing                          |
-| `src/background/message-handler.js`              | TYPE-based v2 routing                         |
-| `background.js`                                  | Early message listener (Code Health 9.09)     |
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender() (Code Health 9.09)           |
-| `src/content.js`                                 | Content script (Code Health 9.09)             |
-| `src/background/handlers/QuickTabHandler.js`     | handleCreate(), originTabId fix               |
-| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection               |
+| File                                             | Features                                    |
+| ------------------------------------------------ | ------------------------------------------- |
+| `src/constants.js`                               | Centralized constants                       |
+| `src/utils/shadow-dom.js`                        | Shadow DOM link detection                   |
+| `src/utils/storage-utils.js`                     | Storage utilities (Code Health 9.09)        |
+| `src/background/tab-events.js`                   | Tabs API listeners                          |
+| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts        |
+| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation |
+| `src/messaging/message-router.js`                | ACTION-based routing                        |
+| `src/background/message-handler.js`              | TYPE-based v2 routing                       |
+| `background.js`                                  | Early message listener (Code Health 9.09)   |
+| `sidebar/quick-tabs-manager.js`                  | scheduleRender() (Code Health 9.09)         |
+| `src/content.js`                                 | Content script (Code Health 9.09)           |
+| `src/background/handlers/QuickTabHandler.js`     | handleCreate(), originTabId fix             |
+| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection             |
 
 ### Storage
 

@@ -93,13 +93,13 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // This is the FIX for the 8-second delay - respond instantly using sender.tab.id
   if (message.action === 'GET_CURRENT_TAB_ID') {
     const tabId = sender?.tab?.id;
-    
+
     console.log('[INIT][Background] GET_CURRENT_TAB_ID_EARLY:', {
       timestamp: new Date().toISOString(),
       'sender.tab.id': tabId,
       hasValidTabId: typeof tabId === 'number' && tabId > 0
     });
-    
+
     if (typeof tabId === 'number' && tabId > 0) {
       // SUCCESS: Return tab ID immediately - this is the fast path
       // Response format matches QuickTabHandler._buildTabIdSuccessResponse() for consistency
@@ -111,7 +111,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return true; // Indicate we handled the response - prevents MessageRouter from processing
     }
-    
+
     // sender.tab.id not available (rare edge case - maybe sidebar or devtools)
     // Return error but with retryable flag so content script can fallback
     // Response format matches QuickTabHandler._buildTabIdErrorResponse() for consistency
@@ -123,7 +123,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         tab: sender?.tab ? 'present' : 'missing'
       }
     });
-    
+
     sendResponse({
       success: false,
       data: { currentTabId: null },
@@ -135,7 +135,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true; // Indicate we handled the response - prevents MessageRouter from processing
   }
-  
+
   // Other messages are NOT handled by this early listener
   // Return false so they can be processed by the MessageRouter registered later
   return false;
@@ -804,7 +804,7 @@ const MAX_INITIALIZATION_RETRIES = 3;
 function _logInitializationComplete(source, initStartTime) {
   const durationMs = Date.now() - initStartTime;
   const tabCount = globalQuickTabState.tabs?.length || 0;
-  
+
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging
   console.log('[INIT][Background] STORAGE_LOAD_COMPLETE:', {
     source,
@@ -812,7 +812,7 @@ function _logInitializationComplete(source, initStartTime) {
     durationMs,
     timestamp: new Date().toISOString()
   });
-  
+
   console.log('[INIT][Background] PHASE_COMPLETE:', {
     success: true,
     source,
@@ -821,7 +821,7 @@ function _logInitializationComplete(source, initStartTime) {
     isInitialized: true,
     timestamp: new Date().toISOString()
   });
-  
+
   console.log(`[Background] Initialization complete from ${source}:`, {
     tabCount,
     durationMs
@@ -836,7 +836,7 @@ function _logInitializationComplete(source, initStartTime) {
  */
 function _handleInitializationFailure(err, initStartTime) {
   const durationMs = Date.now() - initStartTime;
-  
+
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for failure
   console.error('[INIT][Background] PHASE_FAILED:', {
     error: err.message,
@@ -846,7 +846,7 @@ function _handleInitializationFailure(err, initStartTime) {
     willRetry: initializationRetryCount < MAX_INITIALIZATION_RETRIES,
     timestamp: new Date().toISOString()
   });
-  
+
   console.error('[Background] INITIALIZATION FAILED:', {
     error: err.message,
     durationMs,
@@ -863,7 +863,9 @@ function _handleInitializationFailure(err, initStartTime) {
       backoffMs,
       timestamp: new Date().toISOString()
     });
-    console.log(`[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`);
+    console.log(
+      `[Background] Retrying initialization in ${backoffMs}ms (attempt ${initializationRetryCount}/${MAX_INITIALIZATION_RETRIES})`
+    );
     setTimeout(() => initializeGlobalState(), backoffMs);
   } else {
     console.error('[INIT][Background] MAX_RETRIES_EXCEEDED:', {
@@ -895,7 +897,7 @@ async function initializeGlobalState() {
     console.log('[INIT][Background] STORAGE_LOAD_START:', {
       timestamp: new Date().toISOString()
     });
-    
+
     const loaded = await tryLoadFromSessionStorage();
     if (loaded) {
       initializationRetryCount = 0;
@@ -2427,17 +2429,17 @@ function _hasTabsContentChanged(oldValue, newValue) {
 function _checkTabsArrayChange(oldValue, newValue) {
   const oldTabCount = _getTabCount(oldValue);
   const newTabCount = _getTabCount(newValue);
-  
+
   // Fast path: count changed
   if (oldTabCount !== newTabCount) {
     return `tabs (${oldTabCount}→${newTabCount})`;
   }
-  
+
   // Slow path: same count, check content (only when non-empty)
   if (oldTabCount > 0 && _hasTabsContentChanged(oldValue, newValue)) {
     return 'tabs (content changed)';
   }
-  
+
   return null;
 }
 
@@ -2667,8 +2669,14 @@ function _shouldIgnoreStorageChange(newValue, oldValue) {
  */
 function _checkTimestampWindowDedup(newValue, now) {
   const eventHash = _computeEventDeduplicationHash(newValue);
-  if (lastStorageEventHash === eventHash && (now - lastStorageEventTimestamp) < STORAGE_DEDUP_WINDOW_MS) {
-    return { method: 'timestamp-window', reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window` };
+  if (
+    lastStorageEventHash === eventHash &&
+    now - lastStorageEventTimestamp < STORAGE_DEDUP_WINDOW_MS
+  ) {
+    return {
+      method: 'timestamp-window',
+      reason: `Duplicate event within ${STORAGE_DEDUP_WINDOW_MS}ms window`
+    };
   }
   lastStorageEventHash = eventHash;
   lastStorageEventTimestamp = now;
@@ -2707,7 +2715,8 @@ function _checkContentHashDedup(newValue, oldValue) {
 
 function _multiMethodDeduplication(newValue, oldValue) {
   const now = Date.now();
-  const logMatch = (method, reason) => console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
+  const logMatch = (method, reason) =>
+    console.log('[Background] Self-write detected:', { method, reason, saveId: newValue?.saveId });
 
   // Check each dedup method in priority order using extracted helpers
   const checks = [
@@ -3011,7 +3020,12 @@ function _isRecentlyProcessedInstanceWrite(instanceId, saveId) {
  * @private
  */
 function _logBroadcastDecision(decision, reason, targetTabCount = 0, filteredCount = 0) {
-  console.log('[Background][Storage] BROADCAST_DECISION:', { decision, reason, targetTabCount, filteredCount });
+  console.log('[Background][Storage] BROADCAST_DECISION:', {
+    decision,
+    reason,
+    targetTabCount,
+    filteredCount
+  });
 }
 
 /**
@@ -3034,7 +3048,12 @@ function _filterAndUpdateCache(newValue) {
   const filteredValue = filterValidTabs(newValue);
   const originalCount = _getTabCount(newValue);
   const filteredCount = originalCount - _getTabCount(filteredValue);
-  _logBroadcastDecision('UPDATE_CACHE', 'proceeding with cache update', _getTabCount(filteredValue), filteredCount);
+  _logBroadcastDecision(
+    'UPDATE_CACHE',
+    'proceeding with cache update',
+    _getTabCount(filteredValue),
+    filteredCount
+  );
   _updateGlobalStateFromStorage(filteredValue);
 }
 
@@ -3095,7 +3114,8 @@ const STORAGE_LISTENER_LOG_INTERVAL = 100; // Log health every 100 events
 function _logStorageListenerHealth(areaName, changedKeys) {
   storageOnChangedEventCount++;
   const now = Date.now();
-  const timeSinceLastEvent = storageOnChangedLastEventTime > 0 ? now - storageOnChangedLastEventTime : 0;
+  const timeSinceLastEvent =
+    storageOnChangedLastEventTime > 0 ? now - storageOnChangedLastEventTime : 0;
   storageOnChangedLastEventTime = now;
 
   // Log every N events as health check (at 100, 200, 300, etc.)
@@ -3130,7 +3150,9 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 
   // Handle Quick Tab state changes
   if (changes.quick_tabs_state_v2) {
-    console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change');
+    console.log(
+      '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
+    );
     _handleQuickTabStateChange(changes);
   }
 
@@ -3661,7 +3683,7 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
     const handshakeStartTime = Date.now();
     const initReady = await waitForInitialization(5000);
     const handshakeDuration = Date.now() - handshakeStartTime;
-    
+
     // v1.6.4.15 - FIX Issue #16: Log port lifecycle - initialized
     console.log('[PORT_LIFECYCLE] Port initialized:', {
       event: 'initialized',
@@ -3672,17 +3694,22 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
       handshakeDurationMs: handshakeDuration,
       timestamp: new Date().toISOString()
     });
-    
+
     port.postMessage({
       type: 'BACKGROUND_HANDSHAKE',
       ...getBackgroundStartupInfo(),
       isInitialized: initReady,
       // v1.6.4.15 - FIX Issue #16: Add isReadyForCommands field
       isReadyForCommands: initReady,
-      portId, tabId,
+      portId,
+      tabId,
       timestamp: Date.now()
     });
-    console.log('[Background] Sent BACKGROUND_HANDSHAKE:', { portId, origin, isInitialized: initReady });
+    console.log('[Background] Sent BACKGROUND_HANDSHAKE:', {
+      portId,
+      origin,
+      isInitialized: initReady
+    });
   } catch (err) {
     console.warn('[Background] Failed to send handshake:', err.message);
   }
@@ -3697,7 +3724,7 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
 function handlePortConnect(port) {
   const connectTime = Date.now();
   const { type, tabId, origin } = _parsePortName(port);
-  
+
   // v1.6.4.15 - FIX Issue #16: Log port lifecycle - created
   console.log('[PORT_LIFECYCLE] Port created:', {
     event: 'created',
@@ -3708,7 +3735,7 @@ function handlePortConnect(port) {
     isBackgroundInitialized: isInitialized,
     timestamp: new Date().toISOString()
   });
-  
+
   const portId = registerPort(port, origin, tabId, type);
   port._portId = portId;
 
@@ -3728,7 +3755,7 @@ function handlePortConnect(port) {
   port.onDisconnect.addListener(() => {
     const error = browser.runtime.lastError;
     const connectionDuration = Date.now() - connectTime;
-    
+
     // v1.6.4.15 - FIX Issue #16: Log port lifecycle - closed
     console.log('[PORT_LIFECYCLE] Port closed:', {
       event: 'closed',
@@ -3740,7 +3767,7 @@ function handlePortConnect(port) {
       errorMessage: error?.message,
       timestamp: new Date().toISOString()
     });
-    
+
     if (error) {
       logPortLifecycle(origin, 'error', { portId, tabId, error: error.message });
     }
@@ -3762,7 +3789,7 @@ function handlePortConnect(port) {
  */
 function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
   if (!message.correlationId) return;
-  
+
   // Spread response first, then set explicit properties to ensure they take precedence
   const ack = {
     ...response,
@@ -3776,7 +3803,9 @@ function _sendAcknowledgment({ port, message, response, portInfo, portId }) {
   try {
     port.postMessage(ack);
     logPortLifecycle(portInfo?.origin || 'unknown', 'ack-sent', {
-      portId, correlationId: message.correlationId, success: ack.success
+      portId,
+      correlationId: message.correlationId,
+      success: ack.success
     });
   } catch (err) {
     console.error('[Background] Failed to send acknowledgment:', err.message);
@@ -3788,7 +3817,10 @@ async function handlePortMessage(port, portId, message) {
   updatePortActivity(portId);
 
   logPortLifecycle(portInfo?.origin || 'unknown', 'message', {
-    portId, tabId: portInfo?.tabId, messageType: message.type, correlationId: message.correlationId
+    portId,
+    tabId: portInfo?.tabId,
+    messageType: message.type,
+    correlationId: message.correlationId
   });
 
   const response = await routePortMessage(message, portInfo);
@@ -3811,7 +3843,11 @@ async function handlePortMessage(port, portId, message) {
  */
 function handleGetBackgroundInfo() {
   return Promise.resolve({
-    success: true, type: 'BACKGROUND_INFO', ...getBackgroundStartupInfo(), isInitialized, timestamp: Date.now()
+    success: true,
+    type: 'BACKGROUND_INFO',
+    ...getBackgroundStartupInfo(),
+    isInitialized,
+    timestamp: Date.now()
   });
 }
 
@@ -3946,10 +3982,13 @@ function handleDeletionAck(message, portInfo) {
  */
 const ACTION_REQUEST_HANDLERS = {
   TOGGLE_GROUP: () => ({ success: true }),
-  MINIMIZE_TAB: (payload, portInfo) => executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  RESTORE_TAB: (payload, portInfo) => executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  CLOSE_TAB: (payload, portInfo) => executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
-  ADOPT_TAB: (payload) => handleAdoptAction(payload),
+  MINIMIZE_TAB: (payload, portInfo) =>
+    executeManagerCommand('MINIMIZE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  RESTORE_TAB: (payload, portInfo) =>
+    executeManagerCommand('RESTORE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  CLOSE_TAB: (payload, portInfo) =>
+    executeManagerCommand('CLOSE_QUICK_TAB', payload.quickTabId, portInfo?.tabId),
+  ADOPT_TAB: payload => handleAdoptAction(payload),
   CLOSE_MINIMIZED_TABS: () => handleCloseMinimizedTabsCommand(),
   DELETE_GROUP: () => ({ success: false, error: 'Not implemented' })
 };
@@ -4121,10 +4160,16 @@ function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime }) {
+async function _writeAndVerifyAdoptionState({
+  state,
+  quickTabId,
+  targetTabId,
+  correlationId,
+  startTime
+}) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeStartTime = Date.now();
-  
+
   try {
     await browser.storage.local.set({
       quick_tabs_state_v2: {
@@ -4135,28 +4180,50 @@ async function _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, co
         writingInstanceId: `background-adopt-${Date.now()}`
       }
     });
-    
+
     const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
-    
+
     if (!verifiedState || verifiedState.saveId !== saveId) {
       console.error('[Background] MANAGER_ACTION_FAILED:', {
-        action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
-        status: 'failed', error: 'storage-verification-failed',
-        expectedSaveId: saveId, actualSaveId: verifiedState?.saveId,
+        action: 'ADOPT_TAB',
+        quickTabId,
+        targetTabId,
+        correlationId,
+        status: 'failed',
+        error: 'storage-verification-failed',
+        expectedSaveId: saveId,
+        actualSaveId: verifiedState?.saveId,
         durationMs: Date.now() - startTime
       });
-      return { success: false, error: 'Storage write verification failed', reason: 'storage-verification-failed' };
+      return {
+        success: false,
+        error: 'Storage write verification failed',
+        reason: 'storage-verification-failed'
+      };
     }
-    
-    console.log('[Background] ADOPT_TAB: Storage write verified:', { saveId, correlationId, durationMs: Date.now() - writeStartTime });
+
+    console.log('[Background] ADOPT_TAB: Storage write verified:', {
+      saveId,
+      correlationId,
+      durationMs: Date.now() - writeStartTime
+    });
     return { success: true, saveId };
   } catch (writeErr) {
     console.error('[Background] MANAGER_ACTION_FAILED:', {
-      action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
-      status: 'failed', error: writeErr.message, durationMs: Date.now() - startTime
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      status: 'failed',
+      error: writeErr.message,
+      durationMs: Date.now() - startTime
     });
-    return { success: false, error: `Storage write failed: ${writeErr.message}`, reason: 'storage-write-error' };
+    return {
+      success: false,
+      error: `Storage write failed: ${writeErr.message}`,
+      reason: 'storage-write-error'
+    };
   }
 }
 
@@ -4191,7 +4258,7 @@ async function handleAdoptAction(payload) {
   // Read state and find Quick Tab
   const result = await browser.storage.local.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
-  
+
   const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
   if (!findResult.found) {
     return { success: false, error: findResult.error };
@@ -4199,7 +4266,13 @@ async function handleAdoptAction(payload) {
   const { oldOriginTabId } = findResult;
 
   // Write and verify state
-  const writeResult = await _writeAndVerifyAdoptionState({ state, quickTabId, targetTabId, correlationId, startTime });
+  const writeResult = await _writeAndVerifyAdoptionState({
+    state,
+    quickTabId,
+    targetTabId,
+    correlationId,
+    startTime
+  });
   if (!writeResult.success) {
     return writeResult;
   }
@@ -4275,11 +4348,14 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
     timestamp
   };
 
-  console.log('[Background] ADOPTION_BROADCAST_TO_TABS: Starting broadcast to all content scripts:', {
-    quickTabId,
-    previousOriginTabId: oldOriginTabId,
-    newOriginTabId
-  });
+  console.log(
+    '[Background] ADOPTION_BROADCAST_TO_TABS: Starting broadcast to all content scripts:',
+    {
+      quickTabId,
+      previousOriginTabId: oldOriginTabId,
+      newOriginTabId
+    }
+  );
 
   try {
     const tabs = await browser.tabs.query({});
@@ -4364,13 +4440,13 @@ function _matchErrorPattern(errorMessage, patterns) {
  */
 function _classifyBroadcastError(error) {
   const errorMessage = error?.message || String(error);
-  
+
   const permanentMatch = _matchErrorPattern(errorMessage, PERMANENT_ERROR_PATTERNS);
   if (permanentMatch) return { isPermanent: true, reason: permanentMatch };
-  
+
   const transientMatch = _matchErrorPattern(errorMessage, TRANSIENT_ERROR_PATTERNS);
   if (transientMatch) return { isPermanent: false, reason: transientMatch };
-  
+
   // Default: treat unknown errors as transient (will retry)
   return { isPermanent: false, reason: 'unknown-error' };
 }
@@ -4390,14 +4466,21 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
   const pendingTabs = tabs.map(tab => ({ tabId: tab.id, retryCount: 0 }));
   const completedTabs = new Set();
   const metrics = { successCount: 0, permanentFailures: 0, transientFailures: 0 };
-  
+
   // First pass - try all tabs
   await _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId });
-  
+
   // Retry pass for transient failures
   const tabsToRetry = pendingTabs.filter(p => !completedTabs.has(p.tabId));
   if (tabsToRetry.length > 0) {
-    await _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId });
+    await _sendAdoptionRetryPass({
+      tabsToRetry,
+      pendingTabs,
+      completedTabs,
+      metrics,
+      message,
+      quickTabId
+    });
   }
 
   return metrics;
@@ -4414,7 +4497,13 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _sendAdoptionFirstPass({ pendingTabs, completedTabs, metrics, message, quickTabId }) {
+async function _sendAdoptionFirstPass({
+  pendingTabs,
+  completedTabs,
+  metrics,
+  message,
+  quickTabId
+}) {
   for (const pending of pendingTabs) {
     const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
     _processSendResult(result, pending.tabId, completedTabs, metrics);
@@ -4442,15 +4531,34 @@ function _processSendResult(result, tabId, completedTabs, metrics) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
-async function _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs, metrics, message, quickTabId }) {
-  console.log('[Background] ADOPTION_BROADCAST_RETRY:', { quickTabId, tabCount: tabsToRetry.length });
-  
+async function _sendAdoptionRetryPass({
+  tabsToRetry,
+  pendingTabs,
+  completedTabs,
+  metrics,
+  message,
+  quickTabId
+}) {
+  console.log('[Background] ADOPTION_BROADCAST_RETRY:', {
+    quickTabId,
+    tabCount: tabsToRetry.length
+  });
+
   for (let retryAttempt = 1; retryAttempt <= ADOPTION_BROADCAST_MAX_RETRIES; retryAttempt++) {
-    await new Promise(resolve => setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt));
-    await _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt });
+    await new Promise(resolve =>
+      setTimeout(resolve, ADOPTION_BROADCAST_RETRY_DELAY_MS * retryAttempt)
+    );
+    await _sendAdoptionRetryAttempt({
+      tabsToRetry,
+      completedTabs,
+      metrics,
+      message,
+      quickTabId,
+      retryAttempt
+    });
     if (completedTabs.size === pendingTabs.length) break;
   }
-  
+
   _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId);
 }
 
@@ -4459,17 +4567,28 @@ async function _sendAdoptionRetryPass({ tabsToRetry, pendingTabs, completedTabs,
  * v1.6.4.14 - Extracted to reduce complexity
  * @private
  */
-async function _sendAdoptionRetryAttempt({ tabsToRetry, completedTabs, metrics, message, quickTabId, retryAttempt }) {
+async function _sendAdoptionRetryAttempt({
+  tabsToRetry,
+  completedTabs,
+  metrics,
+  message,
+  quickTabId,
+  retryAttempt
+}) {
   for (const pending of tabsToRetry) {
     if (completedTabs.has(pending.tabId)) continue;
-    
+
     pending.retryCount++;
     const result = await _sendAdoptionToSingleTabClassified(pending.tabId, message, quickTabId);
-    
+
     if (result.success) {
       metrics.successCount++;
       completedTabs.add(pending.tabId);
-      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', { tabId: pending.tabId, quickTabId, attempt: retryAttempt });
+      console.log('[Background] ADOPTION_BROADCAST_RETRY_SUCCESS:', {
+        tabId: pending.tabId,
+        quickTabId,
+        attempt: retryAttempt
+      });
     } else if (result.isPermanent) {
       metrics.permanentFailures++;
       completedTabs.add(pending.tabId);
@@ -4516,7 +4635,7 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
     return { success: true };
   } catch (err) {
     const classification = _classifyBroadcastError(err);
-    
+
     // Only log if permanent or first transient (to reduce noise)
     if (classification.isPermanent) {
       console.log('[Background] ADOPTION_BROADCAST_PERMANENT_FAILURE:', {
@@ -4526,9 +4645,9 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
         error: err.message
       });
     }
-    
-    return { 
-      success: false, 
+
+    return {
+      success: false,
       isPermanent: classification.isPermanent,
       reason: classification.reason
     };
@@ -4700,8 +4819,16 @@ async function handleCloseMinimizedTabsCommand() {
   const writeResult = await writeStateWithVerificationAndRetry('close-minimized');
   closedIds.forEach(id => quickTabHostTabs.delete(id));
 
-  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', { closedCount: closedIds.length, verified: writeResult.verified });
-  return { success: true, closedCount: closedIds.length, closedIds, verified: writeResult.verified };
+  console.log('[Background] CLOSE_MINIMIZED_TABS complete:', {
+    closedCount: closedIds.length,
+    verified: writeResult.verified
+  });
+  return {
+    success: true,
+    closedCount: closedIds.length,
+    closedIds,
+    verified: writeResult.verified
+  };
 }
 
 /**
@@ -4817,7 +4944,13 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
   try {
     await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
-    return await _verifyStorageWrite({ operation, saveId, tabCount: stateToWrite.tabs.length, attempt, backoffMs });
+    return await _verifyStorageWrite({
+      operation,
+      saveId,
+      tabCount: stateToWrite.tabs.length,
+      attempt,
+      backoffMs
+    });
   } catch (err) {
     console.error(`[Background] Storage write error (attempt ${attempt}):`, err.message);
     return { success: false, verified: false, needsRetry: true };
@@ -4836,13 +4969,23 @@ async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backo
   const verified = readBack?.saveId === saveId;
 
   if (verified) {
-    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, { operation, saveId, tabCount });
+    console.log(`[Background] Write confirmed: saveId matches (attempt ${attempt})`, {
+      operation,
+      saveId,
+      tabCount
+    });
     return { success: true, saveId, verified: true, attempts: attempt, needsRetry: false };
   }
 
-  console.warn(`[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`, {
-    operation, expectedSaveId: saveId, actualSaveId: readBack?.saveId, backoffMs
-  });
+  console.warn(
+    `[Background] Write pending: retrying (attempt ${attempt}/${STORAGE_WRITE_MAX_RETRIES})`,
+    {
+      operation,
+      expectedSaveId: saveId,
+      actualSaveId: readBack?.saveId,
+      backoffMs
+    }
+  );
   return { success: false, verified: false, needsRetry: true };
 }
 
@@ -5013,8 +5156,7 @@ function generateMessageId() {
 const LOGGING_THROTTLE_MS = 1000;
 // Debug mode flag - set to true to enable verbose logging
 // v1.6.3.10-v5 - Use globalThis for service worker compatibility
-const _debugModeEnabled =
-  typeof globalThis !== 'undefined' && globalThis.DEBUG_MODE === true;
+const _debugModeEnabled = typeof globalThis !== 'undefined' && globalThis.DEBUG_MODE === true;
 
 /**
  * Check if logging should be throttled for a specific log type
@@ -5047,14 +5189,23 @@ const _receiptThrottle = { time: 0 };
  * Log message dispatch (outgoing)
  */
 function logMessageDispatch(messageId, messageType, senderTabId, target) {
-  _logThrottled('📤', 'MESSAGE DISPATCH', _dispatchThrottle, { messageId, messageType, senderTabId, target });
+  _logThrottled('📤', 'MESSAGE DISPATCH', _dispatchThrottle, {
+    messageId,
+    messageType,
+    senderTabId,
+    target
+  });
 }
 
 /**
  * Log message receipt (incoming)
  */
 function logMessageReceipt(messageId, messageType, senderTabId) {
-  _logThrottled('📥', 'MESSAGE RECEIPT', _receiptThrottle, { messageId: messageId || 'N/A', messageType, senderTabId });
+  _logThrottled('📥', 'MESSAGE RECEIPT', _receiptThrottle, {
+    messageId: messageId || 'N/A',
+    messageType,
+    senderTabId
+  });
 }
 
 // Throttle tracker for deletion logs
@@ -5068,15 +5219,31 @@ function logDeletionPropagation(correlationId, phase, quickTabId, details = {}) 
   if (_shouldThrottleLog(_deletionThrottle.time)) return;
   _deletionThrottle.time = Date.now();
 
-  const phaseEmoji = { submit: '🗑️ DELETION SUBMIT', received: '🗑️ DELETION RECEIVED', 'broadcast-complete': '🗑️ DELETION BROADCAST COMPLETE' };
+  const phaseEmoji = {
+    submit: '🗑️ DELETION SUBMIT',
+    received: '🗑️ DELETION RECEIVED',
+    'broadcast-complete': '🗑️ DELETION BROADCAST COMPLETE'
+  };
   const baseData = { correlationId, quickTabId, timestamp: Date.now() };
-  
+
   if (phase === 'submit') {
-    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, source: details.source, excludeTabId: details.excludeTabId });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, {
+      ...baseData,
+      source: details.source,
+      excludeTabId: details.excludeTabId
+    });
   } else if (phase === 'received') {
-    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, receiverTabId: details.receiverTabId, stateApplied: details.stateApplied });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, {
+      ...baseData,
+      receiverTabId: details.receiverTabId,
+      stateApplied: details.stateApplied
+    });
   } else if (phase === 'broadcast-complete') {
-    console.log(`[Background] ${phaseEmoji[phase]}:`, { ...baseData, totalTabs: details.totalTabs, successCount: details.successCount });
+    console.log(`[Background] ${phaseEmoji[phase]}:`, {
+      ...baseData,
+      totalTabs: details.totalTabs,
+      successCount: details.successCount
+    });
   }
 }
 
@@ -5149,7 +5316,7 @@ const quickTabHostTabs = new Map();
 async function _ensureInitializedForHandler(handlerName) {
   const guard = checkInitializationGuard(handlerName);
   if (guard.initialized) return { ready: true };
-  
+
   const initialized = await waitForInitialization(2000);
   if (!initialized) {
     console.warn(`[Background] ${handlerName} rejected - not initialized`);
@@ -5169,7 +5336,11 @@ async function handleQuickTabStateChange(message, sender) {
   const { quickTabId, changes, source } = message;
 
   // v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging
-  const startTime = _logHandlerEntry('handleQuickTabStateChange', { quickTabId, changes, source }, sourceTabId);
+  const startTime = _logHandlerEntry(
+    'handleQuickTabStateChange',
+    { quickTabId, changes, source },
+    sourceTabId
+  );
 
   const initCheck = await _ensureInitializedForHandler('handleQuickTabStateChange');
   if (!initCheck.ready) {
@@ -5192,7 +5363,7 @@ async function handleQuickTabStateChange(message, sender) {
 
   _updateGlobalQuickTabCache(quickTabId, changes, sourceTabId);
   await broadcastQuickTabStateUpdate(quickTabId, changes, source, sourceTabId);
-  
+
   _logHandlerExit('handleQuickTabStateChange', startTime, true, { success: true });
   return { success: true };
 }
@@ -5665,7 +5836,11 @@ function handleManagerCommand(message) {
   const { command, quickTabId, sourceContext } = message;
 
   // v1.6.3.11-v8 - FIX Diagnostic Logging #5: Entry logging
-  const startTime = _logHandlerEntry('handleManagerCommand', { command, quickTabId, sourceContext }, null);
+  const startTime = _logHandlerEntry(
+    'handleManagerCommand',
+    { command, quickTabId, sourceContext },
+    null
+  );
 
   console.log('[Background] MANAGER_COMMAND received:', {
     command,
@@ -5684,7 +5859,10 @@ function handleManagerCommand(message) {
       console.log('[Background] Found host from cache:', cachedTab.originTabId);
       quickTabHostTabs.set(quickTabId, cachedTab.originTabId);
       const result = executeManagerCommand(command, quickTabId, cachedTab.originTabId);
-      _logHandlerExit('handleManagerCommand', startTime, true, { routed: true, hostFromCache: true });
+      _logHandlerExit('handleManagerCommand', startTime, true, {
+        routed: true,
+        hostFromCache: true
+      });
       return result;
     }
     _logHandlerExit('handleManagerCommand', startTime, false, { error: 'Quick Tab host unknown' });
@@ -5716,13 +5894,25 @@ const VALID_MANAGER_COMMANDS = new Set([
  * v1.6.3.10-v8 - FIX Code Health: Use options object instead of 7 parameters
  * @param {Object} opts - Logging options
  */
-function _logManagerActionResult({ action, quickTabId, hostTabId, correlationId, result, startTime, method }) {
+function _logManagerActionResult({
+  action,
+  quickTabId,
+  hostTabId,
+  correlationId,
+  result,
+  startTime,
+  method
+}) {
   const durationMs = Date.now() - startTime;
   const baseData = { action, quickTabId, hostTabId, correlationId, method, durationMs };
   if (result.success !== false) {
     console.log('[Background] MANAGER_ACTION_COMPLETED:', { ...baseData, status: 'success' });
   } else {
-    console.error('[Background] MANAGER_ACTION_FAILED:', { ...baseData, status: 'failed', error: result.error });
+    console.error('[Background] MANAGER_ACTION_FAILED:', {
+      ...baseData,
+      status: 'failed',
+      error: result.error
+    });
   }
 }
 
@@ -5741,20 +5931,38 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
   const startTime = Date.now();
 
   console.log('[Background] MANAGER_ACTION_REQUESTED:', {
-    action: command, quickTabId, hostTabId, correlationId, timestamp: startTime
+    action: command,
+    quickTabId,
+    hostTabId,
+    correlationId,
+    timestamp: startTime
   });
 
   // Validate command against allowlist
   if (!VALID_MANAGER_COMMANDS.has(command)) {
-    console.warn('[Background] MANAGER_ACTION_REJECTED:', { action: command, quickTabId, correlationId, reason: 'invalid-command' });
+    console.warn('[Background] MANAGER_ACTION_REJECTED:', {
+      action: command,
+      quickTabId,
+      correlationId,
+      reason: 'invalid-command'
+    });
     return { success: false, error: `Unknown command: ${command}` };
   }
 
   const executeMessage = {
-    type: 'EXECUTE_COMMAND', command, quickTabId, source: 'manager', correlationId
+    type: 'EXECUTE_COMMAND',
+    command,
+    quickTabId,
+    source: 'manager',
+    correlationId
   };
 
-  console.log('[Background] Routing command to tab:', { command, quickTabId, hostTabId, correlationId });
+  console.log('[Background] Routing command to tab:', {
+    command,
+    quickTabId,
+    hostTabId,
+    correlationId
+  });
 
   // Try messaging first, fall back to Scripting API
   try {
@@ -5762,19 +5970,59 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
       browser.tabs.sendMessage(hostTabId, executeMessage),
       createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
     ]);
-    _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: true }, startTime, method: 'messaging' });
+    _logManagerActionResult({
+      action: command,
+      quickTabId,
+      hostTabId,
+      correlationId,
+      result: { success: true },
+      startTime,
+      method: 'messaging'
+    });
     console.log('[Background] Command executed successfully:', response);
     return { success: true, response };
   } catch (err) {
-    console.log('[Background] Messaging failed, falling back to Scripting API:', { command, quickTabId, correlationId, error: err.message });
+    console.log('[Background] Messaging failed, falling back to Scripting API:', {
+      command,
+      quickTabId,
+      correlationId,
+      error: err.message
+    });
 
     try {
-      const fallbackResult = await _executeViaScripting(hostTabId, command, { quickTabId }, correlationId);
-      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: fallbackResult, startTime, method: 'scripting-fallback' });
+      const fallbackResult = await _executeViaScripting(
+        hostTabId,
+        command,
+        { quickTabId },
+        correlationId
+      );
+      _logManagerActionResult({
+        action: command,
+        quickTabId,
+        hostTabId,
+        correlationId,
+        result: fallbackResult,
+        startTime,
+        method: 'scripting-fallback'
+      });
       return fallbackResult;
     } catch (fallbackErr) {
-      _logManagerActionResult({ action: command, quickTabId, hostTabId, correlationId, result: { success: false, error: fallbackErr.message }, startTime, method: 'scripting-fallback' });
-      console.error('[Background] Both messaging and scripting failed:', { command, quickTabId, hostTabId, messagingError: err.message, scriptingError: fallbackErr.message });
+      _logManagerActionResult({
+        action: command,
+        quickTabId,
+        hostTabId,
+        correlationId,
+        result: { success: false, error: fallbackErr.message },
+        startTime,
+        method: 'scripting-fallback'
+      });
+      console.error('[Background] Both messaging and scripting failed:', {
+        command,
+        quickTabId,
+        hostTabId,
+        messagingError: err.message,
+        scriptingError: fallbackErr.message
+      });
       return { success: false, error: fallbackErr.message, fallbackFailed: true };
     }
   }

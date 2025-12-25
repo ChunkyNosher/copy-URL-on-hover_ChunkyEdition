@@ -8,7 +8,7 @@
  * - Handlers register for specific action types
  * - Router validates sender and routes to handler
  * - Handlers return promises for async operations
- * 
+ *
  * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
  * v1.6.4.15 - FIX Issue #18 (Diagnostic): Add allowlist of valid command types
  * v1.6.4.15 - FIX Issue #22: Add response format validation and normalization
@@ -52,7 +52,7 @@ export const VALID_MESSAGE_ACTIONS = new Set([
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format
 // All handlers should return responses in this format for consistency
 export const RESPONSE_ENVELOPE = {
-  SUCCESS: (data) => ({ success: true, data }),
+  SUCCESS: data => ({ success: true, data }),
   ERROR: (error, code = 'UNKNOWN_ERROR') => ({ success: false, error: String(error), code })
 };
 
@@ -119,39 +119,40 @@ export class MessageRouter {
    */
   _extractAction(message) {
     if (!message) return null;
-    
+
     // Prefer `action` property (standard)
     if (typeof message.action === 'string') {
       return message.action;
     }
-    
+
     // Fall back to `type` property for type-based messages
     // v1.6.4.14 - FIX Issue #18: Some handlers use `type` instead of `action`
     if (typeof message.type === 'string') {
       return message.type;
     }
-    
+
     return null;
   }
 
   /**
    * Check if message should be deferred to other browser.runtime.onMessage listeners
    * v1.6.4.14 - FIX Issue #18: Allow type-based messages to pass through
-   * 
+   *
    * The MessageRouter handles action-based messages, but some messages use
    * `type` property instead of `action`. These type-based messages are handled
    * by separate runtime.onMessage listeners (added in background.js):
    * - QUICK_TAB_STATE_CHANGE: Handled by handleQuickTabStateChange()
    * - MANAGER_COMMAND: Handled by handleManagerCommand()
    * - REQUEST_FULL_STATE_SYNC: Handled by handleFullStateSyncRequest()
-   * 
+   *
    * @private
    * @param {Object} message - Message to check
    * @returns {boolean} True if message should be handled by other listeners
    */
   _shouldDeferToOtherListeners(message) {
     // Messages with `type` (not `action`) are handled by other listeners
-    const isTypeBasedMessage = typeof message.type === 'string' && typeof message.action !== 'string';
+    const isTypeBasedMessage =
+      typeof message.type === 'string' && typeof message.action !== 'string';
     return isTypeBasedMessage;
   }
 
@@ -169,7 +170,7 @@ export class MessageRouter {
       // Log rejected command with context
       this._rejectedCommandCount++;
       this._lastRejectedCommand = { action, timestamp: Date.now() };
-      
+
       console.warn('[MSG][MessageRouter] UNKNOWN_COMMAND rejected:', {
         command: action,
         senderTabId: sender?.tab?.id ?? 'unknown',
@@ -178,10 +179,10 @@ export class MessageRouter {
         reason: 'Action not in VALID_MESSAGE_ACTIONS allowlist',
         totalRejected: this._rejectedCommandCount
       });
-      
+
       return { valid: false, reason: `Unknown command: ${action}` };
     }
-    
+
     return { valid: true };
   }
 
@@ -202,7 +203,7 @@ export class MessageRouter {
       });
       return { success: true, data: null };
     }
-    
+
     // Response already has success property - validate format
     if (typeof response === 'object' && 'success' in response) {
       // Validate required fields based on success/failure
@@ -214,11 +215,11 @@ export class MessageRouter {
         // Add default error if missing
         return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR' };
       }
-      
+
       // Response is valid format
       return response;
     }
-    
+
     // Response is raw data - wrap in success envelope
     return { success: true, data: response };
   }
@@ -236,11 +237,15 @@ export class MessageRouter {
   async route(message, sender, sendResponse) {
     // v1.6.4.14 - Extract action from either `action` or `type` property
     const action = this._extractAction(message);
-    
+
     // Validate message format - must have either action or type
     if (!action) {
       console.error('[MSG][MessageRouter] Invalid message format (missing action/type):', message);
-      sendResponse({ success: false, error: 'Invalid message format', code: 'INVALID_MESSAGE_FORMAT' });
+      sendResponse({
+        success: false,
+        error: 'Invalid message format',
+        code: 'INVALID_MESSAGE_FORMAT'
+      });
       return false;
     }
 
@@ -251,20 +256,20 @@ export class MessageRouter {
       if (this._shouldDeferToOtherListeners(message)) {
         return false;
       }
-      
+
       // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
       const validation = this._validateAction(action, sender);
       if (!validation.valid) {
-        sendResponse({ 
-          success: false, 
-          error: 'UNKNOWN_COMMAND', 
+        sendResponse({
+          success: false,
+          error: 'UNKNOWN_COMMAND',
           command: action,
           code: 'UNKNOWN_COMMAND',
           version: MESSAGE_PROTOCOL_VERSION
         });
         return false;
       }
-      
+
       console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
       sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
       return false;

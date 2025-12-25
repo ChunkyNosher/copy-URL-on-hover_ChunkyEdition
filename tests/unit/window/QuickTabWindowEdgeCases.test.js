@@ -73,7 +73,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-1',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -99,7 +99,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-2',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -126,7 +126,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-3',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -156,7 +156,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-4',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -188,7 +188,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-5',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -222,7 +222,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-6',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -253,7 +253,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-7',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -294,7 +294,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-8',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -335,7 +335,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-12',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -372,7 +372,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-13',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks

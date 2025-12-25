@@ -9,7 +9,8 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v9 Status:** Diagnostic Report Fixes ✅ | Code Health 9.0+ | 1,971+ Tests Passing
+**🔧 v1.6.3.11-v9 Status:** Diagnostic Report Fixes ✅ | Code Health 9.0+ |
+1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -21,19 +22,26 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **Bug Fixes:**
 
-- ✅ **Issue A Fix** - Content script tab identity initialization before state changes
-- ✅ **Issue C Fix** - Identity initialization comprehensive logging with timestamps
+- ✅ **Issue A Fix** - Content script tab identity initialization before state
+  changes
+- ✅ **Issue C Fix** - Identity initialization comprehensive logging with
+  timestamps
 - ✅ **Issue D Fix** - Storage write queue enforces identity-ready precondition
 - ✅ **Issue E Fix** - State validation pre/post comparison logging
 - ✅ **Issue I Fix** - Debounce timer captures tab context at schedule time
-- ✅ **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000 → 10000)
-- ✅ **Issue 5 Fix** - Container isolation validated in all visibility operations
+- ✅ **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000
+  → 10000)
+- ✅ **Issue 5 Fix** - Container isolation validated in all visibility
+  operations
 
 **New Logging Infrastructure:**
 
-- ✅ **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
-- ✅ **Write Phase Logging** - `[WRITE_PHASE]` phases (FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE)
-- ✅ **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows filtered tabs
+- ✅ **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD,
+  TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
+- ✅ **Write Phase Logging** - `[WRITE_PHASE]` phases (FETCH_PHASE,
+  QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE)
+- ✅ **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows
+  filtered tabs
 - ✅ **Container Validation** - `_validateContainerIsolation()` helper added
 
 **Code Health 9.0+ Achieved:**
@@ -51,14 +59,17 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **Bug Fixes:**
 
-- ✅ **Transaction Tracking Wired** - `_trackTransaction()` now called during storage writes
-- ✅ **Null originTabId Rejection** - Quick Tab creation rejects null originTabId
+- ✅ **Transaction Tracking Wired** - `_trackTransaction()` now called during
+  storage writes
+- ✅ **Null originTabId Rejection** - Quick Tab creation rejects null
+  originTabId
 - ✅ **Unknown Identity Rejection** - IDs with "unknown" placeholder rejected
 - ✅ **Hydration Boundary Logging** - GET_QUICK_TABS_STATE logs hydration state
 
 **New Logging Infrastructure:**
 
-- ✅ **Storage.onChanged Cascade** - `[Storage][Event]` timing and source logging
+- ✅ **Storage.onChanged Cascade** - `[Storage][Event]` timing and source
+  logging
 - ✅ **Identity State Transitions** - `[Identity]` INITIALIZING → READY logging
 - ✅ **Storage Write Lifecycle** - `[StorageWrite] LIFECYCLE_*` phases
 - ✅ **Handler Entry/Exit** - `[Handler][ENTRY/EXIT]` instrumentation
@@ -71,13 +82,17 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **Stability Restoration:**
 
-- ✅ **Restored to v1.6.3.10-v10** - Working version before architectural changes
-- ✅ **Fixed Orphan Quick Tabs** - Quick Tabs now properly store `originTabId` and `originContainerId`
-- ✅ **Background Handler Fix** - Added `_resolveOriginTabId()`, `_validateTabId()`, `_extractTabIdFromPattern()` helpers
+- ✅ **Restored to v1.6.3.10-v10** - Working version before architectural
+  changes
+- ✅ **Fixed Orphan Quick Tabs** - Quick Tabs now properly store `originTabId`
+  and `originContainerId`
+- ✅ **Background Handler Fix** - Added `_resolveOriginTabId()`,
+  `_validateTabId()`, `_extractTabIdFromPattern()` helpers
 
 **Code Health Improvements:**
 
-- ✅ **sidebar/quick-tabs-manager.js** - Score 7.32 → 8.26 (8 methods refactored)
+- ✅ **sidebar/quick-tabs-manager.js** - Score 7.32 → 8.26 (8 methods
+  refactored)
 - ✅ **src/utils/storage-utils.js** - Score 7.44 → 7.78 (5 methods refactored)
 - ✅ **src/content.js** - Score 8.71 → 9.09 (exceeds 9.0 target)
 - ✅ **background.js** - Score 8.02 → 8.40 (architecture-constrained)

@@ -223,16 +223,18 @@ AFTER → Store decisions → Commit memory
 - ✅ Architecture boundaries enforced
 - ✅ Unified storage format (tabs array)
 
-**Next Phase:** QuickTabsManager Decomposition → QuickTabFactory, QuickTabStorage,
-QuickTabSyncManager, QuickTabLifecycle, QuickTabsOrchestrator
+**Next Phase:** QuickTabsManager Decomposition → QuickTabFactory,
+QuickTabStorage, QuickTabSyncManager, QuickTabLifecycle, QuickTabsOrchestrator
 
 ---
 
 ## Common Refactoring Scenarios
 
 - **Decompose God Object** - Identify responsibilities, extract, use composition
-- **Extract Domain Logic** - Create pure entity, extract rules, use in feature layer
-- **Introduce Abstraction Layer** - Define interface, create adapters, inject deps
+- **Extract Domain Logic** - Create pure entity, extract rules, use in feature
+  layer
+- **Introduce Abstraction Layer** - Define interface, create adapters, inject
+  deps
 - **Break Circular Dependencies** - Identify cycle, extract shared interface
 
 ---
@@ -266,10 +268,10 @@ QuickTabSyncManager, QuickTabLifecycle, QuickTabsOrchestrator
 
 ## Refactoring Anti-Patterns
 
-❌ **Big Bang Refactoring** → Refactor incrementally
-❌ **Refactoring Without Tests** → Write characterization tests first
-❌ **Changing Behavior** → Refactor structure, not behavior
-❌ **Premature Abstraction** → Extract after 3+ instances (Rule of Three)
+❌ **Big Bang Refactoring** → Refactor incrementally ❌ **Refactoring Without
+Tests** → Write characterization tests first ❌ **Changing Behavior** → Refactor
+structure, not behavior ❌ **Premature Abstraction** → Extract after 3+
+instances (Rule of Three)
 
 ---
 
