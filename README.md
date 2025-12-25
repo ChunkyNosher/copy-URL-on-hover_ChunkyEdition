@@ -1,20 +1,45 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
-for quick URL copying and advanced Quick Tab management with **Solo/Mute
-visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
-Quick Tabs, and Persistent Floating Panel Manager.
+**Version 1.6.3.11-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
+for quick URL copying and advanced Quick Tab management with **Per-Tab
+Isolation**, **Container Isolation**, Session Quick Tabs, and Persistent
+Floating Panel Manager.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v11 Status:** Container Identity Fix ✅ | Code Health 10.0 |
+**🔧 v1.6.3.11-v12 Status:** Solo/Mute Removal Complete ✅ | Code Health 10.0 |
 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.11-v12
+
+**🧹 Solo/Mute Feature Removal (December 2025) ✅**
+
+The Solo (🎯) and Mute (🔇) visibility control features have been completely
+removed from the Quick Tabs system. Quick Tabs are now always visible on all
+tabs where they were created.
+
+**Changes Made:**
+
+- ✅ **Message Types** - Removed SOLO, MUTE, UPDATE_MUTE message types
+- ✅ **Handlers** - Removed handleSoloUpdate/handleMuteUpdate methods
+- ✅ **Storage** - Removed soloedOnTabs/mutedOnTabs from storage schema
+- ✅ **Test Bridge** - Removed toggleSolo()/toggleMute() test methods
+- ✅ **StateManager** - Removed cleanupDeadTabs() method
+- ✅ **Background** - Removed solo/mute migration and cleanup logic
+
+**Why Removed:**
+
+- Simplified architecture and reduced complexity
+- Features were not actively used by users
+- Improved code maintainability
+
+---
 
 ## 🎉 What's New in v1.6.3.11-v11
 

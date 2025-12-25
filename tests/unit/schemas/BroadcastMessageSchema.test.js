@@ -132,15 +132,13 @@ describe('BroadcastMessageSchema', () => {
           top: 200,
           width: 300,
           height: 400,
-          soloedOnTabs: [1, 2, 3],
-          mutedOnTabs: [4, 5]
+          isMinimized: true
         }
       };
 
       const result = validateMessage(message);
       expect(result.isValid()).toBe(true);
-      expect(result.sanitizedData.soloedOnTabs).toEqual([1, 2, 3]);
-      expect(result.sanitizedData.mutedOnTabs).toEqual([4, 5]);
+      expect(result.sanitizedData.isMinimized).toBe(true);
     });
   });
 
@@ -226,55 +224,7 @@ describe('BroadcastMessageSchema', () => {
     });
   });
 
-  describe('SOLO/MUTE Message Validation', () => {
-    test('validates SOLO message', () => {
-      const message = {
-        type: 'SOLO',
-        data: {
-          id: 'qt-123',
-          soloedOnTabs: [1, 2, 3]
-        }
-      };
-
-      const result = validateMessage(message);
-      expect(result.isValid()).toBe(true);
-      expect(result.sanitizedData).toEqual({
-        id: 'qt-123',
-        soloedOnTabs: [1, 2, 3]
-      });
-    });
-
-    test('validates MUTE message', () => {
-      const message = {
-        type: 'MUTE',
-        data: {
-          id: 'qt-123',
-          mutedOnTabs: [4, 5]
-        }
-      };
-
-      const result = validateMessage(message);
-      expect(result.isValid()).toBe(true);
-      expect(result.sanitizedData).toEqual({
-        id: 'qt-123',
-        mutedOnTabs: [4, 5]
-      });
-    });
-
-    test('rejects non-array soloedOnTabs', () => {
-      const message = {
-        type: 'SOLO',
-        data: {
-          id: 'qt-123',
-          soloedOnTabs: 'not-an-array'
-        }
-      };
-
-      const result = validateMessage(message);
-      expect(result.isValid()).toBe(false);
-      expect(result.errors.some(e => e.includes('array'))).toBe(true);
-    });
-  });
+  // v1.6.3.11-v12 - Removed SOLO/MUTE Message Validation tests (Solo/Mute feature removed)
 
   describe('Malformed Message Handling', () => {
     test('rejects null message', () => {
@@ -369,21 +319,5 @@ describe('BroadcastMessageSchema', () => {
     });
   });
 
-  describe('Array Truncation', () => {
-    test('truncates oversized arrays with warning', () => {
-      const largeArray = Array.from({ length: 2000 }, (_, i) => i);
-      const message = {
-        type: 'SOLO',
-        data: {
-          id: 'qt-123',
-          soloedOnTabs: largeArray
-        }
-      };
-
-      const result = validateMessage(message);
-      expect(result.isValid()).toBe(true);
-      expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.sanitizedData.soloedOnTabs.length).toBe(1000); // Max length
-    });
-  });
+  // v1.6.3.11-v12 - Removed Array Truncation test (was for soloedOnTabs/mutedOnTabs which were removed)
 });

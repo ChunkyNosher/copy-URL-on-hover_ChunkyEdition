@@ -3169,24 +3169,7 @@ function _getNumericValue(tab, options) {
   return isNaN(numVal) ? defaultVal : numVal;
 }
 
-/**
- * Get array value from flat or nested tab property
- * v1.6.3.4-v3 - Helper to reduce complexity
- * v1.6.3.4-v4 - Note: Unlike _getNumericValue, this function doesn't have a defaultVal
- *            parameter because arrays always default to empty []. The nestedKey
- *            parameter accesses tab.visibility[nestedKey] specifically.
- * @private
- * @param {Object} tab - Quick Tab instance
- * @param {string} flatKey - Key for flat format (e.g., 'soloedOnTabs')
- * @param {string} nestedKey - Nested key in visibility object (e.g., 'soloedOnTabs')
- * @returns {Array} Resolved array (copied), defaults to empty array
- */
-function _getArrayValue(tab, flatKey, nestedKey) {
-  const flatVal = tab[flatKey];
-  const nestedVal = tab.visibility?.[nestedKey];
-  const arr = Array.isArray(flatVal) ? flatVal : Array.isArray(nestedVal) ? nestedVal : [];
-  return [...arr];
-}
+// v1.6.3.11-v12 - Removed _getArrayValue() helper (Solo/Mute feature removed, no longer needed)
 
 /**
  * Serialize a single Quick Tab to storage format
@@ -3198,6 +3181,7 @@ function _getArrayValue(tab, flatKey, nestedKey) {
  *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
  *   - Issue #7: Log originTabId extraction for debugging adoption data flow
  * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
+ * v1.6.3.11-v12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute feature removed)
  * @private
  * @param {Object} tab - Quick Tab instance
  * @param {boolean} isMinimized - Whether tab is minimized
@@ -3455,8 +3439,7 @@ function serializeTabForStorage(tab, isMinimized) {
     }),
     zIndex: _getNumericValue(tab, { flatKey: 'zIndex', defaultVal: DEFAULT_ZINDEX }),
     minimized: Boolean(isMinimized),
-    soloedOnTabs: _getArrayValue(tab, 'soloedOnTabs', 'soloedOnTabs'),
-    mutedOnTabs: _getArrayValue(tab, 'mutedOnTabs', 'mutedOnTabs'),
+    // v1.6.3.11-v12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute feature removed)
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track originating tab ID for cross-tab filtering
     // v1.6.3.7 - FIX Issue #2: This value MUST be preserved across all operations
     originTabId: extractedOriginTabId,

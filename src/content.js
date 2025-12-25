@@ -4213,8 +4213,7 @@ let _testHandlePinQuickTab;
 let _testHandleUnpinQuickTab;
 let _testHandleCloseQuickTab;
 let _testHandleClearAllQuickTabs;
-let _testHandleToggleSolo;
-let _testHandleToggleMute;
+// v1.6.3.11-v12 - Removed _testHandleToggleSolo and _testHandleToggleMute (Solo/Mute feature removed)
 let _testHandleGetVisibilityState;
 let _testHandleGetManagerState;
 let _testHandleSetManagerPosition;
@@ -4337,51 +4336,11 @@ if (IS_TEST_MODE) {
     return { tab, domainTab };
   };
 
-  /**
-   * Generic visibility toggle handler (Solo/Mute)
-   * @private
-   */
-  const _toggleVisibility = (manager, data, toggleFn, mode) => {
-    const { id, tabId } = data;
-    const { domainTab } = _getDomainTab(manager, id);
-    const isNowActive = toggleFn.call(domainTab, tabId);
-
-    if (manager.broadcast) {
-      const broadcastData =
-        mode === 'SOLO'
-          ? { id, tabId, isNowSoloed: isNowActive, soloedOnTabs: domainTab.visibility.soloedOnTabs }
-          : { id, tabId, isNowMuted: isNowActive, mutedOnTabs: domainTab.visibility.mutedOnTabs };
-      manager.broadcast.broadcastMessage(mode, broadcastData);
-    }
-
-    return {
-      message: isNowActive ? `${mode} enabled` : `${mode} disabled`,
-      data: {
-        id,
-        tabId,
-        ...(mode === 'SOLO' ? { isNowSoloed: isNowActive } : { isNowMuted: isNowActive }),
-        soloedOnTabs: domainTab.visibility.soloedOnTabs,
-        mutedOnTabs: domainTab.visibility.mutedOnTabs
-      }
-    };
-  };
-
-  _testHandleToggleSolo = _wrapAsyncTestHandler('TEST_TOGGLE_SOLO', async (manager, data) => {
-    const { domainTab } = _getDomainTab(manager, data.id);
-    const result = _toggleVisibility(manager, data, domainTab.toggleSolo, 'SOLO');
-    await manager.storage.saveQuickTab(domainTab);
-    return result;
-  });
-
-  _testHandleToggleMute = _wrapAsyncTestHandler('TEST_TOGGLE_MUTE', async (manager, data) => {
-    const { domainTab } = _getDomainTab(manager, data.id);
-    const result = _toggleVisibility(manager, data, domainTab.toggleMute, 'MUTE');
-    await manager.storage.saveQuickTab(domainTab);
-    return result;
-  });
+  // v1.6.3.11-v12 - Removed _toggleVisibility helper and _testHandleToggleSolo/_testHandleToggleMute handlers (Solo/Mute feature removed)
 
   /**
    * Process a single tab for visibility state
+   * v1.6.3.11-v12 - Simplified: Solo/Mute removed, only check shouldBeVisible and minimized
    * @private
    */
   const _processTabVisibility = (id, tab, tabId, visibilityState) => {
@@ -4389,18 +4348,13 @@ if (IS_TEST_MODE) {
     if (!domainTab) return;
 
     const shouldBeVisible = domainTab.shouldBeVisible(tabId);
-    const isSoloed = domainTab.visibility.soloedOnTabs.includes(tabId);
-    const isMuted = domainTab.visibility.mutedOnTabs.includes(tabId);
 
     visibilityState.quickTabs[id] = {
       id,
       url: domainTab.url,
       title: domainTab.title,
       shouldBeVisible,
-      isSoloed,
-      isMuted,
-      soloedOnTabs: domainTab.visibility.soloedOnTabs,
-      mutedOnTabs: domainTab.visibility.mutedOnTabs
+      minimized: domainTab.visibility?.minimized ?? false
     };
 
     (shouldBeVisible ? visibilityState.visible : visibilityState.hidden).push(id);
@@ -5001,14 +4955,7 @@ if (IS_TEST_MODE) {
       _testHandleClearAllQuickTabs(sendResponse);
       return true;
     },
-    TEST_TOGGLE_SOLO: (message, sendResponse) => {
-      _testHandleToggleSolo(message.data, sendResponse);
-      return true;
-    },
-    TEST_TOGGLE_MUTE: (message, sendResponse) => {
-      _testHandleToggleMute(message.data, sendResponse);
-      return true;
-    },
+    // v1.6.3.11-v12 - Removed TEST_TOGGLE_SOLO and TEST_TOGGLE_MUTE handlers (Solo/Mute feature removed)
     TEST_GET_VISIBILITY_STATE: (message, sendResponse) => {
       _testHandleGetVisibilityState(message.data, sendResponse);
       return true;

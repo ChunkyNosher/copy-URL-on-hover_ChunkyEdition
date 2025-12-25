@@ -286,66 +286,13 @@ const TestBridge = {
     }
   },
 
-  // ==================== SOLO/MUTE METHODS ====================
-
-  /**
-   * Toggle solo mode for a Quick Tab on a specific tab
-   * @param {string} id - Quick Tab ID
-   * @param {number} tabId - Tab ID to solo on
-   * @returns {Promise<Object>} Operation result with solo state
-   */
-  async toggleSolo(id, tabId) {
-    console.log('[Test Bridge] toggleSolo:', id, 'tabId:', tabId);
-    try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
-        throw new Error('No active tab found');
-      }
-
-      const response = await browser.tabs.sendMessage(tabs[0].id, {
-        type: 'TEST_TOGGLE_SOLO',
-        data: { id, tabId }
-      });
-
-      console.log('[Test Bridge] toggleSolo response:', response);
-      return response;
-    } catch (error) {
-      console.error('[Test Bridge] toggleSolo error:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Toggle mute mode for a Quick Tab on a specific tab
-   * @param {string} id - Quick Tab ID
-   * @param {number} tabId - Tab ID to mute on
-   * @returns {Promise<Object>} Operation result with mute state
-   */
-  async toggleMute(id, tabId) {
-    console.log('[Test Bridge] toggleMute:', id, 'tabId:', tabId);
-    try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
-        throw new Error('No active tab found');
-      }
-
-      const response = await browser.tabs.sendMessage(tabs[0].id, {
-        type: 'TEST_TOGGLE_MUTE',
-        data: { id, tabId }
-      });
-
-      console.log('[Test Bridge] toggleMute response:', response);
-      return response;
-    } catch (error) {
-      console.error('[Test Bridge] toggleMute error:', error);
-      throw error;
-    }
-  },
+  // v1.6.3.11-v12 - Removed toggleSolo() and toggleMute() methods (Solo/Mute feature removed)
 
   /**
    * Get visibility state for current tab
+   * v1.6.3.11-v12 - Simplified: Solo/Mute removed, only returns visibility info
    * @param {number} tabId - Tab ID to get visibility for
-   * @returns {Promise<Object>} Visibility state (visible/hidden QTs, solo/mute status)
+   * @returns {Promise<Object>} Visibility state (visible/hidden QTs)
    */
   async getVisibilityState(tabId) {
     console.log('[Test Bridge] getVisibilityState:', tabId);

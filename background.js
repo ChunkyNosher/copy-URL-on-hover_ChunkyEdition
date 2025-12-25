@@ -1145,86 +1145,7 @@ function logSuccessfulLoad(source, format) {
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
 
-/**
- * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
- * v1.6.2.2 - Updated for unified format
- */
-async function migrateQuickTabState() {
-  // Guard: State not initialized
-  if (!isInitialized) {
-    console.warn('[Background Migration] State not initialized, skipping migration');
-    return;
-  }
-
-  let migrated = false;
-
-  // v1.6.2.2 - Process tabs array directly (unified format)
-  for (const quickTab of globalQuickTabState.tabs || []) {
-    if (migrateTabFromPinToSoloMute(quickTab)) {
-      migrated = true;
-    }
-  }
-
-  // Save if any tabs were migrated
-  if (migrated) {
-    await saveMigratedQuickTabState();
-  } else {
-    console.log('[Background Migration] No migration needed');
-  }
-}
-
-/**
- * Helper: Migrate individual tab from pinnedToUrl to solo/mute format
- *
- * @param {Object} quickTab - Quick Tab object to migrate
- * @returns {boolean} True if migration occurred
- */
-function migrateTabFromPinToSoloMute(quickTab) {
-  // Guard: No pinnedToUrl property
-  if (!('pinnedToUrl' in quickTab)) {
-    return false;
-  }
-
-  console.log(
-    `[Background Migration] Converting Quick Tab ${quickTab.id} from pin to solo/mute format`
-  );
-
-  // Initialize new properties
-  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
-  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
-
-  // Remove old property
-  delete quickTab.pinnedToUrl;
-
-  return true;
-}
-
-/**
- * Helper: Save migrated Quick Tab state to storage
- * v1.6.2.2 - Updated for unified format
- *
- * @returns {Promise<void>}
- */
-async function saveMigratedQuickTabState() {
-  console.log('[Background Migration] Saving migrated Quick Tab state');
-
-  const stateToSave = {
-    tabs: globalQuickTabState.tabs,
-    saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    timestamp: Date.now()
-  };
-
-  try {
-    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
-    console.log('[Background Migration] ✓ Migration complete');
-  } catch (err) {
-    console.error('[Background Migration] Error saving migrated state:', err);
-  }
-}
-
-// Run migration after initialization
-migrateQuickTabState();
+// v1.6.3.11-v12 - Removed migration functions (Solo/Mute feature removed)
 
 // ==================== STATE COORDINATOR ====================
 // Manages canonical Quick Tab state across all tabs with conflict resolution
@@ -1818,85 +1739,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, _tab) => {
   }
 });
 
-/**
- * Helper: Remove tab ID from Quick Tab's solo/mute arrays
- * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 886, 893)
- *
- * @param {Object} quickTab - Quick Tab object to clean up
- * @param {number} tabId - Tab ID to remove
- * @returns {boolean} True if any changes were made
- */
-function _removeTabFromQuickTab(quickTab, tabId) {
-  let changed = false;
-
-  // Remove from soloedOnTabs
-  if (quickTab.soloedOnTabs && quickTab.soloedOnTabs.includes(tabId)) {
-    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
-    changed = true;
-    console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} solo list`);
-  }
-
-  // Remove from mutedOnTabs
-  if (quickTab.mutedOnTabs && quickTab.mutedOnTabs.includes(tabId)) {
-    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
-    changed = true;
-    console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} mute list`);
-  }
-
-  return changed;
-}
-
-/**
- * Helper: Clean up Quick Tab state after tab closes
- * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
- * v1.6.2.2 - Updated for unified format
- *
- * @param {number} tabId - Tab ID that was closed
- * @returns {Promise<boolean>} True if state was changed and saved
- */
-async function _cleanupQuickTabStateAfterTabClose(tabId) {
-  // Guard: Not initialized
-  if (!isInitialized) {
-    return false;
-  }
-
-  let stateChanged = false;
-
-  // v1.6.2.2 - Process tabs array directly (unified format)
-  for (const quickTab of globalQuickTabState.tabs || []) {
-    if (_removeTabFromQuickTab(quickTab, tabId)) {
-      stateChanged = true;
-    }
-  }
-
-  // Save if state changed
-  if (!stateChanged) {
-    return false;
-  }
-
-  const stateToSave = {
-    tabs: globalQuickTabState.tabs,
-    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    timestamp: Date.now()
-  };
-
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
-    console.log('[Background] Cleaned up Quick Tab state after tab closure');
-    return true;
-  } catch (err) {
-    console.error('[Background] Error saving cleaned up state:', err);
-    return false;
-  }
-}
-
 // Clean up state when tab is closed
-// v1.5.9.13 - Also clean up solo/mute arrays when tabs close
-// v1.6.0 - PHASE 4.3: Extracted cleanup logic to fix complexity and max-depth
-chrome.tabs.onRemoved.addListener(async tabId => {
+// v1.6.3.11-v12 - Simplified: Solo/Mute cleanup removed, only clean up quickTabStates map
+chrome.tabs.onRemoved.addListener(tabId => {
   quickTabStates.delete(tabId);
-  console.log(`[Background] Tab ${tabId} closed - cleaning up Quick Tab references`);
-  await _cleanupQuickTabStateAfterTabClose(tabId);
+  console.log(`[Background] Tab ${tabId} closed - removed from quickTabStates`);
 });
 
 // ==================== MESSAGE ROUTING SETUP (v1.6.0 Phase 3.1) ====================
@@ -1956,12 +1803,7 @@ messageRouter.register(['UPDATE_QUICK_TAB_SIZE', 'UPDATE_QUICK_TAB_SIZE_FINAL'],
 messageRouter.register('UPDATE_QUICK_TAB_PIN', (msg, sender) =>
   quickTabHandler.handlePinUpdate(msg, sender)
 );
-messageRouter.register('UPDATE_QUICK_TAB_SOLO', (msg, sender) =>
-  quickTabHandler.handleSoloUpdate(msg, sender)
-);
-messageRouter.register('UPDATE_QUICK_TAB_MUTE', (msg, sender) =>
-  quickTabHandler.handleMuteUpdate(msg, sender)
-);
+// v1.6.3.11-v12 - Removed UPDATE_QUICK_TAB_SOLO and UPDATE_QUICK_TAB_MUTE registrations (Solo/Mute feature removed)
 messageRouter.register('UPDATE_QUICK_TAB_MINIMIZE', (msg, sender) =>
   quickTabHandler.handleMinimizeUpdate(msg, sender)
 );
